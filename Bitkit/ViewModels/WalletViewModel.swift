@@ -1352,65 +1352,73 @@ class WalletViewModel: ObservableObject {
         includeOnchain: Bool = true,
         includeLightning: Bool = true
     ) async throws -> PublicPaykitEndpoints {
-        guard isPaykitUIActive else {
-            return PublicPaykitEndpoints(onchainSnapshot: nil, bolt11: "")
-        }
-
-        let initialInvoiceRevision = publicPaykitInvoiceRevision
-        let session = pubkyProfile?.currentSession
-        let wasSharing = sharesPublicPaykitEndpoints
-        let publicOnchainSnapshot: PrivatePaykitAddressReservationStore.PublicAddressSnapshot?
-        if includeOnchain {
-            guard let session else { throw PubkyServiceError.sessionNotActive }
-            publicOnchainSnapshot = try await publicPaykitOnchainAddressSnapshot(for: session.publicKey)
-            // A reservation committed before cancellation still needs publication or reconciliation.
-            if isPaykitUIActive, sharesPublicPaykitEndpoints, pubkyProfile?.currentSession == session {
-                PublicPaykitService.setCleanupPending(true)
+        try await ProfileOperationAdmission.shared.withOperation {
+            guard isPaykitUIActive else {
+                return PublicPaykitEndpoints(onchainSnapshot: nil, bolt11: "")
             }
-        } else {
-            publicOnchainSnapshot = nil
-        }
 
-        for attempt in 0 ..< 2 {
-            let invoiceRevision = attempt == 0 ? initialInvoiceRevision : publicPaykitInvoiceRevision
-            let canCommitInvoice = { () async throws -> Bool in
-                if attempt > 0 {
-                    guard await !PrivatePaykitService.shared.isDeletingProfile else { throw PubkyServiceError.sessionNotActive }
+            let initialInvoiceRevision = publicPaykitInvoiceRevision
+            let session = pubkyProfile?.currentSession
+            let wasSharing = sharesPublicPaykitEndpoints
+            let publicOnchainSnapshot: PrivatePaykitAddressReservationStore.PublicAddressSnapshot?
+            if includeOnchain {
+                guard let session else { throw PubkyServiceError.sessionNotActive }
+                publicOnchainSnapshot = try await publicPaykitOnchainAddressSnapshot(for: session.publicKey)
+                // A reservation committed before cancellation still needs publication or reconciliation.
+                if let scope = ProfileOperationAdmission.current,
+                   (try? ProfileOperationAdmission.shared.validate(scope)) != nil ||
+                   (try? ProfileOperationAdmission.shared.validateCancelledPreference(scope)) != nil,
+                   isPaykitUIActive, sharesPublicPaykitEndpoints, pubkyProfile?.currentSession == session
+                {
+                    PublicPaykitService.setCleanupPending(true)
                 }
-                guard !Task.isCancelled, self.isPaykitUIActive,
-                      attempt == 0 || self.pubkyProfile?.isDeletingProfile != true,
-                      self.pubkyProfile?.currentSession == session && self.sharesPublicPaykitEndpoints == wasSharing
-                else { throw PubkyServiceError.sessionNotActive }
-                return self.publicPaykitInvoiceRevision == invoiceRevision
+                try ProfileOperationAdmission.shared.checkCurrent()
+            } else {
+                publicOnchainSnapshot = nil
             }
-            if attempt > 0 {
-                guard try await canCommitInvoice() else { continue }
-            }
-            if includeLightning, hasUsableChannels {
-                let hasReusableInvoice = await hasReusablePublicPaykitInvoice()
-                guard try await canCommitInvoice() else { continue }
-                let shouldRefreshBolt11 = forceRefreshBolt11 || !hasReusableInvoice
-                if shouldRefreshBolt11 {
-                    do {
-                        guard try await refreshPublicPaykitBolt11(canCommitInvoice: canCommitInvoice) else { continue }
-                    } catch let error as PublicPaykitError {
-                        guard case .routeHintsUnavailable = error else {
-                            throw error
-                        }
-                        Logger.warn(
-                            "Public Paykit Lightning invoice has no route hints; publishing on-chain endpoint only",
-                            context: "WalletViewModel"
-                        )
+
+            for attempt in 0 ..< 2 {
+                let invoiceRevision = attempt == 0 ? initialInvoiceRevision : publicPaykitInvoiceRevision
+                let canCommitInvoice = { () async throws -> Bool in
+                    try ProfileOperationAdmission.shared.checkCurrent()
+                    if attempt > 0 {
+                        guard await !PrivatePaykitService.shared.isDeletingProfile else { throw PubkyServiceError.sessionNotActive }
                     }
+                    guard !Task.isCancelled, self.isPaykitUIActive,
+                          attempt == 0 || self.pubkyProfile?.isDeletingProfile != true,
+                          self.pubkyProfile?.currentSession == session && self.sharesPublicPaykitEndpoints == wasSharing
+                    else { throw PubkyServiceError.sessionNotActive }
+                    return self.publicPaykitInvoiceRevision == invoiceRevision
                 }
-            } else if includeLightning {
-                guard try await canCommitInvoice() else { continue }
-                clearPublicPaykitBolt11()
-            }
+                if attempt > 0 {
+                    guard try await canCommitInvoice() else { continue }
+                }
+                if includeLightning, hasUsableChannels {
+                    let hasReusableInvoice = await hasReusablePublicPaykitInvoice()
+                    guard try await canCommitInvoice() else { continue }
+                    let shouldRefreshBolt11 = forceRefreshBolt11 || !hasReusableInvoice
+                    if shouldRefreshBolt11 {
+                        do {
+                            guard try await refreshPublicPaykitBolt11(canCommitInvoice: canCommitInvoice) else { continue }
+                        } catch let error as PublicPaykitError {
+                            guard case .routeHintsUnavailable = error else {
+                                throw error
+                            }
+                            Logger.warn(
+                                "Public Paykit Lightning invoice has no route hints; publishing on-chain endpoint only",
+                                context: "WalletViewModel"
+                            )
+                        }
+                    }
+                } else if includeLightning {
+                    guard try await canCommitInvoice() else { continue }
+                    clearPublicPaykitBolt11()
+                }
 
-            return PublicPaykitEndpoints(onchainSnapshot: publicOnchainSnapshot, bolt11: includeLightning ? publicPaykitBolt11 : "")
+                return PublicPaykitEndpoints(onchainSnapshot: publicOnchainSnapshot, bolt11: includeLightning ? publicPaykitBolt11 : "")
+            }
+            throw PublicPaykitError.publicationFailed
         }
-        throw PublicPaykitError.publicationFailed
     }
 
     func publicPaykitOnchainAddressSnapshot(for publicKey: String) async throws -> PrivatePaykitAddressReservationStore.PublicAddressSnapshot {
@@ -1422,42 +1430,49 @@ class WalletViewModel: ObservableObject {
     }
 
     func refreshPublicPaykitAddressIfNeeded(isSessionCurrent: (@MainActor () -> Bool)? = nil) async {
-        let isSessionCurrent = isSessionCurrent ?? publicPaykitPublicationAdmission()
-        let canPublish = {
-            !Task.isCancelled && isSessionCurrent() && self.isPaykitUIActive && self.sharesPublicPaykitEndpoints &&
-                self.pubkyProfile?.isDeletingProfile != true && PublicPaykitService.isOnchainPaymentOptionEnabled()
-        }
-        guard canPublish(), let session = pubkyProfile?.automaticPaykitSession,
-              await !PrivatePaykitService.shared.isDeletingProfile
-        else { return }
-        do {
-            guard try await needsPublicPaykitAddressRotation(for: session.publicKey),
-                  canPublish(), pubkyProfile?.automaticPaykitSession == session,
+        try? await ProfileOperationAdmission.shared.withOperation {
+            let isSessionCurrent = isSessionCurrent ?? publicPaykitPublicationAdmission()
+            let canPublish = {
+                !Task.isCancelled && isSessionCurrent() && self.isPaykitUIActive && self.sharesPublicPaykitEndpoints &&
+                    self.pubkyProfile?.isDeletingProfile != true && PublicPaykitService.isOnchainPaymentOptionEnabled()
+            }
+            guard canPublish(), let session = pubkyProfile?.automaticPaykitSession,
                   await !PrivatePaykitService.shared.isDeletingProfile
             else { return }
-            PublicPaykitService.setCleanupPending(true)
-            try await syncReceivePublicPaykitEndpoints(isSessionCurrent: canPublish)
-        } catch {
-            guard canPublish(), pubkyProfile?.automaticPaykitSession == session else { return }
-            PublicPaykitService.setCleanupPending(true)
-            Logger.warn("Failed to refresh public Paykit address: \(error)", context: "WalletViewModel")
+            do {
+                guard try await needsPublicPaykitAddressRotation(for: session.publicKey),
+                      canPublish(), pubkyProfile?.automaticPaykitSession == session,
+                      await !PrivatePaykitService.shared.isDeletingProfile
+                else { return }
+                try ProfileOperationAdmission.shared.checkCurrent()
+                PublicPaykitService.setCleanupPending(true)
+                try await syncReceivePublicPaykitEndpoints(isSessionCurrent: canPublish)
+            } catch {
+                guard (try? ProfileOperationAdmission.shared.checkCurrent()) != nil,
+                      canPublish(), pubkyProfile?.automaticPaykitSession == session else { return }
+                PublicPaykitService.setCleanupPending(true)
+                Logger.warn("Failed to refresh public Paykit address: \(error)", context: "WalletViewModel")
+            }
         }
     }
 
     func refreshPublicPaykitEndpointsOnForeground(isSessionCurrent: @escaping @MainActor () -> Bool) async {
-        guard !Task.isCancelled, isSessionCurrent(), isPaykitUIActive, sharesPublicPaykitEndpoints else { return }
-        do {
-            try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self, isSessionCurrent: {
-                !Task.isCancelled && isSessionCurrent() && self.isPaykitUIActive && self.sharesPublicPaykitEndpoints
-            })
-        } catch is CancellationError {
-            return
-        } catch PubkyServiceError.sessionNotActive {
-            return
-        } catch {
+        try? await ProfileOperationAdmission.shared.withOperation {
             guard !Task.isCancelled, isSessionCurrent(), isPaykitUIActive, sharesPublicPaykitEndpoints else { return }
-            PublicPaykitService.setCleanupPending(true)
-            Logger.warn("Failed to refresh public Paykit endpoints on foreground: \(error)", context: "WalletViewModel")
+            do {
+                try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self, isSessionCurrent: {
+                    !Task.isCancelled && isSessionCurrent() && self.isPaykitUIActive && self.sharesPublicPaykitEndpoints
+                })
+            } catch is CancellationError {
+                return
+            } catch PubkyServiceError.sessionNotActive {
+                return
+            } catch {
+                guard (try? ProfileOperationAdmission.shared.checkCurrent()) != nil,
+                      !Task.isCancelled, isSessionCurrent(), isPaykitUIActive, sharesPublicPaykitEndpoints else { return }
+                PublicPaykitService.setCleanupPending(true)
+                Logger.warn("Failed to refresh public Paykit endpoints on foreground: \(error)", context: "WalletViewModel")
+            }
         }
     }
 

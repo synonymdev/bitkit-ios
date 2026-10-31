@@ -12,32 +12,83 @@ enum AppReset {
         app: AppViewModel,
         wallet: WalletViewModel,
         session: SessionManager,
-        toastType: Toast.ToastType = .success
+        toastType: Toast.ToastType = .success,
+        expectedPendingID: UUID? = nil
     ) async throws {
-        try await PaykitSdkService.shared.withWalletWipe {
+        try await withWipeAdmission(expectedPendingID: expectedPendingID) { permitsRemoteCleanup in
+            BackupService.shared.setWiping(true)
+            defer { BackupService.shared.setWiping(false) }
             try await app.withMigrationSyncPausedForWipe {
                 await SettingsViewModel.shared.beginServerSettingsWipe()
                 defer { SettingsViewModel.shared.endServerSettingsWipe() }
-                try await wipeLocal(app: app, wallet: wallet, session: session, toastType: toastType)
+                try await wipeLocal(app: app, wallet: wallet, permitsRemoteCleanup: permitsRemoteCleanup)
             }
         }
+        // Required cleanup and the exact marker are acknowledged before any success or replacement tree.
+        session.skipSplashOnce = true
+        session.bump()
+        app.toast(type: toastType, title: t("security__wiped_title"), description: t("security__wiped_message"))
+    }
+
+    @MainActor
+    static func withWipeAdmission(
+        admission: ProfileOperationAdmission = .shared,
+        sdkService: PaykitSdkService = .shared,
+        expectedPendingID: UUID? = nil,
+        pause: ((UUID) async -> Void)? = nil,
+        resume: ((UUID) async -> Void)? = nil,
+        cleanup: (Bool) async throws -> Void
+    ) async throws {
+        let id = UUID()
+        let scope = try admission.reserve(kind: .walletWipe, id: id, requiredPendingID: expectedPendingID)
+        defer { admission.release(scope) }
+        if let pause {
+            await pause(id)
+        } else {
+            await PrivatePaykitService.shared.beginProfileDeletion(id: id)
+        }
+        @MainActor func resumeWork() async {
+            if let resume {
+                await resume(id)
+            } else {
+                await PrivatePaykitService.shared.endProfileDeletion(id: id)
+            }
+        }
+        var completed = false
+        do {
+            try await admission.withScope(scope, access: .control) {
+                try await admission.drain(before: scope)
+                try admission.persist(scope)
+                let permitsRemoteCleanup = try admission.permitsRemoteCleanup(scope)
+                try await sdkService.withWalletWipe {
+                    try await cleanup(permitsRemoteCleanup)
+                }
+                try admission.complete(scope)
+                completed = true
+            }
+        } catch {
+            await resumeWork()
+            // Cancellation immediately after acknowledged completion cannot turn it into pending work.
+            if completed {
+                return
+            }
+            throw error
+        }
+        await resumeWork()
     }
 
     @MainActor
     private static func wipeLocal(
         app: AppViewModel,
         wallet: WalletViewModel,
-        session: SessionManager,
-        toastType: Toast.ToastType
+        permitsRemoteCleanup: Bool
     ) async throws {
-        await PubkyProfileManager.removePublicPaykitEndpointsBestEffort(context: "AppReset.wipe")
-        await PubkyProfileManager.removePrivatePaykitEndpointsBestEffort(context: "AppReset.wipe")
-
-        // Set wiping flag to prevent backups during wipe operations
-        BackupService.shared.setWiping(true)
-        defer {
-            BackupService.shared.setWiping(false)
+        if permitsRemoteCleanup {
+            await PubkyProfileManager.removePublicPaykitEndpointsBestEffort(context: "AppReset.wipe")
+            await PubkyProfileManager.removePrivatePaykitEndpointsBestEffort(context: "AppReset.wipe")
         }
+        guard let scope = ProfileOperationAdmission.current else { throw ProfileRemovalStore.StoreError.changed }
+        try ProfileOperationAdmission.shared.requireLocalOnly(scope)
 
         // Stop backup observers and reset VSS client
         await BackupService.shared.stopObservingBackups()
@@ -48,9 +99,11 @@ enum AppReset {
         // Before the paired devices are wiped, so a reconnect still running cannot save one back.
         await hardwareWallets?.resetForWipe()
 
-        var usdtCleanupError: Error?
-        do { try await wallet.usdtWallet.wipe() }
-        catch { usdtCleanupError = error }
+        try await wallet.usdtWallet.wipe()
+
+        // Credentials must be durably absent before any consumed-payment watermark is cleared.
+        try Keychain.wipeEntireKeychain()
+        try SharedPubkyKeychain.removeAllOwnOrThrow()
 
         // Stop node and wipe LDK persistence via the wallet API.
         try await wallet.wipe()
@@ -60,15 +113,12 @@ enum AppReset {
         Logger.info("Core DB wipe: \(coreWipeResult)")
 
         // Clear any live Pubky runtime state and cached profile images.
-        await PubkyProfileManager.clearLocalState()
         await PrivatePaykitAddressReservationStore.shared.clear()
-
-        // Wipe keychain
-        try Keychain.wipeEntireKeychain()
+        try await PubkyProfileManager.clearLocalState()
         PaykitUsdtPaymentService.shared.resetForWipe()
 
         // Delete installation marker so next install can detect orphaned keychain
-        try? InstallationMarker.delete()
+        try InstallationMarker.delete()
 
         // Wipe user defaults
         if let bundleID = Bundle.main.bundleIdentifier {
@@ -87,21 +137,14 @@ enum AppReset {
             try wipeLogs()
         }
 
-        // Recreate the entire app state tree to guarantee clean defaults for all @StateObject VMs.
-        // Avoid showing splash during when app is reset
-        session.skipSplashOnce = true
-        session.bump()
-
-        if let usdtCleanupError {
-            throw usdtCleanupError
-        }
-
-        // Show toast
-        app.toast(
-            type: toastType,
-            title: t("security__wiped_title"),
-            description: t("security__wiped_message")
-        )
+        guard let domain = Bundle.main.bundleIdentifier,
+              let expected = UserDefaults.standard.persistentDomain(forName: domain),
+              UserDefaults.standard.synchronize(),
+              let persisted = UserDefaults.standard.persistentDomain(forName: domain),
+              NSDictionary(dictionary: expected).isEqual(to: persisted)
+        else { throw ProfileRemovalStore.StoreError.unavailable }
+        try await PrivatePaykitService.shared.validateWipedState()
+        try await PrivatePaykitAddressReservationStore.shared.validateWipedState()
     }
 
     private static func wipeLogs() throws {

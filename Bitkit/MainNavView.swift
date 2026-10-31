@@ -566,7 +566,9 @@ struct MainNavView: View {
                     } else if let profile = contactsManager.pendingImportProfile {
                         ContactImportOverviewView(
                             profile: profile,
-                            contacts: contactsManager.pendingImportContacts
+                            contacts: contactsManager.pendingImportContacts,
+                            importGeneration: contactsManager.importGeneration,
+                            owner: pubkyProfile.removalPresentationOwner
                         )
                     } else {
                         missingPendingImportView(fallbackRoute: .payContacts)
@@ -577,7 +579,11 @@ struct MainNavView: View {
                     } else if let fallbackRoute = fallbackRouteForMissingPendingImport(hasPendingImport: contactsManager.hasPendingImport) {
                         missingPendingImportView(fallbackRoute: fallbackRoute)
                     } else {
-                        ContactImportSelectView(contacts: contactsManager.pendingImportContacts)
+                        ContactImportSelectView(
+                            contacts: contactsManager.pendingImportContacts,
+                            importGeneration: contactsManager.importGeneration,
+                            owner: pubkyProfile.removalPresentationOwner
+                        )
                     }
                 case let .addContact(publicKey):
                     if isPaykitUIActive {
@@ -592,7 +598,9 @@ struct MainNavView: View {
                         paykitDisabledRedirectView
                     }
                 case .profile:
-                    if !isPaykitUIActive {
+                    if pubkyProfile.removalRecovery != .ready {
+                        ProfileRemovalRecoveryView()
+                    } else if !isPaykitUIActive {
                         ComingSoonScreen()
                     } else if let initializationErrorMessage = pubkyProfile.initializationErrorMessage {
                         pubkyInitializationErrorView(message: initializationErrorMessage)
@@ -602,25 +610,33 @@ struct MainNavView: View {
                         ProfileDestinationView(hasSeenIntro: app.hasSeenProfileIntro)
                     }
                 case .profileIntro:
-                    if isPaykitUIActive {
+                    if pubkyProfile.removalRecovery != .ready {
+                        ProfileRemovalRecoveryView()
+                    } else if isPaykitUIActive {
                         ProfileIntroView()
                     } else {
                         ComingSoonScreen()
                     }
                 case .pubkyChoice:
-                    if isPaykitUIActive {
+                    if pubkyProfile.removalRecovery != .ready {
+                        ProfileRemovalRecoveryView()
+                    } else if isPaykitUIActive {
                         PubkyChoiceView()
                     } else {
                         paykitDisabledRedirectView
                     }
                 case .createProfile:
-                    if isPaykitUIActive {
+                    if pubkyProfile.removalRecovery != .ready {
+                        ProfileRemovalRecoveryView()
+                    } else if isPaykitUIActive {
                         CreateProfileView()
                     } else {
                         paykitDisabledRedirectView
                     }
                 case .editProfile:
-                    if isPaykitUIActive {
+                    if pubkyProfile.removalRecovery != .ready {
+                        ProfileRemovalRecoveryView()
+                    } else if isPaykitUIActive {
                         EditProfileView()
                     } else {
                         paykitDisabledRedirectView

@@ -190,6 +190,14 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                 XCTAssertNil(identity, "Wipe must close admission before receive resumes")
             }
             let authority = wipe == nil ? Task { try await service.contactRecords() } : nil
+            if boundary == "cancellation" {
+                do {
+                    _ = try await authority?.value
+                    XCTFail("New ordinary work entered before the cancelled receive finished")
+                } catch ProfileRemovalStore.StoreError.changed {}
+                let heldEvents = await recorder.events
+                XCTAssertEqual(heldEvents, ["receive"])
+            }
             gate.open()
             do {
                 _ = try await refresh.value
@@ -203,8 +211,12 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                 XCTAssertEqual(code, "wallet_wipe_in_progress")
             }
             try await wipe?.value
-            _ = try await authority?.value
             await fulfillment(of: [received], timeout: 2)
+            if boundary == "cancellation" {
+                _ = try await service.contactRecords()
+            } else {
+                _ = try await authority?.value
+            }
             let events = await recorder.events
             let version = await service.backupStateVersion
             XCTAssertEqual(events, boundary == "wipe" ? ["receive"] : ["receive", "authority"])
@@ -474,24 +486,34 @@ final class PaykitSdkOperationLockTests: XCTestCase {
             if !cancelBeforeAdmission {
                 await fulfillment(of: [started], timeout: 2)
             }
+            let admission = service.profileAdmission
+            let nextScope = try admission.capture()
+            defer { admission.release(nextScope) }
             proof.cancel()
-            let next = Task { _ = try await service.contactRecords() }
+            let next = Task { try await admission.withScope(nextScope) { _ = try await service.contactRecords() } }
             try await Task.sleep(for: .milliseconds(50))
             let heldEvents = await recorder.events
             XCTAssertEqual(heldEvents, [cancelBeforeAdmission ? "active" : "proof"])
             gate.open()
             try await active?.value
-            do {
-                _ = try await proof.value
+            switch await proof.result {
+            case .success:
                 XCTFail("Canceled proof operation must not succeed")
-            } catch is CancellationError {
-                XCTAssertTrue(cancelBeforeAdmission)
-            } catch PaymentMutationReached.reached {
-                XCTAssertFalse(cancelBeforeAdmission)
+            case let .failure(error):
+                if cancelBeforeAdmission {
+                    XCTAssertTrue(error is CancellationError, "Unadmitted proof returned \(error)")
+                } else {
+                    guard case PaymentMutationReached.reached = error else {
+                        return XCTFail("Admitted proof must preserve its native outcome, got \(error)")
+                    }
+                }
             }
             try await next.value
             let events = await recorder.events
             XCTAssertEqual(events, [cancelBeforeAdmission ? "active" : "proof", "next"])
+            _ = try await service.contactRecords()
+            let freshEvents = await recorder.events
+            XCTAssertEqual(freshEvents, events + ["next"])
         }
     }
 
@@ -762,7 +784,7 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                 _ = try await delivery.value
                 XCTAssertEqual(change, "resume")
             } catch is CancellationError {
-                XCTAssertEqual(change, "cancel")
+                XCTAssertTrue(change == "cancel" || change == "wipe")
             } catch PubkyServiceError.identityChanged {
                 XCTAssertTrue(change == "reset" || change == "wipe")
             }
@@ -797,7 +819,7 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                 _ = try await delivery.value
                 XCTFail("Deferred outbound delivery must not survive \(change)")
             } catch is CancellationError {
-                XCTAssertEqual(change, "cancel")
+                XCTAssertTrue(change == "cancel" || change == "wipe")
             } catch PubkyServiceError.identityChanged {
                 XCTAssertNotEqual(change, "cancel")
             }
@@ -880,7 +902,7 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                 _ = try await export.value
                 XCTFail("Deferred backup must not survive \(change)")
             } catch is CancellationError {
-                XCTAssertEqual(change, "cancel")
+                XCTAssertTrue(change == "cancel" || change == "wipe")
             } catch PubkyServiceError.identityChanged {
                 XCTAssertNotEqual(change, "cancel")
             }
@@ -943,6 +965,24 @@ final class PaykitSdkOperationLockTests: XCTestCase {
             await Task.yield()
         }
         XCTAssertEqual(lock.waiterCountForTesting, count)
+    }
+
+    func testColdPublicCapabilityReadDoesNotActivatePendingProfileCredentials() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ProfileRemovalStore(url: directory.appendingPathComponent("pending.json"))
+        let admission = ProfileOperationAdmission(store: store)
+        let pendingID = UUID()
+        let scope = try admission.reserve(kind: .removal, id: pendingID, expected: admission.snapshot())
+        try admission.persist(scope)
+        admission.release(scope)
+        let sdk = PublicReadSdk(noPointer: .init())
+        sdk.lockedRead = { XCTFail("Public preview must not read authenticated contacts") }
+        let service = PaykitSdkService(profileAdmission: admission, sdkFactory: { sdk })
+        let result = try await service.canReceivePaymentRequests(publicKey: "peer")
+        XCTAssertFalse(result)
+        XCTAssertEqual(try store.pending()?.id, pendingID)
+        XCTAssertThrowsError(try admission.capture())
     }
 
     func testPublicCapabilityReadDoesNotWaitForSerializedSdkWork() async throws {
@@ -1296,7 +1336,7 @@ private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
         updates _: [PrivatePaymentListReservationUpdateInput], clearUnlistedLinkedPeers _: Bool
     ) async throws -> PrivatePaymentListDeliveryReport {
         await intake()
-        return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+        return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
     }
 
     override func submitPaymentProof(

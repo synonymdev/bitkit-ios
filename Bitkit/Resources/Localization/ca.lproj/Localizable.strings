@@ -1032,6 +1032,7 @@
 "profile__sign_out" = "Desconnectar";
 "profile__sign_out_title" = "Desconnectar el perfil";
 "profile__sign_out_description" = "Això desconnectarà el teu perfil de Pubky de Bitkit. Pots tornar a connectar-lo en qualsevol moment.";
+"profile__disconnect_local_description" = "Elimina l’accés d’aquest dispositiu i acaba la neteja local. Això no fa cap altre canvi al perfil, les subscripcions ni l’accés al servidor.";
 "profile__choice_title" = "Entra a la\n<accent>web de la llibertat</accent>";
 "profile__choice_description" = "Crea un nou pubky i un perfil a Bitkit.";
 "profile__choice_description_ring" = "Utilitza un pubky existent de Pubky Ring.";
@@ -1068,13 +1069,13 @@
 "profile__delete_description" = "Eliminar el teu perfil l'esborra de Pubky. És possible que els contactes conservin la informació de perfil i de pagament que s'hi hagi compartit abans.";
 "profile__delete_confirm" = "Sí, elimina";
 "profile__delete_error_title" = "No s'ha pogut eliminar el perfil";
-"profile__delete_error_description" = "No hem pogut eliminar les dades del teu perfil. Torna-ho a provar o desconnecta aquest pubky de Bitkit.";
+"profile__delete_error_description" = "La neteja del perfil s’ha interromput. És possible que els canvis remots ja s’hagin aplicat. Desconnecta el perfil per completar la neteja en aquest dispositiu sense repetir la supressió remota.";
 "profile__delete_label" = "Eliminar perfil";
 "profile__unlink_title" = "Desvincular el pubky?";
 "profile__unlink_description" = "Això eliminarà les teves dades de Paykit i desvincularà aquest pubky de Bitkit. Continuarà disponible a Pubky Ring.";
 "profile__unlink_confirm" = "Sí, desvincula";
 "profile__unlink_error_title" = "No s'ha pogut desvincular el pubky";
-"profile__unlink_error_description" = "No hem pogut eliminar les teves dades de Paykit. Torna-ho a provar o desconnecta aquest pubky de Bitkit.";
+"profile__unlink_error_description" = "La neteja del perfil s’ha interromput. És possible que els canvis remots ja s’hagin aplicat. Desconnecta el perfil per completar la neteja en aquest dispositiu sense repetir la supressió remota.";
 "profile__unlink_label" = "Desvincular el pubky";
 "profile__edit" = "Editar";
 "profile__pay_contacts_nav_title" = "Pagar contactes";
@@ -1750,5 +1751,15 @@
 "subscriptions__allowance_limit_title" = "Límit assolit";
 "subscriptions__allowance_limit_description" = "Una sol·licitud de {amount} de {name} supera la teva assignació. Revisa-la per pagar.";
 "subscriptions__allowance_auto_paid" = "Pagat automàticament";
+
+"profile__recovery_title" = "Completa la neteja local";
+
+"profile__recovery_pending" = "La neteja del perfil s’ha interromput. És possible que els canvis remots ja s’hagin aplicat. Desconnecta el perfil per completar la neteja en aquest dispositiu sense repetir la supressió remota.";
+
+"profile__recovery_wipe" = "El restabliment de la cartera s’ha interromput. Completa’l abans d’utilitzar-la.";
+
+"profile__recovery_unavailable" = "Bitkit no pot llegir l’estat desat de la neteja. Els canvis del perfil estan en pausa. Torna a intentar llegir-lo.";
+
+"profile__recovery_working" = "S’està completant la neteja del perfil…";
 
 "wallet__balance_updating" = "S’està actualitzant el saldo…";

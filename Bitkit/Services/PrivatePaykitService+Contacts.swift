@@ -111,37 +111,40 @@ extension PrivatePaykitService {
         requireImmediatePublication: Bool = false,
         isSessionCurrent: (@MainActor () -> Bool)? = nil
     ) async -> Error? {
-        let generation = preparationGeneration
-        while true {
-            let revision = savedContactsRevision
-            if let isSessionCurrent, await !isSessionCurrent() {
+        do { return try await profileAdmission.withOperation {
+            let generation = preparationGeneration
+            while true {
+                let revision = savedContactsRevision
+                if let isSessionCurrent, await !isSessionCurrent() {
+                    return nil
+                }
+                guard !Task.isCancelled, generation == preparationGeneration else { return nil }
+                if revision == savedContactsRevision {
+                    break
+                }
+            }
+            try profileAdmission.checkCurrent()
+            if !requireImmediatePublication {
+                let keys = rememberSavedContacts(publicKeys, replacing: true)
+                scheduleContactPreparation(keys, wallet: wallet, isSessionCurrent: isSessionCurrent)
                 return nil
             }
-            guard !Task.isCancelled, generation == preparationGeneration else { return nil }
-            if revision == savedContactsRevision {
-                break
-            }
-        }
-        if !requireImmediatePublication {
-            let keys = rememberSavedContacts(publicKeys, replacing: true)
-            scheduleContactPreparation(keys, wallet: wallet, isSessionCurrent: isSessionCurrent)
-            return nil
-        }
-        return await prepareSavedContacts(
-            publicKeys,
-            publicationUnavailableReason: privateEndpointPublicationUnavailabilityReason(wallet: wallet),
-            prepareLinks: { try? await self.prepareRelevantPrivateLinksIfAvailable($0, reason: "prepare") },
-            publishEndpoints: { publicKeys in
-                await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
-                return await self.syncLocalEndpointPublication(
-                    for: publicKeys,
-                    wallet: wallet,
-                    reason: "prepare",
-                    requireImmediatePublication: requireImmediatePublication,
-                    isSessionCurrent: isSessionCurrent
-                )
-            }
-        )
+            return await prepareSavedContacts(
+                publicKeys,
+                publicationUnavailableReason: privateEndpointPublicationUnavailabilityReason(wallet: wallet),
+                prepareLinks: { try? await self.prepareRelevantPrivateLinksIfAvailable($0, reason: "prepare") },
+                publishEndpoints: { publicKeys in
+                    await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
+                    return await self.syncLocalEndpointPublication(
+                        for: publicKeys,
+                        wallet: wallet,
+                        reason: "prepare",
+                        requireImmediatePublication: requireImmediatePublication,
+                        isSessionCurrent: isSessionCurrent
+                    )
+                }
+            )
+        } } catch { return error }
     }
 
     func prepareSavedContacts(
@@ -150,13 +153,15 @@ extension PrivatePaykitService {
         prepareLinks: ([String]) async -> Void,
         publishEndpoints: ([String]) async -> Error?
     ) async -> Error? {
-        let publicKeys = rememberSavedContacts(publicKeys, replacing: true)
-        if let reason = publicationUnavailableReason {
-            Logger.info("Deferring private Paykit endpoint publication during prepare: \(reason)", context: "PrivatePaykitService")
-            await prepareLinks(publicKeys)
-            return nil
-        }
-        return await publishEndpoints(publicKeys)
+        do { return try await profileAdmission.withOperation {
+            let publicKeys = rememberSavedContacts(publicKeys, replacing: true)
+            if let reason = publicationUnavailableReason {
+                Logger.info("Deferring private Paykit endpoint publication during prepare: \(reason)", context: "PrivatePaykitService")
+                await prepareLinks(publicKeys)
+                return nil
+            }
+            return await publishEndpoints(publicKeys)
+        } } catch { return error }
     }
 
     func refreshSavedContactEndpoints(
@@ -229,18 +234,21 @@ extension PrivatePaykitService {
         requeueActive: Bool = false,
         operation: @escaping ([String], Bool) async -> Void
     ) {
-        guard !isDeletingProfile else { return }
+        guard !isDeletingProfile, (try? profileAdmission.snapshot()) != nil else { return }
         let keys = publicKeys.filter { requeueActive || forceRefreshLightning || !activePreparationKeys.contains($0) }
         guard !keys.isEmpty else { return }
         pendingPreparationKeys.formUnion(keys)
         pendingPreparationOperation = operation
         pendingForceRefreshLightning = pendingForceRefreshLightning || forceRefreshLightning
         guard preparationTask == nil, !pendingPreparationKeys.isEmpty else { return }
-        preparationTask = Task {
+        let owner = preparationGeneration
+        preparationTask = profileTask { [self] in
             defer {
-                activePreparationKeys.removeAll()
-                pendingPreparationOperation = nil
-                preparationTask = nil
+                if owner == preparationGeneration {
+                    activePreparationKeys.removeAll()
+                    pendingPreparationOperation = nil
+                    preparationTask = nil
+                }
             }
             while !Task.isCancelled, !pendingPreparationKeys.isEmpty {
                 guard await waitForBackgroundWork(generation: preparationGeneration) else { continue }
@@ -259,6 +267,8 @@ extension PrivatePaykitService {
 
     func invalidateContactPreparation() {
         preparationGeneration += 1
+        preparationTask?.cancel()
+        preparationTask = nil
         resumeBackgroundWorkWaiters()
         pendingPreparationKeys.removeAll()
         pendingPreparationOperation = nil
@@ -318,13 +328,16 @@ extension PrivatePaykitService {
         waiters.forEach { $0.finish() }
     }
 
-    func beginProfileDeletion() {
-        isDeletingProfile = true
+    @discardableResult
+    func beginProfileDeletion(id: UUID = UUID()) -> UUID {
+        profileDeletionToken = id
         invalidateContactPreparation()
+        return id
     }
 
-    func endProfileDeletion() {
-        isDeletingProfile = false
+    func endProfileDeletion(id: UUID) {
+        guard profileDeletionToken == id else { return }
+        profileDeletionToken = nil
     }
 
     @discardableResult
@@ -424,34 +437,37 @@ extension PrivatePaykitService {
         deferAppSync: Bool = false,
         operations: EndpointCleanupOperations
     ) async throws {
-        let revision = publicKeys != nil && isSessionCurrent != nil ? savedContactsRevision : nil
-        if let isSessionCurrent, await !isSessionCurrent() {
-            throw PubkyServiceError.sessionNotActive
-        }
-        let publicKeys = publicKeys.map { normalizedSavedContactKeys($0) }
-        guard publicKeys?.isEmpty != true else { return }
-        if publicKeys == nil {
-            invalidateContactPreparation()
-        }
-        let generation = preparationGeneration
+        try await profileAdmission.withOperation {
+            let revision = publicKeys != nil && isSessionCurrent != nil ? savedContactsRevision : nil
+            if let isSessionCurrent, await !isSessionCurrent() {
+                throw PubkyServiceError.sessionNotActive
+            }
+            try profileAdmission.checkCurrent()
+            let publicKeys = publicKeys.map { normalizedSavedContactKeys($0) }
+            guard publicKeys?.isEmpty != true else { return }
+            if publicKeys == nil {
+                invalidateContactPreparation()
+            }
+            let generation = preparationGeneration
 
-        do {
-            try await withPublicationLock {
-                if let isSessionCurrent, await !isSessionCurrent() {
-                    throw PubkyServiceError.sessionNotActive
+            do {
+                try await withPublicationLock {
+                    if let isSessionCurrent, await !isSessionCurrent() {
+                        throw PubkyServiceError.sessionNotActive
+                    }
+                    try await removePublishedEndpointsLocked(
+                        for: publicKeys, isSessionCurrent: isSessionCurrent, revision: revision, generation: generation,
+                        deferAppSync: deferAppSync, operations: operations
+                    )
                 }
-                try await removePublishedEndpointsLocked(
-                    for: publicKeys, isSessionCurrent: isSessionCurrent, revision: revision, generation: generation,
-                    deferAppSync: deferAppSync, operations: operations
-                )
+            } catch {
+                if (try? profileAdmission.checkCurrent()) != nil, await isSessionCurrent?() != false,
+                   revision == nil || (revision == savedContactsRevision && generation == preparationGeneration)
+                {
+                    PublicPaykitService.setCleanupPending(true)
+                }
+                throw error
             }
-        } catch {
-            if await isSessionCurrent?() != false,
-               revision == nil || (revision == savedContactsRevision && generation == preparationGeneration)
-            {
-                PublicPaykitService.setCleanupPending(true)
-            }
-            throw error
         }
     }
 
@@ -460,6 +476,7 @@ extension PrivatePaykitService {
         deferAppSync: Bool, operations: EndpointCleanupOperations
     ) async throws {
         let peers = try await operations.linkedPeers()
+        try profileAdmission.checkCurrent()
         let linkedPublicKeys = Set(peers
             .filter { $0.state == .linked || $0.state == .linking || $0.state == .recoveryRequired }
             .compactMap { PubkyPublicKeyFormat.normalized($0.counterparty) })
@@ -485,16 +502,17 @@ extension PrivatePaykitService {
             if let revision, revision != savedContactsRevision || generation != preparationGeneration {
                 throw PubkyServiceError.sessionNotActive
             }
+            try profileAdmission.checkCurrent()
             do {
-                if let report = try await operations.clearPaymentLists(cleanupKeys) {
-                    logPrivatePaymentListDeliveryFailures(report, reason: "cleanup")
-                    failedPublicKeys.formUnion((report.failedToQueue.map(\.counterparty) + report.failedToDeliver.map(\.counterparty))
-                        .compactMap { PubkyPublicKeyFormat.normalized($0) })
-                    clearedRetryKeys = report.cleared.compactMap { PubkyPublicKeyFormat.normalized($0.counterparty) }
-                        .filter { !failedPublicKeys.contains($0) }
-                    if !failedPublicKeys.isEmpty {
-                        firstError = PrivatePaykitError.privateUnavailable
-                    }
+                guard let report = try await operations.clearPaymentLists(cleanupKeys) else {
+                    throw PrivatePaykitError.privateUnavailable
+                }
+                logPrivatePaymentListDeliveryFailures(report, reason: "cleanup")
+                let acknowledged = Self.acknowledgedCleanupKeys(in: report, requestedKeys: cleanupKeys)
+                failedPublicKeys.formUnion(Set(cleanupKeys).subtracting(acknowledged))
+                clearedRetryKeys = cleanupKeys.filter { acknowledged.contains($0) }
+                if !failedPublicKeys.isEmpty || !report.failedToQueue.isEmpty || !report.failedToDeliver.isEmpty {
+                    firstError = PrivatePaykitError.privateUnavailable
                 }
             } catch {
                 if let isSessionCurrent, await !isSessionCurrent() {
@@ -514,6 +532,7 @@ extension PrivatePaykitService {
 
         if !clearedRetryKeys.isEmpty {
             var pendingRetryKeys = await operations.pendingDrainKeys(clearedRetryKeys)
+            try profileAdmission.checkCurrent()
             if !pendingRetryKeys.isEmpty {
                 await operations.drainMessages(Array(pendingRetryKeys))
                 pendingRetryKeys = await operations.pendingDrainKeys(clearedRetryKeys)
@@ -546,6 +565,7 @@ extension PrivatePaykitService {
             }
         }
 
+        try profileAdmission.checkCurrent()
         let successfulPublicKeys = publicKeySet.subtracting(failedPublicKeys)
         if applyPublishedEndpointCleanupResults(
             successfulPublicKeys: successfulPublicKeys,
@@ -571,129 +591,150 @@ extension PrivatePaykitService {
         }
     }
 
+    private static func acknowledgedCleanupKeys(in report: PrivatePaymentListDeliveryReport, requestedKeys: [String]) -> Set<String> {
+        let failed = Set((report.failedToQueue.map(\.counterparty) + report.failedToDeliver.map(\.counterparty) + report.queued.map(\.counterparty))
+            .compactMap { PubkyPublicKeyFormat.normalized($0) })
+        return Set(requestedKeys.filter { key in
+            guard !failed.contains(key) else { return false }
+            let cleared = report.cleared.filter { PubkyPublicKeyFormat.normalized($0.counterparty) == key }
+            guard cleared.count == 1, let change = cleared.first, change.error == nil,
+                  let messageID = change.outboundMessageId else { return false }
+            // Queue emptiness and a stored Sent row cannot establish delivery of this exact withdrawal.
+            return report.acknowledged.contains {
+                PubkyPublicKeyFormat.normalized($0.counterparty) == key && $0.outboundMessageId == messageID
+            }
+        })
+    }
+
     func removeSavedContact(publicKey: String) async {
-        guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else { return }
-        savedContactsRevision += 1
-        knownSavedContactKeys.remove(normalizedKey)
-        pendingMessageDrainRetries[normalizedKey] = nil
-        unavailableLinkRetryAt[normalizedKey] = nil
-        Self.markDeletedContactCleanupPending([normalizedKey])
-        do {
-            try await removePublishedEndpoints(for: [normalizedKey])
-            await clearContactState(publicKey: normalizedKey)
-        } catch {
-            Logger.warn(
-                "Failed to remove private Paykit endpoints for deleted contact \(PubkyPublicKeyFormat.redacted(normalizedKey)): \(error)",
-                context: "PrivatePaykit"
-            )
-        }
+        await removeSavedContacts(publicKeys: [publicKey])
     }
 
     func removeSavedContacts(publicKeys: [String]) async {
-        let normalizedKeys = normalizedSavedContactKeys(publicKeys)
-        savedContactsRevision += 1
-        for publicKey in normalizedKeys {
-            knownSavedContactKeys.remove(publicKey)
-            pendingMessageDrainRetries[publicKey] = nil
-            unavailableLinkRetryAt[publicKey] = nil
-        }
-        if isDeletingProfile {
-            await clearContactStates(publicKeys: normalizedKeys)
-            return
-        }
-        Self.markDeletedContactCleanupPending(normalizedKeys)
-        do {
-            try await removePublishedEndpoints(for: normalizedKeys)
-            await clearContactStates(publicKeys: normalizedKeys)
-        } catch {
-            Logger.warn("Failed to remove private Paykit endpoints for deleted contacts: \(error)", context: "PrivatePaykit")
+        do { try await profileAdmission.withOperation {
+            try profileAdmission.checkCurrent()
+            let normalizedKeys = normalizedSavedContactKeys(publicKeys)
+            savedContactsRevision += 1
+            for publicKey in normalizedKeys {
+                knownSavedContactKeys.remove(publicKey)
+                pendingMessageDrainRetries[publicKey] = nil
+                unavailableLinkRetryAt[publicKey] = nil
+            }
+            if isDeletingProfile {
+                try profileAdmission.checkCurrent()
+                await clearContactStates(publicKeys: normalizedKeys)
+                return
+            }
+            Self.markDeletedContactCleanupPending(normalizedKeys)
+            do {
+                try await removePublishedEndpoints(for: normalizedKeys)
+                try profileAdmission.checkCurrent()
+                await clearContactStates(publicKeys: normalizedKeys)
+            } catch {
+                Logger.warn("Failed to remove private Paykit endpoints for deleted contacts: \(error)", context: "PrivatePaykit")
+            }
+        } } catch {
+            Logger.debug("Contact cleanup stopped: \(error)", context: "PrivatePaykit")
         }
     }
 
     func pruneUnsavedContactState(
         savedPublicKeys publicKeys: [String], isSessionCurrent: (@MainActor () -> Bool)? = nil
     ) async {
-        let revision = savedContactsRevision
-        let generation = preparationGeneration
-        if let isSessionCurrent, await !isSessionCurrent() {
-            return
-        }
-        guard revision == savedContactsRevision, generation == preparationGeneration else { return }
-        let savedKeys = Set(rememberSavedContacts(publicKeys, replacing: true))
-        let cleanupRevision = savedContactsRevision
-
-        let staleKeys: Set<String> = Set(state.contacts.compactMap { publicKey, contactState in
-            guard !savedKeys.contains(publicKey), contactState.hasContactOwnedCacheState else { return nil }
-            return publicKey
-        })
-        let cleanupKeys = staleKeys.union(Self.pendingDeletedContactCleanupKeys().subtracting(savedKeys))
-        guard !cleanupKeys.isEmpty else { return }
-
-        if isDeletingProfile {
-            await clearContactStates(publicKeys: Array(staleKeys))
-            return
-        }
-
-        do {
-            try await removePublishedEndpoints(for: Array(cleanupKeys), isSessionCurrent: isSessionCurrent)
-            try await withPublicationLock {
-                if let isSessionCurrent, await !isSessionCurrent() {
-                    return
-                }
-                guard cleanupRevision == savedContactsRevision, generation == preparationGeneration else { return }
-                await clearContactStates(publicKeys: Array(staleKeys))
-            }
-        } catch {
+        do { try await profileAdmission.withOperation {
+            let revision = savedContactsRevision
+            let generation = preparationGeneration
             if let isSessionCurrent, await !isSessionCurrent() {
                 return
             }
-            guard cleanupRevision == savedContactsRevision, generation == preparationGeneration else { return }
-            Logger.warn("Failed to prune private Paykit endpoints for unsaved contacts: \(error)", context: "PrivatePaykit")
+            try profileAdmission.checkCurrent()
+            guard revision == savedContactsRevision, generation == preparationGeneration else { return }
+            let savedKeys = Set(rememberSavedContacts(publicKeys, replacing: true))
+            let cleanupRevision = savedContactsRevision
+
+            let staleKeys: Set<String> = Set(state.contacts.compactMap { publicKey, contactState in
+                guard !savedKeys.contains(publicKey), contactState.hasContactOwnedCacheState else { return nil }
+                return publicKey
+            })
+            let cleanupKeys = staleKeys.union(Self.pendingDeletedContactCleanupKeys().subtracting(savedKeys))
+            guard !cleanupKeys.isEmpty else { return }
+
+            if isDeletingProfile {
+                try profileAdmission.checkCurrent()
+                await clearContactStates(publicKeys: Array(staleKeys))
+                return
+            }
+
+            do {
+                try await removePublishedEndpoints(for: Array(cleanupKeys), isSessionCurrent: isSessionCurrent)
+                try await withPublicationLock {
+                    if let isSessionCurrent, await !isSessionCurrent() {
+                        return
+                    }
+                    try profileAdmission.checkCurrent()
+                    guard cleanupRevision == savedContactsRevision, generation == preparationGeneration else { return }
+                    await clearContactStates(publicKeys: Array(staleKeys))
+                }
+            } catch {
+                if let isSessionCurrent, await !isSessionCurrent() {
+                    return
+                }
+                try profileAdmission.checkCurrent()
+                guard cleanupRevision == savedContactsRevision, generation == preparationGeneration else { return }
+                Logger.warn("Failed to prune private Paykit endpoints for unsaved contacts: \(error)", context: "PrivatePaykit")
+            }
+        } } catch {
+            Logger.debug("Contact cleanup stopped: \(error)", context: "PrivatePaykit")
         }
     }
 
     func retryPendingEndpointReconciliation(wallet: WalletViewModel, savedPublicKeys publicKeys: [String]) async {
-        guard !isDeletingProfile else { return }
-        let savedKeys = Set(normalizedSavedContactKeys(publicKeys))
-        let isFullCleanupPending = UserDefaults.standard.bool(forKey: Self.cleanupPendingKey)
-        if isFullCleanupPending,
-           Self.fullCleanupReconciliationMode() == .restoreSavedContacts
-        {
-            let restoreKeys = savedKeys.union(knownSavedContactKeys)
-            guard !restoreKeys.isEmpty, await canPublishPrivateEndpoints(wallet: wallet) else { return }
+        do { try await profileAdmission.withOperation {
+            guard !isDeletingProfile else { return }
+            let savedKeys = Set(normalizedSavedContactKeys(publicKeys))
+            let isFullCleanupPending = UserDefaults.standard.bool(forKey: Self.cleanupPendingKey)
+            if isFullCleanupPending,
+               Self.fullCleanupReconciliationMode() == .restoreSavedContacts
+            {
+                let restoreKeys = savedKeys.union(knownSavedContactKeys)
+                guard !restoreKeys.isEmpty, await canPublishPrivateEndpoints(wallet: wallet) else { return }
 
-            let publicKeys = rememberSavedContacts(Array(restoreKeys), replacing: true)
-            await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
-            let error = await resumeEndpointPublication {
-                await self.refreshSavedContactEndpointsReturningError(
-                    for: publicKeys,
-                    wallet: wallet,
-                    forceRefreshLightning: false,
-                    requireImmediatePublication: true,
-                    reason: "reconcile"
-                )
+                try profileAdmission.checkCurrent()
+                let publicKeys = rememberSavedContacts(Array(restoreKeys), replacing: true)
+                await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
+                let error = await resumeEndpointPublication {
+                    await self.refreshSavedContactEndpointsReturningError(
+                        for: publicKeys,
+                        wallet: wallet,
+                        forceRefreshLightning: false,
+                        requireImmediatePublication: true,
+                        reason: "reconcile"
+                    )
+                }
+                if let error {
+                    Logger.warn("Failed to reconcile private Paykit endpoints: \(error)", context: "PrivatePaykit")
+                }
+                return
             }
-            if let error {
-                Logger.warn("Failed to reconcile private Paykit endpoints: \(error)", context: "PrivatePaykit")
+
+            let cleanupKeys = isFullCleanupPending
+                ? Set(knownSavedContactKeys).union(state.contacts.keys).union(Self.pendingDeletedContactCleanupKeys())
+                : Set(pendingPrivateEndpointRemovalKeys(savedPublicKeys: publicKeys))
+
+            guard isFullCleanupPending || !cleanupKeys.isEmpty else { return }
+
+            do {
+                try await removePublishedEndpoints(for: isFullCleanupPending ? nil : Array(cleanupKeys))
+                try profileAdmission.checkCurrent()
+                await clearContactStates(publicKeys: Array(cleanupKeys.subtracting(savedKeys)))
+                try profileAdmission.checkCurrent()
+                if isFullCleanupPending {
+                    Self.setContactSharingCleanupPending(false)
+                }
+            } catch {
+                Logger.warn("Failed to retry private Paykit endpoint cleanup: \(error)", context: "PrivatePaykit")
             }
-            return
-        }
-
-        let cleanupKeys = isFullCleanupPending
-            ? Set(knownSavedContactKeys).union(state.contacts.keys).union(Self.pendingDeletedContactCleanupKeys())
-            : Set(pendingPrivateEndpointRemovalKeys(savedPublicKeys: publicKeys))
-
-        guard isFullCleanupPending || !cleanupKeys.isEmpty else { return }
-
-        do {
-            try await removePublishedEndpoints(for: isFullCleanupPending ? nil : Array(cleanupKeys))
-            await clearContactStates(publicKeys: Array(cleanupKeys.subtracting(savedKeys)))
-            if isFullCleanupPending {
-                Self.setContactSharingCleanupPending(false)
-            }
-        } catch {
-            Logger.warn("Failed to retry private Paykit endpoint cleanup: \(error)", context: "PrivatePaykit")
-        }
+        } } catch { Logger.debug("Endpoint reconciliation stopped: \(error)", context: "PrivatePaykit") }
     }
 
     func pendingPrivateEndpointRemovalKeys(savedPublicKeys publicKeys: [String]) -> [String] {
@@ -1114,30 +1155,32 @@ extension PrivatePaykitService {
     }
 
     func startExplicitContactLink(publicKey: String, expectedIdentity: String?, wallet: WalletViewModel) {
-        let generation = preparationGeneration
-        let startedAt = messageRetryOperations.now()
-        guard let publicKey = PubkyPublicKeyFormat.normalized(publicKey),
-              let expectedIdentity = expectedIdentity.flatMap(PubkyPublicKeyFormat.normalized),
-              PaykitFeatureFlags.isUIEnabled, PubkyProfileManager.hasLocalSecretKey(for: expectedIdentity),
-              !isDeletingProfile, !Task.isCancelled
-        else { return }
-        _ = rememberSavedContacts([publicKey], replacing: false)
-        scheduleExplicitContactLink(publicKey: publicKey, identity: expectedIdentity, startedAt: startedAt)
-        Task {
-            do {
-                guard await waitForBackgroundWork(generation: generation),
-                      let identity = try await messageRetryOperations.currentPublicKey(
-                          messageRetryOperations.now().timeIntervalSince(startedAt) < 20 ? .interactive : .background
-                      ),
-                      PubkyPublicKeyFormat.matches(identity, expectedIdentity), generation == preparationGeneration,
-                      !Task.isCancelled, knownSavedContactKeys.contains(publicKey)
-                else { return }
-                scheduleContactPreparation([publicKey], wallet: wallet)
-            } catch {
-                Logger.warn(
-                    "Failed to inspect private Paykit identity during contact preparation: \(PaykitResolutionFailureDiagnostics.reason(for: error))",
-                    context: "PrivatePaykit"
-                )
+        try? profileAdmission.withSynchronousOperation {
+            let generation = preparationGeneration
+            let startedAt = messageRetryOperations.now()
+            guard let publicKey = PubkyPublicKeyFormat.normalized(publicKey),
+                  let expectedIdentity = expectedIdentity.flatMap(PubkyPublicKeyFormat.normalized),
+                  PaykitFeatureFlags.isUIEnabled, PubkyProfileManager.hasLocalSecretKey(for: expectedIdentity),
+                  !isDeletingProfile, !Task.isCancelled
+            else { return }
+            _ = rememberSavedContacts([publicKey], replacing: false)
+            scheduleExplicitContactLink(publicKey: publicKey, identity: expectedIdentity, startedAt: startedAt)
+            profileTask { [self] in
+                do {
+                    guard await waitForBackgroundWork(generation: generation),
+                          let identity = try await messageRetryOperations.currentPublicKey(
+                              messageRetryOperations.now().timeIntervalSince(startedAt) < 20 ? .interactive : .background
+                          ),
+                          PubkyPublicKeyFormat.matches(identity, expectedIdentity), generation == preparationGeneration,
+                          !Task.isCancelled, knownSavedContactKeys.contains(publicKey)
+                    else { return }
+                    scheduleContactPreparation([publicKey], wallet: wallet)
+                } catch {
+                    Logger.warn(
+                        "Failed to inspect private Paykit identity during contact preparation: \(PaykitResolutionFailureDiagnostics.reason(for: error))",
+                        context: "PrivatePaykit"
+                    )
+                }
             }
         }
     }
@@ -1165,7 +1208,7 @@ extension PrivatePaykitService {
         guard pendingMessageDrainRetryTask == nil else { return }
         pendingMessageDrainRetryGeneration += 1
         let retryGeneration = pendingMessageDrainRetryGeneration
-        pendingMessageDrainRetryTask = Task { [reason, retryGeneration] in
+        pendingMessageDrainRetryTask = profileTask { [self, reason, retryGeneration] in
             var foregroundAttempts = 0
             var schedulingSnapshot: PrivateMessageSchedulingSnapshot?
             while !Task.isCancelled, retryGeneration == pendingMessageDrainRetryGeneration {
@@ -1203,7 +1246,9 @@ extension PrivatePaykitService {
                         }
                     }
                     pendingMessageDrainRetrySleep = idle
-                    await idle.value
+                    await withTaskCancellationHandler {
+                        await idle.value
+                    } onCancel: { idle.cancel() }
                     guard retryGeneration == pendingMessageDrainRetryGeneration else { return }
                     pendingMessageDrainRetrySleep = nil
                     continue
@@ -1214,7 +1259,9 @@ extension PrivatePaykitService {
                     let sleep = messageRetryOperations.sleep
                     let timer = Task { _ = try? await sleep(UInt64(delay * 1_000_000_000)) }
                     pendingMessageDrainRetrySleep = timer
-                    await timer.value
+                    await withTaskCancellationHandler {
+                        await timer.value
+                    } onCancel: { timer.cancel() }
                     guard retryGeneration == pendingMessageDrainRetryGeneration else { return }
                     pendingMessageDrainRetrySleep = nil
                     continue

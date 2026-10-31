@@ -5,6 +5,93 @@ import XCTest
 
 @MainActor
 final class ProfileDestinationViewTests: XCTestCase {
+    func testChoiceWaitsForOriginalAdmissionAndDoesNotLoadReplacementRows() async throws {
+        for replaceOwner in [false, true] {
+            let manager = WaitingCreateProfileManager()
+            let admission = ProfileOperationAdmission.shared
+            let transition = try admission.reserveSessionTransition()
+            let view = PubkyChoiceView()
+                .environmentObject(manager as PubkyProfileManager)
+                .environmentObject(AppViewModel())
+                .environmentObject(NavigationViewModel())
+                .environmentObject(ContactsManager())
+            let window = try host(view)
+            defer { close(window) }
+            try await Task.sleep(for: .milliseconds(200))
+            XCTAssertEqual(manager.rowLoads, 0)
+            if replaceOwner {
+                manager.publicKey = "replacement"
+            }
+            admission.release(transition)
+            if !replaceOwner {
+                await fulfillment(of: [manager.rowsLoaded], timeout: 2)
+            } else {
+                try await Task.sleep(for: .milliseconds(250))
+            }
+            XCTAssertEqual(manager.rowLoads, replaceOwner ? 0 : 1)
+        }
+    }
+
+    func testCreateWaitsForTheOriginalTransitionReleaseWithoutAnotherBusyEvent() async throws {
+        snapshotAppDefaultsDomain()
+        for replaceOwner in [false, true] {
+            let manager = WaitingCreateProfileManager()
+            XCTAssertFalse(manager.isRestoringSession)
+            XCTAssertFalse(manager.isAdoptingRingIdentity)
+            let admission = ProfileOperationAdmission.shared
+            let transition = try admission.reserveSessionTransition()
+            defer { admission.release(transition) }
+            let view = CreateProfileView()
+                .disabled(true)
+                .environmentObject(manager as PubkyProfileManager)
+                .environmentObject(AppViewModel())
+                .environmentObject(NavigationViewModel())
+            let window = try host(view)
+            defer { close(window) }
+            await fulfillment(of: [manager.presentationOwnerCaptured], timeout: 2)
+            XCTAssertEqual(manager.keyLoads, 0)
+            if replaceOwner {
+                manager.publicKey = "replacement"
+            }
+            admission.release(transition)
+            if !replaceOwner {
+                await fulfillment(of: [manager.loaded], timeout: 2)
+            } else {
+                try await Task.sleep(for: .milliseconds(250))
+            }
+            XCTAssertEqual(manager.keyLoads, replaceOwner ? 0 : 1)
+        }
+    }
+
+    func testInterruptedCleanupIsReachableWithoutAnActiveIdentity() async throws {
+        for state in ["profile", "walletWipe", "unavailable"] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let url = directory.appendingPathComponent("pending.json")
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let store = ProfileRemovalStore(url: url)
+            if state == "unavailable" {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try Data("unreadable-record".utf8).write(to: url)
+            } else {
+                try store.begin(id: UUID(), scope: state == "profile" ? .profile : .walletWipe)
+            }
+            let manager = PubkyProfileManager(removalStore: store, removalAdmission: ProfileOperationAdmission(store: store))
+            manager.publicKey = nil
+            manager.authState = .idle
+            let window = try hostProfile(manager)
+            defer { close(window) }
+            try await Task.sleep(for: .milliseconds(150))
+            let (_, labels) = try snapshot(window, name: "Interrupted cleanup: \(state)")
+            let visible = labels.joined(separator: " ")
+            XCTAssertTrue(visible.localizedCaseInsensitiveContains(t("profile__recovery_title")), visible)
+            let action = state == "profile" ? "profile__sign_out" : state == "walletWipe" ? "security__reset_button_reset" : "common__retry"
+            XCTAssertTrue(visible.localizedCaseInsensitiveContains(t(action)), visible)
+            XCTAssertFalse(manager.isRestoringSession)
+            XCTAssertNil(manager.currentSession)
+            XCTAssertFalse(visible.localizedCaseInsensitiveContains(t("profile__choice_create")))
+        }
+    }
+
     func testContactsWaitsForIdentityLookupThenShowsRecovery() async throws {
         snapshotAppDefaultsDomain()
         UserDefaults.standard.removeObject(forKey: "pubky_profile_name")
@@ -328,7 +415,13 @@ final class ProfileDestinationViewTests: XCTestCase {
             .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
             .environmentObject(ContactsManager())
+            .environmentObject(WalletViewModel())
+            .environmentObject(SessionManager())
             .preferredColorScheme(.dark)
+        return try host(view)
+    }
+
+    private func host(_ view: some View) throws -> UIWindow {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .first { $0.activationState == .foregroundActive })
@@ -360,6 +453,7 @@ final class ProfileDestinationViewTests: XCTestCase {
     }
 
     private func close(_ window: UIWindow) {
+        window.endEditing(true)
         window.isHidden = true
         window.rootViewController = nil
     }
@@ -417,6 +511,40 @@ final class ProfileDestinationViewTests: XCTestCase {
         let (_, labels) = try snapshot(window, name: name)
         XCTAssertTrue(labels.contains(t("profile__retry_load")), "Missing Retry after \(name): \(labels)")
         XCTAssertTrue(labels.contains(t("profile__sign_out")), "Missing Disconnect after \(name): \(labels)")
+    }
+}
+
+@MainActor
+private final class WaitingCreateProfileManager: PubkyProfileManager {
+    var keyLoads = 0
+    var rowLoads = 0
+    let loaded = XCTestExpectation(description: "Create resumes when its original admission becomes ready")
+    let rowsLoaded = XCTestExpectation(description: "Choice resumes when its original admission becomes ready")
+    let presentationOwnerCaptured = XCTestExpectation(description: "The screen captures its original owner")
+    private var didCapturePresentationOwner = false
+
+    override var removalPresentationOwner: RemovalPresentationOwner {
+        let owner = super.removalPresentationOwner
+        if !didCapturePresentationOwner {
+            didCapturePresentationOwner = true
+            presentationOwnerCaptured.fulfill()
+        }
+        return owner
+    }
+
+    override func activePublicKey() async throws -> String {
+        keyLoads += 1
+        loaded.fulfill()
+        return "waiting-original-public-key"
+    }
+
+    override func fetchRemoteProfile(publicKey _: String) async -> PubkyProfile? {
+        nil
+    }
+
+    override func loadRingIdentityProfiles(_: [String]) async {
+        rowLoads += 1
+        rowsLoaded.fulfill()
     }
 }
 

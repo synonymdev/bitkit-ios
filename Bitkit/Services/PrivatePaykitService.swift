@@ -87,7 +87,11 @@ actor PrivatePaykitService {
     var isBackgroundWorkPaused = false
     var messageSchedulingGeneration = 0
     var backgroundWorkWaiters: [UUID: AsyncStream<Void>.Continuation] = [:]
-    var isDeletingProfile = false
+    var profileDeletionToken: UUID?
+    var isDeletingProfile: Bool {
+        profileDeletionToken != nil
+    }
+
     var pendingForceRefreshLightning = false
     var unavailableLinkRetryAt: [String: Date] = [:]
     var pendingMessageDrainRetryTask: Task<Void, Never>?
@@ -104,19 +108,44 @@ actor PrivatePaykitService {
     var prePaymentPublicationKeys: Set<String> = []
     private let publicationLock = PrivatePaykitPublicationLock()
     let publicationOperations: EndpointPublicationOperations?
+    let profileAdmission: ProfileOperationAdmission
 
     init(
         publicationOperations: EndpointPublicationOperations? = nil,
+        profileAdmission: ProfileOperationAdmission = .shared,
         messageRetryOperations: PrivateMessageRetryOperations = .init()
     ) {
         self.publicationOperations = publicationOperations
+        self.profileAdmission = profileAdmission
         self.messageRetryOperations = messageRetryOperations
         state = UserDefaults.standard.data(forKey: Self.cacheStateKey)
             .flatMap { try? JSONDecoder().decode(PrivatePaykitState.self, from: $0) } ?? PrivatePaykitState(contacts: [:])
     }
 
+    @discardableResult
+    func profileTask(_ operation: @escaping () async -> Void) -> Task<Void, Never>? {
+        let admission = profileAdmission
+        guard let scope = try? admission.capture() else { return nil }
+        let id = UUID()
+        let task = Task {
+            defer {
+                admission.removeCancellationHandler(from: scope, id: id)
+                admission.release(scope)
+            }
+            do { try await admission.withScope(scope, revokeOnCancellation: false) { await operation() } }
+            catch { Logger.debug("Private profile work stopped: \(error)", context: "PrivatePaykit") }
+        }
+        admission.onRevocation(of: scope, id: id) { task.cancel() }
+        return task
+    }
+
     func withPublicationLock<T>(_ operation: () async throws -> T) async throws -> T {
-        try await publicationLock.withLock(operation)
+        try await profileAdmission.withOperation {
+            try await publicationLock.withLock {
+                try profileAdmission.checkCurrent()
+                return try await operation()
+            }
+        }
     }
 
     func markWalletBackupDataChanged() {

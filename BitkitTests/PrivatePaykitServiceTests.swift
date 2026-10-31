@@ -364,7 +364,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                         throw PaykitError.Transport(code: "offline", context: "Unavailable homeserver")
                     },
                     buildEndpoints: { _ in XCTFail("Failed links must not reserve addresses"); return [] },
-                    syncPaymentLists: { _ in .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: []) },
+                    syncPaymentLists: { _ in .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: []) },
                     linkedPeers: { [] }
                 )
             )
@@ -1130,7 +1130,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 }
                 syncedUpdates = updates
                 published.fulfill()
-                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
             }
         ))
 
@@ -1174,7 +1174,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 currentPublicKey: { "pubkylocal" },
                 ensureLink: { linked.append($0); return .linked },
                 buildEndpoints: { _ in [] },
-                syncPaymentLists: { _ in .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: []) }
+                syncPaymentLists: { _ in .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: []) }
             ))
             var sessionCurrent = true
             var prune: Task<Void, Never>?
@@ -1208,7 +1208,11 @@ final class PrivatePaykitServiceTests: XCTestCase {
             let error = await preparation.value
             await prune?.value
             try await service.awaitContactPreparation()
-            XCTAssertNil(error, change)
+            if change == "cancelled" {
+                XCTAssertTrue(error is CancellationError)
+            } else {
+                XCTAssertNil(error, change)
+            }
             XCTAssertNotNil(prune, change)
             XCTAssertEqual(linked, change == "current" ? [key] : [], change)
             await service.invalidateContactPreparation()
@@ -1235,7 +1239,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
             buildEndpoints: { _ in XCTFail("Ended sessions must not build endpoints"); return [] },
             syncPaymentLists: { _ in
                 XCTFail("Ended sessions must not publish")
-                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
             }
         ))
 
@@ -1277,7 +1281,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
             buildEndpoints: { _ in [endpoint] },
             syncPaymentLists: { updates in
                 published += updates.map(\.counterparty)
-                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
             }
         ))
 
@@ -1699,7 +1703,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
             buildEndpoints: { _ in [] },
             syncPaymentLists: { updates in
                 published += updates.map(\.counterparty)
-                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
             }
         ))
         _ = await service.rememberSavedContacts([publicKey], replacing: true)
@@ -1745,7 +1749,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                     publishing.fulfill()
                     for await _ in resume {}
                 }
-                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
             }
         ))
         let wallet = WalletViewModel()
@@ -2252,7 +2256,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                     admitted.fulfill()
                     for await _ in finish {}
                     XCTAssertFalse(Task.isCancelled)
-                    return nil
+                    return Self.acknowledgedWithdrawal([key])
                 }, drainMessages: { _ in }, pendingDrainKeys: { _ in [] }, syncApp: {}
             )
             let cleanup = Task {
@@ -2278,7 +2282,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 XCTAssertTrue(retained?.hasPublishedPrivatePaymentList == true)
             }
             try await service.removePublishedEndpoints(isSessionCurrent: { true }, operations: .init(
-                linkedPeers: { [] }, clearPaymentLists: { _ in nil },
+                linkedPeers: { [] }, clearPaymentLists: { keys in Self.acknowledgedWithdrawal(keys) },
                 drainMessages: { _ in }, pendingDrainKeys: { _ in [] }, syncApp: {}
             ))
             let afterSharingOff = await service.testContactState(publicKey: key)
@@ -2302,7 +2306,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
         let operations = PrivatePaykitService.EndpointCleanupOperations(
             linkedPeers: { [] }, clearPaymentLists: { _ in
                 await MainActor.run { withdrawalCompleted = true }
-                return nil
+                return Self.acknowledgedWithdrawal([key])
             }, drainMessages: { _ in }, pendingDrainKeys: { _ in [] }, syncApp: {}
         )
         do {
@@ -2327,6 +2331,101 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertTrue(retained?.hasPublishedPrivatePaymentList == true)
     }
 
+    private static func acknowledgedWithdrawal(_ keys: [String]) -> PrivatePaymentListDeliveryReport {
+        .init(
+            queued: [], cleared: keys.map { .init(counterparty: $0, outboundMessageId: 1, error: nil) },
+            acknowledged: keys.map { .init(counterparty: $0, outboundMessageId: 1) }, failedToQueue: [], failedToDeliver: []
+        )
+    }
+
+    func testCleanupRequiresPositiveAcknowledgementForEachExactWithdrawal() async throws {
+        let keys = ["pubky" + String(repeating: "y", count: 52), "pubky" + String(repeating: "o", count: 52)]
+        let complete = PrivatePaymentListDeliveryReport(
+            queued: [], cleared: keys.enumerated().map { .init(counterparty: $0.element, outboundMessageId: UInt64($0.offset + 41), error: nil) },
+            acknowledged: keys.enumerated().map { .init(counterparty: $0.element, outboundMessageId: UInt64($0.offset + 41)) },
+            failedToQueue: [], failedToDeliver: []
+        )
+        var cases: [(String, PrivatePaymentListDeliveryReport?, Set<String>)] = [("complete", complete, Set(keys)), ("no report", nil, [])]
+        func add(_ name: String, successful: Set<String> = [], change: (inout PrivatePaymentListDeliveryReport) -> Void) {
+            var report = complete
+            change(&report)
+            cases.append((name, report, successful))
+        }
+        add("no positive witness") { $0.acknowledged = [] }
+        add("no clear") { $0.cleared = [] }
+        add("no outbound IDs") { for index in $0.cleared.indices {
+            $0.cleared[index].outboundMessageId = nil
+        } }
+        add("wrong message IDs") { for index in $0.acknowledged.indices {
+            $0.acknowledged[index].outboundMessageId = 99
+        } }
+        add("crossed peers") { $0.acknowledged.swapAt(0, 1); for index in keys.indices {
+            $0.acknowledged[index].counterparty = keys[index]
+        } }
+        add("missing peer", successful: [keys[0]]) { $0.cleared.removeLast(); $0.acknowledged.removeLast() }
+        add("missing witness", successful: [keys[0]]) { $0.acknowledged.removeLast() }
+        add("ambiguous clear", successful: [keys[1]]) { $0.cleared.append($0.cleared[0]) }
+        add("conflicting publication", successful: [keys[1]]) { $0.queued = [$0.cleared[0]] }
+        add("queue failure", successful: [keys[1]]) { $0.failedToQueue = [$0.cleared[0]] }
+        add("reservation failure", successful: [keys[1]]) {
+            $0.failedToDeliver = [.init(counterparty: keys[0], outboundMessageId: 41, reservationId: "reservation",
+                                        error: CleanupDeliveryError(noPointer: .init()))]
+        }
+        add("clear error", successful: [keys[1]]) { $0.cleared[0].error = CleanupDeliveryError(noPointer: .init()) }
+        add("normalized peers", successful: Set(keys)) {
+            for index in $0.acknowledged.indices {
+                $0.acknowledged[index].counterparty = String(keys[index].dropFirst(5))
+            }
+        }
+
+        for (name, report, successful) in cases {
+            UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+            let service = PrivatePaykitService()
+            for key in keys {
+                var contact = PrivatePaykitService.ContactState()
+                contact.hasPublishedPrivatePaymentList = true
+                await service.setTestContactState(contact, publicKey: key)
+            }
+            PrivatePaykitService.markDeletedContactCleanupPending(keys)
+            var withdrawals = 0
+            var registryUpdates = 0
+            do {
+                try await service.removePublishedEndpoints(for: keys, operations: .init(
+                    linkedPeers: { [] }, clearPaymentLists: { requested in
+                        XCTAssertEqual(Set(requested), Set(keys), name)
+                        withdrawals += 1
+                        return report
+                    }, drainMessages: { _ in XCTFail("Empty queue needs no drain") },
+                    pendingDrainKeys: { _ in [] }, syncApp: { registryUpdates += 1 }
+                ))
+                XCTAssertEqual(successful, Set(keys), name)
+            } catch PrivatePaykitError.privateUnavailable {
+                XCTAssertNotEqual(successful, Set(keys), name)
+            }
+            XCTAssertEqual(withdrawals, 1, "Never replay to manufacture a receipt: \(name)")
+            XCTAssertEqual(registryUpdates, successful == Set(keys) ? 1 : 0, name)
+            for key in keys {
+                let contact = await service.testContactState(publicKey: key)
+                XCTAssertEqual(contact?.hasPublishedPrivatePaymentList == true, !successful.contains(key), name)
+                XCTAssertEqual(PrivatePaykitService.pendingDeletedContactCleanupKeys().contains(key), !successful.contains(key), name)
+            }
+        }
+    }
+
+    func testCleanupWithAnExplicitlyEmptyPeerSetNeedsNoDeliveryReceipt() async throws {
+        UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+        UserDefaults.standard.removeObject(forKey: PrivatePaykitService.deletedContactCleanupKeysKey)
+        let service = PrivatePaykitService()
+        var registryUpdates = 0
+        try await service.removePublishedEndpoints(operations: .init(
+            linkedPeers: { [] }, clearPaymentLists: { _ in XCTFail("No withdrawal was intended"); return nil },
+            drainMessages: { _ in XCTFail("No messages were intended") },
+            pendingDrainKeys: { _ in XCTFail("No messages were intended"); return [] },
+            syncApp: { registryUpdates += 1 }
+        ))
+        XCTAssertEqual(registryUpdates, 1)
+    }
+
     func testDeferredCleanupLeavesDurableRegistryReconciliation() async throws {
         let key = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
         for sharingEnabled in [false, true] {
@@ -2348,7 +2447,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                         withdrawals += 1
                         return .init(
                             queued: [], cleared: [.init(counterparty: key, outboundMessageId: 1, error: nil)],
-                            failedToQueue: [], failedToDeliver: []
+                            acknowledged: [.init(counterparty: key, outboundMessageId: 1)], failedToQueue: [], failedToDeliver: []
                         )
                     },
                     drainMessages: { _ in XCTFail("Delivered withdrawal needs no drain") },
@@ -2399,13 +2498,17 @@ final class PrivatePaykitServiceTests: XCTestCase {
                     if shouldFail, failureStage == "queue" {
                         return PrivatePaymentListDeliveryReport(
                             queued: [], cleared: [],
-                            failedToQueue: [PrivatePaymentListSyncChange(counterparty: publicKey, outboundMessageId: nil, error: nil)],
+                            acknowledged: [], failedToQueue: [PrivatePaymentListSyncChange(
+                                counterparty: publicKey,
+                                outboundMessageId: nil,
+                                error: nil
+                            )],
                             failedToDeliver: []
                         )
                     }
                     return PrivatePaymentListDeliveryReport(
                         queued: [], cleared: [.init(counterparty: publicKey, outboundMessageId: 1, error: nil)],
-                        failedToQueue: [], failedToDeliver: []
+                        acknowledged: [.init(counterparty: publicKey, outboundMessageId: 1)], failedToQueue: [], failedToDeliver: []
                     )
                 },
                 drainMessages: { keys in
@@ -2473,7 +2576,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 cleared.append(contentsOf: $0)
                 return PrivatePaymentListDeliveryReport(
                     queued: [], cleared: $0.map { .init(counterparty: $0, outboundMessageId: 1, error: nil) },
-                    failedToQueue: [], failedToDeliver: []
+                    acknowledged: $0.map { .init(counterparty: $0, outboundMessageId: 1) }, failedToQueue: [], failedToDeliver: []
                 )
             },
             drainMessages: { XCTAssertEqual(Set($0), Set(expectedKeys.dropFirst())) },
@@ -2535,7 +2638,11 @@ final class PrivatePaykitServiceTests: XCTestCase {
                         XCTAssertEqual(Set(keys), [failed, successful])
                         return .init(
                             queued: [], cleared: [.init(counterparty: successful, outboundMessageId: 1, error: nil)],
-                            failedToQueue: failQueue ? [.init(counterparty: failed, outboundMessageId: nil, error: nil)] : [],
+                            acknowledged: [.init(counterparty: successful, outboundMessageId: 1)], failedToQueue: failQueue ? [.init(
+                                counterparty: failed,
+                                outboundMessageId: nil,
+                                error: nil
+                            )] : [],
                             failedToDeliver: failQueue ? [] : [.init(
                                 counterparty: failed, outboundMessageId: 2, reservationId: nil,
                                 error: CleanupDeliveryError(noPointer: .init())
@@ -2588,7 +2695,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 },
                 syncPaymentLists: { _ in
                     XCTFail("An unsupported contact should not receive a private list")
-                    return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                    return PrivatePaymentListDeliveryReport(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
                 }
             )
 
@@ -2630,7 +2737,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 return PrivatePaymentListDeliveryReport(
                     queued: [],
                     cleared: [],
-                    failedToQueue: [],
+                    acknowledged: [], failedToQueue: [],
                     failedToDeliver: []
                 )
             }
@@ -2702,7 +2809,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 return PrivatePaymentListDeliveryReport(
                     queued: [],
                     cleared: [],
-                    failedToQueue: [],
+                    acknowledged: [], failedToQueue: [],
                     failedToDeliver: []
                 )
             }
@@ -2756,7 +2863,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                     }
                     XCTAssertEqual(updates.map(\.counterparty), [key])
                     publications += 1
-                    return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                    return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
                 },
                 linkedPeers: { try await deferOnce("peers"); return [] },
                 canPublish: { try await deferOnce("availability"); return true }
@@ -2808,7 +2915,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
             syncPaymentLists: { updates in
                 XCTAssertEqual(updates.map(\.counterparty), [key])
                 publications += 1
-                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
             },
             canPublish: { canPublish }
         ))
@@ -2950,7 +3057,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                     deferred.fulfill()
                     throw PaykitPaymentRequestError.operationInProgress
                 }
-                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
             },
             canPublish: {
                 if isPaused {
@@ -3026,7 +3133,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                         deferred.fulfill()
                         throw PaykitPaymentRequestError.operationInProgress
                     }
-                    return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                    return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
                 },
                 canPublish: { isActive && sharingEnabled },
                 isApplicationActive: {
@@ -3471,18 +3578,132 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertEqual(preparedKeys, [[publicKey]])
     }
 
+    @MainActor
+    func testProfileRemovalDrainsRetainedPublicationWithoutWaitingForForegroundOrReview() async throws {
+        for wait in ["review", "foreground"] {
+            for prepayment in [false, true] {
+                let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+                defer { try? FileManager.default.removeItem(at: directory) }
+                let store = ProfileRemovalStore(url: directory.appendingPathComponent("pending.json"))
+                let admission = ProfileOperationAdmission(store: store)
+                let key = "pubky" + String(repeating: "y", count: 52)
+                let started = expectation(description: "Publication entered: \(wait)/\(prepayment)")
+                let foregroundWait = wait == "foreground" ? expectation(description: "Foreground waiter installed") : nil
+                var activeReads = 0
+                let review = wait == "review" ? PaykitPaymentActivity.shared.beginReview() : nil
+                defer {
+                    if let review {
+                        PaykitPaymentActivity.shared.endReview(review)
+                    }
+                }
+                let service = PrivatePaykitService(publicationOperations: .init(
+                    currentPublicKey: { XCTFail("Suspended publication must not inspect identity"); return nil },
+                    ensureLink: { _ in XCTFail("Suspended publication must not link"); return .unknown },
+                    buildEndpoints: { _ in XCTFail("Suspended publication must not build endpoints"); return [] },
+                    syncPaymentLists: { _ in XCTFail("Suspended publication must not publish"); throw PrivatePaykitError.privateUnavailable },
+                    canPublish: { false },
+                    isApplicationActive: {
+                        activeReads += 1
+                        if activeReads == 2 {
+                            foregroundWait?.fulfill()
+                        }
+                        return false
+                    }
+                ), profileAdmission: admission)
+                _ = await service.rememberSavedContacts([key], replacing: true)
+                let wallet = WalletViewModel()
+                let operation = {
+                    started.fulfill()
+                    _ = await service.refreshSavedContactEndpointsReturningError(
+                        for: [key], wallet: wallet, forceRefreshLightning: false, requireImmediatePublication: false
+                    )
+                }
+                let task: Task<Void, Never>?
+                if prepayment {
+                    task = try await service.schedulePrePaymentPublication(for: key, operation: operation)
+                    let duplicate = try await service.schedulePrePaymentPublication(for: key) { XCTFail("Duplicate publication ran") }
+                    XCTAssertNil(duplicate)
+                } else {
+                    await service.scheduleContactPreparation([key]) { _, _ in await operation() }
+                    task = await service.preparationTask
+                }
+                await fulfillment(of: [started], timeout: 2)
+                if let foregroundWait {
+                    await fulfillment(of: [foregroundWait], timeout: 2)
+                }
+                let removal = try admission.reserve(kind: .removal, id: UUID(), expected: admission.snapshot())
+                let drained = expectation(description: "Profile removal drains while publication remains unavailable")
+                let drain = Task {
+                    try await admission.drain(before: removal)
+                    drained.fulfill()
+                }
+                await fulfillment(of: [drained], timeout: 2)
+                if let review {
+                    XCTAssertTrue(PaykitPaymentActivity.shared.shouldDeferRefresh)
+                    PaykitPaymentActivity.shared.endReview(review)
+                }
+                // Also release a failed control, so a regression reports failure rather than leaving a waiter alive.
+                await service.invalidateContactPreparation()
+                await task?.value
+                try await drain.value
+                let keys = await service.prePaymentPublicationKeys
+                XCTAssertTrue(keys.isEmpty)
+                XCTAssertNil(try store.pending(), "Draining alone must not write a removal marker")
+                admission.release(removal)
+            }
+        }
+    }
+
+    @MainActor
+    func testProfileRemovalCancelsTheRetainedMessageRetryIdleTask() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ProfileRemovalStore(url: directory.appendingPathComponent("pending.json"))
+        let admission = ProfileOperationAdmission(store: store)
+        let review = PaykitPaymentActivity.shared.beginReview()
+        defer { PaykitPaymentActivity.shared.endReview(review) }
+        let service = PrivatePaykitService(profileAdmission: admission, messageRetryOperations: .init(
+            currentPublicKey: { _ in XCTFail("Review must defer SDK reads"); return nil },
+            drain: { _ in XCTFail("Review must defer message processing"); return .live() }
+        ))
+        let key = "pubky" + String(repeating: "y", count: 52)
+        await service.schedulePrivatePaymentRecovery(for: key)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while await service.pendingMessageDrainRetrySleep == nil, ContinuousClock.now < deadline {
+            await Task.yield()
+        }
+        let idleTask = await service.pendingMessageDrainRetrySleep
+        let idle = try XCTUnwrap(idleTask)
+        let worker = await service.pendingMessageDrainRetryTask
+        let removal = try admission.reserve(kind: .removal, id: UUID(), expected: admission.snapshot())
+        defer { admission.release(removal) }
+        let drained = expectation(description: "Retry's actual idle tail drains with review still open")
+        let drain = Task {
+            try await admission.drain(before: removal)
+            drained.fulfill()
+        }
+        await fulfillment(of: [drained], timeout: 2)
+        XCTAssertTrue(PaykitPaymentActivity.shared.shouldDeferRefresh)
+        XCTAssertTrue(idle.isCancelled)
+        PaykitPaymentActivity.shared.endReview(review)
+        await service.invalidateContactPreparation()
+        await worker?.value
+        try await drain.value
+        XCTAssertNil(try store.pending())
+    }
+
     func testProfileDeletionDropsPreparationAndAllowsNewWorkAfterDeletionEnds() async {
         let service = PrivatePaykitService()
         let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
         _ = await service.rememberSavedContacts([publicKey], replacing: true)
-        await service.beginProfileDeletion()
+        let pause = await service.beginProfileDeletion()
         await service.scheduleContactPreparation([publicKey]) { _, _ in
             XCTFail("Profile deletion must not enqueue preparation")
         }
         let deletionTask = await service.preparationTask
         XCTAssertNil(deletionTask)
 
-        await service.endProfileDeletion()
+        await service.endProfileDeletion(id: pause)
         let resumedTask = await service.preparationTask
         XCTAssertNil(resumedTask)
         let prepared = expectation(description: "New preparation starts")
@@ -3545,7 +3766,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 XCTAssertFalse(Task.isCancelled)
                 XCTAssertEqual(updates.map(\.counterparty), [key])
                 published = true
-                return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                return PrivatePaymentListDeliveryReport(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
             }
         )
         _ = await service.syncLocalEndpointPublication(
@@ -3569,7 +3790,13 @@ final class PrivatePaykitServiceTests: XCTestCase {
                     throw PaykitError.Transport(code: "offline", context: "Unavailable homeserver")
                 },
                 buildEndpoints: { _ in XCTFail("No prepared link"); return [] },
-                syncPaymentLists: { _ in XCTFail("No prepared link"); return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: []) },
+                syncPaymentLists: { _ in XCTFail("No prepared link"); return .init(
+                    queued: [],
+                    cleared: [],
+                    acknowledged: [],
+                    failedToQueue: [],
+                    failedToDeliver: []
+                ) },
                 linkedPeers: { reads += 1; return [] }
             )
             let task = Task {
@@ -3729,7 +3956,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
             buildEndpoints: { _ in [endpoint] },
             syncPaymentLists: { _ in
                 publications += 1
-                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
             }
         ))
         var contactState = PrivatePaykitService.ContactState()
@@ -3751,7 +3978,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 }
                 return .init(
                     queued: [], cleared: [.init(counterparty: publicKey, outboundMessageId: 1, error: nil)],
-                    failedToQueue: [], failedToDeliver: []
+                    acknowledged: [.init(counterparty: publicKey, outboundMessageId: 1)], failedToQueue: [], failedToDeliver: []
                 )
             },
             drainMessages: { XCTAssertEqual($0, [publicKey]) },
@@ -3832,7 +4059,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                     buildEndpoints: { _ in XCTFail("Cleanup invalidates preparation"); return [] },
                     syncPaymentLists: { _ in
                         XCTFail("Cleanup invalidates publication")
-                        return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                        return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
                     }
                 )
             )
@@ -3841,7 +4068,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
         let cleanup = Task {
             try await service.removePublishedEndpoints(operations: .init(
                 linkedPeers: { [] },
-                clearPaymentLists: { _ in nil },
+                clearPaymentLists: { keys in Self.acknowledgedWithdrawal(keys) },
                 drainMessages: { _ in },
                 pendingDrainKeys: { _ in [] },
                 syncApp: {}
@@ -3873,7 +4100,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 buildEndpoints: { _ in XCTFail("Removed contacts must not reserve addresses"); return [] },
                 syncPaymentLists: { _ in
                     XCTFail("Removed contacts must not receive publications")
-                    return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                    return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
                 }
             )
         )
@@ -3892,7 +4119,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 throw PaykitError.NotFound(code: "not_found", context: "No App Registry")
             },
             buildEndpoints: { _ in XCTFail("Unavailable contacts must not reserve addresses"); return [] },
-            syncPaymentLists: { _ in .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: []) }
+            syncPaymentLists: { _ in .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: []) }
         )
         for _ in 0 ..< 3 {
             _ = await service.syncLocalEndpointPublication(
@@ -3933,7 +4160,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                     throw PaykitError.Transport(code: "offline", context: "Unavailable homeserver")
                 },
                 buildEndpoints: { _ in XCTFail("Failed links must not reserve addresses"); return [] },
-                syncPaymentLists: { _ in .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: []) },
+                syncPaymentLists: { _ in .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: []) },
                 linkedPeers: peers
             )
             _ = await service.syncLocalEndpointPublication(
@@ -3970,7 +4197,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 throw PaykitError.NotFound(code: "not_found", context: "No App Registry")
             },
             buildEndpoints: { _ in XCTFail("Unavailable contacts must not reserve addresses"); return [] },
-            syncPaymentLists: { _ in .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: []) }
+            syncPaymentLists: { _ in .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: []) }
         )
         let removals: [(PrivatePaykitService) async -> Void] = [
             { await $0.clearContactState(publicKey: publicKey) },

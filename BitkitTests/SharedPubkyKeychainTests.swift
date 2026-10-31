@@ -64,4 +64,43 @@ final class SharedPubkyKeychainTests: XCTestCase {
             }
         }
     }
+
+    func testStrictOwnCleanupRejectsUnavailableOrMalformedEnumeration() {
+        for status in [errSecInteractionNotAllowed, errSecSuccess] {
+            XCTAssertThrowsError(try SharedPubkyKeychain.removeAllOwnOrThrow(copyMatching: { _, _ in status }, delete: { _ in
+                XCTFail("Enumeration must succeed before deletion")
+                return errSecSuccess
+            }))
+        }
+    }
+
+    func testStrictOwnCleanupPreservesForeignRecordsAndRequiresDeletionAcknowledgement() throws {
+        let own = "\(SharedPubkyKeychain.ownSourceApp):owned"
+        let foreign = "\(SharedPubkyKeychain.ringSourceApp):foreign"
+        for deletionStatus in [errSecSuccess, errSecItemNotFound, errSecInteractionNotAllowed] {
+            var deleted: [String] = []
+            let operation = {
+                try SharedPubkyKeychain.removeAllOwnOrThrow(copyMatching: { _, result in
+                    result?.pointee = [[kSecAttrAccount as String: own], [kSecAttrAccount as String: foreign]] as CFArray
+                    return errSecSuccess
+                }, delete: { query in
+                    deleted.append((query as NSDictionary)[kSecAttrAccount] as! String)
+                    return deletionStatus
+                })
+            }
+            if deletionStatus == errSecInteractionNotAllowed {
+                XCTAssertThrowsError(try operation())
+            } else {
+                XCTAssertNoThrow(try operation())
+            }
+            XCTAssertEqual(deleted, [own])
+        }
+    }
+
+    func testStrictOwnCleanupAcceptsOnlyConfirmedAbsence() throws {
+        XCTAssertNoThrow(try SharedPubkyKeychain.removeAllOwnOrThrow(copyMatching: { _, _ in errSecItemNotFound }, delete: { _ in
+            XCTFail("No owned records exist")
+            return errSecSuccess
+        }))
+    }
 }

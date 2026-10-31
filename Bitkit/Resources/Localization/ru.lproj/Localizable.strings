@@ -1133,6 +1133,7 @@
 "profile__sign_out" = "Отключить";
 "profile__sign_out_title" = "Отключить Профиль";
 "profile__sign_out_description" = "Ваш профиль Pubky будет отключён от Bitkit. Вы можете переподключиться в любое время.";
+"profile__disconnect_local_description" = "Удалите доступ этого устройства и завершите локальную очистку. Это не вносит дополнительных изменений в ваш профиль, подписки или доступ на сервере.";
 "profile__choice_title" = "Войдите в\n<accent>свободный веб</accent>";
 "profile__choice_description" = "Создайте новый pubky и профиль в Bitkit.";
 "profile__choice_description_ring" = "Используйте существующий pubky из Pubky Ring.";
@@ -1169,13 +1170,13 @@
 "profile__delete_description" = "Удаление профиля удалит его из Pubky. У контактов могут остаться данные профиля и платёжные данные, которыми вы делились ранее.";
 "profile__delete_confirm" = "Да, Удалить";
 "profile__delete_error_title" = "Не Удалось Удалить Профиль";
-"profile__delete_error_description" = "Не удалось удалить данные вашего профиля. Повторите попытку или отключите этот pubky от Bitkit.";
+"profile__delete_error_description" = "Очистка профиля была прервана. Удалённые изменения могли уже примениться. Отключите профиль, чтобы завершить очистку на этом устройстве без повторного удалённого удаления.";
 "profile__delete_label" = "Удалить Профиль";
 "profile__unlink_title" = "Отвязать pubky?";
 "profile__unlink_description" = "Ваши данные Paykit будут удалены, а этот pubky будет отвязан от Bitkit. Он останется доступен в Pubky Ring.";
 "profile__unlink_confirm" = "Да, Отвязать";
 "profile__unlink_error_title" = "Не Удалось Отвязать pubky";
-"profile__unlink_error_description" = "Не удалось удалить ваши данные Paykit. Повторите попытку или отключите этот pubky от Bitkit.";
+"profile__unlink_error_description" = "Очистка профиля была прервана. Удалённые изменения могли уже примениться. Отключите профиль, чтобы завершить очистку на этом устройстве без повторного удалённого удаления.";
 "profile__unlink_label" = "Отвязать pubky";
 "profile__edit" = "Редактировать";
 "profile__pay_contacts_nav_title" = "Платежи Контактам";
@@ -1880,5 +1881,15 @@
 "subscriptions__allowance_limit_title" = "Лимит Достигнут";
 "subscriptions__allowance_limit_description" = "Запрос на {amount} от {name} превышает ваш лимит автооплаты. Проверьте его, чтобы оплатить.";
 "subscriptions__allowance_auto_paid" = "Оплачено автоматически";
+
+"profile__recovery_title" = "Завершить локальную очистку";
+
+"profile__recovery_pending" = "Очистка профиля была прервана. Удалённые изменения могли уже примениться. Отключите профиль, чтобы завершить очистку на этом устройстве без повторного удалённого удаления.";
+
+"profile__recovery_wipe" = "Сброс кошелька был прерван. Завершите его перед использованием кошелька.";
+
+"profile__recovery_unavailable" = "Bitkit не может прочитать сохранённое состояние очистки. Изменения профиля приостановлены. Попробуйте прочитать его снова.";
+
+"profile__recovery_working" = "Завершение очистки профиля…";
 
 "wallet__balance_updating" = "Обновление баланса…";

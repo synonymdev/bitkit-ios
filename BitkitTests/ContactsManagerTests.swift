@@ -12,6 +12,73 @@ final class ContactsManagerTests: XCTestCase {
         UserDefaults.standard.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
     }
 
+    func testRemovalDrainsOriginalContactMutationBeforeLocalCleanup() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let gate = ProfileOperationAdmission(store: ProfileRemovalStore(url: directory.appendingPathComponent("pending.json")))
+        let entered = expectation(description: "Original native contact removal entered")
+        let (nativeWait, releaseNative) = AsyncStream<Void>.makeStream()
+        let native = Task.detached { for await _ in nativeWait {} }
+        defer { releaseNative.finish() }
+        let manager = ContactsManager(removeContactRecord: { _ in
+            XCTAssertNotNil(ProfileOperationAdmission.current, "Detached native work retains its original owner")
+            entered.fulfill()
+            await native.value
+        }, forgetRemovedContacts: { _ in XCTFail("Revoked contact mutation cannot clear private state") }, profileAdmission: gate)
+        let profile = PubkyProfile(publicKey: contactProfileKey, name: "Original", bio: "", imageUrl: nil, links: [], tags: [], status: nil)
+        manager.contacts = [PubkyContact(publicKey: contactProfileKey, profile: profile)]
+        let removal = Task { try await manager.removeContact(publicKey: contactProfileKey) }
+        await fulfillment(of: [entered], timeout: 2)
+        let wipe = try gate.reserve(kind: .walletWipe, id: UUID())
+        defer { gate.release(wipe) }
+        var drained = false
+        let drain = Task { try await gate.drain(before: wipe); drained = true }
+        await Task.yield()
+        XCTAssertFalse(drained)
+        releaseNative.finish()
+        do { try await removal.value; XCTFail("Revoked mutation must not install its local completion") }
+        catch is CancellationError {} catch ProfileRemovalStore.StoreError.changed {}
+        try await drain.value
+        XCTAssertTrue(drained)
+        XCTAssertEqual(manager.contacts.map(\.publicKey), [contactProfileKey])
+    }
+
+    func testHeldDiscoveryCannotRepopulateAnEndedImportOrClearItsReplacement() async {
+        for endsWithError in [false, true] {
+            for replace in [false, true] {
+                let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+                defer { try? FileManager.default.removeItem(at: directory) }
+                let admission = ProfileOperationAdmission(store: ProfileRemovalStore(url: directory.appendingPathComponent("pending.json")))
+                let started = expectation(description: "Original follow lookup is held")
+                let (wait, release) = AsyncStream<Void>.makeStream()
+                let native = Task.detached { for await _ in wait {} }
+                defer { release.finish() }
+                let friend = makeContact(publicKey: contactProfileKey)
+                let manager = ContactsManager(profileAdmission: admission)
+                let discovery = Task {
+                    await manager.discoverRemoteContacts(publicKey: "original", fetchContactKeys: { _ in
+                        started.fulfill()
+                        await native.value
+                        if endsWithError {
+                            throw URLError(.networkConnectionLost)
+                        }
+                        return [friend.publicKey]
+                    }, resolveProfile: { _ in friend.profile })
+                }
+                await fulfillment(of: [started], timeout: 2)
+                manager.reset()
+                if replace {
+                    await manager.discoverRemoteContacts(publicKey: "replacement", fetchContactKeys: { _ in [friend.publicKey] },
+                                                         resolveProfile: { _ in friend.profile })
+                }
+                release.finish()
+                await discovery.value
+                XCTAssertEqual(manager.pendingImportContacts.map(\.publicKey), replace ? [friend.publicKey] : [])
+                XCTAssertNil(manager.pendingImportProfile)
+            }
+        }
+    }
+
     func testImportRequiresSessionForSharedContactStorage() async throws {
         let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
         let originals = try keys.map { try Keychain.load(key: $0) }
@@ -2181,14 +2248,25 @@ final class ContactsManagerTests: XCTestCase {
         let manager = ContactsManager()
         manager.pendingImportProfile = makeProfile(publicKey: "pubky-owner")
         manager.pendingImportContacts = [makeContact(publicKey: contactProfileKey)]
-        XCTAssertTrue(manager.completePendingImport(), "An import that finishes on the import screens opens Pay Contacts")
+        XCTAssertTrue(
+            manager.completePendingImport(expectedGeneration: manager.importGeneration),
+            "An import that finishes on the import screens opens Pay Contacts"
+        )
         XCTAssertFalse(manager.hasPendingImport)
 
         manager.pendingImportProfile = makeProfile(publicKey: "pubky-owner")
         manager.pendingImportContacts = [makeContact(publicKey: contactProfileKey)]
         XCTAssertTrue(shouldDiscardPendingImport(currentRoute: .contactImportOverview, destination: .settings))
+        let oldGeneration = manager.importGeneration
         manager.clearPendingImport()
-        XCTAssertFalse(manager.completePendingImport(), "An import that finishes after the user left must not pull them away")
+        XCTAssertFalse(
+            manager.completePendingImport(expectedGeneration: oldGeneration),
+            "An import that finishes after the user left must not pull them away"
+        )
+        manager.pendingImportProfile = makeProfile(publicKey: "pubky-replacement")
+        manager.pendingImportContacts = [makeContact(publicKey: contactProfileKey)]
+        XCTAssertFalse(manager.completePendingImport(expectedGeneration: oldGeneration), "Old completion cannot consume the replacement import")
+        XCTAssertTrue(manager.hasPendingImport)
     }
 
     /// Removing contacts left the running profile refresh looking them up, so it kept issuing reads for deleted contacts.

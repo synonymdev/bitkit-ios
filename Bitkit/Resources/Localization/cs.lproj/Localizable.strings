@@ -1137,6 +1137,7 @@
 "profile__sign_out" = "Odpojit";
 "profile__sign_out_title" = "Odpojit profil";
 "profile__sign_out_description" = "Tímto odpojíte svůj profil Pubky od Bitkitu. Kdykoli se můžete znovu připojit.";
+"profile__disconnect_local_description" = "Odeberte přístup tohoto zařízení a dokončete místní vyčištění. Tím se neprovedou žádné další změny vašeho profilu, předplatných ani přístupu na serveru.";
 "profile__choice_title" = "Vstupte do\n<accent>svobodného webu</accent>";
 "profile__choice_description" = "Vytvořte si v Bitkitu nový pubky a profil.";
 "profile__choice_description_ring" = "Použijte existující pubky z Pubky Ring.";
@@ -1173,13 +1174,13 @@
 "profile__delete_description" = "Smazáním profilu ho odstraníte z Pubky. Kontakty si mohou ponechat informace o profilu a platbách, které jste s nimi dříve sdíleli.";
 "profile__delete_confirm" = "Ano, smazat";
 "profile__delete_error_title" = "Profil nelze smazat";
-"profile__delete_error_description" = "Data vašeho profilu se nepodařilo smazat. Zkuste to znovu, nebo tento pubky od Bitkitu odpojte.";
+"profile__delete_error_description" = "Vyčištění profilu bylo přerušeno. Vzdálené změny už mohly být provedeny. Odpojte profil a dokončete vyčištění v tomto zařízení bez opakování vzdáleného smazání.";
 "profile__delete_label" = "Smazat profil";
 "profile__unlink_title" = "Zrušit propojení pubky?";
 "profile__unlink_description" = "Tímto smažete svá data Paykit a zrušíte propojení tohoto pubky s Bitkitem. V Pubky Ring zůstane k dispozici.";
 "profile__unlink_confirm" = "Ano, zrušit propojení";
 "profile__unlink_error_title" = "Propojení pubky nelze zrušit";
-"profile__unlink_error_description" = "Vaše data Paykit se nepodařilo smazat. Zkuste to znovu, nebo tento pubky od Bitkitu odpojte.";
+"profile__unlink_error_description" = "Vyčištění profilu bylo přerušeno. Vzdálené změny už mohly být provedeny. Odpojte profil a dokončete vyčištění v tomto zařízení bez opakování vzdáleného smazání.";
 "profile__unlink_label" = "Zrušit propojení pubky";
 "profile__edit" = "Upravit";
 "profile__pay_contacts_nav_title" = "Platby kontaktům";
@@ -1889,5 +1890,15 @@
 "subscriptions__allowance_limit_title" = "Limit dosažen";
 "subscriptions__allowance_limit_description" = "Žádost o {amount} od {name} přesahuje vaše povolení. Zkontrolujte ji a zaplaťte.";
 "subscriptions__allowance_auto_paid" = "Zaplaceno automaticky";
+
+"profile__recovery_title" = "Dokončit místní vyčištění";
+
+"profile__recovery_pending" = "Vyčištění profilu bylo přerušeno. Vzdálené změny už mohly být provedeny. Odpojte profil a dokončete vyčištění v tomto zařízení bez opakování vzdáleného smazání.";
+
+"profile__recovery_wipe" = "Obnovení peněženky do výchozího stavu bylo přerušeno. Dokončete je před použitím této peněženky.";
+
+"profile__recovery_unavailable" = "Bitkit nemůže přečíst uložený stav vyčištění. Změny profilu jsou pozastaveny. Zkuste jej přečíst znovu.";
+
+"profile__recovery_working" = "Dokončování vyčištění profilu…";
 
 "wallet__balance_updating" = "Aktualizace zůstatku…";

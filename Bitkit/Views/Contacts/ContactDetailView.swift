@@ -17,11 +17,14 @@ struct ContactDetailView: View {
     let publicKey: String
     var showsDeleteAction = false
 
+    @State private var screenSession: PubkyProfileManager.SignedInSession?
     @State private var profile: PubkyProfile?
     @State private var isLoading = true
     @State private var showAddTagSheet = false
     @State private var hasResolvedContactFromContacts = false
     @State private var showDeleteConfirmation = false
+    @State private var deleteSession: PubkyProfileManager.SignedInSession?
+    @State private var deleteGeneration: ProfileOperationAdmission.Generation?
     @State private var isPayLoading = false
     @State private var payTask: Task<Void, Never>?
 
@@ -42,6 +45,9 @@ struct ContactDetailView: View {
         .background(Color.customBlack)
         .navigationBarHidden(true)
         .task {
+            if screenSession == nil {
+                screenSession = pubkyProfile.currentSession
+            }
             if let cached = contactsManager.contacts.first(where: { $0.publicKey == publicKey }) {
                 profile = cached.profile
                 hasResolvedContactFromContacts = true
@@ -73,7 +79,8 @@ struct ContactDetailView: View {
             isPresented: $showDeleteConfirmation
         ) {
             Button(t("contacts__delete_confirm"), role: .destructive) {
-                Task { await deleteContact() }
+                guard let session = deleteSession, let generation = deleteGeneration else { return }
+                Task { await deleteContact(session: session, generation: generation) }
             }
             Button(t("common__dialog_cancel"), role: .cancel) {}
         } message: {
@@ -154,7 +161,7 @@ struct ContactDetailView: View {
                 accessibilityLabel: t(showsDeleteAction ? "common__delete" : "common__edit")
             ) {
                 if showsDeleteAction {
-                    showDeleteConfirmation = true
+                    prepareDelete()
                 } else {
                     navigation.navigate(.editContact(publicKey: publicKey))
                 }
@@ -239,7 +246,7 @@ struct ContactDetailView: View {
     /// lookup of a profile the row is still waiting for. The save is dropped quietly once this Pubky session ends.
     private func updateTags(_ transform: @escaping ([String]) -> [String]) {
         let pubkyProfile = pubkyProfile
-        guard let current = profile, let session = pubkyProfile.currentSession else { return }
+        guard let current = profile, let session = screenSession, pubkyProfile.currentSession == session else { return }
         profile = current.withTags(transform(current.tags))
         let change = contactsManager.updateContactTags(
             publicKey: publicKey,
@@ -252,15 +259,29 @@ struct ContactDetailView: View {
             do {
                 try await change.value
             } catch {
+                guard pubkyProfile.currentSession == session, !Task.isCancelled else { return }
                 Logger.error("Failed to persist contact tags: \(error)", context: "ContactDetailView")
                 app.toast(type: .error, title: t("contacts__error_saving"))
             }
         }
     }
 
-    private func deleteContact() async {
+    private func prepareDelete() {
+        guard let session = screenSession, pubkyProfile.currentSession == session,
+              let generation = try? ProfileOperationAdmission.shared.snapshot() else { return }
+        deleteSession = session
+        deleteGeneration = generation
+        showDeleteConfirmation = true
+    }
+
+    private func deleteContact(session: PubkyProfileManager.SignedInSession, generation: ProfileOperationAdmission.Generation) async {
+        let admission = ProfileOperationAdmission.shared
+        guard pubkyProfile.currentSession == session, (try? admission.validate(generation)) != nil,
+              let scope = try? admission.capture() else { return }
+        defer { admission.release(scope) }
         do {
-            try await contactsManager.removeContact(publicKey: publicKey)
+            try await admission.withScope(scope) { try await contactsManager.removeContact(publicKey: publicKey) }
+            guard pubkyProfile.currentSession == session, (try? admission.validate(scope)) != nil, !Task.isCancelled else { return }
             app.toast(
                 type: .success,
                 title: t("contacts__delete_success"),
@@ -270,11 +291,13 @@ struct ContactDetailView: View {
                 navigation.returnToContactsAfterRemoving(publicKey: publicKey)
             }
         } catch let PubkyServiceError.activeSubscription(endsAt) {
+            guard pubkyProfile.currentSession == session, (try? admission.validate(scope)) != nil, !Task.isCancelled else { return }
             let description = endsAt.map {
                 t("subscriptions__expires_date", variables: ["date": $0.formatted(date: .long, time: .omitted)])
             }
             app.toast(type: .error, title: t("contacts__delete_active_subscription"), description: description)
         } catch {
+            guard pubkyProfile.currentSession == session, (try? admission.validate(scope)) != nil, !Task.isCancelled else { return }
             Logger.error("Failed to delete contact: \(error)", context: "ContactDetailView")
             app.toast(type: .error, title: t("contacts__delete_error"))
         }

@@ -56,7 +56,7 @@ final class TransferServiceActivityTests: XCTestCase {
             proposalOutboundMessageId: nil,
             proposalOutboundStatus: nil,
             proposalEventId: "650e8400-e29b-41d4-a716-446655440000",
-            proposalAppId: "bitkit",
+            proposalAppId: "bitkit", proposalRecordedAt: nil,
             payerAppId: nil,
             executionClaimAppId: nil,
             terms: PaymentRequestTerms(
@@ -72,7 +72,7 @@ final class TransferServiceActivityTests: XCTestCase {
                 metadata: PrivateJsonObject(text: "{}")
             ),
             acceptedEventId: nil,
-            acceptedOutboundStatus: nil,
+            acceptedOutboundStatus: nil, acceptanceRecordedAt: nil,
             rejectedEventId: nil,
             rejectedOutboundStatus: nil,
             canceledEventId: nil,

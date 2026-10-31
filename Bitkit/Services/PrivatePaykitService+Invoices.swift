@@ -11,42 +11,51 @@ extension PrivatePaykitService {
         wallet: WalletViewModel,
         forceRefresh: Bool = false
     ) async throws -> StoredInvoice {
-        if !forceRefresh, let invoice = await reusablePrivateInvoice(for: publicKey) {
+        return try await profileAdmission.withOperation {
+            if !forceRefresh, let invoice = await reusablePrivateInvoice(for: publicKey) {
+                return invoice
+            }
+
+            let bolt11 = try await createVariableInvoice(wallet)
+            guard case let .lightning(decodedInvoice) = try await decode(invoice: bolt11) else {
+                throw PublicPaykitError.invalidPayload
+            }
+            guard PublicPaykitService.hasLightningRouteHints(bolt11: bolt11) else {
+                throw PrivatePaykitError.routeHintsUnavailable
+            }
+
+            let invoice = StoredInvoice(
+                bolt11: bolt11,
+                paymentHash: decodedInvoice.paymentHash.hex,
+                expiresAt: Double(decodedInvoice.timestampSeconds + decodedInvoice.expirySeconds)
+            )
+            try profileAdmission.checkCurrent()
+            setLocalInvoice(invoice, publicKey: publicKey)
+            persistState()
             return invoice
         }
-
-        let bolt11 = try await createVariableInvoice(wallet)
-        guard case let .lightning(decodedInvoice) = try await decode(invoice: bolt11) else {
-            throw PublicPaykitError.invalidPayload
-        }
-        guard PublicPaykitService.hasLightningRouteHints(bolt11: bolt11) else {
-            throw PrivatePaykitError.routeHintsUnavailable
-        }
-
-        let invoice = StoredInvoice(
-            bolt11: bolt11,
-            paymentHash: decodedInvoice.paymentHash.hex,
-            expiresAt: Double(decodedInvoice.timestampSeconds + decodedInvoice.expirySeconds)
-        )
-        setLocalInvoice(invoice, publicKey: publicKey)
-        persistState()
-        return invoice
     }
 
     func rememberReceivedInvoicePaymentHash(_ paymentHash: String, publicKey: String) {
-        guard !paymentHash.isEmpty else { return }
+        do {
+            return try profileAdmission.withSynchronousOperation {
+                guard !paymentHash.isEmpty else { return }
 
-        var contactState = state.contacts[publicKey, default: ContactState()]
-        guard !contactState.receivedInvoicePaymentHashes.contains(paymentHash) else { return }
+                var contactState = state.contacts[publicKey, default: ContactState()]
+                guard !contactState.receivedInvoicePaymentHashes.contains(paymentHash) else { return }
 
-        contactState.receivedInvoicePaymentHashes.append(paymentHash)
-        if contactState.receivedInvoicePaymentHashes.count > Self.maxReceivedInvoicePaymentHashesPerContact {
-            contactState.receivedInvoicePaymentHashes = Array(
-                contactState.receivedInvoicePaymentHashes.suffix(Self.maxReceivedInvoicePaymentHashesPerContact)
-            )
+                contactState.receivedInvoicePaymentHashes.append(paymentHash)
+                if contactState.receivedInvoicePaymentHashes.count > Self.maxReceivedInvoicePaymentHashesPerContact {
+                    contactState.receivedInvoicePaymentHashes = Array(
+                        contactState.receivedInvoicePaymentHashes.suffix(Self.maxReceivedInvoicePaymentHashesPerContact)
+                    )
+                }
+                state.contacts[publicKey] = contactState
+                persistState()
+            }
+        } catch {
+            Logger.debug("Private invoice attribution stopped: \(error)", context: "PrivatePaykit")
         }
-        state.contacts[publicKey] = contactState
-        persistState()
     }
 
     func reusablePrivateInvoice(for publicKey: String) async -> StoredInvoice? {
@@ -99,6 +108,7 @@ extension PrivatePaykitService {
     func privateEndpointPublicationUnavailabilityReason(
         wallet: WalletViewModel, priority: PaykitSdkOperationLock.Priority
     ) async throws -> String? {
+        guard (try? profileAdmission.snapshot()) != nil else { return "profile recovery is pending" }
         guard PaykitFeatureFlags.isUIEnabled else { return "Paykit UI is disabled" }
         guard UserDefaults.standard.bool(forKey: Self.publishingEnabledKey) else { return "private publication is disabled" }
         guard UIApplication.shared.applicationState == .active else { return "the app is not active" }

@@ -18,13 +18,17 @@ struct ProfileDestinationView: View {
     }
 
     var body: some View {
-        switch Self.destination(for: pubkyProfile, hasSeenIntro: hasSeenIntro) {
-        case .profile:
-            ProfileView()
-        case .pubkyChoice:
-            PubkyChoiceView()
-        default:
-            ProfileIntroView()
+        if pubkyProfile.removalRecovery != .ready {
+            ProfileRemovalRecoveryView()
+        } else {
+            switch Self.destination(for: pubkyProfile, hasSeenIntro: hasSeenIntro) {
+            case .profile:
+                ProfileView()
+            case .pubkyChoice:
+                PubkyChoiceView()
+            default:
+                ProfileIntroView()
+            }
         }
     }
 }
@@ -34,8 +38,12 @@ struct ProfileView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
 
+    @State private var screenOwner: PubkyProfileManager.RemovalPresentationOwner?
     @State private var isRefreshing = true
     @State private var showSignOutConfirmation = false
+    @State private var signOutConfirmation: PubkyProfileManager.RemovalConfirmation?
+    @State private var signOutOwner: PubkyProfileManager.RemovalPresentationOwner?
+    @State private var signOutPreparation: Task<Void, Never>?
     @State private var showAddTagSheet = false
     @State private var isUpdatingTags = false
     @State private var isSigningOut = false
@@ -48,7 +56,9 @@ struct ProfileView: View {
 
     var body: some View {
         Group {
-            if let profile = pubkyProfile.profileForDisplay {
+            if pubkyProfile.removalRecovery != .ready, !isSigningOut {
+                ProfileRemovalRecoveryView()
+            } else if let profile = pubkyProfile.profileForDisplay {
                 profileContent(profile)
             } else if pubkyProfile.isLoadingProfile || !pubkyProfile.isAuthenticated, let cachedProfile = pubkyProfile.cachedProfilePreview {
                 cachedProfileContent(cachedProfile)
@@ -78,7 +88,14 @@ struct ProfileView: View {
         .background(Color.customBlack)
         .navigationBarHidden(true)
         .task {
+            if screenOwner == nil {
+                screenOwner = pubkyProfile.removalPresentationOwner
+            }
             await refreshProfile()
+        }
+        .onDisappear {
+            signOutPreparation?.cancel()
+            pubkyProfile.cancelRemovalConfirmation(signOutConfirmation)
         }
         .alert(
             t("profile__sign_out_title"),
@@ -87,7 +104,7 @@ struct ProfileView: View {
             Button(t("profile__sign_out"), role: .destructive) {
                 Task { await performSignOut() }
             }
-            Button(t("common__dialog_cancel"), role: .cancel) {}
+            Button(t("common__dialog_cancel"), role: .cancel) { pubkyProfile.cancelRemovalConfirmation(signOutConfirmation) }
         } message: {
             Text(t("profile__sign_out_description"))
         }
@@ -268,20 +285,28 @@ struct ProfileView: View {
     }
 
     private func updateTags(_ tags: [String], profile: PubkyProfile) {
-        guard canEditProfile, !isUpdatingTags else { return }
+        guard canEditProfile, !isUpdatingTags, let screenOwner,
+              pubkyProfile.ownsRemovalPresentation(screenOwner) else { return }
+        let admission = ProfileOperationAdmission.shared
+        guard let scope = try? admission.capture() else { return }
         isUpdatingTags = true
 
         Task {
-            defer { isUpdatingTags = false }
+            defer { isUpdatingTags = false; admission.release(scope) }
 
             do {
-                try await pubkyProfile.saveProfile(
-                    name: profile.name,
-                    bio: profile.bio,
-                    links: profile.links,
-                    tags: tags
-                )
+                try await admission.withScope(scope) {
+                    guard pubkyProfile.ownsRemovalPresentation(screenOwner) else { throw PubkyServiceError.identityChanged }
+                    try await pubkyProfile.saveProfile(
+                        name: profile.name,
+                        bio: profile.bio,
+                        links: profile.links,
+                        tags: tags
+                    )
+                }
             } catch {
+                guard !Task.isCancelled, (try? admission.validate(scope)) != nil,
+                      pubkyProfile.ownsRemovalPresentation(screenOwner) else { return }
                 Logger.error("Failed to update profile tags: \(error)", context: "ProfileView")
                 app.toast(type: .error, title: t("profile__edit_error_title"), description: error.localizedDescription)
             }
@@ -374,7 +399,17 @@ struct ProfileView: View {
 
     private var signOutButton: some View {
         Button(t("profile__sign_out")) {
-            showSignOutConfirmation = true
+            guard let owner = screenOwner, pubkyProfile.ownsRemovalPresentation(owner) else { return }
+            signOutPreparation = Task {
+                do {
+                    signOutConfirmation = try await pubkyProfile.prepareRemoval(action: .disconnect, expectedOwner: owner)
+                    signOutOwner = owner
+                    showSignOutConfirmation = true
+                } catch {
+                    guard !Task.isCancelled, pubkyProfile.ownsRemovalPresentation(owner) else { return }
+                    app.toast(type: .error, title: t("profile__sign_out_title"), description: error.localizedDescription)
+                }
+            }
         }
         .font(Fonts.regular(size: 17))
         .foregroundColor(.white64)
@@ -383,13 +418,16 @@ struct ProfileView: View {
     }
 
     private func performSignOut() async {
+        guard let owner = signOutOwner, let confirmation = signOutConfirmation else { return }
         isSigningOut = true
+        defer { isSigningOut = false }
         do {
-            try await pubkyProfile.signOut()
+            _ = try await pubkyProfile.confirmRemoval(confirmation)
         } catch {
+            pubkyProfile.refreshRemovalRecovery()
+            guard !Task.isCancelled, pubkyProfile.ownsRemovalFailure(confirmation, owner: owner) else { return }
             app.toast(type: .error, title: t("profile__sign_out_title"), description: error.localizedDescription)
         }
-        isSigningOut = false
     }
 
     private func shareProfile() {

@@ -7,6 +7,8 @@ struct PubkyChoiceView: View {
     @EnvironmentObject var contactsManager: ContactsManager
     @Environment(\.scenePhase) private var scenePhase
 
+    @State private var screenOwner: PubkyProfileManager.RemovalPresentationOwner?
+    @State private var screenGeneration: ProfileOperationAdmission.Generation?
     @State private var ringPubkys: [String] = []
     @State private var ringProfiles: [String: PubkyProfile] = [:]
     @State private var didLoad = false
@@ -52,12 +54,17 @@ struct PubkyChoiceView: View {
         pubkyProfile: PubkyProfileManager,
         reloadRows: () -> Void
     ) async throws -> PubkyProfile? {
-        pubkyProfile.cancelRingIdentityLookups(except: pubky)
-        do {
-            return try await pubkyProfile.adoptRingIdentity(pubky: pubky)
-        } catch {
-            reloadRows()
-            throw error
+        let admission = ProfileOperationAdmission.shared
+        return try await admission.withSessionTransition {
+            pubkyProfile.cancelRingIdentityLookups(except: pubky)
+            do {
+                return try await pubkyProfile.adoptRingIdentity(pubky: pubky)
+            } catch {
+                if !Task.isCancelled, (try? admission.checkCurrent()) != nil {
+                    reloadRows()
+                }
+                throw error
+            }
         }
     }
 
@@ -69,15 +76,24 @@ struct PubkyChoiceView: View {
         pubkyProfile: PubkyProfileManager,
         contactsManager: ContactsManager
     ) async -> Route? {
-        let destination = await contactsManager.destinationAfterAuthentication(
-            profile: pubkyProfile.profile,
-            publicKey: adopted.publicKey
-        )
-        guard !pubkyProfile.isProfileSetupPending else {
-            contactsManager.clearPendingImport()
-            return nil
-        }
-        return destination
+        let owner = pubkyProfile.removalPresentationOwner
+        guard PubkyPublicKeyFormat.matches(pubkyProfile.publicKey, adopted.publicKey),
+              let scope = try? ProfileOperationAdmission.shared.capture() else { return nil }
+        let admission = ProfileOperationAdmission.shared
+        defer { admission.release(scope) }
+        do { return try await admission.withScope(scope) {
+            let destination = await contactsManager.destinationAfterAuthentication(
+                profile: pubkyProfile.profile,
+                publicKey: adopted.publicKey
+            )
+            try admission.checkCurrent()
+            guard pubkyProfile.ownsRemovalPresentation(owner) else { return nil }
+            guard !pubkyProfile.isProfileSetupPending else {
+                contactsManager.clearPendingImport()
+                return nil
+            }
+            return destination
+        } } catch { return nil }
     }
 
     var body: some View {
@@ -106,6 +122,18 @@ struct PubkyChoiceView: View {
         .background(Color.customBlack)
         .navigationBarHidden(true)
         .task(id: ringLoadGeneration) { await loadIdentities() }
+        .onChange(of: pubkyProfile.isAdoptingRingIdentity || pubkyProfile.isRestoringSession) { _, busy in
+            if !busy, screenGeneration == nil {
+                reloadIdentities()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: ProfileOperationAdmission.didReleaseOperation,
+                                                        object: ProfileOperationAdmission.shared).receive(on: RunLoop.main))
+        { _ in
+            if screenGeneration == nil {
+                reloadIdentities()
+            }
+        }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
             pubkyProfile.forgetRingIdentityMisses()
@@ -186,28 +214,41 @@ struct PubkyChoiceView: View {
     }
 
     private func startAdopting(_ pubky: String) {
-        guard adoptingPubky == nil else { return }
+        guard adoptingPubky == nil, let screenOwner, let screenGeneration,
+              pubkyProfile.ownsRemovalPresentation(screenOwner) else { return }
         adoptingPubky = pubky
-        Task { await adopt(pubky) }
+        Task { await adopt(pubky, owner: screenOwner, generation: screenGeneration) }
     }
 
-    private func adopt(_ pubky: String) async {
+    private func adopt(_ pubky: String, owner: PubkyProfileManager.RemovalPresentationOwner,
+                       generation: ProfileOperationAdmission.Generation) async
+    {
         defer { adoptingPubky = nil }
 
-        do {
-            guard let adopted = try await Self.adoptRingIdentity(pubky, pubkyProfile: pubkyProfile, reloadRows: reloadIdentities) else {
-                navigation.navigate(.createProfile)
-                return
-            }
+        let admission = ProfileOperationAdmission.shared
+        do { try await admission.withSessionTransition(expected: generation) {
+            guard pubkyProfile.ownsRemovalPresentation(owner) else { throw PubkyServiceError.identityChanged }
+            do {
+                guard let adopted = try await Self.adoptRingIdentity(pubky, pubkyProfile: pubkyProfile, reloadRows: reloadIdentities) else {
+                    try admission.checkCurrent()
+                    navigation.navigate(.createProfile)
+                    return
+                }
 
-            if let destination = await Self.destinationAfterAdoption(of: adopted, pubkyProfile: pubkyProfile, contactsManager: contactsManager) {
-                navigation.path = [destination]
+                if let destination = await Self.destinationAfterAdoption(of: adopted, pubkyProfile: pubkyProfile, contactsManager: contactsManager) {
+                    try admission.checkCurrent()
+                    navigation.path = [destination]
+                }
+            } catch {
+                guard !Task.isCancelled, (try? admission.checkCurrent()) != nil else { throw error }
+                try pubkyProfile.schedulePresentationContext { owner, generation in
+                    screenOwner = owner
+                    screenGeneration = generation
+                    reloadIdentities()
+                }
+                app.toast(type: .error, title: t("profile__adopt_error_title"), description: error.localizedDescription)
             }
-        } catch is CancellationError {
-            return
-        } catch {
-            app.toast(type: .error, title: t("profile__adopt_error_title"), description: error.localizedDescription)
-        }
+        } } catch {}
     }
 
     private func reloadIdentities() {
@@ -215,6 +256,14 @@ struct PubkyChoiceView: View {
     }
 
     private func loadIdentities() async {
+        if screenOwner == nil {
+            screenOwner = pubkyProfile.removalPresentationOwner
+        }
+        guard let screenOwner, pubkyProfile.ownsRemovalPresentation(screenOwner) else { return }
+        if screenGeneration == nil {
+            guard let generation = try? ProfileOperationAdmission.shared.snapshot() else { return }
+            screenGeneration = generation
+        }
         ringPubkys = SharedPubkyKeychain.listRingIdentities()
         didLoad = true
         await pubkyProfile.loadRingIdentityProfiles(ringPubkys)

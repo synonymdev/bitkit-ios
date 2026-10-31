@@ -2050,7 +2050,17 @@ extension MigrationsService {
         }
     }
 
-    func restoreFromRNRemoteBackup(mnemonic: String, passphrase: String?) async throws {
+    func restoreFromRNRemoteBackup(
+        mnemonic: String,
+        passphrase: String?,
+        withWalletRestore: (_ operation: () async throws -> Void) async throws -> Void
+    ) async throws {
+        try await withWalletRestore {
+            try await restoreRNRemoteBackup(mnemonic: mnemonic, passphrase: passphrase)
+        }
+    }
+
+    private func restoreRNRemoteBackup(mnemonic: String, passphrase: String?) async throws {
         let effectivePassphrase = normalizePassphrase(passphrase)
         try await RNBackupClient.shared.setup(mnemonic: mnemonic, passphrase: effectivePassphrase)
 

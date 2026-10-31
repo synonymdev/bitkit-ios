@@ -39,7 +39,7 @@ struct GeneralSettingsView: View {
                     (hasConfirmedContactPaymentsPreference && sharesPrivatePaykitEndpoints)
             },
             set: { enabled in
-                Task { await updateContactPayments(enabled) }
+                startUpdatingContactPayments(enabled)
             }
         )
     }
@@ -47,7 +47,7 @@ struct GeneralSettingsView: View {
     private var publicPaymentsToggle: Binding<Bool> {
         Binding(
             get: { pendingPublicPaymentsValue ?? sharesPublicPaykitEndpoints },
-            set: { enabled in Task { await updatePublicPayments(enabled) } }
+            set: { enabled in startUpdatingPublicPayments(enabled) }
         )
     }
 
@@ -198,7 +198,7 @@ struct GeneralSettingsView: View {
 
             // Leaving the screen cancels `.task`; its own task lets the first contacts load and the enable still finish
             // unless the Pubky session ends or a newer contact payments change starts first.
-            Task { await updateContactPayments(true) }
+            startUpdatingContactPayments(true)
         }
     }
 
@@ -226,21 +226,35 @@ struct GeneralSettingsView: View {
         }
     }
 
-    private func updatePublicPayments(_ enabled: Bool) async {
-        guard !isUpdatingPublicPayments else { return }
+    private func startUpdatingPublicPayments(_ enabled: Bool) {
+        let admission = ProfileOperationAdmission.shared
+        guard !isUpdatingPublicPayments, let scope = try? admission.capture() else { return }
+        let owner = pubkyProfile.removalPresentationOwner
         isUpdatingPublicPayments = true
+        Task {
+            defer { admission.release(scope) }
+            await updatePublicPayments(enabled, scope: scope, owner: owner)
+        }
+    }
+
+    private func updatePublicPayments(_ enabled: Bool, scope: ProfileOperationAdmission.Scope,
+                                      owner: PubkyProfileManager.RemovalPresentationOwner) async
+    {
+        let admission = ProfileOperationAdmission.shared
         pendingPublicPaymentsValue = enabled
         defer {
             pendingPublicPaymentsValue = nil
             isUpdatingPublicPayments = false
         }
-        do {
+        do { try await admission.withScope(scope) {
+            guard pubkyProfile.ownsRemovalPresentation(owner) else { throw PubkyServiceError.identityChanged }
             try await ContactPaymentsService.setPublicEnabled(
                 enabled, pubkyProfile: pubkyProfile, operations: .live(wallet: wallet)
             )
-        } catch is CancellationError {
+        } } catch is CancellationError {
             return
         } catch {
+            guard (try? admission.validate(scope)) != nil, pubkyProfile.ownsRemovalPresentation(owner) else { return }
             Logger.error("Failed to update public payments: \(error)", context: "GeneralSettingsView")
             app.toast(type: .error, title: t("common__error"), description: error.localizedDescription)
         }
@@ -264,26 +278,39 @@ struct GeneralSettingsView: View {
         }
     }
 
-    private func updateContactPayments(_ enabled: Bool) async {
-        guard !isUpdatingContactPayments else { return }
-
+    private func startUpdatingContactPayments(_ enabled: Bool) {
+        let admission = ProfileOperationAdmission.shared
+        guard !isUpdatingContactPayments, let scope = try? admission.capture() else { return }
+        let owner = pubkyProfile.removalPresentationOwner
         isUpdatingContactPayments = true
+        Task {
+            defer { admission.release(scope) }
+            await updateContactPayments(enabled, scope: scope, owner: owner)
+        }
+    }
+
+    private func updateContactPayments(_ enabled: Bool, scope: ProfileOperationAdmission.Scope,
+                                       owner: PubkyProfileManager.RemovalPresentationOwner) async
+    {
+        let admission = ProfileOperationAdmission.shared
         pendingContactPaymentsValue = enabled
         defer {
             pendingContactPaymentsValue = nil
             isUpdatingContactPayments = false
         }
 
-        do {
+        do { try await admission.withScope(scope) {
+            guard pubkyProfile.ownsRemovalPresentation(owner) else { throw PubkyServiceError.identityChanged }
             try await ContactPaymentsService.setEnabled(
                 enabled,
                 pubkyProfile: pubkyProfile,
                 contactsManager: contactsManager,
                 operations: .live(wallet: wallet)
             )
-        } catch is CancellationError {
+        } } catch is CancellationError {
             return
         } catch {
+            guard (try? admission.validate(scope)) != nil, pubkyProfile.ownsRemovalPresentation(owner) else { return }
             Logger.error("Failed to update contact payments: \(error)", context: "GeneralSettingsView")
             app.toast(type: .error, title: t("common__error"), description: error.localizedDescription)
         }

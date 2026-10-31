@@ -1148,6 +1148,7 @@
 "profile__sign_out" = "Desconectar";
 "profile__sign_out_title" = "Desconectar Perfil";
 "profile__sign_out_description" = "Isso desconectará seu perfil Pubky da Bitkit. Você pode reconectar a qualquer momento.";
+"profile__disconnect_local_description" = "Remova o acesso deste dispositivo e conclua a limpeza local. Isso não faz outras alterações no seu perfil, nas assinaturas ou no acesso no servidor.";
 "profile__choice_title" = "Entre na\n<accent>web da liberdade</accent>";
 "profile__choice_description" = "Crie uma nova pubky e um perfil na Bitkit.";
 "profile__choice_description_ring" = "Use uma pubky existente do Pubky Ring.";
@@ -1184,13 +1185,13 @@
 "profile__delete_description" = "Excluir seu perfil o remove do Pubky. Os contatos ainda podem manter informações de perfil e de pagamento compartilhadas anteriormente com eles.";
 "profile__delete_confirm" = "Sim, Excluir";
 "profile__delete_error_title" = "Não Foi Possível Excluir o Perfil";
-"profile__delete_error_description" = "Não conseguimos excluir os dados do seu perfil. Tente novamente ou desconecte esta pubky da Bitkit.";
+"profile__delete_error_description" = "A limpeza do perfil foi interrompida. As alterações remotas podem já ter sido aplicadas. Desconecte o perfil para concluir a limpeza neste dispositivo sem repetir a exclusão remota.";
 "profile__delete_label" = "Excluir Perfil";
 "profile__unlink_title" = "Desvincular pubky?";
 "profile__unlink_description" = "Isso excluirá seus dados do Paykit e desvinculará esta pubky da Bitkit. Ela continuará disponível no Pubky Ring.";
 "profile__unlink_confirm" = "Sim, Desvincular";
 "profile__unlink_error_title" = "Não Foi Possível Desvincular a Pubky";
-"profile__unlink_error_description" = "Não conseguimos excluir seus dados do Paykit. Tente novamente ou desconecte esta pubky da Bitkit.";
+"profile__unlink_error_description" = "A limpeza do perfil foi interrompida. As alterações remotas podem já ter sido aplicadas. Desconecte o perfil para concluir a limpeza neste dispositivo sem repetir a exclusão remota.";
 "profile__unlink_label" = "Desvincular pubky";
 "profile__edit" = "Editar";
 "profile__pay_contacts_nav_title" = "Pagar Contatos";
@@ -1900,5 +1901,15 @@
 "subscriptions__allowance_limit_title" = "Limite Atingido";
 "subscriptions__allowance_limit_description" = "Uma solicitação de {amount} de {name} excede sua pré-aprovação. Revise-a para pagar.";
 "subscriptions__allowance_auto_paid" = "Pago automaticamente";
+
+"profile__recovery_title" = "Concluir limpeza local";
+
+"profile__recovery_pending" = "A limpeza do perfil foi interrompida. As alterações remotas podem já ter sido aplicadas. Desconecte o perfil para concluir a limpeza neste dispositivo sem repetir a exclusão remota.";
+
+"profile__recovery_wipe" = "A redefinição da carteira foi interrompida. Conclua-a antes de usar esta carteira.";
+
+"profile__recovery_unavailable" = "O Bitkit não consegue ler o estado salvo da limpeza. As alterações do perfil estão pausadas. Tente lê-lo novamente.";
+
+"profile__recovery_working" = "Concluindo a limpeza do perfil…";
 
 "wallet__balance_updating" = "Atualizando saldo…";

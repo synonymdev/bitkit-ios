@@ -396,7 +396,11 @@ final class PublicPaykitServiceTests: XCTestCase {
             do {
                 try await publication.value
                 XCTFail("Expected the ended session to stop the next write")
-            } catch PubkyServiceError.sessionNotActive {}
+            } catch PubkyServiceError.sessionNotActive {
+                XCTAssertFalse(cancelTask)
+            } catch is CancellationError {
+                XCTAssertTrue(cancelTask)
+            }
             XCTAssertEqual(calls, ["app", "app-finished"])
         }
     }

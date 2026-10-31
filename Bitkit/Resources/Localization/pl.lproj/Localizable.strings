@@ -1147,6 +1147,7 @@
 "profile__sign_out" = "Odłącz";
 "profile__sign_out_title" = "Odłącz profil";
 "profile__sign_out_description" = "Spowoduje to odłączenie Twojego profilu Pubky od Bitkit. Możesz połączyć się ponownie w dowolnym momencie.";
+"profile__disconnect_local_description" = "Usuń dostęp tego urządzenia i zakończ lokalne czyszczenie. Nie wprowadzi to dalszych zmian w profilu, subskrypcjach ani dostępie na serwerze.";
 "profile__choice_title" = "Wejdź do\n<accent>wolnej sieci</accent>";
 "profile__choice_description" = "Utwórz nowy pubky i profil w Bitkit.";
 "profile__choice_description_ring" = "Użyj istniejącego pubky z Pubky Ring.";
@@ -1183,13 +1184,13 @@
 "profile__delete_description" = "Usunięcie profilu usuwa go z Pubky. Kontakty mogą nadal przechowywać udostępnione im wcześniej dane profilu i płatności.";
 "profile__delete_confirm" = "Tak, usuń";
 "profile__delete_error_title" = "Nie można usunąć profilu";
-"profile__delete_error_description" = "Nie udało się usunąć danych Twojego profilu. Spróbuj ponownie lub odłącz ten pubky od Bitkit.";
+"profile__delete_error_description" = "Czyszczenie profilu zostało przerwane. Zdalne zmiany mogły już zostać zastosowane. Odłącz profil, aby dokończyć czyszczenie na tym urządzeniu bez ponawiania zdalnego usuwania.";
 "profile__delete_label" = "Usuń profil";
 "profile__unlink_title" = "Odłączyć pubky?";
 "profile__unlink_description" = "Spowoduje to usunięcie Twoich danych Paykit i odłączenie tego pubky od Bitkit. Nadal będzie dostępny w Pubky Ring.";
 "profile__unlink_confirm" = "Tak, odłącz";
 "profile__unlink_error_title" = "Nie można odłączyć pubky";
-"profile__unlink_error_description" = "Nie udało się usunąć Twoich danych Paykit. Spróbuj ponownie lub odłącz ten pubky od Bitkit.";
+"profile__unlink_error_description" = "Czyszczenie profilu zostało przerwane. Zdalne zmiany mogły już zostać zastosowane. Odłącz profil, aby dokończyć czyszczenie na tym urządzeniu bez ponawiania zdalnego usuwania.";
 "profile__unlink_label" = "Odłącz pubky";
 "profile__edit" = "Edytuj";
 "profile__pay_contacts_nav_title" = "Płać kontaktom";
@@ -1899,5 +1900,15 @@
 "subscriptions__allowance_limit_title" = "Osiągnięto limit";
 "subscriptions__allowance_limit_description" = "Żądanie {amount} od {name} przekracza Twój przydział. Przejrzyj je, aby zapłacić.";
 "subscriptions__allowance_auto_paid" = "Opłacono automatycznie";
+
+"profile__recovery_title" = "Dokończ czyszczenie lokalne";
+
+"profile__recovery_pending" = "Czyszczenie profilu zostało przerwane. Zdalne zmiany mogły już zostać zastosowane. Odłącz profil, aby dokończyć czyszczenie na tym urządzeniu bez ponawiania zdalnego usuwania.";
+
+"profile__recovery_wipe" = "Resetowanie portfela zostało przerwane. Dokończ je przed użyciem tego portfela.";
+
+"profile__recovery_unavailable" = "Bitkit nie może odczytać zapisanego stanu czyszczenia. Zmiany profilu są wstrzymane. Spróbuj odczytać go ponownie.";
+
+"profile__recovery_working" = "Kończenie czyszczenia profilu…";
 
 "wallet__balance_updating" = "Aktualizowanie salda…";

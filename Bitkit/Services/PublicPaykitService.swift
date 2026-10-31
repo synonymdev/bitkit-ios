@@ -141,6 +141,13 @@ enum PublicPaykitService {
         }
     }
 
+    static func clearRemovedProfileReconciliation() {
+        reconciliationLock.withLock {
+            UserDefaults.standard.set(false, forKey: cleanupPendingKey)
+            UserDefaults.standard.removeObject(forKey: reconciliationRevisionKey)
+        }
+    }
+
     static func queueEndpointReconciliation() {
         reconciliationLock.withLock {
             UserDefaults.standard.set(UUID().uuidString, forKey: reconciliationRevisionKey)
@@ -357,46 +364,51 @@ enum PublicPaykitService {
         syncApp: (() async throws -> Void)? = nil,
         applyEndpoints: (([Endpoint]) async throws -> Void)? = nil
     ) async throws {
-        let session = wallet.publicPaykitSession
-        if publish {
-            wallet.preparePendingPublicPaykitInvoiceRefresh()
-        }
-        let pendingRevision = reconciliationRevision
-        var desiredSnapshot: (
-            endpoints: [Endpoint],
-            invoiceRevision: UUID,
-            publicAddress: PrivatePaykitAddressReservationStore.PublicAddressSnapshot?
-        )?
-        let apply = applyEndpoints ?? { try await applyPublishedEndpointsLocked($0, isSessionCurrent: isSessionCurrent) }
-        try await syncPublishedEndpoints(
-            publish: publish,
-            isSessionCurrent: isSessionCurrent,
-            buildEndpoints: {
-                let snapshot = try await buildWalletEndpoints(wallet: wallet, session: session, refreshIfNeeded: true, requireEndpoint: true)
-                desiredSnapshot = snapshot
-                return snapshot.endpoints
-            },
-            syncApp: syncApp ?? { try await syncPaykitApp(priority: appSyncPriority, isSessionCurrent: isSessionCurrent) },
-            applyEndpoints: { endpoints in
-                if publish {
-                    markPublicationPending(wallet: wallet, session: session, isSessionCurrent: isSessionCurrent)
-                }
-                try await apply(endpoints)
-            },
-            onPublished: {
-                if let desiredSnapshot {
-                    acknowledgePublishedEndpoints(
-                        wallet: wallet,
-                        endpoints: desiredSnapshot.endpoints,
-                        invoiceRevision: desiredSnapshot.invoiceRevision,
-                        reconciliationRevision: pendingRevision,
-                        publicAddress: desiredSnapshot.publicAddress,
-                        session: session,
-                        isSessionCurrent: isSessionCurrent
-                    )
-                }
+        try await ProfileOperationAdmission.shared.withOperation {
+            if let isSessionCurrent, !isSessionCurrent() {
+                throw PubkyServiceError.sessionNotActive
             }
-        )
+            let session = wallet.publicPaykitSession
+            if publish {
+                wallet.preparePendingPublicPaykitInvoiceRefresh()
+            }
+            let pendingRevision = reconciliationRevision
+            var desiredSnapshot: (
+                endpoints: [Endpoint],
+                invoiceRevision: UUID,
+                publicAddress: PrivatePaykitAddressReservationStore.PublicAddressSnapshot?
+            )?
+            let apply = applyEndpoints ?? { try await applyPublishedEndpointsLocked($0, isSessionCurrent: isSessionCurrent) }
+            try await syncPublishedEndpoints(
+                publish: publish,
+                isSessionCurrent: isSessionCurrent,
+                buildEndpoints: {
+                    let snapshot = try await buildWalletEndpoints(wallet: wallet, session: session, refreshIfNeeded: true, requireEndpoint: true)
+                    desiredSnapshot = snapshot
+                    return snapshot.endpoints
+                },
+                syncApp: syncApp ?? { try await syncPaykitApp(priority: appSyncPriority, isSessionCurrent: isSessionCurrent) },
+                applyEndpoints: { endpoints in
+                    if publish {
+                        markPublicationPending(wallet: wallet, session: session, isSessionCurrent: isSessionCurrent)
+                    }
+                    try await apply(endpoints)
+                },
+                onPublished: {
+                    if let desiredSnapshot {
+                        acknowledgePublishedEndpoints(
+                            wallet: wallet,
+                            endpoints: desiredSnapshot.endpoints,
+                            invoiceRevision: desiredSnapshot.invoiceRevision,
+                            reconciliationRevision: pendingRevision,
+                            publicAddress: desiredSnapshot.publicAddress,
+                            session: session,
+                            isSessionCurrent: isSessionCurrent
+                        )
+                    }
+                }
+            )
+        }
     }
 
     @MainActor
@@ -408,44 +420,52 @@ enum PublicPaykitService {
         applyEndpoints: ([Endpoint]) async throws -> Void,
         onPublished: () -> Void = {}
     ) async throws {
-        let desiredEndpoints: Result<[Endpoint], Error>
-        do {
-            desiredEndpoints = try await .success(publish ? buildEndpoints() : [])
-        } catch {
-            desiredEndpoints = .failure(error)
-        }
-        try await withEndpointLock(unlessSessionEnded: isSessionCurrent) {
-            guard publish else {
-                var firstError: Error?
-                do {
-                    try await applyEndpoints([])
-                } catch {
-                    firstError = firstError ?? error
-                }
-                if let isSessionCurrent, !isSessionCurrent() {
-                    throw PubkyServiceError.sessionNotActive
-                }
-                do {
-                    try await syncApp()
-                } catch {
-                    firstError = firstError ?? error
-                }
-                if let firstError {
-                    throw firstError
-                }
-                return
-            }
-
-            // Persist retry work before a remote mutation can commit without an acknowledgement.
-            setCleanupPending(true)
-            try await syncApp()
+        try await ProfileOperationAdmission.shared.withOperation {
             if let isSessionCurrent, !isSessionCurrent() {
                 throw PubkyServiceError.sessionNotActive
             }
-            // Keep the App Registry current even when wallet endpoints are unavailable.
-            try await applyEndpoints(desiredEndpoints.get())
-            // A later writer must not begin before this publication's acknowledgement.
-            onPublished()
+            let desiredEndpoints: Result<[Endpoint], Error>
+            do {
+                desiredEndpoints = try await .success(publish ? buildEndpoints() : [])
+            } catch {
+                desiredEndpoints = .failure(error)
+            }
+            try await withEndpointLock(unlessSessionEnded: isSessionCurrent) {
+                guard publish else {
+                    var firstError: Error?
+                    do {
+                        try await applyEndpoints([])
+                    } catch {
+                        firstError = firstError ?? error
+                    }
+                    try ProfileOperationAdmission.shared.checkCurrent()
+                    if let isSessionCurrent, !isSessionCurrent() {
+                        throw PubkyServiceError.sessionNotActive
+                    }
+                    do {
+                        try await syncApp()
+                    } catch {
+                        firstError = firstError ?? error
+                    }
+                    if let firstError {
+                        throw firstError
+                    }
+                    return
+                }
+
+                // Persist retry work before a remote mutation can commit without an acknowledgement.
+                setCleanupPending(true)
+                try await syncApp()
+                try ProfileOperationAdmission.shared.checkCurrent()
+                if let isSessionCurrent, !isSessionCurrent() {
+                    throw PubkyServiceError.sessionNotActive
+                }
+                // Keep the App Registry current even when wallet endpoints are unavailable.
+                try await applyEndpoints(desiredEndpoints.get())
+                try ProfileOperationAdmission.shared.checkCurrent()
+                // A later writer must not begin before this publication's acknowledgement.
+                onPublished()
+            }
         }
     }
 
@@ -456,37 +476,42 @@ enum PublicPaykitService {
         syncApp: (() async throws -> Void)? = nil,
         applyEndpoints: (([Endpoint]) async throws -> Void)? = nil
     ) async throws {
-        let session = wallet.publicPaykitSession
-        wallet.preparePendingPublicPaykitInvoiceRefresh()
-        let pendingRevision = reconciliationRevision
-        let (desiredEndpoints, invoiceRevision, publicAddress) = try await buildWalletEndpoints(
-            wallet: wallet,
-            session: session,
-            refreshIfNeeded: false,
-            requireEndpoint: false
-        )
-        let apply = applyEndpoints ?? { try await applyPublishedEndpointsLocked($0, isSessionCurrent: isSessionCurrent) }
-        try await syncPublishedEndpoints(
-            publish: true,
-            isSessionCurrent: isSessionCurrent,
-            buildEndpoints: { desiredEndpoints },
-            syncApp: syncApp ?? { try await syncPaykitApp(isSessionCurrent: isSessionCurrent) },
-            applyEndpoints: { endpoints in
-                markPublicationPending(wallet: wallet, session: session, isSessionCurrent: isSessionCurrent)
-                try await apply(endpoints)
-            },
-            onPublished: {
-                acknowledgePublishedEndpoints(
-                    wallet: wallet,
-                    endpoints: desiredEndpoints,
-                    invoiceRevision: invoiceRevision,
-                    reconciliationRevision: pendingRevision,
-                    publicAddress: publicAddress,
-                    session: session,
-                    isSessionCurrent: isSessionCurrent
-                )
+        try await ProfileOperationAdmission.shared.withOperation {
+            if let isSessionCurrent, !isSessionCurrent() {
+                throw PubkyServiceError.sessionNotActive
             }
-        )
+            let session = wallet.publicPaykitSession
+            wallet.preparePendingPublicPaykitInvoiceRefresh()
+            let pendingRevision = reconciliationRevision
+            let (desiredEndpoints, invoiceRevision, publicAddress) = try await buildWalletEndpoints(
+                wallet: wallet,
+                session: session,
+                refreshIfNeeded: false,
+                requireEndpoint: false
+            )
+            let apply = applyEndpoints ?? { try await applyPublishedEndpointsLocked($0, isSessionCurrent: isSessionCurrent) }
+            try await syncPublishedEndpoints(
+                publish: true,
+                isSessionCurrent: isSessionCurrent,
+                buildEndpoints: { desiredEndpoints },
+                syncApp: syncApp ?? { try await syncPaykitApp(isSessionCurrent: isSessionCurrent) },
+                applyEndpoints: { endpoints in
+                    markPublicationPending(wallet: wallet, session: session, isSessionCurrent: isSessionCurrent)
+                    try await apply(endpoints)
+                },
+                onPublished: {
+                    acknowledgePublishedEndpoints(
+                        wallet: wallet,
+                        endpoints: desiredEndpoints,
+                        invoiceRevision: invoiceRevision,
+                        reconciliationRevision: pendingRevision,
+                        publicAddress: publicAddress,
+                        session: session,
+                        isSessionCurrent: isSessionCurrent
+                    )
+                }
+            )
+        }
     }
 
     @MainActor
@@ -496,22 +521,24 @@ enum PublicPaykitService {
         syncApp: (() async throws -> Void)? = nil,
         applyEndpoints: (([Endpoint]) async throws -> Void)? = nil
     ) async throws {
-        guard isCleanupPending, !Task.isCancelled, isSessionCurrent() else { return }
-        let mode = pendingReconciliationMode()
-        let isCurrent = { @MainActor in
-            !Task.isCancelled && isSessionCurrent() && pendingReconciliationMode() == mode
-        }
-        switch mode {
-        case .publishEndpoints:
-            try await syncCurrentPublishedEndpoints(
-                wallet: wallet, isSessionCurrent: isCurrent, syncApp: syncApp, applyEndpoints: applyEndpoints
-            )
-        case .removePublishedState:
-            try await syncPublishedEndpoints(
-                wallet: wallet, publish: false, isSessionCurrent: isCurrent, syncApp: syncApp, applyEndpoints: applyEndpoints
-            )
-            guard isCurrent() else { return }
-            setCleanupPending(false)
+        try await ProfileOperationAdmission.shared.withOperation {
+            guard isCleanupPending, !Task.isCancelled, isSessionCurrent() else { return }
+            let mode = pendingReconciliationMode()
+            let isCurrent = { @MainActor in
+                !Task.isCancelled && isSessionCurrent() && pendingReconciliationMode() == mode
+            }
+            switch mode {
+            case .publishEndpoints:
+                try await syncCurrentPublishedEndpoints(
+                    wallet: wallet, isSessionCurrent: isCurrent, syncApp: syncApp, applyEndpoints: applyEndpoints
+                )
+            case .removePublishedState:
+                try await syncPublishedEndpoints(
+                    wallet: wallet, publish: false, isSessionCurrent: isCurrent, syncApp: syncApp, applyEndpoints: applyEndpoints
+                )
+                guard isCurrent() else { return }
+                setCleanupPending(false)
+            }
         }
     }
 
@@ -677,11 +704,14 @@ enum PublicPaykitService {
         unlessSessionEnded isSessionCurrent: (@MainActor () -> Bool)? = nil,
         _ operation: () async throws -> T
     ) async throws -> T {
-        try await endpointLock.withLock {
-            if let isSessionCurrent, await !isSessionCurrent() {
-                throw PubkyServiceError.sessionNotActive
+        try await ProfileOperationAdmission.shared.withOperation {
+            try await endpointLock.withLock {
+                try ProfileOperationAdmission.shared.checkCurrent()
+                if let isSessionCurrent, await !isSessionCurrent() {
+                    throw PubkyServiceError.sessionNotActive
+                }
+                return try await operation()
             }
-            return try await operation()
         }
     }
 

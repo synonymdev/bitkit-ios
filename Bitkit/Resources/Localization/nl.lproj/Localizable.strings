@@ -1143,6 +1143,7 @@
 "profile__sign_out" = "Ontkoppelen";
 "profile__sign_out_title" = "Profiel ontkoppelen";
 "profile__sign_out_description" = "Hiermee wordt uw Pubky-profiel ontkoppeld van Bitkit. U kunt op elk moment opnieuw verbinden.";
+"profile__disconnect_local_description" = "Verwijder de toegang van dit apparaat en voltooi de lokale opschoning. Dit brengt geen verdere wijzigingen aan in je profiel, abonnementen of toegang op de server.";
 "profile__choice_title" = "Betreed het\n<accent>vrije web</accent>";
 "profile__choice_description" = "Maak een nieuwe pubky en een profiel aan in Bitkit.";
 "profile__choice_description_ring" = "Gebruik een bestaande pubky uit Pubky Ring.";
@@ -1179,13 +1180,13 @@
 "profile__delete_description" = "Als u uw profiel verwijdert, wordt het van Pubky verwijderd. Contacten kunnen eerder gedeelde profiel- en betaalgegevens nog bewaren.";
 "profile__delete_confirm" = "Ja, verwijderen";
 "profile__delete_error_title" = "Kan profiel niet verwijderen";
-"profile__delete_error_description" = "We konden uw profielgegevens niet verwijderen. Probeer het opnieuw, of ontkoppel deze pubky van Bitkit.";
+"profile__delete_error_description" = "Het opschonen van het profiel is onderbroken. Externe wijzigingen zijn mogelijk al toegepast. Koppel het profiel los om de opschoning op dit apparaat af te ronden zonder de externe verwijdering te herhalen.";
 "profile__delete_label" = "Profiel verwijderen";
 "profile__unlink_title" = "pubky ontkoppelen?";
 "profile__unlink_description" = "Hiermee worden uw Paykit-gegevens verwijderd en wordt deze pubky losgekoppeld van Bitkit. Deze blijft beschikbaar in Pubky Ring.";
 "profile__unlink_confirm" = "Ja, ontkoppelen";
 "profile__unlink_error_title" = "Kan pubky niet ontkoppelen";
-"profile__unlink_error_description" = "We konden uw Paykit-gegevens niet verwijderen. Probeer het opnieuw, of ontkoppel deze pubky van Bitkit.";
+"profile__unlink_error_description" = "Het opschonen van het profiel is onderbroken. Externe wijzigingen zijn mogelijk al toegepast. Koppel het profiel los om de opschoning op dit apparaat af te ronden zonder de externe verwijdering te herhalen.";
 "profile__unlink_label" = "pubky ontkoppelen";
 "profile__edit" = "Bewerken";
 "profile__pay_contacts_nav_title" = "Contacten betalen";
@@ -1894,5 +1895,15 @@
 "subscriptions__allowance_limit_title" = "Limiet bereikt";
 "subscriptions__allowance_limit_description" = "Een verzoek van {amount} van {name} overschrijdt uw toelage. Bekijk het om te betalen.";
 "subscriptions__allowance_auto_paid" = "Automatisch betaald";
+
+"profile__recovery_title" = "Lokale opschoning afronden";
+
+"profile__recovery_pending" = "Het opschonen van het profiel is onderbroken. Externe wijzigingen zijn mogelijk al toegepast. Koppel het profiel los om de opschoning op dit apparaat af te ronden zonder de externe verwijdering te herhalen.";
+
+"profile__recovery_wipe" = "Het opnieuw instellen van de wallet is onderbroken. Rond dit af voordat je deze wallet gebruikt.";
+
+"profile__recovery_unavailable" = "Bitkit kan de opgeslagen opschoningsstatus niet lezen. Profielwijzigingen zijn gepauzeerd. Probeer de status opnieuw te lezen.";
+
+"profile__recovery_working" = "Profielopschoning afronden…";
 
 "wallet__balance_updating" = "Saldo bijwerken…";

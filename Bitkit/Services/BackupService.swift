@@ -7,8 +7,21 @@ import VssRustClientFfi
 // MARK: - BackupService
 
 enum BackupRestoreFailurePolicy {
-    static func isFatal(_ category: BackupCategory) -> Bool {
-        category == .wallet
+    static func isFatal(_ category: BackupCategory, error: Error? = nil) -> Bool {
+        if category == .wallet {
+            return true
+        }
+        var current = error
+        for _ in 0 ..< 8 {
+            if current is CancellationError || current is ProfileRemovalStore
+                .StoreError || current is ProfileSessionRestoreLocalError || current is PubkyCredentialLocalError
+            {
+                return true
+            }
+            guard let wrapped = current as? AppError else { break }
+            current = wrapped.underlyingError
+        }
+        return false
     }
 }
 
@@ -112,7 +125,7 @@ class BackupService {
     }
 
     private let vssBackupClient = VssBackupClient.shared
-    private let walletRestoreGate = WalletBackupRestoreGate.keychain
+    private let walletRestoreGate: WalletBackupRestoreGate
     private let walletBackupWriter = WalletBackupWriter()
     private let usdtBackupWriter = WalletBackupWriter()
     private let usdtRecoveryBackup: UsdtRecoveryBackupStore
@@ -131,6 +144,7 @@ class BackupService {
     private var backupFailureNotificationGate = BackupFailureNotificationGate()
 
     private let defaults: UserDefaults
+    private let profileAdmission: ProfileOperationAdmission
     private let backupData: ((BackupCategory) async throws -> Data)?
     private let uploadBackup: (String, Data) async throws -> Void
     private let waitForBackupDelay: () async throws -> Void
@@ -160,6 +174,8 @@ class BackupService {
 
     init(
         defaults: UserDefaults = .standard,
+        profileAdmission: ProfileOperationAdmission = .shared,
+        walletRestoreGate: WalletBackupRestoreGate = .keychain,
         backupData: ((BackupCategory) async throws -> Data)? = nil,
         usdtRecoveryBackup: UsdtRecoveryBackupStore = UsdtRecoveryBackupStore(),
         uploadBackup: @escaping (String, Data) async throws -> Void = { key, data in
@@ -176,6 +192,8 @@ class BackupService {
         }
     ) {
         self.defaults = defaults
+        self.profileAdmission = profileAdmission
+        self.walletRestoreGate = walletRestoreGate
         self.backupData = backupData
         self.usdtRecoveryBackup = usdtRecoveryBackup
         self.uploadBackup = uploadBackup
@@ -456,7 +474,9 @@ class BackupService {
             } else if error is WalletBackupSnapshotError {
                 outcome = .snapshotChanged
                 Logger.warn("Wallet backup deferred after three changing snapshots", context: "BackupService")
-            } else if Self.isTemporaryBackupFailure(error) {
+            } else if Self.isTemporaryBackupFailure(error) ||
+                ((category == .wallet || category == .metadata) && profileAdmission.isTransientBackupCaptureFailure(error))
+            {
                 outcome = .temporarilyUnavailable
                 Logger.warn("Backup temporarily unavailable for: '\(category.rawValue)'", context: "BackupService")
             } else {
@@ -593,6 +613,12 @@ class BackupService {
 
     /// Performs full restore from latest backup
     func performFullRestoreFromLatestBackup() async throws {
+        try await profileAdmission.withWalletRestore {
+            try await restoreLatestBackup()
+        }
+    }
+
+    private func restoreLatestBackup() async throws {
         if UsdtRecoveryRestoreGate.isPending, try !walletRestoreGate.hasPendingRestore() {
             try await restoreUsdtRecoveryAfterLegacyMigration()
             return
@@ -650,6 +676,12 @@ class BackupService {
     }
 
     func restoreUsdtRecoveryAfterLegacyMigration() async throws {
+        try await profileAdmission.withWalletRestore {
+            try await restoreMigratedUsdtRecovery()
+        }
+    }
+
+    private func restoreMigratedUsdtRecovery() async throws {
         let retained = try UsdtRecoveryRestoreGate.begin()
         await usdtWallet?.pauseForRecoveryRestore()
         await usdtBackupWriter.waitUntilIdle()
@@ -763,12 +795,11 @@ class BackupService {
                     categoriesNeedingRewrite.insert(.metadata)
                 }
 
-                do {
+                try await Self.restoreProfileMetadata {
                     try await PubkyProfileManager.restoreSessionBackupState(payload.pubkySession)
-                } catch {
-                    Logger.warn("Failed to restore pubky session backup state: \(error)", context: "BackupService")
+                } installOverrides: {
+                    ContactsManager.restoreContactProfileOverrides(payload.pubkyContactProfileOverrides)
                 }
-                ContactsManager.restoreContactProfileOverrides(payload.pubkyContactProfileOverrides)
 
                 // App-owned, so it takes no part in the core field migration above and never sets
                 // needsRewrite. Restored names wait as pending ones until each wallet is paired again.
@@ -1301,9 +1332,11 @@ class BackupService {
 
         case .metadata:
             let currentTime = UInt64(Date().timeIntervalSince1970 * 1000)
+            let profileGeneration = try ProfileOperationAdmission.shared.snapshot()
             let cache = await SettingsViewModel.shared.getAppCacheData()
-            let pubkySession = try PubkyProfileManager.snapshotSessionBackupState()
-            let pubkyContactProfileOverrides = ContactsManager.backupContactProfileOverrides()
+            let (pubkySession, pubkyContactProfileOverrides) = try ProfileOperationAdmission.shared.withSynchronousOperation(access: .local) {
+                try (PubkyProfileManager.snapshotSessionBackupState(), ContactsManager.backupContactProfileOverrides())
+            }
 
             // Neither read may fall back to an empty list: this envelope is the only copy of the
             // tags, so uploading a partial payload would replace the stored ones. Throwing here
@@ -1327,6 +1360,7 @@ class BackupService {
             // envelope this app writes stays byte-comparable with one bitkit-android writes.
             let hwWalletNames = HwKnownDeviceStorage.backupSnapshot()
 
+            try ProfileOperationAdmission.shared.validate(profileGeneration)
             let payload = MetadataBackupV1(
                 version: 1,
                 createdAt: currentTime,
@@ -1393,7 +1427,22 @@ class BackupService {
         }
     }
 
-    private func performRestore(
+    static func restoreProfileMetadata(restoreSession: () async throws -> Void, installOverrides: () -> Void) async throws {
+        try await ProfileOperationAdmission.shared.withSessionTransition {
+            do { try await restoreSession() }
+            catch {
+                // Failed local credential replacement must keep the required wallet restore pending.
+                if BackupRestoreFailurePolicy.isFatal(.metadata, error: error) {
+                    throw error
+                }
+                Logger.warn("Failed to restore pubky session backup state: \(error)", context: "BackupService")
+            }
+            try ProfileOperationAdmission.shared.checkCurrent()
+            installOverrides()
+        }
+    }
+
+    func performRestore(
         category: BackupCategory,
         retainedData: Data? = nil,
         restoreAction: (Data) async throws -> Void
@@ -1415,7 +1464,7 @@ class BackupService {
             // Only a total VSS failure surfaces otherwise, so without the error every category
             // fails silently. The benign "nothing backed up yet" case takes the branch above.
             Logger.warn("Restore error for: '\(category.rawValue)': \(error)", context: "BackupService")
-            if BackupRestoreFailurePolicy.isFatal(category) {
+            if BackupRestoreFailurePolicy.isFatal(category, error: error) {
                 throw error
             }
         }

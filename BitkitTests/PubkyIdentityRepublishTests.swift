@@ -238,10 +238,13 @@ final class PubkyIdentityRepublishTests: XCTestCase {
 
     func testCancellationDuringPublicationStopsAllAuthApprovalPaths() async {
         for kind in Approval.allCases {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let admission = ProfileOperationAdmission(store: ProfileRemovalStore(url: directory.appendingPathComponent("pending.json")))
             let started = expectation(description: "Publication started for \(kind)")
             let gate = AsyncStream<Void>.makeStream()
             let bootstrap = RepublishBootstrap(noPointer: .init())
-            let service = PaykitSdkService(bootstrapFactory: { _, _ in bootstrap })
+            let service = PaykitSdkService(profileAdmission: admission, bootstrapFactory: { _, _ in bootstrap })
             bootstrap.operation = { _ in
                 started.fulfill()
                 for await _ in gate.stream {}

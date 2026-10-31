@@ -2,10 +2,13 @@ import SwiftUI
 
 struct ContactImportSelectView: View {
     let contacts: [PubkyContact]
+    let importGeneration: UUID
+    let owner: PubkyProfileManager.RemovalPresentationOwner
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var contactsManager: ContactsManager
+    @EnvironmentObject var pubkyProfile: PubkyProfileManager
 
     @State private var selectedKeys: Set<String> = []
     @State private var isImporting = false
@@ -168,24 +171,27 @@ struct ContactImportSelectView: View {
     // MARK: - Actions
 
     private func importSelectedContacts() async {
-        guard !isImporting else { return }
-        let selected = contacts.filter { selectedKeys.contains($0.publicKey) }
-
-        guard !selected.isEmpty else {
-            contactsManager.clearPendingImport()
-            navigation.path = [.payContacts]
-            return
-        }
-
+        let admission = ProfileOperationAdmission.shared
+        guard !isImporting, contactsManager.importGeneration == importGeneration,
+              pubkyProfile.ownsRemovalPresentation(owner), let scope = try? admission.capture() else { return }
+        defer { admission.release(scope) }
         isImporting = true
         defer { isImporting = false }
-
+        let selected = contacts.filter { selectedKeys.contains($0.publicKey) }
         do {
-            try await contactsManager.importContacts(contacts: selected)
-            if contactsManager.completePendingImport() {
-                navigation.path = [.payContacts]
+            try await admission.withScope(scope) {
+                if !selected.isEmpty {
+                    try await contactsManager.importContacts(contacts: selected)
+                }
+                try admission.checkCurrent()
+                guard pubkyProfile.ownsRemovalPresentation(owner) else { return }
+                if contactsManager.completePendingImport(expectedGeneration: importGeneration) {
+                    navigation.path = [.payContacts]
+                }
             }
         } catch {
+            guard !Task.isCancelled, (try? admission.validate(scope)) != nil,
+                  contactsManager.importGeneration == importGeneration, pubkyProfile.ownsRemovalPresentation(owner) else { return }
             app.toast(type: .error, title: t("contacts__import_error"))
         }
     }
@@ -211,10 +217,11 @@ struct ContactImportSelectView: View {
     ]
 
     NavigationStack {
-        ContactImportSelectView(contacts: contacts)
+        ContactImportSelectView(contacts: contacts, importGeneration: UUID(), owner: PubkyProfileManager().removalPresentationOwner)
             .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
             .environmentObject(ContactsManager())
+            .environmentObject(PubkyProfileManager())
     }
     .preferredColorScheme(.dark)
 }

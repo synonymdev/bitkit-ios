@@ -135,7 +135,7 @@ final class SendSheetLifecycleTests: XCTestCase {
             counterparty: "pubkypayee", paymentRequestId: UUID().uuidString,
             localRole: .payer, state: .proposed, proposalStreamItemId: 1,
             proposalOutboundMessageId: nil, proposalOutboundStatus: nil,
-            proposalEventId: UUID().uuidString, proposalAppId: "bitkit",
+            proposalEventId: UUID().uuidString, proposalAppId: "bitkit", proposalRecordedAt: nil,
             payerAppId: nil, executionClaimAppId: nil,
             terms: PaymentRequestTerms(
                 amount: PaymentRequestAmount(value: "0.00001", asset: "btc"),
@@ -145,7 +145,7 @@ final class SendSheetLifecycleTests: XCTestCase {
                 paymentEndpoints: nil, requiredAppId: "bitkit", conversion: nil, paymentDeadline: nil,
                 metadata: PrivateJsonObject(text: "{}")
             ),
-            acceptedEventId: nil, acceptedOutboundStatus: nil, rejectedEventId: nil, rejectedOutboundStatus: nil,
+            acceptedEventId: nil, acceptedOutboundStatus: nil, acceptanceRecordedAt: nil, rejectedEventId: nil, rejectedOutboundStatus: nil,
             canceledEventId: nil, canceledOutboundStatus: nil, conversionQuotes: [], paymentProofs: [],
             lastStreamItemId: 1, lastOutboundMessageId: nil, lastOutboundStatus: nil,
             lastEventAt: nil, invalidReason: nil

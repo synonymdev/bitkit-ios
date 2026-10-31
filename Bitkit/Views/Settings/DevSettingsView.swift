@@ -106,9 +106,7 @@ struct DevSettingsView: View {
                                     if enabled {
                                         showPaykitWarning = true
                                     } else {
-                                        Task {
-                                            await disablePaykitUI()
-                                        }
+                                        startDisablingPaykitUI()
                                     }
                                 }
                             ),
@@ -241,23 +239,26 @@ struct DevSettingsView: View {
     }
 
     @MainActor
-    private func disablePaykitUI() async {
-        do {
-            guard try await ContactPaymentsService.disablePaykitUI(pubkyProfile: pubkyProfile, operations: .live(wallet: wallet)) else { return }
-        } catch is CancellationError {
-            return
-        } catch {
-            Logger.warn("Failed to remove Paykit endpoints after disabling Paykit UI: \(error)", context: "DevSettingsView")
-            app.toast(
-                type: .error,
-                title: "Paykit UI disabled",
-                description: error.localizedDescription,
-                accessibilityIdentifier: "PaykitUiDisabledToast"
-            )
-            return
+    private func startDisablingPaykitUI() {
+        let admission = ProfileOperationAdmission.shared
+        guard let scope = try? admission.capture() else { return }
+        let owner = pubkyProfile.removalPresentationOwner
+        Task {
+            defer { admission.release(scope) }
+            do { try await admission.withScope(scope) {
+                guard pubkyProfile.ownsRemovalPresentation(owner) else { throw PubkyServiceError.identityChanged }
+                guard try await ContactPaymentsService.disablePaykitUI(pubkyProfile: pubkyProfile, operations: .live(wallet: wallet)) else { return }
+                try admission.checkCurrent()
+                guard pubkyProfile.ownsRemovalPresentation(owner) else { return }
+                app.toast(type: .success, title: "Paykit UI disabled", accessibilityIdentifier: "PaykitUiDisabledToast")
+            } } catch {
+                guard !Task.isCancelled, (try? admission.validate(scope)) != nil,
+                      pubkyProfile.ownsRemovalPresentation(owner) else { return }
+                Logger.warn("Failed to remove Paykit endpoints after disabling Paykit UI: \(error)", context: "DevSettingsView")
+                app.toast(type: .error, title: "Paykit UI disabled", description: error.localizedDescription,
+                          accessibilityIdentifier: "PaykitUiDisabledToast")
+            }
         }
-
-        app.toast(type: .success, title: "Paykit UI disabled", accessibilityIdentifier: "PaykitUiDisabledToast")
     }
 }
 

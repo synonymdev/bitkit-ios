@@ -115,6 +115,66 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         }
     }
 
+    func testRevokedProfileReadsDoNotReenterSdkAfterContention() async throws {
+        var operations: [(PaykitSdkService) async throws -> Void] = [
+            { _ = try await $0.readPaymentRequests(counterparty: contactKey, expectedIdentity: nil) },
+        ]
+        for priority in [PaykitSdkOperationLock.Priority.ordered, .background] {
+            operations += [
+                { _ = try await $0.identityStatus(priority: priority) },
+                { _ = try await $0.linkedPeers(priority: priority) },
+                { _ = try await $0.privateMessageSchedulingSnapshot(priority: priority) },
+            ]
+        }
+        for kind in [ProfileOperationAdmission.Kind.removal, .walletWipe] {
+            for operation in operations {
+                let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+                defer { try? FileManager.default.removeItem(at: directory) }
+                let store = ProfileRemovalStore(url: directory.appendingPathComponent("pending.json"))
+                let admission = ProfileOperationAdmission(store: store)
+                let sdk = IdentitySwitchingSdk(noPointer: .init())
+                sdk.readErrors = [sharedStateBusy]
+                await sdk.readGate.close()
+                sdk.paymentRequestRead = { _, _ in
+                    await sdk.reads.record()
+                    await sdk.readGate.wait()
+                    throw sharedStateBusy
+                }
+                sdk.schedulingRead = {
+                    await sdk.reads.record()
+                    await sdk.readGate.wait()
+                    throw sharedStateBusy
+                }
+                let service = PaykitSdkService(profileAdmission: admission, sdkFactory: { sdk })
+                let read = Task { try await operation(service) }
+                try await sdk.reads.waitForEntries(count: 1)
+                let reservation = try admission.reserve(kind: kind, id: UUID(), expected: admission.snapshot())
+                defer { admission.release(reservation) }
+                let completedDrains = IdentityCheckCallLog()
+                let drain = Task {
+                    try await admission.drain(before: reservation)
+                    await completedDrains.record()
+                }
+                await Task.yield()
+                let prematureDrains = await completedDrains.count
+                XCTAssertEqual(prematureDrains, 0, "The original native tail still owns admission")
+                await sdk.readGate.open()
+                let result = await read.result
+                try await drain.value
+                XCTAssertFalse(read.isCancelled, "Revocation must be checked even without task cancellation")
+                XCTAssertThrowsError(try result.get()) { error in
+                    guard case ProfileRemovalStore.StoreError.changed = error else {
+                        return XCTFail("Expected revoked profile admission, got \(error)")
+                    }
+                }
+                let attempts = await sdk.reads.count
+                XCTAssertEqual(attempts, 1, "A revoked caller must not enter the SDK again")
+                XCTAssertTrue(sdk.writes.isEmpty)
+                XCTAssertNil(try store.pending())
+            }
+        }
+    }
+
     func testPaymentRequestReadRetainsItsRuntimeThroughContentionAndFiltersRecords() async throws {
         let sdk = IdentitySwitchingSdk(noPointer: .init())
         let freshSdk = IdentitySwitchingSdk(noPointer: .init())
@@ -245,9 +305,13 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
             let service = PaykitSdkService(sdkFactory: { sdk })
             let read = Task { try await service.readPaymentRequests(counterparty: contactKey, expectedIdentity: nil) }
             try await reads.waitForEntries(count: 1)
+            let admission = service.profileAdmission
+            let contactsScope = try admission.capture()
+            defer { admission.release(contactsScope) }
             read.cancel()
-            let contacts = Task { try await service.contactRecords() }
+            let contacts = Task { try await admission.withScope(contactsScope) { try await service.contactRecords() } }
             if holdNativeRead {
+                XCTAssertThrowsError(try admission.capture(), "Cancelled native work must drain before new admission")
                 try await Task.sleep(for: .milliseconds(50))
                 let overlappingReads = await sdk.contactRecordsStarted.count
                 XCTAssertEqual(overlappingReads, 0)
@@ -260,6 +324,9 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
             XCTAssertEqual(attempts, 1)
             let contactReads = await sdk.contactRecordsStarted.count
             XCTAssertEqual(contactReads, 1)
+            _ = try await service.contactRecords()
+            let freshReads = await sdk.contactRecordsStarted.count
+            XCTAssertEqual(freshReads, 2)
         }
     }
 
@@ -292,10 +359,9 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         try await wipe.value
         let rejectedResult = await read.result
         XCTAssertThrowsError(try rejectedResult.get()) { error in
-            guard case let PaykitError.Storage(code, _) = error else {
-                return XCTFail("Expected the wallet wipe error, got \(error)")
+            guard case ProfileRemovalStore.StoreError.changed = error else {
+                return XCTFail("Expected closed profile admission during wallet wipe, got \(error)")
             }
-            XCTAssertEqual(code, "wallet_wipe_in_progress")
         }
         XCTAssertEqual(rejectedReads, 0)
         let result = try await service.readPaymentRequests(counterparty: contactKey, expectedIdentity: nil)
@@ -358,17 +424,25 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         await sdk.observationGate.close()
         let observation = Task { try await service.observeState(priority: .background, expectedIdentity: identityA) }
         try await sdk.observationStarted.waitForEntries(count: 1)
+        let admission = service.profileAdmission
+        let contactsScope = try admission.capture()
+        defer { admission.release(contactsScope) }
         observation.cancel()
-        let contacts = Task { try await service.contactRecords() }
+        XCTAssertThrowsError(try admission.capture(), "New work is rejected until the cancelled native tail drains")
+        let contacts = Task { try await admission.withScope(contactsScope) { try await service.contactRecords() } }
         try await Task.sleep(for: .milliseconds(50))
         let overlappingReads = await sdk.contactRecordsStarted.count
         await sdk.observationGate.open()
         let result = await observation.result
-        _ = try await contacts.value
+        let contactsResult = await contacts.result
+        XCTAssertNoThrow(try contactsResult.get())
         XCTAssertEqual(overlappingReads, 0)
         XCTAssertThrowsError(try result.get()) { XCTAssertTrue($0 is CancellationError) }
         let completedReads = await sdk.contactRecordsStarted.count
         XCTAssertEqual(completedReads, 1)
+        _ = try await service.contactRecords()
+        let freshReads = await sdk.contactRecordsStarted.count
+        XCTAssertEqual(freshReads, 2)
     }
 
     func testContactSaveForAnIdentityThatIsNoLongerSignedInWritesNothing() async throws {
@@ -480,10 +554,19 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
             sdk.rawPaymentRequests = { [request] }
             let service = PaykitSdkService(sdkFactory: { sdk })
 
-            do {
-                try await service.deletePaykitProfile(expectedIdentity: identityA)
-                XCTFail("An active subscription must prevent profile deletion even without a contact")
-            } catch PubkyServiceError.activeSubscription {}
+            let operations: [() async throws -> Void] = [
+                { try await service.requireNoActiveSubscriptions(expectedIdentity: identityA) },
+                { _ = try await service.removeContactsForProfile(publicKeys: []) },
+                { _ = try await service.removeContactsForProfile(publicKeys: [identityB]) },
+                { try await service.deletePaykitProfile(expectedIdentity: identityA) },
+                { try await service.deleteConfirmedProfile(expectedIdentity: identityA, expectedRevision: "confirmed") },
+            ]
+            for operation in operations {
+                do {
+                    try await operation()
+                    XCTFail("An active subscription must prevent profile cleanup even without its contact")
+                } catch PubkyServiceError.activeSubscription {}
+            }
             XCTAssertTrue(sdk.writes.isEmpty)
         }
     }
@@ -506,6 +589,7 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
                 { _ = try await service.removeContactsForProfile(publicKeys: [identityB]) },
                 { _ = try await service.removeContactsForProfile(publicKeys: []) },
                 { try await service.deletePaykitProfile(expectedIdentity: identityA) },
+                { try await service.deleteConfirmedProfile(expectedIdentity: identityA, expectedRevision: "confirmed") },
             ]
             for operation in operations {
                 do {
@@ -516,7 +600,7 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
                     XCTAssertEqual(actualEnd, endsAt.flatMap(PaykitPaymentRequest.parseDate))
                 }
             }
-            XCTAssertEqual(sdk.writes, blocked ? [] : ["remove-contacts:1", "delete-profile:test"])
+            XCTAssertEqual(sdk.writes, blocked ? [] : ["remove-contacts:1", "delete-profile:test", "delete-profile:confirmed"])
         }
     }
 
@@ -564,6 +648,7 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
                 { try await service.requireNoActiveSubscriptions(expectedIdentity: identityA) },
                 { _ = try await service.removeContactsForProfile(publicKeys: [contactKey]) },
                 { try await service.deletePaykitProfile(expectedIdentity: identityA) },
+                { try await service.deleteConfirmedProfile(expectedIdentity: identityA, expectedRevision: "confirmed") },
             ]
             for operation in operations {
                 do {
@@ -909,12 +994,19 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         try await sdk.sharingStarted.waitForEntries(count: 1)
         isCurrent = false
         cleanup.cancel()
-        let signOut = Task { try await service.signOut() }
+        let signOut = Task {
+            try await ProfileOperationAdmission.shared.withSessionTransition {
+                try await service.signOut()
+            }
+        }
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertEqual(sdk.identity, identityA)
         XCTAssertTrue(sdk.writes.isEmpty)
         await sdk.sharingGate.open()
-        _ = await cleanup.result
+        do {
+            try await cleanup.value
+            XCTFail("Cancelled sharing must not return success")
+        } catch is CancellationError {}
         try await signOut.value
         XCTAssertEqual(sdk.writes, ["registry"])
         XCTAssertEqual(sdk.identitiesAtWrites, [identityA])
@@ -939,11 +1031,18 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
             try await sdk.sharingStarted.waitForEntries(count: 1)
             isCurrent = false
             write.cancel()
-            let signOut = Task { try await service.signOut() }
+            let signOut = Task {
+                try await ProfileOperationAdmission.shared.withSessionTransition {
+                    try await service.signOut()
+                }
+            }
             try await Task.sleep(for: .milliseconds(50))
             XCTAssertEqual(sdk.identity, identityA)
             await sdk.sharingGate.open()
-            _ = await write.result
+            do {
+                try await write.value
+                XCTFail("Cancelled sharing must not return success")
+            } catch is CancellationError {}
             try await signOut.value
             XCTAssertEqual(sdk.writes, [registry ? "registry" : "endpoints"])
             XCTAssertEqual(sdk.identitiesAtWrites, [identityA])
@@ -1015,7 +1114,7 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
             localRole: .payee, state: .proposed, proposalStreamItemId: 1,
             proposalOutboundMessageId: nil, proposalOutboundStatus: nil,
             proposalEventId: "71300000-0000-4000-8000-000000000002",
-            proposalAppId: appId, payerAppId: nil, executionClaimAppId: nil,
+            proposalAppId: appId, proposalRecordedAt: nil, payerAppId: nil, executionClaimAppId: nil,
             terms: PaymentRequestTerms(
                 amount: PaymentRequestAmount(value: "0.001", asset: "btc"),
                 paymentReference: PaymentReference(text: "invoice-123"),
@@ -1023,7 +1122,7 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
                 paymentEndpoints: nil, requiredAppId: "bitkit", conversion: nil, paymentDeadline: nil,
                 metadata: PrivateJsonObject(text: "{}")
             ),
-            acceptedEventId: nil, acceptedOutboundStatus: nil,
+            acceptedEventId: nil, acceptedOutboundStatus: nil, acceptanceRecordedAt: nil,
             rejectedEventId: nil, rejectedOutboundStatus: nil,
             canceledEventId: nil, canceledOutboundStatus: nil,
             conversionQuotes: [], paymentProofs: [], lastStreamItemId: 42,
@@ -1109,6 +1208,7 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
     private var pendingReadErrors: [PaykitError] = []
     private var linkedPeerState: LinkedPeerState? = .linked
     let reads = IdentityCheckCallLog()
+    let readGate = IdentityCheckGate()
     var paymentRequestRead: (String, String?) async throws -> PaymentRequestRead = { _, _ in
         PaymentRequestRead(identityStatus: nil, paymentRequests: [])
     }
@@ -1204,6 +1304,7 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
 
     override func identityStatus() async throws -> IdentityStatus? {
         await reads.record()
+        await readGate.wait()
         await identityStatusGate.wait()
         let error = lock.withLock { pendingReadErrors.isEmpty ? nil : pendingReadErrors.removeFirst() }
         if let error {
@@ -1217,6 +1318,7 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
         await linkedPeersStarted.record()
         await linkedPeersGate.wait()
         await reads.record()
+        await readGate.wait()
         let error = lock.withLock { pendingReadErrors.isEmpty ? nil : pendingReadErrors.removeFirst() }
         if let error {
             throw error

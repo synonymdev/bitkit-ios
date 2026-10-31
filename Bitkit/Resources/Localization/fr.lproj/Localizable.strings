@@ -1148,6 +1148,7 @@
 "profile__sign_out" = "Déconnecter";
 "profile__sign_out_title" = "Déconnecter le profil";
 "profile__sign_out_description" = "Votre profil Pubky sera déconnecté de Bitkit. Vous pouvez vous reconnecter à tout moment.";
+"profile__disconnect_local_description" = "Retirez l’accès de cet appareil et terminez le nettoyage local. Cela n’apporte aucune autre modification à votre profil, à vos abonnements ou à votre accès sur le serveur.";
 "profile__choice_title" = "Entrez dans le\n<accent>web de la liberté</accent>";
 "profile__choice_description" = "Créez un nouveau pubky et un profil dans Bitkit.";
 "profile__choice_description_ring" = "Utilisez un pubky existant de Pubky Ring.";
@@ -1184,13 +1185,13 @@
 "profile__delete_description" = "La suppression de votre profil le retire de Pubky. Vos contacts peuvent encore conserver les informations de profil et de paiement que vous leur avez partagées.";
 "profile__delete_confirm" = "Oui, supprimer";
 "profile__delete_error_title" = "Impossible de supprimer le profil";
-"profile__delete_error_description" = "Nous n'avons pas pu supprimer les données de votre profil. Réessayez ou déconnectez ce pubky de Bitkit.";
+"profile__delete_error_description" = "Le nettoyage du profil a été interrompu. Des modifications distantes ont peut-être déjà été appliquées. Déconnectez le profil pour terminer le nettoyage sur cet appareil sans relancer la suppression distante.";
 "profile__delete_label" = "Supprimer le profil";
 "profile__unlink_title" = "Dissocier le pubky ?";
 "profile__unlink_description" = "Cela supprimera vos données Paykit et dissociera ce pubky de Bitkit. Il restera disponible dans Pubky Ring.";
 "profile__unlink_confirm" = "Oui, dissocier";
 "profile__unlink_error_title" = "Impossible de dissocier le pubky";
-"profile__unlink_error_description" = "Nous n'avons pas pu supprimer vos données Paykit. Réessayez ou déconnectez ce pubky de Bitkit.";
+"profile__unlink_error_description" = "Le nettoyage du profil a été interrompu. Des modifications distantes ont peut-être déjà été appliquées. Déconnectez le profil pour terminer le nettoyage sur cet appareil sans relancer la suppression distante.";
 "profile__unlink_label" = "Dissocier le pubky";
 "profile__edit" = "Modifier";
 "profile__pay_contacts_nav_title" = "Payer des contacts";
@@ -1900,5 +1901,15 @@
 "subscriptions__allowance_limit_title" = "Limite atteinte";
 "subscriptions__allowance_limit_description" = "Une demande de {amount} de {name} dépasse votre allocation. Examinez-la pour payer.";
 "subscriptions__allowance_auto_paid" = "Payé automatiquement";
+
+"profile__recovery_title" = "Terminer le nettoyage local";
+
+"profile__recovery_pending" = "Le nettoyage du profil a été interrompu. Des modifications distantes ont peut-être déjà été appliquées. Déconnectez le profil pour terminer le nettoyage sur cet appareil sans relancer la suppression distante.";
+
+"profile__recovery_wipe" = "La réinitialisation du portefeuille a été interrompue. Terminez-la avant d’utiliser ce portefeuille.";
+
+"profile__recovery_unavailable" = "Bitkit ne peut pas lire l’état enregistré du nettoyage. Les modifications du profil sont suspendues. Réessayez de le lire.";
+
+"profile__recovery_working" = "Finalisation du nettoyage du profil…";
 
 "wallet__balance_updating" = "Mise à jour du solde…";

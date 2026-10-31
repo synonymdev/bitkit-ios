@@ -1148,6 +1148,7 @@
 "profile__sign_out" = "Disconnect";
 "profile__sign_out_title" = "Disconnect Profile";
 "profile__sign_out_description" = "This will disconnect your Pubky profile from Bitkit. You can reconnect at any time.";
+"profile__disconnect_local_description" = "Remove this device’s access and finish local cleanup. This makes no further changes to your profile, subscriptions or access on the server.";
 "profile__choice_title" = "Enter the\n<accent>freedom web</accent>";
 "profile__choice_description" = "Create a new pubky and profile in Bitkit.";
 "profile__choice_description_ring" = "Use an existing pubky from Pubky Ring.";
@@ -1186,13 +1187,13 @@
 "profile__delete_description" = "Deleting your profile removes it from Pubky. Contacts may still retain profile and payment information previously shared with them.";
 "profile__delete_confirm" = "Yes, Delete";
 "profile__delete_error_title" = "Unable to Delete Profile";
-"profile__delete_error_description" = "We couldn't delete your profile data. Retry, or disconnect this pubky from Bitkit.";
+"profile__delete_error_description" = "Profile cleanup was interrupted. Remote changes may already have been applied. Disconnect to finish cleanup on this device without retrying remote deletion.";
 "profile__delete_label" = "Delete Profile";
 "profile__unlink_title" = "Unlink pubky?";
 "profile__unlink_description" = "This will delete your Paykit data and unlink this pubky from Bitkit. It will still be available in Pubky Ring.";
 "profile__unlink_confirm" = "Yes, Unlink";
 "profile__unlink_error_title" = "Unable to Unlink Pubky";
-"profile__unlink_error_description" = "We couldn't delete your Paykit data. Retry, or disconnect this pubky from Bitkit.";
+"profile__unlink_error_description" = "Profile cleanup was interrupted. Remote changes may already have been applied. Disconnect to finish cleanup on this device without retrying remote deletion.";
 "profile__unlink_label" = "Unlink pubky";
 "profile__edit" = "Edit";
 "profile__pay_contacts_nav_title" = "Pay Contacts";
@@ -1978,5 +1979,12 @@
 "usdt__error_bridge_maximum" = "Amount is above this route’s maximum. Try a smaller amount.";
 "usdt__error_bridge_liquidity" = "This route cannot complete the transfer right now. Try another network or try again later.";
 "usdt__receive_copied" = "Address copied to clipboard.\nMake sure USDT is only sent on the selected network.";
+
+"profile__recovery_title" = "Finish local cleanup";
+"profile__recovery_pending" = "Profile cleanup was interrupted. Remote changes may already have been applied. Disconnect to finish cleanup on this device without retrying remote deletion.";
+"profile__recovery_wipe" = "Wallet reset was interrupted. Finish the reset before using this wallet.";
+"profile__recovery_unavailable" = "Bitkit cannot read the saved cleanup state. Profile changes are paused. Try reading it again.";
+
+"profile__recovery_working" = "Finishing profile cleanup…";
 
 "wallet__balance_updating" = "Updating balance…";

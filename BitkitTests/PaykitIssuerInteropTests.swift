@@ -99,7 +99,7 @@ final class PaykitIssuerInteropTests: XCTestCase {
             proposalOutboundMessageId: nil,
             proposalOutboundStatus: nil,
             proposalEventId: "71300000-0000-4000-8000-000000000002",
-            proposalAppId: "bitkit",
+            proposalAppId: "bitkit", proposalRecordedAt: nil,
             payerAppId: nil,
             executionClaimAppId: nil,
             terms: PaymentRequestTerms(
@@ -115,7 +115,7 @@ final class PaykitIssuerInteropTests: XCTestCase {
                 metadata: PrivateJsonObject(text: #"{"order":"713"}"#)
             ),
             acceptedEventId: nil,
-            acceptedOutboundStatus: nil,
+            acceptedOutboundStatus: nil, acceptanceRecordedAt: nil,
             rejectedEventId: nil,
             rejectedOutboundStatus: nil,
             canceledEventId: nil,
