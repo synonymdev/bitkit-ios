@@ -301,9 +301,9 @@ class PubkyProfileManager: ObservableObject {
         }
         guard !Task.isCancelled else { return }
         if let session = automaticPaykitSession {
-            if isInitialized, profile == nil {
+            if isInitialized, profile == nil, !isProfileSetupPending {
                 Task {
-                    guard automaticPaykitSession == session, isInitialized, profile == nil else { return }
+                    guard automaticPaykitSession == session, isInitialized, profile == nil, !isProfileSetupPending else { return }
                     await loadProfile()
                 }
             }
