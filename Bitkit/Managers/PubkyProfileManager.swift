@@ -136,6 +136,7 @@ class PubkyProfileManager: ObservableObject {
         var deleteProfile: @Sendable (String, String) async throws -> Void
         var withdrawPrivate: @MainActor () async throws -> Void
         var withdrawPublic: @MainActor () async throws -> Void
+        var syncApp: @MainActor () async throws -> Void
         var validateSubscriptions: @MainActor (String) async throws -> Void
         var captureRevocation: @MainActor (String) async throws -> ProfileSessionRevocation
         var completeLocal: @MainActor () async throws -> Void
@@ -148,10 +149,8 @@ class PubkyProfileManager: ObservableObject {
                 readProfile: { try await PaykitSdkService.shared.profileRemovalRecord(publicKey: $0) },
                 deleteProfile: { try await PaykitSdkService.shared.deleteConfirmedProfile(expectedIdentity: $0, expectedRevision: $1) },
                 withdrawPrivate: { try await removePrivatePaykitEndpoints(context: "Profile removal", deferAppSync: true) },
-                withdrawPublic: {
-                    try await PublicPaykitService.removePublishedEndpoints()
-                    try await PublicPaykitService.syncPaykitApp(privateSharingEnabled: false)
-                },
+                withdrawPublic: { try await PublicPaykitService.removePublishedEndpoints() },
+                syncApp: { try await PublicPaykitService.syncPaykitApp(privateSharingEnabled: false) },
                 validateSubscriptions: { try await PaykitSdkService.shared.requireNoActiveSubscriptions(expectedIdentity: $0) },
                 captureRevocation: { try await PaykitSdkService.shared.captureProfileRevocation(expectedOwner: $0) },
                 completeLocal: { try await clearLocalState() },
@@ -193,9 +192,15 @@ class PubkyProfileManager: ObservableObject {
         let lease: ProfileRemovalLease
         var privateAcknowledged = false
         var publicAcknowledged = false
+        var appAcknowledged = false
         var remoteProfileDeleted = false
         var logoutStarted = false
         var logoutAcknowledged = false
+
+        var canRetry: Bool {
+            privateAcknowledged && !logoutAcknowledged &&
+                (plan.confirmation.action == .disconnect || (logoutStarted && publicAcknowledged && appAcknowledged))
+        }
 
         init(plan: RemovalPlan, lease: ProfileRemovalLease) {
             self.plan = plan
@@ -1601,6 +1606,30 @@ class PubkyProfileManager: ObservableObject {
         try validateRemovalOwner(plan)
     }
 
+    private func validateRemoteRemovalOwner(_ live: LiveRemoval) async throws {
+        do {
+            try await validateRemoteRemovalOwner(live.plan)
+        } catch {
+            if !(error is CancellationError) {
+                live.lease.retire()
+            }
+            throw error
+        }
+    }
+
+    private func completePublicRemoval(_ live: LiveRemoval) async throws {
+        if !live.publicAcknowledged {
+            try await removalServices.withdrawPublic()
+            live.publicAcknowledged = true
+            try await validateRemoteRemovalOwner(live)
+        }
+        if !live.appAcknowledged {
+            try await removalServices.syncApp()
+            live.appAcknowledged = true
+            try await validateRemoteRemovalOwner(live)
+        }
+    }
+
     func finishPendingRemoval(id: UUID) async throws -> RemovalCompletion {
         guard !isDeletingProfile else { throw RemovalError.confirmationChanged }
         let pending = try removalStore.pending()
@@ -1614,8 +1643,7 @@ class PubkyProfileManager: ObservableObject {
 
     func canRetryRemoteRemoval(id: UUID) -> Bool {
         guard !Self.isProfileDeletionInFlight, !isDeletingProfile, let live = liveRemoval,
-              live.plan.confirmation.id == id, live.logoutStarted, !live.logoutAcknowledged,
-              live.privateAcknowledged, live.publicAcknowledged, live.lease.canResume,
+              live.plan.confirmation.id == id, live.canRetry, live.lease.canResume,
               (try? validateRemovalOwner(live.plan)) != nil,
               let pending = try? removalStore.pending(), pending.id == id, pending.scope == .profile else { return false }
         return true
@@ -1661,12 +1689,11 @@ class PubkyProfileManager: ObservableObject {
         let id = confirmation.removalID
         let scope = live.lease.scope
         var completion: RemovalCompletion?
-        var didValidateOriginalBinding = false
         do {
             try await withRemovalWork(lease: live.lease, id: id, live: live) {
-                try await validateRemoteRemovalOwner(live.plan)
-                didValidateOriginalBinding = true
-                // Endpoint, contact and profile cleanup already completed under this same live intent.
+                try await validateRemoteRemovalOwner(live)
+                try await completePublicRemoval(live)
+                live.logoutStarted = true
                 try await revocation.execute()
                 live.logoutAcknowledged = await revocation.acknowledged()
                 guard live.logoutAcknowledged else { throw RemovalError.confirmationChanged }
@@ -1674,7 +1701,7 @@ class PubkyProfileManager: ObservableObject {
                 completion = try await completeRemoval(scope: scope, plan: live.plan, remoteDeleted: live.remoteProfileDeleted)
             }
         } catch {
-            if (!didValidateOriginalBinding && !(error is CancellationError)) || live.logoutAcknowledged || Task.isCancelled ||
+            if live.logoutAcknowledged || Task.isCancelled ||
                 !live.lease.canResume || (try? validateRemovalOwner(live.plan)) == nil
             {
                 live.lease.retire()
@@ -1702,7 +1729,7 @@ class PubkyProfileManager: ObservableObject {
                 if let live, let revocation = live.plan.revocation {
                     // The native attempt and SDK-lock tail have returned, but our local tail still owns the drain holder.
                     live.logoutAcknowledged = await revocation.acknowledged()
-                    if live.logoutStarted {
+                    if live.logoutStarted || live.canRetry {
                         liveRemoval = live
                     }
                 }
@@ -1761,45 +1788,44 @@ class PubkyProfileManager: ObservableObject {
                 failedRemovalID = id
                 refreshRemovalRecovery()
                 var remoteDeleted = false
-                if let plan, plan.withdrawEndpoints {
-                    try await validateRemoteRemovalOwner(plan)
+                if let live, live.plan.withdrawEndpoints {
+                    let plan = live.plan
+                    try await validateRemoteRemovalOwner(live)
                     if let snapshot = plan.contactSnapshot {
                         try await plan.contacts?.validateRemovalSnapshot(snapshot)
                         if let owner = plan.owner {
                             try await removalServices.validateSubscriptions(owner)
                         }
                     }
-                    try await validateRemoteRemovalOwner(plan)
+                    try await validateRemoteRemovalOwner(live)
                     try await removalServices.withdrawPrivate()
-                    live?.privateAcknowledged = true
-                    try await validateRemoteRemovalOwner(plan)
-                    try await removalServices.withdrawPublic()
-                    live?.publicAcknowledged = true
-                    try await validateRemoteRemovalOwner(plan)
+                    live.privateAcknowledged = true
+                    try await validateRemoteRemovalOwner(live)
+                    try await completePublicRemoval(live)
                     if let snapshot = plan.contactSnapshot {
                         try await plan.contacts?.removeConfirmedContacts(snapshot)
                     }
-                    try await validateRemoteRemovalOwner(plan)
+                    try await validateRemoteRemovalOwner(live)
                     if plan.confirmation.action == .deleteProfile, let record = plan.profile, let owner = plan.owner {
                         try await removalAdmission
                             .withDetached { [removalServices] in try await removalServices.deleteProfile(owner, record.revision) }
                         remoteDeleted = true
-                        live?.remoteProfileDeleted = true
+                        live.remoteProfileDeleted = true
                     }
-                    try await validateRemoteRemovalOwner(plan)
+                    try await validateRemoteRemovalOwner(live)
                     guard let revocation = plan.revocation else { throw RemovalError.confirmationChanged }
-                    live?.logoutStarted = true
+                    live.logoutStarted = true
                     try await revocation.execute()
-                    live?.logoutAcknowledged = await revocation.acknowledged()
-                    guard live?.logoutAcknowledged == true else { throw RemovalError.confirmationChanged }
+                    live.logoutAcknowledged = await revocation.acknowledged()
+                    guard live.logoutAcknowledged else { throw RemovalError.confirmationChanged }
                     try validateRemovalOwner(plan)
                 }
                 try validateLocalIntent?()
                 completion = try await completeRemoval(scope: scope, plan: plan, remoteDeleted: remoteDeleted)
             }
         } catch {
-            if let live, live.logoutStarted {
-                retainIntent = !live.logoutAcknowledged && !Task.isCancelled && lease.canResume &&
+            if let live, live.canRetry {
+                retainIntent = !Task.isCancelled && lease.canResume &&
                     (try? validateRemovalOwner(live.plan)) != nil
             }
             if let completion {

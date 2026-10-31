@@ -1002,6 +1002,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
                             writes.append("public:remove"); throw TestError.operationFailed
                         }
                     },
+                    syncApp: { XCTFail("Failed endpoint withdrawal cannot update the registry") },
                     validateSubscriptions: { _ in XCTFail("Disconnect does not remove contacts") },
                     captureRevocation: { _ in
                         ProfileRevocationTestDouble(execute: { XCTFail("Failed endpoint withdrawal cannot revoke the session") }).handle()

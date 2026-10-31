@@ -22,6 +22,7 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
     private var profileReads = 0
     private var contactReads = 0
     private var contactRemovals = 0
+    private var appSyncCount = 0
     private var duringLocalCleanup: (() throws -> Void)?
     private var duringEligibility: (() async throws -> Void)?
     private var duringRevocation: (() async throws -> Void)?
@@ -50,6 +51,12 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
             deleteProfile: delete ?? { [self] key, revision in try await acknowledgeDelete(key: key, revision: revision) },
             withdrawPrivate: { [self] in try step("private"); try await duringPrivateWithdrawal?() },
             withdrawPublic: { [self] in try step("public") },
+            syncApp: { [self] in
+                appSyncCount += 1
+                if failStep == "app" {
+                    throw TestError.failure("app")
+                }
+            },
             validateSubscriptions: { [self] expectedOwner in
                 XCTAssertEqual(expectedOwner, owner)
                 eligibilityChecks += 1
@@ -115,6 +122,7 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
             XCTAssertEqual(contactRemovals, 0)
             XCTAssertEqual(watermark, 42)
             XCTAssertEqual(try store.pending()?.id, confirmation.id)
+            XCTAssertFalse(manager.canRetryRemoteRemoval(id: confirmation.id))
             _ = try await manager.finishPendingRemoval(id: confirmation.id)
             XCTAssertEqual(steps, ["private", "credentials"])
             XCTAssertEqual(withdrawals, 1)
@@ -786,15 +794,22 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
     }
 
     func testConfirmedRetryUsesOriginalGrantAndNeverRepeatsAcknowledgedCleanup() async throws {
-        for action in [PubkyProfileManager.RemovalAction.disconnect, .deleteProfile, .unlink] {
+        let cases: [(PubkyProfileManager.RemovalAction, String)] = [
+            (.disconnect, "public"), (.disconnect, "app"), (.disconnect, "revoke"),
+            (.deleteProfile, "revoke"), (.unlink, "revoke"),
+        ]
+        for (action, failure) in cases {
             steps = []
-            failStep = "revoke"
+            failStep = failure
+            appSyncCount = 0
+            duringRevocation = nil
             let manager = makeManager()
             let confirmation = try await manager.prepareRemoval(action: action, contacts: contacts())
-            do { _ = try await manager.confirmRemoval(confirmation); XCTFail("First logout response is unknown") }
-            catch TestError.failure("revoke") {}
+            do { _ = try await manager.confirmRemoval(confirmation); XCTFail("Remote removal should fail") }
+            catch let TestError.failure(step) { XCTAssertEqual(step, failure) }
             let counts = [profileReads, contactReads, contactRemovals, eligibilityChecks, deleted.count, revocations.count]
             let completed = steps
+            XCTAssertEqual(appSyncCount, failure == "public" ? 0 : 1)
             XCTAssertTrue(manager.canRetryRemoteRemoval(id: confirmation.id))
             XCTAssertFalse(manager.canRetryRemoteRemoval(id: UUID()))
             let cancelled = try await manager.prepareRemoteRemovalRetry(id: confirmation.id)
@@ -809,14 +824,43 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
             catch PubkyProfileManager.RemovalError.confirmationRequired {}
             XCTAssertEqual(steps, completed, "Preparing and cancelling a dialog cannot negotiate or execute logout")
             failStep = nil
+            duringRevocation = { [self] in
+                XCTAssertEqual(appSyncCount, failure == "app" ? 2 : 1, "Registry cleanup must finish before logout")
+            }
             let result = try await manager.confirmRemoteRemovalRetry(fresh)
             XCTAssertEqual(result.remoteProfileDeleted, action == .deleteProfile)
-            XCTAssertEqual(steps, completed + ["revoke", "credentials"])
+            XCTAssertEqual(steps, completed + (failure == "public" ? ["public"] : []) + ["revoke", "credentials"])
+            XCTAssertEqual(appSyncCount, failure == "app" ? 2 : 1)
             XCTAssertEqual([profileReads, contactReads, contactRemovals, eligibilityChecks, deleted.count, revocations.count], counts)
             XCTAssertNil(try store.pending())
             XCTAssertFalse(manager.canRetryRemoteRemoval(id: confirmation.id))
             do { _ = try await manager.confirmRemoteRemovalRetry(fresh); XCTFail("Confirmation was consumed twice") }
             catch PubkyProfileManager.RemovalError.confirmationRequired {}
+        }
+    }
+
+    func testPublicCleanupFailureCannotRetryDeletionOrUnlinkAsSignOut() async throws {
+        for action in [PubkyProfileManager.RemovalAction.deleteProfile, .unlink] {
+            for failure in ["public", "app"] {
+                steps = []
+                watermark = 42
+                failStep = failure
+                let manager = makeManager()
+                let confirmation = try await manager.prepareRemoval(action: action, contacts: contacts())
+                do { _ = try await manager.confirmRemoval(confirmation); XCTFail("Public cleanup should fail") }
+                catch let TestError.failure(step) { XCTAssertEqual(step, failure) }
+                XCTAssertEqual(steps, ["private", "public"])
+                XCTAssertTrue(deleted.isEmpty)
+                XCTAssertEqual(contactRemovals, 0)
+                XCTAssertEqual(watermark, 42)
+                XCTAssertEqual(try store.pending()?.id, confirmation.id)
+                XCTAssertFalse(manager.canRetryRemoteRemoval(id: confirmation.id))
+                do { _ = try await manager.prepareRemoteRemovalRetry(id: confirmation.id); XCTFail("Destructive cleanup was not completed") }
+                catch PubkyProfileManager.RemovalError.confirmationChanged {}
+                _ = try await manager.finishPendingRemoval(id: confirmation.id)
+                XCTAssertEqual(steps, ["private", "public", "credentials"])
+                XCTAssertNil(try store.pending())
+            }
         }
     }
 
@@ -882,24 +926,30 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
     }
 
     func testCapturedGrantRetirementDuringCleanupStopsFollowingStages() async throws {
-        let manager = makeManager()
-        let confirmation = try await manager.prepareRemoval(action: .deleteProfile, contacts: contacts())
-        duringPrivateWithdrawal = { [self] in try XCTUnwrap(revocations.last).handle().revoke() }
-        do { _ = try await manager.confirmRemoval(confirmation); XCTFail("Original grant admission ended during withdrawal") }
-        catch ProfileRemovalStore.StoreError.changed {}
-        XCTAssertEqual(steps, ["private"])
-        XCTAssertTrue(deleted.isEmpty)
-        XCTAssertEqual(contactRemovals, 0)
-        XCTAssertEqual(cleanupCount, 0)
-        XCTAssertFalse(manager.canRetryRemoteRemoval(id: confirmation.id))
+        for action in [PubkyProfileManager.RemovalAction.disconnect, .deleteProfile] {
+            steps = []
+            cleanupCount = 0
+            let manager = makeManager()
+            let confirmation = try await manager.prepareRemoval(action: action, contacts: contacts())
+            duringPrivateWithdrawal = { [self] in try XCTUnwrap(revocations.last).handle().revoke() }
+            do { _ = try await manager.confirmRemoval(confirmation); XCTFail("Original grant admission ended during withdrawal") }
+            catch ProfileRemovalStore.StoreError.changed {}
+            XCTAssertEqual(steps, ["private"])
+            XCTAssertTrue(deleted.isEmpty)
+            XCTAssertEqual(contactRemovals, 0)
+            XCTAssertEqual(cleanupCount, 0)
+            XCTAssertEqual(appSyncCount, 0)
+            XCTAssertFalse(manager.canRetryRemoteRemoval(id: confirmation.id))
+            _ = try await manager.finishPendingRemoval(id: confirmation.id)
+        }
     }
 
     func testUnknownRetryNeedsAnotherConfirmationAndDrainsBeforeOfferingIt() async throws {
-        failStep = "revoke"
+        failStep = "public"
         let manager = makeManager()
         let initial = try await manager.prepareRemoval(action: .disconnect)
-        do { _ = try await manager.confirmRemoval(initial); XCTFail("Expected unknown logout") }
-        catch TestError.failure("revoke") {}
+        do { _ = try await manager.confirmRemoval(initial); XCTFail("Expected public cleanup failure") }
+        catch TestError.failure("public") {}
         let retry = try await manager.prepareRemoteRemovalRetry(id: initial.id)
         failStep = nil
         let entered = expectation(description: "Retry attempt entered")
@@ -915,7 +965,7 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
         catch PubkyProfileManager.RemovalError.confirmationRequired {}
         do { _ = try await manager.finishPendingRemoval(id: initial.id); XCTFail("Local cleanup overtook the native tail") }
         catch PubkyProfileManager.RemovalError.confirmationChanged {}
-        XCTAssertEqual(steps, ["private", "public", "revoke", "revoke"])
+        XCTAssertEqual(steps, ["private", "public", "public", "revoke"])
         await barrier.finish()
         do { _ = try await operation.value; XCTFail("Expected unknown retry result") }
         catch TestError.failure("unknown") {}
@@ -926,7 +976,8 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
         XCTAssertNotEqual(next.id, retry.id)
         duringRevocation = nil
         _ = try await manager.confirmRemoteRemovalRetry(next)
-        XCTAssertEqual(steps, ["private", "public", "revoke", "revoke", "revoke", "credentials"])
+        XCTAssertEqual(steps, ["private", "public", "public", "revoke", "revoke", "credentials"])
+        XCTAssertEqual(appSyncCount, 1)
         XCTAssertEqual(revocations.count, 1)
     }
 

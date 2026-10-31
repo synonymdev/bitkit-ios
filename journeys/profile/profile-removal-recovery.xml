@@ -5,8 +5,11 @@
     Keep a redacted operation counter. Recreate the fixture separately for each failure checkpoint.
     Local Disconnect does not assert remote deletion. Conditional contact deletion across devices is
     not proved by local ownership, and requires the separate native CAS fixture.
-    Failures before logout offer local Disconnect only: contact reads can reconcile writes and must
-    not be used for remote Review. Separately lose the logout response after all preceding cleanup
+    Unknown private withdrawal and uncertain contact or profile cleanup offer local Disconnect only:
+    contact reads can reconcile writes and must not be used for remote Review. An ordinary Disconnect
+    with an acknowledged private withdrawal may retry unfinished public endpoint or app-registry cleanup
+    after fresh confirmation. Keep each public-stage acknowledgement and never repeat private withdrawal.
+    Separately lose the logout response after all preceding cleanup
     was acknowledged under a genuinely live grant. That case permits a freshly confirmed logout-only
     retry while its original process, owner and grant remain current. Record proof-request counts
     without retaining credentials or nonce values. An old bearer observer does not authorize retry.
@@ -37,5 +40,8 @@
     <action>Restart after unknown logout and verify the persistent record offers only local Disconnect, with no grant recapture or SDK restoration for retry</action>
     <action>Choose local Disconnect after unknown logout and verify it can retire the idle retry intent and finish; cancel during an active attempt and verify cleanup waits for its actual native tail</action>
     <action>In a fresh controlled fixture, change stored credentials or the adopted source after unknown logout, attempt Retry to observe the mismatch, then restore the original values; verify the original retry remains unavailable, no native logout is dispatched and local Disconnect still works</action>
+    <action>In a separate ordinary Disconnect fixture, acknowledge withdrawal for every original private target, then fail public endpoint cleanup; verify Retry appears only after all work returns and retains the original identity, grant and removal UUID</action>
+    <action>Cancel a fresh Retry confirmation and verify no mutation; restore the public service, confirm a new Retry and verify only unfinished public cleanup and original-grant logout run, without repeating private withdrawal</action>
+    <action>Repeat with public endpoints acknowledged and app-registry cleanup failing; verify fresh Retry skips both private withdrawal and the acknowledged public endpoints before finishing the registry and original logout</action>
   </actions>
 </journey>

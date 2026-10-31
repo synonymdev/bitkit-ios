@@ -134,6 +134,7 @@
                 deleteProfile: { _, _ in try await local.rejectRemote() },
                 withdrawPrivate: { try local.rejectRemote() },
                 withdrawPublic: { try local.rejectRemote() },
+                syncApp: { try local.rejectRemote() },
                 validateSubscriptions: { _ in try local.rejectRemote() },
                 captureRevocation: { _ in try local.rejectRemote(); throw PubkyServiceError.sessionNotActive },
                 completeLocal: { try await local.complete() },
