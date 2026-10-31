@@ -44,11 +44,12 @@ enum PaykitAllowanceError: LocalizedError {
     case contactNotLinked
     case unavailable
     case paymentListPending
+    case ledgerBehind
 
     var errorDescription: String? {
         switch self {
         case .contactNotLinked: t("subscriptions__allowance_error_not_linked")
-        case .unavailable, .paymentListPending: t("subscriptions__allowance_error_unavailable")
+        case .unavailable, .paymentListPending, .ledgerBehind: t("subscriptions__allowance_error_unavailable")
         }
     }
 }
@@ -186,6 +187,7 @@ final class PaykitAllowanceManager {
             allowances = records
                 .filter { $0.historyStatus == .consistent || $0.historyStatus == .unresolvedReferences }
                 .compactMap(PaykitAllowance.init(record:))
+            await executor.rememberEndedAllowances(identity: identity, allowances: allowances)
         } catch {
             Logger.warn("Failed to list Paykit allowances: \(error)", context: "PaykitAllowance")
         }
@@ -279,6 +281,8 @@ final class PaykitAllowanceManager {
     func end(_ entry: PaykitAllowanceEntry) async throws {
         isWorking = true
         defer { isWorking = false }
+        guard let identity else { throw PaykitAllowanceError.unavailable }
+        try await executor.rememberEnding(identity: identity, allowances: entry.allowances.filter(\.canEnd))
         var endedAny = false
         for allowance in entry.allowances where allowance.canEnd {
             _ = try await sdk.endAllowance(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId)
