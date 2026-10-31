@@ -4,24 +4,34 @@ import LDKNode
 @MainActor
 final class NodeEventListener {
     private var task: Task<Void, Never>?
-    private var isTransitioning = false
+    private var isStarting = false
+    private var isStopping = false
+    private var startWaiter: CheckedContinuation<Void, Never>?
 
     private enum LifecycleError: Error {
         case transitionInProgress
     }
 
     func start(node: Node, onEvent: @escaping (Event) async -> Void) async throws {
-        guard !isTransitioning, task == nil else { throw LifecycleError.transitionInProgress }
-        isTransitioning = true
-        defer { isTransitioning = false }
+        guard !isStarting, !isStopping, task == nil else { throw LifecycleError.transitionInProgress }
+        isStarting = true
+        defer {
+            isStarting = false
+            let waiter = startWaiter
+            startWaiter = nil
+            waiter?.resume()
+        }
         try await ServiceQueue.background(.ldk) { try node.start() }
         listen(node: node, onEvent: onEvent)
     }
 
     func stop(node: Node, onEvent: @escaping (Event) async -> Void) async throws {
-        guard !isTransitioning else { throw LifecycleError.transitionInProgress }
-        isTransitioning = true
-        defer { isTransitioning = false }
+        guard !isStopping else { throw LifecycleError.transitionInProgress }
+        isStopping = true
+        defer { isStopping = false }
+        if isStarting {
+            await withCheckedContinuation { startWaiter = $0 }
+        }
         let previous = task
         previous?.cancel()
         await previous?.value

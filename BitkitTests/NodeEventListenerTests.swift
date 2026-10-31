@@ -65,8 +65,17 @@ final class NodeEventListenerTests: XCTestCase {
         await fulfillment(of: [stopping], timeout: 2)
         XCTAssertEqual(node.stopCount, 0)
         XCTAssertFalse(delivered)
+        let concurrentStopRejected = expectation(description: "Concurrent stop remains rejected")
+        let concurrentStop = Task {
+            do {
+                try await listener.stop(node: node) { _ in XCTFail("Unexpected concurrent delivery") }
+                XCTFail("A concurrent stop must not replace the draining operation")
+            } catch { concurrentStopRejected.fulfill() }
+        }
+        await fulfillment(of: [concurrentStopRejected], timeout: 2)
         release?.resume()
         try await stop.value
+        await concurrentStop.value
         XCTAssertTrue(delivered)
         XCTAssertEqual(node.stopCount, 1)
         XCTAssertEqual(node.handledCount, 1)
@@ -92,6 +101,117 @@ final class NodeEventListenerTests: XCTestCase {
         XCTAssertEqual(node.startCount, 1)
         XCTAssertEqual(node.handledCount, 1)
     }
+
+    func testStopDuringNativeStartDrainsStartupEvenWhenCancelled() async throws {
+        for cancelStop in [false, true] {
+            let listener = NodeEventListener()
+            let node = EventNode(noPointer: .init())
+            let gate = DispatchSemaphore(value: 0)
+            defer { gate.signal() }
+            let entered = expectation(description: "Native startup entered")
+            node.onStart = {
+                entered.fulfill()
+                XCTAssertEqual(gate.wait(timeout: .now() + 10), .success)
+            }
+            let starting = Task { try await listener.start(node: node) { _ in XCTFail("No event queued") } }
+            await fulfillment(of: [entered], timeout: 2)
+
+            let requested = expectation(description: "Stop requested during startup")
+            let stopping = Task {
+                requested.fulfill()
+                do {
+                    try await listener.stop(node: node) { _ in XCTFail("No event queued") }
+                    return true
+                } catch { return false }
+            }
+            await fulfillment(of: [requested], timeout: 2)
+            if cancelStop {
+                stopping.cancel()
+            }
+            XCTAssertEqual(node.stopCount, 0)
+            gate.signal()
+            try await starting.value
+            let stopped = await stopping.value
+            XCTAssertTrue(stopped, "Stop must drain the original start, including cancellation")
+            XCTAssertEqual(node.startCount, 1)
+            XCTAssertEqual(node.stopCount, 1)
+            if !stopped {
+                try await listener.stop(node: node) { _ in XCTFail("Unexpected cleanup event") }
+            }
+        }
+    }
+
+    func testStopWaitingForFailedStartCompletesWithoutAnEventConsumer() async {
+        let listener = NodeEventListener()
+        let node = EventNode(noPointer: .init())
+        node.startError = TestError.failed
+        let gate = DispatchSemaphore(value: 0)
+        defer { gate.signal() }
+        let entered = expectation(description: "Failing startup entered")
+        node.onStart = {
+            entered.fulfill()
+            XCTAssertEqual(gate.wait(timeout: .now() + 10), .success)
+        }
+        let starting = Task {
+            do {
+                try await listener.start(node: node) { _ in XCTFail("Failed startup cannot deliver events") }
+                XCTFail("Expected startup failure")
+            } catch {}
+        }
+        await fulfillment(of: [entered], timeout: 2)
+        let requested = expectation(description: "Stop requested before startup failure")
+        let stopping = Task {
+            requested.fulfill()
+            do {
+                try await listener.stop(node: node) { _ in XCTFail("Failed startup cannot resume events") }
+                return true
+            } catch { return false }
+        }
+        await fulfillment(of: [requested], timeout: 2)
+        gate.signal()
+        await starting.value
+        let stopped = await stopping.value
+        XCTAssertTrue(stopped, "An unsuccessful start must release its waiting stop")
+        XCTAssertEqual(node.startCount, 0)
+        XCTAssertEqual(node.pollCount, 0)
+    }
+
+    func testStopAlreadyWaitingForStartupRejectsAnotherStop() async throws {
+        let listener = NodeEventListener()
+        let node = EventNode(noPointer: .init())
+        let gate = DispatchSemaphore(value: 0)
+        defer { gate.signal() }
+        let entered = expectation(description: "Startup held before completion")
+        node.onStart = {
+            entered.fulfill()
+            XCTAssertEqual(gate.wait(timeout: .now() + 10), .success)
+        }
+        let starting = Task { try await listener.start(node: node) { _ in XCTFail("No event queued") } }
+        await fulfillment(of: [entered], timeout: 2)
+        let requested = expectation(description: "First stop owns pending cleanup")
+        let firstStop = Task {
+            requested.fulfill()
+            do {
+                try await listener.stop(node: node) { _ in XCTFail("No event queued") }
+                return true
+            } catch { return false }
+        }
+        await fulfillment(of: [requested], timeout: 2)
+        let rejected = expectation(description: "Second stop rejected before startup completes")
+        let secondStop = Task {
+            do {
+                try await listener.stop(node: node) { _ in XCTFail("Unexpected replacement delivery") }
+                XCTFail("The first waiting stop must retain lifecycle ownership")
+            } catch { rejected.fulfill() }
+        }
+        await fulfillment(of: [rejected], timeout: 2)
+        gate.signal()
+        try await starting.value
+        let firstStopped = await firstStop.value
+        await secondStop.value
+        XCTAssertTrue(firstStopped)
+        XCTAssertEqual(node.stopCount, 1)
+    }
 }
 
 private enum TestError: Error { case failed }
@@ -99,6 +219,7 @@ private enum TestError: Error { case failed }
 private final class EventNode: Node {
     var startError: Error?
     var stopError: Error?
+    var onStart: (() -> Void)?
     var onEmpty: (() -> Void)?
     var onStop: (() -> Void)?
     private let lock = NSLock()
@@ -115,6 +236,7 @@ private final class EventNode: Node {
     }
 
     override func start() throws {
+        onStart?()
         if let startError {
             throw startError
         }
