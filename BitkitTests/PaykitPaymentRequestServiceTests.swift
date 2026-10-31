@@ -328,6 +328,49 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertFalse(SwipeBackState.allowSwipeBack)
     }
 
+    func testUsdtPaymentReviewDisplaysExactAmountsBeforeAuthorization() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let view = UsdtSendView(onDetails: { _ in }, authenticatePayment: {
+            XCTFail("Displaying review must not authorize payment")
+            return false
+        }, sendPayment: { _ in XCTFail("Displaying review must not send payment") })
+        let currency = CurrencyViewModel(currencyService: OfflineCurrencyService())
+        for (amount, expected): (UInt64, String) in [(123_456, "0.123456"), (1, "0.000001")] {
+            let quote = UsdtQuote(bridgeProvider: nil, id: "exact-review", recipient: initialUsdtQuote.recipient,
+                                  destination: .ethereum, amount: amount, receivedAmount: amount, maximumFee: 1,
+                                  expiresAt: UInt64(Date().timeIntervalSince1970) + 60)
+            for details in [false, true] {
+                let content = Group {
+                    if details {
+                        view.quoteDetails(quote)
+                    } else {
+                        view.confirmation(quote)
+                    }
+                }
+                .padding(16)
+                .environmentObject(currency)
+                .environmentObject(SettingsViewModel.shared)
+                .preferredColorScheme(.dark)
+                let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+                window.rootViewController = UIHostingController(rootView: content)
+                window.makeKeyAndVisible()
+                defer { window.isHidden = true; window.rootViewController = nil }
+                window.rootViewController?.view.layoutIfNeeded()
+                try await Task.sleep(for: .milliseconds(200))
+                let labels = try initialPaymentSnapshot(window, name: "exact-review-\(amount)-\(details)")
+                XCTAssertTrue(labels.contains { $0.contains(expected) }, "\(labels)")
+                if details {
+                    XCTAssertEqual(labels.joined(separator: " ").components(separatedBy: expected).count - 1,
+                                   amount == 1 ? 3 : 2, "Payment, recipient amount and matching fee: \(labels)")
+                    XCTAssertTrue(labels.contains { $0.contains("0.000001") }, "Fee: \(labels)")
+                    let total = amount == 1 ? "0.000002" : "0.123457"
+                    XCTAssertTrue(labels.contains { $0.contains(total) }, "Maximum total: \(labels)")
+                }
+            }
+        }
+    }
+
     private func initialPaymentNavigation(_ window: UIWindow) -> UINavigationController? {
         var controllers = window.rootViewController.map { [$0] } ?? []
         while !controllers.isEmpty {
@@ -5475,11 +5518,127 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
     }
 
-    func testBelowMinimumUnifiedRequestClosesSheetAfterSyncFallback() async throws {
+    func testInitialQuotedBitcoinMinimumRoutesBeforeSheetSetup() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let settings = SettingsViewModel.shared
+        settings.usdtPreference = .disabled
+        let address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"
+        let onchain = PublicPaykitService.onchainMethodId(for: address)
+        for rail in ["savings", "spendingUnavailable", "lnurl", "lnurlWithSavings"] {
+            let usesLnurl = rail == "lnurl" || rail == "lnurlWithSavings"
+            let offersSavings = rail != "lnurl"
+            let offersLightning = rail != "savings"
+            let lightning: PublicPaykitService.MethodId = usesLnurl ? .bitcoinLightningLnurl : .bitcoinLightningBolt11
+            let minimum = usesLnurl ? 1000 : 547
+            for sats in [minimum - 1, minimum] {
+                let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(
+                    amount: "1", asset: "usd",
+                    conversion: .fixed(rates: [ConversionRate(asset: "btc", value: String(format: "0.%08d", sats))]),
+                    endpoints: [offersSavings ? onchain.rawValue : lightning.rawValue] +
+                        (offersSavings && offersLightning ? [lightning.rawValue] : [])
+                )])
+                let manager = paymentRequestManager(sdk: sdk)
+                await manager.refresh()
+                defer { manager.clear() }
+                let request = try XCTUnwrap(manager.requestsForPresentation().first)
+                let sheets = SheetViewModel()
+                let app = AppViewModel(
+                    sheetViewModel: sheets, navigationViewModel: NavigationViewModel(),
+                    scanPaymentOperations: ScanPaymentOperations(
+                        state: { ScanPaymentState(isNodeRunning: true, spendableOnchainBalanceSats: 100_000,
+                                                  totalLightningBalanceSats: 100_000, hasChannels: false, hasUsableChannels: false) },
+                        canSendLightning: { _ in rail != "spendingUnavailable" },
+                        decodeInvoice: { value in
+                            if value.contains(address) {
+                                return .onChain(invoice: OnChainInvoice(address: address, amountSatoshis: 0, label: nil, message: nil, params: nil))
+                            }
+                            if usesLnurl {
+                                return .lnurlPay(data: LnurlPayData(
+                                    uri: "https://example.com/pay", callback: "https://example.com/callback",
+                                    minSendable: 1_000_000, maxSendable: 100_000_000,
+                                    metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
+                                ))
+                            }
+                            return .lightning(invoice: LightningInvoice(
+                                bolt11: "test-invoice", paymentHash: Data(), amountSatoshis: 0,
+                                timestampSeconds: 0, expirySeconds: 0, isExpired: false,
+                                description: nil, networkType: .regtest, payeeNodeId: nil
+                            ))
+                        }
+                    )
+                )
+                var endpoints: [PublicPaykitService.Endpoint] = []
+                if offersSavings {
+                    endpoints.append(.init(methodId: onchain, value: address, min: nil, max: nil, rawPayload: ""))
+                }
+                if offersLightning {
+                    endpoints.append(.init(methodId: lightning, value: "https://example.com/pay", min: nil, max: nil, rawPayload: ""))
+                }
+                let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request, endpoints: endpoints)
+                XCTAssertTrue(app.claimContactPaymentContext(context))
+                try await app.handleScannedData(address, claimedContactPaymentContext: context)
+                let expectedRoute: SendRoute = sats < minimum || rail == "lnurlWithSavings" ? .amount : usesLnurl ? .lnurlPayConfirm : .confirm
+                XCTAssertEqual(PaymentNavigationHelper.contactPaymentRoute(
+                    app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()), settings: settings
+                ), expectedRoute, "\(rail) \(sats)")
+                if sats < minimum {
+                    XCTAssertNil(app.paykitPaymentTerms, "\(rail) \(sats)")
+                    XCTAssertNil(app.paykitReviewedAmount, "\(rail) \(sats)")
+                }
+                guard expectedRoute == .amount else { continue }
+
+                PaymentNavigationHelper.openPaymentSheet(
+                    app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()), settings: settings, sheetViewModel: sheets
+                )
+                let config = try XCTUnwrap(sheets.sendSheetItem)
+                let wallet = PaymentRequestSendWallet()
+                wallet.channelCount = 0
+                wallet.channels = []
+                wallet.nodeLifecycleState = .stopped
+                let view = SendSheet(config: config)
+                    .environment(manager)
+                    .environment(UsdtWalletManager(rpcUrl: nil, bundlerUrl: nil, loadCredentials: { throw CancellationError() }))
+                    .environment(HwWalletManager()).environment(TrezorManager())
+                    .environmentObject(app).environmentObject(wallet as WalletViewModel).environmentObject(sheets).environmentObject(NetworkMonitor())
+                    .environmentObject(settings).environmentObject(TagManager()).environmentObject(PubkyProfileManager())
+                    .environmentObject(ActivityListViewModel()).environmentObject(ContactsManager())
+                    .environmentObject(CurrencyViewModel(currencyService: OfflineCurrencyService())).environmentObject(FeeEstimatesManager())
+                let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+                window.rootViewController = UIHostingController(rootView: view)
+                window.makeKeyAndVisible()
+                defer {
+                    window.isHidden = true
+                    window.rootViewController = nil
+                    sheets.hideSheet(reason: "Test cleanup")
+                    ToastWindowManager.shared.hideToast()
+                }
+                let setupDeadline = ContinuousClock.now + .seconds(3)
+                while !config.state.didStartSetup || config.state.isSetupPending, ContinuousClock.now < setupDeadline {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                XCTAssertTrue(config.state.didStartSetup)
+                XCTAssertFalse(config.state.isSetupPending)
+                XCTAssertGreaterThan(wallet.feeRateLoadCount, 0)
+                wallet.nodeLifecycleState = .running
+                let deadline = ContinuousClock.now + .seconds(3)
+                while !config.state.hasValidatedAfterSync, sheets.activeSheetConfiguration != nil, ContinuousClock.now < deadline {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                XCTAssertEqual(config.state.rootRoute, .amount, "\(rail) \(sats)")
+                XCTAssertTrue(config.state.navigationPath.isEmpty)
+                XCTAssertTrue(config.state.hasValidatedAfterSync)
+                XCTAssertNotNil(sheets.activeSheetConfiguration, "Initial minimum fallback must survive sheet setup")
+            }
+        }
+    }
+
+    func testBelowMinimumQuotedRequestWaitsForSyncBeforeFallback() async throws {
         snapshotAppDefaults("channelCount")
         let onchainMethod = PublicPaykitService.MethodId.onchainMethodId(network: Env.network, scriptType: .p2wpkh)
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(
-            amount: "0.000001", endpoints: [onchainMethod.rawValue, PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue]
+            amount: "0.10", asset: "usd", conversion: .fixed(rates: [ConversionRate(asset: "btc", value: "0.00001")]),
+            endpoints: [onchainMethod.rawValue, PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue]
         )])
         let manager = paymentRequestManager(sdk: sdk)
         await manager.refresh()
@@ -5503,6 +5662,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             amountSatoshis: 0, timestampSeconds: 0, expirySeconds: 0, isExpired: false,
             description: nil, networkType: .regtest, payeeNodeId: nil
         )
+        app.paykitPaymentTerms = try request.payment(using: .bitcoinLightningBolt11)
+        app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
         sheets.showSheet(.send, data: SendConfig(view: .confirm, onDismiss: {
             manager.dismissPreparingRequest(request)
             app.resetSendState()
@@ -5531,7 +5692,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             window.rootViewController = nil
             ToastWindowManager.shared.hideToast()
         }
-        try await waitUntil { wallet.sendAmountSats == request.amount.atomic }
+        try await waitUntil { wallet.sendAmountSats == app.paykitPaymentTerms?.amount.atomic }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertNotNil(sheets.activeSheetConfiguration, "Confirmation must wait for wallet synchronization")
 
         wallet.nodeLifecycleState = .running
         try await waitUntil { sheets.activeSheetConfiguration == nil }
