@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import LDKNode
+import os
 import Paykit
 
 protocol PaykitAllowanceSdkHandling: Sendable {
@@ -21,10 +22,12 @@ protocol PaykitAllowanceSdkHandling: Sendable {
     func allowanceAccountingState() async throws -> Paykit.AllowanceAccountingState?
     func reconcileAllowanceAccounting(_ reconciliation: Paykit.AllowanceAccountingReconciliation) async throws -> Paykit.AllowanceAccountingState
     func evaluateAllowanceCandidates(scope: Paykit.PaymentRequestScope, trustedTime: String) async throws -> [Paykit.AllowanceCandidate]
+    /// `admit` runs under the SDK lock right before the acceptance, after any wait for the lock, and may refuse it.
     func acceptPaymentRequestAutomatically(
         scope: Paykit.PaymentRequestScope,
         selection: Paykit.AllowanceSelectionInput,
-        checks: Paykit.PaymentExecutionChecks
+        checks: Paykit.PaymentExecutionChecks,
+        admit: @Sendable () async throws -> Void
     ) async throws -> Paykit.AllowanceAssociationRecord
     func reserveAutomaticPayment(
         occurrence: Paykit.PaymentOccurrence,
@@ -441,8 +444,29 @@ actor PaykitAllowanceExecutor {
         self.now = now
     }
 
+    /// False while allowances are off: no new automatic payment starts, but sent ones still settle. Outside the actor, so
+    /// turning allowances off takes effect before the caller returns, ahead of any acceptance queued on the actor.
+    private nonisolated let isAdmitting = OSAllocatedUnfairLock(initialState: true)
+
     func activate(identity: String?) {
         activeIdentity = identity
+        isAdmitting.withLock { $0 = true }
+    }
+
+    nonisolated func stopAdmitting() {
+        isAdmitting.withLock { $0 = false }
+    }
+
+    /// Stops new automatic payments for `identity` and settles the ones already sent, or left open by a kill.
+    func pause(identity: String?) async {
+        stopAdmitting()
+        guard let identity, identity != activeIdentity else { return }
+        activeIdentity = identity
+        await recover(identity: identity)
+    }
+
+    private func admits(_ activation: String?) -> Bool {
+        isAdmitting.withLock { $0 } && activeIdentity == activation
     }
 
     // MARK: Local state
@@ -838,10 +862,11 @@ actor PaykitAllowanceExecutor {
         inFlightRequestIds.insert(request.id)
         defer { inFlightRequestIds.remove(request.id) }
 
+        let activation = activeIdentity
         do {
             try await ensureReconciled(identity: identity)
             // An unstructured task survives a cancelled caller: stopping after the acceptance would leave the request unpaid.
-            let payment = Task { try await admitAndPay(request, allowances: allowances, identity: identity) }
+            let payment = Task { try await admitAndPay(request, allowances: allowances, identity: identity, activation: activation) }
             return try await payment.value
         } catch {
             Logger.warn("Automatic allowance payment stayed manual: \(error)", context: "PaykitAllowance")
@@ -852,7 +877,8 @@ actor PaykitAllowanceExecutor {
     private func admitAndPay(
         _ request: PaykitPaymentRequest,
         allowances: [PaykitAllowance],
-        identity: String
+        identity: String,
+        activation: String?
     ) async throws -> PaykitAllowanceAutoPayResult {
         let scope = Paykit.PaymentRequestScope(
             counterparty: request.counterparty,
@@ -920,6 +946,11 @@ actor PaykitAllowanceExecutor {
             return .manual
         }
 
+        guard admits(activation) else {
+            Logger.info("Allowances turned off before acceptance; the request stays on the manual flow", context: "PaykitAllowance")
+            return .deferred
+        }
+
         let endpointIdentifier = payment.endpoint.methodId.rawValue
         let paymentAppId = try payment.context.paymentAppId(for: endpointIdentifier)
         // The SDK requires this app to hold the shared execution claim before it queues an automatic Acceptance.
@@ -930,7 +961,11 @@ actor PaykitAllowanceExecutor {
             association = try await sdk.acceptPaymentRequestAutomatically(
                 scope: scope,
                 selection: Paykit.AllowanceSelectionInput(allowanceId: candidate.allowanceId, expectedRevision: nil, trustedTime: selectionTime),
-                checks: checks(request, endpointIdentifier: endpointIdentifier, trustedTime: selectionTime)
+                checks: checks(request, endpointIdentifier: endpointIdentifier, trustedTime: selectionTime),
+                // The claim, the intent and the acceptance can wait, so check again under the SDK lock.
+                admit: { [self] in
+                    guard await admits(activation) else { throw PaykitAllowanceError.unavailable }
+                }
             )
         } catch {
             // An interrupted response may follow a committed acceptance, so only a definite refusal drops the intent.
