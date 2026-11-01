@@ -93,13 +93,29 @@ struct SendConfirmationView: View {
 
     var accentColor: Color {
         if let preparingRequest {
-            return Set(preparingRequest.acceptedPaymentEndpointIdentifiers) == [PublicPaykitService.MethodId.usdtArbitrum.rawValue]
-                ? .usdtAccent : .textSecondary
+            return Self.preparingAccentColor(preparingRequest)
         }
         if hwSend.isActive {
             return .brandAccent
         }
         return app.selectedWalletToPayFrom == .lightning ? .purpleAccent : .brandAccent
+    }
+
+    private static func preparingAccentColor(_ request: PaykitPaymentRequest) -> Color {
+        let methods = request.acceptedPaymentEndpointIdentifiers.compactMap(PublicPaykitService.MethodId.init(rawValue:))
+        if methods.isEmpty {
+            return .textSecondary
+        }
+        if methods.allSatisfy({ $0 == .usdtArbitrum }) {
+            return .usdtAccent
+        }
+        if methods.allSatisfy({ $0 == .bitcoinLightningBolt11 || $0 == .bitcoinLightningLnurl }) {
+            return .purpleAccent
+        }
+        if methods.allSatisfy({ $0.onchainNetwork != nil }) {
+            return .brandAccent
+        }
+        return .textSecondary
     }
 
     private var fundingSources: [SendFundingSource] {
@@ -355,7 +371,7 @@ struct SendConfirmationView: View {
                 CustomButton(
                     title: showDetails ? t("common__hide_details") : t("common__show_details"),
                     size: .small,
-                    icon: Image(showDetails ? "eye-slash" : app.selectedWalletToPayFrom == .lightning ? "bolt-hollow" : "speed-normal")
+                    icon: Image(showDetails ? "eye-slash" : accentColor == .purpleAccent ? "bolt-hollow" : "speed-normal")
                         .resizable()
                         .frame(width: 16, height: 16)
                         .foregroundColor(accentColor),
@@ -2040,6 +2056,9 @@ struct SendConfirmationView: View {
             guard isCurrentSend(), !(error is CancellationError) else { return }
             Logger.error("Failed to calculate actual fee: \(error)")
             transactionFee = 0
+            if app.contactPaymentContext?.incomingPaymentRequest != nil {
+                returnToAmountReview()
+            }
             app.toast(type: .error, title: t("other__try_again"))
         }
     }
