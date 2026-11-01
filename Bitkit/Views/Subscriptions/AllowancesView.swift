@@ -6,6 +6,8 @@ struct AllowancesTab: View {
     @Environment(PaykitAllowanceManager.self) private var allowances
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
+    @State private var authorization = PaymentAuthorization(pinMessage: t("security__pin_allowance"))
 
     var body: some View {
         Group {
@@ -15,6 +17,7 @@ struct AllowancesTab: View {
                 list
             }
         }
+        .paymentAuthorization(authorization)
         .task {
             await allowances.refresh()
         }
@@ -54,6 +57,8 @@ struct AllowancesTab: View {
                 size: .small,
                 isLoading: allowances.isWorking
             ) {
+                // Resuming turns automatic payments back on, so it asks like the payer's other allowance actions.
+                guard await authorization.authorize(settings: settings) else { return }
                 do {
                     try await allowances.resumeAutomaticPayments()
                 } catch {
