@@ -1414,6 +1414,21 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         }
     }
 
+    func testLastChannelClosureWithdrawsPublicInvoiceWithoutForegroundRetry() async {
+        let (_, wallet) = publicationWallet(route: .channelUnavailable)
+        wallet.stubPublicEndpoints = false
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
+        var published = ["ln-public"]
+        wallet.applyPublicEndpoints = { published = $0.map(\.value) }
+
+        await wallet.refreshAfterChannelClosed(channelId: "closed-channel", reason: nil)
+
+        XCTAssertTrue(wallet.hasCoherentReceiveInvoice)
+        XCTAssertTrue(wallet.publicPaykitBolt11.isEmpty)
+        XCTAssertTrue(published.isEmpty)
+        XCTAssertEqual(wallet.publicationRefreshModes, [false])
+    }
+
     func testQueuedReceivePublicationSurvivesWalletRecreationAndFailure() async throws {
         let (_, wallet) = publicationWallet(route: .receive)
         wallet.invoiceAmountSats = 2000
