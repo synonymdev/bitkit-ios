@@ -153,7 +153,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         gate.open()
         await refreshing.value
 
-        XCTAssertTrue(manager.allowances.isEmpty)
+        XCTAssertTrue(manager.entries.isEmpty)
         let isHandling = await manager.isAutomaticallyHandling(request)
         XCTAssertFalse(isHandling)
     }
@@ -1542,6 +1542,34 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     // MARK: Incoming offers
 
     @MainActor
+    func testPausedManagerDoesNotAcceptAQueuedOffer() async throws {
+        for reactivate in [false, true] {
+            let harness = AllowanceHarness()
+            try await harness.sdk.setRecords([
+                Fixtures.record(localRole: .allowee, state: .proposed, terms: Fixtures.standardTerms(), proposedByMe: false),
+            ])
+            let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+            await manager.activate(identity: Fixtures.identityKey)
+            let gate = await harness.sdk.holdNextOfferAcceptance()
+            let accepting = Task { @MainActor in await manager.acceptOffersFromAllowers() }
+            await Self.waitUntil { harness.log.entries.contains("offerAcceptanceWaitingForSdk") }
+            XCTAssertTrue(harness.log.entries.contains("offerAcceptanceWaitingForSdk"))
+
+            manager.pause(identity: Fixtures.identityKey)
+            XCTAssertTrue(manager.entries.isEmpty)
+            if reactivate {
+                await manager.activate(identity: Fixtures.identityKey)
+            }
+            gate.open()
+            let announced = await accepting.value
+            XCTAssertTrue(announced.isEmpty)
+
+            let accepted = await harness.sdk.acceptedAllowanceIds
+            XCTAssertTrue(accepted.isEmpty, "A queued offer stays unanswered while allowances are disabled")
+        }
+    }
+
+    @MainActor
     func testManagerAcceptsAnOfferFromTheAllowerWithoutAReviewSheet() async throws {
         let harness = AllowanceHarness()
         // The proposer took the allower role, so this wallet is the allowee.
@@ -1608,10 +1636,8 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertTrue(paused.isEmpty)
         XCTAssertFalse(harness.log.entries.contains("acceptAllowance"), "No accept while the session is paused or gone")
 
-        var checks = 0
         let wentInactiveDuringAccept = await manager.acceptOffersFromAllowers(canContinue: {
-            checks += 1
-            return checks == 1
+            !harness.log.entries.contains("allowanceAccepted")
         })
 
         XCTAssertEqual(
@@ -2477,7 +2503,26 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
         acceptAllowanceErrorAfterCommit = error
     }
 
-    func acceptAllowance(counterparty: String, allowanceId: String, expectedProposalStreamItemId: UInt64) async throws -> Paykit.AllowanceRecord {
+    private var offerAcceptanceGate: AllowanceGate?
+
+    func holdNextOfferAcceptance() -> AllowanceGate {
+        let gate = AllowanceGate()
+        offerAcceptanceGate = gate
+        return gate
+    }
+
+    func acceptAllowance(
+        counterparty: String,
+        allowanceId: String,
+        expectedProposalStreamItemId: UInt64,
+        admit: @Sendable () async throws -> Void
+    ) async throws -> Paykit.AllowanceRecord {
+        if let gate = offerAcceptanceGate {
+            offerAcceptanceGate = nil
+            log.append("offerAcceptanceWaitingForSdk")
+            await gate.wait()
+        }
+        try await admit()
         log.append("acceptAllowance")
         if let acceptAllowanceError {
             throw acceptAllowanceError
@@ -2488,6 +2533,7 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
         }
         records[index].state = .accepted
         acceptedAllowanceIds.append(allowanceId)
+        log.append("allowanceAccepted")
         if let acceptAllowanceErrorAfterCommit {
             throw acceptAllowanceErrorAfterCommit
         }
