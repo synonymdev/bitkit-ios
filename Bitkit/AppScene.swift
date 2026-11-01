@@ -1314,6 +1314,9 @@ struct AppScene: View {
                         await startAdmittedWallet(completingBackupRestore: false, playsErrorHaptic: true)
                     }
                     try connectionRecovery.checkCurrentOperation()
+                    if connectionRecovery.canReportStartupFailure() {
+                        didWalletBackupRestoreFail = true
+                    }
                     if wallet.nodeLifecycleState == .running, !BackupService.shared.hasPendingWalletRestore(), !didWalletBackupRestoreFail {
                         connectionEditor = nil
                     }

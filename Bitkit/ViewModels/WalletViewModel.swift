@@ -276,12 +276,7 @@ class WalletViewModel: ObservableObject {
                 case let .channelClosed(channelId, _, _, reason):
                     self.invalidateReceiveInvoice()
                     Task {
-                        await self.refreshAndSyncState()
-                        await self.handleChannelClosed(channelId: channelId, reason: reason)
-                        try? await self.refreshBip21(reportsError: false)
-                        if self.isPaykitUIActive {
-                            await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(wallet: self, reason: "channel-closed refresh")
-                        }
+                        await self.refreshAfterChannelClosed(channelId: channelId, reason: reason)
                     }
 
                 // MARK: Onchain Transaction Events
@@ -1805,6 +1800,12 @@ class WalletViewModel: ObservableObject {
         selectedSpeed = speed
         isMaxAmountSend = false
         routingFeeEstimateSats = 0
+    }
+
+    func refreshAfterChannelClosed(channelId: LDKNode.ChannelId, reason: LDKNode.ClosureReason?) async {
+        await refreshAndSyncState()
+        await handleChannelClosed(channelId: channelId, reason: reason)
+        await refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "channel-closed refresh")
     }
 
     private func handleChannelClosed(channelId: LDKNode.ChannelId, reason: LDKNode.ClosureReason?) async {
