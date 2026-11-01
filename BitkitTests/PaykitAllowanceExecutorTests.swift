@@ -598,6 +598,32 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(harness.log.entries.contains("resolve"))
     }
 
+    func testAnEndSavedDuringAHandoffReachesTheSdkAfterIt() async throws {
+        let harness = AllowanceHarness()
+        let gate = await harness.sdk.holdNextBegin()
+        let payment = Task {
+            try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+        }
+        await Self.waitUntil { harness.log.entries.contains("beginPaymentExecution") }
+
+        let end = Task {
+            try await harness.executor.rememberEnding(identity: Fixtures.identityKey, allowances: [Fixtures.allowance()]) {
+                harness.log.append("endAllowance")
+            }
+        }
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertFalse(harness.log.entries.contains("endAllowance"))
+        let during = await harness.executor.localState(identity: Fixtures.identityKey)
+        XCTAssertTrue(during.endedAllowanceIds.isEmpty)
+        gate.open()
+        _ = try await payment.value
+        try await end.value
+        XCTAssertTrue(harness.log.entries.contains("endAllowance"))
+        let after = await harness.executor.localState(identity: Fixtures.identityKey)
+        XCTAssertEqual(after.endedAllowanceIds, [Fixtures.allowance().scopedId])
+    }
+
     func testRequestAbovePerPaymentLimitNotifiesOnceWhenTheSdkBlocksIt() async throws {
         let harness = AllowanceHarness()
         await harness.sdk.setCandidates([AllowanceHarness.candidate(blocked: .sharedRule(code: "per_payment_amount_exceeded"))])
@@ -2914,8 +2940,20 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
         ))
     }
 
+    private var beginGate: AllowanceGate?
+
+    func holdNextBegin() -> AllowanceGate {
+        let gate = AllowanceGate()
+        beginGate = gate
+        return gate
+    }
+
     func beginPaymentExecution(attemptId: String, checks: Paykit.PaymentExecutionChecks) async throws -> Paykit.PaymentAttemptDecision {
         log.append("beginPaymentExecution")
+        if let gate = beginGate {
+            beginGate = nil
+            await gate.wait()
+        }
         if let beginError {
             throw beginError
         }

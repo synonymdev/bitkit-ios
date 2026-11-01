@@ -297,14 +297,17 @@ final class PaykitAllowanceManager {
         isWorking = true
         defer { isWorking = false }
         guard let identity else { throw PaykitAllowanceError.unavailable }
-        try await executor.rememberEnding(identity: identity, allowances: entry.allowances.filter(\.canEnd))
-        var endedAny = false
-        for allowance in entry.allowances where allowance.canEnd {
-            _ = try await sdk.endAllowance(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId)
-            endedAny = true
+        let endable = entry.allowances.filter(\.canEnd)
+        guard !endable.isEmpty else { throw PaykitAllowanceError.unavailable }
+        let sdk = sdk
+        try await executor.rememberEnding(identity: identity, allowances: endable) {
+            for allowance in endable {
+                _ = try await sdk.endAllowance(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId)
+            }
+        }
+        for allowance in endable {
             _ = try? await sdk.processOutboundPrivateMessages(counterparty: allowance.counterparty)
         }
-        guard endedAny else { throw PaykitAllowanceError.unavailable }
         await refresh()
     }
 

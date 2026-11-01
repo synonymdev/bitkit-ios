@@ -429,6 +429,8 @@ actor PaykitAllowanceExecutor {
     private let payer: any PaykitAllowancePaying
     private let lightningLookup: any PaykitLightningPaymentProofLookingUp
     private let now: @Sendable () -> Date
+    /// Held from an automatic payment's ended check to its handoff, and from saving an End to the SDK's End.
+    private let handoffLock = PaykitAllowanceHandoffLock()
     private var inFlightRequestIds = Set<PaykitPaymentRequest.ID>()
     private(set) var activeIdentity: String?
 
@@ -500,9 +502,13 @@ actor PaykitAllowanceExecutor {
         updateLocalState(identity: identity) { $0.endedAllowanceIds.formUnion(ended) }
     }
 
-    /// Like `rememberEndedAllowances`, before the End is sent; a failed save throws, so the End is not sent.
-    func rememberEnding(identity: String, allowances: [PaykitAllowance]) throws {
-        try checkedUpdateLocalState(identity: identity) { $0.endedAllowanceIds.formUnion(allowances.map(\.scopedId)) }
+    /// Like `rememberEndedAllowances`, then `send` hands the End to the SDK, while no automatic payment sits between its
+    /// ended check and its handoff. A failed save throws, so the End is not sent.
+    func rememberEnding(identity: String, allowances: [PaykitAllowance], send: () async throws -> Void) async throws {
+        try await handoffLock.withLock {
+            try checkedUpdateLocalState(identity: identity) { $0.endedAllowanceIds.formUnion(allowances.map(\.scopedId)) }
+            try await send()
+        }
     }
 
     /// False when `ledger` is older than one this wallet has read, or missing after one was read; otherwise raises the floor to it.
@@ -1065,23 +1071,27 @@ actor PaykitAllowanceExecutor {
 
         // Begin fetches nothing, so pull the link first: an End or a cancellation must be seen before the handoff.
         _ = try? await sdk.receivePrivateMessages(counterparty: request.counterparty)
-        // An End saved while this attempt was admitted stops it before the handoff.
+        // An End saved while this attempt was admitted stops it; one saved later reaches the SDK after this handoff.
         let scopedId = PaykitAllowance.scopedId(counterparty: request.counterparty, allowanceId: prepared.allowanceId ?? candidate.allowanceId)
-        if localState(identity: identity).endedAllowanceIds.contains(scopedId) {
+        let decision: Paykit.PaymentAttemptDecision? = try await handoffLock.withLock {
+            if localState(identity: identity).endedAllowanceIds.contains(scopedId) {
+                return nil
+            }
+            do {
+                return try await sdk.beginPaymentExecution(
+                    attemptId: prepared.attemptId,
+                    checks: checks(request, endpointIdentifier: endpointIdentifier, trustedTime: trustedTime(identity: identity))
+                )
+            } catch {
+                // Nothing left the wallet, so release the reservation before the request goes back to manual payment.
+                try? await record(attemptId: prepared.attemptId, outcome: .failed, identity: identity)
+                throw error
+            }
+        }
+        guard let handoff = decision else {
             Logger.info("Kept an incoming request manual: its allowance has ended", context: "PaykitAllowance")
             try await record(attemptId: prepared.attemptId, outcome: .failed, identity: identity)
             return .manual
-        }
-        let handoff: Paykit.PaymentAttemptDecision
-        do {
-            handoff = try await sdk.beginPaymentExecution(
-                attemptId: prepared.attemptId,
-                checks: checks(request, endpointIdentifier: endpointIdentifier, trustedTime: trustedTime(identity: identity))
-            )
-        } catch {
-            // Nothing left the wallet, so release the reservation before the request goes back to manual payment.
-            try? await record(attemptId: prepared.attemptId, outcome: .failed, identity: identity)
-            throw error
         }
         guard case let .ready(submitted) = handoff else {
             try await record(attemptId: prepared.attemptId, outcome: .failed, identity: identity)
@@ -1369,5 +1379,27 @@ actor PaykitAllowanceExecutor {
         if isNew {
             Self.eventSubject.send(.limitReached(counterparty: request.counterparty, amountSats: request.allowanceAmountSats))
         }
+    }
+}
+
+/// A first-come lock an actor can hold across suspensions, which actor isolation alone does not give.
+private actor PaykitAllowanceHandoffLock {
+    private var isLocked = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func withLock<T>(_ operation: () async throws -> T) async rethrows -> T {
+        if isLocked {
+            await withCheckedContinuation { waiters.append($0) }
+        } else {
+            isLocked = true
+        }
+        defer {
+            if waiters.isEmpty {
+                isLocked = false
+            } else {
+                waiters.removeFirst().resume()
+            }
+        }
+        return try await operation()
     }
 }
