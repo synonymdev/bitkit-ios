@@ -110,6 +110,83 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(log.contains("markPaymentManualOnly"))
     }
 
+    func testAllowancesTurnedOffBeforeAcceptanceLeaveTheRequestWithoutAcceptance() async throws {
+        let harness = AllowanceHarness()
+        await harness.executor.activate(identity: Fixtures.identityKey)
+        let gate = await harness.payer.holdNextResolve()
+
+        let paying = Task {
+            try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+        }
+        while !harness.log.entries.contains("resolve") {
+            await Task.yield()
+        }
+        await harness.executor.activate(identity: nil)
+        gate.open()
+
+        let result = try await paying.value
+        XCTAssertEqual(result, .deferred)
+        XCTAssertFalse(harness.log.entries.contains("acceptPaymentRequestAutomatically"))
+        XCTAssertFalse(harness.log.entries.contains("payLightning"))
+    }
+
+    @MainActor
+    func testManagerDeactivatedDuringARefreshLeavesCoveredRequestsForManualApproval() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            canPayNow: { true }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+        let request = try Fixtures.paymentRequest()
+        let gate = await harness.sdk.holdNextList()
+        let listsBefore = harness.log.entries.filter { $0 == "listAllowances" }.count
+
+        let refreshing = Task { @MainActor in await manager.refresh() }
+        while harness.log.entries.filter({ $0 == "listAllowances" }).count == listsBefore {
+            await Task.yield()
+        }
+        manager.deactivate()
+        gate.open()
+        await refreshing.value
+
+        XCTAssertTrue(manager.allowances.isEmpty)
+        let isHandling = await manager.isAutomaticallyHandling(request)
+        XCTAssertFalse(isHandling)
+    }
+
+    @MainActor
+    func testManagerPauseRefusesAnAcceptanceAlreadyWaitingForTheSdkLock() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            canPayNow: { true }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+        await harness.sdk.setBeforeAcceptance { await MainActor.run { manager.pause(identity: Fixtures.identityKey) } }
+
+        _ = try await manager.processIncomingRequests([Fixtures.paymentRequest()])
+
+        XCTAssertFalse(harness.log.entries.contains("acceptPaymentRequestAutomatically"))
+        XCTAssertFalse(harness.log.entries.contains("payLightning"))
+    }
+
+    @MainActor
+    func testManagerPauseRetainsRecoveryUntilNodeLookupReturns() async throws {
+        try await assertPausedRecoveryRetainsAdmission(afterNodeStarts: false)
+    }
+
+    @MainActor
+    func testManagerNodeStartupRecoveryRetainsAdmissionUntilLookupReturns() async throws {
+        try await assertPausedRecoveryRetainsAdmission(afterNodeStarts: true)
+    }
+
     @MainActor
     func testManagerKeepsCoveredRequestsOffTheSendSheetUntilLightningIsReady() async throws {
         let harness = AllowanceHarness()
@@ -439,6 +516,55 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         await harness.executor.lightningPaymentSettled(paymentHash: AllowanceHarness.paymentHash, succeeded: true)
         gate.open()
         _ = await caller.value
+
+        let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
+        XCTAssertEqual(journal.map(\.stage), [.succeeded])
+    }
+
+    func testAllowancesTurnedOffWhileTheIntentIsSavedDropItBeforeAcceptance() async throws {
+        let harness = AllowanceHarness()
+        let gate = await harness.payer.holdNextIntent()
+        await harness.executor.activate(identity: Fixtures.identityKey)
+
+        let caller = Task {
+            try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+        }
+        await Self.waitUntil { harness.log.entries.contains("recordAcceptanceIntent") }
+        await harness.executor.pause(identity: Fixtures.identityKey)
+        gate.open()
+
+        let result = try await caller.value
+        XCTAssertEqual(result, .manual)
+        XCTAssertTrue(harness.log.entries.contains("discardAcceptanceIntent"))
+        XCTAssertFalse(harness.log.entries.contains("acceptPaymentRequestAutomatically"))
+    }
+
+    func testAllowancesTurnedOffWhileTheAcceptanceWaitsForTheSdkLockLeaveTheRequestWithoutAcceptance() async throws {
+        let harness = AllowanceHarness()
+        let executor = harness.executor
+        await executor.activate(identity: Fixtures.identityKey)
+        await harness.sdk.setBeforeAcceptance { await executor.pause(identity: Fixtures.identityKey) }
+
+        let result = try await executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(result, .manual)
+        XCTAssertTrue(harness.log.entries.contains("discardAcceptanceIntent"))
+        XCTAssertFalse(harness.log.entries.contains("acceptPaymentRequestAutomatically"))
+        XCTAssertFalse(harness.log.entries.contains("payLightning"))
+    }
+
+    func testAPaymentSentBeforeAllowancesTurnedOffStillSettles() async throws {
+        let harness = AllowanceHarness()
+        let gate = await harness.payer.holdLightning()
+        let request = try Fixtures.paymentRequest()
+        await harness.executor.activate(identity: Fixtures.identityKey)
+
+        let caller = Task { await harness.executor.autoPay(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey) }
+        await Self.waitUntil { harness.log.entries.contains("payLightning") }
+        await harness.executor.pause(identity: Fixtures.identityKey)
+        gate.open()
+        _ = await caller.value
+        await harness.executor.lightningPaymentSettled(paymentHash: AllowanceHarness.paymentHash, succeeded: true)
 
         let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
         XCTAssertEqual(journal.map(\.stage), [.succeeded])
@@ -1722,6 +1848,60 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(manager.coversRequest(request))
     }
 
+    @MainActor
+    private func assertPausedRecoveryRetainsAdmission(afterNodeStarts: Bool) async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let admission = ProfileOperationAdmission(store: ProfileRemovalStore(url: directory.appendingPathComponent("pending.json")))
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        let paidHash = String(repeating: "1", count: 64)
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: [
+            Fixtures.occurrence(requestId: "req-restored", attempts: [Fixtures.attemptRecord(id: "restored", status: .submitted)]),
+        ]))
+        harness.store.seed(PaykitAllowanceLocalState(journal: [
+            Self.journalEntry(attemptId: "restored", request: request, stage: .submitted, paymentHash: paidHash),
+        ]), identity: Fixtures.identityKey)
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, profileAdmission: admission)
+        if afterNodeStarts {
+            await harness.executor.activate(identity: Fixtures.identityKey)
+            harness.executor.stopAdmitting()
+        }
+        let gate = await harness.lookup.holdNextLookup()
+        defer { gate.open() }
+        let startup = try admission.capture()
+        let recovery = try await admission.withScope(startup) {
+            let recovery: Task<Void, Never>?
+            if afterNodeStarts {
+                recovery = Task { await manager.recoverOpenAttempts() }
+            } else {
+                manager.pause(identity: Fixtures.identityKey)
+                recovery = nil
+            }
+            await Self.waitUntil { harness.log.entries.contains("lightningStatus") }
+            return recovery
+        }
+        admission.release(startup)
+        XCTAssertTrue(harness.log.entries.contains("lightningStatus"))
+
+        let wipe = try admission.reserve(kind: .walletWipe, id: UUID())
+        defer { admission.release(wipe) }
+        let prematureDrain = expectation(description: "Wipe cannot clear state while paused recovery awaits the node")
+        prematureDrain.isInverted = true
+        let draining = Task {
+            try await admission.drain(before: wipe)
+            if !gate.hasOpened {
+                prematureDrain.fulfill()
+            }
+            harness.store.seed(PaykitAllowanceLocalState(), identity: Fixtures.identityKey)
+        }
+        await fulfillment(of: [prematureDrain], timeout: 0.05)
+        gate.open()
+        try await draining.value
+        await recovery?.value
+        XCTAssertNil(try harness.store.load(identity: Fixtures.identityKey).lastTrustedTime)
+    }
+
     private static func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) async {
         let deadline = Date().addingTimeInterval(timeout)
         while !condition(), Date() < deadline {
@@ -1935,6 +2115,12 @@ private final class AllowanceGate: @unchecked Sendable {
     private var isOpen = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
+    var hasOpened: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return isOpen
+    }
+
     func wait() async {
         await withCheckedContinuation { continuation in
             lock.lock()
@@ -2052,8 +2238,21 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
         return gate
     }
 
+    private var resolveGate: AllowanceGate?
+
+    /// Holds the next `resolve` until the returned gate opens, so a test can act while endpoints are looked up.
+    func holdNextResolve() -> AllowanceGate {
+        let gate = AllowanceGate()
+        resolveGate = gate
+        return gate
+    }
+
     func resolve(_ request: PaykitPaymentRequest, eligibleIdentifiers: [String]) async throws -> PrivatePaykitAllowancePayment? {
         called("resolve")
+        if let gate = resolveGate {
+            resolveGate = nil
+            await gate.wait()
+        }
         if let resolveError {
             throw resolveError
         }
@@ -2145,8 +2344,21 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
         claimedRequestIds.append(request.id)
     }
 
+    private var intentGate: AllowanceGate?
+
+    /// Holds the next `recordAcceptanceIntent` until the returned gate opens, so a test can act while it is saved.
+    func holdNextIntent() -> AllowanceGate {
+        let gate = AllowanceGate()
+        intentGate = gate
+        return gate
+    }
+
     func recordAcceptanceIntent(_ request: PaykitPaymentRequest, identity: String) async throws -> Bool {
         called("recordAcceptanceIntent")
+        if let gate = intentGate {
+            intentGate = nil
+            await gate.wait()
+        }
         guard !acceptanceIntents.contains(request.id) else { return false }
         acceptanceIntents.append(request.id)
         return true
@@ -2291,8 +2503,21 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
         return peers
     }
 
+    private var listGate: AllowanceGate?
+
+    /// Holds the next `listAllowances` until the returned gate opens, so a test can act while a refresh is in flight.
+    func holdNextList() -> AllowanceGate {
+        let gate = AllowanceGate()
+        listGate = gate
+        return gate
+    }
+
     func listAllowances(filter: Paykit.AllowanceFilter) async throws -> [Paykit.AllowanceRecord] {
         log.append("listAllowances")
+        if let gate = listGate {
+            listGate = nil
+            await gate.wait()
+        }
         return records
     }
 
@@ -2383,11 +2608,21 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
         return candidates
     }
 
+    private var beforeAcceptance: (@Sendable () async -> Void)?
+
+    /// Runs before the acceptance's `admit`, as a wait for the SDK lock would.
+    func setBeforeAcceptance(_ action: (@Sendable () async -> Void)?) {
+        beforeAcceptance = action
+    }
+
     func acceptPaymentRequestAutomatically(
         scope: Paykit.PaymentRequestScope,
         selection: Paykit.AllowanceSelectionInput,
-        checks: Paykit.PaymentExecutionChecks
+        checks: Paykit.PaymentExecutionChecks,
+        admit: @Sendable () async throws -> Void
     ) async throws -> Paykit.AllowanceAssociationRecord {
+        await beforeAcceptance?()
+        try await admit()
         log.append("acceptPaymentRequestAutomatically")
         if let acceptError {
             throw acceptError

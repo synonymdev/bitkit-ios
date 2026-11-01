@@ -407,6 +407,8 @@ struct AppScene: View {
     )
     @State private var paykitAllowanceManager = PaykitAllowanceManager()
     @State private var activatedAutomaticPaykitIdentity: String?
+    @AppStorage("showDevSettings") private var showDevSettings = Env.isDebug
+    @AppStorage(PaykitFeatureFlags.allowancesEnabledKey) private var allowancesOverride: Bool?
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -521,6 +523,10 @@ struct AppScene: View {
                 try await ProfileOperationAdmission.shared.withReceiptAttribution(operation)
             }
         )
+    }
+
+    private var areAllowancesEnabled: Bool {
+        PaykitFeatureFlags.areAllowancesEnabled(isDevModeEnabled: showDevSettings, override: allowancesOverride)
     }
 
     var body: some View {
@@ -658,6 +664,21 @@ struct AppScene: View {
             // A sign-in, or a session that was still changing or being deleted, has no automatic session yet when
             // authState turns authenticated; activate allowances and load contacts once it appears.
             .onReceive(PubkyProfileManager.sessionSettledPublisher) { startAutomaticPaykitSession() }
+            .onChange(of: areAllowancesEnabled) { _, enabled in
+                guard enabled else {
+                    paykitAllowanceManager.pause(identity: activatedAutomaticPaykitIdentity)
+                    return
+                }
+                guard let pk = activatedAutomaticPaykitIdentity else { return }
+                do {
+                    try pubkyProfile.scheduleAutomaticPaykitSession { session in
+                        guard areAllowancesEnabled, PubkyPublicKeyFormat.matches(pk, session.publicKey) else { return }
+                        await paykitAllowanceManager.activate(identity: pk)
+                    }
+                } catch {
+                    Logger.debug("Allowance activation was not admitted: \(error)", context: "AppScene")
+                }
+            }
             .onChange(of: pubkyProfile.isDeletingProfile) { _, isDeleting in
                 if !isDeleting {
                     startAutomaticPaykitSession()
@@ -2082,7 +2103,11 @@ struct AppScene: View {
                 let pk = session.publicKey
                 guard !PubkyPublicKeyFormat.matches(pk, activatedAutomaticPaykitIdentity) else { return }
                 activatedAutomaticPaykitIdentity = pk
-                await paykitAllowanceManager.activate(identity: pk)
+                if areAllowancesEnabled {
+                    await paykitAllowanceManager.activate(identity: pk)
+                } else {
+                    paykitAllowanceManager.pause(identity: pk)
+                }
                 await handlePendingPaykitSubscriptionNotification()
                 guard pubkyProfile.automaticPaykitSession == session else {
                     // A deletion or session change cut this start short; let the session's next appearance run it again.

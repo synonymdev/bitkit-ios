@@ -355,23 +355,32 @@ struct PaymentRequestsSheet: View {
 }
 
 struct PaymentRequestsFooterButton: View {
+    @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var navigation: NavigationViewModel
+    @EnvironmentObject private var pubkyProfile: PubkyProfileManager
+    @EnvironmentObject private var contactsManager: ContactsManager
     @EnvironmentObject private var sheets: SheetViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
     var body: some View {
-        if !paymentRequests.eligibleTargets.isEmpty {
-            CustomButton(
-                title: paymentRequests.pendingRequests.isEmpty && paymentRequests.historyRequests.isEmpty
-                    ? t("wallet__payment_request_request")
-                    : t("wallet__payment_request_request_payment")
-            ) {
+        CustomButton(title: t("wallet__payment_request_request_payment")) {
+            if !pubkyProfile.isAuthenticated || (contactsManager.hasLoaded && contactsManager.contacts.isEmpty) {
+                await ContactsIntroView.openContacts(
+                    app: app,
+                    navigation: navigation,
+                    pubkyProfile: pubkyProfile,
+                    contactsManager: contactsManager
+                )
+            } else {
                 sheets.showSheet(
                     .receive,
                     data: ReceiveConfig(view: .paymentRequestRecipient(ReceiveSheet.defaultPaymentRequestDraft))
                 )
+                let savedPublicKeys = contactsManager.contacts.map(\.publicKey)
+                Task { await paymentRequests.refreshEligibleTargets(savedPublicKeys: savedPublicKeys) }
             }
-            .accessibilityIdentifier("PaymentRequestRequestPayment")
         }
+        .accessibilityIdentifier("PaymentRequestRequestPayment")
     }
 }
 
