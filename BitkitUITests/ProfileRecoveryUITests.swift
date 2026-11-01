@@ -63,6 +63,20 @@ final class ProfileRecoveryUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["ProfileFixtureEditing"].waitForExistence(timeout: 5))
     }
 
+    func testRestoredProfileDisconnectReachesOriginalOwnerPreparation() {
+        XCTAssertTrue(app.staticTexts["ProfileViewName"].waitForExistence(timeout: 10))
+        app.buttons["ProfileFixtureRestore"].tap()
+        XCTAssertEqual(app.buttons["ProfileFixtureRestore"].value as? String, "Restored")
+        scrollToBottom()
+        app.buttons["ProfileSignOut"].tap()
+        let state = app.staticTexts["ProfileFixtureLocalState"]
+        let prepared = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@", "Credentials: present, watermark: 42, remote: 1"), object: state
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [prepared], timeout: 5), .completed)
+        XCTAssertEqual(app.staticTexts["ProfileFixturePendingID"].label, "None")
+    }
+
     func testFailedDisconnectRetainsSafetyStateUntilExplicitLocalCompletion() {
         XCTAssertTrue(app.staticTexts["ProfileViewName"].waitForExistence(timeout: 10))
         scrollToBottom()

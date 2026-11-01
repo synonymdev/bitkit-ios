@@ -405,13 +405,13 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
     func testSpentElsewhereCancelCutShortAfterItsProofWasRemovedCanFinish() async throws {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let month = currentMonth()
         let recurrence = PaymentRequestRecurrence(
-            every: 1, unit: "month", startsAt: "2026-10-01T08:00:00.123456789Z",
-            anchor: "2026-10-01T08:00:00.123456789Z", endsAt: nil
+            every: 1, unit: "month", startsAt: month.startsAt, anchor: month.startsAt, endsAt: nil
         )
         var record = try paymentRequestRecord(endpoints: [endpoint], state: .activeRecurring, recurrence: recurrence)
         record.terms?.conversion = .perPeriod
-        let quotePeriod = BillingPeriod(startsAt: recurrence.startsAt, endsAt: "2026-11-01T08:00:00.123456789Z")
+        let quotePeriod = BillingPeriod(startsAt: recurrence.startsAt, endsAt: month.endsAt)
         record.conversionQuotes = [PaymentConversionQuoteRecord(
             eventId: "original", billingPeriod: quotePeriod,
             rates: [ConversionRate(asset: "usdt", value: "100000")], validFrom: recurrence.startsAt,
@@ -565,13 +565,13 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
     func testExpiredQuoteEndsAnActiveSubscriptionPeriod() async throws {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let month = currentMonth()
         let recurrence = PaymentRequestRecurrence(
-            every: 1, unit: "month", startsAt: "2026-10-01T08:00:00.123456789Z",
-            anchor: "2026-10-01T08:00:00.123456789Z", endsAt: nil
+            every: 1, unit: "month", startsAt: month.startsAt, anchor: month.startsAt, endsAt: nil
         )
         var record = try paymentRequestRecord(endpoints: [endpoint], state: .activeRecurring, recurrence: recurrence)
         record.terms?.conversion = .perPeriod
-        let quotePeriod = BillingPeriod(startsAt: recurrence.startsAt, endsAt: "2026-11-01T08:00:00.123456789Z")
+        let quotePeriod = BillingPeriod(startsAt: recurrence.startsAt, endsAt: month.endsAt)
         let quote = { (expiresAt: Date) in PaymentConversionQuoteRecord(
             eventId: "original", billingPeriod: quotePeriod,
             rates: [ConversionRate(asset: "usdt", value: "100000")], validFrom: recurrence.startsAt,
@@ -610,15 +610,15 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
     func testRecurringRecoveryKeepsOriginalUnpaidBillingPeriod() async throws {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let month = currentMonth()
         let recurrence = PaymentRequestRecurrence(
-            every: 1, unit: "month", startsAt: "2026-10-01T08:00:00.123456789Z",
-            anchor: "2026-10-01T08:00:00.123456789Z", endsAt: nil
+            every: 1, unit: "month", startsAt: month.startsAt, anchor: month.startsAt, endsAt: nil
         )
         var record = try paymentRequestRecord(endpoints: [endpoint], state: .activeRecurring, recurrence: recurrence)
         let quoteExpiry = PaykitPreciseInstant(date: Date().addingTimeInterval(3600))
         record.terms?.conversion = .perPeriod
         record.conversionQuotes = [PaymentConversionQuoteRecord(
-            eventId: "original", billingPeriod: BillingPeriod(startsAt: recurrence.startsAt, endsAt: "2026-11-01T08:00:00.123456789Z"),
+            eventId: "original", billingPeriod: BillingPeriod(startsAt: recurrence.startsAt, endsAt: month.endsAt),
             rates: [ConversionRate(asset: "usdt", value: "100000")], validFrom: recurrence.startsAt,
             expiresAt: quoteExpiry.timestamp, outboundStatus: nil
         )]
@@ -3381,6 +3381,16 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             address: onchainAddress, amountSats: request.amount.atomic, isMaxAmount: false
         )
         try await attempts.record(.accepted(txid: txid), attemptId: id)
+    }
+
+    /// The current UTC month as a billing period, so a test's first period always holds now.
+    private func currentMonth() -> (startsAt: String, endsAt: String) {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let start = calendar.dateComponents([.year, .month], from: Date())
+        let end = calendar.dateComponents([.year, .month], from: calendar.date(byAdding: .month, value: 1, to: calendar.date(from: start)!)!)
+        let format = { (month: DateComponents) in String(format: "%04d-%02d-01T00:00:00.123456789Z", month.year!, month.month!) }
+        return (format(start), format(end))
     }
 
     private func paymentProofService(

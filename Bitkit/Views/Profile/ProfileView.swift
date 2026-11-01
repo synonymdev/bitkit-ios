@@ -92,6 +92,10 @@ struct ProfileView: View {
                 screenOwner = pubkyProfile.removalPresentationOwner
             }
             await refreshProfile()
+            restoreScreenOwner()
+        }
+        .onChange(of: pubkyProfile.isRestoringSession ? nil : pubkyProfile.currentSession) {
+            restoreScreenOwner()
         }
         .onDisappear {
             signOutPreparation?.cancel()
@@ -310,6 +314,12 @@ struct ProfileView: View {
                 Logger.error("Failed to update profile tags: \(error)", context: "ProfileView")
                 app.toast(type: .error, title: t("profile__edit_error_title"), description: error.localizedDescription)
             }
+        }
+    }
+
+    private func restoreScreenOwner() {
+        if let owner = screenOwner, let restored = pubkyProfile.restoredRemovalPresentationOwner(from: owner) {
+            screenOwner = restored
         }
     }
 

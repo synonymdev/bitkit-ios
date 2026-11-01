@@ -77,8 +77,10 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
             completeRevokedLocal: { try await $0.clearCredentials() },
             pause: { [self] in pauseID = $0; duringPause?() }, resume: { [self] in resumeID = $0; await duringResume?() }
         )
-        let manager = PubkyProfileManager(removalServices: services, removalStore: store, removalAdmission: admission,
-                                          sourceIsMissing: { [self] _, _ in sourceMissing })
+        let manager = PubkyProfileManager(remoteProfileResolver: { key in
+            PubkyProfile(publicKey: key, name: "Restored", bio: "", imageUrl: nil, links: [], tags: [], status: nil)
+        }, removalServices: services, removalStore: store, removalAdmission: admission,
+        sourceIsMissing: { [self] _, _ in sourceMissing })
         manager.publicKey = owner
         manager.authState = .authenticated
         return manager
@@ -417,6 +419,39 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
         let wipe = try admission.reserve(kind: .walletWipe, id: UUID())
         defer { admission.release(wipe) }
         XCTAssertFalse(manager.ownsRemovalPresentation(original))
+    }
+
+    func testInitialPresentationRestoresItsOwnerWithoutRebindingAnIssuedConfirmation() async throws {
+        let manager = makeManager()
+        manager.publicKey = nil
+        manager.authState = .idle
+        let initialOwner = manager.removalPresentationOwner
+        let oldConfirmation = try await manager.prepareRemoval(action: .disconnect, expectedOwner: initialOwner)
+
+        await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { [owner] in .restored(publicKey: owner) }
+        XCTAssertFalse(manager.ownsRemovalPresentation(initialOwner))
+        let restoredOwner = try XCTUnwrap(manager.restoredRemovalPresentationOwner(from: initialOwner))
+        XCTAssertTrue(manager.ownsRemovalPresentation(restoredOwner))
+        do { _ = try await manager.confirmRemoval(oldConfirmation); XCTFail("Restoration cannot rebind an issued confirmation") }
+        catch PubkyProfileManager.RemovalError.confirmationChanged {}
+        XCTAssertTrue(steps.isEmpty)
+        XCTAssertNil(try store.pending())
+
+        let fresh = try await manager.prepareRemoval(action: .disconnect, expectedOwner: restoredOwner)
+        manager.cancelRemovalConfirmation(fresh)
+        manager.publicKey = "replacement"
+        XCTAssertNil(manager.restoredRemovalPresentationOwner(from: restoredOwner))
+        XCTAssertFalse(manager.ownsRemovalPresentation(restoredOwner))
+        manager.publicKey = owner
+        let wipe = try admission.reserve(kind: .walletWipe, id: UUID())
+        XCTAssertNil(manager.restoredRemovalPresentationOwner(from: initialOwner))
+        admission.release(wipe)
+
+        try await PubkyProfileManager.restoreSessionBackupState(
+            nil, deleteKeychainValue: { _ in }, removeOwnSharedRecords: {}, forgetSessionAccess: {}
+        )
+        XCTAssertNil(manager.restoredRemovalPresentationOwner(from: initialOwner))
+        XCTAssertFalse(manager.ownsRemovalPresentation(restoredOwner))
     }
 
     func testNoArgumentDeletionCannotRecaptureCurrentIdentity() async throws {
@@ -1011,6 +1046,49 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
             XCTAssertEqual(steps, ["private", "public", "revoke"])
             _ = try await manager.finishPendingRemoval(id: initial.id)
             XCTAssertEqual(steps, ["private", "public", "revoke", "credentials"])
+        }
+    }
+
+    func testExecutionBindingFailureRetiresRetryBeforeAnotherPreparation() async throws {
+        for retrying in [false, true] {
+            steps = []
+            watermark = 42
+            failStep = retrying ? "revoke" : nil
+            duringRevocation = nil
+            duringRevocationValidation = nil
+            let manager = makeManager()
+            let initial = try await manager.prepareRemoval(action: .disconnect)
+            var retry: PubkyProfileManager.RemoteRemovalConfirmation?
+            if retrying {
+                do { _ = try await manager.confirmRemoval(initial); XCTFail("Expected unknown logout") }
+                catch TestError.failure("revoke") {}
+                retry = try await manager.prepareRemoteRemovalRetry(id: initial.id)
+            }
+            failStep = nil
+            duringRevocation = { [self] in
+                duringRevocationValidation = { throw TestError.failure("changed-credentials") }
+                throw TestError.failure("execution-binding")
+            }
+            do {
+                if let retry {
+                    _ = try await manager.confirmRemoteRemovalRetry(retry)
+                } else {
+                    _ = try await manager.confirmRemoval(initial)
+                }
+                XCTFail("Execution must reject the changed binding")
+            } catch TestError.failure("execution-binding") {}
+            XCTAssertFalse(manager.canRetryRemoteRemoval(id: initial.id))
+            XCTAssertTrue(try XCTUnwrap(revocations.last).revoked)
+            duringRevocationValidation = nil
+            XCTAssertFalse(manager.canRetryRemoteRemoval(id: initial.id), "Restored values cannot revive the ended intent")
+            XCTAssertEqual(try store.pending()?.id, initial.id)
+            XCTAssertEqual(watermark, 42)
+            XCTAssertEqual(steps, retrying ? ["private", "public", "revoke", "revoke"] : ["private", "public", "revoke"])
+            duringRevocation = nil
+            _ = try await manager.finishPendingRemoval(id: initial.id)
+            XCTAssertEqual(steps.last, "credentials")
+            XCTAssertEqual(watermark, 0)
+            XCTAssertNil(try store.pending())
         }
     }
 

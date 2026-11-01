@@ -88,6 +88,12 @@ class PubkyProfileManager: ObservableObject {
         removalPresentationOwner == owner && !removalAdmission.isWalletWiping
     }
 
+    func restoredRemovalPresentationOwner(from owner: RemovalPresentationOwner) -> RemovalPresentationOwner? {
+        guard owner.publicKey == nil, owner.revision == Self.sessionRevision,
+              !isRestoringSession, currentSession != nil, !removalAdmission.isWalletWiping else { return nil }
+        return removalPresentationOwner
+    }
+
     /// A failed, reconciled transition can return its own new session revision to the original screen.
     /// A successor invalidates the supplied scope before any retry context is installed.
     func schedulePresentationContext(_ update: @escaping @MainActor (RemovalPresentationOwner, ProfileOperationAdmission.Generation) -> Void) throws {
@@ -1729,6 +1735,9 @@ class PubkyProfileManager: ObservableObject {
                 if let live, let revocation = live.plan.revocation {
                     // The native attempt and SDK-lock tail have returned, but our local tail still owns the drain holder.
                     live.logoutAcknowledged = await revocation.acknowledged()
+                    if live.canRetry {
+                        try? await validateRemoteRemovalOwner(live)
+                    }
                     if live.logoutStarted || live.canRetry {
                         liveRemoval = live
                     }
