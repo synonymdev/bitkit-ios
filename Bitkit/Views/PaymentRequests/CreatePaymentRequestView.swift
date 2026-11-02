@@ -380,8 +380,6 @@ struct PaymentRequestAmountView: View {
                         }
                     }
 
-                    Spacer(minLength: 24)
-
                     CustomButton(title: t("common__continue"), isDisabled: !allowedAssets.contains(asset) || (amount?.atomic ?? 0) == 0) {
                         guard allowedAssets.contains(asset), let amount else { return }
                         onContinue(
@@ -676,14 +674,16 @@ struct PaymentRequestSentView: View {
                 .padding(.bottom, 8)
 
             BodyMText(description, textColor: .white64)
-                .padding(.bottom, 16)
+                .padding(.bottom, 32)
+
+            CaptionMText(t("wallet__payment_request_recipient").localizedUppercase, textColor: .white64, lineHeight: 18)
+                .padding(.bottom, 8)
 
             PaymentRequestCard(
                 request: request,
                 isHighlighted: false
             )
-
-            Spacer(minLength: 32)
+            .padding(.bottom, 16)
 
             CustomButton(title: t("common__ok")) {
                 sheets.hideSheet(reason: "Payment request created")
