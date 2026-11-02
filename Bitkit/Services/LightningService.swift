@@ -333,15 +333,13 @@ class LightningService: NodeLifecycleService {
         Logger.info("Node stopped")
     }
 
-    /// ldk-node's `stop()` fails with `NotRunning` for a node whose `start()` failed, which leaves it built but not running,
-    /// and with `PersistenceFailed` only after shutdown has completed. Neither leaves a node to stop, so both release it.
+    /// ldk-node's `stop()` fails with `NotRunning` for a node whose `start()` failed, which leaves it built but not running, so
+    /// that releases it. Any other failure keeps the node, and a retried stop then finds it not running.
     static func stopReleasingFinishedNode(_ stop: () throws -> Void) throws {
         do {
             try stop()
         } catch NodeError.NotRunning {
             Logger.info("Node was not running, releasing it", context: "LightningService")
-        } catch NodeError.PersistenceFailed {
-            Logger.warn("Node shut down but failed to persist its final state", context: "LightningService")
         }
     }
 

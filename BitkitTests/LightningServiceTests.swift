@@ -7,8 +7,9 @@ final class LightningServiceTests: XCTestCase {
         XCTAssertNoThrow(try Bitkit.LightningService.stopReleasingFinishedNode { throw NodeError.NotRunning(message: "") })
     }
 
-    func testStopReleasesANodeThatShutDownWithoutPersisting() {
-        XCTAssertNoThrow(try Bitkit.LightningService.stopReleasingFinishedNode { throw NodeError.PersistenceFailed(message: "") })
+    func testStopKeepsANodeThatFailedToPersistUntilARetryFindsItStopped() {
+        XCTAssertThrowsError(try Bitkit.LightningService.stopReleasingFinishedNode { throw NodeError.PersistenceFailed(message: "") })
+        XCTAssertNoThrow(try Bitkit.LightningService.stopReleasingFinishedNode { throw NodeError.NotRunning(message: "") })
     }
 
     func testStopReleasesANodeThatStopped() {
