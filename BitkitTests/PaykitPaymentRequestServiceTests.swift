@@ -2939,7 +2939,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             )
             try await sdk.setProposalResult(paymentRequestRecord(role: .payee))
             let service = PaykitPaymentRequestService(sdk: sdk, now: { now }, isPrivatePaymentPublishingEnabled: { true },
-                                                      canReceiveLightning: { true }, marketRate: { nil })
+                                                      canReceiveBolt11: { true }, canReceiveLnurl: { false }, marketRate: { nil })
             do {
                 let subscription = try await service.proposeSubscription(
                     PaykitSubscriptionDraft(amount: PaykitAmount(asset: .usd, atomic: 500), name: "Monthly support",
@@ -10026,7 +10026,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         presentationStore: PaymentRequestPresentationMemoryStore = PaymentRequestPresentationMemoryStore(),
         acceptanceStore: PaymentRequestPresentationMemoryStore? = nil,
         acceptedRecords: [PaymentRequestRecord] = [],
-        canReceiveLightning: Bool = true
+        canReceiveLightning: Bool = true,
+        canReceiveLnurl: Bool = false
     ) -> PaykitPaymentRequestManager {
         let now: @Sendable () -> Date = { clock.now() }
         let acceptanceStore = acceptanceStore ?? PaymentRequestPresentationMemoryStore(ids: Set(acceptedRecords.map {
@@ -10041,7 +10042,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 now: now,
                 subscriptionNow: subscriptionNow,
                 isPrivatePaymentPublishingEnabled: { isPrivatePaymentPublishingEnabled },
-                canReceiveLightning: { canReceiveLightning },
+                canReceiveBolt11: { canReceiveLightning },
+                canReceiveLnurl: { canReceiveLnurl },
                 marketRate: { PaykitExchangeRate(price: "100000", timestamp: now()) },
                 logWarning: { _ in }
             ),

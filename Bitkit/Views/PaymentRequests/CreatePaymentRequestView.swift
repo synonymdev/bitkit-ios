@@ -558,7 +558,9 @@ struct PaymentRequestDetailsView: View {
     }
 
     private var enabledEndpoints: [String] {
-        PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(canReceiveLightning: wallet.canReceiveLightning)
+        PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(
+            canReceiveBolt11: wallet.hasUsableChannels, canReceiveLnurl: ArkadeManager.shared.isReady
+        )
     }
 
     private var selectedEnabledEndpoints: [String] {

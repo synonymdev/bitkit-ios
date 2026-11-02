@@ -120,8 +120,10 @@ struct CreateSubscriptionView: View {
     }
 
     private var availableEndpoints: [String] {
-        PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(canReceiveLightning: wallet.canReceiveLightning)
-            .filter { settings.isUsdtEnabled || $0 != PublicPaykitService.MethodId.usdtArbitrum.rawValue }
+        PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(
+            canReceiveBolt11: wallet.hasUsableChannels, canReceiveLnurl: ArkadeManager.shared.isReady
+        )
+        .filter { settings.isUsdtEnabled || $0 != PublicPaykitService.MethodId.usdtArbitrum.rawValue }
     }
 
     private var acceptedEndpoints: [String] {

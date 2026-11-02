@@ -32,8 +32,11 @@ struct ContactPaymentContext: Equatable {
     let isInitialSubscriptionPayment: Bool
     let endpoints: [PublicPaykitService.Endpoint]
 
+    /// A unified request carries an LNURL only as a `lightning` parameter, which the scan drops for on-chain, so a contact's
+    /// LNURL beside an on-chain address also goes through the amount view to keep both Spending and Savings.
     var requiresAssetSelection: Bool {
         endpoints.contains { $0.methodId == .usdtArbitrum } ||
+            (endpoints.contains { $0.methodId == .bitcoinLightningLnurl } && endpoints.contains { $0.methodId.onchainNetwork != nil }) ||
             incomingPaymentRequest.map { $0.amount.asset != .btc || $0.pricing.conversion != nil } == true
     }
 

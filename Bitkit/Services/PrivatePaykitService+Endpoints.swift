@@ -74,20 +74,8 @@ extension PrivatePaykitService {
 
         if PublicPaykitService.isLightningPaymentOptionEnabled(), walletHasUsableChannels(wallet) {
             do {
-                let invoice = try await currentOrRotatedInvoice(
-                    for: publicKey,
-                    wallet: wallet,
-                    forceRefresh: forceRefreshLightning
-                )
-                let invoicePayload = try PublicPaykitService.serializePayload(value: invoice.bolt11)
-                endpoints.append(
-                    PublicPaykitService.Endpoint(
-                        methodId: .bitcoinLightningBolt11,
-                        value: invoice.bolt11,
-                        min: nil,
-                        max: nil,
-                        rawPayload: invoicePayload
-                    )
+                try await endpoints.append(
+                    currentLightningEndpoint(for: publicKey, wallet: wallet, forceRefresh: forceRefreshLightning)
                 )
             } catch PrivatePaykitError.routeHintsUnavailable {
                 Logger.warn("Private Paykit Lightning invoice has no route hints; publishing on-chain endpoint only", context: "PrivatePaykit")

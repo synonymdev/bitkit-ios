@@ -142,6 +142,76 @@ final class PublicPaykitServiceTests: XCTestCase {
         XCTAssertEqual(request, "lnurl1example")
     }
 
+    func testPaymentRequestCombinesOnchainAndLnurlEndpoints() {
+        let request = PublicPaykitService.paymentRequest(from: [
+            endpoint(.bitcoinLightningLnurl, value: "lnurl1example"),
+            endpoint(.bitcoinOnchainP2wpkh, value: "bc1qaddress"),
+        ])
+
+        XCTAssertEqual(request, "bitcoin:bc1qaddress?lightning=lnurl1example")
+    }
+
+    func testContactWithLnurlBesideOnchainSelectsFundingSource() {
+        let publicKey = "pubky" + String(repeating: "y", count: 52)
+        let lnurl = endpoint(.bitcoinLightningLnurl, value: "lnurl1example")
+        let onchain = endpoint(.bitcoinOnchainP2wpkh, value: "bc1qaddress")
+
+        XCTAssertTrue(ContactPaymentContext(publicKey: publicKey, endpoints: [lnurl, onchain]).requiresAssetSelection)
+        XCTAssertFalse(ContactPaymentContext(publicKey: publicKey, endpoints: [lnurl]).requiresAssetSelection)
+        XCTAssertFalse(ContactPaymentContext(
+            publicKey: publicKey, endpoints: [endpoint(.bitcoinLightningBolt11, value: "lnbc1invoice"), onchain]
+        ).requiresAssetSelection)
+    }
+
+    func testAcceptedIdentifiersFollowTheLightningReceiveRail() {
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.lightningPaymentOptionEnabledKey)
+        let bolt11 = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
+        let lnurl = PublicPaykitService.MethodId.bitcoinLightningLnurl.rawValue
+
+        let arkade = PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(canReceiveBolt11: false, canReceiveLnurl: true)
+        XCTAssertTrue(arkade.contains(lnurl))
+        XCTAssertFalse(arkade.contains(bolt11))
+
+        let channels = PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(canReceiveBolt11: true, canReceiveLnurl: false)
+        XCTAssertTrue(channels.contains(bolt11))
+        XCTAssertFalse(channels.contains(lnurl))
+
+        let none = PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(canReceiveBolt11: false, canReceiveLnurl: false)
+        XCTAssertFalse(none.contains(bolt11) || none.contains(lnurl))
+    }
+
+    @MainActor
+    func testPrivateEndpointsPublishArkadeLightningAddress() async throws {
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.lightningPaymentOptionEnabledKey)
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.usdtPaymentOptionEnabledKey)
+        let privateService = PrivatePaykitService()
+        let contact = "pubky" + String(repeating: "y", count: 52)
+
+        let endpoints = try await privateService.buildLocalEndpoints(for: contact, wallet: ArkadeLightningAddressWallet())
+
+        XCTAssertEqual(endpoints.map(\.methodId), [.bitcoinLightningLnurl])
+        XCTAssertEqual(endpoints.first?.value, ArkadeLightningAddressWallet.lightningAddress)
+    }
+
+    func testPrivateReservationsCarryNoInvoiceDetailsForLnurl() async {
+        let privateService = PrivatePaykitService()
+        let contact = "pubky" + String(repeating: "y", count: 52)
+        await privateService.setEndpointTestInvoice(
+            .init(bolt11: "lnbcrt1stored", paymentHash: "stored-hash", expiresAt: 1_900_000_000), publicKey: contact
+        )
+
+        let reservations = await privateService.reservations(from: [
+            endpoint(.bitcoinOnchainP2wpkh, value: "bc1qaddress"),
+            endpoint(.bitcoinLightningLnurl, value: "lnurl1example"),
+        ], publicKey: contact)
+
+        XCTAssertEqual(reservations.map(\.identifier), ["btc-bitcoin-p2wpkh", "btc-lightning-lnurl"])
+        XCTAssertNil(reservations.last?.expiresAt)
+        XCTAssertNil(reservations.last?.attribution["payment_hash"])
+        XCTAssertEqual(reservations.last?.attribution["counterparty"], contact)
+    }
+
     func testOnchainMethodIdUsesAddressPrefixAndNetwork() {
         XCTAssertEqual(PublicPaykitService.onchainMethodId(for: "bc1pexample", network: .bitcoin), .bitcoinOnchainP2tr)
         XCTAssertEqual(PublicPaykitService.onchainMethodId(for: "tb1qexample", network: .testnet), .testnetOnchainP2wpkh)
@@ -590,6 +660,22 @@ private final class EndpointPublicationWallet: WalletViewModel {
 
     override func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
         Self.invoice
+    }
+}
+
+private final class ArkadeLightningAddressWallet: WalletViewModel {
+    static let lightningAddress = "lnurl1dp68gurn8ghj7um9wfmxjcm99e3k7mf0v9cxj0m385ekvcenxc6r2c35xvukxefcv5mkvv34x5ekzd3ev56nyd3hxqurzepexejxxepnxscrvwfnv9nxzcn9xq6xyefhvgcxxcmyxymnserxfq5fns"
+
+    override var hasUsableChannels: Bool {
+        false
+    }
+
+    override var canReceiveLightning: Bool {
+        true
+    }
+
+    override func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
+        Self.lightningAddress
     }
 }
 

@@ -670,7 +670,8 @@ struct PaykitPaymentRequestService {
     private let now: @Sendable () -> Date
     private let subscriptionNow: @Sendable () -> Date
     private let isPrivatePaymentPublishingEnabled: @Sendable () -> Bool
-    private let canReceiveLightning: @MainActor @Sendable () -> Bool
+    private let canReceiveBolt11: @MainActor @Sendable () -> Bool
+    private let canReceiveLnurl: @MainActor @Sendable () -> Bool
     private let marketRate: @MainActor @Sendable () -> PaykitExchangeRate?
     private let logWarning: @Sendable (String) -> Void
     private let incomingRejectionLog = IncomingPaykitPaymentRequestRejectionLog()
@@ -682,9 +683,10 @@ struct PaykitPaymentRequestService {
         isPrivatePaymentPublishingEnabled: @escaping @Sendable () -> Bool = {
             UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
         },
-        canReceiveLightning: @escaping @MainActor @Sendable () -> Bool = {
-            LightningService.shared.channels?.contains(where: \.isUsable) ?? false || ArkadeManager.shared.isReady
+        canReceiveBolt11: @escaping @MainActor @Sendable () -> Bool = {
+            LightningService.shared.channels?.contains(where: \.isUsable) ?? false
         },
+        canReceiveLnurl: @escaping @MainActor @Sendable () -> Bool = { ArkadeManager.shared.isReady },
         marketRate: @escaping @MainActor @Sendable ()
             -> PaykitExchangeRate? = { CurrencyService.shared.loadCachedRates()?.first { $0.quote == "USD" }.map { PaykitExchangeRate(
                 price: $0.lastPrice,
@@ -695,7 +697,8 @@ struct PaykitPaymentRequestService {
         }
     ) {
         self.sdk = sdk
-        self.canReceiveLightning = canReceiveLightning
+        self.canReceiveBolt11 = canReceiveBolt11
+        self.canReceiveLnurl = canReceiveLnurl
         self.marketRate = marketRate
         self.now = now
         self.subscriptionNow = subscriptionNow ?? { SubscriptionClock.subscriptionDate(from: now()) }
@@ -796,7 +799,7 @@ struct PaykitPaymentRequestService {
     ) async throws -> PaykitPaymentRequestTargetDiscovery {
         let unavailable = PaykitPaymentRequestTargetDiscovery(targets: [], isComplete: true, capabilityCheckedPublicKeys: [])
         guard isPrivatePaymentPublishingEnabled(),
-              await !Self.acceptedPaymentEndpointIdentifiers(canReceiveLightning: canReceiveLightning()).isEmpty else { return unavailable }
+              await !enabledPaymentEndpointIdentifiers().isEmpty else { return unavailable }
         let sdkPriority: PaykitSdkOperationLock.Priority = priority == .bulk ? .background : .interactive
         guard let identityStatus = try await sdk.identityStatus(priority: sdkPriority),
               identityStatus.capability == .privateLinkCapable,
@@ -872,7 +875,7 @@ struct PaykitPaymentRequestService {
         savedPublicKeys: [String],
         expectedIdentity: String
     ) async throws -> PaykitPaymentRequest {
-        let enabled = await Self.acceptedPaymentEndpointIdentifiers(canReceiveLightning: canReceiveLightning())
+        let enabled = await enabledPaymentEndpointIdentifiers()
         let acceptedPaymentEndpointIdentifiers = draft.acceptedPaymentEndpointIdentifiers.map { selected in
             enabled.filter { selected.contains($0) }
         } ?? enabled
@@ -933,7 +936,7 @@ struct PaykitPaymentRequestService {
     ) async throws -> PaykitSubscription {
         let acceptedPaymentEndpointIdentifiers = await PaykitRequestPricing.subscriptionEndpoints(
             requested: draft.amount.asset,
-            available: Self.acceptedPaymentEndpointIdentifiers(canReceiveLightning: canReceiveLightning()),
+            available: enabledPaymentEndpointIdentifiers(),
             selected: draft.acceptedPaymentEndpointIdentifiers
         )
         let validationDate = now()
@@ -975,7 +978,7 @@ struct PaykitPaymentRequestService {
         try await validateBeforeProposing()
         guard await PaykitRequestPricing.subscriptionEndpoints(
             requested: draft.amount.asset,
-            available: Self.acceptedPaymentEndpointIdentifiers(canReceiveLightning: canReceiveLightning()),
+            available: enabledPaymentEndpointIdentifiers(),
             selected: draft.acceptedPaymentEndpointIdentifiers
         ) == acceptedPaymentEndpointIdentifiers else {
             throw PaykitPaymentRequestError.requestUnavailable
@@ -1144,13 +1147,20 @@ struct PaykitPaymentRequestService {
         return subscription
     }
 
-    static func acceptedPaymentEndpointIdentifiers(canReceiveLightning: Bool) -> [String] {
-        PublicPaykitService.MethodId.publishableMethodIds.compactMap { methodId in
+    @MainActor
+    private func enabledPaymentEndpointIdentifiers() -> [String] {
+        Self.acceptedPaymentEndpointIdentifiers(canReceiveBolt11: canReceiveBolt11(), canReceiveLnurl: canReceiveLnurl())
+    }
+
+    /// A usable channel receives on a bolt11 invoice; Arkade receives on its Lightning address (LNURL).
+    static func acceptedPaymentEndpointIdentifiers(canReceiveBolt11: Bool, canReceiveLnurl: Bool) -> [String] {
+        PublicPaykitService.MethodId.payablePreferenceOrder.compactMap { methodId in
             if methodId == .usdtArbitrum {
                 return PublicPaykitService.isUsdtPaymentOptionEnabled() ? methodId.rawValue : nil
             }
-            if methodId == .bitcoinLightningBolt11 {
-                return canReceiveLightning && PublicPaykitService.isLightningPaymentOptionEnabled() ? methodId.rawValue : nil
+            if methodId == .bitcoinLightningBolt11 || methodId == .bitcoinLightningLnurl {
+                let canReceive = methodId == .bitcoinLightningBolt11 ? canReceiveBolt11 : canReceiveLnurl
+                return canReceive && PublicPaykitService.isLightningPaymentOptionEnabled() ? methodId.rawValue : nil
             }
             guard methodId.onchainNetwork == Env.network,
                   PublicPaykitService.isOnchainPaymentOptionEnabled()

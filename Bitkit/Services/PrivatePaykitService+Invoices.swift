@@ -6,19 +6,20 @@ import UIKit
 // MARK: - Invoice Rotation
 
 extension PrivatePaykitService {
-    func currentOrRotatedInvoice(
+    /// The contact's private Lightning endpoint: its own bolt11 invoice, or the Arkade Lightning address (LNURL) that
+    /// Arkade answers an amountless receive with.
+    func currentLightningEndpoint(
         for publicKey: String,
         wallet: WalletViewModel,
         forceRefresh: Bool = false
-    ) async throws -> StoredInvoice {
+    ) async throws -> PublicPaykitService.Endpoint {
         if !forceRefresh, let invoice = await reusablePrivateInvoice(for: publicKey) {
-            return invoice
+            return try lightningEndpoint(.bitcoinLightningBolt11, value: invoice.bolt11)
         }
 
         let bolt11 = try await createVariableInvoice(wallet)
-        // Arkade answers an amountless receive with its Lightning address, which no private invoice can stand for.
-        guard !PublicPaykitService.isLnurl(bolt11) else {
-            throw PrivatePaykitError.routeHintsUnavailable
+        if PublicPaykitService.isLnurl(bolt11) {
+            return try lightningEndpoint(.bitcoinLightningLnurl, value: bolt11)
         }
         guard case let .lightning(decodedInvoice) = try await decode(invoice: bolt11) else {
             throw PublicPaykitError.invalidPayload
@@ -34,7 +35,17 @@ extension PrivatePaykitService {
         )
         setLocalInvoice(invoice, publicKey: publicKey)
         persistState()
-        return invoice
+        return try lightningEndpoint(.bitcoinLightningBolt11, value: invoice.bolt11)
+    }
+
+    private func lightningEndpoint(_ methodId: PublicPaykitService.MethodId, value: String) throws -> PublicPaykitService.Endpoint {
+        try PublicPaykitService.Endpoint(
+            methodId: methodId,
+            value: value,
+            min: nil,
+            max: nil,
+            rawPayload: PublicPaykitService.serializePayload(value: value)
+        )
     }
 
     func rememberReceivedInvoicePaymentHash(_ paymentHash: String, publicKey: String) {

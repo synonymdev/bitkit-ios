@@ -585,14 +585,15 @@ enum PublicPaykitService {
 
     static func paymentRequest(from endpoints: [Endpoint]) -> String {
         guard let onchainEndpoint = MethodId.onchainPreferenceOrder.compactMap({ methodId in endpoints.first { $0.methodId == methodId } }).first,
-              let bolt11Endpoint = endpoints.first(where: { $0.methodId == .bitcoinLightningBolt11 })
+              let lightningEndpoint = endpoints.first(where: { $0.methodId == .bitcoinLightningBolt11 }) ??
+              endpoints.first(where: { $0.methodId == .bitcoinLightningLnurl })
         else {
             return endpoints.first?.paymentRequest ?? ""
         }
 
         var allowedCharacters = CharacterSet.urlQueryAllowed
         allowedCharacters.remove(charactersIn: "?&=")
-        let lightningPaymentRequest = bolt11Endpoint.paymentRequest
+        let lightningPaymentRequest = lightningEndpoint.paymentRequest
         let encodedLightning = lightningPaymentRequest.addingPercentEncoding(withAllowedCharacters: allowedCharacters) ?? lightningPaymentRequest
         return "bitcoin:\(onchainEndpoint.paymentRequest)?lightning=\(encodedLightning)"
     }
