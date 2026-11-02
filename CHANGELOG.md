@@ -76,7 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Eligible initial USDT subscription payments continue after subscribing without a second swipe while retaining authentication and safety checks, with retryable unpaid periods, expired requests retained in payment history, and only paid periods shown in subscription details. #981
 - Refresh payment requests promptly when USDT payment or proof state changes. #982
 - Improved USDT deposit and payment request readability and recipient scrolling with enlarged text. #983
-- Boost only replaces outgoing transactions this wallet sent.
+- Boost only replaces outgoing transactions this wallet sent. #1140
 
 ### Security
 - Public payments now require a separate opt-in and use a reserved Bitcoin address, while private contact payments can remain enabled independently. #1095
