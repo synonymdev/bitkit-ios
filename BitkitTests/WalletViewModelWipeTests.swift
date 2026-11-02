@@ -4,8 +4,6 @@ import XCTest
 
 private struct NodeFailure: Error {}
 
-/// Stands in for ldk-node behind `WalletViewModel`, recording each lifecycle call in order. The test target compiles its
-/// own copy of `LightningService.swift` and `Errors.swift`, so the app's types are named by module.
 private final class FakeNodeLifecycle: Bitkit.NodeLifecycleService {
     private let lock = NSLock()
     private var _events: [String] = []
@@ -63,7 +61,8 @@ final class WalletViewModelWipeTests: XCTestCase {
     private func makeWallet(
         _ node: FakeNodeLifecycle,
         swapUpdatesStream: SwapUpdatesStreaming = BoltzService.shared,
-        swapUpdatesWipeStopTimeout: Duration = WalletViewModel.swapUpdatesWipeStopTimeout
+        swapUpdatesWipeStopTimeout: Duration = WalletViewModel.swapUpdatesWipeStopTimeout,
+        nodeLifecycleWipeTimeout: Duration = WalletViewModel.nodeLifecycleWipeTimeout
     ) -> WalletViewModel {
         // A start would otherwise run the one-time network graph cleanup against VSS.
         snapshotAppDefaults("legacyNetworkGraphCleanupDone")
@@ -74,7 +73,8 @@ final class WalletViewModelWipeTests: XCTestCase {
             sheetViewModel: SheetViewModel(),
             feeEstimatesManager: FeeEstimatesManager(),
             swapUpdatesStream: swapUpdatesStream,
-            swapUpdatesWipeStopTimeout: swapUpdatesWipeStopTimeout
+            swapUpdatesWipeStopTimeout: swapUpdatesWipeStopTimeout,
+            nodeLifecycleWipeTimeout: nodeLifecycleWipeTimeout
         )
     }
 
@@ -94,7 +94,6 @@ final class WalletViewModelWipeTests: XCTestCase {
         XCTAssertEqual(wallet.nodeLifecycleState, .stopped)
     }
 
-    // Regression: the wipe stopped the swap updates stream only with the node, while a swap flow opens it without one
     func testWipeStopsTheSwapUpdatesStreamOfAWalletWithoutANode() async throws {
         snapshotAppDefaults("devOverrideFeeEstimates")
         UserDefaults.standard.set(true, forKey: "devOverrideFeeEstimates")
@@ -123,8 +122,6 @@ final class WalletViewModelWipeTests: XCTestCase {
         XCTAssertEqual(stream.calls, ["stop"])
     }
 
-    // Regression: bitkit-core subscribes each pending swap while it holds the lock its stop takes, so while Boltz was
-    // unreachable the wipe waited on the server for as long as a start was in flight
     func testWipeWhoseSwapUpdatesStopTimesOutFailsBeforeTheNodeStopsAndARetrySucceeds() async throws {
         snapshotAppDefaultsDomain()
         UserDefaults.standard.set(true, forKey: "devOverrideFeeEstimates")
@@ -166,6 +163,37 @@ final class WalletViewModelWipeTests: XCTestCase {
         XCTAssertEqual(stream.calls.last, "stop")
     }
 
+    func testWipeGivesUpOnAStartThatHangsAndTouchesNothing() async throws {
+        let node = FakeNodeLifecycle()
+        let (setupReleased, releaseSetup) = AsyncStream<Void>.makeStream()
+        let (setupEntered, enterSetup) = AsyncStream<Void>.makeStream()
+        node.duringSetup = {
+            enterSetup.yield()
+            for await _ in setupReleased {
+                break
+            }
+        }
+        node.startError = NodeFailure()
+        let wallet = makeWallet(node, nodeLifecycleWipeTimeout: .milliseconds(100))
+        wallet.nodeLifecycleState = .initializing
+        let start = Task { try await wallet.start() }
+        for await _ in setupEntered {
+            break
+        }
+
+        do {
+            try await wallet.stopForWipe()
+            XCTFail("Expected the wipe to give up waiting for the start")
+        } catch is WipeWaitTimeoutError {}
+        XCTAssertEqual(node.events, ["setup"], "A wipe that gave up must not stop or wipe the node")
+
+        releaseSetup.yield()
+        await assertThrowsAsync { try await start.value }
+        try await wallet.stopForWipe()
+        try await wallet.wipe()
+        XCTAssertEqual(node.events, ["setup", "start", "stop", "wipeStorage"])
+    }
+
     func testWipeWaitsForAFailingStartInFlightBeforeStopping() async throws {
         let node = FakeNodeLifecycle()
         node.startError = NodeFailure()
@@ -192,8 +220,6 @@ final class WalletViewModelWipeTests: XCTestCase {
         XCTAssertFalse(node.isRunning)
     }
 
-    /// Holds a start from `.initializing` inside `setup`, requests the wipe, then lets the start go on. Returns the start
-    /// once the wipe's stop has completed.
     private func startThenWipeWhileStartIsInFlight(
         _ wallet: WalletViewModel,
         _ node: FakeNodeLifecycle

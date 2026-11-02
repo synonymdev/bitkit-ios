@@ -35,4 +35,36 @@ final class AppResetTests: XCTestCase {
         XCTAssertFalse(PublicPaykitService.isCleanupPending)
         XCTAssertFalse(UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey))
     }
+
+    func testABoundedWaitThatRunsOverFailsTheStep() async {
+        let started = ContinuousClock.now
+
+        await assertThrowsAsync {
+            try await AppReset.bounded("test", timeout: .milliseconds(50)) {
+                await Task.detached { try? await Task.sleep(for: .seconds(3)) }.value
+            }
+        }
+
+        XCTAssertLessThan(ContinuousClock.now - started, .seconds(2))
+    }
+
+    func testTheKeychainStepKeepsThePinItsCounterAndTheIntent() throws {
+        let kept: [KeychainEntryType] = [.securityPin, .pinFailedAttempts, .wipePending]
+        addTeardownBlock {
+            for key in kept + [.bip39Mnemonic(index: 0)] {
+                try? Keychain.delete(key: key)
+            }
+        }
+        for key in kept {
+            try Keychain.upsert(key: key, data: Data("kept".utf8))
+        }
+        try Keychain.upsert(key: .bip39Mnemonic(index: 0), data: Data("seed".utf8))
+
+        try AppReset.wipeKeychain()
+
+        for key in kept {
+            XCTAssertEqual(try Keychain.loadString(key: key), "kept", "\(key.storageKey) must outlive the keychain step")
+        }
+        XCTAssertNil(try Keychain.loadString(key: .bip39Mnemonic(index: 0)))
+    }
 }

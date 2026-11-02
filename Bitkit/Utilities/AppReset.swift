@@ -5,8 +5,6 @@ import SwiftUI
 /// retries.
 @MainActor
 final class AppReset: WipeStepExecutor {
-    /// The live app state tree, registered by `AppScene`, which owns it. A wipe starts from screens and from launch, which
-    /// have no other way to reach it. Weak, so it never keeps a replaced app state tree alive.
     private weak static var liveApp: AppViewModel?
     private weak static var liveWallet: WalletViewModel?
     private weak static var liveSession: SessionManager?
@@ -49,10 +47,17 @@ final class AppReset: WipeStepExecutor {
         // Before waiting for Paykit work to drain, so nothing uploads or starts the node meanwhile.
         BackupService.shared.setWiping(true)
         wallet.closeStartAdmissionForWipe()
-        try await PaykitSdkService.shared.withWalletWipe {
+        // A Trezor connect that reaches its PIN or pairing prompt during the attempt is answered at once instead of shown
+        TrezorUiHandler.shared.refusePinRequests()
+        TrezorTransport.shared.refusePairingCodeRequests()
+        defer {
+            TrezorUiHandler.shared.allowPinRequests()
+            TrezorTransport.shared.allowPairingCodeRequests()
+        }
+        try await PaykitSdkService.shared.withWalletWipe(acquireTimeout: Self.waitTimeout) {
             // A server switch restarts the node, so one under way finishes first, and no new one starts until the wipe ends.
-            await SettingsViewModel.shared.beginServerSettingsWipe()
             defer { SettingsViewModel.shared.endServerSettingsWipe() }
+            try await Self.bounded("server settings") { await SettingsViewModel.shared.beginServerSettingsWipe() }
             try await steps()
         }
     }
@@ -61,7 +66,7 @@ final class AppReset: WipeStepExecutor {
         switch step {
         case .quiesce:
             await BackupService.shared.stopObservingBackups()
-            await app.cancelMigrationSyncForWipe()
+            try await Self.bounded("migration sync") { [app] in await app.cancelMigrationSyncForWipe() }
         case .stopNode:
             try await wallet.stopForWipe()
         case .removeRemoteEndpoints:
@@ -76,7 +81,7 @@ final class AppReset: WipeStepExecutor {
             VssStoreIdProvider.shared.clearCache()
             OnChainHwService.shared.stopAllWatchers()
             // Before the paired devices are wiped, so a reconnect still running cannot save one back.
-            await Self.hardwareWallets?.resetForWipe()
+            try await Self.bounded("hardware wallets") { await Self.hardwareWallets?.resetForWipe() }
             do {
                 try await wallet.usdtWallet.wipe()
                 usdtCleanupError = nil
@@ -137,6 +142,15 @@ final class AppReset: WipeStepExecutor {
                 description: t("security__wiped_message")
             )
         }
+    }
+
+    /// How long a wipe waits for work it must let finish first. A wait that runs over fails the step, so the gate offers Retry.
+    static let waitTimeout: Duration = .seconds(30)
+
+    static func bounded(_ wait: String, timeout: Duration = waitTimeout, _ operation: @escaping () async -> Void) async throws {
+        guard await withDeadline(timeout, operation) == nil else { return }
+        Logger.warn("Wipe gave up waiting for \(wait)", context: "AppReset")
+        throw WipeWaitTimeoutError(wait: wait)
     }
 
     /// A hung remote cleanup must not hold the wipe; what it leaves behind is recoverable from the seed.

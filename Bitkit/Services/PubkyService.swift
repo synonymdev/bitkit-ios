@@ -1568,8 +1568,8 @@ actor PaykitSdkService {
         }
     }
 
-    func withWalletWipe<T>(_ operation: () async throws -> T) async throws -> T {
-        try await operationLock.withWalletWipe {
+    func withWalletWipe<T>(acquireTimeout: Duration? = nil, _ operation: () async throws -> T) async throws -> T {
+        try await operationLock.withWalletWipe(acquireTimeout: acquireTimeout) {
             resetRuntime()
             defer {
                 sessionProvider.clearLiveSessionAccess()
@@ -2112,10 +2112,16 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
         return result
     }
 
-    func withWalletWipe<T>(_ operation: () async throws -> T) async throws -> T {
+    /// With `acquireTimeout`, throws `WipeWaitTimeoutError` without running `operation` when Paykit work already holding the
+    /// lock has not drained by then.
+    func withWalletWipe<T>(acquireTimeout: Duration? = nil, _ operation: () async throws -> T) async throws -> T {
         let wipeID = try beginWipe()
         defer { endWipe() }
-        await acquire(priority: .ordered)
+        if let acquireTimeout {
+            try await acquire(within: acquireTimeout)
+        } else {
+            await acquire(priority: .ordered)
+        }
         defer { release() }
         try Task.checkCancellation()
         return try await Self.$walletWipeOwner.withValue(wipeID) {
@@ -2184,6 +2190,25 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
             if isLocked {
                 waiters.append(.uncancellable(priority, continuation))
                 lock.unlock()
+            } else {
+                isLocked = true
+                lock.unlock()
+                continuation.resume()
+            }
+        }
+    }
+
+    private func acquire(within timeout: Duration) async throws {
+        let id = UUID()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            lock.lock()
+            if isLocked {
+                waiters.append(.cancellable(id, .ordered, continuation))
+                lock.unlock()
+                Task { [self] in
+                    try? await Task.sleep(for: timeout)
+                    removeWaiter(id: id)?.resume(throwing: WipeWaitTimeoutError(wait: "Paykit"))
+                }
             } else {
                 isLocked = true
                 lock.unlock()

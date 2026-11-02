@@ -1359,4 +1359,24 @@ private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
         await lockedRead()
         return []
     }
+
+    func testAWipeThatCannotTakeTheLockInTimeRunsNothingAndLeavesTheLockUsable() async throws {
+        let lock = PaykitSdkOperationLock()
+        let holder = AsyncGate()
+        let held = Task { try await lock.withLock { await holder.wait() } }
+        try await Task.sleep(for: .milliseconds(20))
+
+        var didRun = false
+        do {
+            try await lock.withWalletWipe(acquireTimeout: .milliseconds(50)) { didRun = true }
+            XCTFail("Expected the wipe to give up waiting")
+        } catch is WipeWaitTimeoutError {}
+
+        XCTAssertFalse(didRun)
+        holder.open()
+        try await held.value
+        try await lock.withWalletWipe(acquireTimeout: .seconds(5)) { didRun = true }
+        XCTAssertTrue(didRun)
+        try await lock.withLock {}
+    }
 }
