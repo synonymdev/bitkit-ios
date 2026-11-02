@@ -49,7 +49,17 @@ extension SettingsViewModel {
 
     func setPin(_ pin: String) throws {
         try Keychain.saveString(key: .securityPin, str: pin)
+        // A new PIN starts with every attempt, whatever a removed one left behind
+        clearPinAttempts()
         updatePinEnabledState()
+    }
+
+    private func clearPinAttempts() {
+        do {
+            try KeychainPinLockoutStore().saveFailedAttempts(0)
+        } catch {
+            Logger.warn("Failed to clear the PIN attempt counter: \(error)", context: "SettingsViewModel")
+        }
     }
 
     func verifyPin(_ pin: String) -> PinResult {
@@ -71,6 +81,7 @@ extension SettingsViewModel {
         }
 
         try Keychain.delete(key: .securityPin)
+        clearPinAttempts()
 
         if resetSettings {
             // Reset all PIN-related settings when PIN is disabled

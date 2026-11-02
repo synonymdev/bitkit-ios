@@ -42,4 +42,24 @@ final class SettingsViewModelPINTests: XCTestCase {
         XCTAssertNil(PinResult.lockedOut.errorMessage)
         XCTAssertNil(PinResult.correct.errorMessage)
     }
+
+    func testANewPinStartsWithEveryAttemptAndRemovingItClearsTheCounter() throws {
+        snapshotAppDefaults("requirePinForPayments", "useBiometrics", KeychainPinLockoutStore.legacyFailedAttemptsKey)
+        let settings = SettingsViewModel.shared
+        let store = KeychainPinLockoutStore()
+        try Keychain.delete(key: .securityPin)
+        addTeardownBlock { @MainActor in
+            try? Keychain.delete(key: .securityPin)
+            try? Keychain.delete(key: .pinFailedAttempts)
+            settings.updatePinEnabledState()
+        }
+        try store.saveFailedAttempts(5)
+
+        try settings.setPin("1234")
+        XCTAssertEqual(try store.loadFailedAttempts(), 0)
+
+        try store.saveFailedAttempts(3)
+        try settings.removePin(pin: "1234")
+        XCTAssertEqual(try store.loadFailedAttempts(), 0)
+    }
 }

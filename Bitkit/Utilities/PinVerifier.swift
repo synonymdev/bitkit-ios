@@ -97,25 +97,25 @@ final class PinVerifier {
             return .unavailable
         }
 
-        if storedPin == pin {
-            if failedAttempts > 0 {
-                do {
-                    try store.saveFailedAttempts(0)
-                } catch {
-                    // Leaving the counter where it was only keeps the lockout stricter.
-                    Logger.error("Failed to reset the PIN attempt counter: \(error)", context: "PinVerifier")
-                }
-            }
-            return .correct
-        }
-
+        // Recorded before the comparison, so an attempt whose record fails is never compared: a write that keeps failing would
+        // otherwise allow a guess per launch.
         let newFailedAttempts = failedAttempts + 1
         do {
             try store.saveFailedAttempts(newFailedAttempts)
         } catch {
-            Logger.error("Failed to record a failed PIN attempt: \(error)", context: "PinVerifier")
+            Logger.error("Failed to record a PIN attempt: \(error)", context: "PinVerifier")
             coordinator.blockAccess()
             return .unavailable
+        }
+
+        if storedPin == pin {
+            do {
+                try store.saveFailedAttempts(0)
+            } catch {
+                // Leaving the counter raised only keeps the lockout stricter.
+                Logger.error("Failed to reset the PIN attempt counter: \(error)", context: "PinVerifier")
+            }
+            return .correct
         }
 
         guard newFailedAttempts < Env.pinAttempts else {

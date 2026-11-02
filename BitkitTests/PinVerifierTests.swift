@@ -159,6 +159,22 @@ final class PinVerifierTests: XCTestCase {
         XCTAssertFalse(verifier.canUseBiometrics)
     }
 
+    func testAnAttemptThatCannotBeRecordedIsNeverCompared() {
+        store.failsSavingAttempts = true
+
+        XCTAssertEqual(verifier.verify("1234"), .unavailable, "A correct PIN must not unlock while its attempt goes unrecorded")
+        XCTAssertEqual(store.failedAttempts, 0)
+        XCTAssertEqual(coordinator.gate, .blocked)
+    }
+
+    func testCorrectPinIsCountedBeforeTheComparisonThenCleared() {
+        store.failedAttempts = Env.pinAttempts - 1
+
+        XCTAssertEqual(verifier.verify("1234"), .correct)
+        XCTAssertEqual(store.failedAttempts, 0)
+        XCTAssertEqual(coordinator.gate, .none)
+    }
+
     // MARK: - Keychain store
 
     func testKeychainStoreReadsTheHigherOfTheLegacyAndKeychainCountersUntilTheNextWrite() throws {
