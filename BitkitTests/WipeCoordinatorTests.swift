@@ -396,11 +396,11 @@ final class WipeCoordinatorTests: XCTestCase {
         let coordinator = WipeCoordinator(store: store, makeExecutor: { executor }, retryDelays: [.milliseconds(5)])
 
         try coordinator.begin(.userReset)
-        for _ in 0 ..< 400 where executor.ranSteps.filter({ $0 == .wipeDatabases }).count < 4 {
+        for _ in 0 ..< 400 where executor.ranSteps.filter({ $0 == .wipeLightningStorage }).count < 4 {
             try await Task.sleep(for: .milliseconds(5))
         }
 
-        XCTAssertGreaterThanOrEqual(executor.ranSteps.filter { $0 == .wipeDatabases }.count, 4)
+        XCTAssertGreaterThanOrEqual(executor.ranSteps.filter { $0 == .wipeLightningStorage }.count, 4, "Each attempt reaches the failing step")
         executor.failingSteps = []
         for _ in 0 ..< 400 where coordinator.gate != .none {
             try await Task.sleep(for: .milliseconds(5))
