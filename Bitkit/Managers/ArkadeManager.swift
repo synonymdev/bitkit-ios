@@ -433,10 +433,11 @@ final class ArkadeManager: ChannelFreeLightningRail {
             case let .swap(swap):
                 Logger.info("Arkade swap '\(swap.id ?? "")' is '\(swap.outcome ?? "")'", context: "ArkadeManager")
                 await recordSwap(swap)
-                try await refresh()
+                // Before the refresh, which reads the chain and can fail, so a claimed swap still shows as received
                 if let event = Self.nodeEvent(for: swap) {
                     LightningService.shared.emitChannelFreeRailEvent(event)
                 }
+                try await refresh()
             case let .history(entries):
                 try await onHistory(entries)
             }
@@ -448,8 +449,8 @@ final class ArkadeManager: ChannelFreeLightningRail {
     /// A payment that reached the wallet outside this client's swaps: an offline receive the LNURL server claimed, or a
     /// payment straight to the Arkade address. Boarding and swap claims show up through their own records.
     private func onHistory(_ entries: [ArkadeHistoryEntry]) async throws {
-        try await refresh()
         try await recordReceives(entries)
+        try await refresh()
     }
 
     private func recordReceives(_ entries: [ArkadeHistoryEntry]) async throws {
