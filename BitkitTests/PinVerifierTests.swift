@@ -147,16 +147,23 @@ final class PinVerifierTests: XCTestCase {
         XCTAssertEqual(coordinator.gate, .none)
     }
 
-    func testFailedAttemptThatCannotBeRecordedBlocksAccessForTheProcess() {
+    func testAnAttemptThatCannotBeRecordedRaisesNoGateAndCanBeTriedAgain() {
         store.failsSavingAttempts = true
 
         XCTAssertEqual(verifier.verify("0000"), .unavailable)
-        XCTAssertEqual(coordinator.gate, .blocked)
-        XCTAssertEqual(verifier.verify("1234"), .lockedOut)
+        XCTAssertEqual(coordinator.gate, .none, "A write that fails now may work on the next entry")
+        XCTAssertTrue(verifier.canUseBiometrics)
 
-        coordinator.retry()
-        XCTAssertEqual(coordinator.gate, .blocked)
-        XCTAssertFalse(verifier.canUseBiometrics)
+        store.failsSavingAttempts = false
+        XCTAssertEqual(verifier.verify("1234"), .correct)
+    }
+
+    func testACounterThatCannotBeResetAfterACorrectPinIsDeleted() {
+        store.failedAttempts = 3
+        store.failsResettingAttempts = true
+
+        XCTAssertEqual(verifier.verify("1234"), .correct)
+        XCTAssertEqual(store.failedAttempts, 0)
     }
 
     func testAnAttemptThatCannotBeRecordedIsNeverCompared() {
@@ -164,7 +171,7 @@ final class PinVerifierTests: XCTestCase {
 
         XCTAssertEqual(verifier.verify("1234"), .unavailable, "A correct PIN must not unlock while its attempt goes unrecorded")
         XCTAssertEqual(store.failedAttempts, 0)
-        XCTAssertEqual(coordinator.gate, .blocked)
+        XCTAssertEqual(coordinator.gate, .none)
     }
 
     func testAPinThatCannotBeReadAtTheLimitNeverCountsAndNeverWipes() async {

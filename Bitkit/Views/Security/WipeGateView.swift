@@ -7,6 +7,7 @@ struct WipeGateView: View {
     @ObservedObject var coordinator: WipeCoordinator
 
     @State private var isShowingResetConfirmation = false
+    @State private var hasRetriedWhileBlocked = false
 
     private var isRunning: Bool {
         if case .failed = coordinator.progress { false } else { coordinator.gate == .wiping }
@@ -61,7 +62,9 @@ struct WipeGateView: View {
             if !isRunning {
                 VStack(spacing: 16) {
                     CustomButton(title: t("common__retry")) {
+                        let wasBlocked = coordinator.gate == .blocked
                         coordinator.retry()
+                        hasRetriedWhileBlocked = wasBlocked && coordinator.gate == .blocked
                     }
                     .accessibilityIdentifier("WipeGateRetry")
 
@@ -72,7 +75,8 @@ struct WipeGateView: View {
                     }
                     .accessibilityIdentifier("WipeGateExportLogs")
 
-                    if coordinator.gate == .blocked {
+                    // Only once a retry has not helped, so a passing keychain error never leads to a reset
+                    if coordinator.gate == .blocked, hasRetriedWhileBlocked {
                         CustomButton(title: t("security__reset_button_reset"), variant: .tertiary) {
                             isShowingResetConfirmation = true
                         }

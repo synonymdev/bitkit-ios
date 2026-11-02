@@ -14,6 +14,7 @@ protocol PinLockoutStore {
     func loadPin() throws -> String?
     func loadFailedAttempts() throws -> Int
     func saveFailedAttempts(_ count: Int) throws
+    func deleteFailedAttempts() throws
     func loadWipeIntent() throws -> Data?
     func saveWipeIntent(_ data: Data) throws
 }
@@ -41,6 +42,11 @@ struct KeychainPinLockoutStore: PinLockoutStore {
         guard try Keychain.load(key: .pinFailedAttempts) == data else {
             throw KeychainError.failedToSave
         }
+        defaults.removeObject(forKey: Self.legacyFailedAttemptsKey)
+    }
+
+    func deleteFailedAttempts() throws {
+        try Keychain.delete(key: .pinFailedAttempts)
         defaults.removeObject(forKey: Self.legacyFailedAttemptsKey)
     }
 
@@ -103,8 +109,8 @@ final class PinVerifier {
         do {
             try store.saveFailedAttempts(newFailedAttempts)
         } catch {
+            // Nothing was compared, so the user can simply try again
             Logger.error("Failed to record a PIN attempt: \(error)", context: "PinVerifier")
-            coordinator.blockAccess()
             return .unavailable
         }
 
@@ -112,8 +118,13 @@ final class PinVerifier {
             do {
                 try store.saveFailedAttempts(0)
             } catch {
-                // Leaving the counter raised only keeps the lockout stricter.
-                Logger.error("Failed to reset the PIN attempt counter: \(error)", context: "PinVerifier")
+                Logger.error("Failed to reset the PIN attempt counter, deleting it: \(error)", context: "PinVerifier")
+                do {
+                    try store.deleteFailedAttempts()
+                } catch {
+                    // Leaving the counter raised only keeps the lockout stricter.
+                    Logger.error("Failed to delete the PIN attempt counter: \(error)", context: "PinVerifier")
+                }
             }
             return .correct
         }

@@ -12,6 +12,7 @@ final class FakePinLockoutStore: PinLockoutStore {
     var failsLoadingPin = false
     var failsLoadingAttempts = false
     var failsSavingAttempts = false
+    var failsResettingAttempts = false
     var failsLoadingIntent = false
     var failsSavingIntent = false
     /// Accepts the write but reads back nothing, like a keychain that silently dropped it.
@@ -28,8 +29,12 @@ final class FakePinLockoutStore: PinLockoutStore {
     }
 
     func saveFailedAttempts(_ count: Int) throws {
-        if failsSavingAttempts { throw Failure() }
+        if failsSavingAttempts || (failsResettingAttempts && count == 0) { throw Failure() }
         failedAttempts = count
+    }
+
+    func deleteFailedAttempts() throws {
+        failedAttempts = 0
     }
 
     func loadWipeIntent() throws -> Data? {

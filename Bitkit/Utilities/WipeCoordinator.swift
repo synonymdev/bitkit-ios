@@ -99,7 +99,6 @@ final class WipeCoordinator: ObservableObject {
     private var attempt: Task<Void, Never>?
     private var scheduledRetry: Task<Void, Never>?
     private var scheduledRetryCount = 0
-    private var isBlockedUntilRelaunch = false
 
     var isGateUp: Bool {
         gate != .none
@@ -165,14 +164,6 @@ final class WipeCoordinator: ObservableObject {
         writeIntentAndStart()
     }
 
-    /// Blocks access for the rest of this process without starting a wipe, for a failed PIN attempt that could not be
-    /// recorded: another entry would be a guess the counter never sees.
-    func blockAccess() {
-        isBlockedUntilRelaunch = true
-        guard gate == .none else { return }
-        gate = .blocked
-    }
-
     /// Runs the next attempt now, for the gate's Retry button or a return to the foreground. Scheduled retries start over
     /// from the shortest delay.
     func retry() {
@@ -233,7 +224,7 @@ final class WipeCoordinator: ObservableObject {
         switch state {
         case .none:
             // A launch held by the block skipped the PIN lockout check, so it runs before the block lifts.
-            if gate == .blocked, applyPinAttemptsState() == .notExhausted, !isBlockedUntilRelaunch {
+            if gate == .blocked, applyPinAttemptsState() == .notExhausted {
                 gate = .none
             }
         case let .confirmed(intent):
@@ -371,7 +362,6 @@ final class WipeCoordinator: ObservableObject {
         let completedReason = reason
         reason = nil
         isIntentDurable = false
-        isBlockedUntilRelaunch = false
         progress = .idle
         gate = .none
         executor.finish(reason: completedReason)
