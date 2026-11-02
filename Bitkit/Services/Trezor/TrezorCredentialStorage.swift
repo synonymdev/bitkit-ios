@@ -6,8 +6,7 @@ import Security
 enum TrezorCredentialStorage {
     // MARK: - Keychain Configuration
 
-    /// Keychain service identifier for Trezor credentials. A test run gets its own, so it never reads or deletes the
-    /// pairings of the app it runs in.
+    /// A test run gets its own, so it never reads or deletes the pairings of the app it runs in
     private static let serviceName = Env.isUnitTest ? "unit-tests.to.bitkit.trezor.thp" : "to.bitkit.trezor.thp"
 
     // MARK: - Public API

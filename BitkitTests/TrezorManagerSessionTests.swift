@@ -34,7 +34,6 @@ final class TrezorManagerSessionTests: XCTestCase {
         XCTAssertTrue(manager.knownDevices.isEmpty)
     }
 
-    // Regression: a wipe released only a connected session, so a passphrase a failed reconnect kept stayed selected
     func testAWipeWithNoDeviceConnectedDropsAKeptPassphrase() async {
         let manager = TrezorManager()
         TrezorUiHandler.shared.setWalletMode(.passphraseHost, hostPassphrase: "hidden wallet")
@@ -46,8 +45,6 @@ final class TrezorManagerSessionTests: XCTestCase {
         XCTAssertEqual(manager.walletMode, .standard)
     }
 
-    // Regression: a wipe left a connect waiting for its PIN, so it waited out the two minute PIN timeout before the
-    // connection work let it through. A foreground reconnect shows no PIN sheet to answer it.
     func testWipeAnswersAPinRequestStillPending() async {
         let manager = TrezorManager()
         var pendingRequestId: Int?

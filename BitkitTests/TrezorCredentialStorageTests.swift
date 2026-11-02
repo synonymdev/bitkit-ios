@@ -17,7 +17,6 @@ final class TrezorCredentialStorageTests: XCTestCase {
         super.tearDown()
     }
 
-    // Regression: a wallet wipe kept the pairing credentials, so re-pairing skipped the code
     func testTheWipeKeychainStepRemovesThePairingCredentials() throws {
         XCTAssertTrue(TrezorCredentialStorage.save(deviceId: deviceId, json: #"{"host_static_key":"00"}"#))
 

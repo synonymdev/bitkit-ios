@@ -39,15 +39,11 @@ final class TrezorUiHandler: TrezorUiCallback, @unchecked Sendable {
         pinRequestId.eraseToAnyPublisher()
     }
 
-    /// The PIN request core is blocked on, or nil while none is. Each request answers once, so an answer that arrives with
-    /// nothing pending, or for another request, is dropped rather than kept for the next one.
     private var pinRequest: PinRequest?
     private var nextPinRequestId = 1
-    /// While above zero, every PIN request is answered empty at once and never shown
     private var pinRefusals = 0
     private let pinLock = NSLock()
 
-    /// How long a PIN request waits for an answer before it ends unanswered
     private let pinTimeout: TimeInterval
 
     // MARK: - Wallet Mode / Passphrase Selection

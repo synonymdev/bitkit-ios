@@ -20,11 +20,9 @@ final class TrezorTransport: TrezorTransportCallback, @unchecked Sendable {
     let needsPairingCodePublisher = PassthroughSubject<Void, Never>()
 
     private var submittedPairingCode: String = ""
-    /// While above zero, every pairing-code request is answered empty at once and never shown
     private var pairingCodeRefusals = 0
     private let pairingCodeLock = NSLock()
 
-    /// How long a pairing-code request waits for an entry
     private let pairingCodeTimeout: TimeInterval
 
     init(pairingCodeTimeout: TimeInterval = 120) {

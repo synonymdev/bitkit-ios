@@ -7,7 +7,6 @@ import XCTest
 @MainActor
 final class TrezorUiHandlerPinTests: XCTestCase {
     private var cancellables: Set<AnyCancellable> = []
-    /// Every id the handler published, in order
     private var publishedIds: [Int?] = []
 
     override func tearDown() {
@@ -40,8 +39,6 @@ final class TrezorUiHandlerPinTests: XCTestCase {
         XCTAssertEqual(pin, "")
     }
 
-    // Regression: a PIN submitted with no request pending signalled ahead, so the next request returned at once,
-    // before the user could answer it
     func testAPinSubmittedWithNothingPendingIsDropped() async {
         let handler = makeHandler()
         handler.submitPin("stale", requestId: 1)
@@ -51,7 +48,6 @@ final class TrezorUiHandlerPinTests: XCTestCase {
         XCTAssertEqual(pin, "1234")
     }
 
-    // Regression: a PIN submitted after its request timed out stayed set for the next request
     func testAPinSubmittedAfterItsRequestTimedOutIsDropped() async {
         let handler = makeHandler(pinTimeout: 1)
         let timedOut = await Task.detached { handler.onPinRequest() }.value
@@ -63,8 +59,6 @@ final class TrezorUiHandlerPinTests: XCTestCase {
         XCTAssertEqual(pin, "1234")
     }
 
-    // Regression: a request had no identity, so positions read off a sheet left open after its request timed out
-    // answered the next request, whose matrix the device had scrambled again
     func testASheetLeftOpenAfterATimeoutCannotAnswerANewerRequest() async {
         let handler = makeHandler(pinTimeout: 1)
         let first = Task.detached { handler.onPinRequest() }
@@ -135,7 +129,6 @@ final class TrezorUiHandlerPinTests: XCTestCase {
         return handler
     }
 
-    /// Runs a PIN request on its own thread, as core does, and calls `answer` with its id once the UI is told about it.
     private func requestPin(from handler: TrezorUiHandler, answer: @escaping (Int) -> Void) async -> String {
         let shownBefore = publishedIds.count
         let request = Task.detached { handler.onPinRequest() }

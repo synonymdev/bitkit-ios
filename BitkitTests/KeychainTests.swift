@@ -173,8 +173,6 @@ final class KeychainTests: XCTestCase {
         )
     }
 
-    // Regression: a wipe deleted in listing order and never checked the seed was gone, so a failed delete could leave the seed
-    // on the device with its PIN already removed
     func testAWipeStopsBeforeThePinWhileASeedRemains() {
         let pin = Keychain.account(for: .securityPin)
         let mnemonic = Keychain.account(for: .bip39Mnemonic(index: 0))

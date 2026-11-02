@@ -15,8 +15,6 @@ final class TrezorTransportPairingCodeTests: XCTestCase {
         subscription = transport.needsPairingCodePublisher.sink { [unowned self] in requests += 1 }
     }
 
-    // Regression: a request drained the cancel a wipe sent ahead of it, so a connect that reached pairing during the
-    // wipe showed the Pair Device sheet and waited for the whole pairing timeout
     func testARefusedRequestIsAnsweredAtOnceAfterACancelAndShowsNoSheet() async {
         transport.refusePairingCodeRequests()
         transport.cancelPairingCode()
