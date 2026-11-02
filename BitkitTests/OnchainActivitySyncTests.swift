@@ -23,6 +23,45 @@ final class OnchainActivitySyncTests: XCTestCase {
         try await super.tearDown()
     }
 
+    func testAddressUsageIncludesEveryStoredBatchOutputAcrossWallets() async throws {
+        let utility = Bitkit.CoreService.shared.utility
+        for (index, walletId) in [WalletScope.default, "trezor:wallet"].enumerated() {
+            let txid = String(repeating: String(index + 1), count: 64)
+            let receiveAddress = "bcrt1qordinary\(index)"
+            let publicAddress = "bcrt1qpublic\(index)"
+            let unrelatedAddress = "bcrt1qunrelated\(index)"
+            let timestamp: UInt64 = 1000
+            try await Bitkit.CoreService.shared.activity.insert(.onchain(OnchainActivity(
+                walletId: walletId, id: txid, txType: .received, txId: txid, value: 5000,
+                fee: 0, feeRate: 1, address: receiveAddress, confirmed: true, timestamp: timestamp,
+                isBoosted: false, boostTxIds: [], isTransfer: false, doesExist: true, confirmTimestamp: timestamp,
+                channelId: nil, transferTxId: nil, contact: nil, createdAt: timestamp, updatedAt: timestamp, seenAt: nil
+            )))
+            let activityAddressUsed = try await utility.isAddressUsed(address: receiveAddress)
+            let publicAddressUsedBeforeDetails = try await utility.isAddressUsed(address: publicAddress)
+            XCTAssertTrue(activityAddressUsed)
+            XCTAssertFalse(publicAddressUsedBeforeDetails)
+
+            let details = BitkitCore.TransactionDetails(
+                walletId: walletId, txId: txid, amountSats: 5000, inputs: [],
+                outputs: [
+                    TxOutput(scriptpubkey: "", scriptpubkeyType: "v0_p2wpkh", scriptpubkeyAddress: receiveAddress, value: 3000, n: 0),
+                    TxOutput(scriptpubkey: "", scriptpubkeyType: "v0_p2wpkh", scriptpubkeyAddress: publicAddress, value: 2000, n: 1),
+                ]
+            )
+            try await Bitkit.ServiceQueue.background(.core) { try upsertTransactionDetails(detailsList: [details]) }
+
+            let selectedAsActivityAddress = try await Bitkit.ServiceQueue.background(.core) {
+                try BitkitCore.isAddressUsed(address: publicAddress)
+            }
+            let publicAddressUsed = try await utility.isAddressUsed(address: publicAddress)
+            let unrelatedAddressUsed = try await utility.isAddressUsed(address: unrelatedAddress)
+            XCTAssertFalse(selectedAsActivityAddress)
+            XCTAssertTrue(publicAddressUsed)
+            XCTAssertFalse(unrelatedAddressUsed)
+        }
+    }
+
     func testSyncPreservesContactRemovalDuringLookup() async throws {
         let txid = String(repeating: "12", count: 32)
         let address = "bcrt1qfn50lqawrce0evh66qrnlt8j447lwmeyqp5gmd"

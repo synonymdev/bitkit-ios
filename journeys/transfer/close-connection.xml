@@ -1,0 +1,18 @@
+<journey name="closing a lightning connection returns to the connections list">
+  <description>
+    Verifies the iOS route after a successful cooperative channel close. Use the local E2E
+    Docker/LND fixture and an existing funded, usable Lightning connection. Start on Lightning
+    Connections with the connection visible. Creating or funding the fixture is a prerequisite.
+
+    Closing returns directly to the connections list, so reloading the removed connection's
+    detail cannot replace the success toast with "Connection Not Found". This journey checks
+    navigation and acknowledgement; it does not establish settlement or final transfer balance.
+  </description>
+  <actions>
+    <action>Open the existing connection (identifier "Channel")</action>
+    <action>Open Close Connection (identifier "CloseConnection")</action>
+    <action>Confirm Close (identifier "CloseConnectionButton")</action>
+    <action>Verify "Transfer Initiated" appears and the current screen is Lightning Connections</action>
+    <action>Verify "Connection Not Found" does not appear after the success toast disappears</action>
+  </actions>
+</journey>

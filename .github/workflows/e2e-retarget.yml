@@ -7,8 +7,8 @@ on:
         description: "Ready PR into master to validate"
         required: true
       workflow_ref:
-        description: "Workflow definitions to use (master after merge)"
-        default: master
+        description: "Optional compatible workflow source override (default: this helper revision)"
+        default: ""
       suite:
         description: "Suite to recover (automatic retarget validates both)"
         type: choice
@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: write
-      contents: read
+      contents: write
       pull-requests: read
       checks: write
     concurrency:
@@ -38,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Test retarget reporting
-        run: node --test .github/scripts/retarget-tests.test.cjs
+        run: node --test .github/scripts/retarget-*.test.cjs
       - name: Start tests and create pending PR checks
         uses: actions/github-script@v9
         with:

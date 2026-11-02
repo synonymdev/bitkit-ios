@@ -7,6 +7,7 @@ struct CloseConnectionConfirmation: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var transfer: TransferViewModel
     @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
     @Environment(\.dismiss) private var dismiss
 
     @State private var isClosing = false
@@ -46,7 +47,9 @@ struct CloseConnectionConfirmation: View {
         .bottomSafeAreaPadding()
     }
 
+    @MainActor
     private func closeChannel() async {
+        let expectedPath = navigation.path
         isClosing = true
 
         do {
@@ -54,11 +57,9 @@ struct CloseConnectionConfirmation: View {
             let failedChannels = try await transfer.closeChannels(channels: [channel])
 
             if failedChannels.isEmpty {
-                // Success - dismiss this view and show success toast
                 DispatchQueue.main.async {
-                    dismiss()
+                    navigation.returnToConnectionsAfterClosing(channelId: channel.channelIdString, from: expectedPath)
 
-                    // Show success toast
                     app.toast(
                         type: .success,
                         title: t("lightning__close_success_title"),
@@ -114,6 +115,7 @@ struct CloseConnectionConfirmation: View {
             .environmentObject(TransferViewModel())
             .environmentObject(AppViewModel())
             .environmentObject(SheetViewModel())
+            .environmentObject(NavigationViewModel())
     }
     .preferredColorScheme(.dark)
 }

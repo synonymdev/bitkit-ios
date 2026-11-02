@@ -39,6 +39,8 @@ class LightningService {
     private var storedEventCallback: ((Event) -> Void)?
     var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
     var onchainTransactionReceived: (@Sendable (String) async -> Void)?
+    typealias OnchainActivityCompletion = @MainActor () async -> Void
+    @MainActor var onchainActivityWillPersist: (() -> OnchainActivityCompletion?)?
 
     var syncStatusChangedPublisher: AnyPublisher<UInt64, Never> {
         syncStatusChangedSubject.eraseToAnyPublisher()
@@ -1348,6 +1350,24 @@ extension LightningService {
 // MARK: Events
 
 extension LightningService {
+    func deliverEvent(_ event: Event, onEvent: ((Event) -> Void)?) async -> OnchainActivityCompletion? {
+        let completion: OnchainActivityCompletion? = switch event {
+        case .onchainTransactionReceived, .onchainTransactionConfirmed, .onchainTransactionReplaced,
+             .onchainTransactionReorged, .onchainTransactionEvicted:
+            // Capture ownership before raw delivery or asynchronous activity processing can replace the session.
+            await MainActor.run { onchainActivityWillPersist?() }
+        default:
+            nil
+        }
+        onEvent?(event)
+        return completion
+    }
+
+    func persistOnchainActivity(completion: OnchainActivityCompletion?, operation: () async throws -> Void) async throws {
+        try await operation()
+        await completion?()
+    }
+
     func listenForEvents(onEvent: ((Event) -> Void)? = nil) {
         Task {
             while true {
@@ -1368,7 +1388,7 @@ extension LightningService {
                     await refreshChannelCache()
                 }
 
-                onEvent?(event)
+                let onchainActivityCompletion = await deliverEvent(event, onEvent: onEvent)
 
                 switch event {
                 case let .paymentSuccessful(paymentId, paymentHash, _, feePaidMsat):
@@ -1460,7 +1480,9 @@ extension LightningService {
                     Task {
                         await self.onchainTransactionReceived?(txid)
                         do {
-                            try await CoreService.shared.activity.handleOnchainTransactionReceived(txid: txid, details: details)
+                            try await self.persistOnchainActivity(completion: onchainActivityCompletion) {
+                                try await CoreService.shared.activity.handleOnchainTransactionReceived(txid: txid, details: details)
+                            }
                         } catch {
                             Logger.error("Failed to handle transaction received for \(txid): \(error)", context: "LightningService")
                         }
@@ -1472,10 +1494,12 @@ extension LightningService {
                             await onchainTransactionConfirmed(txid)
                         }
                         do {
-                            try await CoreService.shared.activity.handleOnchainTransactionConfirmed(
-                                txid: txid,
-                                details: details
-                            )
+                            try await self.persistOnchainActivity(completion: onchainActivityCompletion) {
+                                try await CoreService.shared.activity.handleOnchainTransactionConfirmed(
+                                    txid: txid,
+                                    details: details
+                                )
+                            }
                         } catch {
                             Logger.error("Failed to handle transaction confirmed for \(txid): \(error)", context: "LightningService")
                         }
@@ -1484,7 +1508,9 @@ extension LightningService {
                     Logger.info("🔄 Onchain transaction replaced (RBF): txid=\(txid) by \(conflicts.count) conflict(s)")
                     Task {
                         do {
-                            try await CoreService.shared.activity.handleOnchainTransactionReplaced(txid: txid, conflicts: conflicts)
+                            try await self.persistOnchainActivity(completion: onchainActivityCompletion) {
+                                try await CoreService.shared.activity.handleOnchainTransactionReplaced(txid: txid, conflicts: conflicts)
+                            }
                         } catch {
                             Logger.error("Failed to handle transaction replaced for \(txid): \(error)", context: "LightningService")
                         }
@@ -1493,7 +1519,9 @@ extension LightningService {
                     Logger.warn("⚠️ Onchain transaction reorged (unconfirmed): txid=\(txid)")
                     Task {
                         do {
-                            try await CoreService.shared.activity.handleOnchainTransactionReorged(txid: txid)
+                            try await self.persistOnchainActivity(completion: onchainActivityCompletion) {
+                                try await CoreService.shared.activity.handleOnchainTransactionReorged(txid: txid)
+                            }
                         } catch {
                             Logger.error("Failed to handle transaction reorged for \(txid): \(error)", context: "LightningService")
                         }
@@ -1502,7 +1530,9 @@ extension LightningService {
                     Logger.warn("🗑️ Onchain transaction removed from mempool: txid=\(txid)")
                     Task {
                         do {
-                            try await CoreService.shared.activity.handleOnchainTransactionEvicted(txid: txid)
+                            try await self.persistOnchainActivity(completion: onchainActivityCompletion) {
+                                try await CoreService.shared.activity.handleOnchainTransactionEvicted(txid: txid)
+                            }
                         } catch {
                             Logger.error("Failed to handle transaction evicted for \(txid): \(error)", context: "LightningService")
                         }

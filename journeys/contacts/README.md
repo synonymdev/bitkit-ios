@@ -17,7 +17,7 @@ using the PR manual checks.
 
 Import journeys require a disposable identity with a known following list. They save Bitkit contacts; payment sharing remains a separate step.
 
-Continue waits for public payment setup, not private linking with every imported contact.
+Continue enables private contact sharing and waits for app registration, not private linking with every imported contact.
 Private preparation runs in the background. Repeat Import All with a large following list containing
 unavailable profiles, then delete a contact while preparation is running. It must not be republished
 after deletion. Unavailable private-link lookups are retried after five minutes rather than on each refresh.
@@ -50,15 +50,15 @@ profile must also be absent from the saved contacts.
 
 ## Contact payment sharing
 
-`contact-payment-sharing.xml` checks disabling sharing and keeping it off after returning to
+`contact-payment-sharing.xml` checks disabling private sharing and keeping it off after returning to
 Settings.
 
-Network and storage fault injection are outside journey-runner capabilities. With contact sharing
-on, make one private-list withdrawal fail and let the following public endpoint or app-registry
-update fail as well. Turn off contact payments. The app must report the failure, keep the toggle off,
-and retain both cleanup jobs without republishing cleared private lists. Restore connectivity and
-foreground the app. Cleanup must finish while sharing stays off. Repeat with only the trailing
-public endpoint or app-registry update failing.
+Network and storage fault injection are outside journey-runner capabilities. With private contact sharing
+on, make one private-list withdrawal fail and let the following app-registry update fail as well.
+Turn off private contact payments. The app must report the failure, keep the private toggle off,
+leave public sharing unchanged, and retain cleanup without republishing cleared private lists.
+Restore connectivity and foreground the app. Cleanup must finish while private sharing stays off.
+Repeat with only the trailing app-registry update failing.
 
 Hold withdrawal in progress and foreground the app. It must not start another cleanup. Request
 sharing on again before withdrawal finishes: publication must wait until the earlier cleanup ends,
@@ -69,8 +69,8 @@ then leave sharing on. Repeat while a foreground cleanup is already running.
 Hold contact synchronization before private preparation or cleanup, then save a new contact and
 start its explicit link retry. Release synchronization and verify that the contact stays saved,
 its retry retains the original priority deadline, and the older contact list does not withdraw
-its payment endpoints. On Android, hold the startup app-registry refresh; on iOS, hold public
-publication while enabling contact payments and leave Settings to save the contact.
+its payment endpoints. Hold app-registry registration while enabling private contact payments and
+leave Settings to save the contact.
 
 Repeat by removing and re-adding a contact while synchronization's cleanup is queued, then by changing identity.
 Obsolete cleanup must not cancel the new retry or remove its assignments. A deletion that stays
@@ -137,8 +137,9 @@ These checks require controlled operation blocking.
 
 With public sharing enabled, compare a retained-profile startup and Home/resume. Initial public
 publication waits for the signed-in session and running node, with one automatic publication per
-activation when receive endpoints and session inputs are unchanged. Changed receive endpoints and
-forced channel invoice refresh still publish their latest values. Disable sharing or end the session
+activation when public endpoints and session inputs are unchanged. Changing ordinary Receive must
+not change the reserved public Bitcoin address. Forced channel invoice refresh still publishes its
+latest value. Disable public sharing or end the session
 while app registration is held; the admitted write may
 finish, but the next endpoint publication must not start for the ended session or disabled sharing.
 

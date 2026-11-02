@@ -140,6 +140,33 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         await service.stopObservingBackups()
     }
 
+    func testObservationRestartRetainsAndRecoversPendingBackup() async throws {
+        let fixture = try Fixture(categories: [.settings])
+        defer { fixture.removeDefaults() }
+        let uploads = UploadRecorder()
+        let service = fixture.service(uploadBackup: { key, _ in await uploads.record(key) })
+
+        for _ in 0 ..< 8 {
+            await startAfterPendingJobsSettle(service, categories: fixture.categories)
+            await service.stopObservingBackups()
+
+            let status = service.getBackupStatus(category: .settings)
+            XCTAssertTrue(status.isRequired)
+            XCTAssertEqual(status.required, fixture.required)
+            XCTAssertFalse(status.running)
+        }
+
+        await startAfterPendingJobsSettle(service, categories: fixture.categories)
+        await service.setAppActive(true)?.value
+
+        let recorded = await uploads.counts
+        XCTAssertEqual(recorded[BackupCategory.settings.rawValue], 1)
+        XCTAssertFalse(service.getBackupStatus(category: .settings).isRequired)
+        XCTAssertFalse(service.getBackupStatus(category: .settings).running)
+        service.setAppActive(false)
+        await service.stopObservingBackups()
+    }
+
     func testStoppingRecoveryRetainsPendingBackupAndDoesNotUpload() async throws {
         let fixture = try Fixture(categories: [.settings])
         defer { fixture.removeDefaults() }
@@ -185,6 +212,35 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         XCTAssertTrue(service.getBackupStatus(category: .settings).isRequired)
         service.setAppActive(false)
         await service.stopObservingBackups()
+    }
+
+    func testConcurrentSubscriptionRegistrationAndCancellationRetainsEveryCancellation() {
+        let subscriptions = BackupObservationSubscriptions()
+        let cancellations = CancellationRecorder()
+
+        DispatchQueue.concurrentPerform(iterations: 256) { index in
+            subscriptions.store(AnyCancellable { cancellations.record() })
+            if index.isMultiple(of: 8) {
+                subscriptions.cancelAll()
+            }
+        }
+        subscriptions.cancelAll()
+
+        XCTAssertEqual(cancellations.count, 256)
+    }
+
+    func testSubscriptionCancellationCanRegisterAnotherSubscription() {
+        let subscriptions = BackupObservationSubscriptions()
+        let cancellations = CancellationRecorder()
+        subscriptions.store(AnyCancellable {
+            cancellations.record()
+            subscriptions.store(AnyCancellable { cancellations.record() })
+        })
+
+        subscriptions.cancelAll()
+        XCTAssertEqual(cancellations.count, 1)
+        subscriptions.cancelAll()
+        XCTAssertEqual(cancellations.count, 2)
     }
 
     func testForegroundRetriesUsdtIndependentlyOfCompleteWalletRestore() async throws {
@@ -413,6 +469,19 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         await newWindowCompletion.value
         await oldWindowCompletion.value
         await service.stopObservingBackups()
+    }
+}
+
+private final class CancellationRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancellations = 0
+
+    var count: Int {
+        lock.withLock { cancellations }
+    }
+
+    func record() {
+        lock.withLock { cancellations += 1 }
     }
 }
 
