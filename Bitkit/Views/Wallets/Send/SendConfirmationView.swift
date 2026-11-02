@@ -3,6 +3,8 @@ import LDKNode
 import SwiftUI
 
 struct SendConfirmationView: View {
+    private static let providerKeyLength = 12
+
     @Environment(PaykitPaymentRequestManager.self) private var paykitPaymentRequestManager
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activityList: ActivityListViewModel
@@ -304,6 +306,13 @@ struct SendConfirmationView: View {
                         PaykitAmountText(amount: preparingRequest.amount, size: .display)
                             .accessibilityIdentifier("ReviewAmount")
                     }
+                } else if let quote = app.paykitSwapRoute?.quote {
+                    MoneyStack(
+                        sats: Int(wallet.sendAmountSats ?? quote.deliveredSat),
+                        showSymbol: true,
+                        testIdPrefix: "ReviewAmount",
+                        onTap: navigateToAmount
+                    )
                 } else if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                     MoneyStack(
                         sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis),
@@ -325,7 +334,9 @@ struct SendConfirmationView: View {
             .padding(.bottom, oneOffPaymentRequest == nil ? 44 : 24)
 
             if showDetails {
-                if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
+                if let route = app.paykitSwapRoute, let quote = route.quote {
+                    swapRouteView(route, quote: quote)
+                } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                     onchainView(invoice)
                 } else if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                     lightningView(invoice)
@@ -653,6 +664,62 @@ struct SendConfirmationView: View {
         }
     }
 
+    func swapRouteView(_ route: PaykitSwapRoute, quote: PubkySwapRouteQuote) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                SendSectionView(t("wallet__send_from")) {
+                    NumberPadActionButton(
+                        text: t("wallet__spending__title"),
+                        color: .purpleAccent,
+                        variant: .secondary,
+                        disabled: true
+                    ) {}
+                        .accessibilityIdentifier("SendConfirmAssetButton")
+                }
+
+                Spacer(minLength: 16)
+
+                if let contact = contactPaymentContact {
+                    SendSectionView(contactSectionTitle) {
+                        contactRecipient(contact)
+                    }
+                }
+            }
+
+            HStack(alignment: .top, spacing: 16) {
+                SendSectionView(t("wallet__send_fee_and_speed")) {
+                    HStack(spacing: 0) {
+                        Image("bolt-hollow")
+                            .foregroundColor(.purpleAccent)
+                            .frame(width: 16, height: 16)
+                            .padding(.trailing, 4)
+                        BodySSBText("\(t("fee__instant__title")) (")
+                        MoneyText(sats: Int(quote.totalFeeSat), size: .bodySSB, symbol: true, symbolColor: .textPrimary)
+                        BodySSBText(")")
+                    }
+                }
+
+                SendSectionView(t("wallet__send_swap_route")) {
+                    BodySSBText("Pubky Swaps · \(route.providerName ?? quote.providerPubky.ellipsis(maxLength: Self.providerKeyLength))")
+                        .lineLimit(2)
+                        .accessibilityIdentifier("ReviewSwapRoute")
+                }
+            }
+
+            SendSectionView(t("wallet__tags")) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(tagManager.selectedTagsArray, id: \.self) { tag in
+                            Tag(tag, icon: .close, onDelete: { tagManager.removeTagFromSelection(tag) })
+                        }
+                        AddTagButton(onPress: { navigationPath.append(.tag) })
+                            .accessibilityIdentifier("TagsAddSend")
+                    }
+                }
+            }
+        }
+    }
+
     func lightningView(_ invoice: LightningInvoice) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
@@ -903,6 +970,8 @@ struct SendConfirmationView: View {
 
         if hwSend.isActive {
             navigationPath.append(.hardwareSign)
+        } else if let quote = app.paykitSwapRoute?.quote {
+            await performSwapRoutedPayment(quote)
         } else {
             try await performPayment(isAutomatic: isAutomatic)
         }
@@ -1164,6 +1233,28 @@ struct SendConfirmationView: View {
         }
 
         return note
+    }
+
+    private func performSwapRoutedPayment(_ quote: PubkySwapRouteQuote) async {
+        isSubmittingPayment = true
+        defer { isSubmittingPayment = false }
+        do {
+            let payment = try await PubkySwapsRouteService.commit(quoteId: quote.quoteId)
+            Logger.info("Committed Pubky Swaps route \(payment.swapId) to \(payment.destinationAddress)", context: "SendConfirmation")
+            // The hold invoice settles only after the claim reveals the preimage, so its payment stays pending until then.
+            let paymentHash = try await LightningService.shared.send(bolt11: payment.invoice)
+            let claimTxid = try await PubkySwapsRouteService.awaitClaim(swapId: payment.swapId)
+            Logger.info("Claimed Pubky Swaps route \(payment.swapId) in \(claimTxid)", context: "SendConfirmation")
+            navigationPath.append(.success(paymentId: String(paymentHash)))
+        } catch {
+            Logger.error("Pubky Swaps route payment failed: \(error)", context: "SendConfirmation")
+            navigationPath.append(.failure(SendFailureContext(
+                error: error,
+                retryRoute: .confirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: nil
+            )))
+        }
     }
 
     private func performPayment(isAutomatic: Bool) async throws {
