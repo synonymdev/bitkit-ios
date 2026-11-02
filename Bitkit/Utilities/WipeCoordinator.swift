@@ -1,5 +1,10 @@
 import Foundation
 
+/// A wait a wipe step makes did not end in time. The step fails before it deletes anything, and the wipe stays pending.
+struct WipeWaitTimeoutError: Error {
+    let wait: String
+}
+
 enum WipeReason: String, Codable {
     case pinAttemptsExceeded
     case userReset
@@ -168,8 +173,24 @@ final class WipeCoordinator: ObservableObject {
         gate = .blocked
     }
 
-    /// Runs the next attempt now: the gate's Retry button, a return to the foreground, or a scheduled retry.
+    /// Runs the next attempt now, for the gate's Retry button or a return to the foreground. Scheduled retries start over
+    /// from the shortest delay.
     func retry() {
+        scheduledRetryCount = 0
+        runNextAttempt()
+    }
+
+    /// Starts a wipe from the blocked gate, which deletes the wallet rather than unlocking it. Throws, with nothing deleted and
+    /// access still blocked, when the intent cannot be made durable.
+    func resetFromBlockedGate() throws {
+        guard gate == .blocked else { return }
+        try writeIntent(.forgotPin)
+        enterWipe(reason: .forgotPin)
+        isIntentDurable = true
+        startAttempt()
+    }
+
+    private func runNextAttempt() {
         scheduledRetry?.cancel()
         scheduledRetry = nil
 
@@ -266,9 +287,6 @@ final class WipeCoordinator: ObservableObject {
         }
     }
 
-    /// An older release, or an intent write that failed, can leave the counter exhausted without an intent: starts the
-    /// forced wipe for it. A PIN or counter that cannot be read may hide that state, so it blocks access until a read
-    /// succeeds, and deletes nothing.
     private func applyPinAttemptsState() -> PinAttemptsState {
         let state = readPinAttemptsState()
 
@@ -316,6 +334,7 @@ final class WipeCoordinator: ObservableObject {
         guard attempt == nil else { return }
         scheduledRetry?.cancel()
         scheduledRetry = nil
+        progress = .running(.quiesce)
         attempt = Task {
             await runAttempt()
             attempt = nil
@@ -352,21 +371,22 @@ final class WipeCoordinator: ObservableObject {
         let completedReason = reason
         reason = nil
         isIntentDurable = false
+        isBlockedUntilRelaunch = false
         progress = .idle
         gate = .none
         executor.finish(reason: completedReason)
     }
 
     private func scheduleRetry() {
-        guard scheduledRetryCount < retryDelays.count else { return }
-        let delay = retryDelays[scheduledRetryCount]
+        guard let longestDelay = retryDelays.last else { return }
+        let delay = scheduledRetryCount < retryDelays.count ? retryDelays[scheduledRetryCount] : longestDelay
         scheduledRetryCount += 1
 
         scheduledRetry?.cancel()
         scheduledRetry = Task {
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
-            retry()
+            runNextAttempt()
         }
     }
 }

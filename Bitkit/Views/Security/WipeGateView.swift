@@ -1,10 +1,12 @@
 import SwiftUI
 
 /// Shown instead of the whole app while a wipe is pending or the lockout state cannot be verified. It offers no PIN pad, no
-/// biometrics and no navigation: only the wipe's progress, Retry and Export logs.
+/// biometrics and no navigation: only the wipe's progress, Retry, Export logs and, while blocked, a reset.
 struct WipeGateView: View {
     @EnvironmentObject private var app: AppViewModel
     @ObservedObject var coordinator: WipeCoordinator
+
+    @State private var isShowingResetConfirmation = false
 
     private var isRunning: Bool {
         if case .failed = coordinator.progress { false } else { coordinator.gate == .wiping }
@@ -69,6 +71,13 @@ struct WipeGateView: View {
                         }
                     }
                     .accessibilityIdentifier("WipeGateExportLogs")
+
+                    if coordinator.gate == .blocked {
+                        CustomButton(title: t("security__reset_button_reset"), variant: .tertiary) {
+                            isShowingResetConfirmation = true
+                        }
+                        .accessibilityIdentifier("WipeGateReset")
+                    }
                 }
             }
         }
@@ -78,11 +87,28 @@ struct WipeGateView: View {
         .background(Color.customBlack)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("WipeGate")
-        .onAppear {
-            UIApplication.shared.isIdleTimerDisabled = true
+        .alert(t("security__reset_dialog_title"), isPresented: $isShowingResetConfirmation) {
+            Button(t("common__cancel"), role: .cancel) {}
+            Button(t("security__reset_confirm"), role: .destructive) {
+                resetWallet()
+            }
+        } message: {
+            Text(t("security__reset_dialog_desc"))
+        }
+        .onChange(of: isRunning, initial: true) { _, isRunning in
+            UIApplication.shared.isIdleTimerDisabled = isRunning
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
+        }
+    }
+
+    private func resetWallet() {
+        do {
+            try coordinator.resetFromBlockedGate()
+        } catch {
+            Logger.error("Failed to start a reset from the blocked gate: \(error)", context: "WipeGateView")
+            app.toast(type: .error, title: t("common__error"), description: t("security__wipe_not_started"))
         }
     }
 }

@@ -439,7 +439,6 @@ struct AppScene: View {
 
     @State private var hideSplash = false
     @State private var removeSplash = false
-    /// Set while an orphaned keychain could not be wiped, which holds the launch so no wallet starts on its seed.
     @State private var isOrphanedKeychainKept = false
     @State private var walletIsInitializing: Bool? = nil
     @State private var isWalletBackupRestoreRunning = false
@@ -962,7 +961,12 @@ struct AppScene: View {
             WalletRestoreError(
                 title: t("other__error_keychain"),
                 message: t("other__error_keychain_msg"),
-                onRetry: { await retryOrphanedKeychainWipe() }
+                onRetry: { await retryOrphanedKeychainWipe() },
+                onExportLogs: {
+                    if !LogService.shared.shareLogs() {
+                        app.toast(type: .error, title: t("lightning__error_logs"))
+                    }
+                }
             )
         } else if wallet.walletExists == true {
             existingWalletContent
@@ -1151,7 +1155,6 @@ struct AppScene: View {
         await continueLaunch()
     }
 
-    /// Handles an orphaned keychain before anything else. Returns false, holding the launch, while its seed could not be wiped.
     private func checkOrphanedKeychain() -> Bool {
         do {
             try OrphanedKeychainGuard.live.run()
@@ -1390,9 +1393,9 @@ struct AppScene: View {
 
         // `.inactive` is left alone: the iOS Bluetooth pairing alert puts the app there mid-connect.
         if newPhase == .active {
-            guard !wipeCoordinator.isGateUp else {
+            if wipeCoordinator.isGateUp {
                 wipeCoordinator.retry()
-                return
+                guard !wipeCoordinator.isGateUp else { return }
             }
 
             // Called even behind the PIN screen, so a background release still pending is called off.

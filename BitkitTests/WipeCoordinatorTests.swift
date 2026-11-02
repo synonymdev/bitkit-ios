@@ -387,4 +387,69 @@ final class WipeCoordinatorTests: XCTestCase {
             XCTAssertNil(store.intent)
         }
     }
+
+    // MARK: - Retrying and resetting
+
+    func testScheduledRetriesGoOnAtTheLongestDelay() async throws {
+        let executor = RecordingWipeExecutor(device: device)
+        executor.failingSteps = [.wipeDatabases]
+        let coordinator = WipeCoordinator(store: store, makeExecutor: { executor }, retryDelays: [.milliseconds(5)])
+
+        try coordinator.begin(.userReset)
+        for _ in 0 ..< 400 where executor.ranSteps.filter({ $0 == .wipeDatabases }).count < 4 {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        XCTAssertGreaterThanOrEqual(executor.ranSteps.filter { $0 == .wipeDatabases }.count, 4)
+        executor.failingSteps = []
+        for _ in 0 ..< 400 where coordinator.gate != .none {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertEqual(coordinator.gate, .none)
+    }
+
+    func testARetryShowsTheWipeRunningAgainRatherThanTheLastFailure() async throws {
+        let executor = RecordingWipeExecutor(device: device)
+        executor.failingSteps = [.wipeDatabases]
+        let coordinator = makeCoordinator(executor)
+        try coordinator.begin(.userReset)
+        await coordinator.waitForCurrentAttempt()
+        XCTAssertEqual(coordinator.progress, .failed(.wipeDatabases))
+
+        coordinator.retry()
+
+        XCTAssertEqual(coordinator.progress, .running(.quiesce))
+        await coordinator.waitForCurrentAttempt()
+    }
+
+    func testABlockedGateCanBeResetIntoAWipe() async throws {
+        store.failsLoadingIntent = true
+        let executor = RecordingWipeExecutor(device: device)
+        let coordinator = makeCoordinator(executor)
+        _ = await coordinator.prepareForLaunch()
+        XCTAssertEqual(coordinator.gate, .blocked)
+        store.failsLoadingIntent = false
+
+        try coordinator.resetFromBlockedGate()
+        XCTAssertEqual(coordinator.gate, .wiping)
+        await coordinator.waitForCurrentAttempt()
+
+        XCTAssertEqual(coordinator.gate, .none)
+        XCTAssertEqual(executor.finishedReasons, [.forgotPin])
+        XCTAssertNil(store.intent)
+    }
+
+    func testAResetFromTheBlockedGateWhoseIntentCannotBeWrittenStaysBlocked() async {
+        store.failsLoadingAttempts = true
+        let executor = RecordingWipeExecutor(device: device)
+        let coordinator = makeCoordinator(executor)
+        _ = await coordinator.prepareForLaunch()
+        XCTAssertEqual(coordinator.gate, .blocked)
+        store.failsSavingIntent = true
+
+        XCTAssertThrowsError(try coordinator.resetFromBlockedGate())
+
+        XCTAssertEqual(coordinator.gate, .blocked)
+        XCTAssertTrue(executor.ranSteps.isEmpty)
+    }
 }
