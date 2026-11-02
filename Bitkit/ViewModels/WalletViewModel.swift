@@ -205,6 +205,8 @@ class WalletViewModel: ObservableObject {
 
     func start(walletIndex: Int = 0) async throws {
         guard try await withNodeLifecycleLock({ try await startNode(walletIndex: walletIndex) }) else { return }
+        // A start that finished late does nothing more once a wipe is under way
+        guard !isStartAdmissionClosedForWipe, !WipeCoordinator.shared.isGateUp else { return }
 
         do {
             try await lightningService.disconnectIdlePeers()

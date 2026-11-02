@@ -1118,6 +1118,7 @@ struct AppScene: View {
 
         do {
             try await wallet.start()
+            guard !wipeCoordinator.isGateUp else { return }
             try await activity.syncLdkNodePayments()
             if !PaykitFeatureFlags.isUIEnabled {
                 await retryPendingPaykitEndpointRemoval()
