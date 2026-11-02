@@ -37,7 +37,8 @@ enum PubkySwapsRouteService {
         endpoint: PaykitEndpoint,
         lightningSpendableSats: UInt64,
         onchainSpendableSats: UInt64,
-        contacts: [String]
+        contacts: [String],
+        serviceLegs: [ServiceRouteLeg] = []
     ) async throws -> PaykitRoute {
         // Providers come from the user's own graph: every contact is asked for its swap offer.
         let candidates = contacts + Env.pubkySwapsProviders
@@ -50,7 +51,8 @@ enum PubkySwapsRouteService {
                 lightningSpendableSat: lightningSpendableSats,
                 onchainSpendableSat: onchainSpendableSats,
                 providers: candidates,
-                feeRateSatVb: claimFeeRateSatVb
+                feeRateSatVb: claimFeeRateSatVb,
+                serviceLegs: serviceLegs
             ),
             network: Env.bitkitCoreNetwork,
             mnemonic: mnemonic,

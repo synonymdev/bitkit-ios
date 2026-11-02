@@ -477,6 +477,9 @@ struct SendAmountView: View {
                 return true
             case let .none(reason):
                 app.toast(type: .error, title: t("slashtags__error_pay_title"), description: reason)
+            case let .service(leg):
+                Logger.error("Unexpected service route \(leg.service)", context: "SendAmountView")
+                app.toast(type: .error, title: t("slashtags__error_pay_title"), description: t("common__error_body"))
             case .direct:
                 app.paykitSwapRoute = nil
                 app.toast(type: .error, title: t("slashtags__error_pay_title"), description: t("common__error_body"))
