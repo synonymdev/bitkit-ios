@@ -14,6 +14,8 @@ import Observation
 @Observable @MainActor
 final class SparkManager: ChannelFreeLightningRail {
     static let shared = SparkManager()
+    nonisolated static let routeService = "spark"
+    private nonisolated static let routeAtomicity = "trusted"
     private nonisolated(unsafe) static let exitStateChanged = PassthroughSubject<Void, Never>()
     /// Fires once Spark connects and whenever its unilateral exit data changes, so the exit data backup is redone.
     nonisolated static var exitStateChangedPublisher: AnyPublisher<Void, Never> {
@@ -251,6 +253,41 @@ final class SparkManager: ChannelFreeLightningRail {
             options: .bitcoinAddress(confirmationSpeed: .medium)
         ))
         try await refresh()
+    }
+
+    /// A Paykit route that withdraws exactly `amountSats` to the contact's on-chain `endpoint` at medium speed, with
+    /// Spark's fee on top, or nil while Spark cannot send it. bitkit-core weighs it against the Pubky Swaps providers.
+    func withdrawalRouteLeg(endpoint: PaykitEndpoint, amountSats: UInt64) async throws -> ServiceRouteLeg? {
+        guard isReady, balanceSats >= amountSats else { return nil }
+        let prepared = try await prepareSend(paymentRequest: endpoint.value, amountSats: amountSats)
+        guard case let .bitcoinAddress(_, feeQuote) = prepared.paymentMethod else {
+            throw AppError(message: "Unexpected Spark payment method", debugMessage: "\(prepared.paymentMethod)")
+        }
+        let debitSats = amountSats + feeQuote.speedMedium.userFeeSat
+        guard !feeQuote.isEstimate, balanceSats >= debitSats else { return nil }
+        return ServiceRouteLeg(
+            service: Self.routeService,
+            endpoint: endpoint,
+            deliveredSat: amountSats,
+            debitSat: debitSats,
+            atomicity: Self.routeAtomicity,
+            validUntilUnix: feeQuote.expiresAt
+        )
+    }
+
+    /// Withdraws exactly `amountSats` to the on-chain `address` at medium speed and returns the withdrawal's txid.
+    func withdraw(to address: String, amountSats: UInt64) async throws -> String {
+        let prepared = try await prepareSend(paymentRequest: address, amountSats: amountSats)
+        let response = try await requireSdk().sendPayment(request: SendPaymentRequest(
+            prepareResponse: prepared,
+            options: .bitcoinAddress(confirmationSpeed: .medium)
+        ))
+        Logger.info("Sent Spark withdrawal '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
+        try await refresh()
+        if case let .withdraw(txId) = response.payment.details {
+            return txId
+        }
+        return response.payment.id
     }
 
     /// What a unilateral exit needs if the Spark operators stop cooperating; it can reach several MB.

@@ -306,9 +306,9 @@ struct SendConfirmationView: View {
                         PaykitAmountText(amount: preparingRequest.amount, size: .display)
                             .accessibilityIdentifier("ReviewAmount")
                     }
-                } else if let quote = app.paykitSwapRoute?.quote {
+                } else if let deliveredSat = app.paykitSwapRoute?.deliveredSat {
                     MoneyStack(
-                        sats: Int(wallet.sendAmountSats ?? quote.deliveredSat),
+                        sats: Int(wallet.sendAmountSats ?? deliveredSat),
                         showSymbol: true,
                         testIdPrefix: "ReviewAmount",
                         onTap: navigateToAmount
@@ -334,8 +334,8 @@ struct SendConfirmationView: View {
             .padding(.bottom, oneOffPaymentRequest == nil ? 44 : 24)
 
             if showDetails {
-                if let route = app.paykitSwapRoute, let quote = route.quote {
-                    swapRouteView(route, quote: quote)
+                if let route = app.paykitSwapRoute, let totalFeeSat = route.totalFeeSat {
+                    swapRouteView(route, totalFeeSat: totalFeeSat)
                 } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                     onchainView(invoice)
                 } else if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
@@ -664,7 +664,7 @@ struct SendConfirmationView: View {
         }
     }
 
-    func swapRouteView(_ route: PaykitSwapRoute, quote: PubkySwapRouteQuote) -> some View {
+    func swapRouteView(_ route: PaykitSwapRoute, totalFeeSat: UInt64) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 SendSectionView(t("wallet__send_from")) {
@@ -694,13 +694,13 @@ struct SendConfirmationView: View {
                             .frame(width: 16, height: 16)
                             .padding(.trailing, 4)
                         BodySSBText("\(t("fee__instant__title")) (")
-                        MoneyText(sats: Int(quote.totalFeeSat), size: .bodySSB, symbol: true, symbolColor: .textPrimary)
+                        MoneyText(sats: Int(totalFeeSat), size: .bodySSB, symbol: true, symbolColor: .textPrimary)
                         BodySSBText(")")
                     }
                 }
 
                 SendSectionView(t("wallet__send_swap_route")) {
-                    BodySSBText("Pubky Swaps · \(route.providerName ?? quote.providerPubky.ellipsis(maxLength: Self.providerKeyLength))")
+                    BodySSBText(routeName(route))
                         .lineLimit(2)
                         .accessibilityIdentifier("ReviewSwapRoute")
                 }
@@ -718,6 +718,13 @@ struct SendConfirmationView: View {
                 }
             }
         }
+    }
+
+    private func routeName(_ route: PaykitSwapRoute) -> String {
+        if let quote = route.quote {
+            return "Pubky Swaps · \(route.providerName ?? quote.providerPubky.ellipsis(maxLength: Self.providerKeyLength))"
+        }
+        return "Spark"
     }
 
     func lightningView(_ invoice: LightningInvoice) -> some View {
@@ -970,6 +977,8 @@ struct SendConfirmationView: View {
 
         if hwSend.isActive {
             navigationPath.append(.hardwareSign)
+        } else if let leg = app.paykitSwapRoute?.serviceLeg {
+            await performServiceRoutedPayment(leg)
         } else if let quote = app.paykitSwapRoute?.quote {
             await performSwapRoutedPayment(quote)
         } else {
@@ -1233,6 +1242,24 @@ struct SendConfirmationView: View {
         }
 
         return note
+    }
+
+    private func performServiceRoutedPayment(_ leg: ServiceRouteLeg) async {
+        isSubmittingPayment = true
+        defer { isSubmittingPayment = false }
+        do {
+            let txid = try await PubkySwapsRouteService.pay(leg)
+            Logger.info("Paid Paykit contact through \(leg.service) in \(txid)", context: "SendConfirmation")
+            navigationPath.append(.success(paymentId: txid))
+        } catch {
+            Logger.error("Service route payment failed: \(error)", context: "SendConfirmation")
+            navigationPath.append(.failure(SendFailureContext(
+                error: error,
+                retryRoute: .confirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: nil
+            )))
+        }
     }
 
     private func performSwapRoutedPayment(_ quote: PubkySwapRouteQuote) async {
