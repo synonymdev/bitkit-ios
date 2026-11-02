@@ -1809,6 +1809,9 @@
 "usdt__deposit_refund_address_network" = "Indirizzo USDT su {network}";
 "subscriptions__allowances" = "Plafond";
 "subscriptions__allowances_empty_headline" = "Imposta\n<accent>i plafond</accent>";
+"subscriptions__allowances_paused_description" = "I dati dei tuoi budget sono più vecchi di quelli che questo wallet ha già usato. Le richieste chiederanno la tua approvazione finché non riprendi.";
+"subscriptions__allowances_paused_resume" = "Riprendi";
+"subscriptions__allowances_paused_title" = "Pagamenti automatici in pausa";
 "subscriptions__allowances_empty_description" = "Puoi impostare limiti di spesa per pagare automaticamente le richieste di pagamento dei contatti fidati.";
 "subscriptions__allowance_add" = "Aggiungi Plafond";
 "subscriptions__allowance_title" = "Plafond";

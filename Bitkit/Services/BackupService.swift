@@ -669,7 +669,11 @@ class BackupService {
                 if let paymentState = payload.paykitPaymentState {
                     // VssBackupClient's existing custom backup namespace is explicitly wallet index 0.
                     let backupWallet = try await PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet.backupNamespace(index: 0)
-                    try await PaykitPaymentProofService.shared.restoreBackup(paymentState, wallet: backupWallet)
+                    try await PaykitPaymentProofService.shared.restoreBackup(
+                        paymentState,
+                        wallet: backupWallet,
+                        hasLedger: payload.paykitSdkBackupState != nil
+                    )
                 }
                 try TransferStorage.shared.upsertList(payload.transfers)
                 await PrivatePaykitAddressReservationStore.shared.restoreBackup(
