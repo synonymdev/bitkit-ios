@@ -2,6 +2,9 @@ import BitkitCore
 import LDKNode
 import SwiftUI
 
+/// The swap updates stream did not stop within `WalletViewModel.swapUpdatesWipeStopTimeout`.
+struct SwapUpdatesStopTimeoutError: Error {}
+
 @MainActor
 class WalletViewModel: ObservableObject {
     let usdtWallet: UsdtWalletManager
@@ -86,6 +89,8 @@ class WalletViewModel: ObservableObject {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
     }
 
+    private let swapUpdatesStream: SwapUpdatesStreaming
+    private let swapUpdatesWipeStopTimeout: Duration
     private let lightningService: LightningService
     private let nodeLifecycle: NodeLifecycleService
     private let coreService: CoreService
@@ -120,9 +125,13 @@ class WalletViewModel: ObservableObject {
         feeEstimatesManager: FeeEstimatesManager,
         onchainAttemptService: OnchainSendAttemptService = .shared,
         pubkyProfile: PubkyProfileManager? = nil,
-        usdtWallet: UsdtWalletManager? = nil
+        usdtWallet: UsdtWalletManager? = nil,
+        swapUpdatesStream: SwapUpdatesStreaming = BoltzService.shared,
+        swapUpdatesWipeStopTimeout: Duration = WalletViewModel.swapUpdatesWipeStopTimeout
     ) {
         self.usdtWallet = usdtWallet ?? UsdtWalletManager()
+        self.swapUpdatesStream = swapUpdatesStream
+        self.swapUpdatesWipeStopTimeout = swapUpdatesWipeStopTimeout
         self.lightningService = lightningService
         self.nodeLifecycle = nodeLifecycle ?? lightningService
         self.coreService = coreService
@@ -453,8 +462,11 @@ class WalletViewModel: ObservableObject {
     func stopForWipe() async throws {
         closeStartAdmissionForWipe()
         try await withNodeLifecycleLock {
+            // With or without a node, as a swap flow opens the stream without one. First, so a stop that times out fails the
+            // wipe with the node untouched.
+            try await stopSwapUpdatesForWipe()
             if nodeLifecycle.hasNode {
-                try await stopNodeLocked(clearEventCallback: true)
+                try await stopNodeLocked(clearEventCallback: true, swapUpdatesStopped: true)
             }
             guard !nodeLifecycle.hasNode else {
                 throw AppError(serviceError: .nodeStillRunning)
@@ -466,10 +478,12 @@ class WalletViewModel: ObservableObject {
         isStartAdmissionClosedForWipe = true
     }
 
-    private func stopNodeLocked(clearEventCallback: Bool) async throws {
+    private func stopNodeLocked(clearEventCallback: Bool, swapUpdatesStopped: Bool = false) async throws {
         nodeLifecycleState = .stopping
-        // Stop the swap updates stream with the node; it restarts on the next wallet start.
-        await stopSwapUpdates()
+        if !swapUpdatesStopped {
+            // Stop the swap updates stream with the node; it restarts on the next wallet start.
+            await stopSwapUpdates()
+        }
 
         do {
             try await nodeLifecycle.stop(clearEventCallback: clearEventCallback)
@@ -520,6 +534,9 @@ class WalletViewModel: ObservableObject {
     /// Ceiling on swap updates stream start attempts per run (~14 min of backoff). Giving up is
     /// safe: the stream is retried on the next node start and when entering a swap flow.
     private static let swapUpdatesMaxAttempts = 20
+    /// Upper bound on how long a wipe waits for the stream to stop. bitkit-core subscribes each pending swap while it holds
+    /// the lock its stop takes, for up to about 10 s a swap while Boltz is unreachable.
+    nonisolated static let swapUpdatesWipeStopTimeout: Duration = .seconds(30)
 
     private var swapUpdatesTask: Task<Void, Never>?
     private var swapEventsTask: Task<Void, Never>?
@@ -530,7 +547,8 @@ class WalletViewModel: ObservableObject {
     /// background tasks and could race an in-flight claim. Safe to call repeatedly. Runs only
     /// where swaps are supported and enabled in dev settings, see `BoltzService.isSwapEnabled`.
     func ensureSwapUpdatesRunning() {
-        guard BoltzService.shared.isSwapEnabled else { return }
+        // The stream holds the wallet's mnemonic, so once a wipe starts nothing opens it again.
+        guard !isStartAdmissionClosedForWipe, swapUpdatesStream.isSwapEnabled else { return }
         collectSwapEventsOnce()
         guard !swapUpdatesRunning, swapUpdatesTask == nil else { return }
         swapUpdatesTask = Task { [weak self] in
@@ -551,7 +569,7 @@ class WalletViewModel: ObservableObject {
                 if let rates = await feeEstimatesManager.getEstimates() {
                     feeRate = Double(SettingsViewModel.shared.defaultTransactionSpeed.getFeeRate(from: rates))
                 }
-                try await BoltzService.shared.startUpdates(feeRateSatPerVb: feeRate, acceptZeroConf: true)
+                try await swapUpdatesStream.startUpdates(feeRateSatPerVb: feeRate, acceptZeroConf: true)
                 swapUpdatesRunning = true
                 return
             } catch {
@@ -572,8 +590,8 @@ class WalletViewModel: ObservableObject {
     /// Refresh balances when a swap lands on-chain so savings reflect it without a manual sync.
     private func collectSwapEventsOnce() {
         guard swapEventsTask == nil else { return }
-        swapEventsTask = Task { [weak self] in
-            for await event in BoltzService.shared.events() {
+        swapEventsTask = Task { [weak self, swapUpdatesStream] in
+            for await event in swapUpdatesStream.events() {
                 if case let .claimed(swapId, _) = event {
                     Logger.info("Savings swap claimed: \(swapId)", context: "WalletViewModel")
                     await self?.syncStateAsync()
@@ -582,11 +600,23 @@ class WalletViewModel: ObservableObject {
         }
     }
 
+    /// Returns once the stream is stopped and no start can land any more: a start handed to bitkit-core cannot be cancelled,
+    /// and one landing after the stop would keep the stream running.
     private func stopSwapUpdates() async {
-        swapUpdatesTask?.cancel()
+        let startTask = swapUpdatesTask
+        startTask?.cancel()
+        await startTask?.value
         swapUpdatesTask = nil
         swapUpdatesRunning = false
-        await BoltzService.shared.stopUpdates()
+        await swapUpdatesStream.stopUpdates()
+    }
+
+    /// `stopSwapUpdates`, bounded, so a wipe fails before it deletes anything instead of waiting on Boltz. The stop goes on
+    /// after a timeout, and a retried wipe waits for it again.
+    private func stopSwapUpdatesForWipe() async throws {
+        guard await withDeadline(swapUpdatesWipeStopTimeout, { await self.stopSwapUpdates() }) != nil else {
+            throw SwapUpdatesStopTimeoutError()
+        }
     }
 
     func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
