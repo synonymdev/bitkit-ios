@@ -588,10 +588,14 @@ extension MigrationsService {
         userDefaults.bool(forKey: Self.rnMigrationCheckedKey)
     }
 
+    /// Throws when the React Native keychain cannot be read.
+    func hasRNMnemonic() throws -> Bool {
+        try loadStringFromRNKeychain(key: .mnemonic(walletName: rnWalletName))?.isEmpty == false
+    }
+
     func hasRNWalletData() -> Bool {
         do {
-            let mnemonic = try loadStringFromRNKeychain(key: .mnemonic(walletName: rnWalletName))
-            return mnemonic?.isEmpty == false
+            return try hasRNMnemonic()
         } catch {
             Logger.error("Error checking for RN wallet data: \(error)", context: "Migration")
             return false

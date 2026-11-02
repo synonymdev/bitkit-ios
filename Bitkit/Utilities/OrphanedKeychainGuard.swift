@@ -3,7 +3,8 @@ import Foundation
 /// Wipes keychain entries left behind by an uninstalled copy of the app. The keychain outlives the app, while the
 /// installation marker is deleted with it.
 struct OrphanedKeychainGuard {
-    /// The orphaned keychain still holds a seed, so the launch must not start a wallet until a retry wipes it.
+    /// The orphaned keychain still holds a seed, or could not be read, so the launch must not start a wallet until a retry wipes
+    /// it.
     struct WipeFailed: Error {
         let underlying: Error
     }
@@ -14,7 +15,7 @@ struct OrphanedKeychainGuard {
     /// Whether the Lightning storage folder exists, which node setup creates and a reinstall never has.
     var hasWalletStorage: () -> Bool
     var hasOrphanedRNKeychain: () -> Bool
-    var hasRNMnemonic: () -> Bool
+    var hasRNMnemonic: () throws -> Bool
     var wipeKeychain: () throws -> Void
     var removeRNKeychain: () -> Void
 
@@ -24,7 +25,7 @@ struct OrphanedKeychainGuard {
         hasNativeMnemonic: { try Keychain.exists(key: .bip39Mnemonic(index: 0)) },
         hasWalletStorage: { FileManager.default.fileExists(atPath: Env.ldkStorage(walletIndex: 0).path) },
         hasOrphanedRNKeychain: { MigrationsService.shared.hasOrphanedRNKeychain() },
-        hasRNMnemonic: { MigrationsService.shared.hasRNWalletData() },
+        hasRNMnemonic: { try MigrationsService.shared.hasRNMnemonic() },
         wipeKeychain: {
             SharedPubkyKeychain.removeAllOwn()
             try Keychain.wipeEntireKeychain()
@@ -32,8 +33,8 @@ struct OrphanedKeychainGuard {
         removeRNKeychain: { MigrationsService.shared.cleanupRNKeychain() }
     )
 
-    /// Throws `WipeFailed` when a seed of the orphaned keychain could not be wiped. The marker stays unwritten then, so the
-    /// next run checks again.
+    /// Throws `WipeFailed` when a seed of the orphaned keychain could not be wiped, or the keychain could not be read. The
+    /// marker stays unwritten then, so the next run checks again.
     func run() throws {
         if hasInstallationMarker() {
             Logger.debug("Installation marker exists, skipping orphaned keychain check", context: "OrphanedKeychainGuard")
@@ -44,9 +45,9 @@ struct OrphanedKeychainGuard {
         do {
             hasNativeKeychain = try hasNativeMnemonic()
         } catch {
-            // Without the marker, the next launch checks again
-            Logger.error("Failed to read the keychain, skipping orphaned keychain check: \(error)", context: "OrphanedKeychainGuard")
-            return
+            // An orphaned seed may be behind the read, and a wallet started on it would look like this install's
+            Logger.error("Failed to read the keychain for the orphaned keychain check: \(error)", context: "OrphanedKeychainGuard")
+            throw WipeFailed(underlying: error)
         }
         let hasOrphanedRNKeychain = hasOrphanedRNKeychain()
         var isRNKeychainRemoved = false
@@ -84,6 +85,7 @@ struct OrphanedKeychainGuard {
     /// A keychain that cannot be read is treated as still holding the seed.
     private func hasRemainingSeed() -> Bool {
         let hasNativeSeed = (try? hasNativeMnemonic()) ?? true
-        return hasNativeSeed || hasRNMnemonic()
+        let hasRNSeed = (try? hasRNMnemonic()) ?? true
+        return hasNativeSeed || hasRNSeed
     }
 }

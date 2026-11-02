@@ -12,6 +12,7 @@ final class OrphanedKeychainGuardTests: XCTestCase {
         var hasWalletStorage = false
         var hasOrphanedRNKeychain = false
         var hasRNMnemonic = false
+        var isRNMnemonicReadFailing = false
         var isWipeFailing = false
         /// The wipe deletes the seeds, then fails on another item.
         var isWipeFailingAfterSeeds = false
@@ -33,7 +34,10 @@ final class OrphanedKeychainGuardTests: XCTestCase {
                 },
                 hasWalletStorage: { self.hasWalletStorage },
                 hasOrphanedRNKeychain: { self.hasOrphanedRNKeychain },
-                hasRNMnemonic: { self.hasRNMnemonic },
+                hasRNMnemonic: {
+                    if self.isRNMnemonicReadFailing { throw ProbeFailure() }
+                    return self.hasRNMnemonic
+                },
                 wipeKeychain: {
                     self.keychainWipes += 1
                     guard !self.isWipeFailing else { throw ProbeFailure() }
@@ -64,14 +68,27 @@ final class OrphanedKeychainGuardTests: XCTestCase {
         XCTAssertEqual(harness.markerWrites, 0)
     }
 
-    func testAnUnreadableKeychainWritesNoMarkerSoTheNextLaunchChecksAgain() throws {
+    func testAnUnreadableKeychainHoldsTheLaunchAndWritesNoMarker() {
         let harness = Harness()
         harness.isNativeMnemonicReadFailing = true
 
-        try harness.guardUnderTest.run()
-
+        XCTAssertThrowsError(try harness.guardUnderTest.run()) { error in
+            XCTAssertTrue(error is OrphanedKeychainGuard.WipeFailed, "Expected the launch to be held, got \(error)")
+        }
         XCTAssertEqual(harness.keychainWipes, 0)
         XCTAssertEqual(harness.markerWrites, 0)
+    }
+
+    func testAnRNKeychainThatCannotBeReadAfterAFailedWipeHoldsTheLaunch() {
+        let harness = Harness()
+        harness.hasOrphanedRNKeychain = true
+        harness.hasWalletStorage = true
+        harness.isWipeFailing = true
+        harness.isRNMnemonicReadFailing = true
+
+        XCTAssertThrowsError(try harness.guardUnderTest.run()) { error in
+            XCTAssertTrue(error is OrphanedKeychainGuard.WipeFailed, "Expected the launch to be held, got \(error)")
+        }
     }
 
     func testAnOrphanedKeychainIsWipedAndTheMarkerWritten() throws {
@@ -87,7 +104,6 @@ final class OrphanedKeychainGuardTests: XCTestCase {
         XCTAssertTrue(harness.hasMarker)
     }
 
-    // Regression: a failed wipe let the launch go on, so a node set up on the leftover seed made it look like this install's
     func testAWipeThatFailsWithASeedLeftHoldsTheLaunchUntilARetryWipes() throws {
         let harness = Harness()
         harness.hasNativeMnemonic = true
@@ -146,8 +162,6 @@ final class OrphanedKeychainGuardTests: XCTestCase {
         XCTAssertEqual(harness.markerWrites, 0)
     }
 
-    // Regression: an RN seed the wipe cannot reach, in another access group or synchronizable, held every launch of a
-    // reinstall, as only its own removal deletes it and that ran only after a successful wipe
     func testAnRNSeedTheWipeCannotDeleteNoLongerHoldsAFreshInstall() throws {
         let harness = Harness()
         harness.hasOrphanedRNKeychain = true
