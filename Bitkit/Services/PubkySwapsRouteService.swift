@@ -60,6 +60,22 @@ enum PubkySwapsRouteService {
         )
     }
 
+    /// Rebuilds the swaps this wallet started from each provider's listing, after a restore from the seed. The listing
+    /// does not carry the contact's address, so a restored swap claims to a fresh Savings address. Returns the swap ids.
+    static func restoreSwaps(contacts: [String]) async throws -> [String] {
+        let (mnemonic, passphrase) = try secrets()
+        let payoutAddress = try await LightningService.shared.newAddress()
+        return try await pubkySwapsRestore(
+            providers: contacts + Env.pubkySwapsProviders,
+            electrumUrl: Env.electrumServerUrl,
+            payoutAddress: payoutAddress,
+            feeRateSatVb: claimFeeRateSatVb,
+            network: Env.bitkitCoreNetwork,
+            mnemonic: mnemonic,
+            bip39Passphrase: passphrase
+        )
+    }
+
     static func commit(quoteId: String) async throws -> PubkySwapRoutePayment {
         let (mnemonic, passphrase) = try secrets()
         return try await pubkySwapsCommitRoute(

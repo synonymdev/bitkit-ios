@@ -1231,6 +1231,8 @@
 "wallet__send_sync_long_description" = "Parece que você está desconectado. Verifique sua conexão. A Bitkit tentará se reconectar a cada poucos segundos.";
 "wallet__send_to" = "Para";
 "wallet__send_swap_route" = "Rota";
+"wallet__swap_route_restored_text" = "Um pagamento a um contato que a restauração interrompeu voltou para sua poupança.";
+"wallet__swap_route_restored_title" = "Pagamento devolvido à Poupança";
 "wallet__recipient_contact" = "Contato";
 "wallet__recipient_invoice" = "Colar Invoice";
 "wallet__recipient_manual" = "Inserir Manualmente";

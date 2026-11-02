@@ -1215,6 +1215,8 @@
 "wallet__send_sync_long_description" = "Похоже, вы отключены. Проверьте подключение. Bitkit будет пытаться переподключиться каждые несколько секунд.";
 "wallet__send_to" = "Кому";
 "wallet__send_swap_route" = "Маршрут";
+"wallet__swap_route_restored_text" = "Платёж контакту, прерванный восстановлением, вернулся в ваши сбережения.";
+"wallet__swap_route_restored_title" = "Платёж возвращён в Сбережения";
 "wallet__recipient_contact" = "Контакт";
 "wallet__recipient_invoice" = "Вставить Инвойс";
 "wallet__recipient_manual" = "Ввести Вручную";

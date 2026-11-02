@@ -1199,6 +1199,30 @@ struct AppScene: View {
         widgets.objectWillChange.send()
         await pubkyProfile.initialize()
         await startWallet(completingBackupRestore: true)
+        restorePubkySwaps()
+    }
+
+    /// Finishes swap routes a restored wallet left in flight: each is rebuilt from its provider's listing and claimed to
+    /// Savings, since the contact's address did not survive the restore, so the user learns the payment came back.
+    private func restorePubkySwaps() {
+        guard PubkySwapsRouteService.isEnabled else { return }
+        let contacts = contactsManager.contacts.map(\.publicKey)
+        Task {
+            let restored: [String]
+            do {
+                restored = try await PubkySwapsRouteService.restoreSwaps(contacts: contacts)
+            } catch {
+                Logger.warn("Failed to restore Pubky Swaps routes: \(error)", context: "AppScene")
+                return
+            }
+            Logger.info("Restored \(restored.count) Pubky Swaps routes", context: "AppScene")
+            for swapId in restored {
+                Task {
+                    guard await (try? PubkySwapsRouteService.awaitClaim(swapId: swapId)) != nil else { return }
+                    app.toast(type: .info, title: t("wallet__swap_route_restored_title"), description: t("wallet__swap_route_restored_text"))
+                }
+            }
+        }
     }
 
     private func retryWalletStart() async {
