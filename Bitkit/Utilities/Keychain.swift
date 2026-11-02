@@ -6,6 +6,8 @@ enum KeychainEntryType {
     case bip39Passphrase(index: Int)
     case pushNotificationPrivateKey // For secp256k1 shared secret when decrypting push payload
     case securityPin
+    case pinFailedAttempts
+    case wipePending
     case paykitSession
     case paykitPendingPaymentProofs
     case onchainSendAttempts
@@ -26,6 +28,8 @@ enum KeychainEntryType {
         case let .bip39Passphrase(index): "bip39_passphrase_\(index)"
         case .pushNotificationPrivateKey: "push_notification_private_key"
         case .securityPin: "security_pin"
+        case .pinFailedAttempts: "pin_failed_attempts"
+        case .wipePending: "wipe_pending"
         case .paykitSession: "paykit_session"
         case .paykitPendingPaymentProofs: "paykit_pending_payment_proofs"
         case .onchainSendAttempts: "onchain_send_attempts"
@@ -245,37 +249,38 @@ class Keychain {
         return nil
     }
 
-    class func getAllKeyChainStorageKeys() -> [String] {
+    /// Throws rather than returning an empty list when the keychain cannot be read (before first unlock, for one), so a
+    /// wipe never mistakes an unreadable keychain for an empty one.
+    private class func storedAccounts() throws -> [String] {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecReturnData as String: kCFBooleanTrue!,
             kSecReturnAttributes as String: kCFBooleanTrue!,
-            kSecReturnRef as String: kCFBooleanTrue!,
             kSecMatchLimit as String: kSecMatchLimitAll,
             kSecAttrAccessGroup as String: Env.keychainGroup,
         ]
 
         var result: AnyObject?
-        let lastResultCode = withUnsafeMutablePointer(to: &result) {
-            SecItemCopyMatching(query as CFDictionary, UnsafeMutablePointer($0))
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        if status == errSecItemNotFound {
+            return []
         }
 
-        var storageKeys = [String]()
-        if lastResultCode == noErr {
-            let array = result as? [[String: Any]]
-            for item in array! {
-                if let key = item[kSecAttrAccount as String] as? String {
-                    storageKeys.append(key)
-                }
-            }
+        guard status == noErr, let items = result as? [[String: Any]] else {
+            Logger.error("Failed to list keychain entries. \(status.description)", context: "Keychain")
+            throw KeychainError.failedToLoad
         }
 
-        return storageKeys
+        return items.compactMap { $0[kSecAttrAccount as String] as? String }
     }
 
-    class func wipeEntireKeychain() throws {
-        let keys = getAllKeyChainStorageKeys()
-        for key in keys {
+    /// Deletes every entry in the access group except `retained`. One that cannot be deleted does not stop the others: it
+    /// throws once all of them have been tried.
+    class func wipeEntireKeychain(retaining retained: [KeychainEntryType] = []) throws {
+        let retainedAccounts = Set(retained.map(account(for:)))
+        var hasFailedDelete = false
+
+        for key in try storedAccounts() where !retainedAccounts.contains(key) {
             // A test run must only ever clear its own namespaced entries. Deleting an un-prefixed
             // account here is what destroys the wallet on the simulator the suite runs against.
             if Env.isUnitTest, !key.hasPrefix(unitTestAccountPrefix) {
@@ -288,9 +293,18 @@ class Keychain {
                 kSecAttrAccessGroup as String: Env.keychainGroup,
             ] as [String: Any]
 
-            SecItemDelete(query as CFDictionary)
+            let status = SecItemDelete(query as CFDictionary)
+            guard status == noErr || status == errSecItemNotFound else {
+                Logger.error("Failed to delete \(key) from keychain. \(status.description)", context: "Keychain")
+                hasFailedDelete = true
+                continue
+            }
 
             Logger.info("Deleted \(key) from keychain")
+        }
+
+        if hasFailedDelete {
+            throw KeychainError.failedToDelete
         }
     }
 }

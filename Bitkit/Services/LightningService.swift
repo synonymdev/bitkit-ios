@@ -5,7 +5,17 @@ import LDKNode
 
 // TODO: catch all errors and pass a readable error message to the UI
 
-class LightningService {
+/// The node lifecycle `WalletViewModel` drives, apart from the rest of `LightningService` so its ordering can be tested.
+protocol NodeLifecycleService: AnyObject {
+    var hasNode: Bool { get }
+    func setup(walletIndex: Int, electrumServerUrl: String?, rgsServerUrl: String?, channelMigration: ChannelDataMigration?) async throws
+    func start(onEvent: ((Event) -> Void)?) async throws
+    func stop(clearEventCallback: Bool) async throws
+    func isNodeRunning() async -> Bool
+    func wipeStorage(walletIndex: Int) async throws
+}
+
+class LightningService: NodeLifecycleService {
     private static let watchOnlyAccountHighestPreRevealedAddressIndex: UInt32 = 999
 
     private var node: Node?
@@ -308,7 +318,7 @@ class LightningService {
 
         Logger.debug("Stopping node...")
         try await ServiceQueue.background(.ldk) {
-            try node.stop()
+            try Self.stopReleasingFinishedNode(node.stop)
         }
         self.node = nil
 
@@ -323,9 +333,27 @@ class LightningService {
         Logger.info("Node stopped")
     }
 
+    /// ldk-node's `stop()` fails with `NotRunning` for a node whose `start()` failed, which leaves it built but not running,
+    /// and with `PersistenceFailed` only after shutdown has completed. Neither leaves a node to stop, so both release it.
+    static func stopReleasingFinishedNode(_ stop: () throws -> Void) throws {
+        do {
+            try stop()
+        } catch NodeError.NotRunning {
+            Logger.info("Node was not running, releasing it", context: "LightningService")
+        } catch NodeError.PersistenceFailed {
+            Logger.warn("Node shut down but failed to persist its final state", context: "LightningService")
+        }
+    }
+
+    /// Reads the node itself rather than the cached status, which can lag behind a failed start or stop.
+    func isNodeRunning() async -> Bool {
+        guard let node else { return false }
+        return await (try? ServiceQueue.background(.ldk) { node.status().isRunning }) ?? false
+    }
+
     func wipeStorage(walletIndex: Int) async throws {
         guard node == nil else {
-            throw AppError(serviceError: .nodeNotSetup)
+            throw AppError(serviceError: .nodeStillRunning)
         }
 
         let directory = Env.ldkStorage(walletIndex: walletIndex)

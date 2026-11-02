@@ -619,6 +619,14 @@
 "security__use_pin" = "Utilizar código PIN";
 "security__wiped_title" = "Datos de Monedero Borrados";
 "security__wiped_message" = "Bitkit ha sido restaurado y todos los datos de monedero han sido borrados.";
+"security__pin_unavailable" = "Bitkit no pudo comprobar su PIN. Inténtelo de nuevo.";
+"security__wipe_not_started" = "No se pudo iniciar el restablecimiento. No se eliminó nada.";
+"security__wipe_gate_title" = "Restableciendo Bitkit";
+"security__wipe_gate_text" = "Bitkit está eliminando los datos del monedero de este dispositivo. Mantenga la aplicación abierta hasta que termine.";
+"security__wipe_gate_failed" = "Bitkit no pudo terminar de eliminar los datos del monedero y lo intentará de nuevo. Puede reintentarlo ahora o exportar los registros para el soporte.";
+"security__wipe_gate_step" = "Paso {step} de {total}";
+"security__wipe_gate_blocked_title" = "Bitkit está bloqueado";
+"security__wipe_gate_blocked_text" = "Bitkit no puede verificar su estado de seguridad. Inténtelo de nuevo o exporte los registros para el soporte.";
 "security__authorization__success" = "Éxito";
 "pubky_auth__title" = "Autorizar";
 "pubky_auth__description_prefix" = "Un servicio solicita permiso para acceder y editar sus datos de ";

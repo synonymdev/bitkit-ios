@@ -710,6 +710,7 @@ extension MigrationsService {
 
     private func clearPinSettings() {
         try? Keychain.delete(key: .securityPin)
+        try? Keychain.delete(key: .pinFailedAttempts)
 
         userDefaults.removeObject(forKey: "requirePinForPayments")
         userDefaults.removeObject(forKey: "useBiometrics")

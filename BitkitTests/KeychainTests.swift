@@ -137,6 +137,18 @@ final class KeychainTests: XCTestCase {
         }
     }
 
+    func testWipeRetainingKeepsListedEntriesAndRemovesOthers() throws {
+        try Keychain.saveString(key: .bip39Mnemonic(index: 0), str: "test mnemonic")
+        try Keychain.saveString(key: .securityPin, str: "1234")
+        try Keychain.saveString(key: .pinFailedAttempts, str: "1")
+
+        try Keychain.wipeEntireKeychain(retaining: [.securityPin, .pinFailedAttempts])
+
+        XCTAssertFalse(try Keychain.exists(key: .bip39Mnemonic(index: 0)))
+        XCTAssertEqual(try Keychain.loadString(key: .securityPin), "1234")
+        XCTAssertEqual(try Keychain.loadString(key: .pinFailedAttempts), "1")
+    }
+
     /// The wipe must leave accounts outside the unit-test namespace alone, or running this suite deletes
     /// the wallet on the simulator it runs against. The probe uses a unique account name rather than a
     /// real key like `bip39_mnemonic_0`: on a simulator with a wallet that name is already taken, and
