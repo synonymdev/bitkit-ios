@@ -1222,8 +1222,10 @@
 "profile__edit" = "Edit";
 "profile__pay_contacts_nav_title" = "Pay Contacts";
 "profile__pay_contacts_title" = "Let your contacts\n<accent>pay you</accent>";
-"profile__pay_contacts_description" = "Use Bitkit with your contacts to send payments directly, anytime, anywhere.";
-"profile__pay_contacts_toggle" = "Enable payments with contacts";
+"profile__pay_contacts_description" = "Share payment details privately with your contacts. Public payments stay off unless you enable them in Settings.";
+"profile__private_payments_toggle" = "Private contact payments";
+"profile__public_payments_toggle" = "Public payments";
+"profile__payments_pending" = "Changes are pending. Previously shared payment details may still be available.";
 "profile__add_link_title" = "Add Link";
 "profile__add_link_label" = "LABEL";
 "profile__add_link_label_placeholder" = "For example 'Website'";
@@ -1737,6 +1739,9 @@
 "settings__adv__pp_onchain_short" = "On-chain";
 "subscriptions__allowances" = "Allowances";
 "subscriptions__allowances_empty_headline" = "Set up\n<accent>allowances</accent>";
+"subscriptions__allowances_paused_description" = "Your allowance records are older than ones this wallet has already used. Requests ask for your approval until you resume.";
+"subscriptions__allowances_paused_resume" = "Resume";
+"subscriptions__allowances_paused_title" = "Automatic payments paused";
 "subscriptions__allowances_empty_description" = "You can set spending limits to automatically fulfill payment requests from trusted peers.";
 "subscriptions__allowance_add" = "Add Allowance";
 "subscriptions__allowance_title" = "Allowance";
@@ -1972,7 +1977,7 @@
 
 "usdt__disable_unavailable" = "USDT must stay enabled while you have a balance or a pending transfer. Please wait for transfers to finish and check your balance before turning it off.";
 "usdt__enable" = "Enable USDT";
-"usdt__intro_description" = "Bitcoin at heart. Dollars when you need them. Enable USDT (Tether) to send and receive digital dollars with Bitkit.";
+"usdt__intro_description" = "Bitcoin at heart. Dollars when you need them. Enable USDT (Tether) to quickly send and receive digital dollars with Bitkit.";
 "usdt__intro_headline" = "<accent>DOLLARS?</accent>\nYOUR CALL";
 "usdt__intro_title" = "New: USDT";
 "usdt__no_thanks" = "No Thanks";

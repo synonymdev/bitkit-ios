@@ -478,7 +478,7 @@ struct UsdtSendView: View {
     private var reviewDetailsButton: some View {
         CustomButton(
             title: t(showDetails ? "common__hide_details" : "common__show_details"), size: .small,
-            icon: Image(showDetails ? "eye-slash" : "speed-normal").resizable().frame(width: 16, height: 16)
+            icon: Image(showDetails ? "eye-slash" : "currency-dollar").resizable().frame(width: 16, height: 16)
                 .foregroundColor(.usdtAccent), background: Color.white06, showsHighlightShadow: false, titleKerning: 0, titleLineHeight: 13
         ) { showDetails.toggle() }
             .frame(maxWidth: .infinity)

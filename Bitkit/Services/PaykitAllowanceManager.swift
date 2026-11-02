@@ -44,11 +44,12 @@ enum PaykitAllowanceError: LocalizedError {
     case contactNotLinked
     case unavailable
     case paymentListPending
+    case ledgerBehind
 
     var errorDescription: String? {
         switch self {
         case .contactNotLinked: t("subscriptions__allowance_error_not_linked")
-        case .unavailable, .paymentListPending: t("subscriptions__allowance_error_unavailable")
+        case .unavailable, .paymentListPending, .ledgerBehind: t("subscriptions__allowance_error_unavailable")
         }
     }
 }
@@ -59,6 +60,8 @@ final class PaykitAllowanceManager {
     private(set) var allowances: [PaykitAllowance] = []
     private(set) var localState = PaykitAllowanceLocalState()
     private(set) var isWorking = false
+    /// True while the allowance ledger is behind one this wallet has read, until `resumeAutomaticPayments()`.
+    private(set) var isAutomaticPaymentPaused = false
     private(set) var autoPaidRequestIds: Set<PaykitPaymentRequest.ID> = []
     /// Keyed by `PaykitAllowance.scopedId`, since another contact can reuse an allowance id.
     private(set) var autoPaidSatsByScopedId: [String: UInt64] = [:]
@@ -68,6 +71,8 @@ final class PaykitAllowanceManager {
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let canPayNow: @MainActor () -> Bool
     @ObservationIgnored private var identity: String?
+    /// Changes on every activation and deactivation, so work started under an earlier one drops its results.
+    @ObservationIgnored private var activation = 0
     @ObservationIgnored private var isProcessingRequests = false
     @ObservationIgnored private var isAcceptingOffers = false
     /// Offers already returned for announcement, so a mark whose clear failed to save is not announced again on every poll.
@@ -131,6 +136,7 @@ final class PaykitAllowanceManager {
         }
         let identityChanged = self.identity != identity
         self.identity = identity
+        activation += 1
         await executor.activate(identity: identity)
         if identityChanged {
             manualRequestIds = [:]
@@ -142,37 +148,59 @@ final class PaykitAllowanceManager {
 
     /// Settles open attempts again, for the ones the node could not answer for before it was running.
     func recoverOpenAttempts() async {
-        guard let identity else { return }
+        guard let identity = await executor.activeIdentity else { return }
         await executor.recover(identity: identity)
     }
 
     func deactivate() {
-        identity = nil
+        executor.stopAdmitting()
         Task { await executor.activate(identity: nil) }
+        clear()
+    }
+
+    /// Hides allowances and stops new automatic payments, while payments already sent still settle. `identity` lets the
+    /// executor settle attempts left open before allowances were turned off; nil keeps its current one.
+    func pause(identity: String?) {
+        executor.stopAdmitting()
+        Task { await executor.pause(identity: identity) }
+        clear()
+    }
+
+    private func clear() {
+        identity = nil
+        activation += 1
         allowances = []
         localState = PaykitAllowanceLocalState()
         autoPaidRequestIds = []
         autoPaidSatsByScopedId = [:]
+        isAutomaticPaymentPaused = false
         manualRequestIds = [:]
         announcedOfferIds = []
     }
 
     func refresh() async {
         guard let identity else { return }
+        let refreshActivation = activation
         updateDepth += 1
         defer { updateDepth -= 1 }
         do {
             let records = try await sdk.listAllowances(
                 filter: Paykit.AllowanceFilter(counterparty: nil, localRole: nil, states: [])
             )
+            guard activation == refreshActivation else { return }
             allowances = records
                 .filter { $0.historyStatus == .consistent || $0.historyStatus == .unresolvedReferences }
                 .compactMap(PaykitAllowance.init(record:))
+            await executor.rememberEndedAllowances(identity: identity, allowances: allowances)
         } catch {
             Logger.warn("Failed to list Paykit allowances: \(error)", context: "PaykitAllowance")
         }
-        localState = await executor.localState(identity: identity)
-        guard let paid = await executor.succeededAutomaticPayments(identity: identity) else { return }
+        let state = await executor.localState(identity: identity)
+        let isPaused = await executor.isLedgerBehind(identity: identity)
+        guard activation == refreshActivation else { return }
+        localState = state
+        isAutomaticPaymentPaused = isPaused
+        guard let paid = await executor.succeededAutomaticPayments(identity: identity), activation == refreshActivation else { return }
         autoPaidRequestIds = Set(paid.map(\.requestId))
         autoPaidSatsByScopedId = paid.reduce(into: [:]) { totals, payment in
             totals[PaykitAllowance.scopedId(counterparty: payment.requestId.counterparty, allowanceId: payment.allowanceId), default: 0] +=
@@ -256,16 +284,31 @@ final class PaykitAllowanceManager {
         }
     }
 
+    /// Resumes automatic payments from the ledger read now; see `PaykitAllowanceExecutor.acceptCurrentLedger(identity:)`.
+    func resumeAutomaticPayments() async throws {
+        isWorking = true
+        defer { isWorking = false }
+        guard let identity else { throw PaykitAllowanceError.unavailable }
+        try await executor.acceptCurrentLedger(identity: identity)
+        await executor.recover(identity: identity)
+        await refresh()
+    }
+
     func end(_ entry: PaykitAllowanceEntry) async throws {
         isWorking = true
         defer { isWorking = false }
-        var endedAny = false
-        for allowance in entry.allowances where allowance.canEnd {
-            _ = try await sdk.endAllowance(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId)
-            endedAny = true
+        guard let identity else { throw PaykitAllowanceError.unavailable }
+        let endable = entry.allowances.filter(\.canEnd)
+        guard !endable.isEmpty else { throw PaykitAllowanceError.unavailable }
+        let sdk = sdk
+        try await executor.rememberEnding(identity: identity, allowances: endable) {
+            for allowance in endable {
+                _ = try await sdk.endAllowance(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId)
+            }
+        }
+        for allowance in endable {
             _ = try? await sdk.processOutboundPrivateMessages(counterparty: allowance.counterparty)
         }
-        guard endedAny else { throw PaykitAllowanceError.unavailable }
         await refresh()
     }
 
@@ -373,6 +416,7 @@ final class PaykitAllowanceManager {
     /// for manual payment, so the caller refreshes before presenting the rest.
     func processIncomingRequests(_ requests: [PaykitPaymentRequest]) async -> Bool {
         guard let identity, !isProcessingRequests else { return false }
+        let passActivation = activation
         updateDepth += 1
         defer { updateDepth -= 1 }
         let signature = allowancesSignature
@@ -393,6 +437,7 @@ final class PaykitAllowanceManager {
         defer { isProcessingRequests = false }
         var handledAny = false
         for request in covered {
+            guard activation == passActivation else { break }
             let result = await executor.autoPay(request, allowances: allowances, identity: identity)
             Logger.info("Automatic payment pass for a covered request ended as \(result)", context: "PaykitAllowance")
             switch result {

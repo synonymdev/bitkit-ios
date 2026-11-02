@@ -1205,8 +1205,10 @@
 "profile__edit" = "Редактировать";
 "profile__pay_contacts_nav_title" = "Платежи Контактам";
 "profile__pay_contacts_title" = "Пусть ваши контакты\n<accent>платят вам</accent>";
-"profile__pay_contacts_description" = "Используйте Bitkit, чтобы отправлять платежи контактам напрямую — когда угодно и где угодно.";
-"profile__pay_contacts_toggle" = "Платежи с контактами";
+"profile__pay_contacts_description" = "Делитесь платёжными данными с контактами приватно. Публичные платежи останутся выключенными, пока вы не включите их в настройках.";
+"profile__private_payments_toggle" = "Приватные платежи контактам";
+"profile__public_payments_toggle" = "Публичные платежи";
+"profile__payments_pending" = "Изменения ожидают применения. Ранее опубликованные платёжные данные могут оставаться доступными.";
 "profile__add_link_title" = "Добавить Ссылку";
 "profile__add_link_label" = "НАЗВАНИЕ";
 "profile__add_link_label_placeholder" = "Например, 'Сайт'";
@@ -1832,7 +1834,7 @@
 "usdt__to_address" = "На адрес";
 "usdt__disable_unavailable" = "USDT должен оставаться включённым, пока у вас есть баланс или ожидающий перевод. Дождитесь завершения переводов и проверьте баланс, прежде чем отключать его.";
 "usdt__enable" = "Включить USDT";
-"usdt__intro_description" = "Биткоин в душе. Доллары, когда они нужны. Включите USDT (Tether), чтобы отправлять и получать цифровые доллары в Bitkit.";
+"usdt__intro_description" = "Биткоин в душе. Доллары, когда они нужны. Включите USDT (Tether), чтобы быстро отправлять и получать цифровые доллары в Bitkit.";
 "usdt__intro_headline" = "<accent>ДОЛЛАРЫ?</accent>\nРЕШАТЬ ВАМ";
 "usdt__intro_title" = "Новинка: USDT";
 "usdt__no_thanks" = "Нет, Спасибо";
@@ -1854,6 +1856,9 @@
 "usdt__deposit_refund_address_network" = "Адрес USDT в сети {network}";
 "subscriptions__allowances" = "Лимиты автооплаты";
 "subscriptions__allowances_empty_headline" = "Настройте\n<accent>лимиты автооплаты</accent>";
+"subscriptions__allowances_paused_description" = "Данные ваших бюджетов старше тех, что этот кошелёк уже использовал. Запросы будут ждать вашего подтверждения, пока вы не возобновите платежи.";
+"subscriptions__allowances_paused_resume" = "Возобновить";
+"subscriptions__allowances_paused_title" = "Автоматические платежи приостановлены";
 "subscriptions__allowances_empty_description" = "Вы можете задать лимиты расходов, чтобы автоматически оплачивать запросы на оплату от доверенных контактов.";
 "subscriptions__allowance_add" = "Добавить Лимит";
 "subscriptions__allowance_title" = "Лимит автооплаты";
