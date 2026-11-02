@@ -1186,8 +1186,10 @@
 "profile__edit" = "Modifica";
 "profile__pay_contacts_nav_title" = "Paga Contatti";
 "profile__pay_contacts_title" = "Lascia che i tuoi contatti\n<accent>ti paghino</accent>";
-"profile__pay_contacts_description" = "Usa Bitkit con i tuoi contatti per inviare pagamenti direttamente, in qualsiasi momento, ovunque.";
-"profile__pay_contacts_toggle" = "Pagamenti con i contatti";
+"profile__pay_contacts_description" = "Condividi i dati di pagamento in privato con i tuoi contatti. I pagamenti pubblici restano disattivati finché non li attivi nelle Impostazioni.";
+"profile__private_payments_toggle" = "Pagamenti privati con contatti";
+"profile__public_payments_toggle" = "Pagamenti pubblici";
+"profile__payments_pending" = "Modifiche in sospeso. I dati di pagamento condivisi in precedenza potrebbero essere ancora disponibili.";
 "profile__add_link_title" = "Aggiungi Link";
 "profile__add_link_label" = "ETICHETTA";
 "profile__add_link_label_placeholder" = "Per esempio 'Sito web'";
@@ -1812,7 +1814,7 @@
 "usdt__to_address" = "Indirizzo destinazione";
 "usdt__disable_unavailable" = "USDT deve restare attivo finché hai un saldo o un trasferimento in sospeso. Attendi il completamento dei trasferimenti e controlla il saldo prima di disattivarlo.";
 "usdt__enable" = "Attiva USDT";
-"usdt__intro_description" = "Bitcoin nel cuore. Dollari quando ti servono. Attiva USDT (Tether) per inviare e ricevere dollari digitali con Bitkit.";
+"usdt__intro_description" = "Bitcoin nel cuore. Dollari quando ti servono. Attiva USDT (Tether) per inviare e ricevere rapidamente dollari digitali con Bitkit.";
 "usdt__intro_headline" = "<accent>DOLLARI?</accent>\nDECIDI TU";
 "usdt__intro_title" = "Novità: USDT";
 "usdt__no_thanks" = "No Grazie";
@@ -1834,6 +1836,9 @@
 "usdt__deposit_refund_address_network" = "Indirizzo USDT su {network}";
 "subscriptions__allowances" = "Plafond";
 "subscriptions__allowances_empty_headline" = "Imposta\n<accent>i plafond</accent>";
+"subscriptions__allowances_paused_description" = "I dati dei tuoi budget sono più vecchi di quelli che questo wallet ha già usato. Le richieste chiederanno la tua approvazione finché non riprendi.";
+"subscriptions__allowances_paused_resume" = "Riprendi";
+"subscriptions__allowances_paused_title" = "Pagamenti automatici in pausa";
 "subscriptions__allowances_empty_description" = "Puoi impostare limiti di spesa per pagare automaticamente le richieste di pagamento dei contatti fidati.";
 "subscriptions__allowance_add" = "Aggiungi Plafond";
 "subscriptions__allowance_title" = "Plafond";

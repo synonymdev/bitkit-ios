@@ -981,17 +981,32 @@ actor PaykitSdkService {
         }
     }
 
-    func syncPaykitApp(privatePaymentsEnabled: Bool, priority: PaykitSdkOperationLock.Priority = .ordered) async throws {
+    func syncPaykitApp(
+        privatePaymentsEnabled: Bool?,
+        priority: PaykitSdkOperationLock.Priority = .ordered,
+        isSessionCurrent: (@MainActor () -> Bool)? = nil
+    ) async throws {
         try await withStateRevisionTracking(priority: priority) { sdk in
             var capabilities = try await appCapabilities(for: sdk.identityStatus())
-            capabilities.privatePayments = capabilities.privatePayments && privatePaymentsEnabled
+            let privateSharing = privatePaymentsEnabled ?? UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
+            capabilities.privatePayments = capabilities.privatePayments && privateSharing
+            if let isSessionCurrent {
+                guard await isSessionCurrent() else { throw PubkyServiceError.sessionNotActive }
+                try Task.checkCancellation()
+            }
             _ = try await sdk.publishPaykitApp(displayName: "Bitkit", capabilities: capabilities)
         }
     }
 
-    func syncPublicEndpoints(_ endpoints: [PublicPaykitService.Endpoint]) async throws -> EndpointSyncReport {
+    func syncPublicEndpoints(
+        _ endpoints: [PublicPaykitService.Endpoint], isSessionCurrent: (@MainActor () -> Bool)? = nil
+    ) async throws -> EndpointSyncReport {
         try await withStateRevisionTracking(priority: endpoints.isEmpty ? .ordered : .background) { sdk in
-            try await sdk.syncPublicEndpointsWithReceivingDetails(receivingDetails: endpoints.map(\.paykitPublicReceivingDetail))
+            if let isSessionCurrent {
+                guard await isSessionCurrent() else { throw PubkyServiceError.sessionNotActive }
+                try Task.checkCancellation()
+            }
+            return try await sdk.syncPublicEndpointsWithReceivingDetails(receivingDetails: endpoints.map(\.paykitPublicReceivingDetail))
         }
     }
 
@@ -1380,9 +1395,10 @@ actor PaykitSdkService {
     func acceptPaymentRequestAutomatically(
         scope: Paykit.PaymentRequestScope,
         selection: Paykit.AllowanceSelectionInput,
-        checks: Paykit.PaymentExecutionChecks
+        checks: Paykit.PaymentExecutionChecks,
+        admit: @Sendable () async throws -> Void
     ) async throws -> Paykit.AllowanceAssociationRecord {
-        try await withStateRevisionTracking { sdk in
+        try await withStateRevisionTracking(admit: admit) { sdk in
             try await sdk.acceptPaymentRequestAutomatically(scope: scope, selection: selection, checks: checks)
         }
     }

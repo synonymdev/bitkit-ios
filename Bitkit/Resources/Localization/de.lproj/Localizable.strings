@@ -1207,8 +1207,10 @@
 "profile__edit" = "Bearbeiten";
 "profile__pay_contacts_nav_title" = "Kontakte bezahlen";
 "profile__pay_contacts_title" = "Lass deine Kontakte\n<accent>dich bezahlen</accent>";
-"profile__pay_contacts_description" = "Nutze Bitkit mit deinen Kontakten, um Zahlungen direkt zu senden, jederzeit und überall.";
-"profile__pay_contacts_toggle" = "Kontaktzahlungen aktivieren";
+"profile__pay_contacts_description" = "Teile Zahlungsdetails privat mit deinen Kontakten. Öffentliche Zahlungen bleiben aus, bis du sie in den Einstellungen aktivierst.";
+"profile__private_payments_toggle" = "Private Kontaktzahlungen";
+"profile__public_payments_toggle" = "Öffentliche Zahlungen";
+"profile__payments_pending" = "Änderungen stehen noch aus. Zuvor geteilte Zahlungsdetails sind möglicherweise weiterhin verfügbar.";
 "profile__add_link_title" = "Link hinzufügen";
 "profile__add_link_label" = "BEZEICHNUNG";
 "profile__add_link_label_placeholder" = "Zum Beispiel 'Webseite'";
@@ -1839,7 +1841,7 @@
 "usdt__to_address" = "Zieladresse";
 "usdt__disable_unavailable" = "USDT muss aktiviert bleiben, solange du ein Guthaben oder eine ausstehende Übertragung hast. Warte, bis Übertragungen abgeschlossen sind, und prüfe dein Guthaben, bevor du USDT deaktivierst.";
 "usdt__enable" = "USDT aktivieren";
-"usdt__intro_description" = "Im Herzen Bitcoin. Dollar, wenn du sie brauchst. Aktiviere USDT (Tether), um mit Bitkit digitale Dollar zu senden und zu empfangen.";
+"usdt__intro_description" = "Im Herzen Bitcoin. Dollar, wenn du sie brauchst. Aktiviere USDT (Tether), um mit Bitkit schnell digitale Dollar zu senden und zu empfangen.";
 "usdt__intro_headline" = "<accent>DOLLAR?</accent>\nDU ENTSCHEIDEST";
 "usdt__intro_title" = "Neu: USDT";
 "usdt__no_thanks" = "Nein danke";
@@ -1861,6 +1863,9 @@
 "usdt__deposit_refund_address_network" = "USDT-Adresse auf {network}";
 "subscriptions__allowances" = "Kontingente";
 "subscriptions__allowances_empty_headline" = "Kontingente\n<accent>einrichten</accent>";
+"subscriptions__allowances_paused_description" = "Deine Budgetdaten sind älter als Daten, die diese Wallet bereits verwendet hat. Anfragen warten auf deine Bestätigung, bis du fortsetzt.";
+"subscriptions__allowances_paused_resume" = "Fortsetzen";
+"subscriptions__allowances_paused_title" = "Automatische Zahlungen pausiert";
 "subscriptions__allowances_empty_description" = "Lege Ausgabenlimits fest, um Zahlungsanforderungen vertrauenswürdiger Kontakte automatisch zu bezahlen.";
 "subscriptions__allowance_add" = "Kontingent hinzufügen";
 "subscriptions__allowance_title" = "Kontingent";

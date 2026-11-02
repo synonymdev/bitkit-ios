@@ -26,6 +26,11 @@ enum AppDataMigrations {
             migration3(defaults: defaults)
             defaults.set(3, forKey: versionKey)
         }
+
+        if current < 4 {
+            migration4(defaults: defaults)
+            defaults.set(4, forKey: versionKey)
+        }
     }
 
     /// Migration 1: Move suggestions into widgets
@@ -49,6 +54,7 @@ enum AppDataMigrations {
 
         let hasPaykitFootprint = PaykitFeatureFlags.hasPublicPublishedState(defaults: defaults) ||
             PaykitFeatureFlags.hasPrivatePublishedState(defaults: defaults) ||
+            defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey) ||
             defaults.bool(forKey: PublicPaykitService.cleanupPendingKey) ||
             defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey) ||
             hasStoredPubkyIdentity()
@@ -62,6 +68,27 @@ enum AppDataMigrations {
     /// which hid their profile. Like the Dev Settings "Enable", this only clears the flag. Later Dev Settings changes stay.
     private static func migration3(defaults: UserDefaults) {
         defaults.removeObject(forKey: PaykitFeatureFlags.uiEnabledKey)
+    }
+
+    private static func migration4(defaults: UserDefaults) {
+        if PaykitFeatureFlags.hasPublicPublishedState(defaults: defaults) ||
+            defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey) ||
+            defaults.bool(forKey: PublicPaykitService.cleanupPendingKey)
+        {
+            defaults.set(true, forKey: PublicPaykitService.cleanupPendingKey)
+            if let address = defaults.string(forKey: "onchainAddress"), !address.isEmpty {
+                var addresses = Set(defaults.stringArray(forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey) ?? [])
+                addresses.insert(address)
+                defaults.set(addresses.sorted(), forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey)
+                BackupService.markWalletBackupRequiredBeforeObservation(defaults: defaults)
+                defaults.removeObject(forKey: "onchainAddress")
+            }
+        }
+        // The combined contact setting did not express consent to public publication.
+        defaults.set(false, forKey: PublicPaykitService.publishingEnabledKey)
+        defaults.removeObject(forKey: "publicPaykitBolt11")
+        defaults.removeObject(forKey: "publicPaykitBolt11PaymentHash")
+        defaults.removeObject(forKey: "publicPaykitBolt11ExpiresAt")
     }
 
     private static func hasStoredPubkyIdentity() -> Bool {

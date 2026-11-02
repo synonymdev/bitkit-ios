@@ -417,6 +417,8 @@ struct AppScene: View {
     )
     @State private var paykitAllowanceManager = PaykitAllowanceManager()
     @State private var activatedAutomaticPaykitIdentity: String?
+    @AppStorage("showDevSettings") private var showDevSettings = Env.isDebug
+    @AppStorage(PaykitFeatureFlags.allowancesEnabledKey) private var allowancesOverride: Bool?
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -528,6 +530,10 @@ struct AppScene: View {
                 return combined.contact(receivingAddress: address, outputAddresses: outputAddresses)
             }
         )
+    }
+
+    private var areAllowancesEnabled: Bool {
+        PaykitFeatureFlags.areAllowancesEnabled(isDevModeEnabled: showDevSettings, override: allowancesOverride)
     }
 
     var body: some View {
@@ -665,6 +671,14 @@ struct AppScene: View {
             // A sign-in, or a session that was still changing or being deleted, has no automatic session yet when
             // authState turns authenticated; activate allowances and load contacts once it appears.
             .onReceive(PubkyProfileManager.sessionSettledPublisher) { startAutomaticPaykitSession() }
+            .onChange(of: areAllowancesEnabled) { _, enabled in
+                guard enabled else {
+                    paykitAllowanceManager.pause(identity: activatedAutomaticPaykitIdentity)
+                    return
+                }
+                guard let pk = activatedAutomaticPaykitIdentity else { return }
+                Task { await paykitAllowanceManager.activate(identity: pk) }
+            }
             .onChange(of: pubkyProfile.isDeletingProfile) { _, isDeleting in
                 if !isDeleting {
                     startAutomaticPaykitSession()
@@ -2101,7 +2115,11 @@ struct AppScene: View {
         let pk = session.publicKey
         activatedAutomaticPaykitIdentity = pk
         Task {
-            await paykitAllowanceManager.activate(identity: pk)
+            if areAllowancesEnabled {
+                await paykitAllowanceManager.activate(identity: pk)
+            } else {
+                paykitAllowanceManager.pause(identity: pk)
+            }
             await handlePendingPaykitSubscriptionNotification()
             guard pubkyProfile.automaticPaykitSession == session else {
                 // A deletion or session change cut this start short; let the session's next appearance run it again.
@@ -2179,17 +2197,9 @@ struct AppScene: View {
         }) {
             if PublicPaykitService.isCleanupPending, pubkyProfile.automaticPaykitSession == session {
                 do {
-                    switch PublicPaykitService.pendingReconciliationMode() {
-                    case .publishEndpoints:
-                        try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: wallet) {
-                            !Task.isCancelled && pubkyProfile.automaticPaykitSession == session &&
-                                PublicPaykitService.pendingReconciliationMode() == .publishEndpoints
-                        }
-                    case .removePublishedState:
-                        try await PublicPaykitService.removePublishedEndpoints()
-                        try await PublicPaykitService.syncPaykitApp()
-                        PublicPaykitService.setCleanupPending(false)
-                    }
+                    try await PublicPaykitService.retryPendingEndpointReconciliation(
+                        wallet: wallet, isSessionCurrent: { pubkyProfile.automaticPaykitSession == session }
+                    )
                 } catch {
                     Logger.warn("Failed to reconcile public Paykit state: \(error)", context: "AppScene")
                 }

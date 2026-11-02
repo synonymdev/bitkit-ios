@@ -1005,8 +1005,10 @@
 "profile__edit" = "Επεξεργασία";
 "profile__pay_contacts_nav_title" = "Πληρωμή Επαφών";
 "profile__pay_contacts_title" = "Αφήστε τις επαφές σας\n<accent>να σας πληρώνουν</accent>";
-"profile__pay_contacts_description" = "Χρησιμοποίησε το Bitkit με τις επαφές σου για να στέλνεις πληρωμές απευθείας, οποτεδήποτε, οπουδήποτε.";
-"profile__pay_contacts_toggle" = "Πληρωμές με επαφές";
+"profile__pay_contacts_description" = "Μοιράσου ιδιωτικά στοιχεία πληρωμής με τις επαφές σου. Οι δημόσιες πληρωμές παραμένουν ανενεργές μέχρι να τις ενεργοποιήσεις στις Ρυθμίσεις.";
+"profile__private_payments_toggle" = "Ιδιωτικές πληρωμές επαφών";
+"profile__public_payments_toggle" = "Δημόσιες πληρωμές";
+"profile__payments_pending" = "Εκκρεμούν αλλαγές. Στοιχεία πληρωμής που κοινοποιήθηκαν προηγουμένως μπορεί να είναι ακόμη διαθέσιμα.";
 "profile__add_link_title" = "Προσθήκη Συνδέσμου";
 "profile__add_link_label" = "ΕΤΙΚΕΤΑ";
 "profile__add_link_label_placeholder" = "Για παράδειγμα «Ιστότοπος»";
@@ -1573,7 +1575,7 @@
 "usdt__to_address" = "Προς διεύθυνση";
 "usdt__disable_unavailable" = "Το USDT πρέπει να παραμείνει ενεργοποιημένο όσο έχεις υπόλοιπο ή εκκρεμή μεταφορά. Περίμενε να ολοκληρωθούν οι μεταφορές και έλεγξε το υπόλοιπό σου πριν το απενεργοποιήσεις.";
 "usdt__enable" = "Ενεργοποίηση USDT";
-"usdt__intro_description" = "Bitcoin στην καρδιά. Δολάρια όταν τα χρειάζεσαι. Ενεργοποίησε το USDT (Tether) για να στέλνεις και να λαμβάνεις ψηφιακά δολάρια με το Bitkit.";
+"usdt__intro_description" = "Bitcoin στην καρδιά. Δολάρια όταν τα χρειάζεσαι. Ενεργοποίησε το USDT (Tether) για να στέλνεις και να λαμβάνεις γρήγορα ψηφιακά δολάρια με το Bitkit.";
 "usdt__intro_headline" = "<accent>ΔΟΛΑΡΙΑ;</accent>\nΔΙΚΗ ΣΟΥ ΕΠΙΛΟΓΗ";
 "usdt__intro_title" = "Νέο: USDT";
 "usdt__no_thanks" = "Όχι, ευχαριστώ";
@@ -1596,6 +1598,9 @@
 "wallet__send_error_support" = "Επικοινωνία με Υποστήριξη";
 "subscriptions__allowances" = "Προεγκρίσεις";
 "subscriptions__allowances_empty_headline" = "Ρύθμισε\n<accent>προεγκρίσεις</accent>";
+"subscriptions__allowances_paused_description" = "Τα αρχεία των προϋπολογισμών σου είναι παλαιότερα από αρχεία που έχει ήδη χρησιμοποιήσει αυτό το πορτοφόλι. Τα αιτήματα θα ζητούν την έγκρισή σου μέχρι να συνεχίσεις.";
+"subscriptions__allowances_paused_resume" = "Συνέχεια";
+"subscriptions__allowances_paused_title" = "Οι αυτόματες πληρωμές έχουν παυθεί";
 "subscriptions__allowances_empty_description" = "Μπορείς να ορίσεις όρια δαπανών για να εξοφλούνται αυτόματα αιτήματα πληρωμής από αξιόπιστες επαφές.";
 "subscriptions__allowance_add" = "Προσθήκη προέγκρισης";
 "subscriptions__allowance_title" = "Προέγκριση";
