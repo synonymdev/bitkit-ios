@@ -64,14 +64,7 @@ class Keychain {
     class func save(key: KeychainEntryType, data: Data) throws {
         Logger.debug("Saving \(key.storageKey)", context: "Keychain")
 
-        let query = [
-            kSecClass as String: kSecClassGenericPassword as String,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String,
-            kSecAttrSynchronizable as String: false,
-            kSecAttrAccount as String: account(for: key),
-            kSecValueData as String: data,
-            kSecAttrAccessGroup as String: Env.keychainGroup,
-        ] as [String: Any]
+        let query = addQuery(key: key, data: data)
 
         // Don't allow accidentally overwriting keys
         guard try load(key: key) == nil else {
@@ -101,6 +94,17 @@ class Keychain {
         storedValue = Data() // Clear memory
 
         Logger.info("Saved \(key.storageKey)", context: "Keychain")
+    }
+
+    private class func addQuery(key: KeychainEntryType, data: Data) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword as String,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String,
+            kSecAttrSynchronizable as String: false,
+            kSecAttrAccount as String: account(for: key),
+            kSecValueData as String: data,
+            kSecAttrAccessGroup as String: Env.keychainGroup,
+        ]
     }
 
     class func saveString(key: KeychainEntryType, str: String) throws {
@@ -178,32 +182,35 @@ class Keychain {
         Logger.debug("Deleted \(key.storageKey)", context: "Keychain")
     }
 
-    /// Atomically inserts or updates a keychain entry, avoiding the delete-then-save race window.
+    /// Inserts or updates a keychain entry in one keychain call each, with no delete in between, so the entry never goes missing.
     class func upsert(key: KeychainEntryType, data: Data) throws {
         Logger.debug("Upserting \(key.storageKey)", context: "Keychain")
 
-        let existingData = try load(key: key)
-
-        if existingData != nil {
-            let searchQuery: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrAccount as String: account(for: key),
-                kSecAttrAccessGroup as String: Env.keychainGroup,
-            ]
-            let updateAttributes: [String: Any] = [
-                kSecValueData as String: data,
-            ]
-
-            let status = SecItemUpdate(searchQuery as CFDictionary, updateAttributes as CFDictionary)
-            if status != noErr {
-                Logger.error("Failed to update \(key.storageKey) in keychain. \(status.description)", context: "Keychain")
-                throw KeychainError.failedToSave
-            }
-
-            Logger.info("Updated \(key.storageKey)", context: "Keychain")
-        } else {
-            try save(key: key, data: data)
+        let addStatus = SecItemAdd(addQuery(key: key, data: data) as CFDictionary, nil)
+        if addStatus == noErr {
+            Logger.info("Saved \(key.storageKey)", context: "Keychain")
+            return
         }
+        guard addStatus == errSecDuplicateItem else {
+            Logger.error("Failed to save \(key.storageKey) to keychain. \(addStatus.description)", context: "Keychain")
+            throw KeychainError.failedToSave
+        }
+
+        let searchQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: account(for: key),
+            kSecAttrAccessGroup as String: Env.keychainGroup,
+        ]
+        let updateAttributes: [String: Any] = [
+            kSecValueData as String: data,
+        ]
+        let status = SecItemUpdate(searchQuery as CFDictionary, updateAttributes as CFDictionary)
+        if status != noErr {
+            Logger.error("Failed to update \(key.storageKey) in keychain. \(status.description)", context: "Keychain")
+            throw KeychainError.failedToSave
+        }
+
+        Logger.info("Updated \(key.storageKey)", context: "Keychain")
     }
 
     class func exists(key: KeychainEntryType) throws -> Bool {
@@ -274,37 +281,64 @@ class Keychain {
         return items.compactMap { $0[kSecAttrAccount as String] as? String }
     }
 
-    /// Deletes every entry in the access group except `retained`. One that cannot be deleted does not stop the others: it
-    /// throws once all of them have been tried.
+    /// Deletes every entry in the access group except `retained`. One that cannot be deleted does not stop the others of its
+    /// stage: it throws once all of them have been tried.
     class func wipeEntireKeychain(retaining retained: [KeychainEntryType] = []) throws {
-        let retainedAccounts = Set(retained.map(account(for:)))
-        var hasFailedDelete = false
+        try wipe(
+            accounts: storedAccounts(),
+            retaining: Set(retained.map(account(for:))),
+            delete: deleteItem(account:),
+            remainingAccounts: storedAccounts
+        )
+    }
 
-        for key in try storedAccounts() where !retainedAccounts.contains(key) {
-            // A test run must only ever clear its own namespaced entries. Deleting an un-prefixed
-            // account here is what destroys the wallet on the simulator the suite runs against.
-            if Env.isUnitTest, !key.hasPrefix(unitTestAccountPrefix) {
-                continue
+    /// The seeds go first and must be proven gone before anything else is deleted, so a failure never leaves a seed on the
+    /// device without the PIN that locks it. A listing that cannot be read is not proof, so it throws too.
+    static func wipe(
+        accounts: [String],
+        retaining retained: Set<String>,
+        delete: (String) -> OSStatus,
+        remainingAccounts: () throws -> [String]
+    ) throws {
+        // A test run must only ever clear its own namespaced entries. Deleting an un-prefixed
+        // account here is what destroys the wallet on the simulator the suite runs against.
+        let targets = accounts.filter { !retained.contains($0) && (!Env.isUnitTest || $0.hasPrefix(unitTestAccountPrefix)) }
+        let seeds = targets.filter(isSeedAccount)
+        let others = targets.filter { !isSeedAccount($0) }
+
+        for stage in [seeds, others] where !stage.isEmpty {
+            var hasFailedDelete = false
+            for account in stage {
+                let status = delete(account)
+                guard status == noErr || status == errSecItemNotFound else {
+                    Logger.error("Failed to delete \(account) from keychain. \(status.description)", context: "Keychain")
+                    hasFailedDelete = true
+                    continue
+                }
+                Logger.info("Deleted \(account) from keychain", context: "Keychain")
             }
-
-            let query = [
-                kSecClass as String: kSecClassGenericPassword as String,
-                kSecAttrAccount as String: key,
-                kSecAttrAccessGroup as String: Env.keychainGroup,
-            ] as [String: Any]
-
-            let status = SecItemDelete(query as CFDictionary)
-            guard status == noErr || status == errSecItemNotFound else {
-                Logger.error("Failed to delete \(key) from keychain. \(status.description)", context: "Keychain")
-                hasFailedDelete = true
-                continue
+            if hasFailedDelete {
+                throw KeychainError.failedToDelete
             }
-
-            Logger.info("Deleted \(key) from keychain")
+            let remaining = try Set(remainingAccounts()).intersection(stage)
+            guard remaining.isEmpty else {
+                Logger.error("Keychain still holds \(remaining.sorted()) after deleting them", context: "Keychain")
+                throw KeychainError.failedToDelete
+            }
         }
+    }
 
-        if hasFailedDelete {
-            throw KeychainError.failedToDelete
-        }
+    private static func isSeedAccount(_ account: String) -> Bool {
+        let key = account.hasPrefix(unitTestAccountPrefix) ? String(account.dropFirst(unitTestAccountPrefix.count)) : account
+        return key.hasPrefix("bip39_mnemonic_") || key.hasPrefix("bip39_passphrase_")
+    }
+
+    private class func deleteItem(account: String) -> OSStatus {
+        let query = [
+            kSecClass as String: kSecClassGenericPassword as String,
+            kSecAttrAccount as String: account,
+            kSecAttrAccessGroup as String: Env.keychainGroup,
+        ] as [String: Any]
+        return SecItemDelete(query as CFDictionary)
     }
 }

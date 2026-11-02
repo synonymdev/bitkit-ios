@@ -18,7 +18,7 @@ enum InstallationMarker {
     private static var sandboxDocumentsUrl: URL {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         // Tests delete the marker, and a missing marker makes the next real launch treat the keychain
-        // as orphaned and wipe it (`AppScene.handleOrphanedKeychain`). Give them their own directory so
+        // as orphaned and wipe it (`OrphanedKeychainGuard`). Give them their own directory so
         // that only ever happens to a marker a test created. `Env.appStorageUrl` namespaces the app
         // group the same way; this file is deliberately outside it, so it needs its own redirect.
         return Env.isUnitTest ? documents.appendingPathComponent("unit-tests") : documents

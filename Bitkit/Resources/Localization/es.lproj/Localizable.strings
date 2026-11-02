@@ -416,6 +416,7 @@
 "other__buy_text" = "¿No tiene Bitcoin o necesita más?";
 "other__buy_button" = "Elegir Exchange";
 "other__error_keychain" = "Problema de Datos de Conexión";
+"other__error_keychain_msg" = "No se ha podido cargar la clave principal del llavero.";
 "other__connection_restored_title" = "Conexión Electrum Restaurada";
 "other__connection_restored_message" = "Reconectado con éxito a Electrum.";
 "other__connection_issue" = "Problemas de Conectividad de Internet";

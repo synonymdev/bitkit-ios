@@ -439,6 +439,8 @@ struct AppScene: View {
 
     @State private var hideSplash = false
     @State private var removeSplash = false
+    /// Set while an orphaned keychain could not be wiped, which holds the launch so no wallet starts on its seed.
+    @State private var isOrphanedKeychainKept = false
     @State private var walletIsInitializing: Bool? = nil
     @State private var isWalletBackupRestoreRunning = false
     @State private var didWalletBackupRestoreFail = false
@@ -956,7 +958,13 @@ struct AppScene: View {
 
     @ViewBuilder
     private var walletContent: some View {
-        if wallet.walletExists == true {
+        if isOrphanedKeychainKept {
+            WalletRestoreError(
+                title: t("other__error_keychain"),
+                message: t("other__error_keychain_msg"),
+                onRetry: { await retryOrphanedKeychainWipe() }
+            )
+        } else if wallet.walletExists == true {
             existingWalletContent
         } else if wallet.walletExists == false {
             onboardingContent
@@ -1132,40 +1140,6 @@ struct AppScene: View {
         }
     }
 
-    /// Handle orphaned keychain entries from previous app installs.
-    /// If the installation marker doesn't exist but keychain has data, the app was reinstalled
-    /// and the keychain data is orphaned (corresponding wallet data was deleted with the app).
-    private func handleOrphanedKeychain() {
-        // If marker exists, app was installed before - keychain is valid
-        if InstallationMarker.exists() {
-            Logger.debug("Installation marker exists, skipping orphaned keychain check", context: "AppScene")
-            return
-        }
-
-        // Check if native keychain has data (orphaned from previous install)
-        let hasNativeKeychain = (try? Keychain.exists(key: .bip39Mnemonic(index: 0))) == true
-
-        // Check if RN keychain has data without corresponding RN files (orphaned)
-        let hasOrphanedRNKeychain = MigrationsService.shared.hasOrphanedRNKeychain()
-
-        if hasNativeKeychain || hasOrphanedRNKeychain {
-            Logger.warn("Orphaned keychain detected, wiping", context: "AppScene")
-            SharedPubkyKeychain.removeAllOwn()
-            try? Keychain.wipeEntireKeychain()
-
-            if hasOrphanedRNKeychain {
-                MigrationsService.shared.cleanupRNKeychain()
-            }
-        }
-
-        // Create marker for this installation
-        do {
-            try InstallationMarker.create()
-        } catch {
-            Logger.error("Failed to create installation marker: \(error)", context: "AppScene")
-        }
-    }
-
     @Sendable
     private func setupTask() async {
         configurePrivatePaykitContactResolvers()
@@ -1173,12 +1147,30 @@ struct AppScene: View {
 
         // Ahead of the orphaned keychain check, migration and wallet state: a pending wipe resumes here, even after a
         // reinstall, and a lockout state that cannot be read holds the launch.
-        guard await wipeCoordinator.prepareForLaunch() else { return }
+        guard await wipeCoordinator.prepareForLaunch(), checkOrphanedKeychain() else { return }
+        await continueLaunch()
+    }
 
+    /// Handles an orphaned keychain before anything else. Returns false, holding the launch, while its seed could not be wiped.
+    private func checkOrphanedKeychain() -> Bool {
         do {
-            // Handle orphaned keychain before anything else
-            handleOrphanedKeychain()
+            try OrphanedKeychainGuard.live.run()
+        } catch {
+            isOrphanedKeychainKept = true
+            removeSplash = true
+            return false
+        }
+        isOrphanedKeychainKept = false
+        return true
+    }
 
+    private func retryOrphanedKeychainWipe() async {
+        guard isOrphanedKeychainKept, checkOrphanedKeychain() else { return }
+        await continueLaunch()
+    }
+
+    private func continueLaunch() async {
+        do {
             await checkAndPerformRNMigration()
             try wallet.setWalletExistsState()
 

@@ -172,4 +172,77 @@ final class KeychainTests: XCTestCase {
             "wipeEntireKeychain deleted an account outside the unit-test namespace"
         )
     }
+
+    // Regression: a wipe deleted in listing order and never checked the seed was gone, so a failed delete could leave the seed
+    // on the device with its PIN already removed
+    func testAWipeStopsBeforeThePinWhileASeedRemains() {
+        let pin = Keychain.account(for: .securityPin)
+        let mnemonic = Keychain.account(for: .bip39Mnemonic(index: 0))
+        let passphrase = Keychain.account(for: .bip39Passphrase(index: 0))
+        let pushKey = Keychain.account(for: .pushNotificationPrivateKey)
+
+        var deleted: [String] = []
+        XCTAssertThrowsError(try Keychain.wipe(
+            accounts: [pin, mnemonic, pushKey, passphrase],
+            retaining: [],
+            delete: { account in
+                deleted.append(account)
+                return account == mnemonic ? errSecInteractionNotAllowed : errSecSuccess
+            },
+            remainingAccounts: { [pin, mnemonic, pushKey] }
+        ))
+        XCTAssertEqual(Set(deleted), [mnemonic, passphrase], "nothing else is deleted while a seed delete failed")
+
+        deleted = []
+        XCTAssertThrowsError(try Keychain.wipe(
+            accounts: [pin, mnemonic, pushKey],
+            retaining: [],
+            delete: { deleted.append($0); return errSecSuccess },
+            remainingAccounts: { [pin, mnemonic, pushKey] }
+        ))
+        XCTAssertEqual(deleted, [mnemonic], "a seed the keychain still lists is not taken as gone")
+
+        deleted = []
+        struct ListingFailure: Error {}
+        XCTAssertThrowsError(try Keychain.wipe(
+            accounts: [pin, mnemonic],
+            retaining: [],
+            delete: { deleted.append($0); return errSecSuccess },
+            remainingAccounts: { throw ListingFailure() }
+        ))
+        XCTAssertEqual(deleted, [mnemonic], "an unreadable keychain is not proof the seed is gone")
+    }
+
+    func testAWipeDeletesTheSeedsFirstThenTheRestButNotTheRetained() throws {
+        let pin = Keychain.account(for: .securityPin)
+        let mnemonic = Keychain.account(for: .bip39Mnemonic(index: 0))
+        let pushKey = Keychain.account(for: .pushNotificationPrivateKey)
+        var stored: Set = [pin, mnemonic, pushKey]
+        var deleted: [String] = []
+
+        try Keychain.wipe(
+            accounts: [pushKey, pin, mnemonic],
+            retaining: [pin],
+            delete: { account in
+                deleted.append(account)
+                stored.remove(account)
+                return errSecSuccess
+            },
+            remainingAccounts: { Array(stored) }
+        )
+
+        XCTAssertEqual(deleted, [mnemonic, pushKey])
+        XCTAssertEqual(stored, [pin])
+    }
+
+    func testUpsertInsertsThenReplacesTheValue() throws {
+        try Keychain.upsert(key: .pushNotificationPrivateKey, data: Data("first".utf8))
+        XCTAssertEqual(try Keychain.loadString(key: .pushNotificationPrivateKey), "first")
+
+        try Keychain.upsert(key: .pushNotificationPrivateKey, data: Data("second".utf8))
+        XCTAssertEqual(try Keychain.loadString(key: .pushNotificationPrivateKey), "second")
+        XCTAssertThrowsError(try Keychain.saveString(key: .pushNotificationPrivateKey, str: "third")) { error in
+            XCTAssertEqual(error as? KeychainError, .failedToSaveAlreadyExists)
+        }
+    }
 }

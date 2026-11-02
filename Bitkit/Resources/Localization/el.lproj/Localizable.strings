@@ -1630,3 +1630,5 @@
 "subscriptions__allowance_auto_paid" = "Πληρώθηκε αυτόματα";
 
 "wallet__balance_updating" = "Ενημέρωση υπολοίπου…";
+"other__error_keychain" = "Πρόβλημα Σύνδεσης Δεδομένων";
+"other__error_keychain_msg" = "Δεν ήταν δυνατή η φόρτωση του κύριου κλειδιού από την κλειδοθήκη.";
