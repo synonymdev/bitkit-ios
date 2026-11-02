@@ -167,6 +167,20 @@ final class PinVerifierTests: XCTestCase {
         XCTAssertEqual(coordinator.gate, .blocked)
     }
 
+    func testAPinThatCannotBeReadAtTheLimitNeverCountsAndNeverWipes() async {
+        store.failedAttempts = Env.pinAttempts - 1
+        store.failsLoadingPin = true
+
+        for _ in 0 ..< 3 {
+            XCTAssertEqual(verifier.verify("1234"), .unavailable)
+        }
+        await coordinator.waitForCurrentAttempt()
+
+        XCTAssertEqual(store.failedAttempts, Env.pinAttempts - 1)
+        XCTAssertEqual(coordinator.gate, .none)
+        XCTAssertNil(store.intent)
+    }
+
     func testCorrectPinIsCountedBeforeTheComparisonThenCleared() {
         store.failedAttempts = Env.pinAttempts - 1
 
