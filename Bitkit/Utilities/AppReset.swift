@@ -145,7 +145,7 @@ final class AppReset: WipeStepExecutor {
     }
 
     /// How long a wipe waits for work it must let finish first. A wait that runs over fails the step, so the gate offers Retry.
-    static let waitTimeout: Duration = .seconds(30)
+    nonisolated static let waitTimeout: Duration = .seconds(30)
 
     static func bounded(_ wait: String, timeout: Duration = waitTimeout, _ operation: @escaping () async -> Void) async throws {
         guard await withDeadline(timeout, operation) == nil else { return }
