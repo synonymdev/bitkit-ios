@@ -48,9 +48,9 @@ extension SettingsViewModel {
     }
 
     func setPin(_ pin: String) throws {
+        // A new PIN starts with every attempt, whatever a removed one left behind, and is not saved until it does
+        try KeychainPinLockoutStore().saveFailedAttempts(0)
         try Keychain.saveString(key: .securityPin, str: pin)
-        // A new PIN starts with every attempt, whatever a removed one left behind
-        clearPinAttempts()
         updatePinEnabledState()
     }
 

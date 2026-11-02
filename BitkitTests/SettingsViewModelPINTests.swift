@@ -62,4 +62,21 @@ final class SettingsViewModelPINTests: XCTestCase {
         try settings.removePin(pin: "1234")
         XCTAssertEqual(try store.loadFailedAttempts(), 0)
     }
+
+    func testANewPinStartsFromAClearedCounterLeftByAnEarlierOne() throws {
+        let settings = SettingsViewModel.shared
+        try Keychain.delete(key: .securityPin)
+        try Keychain.delete(key: .pinFailedAttempts)
+        try Keychain.saveString(key: .pinFailedAttempts, str: "2")
+        addTeardownBlock { @MainActor in
+            try? Keychain.delete(key: .securityPin)
+            try? Keychain.delete(key: .pinFailedAttempts)
+            settings.updatePinEnabledState()
+        }
+
+        try settings.setPin("1234")
+
+        XCTAssertEqual(try Keychain.loadString(key: .pinFailedAttempts), "0")
+        XCTAssertEqual(try Keychain.loadString(key: .securityPin), "1234")
+    }
 }
