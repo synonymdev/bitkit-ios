@@ -44,11 +44,12 @@ enum PaykitAllowanceError: LocalizedError {
     case contactNotLinked
     case unavailable
     case paymentListPending
+    case ledgerBehind
 
     var errorDescription: String? {
         switch self {
         case .contactNotLinked: t("subscriptions__allowance_error_not_linked")
-        case .unavailable, .paymentListPending: t("subscriptions__allowance_error_unavailable")
+        case .unavailable, .paymentListPending, .ledgerBehind: t("subscriptions__allowance_error_unavailable")
         }
     }
 }
@@ -59,6 +60,8 @@ final class PaykitAllowanceManager {
     private(set) var allowances: [PaykitAllowance] = []
     private(set) var localState = PaykitAllowanceLocalState()
     private(set) var isWorking = false
+    /// True while the allowance ledger is behind one this wallet has read, until `resumeAutomaticPayments()`.
+    private(set) var isAutomaticPaymentPaused = false
     private(set) var autoPaidRequestIds: Set<PaykitPaymentRequest.ID> = []
     /// Keyed by `PaykitAllowance.scopedId`, since another contact can reuse an allowance id.
     private(set) var autoPaidSatsByScopedId: [String: UInt64] = [:]
@@ -170,6 +173,7 @@ final class PaykitAllowanceManager {
         localState = PaykitAllowanceLocalState()
         autoPaidRequestIds = []
         autoPaidSatsByScopedId = [:]
+        isAutomaticPaymentPaused = false
         manualRequestIds = [:]
         announcedOfferIds = []
     }
@@ -187,12 +191,15 @@ final class PaykitAllowanceManager {
             allowances = records
                 .filter { $0.historyStatus == .consistent || $0.historyStatus == .unresolvedReferences }
                 .compactMap(PaykitAllowance.init(record:))
+            await executor.rememberEndedAllowances(identity: identity, allowances: allowances)
         } catch {
             Logger.warn("Failed to list Paykit allowances: \(error)", context: "PaykitAllowance")
         }
         let state = await executor.localState(identity: identity)
+        let isPaused = await executor.isLedgerBehind(identity: identity)
         guard activation == refreshActivation else { return }
         localState = state
+        isAutomaticPaymentPaused = isPaused
         guard let paid = await executor.succeededAutomaticPayments(identity: identity), activation == refreshActivation else { return }
         autoPaidRequestIds = Set(paid.map(\.requestId))
         autoPaidSatsByScopedId = paid.reduce(into: [:]) { totals, payment in
@@ -277,16 +284,31 @@ final class PaykitAllowanceManager {
         }
     }
 
+    /// Resumes automatic payments from the ledger read now; see `PaykitAllowanceExecutor.acceptCurrentLedger(identity:)`.
+    func resumeAutomaticPayments() async throws {
+        isWorking = true
+        defer { isWorking = false }
+        guard let identity else { throw PaykitAllowanceError.unavailable }
+        try await executor.acceptCurrentLedger(identity: identity)
+        await executor.recover(identity: identity)
+        await refresh()
+    }
+
     func end(_ entry: PaykitAllowanceEntry) async throws {
         isWorking = true
         defer { isWorking = false }
-        var endedAny = false
-        for allowance in entry.allowances where allowance.canEnd {
-            _ = try await sdk.endAllowance(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId)
-            endedAny = true
+        guard let identity else { throw PaykitAllowanceError.unavailable }
+        let endable = entry.allowances.filter(\.canEnd)
+        guard !endable.isEmpty else { throw PaykitAllowanceError.unavailable }
+        let sdk = sdk
+        try await executor.rememberEnding(identity: identity, allowances: endable) {
+            for allowance in endable {
+                _ = try await sdk.endAllowance(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId)
+            }
+        }
+        for allowance in endable {
             _ = try? await sdk.processOutboundPrivateMessages(counterparty: allowance.counterparty)
         }
-        guard endedAny else { throw PaykitAllowanceError.unavailable }
         await refresh()
     }
 

@@ -1731,6 +1731,9 @@
 "settings__adv__pp_onchain_short" = "On-chain";
 "subscriptions__allowances" = "Allowances";
 "subscriptions__allowances_empty_headline" = "Set up\n<accent>allowances</accent>";
+"subscriptions__allowances_paused_description" = "Your allowance records are older than ones this wallet has already used. Requests ask for your approval until you resume.";
+"subscriptions__allowances_paused_resume" = "Resume";
+"subscriptions__allowances_paused_title" = "Automatic payments paused";
 "subscriptions__allowances_empty_description" = "You can set spending limits to automatically fulfill payment requests from trusted peers.";
 "subscriptions__allowance_add" = "Add Allowance";
 "subscriptions__allowance_title" = "Allowance";
