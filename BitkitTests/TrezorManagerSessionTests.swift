@@ -1,4 +1,5 @@
 @testable import Bitkit
+import Combine
 import XCTest
 
 /// How a Trezor session makes way for another vendor: a foreground reconnect reads as active from the
@@ -31,6 +32,53 @@ final class TrezorManagerSessionTests: XCTestCase {
 
         XCTAssertFalse(manager.isSessionActive)
         XCTAssertTrue(manager.knownDevices.isEmpty)
+    }
+
+    // Regression: a wipe released only a connected session, so a passphrase a failed reconnect kept stayed selected
+    func testAWipeWithNoDeviceConnectedDropsAKeptPassphrase() async {
+        let manager = TrezorManager()
+        TrezorUiHandler.shared.setWalletMode(.passphraseHost, hostPassphrase: "hidden wallet")
+        XCTAssertEqual(TrezorUiHandler.shared.currentSelection(), .hidden(passphrase: "hidden wallet"))
+
+        await manager.resetForWipe()
+
+        XCTAssertEqual(TrezorUiHandler.shared.currentSelection(), .standard)
+        XCTAssertEqual(manager.walletMode, .standard)
+    }
+
+    // Regression: a wipe left a connect waiting for its PIN, so it waited out the two minute PIN timeout before the
+    // connection work let it through. A foreground reconnect shows no PIN sheet to answer it.
+    func testWipeAnswersAPinRequestStillPending() async {
+        let manager = TrezorManager()
+        var pendingRequestId: Int?
+        let subscription = TrezorUiHandler.shared.pinRequestIds.sink { pendingRequestId = $0 }
+        defer { subscription.cancel() }
+        let request = Task.detached { TrezorUiHandler.shared.onPinRequest() }
+        await eventually("the request is pending") { pendingRequestId != nil }
+
+        await manager.resetForWipe()
+
+        let pin = await request.value
+        XCTAssertEqual(pin, "")
+    }
+
+    func testPinRequestsAreShownAgainOnceAWipeHasDrained() async {
+        let manager = TrezorManager()
+        var pendingRequestId: Int?
+        let subscription = TrezorUiHandler.shared.pinRequestIds.sink { pendingRequestId = $0 }
+        defer { subscription.cancel() }
+        await manager.resetForWipe()
+
+        let request = Task.detached { TrezorUiHandler.shared.onPinRequest() }
+        await eventually("the request is pending, not refused") { pendingRequestId != nil }
+        if let pendingRequestId {
+            TrezorUiHandler.shared.submitPin("1234", requestId: pendingRequestId)
+        } else {
+            TrezorUiHandler.shared.cancelPin(requestId: nil)
+        }
+        let pin = await request.value
+
+        XCTAssertEqual(pin, "1234")
     }
 
     private func makeTrezor() -> HwKnownDevice {

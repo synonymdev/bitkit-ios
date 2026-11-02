@@ -145,9 +145,12 @@ final class AppReset: WipeStepExecutor {
         Logger.warn("Remote cleanup timed out, continuing the wipe", context: "AppReset")
     }
 
-    /// The PIN, its counter and the intent outlive the wallet data, so a relaunch until the wipe ends is gated.
+    /// The PIN, its counter and the intent outlive the wallet data, so a relaunch until the wipe ends is gated. The Trezor
+    /// pairing credentials follow the seeds, as they are saved outside the access group the keychain wipe clears, so a failure
+    /// to clear them keeps the wipe pending without keeping a seed.
     static func wipeKeychain() throws {
         try Keychain.wipeEntireKeychain(retaining: [.securityPin, .pinFailedAttempts, .wipePending])
+        try TrezorCredentialStorage.deleteAll()
     }
 
     private static func wipeLogs() throws {

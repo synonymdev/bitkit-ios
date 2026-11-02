@@ -24,22 +24,31 @@ enum TrezorWalletMode {
 /// callback `onPassphraseRequest` is answered silently from the stored mode — this is
 /// what non-THP (legacy) devices use when they re-request the passphrase mid-operation.
 ///
-/// `@unchecked`: the Rust FFI calls in on its own threads; `submittedPin` is guarded by `pinLock`,
+/// `@unchecked`: the Rust FFI calls in on its own threads; the PIN request state is guarded by `pinLock`,
 /// `walletMode` and `hostPassphrase` by `modeLock`.
 final class TrezorUiHandler: TrezorUiCallback, @unchecked Sendable {
     static let shared = TrezorUiHandler()
 
     // MARK: - PIN Handling
 
-    /// Publisher to notify UI when PIN entry is needed
-    let needsPinPublisher = PassthroughSubject<Void, Never>()
+    private let pinRequestId = CurrentValueSubject<Int?, Never>(nil)
 
-    private var submittedPin: String = ""
+    /// The id of the PIN request core waits on, or nil once it ends, delivered on the main queue. Every request gets a new
+    /// id, because the device scrambles its PIN matrix again each time.
+    var pinRequestIds: AnyPublisher<Int?, Never> {
+        pinRequestId.eraseToAnyPublisher()
+    }
+
+    /// The PIN request core is blocked on, or nil while none is. Each request answers once, so an answer that arrives with
+    /// nothing pending, or for another request, is dropped rather than kept for the next one.
+    private var pinRequest: PinRequest?
+    private var nextPinRequestId = 1
+    /// While above zero, every PIN request is answered empty at once and never shown
+    private var pinRefusals = 0
     private let pinLock = NSLock()
-    private let pinSemaphore = DispatchSemaphore(value: 0)
 
-    /// Timeout for PIN entry (2 minutes)
-    private static let timeoutSeconds: TimeInterval = 120
+    /// How long a PIN request waits for an answer before it ends unanswered
+    private let pinTimeout: TimeInterval
 
     // MARK: - Wallet Mode / Passphrase Selection
 
@@ -52,7 +61,9 @@ final class TrezorUiHandler: TrezorUiCallback, @unchecked Sendable {
     /// value the user already entered up front. Nil when not in host-passphrase mode.
     private var hostPassphrase: String?
 
-    private init() {}
+    init(pinTimeout: TimeInterval = 120) {
+        self.pinTimeout = pinTimeout
+    }
 
     // MARK: - Debug Logging
 
@@ -102,31 +113,25 @@ final class TrezorUiHandler: TrezorUiCallback, @unchecked Sendable {
     // MARK: - TrezorUiCallback Implementation
 
     func onPinRequest() -> String {
-        debugLog("onPinRequest: waiting for user input...")
-
-        pinLock.lock()
-        submittedPin = ""
-        pinLock.unlock()
-
-        // Notify UI to show PIN entry dialog
-        DispatchQueue.main.async {
-            self.needsPinPublisher.send()
-        }
-
-        // Block and wait for user to enter PIN
-        let timeout = DispatchTime.now() + Self.timeoutSeconds
-        let result = pinSemaphore.wait(timeout: timeout)
-
-        if result == .timedOut {
-            debugLog("onPinRequest: timed out")
+        guard let request = startPinRequest() else {
+            debugLog("onPinRequest: refused")
             return ""
         }
+        debugLog("onPinRequest: waiting for user input on request \(request.id)...")
 
-        pinLock.lock()
-        let pin = submittedPin
-        pinLock.unlock()
+        // Block and wait for user to enter PIN
+        if request.semaphore.wait(timeout: .now() + pinTimeout) == .timedOut {
+            debugLog("onPinRequest: request \(request.id) timed out")
+        }
 
-        debugLog("onPinRequest: \(pin.isEmpty ? "cancelled" : "received")")
+        // Dropped with the request it answers, so a late answer never reaches the next one
+        let pin = pinLock.withLock {
+            if pinRequest === request {
+                clearPinRequest()
+            }
+            return request.pin
+        }
+        debugLog("onPinRequest: request \(request.id) \(pin.isEmpty ? "cancelled" : "received")")
         return pin
     }
 
@@ -163,21 +168,79 @@ final class TrezorUiHandler: TrezorUiCallback, @unchecked Sendable {
 
     // MARK: - PIN Submit/Cancel Methods
 
-    /// Called by ViewModel when user submits PIN
-    func submitPin(_ pin: String) {
-        debugLog("submitPin")
-        pinLock.lock()
-        submittedPin = pin
-        pinLock.unlock()
-        pinSemaphore.signal()
+    /// Answers PIN request `requestId` with the matrix positions entered; an answer to any other request is dropped.
+    func submitPin(_ pin: String, requestId: Int) {
+        pinLock.withLock {
+            guard let request = pinRequest, request.id == requestId else {
+                debugLog("submitPin: dropped for request \(requestId)")
+                return
+            }
+            debugLog("submitPin: request \(requestId)")
+            answer(request, with: pin)
+        }
     }
 
-    /// Called by ViewModel when user cancels PIN entry
-    func cancelPin() {
-        debugLog("cancelPin")
-        pinLock.lock()
-        submittedPin = ""
-        pinLock.unlock()
-        pinSemaphore.signal()
+    /// Cancels PIN request `requestId`, or whichever request is pending when nil, so the device call ends now.
+    func cancelPin(requestId: Int?) {
+        pinLock.withLock {
+            guard let request = pinRequest, requestId == nil || request.id == requestId else { return }
+            debugLog("cancelPin: request \(request.id)")
+            answer(request, with: "")
+        }
+    }
+
+    /// Answers every PIN request with an empty PIN at once, publishing none, until a matching `allowPinRequests()`, so a
+    /// connect that reaches its PIN prompt during a wallet wipe ends now instead of waiting for an entry nobody makes.
+    func refusePinRequests() {
+        pinLock.withLock { pinRefusals += 1 }
+    }
+
+    func allowPinRequests() {
+        pinLock.withLock { pinRefusals = max(pinRefusals - 1, 0) }
+    }
+
+    private func startPinRequest() -> PinRequest? {
+        pinLock.withLock {
+            // A device asks for one PIN at a time, so a request still pending is stale
+            if let stale = pinRequest {
+                answer(stale, with: "")
+            }
+            guard pinRefusals == 0 else { return nil }
+            let request = PinRequest(id: nextPinRequestId)
+            nextPinRequestId += 1
+            pinRequest = request
+            publishPinRequestId(request.id)
+            return request
+        }
+    }
+
+    /// Callers hold `pinLock`.
+    private func answer(_ request: PinRequest, with pin: String) {
+        request.pin = pin
+        clearPinRequest()
+        request.semaphore.signal()
+    }
+
+    /// Callers hold `pinLock`.
+    private func clearPinRequest() {
+        pinRequest = nil
+        publishPinRequestId(nil)
+    }
+
+    /// Callers hold `pinLock`, so the ids reach the main queue in the order the requests started and ended.
+    private func publishPinRequestId(_ id: Int?) {
+        DispatchQueue.main.async {
+            self.pinRequestId.send(id)
+        }
+    }
+
+    private final class PinRequest {
+        let id: Int
+        let semaphore = DispatchSemaphore(value: 0)
+        var pin = ""
+
+        init(id: Int) {
+            self.id = id
+        }
     }
 }
