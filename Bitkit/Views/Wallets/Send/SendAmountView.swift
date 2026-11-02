@@ -471,6 +471,7 @@ struct SendAmountView: View {
             case let .swap(quote):
                 var quoted = route
                 quoted.quote = quote
+                quoted.serviceLeg = nil
                 quoted.providerName = contactsManager.contacts
                     .first { PubkyPublicKeyFormat.matches($0.publicKey, quote.providerPubky) }?.displayName
                 app.paykitSwapRoute = quoted
@@ -478,8 +479,11 @@ struct SendAmountView: View {
             case let .none(reason):
                 app.toast(type: .error, title: t("slashtags__error_pay_title"), description: reason)
             case let .service(leg):
-                Logger.error("Unexpected service route \(leg.service)", context: "SendAmountView")
-                app.toast(type: .error, title: t("slashtags__error_pay_title"), description: t("common__error_body"))
+                var quoted = route
+                quoted.quote = nil
+                quoted.serviceLeg = leg
+                app.paykitSwapRoute = quoted
+                return true
             case .direct:
                 app.paykitSwapRoute = nil
                 app.toast(type: .error, title: t("slashtags__error_pay_title"), description: t("common__error_body"))

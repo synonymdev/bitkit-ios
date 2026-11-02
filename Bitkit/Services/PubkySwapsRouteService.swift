@@ -1,11 +1,21 @@
 import BitkitCore
 import Foundation
 
-/// A Paykit payment routed through a Pubky Swaps provider: the endpoint, the route once quoted, and its provider.
+/// A Paykit payment routed through a Pubky Swaps provider or a service the wallet holds a balance on: the endpoint,
+/// the route once quoted (a provider's quote or a service leg), and the provider's name.
 struct PaykitSwapRoute: Equatable {
     let endpoint: PaykitEndpoint
     var quote: PubkySwapRouteQuote?
     var providerName: String?
+    var serviceLeg: ServiceRouteLeg?
+
+    var deliveredSat: UInt64? {
+        quote?.deliveredSat ?? serviceLeg?.deliveredSat
+    }
+
+    var totalFeeSat: UInt64? {
+        quote?.totalFeeSat ?? serviceLeg.map { $0.debitSat - $0.deliveredSat }
+    }
 }
 
 /// Routes a Paykit payment through a Pubky Swaps provider when no balance the wallet holds reaches an endpoint the
@@ -37,11 +47,11 @@ enum PubkySwapsRouteService {
         endpoint: PaykitEndpoint,
         lightningSpendableSats: UInt64,
         onchainSpendableSats: UInt64,
-        contacts: [String],
-        serviceLegs: [ServiceRouteLeg] = []
+        contacts: [String]
     ) async throws -> PaykitRoute {
         // Providers come from the user's own graph: every contact is asked for its swap offer.
         let candidates = contacts + Env.pubkySwapsProviders
+        let serviceLegs = await serviceLegs(endpoint: endpoint, amountSats: amountSats)
         Logger.debug("Routing Paykit payment via \(candidates.map(PubkyPublicKeyFormat.redacted))", context: "PubkySwapsRoute")
         let (mnemonic, passphrase) = try secrets()
         return try await pubkySwapsRoutePaykitPayment(
@@ -58,6 +68,24 @@ enum PubkySwapsRouteService {
             mnemonic: mnemonic,
             bip39Passphrase: passphrase
         )
+    }
+
+    /// Legs through the services the wallet holds a balance on, which compete with the providers on fee.
+    private static func serviceLegs(endpoint: PaykitEndpoint, amountSats: UInt64) async -> [ServiceRouteLeg] {
+        do {
+            return try await SparkManager.shared.withdrawalRouteLeg(endpoint: endpoint, amountSats: amountSats).map { [$0] } ?? []
+        } catch {
+            Logger.warn("No Spark route to \(endpoint.methodId): \(error)", context: "PubkySwapsRoute")
+            return []
+        }
+    }
+
+    /// Runs a service leg the router picked and returns the txid that pays the contact.
+    static func pay(_ leg: ServiceRouteLeg) async throws -> String {
+        guard leg.service == SparkManager.routeService else {
+            throw AppError(message: "Unsupported route service", debugMessage: leg.service)
+        }
+        return try await SparkManager.shared.withdraw(to: leg.endpoint.value, amountSats: leg.deliveredSat)
     }
 
     static func commit(quoteId: String) async throws -> PubkySwapRoutePayment {
