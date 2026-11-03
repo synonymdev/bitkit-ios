@@ -174,6 +174,7 @@ jobs:
       all: ${{ steps.plan.outputs.all }}
       rn: ${{ steps.plan.outputs.rn }}
       native: ${{ steps.plan.outputs.native }}
+      e2eSha: ${{ steps.tests-sha.outputs.sha }}
     steps:
       - name: Resolve E2E tests ref
         id: e2e-ref
@@ -193,13 +194,16 @@ jobs:
         env:
           PREVIOUS_NATIVE_VERSION: ${{ inputs.previous_native_version }}
           EXTENDED_RN: ${{ inputs.extended_rn || false }}
+      - name: Pin resolved E2E source
+        id: tests-sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
     timeout-minutes: 135
   prepare-wallets:
     needs:
       - e2e-branch
       - resolve-e2e-ref
       - migration-plan
-    uses: synonymdev/bitkit-e2e-tests/.github/workflows/migration-wallet-setup.yml@main
+    uses: synonymdev/bitkit-e2e-tests/.github/workflows/migration-wallet-setup.yml@a4996b56f8a73e4d9bbc2fb300a05000595bd6cd
     strategy:
       fail-fast: false
       matrix:
@@ -210,6 +214,7 @@ jobs:
       rn_version: v1.1.6
       setup_type: ${{ matrix.scenario.setup_type }}
       scenario_name: ${{ matrix.scenario.name }}
+      e2e_sha: ${{ needs.migration-plan.outputs.e2eSha }}
   rn-tests:
     runs-on: macos-latest
     needs:
@@ -248,7 +253,7 @@ jobs:
         with:
           repository: synonymdev/bitkit-e2e-tests
           path: bitkit-e2e-tests
-          ref: ${{ inputs.e2e_ref || steps.e2e-ref.outputs.ref || 'main' }}
+          ref: ${{ needs.migration-plan.outputs.e2eSha }}
       - name: Download iOS app
         uses: actions/download-artifact@v8
         with:
@@ -422,7 +427,7 @@ jobs:
         with:
           repository: synonymdev/bitkit-e2e-tests
           path: bitkit-e2e-tests
-          ref: ${{ inputs.e2e_ref || steps.e2e-ref.outputs.ref || 'main' }}
+          ref: ${{ needs.migration-plan.outputs.e2eSha }}
       - name: Download iOS app
         uses: actions/download-artifact@v8
         with:

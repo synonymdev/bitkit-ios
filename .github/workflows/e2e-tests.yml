@@ -478,6 +478,9 @@ jobs:
       post_to_slack: ${{ github.event_name == 'schedule' }}
     secrets: inherit
   build-network:
+    env:
+      SIMULATOR_NAME: iPhone 17
+      IOS_VERSION: "26.2"
     runs-on: macos-latest
     steps:
       - name: Checkout

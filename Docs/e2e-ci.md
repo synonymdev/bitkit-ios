@@ -17,4 +17,4 @@ To test a PR merge, including a stacked PR, also pass `-f pr=NUMBER -f selection
 
 Attempts are bounded to three, stop on success, and retain first-failure evidence. Missing selected cases or failed selected jobs fail the aggregate status. Builds are capped at 40 minutes, execution jobs at 135 minutes and runner attempts at 40 minutes. Diagnostic artifacts expire after seven days. Compare end-to-end duration and billed Mac/backend usage before making two shards automatic.
 
-Land the E2E producer first. Validate these branches before merging this consumer. There is no shadow workflow and no additional smoke-test replacement.
+Land the E2E producer first. Validate these branches before merging this consumer. The migration fixture workflow is pinned to the producer commit that supports immutable source selection, allowing full branch validation before either PR merges. There is no shadow workflow and no additional smoke-test replacement.
