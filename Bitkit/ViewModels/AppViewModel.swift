@@ -813,12 +813,14 @@ extension AppViewModel {
                 isUsdtEnabled: SettingsViewModel.shared.isUsdtEnabled
             ) || context.incomingPaymentRequest.map { PaykitUsdtPaymentService.shared.hasBinding(for: $0.id) } == true
             selectedWalletToPayFrom = canUseLightning || (hasLightning && scannedOnchainInvoice == nil) ? .lightning : .onchain
-            let canSelectUsdt = SettingsViewModel.shared.isUsdtEnabled && context.endpoints.contains { $0.methodId == .usdtArbitrum }
-            if !paykitUsesUsdt, !canSelectUsdt, let request = context.incomingPaymentRequest {
+            if let request = context.incomingPaymentRequest {
                 do {
                     let terms = try request.payment(using: paykitPaymentMethod)
-                    let minimumAmount = selectedWalletToPayFrom == .lightning ? max(1, lnurlPayData?.minSendableSat ?? 1) : UInt64(Env.dustLimit)
-                    guard terms.isValid(at: Date()), terms.amount.atomic >= minimumAmount else { return }
+                    guard terms.isValid(at: Date()) else { return }
+                    if terms.amount.asset == .btc {
+                        let minimumAmount = selectedWalletToPayFrom == .lightning ? max(1, lnurlPayData?.minSendableSat ?? 1) : UInt64(Env.dustLimit)
+                        guard terms.amount.atomic >= minimumAmount else { return }
+                    }
                     paykitPaymentTerms = terms
                     paykitReviewedAmount = terms.amount
                 } catch PaykitAmountError.rateUnavailable {

@@ -27,7 +27,6 @@ struct SendAmountView: View {
     @State private var usdtAmount = ""
     @State private var amountConversion = PaykitAmountEntryConversion()
     @State private var conversionError: String?
-    @State private var showingFundingSources = false
 
     var amountSats: UInt64 {
         amountViewModel.amountSats
@@ -72,30 +71,6 @@ struct SendAmountView: View {
             return .hardware(walletId: walletId)
         }
         return app.selectedWalletToPayFrom == .lightning ? .spending : .savings
-    }
-
-    private var canSwitchFundingSource: Bool {
-        fundingSources.count > 1
-    }
-
-    private var selectedSourceLabel: String {
-        fundingSourceLabel(selectedFundingSource)
-    }
-
-    private var selectedSourceColor: Color {
-        fundingSourceColor(selectedFundingSource)
-    }
-
-    private var assetButtonTestIdentifier: String {
-        if canSwitchFundingSource {
-            return "switch"
-        }
-        return switch selectedFundingSource {
-        case .spending: "spending"
-        case .savings: "savings"
-        case .usdt: "usdt"
-        case .hardware: "trezor"
-        }
     }
 
     /// The amount to display in the available balance section
@@ -197,24 +172,7 @@ struct SendAmountView: View {
                     }
                     Spacer()
 
-                    NumberPadActionButton(
-                        text: selectedSourceLabel,
-                        trailingImageName: canSwitchFundingSource ? "chevron-down" : nil,
-                        titleKerning: app.paykitUsesUsdt ? 1 : 0.8,
-                        titleLineHeight: app.paykitUsesUsdt ? 18 : nil,
-                        color: selectedSourceColor,
-                        variant: .secondary,
-                        disabled: isContinuing,
-                        isLoading: hwSend.isFundingSourceLoading
-                    ) {
-                        showingFundingSources = true
-                    }
-                    .accessibilityIdentifier("AssetButton-\(assetButtonTestIdentifier)")
-                    .popover(isPresented: $showingFundingSources, arrowEdge: .bottom) {
-                        fundingSourceMenu
-                            .presentationCompactAdaptation(.popover)
-                            .presentationBackground(Color.gray6)
-                    }
+                    SendFundingSourceButton(hwSend: hwSend, disabled: isContinuing, onSelect: selectFundingSource)
 
                     if !app.paykitUsesUsdt {
                         NumberPadActionButton(
@@ -449,99 +407,6 @@ struct SendAmountView: View {
     private func updateInputCap() {
         // Don't cap when nothing is sendable, so the pad stays usable (Continue stays disabled instead).
         amountViewModel.maxAmountOverride = availableAmount > 0 ? availableAmount : nil
-    }
-
-    private var fundingSourceMenu: some View {
-        let sources: [SendFundingSource] = [.savings, .spending] + hwWalletManager.wallets.map {
-            .hardware(walletId: $0.walletId)
-        } + (settings.isUsdtEnabled || app.paykitUsesUsdt ? [.usdt] : [])
-        return VStack(alignment: .leading, spacing: 0) {
-            ForEach(sources.indices, id: \.self) { index in
-                let source = sources[index]
-                let enabled = fundingSources.contains(source)
-                Button {
-                    showingFundingSources = false
-                    selectFundingSource(source)
-                } label: {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 8) {
-                            CaptionMText(fundingSourceLabel(source), kerning: 1, lineHeight: 18).lineLimit(1)
-                            if case let .hardware(walletId) = source,
-                               let hardwareWallet = hwWalletManager.wallets.first(where: { $0.walletId == walletId })
-                            {
-                                HwWalletConnectionIcon(isConnected: hardwareWallet.isConnected)
-                                    .frame(width: 16, height: 16)
-                            }
-                        }
-                        HStack(spacing: 8) {
-                            Image(fundingSourceIcon(source)).resizable().scaledToFit().frame(width: 24, height: 24)
-                            if source == .usdt {
-                                BodyMSBText(settings.hideBalance ? "•••••" : usdt.balance.map { usdtOverviewAmount($0) } ?? "—",
-                                            kerning: 0, lineHeight: 22)
-                            } else {
-                                MoneyText(sats: Int(fundingSourceBalance(source)), forceUnit: .bitcoin, size: .bodyMSB,
-                                          symbol: false, enableHide: true, fillsWidth: false, kerning: 0, lineHeight: 22)
-                            }
-                            Spacer(minLength: 0)
-                            if source == selectedFundingSource {
-                                Image("check-mark").resizable().scaledToFit().frame(width: 16, height: 16)
-                                    .foregroundStyle(fundingSourceColor(source))
-                            }
-                        }
-                    }
-                    .padding(.vertical, 12)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(NoAnimationButtonStyle())
-                .disabled(!enabled || hwSend.isFundingSourceLoading)
-                .opacity(enabled ? 1 : 0.30)
-                .accessibilityIdentifier("SendFundingSource-\(index)")
-                if index < sources.count - 1 {
-                    CustomDivider()
-                }
-            }
-        }
-        .padding(.horizontal, 24).padding(.vertical, 12)
-        .frame(width: 250)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("SendFundingSources")
-    }
-
-    private func fundingSourceLabel(_ source: SendFundingSource) -> String {
-        switch source {
-        case .savings: t("wallet__savings__title")
-        case .spending: t("wallet__spending__title")
-        case .usdt: "USDT"
-        case let .hardware(walletId):
-            hwWalletManager.wallets.first { $0.walletId == walletId }?.name ?? hwWalletManager.vendor(walletId: walletId).modelName
-        }
-    }
-
-    private func fundingSourceColor(_ source: SendFundingSource) -> Color {
-        switch source {
-        case .savings: .brandAccent
-        case .spending: .purpleAccent
-        case .usdt: .usdtAccent
-        case .hardware: .blueAccent
-        }
-    }
-
-    private func fundingSourceIcon(_ source: SendFundingSource) -> String {
-        switch source {
-        case .savings: "btc"
-        case .spending: "ln"
-        case .usdt: "tether-circle"
-        case .hardware: "btc-circle-blue"
-        }
-    }
-
-    private func fundingSourceBalance(_ source: SendFundingSource) -> UInt64 {
-        switch source {
-        case .savings: UInt64(wallet.spendableOnchainBalanceSats)
-        case .spending: UInt64(wallet.maxSendLightningSats)
-        case let .hardware(walletId): hwWalletManager.fundingBalance(walletId: walletId)
-        case .usdt: 0
-        }
     }
 
     private func selectFundingSource(_ source: SendFundingSource) {
