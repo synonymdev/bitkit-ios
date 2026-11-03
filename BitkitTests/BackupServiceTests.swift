@@ -6,6 +6,96 @@ import XCTest
 
 @MainActor
 final class BackupServiceTests: XCTestCase {
+    func testReleasedVssAuthTransportIsTemporaryWithoutRetryingAuthorizationFailures() {
+        let requestFailure = "error sending request for url (https://backup.example/lnurl_auth/auth)"
+        for details in [requestFailure, "error performing external request: \(requestFailure)",
+                        "error sending request for url (http://127.0.0.1:1/custom/callback)",
+                        "error sending request for url (http://[::1]:8080/auth?value=a%20b)",
+                        "error sending request for url (https://xn--bcher-kva.example/auth)"]
+        {
+            XCTAssertTrue(BackupService.isTemporaryBackupFailure(VssError.AuthError(errorDetails: details)), details)
+        }
+        for details in ["permission denied", "invalid JWT", "HTTP status client error (401 Unauthorized)",
+                        "error decoding response body", "error performing external request: permission denied",
+                        "error performing external request: error performing external request: \(requestFailure)",
+                        "prefix \(requestFailure)", "\(requestFailure) suffix",
+                        "error sending request for url (not a URL)",
+                        "error sending request for url (file://example.com/auth)",
+                        "error sending request for url (https:///auth)",
+                        "error sending request for url (https://backup.example/auth) trailing)",
+                        "error sending request for url (https://backup.example/auth path)",
+                        "error sending request for url (https://%20/auth)",
+                        "error sending request for url (https://auth%20example.com/auth)",
+                        "error sending request for url (https://%2F/auth)",
+                        "error sending request for url (https://%3A/auth)",
+                        "error sending request for url (https://%40/auth)",
+                        "error sending request for url (https://[abc]/auth)",
+                        "error sending request for url (https://[:::]/auth)",
+                        "error sending request for url (https://host:99999/auth)"]
+        {
+            XCTAssertFalse(BackupService.isTemporaryBackupFailure(VssError.AuthError(errorDetails: details)), details)
+        }
+        XCTAssertFalse(BackupService.isTemporaryBackupFailure(VssError.UnknownError(errorDetails: requestFailure)))
+    }
+
+    func testReleasedVssAuthTransportRetriesScheduledSettingsWithoutObservation() async throws {
+        let suite = "BackupServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let completed = expectation(description: "Settings acknowledged after auth transport recovers")
+        var attempts = 0
+        var delays: [UInt64] = []
+        let payload = Data("settings-snapshot".utf8)
+        let service = BackupService(defaults: defaults, backupData: { _ in payload }, uploadBackup: { key, data in
+            XCTAssertEqual(key, BackupCategory.settings.rawValue)
+            XCTAssertEqual(data, payload)
+            attempts += 1
+            if attempts == 1 {
+                throw VssError.AuthError(errorDetails: "error performing external request: error sending request for url (http://127.0.0.1:1/auth)")
+            }
+        }, waitForBackupDelay: {}, waitForTemporaryFailureDelay: { delays.append($0) })
+        await service.stopObservingBackups()
+        let subscription = service.backupStatusesPublisher
+            .filter { $0[.settings].map { !$0.isRequired && !$0.running } == true }
+            .first().sink { _ in completed.fulfill() }
+        service.markBackupRequired(category: .settings)
+        await fulfillment(of: [completed], timeout: 3)
+        subscription.cancel()
+        service.setWiping(true)
+        await service.stopObservingBackups()
+        XCTAssertEqual(attempts, 2)
+        XCTAssertEqual(delays, [10_000_000_000])
+        XCTAssertFalse(service.getBackupStatus(category: .settings).isRequired)
+    }
+
+    func testReleasedVssAuthorizationDenialStaysPendingWithoutAutomaticRetry() async throws {
+        let suite = "BackupServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let attempted = expectation(description: "Authorization refused")
+        let retried = expectation(description: "Authorization refusal automatically retried")
+        retried.isInverted = true
+        var attempts = 0
+        let service = BackupService(defaults: defaults, backupData: { _ in Data("settings-snapshot".utf8) }, uploadBackup: { _, _ in
+            attempts += 1
+            if attempts == 1 {
+                attempted.fulfill()
+            } else {
+                retried.fulfill()
+            }
+            throw VssError.AuthError(errorDetails: "permission denied")
+        }, waitForBackupDelay: {}, waitForTemporaryFailureDelay: { _ in retried.fulfill() })
+        await service.stopObservingBackups()
+        service.markBackupRequired(category: .settings)
+        await fulfillment(of: [attempted], timeout: 3)
+        await fulfillment(of: [retried], timeout: 0.2)
+        service.setWiping(true)
+        await service.stopObservingBackups()
+        XCTAssertEqual(attempts, 1)
+        XCTAssertTrue(service.getBackupStatus(category: .settings).isRequired)
+        XCTAssertFalse(service.getBackupStatus(category: .settings).running)
+    }
+
     func testReleasedVssConnectionErrorIsTemporaryWithoutBroadUnknownRetry() {
         XCTAssertTrue(BackupService.isTemporaryBackupFailure(
             VssError.UnknownError(errorDetails: "error sending request for url (http://127.0.0.1:1/putObjects)")

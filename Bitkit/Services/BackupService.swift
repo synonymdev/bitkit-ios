@@ -1,6 +1,7 @@
 import BitkitCore
 import Combine
 import Foundation
+import Network
 import Paykit
 import VssRustClientFfi
 
@@ -499,23 +500,35 @@ class BackupService {
         case MetadataBackupError.walletTemporarilyUnavailable,
              PaykitError.ConcurrentUpdate, PaykitError.SharedStateBusy, PaykitError.Transport,
              VssError.ConnectionError, VssError.NetworkError, VssError.StoreError, VssError.PutError:
-            true
+            return true
         case let VssError.UnknownError(details):
-            isVssRequestSendFailure(details)
+            return isVssRequestSendFailure(details, pathSuffix: "/putObjects")
+        case let VssError.AuthError(details):
+            let prefix = "error performing external request: "
+            let requestFailure = details.hasPrefix(prefix) ? String(details.dropFirst(prefix.count)) : details
+            return isVssRequestSendFailure(requestFailure)
         default:
-            false
+            return false
         }
     }
 
-    private static func isVssRequestSendFailure(_ details: String) -> Bool {
+    private static func isVssRequestSendFailure(_ details: String, pathSuffix: String? = nil) -> Bool {
         let prefix = "error sending request for url ("
+        let invalidHostCharacters = CharacterSet.whitespacesAndNewlines.union(.controlCharacters)
+            .union(CharacterSet(charactersIn: "/%@?#\\"))
         guard details.hasPrefix(prefix), details.hasSuffix(")"),
-              let url = URLComponents(string: String(details.dropFirst(prefix.count).dropLast())),
+              let url = URLComponents(string: String(details.dropFirst(prefix.count).dropLast()), encodingInvalidCharacters: false),
               url.scheme == "http" || url.scheme == "https",
-              let host = url.host, !host.isEmpty,
-              url.path.hasSuffix("/putObjects")
+              let host = url.host, !host.isEmpty, host.rangeOfCharacter(from: invalidHostCharacters) == nil,
+              (0 ... 65535).contains(url.port ?? 0),
+              url.url != nil
         else { return false }
-        return true
+        if host.hasPrefix("[") {
+            guard host.hasSuffix("]"), IPv6Address(String(host.dropFirst().dropLast())) != nil else { return false }
+        } else if host.contains(":") || host.contains("[") || host.contains("]") {
+            return false
+        }
+        return pathSuffix.map { url.path.hasSuffix($0) } ?? true
     }
 
     func persistWalletBackup() async throws {
