@@ -142,7 +142,8 @@ jobs:
       e2e_branch_input: ${{ inputs.e2e_branch || 'default-feature-branch' }}
   e2e-tests-staging:
     runs-on: macos-latest
-    timeout-minutes: 135
+    # Three complete six-case packs, plus setup and artifact collection.
+    timeout-minutes: 285
     needs:
       - build-staging
       - e2e-branch
@@ -169,6 +170,7 @@ jobs:
       E2E_BACKEND_REVISION: regtest-stag0
       E2E_VARIANT: network-regtest
       E2E_CASE_IDS: ${{ toJSON(matrix.shard.ids) }}
+      E2E_ATTEMPT_TIMEOUT_MINUTES: "90"
       RECORD_VIDEO: "true"
       SIMULATOR_NAME: iPhone 17
       SIMULATOR_OS_VERSION: "26.2"
