@@ -918,10 +918,10 @@
     },
     {
       "name": "scanner-sheet",
-      "groups": ["receive"],
+      "groups": ["receive", "pubky-paykit", "electrum", "hardware"],
       "files": ["Bitkit/Components/QR.swift"],
       "prefixes": ["Bitkit/Views/Scanner/"],
-      "reason": "Receiving/scan entry points."
+      "reason": "ScannerSheet/ScannerScreen and manual prompt share main/send/addContact/electrum routes; new scanner entry views retain every existing domain."
     },
     {
       "name": "tag-sheet",

@@ -108,7 +108,10 @@ for (const f of [
 test("scanner entry points retain Pubky routes, Electrum input and hardware recipients", () => {
   for (const file of [
     "Bitkit/Managers/ScannerManager.swift",
+    "Bitkit/Views/Scanner/ScannerSheet.swift",
+    "Bitkit/Views/Scanner/ScannerScreen.swift",
     "Bitkit/Views/Scanner/ManualScanPrompt.swift",
+    "Bitkit/Views/Scanner/NewScannerEntry.swift",
     "Bitkit/Utilities/QRCodePayload.swift",
   ]) {
     const s = pick([file]);
