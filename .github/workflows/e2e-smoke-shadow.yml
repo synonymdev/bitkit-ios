@@ -1,0 +1,201 @@
+name: iOS E2E smoke (shadow)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      e2e_branch:
+        description: "E2E branch containing the inventory and smoke producer"
+        default: default-feature-branch
+
+permissions:
+  contents: read
+  packages: read
+  pull-requests: read
+
+concurrency:
+  group: ios-smoke-shadow-${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base == null && format('ignored-{0}', github.run_id) || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.draft == false &&
+       (github.event.action != 'edited' || github.event.changes.base != null))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.plan.outputs.code }}
+      tested: ${{ steps.plan.outputs.tested }}
+      head: ${{ steps.plan.outputs.head }}
+      base: ${{ steps.plan.outputs.base }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - run: node --test .github/scripts/smoke-shadow.test.cjs
+      - id: plan
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const {inspect} = require('./.github/scripts/smoke-shadow.cjs');
+            const result = await inspect({github,context});
+            for (const [key,value] of Object.entries(result)) core.setOutput(key,String(value));
+
+  e2e-branch:
+    needs: detect
+    if: needs.detect.outputs.code == 'true'
+    uses: synonymdev/bitkit-e2e-tests/.github/workflows/determine-e2e-branch.yml@main
+    with:
+      app_branch: ${{ github.head_ref || github.ref_name }}
+      e2e_branch_input: ${{ inputs.e2e_branch || 'default-feature-branch' }}
+
+  smoke:
+    name: iOS smoke shadow
+    needs: [detect, e2e-branch]
+    if: needs.detect.outputs.code == 'true'
+    runs-on: macos-latest
+    cache-mode: read
+    timeout-minutes: 60
+    env:
+      BACKEND: regtest
+      SIMULATOR_NAME: Bitkit smoke shadow
+      SIMULATOR_OS_VERSION: "26.2"
+      AUT_FILENAME: Bitkit.app
+      E2E_MAX_ATTEMPTS: "1"
+      ATTEMPT: "1"
+      E2E_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-ios-smoke
+      E2E_APP_SHA: ${{ needs.detect.outputs.tested }}
+      E2E_BACKEND_REVISION: regtest:stag0
+      E2E_PLAN: ${{ github.workspace }}/bitkit-e2e-tests/artifacts/reporting/plan.json
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.detect.outputs.tested }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify candidate before building
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const {inspect} = require('./.github/scripts/smoke-shadow.cjs');
+            await inspect({github,context});
+      - name: Resolve companion E2E ref
+        id: e2e-ref
+        uses: synonymdev/bitkit-e2e-tests/.github/actions/resolve-e2e-ref@main
+        with:
+          selected: ${{ needs.e2e-branch.outputs.branch }}
+          e2e_branch_input: ${{ inputs.e2e_branch || 'default-feature-branch' }}
+      - uses: actions/checkout@v7
+        with:
+          repository: synonymdev/bitkit-e2e-tests
+          ref: ${{ steps.e2e-ref.outputs.ref }}
+          path: bitkit-e2e-tests
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Install and validate the inventory producer
+        working-directory: bitkit-e2e-tests
+        run: |
+          test -f test/inventory.json || { echo '::error::Selected E2E branch lacks the #264 inventory producer'; exit 1; }
+          npm ci
+          npm run inventory:check
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.2"
+      - run: brew install xcbeautify ffmpeg
+      - uses: ./.github/actions/swift-packages
+      - name: Create isolated simulator
+        run: |
+          udid=$(xcrun simctl create "$SIMULATOR_NAME" com.apple.CoreSimulator.SimDeviceType.iPhone-17 com.apple.CoreSimulator.SimRuntime.iOS-26-2)
+          echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+      - name: Build matching regtest app
+        timeout-minutes: 30
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          E2E_BACKEND: network
+          E2E_NETWORK: regtest
+        run: |
+          set -o pipefail
+          xcodebuild -workspace Bitkit.xcodeproj/project.xcworkspace \
+            -scheme Bitkit -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -derivedDataPath DerivedData \
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
+            -disablePackageRepositoryCache -disableAutomaticPackageResolution -skipPackageUpdates \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG E2E_BUILD' \
+            -allowProvisioningUpdates build | xcbeautify
+          mkdir -p bitkit-e2e-tests/aut
+          cp -R DerivedData/Build/Products/Debug-iphonesimulator/Bitkit.app bitkit-e2e-tests/aut/Bitkit.app
+          ditto -c -k --keepParent bitkit-e2e-tests/aut/Bitkit.app "$RUNNER_TEMP/smoke-app.zip"
+          echo "E2E_ARTIFACT_DIGEST=$(shasum -a 256 "$RUNNER_TEMP/smoke-app.zip" | cut -d' ' -f1)" >> "$GITHUB_ENV"
+      - name: Prepare exact smoke plan
+        working-directory: bitkit-e2e-tests
+        run: node --experimental-strip-types scripts/e2e-inventory.ts plan --platform ios --backend regtest --pack smoke --plan "$E2E_PLAN"
+      - name: Run one smoke attempt
+        timeout-minutes: 20
+        working-directory: bitkit-e2e-tests
+        env:
+          RECORD_VIDEO: "true"
+        run: ./ci_run_ios.sh --spec ./test/specs/smoke.e2e.ts --mochaOpts.grep "$(cat artifacts/reporting/grep.txt)"
+      - name: Reconcile coverage even after failure
+        if: always()
+        run: |
+          if test -f "$E2E_PLAN"; then
+            cd bitkit-e2e-tests
+            node --experimental-strip-types scripts/e2e-inventory.ts report --plan "$E2E_PLAN"
+          else
+            echo '## iOS smoke shadow: incomplete — build/setup/selection did not produce a plan' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-smoke-shadow-${{ github.run_id }}-${{ github.run_attempt }}
+          path: bitkit-e2e-tests/artifacts/
+          retention-days: 7
+      - name: Delete owned simulator
+        if: always()
+        run: |
+          if [[ "${SIMULATOR_UDID:-}" =~ ^[0-9A-Fa-f-]{36}$ ]]; then
+            xcrun simctl shutdown "$SIMULATOR_UDID" || true
+            xcrun simctl delete "$SIMULATOR_UDID"
+          fi
+
+  shadow-status:
+    name: e2e-smoke-shadow-status
+    if: >-
+      always() &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.pull_request.draft == false &&
+        (github.event.action != 'edited' || github.event.changes.base != null)))
+    needs: [detect, e2e-branch, smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Summarize shadow result
+        env:
+          DETECTION: ${{ needs.detect.result }}
+          CODE: ${{ needs.detect.outputs.code }}
+          SMOKE: ${{ needs.smoke.result }}
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const {verdict} = require('./.github/scripts/smoke-shadow.cjs');
+          const result = verdict(process.env.DETECTION,process.env.CODE,process.env.SMOKE);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,`## iOS smoke shadow\n${result.message}\n\nThis check is observational; existing merge gates remain required.\n`);
+          if (!result.pass) process.exitCode = 1;
+          NODE
