@@ -1010,6 +1010,78 @@
       ],
       "prefixes": [],
       "reason": "Reviewed display/notification/update/UI-shell files: base gate checks app access and wallet/payment interaction; native tests cover detailed presentation. New files require classification."
+    },
+    {
+      "name": "shared-keychain",
+      "groups": [],
+      "files": ["Bitkit/Utilities/Keychain.swift"],
+      "prefixes": [],
+      "reason": "Owns mnemonic/passphrase, PIN and Pubky/Paykit persistence used across wallet, recovery and profile lanes.",
+      "full": true
+    },
+    {
+      "name": "shared-scanner-routes",
+      "groups": ["receive", "pubky-paykit", "electrum", "hardware"],
+      "files": [
+        "Bitkit/Managers/ScannerManager.swift",
+        "Bitkit/Managers/CameraManager.swift",
+        "Bitkit/Utilities/QRCodePayload.swift",
+        "Bitkit/Components/Scanner.swift",
+        "Bitkit/Views/Scanner/ManualScanPrompt.swift"
+      ],
+      "prefixes": [],
+      "reason": "ScannerManager routes main/send/addContact/electrum input; pubky_profile_3/_5 and settings_10 assert routes not covered by Bitcoin cases; hardware sending also accepts scanned recipients."
+    },
+    {
+      "name": "wallet-backup-profile-state",
+      "groups": ["pubky-paykit"],
+      "files": [
+        "Bitkit/Services/BackupService.swift",
+        "Bitkit/Services/VssBackupClient.swift",
+        "Bitkit/Services/VssStoreIdProvider.swift",
+        "Bitkit/Services/AndroidBackupJson.swift",
+        "Bitkit/Services/BackupFieldMigration.swift",
+        "Bitkit/Models/BackupPayloads.swift",
+        "Bitkit/Utilities/AppDataMigrations.swift",
+        "Bitkit/Views/Onboarding/RestoreWalletView.swift",
+        "Bitkit/Views/Onboarding/InitializingWalletView.swift",
+        "Bitkit/Views/Recovery/RecoveryScreen.swift"
+      ],
+      "prefixes": [],
+      "reason": "Shared wallet backup transport/payload/restore retains Pubky session and contacts; pubky_profile_2/_4 assert this persistence."
+    },
+    {
+      "name": "shared-paykit-payment-flow",
+      "groups": ["pubky-paykit"],
+      "files": [
+        "Bitkit/Services/OnchainSendAttemptService.swift",
+        "Bitkit/Utilities/PaymentNavigationHelper.swift",
+        "Bitkit/Views/Wallets/Send/SendAmountView.swift",
+        "Bitkit/Views/Wallets/Send/SendConfirmationView.swift",
+        "Bitkit/Views/Wallets/Send/SendSheet.swift",
+        "Bitkit/Views/Wallets/Send/SendEnterManuallyView.swift",
+        "Bitkit/Components/NumberPad.swift",
+        "Bitkit/Components/NumberPadTextField.swift",
+        "Bitkit/ViewModels/AmountInputViewModel.swift",
+        "Bitkit/Utilities/CurrencyFormatter.swift"
+      ],
+      "prefixes": [],
+      "reason": "paykit_1 enters and pays a public on-chain contact through the shared amount/confirmation/dispatch path."
+    },
+    {
+      "name": "shared-hardware-send-flow",
+      "groups": ["hardware"],
+      "files": [
+        "Bitkit/Views/Wallets/Send/SendAmountView.swift",
+        "Bitkit/Views/Wallets/Send/SendConfirmationView.swift",
+        "Bitkit/Views/Wallets/Send/SendSheet.swift",
+        "Bitkit/Views/Wallets/Send/SendFeeCustom.swift",
+        "Bitkit/Views/Wallets/Send/SendFeeRate.swift",
+        "Bitkit/Views/Wallets/Send/SendUtxoSelectionView.swift",
+        "Bitkit/Utilities/PaymentNavigationHelper.swift"
+      ],
+      "prefixes": [],
+      "reason": "hardware_wallet_4 uses the shared send flow and fee review before device signing."
     }
   ]
 }

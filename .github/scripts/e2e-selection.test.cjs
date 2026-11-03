@@ -65,7 +65,7 @@ for (const [file, added, staging, migration] of [
   [
     "Bitkit/Services/BackupService.swift",
     ["backup_1", "onboarding_1", "onboarding_2", "security_1", "settings_07"],
-    false,
+    true,
     true,
   ],
   [
@@ -84,17 +84,18 @@ for (const [file, added, staging, migration] of [
     assert.equal(s.migration, migration);
   });
 
-test("on-chain service expands payment coverage without unrelated staging/migration", () => {
+test("on-chain service retains public Paykit dispatch coverage without migration", () => {
   const s = pick(["Bitkit/Services/OnchainSendAttemptService.swift"]);
   assert.deepEqual(
     s.ids,
     [...new Set([...policy.base, ...policy.groups.send])].sort(),
   );
-  assert.equal(s.staging, false);
+  assert.equal(s.staging, true);
   assert.equal(s.migration, false);
 });
 for (const f of [
   "Bitkit/Services/CoreService.swift",
+  "Bitkit/Utilities/Keychain.swift",
   "Bitkit/ViewModels/WalletViewModel.swift",
   "Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
 ])
@@ -104,6 +105,46 @@ for (const f of [
     assert.equal(s.staging, true);
     assert.equal(s.migration, true);
   });
+test("scanner entry points retain Pubky routes, Electrum input and hardware recipients", () => {
+  for (const file of [
+    "Bitkit/Managers/ScannerManager.swift",
+    "Bitkit/Views/Scanner/ManualScanPrompt.swift",
+    "Bitkit/Utilities/QRCodePayload.swift",
+  ]) {
+    const s = pick([file]);
+    assert.ok(s.ids.includes("settings_10"));
+    assert.ok(s.ids.includes("hardware_wallet_4"));
+    assert.equal(s.staging, true, "pubky_profile_3/_5 exercise scanner routes");
+    assert.equal(s.migration, false);
+  }
+});
+test("backup transport, payload and restore retain profile persistence assertions", () => {
+  for (const file of [
+    "Bitkit/Services/VssBackupClient.swift",
+    "Bitkit/Models/BackupPayloads.swift",
+    "Bitkit/Views/Onboarding/RestoreWalletView.swift",
+  ]) {
+    const s = pick([file]);
+    assert.equal(
+      s.staging,
+      true,
+      "pubky_profile_2/_4 restore profile/contact state",
+    );
+    assert.equal(s.migration, true);
+  }
+});
+test("shared send entry/confirmation retains Paykit and hardware consumers", () => {
+  for (const file of [
+    "Bitkit/Utilities/PaymentNavigationHelper.swift",
+    "Bitkit/Views/Wallets/Send/SendAmountView.swift",
+    "Bitkit/Views/Wallets/Send/SendConfirmationView.swift",
+  ]) {
+    const s = pick([file]);
+    assert.equal(s.staging, true, "paykit_1 pays through this shared flow");
+    assert.ok(s.ids.includes("hardware_wallet_4"));
+    assert.equal(s.migration, false);
+  }
+});
 test("unknown service/new area fails cheaply, never silently selects base or full", () => {
   for (const f of [
     "Bitkit/Services/NewService.swift",

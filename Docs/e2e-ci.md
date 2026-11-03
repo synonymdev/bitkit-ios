@@ -14,10 +14,12 @@ The selector loads `.github/e2e-policy.json` from the **tested app checkout**, n
 | `Bitkit/Services/PaykitPaymentRequestService.swift` | Six Pubky/Paykit staging cases; no migration |
 | `Bitkit/Services/Trezor/TrezorService.swift` | Three active hardware cases; no staging/migration |
 | `Bitkit/Managers/FeeEstimatesManager.swift` | `boost_1`, `onchain_3`, `settings_03` |
-| `Bitkit/Services/BackupService.swift` | Five onboarding/backup/security cases plus six migration cases; no staging |
+| `Bitkit/Services/BackupService.swift` | Five onboarding/backup/security cases plus six migration and six Pubky/Paykit staging cases |
 | `Bitkit/Services/CoreService.swift` | Full coverage: shared wallet/account state affects all lanes |
 
-Only named app-wide wallet/lifecycle files and build/dependency/E2E orchestration configuration select all lanes. At the policy introduction, this means 27 of 619 `Bitkit` Swift files, including three of 76 service files (`CoreService`, `LightningService`, `ServiceQueue`). These are a source-tree audit, not a runtime or billing estimate. Changes to several domains union their coverage and execute overlapping cases once.
+Scanner routing explicitly includes Pubky/Electrum and hardware coverage. Backup transport/payload/restore includes profile persistence. The global Keychain is an explicit full-coverage dependency because it owns wallet secrets and Pubky/Paykit state. Shared amount/confirmation and on-chain dispatch include the existing Paykit contact-payment case. These mappings follow actual callers and assertions, not filename similarity.
+
+Only named app-wide wallet/lifecycle files and build/dependency/E2E orchestration configuration select all lanes. At the policy introduction, this means 28 of 619 `Bitkit` Swift files, including three of 76 service files (`CoreService`, `LightningService`, `ServiceQueue`). These are a source-tree audit, not a runtime or billing estimate. Changes to several domains union their coverage and execute overlapping cases once.
 
 Every PR, including drafts and stacks, gets a cheap Linux `E2E selection policy` check. It verifies every tracked path has a classification, explicit file/prefix entries still exist, and referenced cases are runnable in the selected E2E inventory. Main selection runs the same validation before any paid build. A new unclassified service or moved file fails with its path and a request to update the policy in the same iOS PR. It does not silently select base or launch every lane. Old and new rename paths contribute rules from both the base and tested policy, retaining coverage when a path mapping changes during a refactor.
 
