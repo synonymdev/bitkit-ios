@@ -231,6 +231,9 @@ class ScannerManager: ObservableObject {
                 currency: currency,
                 settings: settings
             )
+            if route == .confirm, app.scannedLightningInvoice == nil, let invoice = app.scannedOnchainInvoice {
+                wallet?.prepareFixedAmountOnchainSend(amountSats: invoice.amountSatoshis)
+            }
 
             completion(route)
         } catch {

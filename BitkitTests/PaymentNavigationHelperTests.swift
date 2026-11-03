@@ -320,6 +320,45 @@ final class PaymentNavigationHelperTests: XCTestCase {
         }
     }
 
+    func testOnchainInvoiceWithAmountOpensConfirm() {
+        let app = appWithOnchainInvoice(amountSatoshis: 10000)
+
+        XCTAssertEqual(sendRoute(for: app), .confirm)
+        XCTAssertEqual(paymentSheetRoute(for: app), .confirm)
+    }
+
+    func testOnchainInvoiceWithoutAmountOpensAmount() {
+        let app = appWithOnchainInvoice(amountSatoshis: 0)
+
+        XCTAssertEqual(sendRoute(for: app), .amount)
+        XCTAssertEqual(paymentSheetRoute(for: app), .amount)
+    }
+
+    func testOnchainInvoiceWithAmountSkipsQuickpay() {
+        let app = appWithOnchainInvoice(amountSatoshis: 1000)
+
+        XCTAssertEqual(sendRoute(for: app), .confirm)
+    }
+
+    func testContactOnchainInvoiceWithAmountKeepsAmount() {
+        let app = appWithOnchainInvoice(amountSatoshis: 10000)
+        app.contactPaymentContext = ContactPaymentContext(publicKey: "pubkycontact", endpoints: [])
+
+        XCTAssertEqual(contactPaymentRoute(for: app), .amount)
+    }
+
+    func testIncomingRequestWithOnchainAmountOpensConfirm() throws {
+        let app = appWithOnchainInvoice(amountSatoshis: 1000)
+        app.contactPaymentContext = try ContactPaymentContext(
+            publicKey: "pubkycontact",
+            incomingPaymentRequest: incomingPaymentRequest(
+                endpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+            )
+        )
+
+        XCTAssertEqual(contactPaymentRoute(for: app), .confirm)
+    }
+
     func testContactWithUsdtLocksOnlyFixedLightningFunding() {
         let app = appWithInvoice(paymentHash: "fixed", amountSatoshis: 10000)
         app.contactPaymentContext = ContactPaymentContext(publicKey: "pubkycontact", endpoints: [
@@ -381,6 +420,30 @@ final class PaymentNavigationHelperTests: XCTestCase {
             settings: settings,
             spendStore: spendStore
         )
+    }
+
+    private func paymentSheetRoute(for app: AppViewModel) -> SendRoute? {
+        let sheets = SheetViewModel()
+        PaymentNavigationHelper.openPaymentSheet(
+            app: app,
+            currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: settings,
+            sheetViewModel: sheets,
+            spendStore: spendStore
+        )
+        return (sheets.activeSheetConfiguration?.data as? SendConfig)?.initialRoute
+    }
+
+    private func appWithOnchainInvoice(amountSatoshis: UInt64) -> AppViewModel {
+        let app = AppViewModel()
+        app.scannedOnchainInvoice = OnChainInvoice(
+            address: "bcrt1qexample",
+            amountSatoshis: amountSatoshis,
+            label: nil,
+            message: nil,
+            params: nil
+        )
+        return app
     }
 
     private var appWithEligibleInvoice: AppViewModel {

@@ -1793,6 +1793,14 @@ class WalletViewModel: ObservableObject {
         return formatter.string(from: NSNumber(value: btcAmount)) ?? "0"
     }
 
+    /// An in-sheet scan can open Confirm directly, so amount and coin choices from an earlier recipient must not carry over.
+    func prepareFixedAmountOnchainSend(amountSats: UInt64) {
+        sendAmountSats = amountSats
+        isMaxAmountSend = false
+        selectedUtxos = nil
+        availableUtxos = []
+    }
+
     func resetSendState(speed: TransactionSpeed) {
         sendAmountSats = nil
         selectedFeeRateSatsPerVByte = nil

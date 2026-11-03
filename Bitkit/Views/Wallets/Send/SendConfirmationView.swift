@@ -447,6 +447,7 @@ struct SendConfirmationView: View {
                 if prepareRequestCoinsIfNeeded() {
                     return
                 }
+                await selectCoinsForDirectOnchainSendIfNeeded()
                 await calculateTransactionFee()
                 await calculateRoutingFee()
                 guard !Task.isCancelled else { return }
@@ -465,6 +466,7 @@ struct SendConfirmationView: View {
             .onChange(of: wallet.selectedFeeRateSatsPerVByte) {
                 guard preparingRequest == nil, !prepareRequestCoinsIfNeeded() else { return }
                 Task {
+                    await selectCoinsForDirectOnchainSendIfNeeded()
                     await calculateTransactionFee()
                 }
             }
@@ -1947,6 +1949,32 @@ struct SendConfirmationView: View {
 
         guard isCurrentSend() else { return }
         await calculateTransactionFee()
+    }
+
+    /// A BIP21 request with an amount opens here without Amount, which normally runs automatic coin selection.
+    /// Manual selection is left to the swipe, which opens UTXO selection when no coins are chosen.
+    @MainActor
+    private func selectCoinsForDirectOnchainSendIfNeeded() async {
+        guard preparingRequest == nil, walletSwitchContext == nil, walletSwitchRun == nil,
+              app.contactPaymentContext == nil, app.scannedLightningInvoice == nil,
+              app.selectedWalletToPayFrom == .onchain, !hwSend.isActive,
+              settings.coinSelectionMethod == .autopilot, wallet.selectedUtxos == nil,
+              wallet.selectedFeeRateSatsPerVByte != nil,
+              let context = confirmationContext
+        else { return }
+
+        func isCurrentSend() -> Bool {
+            !Task.isCancelled && confirmationContext == context
+        }
+
+        do {
+            try await wallet.setUtxoSelection(coinSelectionAlgorythm: settings.coinSelectionAlgorithm, isCurrentSend: isCurrentSend)
+        } catch {
+            guard isCurrentSend(), !(error is CancellationError) else { return }
+            Logger.error("Failed to select UTXOs for on-chain request: \(error)", context: "SendConfirmationView")
+            app.toast(type: .error, title: t("other__try_again"), description: error.localizedDescription)
+            navigateToAmount()
+        }
     }
 
     /// Recalculates until the newest calculation is the one that finished, so a concurrent one cannot leave the fee unset.
