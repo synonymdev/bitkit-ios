@@ -264,6 +264,8 @@ jobs:
       E2E_BACKEND_REVISION: local-docker
       E2E_VARIANT: local-trezor
       E2E_CASE_IDS: ${{ toJSON(matrix.shard.ids) }}
+      E2E_ATTEMPT_TIMEOUT_MINUTES: ${{ matrix.shard.attemptTimeoutMinutes }}
+      NAMESPACE_STACK_DURATION: ${{ matrix.shard.backendLifetime }}
       RECORD_VIDEO: "true"
     strategy:
       fail-fast: false
@@ -388,7 +390,7 @@ jobs:
       - name: Tear down regtest stack
         if: always()
         run: .github/scripts/namespace-stack.sh down
-    timeout-minutes: 135
+    timeout-minutes: ${{ matrix.shard.jobTimeoutMinutes }}
   e2e-status:
     if: always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     name: e2e-status

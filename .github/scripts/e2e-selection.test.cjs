@@ -335,3 +335,21 @@ test("actual CLI uses tested app policy and pinned E2E inventory; rejects drift 
   assert.match(bad.stderr, /Unclassified paths: Unknown/);
   assert.ok(!fs.existsSync(path.join(temp, "selection.json")));
 });
+
+test("local budgets cover three attempts plus setup, with a backend that outlives the job", () => {
+  const base = select(cases, { mode: "base" }).matrix[0];
+  assert.equal(base.attemptTimeoutMinutes, 40);
+  assert.equal(base.jobTimeoutMinutes, 135);
+  assert.equal(base.backendLifetime, "4h");
+  for (const shards of [1, 2]) {
+    const full = select(cases, { mode: "full", shards });
+    assert.equal(full.matrix.length, shards);
+    for (const shard of full.matrix) {
+      assert.equal(shard.attemptTimeoutMinutes, 90);
+      assert.equal(shard.jobTimeoutMinutes, 285);
+      assert.equal(shard.backendLifetime, "5h");
+      assert.ok(shard.jobTimeoutMinutes > 3 * shard.attemptTimeoutMinutes);
+      assert.ok(parseInt(shard.backendLifetime) * 60 > shard.jobTimeoutMinutes);
+    }
+  }
+});

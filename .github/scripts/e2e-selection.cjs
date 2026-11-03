@@ -189,7 +189,18 @@ function select(
     ids,
     matrix: bins
       .filter((b) => b.length)
-      .map((ids, i) => ({ name: `local-${i + 1}`, ids: ids.sort() })),
+      .map((ids, i) => {
+        // The five-case base fits 40 minutes; expanded packs need room for
+        // hardware, recovery and settings journeys on the same simulator.
+        const attemptTimeoutMinutes = ids.length > 5 ? 90 : 40;
+        return {
+          name: `local-${i + 1}`,
+          ids: ids.sort(),
+          attemptTimeoutMinutes,
+          jobTimeoutMinutes: 3 * attemptTimeoutMinutes + 15,
+          backendLifetime: attemptTimeoutMinutes > 40 ? "5h" : "4h",
+        };
+      }),
     staging: expected.some(
       (c) =>
         c.platforms.ios.backend === "regtest" &&
