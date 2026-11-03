@@ -32,7 +32,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             let view = SendConfirmationView(
                 navigationPath: .constant([]), isSubmittingPayment: .constant(false), hwSend: HwSendCoordinator(),
                 requestPinCheck: { false }, prepareIncomingPaymentRequest: {}, routingCacheResetAttempted: false,
-                preparingRequest: request
+                preparingRequest: request, isAmountReviewRequired: .constant(false)
             )
             XCTAssertEqual(view.accentColor, accent)
         }

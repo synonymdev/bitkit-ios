@@ -92,6 +92,7 @@ final class SendPresentationState {
     var hasValidatedAfterSync = false
     var incomingPaymentRequest: PaykitPaymentRequest?
     var isSubmittingPayment = false
+    var isAmountReviewRequired = false
     var paymentReview: UUID?
     var isReviewingUsdtPayment = false
     var pendingEmbeddedRetryRoute: SendRoute?
@@ -115,16 +116,21 @@ final class SendPresentationState {
         Binding(
             get: { self.navigationPath },
             set: { path in
-                if (self.rootOverride ?? self.rootRoute) == .confirm,
-                   self.navigationPath == [.amount], path.count > 1, path.first == .amount
+                let currentRoot = self.rootOverride ?? self.rootRoute
+                if self.isAmountReviewRequired,
+                   (self.navigationPath.last ?? currentRoot) == .amount,
+                   path.count > self.navigationPath.count, path.starts(with: self.navigationPath)
                 {
-                    // Continuing a fallback review must retire the failed root confirmation.
-                    self.rootOverride = .amount
-                    self.navigationPath = Array(path.dropFirst())
-                    self.rootRouteGeneration &+= 1
-                } else {
-                    self.navigationPath = path
+                    self.isAmountReviewRequired = false
+                    if currentRoot == .confirm {
+                        // Continuing a fallback review must retire the failed root confirmation.
+                        self.rootOverride = .amount
+                        self.navigationPath = Array(path.dropFirst())
+                        self.rootRouteGeneration &+= 1
+                        return
+                    }
                 }
+                self.navigationPath = path
             }
         )
     }
@@ -1050,6 +1056,7 @@ struct SendSheet: View {
                 prepareIncomingPaymentRequest: prepareIncomingPaymentRequest,
                 routingCacheResetAttempted: flow.routingCacheResetAttempted,
                 preparingRequest: isPreparingRequest ? config.preparation?.request : nil,
+                isAmountReviewRequired: $flow.isAmountReviewRequired,
                 amountIsRoot: currentRoot == .amount,
                 isSetupPending: flow.isSetupPending || flow.isFallbackFundingPending
             )

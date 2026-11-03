@@ -141,6 +141,18 @@ final class SendConfirmationSwipeTests: XCTestCase {
         }
     }
 
+    func testRequiredAmountReviewKeepsSwipeDisabledWithKnownFees() {
+        for walletType in [WalletType.lightning, .onchain] {
+            XCTAssertTrue(SendConfirmationView.isSwipeDisabled(
+                walletType: walletType,
+                isHardwarePayment: false,
+                isHardwareConfirmationUnavailable: false,
+                feeRate: 5,
+                isAmountReviewRequired: true
+            ))
+        }
+    }
+
     func testWalletPreparationKeepsSwipeDisabledWithKnownFees() {
         XCTAssertTrue(SendConfirmationView.isSwipeDisabled(
             walletType: .onchain,

@@ -22,6 +22,7 @@ struct SendConfirmationView: View {
     let prepareIncomingPaymentRequest: () async throws -> Void
     let routingCacheResetAttempted: Bool
     var preparingRequest: PaykitPaymentRequest?
+    @Binding var isAmountReviewRequired: Bool
     var amountIsRoot = false
     /// True while the send sheet is still loading the fee rate and choosing the funding source.
     var isSetupPending = false
@@ -62,13 +63,17 @@ struct SendConfirmationView: View {
         isSetupPending && app.contactPaymentContext?.incomingPaymentRequest != nil
     }
 
+    private var requiresAmountReview: Bool {
+        hasShownAmountReview || isAmountReviewRequired
+    }
+
     private var confirmationContext: ConfirmationContext? {
         guard navigationPath.last == nil || navigationPath.last == .confirm else { return nil }
         return sendContext
     }
 
     private var sendContext: ConfirmationContext? {
-        guard preparingRequest == nil, !isRequestSetupPending, !isSubmittingPayment, !hasShownAmountReview,
+        guard preparingRequest == nil, !isRequestSetupPending, !isSubmittingPayment, !requiresAmountReview,
               navigationPath.last == nil || navigationPath.last == .confirm || isEditingSendDetails,
               let sheet = sheets.activeSheetConfiguration,
               sheet.presentationID == presentationID,
@@ -469,13 +474,13 @@ struct SendConfirmationView: View {
                 }
             }
             .onChange(of: app.selectedWalletToPayFrom) {
-                guard preparingRequest == nil, !hasShownAmountReview,
+                guard preparingRequest == nil, !requiresAmountReview,
                       !returnToAmountReviewIfNeeded(rebindMethod: !hwSend.isActive) else { return }
                 ensureSendAmountFromScannedInvoicesIfNeeded()
                 walletSwitchContext = sendContext
             }
             .onChange(of: navigationPath) { previous, path in
-                guard preparingRequest == nil, previous.last == .amount, path.isEmpty, hasShownAmountReview, !amountIsRoot else { return }
+                guard preparingRequest == nil, previous.last == .amount, path.isEmpty, requiresAmountReview, !amountIsRoot else { return }
                 _ = returnToAmountReviewIfNeeded()
             }
     }
@@ -545,7 +550,7 @@ struct SendConfirmationView: View {
 
     @MainActor
     private func startAutomaticPaymentIfNeeded() async {
-        guard !hasShownAmountReview, Self.canStartAutomaticPayment(
+        guard !requiresAmountReview, Self.canStartAutomaticPayment(
             shouldAutomaticallyPay: shouldAutomaticallyPay,
             hasStartedAutomaticPayment: hasStartedAutomaticPayment,
             isSetupPending: isSetupPending,
@@ -851,7 +856,7 @@ struct SendConfirmationView: View {
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
         guard !isSubmittingPayment else { return }
-        guard preparingRequest == nil, !isRequestSetupPending, walletSwitchContext == nil,
+        guard !requiresAmountReview, preparingRequest == nil, !isRequestSetupPending, walletSwitchContext == nil,
               isAutomatic || !prepareRequestCoinsIfNeeded() else { throw CancellationError() }
         if isAutomatic, isFeeRateMissing {
             guard !Self.automaticPaymentAwaitsFeeRate(isFeeRateMissing: isFeeRateMissing, feeRateLoadFailed: wallet.feeRateLoadFailed) else {
@@ -1138,9 +1143,10 @@ struct SendConfirmationView: View {
         feeRate: UInt32?,
         isPreparingRequest: Bool = false,
         isSetupPending: Bool = false,
-        isPreparingWallet: Bool = false
+        isPreparingWallet: Bool = false,
+        isAmountReviewRequired: Bool = false
     ) -> Bool {
-        isPreparingRequest || isSetupPending || isPreparingWallet || isHardwareConfirmationUnavailable
+        isAmountReviewRequired || isPreparingRequest || isSetupPending || isPreparingWallet || isHardwareConfirmationUnavailable
             || isFeeRateMissing(walletType: walletType, isHardwarePayment: isHardwarePayment, feeRate: feeRate)
     }
 
@@ -1160,7 +1166,8 @@ struct SendConfirmationView: View {
             feeRate: wallet.selectedFeeRateSatsPerVByte,
             isPreparingRequest: preparingRequest != nil,
             isSetupPending: isRequestSetupPending,
-            isPreparingWallet: walletSwitchContext != nil
+            isPreparingWallet: walletSwitchContext != nil,
+            isAmountReviewRequired: requiresAmountReview
         )
     }
 
@@ -1787,7 +1794,7 @@ struct SendConfirmationView: View {
 
     private func returnToAmountReviewIfNeeded(rebindMethod: Bool = false) -> Bool {
         guard let request = app.contactPaymentContext?.incomingPaymentRequest else { return false }
-        if hasShownAmountReview, !amountIsRoot, navigationPath.isEmpty, app.paykitPaymentTerms == nil, let presentationID {
+        if requiresAmountReview, !amountIsRoot, navigationPath.isEmpty, let presentationID {
             sheets.hideSheetIfActive(presentationID: presentationID, reason: "Back from the request amount review")
             return true
         }
@@ -1804,10 +1811,6 @@ struct SendConfirmationView: View {
             wallet.sendAmountSats = terms.amount.atomic
         }
         guard let terms, terms == app.paykitPaymentTerms, terms.isValid(at: Date()), meetsMinimum else {
-            if hasShownAmountReview, !amountIsRoot, navigationPath.isEmpty, let presentationID {
-                sheets.hideSheetIfActive(presentationID: presentationID, reason: "Back from the request amount review")
-                return true
-            }
             returnToAmountReview()
             return true
         }
@@ -1816,6 +1819,7 @@ struct SendConfirmationView: View {
 
     private func returnToAmountReview() {
         hasShownAmountReview = true
+        isAmountReviewRequired = true
         app.paykitPaymentTerms = nil
         app.paykitReviewedAmount = nil
         navigationPath = amountIsRoot ? [] : [.amount]
@@ -2065,7 +2069,7 @@ struct SendConfirmationView: View {
 
     @MainActor
     private func calculateRoutingFee() async {
-        guard !hasShownAmountReview else { return }
+        guard !requiresAmountReview else { return }
         guard let bolt11 = app.scannedLightningInvoice?.bolt11 else {
             wallet.routingFeeEstimateSats = 0
             return
