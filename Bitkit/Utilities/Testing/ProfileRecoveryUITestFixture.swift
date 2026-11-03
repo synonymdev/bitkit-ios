@@ -8,6 +8,7 @@
         @StateObject private var navigation = NavigationViewModel()
         @StateObject private var contacts = ContactsManager()
         @State private var clipboard = ""
+        @State private var clipboardEvents: [String] = []
 
         init() {
             let local = ProfileRecoveryLocalState()
@@ -27,16 +28,21 @@
                         .accessibilityIdentifier("ProfileFixtureLoad")
                     PasteButton(payloadType: String.self) { values in
                         clipboard = values.first ?? ""
+                        let kind = clipboard == "not-copied" ? "sentinel" :
+                            clipboard == ProfileRecoveryTestManager.savedProfile.publicKey ? "profile" : "other"
+                        recordClipboard("paste \(kind); change=\(UIPasteboard.general.changeCount)")
                     }
                     .accessibilityIdentifier("ProfileFixtureClipboard")
                     Button("Reset copy") {
                         UIPasteboard.general.string = "not-copied"
                         clipboard = ""
+                        recordClipboard("reset; change=\(UIPasteboard.general.changeCount)")
                     }
                     .accessibilityIdentifier("ProfileFixtureResetClipboard")
                 }
                 CaptionText(clipboard)
                     .accessibilityIdentifier("ProfileFixtureClipboardValue")
+                    .accessibilityValue(clipboardEvents.joined(separator: "\n"))
                 CaptionText(profile.isLoadingProfile ? "Loading" : local.isPending ? "Disconnecting" : "Idle")
                     .accessibilityIdentifier("ProfileFixtureStatus")
                     .accessibilityValue(profile.events.joined(separator: "\n"))
@@ -73,6 +79,16 @@
             .environmentObject(navigation)
             .environmentObject(contacts)
             .preferredColorScheme(.dark)
+            .onReceive(NotificationCenter.default.publisher(for: UIPasteboard.changedNotification)) { _ in
+                recordClipboard("changed; change=\(UIPasteboard.general.changeCount)")
+            }
+        }
+
+        private func recordClipboard(_ event: String) {
+            clipboardEvents.append(event)
+            if clipboardEvents.count > 40 {
+                clipboardEvents.removeFirst()
+            }
         }
 
         private func finish(success: Bool) {

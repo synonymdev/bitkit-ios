@@ -1085,10 +1085,12 @@ class BackupService {
                 break
             }
         }
-        updateBackupStatus(category: category) { status in
-            BackupItemStatus(synced: status.synced, required: status.required, running: false)
+        _ = try? await ServiceQueue.background(.backup) {
+            self.backupJobs.removeValue(forKey: category)
+            self.updateBackupStatus(category: category) { status in
+                BackupItemStatus(synced: status.synced, required: status.required, running: false)
+            }
         }
-        _ = try? await ServiceQueue.background(.backup) { self.backupJobs.removeValue(forKey: category) }
         if outcome.canRetryPendingBackup, !Task.isCancelled,
            getBackupStatus(category: category).isRequired, !shouldSkipBackup(category: category)
         {

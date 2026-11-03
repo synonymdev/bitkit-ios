@@ -153,7 +153,14 @@ final class ProfileRecoveryUITests: XCTestCase {
     private func waitForClipboard(_ value: String) {
         let clipboard = app.staticTexts["ProfileFixtureClipboardValue"]
         let matches = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", value), object: clipboard)
-        XCTAssertEqual(XCTWaiter.wait(for: [matches], timeout: 5), .completed)
+        let result = XCTWaiter.wait(for: [matches], timeout: 5)
+        if result != .completed {
+            let trace = XCTAttachment(string: "Expected fixture value: \(value)\n\(clipboard.value as? String ?? "No clipboard trace")")
+            trace.name = "Profile recovery clipboard events"
+            trace.lifetime = .keepAlways
+            add(trace)
+        }
+        XCTAssertEqual(result, .completed)
     }
 
     private func scrollToTop() {

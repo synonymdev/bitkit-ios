@@ -308,6 +308,56 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         await service.stopObservingBackups()
     }
 
+    func testScheduledIdlePublicationWaitsForForegroundAdmissionCleanup() async throws {
+        let fixture = try Fixture(categories: [.settings])
+        defer { fixture.removeDefaults() }
+        let uploads = UploadRecorder()
+        let delayStarted = expectation(description: "Initial scheduled backup is held")
+        let queueHeld = expectation(description: "Backup admission queue is held")
+        let prematureIdle = expectation(description: "Idle must not precede admission cleanup")
+        prematureIdle.isInverted = true
+        let settled = expectation(description: "Scheduled backup becomes available for foreground retry")
+        let (delay, releaseDelay) = AsyncStream<Void>.makeStream()
+        let releaseQueue = DispatchSemaphore(value: 0)
+        defer {
+            releaseDelay.finish()
+            releaseQueue.signal()
+        }
+        let service = fixture.service(uploadBackup: { key, _ in
+            await uploads.record(key)
+        }, waitForBackupDelay: {
+            delayStarted.fulfill()
+            for await _ in delay {}
+            throw CancellationError()
+        })
+        await service.startObservingBackups()?.value
+        await fulfillment(of: [delayStarted], timeout: 2)
+        Bitkit.ServiceQueue.ServiceTypes.backup.queue.async {
+            queueHeld.fulfill()
+            XCTAssertEqual(releaseQueue.wait(timeout: .now() + 2), .success)
+        }
+        await fulfillment(of: [queueHeld], timeout: 2)
+        let earlySubscription = service.backupStatusesPublisher
+            .filter { $0[.settings]?.running == false }
+            .first().sink { _ in prematureIdle.fulfill() }
+        releaseDelay.finish()
+        await fulfillment(of: [prematureIdle], timeout: 0.2)
+        earlySubscription.cancel()
+        let settledSubscription = service.backupStatusesPublisher
+            .filter { $0[.settings]?.running == false }
+            .first().sink { _ in settled.fulfill() }
+        defer { settledSubscription.cancel() }
+        releaseQueue.signal()
+        await fulfillment(of: [settled], timeout: 2)
+
+        await service.setAppActive(true)?.value
+        let recorded = await uploads.counts
+        XCTAssertEqual(recorded, [BackupCategory.settings.rawValue: 1])
+        XCTAssertFalse(service.getBackupStatus(category: .settings).isRequired)
+        service.setAppActive(false)
+        await service.stopObservingBackups()
+    }
+
     private func startAfterPendingJobsSettle(_ service: BackupService, categories: [BackupCategory]) async {
         let settled = categories.map { expectation(description: "Initial \($0.rawValue) scheduling settled") }
         let subscriptions = zip(categories, settled).map { category, completed in
