@@ -52,24 +52,6 @@ class CurrencyService {
         }
         return rates
     }
-
-    func convertFiatToSats(fiatValue: Decimal, rate: FxRate) -> UInt64 {
-        let btcAmount = fiatValue / rate.rate
-        let satsDecimal = btcAmount * 100_000_000
-
-        // Use NSDecimalNumber for rounding
-        let decimalNumber = NSDecimalNumber(decimal: satsDecimal)
-        let roundingBehavior = NSDecimalNumberHandler(
-            roundingMode: .plain,
-            scale: 0,
-            raiseOnExactness: false,
-            raiseOnOverflow: false,
-            raiseOnUnderflow: false,
-            raiseOnDivideByZero: false
-        )
-        let roundedNumber = decimalNumber.rounding(accordingToBehavior: roundingBehavior)
-        return roundedNumber.uint64Value
-    }
 }
 
 // MARK: UI Helpers (Published via CurrencyViewModel)

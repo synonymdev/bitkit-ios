@@ -4,9 +4,15 @@ import SwiftUI
 @MainActor
 @Observable
 final class PaymentAuthorization {
+    /// What the PIN confirms, since a check that sends nothing must not say it sends a payment.
+    let pinMessage: String
     fileprivate(set) var isAskingForPin = false
     fileprivate(set) var biometricErrorMessage: String?
     @ObservationIgnored private var pinContinuation: CheckedContinuation<Bool, Never>?
+
+    init(pinMessage: String = t("security__pin_send")) {
+        self.pinMessage = pinMessage
+    }
 
     func authorize(settings: SettingsViewModel) async -> Bool {
         guard settings.requirePinForPayments && settings.pinEnabled else { return true }
@@ -52,6 +58,7 @@ private struct PaymentAuthorizationModifier: ViewModifier {
                 }
             )) {
                 SendPinScreen(
+                    message: authorization.pinMessage,
                     onCancel: { authorization.resolvePin(false) },
                     onPinVerified: { authorization.resolvePin(true) }
                 )

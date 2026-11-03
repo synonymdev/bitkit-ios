@@ -21,10 +21,23 @@ final class AddressSearchCoordinatorTests: XCTestCase {
     func testCompanionReceiveAddressAfterChangeUsesSeparateSearchWindow() async throws {
         let key = "addressSearch_lastUsedReceiveIndex_nativeSegwit_account3"
         defaults.set(400, forKey: key)
+        let calls = AddressSearchCallLog()
         let search = AddressSearchCoordinator(
             defaults: defaults,
-            listAccounts: { [OnchainWalletAccount(addressType: .nativeSegwit, accountIndex: 3)] },
+            listAccounts: {
+                await calls.record("list")
+                return [
+                    OnchainWalletAccount(addressType: .nativeSegwit, accountIndex: 3),
+                    OnchainWalletAccount(addressType: .taproot, accountIndex: 2),
+                    OnchainWalletAccount(addressType: .nativeSegwit, accountIndex: 0),
+                    OnchainWalletAccount(addressType: .legacy, accountIndex: 2),
+                ]
+            },
             deriveAddresses: { account, keychain, start, count in
+                XCTAssertTrue(account.accountIndex > 0 || account.addressType == .nativeSegwit)
+                if start == 0 {
+                    await calls.record("\(account.addressType.stringValue):\(account.accountIndex):\(keychain)")
+                }
                 XCTAssertEqual(count, 200)
                 if account.accountIndex == 3, keychain == .external, start == 1200 {
                     return [LightningService.AddressDerivationInfo(address: "server-receive", index: 1200)]
@@ -39,14 +52,32 @@ final class AddressSearchCoordinatorTests: XCTestCase {
         XCTAssertEqual(result, "server-receive")
         XCTAssertEqual(defaults.integer(forKey: key), 1200)
         XCTAssertNil(defaults.object(forKey: "addressSearch_lastUsedReceiveIndex_nativeSegwit"))
+        let recorded = await calls.events
+        XCTAssertEqual(recorded, [
+            "list", "nativeSegwit:0:external", "nativeSegwit:0:internal",
+            "legacy:2:external", "taproot:2:external", "nativeSegwit:3:external",
+        ])
     }
 
     func testAccountZeroChangeKeepsPriorityAndExistingCacheKey() async throws {
+        let calls = AddressSearchCallLog()
         let search = AddressSearchCoordinator(
             defaults: defaults,
-            listAccounts: { [OnchainWalletAccount(addressType: .nativeSegwit, accountIndex: 3)] },
+            listAccounts: {
+                [
+                    OnchainWalletAccount(addressType: .legacy, accountIndex: 0),
+                    OnchainWalletAccount(addressType: .nativeSegwit, accountIndex: 3),
+                    OnchainWalletAccount(addressType: .nativeSegwit, accountIndex: 0),
+                ]
+            },
             deriveAddresses: { account, keychain, start, _ in
                 XCTAssertEqual(account.accountIndex, 0, "Account zero should resolve before companion derivation")
+                if start == 0 {
+                    await calls.record("\(account.addressType.stringValue):\(account.accountIndex):\(keychain)")
+                }
+                if account.accountIndex == 3 {
+                    return [LightningService.AddressDerivationInfo(address: "server-receive", index: 0)]
+                }
                 return account.addressType == .nativeSegwit && keychain == .internal && start == 200
                     ? [LightningService.AddressDerivationInfo(address: "owned-change", index: 203)] : []
             }
@@ -57,6 +88,9 @@ final class AddressSearchCoordinatorTests: XCTestCase {
         )
         XCTAssertEqual(result, "owned-change")
         XCTAssertEqual(defaults.integer(forKey: "addressSearch_lastUsedChangeIndex_nativeSegwit"), 203)
+        let recorded = await calls.events
+        XCTAssertEqual(recorded, ["nativeSegwit:0:external", "legacy:0:external", "nativeSegwit:0:internal"])
+        XCTAssertNil(defaults.object(forKey: "addressSearch_lastUsedReceiveIndex_nativeSegwit_account3"))
     }
 
     func testMatchedCompanionReceiveIndexExtendsPersistedWindowByOneThousand() async throws {
@@ -87,7 +121,9 @@ final class AddressSearchCoordinatorTests: XCTestCase {
             defaults.set(1000, forKey: key)
             let search = AddressSearchCoordinator(
                 defaults: defaults,
-                listAccounts: { [] },
+                listAccounts: {
+                    LDKNode.AddressType.allAddressTypes.map { OnchainWalletAccount(addressType: $0, accountIndex: 0) }
+                },
                 deriveAddresses: { account, keychain, start, count in
                     guard account.accountIndex == 0, account.addressType == .nativeSegwit, keychain == .internal else { return [] }
                     XCTAssertLessThanOrEqual(start + count, 2001)
@@ -119,7 +155,9 @@ final class AddressSearchCoordinatorTests: XCTestCase {
     func testUnregisteredAddressDoesNotMatchAndSearchStaysBounded() async throws {
         let search = AddressSearchCoordinator(
             defaults: defaults,
-            listAccounts: { [] },
+            listAccounts: {
+                LDKNode.AddressType.allAddressTypes.map { OnchainWalletAccount(addressType: $0, accountIndex: 0) }
+            },
             deriveAddresses: { account, _, start, count in
                 XCTAssertEqual(account.accountIndex, 0)
                 XCTAssertLessThan(start, 1000)
@@ -135,16 +173,85 @@ final class AddressSearchCoordinatorTests: XCTestCase {
     }
 
     func testDerivationFailureDoesNotSelectTransactionOutput() async throws {
+        for error in [AppError(serviceError: .nodeNotSetup), CancellationError()] as [Error] {
+            let search = AddressSearchCoordinator(
+                defaults: defaults,
+                listAccounts: { [OnchainWalletAccount(addressType: .nativeSegwit, accountIndex: 3)] },
+                deriveAddresses: { _, _, _, _ in throw error }
+            )
+            let result = try await search.runAddressSearch(
+                details: details(["unverified-first-output"]), value: 15000,
+                currentWalletAddress: "", selectedAddressType: .nativeSegwit
+            )
+            XCTAssertNil(result)
+            XCTAssertNil(defaults.object(forKey: "addressSearch_lastUsedReceiveIndex_nativeSegwit_account3"))
+            XCTAssertNil(defaults.object(forKey: "addressSearch_lastUsedChangeIndex_nativeSegwit_account3"))
+        }
+    }
+
+    func testEmptyAccountListIsReadAgainForTheNextSearch() async throws {
+        let calls = AddressSearchCallLog()
         let search = AddressSearchCoordinator(
             defaults: defaults,
-            listAccounts: { [OnchainWalletAccount(addressType: .nativeSegwit, accountIndex: 3)] },
-            deriveAddresses: { _, _, _, _ in throw AppError(serviceError: .nodeNotSetup) }
+            listAccounts: {
+                let count = await calls.record("list")
+                return count == 1 ? [] : [OnchainWalletAccount(addressType: .taproot, accountIndex: 0)]
+            },
+            deriveAddresses: { account, keychain, start, _ in
+                await calls.record("derive")
+                XCTAssertEqual(account.addressType, .taproot)
+                XCTAssertEqual(account.accountIndex, 0)
+                XCTAssertEqual(keychain, .external)
+                XCTAssertEqual(start, 0)
+                return [LightningService.AddressDerivationInfo(address: "newly-loaded", index: 0)]
+            }
         )
-        let result = try await search.runAddressSearch(
-            details: details(["unverified-first-output"]), value: 15000,
+        let first = try await search.runAddressSearch(
+            details: details(["newly-loaded"]), value: 15000,
             currentWalletAddress: "", selectedAddressType: .nativeSegwit
         )
-        XCTAssertNil(result)
+        XCTAssertNil(first)
+        XCTAssertNil(defaults.object(forKey: "addressSearch_lastUsedReceiveIndex_taproot"))
+        let firstCalls = await calls.events
+        XCTAssertEqual(firstCalls, ["list"])
+
+        let second = try await search.runAddressSearch(
+            details: details(["newly-loaded"]), value: 15000,
+            currentWalletAddress: "", selectedAddressType: .nativeSegwit
+        )
+        XCTAssertEqual(second, "newly-loaded")
+        XCTAssertEqual(defaults.object(forKey: "addressSearch_lastUsedReceiveIndex_taproot") as? Int, 0)
+        let allCalls = await calls.events
+        XCTAssertEqual(allCalls, ["list", "list", "derive"])
+    }
+
+    func testAccountListingFailureKeepsPrimaryFallback() async throws {
+        for error in [AppError(serviceError: .nodeNotSetup), CancellationError()] as [Error] {
+            let calls = AddressSearchCallLog()
+            let search = AddressSearchCoordinator(
+                defaults: defaults,
+                listAccounts: { throw error },
+                deriveAddresses: { account, keychain, start, _ in
+                    XCTAssertEqual(account.accountIndex, 0)
+                    if start == 0 {
+                        await calls.record("\(account.addressType.stringValue):\(keychain)")
+                    }
+                    return account.addressType == .nativeSegwit && keychain == .internal && start == 0
+                        ? [LightningService.AddressDerivationInfo(address: "owned-change", index: 7)] : []
+                }
+            )
+            let result = try await search.runAddressSearch(
+                details: details(["owned-change"]), value: 15000,
+                currentWalletAddress: "", selectedAddressType: .taproot
+            )
+            XCTAssertEqual(result, "owned-change")
+            XCTAssertEqual(defaults.integer(forKey: "addressSearch_lastUsedChangeIndex_nativeSegwit"), 7)
+            let recorded = await calls.events
+            XCTAssertEqual(recorded, [
+                "taproot:external", "legacy:external", "nestedSegwit:external", "nativeSegwit:external",
+                "taproot:internal", "legacy:internal", "nestedSegwit:internal", "nativeSegwit:internal",
+            ])
+        }
     }
 
     private func details(_ addresses: [String]) -> BitkitCore.TransactionDetails {
@@ -157,5 +264,15 @@ final class AddressSearchCoordinatorTests: XCTestCase {
                 )
             }
         )
+    }
+}
+
+private actor AddressSearchCallLog {
+    private(set) var events: [String] = []
+
+    @discardableResult
+    func record(_ event: String) -> Int {
+        events.append(event)
+        return events.count
     }
 }

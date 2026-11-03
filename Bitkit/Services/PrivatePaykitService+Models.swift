@@ -10,6 +10,8 @@ extension PrivatePaykitService {
     struct ContactState: Codable {
         var cachedResolvedEndpoints: [StoredPaymentEntry] = []
         var consumedPrivatePaymentListVersion: UInt64?
+        /// The automatic payment attempt that consumed the list, so only that attempt gives it back, also after a restore.
+        var consumedPrivatePaymentListOwner: String?
         var localInvoice: StoredInvoice?
         var receivedInvoicePaymentHashes: [String] = []
         var hasPublishedPrivatePaymentList = false
@@ -54,5 +56,7 @@ extension PrivatePaykitService {
     struct Backup: Codable {
         let sdkState: String
         let consumedPrivatePaymentListVersions: [String: UInt64]
+        /// Absent from backups made before list owners existed.
+        var consumedPrivatePaymentListOwners: [String: String]? = nil
     }
 }

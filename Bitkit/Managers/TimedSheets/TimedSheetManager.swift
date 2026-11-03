@@ -45,7 +45,8 @@ class TimedSheetManager: ObservableObject {
         appViewModel: AppViewModel,
         settingsViewModel: SettingsViewModel,
         walletViewModel: WalletViewModel,
-        currencyViewModel: CurrencyViewModel
+        currencyViewModel: CurrencyViewModel,
+        paykitPaymentRequestManager: PaykitPaymentRequestManager
     ) {
         // Configure the manager
         self.sheetViewModel = sheetViewModel
@@ -67,7 +68,9 @@ class TimedSheetManager: ObservableObject {
         let notificationsSheet = NotificationsTimedSheet(
             appViewModel: appViewModel,
             settingsViewModel: settingsViewModel,
-            walletViewModel: walletViewModel
+            hasActiveSubscription: {
+                paykitPaymentRequestManager.subscriptions.contains { $0.isActive(at: Date()) }
+            }
         )
         registerSheet(notificationsSheet)
 

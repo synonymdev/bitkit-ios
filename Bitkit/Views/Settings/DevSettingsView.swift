@@ -3,6 +3,7 @@ import UIKit
 
 struct DevSettingsView: View {
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
+    @AppStorage(PaykitFeatureFlags.allowancesEnabledKey) private var allowancesOverride: Bool?
     @AppStorage(BoltzService.savingsSwapEnabledKey) private var isSavingsSwapEnabled = false
     @AppStorage(ToastWindowManager.disableAllToastsKey) private var disableAllToasts = false
     @AppStorage(SubscriptionClock.offsetDaysKey) private var subscriptionClockOffsetDays = 0
@@ -10,7 +11,6 @@ struct DevSettingsView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
-    @EnvironmentObject var notificationManager: PushNotificationManager
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var session: SessionManager
     @EnvironmentObject var wallet: WalletViewModel
@@ -116,6 +116,16 @@ struct DevSettingsView: View {
                             testIdentifier: "PaykitUiToggle"
                         )
 
+                        SettingsRow(
+                            title: "Enable Allowances",
+                            rightIcon: nil,
+                            toggle: Binding(
+                                get: { allowancesOverride ?? PaykitFeatureFlags.allowancesEnabledByDefault },
+                                set: { allowancesOverride = $0 }
+                            ),
+                            testIdentifier: "AllowancesToggle"
+                        )
+
                         if SubscriptionClock.isAvailable {
                             subscriptionClockOffsetMenu
                         }
@@ -176,23 +186,6 @@ struct DevSettingsView: View {
                         }
                     } label: {
                         SettingsRow(title: "Export Logs", rightIcon: nil)
-                    }
-
-                    Button {
-                        Task {
-                            do {
-                                try await notificationManager.sendTestNotification()
-                            } catch {
-                                Logger.error(error, context: "failed to test push notification")
-                                app.toast(
-                                    type: .error,
-                                    title: "Error",
-                                    description: "Failed to send test notification: \(error)"
-                                )
-                            }
-                        }
-                    } label: {
-                        SettingsRow(title: "Test Push Notification", rightIcon: nil)
                     }
 
                     Button {

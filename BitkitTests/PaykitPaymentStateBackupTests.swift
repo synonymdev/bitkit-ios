@@ -141,7 +141,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
                                                         receipts: receipts.map(PaykitUsdtStateBackup.Receipt.init)))
         let protection = try service.paymentProtection(identity: identity)
         XCTAssertEqual(protection.inFlight, [ids[1], ids[2]])
-        XCTAssertEqual(protection.completed, [ids[2]: .usdt])
+        XCTAssertTrue(protection.completed.isEmpty, "Restored proofs require canonical reconciliation")
         XCTAssertEqual(receipts.filter(\.satisfied).map(\.requestId), [ids[0]])
         XCTAssertTrue(try service.satisfiedProofs(identity: identity).isEmpty, "Restored receipts require the active wallet before use")
         XCTAssertTrue(try service.paymentProtection(identity: counterparty).inFlight.isEmpty)
@@ -149,7 +149,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
     }
 
     @MainActor
-    func testUsdtReceiptsReconcileBeforeOpeningTheWallet() async throws {
+    func testRestoredUsdtReceiptsRemainUnverifiedWithoutCanonicalEvidence() async throws {
         try XCTSkipUnless(Env.isUsdtEnabled)
         let preference = SettingsViewModel.shared.usdtPreference
         SettingsViewModel.shared.usdtPreference = .enabled
@@ -165,6 +165,8 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
                                                        receivedAt: Date(timeIntervalSince1970: 1000), underpaid: false, afterExpiry: false)
         let service = PaykitUsdtPaymentService()
         try service.restoreBackup(PaykitUsdtStateBackup(attempts: [], receipts: [.init(receipt)]))
+        var restoredReceipt = receipt
+        restoredReceipt.verified = false
         let nativeSdk = UsdtReceiptSdk(noPointer: .init())
         nativeSdk.identity = identity
         let sdk = PaykitSdkService(sdkFactory: { nativeSdk })
@@ -172,8 +174,8 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
             let wallet = UsdtWalletManager(storageDirectory: directory, rpcUrl: "http://127.0.0.1:1", bundlerUrl: "http://127.0.0.1:1",
                                            loadCredentials: { (mnemonic, passphrase) })
             await service.reconcile(wallet: wallet, sdk: sdk)
-            XCTAssertEqual(service.receipts, passphrase == nil ? [receipt] : [])
-            XCTAssertEqual(try service.satisfiedProofs(identity: identity)[requestId], passphrase == nil ? ["proof"] : nil)
+            XCTAssertEqual(service.receipts, passphrase == nil ? [restoredReceipt] : [])
+            XCTAssertNil(try service.satisfiedProofs(identity: identity)[requestId])
             XCTAssertEqual(wallet.address, "")
             XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
         }
@@ -1221,6 +1223,31 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         let restored = try XCTUnwrap(service.backupSnapshot().attempts.first).restored()
         XCTAssertTrue(restored.paymentStarted)
         XCTAssertFalse(restored.proofQueued)
+    }
+
+    @MainActor
+    func testUsdtRestoreRejectsConflictingBindingsAndRetainsProofOnlyPaymentAcrossRestart() throws {
+        let service = PaykitUsdtPaymentService()
+        let request = PaykitPaymentRequest.ID(paymentRequestId: "request", counterparty: "pubky" + String(repeating: "y", count: 52))
+        let proof = PaykitUsdtPaymentService.Proof(UsdtPaymentProof(chainId: "42161", transactionHash: "transaction",
+                                                                    receiptLogIndex: "0", signature: "signature"))
+        let attempt = PaykitUsdtPaymentService.Attempt(quoteId: "operation", wallet: "wallet", identity: identity,
+                                                       contact: request.counterparty, requestId: request,
+                                                       binding: nil, billingPeriod: nil, proof: proof, proofQueued: true)
+        try service.restoreBackup(PaykitUsdtStateBackup(attempts: [.init(attempt)], receipts: []))
+        let restarted = PaykitUsdtPaymentService()
+        let snapshot = try restarted.backupSnapshot()
+        let restored = try XCTUnwrap(snapshot.attempts.first).restored()
+        XCTAssertTrue(restored.paymentStarted)
+        XCTAssertNil(restored.proof)
+        XCTAssertFalse(restored.proofQueued)
+        XCTAssertEqual(try restarted.paymentProtection(identity: identity).inFlight, [request])
+        let conflict = PaykitUsdtPaymentService.Attempt(quoteId: attempt.quoteId, wallet: attempt.wallet,
+                                                        identity: attempt.identity, contact: "another-contact",
+                                                        requestId: attempt.requestId, binding: attempt.binding,
+                                                        billingPeriod: attempt.billingPeriod)
+        XCTAssertThrowsError(try restarted.restoreBackup(PaykitUsdtStateBackup(attempts: [.init(conflict)], receipts: [])))
+        XCTAssertEqual(try restarted.backupSnapshot().attempts.map { try $0.restored() }, [restored])
     }
 
     func testUnreadablePaymentStateIsPreserved() async throws {

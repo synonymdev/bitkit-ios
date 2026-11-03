@@ -1,25 +1,47 @@
 name: e2e-retarget
 
-# e2e-tests runs only on PRs into master, and retargeting a stacked PR to master emits no event it listens to
 on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Ready PR into master to validate"
+        required: true
+      workflow_ref:
+        description: "Optional compatible workflow source override (default: this helper revision)"
+        default: ""
+      suite:
+        description: "Suite to recover (automatic retarget validates both)"
+        type: choice
+        options: [all, e2e, integration]
+        default: all
   pull_request:
     types: [edited]
     branches: [master]
 
-permissions:
-  actions: write
-
 jobs:
-  run-e2e:
+  retarget-tests:
+    name: Retarget validation
     if: >-
-      github.event.changes.base != null &&
-      github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.changes.base != null &&
+       github.event.pull_request.draft == false &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: read
+      checks: write
+    concurrency:
+      group: retarget-validation-${{ github.event.pull_request.number || inputs.pr }}
+      cancel-in-progress: false
     steps:
-      - name: Start E2E on the retargeted PR
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: gh workflow run e2e-tests.yml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_REF" -f pr="$PR_NUMBER"
+      - uses: actions/checkout@v7
+      - name: Test retarget reporting
+        run: node --test .github/scripts/retarget-*.test.cjs
+      - name: Start tests and create pending PR checks
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const {dispatchRetargetTests} = require('./.github/scripts/retarget-tests.cjs');
+            await dispatchRetargetTests({github, context, core});

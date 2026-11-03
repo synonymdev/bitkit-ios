@@ -329,6 +329,7 @@ struct SubscriptionRecipientView: View {
         do {
             let subscription = try await paymentRequests.proposeSubscription(draft, to: selectedTarget)
             guard paymentRequests.subscriptions.contains(where: { $0.id == subscription.id }) else { return }
+            PushNotificationManager.shared.requestPermissionIfUndecided()
             onSent(subscription)
         } catch {
             app.toast(error)

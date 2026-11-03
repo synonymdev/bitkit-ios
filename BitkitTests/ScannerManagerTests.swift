@@ -328,6 +328,21 @@ final class ScannerManagerTests: XCTestCase {
         }
     }
 
+    func testGiftCodeScanShowsTheInvalidCodeToastAndNoSheet() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.set(false, forKey: ToastWindowManager.disableAllToastsKey)
+        let previousToast = ToastWindowManager.shared.currentToast
+        defer { ToastWindowManager.shared.currentToast = previousToast }
+        ToastWindowManager.shared.currentToast = nil
+        let sheets = SheetViewModel()
+        let app = configure(ScannerManager {}, sheets: sheets, decodeInvoice: { _ in .gift(code: "gift-code", amount: 1000) })
+
+        try await app.handleScannedData("bitkit://gift-code-1000")
+
+        XCTAssertEqual(ToastWindowManager.shared.currentToast?.accessibilityIdentifier, "InvalidAddressToast")
+        XCTAssertNil(sheets.activeSheetConfiguration)
+    }
+
     private func imageTestLnurl(amount: UInt64) -> LnurlPayData {
         LnurlPayData(uri: "https://example.com/pay", callback: "https://example.com/callback",
                      minSendable: amount, maxSendable: amount,

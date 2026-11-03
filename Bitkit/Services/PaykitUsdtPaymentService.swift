@@ -118,14 +118,18 @@ final class PaykitUsdtPaymentService {
         var state = try load()
         for attempt in try backup.attempts.map({ try $0.restored() }) {
             if let index = state.attempts.firstIndex(where: { $0.wallet == attempt.wallet && $0.quoteId == attempt.quoteId }) {
-                state.attempts[index].paymentStarted = state.attempts[index].paymentStarted || attempt.paymentStarted
-                state.attempts[index].proof = state.attempts[index].proof ?? attempt.proof
+                guard state.attempts[index].bindingState == attempt.bindingState else { throw UsdtError.InvalidBackup }
+                state.attempts[index].paymentStarted = state.attempts[index].paymentStarted || attempt.paymentStarted ||
+                    attempt.proof != nil || attempt.proofQueued
             } else {
                 state.attempts.append(attempt)
             }
         }
         // Restored delivery queues may be older than local payment evidence; reconciliation deduplicates proofs.
         for index in state.attempts.indices {
+            state.attempts[index].paymentStarted = state.attempts[index].paymentStarted ||
+                state.attempts[index].proof != nil || state.attempts[index].proofQueued
+            state.attempts[index].proof = nil
             state.attempts[index].proofQueued = false
         }
         for receipt in try backup.receipts.map({ try $0.restored() }) where !state.receipts.contains(where: {
@@ -133,7 +137,16 @@ final class PaykitUsdtPaymentService {
         }) {
             state.receipts.append(receipt)
         }
+        // Journal order does not establish which chain evidence is newest. Recreate proofs and
+        // verify receipts against the canonical chain before using restored payment evidence.
+        for index in state.receipts.indices {
+            state.receipts[index].verified = false
+        }
         try save(state)
+    }
+
+    func pauseForRecoveryRestore() {
+        stateGeneration &+= 1
     }
 
     func resetForWipe() {
@@ -397,6 +410,7 @@ final class PaykitUsdtPaymentService {
     }
 
     func reconcile(wallet: UsdtWalletManager, sdk: PaykitSdkService = .shared) async {
+        guard wallet.canRecoverTransfers else { return }
         guard wallet.isConfigured, UsdtPreference.isEnabled() || (try? wallet.hasStoredWallet) == true else {
             boundRequestIds = nil
             releasedAttempts = []
@@ -426,7 +440,7 @@ final class PaykitUsdtPaymentService {
         paymentRequests: () async throws -> [Paykit.PaymentRequestRecord],
         verifyPayment: (UsdtPaymentProofBinding, UsdtPaymentProof) async throws -> UsdtVerifiedPayment?
     ) async {
-        guard !reconciling, !sending, !preparing else { return }
+        guard !reconciling, !sending, !preparing, !UsdtRecoveryRestoreGate.isPending else { return }
         let generation = stateGeneration
         let previousProtection = (activeWallet, activeIdentity, resumableRequests)
         reconciling = true

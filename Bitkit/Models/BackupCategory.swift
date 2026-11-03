@@ -5,6 +5,7 @@ enum BackupCategory: String, CaseIterable {
     case blocktank = "BLOCKTANK"
     case activity = "ACTIVITY"
     case wallet = "WALLET"
+    case usdt = "USDT_RECOVERY"
     case settings = "SETTINGS"
     case widgets = "WIDGETS"
     case metadata = "METADATA"
@@ -23,6 +24,8 @@ extension BackupCategory {
             return "transfer"
         case .wallet:
             return "timer-alt"
+        case .usdt:
+            return "usdt-settings"
         case .settings:
             return "gear-six"
         case .widgets:
@@ -42,6 +45,8 @@ extension BackupCategory {
             return t("settings__backup__category_transaction_log")
         case .wallet:
             return t("settings__backup__category_wallet")
+        case .usdt:
+            return t("usdt__settings_title")
         case .settings:
             return t("settings__backup__category_settings")
         case .widgets:

@@ -65,7 +65,7 @@ struct TabBar: View {
             sheets.showSheet(
                 .receive,
                 data: ReceiveConfig(
-                    view: .qr(cjitInvoice: nil, tab: .hardware),
+                    view: .qr(tab: .hardware),
                     hardwareWalletId: walletId
                 )
             )
@@ -74,13 +74,13 @@ struct TabBar: View {
 
         let hasPendingTransfersToSpending = wallet.balanceInTransferToSpending > 0
 
-        if Self.shouldOpenSpendingCjitEntry(
+        if Self.shouldOpenSpendingTransferUnavailable(
             isSpendingWallet: navigation.currentRoute == .spendingWallet,
             wallet: wallet,
             hasPendingTransfersToSpending: hasPendingTransfersToSpending
         ) {
-            // On spending wallet screen, show CJIT flow when user can't receive normally
-            sheets.showSheet(.receive, data: ReceiveConfig(view: .cjitAmount))
+            // Spending can't receive without inbound capacity, and Blocktank no longer sells it.
+            sheets.showSheet(.receive, data: ReceiveConfig(view: .transferUnavailable))
         } else {
             sheets.showSheet(.receive)
         }
@@ -90,7 +90,7 @@ struct TabBar: View {
         sheets.showSheet(.scanner)
     }
 
-    static func shouldOpenSpendingCjitEntry(
+    static func shouldOpenSpendingTransferUnavailable(
         isSpendingWallet: Bool,
         wallet: WalletViewModel,
         hasPendingTransfersToSpending: Bool

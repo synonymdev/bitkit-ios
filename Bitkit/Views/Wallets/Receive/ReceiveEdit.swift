@@ -3,7 +3,6 @@ import SwiftUI
 
 struct ReceiveEdit: View {
     @EnvironmentObject private var app: AppViewModel
-    @EnvironmentObject private var blocktank: BlocktankViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var tagManager: TagManager
@@ -15,7 +14,6 @@ struct ReceiveEdit: View {
     @Binding var navigationPath: [ReceiveRoute]
     let sourceTab: ReceiveQr.ReceiveTab
     let onchainOnly: Bool
-    let replacesCurrentQr: Bool
     let onSendPaymentRequest: (PaykitPaymentRequestDraft) -> Void
 
     @State private var amountViewModel = AmountInputViewModel()
@@ -196,68 +194,18 @@ struct ReceiveEdit: View {
         await prepareLightningInvoice()
     }
 
-    static func replaceEditedQrRoute(in navigationPath: inout [ReceiveRoute], with route: ReceiveRoute) {
-        guard let currentRouteIndex = navigationPath.indices.last else {
-            navigationPath.append(route)
-            return
-        }
-
-        var replacementStartIndex = currentRouteIndex
-        if let qrIndex = navigationPath[..<currentRouteIndex].lastIndex(where: { route in
-            if case .qr = route {
-                return true
-            }
-            return false
-        }) {
-            replacementStartIndex = qrIndex
-
-            if let editIndex = navigationPath[..<qrIndex].lastIndex(where: { route in
-                if case .edit = route {
-                    return true
-                }
-                return false
-            }) {
-                replacementStartIndex = editIndex
-            }
-        }
-
-        navigationPath.replaceSubrange(replacementStartIndex..., with: [route])
-    }
-
     private func prepareLightningInvoice() async {
         // Wait until node is running if it's in starting state
         if await wallet.waitForNodeToRun() {
             do {
-                var maxCjitAmountSats: UInt64?
-                if needsCjitLimitsForAdditionalLiquidity() {
-                    try? await blocktank.refreshMinCjitSats()
-                    maxCjitAmountSats = try? await blocktank.maxCjitAmountSats()
-                }
-
-                switch additionalLiquidityAction(maxCjitAmountSats: maxCjitAmountSats) {
+                switch additionalLiquidityAction() {
                 case .none:
                     try await wallet.refreshBip21(forceRefreshBolt11: true)
-                    finishWithQr()
-                case .chooseAmount:
-                    try await wallet.refreshBip21(forceRefreshBolt11: true)
-                    finishWithRoute(.cjitAmount)
-                case let .createCjit(amountSats):
-                    let entry = try await blocktank.createCjit(amountSats: amountSats, description: note)
-                    finishWithRoute(.cjitConfirm(entry: entry, receiveAmountSats: amountSats, isAdditional: true))
-                case .geoBlocked:
-                    finishWithRoute(.cjitGeoBlocked)
+                    dismiss()
+                case .transferUnavailable:
+                    navigationPath.append(.transferUnavailable)
                 }
             } catch {
-                if error.isCjitNodeCapacityExceeded {
-                    showNodeCapacityExceededToast()
-                    return
-                }
-
-                if error.isChannelSizeExceedsMaximum {
-                    finishWithRoute(.cjitAmount)
-                    return
-                }
-
                 app.toast(error)
             }
         } else {
@@ -268,30 +216,6 @@ struct ReceiveEdit: View {
                 description: "Lightning node must be running to create an invoice"
             )
         }
-    }
-
-    private func finishWithQr() {
-        if replacesCurrentQr {
-            Self.replaceEditedQrRoute(in: &navigationPath, with: .qr(cjitInvoice: nil, tab: sourceTab))
-        } else {
-            dismiss()
-        }
-    }
-
-    private func finishWithRoute(_ route: ReceiveRoute) {
-        if replacesCurrentQr {
-            Self.replaceEditedQrRoute(in: &navigationPath, with: route)
-        } else {
-            navigationPath.append(route)
-        }
-    }
-
-    private func showNodeCapacityExceededToast() {
-        app.toast(
-            type: .warning,
-            title: t("wallet__receive_cjit_error_node_capacity__title"),
-            description: t("wallet__receive_cjit_error_node_capacity__description")
-        )
     }
 
     private func deleteTag(_ tag: String) async {
@@ -306,23 +230,11 @@ struct ReceiveEdit: View {
         }
     }
 
-    private func additionalLiquidityAction(maxCjitAmountSats: UInt64?) -> ReceiveAdditionalLiquidityAction {
+    private func additionalLiquidityAction() -> ReceiveAdditionalLiquidityAction {
         ReceiveLiquidityDecision.additionalLiquidityAction(
             source: liquiditySource,
             invoiceAmountSats: amountViewModel.amountSats,
-            inboundCapacitySats: wallet.totalReadyInboundLightningSats,
-            minCjitSats: blocktank.minCjitSats,
-            maxCjitAmountSats: maxCjitAmountSats,
-            isGeoBlocked: GeoService.shared.isGeoBlocked
-        )
-    }
-
-    private func needsCjitLimitsForAdditionalLiquidity() -> Bool {
-        ReceiveLiquidityDecision.needsCjitLimitsForAdditionalLiquidity(
-            source: liquiditySource,
-            invoiceAmountSats: amountViewModel.amountSats,
-            inboundCapacitySats: wallet.totalReadyInboundLightningSats,
-            isGeoBlocked: GeoService.shared.isGeoBlocked
+            inboundCapacitySats: wallet.totalReadyInboundLightningSats
         )
     }
 

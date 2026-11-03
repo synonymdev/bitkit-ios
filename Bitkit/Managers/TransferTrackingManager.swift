@@ -36,8 +36,7 @@ class TransferTrackingManager: ObservableObject {
         type: TransferType,
         amountSats: UInt64,
         channelId: String? = nil,
-        fundingTxId: String? = nil,
-        lspOrderId: String? = nil
+        fundingTxId: String? = nil
     ) async throws -> String {
         isLoading = true
         defer { isLoading = false }
@@ -47,8 +46,7 @@ class TransferTrackingManager: ObservableObject {
                 type: type,
                 amountSats: amountSats,
                 channelId: channelId,
-                fundingTxId: fundingTxId,
-                lspOrderId: lspOrderId
+                fundingTxId: fundingTxId
             )
             await loadActiveTransfers() // Refresh list
             error = nil

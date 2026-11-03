@@ -138,14 +138,6 @@ enum Env {
         }
     }
 
-    static var isGeoblockingEnabled: Bool {
-        #if CHECK_GEOBLOCK
-            return true
-        #else
-            return ProcessInfo.processInfo.environment["GEO"] == "true"
-        #endif
-    }
-
     /// The current execution context of the app
     static var currentExecutionContext: ExecutionContext {
         let isNotificationExtension = Bundle.main.bundleIdentifier?.lowercased().contains("notification") == true
@@ -304,37 +296,10 @@ enum Env {
         }
     }
 
-    // TODO: remove this to load from BT API instead
-    static var trustedLnPeers: [LnPeer] {
-        switch network {
-        case .bitcoin:
-            return [
-                .init(nodeId: "039b8b4dd1d88c2c5db374290cda397a8f5d79f312d6ea5d5bfdfc7c6ff363eae3", host: "34.65.111.104", port: 9735),
-                .init(nodeId: "03816141f1dce7782ec32b66a300783b1d436b19777e7c686ed00115bd4b88ff4b", host: "34.65.191.64", port: 9735),
-                .init(nodeId: "02a371038863605300d0b3fc9de0cf5ccb57728b7f8906535709a831b16e311187", host: "34.65.153.174", port: 9735),
-            ]
-        case .signet:
-            return []
-        case .testnet:
-            return []
-        case .regtest:
-            return [
-                .init(nodeId: "028a8910b0048630d4eb17af25668cdd7ea6f2d8ae20956e7a06e2ae46ebcb69fc", host: "34.65.86.104", port: 9400),
-            ]
-        }
-    }
-
     static var blocktankBaseUrl: String {
         switch network {
         case .bitcoin: "https://api1.blocktank.to"
         default: "https://api.stag0.blocktank.to"
-        }
-    }
-
-    static var blocktankPushNotificationServer: String {
-        switch network {
-        case .bitcoin: "\(blocktankBaseUrl)/api/notifications"
-        default: "\(blocktankBaseUrl)/notifications/api"
         }
     }
 
@@ -359,29 +324,73 @@ enum Env {
 
     static let blocktankOrderRefreshInterval: TimeInterval = 2 * 60 // 2 minutes
 
-    static var pushNotificationFeatures: [BlocktankNotificationType] = [
-        .incomingHtlc,
-        .mutualClose,
-        .orderPaymentConfirmed,
-        .cjitPaymentArrived,
-        .wakeToTimeout,
-    ]
-
     static var vssStoreIdPrefix: String {
         "bitkit_v1_\(networkName)"
     }
 
+    #if DEBUG || E2E_BUILD
+        struct BackupTestEndpoints: Equatable {
+            let vss: String
+            let auth: String
+
+            static func resolve(enabled: Bool, vss: String?, auth: String?) throws -> Self? {
+                guard enabled else { return nil }
+                let vss = vss?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let auth = auth?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                guard !vss.isEmpty || !auth.isEmpty else { return nil }
+                guard valid(vss), valid(auth) else { throw ConfigurationError.invalidBackupEndpoints }
+                return Self(vss: vss, auth: auth)
+            }
+
+            private static func valid(_ value: String) -> Bool {
+                guard let url = URLComponents(string: value),
+                      url.scheme == "http" || url.scheme == "https", url.host == "localhost",
+                      let port = url.port, (1 ... 65535).contains(port),
+                      url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
+                      !url.path.isEmpty
+                else { return false }
+                return true
+            }
+        }
+
+        enum ConfigurationError: Error {
+            case invalidBackupEndpoints
+        }
+
+        private static var backupTestEndpoints: BackupTestEndpoints? {
+            do {
+                return try BackupTestEndpoints.resolve(
+                    enabled: isE2E,
+                    vss: configValue("E2E_VSS_SERVER_URL"),
+                    auth: configValue("E2E_LNURL_AUTH_SERVER_URL")
+                )
+            } catch {
+                preconditionFailure("E2E backup endpoints must be a valid pair of localhost URLs with explicit ports")
+            }
+        }
+    #endif
+
     static var vssServerUrl: String {
+        #if DEBUG || E2E_BUILD
+            if let endpoints = backupTestEndpoints {
+                return endpoints.vss
+            }
+        #endif
         switch network {
-        case .bitcoin: "https://bitkit.to/vss_rs_auth"
-        default: "https://bitkit.stag0.blocktank.to/vss_rs_auth"
+        case .bitcoin: return "https://bitkit.to/vss_rs_auth"
+        default: return "https://bitkit.stag0.blocktank.to/vss_rs_auth"
         }
     }
 
     static var lnurlAuthServerUrl: String {
+        #if DEBUG || E2E_BUILD
+            if let endpoints = backupTestEndpoints {
+                return endpoints.auth
+            }
+        #endif
         switch network {
-        case .bitcoin: "https://bitkit.to/lnurl_auth/auth"
-        default: "https://bitkit.stag0.blocktank.to/lnurl_auth/auth"
+        case .bitcoin: return "https://bitkit.to/lnurl_auth/auth"
+        default: return "https://bitkit.stag0.blocktank.to/lnurl_auth/auth"
         }
     }
 
@@ -433,7 +442,7 @@ enum Env {
 
     static let termsOfServiceUrl = "https://www.bitkit.to/terms-of-use"
     static let privacyPolicyUrl = "https://www.bitkit.to/privacy-policy"
-    static let geoCheckUrl = "https://api1.blocktank.to/api/geocheck"
+    static let blocktankSunsetUrl = "https://blog.bitkit.to/"
     static let bitrefillRef = "AL6dyZYt"
     static let btcMapUrl = "https://btcmap.org/map"
     static let helpUrl = "https://help.bitkit.to"

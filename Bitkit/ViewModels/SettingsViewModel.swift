@@ -108,7 +108,6 @@ class SettingsViewModel: NSObject, ObservableObject {
     @AppStorage("quickpayAmount") var quickpayAmount: Double = 5
     @AppStorage("quickpayDailyLimitMultiplier") var quickpayDailyLimitMultiplier: Double = 5
     @AppStorage("enableNotifications") var enableNotifications: Bool = false
-    @AppStorage("enableNotificationsAmount") var enableNotificationsAmount: Bool = false
     @AppStorage("ignoresSwitchUnitToast") var ignoresSwitchUnitToast: Bool = false
     @AppStorage("ignoresHideBalanceToast") var ignoresHideBalanceToast: Bool = false
 
@@ -227,7 +226,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         quickpayAmount = 5
         quickpayDailyLimitMultiplier = 5
         enableNotifications = false
-        enableNotificationsAmount = false
         UserDefaults.standard.set(PaykitFeatureFlags.uiEnabledByDefault, forKey: PaykitFeatureFlags.uiEnabledKey)
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
         UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey)
@@ -245,7 +243,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         _coinSelectionAlgorithm = CoinSelectionAlgorithm.branchAndBound.stringValue
         _selectedAddressType = "nativeSegwit"
         _addressTypesToMonitor = "nativeSegwit"
-        BlocktankRefundAddressStore().clear()
         pinEnabled = false
         isChangingAddressType = false
         lastAddressTypeError = nil
@@ -498,6 +495,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         wallet?.syncState()
         if !enabled, let wallet {
             await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(wallet: wallet, reason: "address type monitoring changed")
+            await wallet.refreshPublicPaykitAddressIfNeeded()
         }
         return true
     }
@@ -860,8 +858,27 @@ class SettingsViewModel: NSObject, ObservableObject {
         return ElectrumServer(host: host, portString: port, protocolType: protocolType)
     }
 
-    /// Restores settings dictionary to UserDefaults
-    func restoreSettingsDictionary(_ dict: [String: Any]) {
+    /// Reads a string setting in either app's form: bitkit-android writes `addressTypesToMonitor` as an array and
+    /// enums by their Kotlin names, such as `BITCOIN` and `MODERN`.
+    nonisolated static func iosSettingString(_ value: Any, forKey key: String) -> String? {
+        if let values = value as? [String] {
+            return values.joined(separator: ",")
+        }
+        guard let string = value as? String else { return nil }
+        switch key {
+        case "primaryDisplay":
+            return [PrimaryDisplay.bitcoin, .fiat].first { $0.rawValue.caseInsensitiveCompare(string) == .orderedSame }?.rawValue ?? string
+        case "defaultTransactionSpeed":
+            return string == "medium" ? TransactionSpeed.normal.rawValue : string
+        case "bitcoinDisplayUnit":
+            return BitcoinDisplayUnit.allCases.first { $0.rawValue.caseInsensitiveCompare(string) == .orderedSame }?.rawValue ?? string
+        default:
+            return string
+        }
+    }
+
+    /// Writes a SETTINGS backup from either app into `defaults` under the iOS keys and value forms.
+    nonisolated static func writeRestoredSettings(_ dict: [String: Any], to defaults: UserDefaults) {
         if let coinSelectAuto = dict["coinSelectAuto"] as? Bool {
             let methodString = coinSelectAuto ? "autopilot" : "manual"
             defaults.set(methodString, forKey: "coinSelectionMethod")
@@ -885,7 +902,7 @@ class SettingsViewModel: NSObject, ObservableObject {
 
             switch type {
             case .string:
-                if let stringValue = value as? String {
+                if let stringValue = Self.iosSettingString(value, forKey: iosKey) {
                     defaults.set(stringValue, forKey: iosKey)
                 }
             case .bool:
@@ -912,6 +929,11 @@ class SettingsViewModel: NSObject, ObservableObject {
                 }
             }
         }
+    }
+
+    /// Restores settings dictionary to UserDefaults
+    func restoreSettingsDictionary(_ dict: [String: Any]) {
+        Self.writeRestoredSettings(dict, to: defaults)
 
         if let electrumServerUrl = dict["electrumServer"] as? String, !electrumServerUrl.isEmpty,
            let server = parseElectrumServerUrlForRestore(electrumServerUrl)
@@ -960,17 +982,14 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     /// Gets the current app cache data for backup
-    func getAppCacheData() throws -> AppCacheData {
+    func getAppCacheData() -> AppCacheData {
         let spend = QuickPaySpendStore.shared.backupSnapshot()
-        let refundAddress = try BlocktankRefundAddressStore().load()
         return AppCacheData(
             hasSeenContactsIntro: defaults.bool(forKey: "hasSeenContactsIntro"),
             hasSeenProfileIntro: defaults.bool(forKey: "hasSeenProfileIntro"),
             hasSeenNotificationsIntro: defaults.bool(forKey: "hasSeenNotificationsIntro"),
             hasSeenQuickpayIntro: defaults.bool(forKey: "hasSeenQuickpayIntro"),
             hasSeenShopIntro: defaults.bool(forKey: "hasSeenShopIntro"),
-            hasSeenTransferIntro: defaults.bool(forKey: "hasSeenTransferIntro"),
-            hasSeenTransferToSpendingIntro: defaults.bool(forKey: "hasSeenTransferToSpendingIntro"),
             hasSeenTransferToSavingsIntro: defaults.bool(forKey: "hasSeenTransferToSavingsIntro"),
             hasSeenWidgetsIntro: defaults.bool(forKey: "hasSeenWidgetsIntro"),
             hasDismissedWidgetsOnboardingHint: defaults.bool(forKey: "hasDismissedWidgetsOnboardingHint"),
@@ -981,20 +1000,23 @@ class SettingsViewModel: NSObject, ObservableObject {
             dismissedSuggestions: defaults.stringArray(forKey: "dismissedSuggestions") ?? [],
             lastUsedTags: defaults.stringArray(forKey: "lastUsedTags") ?? [],
             quickPayLedger: spend,
-            blocktankRefundAddress: refundAddress,
             detachedActivityContacts: CoreService.shared.activity.detachedContactsBackupSnapshot()
         )
     }
 
     /// Restores app cache data from backup
-    func restoreAppCacheData(_ cache: AppCacheData) throws {
+    func restoreAppCacheData(_ cache: AppCacheData) {
+        if let address = cache.onchainAddress, !address.isEmpty {
+            var addresses = Set(defaults.stringArray(forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey) ?? [])
+            addresses.insert(address)
+            defaults.set(addresses.sorted(), forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey)
+        }
+
         defaults.set(cache.hasSeenContactsIntro, forKey: "hasSeenContactsIntro")
         defaults.set(cache.hasSeenProfileIntro, forKey: "hasSeenProfileIntro")
         defaults.set(cache.hasSeenNotificationsIntro, forKey: "hasSeenNotificationsIntro")
         defaults.set(cache.hasSeenQuickpayIntro, forKey: "hasSeenQuickpayIntro")
         defaults.set(cache.hasSeenShopIntro, forKey: "hasSeenShopIntro")
-        defaults.set(cache.hasSeenTransferIntro, forKey: "hasSeenTransferIntro")
-        defaults.set(cache.hasSeenTransferToSpendingIntro, forKey: "hasSeenTransferToSpendingIntro")
         defaults.set(cache.hasSeenTransferToSavingsIntro, forKey: "hasSeenTransferToSavingsIntro")
         defaults.set(cache.hasSeenWidgetsIntro, forKey: "hasSeenWidgetsIntro")
         defaults.set(cache.hasDismissedWidgetsOnboardingHint, forKey: "hasDismissedWidgetsOnboardingHint")
@@ -1005,12 +1027,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         defaults.set(cache.dismissedSuggestions, forKey: "dismissedSuggestions")
         defaults.set(cache.lastUsedTags, forKey: "lastUsedTags")
         QuickPaySpendStore.shared.restoreFromBackup(ledger: cache.quickPayLedger)
-        let refundAddressStore = BlocktankRefundAddressStore()
-        if let refundAddress = cache.blocktankRefundAddress {
-            try refundAddressStore.save(refundAddress)
-        } else {
-            refundAddressStore.clear()
-        }
         CoreService.shared.activity.restoreDetachedContacts(cache.detachedActivityContacts)
     }
 }

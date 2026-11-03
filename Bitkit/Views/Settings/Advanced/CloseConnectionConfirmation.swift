@@ -7,6 +7,7 @@ struct CloseConnectionConfirmation: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var transfer: TransferViewModel
     @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
     @Environment(\.dismiss) private var dismiss
 
     @State private var isClosing = false
@@ -46,7 +47,9 @@ struct CloseConnectionConfirmation: View {
         .bottomSafeAreaPadding()
     }
 
+    @MainActor
     private func closeChannel() async {
+        let expectedPath = navigation.path
         isClosing = true
 
         do {
@@ -54,11 +57,9 @@ struct CloseConnectionConfirmation: View {
             let failedChannels = try await transfer.closeChannels(channels: [channel])
 
             if failedChannels.isEmpty {
-                // Success - dismiss this view and show success toast
                 DispatchQueue.main.async {
-                    dismiss()
+                    navigation.returnToConnectionsAfterClosing(channelId: channel.channelIdString, from: expectedPath)
 
-                    // Show success toast
                     app.toast(
                         type: .success,
                         title: t("lightning__close_success_title"),
@@ -70,30 +71,17 @@ struct CloseConnectionConfirmation: View {
                 DispatchQueue.main.async {
                     dismiss()
 
-                    // Check if failed channels are trusted peers (cannot force close)
-                    let (_, nonTrustedFailedChannels) = LightningService.shared.separateTrustedChannels(failedChannels)
+                    app.toast(
+                        type: .error,
+                        title: t("lightning__close_error"),
+                        description: t("lightning__close_error_msg")
+                    )
 
-                    if !nonTrustedFailedChannels.isEmpty {
-                        // Show error toast
-                        app.toast(
-                            type: .error,
-                            title: t("lightning__close_error"),
-                            description: t("lightning__close_error_msg")
-                        )
+                    // Store the failed channels for force close
+                    transfer.channelsToClose = failedChannels
 
-                        // Store the failed non-trusted channels for force close
-                        transfer.channelsToClose = nonTrustedFailedChannels
-
-                        // Show force transfer sheet
-                        sheets.showSheet(.forceTransfer)
-                    } else {
-                        // All failed channels are trusted peers - cannot force close
-                        app.toast(
-                            type: .error,
-                            title: t("lightning__close_error"),
-                            description: t("lightning__close_error_msg")
-                        )
-                    }
+                    // Show force transfer sheet
+                    sheets.showSheet(.forceTransfer)
                 }
             }
         } catch {
@@ -103,31 +91,17 @@ struct CloseConnectionConfirmation: View {
             DispatchQueue.main.async {
                 dismiss()
 
-                // Check if channel is a trusted peer (cannot force close)
-                let (trustedChannels, _) = LightningService.shared.separateTrustedChannels([channel])
-                let isTrustedPeer = !trustedChannels.isEmpty
+                app.toast(
+                    type: .error,
+                    title: t("lightning__close_error"),
+                    description: error.localizedDescription
+                )
 
-                if isTrustedPeer {
-                    // Cannot force close trusted peer channel
-                    app.toast(
-                        type: .error,
-                        title: t("lightning__close_error"),
-                        description: t("lightning__close_error_msg")
-                    )
-                } else {
-                    // Show error toast
-                    app.toast(
-                        type: .error,
-                        title: t("lightning__close_error"),
-                        description: error.localizedDescription
-                    )
+                // Store the channel for force close
+                transfer.channelsToClose = [channel]
 
-                    // Store the channel for force close
-                    transfer.channelsToClose = [channel]
-
-                    // Show force transfer sheet
-                    sheets.showSheet(.forceTransfer)
-                }
+                // Show force transfer sheet
+                sheets.showSheet(.forceTransfer)
             }
         }
 
@@ -141,6 +115,7 @@ struct CloseConnectionConfirmation: View {
             .environmentObject(TransferViewModel())
             .environmentObject(AppViewModel())
             .environmentObject(SheetViewModel())
+            .environmentObject(NavigationViewModel())
     }
     .preferredColorScheme(.dark)
 }

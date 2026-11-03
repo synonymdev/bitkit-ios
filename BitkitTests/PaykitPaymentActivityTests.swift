@@ -50,13 +50,14 @@ final class PaykitPaymentActivityTests: XCTestCase {
         XCTAssertTrue(didRefresh)
     }
 
-    func testProofInvalidationsCoalesceUntilForegroundAndPaymentIdle() async throws {
+    func testProofInvalidationsCoalesceUntilForegroundAndPaymentReviewIdle() async throws {
         let profile = PubkyProfileManager()
         profile.publicKey = "pubky\(String(repeating: "z", count: 52))"
         let session = try XCTUnwrap(profile.currentSession)
         var state = PaykitPaymentProofRefreshState()
         let activity = PaykitPaymentActivity()
         let payment = activity.begin()
+        let review = activity.beginReview()
         for _ in 0 ..< 3 {
             state.invalidate(session: session)
             XCTAssertNil(state.request(session: session, isActive: false))
@@ -64,13 +65,17 @@ final class PaykitPaymentActivityTests: XCTestCase {
         let request = try XCTUnwrap(state.request(session: session, isActive: true))
         var refreshes = 0
         let work = Task {
-            try await activity.waitUntilIdle()
+            try await activity.waitUntilIdle(includingReviews: true)
             refreshes += 1
             state.complete(request)
         }
         await Task.yield()
         XCTAssertEqual(refreshes, 0)
         activity.end(payment)
+        await Task.yield()
+        XCTAssertEqual(refreshes, 0)
+        XCTAssertEqual(state.request(session: session, isActive: true), request)
+        activity.endReview(review)
         try await work.value
         XCTAssertEqual(refreshes, 1)
         XCTAssertNil(state.request(session: session, isActive: true))

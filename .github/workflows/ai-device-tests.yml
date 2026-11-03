@@ -107,7 +107,6 @@ jobs:
           E2E: "true"
           E2E_BACKEND: "local"
           E2E_NETWORK: "regtest"
-          GEO: "false"
           SIMULATOR_NAME: ${{ inputs.simulator_name }}
           SIMULATOR_OS: ${{ inputs.simulator_os }}
         run: |

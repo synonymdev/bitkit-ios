@@ -31,6 +31,7 @@ extension PrivatePaykitService {
             } else {
                 var contactState = ContactState()
                 contactState.consumedPrivatePaymentListVersion = consumedVersion
+                contactState.consumedPrivatePaymentListOwner = state.contacts[key]?.consumedPrivatePaymentListOwner
                 state.contacts[key] = contactState
             }
         }

@@ -13,7 +13,7 @@ final class TabBarReceiveTests: XCTestCase {
         XCTAssertFalse(wallet.canCreateReceiveLightningInvoice)
         XCTAssertTrue(wallet.canCreateReceiveLightningInvoice(amountSats: nil))
         XCTAssertFalse(
-            TabBar.shouldOpenSpendingCjitEntry(
+            TabBar.shouldOpenSpendingTransferUnavailable(
                 isSpendingWallet: true,
                 wallet: wallet,
                 hasPendingTransfersToSpending: false
@@ -25,7 +25,7 @@ final class TabBarReceiveTests: XCTestCase {
         let wallet = WalletViewModel()
 
         XCTAssertTrue(
-            TabBar.shouldOpenSpendingCjitEntry(
+            TabBar.shouldOpenSpendingTransferUnavailable(
                 isSpendingWallet: true,
                 wallet: wallet,
                 hasPendingTransfersToSpending: false
@@ -37,7 +37,7 @@ final class TabBarReceiveTests: XCTestCase {
         ]
 
         XCTAssertFalse(
-            TabBar.shouldOpenSpendingCjitEntry(
+            TabBar.shouldOpenSpendingTransferUnavailable(
                 isSpendingWallet: true,
                 wallet: wallet,
                 hasPendingTransfersToSpending: false
@@ -49,7 +49,7 @@ final class TabBarReceiveTests: XCTestCase {
         let wallet = WalletViewModel()
 
         XCTAssertFalse(
-            TabBar.shouldOpenSpendingCjitEntry(
+            TabBar.shouldOpenSpendingTransferUnavailable(
                 isSpendingWallet: false,
                 wallet: wallet,
                 hasPendingTransfersToSpending: false
@@ -57,7 +57,7 @@ final class TabBarReceiveTests: XCTestCase {
         )
 
         XCTAssertFalse(
-            TabBar.shouldOpenSpendingCjitEntry(
+            TabBar.shouldOpenSpendingTransferUnavailable(
                 isSpendingWallet: true,
                 wallet: wallet,
                 hasPendingTransfersToSpending: true

@@ -2,8 +2,7 @@
 import BitkitCore
 import Foundation
 
-/// Shared mocks for the hardware-wallet transfer tests (`HwFundingSignerTests`,
-/// `TransferViewModelHwTests`).
+/// Shared mocks for the hardware-wallet funding tests (`HwFundingSignerTests`).
 @MainActor
 final class MockHwFunding: HwTransferFunding {
     struct TestError: Error {}

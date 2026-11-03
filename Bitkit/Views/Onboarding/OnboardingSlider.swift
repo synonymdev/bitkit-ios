@@ -59,7 +59,6 @@ struct OnboardingSlider: View {
                         imageName: "lightning",
                         title: t("onboarding__slide1_header"),
                         text: t("onboarding__slide1_text_alt"),
-                        disclaimerText: GeoService.shared.isGeoBlocked ? t("onboarding__slide1_note") : nil,
                         accentColor: .purpleAccent
                     )
                     .tag(1)

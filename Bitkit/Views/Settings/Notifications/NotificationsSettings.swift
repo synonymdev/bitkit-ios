@@ -44,18 +44,8 @@ struct NotificationsSettings: View {
                         .padding(.top, 16)
                 }
 
-                NotificationPreview(disabled: !settings.enableNotifications, enableAmount: settings.enableNotificationsAmount)
+                NotificationPreview(disabled: !settings.enableNotifications)
                     .padding(.top, 16)
-
-                if !isDenied {
-                    CaptionMText(t("settings__notifications__settings__privacy__label"))
-                        .padding(.top, 32)
-
-                    SettingsRow(
-                        title: t("settings__notifications__settings__privacy__text"),
-                        toggle: $settings.enableNotificationsAmount
-                    )
-                }
 
                 CaptionMText(t("settings__notifications__settings__notifications__label"))
                     .padding(.top, 32)

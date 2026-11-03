@@ -32,7 +32,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
     func testQuotedWalletSwitchRebindsAmountOnConfirmation() async throws {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
-        let request = try quotedOnchainRequest(acceptsLightning: true, rates: [
+        let request = try onchainRequest(acceptsLightning: true, rates: [
             ConversionRate(asset: "btc", value: "0.000002188"),
             ConversionRate(asset: "btc-lightning", value: "0.00002"),
         ])
@@ -83,7 +83,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
         for failure in ["unreviewed", "unavailable", "expired", "lightningMinimum", "onchainMinimum"] {
-            let request = try quotedOnchainRequest(acceptsLightning: true)
+            let request = try onchainRequest(acceptsLightning: true)
             let wallet = ControlledSendWallet(operation: .fee)
             let app = AppViewModel()
             let sheets = SheetViewModel()
@@ -118,7 +118,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
                 if failure != "unavailable" {
                     rates.append(ConversionRate(asset: "btc-lightning", value: failure == "lightningMinimum" ? "0.000001" : "0.00002"))
                 }
-                let changed = try quotedOnchainRequest(
+                let changed = try onchainRequest(
                     acceptsLightning: true, rates: rates,
                     deadline: failure == "expired" ? .at(timestamp: "2000-01-01T00:00:00Z") : nil
                 )
@@ -145,7 +145,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
     func testDirectQuotedOnchainReviewPreparesSavedCoinSelection() async throws {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
-        let request = try quotedOnchainRequest()
+        let request = try onchainRequest()
         for (manual, fails, retryRate) in [
             (false, false, false), (true, false, false), (false, true, false), (true, true, false), (false, false, true),
         ] {
@@ -167,15 +167,20 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             }
             SettingsViewModel.shared.coinSelectionMethod = manual ? .manual : .autopilot
             SettingsViewModel.shared.coinSelectionAlgorithm = .largestFirst
+            let setup = SendConfirmationTestSetup()
             let navigation = SendConfirmationTestNavigation()
             let window = host(
                 app: app, wallet: wallet, sheets: sheets,
-                path: Binding(get: { navigation.path }, set: { navigation.path = $0 }), navigation: navigation
+                path: Binding(get: { navigation.path }, set: { navigation.path = $0 }), navigation: navigation, setup: setup
             )
             defer {
                 close(window)
                 ToastWindowManager.shared.hideToast()
             }
+            try await navigation.waitForAppearance(.confirm)
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertEqual(wallet.preparationCount, 0)
+            setup.isPending = false
             if retryRate {
                 try await navigation.waitForAppearance(.confirm)
                 try await Task.sleep(for: .milliseconds(100))
@@ -201,10 +206,172 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         }
     }
 
+    func testRequestHardwareFundingWaitsForSetupBeforePreparingCoins() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        for (manual, quoted) in [(false, false), (true, false), (false, true), (true, true)] {
+            let request = try onchainRequest(isQuoted: quoted)
+            let wallet = ControlledSendWallet(operation: manual ? .manualUtxos : .selection, fails: !manual)
+            let app = AppViewModel()
+            let sheets = SheetViewModel()
+            sheets.activeSheetConfiguration = SheetConfiguration(id: .send, data: nil)
+            app.scannedOnchainInvoice = invoice
+            app.selectedWalletToPayFrom = .onchain
+            app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+            app.paykitPaymentTerms = try request.payment(using: app.paykitPaymentMethod)
+            app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
+            wallet.sendAmountSats = app.paykitPaymentTerms?.amount.atomic
+            SettingsViewModel.shared.coinSelectionMethod = manual ? .manual : .autopilot
+            let funding = MockHwFunding()
+            let connecting = MockHwConnecting()
+            let hwSend = HwSendCoordinator(signerFactory: { _, address, rate in
+                HwFundingSigner(funding: funding, connecting: connecting, feeRateProvider: { rate },
+                                addressProvider: { address }, timeouts: (5, 5, 5))
+            })
+            let setup = SendConfirmationTestSetup()
+            let navigation = SendConfirmationTestNavigation()
+            navigation.path = []
+            let window = host(
+                app: app, wallet: wallet, sheets: sheets,
+                path: Binding(get: { navigation.path }, set: { navigation.path = $0 }),
+                navigation: navigation, setup: setup, confirmationIsRoot: true, hwSend: hwSend
+            )
+            defer { close(window); wallet.resume(); ToastWindowManager.shared.hideToast() }
+            try await navigation.waitForAppearance(.confirm)
+            wallet.selectedFeeRateSatsPerVByte = 2
+            try await Task.sleep(for: .milliseconds(150))
+            // Finish any premature Savings operation so its navigation effect is observable.
+            wallet.resume()
+            try await Task.sleep(for: .milliseconds(150))
+            XCTAssertEqual(wallet.preparationCount, 0, "Funding selection is still pending")
+            XCTAssertTrue(navigation.path.isEmpty, "Pending hardware funding must not open Amount or the Savings picker")
+
+            hwSend.selectWallet("trezor:test-wallet", initialAvailableSats: 999_890)
+            setup.isPending = false
+            let deadline = ContinuousClock.now + .seconds(3)
+            while hwSend.previewFeeSats == 0, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            XCTAssertEqual(hwSend.previewFeeSats, 141)
+            XCTAssertTrue(navigation.path.isEmpty)
+            XCTAssertEqual(wallet.preparationCount, 0)
+            XCTAssertEqual(app.paykitReviewedAmount, app.paykitPaymentTerms?.amount)
+            XCTAssertEqual(funding.estimateCalls.last?.sats, wallet.sendAmountSats)
+            XCTAssertEqual(funding.signCalls, 0)
+            XCTAssertEqual(funding.broadcastCalls, 0)
+            XCTAssertTrue(setup.pinChecks.isEmpty)
+        }
+    }
+
+    func testCoinPreparationFailureBackClosesUnreviewedConfirmationRoot() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        for (manual, quoted, reviewAgain) in [(false, true, false), (true, true, false), (false, false, false), (false, true, true)] {
+            let request = try onchainRequest(isQuoted: quoted)
+            let wallet = ControlledSendWallet(operation: manual ? .manualUtxos : .selection, fails: true)
+            let app = AppViewModel()
+            let sheets = SheetViewModel()
+            sheets.activeSheetConfiguration = SheetConfiguration(id: .send, data: nil)
+            app.scannedOnchainInvoice = invoice
+            app.selectedWalletToPayFrom = .onchain
+            app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+            app.paykitPaymentTerms = try request.payment(using: app.paykitPaymentMethod)
+            app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
+            wallet.sendAmountSats = app.paykitPaymentTerms?.amount.atomic
+            wallet.selectedFeeRateSatsPerVByte = 2
+            SettingsViewModel.shared.coinSelectionMethod = manual ? .manual : .autopilot
+            let navigation = SendConfirmationTestNavigation()
+            navigation.path = []
+            let window = host(
+                app: app, wallet: wallet, sheets: sheets,
+                path: Binding(get: { navigation.path }, set: { navigation.path = $0 }), navigation: navigation, confirmationIsRoot: true
+            )
+            defer {
+                close(window)
+                ToastWindowManager.shared.hideToast()
+            }
+            await fulfillment(of: [wallet.started], timeout: 3)
+            wallet.resume()
+            await fulfillment(of: [wallet.finished], timeout: 3)
+            try await navigation.waitForAppearance(.amount)
+            XCTAssertEqual(navigation.path, [.amount])
+            XCTAssertNotNil(sheets.activeSheetConfiguration)
+            XCTAssertNil(wallet.selectedUtxos)
+            XCTAssertNil(app.paykitPaymentTerms)
+            XCTAssertNil(app.paykitReviewedAmount)
+            let preparationsBeforeBack = wallet.preparationCount
+
+            guard navigation.path.last == .amount else { continue }
+            if reviewAgain {
+                app.paykitPaymentTerms = try request.payment(using: app.paykitPaymentMethod)
+                app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
+                wallet.selectedUtxos = []
+            }
+            navigation.path.removeLast()
+            try await Task.sleep(for: .milliseconds(500))
+
+            XCTAssertTrue(navigation.path.isEmpty, "Back must not reopen Amount after failed coin preparation")
+            XCTAssertEqual(sheets.activeSheetConfiguration != nil, reviewAgain,
+                           "Only an explicitly reviewed fallback may return to confirmation")
+            XCTAssertEqual(wallet.preparationCount, preparationsBeforeBack, "Back must not retry coin preparation")
+            XCTAssertEqual(wallet.successfulCoinPreparations, 0)
+        }
+    }
+
+    func testRequestFeeFailureAfterCoinSelectionReturnsToAmountReview() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        for quoted in [false, true] {
+            let request = try onchainRequest(isQuoted: quoted)
+            let wallet = ControlledSendWallet(operation: .selection, failsFeeCalculation: true)
+            let app = AppViewModel()
+            let sheets = SheetViewModel()
+            sheets.activeSheetConfiguration = SheetConfiguration(id: .send, data: nil)
+            app.scannedOnchainInvoice = invoice
+            app.selectedWalletToPayFrom = .onchain
+            app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+            app.paykitPaymentTerms = try request.payment(using: app.paykitPaymentMethod)
+            app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
+            wallet.sendAmountSats = app.paykitPaymentTerms?.amount.atomic
+            wallet.selectedFeeRateSatsPerVByte = 2
+            SettingsViewModel.shared.coinSelectionMethod = .autopilot
+            let navigation = SendConfirmationTestNavigation()
+            navigation.path = []
+            let window = host(
+                app: app, wallet: wallet, sheets: sheets,
+                path: Binding(get: { navigation.path }, set: { navigation.path = $0 }), navigation: navigation, confirmationIsRoot: true
+            )
+            defer {
+                close(window)
+                ToastWindowManager.shared.hideToast()
+            }
+            await fulfillment(of: [wallet.started], timeout: 3)
+            wallet.resume()
+            await fulfillment(of: [wallet.finished], timeout: 3)
+            try await navigation.waitForAppearance(.amount)
+
+            XCTAssertEqual(wallet.successfulCoinPreparations, 1)
+            XCTAssertNotNil(wallet.selectedUtxos)
+            XCTAssertEqual(wallet.feeUtxos, wallet.selectedUtxos)
+            XCTAssertEqual(navigation.path, [.amount])
+            XCTAssertNil(app.paykitPaymentTerms)
+            XCTAssertNil(app.paykitReviewedAmount)
+            XCTAssertNotNil(sheets.activeSheetConfiguration)
+            let preparationsBeforeBack = wallet.preparationCount
+
+            guard navigation.path.last == .amount else { continue }
+            navigation.path.removeLast()
+            try await Task.sleep(for: .milliseconds(500))
+            XCTAssertTrue(navigation.path.isEmpty)
+            XCTAssertNil(sheets.activeSheetConfiguration, "Back must not reopen a confirmation whose fee failed")
+            XCTAssertEqual(wallet.preparationCount, preparationsBeforeBack)
+        }
+    }
+
     func testQuotedRequestManualPickerBackReturnsToConfirmation() async throws {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
-        let request = try quotedOnchainRequest()
+        let request = try onchainRequest()
         let wallet = ControlledSendWallet(operation: .manualUtxos)
         let app = AppViewModel()
         let sheets = SheetViewModel()
@@ -704,6 +871,52 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         XCTAssertEqual(setup.pinChecks, [false], "The payment starts once and is not cancelled while it awaits the PIN")
     }
 
+    func testRecreatedConfirmationDoesNotAuthorizeWhilePaymentIsSubmitting() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let settings = SettingsViewModel.shared
+        let pinEnabled = settings.pinEnabled
+        addTeardownBlock { @MainActor in settings.pinEnabled = pinEnabled }
+        settings.pinEnabled = true
+        settings.requirePinForPayments = true
+        settings.useBiometrics = false
+        settings.coinSelectionMethod = .autopilot
+        let app = AppViewModel()
+        let wallet = WalletViewModel()
+        let sheets = SheetViewModel()
+        sheets.activeSheetConfiguration = SheetConfiguration(id: .send, data: nil)
+        app.contactPaymentContext = ContactPaymentContext(publicKey: "pubkytest", isInitialSubscriptionPayment: true)
+        app.scannedLightningInvoice = LightningInvoice(
+            bolt11: "test-invoice", paymentHash: Data(), amountSatoshis: 6007,
+            timestampSeconds: 0, expirySeconds: 0, isExpired: false,
+            description: nil, networkType: .regtest, payeeNodeId: nil
+        )
+        app.selectedWalletToPayFrom = .lightning
+        wallet.sendAmountSats = 6007
+        wallet.totalLightningSats = 1_000_000
+        let setup = SendConfirmationTestSetup()
+        setup.isPending = false
+        var isSubmittingPayment = true
+        var path: [SendRoute] = []
+
+        for _ in 0 ..< 2 {
+            let window = host(
+                app: app,
+                wallet: wallet,
+                sheets: sheets,
+                path: Binding(get: { path }, set: { path = $0 }),
+                setup: setup,
+                isSubmittingPayment: Binding(get: { isSubmittingPayment }, set: { isSubmittingPayment = $0 })
+            )
+            try await Task.sleep(for: .milliseconds(500))
+            close(window)
+        }
+
+        XCTAssertTrue(setup.pinChecks.isEmpty, "Restoring an in-flight payment must not request authorization again")
+        XCTAssertTrue(path.isEmpty, "Ignoring the duplicate entry must preserve the original payment's navigation")
+        XCTAssertTrue(isSubmittingPayment, "The original payment owns the retained submission flag")
+    }
+
     private func host(
         app: AppViewModel,
         wallet: WalletViewModel,
@@ -711,13 +924,15 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         path: Binding<[SendRoute]>,
         navigation: SendConfirmationTestNavigation? = nil,
         setup: SendConfirmationTestSetup? = nil,
-        confirmationIsRoot: Bool = false
+        confirmationIsRoot: Bool = false,
+        isSubmittingPayment: Binding<Bool> = .constant(false),
+        hwSend: HwSendCoordinator? = nil
     ) -> UIWindow {
-        let hwSend = HwSendCoordinator()
+        let hwSend = hwSend ?? HwSendCoordinator()
         let makeConfirmation = { (isSetupPending: Bool) in
             SendConfirmationView(
                 navigationPath: path,
-                isSubmittingPayment: .constant(false),
+                isSubmittingPayment: isSubmittingPayment,
                 hwSend: hwSend,
                 requestPinCheck: {
                     guard let setup else {
@@ -803,7 +1018,8 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         window.rootViewController = nil
     }
 
-    private func quotedOnchainRequest(
+    private func onchainRequest(
+        isQuoted: Bool = true,
         acceptsLightning: Bool = false,
         rates: [ConversionRate] = [
             ConversionRate(asset: "btc", value: "0.00001"),
@@ -824,7 +1040,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             payerAppId: nil,
             executionClaimAppId: nil,
             terms: PaymentRequestTerms(
-                amount: PaymentRequestAmount(value: "2.50", asset: "usd"),
+                amount: PaymentRequestAmount(value: isQuoted ? "2.50" : "0.000025", asset: isQuoted ? "usd" : "btc"),
                 paymentReference: PaymentReference(text: "invoice-123"),
                 proposalExpiresAt: nil,
                 recurrence: nil,
@@ -834,7 +1050,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
                 ] : [PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue],
                 paymentEndpoints: nil,
                 requiredAppId: "bitkit",
-                conversion: .fixed(rates: rates),
+                conversion: isQuoted ? .fixed(rates: rates) : nil,
                 paymentDeadline: deadline,
                 metadata: PrivateJsonObject(text: "{}")
             ),
@@ -903,6 +1119,7 @@ private final class ControlledSendWallet: WalletViewModel {
     let coinPrepared = XCTestExpectation(description: "Current send coin preparation applied")
     private let operation: Operation
     private let fails: Bool
+    private let failsFeeCalculation: Bool
     private let suspendsResumedPreparation: Bool
     private var continuation: CheckedContinuation<Void, Never>?
     private(set) var wasCancelled = false
@@ -912,12 +1129,13 @@ private final class ControlledSendWallet: WalletViewModel {
     var feeUtxos: [SpendableUtxo]?
     private(set) var routingAmounts: [UInt64?] = []
 
-    init(operation: Operation, fails: Bool = false, suspendsResumedPreparation: Bool = false) {
+    init(operation: Operation, fails: Bool = false, failsFeeCalculation: Bool = false, suspendsResumedPreparation: Bool = false) {
         self.operation = operation
         self.fails = fails
+        self.failsFeeCalculation = failsFeeCalculation
         self.suspendsResumedPreparation = suspendsResumedPreparation
         super.init(
-            transferService: TransferService(lightningService: .shared, blocktankService: Bitkit.CoreService.shared.blocktank),
+            transferService: TransferService(lightningService: .shared),
             sheetViewModel: SheetViewModel(),
             feeEstimatesManager: FeeEstimatesManager()
         )
@@ -959,6 +1177,9 @@ private final class ControlledSendWallet: WalletViewModel {
                                     utxosToSpend: [SpendableUtxo]? = nil) async throws -> UInt64
     {
         feeUtxos = utxosToSpend
+        if failsFeeCalculation {
+            throw Bitkit.AppError(message: "Insufficient funds for fee", debugMessage: nil)
+        }
         return 10
     }
 

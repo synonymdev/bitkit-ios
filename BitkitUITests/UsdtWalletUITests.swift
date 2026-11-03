@@ -147,10 +147,14 @@ final class UsdtWalletUITests: XCTestCase {
         XCTAssertTrue(confirm.waitForExistence(timeout: 40), app.debugDescription)
         capture(app, "USDT review")
         app.buttons["UsdtReviewDetails"].tap()
-        XCTAssertTrue(app.staticTexts["0x1111111111111111111111111111111111111111"].exists)
+        let reviewAddress = app.buttons["UsdtReviewAddress"]
+        XCTAssertTrue(reviewAddress.waitForExistence(timeout: 5))
+        XCTAssertEqual(reviewAddress.label, "0x1111111111111111111111111111111111111111")
         capture(app, "USDT review details")
-        let start = confirm.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5))
-        let end = confirm.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5))
+        let grab = try XCTUnwrap(confirm.descendants(matching: .any).matching(identifier: "GRAB")
+            .allElementsBoundByIndex.first(where: \.isHittable))
+        let start = grab.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let end = start.withOffset(CGVector(dx: app.frame.width * 0.8, dy: 0))
         start.press(forDuration: 0.1, thenDragTo: end)
         let warning = app.alerts["Are You Sure?"]
         let feeWarning = warning.staticTexts[

@@ -46,13 +46,6 @@ extension HwWalletVendor {
         }
     }
 
-    var transferSignButtonTitle: String {
-        switch self {
-        case .trezor: t("lightning__transfer_hw__open_connect")
-        case .blockstream: t("hardware__send_open_connect_jade")
-        }
-    }
-
     /// Passphrase (hidden) wallets are a Trezor feature; a Jade holds one wallet per device.
     var supportsPassphraseWallets: Bool {
         switch self {

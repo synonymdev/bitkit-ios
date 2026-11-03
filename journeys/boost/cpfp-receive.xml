@@ -1,0 +1,19 @@
+<journey name="boost received onchain payment by child">
+  <description>
+    Verifies that Boost on an unconfirmed incoming payment still pays for it with a child transaction:
+    the original receive keeps its transaction ID and a separate Boost Fee entry appears, and both
+    confirm after a block. Preconditions: a synced wallet and access to the configured regtest
+    backend's deposit and block-mining helpers.
+  </description>
+  <actions>
+    <action>Tap Receive (id "Receive"), tap the "Savings" receive tab (id "Tab-savings"), tap "Show Details" (id "ShowDetails"), read the address from id "ReceiveOnchainAddress", and swipe the Receive sheet down to the home screen</action>
+    <action>Deposit 100,000 sats to it with ../bitkit-android/lsp POST /regtest/chain/deposit '{"address":"ADDRESS","amountSat":100000}' and mine no block</action>
+    <action>Wait for the incoming entry (id "ActivityShort-0") to show +100,000 sats, open it, tap Transaction details (id "ActivityTxDetails"), record the TXID, then go back</action>
+    <action>Tap Boost (id "BoostButton") and verify the child-pays boost sheet (id "CPFPBoost") is visible</action>
+    <action>Swipe the boost handle (id "GRAB") fully to the right and verify the boost success toast (id "BoostSuccessToast") appears</action>
+    <action>Verify the activity list shows the boosting icon (id "BoostingIcon"), a new outgoing Boost Fee entry (id "ActivityShort-0") and the +100,000 sats receive (id "ActivityShort-1"), and no third entry</action>
+    <action>Open the receive and verify Boosted (id "BoostedButton") and the Boosting status (id "StatusBoosting"), then tap Transaction details (id "ActivityTxDetails") and verify the TXID matches the recorded one and the boost transaction is listed (id "CPFPBoosted")</action>
+    <action>Mine one regtest block with ../bitkit-android/lsp POST /regtest/chain/mine '{"count":1}', borrowed from the sibling Android checkout; a successful command exits with status 0 and prints nothing</action>
+    <action>Return to the activity list and verify both the Boost Fee entry and the receive show Confirmed (id "StatusConfirmed") when opened</action>
+  </actions>
+</journey>

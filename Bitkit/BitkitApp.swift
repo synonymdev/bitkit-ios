@@ -141,7 +141,13 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         Logger.debug("🔔 AppDelegate: UserInfo: \(userInfo)")
         Logger.debug("🔔 AppDelegate: Notification content: \(notification.request.content)")
 
-        completionHandler([[.banner, .badge, .sound]])
+        completionHandler(Self.foregroundPresentationOptions(for: userInfo))
+    }
+
+    /// The app already shows a due subscription payment in-app while in the foreground, so its notification stays silent.
+    static func foregroundPresentationOptions(for userInfo: [AnyHashable: Any]) -> UNNotificationPresentationOptions {
+        guard userInfo["bitkit_action"] as? String != "paykit_subscription_due" else { return [] }
+        return [.banner, .badge, .sound]
     }
 
     /// Handle taps on notifications

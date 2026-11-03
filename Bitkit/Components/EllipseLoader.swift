@@ -3,6 +3,7 @@ import SwiftUI
 /// Variants of the ellipse loader: ellipse colors, animation, and center content are defined per variant.
 enum EllipseLoaderVariant {
     case sync
+    case syncOnchain
     case quickpay
     case transfer
     case hardware
@@ -10,6 +11,7 @@ enum EllipseLoaderVariant {
     var accentColor: String {
         switch self {
         case .sync, .quickpay, .transfer: return "purple"
+        case .syncOnchain: return "brand"
         case .hardware: return "blue"
         }
     }
@@ -17,13 +19,14 @@ enum EllipseLoaderVariant {
     var centerScale: CGFloat {
         switch self {
         case .sync, .transfer, .hardware: return 0.85
+        case .syncOnchain: return 0.82
         case .quickpay: return 1
         }
     }
 
     var ellipseAnimation: Animation {
         switch self {
-        case .sync:
+        case .sync, .syncOnchain:
             return Animation.easeOut(duration: 1.5).repeatForever(autoreverses: true)
         case .quickpay:
             return Animation.easeOut(duration: 1.6).repeatForever(autoreverses: true)
@@ -114,6 +117,10 @@ struct EllipseLoader: View {
         switch variant {
         case .sync:
             Image("lightning")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+        case .syncOnchain:
+            Image("bitcoin-emboss")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
         case .quickpay:

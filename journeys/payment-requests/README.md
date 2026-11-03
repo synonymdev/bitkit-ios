@@ -18,6 +18,11 @@ Fractional-satoshi Lightning payments and dynamic quotes remain unsupported.
 Fixed requests, including due subscription payments, open confirmation on both platforms.
 The same dropdown as amount entry selects Spending, Savings, available hardware wallets, or
 USDT while retaining the request's exact amount and requiring a confirmation swipe.
+On iOS, initially below-minimum Savings or LNURL quotes stay on Amount with Continue disabled,
+and Back after failed automatic coin preparation closes that fallback review. A controlled manual
+UTXO-loading failure exercises the same Back behavior in `SendConfirmationLifecycleTests`; the
+standard journey environment has no selector for that fault, so the automatic failure journey is
+not evidence for the manual fault case.
 
 ### Setup
 
@@ -133,6 +138,16 @@ resolution attempts. Do not use a malformed request for the UI journey because p
 correctly prevents it from entering the presentation queue.
 
 ## Request summary
+
+`review-refresh.xml` checks that an unpaid Bitcoin review resumes after app unlock without
+dismissing and reopening the sheet. iOS recreates the send view on app lock; Android keeps
+its content beneath the lock overlay. The iOS journey therefore explicitly checks the
+restored fee, ready swipe control and Show Details before authorizing. Its additional iOS
+app-lock steps start from amount and method selection for a fixed USD request, select Bitcoin,
+and lock both confirmation and payment PIN entry. Unlock must return to unpaid Bitcoin
+confirmation with the reviewed conversion amount and require fresh payment authorization.
+These steps need a conversion-capable linked issuer with current local endpoints; mark them
+blocked when unavailable. They do not make a USDT payment.
 
 `request-summary.xml` is ported alongside Android's matching journey.
 The USDT history step in `request-summary.xml` requires both instances opted in, a payer funded with
@@ -275,3 +290,16 @@ must explain that its payment details are unsupported and offer no Subscribe con
 `minimum-onchain-amount.xml` checks requests below the on-chain minimum, including
 manual retry and a subsequent request at the 547-sat minimum. It uses the same fixture
 setup and actions on iOS and Android, and stops before sending funds.
+
+## Automatic refresh during review
+
+`automatic-presentation.xml` starts after a foreground resume and checks that each received request
+appears once. `review-refresh.xml` sends a second request while the first confirmation is open,
+then checks that the original review remains usable and the second request arrives after cancellation.
+Allow ordinary foreground polling and synchronization to finish; these steps set no arrival deadline
+and do not require an immediate refresh when review closes.
+
+The exact overlap of a saved-contact callback, message receipt, and a queued SDK operation requires
+controlled callback timing outside the journey capabilities. Repository tests cover that ordering,
+automatic forced-refresh deferral, and later polling. These journeys check the visible request and
+payment safeguards without claiming that a specific callback race occurred.

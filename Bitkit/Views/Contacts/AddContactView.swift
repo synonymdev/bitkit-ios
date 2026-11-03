@@ -12,6 +12,7 @@ struct AddContactView: View {
     @Environment(HwWalletManager.self) private var hwWalletManager
 
     let publicKey: String
+    var loadPaymentEndpoint: (String) async throws -> Bool = PublicPaykitService.hasPayablePublicEndpoint
 
     @State private var fetchedProfile: PubkyProfile?
     @State private var isLoading = true
@@ -54,6 +55,12 @@ struct AddContactView: View {
         .navigationBarHidden(true)
         .task {
             await loadProfile()
+        }
+        .task(id: fetchedProfile?.publicKey) { [profileKey = fetchedProfile?.publicKey] in
+            guard let profileKey, !Task.isCancelled, fetchedProfile?.publicKey == profileKey else { return }
+            let hasEndpoint = await (try? loadPaymentEndpoint(profileKey)) == true
+            guard !Task.isCancelled, fetchedProfile?.publicKey == profileKey else { return }
+            hasPayableEndpoint = hasEndpoint
         }
     }
 
@@ -221,8 +228,8 @@ struct AddContactView: View {
             return
         case let .valid(normalizedKey):
             if let profile = await contactsManager.fetchContactProfile(publicKey: normalizedKey, includePlaceholder: true, retryTransient: true) {
+                guard !Task.isCancelled else { return }
                 fetchedProfile = profile
-                hasPayableEndpoint = await (try? PublicPaykitService.hasPayablePublicEndpoint(publicKey: normalizedKey)) == true
             } else {
                 errorMessage = t("contacts__add_error")
             }
@@ -234,6 +241,7 @@ struct AddContactView: View {
     // MARK: - Save Contact
 
     private func saveContact() async {
+        guard !isSaving else { return }
         isSaving = true
         defer { isSaving = false }
 

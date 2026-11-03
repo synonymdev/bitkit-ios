@@ -11,6 +11,7 @@ struct HardwareWalletScreen: View {
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @Environment(HwWalletManager.self) private var hwWalletManager
     @Environment(TrezorManager.self) private var trezorManager
 
@@ -40,9 +41,6 @@ struct HardwareWalletScreen: View {
         .accessibilityIdentifier("HardwareWalletScreen")
         .task(id: wallet?.walletId) {
             await loadActivities()
-        }
-        .task {
-            await app.checkGeoStatus()
         }
         .onReceive(activity.activitiesChangedPublisher) { _ in
             Task { await loadActivities() }
@@ -127,14 +125,9 @@ struct HardwareWalletScreen: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: 16, height: 16)
-                .foregroundColor(.white80),
-            isDisabled: GeoService.shared.isGeoBlocked
+                .foregroundColor(.white80)
         ) {
-            if app.hasSeenTransferToSpendingIntro {
-                navigation.navigate(.spendingAmountHw(walletId: walletId))
-            } else {
-                navigation.navigate(.spendingIntroHw(walletId: walletId))
-            }
+            sheets.showSheet(.transferUnavailable)
         }
         .accessibilityIdentifier("HardwareTransferToSpending")
     }
@@ -204,14 +197,13 @@ private struct DeviceIllustrationPlacement {
         case .trezor:
             rotation = .degrees(-15)
             offset = CGSize(width: 9, height: 13)
-            trailingOverhang = 118
+            trailingOverhang = 105
         case .blockstream:
-            // The Jade asset lies landscape with its own tilt, so turning it 86° stands it upright with
-            // the same lean as the Trezor and the wordmark reading left to right. The smaller overhang
-            // keeps its screen, button and wordmark on screen above the activity list.
-            rotation = .degrees(86)
-            offset = CGSize(width: 9, height: -5)
-            trailingOverhang = 80
+            // The Jade asset already stands upright at a three-quarter angle, so it needs only a slight
+            // lean. The smaller overhang keeps its screen and wordmark on screen above the activity list.
+            rotation = .degrees(-5)
+            offset = CGSize(width: 0, height: 5)
+            trailingOverhang = 70
         }
     }
 }

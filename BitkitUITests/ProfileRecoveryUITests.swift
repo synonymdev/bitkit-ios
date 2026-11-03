@@ -24,14 +24,16 @@ final class ProfileRecoveryUITests: XCTestCase {
         for id in ["ProfileCopy", "ProfileQRCode"] {
             scrollToTop()
             app.buttons["ProfileFixtureResetClipboard"].tap()
+            waitForClipboard("not-copied")
             let copy = app.buttons[id]
             XCTAssertTrue(copy.isEnabled)
             copy.tap()
-            app.buttons["ProfileFixtureClipboard"].tap()
-            XCTAssertEqual(app.staticTexts["ProfileFixtureClipboardValue"].label, "profile-recovery-fixture")
             let popup = app.descendants(matching: .any)["ProfilePubkyCopiedToast"].firstMatch
-            XCTAssertTrue(popup.exists)
+            XCTAssertTrue(popup.waitForExistence(timeout: 5))
             popup.tap()
+            XCTAssertTrue(popup.waitForNonExistence(timeout: 5))
+            app.buttons["ProfileFixtureClipboard"].tap()
+            waitForClipboard("profile-recovery-fixture")
         }
 
         scrollToBottom()
@@ -92,6 +94,12 @@ final class ProfileRecoveryUITests: XCTestCase {
     private func waitForStatus(_ value: String) {
         let status = app.staticTexts["ProfileFixtureStatus"]
         let matches = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", value), object: status)
+        XCTAssertEqual(XCTWaiter.wait(for: [matches], timeout: 5), .completed)
+    }
+
+    private func waitForClipboard(_ value: String) {
+        let clipboard = app.staticTexts["ProfileFixtureClipboardValue"]
+        let matches = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", value), object: clipboard)
         XCTAssertEqual(XCTWaiter.wait(for: [matches], timeout: 5), .completed)
     }
 

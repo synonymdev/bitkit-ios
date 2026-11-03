@@ -35,11 +35,6 @@ class BalanceManager {
         let channels = await MainActor.run { lightningService.channels } ?? []
         let activeTransfers = try transferService.getActiveTransfers()
 
-        let paidOrdersSats = await getOrderPaymentsSats(
-            activeTransfers: activeTransfers,
-            channels: channels,
-            balances: balanceDetails
-        )
         let pendingChannelsSats = await getPendingChannelsSats(
             transfers: activeTransfers,
             channels: channels,
@@ -61,15 +56,9 @@ class BalanceManager {
         )
 
         let toSavingsAmount = pendingCloseAmount
-        let toSpendingAmount = paidOrdersSats + pendingChannelsSats
-
-        let ordersOnchainToSubtract = getOrderPaymentOnchainToSubtract(
-            activeTransfers: activeTransfers,
-            currentOnchainSats: balanceDetails.totalOnchainBalanceSats
-        )
+        let toSpendingAmount = pendingChannelsSats
 
         let totalOnchainSats = balanceDetails.totalOnchainBalanceSats
-            .minusOrZero(ordersOnchainToSubtract)
         let totalLightningSats = balanceDetails.totalLightningBalanceSats
             .minusOrZero(pendingChannelsSats)
             .minusOrZero(lightningToSubtract)
@@ -92,7 +81,7 @@ class BalanceManager {
             "Balances in ldk-node: onchain=\(balanceDetails.totalOnchainBalanceSats) lightning=\(balanceDetails.totalLightningBalanceSats)"
         )
         Logger.debug(
-            "Balances in state: onchain=\(totalOnchainSats) lightning=\(totalLightningSats) toSavings=\(toSavingsAmount) toSpending=\(toSpendingAmount) lnSubtract=\(lightningToSubtract) ordersOnchainSubtract=\(ordersOnchainToSubtract)"
+            "Balances in state: onchain=\(totalOnchainSats) lightning=\(totalLightningSats) toSavings=\(toSavingsAmount) toSpending=\(toSpendingAmount) lnSubtract=\(lightningToSubtract)"
         )
 
         return balanceState
@@ -100,69 +89,20 @@ class BalanceManager {
 
     // MARK: - Private Helper Methods
 
-    /// Calculates the total amount paid for LSP orders whose funds are not yet reflected in a
-    /// Lightning channel balance. The channel is resolved dynamically (via the order's funding tx),
-    /// so an order is dropped here as soon as LDK exposes its pending channel — where
-    /// getPendingChannelsSats then tracks it — preventing a double-count during the
-    /// paid-order → pending-channel transition (notably for hardware-wallet transfers, where LDK can
-    /// expose the pending channel before the transfer's channelId is persisted).
-    private func getOrderPaymentsSats(
-        activeTransfers: [Transfer],
-        channels: [ChannelDetails],
-        balances: BalanceDetails
-    ) async -> UInt64 {
-        var amount: UInt64 = 0
-        let paidOrders = activeTransfers.filter { $0.type.isToSpending() && $0.lspOrderId != nil }
-
-        for transfer in paidOrders {
-            let channelId = try? await transferService.resolveChannelId(for: transfer, channels: channels)
-            let channelBalance = channelId.flatMap { id in
-                balances.lightningBalances.first { $0.channelIdString == id }
-            }
-            if channelBalance == nil {
-                Logger.debug(
-                    "Order payment transfer: id=\(transfer.id) orderId=\(transfer.lspOrderId ?? "nil") amount=\(transfer.amountSats)"
-                )
-                amount += transfer.amountSats
-            }
-        }
-
-        return amount
-    }
-
-    /// Amount to subtract from displayed on-chain for order payments whose tx is not yet reflected in LDK.
-    private func getOrderPaymentOnchainToSubtract(activeTransfers: [Transfer], currentOnchainSats: UInt64) -> UInt64 {
-        let orderPayments = activeTransfers.filter {
-            $0.type.isToSpending() && $0.fundingTxId != nil && $0.lspOrderId != nil
-        }
-        var toSubtract: UInt64 = 0
-        for t in orderPayments {
-            guard let txTotal = t.txTotalSats, let pre = t.preTransferOnchainSats else { continue }
-            if currentOnchainSats >= pre {
-                toSubtract += txTotal
-            }
-        }
-        return toSubtract
-    }
-
-    /// Calculates the total balance in pending (not yet usable) channels.
-    ///
-    /// The channel is resolved dynamically (via the order's funding tx) rather than only from the
-    /// transfer's stored channelId, so a pending channel is subtracted from the Lightning total as
-    /// soon as LDK exposes it — even before syncTransferStates persists the channelId.
+    /// Calculates the total balance in pending (not yet usable) channels opened through Manual Setup.
     private func getPendingChannelsSats(
         transfers: [Transfer],
         channels: [ChannelDetails],
         balances: BalanceDetails
     ) async -> UInt64 {
         var amount: UInt64 = 0
-        let pendingTransfers = transfers.filter { $0.type.isToSpending() }
+        let pendingTransfers = transfers.filter { $0.type.isToSpending() && $0.lspOrderId == nil }
 
         Logger.debug("Checking \(pendingTransfers.count) pending transfers to spending")
         Logger.debug("Available channels: \(channels.count), Lightning balances: \(balances.lightningBalances.count)")
 
         for transfer in pendingTransfers {
-            guard let channelId = try? await transferService.resolveChannelId(for: transfer, channels: channels) else {
+            guard let channelId = transfer.channelId else {
                 Logger.debug("Transfer \(transfer.id) has no resolvable channelId")
                 continue
             }

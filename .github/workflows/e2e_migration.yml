@@ -77,7 +77,6 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CHATWOOT_API: ${{ secrets.CHATWOOT_API }}
-          GEO: false
           E2E_BACKEND: network
           E2E_NETWORK: regtest
         run: |

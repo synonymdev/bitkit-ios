@@ -313,6 +313,42 @@ final class PaymentNavigationHelperTests: XCTestCase {
         }
     }
 
+    func testUsdtRequestConfirmationDoesNotUseLightningMinimum() async throws {
+        settings.usdtPreference = .enabled
+        let lightning = PublicPaykitService.MethodId.bitcoinLightningLnurl
+        let usdt = try PaykitUsdt.endpoint(address: "0x1111111111111111111111111111111111111111")
+        let request = try incomingPaymentRequest(
+            endpointIdentifier: lightning.rawValue,
+            additionalEndpointIdentifiers: [usdt.methodId.rawValue],
+            amount: PaymentRequestAmount(value: "1", asset: "usd"),
+            conversion: .fixed(rates: [ConversionRate(asset: "btc", value: "0.00001"), ConversionRate(asset: "usdt", value: "1")])
+        )
+        let lnurl = LnurlPayData(
+            uri: "https://example.com/pay", callback: "https://example.com/callback",
+            minSendable: 2_000_000_000, maxSendable: 3_000_000_000,
+            metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
+        )
+        let app = AppViewModel(
+            sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel(),
+            scanPaymentOperations: ScanPaymentOperations(
+                state: { ScanPaymentState(isNodeRunning: true, spendableOnchainBalanceSats: 0,
+                                          totalLightningBalanceSats: 0, hasChannels: false, hasUsableChannels: false) },
+                canSendLightning: { _ in false },
+                decodeInvoice: { _ in .lnurlPay(data: lnurl) }
+            ), usdtBalance: { 1_000_000 }
+        )
+        let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request, endpoints: [
+            .init(methodId: lightning, value: lnurl.uri, min: nil, max: nil, rawPayload: ""), usdt,
+        ])
+        XCTAssertTrue(app.claimContactPaymentContext(context))
+        try await app.handleScannedData(lnurl.uri, claimedContactPaymentContext: context)
+
+        XCTAssertTrue(app.paykitUsesUsdt)
+        XCTAssertEqual(app.paykitPaymentTerms?.amount.atomic, 1_000_000)
+        XCTAssertEqual(app.paykitReviewedAmount, app.paykitPaymentTerms?.amount)
+        XCTAssertEqual(contactPaymentRoute(for: app), .usdt(recipient: usdt.value, amount: "1.00"))
+    }
+
     func testExpiredDollarRequestOpensRateReview() async throws {
         settings.usdtPreference = .disabled
         let address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"

@@ -8,7 +8,6 @@ enum SheetID: String, CaseIterable {
     case connectionClosed
     case forceTransfer
     case forgotPin
-    case gift
     case highBalance
     case lnurlAuth
     case lnurlWithdraw
@@ -25,6 +24,7 @@ enum SheetID: String, CaseIterable {
     case security
     case send
     case tagFilter
+    case transferUnavailable
     case dateRangeSelector
     case widgets
     case hardwareConnect
@@ -257,6 +257,18 @@ class SheetViewModel: ObservableObject {
         }
     }
 
+    var transferUnavailableSheetItem: TransferUnavailableSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .transferUnavailable else { return nil }
+            return TransferUnavailableSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
     var connectionClosedSheetItem: ConnectionClosedSheetItem? {
         get {
             guard let config = activeSheetConfiguration, config.id == .connectionClosed else { return nil }
@@ -273,20 +285,6 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .forgotPin else { return nil }
             return ForgotPinSheetItem()
-        }
-        set {
-            if newValue == nil {
-                activeSheetConfiguration = nil
-            }
-        }
-    }
-
-    var giftSheetItem: GiftSheetItem? {
-        get {
-            guard let config = activeSheetConfiguration, config.id == .gift else { return nil }
-            let giftConfig = config.data as? GiftConfig
-            guard let code = giftConfig?.code, let amount = giftConfig?.amount else { return nil }
-            return GiftSheetItem(code: code, amount: amount)
         }
         set {
             if newValue == nil {
@@ -413,7 +411,7 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .receive else { return nil }
             let receiveConfig = config.data as? ReceiveConfig
-            let initialRoute = receiveConfig?.initialRoute ?? .qr(cjitInvoice: nil, tab: nil)
+            let initialRoute = receiveConfig?.initialRoute ?? .qr(tab: nil)
             return ReceiveSheetItem(id: config.presentationID, initialRoute: initialRoute, hardwareWalletId: receiveConfig?.hardwareWalletId)
         }
         set {

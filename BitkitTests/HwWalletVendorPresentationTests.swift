@@ -36,7 +36,6 @@ final class HwWalletVendorPresentationTests: XCTestCase {
         XCTAssertEqual(vendor.foundHeader, t("hardware__found_header"))
         XCTAssertEqual(vendor.pairedHeader, t("hardware__paired_header"))
         XCTAssertEqual(vendor.sendSignButtonTitle, t("hardware__send_open_connect"))
-        XCTAssertEqual(vendor.transferSignButtonTitle, t("lightning__transfer_hw__open_connect"))
         XCTAssertTrue(vendor.supportsPassphraseWallets)
     }
 
@@ -50,13 +49,12 @@ final class HwWalletVendorPresentationTests: XCTestCase {
         XCTAssertEqual(vendor.foundHeader, t("hardware__found_header_jade"))
         XCTAssertEqual(vendor.pairedHeader, t("hardware__paired_header_jade"))
         XCTAssertEqual(vendor.sendSignButtonTitle, t("hardware__send_open_connect_jade"))
-        XCTAssertEqual(vendor.transferSignButtonTitle, t("hardware__send_open_connect_jade"))
         XCTAssertFalse(vendor.supportsPassphraseWallets)
     }
 
     func testNoJadeCopyMentionsTrezor() {
         let vendor = HwWalletVendor.blockstream
-        let copy = [vendor.modelName, vendor.foundHeader, vendor.pairedHeader, vendor.sendSignButtonTitle, vendor.transferSignButtonTitle]
+        let copy = [vendor.modelName, vendor.foundHeader, vendor.pairedHeader, vendor.sendSignButtonTitle]
 
         for text in copy {
             XCTAssertFalse(text.contains("Trezor"), text)
