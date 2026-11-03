@@ -43,6 +43,7 @@ struct SendConfirmationView: View {
     @State private var walletSwitchRun: WalletSwitchRun?
     @State private var manualCoinsRequestedContext: ConfirmationContext?
     @State private var isPreparingDirectOnchainSend = false
+    @State private var isCalculatingOnchainFee = false
     @State private var presentationID: UUID?
 
     private struct WalletSwitchRun {
@@ -859,8 +860,12 @@ struct SendConfirmationView: View {
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
         guard !isSubmittingPayment else { return }
-        guard !requiresAmountReview, preparingRequest == nil, !isRequestSetupPending, walletSwitchContext == nil, !isPreparingDirectOnchainSend,
+        guard !requiresAmountReview, preparingRequest == nil, !isRequestSetupPending, walletSwitchContext == nil,
               isAutomatic || !prepareRequestCoinsIfNeeded() else { throw CancellationError() }
+        // An automatic payment settles the fee itself below.
+        if !isAutomatic, isPreparingOnchainSend {
+            throw CancellationError()
+        }
         if isAutomatic, isFeeRateMissing {
             guard !Self.automaticPaymentAwaitsFeeRate(isFeeRateMissing: isFeeRateMissing, feeRateLoadFailed: wallet.feeRateLoadFailed) else {
                 // The rate is still loading; the automatic start runs again when send setup finishes.
@@ -1148,9 +1153,9 @@ struct SendConfirmationView: View {
         isSetupPending: Bool = false,
         isPreparingWallet: Bool = false,
         isAmountReviewRequired: Bool = false,
-        isPreparingDirectOnchainSend: Bool = false
+        isPreparingOnchainSend: Bool = false
     ) -> Bool {
-        isAmountReviewRequired || isPreparingRequest || isSetupPending || isPreparingWallet || isPreparingDirectOnchainSend
+        isAmountReviewRequired || isPreparingRequest || isSetupPending || isPreparingWallet || isPreparingOnchainSend
             || isHardwareConfirmationUnavailable
             || isFeeRateMissing(walletType: walletType, isHardwarePayment: isHardwarePayment, feeRate: feeRate)
     }
@@ -1173,8 +1178,12 @@ struct SendConfirmationView: View {
             isSetupPending: isRequestSetupPending,
             isPreparingWallet: walletSwitchContext != nil,
             isAmountReviewRequired: requiresAmountReview,
-            isPreparingDirectOnchainSend: isPreparingDirectOnchainSend
+            isPreparingOnchainSend: isPreparingOnchainSend
         )
+    }
+
+    private var isPreparingOnchainSend: Bool {
+        isPreparingDirectOnchainSend || isCalculatingOnchainFee
     }
 
     private func requiresManualConfirmation(isAutomatic: Bool) -> Bool {
@@ -1957,7 +1966,7 @@ struct SendConfirmationView: View {
 
     /// A BIP21 request with an amount opens here without Amount, which normally runs automatic coin selection.
     /// Manual selection is left to the swipe, which opens UTXO selection when no coins are chosen.
-    /// The swipe stays disabled until the coins and the fee for them are known.
+    /// The swipe stays disabled until the coins are chosen; the fee calculation that follows keeps it disabled.
     @MainActor
     private func selectCoinsForDirectOnchainSendIfNeeded() async {
         guard preparingRequest == nil, walletSwitchContext == nil, walletSwitchRun == nil,
@@ -1976,7 +1985,6 @@ struct SendConfirmationView: View {
         defer { isPreparingDirectOnchainSend = false }
         do {
             try await wallet.setUtxoSelection(coinSelectionAlgorythm: settings.coinSelectionAlgorithm, isCurrentSend: isCurrentSend)
-            await calculateTransactionFee()
         } catch {
             guard isCurrentSend(), !(error is CancellationError) else { return }
             Logger.error("Failed to select UTXOs for on-chain request: \(error)", context: "SendConfirmationView")
@@ -2071,6 +2079,13 @@ struct SendConfirmationView: View {
                 return
             }
 
+            // A swipe before the fee is known would skip the fee warnings and record a zero fee.
+            isCalculatingOnchainFee = true
+            defer {
+                if feeCalculationId == requestId {
+                    isCalculatingOnchainFee = false
+                }
+            }
             let useMaxAmount = await shouldUseMaxOnchainSend(
                 address: address, amountSats: amountSats, feeRate: feeRate, isCurrentSend: isCurrentSend
             )

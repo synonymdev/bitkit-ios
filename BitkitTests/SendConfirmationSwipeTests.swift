@@ -163,13 +163,13 @@ final class SendConfirmationSwipeTests: XCTestCase {
         ))
     }
 
-    func testDirectOnchainPreparationKeepsSwipeDisabledWithKnownFeeRate() {
+    func testOnchainPreparationKeepsSwipeDisabledWithKnownFeeRate() {
         XCTAssertTrue(SendConfirmationView.isSwipeDisabled(
             walletType: .onchain,
             isHardwarePayment: false,
             isHardwareConfirmationUnavailable: false,
             feeRate: 5,
-            isPreparingDirectOnchainSend: true
+            isPreparingOnchainSend: true
         ))
     }
 
