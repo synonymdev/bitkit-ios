@@ -42,6 +42,7 @@ struct SendConfirmationView: View {
     @State private var walletSwitchContext: ConfirmationContext?
     @State private var walletSwitchRun: WalletSwitchRun?
     @State private var manualCoinsRequestedContext: ConfirmationContext?
+    @State private var isPreparingDirectOnchainSend = false
     @State private var presentationID: UUID?
 
     private struct WalletSwitchRun {
@@ -858,7 +859,7 @@ struct SendConfirmationView: View {
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
         guard !isSubmittingPayment else { return }
-        guard !requiresAmountReview, preparingRequest == nil, !isRequestSetupPending, walletSwitchContext == nil,
+        guard !requiresAmountReview, preparingRequest == nil, !isRequestSetupPending, walletSwitchContext == nil, !isPreparingDirectOnchainSend,
               isAutomatic || !prepareRequestCoinsIfNeeded() else { throw CancellationError() }
         if isAutomatic, isFeeRateMissing {
             guard !Self.automaticPaymentAwaitsFeeRate(isFeeRateMissing: isFeeRateMissing, feeRateLoadFailed: wallet.feeRateLoadFailed) else {
@@ -1146,9 +1147,11 @@ struct SendConfirmationView: View {
         isPreparingRequest: Bool = false,
         isSetupPending: Bool = false,
         isPreparingWallet: Bool = false,
-        isAmountReviewRequired: Bool = false
+        isAmountReviewRequired: Bool = false,
+        isPreparingDirectOnchainSend: Bool = false
     ) -> Bool {
-        isAmountReviewRequired || isPreparingRequest || isSetupPending || isPreparingWallet || isHardwareConfirmationUnavailable
+        isAmountReviewRequired || isPreparingRequest || isSetupPending || isPreparingWallet || isPreparingDirectOnchainSend
+            || isHardwareConfirmationUnavailable
             || isFeeRateMissing(walletType: walletType, isHardwarePayment: isHardwarePayment, feeRate: feeRate)
     }
 
@@ -1169,7 +1172,8 @@ struct SendConfirmationView: View {
             isPreparingRequest: preparingRequest != nil,
             isSetupPending: isRequestSetupPending,
             isPreparingWallet: walletSwitchContext != nil,
-            isAmountReviewRequired: requiresAmountReview
+            isAmountReviewRequired: requiresAmountReview,
+            isPreparingDirectOnchainSend: isPreparingDirectOnchainSend
         )
     }
 
@@ -1953,6 +1957,7 @@ struct SendConfirmationView: View {
 
     /// A BIP21 request with an amount opens here without Amount, which normally runs automatic coin selection.
     /// Manual selection is left to the swipe, which opens UTXO selection when no coins are chosen.
+    /// The swipe stays disabled until the coins and the fee for them are known.
     @MainActor
     private func selectCoinsForDirectOnchainSendIfNeeded() async {
         guard preparingRequest == nil, walletSwitchContext == nil, walletSwitchRun == nil,
@@ -1967,8 +1972,11 @@ struct SendConfirmationView: View {
             !Task.isCancelled && confirmationContext == context
         }
 
+        isPreparingDirectOnchainSend = true
+        defer { isPreparingDirectOnchainSend = false }
         do {
             try await wallet.setUtxoSelection(coinSelectionAlgorythm: settings.coinSelectionAlgorithm, isCurrentSend: isCurrentSend)
+            await calculateTransactionFee()
         } catch {
             guard isCurrentSend(), !(error is CancellationError) else { return }
             Logger.error("Failed to select UTXOs for on-chain request: \(error)", context: "SendConfirmationView")
