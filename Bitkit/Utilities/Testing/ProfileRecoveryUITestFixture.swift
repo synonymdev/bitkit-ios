@@ -25,11 +25,13 @@
                         .accessibilityIdentifier("ProfileFixtureFail")
                     Button("Load") { finish(success: true) }
                         .accessibilityIdentifier("ProfileFixtureLoad")
-                    Button("Clipboard") { clipboard = UIPasteboard.general.string ?? "" }
-                        .accessibilityIdentifier("ProfileFixtureClipboard")
+                    PasteButton(payloadType: String.self) { values in
+                        clipboard = values.first ?? ""
+                    }
+                    .accessibilityIdentifier("ProfileFixtureClipboard")
                     Button("Reset copy") {
                         UIPasteboard.general.string = "not-copied"
-                        clipboard = "not-copied"
+                        clipboard = ""
                     }
                     .accessibilityIdentifier("ProfileFixtureResetClipboard")
                 }
