@@ -1339,9 +1339,9 @@ class BackupService {
             return try JSONEncoder().encode(payload)
 
         case .blocktank:
-            let orders = try await CoreService.shared.blocktank.orders()
-            let cjitEntries = try await CoreService.shared.blocktank.cjitOrders()
-            let info = try? await CoreService.shared.blocktank.info(refresh: false)
+            let orders = try await CoreService.shared.blocktank.orders(refresh: false)
+            let cjitEntries = try await CoreService.shared.blocktank.cjitOrders(refresh: false)
+            let info = try await CoreService.shared.blocktank.info(refresh: false)
 
             let payload = BlocktankBackupV1(
                 version: 1,

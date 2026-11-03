@@ -24,6 +24,7 @@ final class ProfileRecoveryUITests: XCTestCase {
         for id in ["ProfileCopy", "ProfileQRCode"] {
             scrollToTop()
             app.buttons["ProfileFixtureResetClipboard"].tap()
+            app.buttons["ProfileFixtureClipboard"].tap()
             waitForClipboard("not-copied")
             let copy = app.buttons[id]
             XCTAssertTrue(copy.isEnabled)
