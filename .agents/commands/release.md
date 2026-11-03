@@ -136,7 +136,7 @@ N/A
 
 ### QA Notes
 
-N/A
+Sanity planning: deferred until the intended release candidates are available (step 7a). No sanity tests have run.
 ```
 
 Store the PR URL for the summary.
@@ -284,7 +284,8 @@ Version bump PRs (release branches, merged into master after the store release):
 - Android: [{Android PR URL label}]({Android PR URL})
 - iOS: [{iOS PR URL label}]({iOS PR URL from step 4})
 
-These builds will be used for testing following the [testing framework](https://docs.google.com/spreadsheets/d/10_DufEPwKUCExkXF-jTY7njE0mh5ZspwhRw42NBBd-o).
+Sanity plan: {canonical release PR QA Notes link and planning status, or explicit deferred/blocked reason from step 7a}.
+Execution results will be recorded in the [testing framework](https://docs.google.com/spreadsheets/d/10_DufEPwKUCExkXF-jTY7njE0mh5ZspwhRw42NBBd-o).
 
 ## Mentions
 
@@ -375,20 +376,36 @@ TestFlight compliance (set in App Store Connect after build processes):
 - Distribute in France: "Yes"
 ```
 
+### 7a. Generate Release Sanity Plan (after candidates are available)
+
+Run this handoff before finalizing the Slack reply, including when Slack is skipped or already posted. The earlier local Slack draft is only a scaffold; do not generate a sanity suite while preparing the release branch/tag.
+
+**Readiness:** use the intended release scope (both platforms by default; only one for an explicitly selected single-platform release). Android needs a completed signed mainnet APK with its version/build, source SHA and artifact location verified. iOS needs the matching build **available to testers in TestFlight**; an archive, upload or processing build is not sufficient. Use build/distribution evidence or explicit confirmation of availability, not the existence of a tag or version PR.
+
+- If an intended candidate is missing, record `deferred — awaiting <platform/build>` in the version PR's QA Notes, local Slack draft and final summary, then continue the remaining release steps. Resume this handoff when availability is confirmed; do not repeat version bumps, tagging or builds merely to resume planning. This also applies to a manual Xcode upload.
+- Once all intended candidates are available, **execute** `/release-sanity {newVersionName}` using the shared [release-sanity skill](https://github.com/synonymdev/bitkit-e2e-tests/blob/main/.agents/skills/release-sanity/SKILL.md) and [release QA method](https://github.com/synonymdev/bitkit-e2e-tests/blob/main/docs/release-qa.md). This means applying the agent instructions, not running a shell command or only printing a reminder. Load both files from `bitkit-e2e-tests` at one resolved default-branch commit (from a matching local checkout or GitHub) and record that revision. If unavailable, record `blocked — shared release-sanity method unavailable` and the follow-up needed; do not substitute an old checklist or claim completion.
+- Supply the previous release tags/SHAs, intended platform scope, actual candidate SHAs/builds/artifact locations, version PRs and current automation/device evidence. Test jobs still running do not defer planning once candidates exist: mark the plan provisional, retain pending/failed/skipped evidence, and refresh affected coverage when results settle or candidate revisions change. Use the shared method for case selection rather than copying it here. Generating the plan does not run payments/device tests, launch reruns or approve the release.
+
+**One plan per version:** first inspect both version PRs for an existing plan. Reuse its canonical location; otherwise put the plan in Android's version PR for a dual-platform or Android-only release, or iOS's version PR for an iOS-only release. Keep the proposed cases, pinned evidence and gaps in a managed `<!-- release-sanity:start -->` / `<!-- release-sanity:end -->` section under QA Notes. Link the other version PR's QA Notes to that canonical section instead of independently generating a second suite. Only include the intended platform(s); selecting a single-platform scope later must re-enter this handoff before Slack finalization.
+
+Read the latest PR body before each edit, preserve other authored content and existing case IDs/results, and verify the edited body. New cases start `Not run`; when the candidate changes, preserve earlier results at their tested revisions and reassess affected cases. Mirror the plan locally in `.ai/release-sanity-{newVersionName}.md`, with the canonical PR URL. Re-entering from the other platform refreshes the same record, not a duplicate. Put the plan URL and planning status (`generated`, `generated — evidence pending`, `deferred` or `blocked`) in the local Slack draft and final summary. Planning status is separate from test execution status and release sign-off.
+
 ### 7b. Post Slack (both RCs, or rare single-platform hotfix)
 
-If the user skipped TestFlight above, ask whether build `{newBuildNumber}` is already processing/available on TestFlight before treating iOS as ready. If not on TestFlight yet, treat as not ready (same ask as sibling-not-ready below).
+If the user skipped TestFlight above, confirm whether build `{newBuildNumber}` is available to testers before treating iOS as ready. Uploading/processing is still pending; retain the deferred sanity handoff from step 7a until availability is confirmed.
 
 **Both ready** (default) means all of the following (no `TODO` left in the Reply body):
-- iOS: build `{newBuildNumber}` is on TestFlight (or uploading/processing after step 7), version-bump PR URL known, store-notes Google Doc URL known.
+- iOS: build `{newBuildNumber}` is available to testers in TestFlight (not merely uploading/processing), version-bump PR URL known, store-notes Google Doc URL known.
 - Android: `v{newVersionName}` GH draft has the APK, versionCode known, version-bump PR URL known, store-notes Google Doc URL known when the Android doc was created.
 
-Refresh `.ai/slack-release-{newVersionName}.md` with finalized values.
+Refresh `.ai/slack-release-{newVersionName}.md` with finalized values and the plan link/status from step 7a. Skipping Slack or finding an existing announcement does not skip that handoff.
 
 **If the sibling is not ready yet** (or this platform is not on TestFlight yet): ask the user:
 1. `Wait for sibling` (default) — print `⏸ Slack not posted — waiting until Android {newVersionName} APK is on the GH draft release (and its doc/PR are known). Local draft: .ai/slack-release-{newVersionName}.md`. Do not call Slack. Continue the release.
-2. `Single-platform hotfix` (rare) — rewrite the Reply to **iOS-only**: drop Android RC / doc / PR lines (do not leave `TODO`); open with a clear iOS-only/hotfix cue in the first line of the reply (e.g. `iOS-only hotfix:`). Then post per the steps below. Only offer this when this iOS build is (or will be) on TestFlight.
+2. `Single-platform hotfix` (rare) — rewrite the Reply to **iOS-only**: drop Android RC / doc / PR lines (do not leave `TODO`); open with a clear iOS-only/hotfix cue in the first line of the reply (e.g. `iOS-only hotfix:`). Then post per the steps below. Only offer this when this iOS build is available to testers in TestFlight.
 3. `Skip Slack` — print a manual reminder and continue.
+
+Before drafting a reply, recheck step 7a if candidate availability or the intended platform scope changed in this Slack step (including selecting a single-platform hotfix). Generate/update the plan when eligible; otherwise retain the explicit deferred/blocked reason. Do not describe planning as completed without its record.
 
 **If ready to post** (both platforms filled, or user chose single-platform hotfix): post as Slack drafts (one attached draft per channel at a time). **Never call `slack_send_message`** — it always appends `Sent using Cursor`. Use `slack_send_message_draft` only; the user must send each draft **from the Slack app** (Cursor widget also adds the footer).
 
@@ -417,7 +434,7 @@ If the user chose manual build, **stay on the release branch** — they need to 
 
 ### 9. Required Release Handoffs
 
-These follow-ups happen after the relevant release milestone; do not run them early just because the release branch and tag exist.
+The sanity-planning handoff in step 7a runs once the intended candidates are available, before Slack finalization, even if Slack is skipped. If deferred, resume that handoff when the missing candidate becomes available. The follow-ups below happen after their own milestones; do not run them early just because the release branch and tag exist.
 
 1. After the Android and iOS `release-{newVersionName}` branches are staging or migration green, switch to `bitkit-e2e-tests` and run:
 
@@ -443,7 +460,12 @@ Store release notes: .ai/release-notes-{newVersionName}.md
 Release notes doc: {Google Doc URL or "(not created)"} ({sharing status from 6b})
 Slack draft: .ai/slack-release-{newVersionName}.md ({posted parent+reply | deferred — waiting for sibling RC | single-platform hotfix posted | already posted | skipped})
 
+Sanity plan: {canonical PR QA Notes URL or pending reason} ({generated | generated — evidence pending | deferred | blocked})
+Local plan: .ai/release-sanity-{newVersionName}.md (only when generated)
+
 Next steps:
+- If sanity planning is deferred/blocked: resume step 7a once candidates/method are available; apply `/release-sanity {newVersionName}` without re-cutting the release
+- Refresh provisional sanity coverage when pending test results settle or candidate revisions change
 - If Slack was deferred: post once the sibling RC is ready, or choose single-platform hotfix if this cut ships alone (no TODOs in the reply)
 - Send any #bitkit-native Slack drafts from the Slack app (if not already)
 - Share the release notes doc with Jacobo for review (if domain share is still pending, apply it first)
