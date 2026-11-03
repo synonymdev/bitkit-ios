@@ -103,16 +103,15 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - name: Select shared gate and affected packs
+      - name: Select iOS gate and affected packs
         id: selection
         env:
-          PLATFORM: ios
-          E2E_APP_ROOT: ${{ format('{0}/app-ci', github.workspace) }}
+          E2E_TEST_ROOT: ${{ format('{0}/e2e-ci', github.workspace) }}
           E2E_SELECTION: ${{ inputs.retarget_run != '' && 'auto' || inputs.selection || 'full' }}
           E2E_SHARDS: ${{ inputs.shards || '1' }}
           E2E_MANUAL_PR: ${{ inputs.pr }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node e2e-ci/scripts/ci-selection.cjs
+        run: node app-ci/.github/scripts/e2e-selection.cjs
       - name: Upload selection
         if: always()
         uses: actions/upload-artifact@v7

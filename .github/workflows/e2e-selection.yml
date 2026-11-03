@@ -1,0 +1,63 @@
+name: E2E selection policy
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pull-requests: read
+concurrency:
+  group: e2e-policy-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+env:
+  GIT_LFS_SKIP_SMUDGE: "1"
+jobs:
+  e2e-branch:
+    uses: synonymdev/bitkit-e2e-tests/.github/workflows/determine-e2e-branch.yml@main
+    with:
+      app_branch: ${{ github.head_ref || github.ref_name }}
+      e2e_branch_input: default-feature-branch
+  policy:
+    needs: e2e-branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: app-ci
+          fetch-depth: 0
+      - uses: synonymdev/bitkit-e2e-tests/.github/actions/resolve-e2e-ref@main
+        id: e2e-ref
+        with:
+          selected: ${{ needs.e2e-branch.outputs.branch }}
+          e2e_branch_input: default-feature-branch
+      - uses: actions/checkout@v7
+        with:
+          repository: synonymdev/bitkit-e2e-tests
+          ref: ${{ steps.e2e-ref.outputs.ref }}
+          path: e2e-ci
+          sparse-checkout: test/inventory.json
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Check app paths and test references
+        env:
+          E2E_TEST_ROOT: ${{ github.workspace }}/e2e-ci
+        run: node app-ci/.github/scripts/e2e-selection.cjs check
+      - name: Test selection against the real iOS tree
+        env:
+          E2E_TEST_ROOT: ${{ github.workspace }}/e2e-ci
+        run: node --test app-ci/.github/scripts/e2e-selection.test.cjs
+      - name: Preview selection for this revision
+        env:
+          E2E_TEST_ROOT: ${{ github.workspace }}/e2e-ci
+          E2E_SELECTION: base
+          GH_TOKEN: ${{ github.token }}
+        run: node app-ci/.github/scripts/e2e-selection.cjs
+      - uses: actions/upload-artifact@v7
+        with:
+          name: e2e-policy-selection
+          path: selection.json
+          retention-days: 7

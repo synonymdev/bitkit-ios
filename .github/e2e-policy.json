@@ -1,0 +1,1015 @@
+{
+  "schemaVersion": 1,
+  "base": ["send_1", "send_2", "lightning_1", "transfer_2", "boost_2"],
+  "groups": {
+    "send": [
+      "send_3",
+      "onchain_1",
+      "onchain_2",
+      "onchain_3",
+      "numberpad_1",
+      "numberpad_2",
+      "numberpad_3",
+      "numberpad_4",
+      "boost_1",
+      "lnurl_1"
+    ],
+    "fees": ["boost_1", "onchain_3", "settings_03"],
+    "addresses": [
+      "multi_address_1",
+      "multi_address_3",
+      "multi_address_4",
+      "onchain_1",
+      "onchain_2",
+      "onchain_3",
+      "boost_1"
+    ],
+    "receive": [
+      "receive_1",
+      "onchain_1",
+      "onchain_2",
+      "onchain_3",
+      "numberpad_1",
+      "numberpad_2",
+      "numberpad_3",
+      "numberpad_4",
+      "lnurl_1"
+    ],
+    "lightning": [
+      "lnurl_1",
+      "send_3",
+      "multi_address_3",
+      "multi_address_4",
+      "settings_09"
+    ],
+    "hardware": ["hardware_wallet_1", "hardware_wallet_2", "hardware_wallet_4"],
+    "recovery": [
+      "backup_1",
+      "onboarding_1",
+      "onboarding_2",
+      "security_1",
+      "settings_07",
+      "migration_native_restore",
+      "migration_native_upgrade",
+      "migration_rn_restore",
+      "migration_rn_upgrade",
+      "migration_3",
+      "migration_4"
+    ],
+    "security": ["security_1", "settings_06", "settings_07"],
+    "widgets": ["widgets_1", "widgets_2", "widgets_3", "settings_12"],
+    "currency": [
+      "numberpad_1",
+      "numberpad_2",
+      "numberpad_3",
+      "numberpad_4",
+      "settings_01",
+      "settings_02"
+    ],
+    "pubky-paykit": [
+      "pubky_profile_1",
+      "pubky_profile_2",
+      "pubky_profile_3",
+      "pubky_profile_4",
+      "pubky_profile_5",
+      "paykit_1"
+    ],
+    "settings": [
+      "settings_01",
+      "settings_02",
+      "settings_03",
+      "settings_04",
+      "settings_05",
+      "settings_06",
+      "settings_07",
+      "settings_09",
+      "settings_10",
+      "settings_11",
+      "settings_12",
+      "settings_13",
+      "settings_14"
+    ],
+    "electrum": ["settings_10"],
+    "gossip": ["settings_11"],
+    "tags": ["settings_04", "receive_1", "onchain_1"],
+    "status": ["settings_14"],
+    "support": ["settings_05"],
+    "devtools": ["settings_13"],
+    "lnurl": ["lnurl_1"],
+    "activity": ["onchain_1", "onchain_2", "onchain_3"]
+  },
+  "rules": [
+    {
+      "name": "app-lifecycle-and-wallet-core",
+      "groups": [],
+      "files": [
+        "Bitkit/AppScene.swift",
+        "Bitkit/BitkitApp.swift",
+        "Bitkit/ContentView.swift",
+        "Bitkit/MainNavView.swift",
+        "Bitkit/SceneDelegate.swift",
+        "Bitkit/Services/CoreService.swift",
+        "Bitkit/Services/LightningService.swift",
+        "Bitkit/Services/ServiceQueue.swift",
+        "Bitkit/Managers/SessionManager.swift",
+        "Bitkit/Managers/BalanceManager.swift",
+        "Bitkit/ViewModels/AppViewModel.swift",
+        "Bitkit/ViewModels/WalletViewModel.swift",
+        "Bitkit/ViewModels/NavigationViewModel.swift",
+        "Bitkit/ViewModels/SheetViewModel.swift",
+        "Bitkit/Utilities/StartupHandler.swift",
+        "Bitkit/Utilities/AppReset.swift",
+        "Bitkit/Utilities/MainNavRouting.swift",
+        "Bitkit/Utilities/StateLocker.swift",
+        "Bitkit/Utilities/BlockingQueue.swift",
+        "Bitkit/Utilities/Crypto.swift",
+        "Bitkit/Models/BalanceState.swift",
+        "Bitkit/Models/NodeLifecycleState.swift",
+        "Bitkit/Models/WalletType.swift",
+        "Bitkit/Constants/Env.swift"
+      ],
+      "prefixes": [],
+      "full": true,
+      "reason": "Shared wallet/node lifecycle, account state and persistence used across all lanes."
+    },
+    {
+      "name": "build-and-e2e-infrastructure",
+      "groups": [],
+      "files": [
+        "Bitkit/Info.plist",
+        "Bitkit/Bitkit.entitlements",
+        ".github/workflows/e2e-tests.yml",
+        ".github/workflows/e2e-staging.yml",
+        ".github/workflows/e2e_migration.yml",
+        ".github/scripts/namespace-stack.sh",
+        ".github/actions/swift-packages/action.yml",
+        "scripts/shallow-source-packages.sh"
+      ],
+      "prefixes": ["Bitkit.xcodeproj/"],
+      "full": true,
+      "reason": "App dependency/build identity or orchestration shared by all lanes."
+    },
+    {
+      "name": "hardware-directories",
+      "groups": ["hardware"],
+      "files": [],
+      "prefixes": [
+        "Bitkit/Services/Trezor/",
+        "Bitkit/Services/Jade/",
+        "Bitkit/ViewModels/Trezor/",
+        "Bitkit/Components/Trezor/",
+        "Bitkit/Views/Trezor/",
+        "Bitkit/Views/Transfer/Hardware/"
+      ],
+      "reason": "Feature-owned source directory."
+    },
+    {
+      "name": "widgets-directories",
+      "groups": ["widgets"],
+      "files": [],
+      "prefixes": [
+        "Bitkit/Services/Widgets/",
+        "Bitkit/ViewModels/Widgets/",
+        "Bitkit/Components/Widgets/",
+        "Bitkit/Views/Widgets/",
+        "BitkitWidget/"
+      ],
+      "reason": "Feature-owned source directory."
+    },
+    {
+      "name": "send-directories",
+      "groups": ["send"],
+      "files": [],
+      "prefixes": [
+        "Bitkit/Views/Wallets/Send/",
+        "Bitkit/Views/Settings/Quickpay/"
+      ],
+      "reason": "Feature-owned source directory."
+    },
+    {
+      "name": "receive-directories",
+      "groups": ["receive"],
+      "files": [],
+      "prefixes": ["Bitkit/Views/Wallets/Receive/"],
+      "reason": "Feature-owned source directory."
+    },
+    {
+      "name": "lightning-directories",
+      "groups": ["lightning"],
+      "files": [],
+      "prefixes": ["Bitkit/Views/Transfer/", "Bitkit/Views/Offline/"],
+      "reason": "Feature-owned source directory."
+    },
+    {
+      "name": "lnurl-directories",
+      "groups": ["lnurl"],
+      "files": [],
+      "prefixes": ["Bitkit/Views/Wallets/LnurlWithdraw/"],
+      "reason": "Feature-owned source directory."
+    },
+    {
+      "name": "recovery-directories",
+      "groups": ["recovery"],
+      "files": [],
+      "prefixes": [
+        "Bitkit/Views/Backup/",
+        "Bitkit/Views/Onboarding/",
+        "Bitkit/Views/Recovery/"
+      ],
+      "reason": "Feature-owned source directory."
+    },
+    {
+      "name": "pubky-paykit-directories",
+      "groups": ["pubky-paykit"],
+      "files": [],
+      "prefixes": [
+        "Bitkit/Views/Profile/",
+        "Bitkit/Views/Contacts/",
+        "Bitkit/Views/Shop/",
+        "Bitkit/Views/Subscriptions/",
+        "Bitkit/Views/PaymentRequests/"
+      ],
+      "reason": "Feature-owned source directory."
+    },
+    {
+      "name": "security-directories",
+      "groups": ["security"],
+      "files": [],
+      "prefixes": ["Bitkit/Views/Settings/Security/", "Bitkit/Views/Security/"],
+      "reason": "Feature-owned source directory."
+    },
+    {
+      "name": "fees-directories",
+      "groups": ["fees"],
+      "files": [],
+      "prefixes": ["Bitkit/Views/Settings/TransactionSpeed/"],
+      "reason": "Feature-owned source directory."
+    },
+    {
+      "name": "support-directories",
+      "groups": ["support"],
+      "files": [],
+      "prefixes": ["Bitkit/Views/Settings/Support/"],
+      "reason": "Feature-owned source directory."
+    },
+    {
+      "name": "devtools-directories",
+      "groups": ["devtools"],
+      "files": [],
+      "prefixes": ["Bitkit/Views/Settings/ProbingTool/"],
+      "reason": "Feature-owned source directory."
+    },
+    {
+      "name": "tags-directories",
+      "groups": ["tags"],
+      "files": [],
+      "prefixes": ["Bitkit/Components/Tags/"],
+      "reason": "Feature-owned source directory."
+    },
+    {
+      "name": "activity-directories",
+      "groups": ["activity"],
+      "files": [],
+      "prefixes": [
+        "Bitkit/Components/Activity/",
+        "Bitkit/Views/Wallets/Activity/"
+      ],
+      "reason": "Feature-owned source directory."
+    },
+    {
+      "name": "files-activity",
+      "groups": ["activity"],
+      "files": [
+        "Bitkit/Models/ActivityDisplayConstants.swift",
+        "Bitkit/ViewModels/ActivityItemViewModel.swift",
+        "Bitkit/ViewModels/ActivityListViewModel.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-addresses",
+      "groups": ["addresses"],
+      "files": [
+        "Bitkit/Extensions/LDKNode+AddressType.swift",
+        "Bitkit/Views/Settings/Advanced/AddressTypePreferenceView.swift",
+        "Bitkit/Views/Settings/Advanced/AddressViewer.swift",
+        "Bitkit/Views/Settings/Advanced/CoinSelectionSettingsView.swift",
+        "Bitkit/Views/Wallets/Send/SendUtxoSelectionView.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-currency",
+      "groups": ["currency"],
+      "files": [
+        "Bitkit/Components/AmountSlider.swift",
+        "Bitkit/Components/AvailableAmount.swift",
+        "Bitkit/Components/MoneyCell.swift",
+        "Bitkit/Components/MoneyStack.swift",
+        "Bitkit/Components/MoneyText.swift",
+        "Bitkit/Components/NumberPad.swift",
+        "Bitkit/Components/NumberPadActionButton.swift",
+        "Bitkit/Components/NumberPadTextField.swift",
+        "Bitkit/Extensions/FixedWidthInteger+Saturating.swift",
+        "Bitkit/Models/Currency.swift",
+        "Bitkit/Services/CurrencyService.swift",
+        "Bitkit/Utilities/CurrencyFormatter.swift",
+        "Bitkit/ViewModels/CurrencyViewModel.swift",
+        "Bitkit/Views/Settings/General/DefaultUnitSettingsView.swift",
+        "Bitkit/Views/Settings/General/LocalCurrencySettingsView.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-devtools",
+      "groups": ["devtools"],
+      "files": [
+        "Bitkit/Views/Settings/DevSettingsView.swift",
+        "Bitkit/Views/Settings/LdkDebugScreen.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-electrum",
+      "groups": ["electrum"],
+      "files": [
+        "Bitkit/Models/ElectrumServer.swift",
+        "Bitkit/Services/ElectrumConfigService.swift",
+        "Bitkit/ViewModels/Extensions/SettingsViewModel+Electrum.swift",
+        "Bitkit/Views/Settings/Advanced/ElectrumSettingsScreen.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-fees",
+      "groups": ["fees"],
+      "files": [
+        "Bitkit/Components/FeeDisplayRow.swift",
+        "Bitkit/Components/FeeItem.swift",
+        "Bitkit/Extensions/BroadcastError+Connectivity.swift",
+        "Bitkit/Managers/FeeEstimatesManager.swift",
+        "Bitkit/Models/TransactionSpeed.swift",
+        "Bitkit/Views/Wallets/Send/SendFeeCustom.swift",
+        "Bitkit/Views/Wallets/Send/SendFeeRate.swift",
+        "Bitkit/Views/Wallets/Sheets/BoostSheet.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-gossip",
+      "groups": ["gossip"],
+      "files": [
+        "Bitkit/Services/RgsConfigService.swift",
+        "Bitkit/ViewModels/Extensions/SettingsViewModel+Rgs.swift",
+        "Bitkit/Views/Settings/Advanced/RgsSettingsScreen.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-hardware",
+      "groups": ["hardware"],
+      "files": [
+        "Bitkit/Components/HardwareWalletsGrid.swift",
+        "Bitkit/Components/RemoveHwWalletDialog.swift",
+        "Bitkit/Extensions/HwError+Cancellation.swift",
+        "Bitkit/Extensions/HwWalletVendor+UI.swift",
+        "Bitkit/Extensions/JadeError+Cancellation.swift",
+        "Bitkit/Extensions/LDKNode+Jade.swift",
+        "Bitkit/Extensions/TrezorDevice+DisplayName.swift",
+        "Bitkit/Extensions/TrezorError+Cancellation.swift",
+        "Bitkit/Extensions/TrezorPublicKeyResponse+StoredKey.swift",
+        "Bitkit/Managers/HwDeviceSessioning.swift",
+        "Bitkit/Managers/HwWalletManager.swift",
+        "Bitkit/Managers/JadeManager.swift",
+        "Bitkit/Managers/TrezorManager.swift",
+        "Bitkit/Models/HwFunding.swift",
+        "Bitkit/Models/HwWallet.swift",
+        "Bitkit/Models/HwWalletId.swift",
+        "Bitkit/Models/HwWalletVendor.swift",
+        "Bitkit/Models/JadeDevice.swift",
+        "Bitkit/Services/HwKnownDeviceMatching.swift",
+        "Bitkit/Services/HwKnownDeviceStorage.swift",
+        "Bitkit/Services/HwSnapshotMerge.swift",
+        "Bitkit/Services/OnChainHwService.swift",
+        "Bitkit/Services/WatchOnlyAccountService.swift",
+        "Bitkit/Utilities/HwDevicePath.swift",
+        "Bitkit/Utilities/HwEngagedSession.swift",
+        "Bitkit/Utilities/HwErrorPresenter.swift",
+        "Bitkit/Utilities/TrezorErrorPresenter.swift",
+        "Bitkit/ViewModels/HwFundingSigner.swift",
+        "Bitkit/Views/Settings/Advanced/WatchOnlyAccountsView.swift",
+        "Bitkit/Views/Settings/General/HardwareWalletsSettingsScreen.swift",
+        "Bitkit/Views/Sheets/HardwareConnect/HwFoundView.swift",
+        "Bitkit/Views/Sheets/HardwareConnect/HwPairCodeView.swift",
+        "Bitkit/Views/Sheets/HardwareConnect/HwPairedView.swift",
+        "Bitkit/Views/Sheets/HardwareConnect/HwSearchingAnimation.swift",
+        "Bitkit/Views/Sheets/HardwareConnect/HwSearchingView.swift",
+        "Bitkit/Views/Sheets/HardwareConnectSheet.swift",
+        "Bitkit/Views/Sheets/HardwarePairingSheet.swift",
+        "Bitkit/Views/Sheets/RenameHardwareWalletSheet.swift",
+        "Bitkit/Views/Wallets/HardwareWalletScreen.swift",
+        "Bitkit/Views/Wallets/Send/HwSendSignView.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-hardware-recovery",
+      "groups": ["hardware", "recovery"],
+      "files": [
+        "Bitkit/Services/HwActivityTagBackup.swift",
+        "Bitkit/Views/Sheets/HardwareConnect/HwPassphraseView.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-lightning",
+      "groups": ["lightning"],
+      "files": [
+        "Bitkit/Components/IncomingTransfer.swift",
+        "Bitkit/Components/LightningChannel.swift",
+        "Bitkit/Components/Trezor/HwWalletConnectionIcon.swift",
+        "Bitkit/Extensions/ChannelDetails+Extensions.swift",
+        "Bitkit/Extensions/IBtChannel+Mock.swift",
+        "Bitkit/Extensions/LightningBalance+Extensions.swift",
+        "Bitkit/Extensions/NodeStatus.swift",
+        "Bitkit/Extensions/ShortChannelId.swift",
+        "Bitkit/Managers/NetworkMonitor.swift",
+        "Bitkit/Managers/TransferTrackingManager.swift",
+        "Bitkit/Models/LnPeer.swift",
+        "Bitkit/Models/Transfer.swift",
+        "Bitkit/Models/TransferType.swift",
+        "Bitkit/Services/BoltzService.swift",
+        "Bitkit/Services/SamRockService.swift",
+        "Bitkit/Services/TransferService.swift",
+        "Bitkit/Services/TransferStorage.swift",
+        "Bitkit/Utilities/LightningAmountConversion.swift",
+        "Bitkit/Utilities/NetworkValidationHelper.swift",
+        "Bitkit/Utilities/NodeRestarter.swift",
+        "Bitkit/ViewModels/BlocktankViewModel.swift",
+        "Bitkit/ViewModels/ChannelDetailsViewModel.swift",
+        "Bitkit/ViewModels/Extensions/ChannelDetails.swift",
+        "Bitkit/ViewModels/TransferViewModel.swift",
+        "Bitkit/Views/Settings/Advanced/ChannelDisplayable.swift",
+        "Bitkit/Views/Settings/Advanced/CloseConnectionConfirmation.swift",
+        "Bitkit/Views/Settings/Advanced/LightningConnectionDetailView.swift",
+        "Bitkit/Views/Settings/Advanced/LightningConnectionsView.swift",
+        "Bitkit/Views/Settings/BlocktankRegtestView.swift",
+        "Bitkit/Views/Settings/ChannelOrders.swift",
+        "Bitkit/Views/Settings/SwapsListView.swift",
+        "Bitkit/Views/Sheets/BTCPayConnectionSheet.swift",
+        "Bitkit/Views/Sheets/ForceTransferSheet.swift",
+        "Bitkit/Views/Sheets/TransferUnavailableSheet.swift",
+        "Bitkit/Views/Wallets/Receive/ReceiveTransferUnavailable.swift",
+        "Bitkit/Views/Wallets/Sheets/ConnectionClosedSheet.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-lnurl",
+      "groups": ["lnurl"],
+      "files": [
+        "Bitkit/Extensions/LnurlPayData+Amount.swift",
+        "Bitkit/Utilities/Lnurl.swift",
+        "Bitkit/Views/Sheets/LnurlAuth/LnurlAuthSheet.swift",
+        "Bitkit/Views/Transfer/LnurlChannel.swift",
+        "Bitkit/Views/Wallets/Send/LnurlPayAmount.swift",
+        "Bitkit/Views/Wallets/Send/LnurlPayConfirm.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-pubky-paykit",
+      "groups": ["pubky-paykit"],
+      "files": [
+        "Bitkit/Components/CenteredProfileHeader.swift",
+        "Bitkit/Components/ContactAvatarLetter.swift",
+        "Bitkit/Components/PaykitAcceptedMethods.swift",
+        "Bitkit/Components/PaykitAmountText.swift",
+        "Bitkit/Components/PaymentRequestInvoiceNote.swift",
+        "Bitkit/Components/PaymentRequestSummary.swift",
+        "Bitkit/Components/ProfileEditFormView.swift",
+        "Bitkit/Components/ProfileNameField.swift",
+        "Bitkit/Components/PubkyChoiceRow.swift",
+        "Bitkit/Components/PubkyContactAvatar.swift",
+        "Bitkit/Components/PubkyContactRow.swift",
+        "Bitkit/Components/PubkyImage.swift",
+        "Bitkit/Components/ShopWebView.swift",
+        "Bitkit/Extensions/Activity+Contact.swift",
+        "Bitkit/FeatureFlags/PaykitFeatureFlags.swift",
+        "Bitkit/Managers/ContactsManager.swift",
+        "Bitkit/Managers/PubkyProfileManager.swift",
+        "Bitkit/Managers/ShopContactImporter.swift",
+        "Bitkit/Models/PaykitAmount.swift",
+        "Bitkit/Models/PaykitRequestPricing.swift",
+        "Bitkit/Models/PaykitUsdt.swift",
+        "Bitkit/Models/PubkyAuthRequest.swift",
+        "Bitkit/Models/PubkyContactLink.swift",
+        "Bitkit/Models/PubkyProfile.swift",
+        "Bitkit/Models/PubkyPublicKeyFormat.swift",
+        "Bitkit/Services/ContactPaymentsService.swift",
+        "Bitkit/Services/PaykitAllowance.swift",
+        "Bitkit/Services/PaykitAllowanceExecutor.swift",
+        "Bitkit/Services/PaykitAllowanceManager.swift",
+        "Bitkit/Services/PaykitBitcoinRequestPricing.swift",
+        "Bitkit/Services/PaykitIssuerInterop.swift",
+        "Bitkit/Services/PaykitPaymentProofService.swift",
+        "Bitkit/Services/PaykitPaymentRequestService.swift",
+        "Bitkit/Services/PaykitReceivedPaymentContacts.swift",
+        "Bitkit/Services/PaykitSubscription.swift",
+        "Bitkit/Services/PaykitSubscriptionProposal.swift",
+        "Bitkit/Services/PaykitUsdtPaymentService.swift",
+        "Bitkit/Services/PrivatePaykitAddressReservationStore.swift",
+        "Bitkit/Services/PrivatePaykitService+Contacts.swift",
+        "Bitkit/Services/PrivatePaykitService+Endpoints.swift",
+        "Bitkit/Services/PrivatePaykitService+Errors.swift",
+        "Bitkit/Services/PrivatePaykitService+Invoices.swift",
+        "Bitkit/Services/PrivatePaykitService+Models.swift",
+        "Bitkit/Services/PrivatePaykitService+Payments.swift",
+        "Bitkit/Services/PrivatePaykitService+State.swift",
+        "Bitkit/Services/PrivatePaykitService.swift",
+        "Bitkit/Services/PubkyService.swift",
+        "Bitkit/Services/PublicPaykitService.swift",
+        "Bitkit/Utilities/PaykitAmountEntryConversion.swift",
+        "Bitkit/Utilities/PaykitPaymentActivity.swift",
+        "Bitkit/Utilities/ShopOrigin.swift",
+        "Bitkit/Utilities/ShopPaymentRequest.swift",
+        "Bitkit/Utilities/SubscriptionClock.swift",
+        "Bitkit/Utilities/Testing/ContactImportUITestFixture.swift",
+        "Bitkit/Views/Sheets/PubkyAuthApproval/PubkyAuthApprovalSheet.swift",
+        "Bitkit/Views/Wallets/Activity/AssignActivityContactView.swift",
+        "Bitkit/Views/Wallets/Send/InitialSubscriptionPaymentProgress.swift",
+        "Bitkit/Views/Wallets/Send/SendContactHeaderAvatar.swift",
+        "Bitkit/Views/Wallets/Send/SendContactSelectView.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-pubky-paykit-recovery",
+      "groups": ["pubky-paykit", "recovery"],
+      "files": [
+        "Bitkit/Models/PaykitAllowanceStateBackup.swift",
+        "Bitkit/Models/PaykitPaymentStateBackup.swift",
+        "Bitkit/Models/PaykitUsdtStateBackup.swift",
+        "Bitkit/Services/PrivatePaykitService+Backup.swift",
+        "Bitkit/Utilities/Testing/ProfileRecoveryUITestFixture.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-pubky-paykit-security",
+      "groups": ["pubky-paykit", "security"],
+      "files": ["Bitkit/Utilities/SharedPubkyKeychain.swift"],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-receive",
+      "groups": ["receive"],
+      "files": [
+        "Bitkit/Components/CopyAddressCard.swift",
+        "Bitkit/Components/Scanner.swift",
+        "Bitkit/Managers/CameraManager.swift",
+        "Bitkit/Managers/ScannerManager.swift",
+        "Bitkit/Models/ReceiveLiquidityDecision.swift",
+        "Bitkit/Utilities/QRCodePayload.swift",
+        "Bitkit/Views/Onboarding/SeedQRCodeScannerView.swift",
+        "Bitkit/Views/Scanner/ScannerScreen.swift",
+        "Bitkit/Views/Scanner/ScannerSheet.swift",
+        "Bitkit/Views/Settings/ProbingTool/ProbingToolScannerSheet.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-recovery",
+      "groups": ["recovery"],
+      "files": [
+        "Bitkit/Components/OnboardingContent.swift",
+        "Bitkit/Components/SeedInputAccessory.swift",
+        "Bitkit/Components/SeedTextField.swift",
+        "Bitkit/Managers/TimedSheets/BackupTimedSheet.swift",
+        "Bitkit/Models/BackupCategory.swift",
+        "Bitkit/Models/BackupItemStatus.swift",
+        "Bitkit/Models/BackupPayloads.swift",
+        "Bitkit/Models/SettingsBackupConfig.swift",
+        "Bitkit/Services/AndroidBackupJson.swift",
+        "Bitkit/Services/BackupFieldMigration.swift",
+        "Bitkit/Services/BackupService.swift",
+        "Bitkit/Services/MigrationsService.swift",
+        "Bitkit/Services/RNBackupClient.swift",
+        "Bitkit/Services/UsdtRecoveryBackupStore.swift",
+        "Bitkit/Services/VssBackupClient.swift",
+        "Bitkit/Services/VssStoreIdProvider.swift",
+        "Bitkit/Utilities/AppDataMigrations.swift",
+        "Bitkit/Utilities/InstallationMarker.swift",
+        "Bitkit/Utilities/SeedQRCodeDecoder.swift",
+        "Bitkit/ViewModels/BackupViewModel.swift",
+        "Bitkit/Views/OnboardingView.swift",
+        "Bitkit/Views/Settings/DevSettings/LegacyRnRecoveryScreen.swift",
+        "Bitkit/Views/Settings/DevSettings/VssDebugScreen.swift",
+        "Bitkit/Views/Settings/Security/DataBackupsScreen.swift",
+        "Bitkit/Views/Transfer/Hardware/HwPassphrasePromptSheet.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-security",
+      "groups": ["security"],
+      "files": [
+        "Bitkit/Components/PinInput.swift",
+        "Bitkit/Components/ScreenshotPreventMask.swift",
+        "Bitkit/Utilities/BiometricAuth.swift",
+        "Bitkit/Utilities/Keychain.swift",
+        "Bitkit/ViewModels/Extensions/SettingsViewModel+PIN.swift",
+        "Bitkit/Views/Settings/SecuritySettingsView.swift",
+        "Bitkit/Views/Sheets/ForgotPinSheet.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-send",
+      "groups": ["send"],
+      "files": [
+        "Bitkit/Components/PaymentAddressInput.swift",
+        "Bitkit/Components/PaymentCelebration.swift",
+        "Bitkit/Components/PaymentReviewIllustration.swift",
+        "Bitkit/Components/SendSectionView.swift",
+        "Bitkit/Extensions/PaymentDetails.swift",
+        "Bitkit/Extensions/PaymentFailureReason+UserMessage.swift",
+        "Bitkit/Managers/TimedSheets/QuickpayTimedSheet.swift",
+        "Bitkit/Services/OnchainSendAttemptService.swift",
+        "Bitkit/Utilities/Bip21Utils.swift",
+        "Bitkit/Utilities/PaymentNavigationHelper.swift",
+        "Bitkit/Utilities/QuickPayLimits.swift",
+        "Bitkit/Utilities/QuickPayPaymentCoordinator.swift",
+        "Bitkit/Utilities/QuickPaySpendStore.swift",
+        "Bitkit/ViewModels/AmountInputViewModel.swift",
+        "Bitkit/Views/Sheets/QuickpaySheet.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-settings",
+      "groups": ["settings"],
+      "files": [
+        "Bitkit/Components/SettingsRow.swift",
+        "Bitkit/ViewModels/SettingsViewModel.swift",
+        "Bitkit/Views/Settings/Advanced/AdvancedSettingsView.swift",
+        "Bitkit/Views/Settings/GeneralSettingsView.swift",
+        "Bitkit/Views/Settings/MainSettingsScreen.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-status",
+      "groups": ["status"],
+      "files": [
+        "Bitkit/Components/AppStatus.swift",
+        "Bitkit/Utilities/AppStatusHelper.swift",
+        "Bitkit/Views/Settings/AppStatusView.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-support",
+      "groups": ["support"],
+      "files": [
+        "Bitkit/Services/LogService.swift",
+        "Bitkit/Services/ZipService.swift",
+        "Bitkit/Utilities/Logger.swift",
+        "Bitkit/Views/Settings/LogView.swift",
+        "Bitkit/Views/Settings/SupportScreen.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-tags",
+      "groups": ["tags"],
+      "files": [
+        "Bitkit/Components/NoteTextEditor.swift",
+        "Bitkit/Managers/TagManager.swift",
+        "Bitkit/Views/Settings/General/TagSettingsView.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-widgets",
+      "groups": ["widgets"],
+      "files": [
+        "Bitkit/Constants/WidgetEnv.swift",
+        "Bitkit/Managers/CalculatorInputManager.swift",
+        "Bitkit/Managers/SuggestionsManager.swift",
+        "Bitkit/Models/BitcoinFacts.swift",
+        "Bitkit/Models/BlocksWidgetData.swift",
+        "Bitkit/Models/BlocksWidgetFields.swift",
+        "Bitkit/Models/BlocksWidgetOptions.swift",
+        "Bitkit/Models/CalculatorWidgetData.swift",
+        "Bitkit/Models/NewsWidgetData.swift",
+        "Bitkit/Models/NewsWidgetOptions.swift",
+        "Bitkit/Models/PriceWidgetData.swift",
+        "Bitkit/Models/PriceWidgetOptions.swift",
+        "Bitkit/Models/WeatherWidgetData.swift",
+        "Bitkit/Models/WeatherWidgetOptions.swift",
+        "Bitkit/ViewModels/WidgetsViewModel.swift",
+        "Bitkit/Views/Home/HomeWidgetsView.swift",
+        "Bitkit/Views/Settings/General/WidgetsSettingsScreen.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "files-widgets-recovery",
+      "groups": ["widgets", "recovery"],
+      "files": [
+        "Bitkit/Components/WidgetsOnboardingView.swift",
+        "Bitkit/Utilities/WidgetsBackupConverter.swift"
+      ],
+      "prefixes": [],
+      "reason": "Feature-specific source; reviewed against callers and existing case coverage."
+    },
+    {
+      "name": "usdt",
+      "groups": [],
+      "files": [
+        "Bitkit/Managers/TimedSheets/UsdtIntroTimedSheet.swift",
+        "Bitkit/Managers/UsdtWalletManager.swift",
+        "Bitkit/Models/PaykitUsdt.swift",
+        "Bitkit/Models/PaykitUsdtStateBackup.swift",
+        "Bitkit/Models/UsdtDisplayBalanceCache.swift",
+        "Bitkit/Models/UsdtPreference.swift",
+        "Bitkit/Models/UsdtPreparedQuote.swift",
+        "Bitkit/Services/PaykitUsdtPaymentService.swift",
+        "Bitkit/Services/UsdtRecoveryBackupStore.swift",
+        "Bitkit/Views/Sheets/UsdtIntroSheet.swift",
+        "Bitkit/Views/Wallets/UsdtActivityDetail.swift",
+        "Bitkit/Views/Wallets/UsdtDepositHistoryView.swift",
+        "Bitkit/Views/Wallets/UsdtNetworkPicker.swift",
+        "Bitkit/Views/Wallets/UsdtReceiveAmountView.swift",
+        "Bitkit/Views/Wallets/UsdtReceiveView.swift",
+        "Bitkit/Views/Wallets/UsdtSendView.swift",
+        "Bitkit/Views/Wallets/UsdtSupportActions.swift",
+        "Bitkit/Views/Wallets/UsdtWalletScreen.swift"
+      ],
+      "prefixes": [],
+      "reason": "Keep Bitcoin regression gate; no existing automated iOS USDT case.",
+      "coverageNote": "USDT changes: existing Bitcoin/Paykit cases do not prove USDT behavior; relevant native/integration coverage is required."
+    },
+    {
+      "name": "presentation-and-resources",
+      "groups": [],
+      "files": [],
+      "prefixes": [
+        "Bitkit/Styles/",
+        "Bitkit/Assets.xcassets/",
+        "Bitkit/Preview Content/",
+        "Bitkit/Resources/",
+        "Bitkit/Fonts/",
+        "Bitkit/Components/Button/",
+        "Bitkit/Components/TabBar/"
+      ],
+      "reason": "Presentation changes run the base wallet/payment gate; dedicated native checks retain their coverage."
+    },
+    {
+      "name": "non-app-checks",
+      "groups": [],
+      "files": [
+        ".gitignore",
+        ".swiftformat",
+        "LICENSE",
+        "Justfile",
+        "manually-test-payments.sh",
+        "run.sh",
+        "ExportOptions.plist",
+        "scripts/pre-commit",
+        "scripts/collect-changelog.sh",
+        "scripts/preview-changelog.sh",
+        "scripts/setup-hooks.sh",
+        "scripts/test-plural-localizations.swift",
+        "scripts/validate-translations.js",
+        "scripts/build-usdt-local.sh"
+      ],
+      "prefixes": [
+        "Docs/",
+        "journeys/",
+        "changelog.d/",
+        "BitkitTests/",
+        "BitkitUITests/",
+        ".agents/",
+        ".claude/",
+        ".cursor/",
+        "test-push-server/"
+      ],
+      "skip": true,
+      "reason": "Documentation, native tests or developer tooling: existing native/lint checks apply; no app source change."
+    },
+    {
+      "name": "selection-policy",
+      "groups": [],
+      "files": [
+        ".github/e2e-policy.json",
+        ".github/scripts/e2e-selection.cjs",
+        ".github/scripts/e2e-selection.test.cjs",
+        ".github/workflows/e2e-selection.yml"
+      ],
+      "prefixes": [],
+      "skip": true,
+      "reason": "Cheap policy/selection tests validate rule changes; device validation is dispatched explicitly."
+    },
+    {
+      "name": "other-ci",
+      "groups": [],
+      "files": [
+        ".github/ISSUE_TEMPLATE/bug_report.yml",
+        ".github/ISSUE_TEMPLATE/feature_request.yml",
+        ".github/copilot-instructions.md",
+        ".github/dependabot.yml",
+        ".github/pull_request_template.md",
+        ".github/scripts/retarget-execution.cjs",
+        ".github/scripts/retarget-execution.test.cjs",
+        ".github/scripts/retarget-tests.cjs",
+        ".github/scripts/retarget-tests.test.cjs",
+        ".github/scripts/test-fixtures/retarget-execution.cjs",
+        ".github/workflows/ai-device-tests.yml",
+        ".github/workflows/claude-code-review.yml",
+        ".github/workflows/claude.yml",
+        ".github/workflows/e2e-retarget.yml",
+        ".github/workflows/integration-tests.yml",
+        ".github/workflows/lint.yml",
+        ".github/workflows/retarget-execution-cleanup.yml",
+        ".github/workflows/unit-tests.yml",
+        ".github/workflows/validate-translations.yml"
+      ],
+      "prefixes": [],
+      "skip": true,
+      "reason": "Other CI and repository metadata do not change the app; their own checks apply."
+    },
+    {
+      "name": "notification-extension",
+      "groups": [],
+      "files": [
+        "BitkitNotification/BitkitNotification.entitlements",
+        "BitkitNotification/Info.plist",
+        "BitkitNotification/NotificationService.swift"
+      ],
+      "prefixes": [],
+      "reason": "Base payment regression; notification-specific behavior remains native/device coverage."
+    },
+    {
+      "name": "localization-build",
+      "groups": [],
+      "files": ["scripts/generate-plural-localizations.swift"],
+      "prefixes": [],
+      "reason": "Base gate and existing translation/build checks."
+    },
+    {
+      "name": "widget-entitlements",
+      "groups": ["widgets"],
+      "files": ["BitkitWidgetExtension.entitlements"],
+      "prefixes": []
+    },
+    {
+      "name": "shared-retry-and-lifecycle",
+      "groups": [],
+      "files": [
+        "Bitkit/Utilities/RetryHelper.swift",
+        "Bitkit/Utilities/BackgroundTaskScheduling.swift",
+        "Bitkit/Utilities/Errors.swift"
+      ],
+      "prefixes": [],
+      "full": true,
+      "reason": "Shared error/retry/background lifecycle can affect wallet startup, payments and recovery."
+    },
+    {
+      "name": "payment-encoding",
+      "groups": ["send", "pubky-paykit", "hardware"],
+      "files": [
+        "Bitkit/Extensions/HexBytes.swift",
+        "Bitkit/Utilities/URLValidationPattern.swift"
+      ],
+      "prefixes": [],
+      "reason": "Payment/key encoding and external request validation shared across payment routes."
+    },
+    {
+      "name": "lnurl-string-parsing",
+      "groups": ["lnurl"],
+      "files": ["Bitkit/Extensions/String+Utilities.swift"],
+      "prefixes": [],
+      "reason": "removingLightningSchemes parses LNURL inputs."
+    },
+    {
+      "name": "scanner-sheet",
+      "groups": ["receive"],
+      "files": ["Bitkit/Components/QR.swift"],
+      "prefixes": ["Bitkit/Views/Scanner/"],
+      "reason": "Receiving/scan entry points."
+    },
+    {
+      "name": "tag-sheet",
+      "groups": ["tags"],
+      "files": ["Bitkit/Views/Wallets/Sheets/AddTagSheet.swift"],
+      "prefixes": []
+    },
+    {
+      "name": "shared-presentation",
+      "groups": [],
+      "files": [
+        "Bitkit/Components/ActivityIndicator.swift",
+        "Bitkit/Components/BlurView.swift",
+        "Bitkit/Components/BottomActionBar.swift",
+        "Bitkit/Components/CheckboxRow.swift",
+        "Bitkit/Components/CircularIcon.swift",
+        "Bitkit/Components/ClipboardCopyPopup.swift",
+        "Bitkit/Components/CustomSlider.swift",
+        "Bitkit/Components/Divider.swift",
+        "Bitkit/Components/DrawerView.swift",
+        "Bitkit/Components/EllipseLoader.swift",
+        "Bitkit/Components/EmptyStateView.swift",
+        "Bitkit/Components/Header.swift",
+        "Bitkit/Components/IconButton.swift",
+        "Bitkit/Components/InsetHeaderScrollView.swift",
+        "Bitkit/Components/LabeledDetailCell.swift",
+        "Bitkit/Components/NavigationBar.swift",
+        "Bitkit/Components/NodeStateView.swift",
+        "Bitkit/Components/NotificationPreview.swift",
+        "Bitkit/Components/RadioGroup.swift",
+        "Bitkit/Components/RectangleButton.swift",
+        "Bitkit/Components/SegmentedControl.swift",
+        "Bitkit/Components/ShareSheet.swift",
+        "Bitkit/Components/SheetIntro.swift",
+        "Bitkit/Components/SnapCarousel.swift",
+        "Bitkit/Components/Social.swift",
+        "Bitkit/Components/StatusRow.swift",
+        "Bitkit/Components/SuggestionCard.swift",
+        "Bitkit/Components/SwipeButton.swift",
+        "Bitkit/Components/TabViewDots.swift",
+        "Bitkit/Components/TextField.swift",
+        "Bitkit/Components/ToastView.swift",
+        "Bitkit/Components/Tooltip.swift",
+        "Bitkit/Components/WalletBalanceView.swift",
+        "Bitkit/Components/WrappingHStack.swift",
+        "Bitkit/Extensions/IBtOrder+Mock.swift",
+        "Bitkit/Extensions/TextEditor+DismissOnReturn.swift",
+        "Bitkit/Extensions/UINavigationController+SwipeBack.swift",
+        "Bitkit/Extensions/UIScreen.swift",
+        "Bitkit/Extensions/View+Accessibility.swift",
+        "Bitkit/Extensions/View+SafeArea.swift",
+        "Bitkit/Extensions/View+SwipeGestures.swift",
+        "Bitkit/LaunchScreen.storyboard",
+        "Bitkit/Managers/KeyboardManager.swift",
+        "Bitkit/Managers/LanguageManager.swift",
+        "Bitkit/Managers/PushNotificationManager.swift",
+        "Bitkit/Managers/TimedSheets/AppUpdateTimedSheet.swift",
+        "Bitkit/Managers/TimedSheets/HighBalanceTimedSheet.swift",
+        "Bitkit/Managers/TimedSheets/NotificationsTimedSheet.swift",
+        "Bitkit/Managers/TimedSheets/TimedSheetManager.swift",
+        "Bitkit/Managers/ToastWindowManager.swift",
+        "Bitkit/Models/SupportedLanguage.swift",
+        "Bitkit/Models/Toast.swift",
+        "Bitkit/Services/AppUpdateService.swift",
+        "Bitkit/Utilities/BlockExplorerHelper.swift",
+        "Bitkit/Utilities/ClipboardPrompt.swift",
+        "Bitkit/Utilities/DateFormatterHelpers.swift",
+        "Bitkit/Utilities/Haptics.swift",
+        "Bitkit/Utilities/LocalizeHelpers.swift",
+        "Bitkit/Views/AppUpdateScreen.swift",
+        "Bitkit/Views/BuyBitcoinView.swift",
+        "Bitkit/Views/ComingSoon.swift",
+        "Bitkit/Views/Home/HomeWalletView.swift",
+        "Bitkit/Views/HomeScreen.swift",
+        "Bitkit/Views/Settings/General/LanguageSettingsScreen.swift",
+        "Bitkit/Views/Settings/Notifications/NotificationsIntro.swift",
+        "Bitkit/Views/Settings/Notifications/NotificationsSettings.swift",
+        "Bitkit/Views/Sheets/AppUpdateSheet.swift",
+        "Bitkit/Views/Sheets/HighBalanceSheet.swift",
+        "Bitkit/Views/Sheets/NotificationsSheet.swift",
+        "Bitkit/Views/Sheets/Sheet.swift",
+        "Bitkit/Views/SplashView.swift",
+        "Bitkit/Views/Wallets/SavingsWalletScreen.swift",
+        "Bitkit/Views/Wallets/Sheets/ReceivedTx.swift",
+        "Bitkit/Views/Wallets/SpendingWalletScreen.swift"
+      ],
+      "prefixes": [],
+      "reason": "Reviewed display/notification/update/UI-shell files: base gate checks app access and wallet/payment interaction; native tests cover detailed presentation. New files require classification."
+    }
+  ]
+}
