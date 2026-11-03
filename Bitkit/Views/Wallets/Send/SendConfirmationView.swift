@@ -68,7 +68,7 @@ struct SendConfirmationView: View {
     }
 
     private var sendContext: ConfirmationContext? {
-        guard preparingRequest == nil, !isRequestSetupPending, !isSubmittingPayment,
+        guard preparingRequest == nil, !isRequestSetupPending, !isSubmittingPayment, !hasShownAmountReview,
               navigationPath.last == nil || navigationPath.last == .confirm || isEditingSendDetails,
               let sheet = sheets.activeSheetConfiguration,
               sheet.presentationID == presentationID,
@@ -469,7 +469,8 @@ struct SendConfirmationView: View {
                 }
             }
             .onChange(of: app.selectedWalletToPayFrom) {
-                guard preparingRequest == nil, !returnToAmountReviewIfNeeded(rebindMethod: !hwSend.isActive) else { return }
+                guard preparingRequest == nil, !hasShownAmountReview,
+                      !returnToAmountReviewIfNeeded(rebindMethod: !hwSend.isActive) else { return }
                 ensureSendAmountFromScannedInvoicesIfNeeded()
                 walletSwitchContext = sendContext
             }
@@ -544,7 +545,7 @@ struct SendConfirmationView: View {
 
     @MainActor
     private func startAutomaticPaymentIfNeeded() async {
-        guard Self.canStartAutomaticPayment(
+        guard !hasShownAmountReview, Self.canStartAutomaticPayment(
             shouldAutomaticallyPay: shouldAutomaticallyPay,
             hasStartedAutomaticPayment: hasStartedAutomaticPayment,
             isSetupPending: isSetupPending,
@@ -1810,7 +1811,6 @@ struct SendConfirmationView: View {
             returnToAmountReview()
             return true
         }
-        hasShownAmountReview = false
         return false
     }
 
@@ -2065,6 +2065,7 @@ struct SendConfirmationView: View {
 
     @MainActor
     private func calculateRoutingFee() async {
+        guard !hasShownAmountReview else { return }
         guard let bolt11 = app.scannedLightningInvoice?.bolt11 else {
             wallet.routingFeeEstimateSats = 0
             return

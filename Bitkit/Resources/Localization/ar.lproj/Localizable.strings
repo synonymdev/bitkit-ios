@@ -1516,6 +1516,9 @@
 "wallet__activity_time" = "الوقت";
 "subscriptions__allowances" = "المخصصات";
 "subscriptions__allowances_empty_headline" = "أعدّ\n<accent>المخصصات</accent>";
+"subscriptions__allowances_paused_description" = "سجلات الميزانيات لديك أقدم من سجلات استخدمتها هذه المحفظة من قبل. ستطلب الطلبات موافقتك حتى تستأنف.";
+"subscriptions__allowances_paused_resume" = "استئناف";
+"subscriptions__allowances_paused_title" = "تم إيقاف الدفعات التلقائية مؤقتًا";
 "subscriptions__allowances_empty_description" = "يمكنك تعيين حدود إنفاق لتلبية طلبات الدفع من جهات الاتصال الموثوقة تلقائيًا.";
 "subscriptions__allowance_add" = "إضافة مخصص";
 "subscriptions__allowance_title" = "المخصص";

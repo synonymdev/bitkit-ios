@@ -284,6 +284,7 @@ enum PaykitAllowanceTime {
 /// Allowance's live automatic attempts in the current month first and keeps an over-cap request on the manual flow.
 enum PaykitAllowanceCapacity {
     struct Attempt: Equatable {
+        let attemptId: String
         let counterparty: String
         let allowanceId: String
         let amountSats: UInt64
@@ -302,7 +303,8 @@ enum PaykitAllowanceCapacity {
             .reduce(0) { $0 + $1.amountSats }
     }
 
-    static func fits(amountSats: UInt64, allowance: PaykitAllowance, attempts: [Attempt], now: Date) -> Bool {
+    /// Spending counts the higher of the ledger's `attempts` and this wallet's own `localAttempts`.
+    static func fits(amountSats: UInt64, allowance: PaykitAllowance, attempts: [Attempt], now: Date, localAttempts: [Attempt] = []) -> Bool {
         if let perPaymentMaxSats = allowance.perPaymentMaxSats, amountSats > perPaymentMaxSats {
             return false
         }
@@ -310,8 +312,24 @@ enum PaykitAllowanceCapacity {
         guard allowance.perPaymentMaxSats != nil, let monthlyLimitSats = allowance.monthlyLimitSats, let anchor = allowance.monthlyAnchor else {
             return false
         }
-        let used = usedSats(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId, attempts: attempts, anchor: anchor, now: now)
+        // Every attempt of the ledger and of this wallet counts once, so neither side's missing attempts hide the other's.
+        let ledgerIds = Set(attempts.map(\.attemptId))
+        let all = attempts + localAttempts.filter { !ledgerIds.contains($0.attemptId) }
+        let used = usedSats(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId, attempts: all, anchor: anchor, now: now)
         return used + amountSats <= monthlyLimitSats
+    }
+
+    static func attempts(from spends: [PaykitAllowanceLocalState.AutomaticSpend]) -> [Attempt] {
+        spends.map {
+            Attempt(
+                attemptId: $0.attemptId,
+                counterparty: $0.counterparty,
+                allowanceId: $0.allowanceId,
+                amountSats: $0.amountSats,
+                admittedAt: $0.admittedAt,
+                isLive: true
+            )
+        }
     }
 
     static func attempts(from history: Paykit.AllowanceAccountingHistory) -> [Attempt] {
@@ -324,6 +342,7 @@ enum PaykitAllowanceCapacity {
                   let amountSats = PaykitAllowance.sats(fromBitcoinAmount: attempt.amount.value())
             else { return nil }
             return Attempt(
+                attemptId: attempt.attemptId,
                 counterparty: counterparty,
                 allowanceId: allowanceId,
                 amountSats: amountSats,

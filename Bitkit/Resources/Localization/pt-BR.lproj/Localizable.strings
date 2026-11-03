@@ -1850,6 +1850,9 @@
 "usdt__deposit_refund_address_network" = "Endereço USDT na rede {network}";
 "subscriptions__allowances" = "Pré-aprovações";
 "subscriptions__allowances_empty_headline" = "Configure\n<accent>pré-aprovações</accent>";
+"subscriptions__allowances_paused_description" = "Os registros das suas mesadas são mais antigos do que outros que esta carteira já usou. As solicitações vão pedir sua aprovação até você retomar.";
+"subscriptions__allowances_paused_resume" = "Retomar";
+"subscriptions__allowances_paused_title" = "Pagamentos automáticos pausados";
 "subscriptions__allowances_empty_description" = "Você pode definir limites de gastos para pagar automaticamente solicitações de pagamento de contatos confiáveis.";
 "subscriptions__allowance_add" = "Adicionar Pré-aprovação";
 "subscriptions__allowance_title" = "Pré-aprovação";

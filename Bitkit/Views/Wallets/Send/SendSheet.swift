@@ -111,6 +111,24 @@ final class SendPresentationState {
     @ObservationIgnored private(set) var lnurlAmountInput: AmountInputViewModel?
     @ObservationIgnored private var lnurlAmountGeneration: UUID?
 
+    var amountNavigationPath: Binding<[SendRoute]> {
+        Binding(
+            get: { self.navigationPath },
+            set: { path in
+                if (self.rootOverride ?? self.rootRoute) == .confirm,
+                   self.navigationPath == [.amount], path.count > 1, path.first == .amount
+                {
+                    // Continuing a fallback review must retire the failed root confirmation.
+                    self.rootOverride = .amount
+                    self.navigationPath = Array(path.dropFirst())
+                    self.rootRouteGeneration &+= 1
+                } else {
+                    self.navigationPath = path
+                }
+            }
+        )
+    }
+
     @MainActor
     func amountInput(for generation: UUID) -> AmountInputViewModel {
         if lnurlAmountGeneration == generation, let lnurlAmountInput {
@@ -989,7 +1007,7 @@ struct SendSheet: View {
         case .manual:
             SendEnterManuallyView(navigationPath: $flow.navigationPath, hwSend: hwSend)
         case .amount:
-            SendAmountView(navigationPath: $flow.navigationPath, hwSend: hwSend)
+            SendAmountView(navigationPath: flow.amountNavigationPath, hwSend: hwSend)
         case let .usdt(recipient, amount):
             UsdtSendView(onDetails: { id in
                 flow.usdtDetails = id
