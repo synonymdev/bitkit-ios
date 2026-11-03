@@ -203,7 +203,7 @@ jobs:
       - e2e-branch
       - resolve-e2e-ref
       - migration-plan
-    uses: synonymdev/bitkit-e2e-tests/.github/workflows/migration-wallet-setup.yml@a4996b56f8a73e4d9bbc2fb300a05000595bd6cd
+    uses: synonymdev/bitkit-e2e-tests/.github/workflows/migration-wallet-setup.yml@39f8964ee28c801874bae1cc7667505c9bb03065
     strategy:
       fail-fast: false
       matrix:
