@@ -3,7 +3,7 @@
 const { execFileSync } = require("node:child_process");
 
 const CODE =
-  /^(Bitkit\/|BitkitNotification\/|BitkitWidget\/|Bitkit\.xcodeproj\/|Package\.swift$|\.github\/scripts\/|\.github\/actions\/swift-packages\/|\.github\/workflows\/e2e-smoke-shadow\.yml$|scripts\/shallow-source-packages\.sh$)/;
+  /^(Bitkit\/|BitkitNotification\/|BitkitWidget\/|Bitkit\.xcodeproj\/|Package\.swift$|\.github\/scripts\/|\.github\/actions\/swift-packages\/|\.github\/workflows\/e2e-smoke-shadow\.yml$|scripts\/)/;
 
 function eligible(eventName, event) {
   if (eventName === "workflow_dispatch") return true;

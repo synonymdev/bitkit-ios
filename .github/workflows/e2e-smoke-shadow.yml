@@ -63,6 +63,7 @@ jobs:
     cache-mode: read
     timeout-minutes: 60
     env:
+      PLATFORM: ios
       BACKEND: regtest
       SIMULATOR_NAME: Bitkit smoke shadow
       SIMULATOR_OS_VERSION: "26.2"
@@ -101,6 +102,7 @@ jobs:
         with:
           node-version: "22"
       - name: Install and validate the inventory producer
+        id: install
         working-directory: bitkit-e2e-tests
         run: |
           test -f test/inventory.json || { echo '::error::Selected E2E branch lacks the #264 inventory producer'; exit 1; }
@@ -118,9 +120,9 @@ jobs:
           xcrun simctl boot "$udid"
           xcrun simctl bootstatus "$udid" -b
       - name: Build matching regtest app
+        id: build
         timeout-minutes: 30
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           E2E_BACKEND: network
           E2E_NETWORK: regtest
         run: |
@@ -132,7 +134,7 @@ jobs:
             -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
             -disablePackageRepositoryCache -disableAutomaticPackageResolution -skipPackageUpdates \
             SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG E2E_BUILD' \
-            -allowProvisioningUpdates build | xcbeautify
+            -allowProvisioningUpdates build 2>&1 | tee "$RUNNER_TEMP/ios-smoke-build.log" | xcbeautify
           mkdir -p bitkit-e2e-tests/aut
           cp -R DerivedData/Build/Products/Debug-iphonesimulator/Bitkit.app bitkit-e2e-tests/aut/Bitkit.app
           ditto -c -k --keepParent bitkit-e2e-tests/aut/Bitkit.app "$RUNNER_TEMP/smoke-app.zip"
@@ -155,6 +157,17 @@ jobs:
           else
             echo '## iOS smoke shadow: incomplete — build/setup/selection did not produce a plan' >> "$GITHUB_STEP_SUMMARY"
             exit 1
+          fi
+      - name: Collect setup and build diagnostics
+        if: always()
+        env:
+          DIAGNOSTICS: |
+            {"job":"${{ job.status }}","install":"${{ steps.install.outcome }}","build":"${{ steps.build.outcome }}","appSha":"${{ needs.detect.outputs.tested }}","runId":"${{ github.run_id }}","runAttempt":"${{ github.run_attempt }}"}
+        run: |
+          mkdir -p bitkit-e2e-tests/artifacts/reporting
+          printf '%s\n' "$DIAGNOSTICS" > bitkit-e2e-tests/artifacts/reporting/setup.json
+          if test -f "$RUNNER_TEMP/ios-smoke-build.log"; then
+            cp "$RUNNER_TEMP/ios-smoke-build.log" bitkit-e2e-tests/artifacts/
           fi
       - name: Upload smoke evidence
         if: always()

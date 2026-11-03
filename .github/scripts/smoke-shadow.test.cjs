@@ -2,6 +2,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
+const { execFileSync } = require("node:child_process");
 const path = require("node:path");
 const {
   eligible,
@@ -149,4 +151,73 @@ test("shadow has distinct names, one attempt, read permissions, no scheduled tri
   );
   assert.match(workflow, /if: always\(\)/);
   assert.match(workflow, /--spec.*smoke\.e2e\.ts/);
+});
+
+test("build-generator-only changes schedule smoke", () => {
+  assert.equal(
+    needsSmoke("pull_request", event(), [
+      "scripts/generate-plural-localizations.swift",
+    ]),
+    true,
+  );
+});
+test("always diagnostic collector creates artifacts after checkout/setup failure and preserves failed build output", (t) => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "shadow-diagnostics-"),
+  );
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const workflow = fs.readFileSync(
+    path.join(__dirname, "../workflows/e2e-smoke-shadow.yml"),
+    "utf8",
+  );
+  const section = workflow
+    .split("      - name: Collect setup and build diagnostics\n")[1]
+    .split("      - name: Upload smoke evidence")[0];
+  assert.match(section, /if: always\(\)/);
+  const script = section
+    .split("        run: |\n")[1]
+    .split("\n")
+    .map((line) => line.replace(/^          /, ""))
+    .join("\n");
+  const metadata = {
+    job: "failure",
+    install: "failure",
+    build: "skipped",
+    appSha: merge,
+  };
+  const invoke = () =>
+    execFileSync("bash", ["-e", "-o", "pipefail", "-c", script], {
+      cwd: directory,
+      env: {
+        ...process.env,
+        RUNNER_TEMP: directory,
+        DIAGNOSTICS: JSON.stringify(metadata),
+      },
+    });
+  invoke(); // No checkout or build log exists yet.
+  const report = path.join(
+    directory,
+    "bitkit-e2e-tests/artifacts/reporting/setup.json",
+  );
+  assert.deepEqual(JSON.parse(fs.readFileSync(report, "utf8")), metadata);
+  fs.writeFileSync(
+    path.join(directory, "ios-smoke-build.log"),
+    "error: fixture build failed\n",
+  );
+  metadata.install = "success";
+  metadata.build = "failure";
+  invoke();
+  assert.equal(
+    fs.readFileSync(
+      path.join(directory, "bitkit-e2e-tests/artifacts/ios-smoke-build.log"),
+      "utf8",
+    ),
+    "error: fixture build failed\n",
+  );
+  assert.equal(JSON.parse(fs.readFileSync(report, "utf8")).build, "failure");
+  assert.match(workflow, /set -o pipefail/);
+  assert.match(
+    workflow,
+    /build 2>&1 \| tee "\$RUNNER_TEMP\/ios-smoke-build.log" \| xcbeautify/,
+  );
 });
