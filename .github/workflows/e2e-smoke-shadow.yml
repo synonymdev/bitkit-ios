@@ -1,9 +1,6 @@
-name: iOS E2E smoke (shadow)
+name: iOS E2E smoke (manual validation)
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, edited]
-    branches: [master]
   workflow_dispatch:
     inputs:
       e2e_branch:
@@ -13,18 +10,14 @@ on:
 permissions:
   contents: read
   packages: read
-  pull-requests: read
 
 concurrency:
-  group: ios-smoke-shadow-${{ github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base == null && format('ignored-{0}', github.run_id) || github.event.pull_request.number || github.ref }}
+  group: ios-smoke-shadow-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   detect:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.pull_request.draft == false &&
-       (github.event.action != 'edited' || github.event.changes.base != null))
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -52,7 +45,7 @@ jobs:
     if: needs.detect.outputs.code == 'true'
     uses: synonymdev/bitkit-e2e-tests/.github/workflows/determine-e2e-branch.yml@main
     with:
-      app_branch: ${{ github.head_ref || github.ref_name }}
+      app_branch: ${{ github.ref_name }}
       e2e_branch_input: ${{ inputs.e2e_branch || 'default-feature-branch' }}
 
   smoke:
@@ -186,11 +179,7 @@ jobs:
 
   shadow-status:
     name: e2e-smoke-shadow-status
-    if: >-
-      always() &&
-      (github.event_name == 'workflow_dispatch' ||
-       (github.event.pull_request.draft == false &&
-        (github.event.action != 'edited' || github.event.changes.base != null)))
+    if: always() && github.event_name == 'workflow_dispatch'
     needs: [detect, e2e-branch, smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 5

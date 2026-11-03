@@ -28,7 +28,7 @@ function event(action = "synchronize") {
   };
 }
 
-test("normal PR, ready-for-review, real retarget and dispatch are eligible", () => {
+test("retained PR selector recognizes PR events (automatic trigger disabled)", () => {
   for (const action of [
     "opened",
     "synchronize",
@@ -153,7 +153,7 @@ test("shadow has distinct names, one attempt, read permissions, no scheduled tri
   assert.match(workflow, /--spec.*smoke\.e2e\.ts/);
 });
 
-test("build-generator-only changes schedule smoke", () => {
+test("retained PR selector recognizes build scripts (automatic trigger disabled)", () => {
   assert.equal(
     needsSmoke("pull_request", event(), [
       "scripts/generate-plural-localizations.swift",
@@ -220,4 +220,24 @@ test("always diagnostic collector creates artifacts after checkout/setup failure
     workflow,
     /build 2>&1 \| tee "\$RUNNER_TEMP\/ios-smoke-build.log" \| xcbeautify/,
   );
+});
+
+test("manual validation cannot add an automatic Mac run for PRs, pushes, schedules or build-script changes", () => {
+  const workflow = fs.readFileSync(
+    path.join(__dirname, "../workflows/e2e-smoke-shadow.yml"),
+    "utf8",
+  );
+  const triggers = workflow.split("on:\n")[1].split("\npermissions:")[0];
+  assert.deepEqual(
+    [...triggers.matchAll(/^  ([a-z_]+):/gm)].map((match) => match[1]),
+    ["workflow_dispatch"],
+  );
+  const detect = workflow.split("  detect:\n")[1].split("  e2e-branch:")[0];
+  assert.match(detect, /if: github.event_name == 'workflow_dispatch'/);
+  const status = workflow.split("  shadow-status:\n")[1];
+  assert.match(
+    status,
+    /if: always\(\) && github.event_name == 'workflow_dispatch'/,
+  );
+  assert.match(workflow, /group: ios-smoke-shadow-\$\{\{ github.ref \}\}/);
 });

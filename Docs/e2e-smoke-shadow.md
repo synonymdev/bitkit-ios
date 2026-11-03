@@ -1,22 +1,25 @@
 # iOS smoke shadow (#264)
 
-This additive workflow observes three fresh-wallet regtest cases. It does not
+This manual validation workflow observes three fresh-wallet regtest cases. It does not
 replace `e2e-status`, alter rulesets, or change existing gates and schedules.
 The inventory/reporting and smoke producer in `synonymdev/bitkit-e2e-tests` must
 land first, or use matching companion branches in both repositories.
 
-Non-draft PRs into `master` run on open, synchronization, reopen, readiness and
-base retargeting when app/build/consumer paths change. Documentation-only changes
-produce an explicit no-code result. Manual dispatch runs the selected revision.
-The workflow verifies the tested merge's parents against the current PR head and
-`master`; stale or unverifiable candidates fail visibly. Unrelated PR edits do not
-cancel an active smoke run. No scheduled trigger is added at this stage.
+This workflow is **manual-only** (`workflow_dispatch`). Opening, updating or
+retargeting a PR, pushing a commit, or changing a build script does not start it.
+The existing gates remain the only automatic app gates during validation. Dispatch
+against an existing selected revision; there is no need to push a new commit to
+validate it. The checkout must match that dispatch's SHA.
+
+After representative manual runs validate the smoke pack, switch the automatic PR
+gate in one deliberate change. Do not add an automatic smoke job alongside the old
+gate as a rollout phase. Existing nightly coverage continues unchanged.
 
 Each selected run uses one standard hosted Mac, one simulator and one test attempt.
-The job is capped at 60 minutes, the build at 30 and tests at 20. New commits cancel
-older shadow runs. Cache access is read-only; evidence retention is seven days.
-There are no automatic retries or shards. Existing expensive gates still run during
-validation, so shadow temporarily adds compute. Do not assume parallelism reduces
+The job is capped at 60 minutes, the build at 30 and tests at 20. A newer manual dispatch on the same ref cancels
+an older manual smoke run. Cache access is read-only; evidence retention is seven days.
+There are no automatic retries or shards. Manual validation consumes compute only when explicitly dispatched; it does not
+add an automatic Mac run to each PR. Do not assume parallelism reduces
 billed minutes or that hosted-runner availability guarantees no queue.
 
 Inspect `e2e-smoke-shadow-status`, the Actions summary and `ios-smoke-shadow-*`
