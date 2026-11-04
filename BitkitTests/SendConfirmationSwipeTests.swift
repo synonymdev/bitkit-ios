@@ -163,6 +163,14 @@ final class SendConfirmationSwipeTests: XCTestCase {
         ))
     }
 
+    func testAScannedAmountCannotBeEditedFromConfirm() {
+        XCTAssertFalse(SendConfirmationView.canEditScannedAmount(walletToPayFrom: .onchain, lightningAmountSats: nil, onchainAmountSats: 10000))
+        XCTAssertFalse(SendConfirmationView.canEditScannedAmount(walletToPayFrom: .lightning, lightningAmountSats: 10000, onchainAmountSats: 0))
+        XCTAssertTrue(SendConfirmationView.canEditScannedAmount(walletToPayFrom: .onchain, lightningAmountSats: 10000, onchainAmountSats: 0))
+        XCTAssertTrue(SendConfirmationView.canEditScannedAmount(walletToPayFrom: .lightning, lightningAmountSats: 0, onchainAmountSats: 10000))
+        XCTAssertTrue(SendConfirmationView.canEditScannedAmount(walletToPayFrom: .onchain, lightningAmountSats: nil, onchainAmountSats: nil))
+    }
+
     func testAFailedHardwarePreviewReturnsToAmountOutsideContactPayments() {
         XCTAssertTrue(SendConfirmationView.returnsToAmountAfterFeeFailure(isHardwarePayment: true, isContactPayment: false))
         XCTAssertFalse(SendConfirmationView.returnsToAmountAfterFeeFailure(isHardwarePayment: true, isContactPayment: true))

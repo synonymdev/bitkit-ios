@@ -248,9 +248,19 @@ struct SendConfirmationView: View {
 
     private var canEditAmount: Bool {
         guard preparingRequest == nil, app.contactPaymentContext?.incomingPaymentRequest == nil else { return false }
-        guard app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice else { return true }
+        return Self.canEditScannedAmount(
+            walletToPayFrom: app.selectedWalletToPayFrom,
+            lightningAmountSats: app.scannedLightningInvoice?.amountSatoshis,
+            onchainAmountSats: app.scannedOnchainInvoice?.amountSatoshis
+        )
+    }
 
-        return invoice.amountSatoshis == 0
+    /// The payee set the amount of a scanned request that carries one, so Confirm does not offer Amount to change it.
+    static func canEditScannedAmount(walletToPayFrom: WalletType, lightningAmountSats: UInt64?, onchainAmountSats: UInt64?) -> Bool {
+        switch walletToPayFrom {
+        case .lightning: lightningAmountSats.map { $0 == 0 } ?? true
+        case .onchain: onchainAmountSats.map { $0 == 0 } ?? true
+        }
     }
 
     private var contactPaymentContact: PubkyContact? {
@@ -1854,7 +1864,21 @@ struct SendConfirmationView: View {
 
     private func navigateToAmount() {
         guard canEditAmount else { return }
+        showAmount()
+    }
 
+    /// After a failure, an editable amount goes back to Amount; a fixed one leaves Confirm, as Amount cannot change it.
+    private func leaveAfterPreparationFailure() {
+        if canEditAmount {
+            showAmount()
+        } else if let confirmIndex = navigationPath.lastIndex(of: .confirm) {
+            navigationPath = Array(navigationPath.prefix(confirmIndex))
+        } else if let presentationID {
+            sheets.hideSheetIfActive(presentationID: presentationID, reason: "Fixed-amount payment could not be prepared")
+        }
+    }
+
+    private func showAmount() {
         if amountIsRoot {
             navigationPath = []
         } else if let amountIndex = navigationPath.lastIndex(of: .amount) {
@@ -2001,7 +2025,7 @@ struct SendConfirmationView: View {
             guard isCurrentSend(), !(error is CancellationError) else { return }
             Logger.error("Failed to select UTXOs for on-chain request: \(error)", context: "SendConfirmationView")
             app.toast(type: .error, title: t("other__try_again"), description: error.localizedDescription)
-            navigateToAmount()
+            leaveAfterPreparationFailure()
         }
     }
 
@@ -2125,7 +2149,7 @@ struct SendConfirmationView: View {
             transactionFee = 0
             if Self.returnsToAmountAfterFeeFailure(isHardwarePayment: hwSend.isActive, isContactPayment: app.contactPaymentContext != nil) {
                 app.toast(type: .error, title: t("other__try_again"), description: error.localizedDescription)
-                navigateToAmount()
+                leaveAfterPreparationFailure()
                 return
             }
             if app.contactPaymentContext?.incomingPaymentRequest != nil {
