@@ -94,4 +94,12 @@ final class UsdtPaymentLinkTests: XCTestCase {
             XCTAssertNil(try resolveUsdtPaymentRoute(input: input, isEnabled: true), input)
         }
     }
+
+    func testFixedAmountSurvivesContinuingWithTheSameRecipient() {
+        XCTAssertTrue(UsdtSendView.isAmountFixed(requestedAmount: 10001, wasFixed: false, isSameRecipient: false))
+        XCTAssertFalse(UsdtSendView.isAmountFixed(requestedAmount: 0, wasFixed: true, isSameRecipient: true))
+        XCTAssertTrue(UsdtSendView.isAmountFixed(requestedAmount: nil, wasFixed: true, isSameRecipient: true))
+        XCTAssertFalse(UsdtSendView.isAmountFixed(requestedAmount: nil, wasFixed: true, isSameRecipient: false))
+        XCTAssertFalse(UsdtSendView.isAmountFixed(requestedAmount: nil, wasFixed: false, isSameRecipient: true))
+    }
 }

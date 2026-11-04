@@ -716,11 +716,15 @@ struct UsdtSendView: View {
             if request.chainId != nil {
                 destination = .arbitrum
             }
+            isAmountFixed = Self.isAmountFixed(
+                requestedAmount: request.amount,
+                wasFixed: isAmountFixed,
+                isSameRecipient: request.recipient == recipient
+            )
             recipient = request.recipient
             if let requestedAmount = request.amount {
                 amount = requestedAmount == 0 ? "" : usdtFormatAmount(amount: requestedAmount)
             }
-            isAmountFixed = (request.amount ?? 0) > 0
         } catch { self.error = UsdtWalletManager.message(for: error); return }
         maximumQuote = nil
         isMaximumAmount = false
@@ -730,6 +734,15 @@ struct UsdtSendView: View {
         if isAmountFixed {
             Task { await quoteFixedAmount() }
         }
+    }
+
+    /// A request that names a positive amount fixes it. Continuing with the same recipient and no amount,
+    /// as after Back from review, keeps an earlier fixed amount.
+    static func isAmountFixed(requestedAmount: UInt64?, wasFixed: Bool, isSameRecipient: Bool) -> Bool {
+        if let requestedAmount {
+            return requestedAmount > 0
+        }
+        return wasFixed && isSameRecipient
     }
 
     private func readImage(_ item: PhotosPickerItem?) async {
