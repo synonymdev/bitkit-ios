@@ -187,7 +187,7 @@ final class SparkExitRecordTests: XCTestCase {
                 CooperativeRecoveryFailure(leafId: "c", outputTxid: "o3", outputVout: 2, error: .generic(message: "boom")),
             ]
         )
-        record.adopt(recovery)
+        record.adopt(recovery, at: Date(timeIntervalSince1970: 1_700_000_050))
         record.broadcastLog = [.init(
             generation: 1,
             txid: "node",
@@ -356,7 +356,7 @@ final class SparkExitDriverTests: XCTestCase {
     func testRetriesARejectedStepAndSurfacesItAfterRepeatedRejections() async throws {
         var record = SparkExitFixtures.record(phase: .running)
         let recovery = SparkExitFixtures.recovery([SparkExitFixtures.tx("n1", cpfp: "03c")])
-        record.adopt(recovery)
+        record.adopt(recovery, at: Date(timeIntervalSince1970: 1_700_000_050))
         chain.outcome = .rejected("min relay fee not met")
         sdk.checks = Array(repeating: CheckRecoverFundsResponse(recovery: recovery, verdict: .valid), count: 3)
 
