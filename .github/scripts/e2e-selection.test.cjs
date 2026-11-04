@@ -345,9 +345,9 @@ test("local budgets cover three attempts plus setup, with a backend that outlive
     const full = select(cases, { mode: "full", shards });
     assert.equal(full.matrix.length, shards);
     for (const shard of full.matrix) {
-      assert.equal(shard.attemptTimeoutMinutes, 90);
-      assert.equal(shard.jobTimeoutMinutes, 285);
-      assert.equal(shard.backendLifetime, "5h");
+      assert.equal(shard.attemptTimeoutMinutes, shards === 1 ? 110 : 90);
+      assert.equal(shard.jobTimeoutMinutes, shards === 1 ? 345 : 285);
+      assert.equal(shard.backendLifetime, shards === 1 ? "6h" : "5h");
       assert.ok(shard.jobTimeoutMinutes > 3 * shard.attemptTimeoutMinutes);
       assert.ok(parseInt(shard.backendLifetime) * 60 > shard.jobTimeoutMinutes);
     }

@@ -190,15 +190,15 @@ function select(
     matrix: bins
       .filter((b) => b.length)
       .map((ids, i) => {
-        // The five-case base fits 40 minutes; expanded packs need room for
-        // hardware, recovery and settings journeys on the same simulator.
-        const attemptTimeoutMinutes = ids.length > 5 ? 90 : 40;
+        // The hosted 42-case pack reached the widget cases at minute 90.
+        const largePack = ids.length > 30;
+        const attemptTimeoutMinutes = largePack ? 110 : ids.length > 5 ? 90 : 40;
         return {
           name: `local-${i + 1}`,
           ids: ids.sort(),
           attemptTimeoutMinutes,
           jobTimeoutMinutes: 3 * attemptTimeoutMinutes + 15,
-          backendLifetime: attemptTimeoutMinutes > 40 ? "5h" : "4h",
+          backendLifetime: largePack ? "6h" : ids.length > 5 ? "5h" : "4h",
         };
       }),
     staging: expected.some(
