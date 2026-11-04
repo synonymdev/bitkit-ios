@@ -1290,14 +1290,14 @@ final class SparkExitMathTests: XCTestCase {
         var record = SparkExitFixtures.record(phase: .awaitingFunding(requiredSats: 9000))
 
         XCTAssertEqual(SparkExitMath.fundingState(record, utxos: []), .ask(sats: 9000))
-        XCTAssertEqual(SparkExitMath.fundingState(record, utxos: [SparkExitFixtures.utxo("a", value: 4000)]), .ask(sats: 5000))
+        XCTAssertEqual(SparkExitMath.fundingState(record, utxos: [SparkExitFixtures.utxo("a", value: 4000)]), .ask(sats: 5000, receivedSats: 4000))
         XCTAssertEqual(SparkExitMath.fundingState(record, utxos: [SparkExitFixtures.utxo("x", value: 9000, confirmed: false)]), .seen(txid: "x"))
 
         record.fundingPaymentTxid = "pay"
         XCTAssertEqual(SparkExitMath.fundingState(record, utxos: nil), .paid(txid: "pay"))
         XCTAssertEqual(SparkExitMath.fundingState(record, utxos: []), .paid(txid: "pay"))
         XCTAssertEqual(SparkExitMath.fundingState(record, utxos: [SparkExitFixtures.utxo("pay", value: 9000, confirmed: false)]), .paid(txid: "pay"))
-        XCTAssertEqual(SparkExitMath.fundingState(record, utxos: [SparkExitFixtures.utxo("pay", value: 6000)]), .ask(sats: 3000))
+        XCTAssertEqual(SparkExitMath.fundingState(record, utxos: [SparkExitFixtures.utxo("pay", value: 6000)]), .ask(sats: 3000, receivedSats: 6000))
 
         // Adopted, and spent by a rebuild's CPFP: a later shortfall is asked for, not shown as paid.
         record.funding = [.init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "pay", vout: 0, valueSats: 9000)]
@@ -1306,6 +1306,19 @@ final class SparkExitMathTests: XCTestCase {
 
         record.phase = .running
         XCTAssertNil(SparkExitMath.fundingState(record, utxos: []))
+    }
+
+    /// qa-03: 2,000 of 4,348 at the address showed no hint until the whole sum arrived.
+    func testAPartialPaymentNamesWhatIsStillMissing() {
+        XCTAssertNil(SparkExitMath.partialFundingSats(receivedSats: 0, requiredSats: 4348))
+        XCTAssertEqual(SparkExitMath.partialFundingSats(receivedSats: 2000, requiredSats: 4348), 2348)
+        XCTAssertNil(SparkExitMath.partialFundingSats(receivedSats: 4348, requiredSats: 4348))
+
+        // A top-up counts only new funding: the adopted input and CPFP change at the address are not received.
+        var record = SparkExitFixtures.record(phase: .needsFunding(requiredSats: 9000))
+        record.funding = [.init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 0, valueSats: 5000)]
+        let utxos = [SparkExitFixtures.utxo("f0", value: 5000), SparkExitFixtures.utxo("new", value: 1500, confirmed: false)]
+        XCTAssertEqual(SparkExitMath.fundingState(record, utxos: utxos), .ask(sats: 2500, receivedSats: 1500))
     }
 
     func testEachExitTakesAFundingIndexNoEarlierExitUsed() {

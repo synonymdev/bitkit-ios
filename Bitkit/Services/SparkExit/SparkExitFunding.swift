@@ -122,8 +122,8 @@ struct SparkExitReminder: Equatable {
 
 /// What the exit shows about its fee funding while it lacks some.
 enum SparkExitFundingState: Equatable {
-    /// Ask for `sats` more at the funding address, with its QR.
-    case ask(sats: UInt64)
+    /// Ask for `sats` more at the funding address, with its QR. `receivedSats` is the new funding already there.
+    case ask(sats: UInt64, receivedSats: UInt64 = 0)
     /// Bitkit paid it from savings in `txid`, which has not confirmed yet.
     case paid(txid: String)
     /// A payment covering the shortfall reached the address, and the exit waits for it to confirm or to build.
@@ -274,7 +274,12 @@ enum SparkExitMath {
         if seenSats >= shortfall, let pending = fresh.first(where: { !$0.status.confirmed }) ?? fresh.first {
             return .seen(txid: pending.txid)
         }
-        return .ask(sats: shortfall.saturatingSub(seenSats))
+        return .ask(sats: shortfall.saturatingSub(seenSats), receivedSats: seenSats)
+    }
+
+    /// What a partial payment leaves to send: nil before any new funding arrives and once it covers `requiredSats`.
+    static func partialFundingSats(receivedSats: UInt64, requiredSats: UInt64) -> UInt64? {
+        receivedSats > 0 && receivedSats < requiredSats ? requiredSats - receivedSats : nil
     }
 
     /// The funding key index of a new exit: past the counter the last start left and every index the stored record

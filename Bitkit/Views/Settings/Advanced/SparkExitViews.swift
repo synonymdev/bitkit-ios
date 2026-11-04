@@ -186,7 +186,7 @@ struct SparkExitFundingView: View {
             .padding(.top, 16)
 
             if showsAddress, let address = exit.fundingAddress {
-                SparkExitFundingAddress(address: address, requiredSats: fundingSats)
+                SparkExitFundingAddress(address: address, requiredSats: fundingSats, receivedSats: exit.fundingSeenSats, targetSats: fundingSats)
                     .padding(.top, 24)
             }
 
@@ -253,7 +253,11 @@ struct SparkExitFundingAddress: View {
     @EnvironmentObject var currency: CurrencyViewModel
 
     let address: String
+    /// What the address asks for.
     let requiredSats: UInt64
+    /// New funding already at the address, and the total it counts towards.
+    let receivedSats: UInt64
+    let targetSats: UInt64
     /// Off where the caller shows what was seen itself.
     var showsSeen = true
 
@@ -278,7 +282,14 @@ struct SparkExitFundingAddress: View {
             .buttonStyle(PlainButtonStyle())
             .accessibilityIdentifier("SparkExitFundingAddress")
 
-            if showsSeen, SparkExitManager.shared.fundingSeenSats >= requiredSats, requiredSats > 0 {
+            if let remainingSats = SparkExitMath.partialFundingSats(receivedSats: receivedSats, requiredSats: targetSats) {
+                CaptionMText(t("lightning__spark_exit__fund_partial", variables: [
+                    "received": currency.primaryAmountText(sats: receivedSats),
+                    "required": currency.primaryAmountText(sats: targetSats),
+                    "remaining": currency.primaryAmountText(sats: remainingSats),
+                ]))
+                .accessibilityIdentifier("SparkExitFundingPartial")
+            } else if showsSeen, receivedSats >= targetSats, targetSats > 0 {
                 CaptionMText(t("lightning__spark_exit__fund_seen"), textColor: .greenAccent)
             }
         }
@@ -456,7 +467,7 @@ struct SparkExitProgressView: View {
     }
 
     private var askSats: UInt64? {
-        if case let .ask(sats) = fundingState {
+        if case let .ask(sats, _) = fundingState {
             return sats
         }
         return nil
@@ -481,9 +492,15 @@ struct SparkExitProgressView: View {
 
                         if let address = record.funding.first?.address {
                             switch fundingState {
-                            case let .ask(sats):
-                                SparkExitFundingAddress(address: address, requiredSats: sats, showsSeen: false)
-                                    .padding(.top, 24)
+                            case let .ask(sats, receivedSats):
+                                SparkExitFundingAddress(
+                                    address: address,
+                                    requiredSats: sats,
+                                    receivedSats: receivedSats,
+                                    targetSats: sats + receivedSats,
+                                    showsSeen: false
+                                )
+                                .padding(.top, 24)
                             case let .paid(txid):
                                 SparkExitWaitingPayment(text: t("lightning__spark_exit__fund_paid"), txid: txid)
                                     .padding(.top, 24)
