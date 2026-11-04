@@ -565,7 +565,7 @@ struct AppScene: View {
                 await pubkyProfile.retrySessionRestoration()
             }
             .task(id: [scenePhase == .active, network.isConnected]) { await pollIncomingPaykitPaymentRequests() }
-            .task(id: [scenePhase == .active, SparkExitManager.shared.isExiting]) {
+            .task(id: [scenePhase == .active, SparkExitManager.shared.needsDriving]) {
                 guard scenePhase == .active else { return }
                 await SparkExitManager.shared.runWhileActive()
             }

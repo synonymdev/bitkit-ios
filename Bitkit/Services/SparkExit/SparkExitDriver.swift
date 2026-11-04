@@ -37,6 +37,9 @@ struct SparkExitDriver {
         var record = record
         switch record.phase {
         case .done, .failed:
+            guard record.isLeftoverSweepPending, !Task.isCancelled else { return record }
+            try await sweepLeftover(&record)
+            try save(record)
             return record
         case .awaitingFunding, .needsFunding:
             guard let recovering, !Task.isCancelled else { return record }
@@ -66,19 +69,19 @@ struct SparkExitDriver {
 
     // MARK: Funding
 
-    /// Adds a confirmed UTXO of at least `requiredSats` at the funding address that is neither a funding input yet
-    /// nor CPFP change the exit chained there.
+    /// Adds every confirmed new UTXO at the funding address as a funding input once together they cover
+    /// `requiredSats`.
     private func adoptFunding(_ record: inout SparkExitRecord, requiredSats: UInt64) async throws -> Bool {
         guard let address = record.funding.first?.address, let pubkey = record.funding.first?.pubkey else { return false }
-        let known = Set(record.funding.compactMap { funding in funding.txid.map { "\($0):\(funding.vout ?? 0)" } })
-        let chained = Set(record.recovery.map { SparkExitTxid.cpfpChildTxids($0.response) } ?? [])
-        let candidates = try await chain.utxos(address: address).filter { !known.contains("\($0.txid):\($0.vout)") && !chained.contains($0.txid) }
-        guard let utxo = SparkExitMath.fundingUtxo(candidates, requiredSats: requiredSats) else { return false }
-        let funding = SparkExitRecord.Funding(index: 0, address: address, pubkey: pubkey, txid: utxo.txid, vout: utxo.vout, valueSats: utxo.value)
+        let utxos = try await chain.utxos(address: address)
+        guard let topUp = SparkExitMath.fundingTopUp(SparkExitMath.newFunding(utxos, record: record), requiredSats: requiredSats) else {
+            return false
+        }
         if record.funding.count == 1, record.funding[0].txid == nil {
-            record.funding[0] = funding
-        } else {
-            record.funding.append(funding)
+            record.funding = []
+        }
+        record.funding += topUp.map {
+            SparkExitRecord.Funding(index: 0, address: address, pubkey: pubkey, txid: $0.txid, vout: $0.vout, valueSats: $0.value)
         }
         return true
     }
@@ -98,7 +101,7 @@ struct SparkExitDriver {
                 return
             }
             record.skippedLeafCount = max(record.skippedLeafCount, prepared.skipped.count)
-            record.phase = record.recovery == nil ? .failed(reason: "Nothing left to recover") : .done
+            await finish(&record, phase: record.recovery == nil ? .failed(reason: "Nothing left to recover") : .done)
             return
         }
         let built: RecoverFundsResponse
@@ -108,9 +111,12 @@ struct SparkExitDriver {
                 signer: prepared.funding == nil ? nil : makeSigner()
             )
         } catch let SdkError.InsufficientCpfpFunds(requiredSats, _) {
-            // The SDK names what the inputs must cover, and the earlier inputs are partly spent by now, so a new
-            // UTXO of the whole amount is asked for. What the exit does not spend comes back with the sweep.
-            record.phase = .needsFunding(requiredSats: record.fundedSats + requiredSats)
+            // The SDK names the total all inputs must hold, not what is missing.
+            var utxos: [EsploraUtxo]?
+            if let address = record.funding.first?.address {
+                utxos = try? await chain.utxos(address: address)
+            }
+            record.phase = .needsFunding(requiredSats: SparkExitMath.neededFunding(requiredSats: requiredSats, record: record, utxos: utxos))
             return
         }
         guard !built.transactions.isEmpty else {
@@ -119,7 +125,7 @@ struct SparkExitDriver {
                 record.failedLeafCount = built.failed.count
                 return
             }
-            record.phase = .failed(reason: "Nothing to recover")
+            await finish(&record, phase: .failed(reason: "Nothing to recover"))
             return
         }
         record.adopt(built, at: now())
@@ -141,8 +147,7 @@ struct SparkExitDriver {
         case .valid:
             try await broadcastReady(&record)
         case .done:
-            record.phase = .done
-            record.leftover = await leftover(record)
+            await finish(&record, phase: .done)
         case .redo:
             Logger.warn("Spark exit diverged on-chain, rebuilding generation \(record.generation + 1)", context: "SparkExitDriver")
             record.isRebuilding = true
@@ -203,9 +208,55 @@ struct SparkExitDriver {
         return now().timeIntervalSince(last) >= Self.rebuildInterval
     }
 
-    private func leftover(_ record: SparkExitRecord) async -> [SparkExitRecord.Leftover] {
-        guard let address = record.funding.first?.address, let utxos = try? await chain.utxos(address: address) else { return [] }
-        return utxos.map { SparkExitRecord.Leftover(txid: $0.txid, vout: $0.vout, valueSats: $0.value) }
+    /// Ends the exit and notes what is left at the funding address, which the next step sweeps to savings.
+    private func finish(_ record: inout SparkExitRecord, phase: SparkExitRecord.Phase) async {
+        record.phase = phase
+        guard let address = record.funding.first?.address, let utxos = try? await chain.utxos(address: address) else { return }
+        record.leftover = utxos.map { SparkExitRecord.Leftover(txid: $0.txid, vout: $0.vout, valueSats: $0.value) }
+        if record.isLeftoverSweepPending, !Task.isCancelled {
+            try? await sweepLeftover(&record)
+        }
+    }
+
+    // MARK: Leftover
+
+    /// Sends the confirmed leftover at the funding address to the exit's savings address, signed with the funding
+    /// key. Built and saved once before it is sent, then sent again on later ticks until a node accepts it. Waits
+    /// while the leftover is unconfirmed, and skips it when the fee would leave less than dust.
+    private func sweepLeftover(_ record: inout SparkExitRecord) async throws {
+        if record.leftoverSweep == nil {
+            guard let address = record.funding.first?.address else { return }
+            let utxos = try await chain.utxos(address: address)
+            record.leftover = utxos.map { SparkExitRecord.Leftover(txid: $0.txid, vout: $0.vout, valueSats: $0.value) }
+            let confirmed = utxos.filter(\.status.confirmed)
+            guard !confirmed.isEmpty, confirmed.count == utxos.count else { return }
+            let built = try await SparkExitLeftoverSweep.build(
+                utxos: confirmed,
+                fundingAddress: address,
+                destination: record.destination,
+                feeRateSatPerVbyte: record.feeRateSatPerVbyte,
+                signer: makeSigner()
+            )
+            record.leftoverSweep = SparkExitRecord.LeftoverSweep(txid: built?.txid, txHex: built?.txHex, valueSats: built?.valueSats ?? 0)
+            try save(record)
+        }
+        guard let sweep = record.leftoverSweep, let txid = sweep.txid, let hex = sweep.txHex, !Task.isCancelled else { return }
+        let outcome = await chain.broadcast(RecoveryTransaction(
+            kind: .sweep,
+            nodeId: nil,
+            txid: txid,
+            txHex: hex,
+            cpfpTxHex: nil,
+            csvTimelockBlocks: nil,
+            dependsOn: [],
+            status: .ready
+        ))
+        Logger.info("Spark exit leftover sweep \(txid): \(outcome.summary)", context: "SparkExitDriver")
+        switch outcome {
+        case .accepted: record.leftoverSweep?.isAccepted = true
+        case let .rejected(reason): record.leftoverSweep?.rejection = reason
+        case .retryLater: break
+        }
     }
 
     // MARK: Broadcast
