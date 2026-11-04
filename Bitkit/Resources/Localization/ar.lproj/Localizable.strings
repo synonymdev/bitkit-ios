@@ -324,7 +324,9 @@
 "lightning__spark_exit__receive" = "You receive about";
 "lightning__spark_exit__funding" = "Fee funding needed";
 "lightning__spark_exit__left_behind" = "Stays on Spark";
+"lightning__spark_exit__outside_exit" = "{amount} on Spark is not part of this exit and stays on Spark.";
 "lightning__spark_exit__quote_loading" = "Getting a quote…";
+"lightning__spark_exit__quote_settling" = "Waiting for Spark to finish moving your balance. This can take up to 5 minutes.";
 "lightning__spark_exit__quote_error" = "Could not get an exit quote. Try again.";
 "lightning__spark_exit__nothing" = "Nothing can be exited right now.";
 "lightning__spark_exit__uneconomic" = "The fees are higher than what you would receive.";
@@ -351,6 +353,7 @@
 "lightning__spark_exit__partial_text" = "{count} small amounts stayed on Spark.";
 "lightning__spark_exit__failed_leaves" = "{count} amounts the Spark operators could not sign for stayed on Spark.";
 "lightning__spark_exit__leftover" = "{amount} of fee funding is still at {address}.";
+"lightning__spark_exit__leftover_swept" = "{amount} of leftover fee funding was sent to savings.";
 "lightning__spark_exit__needs_funding_title" = "More fees\n<accent>needed</accent>";
 "lightning__spark_exit__needs_funding_text" = "The exit needs <accent>{amount}</accent> more to pay its fees. Fund it to continue.";
 "lightning__spark_exit__failed_title" = "Exit\n<accent>stopped</accent>";

@@ -45,6 +45,11 @@ final class SparkExitManager {
         record?.isActive == true
     }
 
+    /// The exit runs, or its leftover fee funding is still on its way to savings.
+    var needsDriving: Bool {
+        record?.needsDriving == true
+    }
+
     private var store: SparkExitStore {
         SparkExitStore(walletIndex: walletIndex)
     }
@@ -110,7 +115,7 @@ final class SparkExitManager {
 
     /// Ticks every minute while the app is active and an exit runs. Each step of an exit needs Bitkit to publish it.
     func runWhileActive() async {
-        while !Task.isCancelled, isExiting {
+        while !Task.isCancelled, needsDriving {
             await tick()
             try? await Task.sleep(nanoseconds: Self.foregroundTickSeconds * 1_000_000_000)
         }
@@ -119,11 +124,11 @@ final class SparkExitManager {
     func tick() async {
         // Every tick asks for the next background run, so one failed or skipped tick never ends the chain.
         defer {
-            if isExiting {
+            if needsDriving {
                 Self.scheduleBackgroundRuns()
             }
         }
-        guard !isTicking, let current = record, current.isActive, let chain else { return }
+        guard !isTicking, let current = record, current.needsDriving, let chain else { return }
         isTicking = true
         defer { isTicking = false }
         let store = store
@@ -140,7 +145,7 @@ final class SparkExitManager {
             let updated = try await driver.tick(current)
             record = updated
             lastError = nil
-            await afterTick(updated)
+            await afterTick(updated, wasActive: current.isActive)
         } catch {
             lastError = error.localizedDescription
             Logger.error("Spark exit tick failed: \(error)", context: "SparkExitManager")
@@ -148,13 +153,13 @@ final class SparkExitManager {
         }
     }
 
-    private func afterTick(_ record: SparkExitRecord) async {
+    private func afterTick(_ record: SparkExitRecord, wasActive: Bool) async {
         if let transferId = record.transferId {
             try? TransferStorage.shared.updateClaimableAtHeight(id: transferId, claimableAtHeight: record.claimableAtHeight)
         }
         await settleIfFinished(record)
         await scheduleReminders(record)
-        if !record.isActive {
+        if wasActive, !record.isActive {
             await reattachSpark()
         }
     }
@@ -195,11 +200,12 @@ final class SparkExitManager {
         spark.onStateChanged?()
     }
 
+    /// Only new funding counts: the adopted inputs and the CPFP change at the address are already part of the exit.
     private func refreshFundingSeen(chain: SparkExitChain, record: SparkExitRecord) async {
         guard let address = record.funding.first?.address else { return }
         fundingAddress = address
         guard record.fundingShortfallSats != nil, let utxos = try? await chain.utxos(address: address) else { return }
-        fundingSeenSats = utxos.reduce(0) { $0 + $1.value }
+        fundingSeenSats = SparkExitMath.newFunding(utxos, record: record).reduce(0) { $0 + $1.value }
     }
 
     // MARK: Quote
@@ -212,6 +218,8 @@ final class SparkExitManager {
             guard let recovering = SparkManager.shared.exitRecovering else {
                 throw AppError(message: "Spark is not connected", debugMessage: nil)
             }
+            // Value an interrupted leaf optimization still owes the wallet would otherwise stay out of the quote.
+            await SparkManager.shared.settleForExit()
             let feeRate = try await SparkManager.shared.exitFeeRate()
             let destination: String = if let pendingDestination {
                 pendingDestination
@@ -262,6 +270,7 @@ final class SparkExitManager {
             feeRateSatPerVbyte: feeRate,
             destination: destination,
             leafIds: quote.leafIds,
+            leafTotalSats: quote.leafTotalSats,
             funding: [.init(index: 0, address: key.address, pubkey: key.pubkey)],
             expectedSats: quote.incomingSats,
             skippedLeafCount: quote.prepared.skipped.count
@@ -273,6 +282,8 @@ final class SparkExitManager {
         UserDefaults.standard.set(walletIndex, forKey: Self.walletIndexKey)
         self.record = record
         SparkManager.shared.detachForExit()
+        // Reconnecting cuts an optimization short, which would leave its counter-swap unclaimed for a while.
+        await SparkManager.shared.waitForOptimization()
         await SparkManager.shared.reconnectForExit()
         Logger.info("Started Spark exit of \(quote.exitSats) sats over \(quote.leafIds.count) leaves", context: "SparkExitManager")
 
@@ -333,7 +344,7 @@ final class SparkExitManager {
     @discardableResult
     func runInBackground(deadline: Date) async -> SparkExitBackgroundRun.Outcome {
         defer {
-            if isExiting {
+            if needsDriving {
                 Self.scheduleBackgroundRuns()
             }
         }
@@ -344,6 +355,7 @@ final class SparkExitManager {
             try? await Task.sleep(nanoseconds: 250_000_000)
         }
         guard !isTicking, let chain else { return .init(record: record) }
+        let wasActive = record?.isActive == true
         isTicking = true
         defer { isTicking = false }
         let store = store
@@ -375,7 +387,7 @@ final class SparkExitManager {
         )
         if let updated = outcome.record {
             record = updated
-            await afterTick(updated)
+            await afterTick(updated, wasActive: wasActive)
         }
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastBackgroundRunKey)
         return outcome

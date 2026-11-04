@@ -71,7 +71,8 @@ struct SparkExitQuoteView: View {
             if let quote = exit.quote {
                 SparkExitQuoteRows(quote: quote)
             } else if exit.isQuoting {
-                BodyMText(t("lightning__spark_exit__quote_loading"))
+                BodyMText(t(SparkManager.shared.isSettlingForExit ? "lightning__spark_exit__quote_settling" : "lightning__spark_exit__quote_loading"))
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if let blockedReason {
@@ -392,12 +393,28 @@ struct SparkExitProgressView: View {
                                 .padding(.top, 16)
                         }
 
+                        if let outsideSats = SparkExitMath.outsideExitSats(sparkBalanceSats: SparkManager.shared.balanceSats, record: record) {
+                            CaptionMText(t(
+                                "lightning__spark_exit__outside_exit",
+                                variables: ["amount": currency.primaryAmountText(sats: outsideSats)]
+                            ))
+                            .padding(.top, 16)
+                            .accessibilityIdentifier("SparkExitOutsideExit")
+                        }
+
                         if record.isActive {
                             SparkExitBackgroundNotes()
                                 .padding(.top, 16)
                         }
 
-                        if record.phase == .done, let address = record.funding.first?.address {
+                        if let sweep = record.leftoverSweep, sweep.isAccepted {
+                            CaptionMText(t(
+                                "lightning__spark_exit__leftover_swept",
+                                variables: ["amount": currency.primaryAmountText(sats: sweep.valueSats)]
+                            ))
+                            .padding(.top, 16)
+                            .accessibilityIdentifier("SparkExitLeftoverSwept")
+                        } else if !record.isActive, let address = record.funding.first?.address {
                             ForEach(record.leftover, id: \.txid) { leftover in
                                 CaptionMText(t(
                                     "lightning__spark_exit__leftover",
@@ -430,9 +447,11 @@ struct SparkExitProgressView: View {
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .refreshable {
+            await SparkManager.shared.refreshState()
             await exit.tick()
         }
         .task {
+            await SparkManager.shared.refreshState()
             await exit.tick()
         }
     }

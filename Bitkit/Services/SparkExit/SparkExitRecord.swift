@@ -55,6 +55,18 @@ struct SparkExitRecord: Codable, Equatable {
         let valueSats: UInt64
     }
 
+    /// The transaction that sends the leftover fee funding to savings once the exit ended.
+    struct LeftoverSweep: Codable, Equatable {
+        /// nil when what is left is under the dust limit after the sweep's fee, so nothing is swept.
+        var txid: String?
+        var txHex: String?
+        /// What reaches savings.
+        var valueSats: UInt64 = 0
+        var isAccepted = false
+        /// The node's refusal; the sweep is not sent again.
+        var rejection: String?
+    }
+
     var version: Int = Self.currentVersion
     let network: String
     let createdAt: Date
@@ -63,6 +75,8 @@ struct SparkExitRecord: Codable, Equatable {
     let destination: String
     /// The leaves of the quote the user confirmed; every rebuild selects exactly these.
     let leafIds: [String]
+    /// What the quote's leaves hold together, for telling how much of the Spark balance is outside the exit.
+    var leafTotalSats: UInt64?
     var funding: [Funding]
     /// Bumped on every rebuild. Broadcasts are logged per generation and a rebuilt recovery replaces the old one
     /// entirely, so older hex is never sent again.
@@ -74,6 +88,7 @@ struct SparkExitRecord: Codable, Equatable {
     let expectedSats: UInt64
     var claimableAtHeight: UInt32?
     var leftover: [Leftover] = []
+    var leftoverSweep: LeftoverSweep?
     var skippedLeafCount: Int = 0
     /// Cooperative leaves the last build could not recover.
     var failedLeafCount: Int = 0
@@ -86,6 +101,18 @@ struct SparkExitRecord: Codable, Equatable {
         case .awaitingFunding, .running, .needsFunding: true
         case .done, .failed: false
         }
+    }
+
+    /// An ended exit whose leftover fee funding still has to reach savings: not swept yet, or sent but not accepted.
+    var isLeftoverSweepPending: Bool {
+        guard !isActive, !leftover.isEmpty else { return false }
+        guard let leftoverSweep else { return true }
+        return leftoverSweep.txid != nil && !leftoverSweep.isAccepted && leftoverSweep.rejection == nil
+    }
+
+    /// Whether the driver still has work: the exit runs, or its leftover fee funding is on its way to savings.
+    var needsDriving: Bool {
+        isActive || isLeftoverSweepPending
     }
 
     var fundingInputs: [CpfpInput] {

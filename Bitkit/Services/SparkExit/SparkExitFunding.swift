@@ -102,6 +102,10 @@ struct SparkExitQuote: Equatable {
         prepared.leaves.map(\.leafId)
     }
 
+    var leafTotalSats: UInt64 {
+        prepared.leaves.reduce(0) { $0 + $1.valueSats }
+    }
+
     /// Breez's rule: only exit when the value is more than its fees.
     var isWorthExiting: Bool {
         !prepared.leaves.isEmpty && exitSats > networkFeeSats
@@ -209,9 +213,38 @@ enum SparkExitMath {
         }.count
     }
 
-    /// A confirmed UTXO at the funding address that covers `requiredSats`, the largest first.
-    static func fundingUtxo(_ utxos: [EsploraUtxo], requiredSats: UInt64) -> EsploraUtxo? {
-        utxos.filter { $0.status.confirmed && $0.value >= requiredSats }.max { $0.value < $1.value }
+    /// UTXOs at the funding address that are new fee funding: neither a funding input yet nor CPFP change the
+    /// exit chained there.
+    static func newFunding(_ utxos: [EsploraUtxo], record: SparkExitRecord) -> [EsploraUtxo] {
+        let known = Set(record.funding.compactMap { funding in funding.txid.map { "\($0):\(funding.vout ?? 0)" } })
+        let chained = Set(record.recovery.map { SparkExitTxid.cpfpChildTxids($0.response) } ?? [])
+        return utxos.filter { !known.contains("\($0.txid):\($0.vout)") && !chained.contains($0.txid) }
+    }
+
+    /// The confirmed new funding, all of it, once it covers `requiredSats` together: the SDK spends every input it is
+    /// given, so several small payments fund the exit as well as one.
+    static func fundingTopUp(_ newFunding: [EsploraUtxo], requiredSats: UInt64) -> [EsploraUtxo]? {
+        let confirmed = newFunding.filter(\.status.confirmed)
+        let total = confirmed.reduce(0) { $0 + $1.value }
+        return !confirmed.isEmpty && total >= requiredSats ? confirmed : nil
+    }
+
+    /// The funding total a rebuild asks for once the SDK refused it with `InsufficientCpfpFunds(requiredSats)`.
+    /// `requiredSats` is what all the given inputs must hold together now, and what they hold now is the confirmed
+    /// value at the funding address apart from new funding (spent inputs live on as chained CPFP change there).
+    /// The phase counts against `fundedSats`, so the shortfall it shows is `requiredSats` less what the inputs hold.
+    static func neededFunding(requiredSats: UInt64, record: SparkExitRecord, utxos: [EsploraUtxo]?) -> UInt64 {
+        guard let utxos else { return max(requiredSats, record.fundedSats) }
+        let fresh = Set(newFunding(utxos, record: record).map { "\($0.txid):\($0.vout)" })
+        let held = utxos.filter { $0.status.confirmed && !fresh.contains("\($0.txid):\($0.vout)") }.reduce(0) { $0 + $1.value }
+        return record.fundedSats + max(requiredSats.saturatingSub(held), 1)
+    }
+
+    /// What the Spark balance holds beyond the exit's leaves: value that reached Spark after the quote, such as a
+    /// counter-swap claimed late, which this exit leaves on Spark. Nil when nothing is beyond them.
+    static func outsideExitSats(sparkBalanceSats: UInt64, record: SparkExitRecord) -> UInt64? {
+        guard record.isActive, let leafTotal = record.leafTotalSats, sparkBalanceSats > leafTotal else { return nil }
+        return sparkBalanceSats - leafTotal
     }
 
     /// About how long until `height`: 10-minute blocks, and Spark's regtest mines one every ~30 seconds.

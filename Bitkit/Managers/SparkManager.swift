@@ -44,6 +44,17 @@ final class SparkManager: ChannelFreeLightningRail {
     @ObservationIgnored private var sdk: BreezSdk?
     @ObservationIgnored private var listenerId: String?
     @ObservationIgnored private var connectTask: Task<Void, Error>?
+    /// A leaf optimization is running, as its events tell.
+    @ObservationIgnored private var isOptimizing = false
+    /// Waiting before an exit quote for value an interrupted leaf optimization still owes the wallet.
+    private(set) var isSettlingForExit = false
+    /// When a leaf optimization last moved without completing, so a counter-swap it left may still be unclaimed.
+    private nonisolated static let optimizationActivityKey = "sparkOptimizationActivityAt"
+    /// The SDK claims a counter-swap left by an interrupted optimization only after this long
+    /// (spark-wallet `COUNTER_SWAP_CLAIM_GRACE_PERIOD_SECS`), plus a margin for the round that created it.
+    static let counterSwapClaimGraceSeconds: TimeInterval = 300 + 30
+    /// The longest an exit waits for a running optimization before going ahead.
+    private static let optimizationWaitSeconds: TimeInterval = 120
 
     private init() {}
 
@@ -72,6 +83,7 @@ final class SparkManager: ChannelFreeLightningRail {
     /// once it ends.
     func reconnectForExit() async {
         guard let network = Self.sparkNetwork else { return }
+        noteOptimizationCutShort()
         if let sdk {
             if let listenerId {
                 _ = await sdk.removeEventListener(id: listenerId)
@@ -120,6 +132,62 @@ final class SparkManager: ChannelFreeLightningRail {
             }
         }
         return exitRecovering
+    }
+
+    /// Waits until no leaf optimization runs and no counter-swap one left behind is still inside the SDK's claim
+    /// grace, then syncs, which claims it. An optimization swaps leaves with the operators; one cut short (by a
+    /// disconnect or the app closing) leaves its counter-swap unclaimed for 5 minutes, and a quote taken meanwhile
+    /// would leave that value out of the exit.
+    func settleForExit() async {
+        isSettlingForExit = true
+        defer { isSettlingForExit = false }
+        await waitForOptimization()
+        let activity = UserDefaults.standard.object(forKey: Self.optimizationActivityKey) as? TimeInterval
+        if let activity {
+            let wait = Self.counterSwapClaimGraceSeconds - Date().timeIntervalSince1970 + activity
+            if wait > 0 {
+                Logger.info("Waiting \(Int(wait))s for an interrupted Spark optimization before the exit quote", context: "SparkManager")
+                try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+            }
+        }
+        guard !Task.isCancelled, let sdk else { return }
+        do {
+            _ = try await sdk.syncWallet(request: SyncWalletRequest())
+            if activity != nil, !isOptimizing {
+                UserDefaults.standard.removeObject(forKey: Self.optimizationActivityKey)
+            }
+        } catch {
+            Logger.warn("Failed to sync Spark before the exit quote: \(error)", context: "SparkManager")
+        }
+        await refreshState()
+    }
+
+    /// Waits for a running leaf optimization to finish, for up to two minutes.
+    func waitForOptimization() async {
+        let deadline = Date().addingTimeInterval(Self.optimizationWaitSeconds)
+        while isOptimizing, !Task.isCancelled, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+    }
+
+    private func noteOptimization(_ event: AutoOptimizationEvent) {
+        switch event {
+        case .started, .roundCompleted:
+            isOptimizing = true
+            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.optimizationActivityKey)
+        case .cancelled, .failed:
+            isOptimizing = false
+            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.optimizationActivityKey)
+        case .completed, .skipped:
+            isOptimizing = false
+            UserDefaults.standard.removeObject(forKey: Self.optimizationActivityKey)
+        }
+    }
+
+    private func noteOptimizationCutShort() {
+        guard isOptimizing else { return }
+        isOptimizing = false
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.optimizationActivityKey)
     }
 
     /// The SDK calls of an emergency exit, or nil while Spark is not connected.
@@ -218,6 +286,8 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     func wipe(walletIndex: Int) async {
+        UserDefaults.standard.removeObject(forKey: Self.optimizationActivityKey)
+        isOptimizing = false
         if LightningService.shared.channelFreeRail === self {
             LightningService.shared.channelFreeRail = nil
         }
@@ -586,6 +656,8 @@ final class SparkManager: ChannelFreeLightningRail {
                 await recordActivity(payment)
             case .unilateralExitStateChanged:
                 Self.exitStateChanged.send()
+            case let .autoOptimization(optimizationEvent):
+                noteOptimization(optimizationEvent)
             default:
                 break
             }

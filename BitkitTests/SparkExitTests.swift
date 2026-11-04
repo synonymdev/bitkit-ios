@@ -422,6 +422,45 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertTrue(record.isActive)
     }
 
+    /// The headless regtest run: a quote for 8,541, five payments of 9,035 together, and the SDK asking for 9,085
+    /// in all once it priced the five inputs. Only the 50 missing is asked for.
+    func testInsufficientFundsAsksOnlyForWhatTheInputsLack() async throws {
+        let values: [UInt64] = [5000, 2000, 1000, 535, 500]
+        chain.utxosByAddress["bcrt1qfunding"] = values.enumerated().map { SparkExitFixtures.utxo("u\($0.offset)", value: $0.element) }
+        sdk.recoverError = SdkError.InsufficientCpfpFunds(requiredSats: 9085, docsUrl: "")
+
+        var record = try await driver().tick(SparkExitFixtures.record(phase: .awaitingFunding(requiredSats: 8541)))
+
+        XCTAssertEqual(sdk.recoverRequests.first?.fundingInputs.count, 5)
+        XCTAssertEqual(record.fundedSats, 9035)
+        XCTAssertEqual(record.phase, .needsFunding(requiredSats: 9085))
+        XCTAssertEqual(record.fundingShortfallSats, 50)
+
+        chain.utxosByAddress["bcrt1qfunding", default: []] += [SparkExitFixtures.utxo("t1", value: 30), SparkExitFixtures.utxo("t2", value: 30)]
+        sdk.recoverError = nil
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1")])]
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.phase, .running)
+        XCTAssertEqual(sdk.recoverRequests.last?.fundingInputs.count, 7)
+    }
+
+    /// After a Redo the first inputs are partly spent: what they hold now is the CPFP change at the address.
+    func testRebuildShortfallCountsWhatTheSpentInputsStillHold() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 20000)
+        let old = SparkExitFixtures.recovery([SparkExitFixtures.tx("n1", cpfp: SparkExitFixtures.parentHex)])
+        record.adopt(old)
+        chain.utxosByAddress["bcrt1qfunding"] = [SparkExitFixtures.utxo(SparkExitFixtures.parentTxid, value: 13000)]
+        sdk.checks = [CheckRecoverFundsResponse(recovery: old, verdict: .redo(reason: .onChainStateDiverged))]
+        sdk.recoverError = SdkError.InsufficientCpfpFunds(requiredSats: 15000, docsUrl: "")
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.phase, .needsFunding(requiredSats: 22000))
+        XCTAssertEqual(record.fundingShortfallSats, 2000)
+    }
+
     func testTopUpIgnoresCpfpChangeChainedToTheFundingAddress() async throws {
         var record = SparkExitFixtures.record(phase: .needsFunding(requiredSats: 23000))
         record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 20000)
@@ -850,16 +889,26 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.orphanedTransferIds(transfers, record: nil), ["transfer-1", "orphan"])
     }
 
-    func testFundingUtxoMustBeConfirmedAndLargeEnough() {
+    func testFundingTopUpTakesEveryConfirmedPaymentOnceTogetherTheyCover() {
         let utxos = [
-            SparkExitFixtures.utxo("small", value: 999),
+            SparkExitFixtures.utxo("a", value: 999),
             SparkExitFixtures.utxo("pending", value: 50000, confirmed: false),
-            SparkExitFixtures.utxo("ok", value: 1000),
-            SparkExitFixtures.utxo("big", value: 2000),
+            SparkExitFixtures.utxo("b", value: 1000),
         ]
 
-        XCTAssertEqual(SparkExitMath.fundingUtxo(utxos, requiredSats: 1000)?.txid, "big")
-        XCTAssertNil(SparkExitMath.fundingUtxo(utxos, requiredSats: 2001))
+        XCTAssertEqual(SparkExitMath.fundingTopUp(utxos, requiredSats: 1999)?.map(\.txid), ["a", "b"])
+        XCTAssertNil(SparkExitMath.fundingTopUp(utxos, requiredSats: 2000))
+        XCTAssertNil(SparkExitMath.fundingTopUp([], requiredSats: 0))
+    }
+
+    func testShowsTheSparkBalanceBeyondTheExitsLeaves() {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.leafTotalSats = 17097
+
+        XCTAssertEqual(SparkExitMath.outsideExitSats(sparkBalanceSats: 49865, record: record), 32768)
+        XCTAssertNil(SparkExitMath.outsideExitSats(sparkBalanceSats: 17097, record: record))
+        record.phase = .done
+        XCTAssertNil(SparkExitMath.outsideExitSats(sparkBalanceSats: 49865, record: record))
     }
 
     func testSavingsMustCoverTheFundingAndItsFee() {

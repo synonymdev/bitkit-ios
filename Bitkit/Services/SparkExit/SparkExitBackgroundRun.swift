@@ -4,7 +4,8 @@ import os
 
 /// One background run of an exit, from a cold launch with no UI: loads the record, sends what is ready from the
 /// stored, already signed transactions without the SDK, then starts the Spark SDK only (never the node) and ticks
-/// again with it, which checks the exit against the chain, signs a build or rebuild, and broadcasts. The driver
+/// again with it, which checks the exit against the chain, signs a build or rebuild, and broadcasts. An ended exit
+/// whose leftover fee funding still has to reach savings gets the keyless pass alone, which sweeps it. The driver
 /// saves the record before and after each broadcast, so a run that expires mid-step leaves a whole record and the
 /// next run carries on from it: a step that does not fit one run (connect and sign, say) finishes in the next.
 struct SparkExitBackgroundRun {
@@ -50,7 +51,7 @@ struct SparkExitBackgroundRun {
             Logger.error("Spark exit background run could not read the record: \(error)", context: "SparkExitBackgroundRun")
         }
         timings.add(.load, now().timeIntervalSince(loadStarted))
-        guard var record = outcome.record, record.isActive else {
+        guard var record = outcome.record, record.needsDriving else {
             outcome.seconds = timings.seconds
             return outcome
         }
@@ -65,7 +66,8 @@ struct SparkExitBackgroundRun {
             timings.add(.keyless, now().timeIntervalSince(keylessStarted))
 
             let budget = deadline.timeIntervalSince(now()) - Self.reserveSeconds
-            if !Task.isCancelled, budget > 0 {
+            // Sweeping the leftover of an ended exit needs no SDK.
+            if !Task.isCancelled, budget > 0, record.isActive {
                 let connectStarted = now()
                 recovering = await connect(budget)
                 timings.add(.connect, now().timeIntervalSince(connectStarted))
