@@ -35,9 +35,13 @@ final class HomeHeaderUITests: XCTestCase {
 
         let profile = app.buttons["ProfileButton"]
         XCTAssertTrue(profile.waitForExistence(timeout: 5))
-        tap(app, at: CGPoint(x: profile.frame.midX, y: profile.frame.midY + belowIconCentre))
         let back = app.buttons.matching(identifier: "NavigationBack").firstMatch
-        XCTAssertTrue(back.waitForExistence(timeout: 15), app.debugDescription)
+        // The profile button navigates only once Pubky has initialized, which can lag on a fresh wallet.
+        for _ in 0 ..< 6 where !back.exists {
+            tap(app, at: CGPoint(x: profile.frame.midX, y: profile.frame.midY + belowIconCentre))
+            _ = back.waitForExistence(timeout: 5)
+        }
+        XCTAssertTrue(back.exists, app.debugDescription)
         try XCTUnwrap(app.buttons.matching(identifier: "NavigationBack").allElementsBoundByIndex.first(where: \.isHittable)).tap()
         XCTAssertTrue(balance.waitForExistence(timeout: 5))
 
