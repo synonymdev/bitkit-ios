@@ -14,12 +14,12 @@ The selector loads `.github/e2e-policy.json` from the **tested app checkout**, n
 | `Bitkit/Services/PaykitPaymentRequestService.swift` | Six Pubky/Paykit staging cases; no migration |
 | `Bitkit/Services/Trezor/TrezorService.swift` | Three active hardware cases; no staging/migration |
 | `Bitkit/Managers/FeeEstimatesManager.swift` | `boost_1`, `onchain_3`, `settings_03` |
-| `Bitkit/Services/BackupService.swift` | Five onboarding/backup/security cases plus six migration and six Pubky/Paykit staging cases |
-| `Bitkit/Services/CoreService.swift` | Full coverage: shared wallet/account state affects all lanes |
+| `Bitkit/Services/BackupService.swift` | Five onboarding/backup/security cases plus six Pubky/Paykit staging cases |
+| `Bitkit/Services/CoreService.swift` | All local and staging cases |
 
 Scanner routing explicitly includes Pubky/Electrum and hardware coverage. Backup transport/payload/restore includes profile persistence. The global Keychain is an explicit full-coverage dependency because it owns wallet secrets and Pubky/Paykit state. Shared amount/confirmation and on-chain dispatch include the existing Paykit contact-payment case. These mappings follow actual callers and assertions, not filename similarity.
 
-Only named app-wide wallet/lifecycle files and build/dependency/E2E orchestration configuration select all lanes. At the policy introduction, this means 28 of 619 `Bitkit` Swift files, including three of 76 service files (`CoreService`, `LightningService`, `ServiceQueue`). These are a source-tree audit, not a runtime or billing estimate. Changes to several domains union their coverage and execute overlapping cases once.
+Only named app-wide wallet/lifecycle files and build/dependency/E2E orchestration configuration select all PR-eligible local and staging cases. At the policy introduction, this means 28 of 619 `Bitkit` Swift files, including three of 76 service files (`CoreService`, `LightningService`, `ServiceQueue`). These are a source-tree audit, not a runtime or billing estimate. Changes to several domains union their coverage and execute overlapping cases once.
 
 Every PR, including drafts and stacks, gets a cheap Linux `E2E selection policy` check. It verifies every tracked path has a classification, explicit file/prefix entries still exist, and referenced cases are runnable in the selected E2E inventory. Main selection runs the same validation before any paid build. A new unclassified service or moved file fails with its path and a request to update the policy in the same iOS PR. It does not silently select base or launch every lane. Old and new rename paths contribute rules from both the base and tested policy, retaining coverage when a path mapping changes during a refactor.
 
@@ -36,7 +36,7 @@ The E2E checkout must contain the matching inventory. Add a real-path regression
 
 ## Execution
 
-Every night at 03:00 UTC the entry point runs all applicable local, staging and extended migration cases, even for an unchanged revision. The existing staging/migration workflows provide reusable execution and retain standalone manual dispatch. They no longer schedule duplicate runs. Known skipped cases and unsupported mainnet fixtures are reported as gaps, not successful coverage.
+Every night at 03:00 UTC the entry point runs all applicable local, staging and extended migration cases, even for an unchanged revision. The existing staging/migration workflows provide reusable execution and retain standalone manual dispatch. A push to a `release-*` branch runs all six migrations in the dedicated migration workflow, including the extended RN cases. Known skipped cases and unsupported mainnet fixtures are reported as gaps, not successful coverage.
 
 Manual validation uses the branch containing the changed workflow:
 
@@ -45,7 +45,7 @@ gh workflow run e2e-tests.yml --ref codex/264-inventory-shadow \
   -f e2e_branch=codex/264-inventory-shadow -f selection=base -f shards=1
 ```
 
-To test a PR merge, including a stacked PR, also pass `-f pr=NUMBER -f selection=auto`. The merge must match the PR's actual base and head. `selection=full` exercises all lanes. The optional `shards=2` experiment applies only to manual local execution; automatic runs use one shard. Each shard has isolated infrastructure and shares the same built local app. Staging/migration share one network app build.
+To test a PR merge, including a stacked PR, also pass `-f pr=NUMBER -f selection=auto`. The merge must match the PR's actual base and head. `selection=full` runs the local and staging suites. To reproduce the nightly including migration, dispatch `selection=nightly` on a branch. PR merges always use local and staging coverage. The optional `shards=2` experiment applies only to manual local execution; automatic runs use one shard. Each shard has isolated infrastructure and shares the same built local app. Staging/migration share one network app build.
 
 Attempts are bounded to three, stop on success, and retain first-failure evidence. Missing selected cases or failed selected jobs fail the aggregate status. Builds are capped at 40 minutes; execution budgets depend on the selected pack as described below. Diagnostic artifacts, including RN wallet preparation logs, expire after seven days; prepared wallet environments expire after one day. Compare end-to-end duration and billed Mac/backend usage before making two shards automatic.
 

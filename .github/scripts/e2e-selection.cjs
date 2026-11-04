@@ -102,6 +102,7 @@ function select(
     files = [],
     shards = 1,
     release = false,
+    pr = false,
     currentPolicy = policy,
     previousPolicy,
   } = {},
@@ -120,8 +121,14 @@ function select(
   const policies = previousPolicy
     ? [currentPolicy, previousPolicy]
     : [currentPolicy];
+  // Release pushes run the dedicated migration workflow. This workflow adds
+  // migration only in a nightly run (or its explicit branch rehearsal).
+  const includeMigration = !pr && mode === "nightly";
   const runnable = cases.filter(
-    (c) => c.kind === "test" && c.platforms.ios.disposition === "required",
+    (c) =>
+      c.kind === "test" &&
+      c.platforms.ios.disposition === "required" &&
+      (includeMigration || c.platforms.ios.pack !== "migration"),
   );
   const local = runnable.filter((c) => c.platforms.ios.backend === "local");
   const selected = new Set(currentPolicy.base);
@@ -161,9 +168,6 @@ function select(
     if (code && previousPolicy)
       for (const id of previousPolicy.base) selected.add(id);
   }
-  if (release)
-    for (const c of runnable)
-      if (c.platforms.ios.pack === "migration") selected.add(c.id);
   if (full) for (const c of runnable) selected.add(c.id);
   const expected = code ? runnable.filter((c) => selected.has(c.id)) : [];
   const ids = expected
@@ -284,6 +288,7 @@ function main() {
     mode,
     files,
     previousPolicy,
+    pr: Boolean(pr),
     shards:
       process.env.GITHUB_EVENT_NAME === "workflow_dispatch"
         ? Number(process.env.E2E_SHARDS || 1)

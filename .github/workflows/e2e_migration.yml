@@ -1,5 +1,7 @@
 name: E2E Migration (iOS)
 on:
+  push:
+    branches: ["release-*"]
   workflow_dispatch:
     inputs:
       e2e_branch:
@@ -40,6 +42,7 @@ env:
   TERM: xterm-256color
   FORCE_COLOR: 1
   GIT_LFS_SKIP_SMUDGE: "1"
+  MIGRATION_EXTENDED: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release-')) || inputs.extended_rn || false }}
   SIMULATOR_NAME: iPhone 17
   IOS_VERSION: "26.2"
 concurrency:
@@ -47,6 +50,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build:
+    if: github.event_name != 'push' || !github.event.deleted
     runs-on: ${{ inputs.app_artifact != '' && 'ubuntu-latest' || 'macos-latest' }}
     steps:
       - name: Checkout
@@ -146,6 +150,7 @@ jobs:
     outputs:
       appSha: ${{ inputs.app_ref || steps.app.outputs.sha }}
   e2e-branch:
+    if: github.event_name != 'push' || !github.event.deleted
     uses: synonymdev/bitkit-e2e-tests/.github/workflows/determine-e2e-branch.yml@main
     with:
       app_branch: ${{ github.head_ref || github.ref_name }}
@@ -193,7 +198,7 @@ jobs:
         run: python3 scripts/migration-matrix.py ios
         env:
           PREVIOUS_NATIVE_VERSION: ${{ inputs.previous_native_version }}
-          EXTENDED_RN: ${{ inputs.extended_rn || false }}
+          EXTENDED_RN: ${{ env.MIGRATION_EXTENDED }}
       - name: Pin resolved E2E source
         id: tests-sha
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -230,7 +235,6 @@ jobs:
     name: ios RN - ${{ matrix.scenario.version }} - ${{ matrix.scenario.name }}
     env:
       BACKEND: regtest
-      MIGRATION_EXTENDED: ${{ inputs.extended_rn || false }}
       PLATFORM: ios
       AUT_FILENAME: bitkit.app
       SIMULATOR_NAME: iPhone 17
@@ -404,7 +408,6 @@ jobs:
     name: ios native - ${{ matrix.scenario.version }} - ${{ matrix.scenario.name }}
     env:
       BACKEND: regtest
-      MIGRATION_EXTENDED: ${{ inputs.extended_rn || false }}
       PLATFORM: ios
       AUT_FILENAME: bitkit.app
       SIMULATOR_NAME: iPhone 17
@@ -549,7 +552,7 @@ jobs:
           retention-days: 7
     timeout-minutes: 135
   migration-result:
-    if: always()
+    if: always() && (github.event_name != 'push' || !github.event.deleted)
     needs:
       - build
       - e2e-branch

@@ -33,12 +33,13 @@ on:
         description: Recovery helper branch or tag
         default: master
       selection:
-        description: "Test selection: auto for a PR merge, base, or full"
+        description: "auto: PR changes; base: five cases; full: local/staging; nightly: rehearse all lanes on a branch"
         type: choice
         options:
           - full
           - auto
           - base
+          - nightly
         default: full
       shards:
         description: Manual local-shard cost experiment; automatic runs use one

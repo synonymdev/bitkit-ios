@@ -48,13 +48,7 @@
       "onboarding_1",
       "onboarding_2",
       "security_1",
-      "settings_07",
-      "migration_native_restore",
-      "migration_native_upgrade",
-      "migration_rn_restore",
-      "migration_rn_upgrade",
-      "migration_3",
-      "migration_4"
+      "settings_07"
     ],
     "security": ["security_1", "settings_06", "settings_07"],
     "widgets": ["widgets_1", "widgets_2", "widgets_3", "settings_12"],

@@ -66,7 +66,7 @@ for (const [file, added, staging, migration] of [
     "Bitkit/Services/BackupService.swift",
     ["backup_1", "onboarding_1", "onboarding_2", "security_1", "settings_07"],
     true,
-    true,
+    false,
   ],
   [
     "Bitkit/Services/ElectrumConfigService.swift",
@@ -99,11 +99,11 @@ for (const f of [
   "Bitkit/ViewModels/WalletViewModel.swift",
   "Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
 ])
-  test(`explicit shared dependency ${f} expands all lanes`, () => {
+  test(`explicit shared dependency ${f} expands local and staging coverage`, () => {
     const s = pick([f]);
     assert.equal(s.ids.length, 42);
     assert.equal(s.staging, true);
-    assert.equal(s.migration, true);
+    assert.equal(s.migration, false);
   });
 test("scanner entry points retain Pubky routes, Electrum input and hardware recipients", () => {
   for (const file of [
@@ -133,7 +133,7 @@ test("backup transport, payload and restore retain profile persistence assertion
       true,
       "pubky_profile_2/_4 restore profile/contact state",
     );
-    assert.equal(s.migration, true);
+    assert.equal(s.migration, false);
   }
 });
 test("shared send entry/confirmation retains Paykit and hardware consumers", () => {
@@ -229,12 +229,25 @@ test("USDT selection records missing coverage instead of pretending all Bitcoin 
   assert.deepEqual(s.ids, [...policy.base].sort());
   assert.ok(s.coverageNotes[0].includes("USDT"));
 });
-test("nightly/full include all existing applicable lanes with no changes; gaps stay explicit", () => {
+test("migration is excluded from all PR gates even when the base policy requests it", () => {
+  const previousPolicy = structuredClone(policy);
+  previousPolicy.groups.recovery.push("migration_rn_upgrade");
+  const files = ["Bitkit/Services/MigrationsService.swift", ".github/workflows/e2e_migration.yml"];
+  for (const mode of ["auto", "base", "full", "nightly"]) {
+    for (const release of [false, true]) {
+      const result = pick(files, { mode, pr: true, release, previousPolicy });
+      assert.equal(result.migration, false);
+      assert.equal(result.staging, mode !== "base");
+      assert.equal(result.ids.length, mode === "base" ? 5 : 42);
+    }
+  }
+});
+test("nightly includes migration while manual full includes local/staging; gaps stay explicit", () => {
   for (const mode of ["full", "nightly"]) {
     const s = pick([], { mode });
     assert.equal(s.ids.length, 42);
     assert.equal(s.staging, true);
-    assert.equal(s.migration, true);
+    assert.equal(s.migration, mode === "nightly");
     assert.ok(s.gaps.some((g) => g.id === "transfer_1"));
     assert.ok(!s.ids.includes("transfer_1"));
   }
