@@ -223,6 +223,15 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertEqual(sendFailureMessage(for: OnchainPaymentRefusal(.pending)), t("wallet__send_onchain_lightning_pending"))
     }
 
+    func testUnreadableOnchainRecordsLeaveTheScanToConfirmAndQuickPay() async throws {
+        let app = makeApp(lightningHold: { _ in .unreadable })
+
+        try await app.handleScannedData("bitcoin:\(address)?amount=0.0001&lightning=\(Self.expiredRegtestBolt11)")
+
+        XCTAssertFalse(app.didRejectScannedPayment)
+        XCTAssertEqual(app.scannedOnchainInvoice?.address, address)
+    }
+
     func testAUnifiedCodeScannedBeforeTheNodeRunsIsPaidOnchainOnlyOnceTheNodeShowsItUnpaid() async throws {
         let paymentHash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.expiredRegtestBolt11).paymentHash())
         let payments = PaymentStore(payments: nil)

@@ -10,29 +10,26 @@ struct PaykitPaymentStateBackup: Codable {
     var acceptedOneTimeRequests: [String: [RequestID]]? = nil
     /// Local allowance state by identity, so a restored wallet keeps its USD labels and can still verify open attempts.
     var allowances: PaykitAllowanceStateBackups? = nil
-    /// Lightning invoices whose address an earlier on-chain send paid, so a restored wallet never pays them over Lightning.
-    /// Readers that predate this key restore without them.
-    var heldLightningInvoices: [HeldLightningInvoiceRecord]? = nil
+    /// Lightning invoices whose address an on-chain send dispatched, shared with Android. Absent when there are none, and
+    /// merged before the active attempt on restore. Readers that predate this key restore without them.
+    var onchainPaidInvoices: [OnchainPaidInvoice]? = nil
 
-    struct HeldLightningInvoiceRecord: Codable {
+    struct OnchainPaidInvoice: Codable {
         let paymentHash: String
-        /// Seconds since 1970 as an integer string, or nil when the invoice's expiry is unknown
-        let expiresAt: String?
+        /// Seconds since 1970 as a decimal integer string, as integers are elsewhere in this record
+        let expiresAt: String
 
-        init(_ hold: HeldLightningInvoice) {
-            paymentHash = hold.paymentHash.lowercased()
-            expiresAt = hold.expiresAt.map(String.init)
+        init(_ invoice: HeldLightningInvoice) {
+            paymentHash = invoice.paymentHash.lowercased()
+            expiresAt = String(invoice.expiresAt)
         }
 
         func restored() throws -> HeldLightningInvoice {
             guard paymentHash.count == 64, paymentHash.allSatisfy({ "0123456789abcdef".contains($0) }) else {
-                throw invalidBackup("Invalid held Lightning payment hash")
+                throw invalidBackup("Invalid paid invoice hash")
             }
-            let expiry = try expiresAt.map { value -> UInt64 in
-                guard let seconds = UInt64(value), String(seconds) == value else { throw invalidBackup("Invalid held invoice expiry") }
-                return seconds
-            }
-            return HeldLightningInvoice(paymentHash: paymentHash, expiresAt: expiry)
+            guard let seconds = UInt64(expiresAt), String(seconds) == expiresAt else { throw invalidBackup("Invalid paid invoice expiry") }
+            return HeldLightningInvoice(paymentHash: paymentHash, expiresAt: seconds)
         }
     }
 

@@ -274,41 +274,74 @@ final class OnchainSendLightningPaymentHashTests: XCTestCase {
         XCTAssertEqual(hold, .none)
     }
 
-    func testHeldInvoicesSurviveABackupRestore() async throws {
+    func testPaidInvoicesSurviveABackupRestore() async throws {
         let holds = MemoryLightningHoldStore()
         let clock = Clock(Date(timeIntervalSince1970: 1_000_000))
         try holds.save([
             HeldLightningInvoice(paymentHash: paymentHash, expiresAt: 2_000_000),
             HeldLightningInvoice(paymentHash: String(repeating: "ef", count: 32), expiresAt: 10),
-            HeldLightningInvoice(paymentHash: String(repeating: "12", count: 32), expiresAt: nil),
         ])
         let service = OnchainSendAttemptService(store: MemoryAttemptStore(), lightningHolds: holds, now: { clock.now })
-        let backup = try await service.lightningHoldsBackup().map(PaykitPaymentStateBackup.HeldLightningInvoiceRecord.init)
-        let wire = try JSONDecoder().decode(
-            [PaykitPaymentStateBackup.HeldLightningInvoiceRecord].self, from: JSONEncoder().encode(backup)
-        )
-        XCTAssertEqual(wire.count, 2, "An expired hold is not backed up")
+        let backup = try await service.lightningHoldsBackup().map(PaykitPaymentStateBackup.OnchainPaidInvoice.init)
+        let wire = try JSONDecoder().decode([PaykitPaymentStateBackup.OnchainPaidInvoice].self, from: JSONEncoder().encode(backup))
+        XCTAssertEqual(wire.count, 1, "An expired invoice is not backed up")
 
         let restoredHolds = MemoryLightningHoldStore()
         let restoredService = OnchainSendAttemptService(store: MemoryAttemptStore(), lightningHolds: restoredHolds, now: { clock.now })
         try await restoredService.restoreLightningHolds(wire.map { try $0.restored() })
 
         let held = await restoredService.lightningHold(paymentHash: paymentHash)
-        let unknownExpiry = await restoredService.lightningHold(paymentHash: String(repeating: "12", count: 32))
         XCTAssertEqual(held, .held)
-        XCTAssertEqual(unknownExpiry, .held, "A hold without a known expiry is kept")
 
-        let malformed = try JSONDecoder().decode(
-            PaykitPaymentStateBackup.HeldLightningInvoiceRecord.self, from: Data(#"{"paymentHash":"not-a-hash","expiresAt":"1"}"#.utf8)
+        for malformed in [#"{"paymentHash":"not-a-hash","expiresAt":"1"}"#, #"{"paymentHash":"\#(paymentHash)","expiresAt":"+1"}"#] {
+            let record = try JSONDecoder().decode(PaykitPaymentStateBackup.OnchainPaidInvoice.self, from: Data(malformed.utf8))
+            XCTAssertThrowsError(try record.restored(), malformed)
+        }
+    }
+
+    /// The record is shared with Android: `onchainPaidInvoices`, each `{"paymentHash", "expiresAt"}` with the expiry in seconds
+    /// since 1970 as a decimal string, and the key left out when there are none
+    func testPaidInvoicesUseTheSharedBackupSchema() throws {
+        let android = #"{"subscriptions":{},"pendingProofs":[],"onchainPaidInvoices":[{"paymentHash":"\#(paymentHash)","expiresAt":"1700000000"}]}"#
+        let decoded = try JSONDecoder().decode(PaykitPaymentStateBackup.self, from: Data(android.utf8))
+        let restored = try XCTUnwrap(decoded.onchainPaidInvoices).map { try $0.restored() }
+        XCTAssertEqual(restored, [HeldLightningInvoice(paymentHash: paymentHash, expiresAt: 1_700_000_000)])
+
+        var state = PaykitPaymentStateBackup(subscriptions: [:], pendingProofs: [])
+        state.onchainPaidInvoices = restored.map(PaykitPaymentStateBackup.OnchainPaidInvoice.init)
+        let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(state)) as? [String: Any])
+        let invoices = try XCTUnwrap(encoded["onchainPaidInvoices"] as? [[String: Any]])
+        XCTAssertEqual(invoices.first?["paymentHash"] as? String, paymentHash)
+        XCTAssertEqual(invoices.first?["expiresAt"] as? String, "1700000000")
+        XCTAssertEqual(invoices.first?.count, 2)
+
+        let empty = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(PaykitPaymentStateBackup(
+                subscriptions: [:],
+                pendingProofs: []
+            ))) as? [String: Any]
         )
-        XCTAssertThrowsError(try malformed.restored())
+        XCTAssertNil(empty["onchainPaidInvoices"])
+    }
+
+    func testOnlyADispatchedSendWithAKnownInvoiceExpiryIsRemembered() async throws {
+        let store = MemoryAttemptStore()
+        let holds = MemoryLightningHoldStore()
+        let service = OnchainSendAttemptService(store: store, lightningHolds: holds)
+        _ = try await dispatchedOriginal(service, store: store, sender: PreparedAttemptNodeMock(), lightningPaymentHash: paymentHash)
+
+        XCTAssertTrue(holds.snapshot().isEmpty, "An invoice of unknown expiry is held only by its attempt")
+        let heldByAttempt = await service.lightningHold(paymentHash: paymentHash)
+        XCTAssertEqual(heldByAttempt, .held)
     }
 
     func testARestoreOverAResolvedAttemptKeepsItsInvoiceHeld() async throws {
         let store = MemoryAttemptStore()
         let holds = MemoryLightningHoldStore()
         let service = OnchainSendAttemptService(store: store, lightningHolds: holds)
-        _ = try await dispatchedOriginal(service, store: store, sender: PreparedAttemptNodeMock(), lightningPaymentHash: paymentHash)
+        _ = try await dispatchedOriginal(
+            service, store: store, sender: PreparedAttemptNodeMock(), lightningPaymentHash: paymentHash, lightningInvoiceExpiresAt: 4_000_000_000
+        )
         var resolved = try XCTUnwrap(store.snapshot().first)
         resolved.status = .accepted
         resolved.localFollowupComplete = true

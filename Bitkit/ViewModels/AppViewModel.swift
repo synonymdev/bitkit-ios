@@ -1476,7 +1476,8 @@ extension AppViewModel {
             lightningHold: lightningHold
         )
         try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext, isCurrentScan: isCurrentScan)
-        guard let refusal else { return true }
+        // Unreadable records go on to Confirm and QuickPay, which refuse them before sending
+        guard let refusal, refusal.reason == .onchainSend else { return true }
         didRejectScannedPayment = true
         // The on-chain send may still fail, and the records may become readable
         isScannedPaymentRefusalTransient = true
