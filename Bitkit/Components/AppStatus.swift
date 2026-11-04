@@ -9,6 +9,7 @@ struct AppStatus: View {
     let showReady: Bool
     let showColor: Bool
     let testID: String
+    let minHeight: CGFloat
     let onPress: (() -> Void)?
 
     @State private var rotationAngle: Double = 0
@@ -19,12 +20,14 @@ struct AppStatus: View {
         showReady: Bool = false,
         showColor: Bool = true,
         testID: String,
+        minHeight: CGFloat = 32,
         onPress: (() -> Void)? = nil
     ) {
         self.showText = showText
         self.showReady = showReady
         self.showColor = showColor
         self.testID = testID
+        self.minHeight = minHeight
         self.onPress = onPress
     }
 
@@ -39,8 +42,9 @@ struct AppStatus: View {
                     BodyMSBText(t("wallet__drawer__status"), textColor: .black)
                 }
             }
+            .frame(minWidth: 32, minHeight: minHeight)
+            .contentShape(Rectangle())
         }
-        .frame(minWidth: 32, minHeight: 32)
         .accessibilityIdentifier(testID)
         .buttonStyle(PlainButtonStyle())
         .onAppear {
