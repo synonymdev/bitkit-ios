@@ -66,31 +66,38 @@ struct SparkExitQuoteView: View {
             NavigationBar(title: t("lightning__spark_exit__nav_title"))
                 .padding(.bottom, 16)
 
-            DisplayText(t("lightning__spark_exit__quote_title"), accentColor: .yellowAccent)
-                .padding(.bottom, 32)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    DisplayText(t("lightning__spark_exit__quote_title"), accentColor: .yellowAccent)
+                        .padding(.bottom, 32)
 
-            if let quote = exit.quote {
-                SparkExitQuoteRows(quote: quote)
+                    if let quote = exit.quote {
+                        SparkExitQuoteRows(quote: quote)
 
-                if let unexitableSats = SparkExitMath.unexitableSats(sparkBalanceSats: SparkManager.shared.balanceSats, quote: quote) {
-                    CaptionMText(t("lightning__spark_exit__quote_outside", variables: ["amount": currency.primaryAmountText(sats: unexitableSats)]))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 16)
-                        .accessibilityIdentifier("SparkExitQuoteOutside")
+                        if let unexitableSats = SparkExitMath.unexitableSats(sparkBalanceSats: SparkManager.shared.balanceSats, quote: quote) {
+                            CaptionMText(t(
+                                "lightning__spark_exit__quote_outside",
+                                variables: ["amount": currency.primaryAmountText(sats: unexitableSats)]
+                            ))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 16)
+                            .accessibilityIdentifier("SparkExitQuoteOutside")
+                        }
+                    } else if exit.isQuoting {
+                        let key = SparkManager.shared.isSettlingForExit ? "lightning__spark_exit__quote_settling" : "lightning__spark_exit__quote_loading"
+                        BodyMText(t(key))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if let blockedReason {
+                        BodyMText(blockedReason, textColor: .redAccent)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 16)
+                            .accessibilityIdentifier("SparkExitQuoteBlocked")
+                    }
                 }
-            } else if exit.isQuoting {
-                BodyMText(t(SparkManager.shared.isSettlingForExit ? "lightning__spark_exit__quote_settling" : "lightning__spark_exit__quote_loading"))
-                    .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, 16)
             }
-
-            if let blockedReason {
-                BodyMText(blockedReason, textColor: .redAccent)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 16)
-                    .accessibilityIdentifier("SparkExitQuoteBlocked")
-            }
-
-            Spacer()
 
             CustomButton(title: t("common__continue"), isLoading: exit.isQuoting) {
                 guard let quote = exit.quote else { return }
@@ -176,21 +183,29 @@ struct SparkExitFundingView: View {
             NavigationBar(title: t("lightning__spark_exit__nav_title"))
                 .padding(.bottom, 16)
 
-            DisplayText(t("lightning__spark_exit__funding_title"), accentColor: .yellowAccent)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    DisplayText(t("lightning__spark_exit__funding_title"), accentColor: .yellowAccent)
 
-            BodyMText(
-                t("lightning__spark_exit__funding_text", variables: ["amount": currency.primaryAmountText(sats: fundingSats)]),
-                accentFont: Fonts.bold
-            )
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.top, 16)
+                    BodyMText(
+                        t("lightning__spark_exit__funding_text", variables: ["amount": currency.primaryAmountText(sats: fundingSats)]),
+                        accentFont: Fonts.bold
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 16)
 
-            if showsAddress, let address = exit.fundingAddress {
-                SparkExitFundingAddress(address: address, requiredSats: fundingSats, receivedSats: exit.fundingSeenSats, targetSats: fundingSats)
-                    .padding(.top, 24)
+                    if showsAddress, let address = exit.fundingAddress {
+                        SparkExitFundingAddress(
+                            address: address,
+                            requiredSats: fundingSats,
+                            receivedSats: exit.fundingSeenSats,
+                            targetSats: fundingSats
+                        )
+                        .padding(.top, 24)
+                    }
+                }
+                .padding(.bottom, 16)
             }
-
-            Spacer()
 
             if showsAddress {
                 CustomButton(title: t("common__continue")) {
@@ -367,21 +382,24 @@ struct SparkExitConfirmView: View {
             NavigationBar(title: t("lightning__spark_exit__nav_title"))
                 .padding(.bottom, 16)
 
-            DisplayText(t("lightning__spark_exit__confirm_title"), accentColor: .yellowAccent)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    DisplayText(t("lightning__spark_exit__confirm_title"), accentColor: .yellowAccent)
 
-            BodyMText(t("lightning__spark_exit__confirm_text"), accentFont: Fonts.bold)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 16)
-                .padding(.bottom, 32)
+                    BodyMText(t("lightning__spark_exit__confirm_text"), accentFont: Fonts.bold)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 16)
+                        .padding(.bottom, 32)
 
-            if let quote = exit.quote {
-                SparkExitQuoteRows(quote: quote)
+                    if let quote = exit.quote {
+                        SparkExitQuoteRows(quote: quote)
+                    }
+
+                    SparkExitBackgroundNotes()
+                        .padding(.top, 16)
+                }
+                .padding(.bottom, 16)
             }
-
-            SparkExitBackgroundNotes()
-                .padding(.top, 16)
-
-            Spacer()
 
             SwipeButton(title: t("lightning__spark_exit__swipe"), accentColor: .yellowAccent) {
                 do {

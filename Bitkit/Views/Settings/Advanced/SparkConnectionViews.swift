@@ -126,106 +126,101 @@ struct SparkConnectionDetailView: View {
             NavigationBar(title: t("lightning__spark"))
                 .padding(.bottom, 16)
 
-            GeometryReader { geometry in
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        LightningChannel(
-                            capacity: spark.balanceSats,
-                            localBalance: spark.balanceSats,
-                            remoteBalance: 0,
-                            status: .open,
-                            showReceiving: false
-                        )
-                        .padding(.bottom, 28)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    LightningChannel(
+                        capacity: spark.balanceSats,
+                        localBalance: spark.balanceSats,
+                        remoteBalance: 0,
+                        status: .open,
+                        showReceiving: false
+                    )
+                    .padding(.bottom, 28)
 
-                        VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            CustomDivider()
+                            SettingsSectionHeader(t("lightning__spark_provider"))
+                            detailRow(label: t("lightning__spark_provider"), value: t("lightning__spark_provider_value"))
+                            BodySText(t("lightning__spark_trust"))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.top, 12)
+
+                            if let depositAddress {
+                                Button {
+                                    UIPasteboard.general.string = depositAddress
+                                    Haptics.play(.copiedToClipboard)
+                                    app.toast(type: .success, title: t("common__copied"), description: depositAddress)
+                                } label: {
+                                    detailRow(label: t("wallet__activity_address"), value: depositAddress)
+                                        .contentShape(.rect)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .accessibilityIdentifier("SparkDepositAddress")
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: 0) {
+                            SettingsSectionHeader(t("lightning__balance"))
+                            amountRow(label: t("lightning__spending_label"), amount: spark.balanceSats)
+                        }
+
+                        let pending = spark.deposits.filter { !$0.isClaimed }
+                        if !pending.isEmpty {
+                            VStack(alignment: .leading, spacing: 16) {
+                                SettingsSectionHeader(t("lightning__spark_deposits_pending"))
+                                ForEach(pending) { SparkDepositRow(deposit: $0) }
+                            }
+                        }
+
+                        let claimed = spark.deposits.filter(\.isClaimed)
+                        if !claimed.isEmpty {
                             VStack(alignment: .leading, spacing: 0) {
-                                CustomDivider()
-                                SettingsSectionHeader(t("lightning__spark_provider"))
-                                detailRow(label: t("lightning__spark_provider"), value: t("lightning__spark_provider_value"))
-                                BodySText(t("lightning__spark_trust"))
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .padding(.top, 12)
-
-                                if let depositAddress {
-                                    Button {
-                                        UIPasteboard.general.string = depositAddress
-                                        Haptics.play(.copiedToClipboard)
-                                        app.toast(type: .success, title: t("common__copied"), description: depositAddress)
-                                    } label: {
-                                        detailRow(label: t("wallet__activity_address"), value: depositAddress)
-                                            .contentShape(.rect)
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                    .accessibilityIdentifier("SparkDepositAddress")
-                                }
-                            }
-
-                            VStack(alignment: .leading, spacing: 0) {
-                                SettingsSectionHeader(t("lightning__balance"))
-                                amountRow(label: t("lightning__spending_label"), amount: spark.balanceSats)
-                            }
-
-                            let pending = spark.deposits.filter { !$0.isClaimed }
-                            if !pending.isEmpty {
-                                VStack(alignment: .leading, spacing: 16) {
-                                    SettingsSectionHeader(t("lightning__spark_deposits_pending"))
-                                    ForEach(pending) { SparkDepositRow(deposit: $0) }
-                                }
-                            }
-
-                            let claimed = spark.deposits.filter(\.isClaimed)
-                            if !claimed.isEmpty {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    SettingsSectionHeader(t("lightning__spark_deposits_claimed"))
-                                    ForEach(claimed) { deposit in
-                                        SparkDepositRow(deposit: deposit)
-                                            .padding(.bottom, 8)
-                                        amountRow(label: t("lightning__spark_claim_fee"), amount: deposit.feeSats)
-                                    }
-                                }
-                            }
-
-                            if !spark.withdrawals.isEmpty {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    SettingsSectionHeader(t("lightning__savings_confirm__label"))
-                                    ForEach(spark.withdrawals) { withdrawal in
-                                        SparkDepositRow(withdrawal: withdrawal)
-                                            .padding(.bottom, 8)
-                                        amountRow(label: t("wallet__activity_fee"), amount: withdrawal.feeSats)
-                                    }
+                                SettingsSectionHeader(t("lightning__spark_deposits_claimed"))
+                                ForEach(claimed) { deposit in
+                                    SparkDepositRow(deposit: deposit)
+                                        .padding(.bottom, 8)
+                                    amountRow(label: t("lightning__spark_claim_fee"), amount: deposit.feeSats)
                                 }
                             }
                         }
-                        .padding(.bottom, 32)
 
-                        Spacer(minLength: 0)
-
-                        CustomButton(title: t("lightning__transfer_to_savings_button")) {
-                            if app.hasSeenTransferToSavingsIntro {
-                                navigation.navigate(.savingsAvailability)
-                            } else {
-                                navigation.navigate(.savingsIntro)
+                        if !spark.withdrawals.isEmpty {
+                            VStack(alignment: .leading, spacing: 0) {
+                                SettingsSectionHeader(t("lightning__savings_confirm__label"))
+                                ForEach(spark.withdrawals) { withdrawal in
+                                    SparkDepositRow(withdrawal: withdrawal)
+                                        .padding(.bottom, 8)
+                                    amountRow(label: t("wallet__activity_fee"), amount: withdrawal.feeSats)
+                                }
                             }
-                        }
-                        .disabled(spark.balanceSats == 0 || spark.isExiting)
-                        .accessibilityIdentifier("SparkTransferToSavings")
-
-                        if showsExit {
-                            CustomButton(title: t("lightning__spark_exit__button"), variant: .tertiary) {
-                                navigation.navigate(SparkExitManager.shared.showsResult ? .sparkExitProgress : .sparkExitIntro)
-                            }
-                            .padding(.top, 8)
-                            .accessibilityIdentifier("SparkEmergencyExit")
                         }
                     }
-                    .frame(minHeight: geometry.size.height)
-                    .bottomSafeAreaPadding()
+                    .padding(.bottom, 32)
                 }
+            }
+
+            CustomButton(title: t("lightning__transfer_to_savings_button")) {
+                if app.hasSeenTransferToSavingsIntro {
+                    navigation.navigate(.savingsAvailability)
+                } else {
+                    navigation.navigate(.savingsIntro)
+                }
+            }
+            .disabled(spark.balanceSats == 0 || spark.isExiting)
+            .accessibilityIdentifier("SparkTransferToSavings")
+
+            if showsExit {
+                CustomButton(title: t("lightning__spark_exit__button"), variant: .tertiary) {
+                    navigation.navigate(SparkExitManager.shared.showsResult ? .sparkExitProgress : .sparkExitIntro)
+                }
+                .padding(.top, 8)
+                .accessibilityIdentifier("SparkEmergencyExit")
             }
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
         .refreshable {
             await spark.refreshState()
         }

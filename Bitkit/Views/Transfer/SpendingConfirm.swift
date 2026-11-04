@@ -27,28 +27,34 @@ struct SpendingConfirm: View {
                 .disabled(isPaying)
                 .padding(.bottom, 16)
 
-            DisplayText(t("lightning__transfer__confirm"), accentColor: .purpleAccent)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    DisplayText(t("lightning__transfer__confirm"), accentColor: .purpleAccent)
 
-            SpendingConfirmFees(quote: flow.quote, speed: flow.speed, isLoading: flow.quote == nil && flow.quoteError == nil)
-                .padding(.top, 32)
+                    SpendingConfirmFees(quote: flow.quote, speed: flow.speed, isLoading: flow.quote == nil && flow.quoteError == nil)
+                        .padding(.top, 32)
 
-            if let error = flow.quoteError {
-                quoteError(error)
-                    .padding(.bottom, 16)
-            }
+                    if let error = flow.quoteError {
+                        quoteError(error)
+                            .padding(.bottom, 16)
+                    }
 
-            SpendingSpeedPicker(quote: flow.quote, speed: Bindable(flow).speed)
-                .disabled(isPaying)
-                .padding(.horizontal, -16)
+                    SpendingSpeedPicker(quote: flow.quote, speed: Bindable(flow).speed)
+                        .disabled(isPaying)
+                        .padding(.horizontal, -16)
+                        .padding(.bottom, 16)
+
+                    CustomButton(title: t("common__learn_more"), size: .small) {
+                        navigation.navigate(.transferLearnMore)
+                    }
+                    .disabled(isPaying)
+                    .accessibilityIdentifier("SpendingConfirmMore")
+                }
+                // The speed rows run edge to edge, so the scroll spans the screen and pads its own content.
+                .padding(.horizontal, 16)
                 .padding(.bottom, 16)
-
-            CustomButton(title: t("common__learn_more"), size: .small) {
-                navigation.navigate(.transferLearnMore)
             }
-            .disabled(isPaying)
-            .accessibilityIdentifier("SpendingConfirmMore")
-
-            Spacer()
+            .padding(.horizontal, -16)
 
             if !hideSwipeButton {
                 SwipeButton(

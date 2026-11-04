@@ -31,39 +31,43 @@ struct SpendingHwSign: View {
                 .disabled(!hwSend.canLeave)
                 .padding(.bottom, 16)
 
-            DisplayText(
-                t(hwSend.hasPendingBroadcast ? "lightning__transfer_hw__signed_title" : "lightning__transfer_hw__sign_title"),
-                accentColor: .purpleAccent
-            )
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    DisplayText(
+                        t(hwSend.hasPendingBroadcast ? "lightning__transfer_hw__signed_title" : "lightning__transfer_hw__sign_title"),
+                        accentColor: .purpleAccent
+                    )
 
-            SpendingConfirmFees(quote: flow.quote, speed: flow.speed, isLoading: flow.quote == nil && flow.quoteError == nil)
-                .padding(.top, 16)
+                    SpendingConfirmFees(quote: flow.quote, speed: flow.speed, isLoading: flow.quote == nil && flow.quoteError == nil)
+                        .padding(.top, 16)
 
-            if let error = flow.quoteError {
-                BodyMText(error, textColor: .redAccent)
-                    .padding(.bottom, 16)
+                    if let error = flow.quoteError {
+                        BodyMText(error, textColor: .redAccent)
+                            .padding(.bottom, 16)
+                    }
+
+                    SpendingSpeedPicker(quote: flow.quote, speed: Bindable(flow).speed)
+                        .disabled(isBusy || hwSend.hasPendingBroadcast)
+                        .padding(.horizontal, -16)
+                        .padding(.bottom, 16)
+
+                    CustomButton(title: t("common__learn_more"), size: .small, isDisabled: isBusy || hwSend.hasPendingBroadcast) {
+                        navigation.navigate(.transferLearnMore)
+                    }
+                    .accessibilityIdentifier("HardwareTransferSignLearnMore")
+
+                    Image(vendor.signImageName)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: 200, maxHeight: 200)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .accessibilityHidden(true)
+                }
+                // The speed rows run edge to edge, so the scroll spans the screen and pads its own content.
+                .padding(.horizontal, 16)
             }
-
-            SpendingSpeedPicker(quote: flow.quote, speed: Bindable(flow).speed)
-                .disabled(isBusy || hwSend.hasPendingBroadcast)
-                .padding(.horizontal, -16)
-                .padding(.bottom, 16)
-
-            CustomButton(title: t("common__learn_more"), size: .small, isDisabled: isBusy || hwSend.hasPendingBroadcast) {
-                navigation.navigate(.transferLearnMore)
-            }
-            .accessibilityIdentifier("HardwareTransferSignLearnMore")
-
-            Spacer(minLength: 16)
-
-            Image(vendor.signImageName)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(maxWidth: 200, maxHeight: 200)
-                .frame(maxWidth: .infinity)
-                .accessibilityHidden(true)
-
-            Spacer(minLength: 16)
+            .padding(.horizontal, -16)
 
             CustomButton(
                 title: hwSend.hasPendingBroadcast ? t("common__retry") : vendor.sendSignButtonTitle,

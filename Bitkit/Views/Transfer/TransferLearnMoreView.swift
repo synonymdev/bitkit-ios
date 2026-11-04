@@ -16,15 +16,18 @@ struct TransferLearnMoreView: View {
             NavigationBar(title: t("lightning__transfer__nav_title"))
                 .padding(.bottom, 16)
 
-            DisplayText(t("lightning__spark_learn__title"), accentColor: .purpleAccent)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    DisplayText(t("lightning__spark_learn__title"), accentColor: .purpleAccent)
+                        .padding(.bottom, 16)
+
+                    BodyMText(t("lightning__spark_learn__text"))
+                        .padding(.bottom, 16)
+
+                    BodyMText(t("lightning__spark_trust"))
+                }
                 .padding(.bottom, 16)
-
-            BodyMText(t("lightning__spark_learn__text"))
-                .padding(.bottom, 16)
-
-            BodyMText(t("lightning__spark_trust"))
-
-            Spacer()
+            }
 
             VStack(alignment: .leading, spacing: 16) {
                 SubtitleText(t("lightning__spark_learn__label"))
