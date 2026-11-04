@@ -129,6 +129,7 @@ class BackupService {
     private var isStoppingBackups = false
     private var isRestoring = false
     private var isWiping = false
+    private var wipeGeneration: UInt64 = 0
     private var backupFailureNotificationGate = BackupFailureNotificationGate()
 
     private let defaults: UserDefaults
@@ -219,7 +220,23 @@ class BackupService {
     /// Sets the wiping flag to prevent backups during wipe operations
     func setWiping(_ isWiping: Bool) {
         stateQueue.sync {
+            if isWiping, !self.isWiping {
+                wipeGeneration &+= 1
+            }
             self.isWiping = isWiping
+        }
+    }
+
+    private func captureWipeGeneration() throws -> UInt64 {
+        try stateQueue.sync {
+            guard !isWiping else { throw CancellationError() }
+            return wipeGeneration
+        }
+    }
+
+    private func requireWipeGeneration(_ generation: UInt64) throws {
+        try stateQueue.sync {
+            guard !isWiping, wipeGeneration == generation else { throw CancellationError() }
         }
     }
 
@@ -269,7 +286,9 @@ class BackupService {
 
     private func retryPendingBackups(generation: UInt64, observingAtEntry: Bool) async {
         let tasks = try? await ServiceQueue.background(.backup) { [self] in
-            guard observingAtEntry, !isStoppingBackups, generation == currentSchedulingGeneration else {
+            guard observingAtEntry, !isStoppingBackups, generation == currentSchedulingGeneration,
+                  let wipeGeneration = try? captureWipeGeneration()
+            else {
                 return [Task<BackupOutcome, Never>]()
             }
             return BackupCategory.allCases.compactMap { category -> Task<BackupOutcome, Never>? in
@@ -280,7 +299,7 @@ class BackupService {
                 else { return nil }
 
                 let task = Task {
-                    let outcome = await self.runBackup(category: category, isScheduled: true)
+                    let outcome = await self.runBackup(category: category, isScheduled: true, wipeGeneration: wipeGeneration)
                     if outcome.canRetryPendingBackup, !Task.isCancelled, self.getBackupStatus(category: category).isRequired {
                         await self.scheduleBackup(category: category, generation: generation, initialOutcome: outcome)
                     }
@@ -359,17 +378,19 @@ class BackupService {
     }
 
     private func triggerBackup(category: BackupCategory, isScheduled: Bool, waitForExisting: Bool = false) async -> BackupOutcome {
+        guard let wipeGeneration = try? captureWipeGeneration() else { return .failed }
         while !Task.isCancelled {
             let admission = try? await ServiceQueue.background(.backup) { [self] () -> (
                 task: Task<BackupOutcome, Never>?,
                 owned: Bool,
                 stopping: Bool
             ) in
+                try requireWipeGeneration(wipeGeneration)
                 guard !isStoppingBackups else { return (nil, false, true) }
                 if let existing = runningBackupTasks[category] {
                     return (waitForExisting ? existing : nil, false, false)
                 }
-                let task = Task { await self.runBackup(category: category, isScheduled: isScheduled) }
+                let task = Task { await self.runBackup(category: category, isScheduled: isScheduled, wipeGeneration: wipeGeneration) }
                 runningBackupTasks[category] = task
                 return (task, true, false)
             }
@@ -395,7 +416,7 @@ class BackupService {
         await observationTask?.value
     }
 
-    private func runBackup(category: BackupCategory, isScheduled: Bool) async -> BackupOutcome {
+    private func runBackup(category: BackupCategory, isScheduled: Bool, wipeGeneration: UInt64) async -> BackupOutcome {
         Logger.debug("Backup starting for: '\(category.rawValue)'", context: "BackupService")
         var outcome = BackupOutcome.failed
         var requiredAtStart: UInt64 = 0
@@ -410,6 +431,7 @@ class BackupService {
 
         do {
             try Task.checkCancellation()
+            try requireWipeGeneration(wipeGeneration)
             if isScheduled, shouldSkipBackup(category: category) {
                 throw CancellationError()
             }
@@ -431,11 +453,13 @@ class BackupService {
                     try requireMetadataBackupReady()
                 }
                 try Task.checkCancellation()
+                try requireWipeGeneration(wipeGeneration)
                 if isScheduled, shouldSkipBackup(category: category) {
                     throw CancellationError()
                 }
                 try await uploadBackup(category.rawValue, data)
             }
+            try requireWipeGeneration(wipeGeneration)
             updateBackupStatus(category: category) { status in
                 let changed = self.backupVersions[category, default: 0] != versionAtStart
                 return BackupItemStatus(
