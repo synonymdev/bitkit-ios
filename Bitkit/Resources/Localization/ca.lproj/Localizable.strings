@@ -264,7 +264,7 @@
 "lightning__savings_interrupted__nav_title" = "Transferència\n<accent>interrompuda</accent>";
 "lightning__savings_interrupted__title" = "Mantén Bitkit\n<accent>obert</accent>";
 "lightning__savings_interrupted__text" = "Els fons encara no s\'han transferit. Bitkit intentarà iniciar la transferència durant els pròxims <accent>30 minuts</accent>. Si us plau, mantén l\'aplicació oberta.";
-"lightning__savings_spark_failed__title" = "Transferència Spark\n<accent>fallida</accent>";
+"lightning__savings_spark_failed__title" = "Transferència\n<accent>fallida</accent>";
 "lightning__savings_spark_failed__text" = "El teu saldo Spark no s'ha pogut moure a l'estalvi i es queda al teu saldo de despesa.";
 "lightning__savings_spark_failed__text_partial" = "Els fons dels teus canals s'estan movent a l'estalvi, però el teu saldo Spark no s'ha pogut moure i es queda al teu saldo de despesa.";
 "lightning__savings_spark_failed__toast" = "Transferència Spark fallida";

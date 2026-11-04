@@ -265,7 +265,7 @@
 "lightning__savings_interrupted__nav_title" = "Transfer\n<accent>interrupted</accent>";
 "lightning__savings_interrupted__title" = "Keep Bitkit\n<accent>open</accent>";
 "lightning__savings_interrupted__text" = "Funds were not transferred yet. Bitkit will try to initiate the transfer during the next <accent>30 minutes</accent>. Please keep your app open.";
-"lightning__savings_spark_failed__title" = "Spark transfer\n<accent>failed</accent>";
+"lightning__savings_spark_failed__title" = "Transfer\n<accent>failed</accent>";
 "lightning__savings_spark_failed__text" = "Your Spark balance could not move to savings and stays in your spending balance.";
 "lightning__savings_spark_failed__text_partial" = "Your channel funds are moving to savings, but your Spark balance could not move and stays in your spending balance.";
 "lightning__savings_spark_failed__toast" = "Spark transfer failed";

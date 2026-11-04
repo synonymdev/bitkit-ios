@@ -272,7 +272,7 @@
 "lightning__savings_interrupted__nav_title" = "Transfer środków\n<accent>przerwany</accent>";
 "lightning__savings_interrupted__title" = "Pozostaw Bitkit\n<accent>otwarty</accent>";
 "lightning__savings_interrupted__text" = "Środki nie zostały jeszcze przelane. Bitkit spróbuje zainicjować transfer w ciągu najbliższych <accent>30 minut</accent>. Proszę pozostawić aplikację otwartą.";
-"lightning__savings_spark_failed__title" = "Transfer Spark\n<accent>nieudany</accent>";
+"lightning__savings_spark_failed__title" = "Transfer środków  \n<accent>niepowiódł się</accent>";
 "lightning__savings_spark_failed__text" = "Nie udało się przenieść salda Spark do oszczędności; pozostaje ono w saldzie wydatków.";
 "lightning__savings_spark_failed__text_partial" = "Środki z kanałów trafiają do oszczędności, ale nie udało się przenieść salda Spark; pozostaje ono w saldzie wydatków.";
 "lightning__savings_spark_failed__toast" = "Transfer Spark nieudany";

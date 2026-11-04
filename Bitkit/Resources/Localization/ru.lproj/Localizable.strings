@@ -268,7 +268,7 @@
 "lightning__savings_interrupted__nav_title" = "Перевод\n<accent>Прерван</accent>";
 "lightning__savings_interrupted__title" = "Держите Bitkit\n<accent>Открытым</accent>";
 "lightning__savings_interrupted__text" = "Средства ещё не переведены. Bitkit попытается инициировать перевод в течение следующих <accent>30 минут</accent>. Пожалуйста, держите приложение открытым.";
-"lightning__savings_spark_failed__title" = "Перевод Spark\n<accent>не выполнен</accent>";
+"lightning__savings_spark_failed__title" = "Перевод\n<accent>Не Удался</accent>";
 "lightning__savings_spark_failed__text" = "Баланс Spark не удалось перевести в сбережения, он остаётся на балансе расходов.";
 "lightning__savings_spark_failed__text_partial" = "Средства каналов переводятся в сбережения, но баланс Spark перевести не удалось, он остаётся на балансе расходов.";
 "lightning__savings_spark_failed__toast" = "Перевод Spark не выполнен";

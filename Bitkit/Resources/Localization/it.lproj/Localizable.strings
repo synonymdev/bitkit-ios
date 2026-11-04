@@ -267,7 +267,7 @@
 "lightning__savings_interrupted__nav_title" = "Trasferimento\n<accent>interrotto</accent>";
 "lightning__savings_interrupted__title" = "Mantieni Bitkit\n<accent>aperto</accent>";
 "lightning__savings_interrupted__text" = "I fondi non sono stati ancora trasferiti. Bitkit tenterà di avviare il trasferimento durante i prossimi <accent>30 minuti</accent>.  Per favore mantieni l'app aperta.";
-"lightning__savings_spark_failed__title" = "Trasferimento Spark\n<accent>non riuscito</accent>";
+"lightning__savings_spark_failed__title" = "Trasferimento\n<accent>fallito</accent>";
 "lightning__savings_spark_failed__text" = "Il tuo saldo Spark non è stato spostato nei risparmi e resta nel tuo saldo di spesa.";
 "lightning__savings_spark_failed__text_partial" = "I fondi dei tuoi canali stanno passando ai risparmi, ma il tuo saldo Spark non è stato spostato e resta nel tuo saldo di spesa.";
 "lightning__savings_spark_failed__toast" = "Trasferimento Spark non riuscito";

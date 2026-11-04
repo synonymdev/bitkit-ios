@@ -288,7 +288,7 @@
 "lightning__savings_interrupted__nav_title" = "Transferência\n<accent>interrompida</accent>";
 "lightning__savings_interrupted__title" = "Mantenha a Bitkit\n<accent>aberta</accent>";
 "lightning__savings_interrupted__text" = "Os fundos ainda não foram transferidos. A Bitkit tentará iniciar a transferência durante os próximos <accent>30 minutos</accent>. Por favor, mantenha o aplicativo aberto.";
-"lightning__savings_spark_failed__title" = "Transferência Spark\n<accent>falhou</accent>";
+"lightning__savings_spark_failed__title" = "Transferência\n<accent>falhou</accent>";
 "lightning__savings_spark_failed__text" = "O teu saldo Spark não pôde ser movido para a poupança e fica no teu saldo de gastos.";
 "lightning__savings_spark_failed__text_partial" = "Os fundos dos teus canais estão a ir para a poupança, mas o teu saldo Spark não pôde ser movido e fica no teu saldo de gastos.";
 "lightning__savings_spark_failed__toast" = "Transferência Spark falhou";
