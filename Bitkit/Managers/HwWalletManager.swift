@@ -80,6 +80,7 @@ final class HwWalletManager: Sendable {
     private let deleteActivities: @MainActor (String) async throws -> Void
     private let readTagMetadata: @MainActor (String) async throws -> [PreActivityMetadata]
     private let writeTagMetadata: @MainActor ([PreActivityMetadata]) async throws -> Void
+    private let retainedSends: HwRetainedSendService
 
     /// The live device sessions, one per vendor. Only the identity-aware operations need them; tile
     /// and watcher state still come solely from `updateDevices(...)`. Nil in previews and in tests
@@ -164,7 +165,8 @@ final class HwWalletManager: Sendable {
         persistSnapshot: (@MainActor (HwWalletSnapshot) async throws -> Void)? = nil,
         deleteActivities: (@MainActor (String) async throws -> Void)? = nil,
         readTagMetadata: (@MainActor (String) async throws -> [PreActivityMetadata])? = nil,
-        writeTagMetadata: (@MainActor ([PreActivityMetadata]) async throws -> Void)? = nil
+        writeTagMetadata: (@MainActor ([PreActivityMetadata]) async throws -> Void)? = nil,
+        retainedSends: HwRetainedSendService = .shared
     ) {
         self.trezorSession = trezorSession
         self.jadeSession = jadeSession
@@ -197,6 +199,7 @@ final class HwWalletManager: Sendable {
         self.writeTagMetadata = writeTagMetadata ?? { records in
             try await CoreService.shared.activity.upsertPreActivityMetadata(records)
         }
+        self.retainedSends = retainedSends
         // The transport publishes on its Bluetooth queue.
         jadeBluetoothPoweredOnSubscription = jadeBluetoothPoweredOn
             .receive(on: DispatchQueue.main)
@@ -318,6 +321,12 @@ final class HwWalletManager: Sendable {
             await trezorSession?.forgetWallet(walletId: walletId, pendingName: pendingName)
         case .blockstream:
             await jadeSession?.forgetWallet(walletId: walletId, pendingName: pendingName)
+        }
+        // Last, because suspending any earlier would let a device push re-add the wallet before its entries are forgotten.
+        do {
+            try await retainedSends.release(walletId: walletId)
+        } catch {
+            Logger.error("Failed to release retained send of HW wallet '\(walletId)': \(error)", context: "HwWalletManager")
         }
     }
 
@@ -970,6 +979,22 @@ final class HwWalletManager: Sendable {
         recomputeDerivedState(groups: groups)
         persistGroupSnapshot(forWallet: walletId, groups: groups)
         emitReceivedTxs(previous: previous, activities: activities)
+        releaseRetainedSendIfObserved(walletId: walletId, activities: activities)
+    }
+
+    /// A failed release keeps the record, which is the safe side: the next watcher event tries again.
+    private func releaseRetainedSendIfObserved(walletId: String, activities: [Activity]) {
+        let txIds = activities.compactMap { activity -> String? in
+            guard case let .onchain(onchain) = activity, onchain.doesExist else { return nil }
+            return onchain.txId
+        }
+        persistQueue.enqueue(walletId: walletId) { [retainedSends] in
+            do {
+                try await retainedSends.releaseIfObserved(walletId: walletId, txIds: txIds)
+            } catch {
+                Logger.error("Failed to release observed send of HW wallet '\(walletId)': \(error)", context: "HwWalletManager")
+            }
+        }
     }
 
     private func emitReceivedTxs(previous: HwWatcherData?, activities: [Activity]) {

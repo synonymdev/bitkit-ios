@@ -149,7 +149,8 @@ final class HwWalletManagerTests: XCTestCase {
         monitored: Set<String> = ["legacy", "nestedSegwit", "nativeSegwit", "taproot"],
         accountInfoProvider: @escaping HwWalletManager.AccountInfoProvider = { _, _, _, _, _ in
             fatalError("Unexpected account info request")
-        }
+        },
+        retainedSends: HwRetainedSendService = .inMemory()
     ) -> HwWalletManager {
         let vm = HwWalletManager(
             watcherService: watcherService,
@@ -174,7 +175,8 @@ final class HwWalletManagerTests: XCTestCase {
                 if let error = self?.tagMetadataWriteError {
                     throw error
                 }
-            }
+            },
+            retainedSends: retainedSends
         )
         vm.receivedTxPublisher
             .sink { [weak self] in self?.receivedTxs.append($0) }
@@ -209,7 +211,8 @@ final class HwWalletManagerTests: XCTestCase {
         txId: String,
         value: UInt64,
         txType: PaymentType,
-        walletId: String = ""
+        walletId: String = "",
+        doesExist: Bool = true
     ) -> Activity {
         .onchain(OnchainActivity(
             walletId: walletId,
@@ -225,7 +228,7 @@ final class HwWalletManagerTests: XCTestCase {
             isBoosted: false,
             boostTxIds: [],
             isTransfer: false,
-            doesExist: true,
+            doesExist: doesExist,
             confirmTimestamp: 1_700_000_000,
             channelId: nil,
             transferTxId: nil,
@@ -1526,6 +1529,101 @@ final class HwWalletManagerTests: XCTestCase {
         await vm.drainPendingPersists()
 
         XCTAssertTrue(persistedSnapshots.isEmpty)
+    }
+
+    // MARK: - Retained hardware sends
+
+    private let retainedSerializedTx =
+        "02000000000101f7c5a048189164c6b05b07516b5dbb9c826c601d12dc4ed97f0069618b8b7c160100000000fdffffff024179010000000000160014f066a63663b0d464b31a7a88619beae011c3fb7be80300000000000016001483ea855bb508cb08ed9e8cf9152d8927871c19aa02473044022052c5a15ade616af16f314bcc2ae15bf4ef4996e0f2315794e647ba6c955745b602200f3095f4a7deb39a94716c0fd2001a2fbff1861a8ff0c2015739a40a62891c22012102cb13c86b55418d0e3bccf29115394e1fb6a9f209d3f59dc9bbb0805b253464cb724c0300"
+
+    private func retainSend(walletId: String, in service: HwRetainedSendService) async throws {
+        try await service.retain(HwRetainedSend(
+            walletId: walletId,
+            address: "bcrt1qaddress",
+            sats: 42000,
+            satsPerVByte: 2,
+            serializedTx: retainedSerializedTx,
+            miningFeeSats: 141,
+            feeRate: 2.5,
+            totalSpent: 42141
+        ))
+    }
+
+    /// Delivers `activity` to the wallet's own watcher, with that wallet holding a retained send, and returns the record left.
+    private func retainedSendAfterWatcherEvent(activity: (_ retainedTxId: String) -> Activity) async throws -> HwRetainedSend? {
+        let xpubs = ["nativeSegwit": "z"]
+        let walletId = try HwWalletId.derive(xpubs: xpubs)
+        let device = makeDevice(id: "dev1", xpubs: xpubs)
+        let service = HwRetainedSendService.inMemory()
+        try await retainSend(walletId: walletId, in: service)
+        let vm = makeViewModel(monitored: ["nativeSegwit"], retainedSends: service)
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+
+        let txId = try SignedTransactionId.fromHex(retainedSerializedTx)
+        vm.handleWatcherEvent(watcherId: watcherId(device, "nativeSegwit"), event: makeEvent([activity(txId)], total: 1000))
+        await vm.drainPendingPersists()
+
+        return try await service.record(walletId: walletId)
+    }
+
+    func testWatcherEventWithTheRetainedTxReleasesTheRecord() async throws {
+        let record = try await retainedSendAfterWatcherEvent { makeActivity(txId: $0, value: 42000, txType: .sent) }
+
+        XCTAssertNil(record)
+    }
+
+    func testWatcherEventWithAnotherTxKeepsTheRecord() async throws {
+        let record = try await retainedSendAfterWatcherEvent { _ in makeActivity(txId: "other", value: 42000, txType: .sent) }
+
+        XCTAssertNotNil(record)
+    }
+
+    /// A row that no longer exists on chain, such as a replaced or dropped tx, does not show the payment went through.
+    func testWatcherEventWithTheRetainedTxNoLongerExistingKeepsTheRecord() async throws {
+        let record = try await retainedSendAfterWatcherEvent {
+            makeActivity(txId: $0, value: 42000, txType: .sent, doesExist: false)
+        }
+
+        XCTAssertNotNil(record)
+    }
+
+    func testAnotherWalletsWatcherEventKeepsTheRecord() async throws {
+        let walletId = try HwWalletId.derive(xpubs: ["nativeSegwit": "z"])
+        let other = makeDevice(id: "dev2", xpubs: ["nativeSegwit": "y"])
+        let service = HwRetainedSendService.inMemory()
+        try await retainSend(walletId: walletId, in: service)
+        let vm = makeViewModel(monitored: ["nativeSegwit"], retainedSends: service)
+        vm.updateDevices(knownDevices: [makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z"]), other], connectedDeviceId: nil)
+
+        let txId = try SignedTransactionId.fromHex(retainedSerializedTx)
+        vm.handleWatcherEvent(
+            watcherId: watcherId(other, "nativeSegwit"),
+            event: makeEvent([makeActivity(txId: txId, value: 42000, txType: .sent)], total: 1000)
+        )
+        await vm.drainPendingPersists()
+
+        let record = try await service.record(walletId: walletId)
+        XCTAssertNotNil(record)
+    }
+
+    func testRemovingAWalletReleasesOnlyItsOwnRecord() async throws {
+        let walletId = try HwWalletId.derive(xpubs: ["nativeSegwit": "z"])
+        let otherWalletId = try HwWalletId.derive(xpubs: ["nativeSegwit": "y"])
+        let service = HwRetainedSendService.inMemory()
+        try await retainSend(walletId: walletId, in: service)
+        try await retainSend(walletId: otherWalletId, in: service)
+        let vm = makeViewModel(monitored: ["nativeSegwit"], retainedSends: service)
+        vm.updateDevices(
+            knownDevices: [makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z"]), makeDevice(id: "dev2", xpubs: ["nativeSegwit": "y"])],
+            connectedDeviceId: nil
+        )
+
+        try await vm.removeWallet(walletId: walletId, keepBackupData: false)
+
+        let removedRecord = try await service.record(walletId: walletId)
+        let otherRecord = try await service.record(walletId: otherWalletId)
+        XCTAssertNil(removedRecord)
+        XCTAssertNotNil(otherRecord)
     }
 
     // MARK: - Helpers
