@@ -272,6 +272,10 @@
 "lightning__savings_interrupted__nav_title" = "Převod\n<accent>přerušen</accent>";
 "lightning__savings_interrupted__title" = "Ponechte Bitkit\n<accent>otevřený</accent>";
 "lightning__savings_interrupted__text" = "Prostředky dosud nebyly převedeny. Bitkit se pokusí převod iniciovat během následujících <accent>30 minut</accent>. Nechte prosím aplikaci otevřenou.";
+"lightning__savings_spark_failed__title" = "Převod Spark\n<accent>selhal</accent>";
+"lightning__savings_spark_failed__text" = "Zůstatek Spark se nepodařilo přesunout do úspor a zůstává ve vašem zůstatku na útratu.";
+"lightning__savings_spark_failed__text_partial" = "Prostředky z kanálů se přesouvají do úspor, ale zůstatek Spark se přesunout nepodařilo a zůstává ve vašem zůstatku na útratu.";
+"lightning__savings_spark_failed__toast" = "Převod Spark selhal";
 "lightning__transfer_success__nav_title" = "Přenos úspěšný";
 "lightning__transfer_success__title_spending" = "Prostředky převedeny\n<accent>do výdajů</accent>";
 "lightning__transfer_success__title_savings" = "Prostředky převedeny\n<accent>do úspor</accent>";

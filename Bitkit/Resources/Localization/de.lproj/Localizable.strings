@@ -270,6 +270,10 @@
 "lightning__savings_interrupted__nav_title" = "Transfer\n<accent>unterbrochen</accent>";
 "lightning__savings_interrupted__title" = "Bitkit behalten\n<accent>open</accent>";
 "lightning__savings_interrupted__text" = "Die Gelder wurden noch nicht übertragen. Bitkit wird versuchen, die Übertragung in den nächsten <accent>30 Minuten</accent> zu initiieren. Bitte halte deine App offen.";
+"lightning__savings_spark_failed__title" = "Spark-Transfer\n<accent>fehlgeschlagen</accent>";
+"lightning__savings_spark_failed__text" = "Dein Spark-Guthaben konnte nicht ins Sparkonto verschoben werden und bleibt in deinem Ausgabenguthaben.";
+"lightning__savings_spark_failed__text_partial" = "Dein Kanalguthaben wird ins Sparkonto verschoben, aber dein Spark-Guthaben konnte nicht verschoben werden und bleibt in deinem Ausgabenguthaben.";
+"lightning__savings_spark_failed__toast" = "Spark-Transfer fehlgeschlagen";
 "lightning__transfer_success__nav_title" = "Übertragung erfolgreich";
 "lightning__transfer_success__title_spending" = "Bewegte Mittel\n<accent>zu den Ausgaben</accent>";
 "lightning__transfer_success__title_savings" = "Bewegte Mittel\n<accent>zu den Einsparungen</accent>";

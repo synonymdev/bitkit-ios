@@ -270,6 +270,10 @@
 "lightning__savings_interrupted__nav_title" = "Overboeking\n<accent>onderbroken</accent>";
 "lightning__savings_interrupted__title" = "Houd Bitkit\n<accent>open</accent>";
 "lightning__savings_interrupted__text" = "Het geld is nog niet overgeboekt. Bitkit zal proberen de overboeking gedurende <accent>30 minuten</accent> te initiëren. Houd uw app open.";
+"lightning__savings_spark_failed__title" = "Spark-overboeking\n<accent>mislukt</accent>";
+"lightning__savings_spark_failed__text" = "Je Spark-saldo kon niet naar sparen en blijft in je bestedingssaldo.";
+"lightning__savings_spark_failed__text_partial" = "Je kanaalsaldo gaat naar sparen, maar je Spark-saldo kon niet mee en blijft in je bestedingssaldo.";
+"lightning__savings_spark_failed__toast" = "Spark-overboeking mislukt";
 "lightning__transfer_success__nav_title" = "Overboeking Voltooid";
 "lightning__transfer_success__title_spending" = "Geld verplaatst\n<accent>naar bestedingssaldo</accent>";
 "lightning__transfer_success__title_savings" = "Geld verplaatst\n<accent>naar spaargeld</accent>";

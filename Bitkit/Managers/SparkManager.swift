@@ -42,6 +42,10 @@ final class SparkManager: ChannelFreeLightningRail {
     /// Sends recorded before Spark knew their fee; its completion event reports 0 until a later sync.
     @ObservationIgnored private var sendsRecordedWithoutFee: Set<String> = []
     @ObservationIgnored private var sdk: BreezSdk?
+    /// The last withdrawal quote, which the withdrawal reuses while it holds.
+    @ObservationIgnored private var preparedWithdrawal: (quote: SparkWithdrawalQuote, response: PrepareSendPaymentResponse)?
+    /// Withdrawals this app sent, known before Spark lists them.
+    @ObservationIgnored private var sentWithdrawalTxIds: Set<String> = []
     @ObservationIgnored private var listenerId: String?
     @ObservationIgnored private var connectTask: Task<Void, Error>?
     /// A leaf optimization is running, as its events tell.
@@ -440,19 +444,48 @@ final class SparkManager: ChannelFreeLightningRail {
 
     /// Moves the whole Spark balance to the on-chain `address`, fees included, for Spending to Savings.
     func withdrawAll(to address: String) async throws {
-        let prepared = try await prepareSend(paymentRequest: address, amountSats: balanceSats, feePolicy: .feesIncluded)
-        _ = try await requireSdk().sendPayment(request: SendPaymentRequest(
+        let prepared = try await prepareWithdrawAll(to: address)
+        let response = try await requireSdk().sendPayment(request: SendPaymentRequest(
             prepareResponse: prepared,
             options: .bitcoinAddress(confirmationSpeed: .medium)
         ))
+        preparedWithdrawal = nil
+        if case let .withdraw(txId) = response.payment.details {
+            sentWithdrawalTxIds.insert(txId)
+        }
         try await refresh()
     }
 
     /// The fee `withdrawAll(to:)` pays at its speed, which comes out of the balance it moves.
     func withdrawAllFeeSats(to address: String) async throws -> UInt64 {
-        let prepared = try await prepareSend(paymentRequest: address, amountSats: balanceSats, feePolicy: .feesIncluded)
+        let prepared = try await prepareWithdrawAll(to: address)
         guard case let .bitcoinAddress(_, feeQuote) = prepared.paymentMethod else { return 0 }
         return feeQuote.speedMedium.userFeeSat + feeQuote.speedMedium.l1BroadcastFeeSat
+    }
+
+    /// Whether `txid` is a withdrawal of this wallet's Spark balance to Savings, so its receipt is a transfer.
+    func isWithdrawal(txid: String) -> Bool {
+        Self.isWithdrawal(txid: txid, sent: sentWithdrawalTxIds, withdrawals: withdrawals)
+    }
+
+    nonisolated static func isWithdrawal(txid: String, sent: Set<String>, withdrawals: [SparkWithdrawal]) -> Bool {
+        sent.contains(txid) || withdrawals.contains { $0.txid == txid }
+    }
+
+    /// Reuses the provider's withdrawal quote while it holds for the same address and balance, so the withdrawal
+    /// pays the fee the confirm screen showed; a second full-balance quote can take minutes.
+    private func prepareWithdrawAll(to address: String) async throws -> PrepareSendPaymentResponse {
+        let balanceSats = balanceSats
+        let now = UInt64(Date().timeIntervalSince1970)
+        if let preparedWithdrawal, preparedWithdrawal.quote.holds(address: address, balanceSats: balanceSats, now: now) {
+            return preparedWithdrawal.response
+        }
+        let response = try await prepareSend(paymentRequest: address, amountSats: balanceSats, feePolicy: .feesIncluded)
+        if case let .bitcoinAddress(_, feeQuote) = response.paymentMethod {
+            let quote = SparkWithdrawalQuote(address: address, balanceSats: balanceSats, expiresAt: feeQuote.expiresAt)
+            preparedWithdrawal = (quote, response)
+        }
+        return response
     }
 
     /// What a unilateral exit needs if the Spark operators stop cooperating; it can reach several MB.
@@ -834,6 +867,20 @@ enum SparkEarlyClaim: Equatable {
 }
 
 /// A Transfer to Savings out of Spark, with what Spark kept for it.
+/// A withdrawal quote the provider issued; it holds for the same address and balance until shortly before it expires,
+/// so it can't expire mid-send. An estimate, which no provider issued, expires at 0 and never holds.
+struct SparkWithdrawalQuote: Equatable {
+    static let expiryMarginSecs: UInt64 = 30
+
+    let address: String
+    let balanceSats: UInt64
+    let expiresAt: UInt64
+
+    func holds(address: String, balanceSats: UInt64, now: UInt64) -> Bool {
+        self.address == address && self.balanceSats == balanceSats && expiresAt > now + Self.expiryMarginSecs
+    }
+}
+
 struct SparkWithdrawal: Identifiable, Equatable {
     let txid: String
     let amountSats: UInt64

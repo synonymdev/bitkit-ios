@@ -260,6 +260,10 @@
 "lightning__savings_interrupted__nav_title" = "Μεταφορά\n<accent>διακόπηκε</accent>";
 "lightning__savings_interrupted__title" = "Κρατήστε το Bitkit\n<accent>ανοιχτό</accent>";
 "lightning__savings_interrupted__text" = "Τα κεφάλαια δεν έχουν μεταφερθεί ακόμα. Το Bitkit θα προσπαθήσει να ξεκινήσει τη μεταφορά τα επόμενα <accent>30 λεπτά</accent>. Παρακαλώ κρατήστε την εφαρμογή ανοιχτή.";
+"lightning__savings_spark_failed__title" = "Μεταφορά Spark\n<accent>απέτυχε</accent>";
+"lightning__savings_spark_failed__text" = "Το υπόλοιπο Spark δεν μεταφέρθηκε στις αποταμιεύσεις και παραμένει στο υπόλοιπο δαπανών.";
+"lightning__savings_spark_failed__text_partial" = "Τα κεφάλαια των καναλιών σου μεταφέρονται στις αποταμιεύσεις, αλλά το υπόλοιπο Spark δεν μεταφέρθηκε και παραμένει στο υπόλοιπο δαπανών.";
+"lightning__savings_spark_failed__toast" = "Η μεταφορά Spark απέτυχε";
 "lightning__transfer_success__nav_title" = "Επιτυχής Μεταφορά";
 "lightning__transfer_success__title_spending" = "Τα κεφάλαια μεταφέρθηκαν\n<accent>στις δαπάνες</accent>";
 "lightning__transfer_success__title_savings" = "Τα κεφάλαια μεταφέρθηκαν\n<accent>στις αποταμιεύσεις</accent>";

@@ -166,9 +166,9 @@ struct SavingsConfirmView: View {
                 spendableSats: channelsSendableSats
             )
         }
-        .task(id: selection.withdrawsSpark) {
-            guard selection.withdrawsSpark else { return }
-            await transfer.loadSparkWithdrawFee(address: wallet.onchainAddress)
+        .onChange(of: selection.withdrawsSpark ? sparkSats : nil, initial: true) { _, balanceSats in
+            guard let balanceSats else { return }
+            transfer.loadSparkWithdrawFee(balanceSats: balanceSats, savingsAddress: wallet.onchainAddress)
         }
     }
 

@@ -1702,6 +1702,12 @@ extension AppViewModel {
                 return
             }
 
+            // Spark's withdrawal to Savings is a transfer from Spending, not a payment received.
+            if SparkManager.shared.isWithdrawal(txid: txid) {
+                await CoreService.shared.activity.markOnchainActivityAsTransfer(txId: txid)
+                return
+            }
+
             let shouldShow = await CoreService.shared.activity.shouldShowReceivedSheet(txid: txid, value: sats)
             guard shouldShow else { return }
 

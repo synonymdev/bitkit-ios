@@ -237,6 +237,10 @@
 "lightning__savings_interrupted__nav_title" = "تحويل\n<accent>متقطع</accent>";
 "lightning__savings_interrupted__title" = "أبقِ Bitkit\n<accent>مفتوحًا</accent>";
 "lightning__savings_interrupted__text" = "لم تُحوَّل الأموال بعد. سيحاول Bitkit بدء التحويل خلال الـ <accent>30 دقيقة</accent> القادمة. يرجى إبقاء التطبيق مفتوحًا.";
+"lightning__savings_spark_failed__title" = "فشل\n<accent>تحويل Spark</accent>";
+"lightning__savings_spark_failed__text" = "تعذّر نقل رصيد Spark إلى المدخرات، ويبقى في رصيد الإنفاق.";
+"lightning__savings_spark_failed__text_partial" = "يجري نقل أموال قنواتك إلى المدخرات، لكن تعذّر نقل رصيد Spark ويبقى في رصيد الإنفاق.";
+"lightning__savings_spark_failed__toast" = "فشل تحويل Spark";
 "lightning__transfer_success__nav_title" = "نجح التحويل";
 "lightning__transfer_success__title_spending" = "انتقلت الأموال\n<accent>إلى الإنفاق</accent>";
 "lightning__transfer_success__title_savings" = "انتقلت الأموال\n<accent>إلى المدخرات</accent>";
