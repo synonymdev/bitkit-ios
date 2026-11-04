@@ -24,11 +24,6 @@ extension PrivatePaykitService {
                 !receivedInvoicePaymentHashes.isEmpty
         }
 
-        /// A private payment list from this contact was resolved or paid before.
-        var hasPrivatePaymentHistory: Bool {
-            consumedPrivatePaymentListVersion != nil || !cachedResolvedEndpoints.isEmpty
-        }
-
         var hasContactOwnedCacheState: Bool {
             hasPublishedPrivatePaymentList ||
                 !cachedResolvedEndpoints.isEmpty ||

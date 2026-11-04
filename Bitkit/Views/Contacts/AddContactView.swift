@@ -272,11 +272,16 @@ struct AddContactView: View {
         }
 
         do {
-            let result = try await PublicPaykitService.beginPayment(to: normalizedPublicKey)
+            let result = try await Self.beginPayment(to: normalizedPublicKey, wallet: wallet)
 
             switch result {
-            case let .opened(paymentRequest, _, endpoints):
-                _ = await openContactPayment(paymentRequest: paymentRequest, publicKey: normalizedPublicKey, endpoints: endpoints)
+            case let .opened(paymentRequest, privatePaymentContext, endpoints):
+                _ = await openContactPayment(
+                    paymentRequest: paymentRequest,
+                    publicKey: normalizedPublicKey,
+                    privatePaymentContext: privatePaymentContext,
+                    endpoints: endpoints
+                )
             case .noEndpoint, .notOpened, .privateLinkPending, .waitingForUpdatedPaymentList:
                 if let messageKey = result.contactPaymentFailureMessageKey {
                     app.toast(
@@ -287,16 +292,31 @@ struct AddContactView: View {
                 }
             }
         } catch {
-            Logger.error("Failed to pay public pubky \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)", context: "AddContactView")
+            Logger.error("Failed to pay pubky \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)", context: "AddContactView")
             if let description = PaymentNavigationHelper.contactPaymentErrorDescription(error) {
                 app.toast(type: .error, title: t("slashtags__error_pay_title"), description: description)
             }
         }
     }
 
+    /// The contacts list can still be loading when a scanned or pasted pubky opens this screen, so a key that is already a
+    /// saved contact keeps its private path. A key that is not saved is paid through its public payment details.
+    static func beginPayment(
+        to publicKey: String,
+        wallet: WalletViewModel,
+        service: PrivatePaykitService = .shared
+    ) async throws -> PublicPaykitPaymentLaunchResult {
+        try await service.beginSavedContactPayment(to: publicKey, wallet: wallet)
+    }
+
     @MainActor
-    private func openContactPayment(paymentRequest: String, publicKey: String, endpoints: [PublicPaykitService.Endpoint]) async -> Bool {
-        let contactPaymentContext = ContactPaymentContext(publicKey: publicKey, endpoints: endpoints)
+    private func openContactPayment(
+        paymentRequest: String,
+        publicKey: String,
+        privatePaymentContext: PrivatePaykitPaymentContext?,
+        endpoints: [PublicPaykitService.Endpoint]
+    ) async -> Bool {
+        let contactPaymentContext = ContactPaymentContext(publicKey: publicKey, privatePaymentContext: privatePaymentContext, endpoints: endpoints)
         guard app.claimContactPaymentContext(contactPaymentContext) else { return false }
 
         do {

@@ -45,7 +45,9 @@ extension PrivatePaykitService {
                 )
             }
 
-        var linkedPeers: () async throws -> [LinkedPeerRecord] = { try await PaykitSdkService.shared.linkedPeers() }
+        var identityStatus: () async throws -> IdentityStatus? = { try await PaykitSdkService.shared.identityStatus(priority: .interactive) }
+        /// Read for a payment the user is waiting on, so it does not queue behind background SDK work.
+        var linkedPeers: () async throws -> [LinkedPeerRecord] = { try await PaykitSdkService.shared.linkedPeers(priority: .interactive) }
         /// Succeeds when the contact publishes a verified Noise key authorization; a missing one throws `PaykitError.NotFound`.
         var noiseKeyAuthorization: (_ publicKey: String) async throws -> Void = {
             _ = try await PaykitSdkService.shared.paykitNoiseKeyAuthorization(publicKey: $0)
@@ -108,11 +110,18 @@ extension PrivatePaykitService {
         return normalizedKey
     }
 
-    /// A contact has a private payment path once this wallet resolved or paid its private list, the SDK keeps a link record
-    /// for it in any state, or it publishes a Noise key authorization. Only a contact without any of these, whose
-    /// authorization is definitely missing, is paid through public endpoints; any other lookup failure throws.
+    /// A wallet whose own identity can only pay publicly has no private path to any contact. Otherwise a contact has a
+    /// private payment path once this wallet keeps any private payment state for it, the SDK keeps a link record for it in
+    /// any state, or it publishes a Noise key authorization. Only a contact without any of these, whose authorization is
+    /// definitely missing, is paid through public endpoints; any other lookup failure throws, as does a missing identity.
     func hasPrivatePaymentPath(_ publicKey: String) async throws -> Bool {
-        if state.contacts[publicKey]?.hasPrivatePaymentHistory == true {
+        guard let identity = try await contactPaymentOperations.identityStatus(), identity.capability != .signedOut else {
+            throw PubkyServiceError.sessionNotActive
+        }
+        if identity.capability == .publicOnly {
+            return false
+        }
+        if state.contacts[publicKey]?.hasCacheState == true {
             return true
         }
         if try await contactPaymentOperations.linkedPeers().contains(where: { PubkyPublicKeyFormat.matches($0.counterparty, publicKey) }) {
