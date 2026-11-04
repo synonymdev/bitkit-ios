@@ -35,6 +35,9 @@ final class MockHwFunding: HwTransferFunding {
     private(set) var signCalls = 0
     private(set) var broadcastCalls = 0
     private(set) var broadcastTransactions: [String] = []
+    /// Per broadcast call, counted from one: a gate it waits on and an error it throws, overriding the shared ones.
+    var broadcastGateForCall: [Int: AsyncGate] = [:]
+    var broadcastErrorForCall: [Int: Error] = [:]
 
     func getFundingAccount(walletId _: String, addressType _: AddressScriptType) throws -> HwFundingAccount {
         if let accountError {
@@ -129,7 +132,18 @@ final class MockHwFunding: HwTransferFunding {
             throw PreparedOnchainSendNotSubmitted(underlying: error)
         }
         broadcastCalls += 1
+        let call = broadcastCalls
         broadcastTransactions.append(serializedTx)
+        if let gate = broadcastGateForCall[call] {
+            await gate.wait()
+            if let error = broadcastErrorForCall[call] {
+                throw error
+            }
+            return broadcastTxId
+        }
+        if let error = broadcastErrorForCall[call] {
+            throw error
+        }
         if let broadcastGate {
             await broadcastGate.wait()
         }
@@ -202,5 +216,42 @@ final class MockHwConnecting: HwTransferConnecting {
 
     func scheduleStaleSessionCleanup(walletId: String) {
         staleDisconnects.append(walletId)
+    }
+}
+
+/// Says which held transactions the wallet has seen, or a fresh read shows spent elsewhere, by their signed bytes.
+final class FakeHeldBroadcastResolver: HwHeldBroadcastResolving {
+    var observed: Set<String> = []
+    var observedError: Error?
+    /// Every observation from this call on, counted from one, reports the transaction as seen.
+    var observedFromCall: Int?
+    private(set) var observationCalls = 0
+    var spentElsewhere: Set<String> = []
+    var spentElsewhereError: Error?
+
+    /// Runs on each observation before it answers, so a test can act between two reads.
+    var onObservation: ((Int) -> Void)?
+
+    func isObserved(_ held: HwHeldBroadcast) async throws -> Bool {
+        observationCalls += 1
+        onObservation?(observationCalls)
+        if let observedError {
+            throw observedError
+        }
+        if let observedFromCall, observationCalls >= observedFromCall {
+            return true
+        }
+        return observed.contains(held.serializedTx)
+    }
+
+    func isSpentElsewhere(_ held: HwHeldBroadcast) async throws -> Bool {
+        if let spentElsewhereError {
+            throw spentElsewhereError
+        }
+        return spentElsewhere.contains(held.serializedTx)
+    }
+
+    func resetObservationCount() {
+        observationCalls = 0
     }
 }

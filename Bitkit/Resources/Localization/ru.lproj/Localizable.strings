@@ -94,6 +94,13 @@
 "hardware__remove_keep_error" = "Не удалось сохранить теги этого кошелька в резервной копии. Попробуйте снова или удалите его без сохранения тегов.";
 "hardware__send_broadcast_failed_text" = "Проверьте подключение и попробуйте снова.";
 "hardware__send_broadcast_failed_title" = "Платёж не подтверждён";
+"hardware__send_held_unreadable" = "Bitkit не смог прочитать предыдущий платёж с этого аппаратного кошелька, поэтому не будет подписывать новый.";
+"hardware__send_already_sent_title" = "Уже отправлено";
+"hardware__send_already_sent_text" = "Этот платёж уже был отправлен {date}. Отправить его снова?";
+"hardware__send_already_sent_text_undated" = "Этот платёж уже был отправлен. Отправить его снова?";
+"hardware__send_again" = "Отправить снова";
+"hardware__send_show_payment" = "Показать платёж";
+"hardware__send_broadcast_running" = "Этот платёж всё ещё отправляется в сеть. Попробуйте ещё раз через минуту.";
 "hardware__send_confirm_address" = "На адрес (подтвердите на устройстве)";
 "hardware__send_onchain_only_title" = "Нужен Bitcoin-адрес";
 "hardware__send_onchain_only_text" = "Этот аппаратный кошелёк может отправлять только на Bitcoin-адрес.";
@@ -1688,6 +1695,11 @@
 "wallet__onchain_hardware_pending" = "Эта транзакция аппаратного кошелька ожидает проверенной обработки платежа. Не отправляйте этот платёж повторно.";
 "wallet__onchain_rejected_pending" = "Сервер отклонил эту транзакцию. Она всё равно могла попасть в сеть. Не начинайте отдельный платёж. {reason}";
 "wallet__onchain_unknown_pending" = "Эта транзакция могла быть отправлена. Её результат неизвестен. Не начинайте отдельный платёж.";
+"wallet__onchain_hardware_broadcast_again" = "Отправить повторно";
+"wallet__onchain_hardware_broadcast_accepted" = "Тот же подписанный платёж отправлен в сеть повторно. Он завершится, когда ваш кошелёк его увидит.";
+"wallet__onchain_hardware_may_confirm" = "Этот платёж ещё может подтвердиться. Он останется в ожидании, пока ваш кошелёк его не увидит или его монеты не будут потрачены в другом месте.";
+"wallet__onchain_hardware_not_sent_title" = "Платёж не отправлен";
+"wallet__onchain_hardware_not_sent_text" = "Этот платёж никогда не подтвердится. Вы можете провести его снова.";
 "wallet__onchain_earlier_restored" = "Локальные данные предыдущего платежа восстановлены. Новый платёж не отправлялся.";
 "wallet__onchain_pending_followup_failed" = "Этот платёж отправлен, но его локальные данные не удалось восстановить. Не отправляйте этот платёж повторно.";
 "wallet__onchain_pending_followup" = "Этот платёж отправлен. Локальная обработка ещё не завершена. Не отправляйте этот платёж повторно.";

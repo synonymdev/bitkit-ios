@@ -20,6 +20,34 @@ struct HwSendSignView: View {
     @State private var passphraseTask: Task<Void, Never>?
     @State private var observedResolution: PaykitOnchainPaymentResolution?
     @State private var appliedResolution = false
+    @State private var alreadySentPayment: AlreadySentPayment?
+    @State private var shopCompletion: SignedPaymentCompletion?
+
+    private struct AlreadySentPayment {
+        let txId: String
+        let walletId: String
+        let date: String?
+    }
+
+    /// What completing a signed payment needs, kept so a Shop broadcast that answers after the screen deadline completes the
+    /// same way.
+    private struct SignedPaymentCompletion {
+        let walletId: String
+        let address: String
+        let amount: UInt64
+        let contactPublicKey: String?
+        let tags: [String]
+        let requestId: PaykitPaymentRequest.ID?
+        let proof: ProofOutcome
+    }
+
+    private final class ProofOutcome {
+        var isVerified: Bool
+
+        init(isVerified: Bool) {
+            self.isVerified = isVerified
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -71,6 +99,32 @@ struct HwSendSignView: View {
         .allowSwipeBack(false)
         .padding(.horizontal, 16)
         .sheetBackground()
+        .alert(
+            t("hardware__send_already_sent_title"),
+            isPresented: Binding(get: { alreadySentPayment != nil }, set: {
+                if !$0 {
+                    alreadySentPayment = nil
+                }
+            }),
+            presenting: alreadySentPayment
+        ) { payment in
+            Button(t("hardware__send_show_payment"), role: .cancel) {
+                navigationPath.append(.success(paymentId: payment.txId, walletId: payment.walletId))
+            }
+            Button(t("hardware__send_again")) {
+                startSigning()
+            }
+        } message: { payment in
+            if let date = payment.date {
+                Text(t("hardware__send_already_sent_text", variables: ["date": date]))
+            } else {
+                Text(t("hardware__send_already_sent_text_undated"))
+            }
+        }
+        .onChange(of: hwSend.lateShopResult) { _, result in
+            guard let result, let completion = shopCompletion else { return }
+            Task { await completeSignedPayment(result, completion) }
+        }
         .sheet(isPresented: passphrasePromptBinding) {
             HwPassphrasePromptSheet(
                 isVerifying: hwSend.isVerifyingPassphrase,
@@ -169,7 +223,11 @@ struct HwSendSignView: View {
                 guard let feeRate = SendConfirmationView.confirmationFeeRate(
                     retained: retained?.retainedHardwareRetry?.signedTx, selected: wallet.selectedFeeRateSatsPerVByte
                 ) else { throw PaykitPaymentRequestError.requestUnavailable }
-                var proofVerified = requestId == nil
+                let completion = SignedPaymentCompletion(
+                    walletId: walletId, address: invoice.address, amount: amount, contactPublicKey: contactPublicKey, tags: tags,
+                    requestId: requestId, proof: ProofOutcome(isVerified: requestId == nil)
+                )
+                shopCompletion = requestId == nil ? nil : completion
                 let result = try await PaykitPaymentProofService.shared.withHardwarePaymentOwnership(walletId: walletId) {
                     try await hwSend.signAndBroadcast(
                         manager: hwWalletManager,
@@ -178,6 +236,8 @@ struct HwSendSignView: View {
                         satsPerVByte: UInt64(feeRate),
                         paymentDeadline: deadline,
                         paymentRequestId: requestId,
+                        recordTags: tags,
+                        recordContactPublicKey: contactPublicKey,
                         loadSignedPayment: {
                             guard let requestId else { return nil }
                             guard let identity = contactPaymentIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
@@ -228,32 +288,27 @@ struct HwSendSignView: View {
                                     proofVerified: false
                                 )
                             }
-                            proofVerified = await completeContactPayment(result.txId)
+                            completion.proof.isVerified = await completeContactPayment(result.txId)
                         },
                         afterFailure: cancelContactPayment
                     )
                 }
-                await Self.recordPaymentResult(
-                    result,
-                    walletId: walletId,
-                    address: invoice.address,
-                    amount: amount,
-                    contactPublicKey: contactPublicKey,
-                    tags: tags,
-                    requestId: requestId,
-                    proofVerified: proofVerified
-                )
-                guard !appliedResolution else { return }
-                hwSend.completeBroadcast()
-                let completionRoute = await hwSend.completionRoute(
-                    result: result, walletId: walletId, requestId: requestId, paymentIdentity: contactPaymentIdentity,
-                    completeContactPayment: { _ in
-                        proofVerified && (requestId == nil || PubkyPublicKeyFormat.matches(pubkyProfile.publicKey, contactPaymentIdentity))
-                    }
-                )
-                navigationPath.append(completionRoute)
+                await completeSignedPayment(result, completion)
             } catch is CancellationError {
                 return
+            } catch let HwTransferError.paymentAlreadySent(txId) {
+                let activity = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: txId, walletId: walletId)
+                alreadySentPayment = AlreadySentPayment(
+                    txId: txId, walletId: walletId, date: activity.map { DateFormatterHelpers.formatActivityDetail($0.timestamp).date }
+                )
+            } catch where hwSend.unresolvedSend != nil {
+                guard let unresolved = hwSend.unresolvedSend else { return }
+                Logger.warn("Held hardware send of '\(walletId)' after an unknown broadcast outcome", context: "HwSendSignView")
+                navigationPath.append(.hardwarePending(
+                    requestId: nil, walletId: walletId, transactionId: unresolved.txId, paymentIdentity: nil
+                ))
+            } catch is HwHeldBroadcastStoreError {
+                app.toast(type: .error, title: t("common__error"), description: t("hardware__send_held_unreadable"))
             } catch is HwPassphraseError {
                 hwSend.requestPassphrase()
             } catch let error as HwTransferError {
@@ -262,6 +317,33 @@ struct HwSendSignView: View {
                 showHardwareError(error)
             }
         }
+    }
+
+    private func completeSignedPayment(_ result: HwFundingBroadcastResult, _ completion: SignedPaymentCompletion) async {
+        if shopCompletion?.proof === completion.proof {
+            shopCompletion = nil
+        }
+        await Self.recordPaymentResult(
+            result,
+            walletId: completion.walletId,
+            address: completion.address,
+            amount: completion.amount,
+            contactPublicKey: completion.contactPublicKey,
+            tags: completion.tags,
+            requestId: completion.requestId,
+            proofVerified: completion.proof.isVerified
+        )
+        guard !appliedResolution else { return }
+        hwSend.completeBroadcast()
+        let requestId = completion.requestId
+        let completionRoute = await hwSend.completionRoute(
+            result: result, walletId: completion.walletId, requestId: requestId, paymentIdentity: contactPaymentIdentity,
+            completeContactPayment: { _ in
+                completion.proof.isVerified &&
+                    (requestId == nil || PubkyPublicKeyFormat.matches(pubkyProfile.publicKey, contactPaymentIdentity))
+            }
+        )
+        navigationPath.append(completionRoute)
     }
 
     private func reconnectWithPassphrase(_ passphrase: String) {
@@ -314,41 +396,9 @@ struct HwSendSignView: View {
         requestId: PaykitPaymentRequest.ID?,
         proofVerified: Bool
     ) async {
-        let metadata = PreActivityMetadata(
-            walletId: walletId,
-            paymentId: result.txId,
-            tags: tags,
-            paymentHash: nil,
-            txId: result.txId,
-            address: address,
-            isReceive: false,
-            feeRate: result.feeRate,
-            isTransfer: false,
-            channelId: nil,
-            createdAt: UInt64(Date().timeIntervalSince1970)
+        await HwSendRecord.save(
+            result, walletId: walletId, address: address, amount: amount, contactPublicKey: contactPublicKey, tags: tags,
+            requestId: requestId, proofVerified: proofVerified
         )
-        try? await CoreService.shared.activity.addPreActivityMetadata(metadata)
-
-        // Retain original metadata for an eventual exact observation. A Shop payment's
-        // local Core txid alone must not create a Sent row.
-        guard requestId == nil || proofVerified else { return }
-        await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
-            txid: result.txId,
-            address: address,
-            amount: amount,
-            fee: result.miningFeeSats,
-            feeRate: UInt32(clamping: result.feeRate),
-            contact: contactPublicKey,
-            walletId: walletId
-        )
-        if !tags.isEmpty {
-            try? await CoreService.shared.activity.appendTags(
-                toActivity: result.txId,
-                tags,
-                walletId: walletId
-            )
-        }
-
-        Logger.info("Hardware onchain send result txid: \(result.txId)")
     }
 }

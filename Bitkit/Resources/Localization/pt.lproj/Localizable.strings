@@ -135,6 +135,13 @@
 "hardware__remove_keep_error" = "Não foi possível manter as etiquetas desta carteira na cópia de segurança. Tente novamente ou remova-a sem as manter.";
 "hardware__send_broadcast_failed_text" = "Verifique a ligação e tente novamente.";
 "hardware__send_broadcast_failed_title" = "Pagamento não confirmado";
+"hardware__send_held_unreadable" = "O Bitkit não conseguiu ler um pagamento anterior desta carteira de hardware, por isso não vai assinar um novo.";
+"hardware__send_already_sent_title" = "Já enviado";
+"hardware__send_already_sent_text" = "Este pagamento já foi enviado em {date}. Enviar novamente?";
+"hardware__send_already_sent_text_undated" = "Este pagamento já foi enviado. Enviar novamente?";
+"hardware__send_again" = "Enviar novamente";
+"hardware__send_show_payment" = "Ver pagamento";
+"hardware__send_broadcast_running" = "Este pagamento ainda está a ser transmitido. Tente novamente dentro de momentos.";
 "hardware__send_confirm_address" = "Para o endereço (confirme no dispositivo)";
 "hardware__send_onchain_only_title" = "Endereço Bitcoin necessário";
 "hardware__send_onchain_only_text" = "Esta carteira de hardware só pode enviar para um endereço Bitcoin.";
@@ -1354,6 +1361,11 @@
 "wallet__onchain_hardware_pending" = "Esta transação da carteira de hardware aguarda a verificação do pagamento. Não envie este pagamento novamente.";
 "wallet__onchain_rejected_pending" = "O servidor rejeitou esta transação. Pode ter chegado à rede. Não inicie um pagamento separado. {reason}";
 "wallet__onchain_unknown_pending" = "Esta transação pode ter sido enviada. O resultado é desconhecido. Não inicie um pagamento separado.";
+"wallet__onchain_hardware_broadcast_again" = "Transmitir novamente";
+"wallet__onchain_hardware_broadcast_accepted" = "O mesmo pagamento assinado foi transmitido novamente. Será concluído quando a sua carteira o vir.";
+"wallet__onchain_hardware_may_confirm" = "Este pagamento ainda pode ser confirmado. Fica pendente até a sua carteira o ver ou as suas moedas serem gastas noutro lado.";
+"wallet__onchain_hardware_not_sent_title" = "Pagamento não enviado";
+"wallet__onchain_hardware_not_sent_text" = "Este pagamento nunca poderá ser confirmado. Pode fazê-lo novamente.";
 "wallet__onchain_earlier_restored" = "Os detalhes locais do pagamento anterior foram restaurados. Não foi enviado nenhum pagamento novo.";
 "wallet__onchain_pending_followup_failed" = "Este pagamento foi enviado, mas não foi possível restaurar os detalhes locais. Não envie este pagamento novamente.";
 "wallet__onchain_pending_followup" = "Este pagamento foi enviado. O acompanhamento local ainda está pendente. Não envie este pagamento novamente.";

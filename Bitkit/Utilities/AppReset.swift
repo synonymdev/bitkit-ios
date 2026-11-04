@@ -70,10 +70,8 @@ enum AppReset {
         // Delete installation marker so next install can detect orphaned keychain
         try? InstallationMarker.delete()
 
-        // Wipe user defaults
-        if let bundleID = Bundle.main.bundleIdentifier {
-            UserDefaults.standard.removePersistentDomain(forName: bundleID)
-        }
+        // Wipe user defaults, held hardware sends included
+        wipeUserDefaults()
         try await WatchOnlyAccountManager.shared.clear()
 
         // Singleton retains stale @AppStorage values after removePersistentDomain
@@ -102,6 +100,12 @@ enum AppReset {
             title: t("security__wiped_title"),
             description: t("security__wiped_message")
         )
+    }
+
+    /// Clears the app's preferences, which hold the held hardware sends too.
+    static func wipeUserDefaults(_ defaults: UserDefaults = .standard, domain: String? = Bundle.main.bundleIdentifier) {
+        guard let domain else { return }
+        defaults.removePersistentDomain(forName: domain)
     }
 
     private static func wipeLogs() throws {

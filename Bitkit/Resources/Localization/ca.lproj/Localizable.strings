@@ -95,6 +95,13 @@
 "hardware__remove_keep_error" = "No s'han pogut conservar les etiquetes d'aquesta cartera a la còpia de seguretat. Torna-ho a provar o elimina-la sense conservar-les.";
 "hardware__send_broadcast_failed_text" = "Comprova la connexió i torna-ho a provar.";
 "hardware__send_broadcast_failed_title" = "Pagament no confirmat";
+"hardware__send_held_unreadable" = "Bitkit no ha pogut llegir un pagament anterior d'aquesta cartera de maquinari, així que no en signarà cap de nou.";
+"hardware__send_already_sent_title" = "Ja enviat";
+"hardware__send_already_sent_text" = "Aquest pagament ja es va enviar el {date}. El vols tornar a enviar?";
+"hardware__send_already_sent_text_undated" = "Aquest pagament ja es va enviar. El vols tornar a enviar?";
+"hardware__send_again" = "Torna a enviar";
+"hardware__send_show_payment" = "Mostra el pagament";
+"hardware__send_broadcast_running" = "Aquest pagament encara s'està difonent. Torna-ho a provar d'aquí a un moment.";
 "hardware__send_confirm_address" = "A l'adreça (confirma al dispositiu)";
 "hardware__send_onchain_only_title" = "Cal una adreça Bitcoin";
 "hardware__send_onchain_only_text" = "Aquesta cartera de maquinari només pot enviar a una adreça de Bitcoin.";
@@ -1557,6 +1564,11 @@
 "wallet__onchain_hardware_pending" = "Aquesta transacció de la cartera de maquinari està pendent del seguiment verificat del pagament. No tornis a enviar aquest pagament.";
 "wallet__onchain_rejected_pending" = "El servidor ha rebutjat aquesta transacció. És possible que hagi arribat igualment a la xarxa. No iniciïs un pagament separat. {reason}";
 "wallet__onchain_unknown_pending" = "És possible que aquesta transacció s'hagi enviat. El resultat és desconegut. No iniciïs un pagament separat.";
+"wallet__onchain_hardware_broadcast_again" = "Torna a difondre";
+"wallet__onchain_hardware_broadcast_accepted" = "S'ha tornat a difondre el mateix pagament signat. Es completarà quan la teva cartera el vegi.";
+"wallet__onchain_hardware_may_confirm" = "Aquest pagament encara es pot confirmar. Romandrà pendent fins que la teva cartera el vegi o les seves monedes es gastin en un altre lloc.";
+"wallet__onchain_hardware_not_sent_title" = "Pagament no enviat";
+"wallet__onchain_hardware_not_sent_text" = "Aquest pagament no es podrà confirmar mai. El pots tornar a fer.";
 "wallet__onchain_earlier_restored" = "S'han restaurat els detalls locals del pagament anterior. No s'ha enviat cap pagament nou.";
 "wallet__onchain_pending_followup_failed" = "Aquest pagament s'ha enviat, però no s'han pogut restaurar els seus detalls locals. No tornis a enviar aquest pagament.";
 "wallet__onchain_pending_followup" = "Aquest pagament s'ha enviat. El seguiment local encara està pendent. No tornis a enviar aquest pagament.";

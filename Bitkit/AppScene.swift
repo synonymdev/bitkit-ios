@@ -555,6 +555,11 @@ struct AppScene: View {
                 await pubkyProfile.retrySessionRestoration()
             }
             .task(id: [scenePhase == .active, network.isConnected]) { await pollIncomingPaykitPaymentRequests() }
+            // A held hardware send the wallet has seen is recorded and released, at launch and as activity arrives
+            .task(id: wallet.walletExists == true) { await releaseSeenHardwareSends() }
+            .onReceive(CoreService.shared.activity.activitiesChangedPublisher) { _ in
+                Task { await releaseSeenHardwareSends() }
+            }
             .task(id: foregroundContactSession) {
                 shopContactImport?.task.cancel()
                 shopContactImport = nil
@@ -1573,6 +1578,11 @@ struct AppScene: View {
                 )
             }
         }
+    }
+
+    private func releaseSeenHardwareSends() async {
+        guard wallet.walletExists == true else { return }
+        await HwHeldBroadcastStore.shared.releaseObservedSends(record: HwSendRecord.saveSeen)
     }
 
     private func pollIncomingPaykitPaymentRequests() async {

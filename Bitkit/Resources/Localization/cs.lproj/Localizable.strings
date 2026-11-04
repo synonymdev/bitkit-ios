@@ -95,6 +95,13 @@
 "hardware__remove_keep_error" = "Tagy této peněženky se nepodařilo ponechat v záloze. Zkuste to znovu, nebo ji odeberte bez jejich ponechání.";
 "hardware__send_broadcast_failed_text" = "Zkontrolujte připojení a zkuste to znovu.";
 "hardware__send_broadcast_failed_title" = "Platba nebyla potvrzena";
+"hardware__send_held_unreadable" = "Bitkit nemohl přečíst dřívější platbu z této hardwarové peněženky, proto nepodepíše novou.";
+"hardware__send_already_sent_title" = "Již odesláno";
+"hardware__send_already_sent_text" = "Tato platba už byla odeslána {date}. Odeslat ji znovu?";
+"hardware__send_already_sent_text_undated" = "Tato platba už byla odeslána. Odeslat ji znovu?";
+"hardware__send_again" = "Odeslat znovu";
+"hardware__send_show_payment" = "Zobrazit platbu";
+"hardware__send_broadcast_running" = "Tato platba se stále odesílá do sítě. Zkus to za chvíli znovu.";
 "hardware__send_confirm_address" = "Na adresu (potvrďte na zařízení)";
 "hardware__send_onchain_only_title" = "Je vyžadována bitcoinová adresa";
 "hardware__send_onchain_only_text" = "Tato hardwarová peněženka může odesílat pouze na bitcoinovou adresu.";
@@ -1697,6 +1704,11 @@
 "wallet__onchain_hardware_pending" = "Tato transakce z hardwarové peněženky čeká na ověřené dokončení platby. Tuto platbu neposílejte znovu.";
 "wallet__onchain_rejected_pending" = "Backend tuto transakci odmítl. Přesto se mohla dostat do sítě. Nezahajujte samostatnou platbu. {reason}";
 "wallet__onchain_unknown_pending" = "Tato transakce mohla být odeslána. Její výsledek není znám. Nezahajujte samostatnou platbu.";
+"wallet__onchain_hardware_broadcast_again" = "Odeslat znovu";
+"wallet__onchain_hardware_broadcast_accepted" = "Stejná podepsaná platba byla znovu odeslána do sítě. Dokončí se, jakmile ji tvoje peněženka uvidí.";
+"wallet__onchain_hardware_may_confirm" = "Tato platba může být ještě potvrzena. Zůstane čekající, dokud ji tvoje peněženka neuvidí nebo dokud nebudou její mince utraceny jinde.";
+"wallet__onchain_hardware_not_sent_title" = "Platba nebyla odeslána";
+"wallet__onchain_hardware_not_sent_text" = "Tuto platbu nelze nikdy potvrdit. Můžeš ji provést znovu.";
 "wallet__onchain_earlier_restored" = "Místní údaje dřívější platby byly obnoveny. Žádná nová platba nebyla odeslána.";
 "wallet__onchain_pending_followup_failed" = "Tato platba byla odeslána, ale její místní údaje se nepodařilo obnovit. Tuto platbu neposílejte znovu.";
 "wallet__onchain_pending_followup" = "Tato platba byla odeslána. Místní dokončení stále probíhá. Tuto platbu neposílejte znovu.";

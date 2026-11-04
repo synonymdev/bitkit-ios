@@ -84,6 +84,13 @@
 "hardware__remove_keep_error" = "تعذر الاحتفاظ بعلامات هذه المحفظة في نسختك الاحتياطية. حاول مرة أخرى، أو أزلها دون الاحتفاظ بها.";
 "hardware__send_broadcast_failed_text" = "تحقق من اتصالك وحاول مرة أخرى.";
 "hardware__send_broadcast_failed_title" = "الدفعة غير مؤكدة";
+"hardware__send_held_unreadable" = "تعذّر على Bitkit قراءة دفعة سابقة من محفظة الأجهزة هذه، لذلك لن يوقّع دفعة جديدة.";
+"hardware__send_already_sent_title" = "أُرسلت بالفعل";
+"hardware__send_already_sent_text" = "أُرسلت هذه الدفعة بالفعل في {date}. هل تريد إرسالها مرة أخرى؟";
+"hardware__send_already_sent_text_undated" = "أُرسلت هذه الدفعة بالفعل. هل تريد إرسالها مرة أخرى؟";
+"hardware__send_again" = "إرسال مرة أخرى";
+"hardware__send_show_payment" = "عرض الدفعة";
+"hardware__send_broadcast_running" = "لا يزال بث هذه الدفعة جاريًا. حاول مرة أخرى بعد قليل.";
 "hardware__send_confirm_address" = "إلى العنوان (أكّد على الجهاز)";
 "hardware__send_onchain_only_title" = "مطلوب عنوان Bitcoin";
 "hardware__send_onchain_only_text" = "يمكن لمحفظة الأجهزة هذه الإرسال إلى عنوان Bitcoin فقط.";
@@ -1137,6 +1144,11 @@
 "wallet__onchain_hardware_pending" = "معاملة محفظة الأجهزة هذه في انتظار متابعة دفع موثقة. لا ترسل هذه الدفعة مرة أخرى.";
 "wallet__onchain_rejected_pending" = "رفض الخادم هذه المعاملة. ربما وصلت إلى الشبكة رغم ذلك. لا تبدأ دفعة منفصلة. {reason}";
 "wallet__onchain_unknown_pending" = "ربما تم إرسال هذه المعاملة. نتيجتها غير معروفة. لا تبدأ دفعة منفصلة.";
+"wallet__onchain_hardware_broadcast_again" = "إعادة البث";
+"wallet__onchain_hardware_broadcast_accepted" = "أُعيد بث الدفعة الموقّعة نفسها. ستكتمل عندما تراها محفظتك.";
+"wallet__onchain_hardware_may_confirm" = "قد تُؤكَّد هذه الدفعة لاحقًا. ستبقى معلّقة حتى تراها محفظتك أو تُنفق عملاتها في مكان آخر.";
+"wallet__onchain_hardware_not_sent_title" = "لم تُرسل الدفعة";
+"wallet__onchain_hardware_not_sent_text" = "لا يمكن تأكيد هذه الدفعة أبدًا. يمكنك إجراؤها مرة أخرى.";
 "wallet__onchain_earlier_restored" = "تمت استعادة التفاصيل المحلية للدفعة السابقة. لم يتم إرسال دفعة جديدة.";
 "wallet__onchain_pending_followup_failed" = "تم إرسال هذه الدفعة، لكن تعذرت استعادة تفاصيلها المحلية. لا ترسل هذه الدفعة مرة أخرى.";
 "wallet__onchain_pending_followup" = "تم إرسال هذه الدفعة. المتابعة المحلية لا تزال معلقة. لا ترسل هذه الدفعة مرة أخرى.";

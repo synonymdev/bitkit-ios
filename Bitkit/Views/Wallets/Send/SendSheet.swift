@@ -70,7 +70,9 @@ enum SendRoute: Hashable {
     )
     case onchainPending(OnchainSendPendingContext)
     case onchainOperationPending(OnchainSendPendingContext, requestId: PaykitPaymentRequest.ID?)
-    case hardwarePending(requestId: PaykitPaymentRequest.ID, walletId: String, transactionId: String, paymentIdentity: String?)
+    /// A hardware payment sent but not confirmed yet: a Shop payment awaiting its proof, or, with no request, a send whose broadcast
+    /// outcome is unknown.
+    case hardwarePending(requestId: PaykitPaymentRequest.ID?, walletId: String, transactionId: String, paymentIdentity: String?)
     case success(paymentId: String, walletId: String = WalletScope.default)
     case recoveredSuccess(paymentId: String, walletId: String)
     case failure(SendFailureContext)
@@ -1141,7 +1143,7 @@ struct SendSheet: View {
                 paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: requestId,
                 routingCacheResetAttempted: flow.routingCacheResetAttempted,
                 hardwareWalletId: walletId, hardwareTransactionId: transactionId,
-                hardwarePaymentIdentity: paymentIdentity,
+                hardwarePaymentIdentity: paymentIdentity, hwSend: hwSend, hwWalletManager: hwWalletManager,
                 navigationPath: $flow.navigationPath
             )
         case let .success(paymentId, walletId):

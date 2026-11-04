@@ -94,6 +94,13 @@
 "hardware__remove_keep_error" = "Impossibile mantenere i tag di questo wallet nel backup. Riprova, oppure rimuovilo senza mantenerli.";
 "hardware__send_broadcast_failed_text" = "Controlla la connessione e riprova.";
 "hardware__send_broadcast_failed_title" = "Pagamento non confermato";
+"hardware__send_held_unreadable" = "Bitkit non è riuscito a leggere un pagamento precedente da questo hardware wallet, quindi non ne firmerà uno nuovo.";
+"hardware__send_already_sent_title" = "Già inviato";
+"hardware__send_already_sent_text" = "Questo pagamento è già stato inviato il {date}. Inviarlo di nuovo?";
+"hardware__send_already_sent_text_undated" = "Questo pagamento è già stato inviato. Inviarlo di nuovo?";
+"hardware__send_again" = "Invia di nuovo";
+"hardware__send_show_payment" = "Mostra pagamento";
+"hardware__send_broadcast_running" = "Questo pagamento è ancora in fase di trasmissione. Riprova tra un momento.";
 "hardware__send_confirm_address" = "All'indirizzo (conferma sul dispositivo)";
 "hardware__send_onchain_only_title" = "Indirizzo Bitcoin richiesto";
 "hardware__send_onchain_only_text" = "Questo hardware wallet può inviare solo a un indirizzo Bitcoin.";
@@ -1667,6 +1674,11 @@
 "wallet__onchain_hardware_pending" = "Questa transazione dell'hardware wallet è in attesa della verifica del pagamento. Non inviare di nuovo questo pagamento.";
 "wallet__onchain_rejected_pending" = "Il backend ha rifiutato questa transazione. Potrebbe comunque aver raggiunto la rete. Non avviare un pagamento separato. {reason}";
 "wallet__onchain_unknown_pending" = "Questa transazione potrebbe essere stata inviata. Il suo esito è sconosciuto. Non avviare un pagamento separato.";
+"wallet__onchain_hardware_broadcast_again" = "Trasmetti di nuovo";
+"wallet__onchain_hardware_broadcast_accepted" = "Lo stesso pagamento firmato è stato trasmesso di nuovo. Si completerà quando il tuo wallet lo vedrà.";
+"wallet__onchain_hardware_may_confirm" = "Questo pagamento potrebbe ancora essere confermato. Resta in sospeso finché il tuo wallet non lo vede o le sue monete non vengono spese altrove.";
+"wallet__onchain_hardware_not_sent_title" = "Pagamento non inviato";
+"wallet__onchain_hardware_not_sent_text" = "Questo pagamento non potrà mai essere confermato. Puoi effettuarlo di nuovo.";
 "wallet__onchain_earlier_restored" = "I dettagli locali del pagamento precedente sono stati ripristinati. Nessun nuovo pagamento è stato inviato.";
 "wallet__onchain_pending_followup_failed" = "Questo pagamento è stato inviato, ma non è stato possibile ripristinarne i dettagli locali. Non inviare di nuovo questo pagamento.";
 "wallet__onchain_pending_followup" = "Questo pagamento è stato inviato. La verifica locale è ancora in sospeso. Non inviare di nuovo questo pagamento.";

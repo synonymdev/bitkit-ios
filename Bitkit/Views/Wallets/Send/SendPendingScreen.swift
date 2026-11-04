@@ -38,6 +38,8 @@ struct SendPendingScreen: View {
     var hardwareWalletId: String?
     var hardwareTransactionId: String?
     var hardwarePaymentIdentity: String?
+    var hwSend: HwSendCoordinator?
+    var hwWalletManager: HwWalletManager?
     var proofService: PaykitPaymentProofService = .shared
     var requestPinCheck: () async -> Bool = { false }
     @Binding var navigationPath: [SendRoute]
@@ -107,8 +109,15 @@ struct SendPendingScreen: View {
     }
 
     private var pendingAmountSats: UInt64? {
-        pendingHardwareWalletId == nil ? onchainAttempt?.amountSats ?? pendingOnchainProof?.onchainAmountSats ?? wallet
-            .sendAmountSats : pendingOnchainProof?.onchainAmountSats
+        if pendingHardwareWalletId == nil {
+            return onchainAttempt?.amountSats ?? pendingOnchainProof?.onchainAmountSats ?? wallet.sendAmountSats
+        }
+        return paykitPaymentRequestId == nil ? wallet.sendAmountSats : pendingOnchainProof?.onchainAmountSats
+    }
+
+    /// A hardware send with no request whose broadcast outcome is unknown, which completes once the wallet sees its transaction.
+    private var isUnresolvedHardwareSend: Bool {
+        hardwareWalletId != nil && hardwareTransactionId != nil && paykitPaymentRequestId == nil
     }
 
     private var pendingTransactionId: String? {
@@ -156,6 +165,18 @@ struct SendPendingScreen: View {
                     showingRetryConfirmation = true
                 }
                 .accessibilityIdentifier("RetryOriginalOnchainPayment")
+                .padding(.bottom, 16)
+            }
+
+            if isUnresolvedHardwareSend, !ordinarySendResolved, let hwSend, let hwWalletManager,
+               hwSend.unresolvedSend?.txId == hardwareTransactionId
+            {
+                CustomButton(
+                    title: t("wallet__onchain_hardware_broadcast_again"), variant: .secondary, isDisabled: !hwSend.canBroadcastAgain
+                ) {
+                    Task { await broadcastHardwareSendAgain(hwSend, manager: hwWalletManager) }
+                }
+                .accessibilityIdentifier("HardwareBroadcastAgain")
                 .padding(.bottom, 16)
             }
 
@@ -313,6 +334,7 @@ struct SendPendingScreen: View {
                 }
             }
             applyPendingResolutionIfNeeded(app.sendSheetPendingResolution)
+            await completeObservedHardwareSend()
             await searchForActivity()
             // Completion events are one-shot. Keep the visible original operation in sync
             // with its durable result even when an event preceded subscription or initialization.
@@ -335,11 +357,19 @@ struct SendPendingScreen: View {
                 catch { return }
             }
         }
+        .onChange(of: hwSend?.releasedSendTxId) { _, txid in
+            guard isUnresolvedHardwareSend, !ordinarySendResolved, let txid, txid == hardwareTransactionId else { return }
+            app.toast(HwTransferError.broadcastNeverConfirms)
+            sheets.hideSheet()
+        }
         .onChange(of: app.sendSheetPendingResolution) { _, resolution in
             applyPendingResolutionIfNeeded(resolution)
         }
         .onReceive(activityList.activitiesChangedPublisher.receive(on: DispatchQueue.main)) { _ in
-            Task { await refreshVisibleOrdinaryOutcome() }
+            Task {
+                await refreshVisibleOrdinaryOutcome()
+                await completeObservedHardwareSend()
+            }
         }
         .onReceive(OnchainSendAttemptService.localResolutionPublisher.receive(on: DispatchQueue.main)) { resolution in
             applyOrdinarySendResolution(resolution)
@@ -545,6 +575,9 @@ struct SendPendingScreen: View {
         if onchainStateUnavailable {
             return t("wallet__onchain_state_unavailable")
         }
+        if isUnresolvedHardwareSend {
+            return t("wallet__onchain_unknown_pending")
+        }
         if pendingHardwareWalletId != nil {
             return t("wallet__onchain_hardware_pending")
         }
@@ -604,6 +637,47 @@ struct SendPendingScreen: View {
             try await refreshOriginalOutcome(context: context)
         } catch {
             localFollowupUnavailable = true
+        }
+    }
+
+    private func completeObservedHardwareSend() async {
+        guard isUnresolvedHardwareSend, !ordinarySendResolved, let hwSend, let walletId = hardwareWalletId,
+              let txid = hardwareTransactionId, hwSend.unresolvedSend?.txId == txid
+        else { return }
+        let completed = await hwSend.completeObservedSend { send in
+            await HwSendSignView.recordPaymentResult(
+                send.result, walletId: send.walletId, address: send.address, amount: send.amountSats,
+                contactPublicKey: send.contactPublicKey, tags: send.tags, requestId: nil, proofVerified: true
+            )
+        }
+        guard completed, !ordinarySendResolved else { return }
+        ordinarySendResolved = true
+        if let activity = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: txid, walletId: walletId) {
+            foundActivity = .onchain(activity)
+        }
+        navigationPath.append(.success(paymentId: txid, walletId: walletId))
+    }
+
+    private func broadcastHardwareSendAgain(_ hwSend: HwSendCoordinator, manager: HwWalletManager) async {
+        switch await hwSend.rebroadcastUnresolvedSend(manager: manager) {
+        case .accepted:
+            app.toast(
+                type: .info,
+                title: t("wallet__onchain_hardware_broadcast_again"),
+                description: t("wallet__onchain_hardware_broadcast_accepted")
+            )
+            await completeObservedHardwareSend()
+        case .mayConfirm:
+            app.toast(
+                type: .warning,
+                title: t("lightning__transfer_hw__broadcast_uncertain_title"),
+                description: t("wallet__onchain_hardware_may_confirm")
+            )
+        case .inFlight:
+            app.toast(type: .info, title: t("hardware__send_broadcast_running"))
+        case .neverConfirms, .released:
+            // The released payment closes this screen through `releasedSendTxId`
+            break
         }
     }
 
