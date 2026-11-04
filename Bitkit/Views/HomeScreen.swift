@@ -9,6 +9,10 @@ struct HomeScreen: View {
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
+    private var canMoveToSpark: Bool {
+        MoveToSparkMath.canMove(channels: wallet.channels, isSparkUsable: SparkManager.shared.isReady && !SparkManager.shared.isExiting)
+    }
+
     @State private var scrollPosition: Int? = 0
     @State private var isEditingWidgets = false
     @State private var pullRefreshState = HomePullRefreshState()
@@ -102,6 +106,12 @@ struct HomeScreen: View {
         }
         .onDisappear {
             TimedSheetManager.shared.onPrimaryScreenExited()
+        }
+        // Channels and Spark load after Home first checks its sheets, so the Move to Spark intro is checked again.
+        .onChange(of: canMoveToSpark) { _, canMove in
+            if canMove {
+                TimedSheetManager.shared.reevaluate()
+            }
         }
         .onChange(of: app.requestedHomePage) { _, _ in
             consumeRequestedHomePage()

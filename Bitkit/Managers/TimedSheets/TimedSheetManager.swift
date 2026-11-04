@@ -6,6 +6,7 @@ enum TimedSheetPriority: Int, CaseIterable {
     case low = 1
     case medium = 2
     case high = 3
+    case critical = 4
 }
 
 /// Protocol for timed sheet items
@@ -75,6 +76,7 @@ class TimedSheetManager: ObservableObject {
         registerSheet(notificationsSheet)
 
         registerSheet(UsdtIntroTimedSheet(wallet: walletViewModel, settings: settingsViewModel))
+        registerSheet(MoveToSparkTimedSheet(app: appViewModel, wallet: walletViewModel))
 
         let quickpaySheet = QuickpayTimedSheet(appViewModel: appViewModel, walletViewModel: walletViewModel)
         registerSheet(quickpaySheet)

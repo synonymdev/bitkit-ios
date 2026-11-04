@@ -207,6 +207,7 @@ class AppViewModel: ObservableObject {
     @AppStorage("hasSeenProfileIntro") var hasSeenProfileIntro: Bool = false
     @AppStorage("hasSeenNotificationsIntro") var hasSeenNotificationsIntro: Bool = false
     @AppStorage("hasSeenQuickpayIntro") var hasSeenQuickpayIntro: Bool = false
+    @AppStorage("hasSeenMoveToSparkIntro") var hasSeenMoveToSparkIntro: Bool = false
     @AppStorage("hasSeenShopIntro") var hasSeenShopIntro: Bool = false
     @AppStorage("hasSeenTransferIntro") var hasSeenTransferIntro: Bool = false
     @AppStorage("hasSeenTransferToSpendingIntro") var hasSeenTransferToSpendingIntro: Bool = false
@@ -560,6 +561,7 @@ class AppViewModel: ObservableObject {
         hasSeenProfileIntro = false
         hasSeenNotificationsIntro = false
         hasSeenQuickpayIntro = false
+        hasSeenMoveToSparkIntro = false
         hasSeenShopIntro = false
         hasSeenTransferIntro = false
         hasSeenTransferToSpendingIntro = false
@@ -1779,7 +1781,11 @@ extension AppViewModel {
 
     func handleLdkNodeEvent(_ event: Event) {
         switch event {
-        case let .paymentReceived(paymentId, _, amountMsat, _):
+        case let .paymentReceived(paymentId, paymentHash, amountMsat, _):
+            // A move to Spark reports its outcome on its own screen.
+            if MoveToSparkPayments.contains(paymentHash) {
+                break
+            }
             Task {
                 if let paymentId {
                     if await CoreService.shared.activity.isActivitySeen(id: paymentId) {
