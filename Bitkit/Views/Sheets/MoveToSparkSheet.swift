@@ -41,7 +41,7 @@ struct MoveToSparkSheet: View {
                         sheets.hideSheet()
                     }
                     .accessibilityIdentifier("MoveToSparkIntroLater")
-                    CustomButton(title: t("lightning__move_to_spark__nav_title"), shouldExpand: true) {
+                    CustomButton(title: t("lightning__move_to_spark__move_now"), shouldExpand: true) {
                         sheets.hideSheet()
                         navigation.navigate(.moveToSpark)
                     }

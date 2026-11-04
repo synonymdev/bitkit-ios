@@ -88,7 +88,7 @@ struct MoveToSparkView: View {
                 .accessibilityIdentifier("MoveToSparkFeePaid")
             illustration("check")
             HStack(spacing: 16) {
-                CustomButton(title: t("common__ok"), variant: .secondary) {
+                CustomButton(title: t("common__later"), variant: .secondary) {
                     navigation.navigateBack()
                 }
                 if hasRest {
@@ -97,7 +97,7 @@ struct MoveToSparkView: View {
                     }
                     .accessibilityIdentifier("MoveToSparkMoveRest")
                 } else {
-                    CustomButton(title: t("lightning__move_to_spark__close")) {
+                    CustomButton(title: t("common__close")) {
                         // Closing returns to Lightning Connections through the channel's detail, as a close from there does.
                         navigation.navigateBack()
                         navigation.navigate(.connections)
@@ -123,7 +123,7 @@ struct MoveToSparkView: View {
                     CustomButton(title: t("common__cancel"), variant: .secondary) {
                         navigation.navigateBack()
                     }
-                    CustomButton(title: t("lightning__move_to_spark__try", variables: ["amount": currency.primaryAmountText(sats: smallerSats)])) {
+                    CustomButton(title: t("lightning__move_to_spark__move_half")) {
                         await manager.quote(wallet: wallet, targetSats: smallerSats)
                     }
                     .accessibilityIdentifier("MoveToSparkTrySmaller")
