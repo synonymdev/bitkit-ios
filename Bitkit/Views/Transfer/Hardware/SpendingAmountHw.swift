@@ -21,7 +21,7 @@ struct SpendingAmountHw: View {
     }
 
     private var isLoading: Bool {
-        flow.hwSend.isFundingSourceLoading
+        flow.hwSend.isFundingSourceLoading && !isPricingFailed
     }
 
     private var maxAllowed: UInt64 {
@@ -79,6 +79,7 @@ struct SpendingAmountHw: View {
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .offlineOverlay(title: t("lightning__transfer__nav_title"))
+        .onAppear { flow.beginIfBroadcast() }
         .task(id: maxAttempt) {
             await loadAvailable()
         }
@@ -113,6 +114,7 @@ struct SpendingAmountHw: View {
     }
 
     private func loadAvailable() async {
+        isPricingFailed = false
         flow.hwSend.selectWallet(walletId, initialAvailableSats: 0, showsLoading: true)
         do {
             let address = try await SparkManager.shared.depositAddress()

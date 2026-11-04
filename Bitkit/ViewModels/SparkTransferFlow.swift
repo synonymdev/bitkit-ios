@@ -143,6 +143,17 @@ final class SparkTransferFlow {
         quoteError = nil
     }
 
+    /// A new transfer after a broadcast one starts from Instant with nothing priced; the earlier claim goes on.
+    func beginIfBroadcast() {
+        guard txid != nil else { return }
+        txid = nil
+        amountSats = 0
+        isMaxAmount = false
+        speed = .instant
+        quote = nil
+        quoteError = nil
+    }
+
     // MARK: Quote
 
     /// Prices the transfer at the fast rate with fresh fee estimates, so the confirm screen never shows a stale fee.
@@ -258,7 +269,7 @@ final class SparkTransferFlow {
                 }
                 if let found {
                     offer = found
-                    let next = SparkClaimDecision.onOffer(found.kind, speed: speed, ceilingSats: ceilingSats)
+                    let next = SparkClaimDecision.onOffer(found.kind, speed: .instant, ceilingSats: ceilingSats)
                     guard next == .claiming else {
                         claimState = next
                         return

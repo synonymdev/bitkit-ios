@@ -81,6 +81,7 @@ struct SpendingAmount: View {
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .offlineOverlay(title: t("lightning__transfer__nav_title"))
+        .onAppear { flow.beginIfBroadcast() }
         .task(id: MaxCalcInputs(spendableOnchainBalanceSats: wallet.spendableOnchainBalanceSats, attempt: maxAttempt)) {
             isCalculatingMax = true
             await calculateMaxTransferAmount()

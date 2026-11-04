@@ -191,7 +191,7 @@ but appends the billing period (`-one-time` for a one-off), because every recurr
 subscription carries the same `paymentRequestId` and they can list together — Android stops at the id
 and lets those rows collide. Match on the prefix when a journey needs to work on both platforms.
 
-Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `TransferUnavailable*`, `Fund*`,
+Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*`, `TransferUnavailable*`, `Fund*`,
 `External*`, `Hardware*`, `Widget*` — matches Android exactly.
 
 ## Capabilities
@@ -209,6 +209,7 @@ journey PR, which is what made this file conflict on every merge.
 | USDT wallet navigation without funding | an onboarded build with USDT configured; wallet syncing remains silent while offline; payment-action errors remain available — [USDT QA](../Docs/USDT-QA.md) |
 | Controlled USDT quotes, provider history, funded submission and recovery | an explicitly configured local USDT gateway/RPC/bundler fixture with owned test accounts and funds; absent from the standard journey environment. Report these steps as blocked unless that setup and transfer authorization are supplied — [USDT QA](../Docs/USDT-QA.md) |
 | On-chain funds and blocks on regtest | `../bitkit-android/lsp` deposit and mine, borrowed from the sibling Android checkout until #694 lands an iOS copy — [Backend preconditions](#backend-preconditions) |
+| Spending through Spark (transfer to spending, Spark Lightning payments) | a Debug build, which connects Spark to its regtest with no key; transfers fund it from regtest Savings. Spark's claim of a deposit (Instant or after 3 confirmations) depends on the provider's quote, so the setting-up states are covered by previews and unit tests — [transfer](transfer/spark-transfer-to-spending.xml) |
 | Lightning channels | a channel opened through Manual Setup to the node of the LSP the `E2E_BUILD` app targets, as an external LN peer — [Backend preconditions](#backend-preconditions) |
 | A hardware wallet to pair, watch and sign with | the deterministic Trezor emulator from `bitkit-docker`, reached through Trezor Bridge on the host; the simulator has no Bluetooth LE and iOS cannot do WebUSB, so BLE pairing and USB are not covered — [hardware-wallet](hardware-wallet/README.md) |
 | The OS notification-permission dialog | the one-shot `UNUserNotificationCenter` alert, reset with `xcrun simctl uninstall <device> to.bitkit` and a rebuild |
