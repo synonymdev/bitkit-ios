@@ -43,6 +43,7 @@ struct SendConfirmationView: View {
     @State private var walletSwitchRun: WalletSwitchRun?
     @State private var manualCoinsRequestedContext: ConfirmationContext?
     @State private var presentationID: UUID?
+    @State private var retainedOrdinarySignedTx: HwFundingSignedTx?
 
     private struct WalletSwitchRun {
         let id: UUID
@@ -152,6 +153,20 @@ struct SendConfirmationView: View {
         return paykitPaymentRequestManager.retainedHardwareRetries[request.id]
     }
 
+    private var retainedSignedTx: HwFundingSignedTx? {
+        retainedHardwareRetry?.retainedHardwareRetry?.signedTx ?? retainedOrdinarySignedTx
+    }
+
+    /// The original bytes an ordinary hardware send goes out with. A Shop payment keeps its own retained receipt instead.
+    static func retainedRetrySignedTx(hasIncomingRequest: Bool, status: HwRetainedSendStatus) -> HwFundingSignedTx? {
+        guard !hasIncomingRequest, case let .retry(signedTx) = status else { return nil }
+        return signedTx
+    }
+
+    static func requiresRetainedPaymentWarning(isHardwarePayment: Bool, hasIncomingRequest: Bool, status: HwRetainedSendStatus) -> Bool {
+        isHardwarePayment && !hasIncomingRequest && status == .blocking
+    }
+
     static func confirmationFeeRate(retained: HwFundingSignedTx?, selected: UInt32?) -> UInt32? {
         guard let retained else { return selected }
         return UInt32(exactly: retained.feeRate.rounded(.up))
@@ -162,18 +177,18 @@ struct SendConfirmationView: View {
     }
 
     private var confirmationFeeRate: UInt32? {
-        Self.confirmationFeeRate(retained: retainedHardwareRetry?.retainedHardwareRetry?.signedTx, selected: wallet.selectedFeeRateSatsPerVByte)
+        Self.confirmationFeeRate(retained: retainedSignedTx, selected: wallet.selectedFeeRateSatsPerVByte)
     }
 
     private var confirmationSpeed: TransactionSpeed {
-        if retainedHardwareRetry != nil, let confirmationFeeRate {
+        if retainedSignedTx != nil, let confirmationFeeRate {
             return .custom(satsPerVByte: confirmationFeeRate)
         }
         return wallet.selectedSpeed
     }
 
     private var canEditFee: Bool {
-        Self.canEditConfirmationFee(retained: retainedHardwareRetry?.retainedHardwareRetry?.signedTx, isLoading: isHardwarePreparationLoading)
+        Self.canEditConfirmationFee(retained: retainedSignedTx, isLoading: isHardwarePreparationLoading)
     }
 
     private var canSwitchFundingSource: Bool {
@@ -225,10 +240,12 @@ struct SendConfirmationView: View {
         case fee
         case feePercentage
         case minimumFee
+        case retainedHardwarePayment
 
         var title: String {
             switch self {
             case .minimumFee: return t("wallet__send_dialog5_title")
+            case .retainedHardwarePayment: return t("lightning__transfer_hw__broadcast_uncertain_title")
             default: return t("common__are_you_sure")
             }
         }
@@ -240,6 +257,7 @@ struct SendConfirmationView: View {
             case .fee: return t("wallet__send_dialog4")
             case .feePercentage: return t("wallet__send_dialog3")
             case .minimumFee: return t("wallet__send_dialog5_description")
+            case .retainedHardwarePayment: return t("lightning__transfer_hw__broadcast_uncertain_description")
             }
         }
     }
@@ -508,6 +526,7 @@ struct SendConfirmationView: View {
                 feeCalculationId += 1
             }
             .onChange(of: hwSend.walletId) {
+                retainedOrdinarySignedTx = nil
                 guard preparingRequest == nil else { return }
                 Task { await calculateTransactionFee() }
             }
@@ -951,6 +970,9 @@ struct SendConfirmationView: View {
         }
 
         if hwSend.isActive {
+            if warnings.contains(.retainedHardwarePayment) {
+                await hwSend.abandonRetainedPayment()
+            }
             navigationPath.append(.hardwareSign)
         } else {
             try await performPayment(isAutomatic: isAutomatic)
@@ -1654,6 +1676,17 @@ struct SendConfirmationView: View {
             0
         }
 
+        if let address = app.scannedOnchainInvoice?.address {
+            let status = await hwSend.retainedSendStatus(address: address, sats: amount)
+            if Self.requiresRetainedPaymentWarning(
+                isHardwarePayment: hwSend.isActive,
+                hasIncomingRequest: app.contactPaymentContext?.incomingPaymentRequest != nil,
+                status: status
+            ) {
+                warnings.append(.retainedHardwarePayment)
+            }
+        }
+
         // Check if amount > 50% of balance
         if app.selectedWalletToPayFrom == .lightning {
             let lightningBalance = wallet.totalLightningSats
@@ -1992,6 +2025,25 @@ struct SendConfirmationView: View {
                 )
             }
             return
+        }
+
+        // A retained send needs no current fee rate, so it must stay reachable while rates cannot load.
+        if let walletId = hwSend.walletId {
+            let status = await hwSend.retainedSendStatus(address: address, sats: amountSats)
+            guard isCurrentSend() else { return }
+            retainedOrdinarySignedTx = Self.retainedRetrySignedTx(
+                hasIncomingRequest: app.contactPaymentContext?.incomingPaymentRequest != nil,
+                status: status
+            )
+            if let retainedOrdinarySignedTx {
+                hwSend.seedAvailable(
+                    walletId: walletId,
+                    availableSats: hwWalletManager.fundingBalance(walletId: walletId),
+                    retainedFeeSats: retainedOrdinarySignedTx.miningFeeSats
+                )
+                apply(retainedOrdinarySignedTx.miningFeeSats)
+                return
+            }
         }
 
         guard let feeRate = confirmationFeeRate else {

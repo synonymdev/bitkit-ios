@@ -34,6 +34,43 @@ final class SendConfirmationViewTests: XCTestCase {
         XCTAssertFalse(SendConfirmationView.canEditConfirmationFee(retained: nil, isLoading: true))
     }
 
+    func testRetainedOrdinarySendLocksReviewToItsOriginalFee() throws {
+        let signed = HwFundingSignedTx(serializedTx: "original", miningFeeSats: 181, feeRate: 2.25, totalSpent: 42181)
+
+        let retained = try XCTUnwrap(SendConfirmationView.retainedRetrySignedTx(hasIncomingRequest: false, status: .retry(signed)))
+        XCTAssertEqual(retained, signed)
+        XCTAssertEqual(SendConfirmationView.confirmationFeeRate(retained: retained, selected: 99), 3)
+        XCTAssertEqual(SendConfirmationView.confirmationFeeRate(retained: retained, selected: nil), 3)
+        XCTAssertFalse(SendConfirmationView.canEditConfirmationFee(retained: retained, isLoading: false))
+    }
+
+    func testOnlyAnOrdinaryRetryUsesTheRetainedSend() {
+        let signed = HwFundingSignedTx(serializedTx: "original", miningFeeSats: 181, feeRate: 2.25, totalSpent: 42181)
+
+        XCTAssertNil(SendConfirmationView.retainedRetrySignedTx(hasIncomingRequest: true, status: .retry(signed)))
+        XCTAssertNil(SendConfirmationView.retainedRetrySignedTx(hasIncomingRequest: false, status: .blocking))
+        XCTAssertNil(SendConfirmationView.retainedRetrySignedTx(hasIncomingRequest: false, status: .none))
+    }
+
+    func testRetainedPaymentWarningAppliesOnlyToABlockedOrdinaryHardwareSend() {
+        let signed = HwFundingSignedTx(serializedTx: "original", miningFeeSats: 181, feeRate: 2.25, totalSpent: 42181)
+        func warns(hardware: Bool = true, incoming: Bool = false, status: HwRetainedSendStatus) -> Bool {
+            SendConfirmationView.requiresRetainedPaymentWarning(isHardwarePayment: hardware, hasIncomingRequest: incoming, status: status)
+        }
+
+        XCTAssertTrue(warns(status: .blocking))
+        XCTAssertFalse(warns(hardware: false, status: .blocking))
+        XCTAssertFalse(warns(incoming: true, status: .blocking))
+        XCTAssertFalse(warns(status: .retry(signed)))
+        XCTAssertFalse(warns(status: .none))
+    }
+
+    func testPendingOrdinaryBroadcastReportsUncertainInsteadOfTheRawError() {
+        XCTAssertTrue(HwSendSignView.reportsBroadcastUncertain(hasPendingBroadcast: true, hasIncomingRequest: false))
+        XCTAssertFalse(HwSendSignView.reportsBroadcastUncertain(hasPendingBroadcast: false, hasIncomingRequest: false))
+        XCTAssertFalse(HwSendSignView.reportsBroadcastUncertain(hasPendingBroadcast: true, hasIncomingRequest: true))
+    }
+
     func testAutomaticPaymentRequiresManualConfirmationOnlyForHardwareFunding() {
         for isHardwarePayment in [false, true] {
             XCTAssertEqual(
