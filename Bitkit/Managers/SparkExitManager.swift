@@ -6,13 +6,17 @@ import Observation
 import UserNotifications
 
 /// Runs a Spark emergency exit: the quote, the fee funding, then the driver until every step is on-chain. The exit
-/// survives restarts through `SparkExitStore`, and is driven while Bitkit is open, by a background refresh, and
-/// after a notification brings the user back when a timelock matures.
+/// survives restarts through `SparkExitStore`, and is driven while Bitkit is open and by background runs while it
+/// is closed (`BGAppRefreshTask` and `BGProcessingTask`, Spark SDK only). Reminders, scheduled ahead of each step,
+/// bring the user back when those runs do not get to a step in time.
 @Observable @MainActor
 final class SparkExitManager {
     static let shared = SparkExitManager()
     nonisolated static let backgroundTaskId = "to.bitkit.spark-exit"
-    private nonisolated static let notificationId = "spark-exit"
+    nonisolated static let processingTaskId = "to.bitkit.spark-exit.processing"
+    private nonisolated static let notificationPrefix = "spark-exit"
+    /// Reminder ids with their fire dates, so one that fired is not posted again on the next run.
+    private nonisolated static let remindersKey = "sparkExitReminders"
     private nonisolated static let walletIndexKey = "sparkExitWalletIndex"
     private static let foregroundTickSeconds: UInt64 = 60
 
@@ -79,7 +83,7 @@ final class SparkExitManager {
         try? store.delete()
         record = nil
         quote = nil
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [Self.notificationId])
+        Self.clearReminders()
     }
 
     /// Stops an exit that has not built anything and whose funding address received nothing, so leaving it
@@ -96,6 +100,7 @@ final class SparkExitManager {
         guard canCancel, let record else { return }
         try? store.delete()
         self.record = nil
+        Self.clearReminders()
         if let transferId = record.transferId {
             try? await TransferService(lightningService: .shared).markSettled(id: transferId)
         }
@@ -112,10 +117,10 @@ final class SparkExitManager {
     }
 
     func tick() async {
-        // Every tick asks for the next background refresh, so one failed or skipped tick never ends the chain.
+        // Every tick asks for the next background run, so one failed or skipped tick never ends the chain.
         defer {
             if isExiting {
-                Self.scheduleBackgroundRefresh()
+                Self.scheduleBackgroundRuns()
             }
         }
         guard !isTicking, let current = record, current.isActive, let chain else { return }
@@ -135,21 +140,21 @@ final class SparkExitManager {
             let updated = try await driver.tick(current)
             record = updated
             lastError = nil
-            await afterTick(updated, previous: current)
+            await afterTick(updated)
         } catch {
             lastError = error.localizedDescription
             Logger.error("Spark exit tick failed: \(error)", context: "SparkExitManager")
+            await scheduleReminders(current)
         }
     }
 
-    private func afterTick(_ record: SparkExitRecord, previous: SparkExitRecord) async {
+    private func afterTick(_ record: SparkExitRecord) async {
         if let transferId = record.transferId {
             try? TransferStorage.shared.updateClaimableAtHeight(id: transferId, claimableAtHeight: record.claimableAtHeight)
         }
         await settleIfFinished(record)
-        scheduleNotification(record, previous: previous)
+        await scheduleReminders(record)
         if !record.isActive {
-            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [Self.notificationId])
             await reattachSpark()
         }
     }
@@ -322,63 +327,177 @@ final class SparkExitManager {
 
     // MARK: Background
 
-    /// Registers the refresh that drives an exit while Bitkit is closed. Must run before launch finishes.
-    nonisolated static func registerBackgroundTask() {
-        BGTaskScheduler.shared.register(forTaskWithIdentifier: backgroundTaskId, using: nil) { task in
-            let work = Task { @MainActor in
-                let manager = SparkExitManager.shared
-                if manager.record == nil {
-                    manager.load(walletIndex: UserDefaults.standard.integer(forKey: walletIndexKey))
-                }
-                await manager.tick()
-                task.setTaskCompleted(success: true)
+    /// One background run from a cold launch or a suspended app, with no UI: the keyless pass, then the Spark SDK
+    /// only (never the node) for the check, the signing and the broadcast, then the reminders and the next runs.
+    /// Waits for a foreground tick in flight instead of skipping, so the run never reports work it did not do.
+    @discardableResult
+    func runInBackground(deadline: Date) async -> SparkExitBackgroundRun.Outcome {
+        defer {
+            if isExiting {
+                Self.scheduleBackgroundRuns()
             }
+        }
+        if record == nil {
+            load(walletIndex: UserDefaults.standard.integer(forKey: Self.walletIndexKey))
+        }
+        while isTicking, !Task.isCancelled, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+        }
+        guard !isTicking, let chain else { return .init(record: record) }
+        isTicking = true
+        defer { isTicking = false }
+        let store = store
+        let walletIndex = walletIndex
+        let run = SparkExitBackgroundRun(
+            load: { try store.load() },
+            makeDriver: { chain, recovering in
+                SparkExitDriver(
+                    chain: chain,
+                    recovering: recovering,
+                    makeSigner: { try Self.signer(walletIndex: walletIndex) },
+                    save: { try store.save($0) }
+                )
+            },
+            chain: chain,
+            connected: SparkManager.shared.exitRecovering,
+            connect: { timeout in await SparkManager.shared.connectForExit(walletIndex: walletIndex, timeout: timeout) },
+            deadline: deadline
+        )
+        tipHeight = try? await chain.tipHeight()
+        let outcome = await run.run()
+        let seconds = SparkExitBackgroundRun.Step.allCases.compactMap { step in
+            outcome.seconds[step].map { "\(step.rawValue)=\(String(format: "%.2f", $0))s" }
+        }
+        Logger.info(
+            "Spark exit background run: connected=\(outcome.isConnected) phase=\(String(describing: outcome.record?.phase)) "
+                + "\(seconds.joined(separator: " ")) footprint=\(Self.footprintMegabytes())MB",
+            context: "SparkExitManager"
+        )
+        if let updated = outcome.record {
+            record = updated
+            await afterTick(updated)
+        }
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastBackgroundRunKey)
+        return outcome
+    }
+
+    private nonisolated static let lastBackgroundRunKey = "sparkExitLastBackgroundRun"
+
+    /// The process's physical footprint, as `footprint` and Xcode's memory gauge report it.
+    nonisolated static func footprintMegabytes() -> Int {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
+        }
+        return result == KERN_SUCCESS ? Int(info.phys_footprint / 1_048_576) : -1
+    }
+
+    /// Registers the background runs that drive an exit while Bitkit is closed. Must run before launch finishes.
+    nonisolated static func registerBackgroundTask() {
+        // The OS ends a refresh after about 30 seconds and a processing task after a few minutes.
+        register(backgroundTaskId, seconds: 25)
+        register(processingTaskId, seconds: 4 * 60)
+    }
+
+    private nonisolated static func register(_ identifier: String, seconds: TimeInterval) {
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: nil) { task in
+            let completion = SparkExitTaskCompletion(task)
+            let work = Task { @MainActor in
+                let outcome = await SparkExitManager.shared.runInBackground(deadline: Date(timeIntervalSinceNow: seconds))
+                completion.complete(success: !Task.isCancelled && outcome.record != nil)
+            }
+            // The driver stops before its next SDK call or broadcast and has saved every broadcast, so the record on
+            // disk is whole whenever the OS suspends the app.
             task.expirationHandler = {
                 work.cancel()
-                task.setTaskCompleted(success: false)
+                completion.complete(success: false)
             }
         }
     }
 
-    nonisolated static func scheduleBackgroundRefresh() {
-        let request = BGAppRefreshTaskRequest(identifier: backgroundTaskId)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
-        do {
-            try BGTaskScheduler.shared.submit(request)
-        } catch {
-            Logger.warn("Failed to schedule the Spark exit refresh: \(error)", context: "SparkExitManager")
+    nonisolated static func scheduleBackgroundRuns() {
+        let refresh = BGAppRefreshTaskRequest(identifier: backgroundTaskId)
+        refresh.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+        let processing = BGProcessingTaskRequest(identifier: processingTaskId)
+        processing.requiresNetworkConnectivity = true
+        processing.requiresExternalPower = false
+        processing.earliestBeginDate = Date(timeIntervalSinceNow: 30 * 60)
+        for request in [refresh, processing] as [BGTaskRequest] {
+            do {
+                try BGTaskScheduler.shared.submit(request)
+            } catch {
+                Logger.warn("Failed to schedule Spark exit run \(request.identifier): \(error)", context: "SparkExitManager")
+            }
         }
     }
 
-    /// Brings the user back when the next timelock matures, a while later when steps are waiting to be published
-    /// (the operators' version of a matured step can land about 50 blocks after it), and once when the exit needs
-    /// more fee funding.
-    private func scheduleNotification(_ record: SparkExitRecord, previous: SparkExitRecord) {
+    // MARK: Reminders
+
+    /// Schedules a reminder ahead of each step, so it fires even when no background run gets to that step: at each
+    /// timelock's maturity plus a grace well inside the ~50 blocks after which the operators may publish their own
+    /// version, after a grace for steps ready to publish now, and at once when the exit needs more fee funding or a
+    /// step keeps being rejected. Each run (foreground or background) recomputes them, which drops the reminders of
+    /// steps it published or that confirmed, and of an exit that ended.
+    private func scheduleReminders(_ record: SparkExitRecord) async {
         let center = UNUserNotificationCenter.current()
-        let seconds: TimeInterval
-        switch record.phase {
-        case .needsFunding:
-            if case .needsFunding = previous.phase {
-                return
+        let now = Date()
+        let remembered = Self.rememberedReminders()
+        let planned = record.isActive ? SparkExitMath.reminders(record, tip: tipHeight, now: now, network: Env.network) : []
+        var kept: [String: TimeInterval] = [:]
+        var requests: [UNNotificationRequest] = []
+        for reminder in planned {
+            let id = "\(Self.notificationPrefix)-\(reminder.id)"
+            // A reminder that fired is not posted again. One still ahead keeps its earliest date, so runs that do not
+            // publish its step never push it out.
+            let rememberedAt = remembered[id].map(Date.init(timeIntervalSince1970:))
+            if let rememberedAt, rememberedAt <= now {
+                kept[id] = rememberedAt.timeIntervalSince1970
+                continue
             }
-            seconds = 1
-        case .running:
-            // The next step to mature, not the last: each opens its own window for the operators' version.
-            if let tipHeight, let recovery = record.recovery?.response,
-               let target = SparkExitMath.nextMaturityHeight(recovery, tip: tipHeight)
-            {
-                seconds = SparkExitMath.secondsUntil(height: target, tip: tipHeight, network: Env.network)
-            } else {
-                seconds = SparkExitMath.reminderSeconds(network: Env.network)
-            }
-        default:
-            return
+            let fireAt = max(now.addingTimeInterval(1), min(reminder.fireAt, rememberedAt ?? reminder.fireAt))
+            kept[id] = fireAt.timeIntervalSince1970
+            let content = UNMutableNotificationContent()
+            content.title = t("lightning__spark_exit__notification_title")
+            content.body = t(reminder.isFunding ? "lightning__spark_exit__notification_funding" : "lightning__spark_exit__notification_body")
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: fireAt.timeIntervalSince(now), repeats: false)
+            requests.append(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
         }
-        center.removePendingNotificationRequests(withIdentifiers: [Self.notificationId])
-        let content = UNMutableNotificationContent()
-        content.title = t("lightning__spark_exit__notification_title")
-        content.body = t("lightning__spark_exit__notification_body")
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, seconds), repeats: false)
-        center.add(UNNotificationRequest(identifier: Self.notificationId, content: content, trigger: trigger))
+        let pending = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(Self.notificationPrefix) }
+        center.removePendingNotificationRequests(withIdentifiers: pending)
+        for request in requests {
+            try? await center.add(request)
+        }
+        UserDefaults.standard.set(kept, forKey: Self.remindersKey)
+    }
+
+    private nonisolated static func rememberedReminders() -> [String: TimeInterval] {
+        UserDefaults.standard.dictionary(forKey: remindersKey) as? [String: TimeInterval] ?? [:]
+    }
+
+    private nonisolated static func clearReminders() {
+        UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+            UNUserNotificationCenter.current()
+                .removePendingNotificationRequests(withIdentifiers: requests.map(\.identifier).filter { $0.hasPrefix(notificationPrefix) })
+        }
+        UserDefaults.standard.removeObject(forKey: remindersKey)
+    }
+}
+
+/// Completes a background task once, whichever comes first: the run finishing or the OS expiring it.
+private final class SparkExitTaskCompletion: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: BGTask?
+
+    init(_ task: BGTask) {
+        self.task = task
+    }
+
+    func complete(success: Bool) {
+        let task = lock.withLock {
+            defer { self.task = nil }
+            return self.task
+        }
+        task?.setTaskCompleted(success: success)
     }
 }

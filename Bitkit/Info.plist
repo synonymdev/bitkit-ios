@@ -5,10 +5,12 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>to.bitkit.spark-exit</string>
+		<string>to.bitkit.spark-exit.processing</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
+		<string>processing</string>
 	</array>
 	<key>UIDesignRequiresCompatibility</key>
 	<true/>

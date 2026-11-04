@@ -297,6 +297,9 @@ struct SparkExitConfirmView: View {
                 SparkExitQuoteRows(quote: quote)
             }
 
+            SparkExitBackgroundNotes()
+                .padding(.top, 16)
+
             Spacer()
 
             SwipeButton(title: t("lightning__spark_exit__swipe"), accentColor: .yellowAccent) {
@@ -318,6 +321,10 @@ struct SparkExitConfirmView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
+        .task {
+            // Asked before the swipe: the reminders are how Bitkit reaches the user when a step needs the app.
+            PushNotificationManager.shared.requestPermissionIfUndecided()
+        }
     }
 }
 
@@ -385,6 +392,11 @@ struct SparkExitProgressView: View {
                                 .padding(.top, 16)
                         }
 
+                        if record.isActive {
+                            SparkExitBackgroundNotes()
+                                .padding(.top, 16)
+                        }
+
                         if record.phase == .done, let address = record.funding.first?.address {
                             ForEach(record.leftover, id: \.txid) { leftover in
                                 CaptionMText(t(
@@ -423,6 +435,44 @@ struct SparkExitProgressView: View {
         .task {
             await exit.tick()
         }
+    }
+}
+
+/// What keeps the exit from moving or from reaching the user while Bitkit is closed: Background App Refresh off,
+/// Low Power Mode, or notifications denied. Each note shows only while its setting is in the way.
+struct SparkExitBackgroundNotes: View {
+    @ObservedObject private var notifications = PushNotificationManager.shared
+    @State private var refreshStatus = UIApplication.shared.backgroundRefreshStatus
+    @State private var isLowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+
+    private var notes: [String] {
+        [
+            refreshStatus == .available ? nil : t("lightning__spark_exit__bg_refresh_off"),
+            isLowPower ? t("lightning__spark_exit__low_power") : nil,
+            notifications.authorizationStatus == .denied ? t("lightning__spark_exit__notifications_off") : nil,
+        ].compactMap { $0 }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(notes, id: \.self) { note in
+                CaptionMText(note, textColor: .yellowAccent)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("SparkExitBackgroundNotes")
+        .onAppear(perform: refresh)
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.backgroundRefreshStatusDidChangeNotification)) { _ in refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in refresh() }
+    }
+
+    private func refresh() {
+        DispatchQueue.main.async {
+            refreshStatus = UIApplication.shared.backgroundRefreshStatus
+            isLowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+        }
+        notifications.updateNotificationPermission()
     }
 }
 

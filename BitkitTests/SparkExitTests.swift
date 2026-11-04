@@ -584,6 +584,127 @@ final class SparkExitDriverTests: XCTestCase {
 
 // MARK: - Fees and funding
 
+/// The entry point the background tasks call, from a cold launch with no UI.
+final class SparkExitBackgroundRunTests: XCTestCase {
+    private var chain: FakeSparkExitChain!
+    private var sdk: FakeSparkExitRecovering!
+    private var store: SparkExitStore!
+    private var connects: [TimeInterval] = []
+
+    override func setUp() {
+        super.setUp()
+        chain = FakeSparkExitChain()
+        sdk = FakeSparkExitRecovering()
+        store = SparkExitStore(url: FileManager.default.temporaryDirectory.appendingPathComponent("spark-exit-\(UUID().uuidString)/spark-exit.json"))
+        connects = []
+    }
+
+    override func tearDown() {
+        try? store.delete()
+        super.tearDown()
+    }
+
+    private func backgroundRun(deadline: TimeInterval = 25, connects sdkConnects: Bool = true) -> SparkExitBackgroundRun {
+        let store = store!
+        return SparkExitBackgroundRun(
+            load: { try store.load() },
+            makeDriver: { chain, recovering in
+                SparkExitDriver(chain: chain, recovering: recovering, makeSigner: { StubCpfpSigner() }, save: { try store.save($0) })
+            },
+            chain: chain,
+            connected: nil,
+            connect: { [unowned self] timeout in
+                connects.append(timeout)
+                return sdkConnects ? sdk : nil
+            },
+            deadline: Date(timeIntervalSinceNow: deadline)
+        )
+    }
+
+    private func savedRunningExit(_ transactions: [RecoveryTransaction]) throws -> RecoverFundsResponse {
+        var record = SparkExitFixtures.record(phase: .running)
+        let recovery = SparkExitFixtures.recovery(transactions)
+        record.adopt(recovery)
+        try store.save(record)
+        return recovery
+    }
+
+    func testColdStartSendsStoredStepsThenChecksWithTheSdkOnly() async throws {
+        let recovery = try savedRunningExit([SparkExitFixtures.tx("n1", cpfp: "03c")])
+        sdk.checks = [CheckRecoverFundsResponse(recovery: recovery, verdict: .valid)]
+
+        let outcome = await backgroundRun().run()
+
+        XCTAssertTrue(outcome.isConnected)
+        XCTAssertEqual(connects.count, 1)
+        XCTAssertEqual(sdk.checkedRecoveries.count, 1)
+        // The keyless pass sent it; the SDK pass found it accepted and did not send it again.
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n1"])
+        let saved = try XCTUnwrap(store.load())
+        XCTAssertEqual(saved.broadcastLog.map(\.txid), ["n1"])
+        XCTAssertEqual(saved.broadcastLog.first?.isAccepted, true)
+        XCTAssertNotNil(outcome.seconds[.keyless])
+        XCTAssertNotNil(outcome.seconds[.check])
+        XCTAssertNotNil(outcome.seconds[.broadcast])
+    }
+
+    func testColdStartSignsTheBuildOnceFundingConfirmed() async throws {
+        try store.save(SparkExitFixtures.record())
+        chain.utxosByAddress["bcrt1qfunding"] = [SparkExitFixtures.utxo("f0", vout: 1, value: 25000)]
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1", cpfp: "03c1")])]
+
+        let outcome = await backgroundRun().run()
+
+        XCTAssertEqual(outcome.record?.phase, .running)
+        XCTAssertEqual(sdk.recoverRequests.count, 1)
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n1"])
+        XCTAssertEqual(try store.load()?.generation, 1)
+        XCTAssertNotNil(outcome.seconds[.sign])
+    }
+
+    func testExpiryMidStepLeavesAWholeRecordAndTheNextRunSendsNothingTwice() async throws {
+        let recovery = try savedRunningExit([SparkExitFixtures.tx("n1", cpfp: "03c1"), SparkExitFixtures.tx("n2", cpfp: "03c2")])
+        // The OS expires the run while the first package is in flight.
+        chain.onBroadcast = { withUnsafeCurrentTask { $0?.cancel() } }
+        let first = backgroundRun()
+        _ = await Task { await first.run() }.value
+
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n1"])
+        XCTAssertTrue(connects.isEmpty)
+        let saved = try XCTUnwrap(store.load())
+        XCTAssertEqual(saved.broadcastLog.map(\.txid), ["n1"])
+
+        chain.onBroadcast = nil
+        sdk.checks = [CheckRecoverFundsResponse(recovery: recovery, verdict: .valid)]
+        _ = await backgroundRun().run()
+
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n1", "n2"])
+        XCTAssertEqual(try store.load()?.broadcastLog.map(\.txid), ["n1", "n2"])
+    }
+
+    func testStaysKeylessWhenSparkDoesNotConnectOrTimeIsShort() async throws {
+        _ = try savedRunningExit([SparkExitFixtures.tx("n1")])
+
+        let late = await backgroundRun(deadline: SparkExitBackgroundRun.reserveSeconds - 1).run()
+        XCTAssertTrue(connects.isEmpty)
+        XCTAssertFalse(late.isConnected)
+
+        let offline = await backgroundRun(connects: false).run()
+        XCTAssertEqual(connects.count, 1)
+        XCTAssertFalse(offline.isConnected)
+        XCTAssertTrue(sdk.checkedRecoveries.isEmpty)
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n1"])
+    }
+
+    func testDoesNothingWithoutARunningExit() async {
+        let outcome = await backgroundRun().run()
+
+        XCTAssertNil(outcome.record)
+        XCTAssertTrue(connects.isEmpty)
+        XCTAssertTrue(chain.broadcasts.isEmpty)
+    }
+}
+
 final class SparkExitMathTests: XCTestCase {
     func testQuoteSplitsWhatArrivesFromWhatItCosts() {
         let quote = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 20000))
@@ -621,16 +742,60 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertNil(SparkExitMath.claimableAtHeight(SparkExitFixtures.recovery([SparkExitFixtures.tx("d")])))
     }
 
-    func testReminderIsTheNextTimelockAboveTheTip() {
-        let recovery = SparkExitFixtures.recovery([
+    func testRemindsAheadOfEachTimelockUntilItsStepIsPublished() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let grace = TimeInterval(SparkExitMath.reminderGraceBlocks) * 30
+        var record = SparkExitFixtures.record(phase: .running)
+        record.adopt(SparkExitFixtures.recovery([
             SparkExitFixtures.tx("a", status: .waitingForTimelock(spendableAtHeight: 900)),
             SparkExitFixtures.tx("b", status: .waitingForTimelock(spendableAtHeight: 2400)),
             SparkExitFixtures.tx("c", status: .waitingForTimelock(spendableAtHeight: 1500)),
-        ])
+            SparkExitFixtures.tx("d", status: .confirmed(blockHeight: 800)),
+        ]))
 
-        XCTAssertEqual(SparkExitMath.nextMaturityHeight(recovery, tip: 1000), 1500)
-        XCTAssertEqual(SparkExitMath.claimableAtHeight(recovery), 2400)
-        XCTAssertNil(SparkExitMath.nextMaturityHeight(recovery, tip: 2400))
+        XCTAssertEqual(SparkExitMath.reminders(record, tip: 1000, now: now, network: .regtest), [
+            SparkExitReminder(id: "1-h900", fireAt: now.addingTimeInterval(grace)),
+            SparkExitReminder(id: "1-h1500", fireAt: now.addingTimeInterval(500 * 30 + grace)),
+            SparkExitReminder(id: "1-h2400", fireAt: now.addingTimeInterval(1400 * 30 + grace)),
+        ])
+        XCTAssertEqual(try SparkExitMath.claimableAtHeight(XCTUnwrap(record.recovery?.response)), 2400)
+
+        record.broadcastLog = [.init(
+            generation: 1,
+            txid: "a",
+            attempts: 1,
+            rejections: 0,
+            lastAttemptAt: now,
+            lastOutcome: "accepted",
+            isAccepted: true
+        )]
+        XCTAssertEqual(SparkExitMath.reminders(record, tip: 1000, now: now, network: .regtest).map(\.id), ["1-h1500", "1-h2400"])
+    }
+
+    func testRemindsAtOnceForFeeFundingAndRepeatedRejections() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let funding = SparkExitFixtures.record(phase: .needsFunding(requiredSats: 5000))
+        XCTAssertEqual(
+            SparkExitMath.reminders(funding, tip: 1000, now: now, network: .bitcoin),
+            [SparkExitReminder(id: "funding-5000", fireAt: now, isFunding: true)]
+        )
+
+        var record = SparkExitFixtures.record(phase: .running)
+        record.adopt(SparkExitFixtures.recovery([SparkExitFixtures.tx("n1")]))
+        record.broadcastLog = [.init(
+            generation: 1,
+            txid: "n1",
+            attempts: 3,
+            rejections: 3,
+            lastAttemptAt: now,
+            lastOutcome: "rejected",
+            isAccepted: false
+        )]
+        XCTAssertEqual(SparkExitMath.reminders(record, tip: 1000, now: now, network: .bitcoin), [
+            SparkExitReminder(id: "rejected-1-n1", fireAt: now),
+            SparkExitReminder(id: "1-ready-n1", fireAt: now.addingTimeInterval(TimeInterval(SparkExitMath.reminderGraceBlocks) * 600)),
+        ])
+        XCTAssertTrue(SparkExitMath.reminders(SparkExitFixtures.record(phase: .done), tip: 1000, now: now, network: .bitcoin).isEmpty)
     }
 
     func testTimelocksMatureOnlyOnceNoRefundWaits() {

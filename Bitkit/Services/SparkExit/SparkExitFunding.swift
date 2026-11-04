@@ -108,6 +108,13 @@ struct SparkExitQuote: Equatable {
     }
 }
 
+/// A local notification that brings the user back to an exit; `id` is stable across runs for the same step.
+struct SparkExitReminder: Equatable {
+    let id: String
+    let fireAt: Date
+    var isFunding = false
+}
+
 enum SparkExitMath {
     /// The countdown target: the latest block at which a timelocked step of the exit can confirm.
     static func claimableAtHeight(_ recovery: RecoverFundsResponse) -> UInt32? {
@@ -119,14 +126,51 @@ enum SparkExitMath {
         }.max()
     }
 
-    /// The next height above `tip` at which a timelocked step matures, for the reminder.
-    static func nextMaturityHeight(_ recovery: RecoverFundsResponse, tip: UInt32) -> UInt32? {
-        recovery.transactions.compactMap { tx -> UInt32? in
-            if case let .waitingForTimelock(height) = tx.status {
-                return height
+    /// Blocks after a step matures before its reminder fires: well inside the ~50 blocks after which the operators
+    /// may publish their own version, and time for a background run to publish it first.
+    static let reminderGraceBlocks: UInt32 = 12
+    /// Below the OS's 64 pending notifications per app.
+    static let maxTimelockReminders = 20
+
+    /// The reminders an exit needs now. Each timelocked step not yet published gets one at its maturity plus a
+    /// grace; a step ready to publish gets one after the grace; needing fee funding or a step rejected repeatedly
+    /// reminds at once. A step published or confirmed needs none, so a background run that publishes a step drops
+    /// its reminder before it fires.
+    static func reminders(_ record: SparkExitRecord, tip: UInt32?, now: Date, network: LDKNode.Network) -> [SparkExitReminder] {
+        if case let .needsFunding(requiredSats) = record.phase {
+            return [SparkExitReminder(id: "funding-\(requiredSats)", fireAt: now, isFunding: true)]
+        }
+        guard case .running = record.phase, let recovery = record.recovery?.response else { return [] }
+        var reminders: [SparkExitReminder] = []
+        let generation = record.generation
+        if let rejected = record.broadcastLog.first(where: {
+            $0.generation == generation && $0.rejections >= SparkExitDriver.rejectionsToSurface && !$0.isAccepted
+        }) {
+            reminders.append(SparkExitReminder(id: "rejected-\(generation)-\(rejected.txid)", fireAt: now))
+        }
+        let accepted = Set(record.broadcastLog.filter { $0.generation == generation && $0.isAccepted }.map(\.txid))
+        let blockSeconds = secondsUntil(height: 1, tip: 0, network: network)
+        let grace = TimeInterval(reminderGraceBlocks) * blockSeconds
+        var heights = Set<UInt32>()
+        var readyTxid: String?
+        for tx in recovery.transactions where !accepted.contains(tx.txid) {
+            switch tx.status {
+            case let .waitingForTimelock(height?):
+                heights.insert(height)
+            case .ready, .unverified:
+                readyTxid = readyTxid ?? tx.txid
+            default:
+                break
             }
-            return nil
-        }.filter { $0 > tip }.min()
+        }
+        for height in heights.sorted().prefix(maxTimelockReminders) {
+            let wait = tip.map { secondsUntil(height: height, tip: $0, network: network) } ?? reminderSeconds(network: network)
+            reminders.append(SparkExitReminder(id: "\(generation)-h\(height)", fireAt: now.addingTimeInterval(wait + grace)))
+        }
+        if let readyTxid {
+            reminders.append(SparkExitReminder(id: "\(generation)-ready-\(readyTxid)", fireAt: now.addingTimeInterval(grace)))
+        }
+        return reminders
     }
 
     /// Whether every refund's timelock is behind it: none still waits for its parents or its height.
@@ -168,8 +212,7 @@ enum SparkExitMath {
         return TimeInterval(BlockTimeHelpers.blocksRemaining(until: height, currentHeight: tip)) * blockSeconds
     }
 
-    /// When to remind the user to open Bitkit while steps wait to be published: well inside the ~50 blocks after
-    /// which the operators may publish their own version of a matured step.
+    /// How far out to remind about a timelocked step when the tip could not be read.
     static func reminderSeconds(network: LDKNode.Network) -> TimeInterval {
         network == .regtest ? 10 * 60 : 4 * 60 * 60
     }

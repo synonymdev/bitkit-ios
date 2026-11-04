@@ -12,7 +12,9 @@ protocol SparkExitRecovering: Sendable {
 /// Moves an exit one step forward each tick: builds it once its fee funding confirms, broadcasts what is ready,
 /// rebuilds when the chain diverged, and finishes when everything confirmed. Without the SDK (a background launch,
 /// or operators down at connect) it still broadcasts the stored, already signed transactions whose parents
-/// confirmed. Every built recovery is saved before anything of it is broadcast.
+/// confirmed. Every built recovery is saved before anything of it is broadcast, and every broadcast is saved as
+/// soon as its outcome is known. Once the task running it is cancelled (a background run expiring) it starts no
+/// SDK call and no broadcast, and saves what it did, so the next run resumes without sending anything twice.
 struct SparkExitDriver {
     let chain: SparkExitChain
     /// nil while the Spark SDK is not connected.
@@ -35,7 +37,7 @@ struct SparkExitDriver {
         case .done, .failed:
             return record
         case .awaitingFunding, .needsFunding:
-            guard let recovering else { return record }
+            guard let recovering, !Task.isCancelled else { return record }
             // Nothing to fund when every leaf is recovered cooperatively.
             if let shortfall = record.fundingShortfallSats {
                 guard try await adoptFunding(&record, requiredSats: shortfall) else { return record }
@@ -43,9 +45,12 @@ struct SparkExitDriver {
             try await build(&record, recovering: recovering)
         case .running where record.isRebuilding:
             // The diverged generation is never broadcast again; only a rebuild moves on from here.
-            guard let recovering, isRebuildDue(record) else { return record }
+            guard let recovering, !Task.isCancelled, isRebuildDue(record) else { return record }
             try await build(&record, recovering: recovering)
         case .running:
+            if Task.isCancelled {
+                return record
+            }
             if let recovering {
                 try await check(&record, recovering: recovering)
             } else {
@@ -140,7 +145,7 @@ struct SparkExitDriver {
             Logger.warn("Spark exit diverged on-chain, rebuilding generation \(record.generation + 1)", context: "SparkExitDriver")
             record.isRebuilding = true
             try save(record)
-            guard isRebuildDue(record) else { return }
+            guard !Task.isCancelled, isRebuildDue(record) else { return }
             try await build(&record, recovering: recovering)
         }
     }
@@ -180,8 +185,10 @@ struct SparkExitDriver {
         guard let recovery = record.recovery?.response else { return }
         // Unverified: the SDK could not read its parent from the chain; nodes refuse it harmlessly if it is not final.
         for tx in recovery.transactions where tx.status == .ready || tx.status == .unverified {
+            guard !Task.isCancelled else { return }
             guard isDue(tx.txid, in: record) else { continue }
             await broadcast(tx, into: &record)
+            try save(record)
         }
     }
 
@@ -200,6 +207,7 @@ struct SparkExitDriver {
             return confirmed[txid] ?? false
         }
         for (i, tx) in recovery.transactions.enumerated() {
+            guard !Task.isCancelled else { break }
             if case .confirmed = tx.status {
                 continue
             }
@@ -217,6 +225,8 @@ struct SparkExitDriver {
             }
             guard parentsConfirmed, isDue(tx.txid, in: record) else { continue }
             await broadcast(tx, into: &record)
+            record.recovery = StoredRecovery(recovery)
+            try save(record)
         }
         record.recovery = StoredRecovery(recovery)
     }

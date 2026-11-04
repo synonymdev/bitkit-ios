@@ -88,6 +88,40 @@ final class SparkManager: ChannelFreeLightningRail {
         }
     }
 
+    /// Connects the Spark SDK alone for a background exit run, never the node: no refresh, no activity sync and no
+    /// Lightning rail. Returns nil when it does not connect within `timeout`; the connect keeps going, and a later
+    /// `start` picks it up.
+    func connectForExit(walletIndex: Int, timeout: TimeInterval) async -> SparkExitRecovering? {
+        guard let network = Self.sparkNetwork else { return nil }
+        if sdk == nil {
+            self.walletIndex = walletIndex
+            if connectTask == nil {
+                connectTask = Task { try await connect(walletIndex: walletIndex, network: network) }
+            }
+            let connecting = connectTask
+            // nil while still connecting at the timeout.
+            let didConnect: Bool? = await withTaskGroup(of: Bool?.self) { group in
+                group.addTask { await (try? connecting?.value) != nil }
+                group.addTask {
+                    try? await Task.sleep(nanoseconds: UInt64(max(0, timeout) * 1_000_000_000))
+                    return nil
+                }
+                let first = await group.next() ?? nil
+                group.cancelAll()
+                return first
+            }
+            // A finished connect is forgotten, so a failed one is tried again; one still running is kept for `start`.
+            if didConnect != nil {
+                connectTask = nil
+            }
+            guard didConnect == true else {
+                Logger.warn("Spark did not connect within \(Int(timeout))s for the exit", context: "SparkManager")
+                return nil
+            }
+        }
+        return exitRecovering
+    }
+
     /// The SDK calls of an emergency exit, or nil while Spark is not connected.
     var exitRecovering: SparkExitRecovering? {
         sdk.map(BreezSparkExitRecovering.init)

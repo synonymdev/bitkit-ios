@@ -354,7 +354,7 @@
 "lightning__spark_exit__button" = "Emergency exit";
 "lightning__spark_exit__nav_title" = "Emergency Exit";
 "lightning__spark_exit__intro_title" = "Leave Spark\n<accent>on-chain</accent>";
-"lightning__spark_exit__intro_text" = "Use this only if Spark stops working for you. It moves your spending balance to savings <accent>without the Spark operators</accent>.\n\nIt takes <accent>up to 4 weeks</accent>, costs on-chain fees paid from savings, and very small amounts can stay behind. Open Bitkit regularly until it finishes.";
+"lightning__spark_exit__intro_text" = "Use this only if Spark stops working for you. It moves your spending balance to savings <accent>without the Spark operators</accent>.\n\nIt takes <accent>up to 4 weeks</accent>, costs on-chain fees paid from savings, and very small amounts can stay behind. It runs in the background, and Bitkit notifies you if it needs you.";
 "lightning__spark_exit__quote_title" = "Exit\n<accent>quote</accent>";
 "lightning__spark_exit__amount" = "Amount to exit";
 "lightning__spark_exit__fees" = "Network fees";
@@ -376,7 +376,7 @@
 "lightning__spark_exit__confirm_text" = "You won't be able to use these funds for <accent>up to 4 weeks</accent>.";
 "lightning__spark_exit__swipe" = "Swipe To Exit";
 "lightning__spark_exit__progress_title" = "Exit in\n<accent>progress</accent>";
-"lightning__spark_exit__progress_text" = "Open Bitkit regularly until it finishes. Each step needs Bitkit to publish it.";
+"lightning__spark_exit__progress_text" = "This runs in the background. Bitkit notifies you if it needs you.";
 "lightning__spark_exit__step_funding" = "Fee funding confirms";
 "lightning__spark_exit__step_publish" = "Publishing exit transactions";
 "lightning__spark_exit__step_timelock" = "Waiting for the timelock";
@@ -395,6 +395,10 @@
 "lightning__spark_exit__failed_text" = "Nothing could be recovered. Your balance stays on Spark.";
 "lightning__spark_exit__notification_title" = "Emergency exit";
 "lightning__spark_exit__notification_body" = "Open Bitkit to continue your exit.";
+"lightning__spark_exit__notification_funding" = "Your exit needs more fees to continue. Open Bitkit to fund it.";
+"lightning__spark_exit__bg_refresh_off" = "Background App Refresh is off for Bitkit, so the exit only moves while Bitkit is open. Turn it on in Settings to let it run in the background.";
+"lightning__spark_exit__low_power" = "Low Power Mode pauses background work. The exit continues once it is off, or when you open Bitkit.";
+"lightning__spark_exit__notifications_off" = "Notifications are off, so Bitkit can't tell you when the exit needs you. Turn them on in Settings to be reminded.";
 "lightning__spark_learn__title" = "Instant\n<accent>or later</accent>";
 "lightning__spark_learn__text" = "Instant pays the provider to add your transfer to your spending balance before it confirms, so it is ready in a few minutes.\n\nLater waits for 3 confirmations, about 30 minutes, and costs less.";
 "lightning__spark_learn__label" = "Spending balance after transfer";
