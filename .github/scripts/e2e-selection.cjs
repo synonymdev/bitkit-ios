@@ -219,6 +219,16 @@ function select(
   };
 }
 
+function currentPrMerge(number, parents, api) {
+  if (!/^[1-9][0-9]*$/.test(String(number))) throw Error("Invalid PR number");
+  const pr = api(`pulls/${number}`);
+  if (pr.state !== "open") throw Error("PR is no longer open");
+  const base = api(`branches/${encodeURIComponent(pr.base.ref)}`).commit.sha;
+  if (parents !== `${base} ${pr.head.sha}`)
+    throw Error("PR merge does not match current base and head");
+  return { pr, base };
+}
+
 function main() {
   const app = path.resolve(__dirname, "../..");
   const e2e = path.resolve(
@@ -245,24 +255,13 @@ function main() {
   const event = JSON.parse(
     fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"),
   );
-  let pr = event.pull_request;
-  const manualPr = process.env.E2E_MANUAL_PR;
-  if (manualPr) {
-    if (!/^\d+$/.test(manualPr)) throw Error("Invalid PR number");
-    pr = JSON.parse(
-      execFileSync(
-        "gh",
-        ["api", `repos/${process.env.GITHUB_REPOSITORY}/pulls/${manualPr}`],
-        { encoding: "utf8" },
-      ),
-    );
-  }
-  const base = pr?.base?.sha;
-  if (
-    pr &&
-    git("show", "-s", "--format=%P", "HEAD") !== `${base} ${pr.head.sha}`
-  )
-    throw Error("PR merge does not match current base and head");
+  const prNumber = process.env.E2E_MANUAL_PR || event.pull_request?.number;
+  const api = (resource) => JSON.parse(execFileSync(
+    "gh", ["api", `repos/${process.env.GITHUB_REPOSITORY}/${resource}`], { encoding: "utf8" },
+  ));
+  const { pr, base } = prNumber
+    ? currentPrMerge(prNumber, git("show", "-s", "--format=%P", "HEAD"), api)
+    : {};
   const files = base
     ? execFileSync(
         "git",
@@ -339,6 +338,7 @@ if (require.main === module) {
   }
 }
 module.exports = {
+  currentPrMerge,
   policy,
   select,
   matchingRules,

@@ -9,6 +9,7 @@ const {
   select,
   validatePolicy,
   validateTree,
+  currentPrMerge,
 } = require("./e2e-selection.cjs");
 const app = path.resolve(__dirname, "../..");
 const e2e = path.resolve(
@@ -228,6 +229,19 @@ test("USDT selection records missing coverage instead of pretending all Bitcoin 
   const s = pick(["Bitkit/Managers/UsdtWalletManager.swift"]);
   assert.deepEqual(s.ids, [...policy.base].sort());
   assert.ok(s.coverageNotes[0].includes("USDT"));
+});
+test("reruns verify the live branch tip and open PR head, including stacked PRs", () => {
+  const pr = { state: "open", base: {ref: "feature/stack", sha: "old"}, head: {sha: "head"} };
+  const api = (path) => {
+    if (path === "pulls/42") return pr;
+    assert.equal(path, "branches/feature%2Fstack");
+    return {commit: {sha: "current"}};
+  };
+  assert.deepEqual(currentPrMerge(42, "current head", api), {pr, base: "current"});
+  assert.throws(() => currentPrMerge(42, "old head", api), /current base and head/);
+  assert.throws(() => currentPrMerge(42, "current stale-head", api), /current base and head/);
+  pr.state = "closed";
+  assert.throws(() => currentPrMerge(42, "current head", api), /no longer open/);
 });
 test("migration is excluded from all PR gates even when the base policy requests it", () => {
   const previousPolicy = structuredClone(policy);

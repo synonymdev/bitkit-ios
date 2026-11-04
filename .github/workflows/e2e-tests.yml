@@ -83,10 +83,31 @@ jobs:
       appSha: ${{ steps.selection.outputs.appSha }}
       e2eSha: ${{ steps.selection.outputs.e2eSha }}
     steps:
+      - name: Verify manual PR before checking out its code
+        id: manual-pr
+        if: github.event_name == 'workflow_dispatch' && inputs.pr != ''
+        uses: actions/github-script@v9
+        env:
+          PR_NUMBER: ${{ inputs.pr }}
+          EXPECTED_HEAD: ${{ inputs.head_sha }}
+          EXPECTED_MERGE: ${{ inputs.merge_commit }}
+        with:
+          result-encoding: string
+          script: |
+            const n = process.env.PR_NUMBER;
+            if (!/^[1-9][0-9]*$/.test(n)) throw new Error('Invalid PR number');
+            const {owner, repo} = context.repo;
+            const {data: pr} = await github.rest.pulls.get({owner, repo, pull_number: Number(n)});
+            if (pr.state !== 'open' || pr.head.repo?.id !== context.payload.repository.id)
+              throw new Error('Manual PR validation requires an open PR from this repository');
+            if (!pr.merge_commit_sha || (process.env.EXPECTED_MERGE && process.env.EXPECTED_MERGE !== pr.merge_commit_sha) ||
+                (process.env.EXPECTED_HEAD && process.env.EXPECTED_HEAD !== pr.head.sha))
+              throw new Error('Manual PR merge or head changed');
+            return pr.merge_commit_sha;
       - name: Checkout tested app
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.merge_commit || (inputs.pr && format('refs/pull/{0}/merge', inputs.pr)) || github.sha }}
+          ref: ${{ steps.manual-pr.outputs.result || github.sha }}
           path: app-ci
           fetch-depth: 0
       - name: Resolve E2E tests ref

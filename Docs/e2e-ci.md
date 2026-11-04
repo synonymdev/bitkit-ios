@@ -45,7 +45,7 @@ gh workflow run e2e-tests.yml --ref codex/264-inventory-shadow \
   -f e2e_branch=codex/264-inventory-shadow -f selection=base -f shards=1
 ```
 
-To test a PR merge, including a stacked PR, also pass `-f pr=NUMBER -f selection=auto`. The merge must match the PR's actual base and head. `selection=full` runs the local and staging suites. To reproduce the nightly including migration, dispatch `selection=nightly` on a branch. PR merges always use local and staging coverage. The optional `shards=2` experiment applies only to manual local execution; automatic runs use one shard. Each shard has isolated infrastructure and shares the same built local app. Staging/migration share one network app build.
+To test an open same-repository PR merge, including a stacked PR, also pass `-f pr=NUMBER -f selection=auto`. The merge must match the PR's actual base and head. `selection=full` runs the local and staging suites. To reproduce the nightly including migration, dispatch `selection=nightly` on a branch. PR merges always use local and staging coverage. The optional `shards=2` experiment applies only to manual local execution; automatic runs use one shard. Each shard has isolated infrastructure and shares the same built local app. Staging/migration share one network app build.
 
 Attempts are bounded to three, stop on success, and retain first-failure evidence. Missing selected cases or failed selected jobs fail the aggregate status. Builds are capped at 40 minutes; execution budgets depend on the selected pack as described below. Diagnostic artifacts, including RN wallet preparation logs, expire after seven days; prepared wallet environments expire after one day. Compare end-to-end duration and billed Mac/backend usage before making two shards automatic.
 
