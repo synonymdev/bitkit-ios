@@ -383,11 +383,21 @@ enum AppRootContent: Equatable {
         isRecoveryShown: Bool,
         hasCriticalUpdate: Bool
     ) -> AppRootContent {
-        if isWipeGateUp { return .wipeGate }
-        if isTrezorEmulatorTesting { return .trezorEmulatorTest }
-        if isShowingMigrationLoading { return .migrationLoading }
-        if isRecoveryShown { return .recovery }
-        if hasCriticalUpdate { return .criticalUpdate }
+        if isWipeGateUp {
+            return .wipeGate
+        }
+        if isTrezorEmulatorTesting {
+            return .trezorEmulatorTest
+        }
+        if isShowingMigrationLoading {
+            return .migrationLoading
+        }
+        if isRecoveryShown {
+            return .recovery
+        }
+        if hasCriticalUpdate {
+            return .criticalUpdate
+        }
         return .wallet
     }
 }

@@ -29,13 +29,17 @@ final class OrphanedKeychainGuardTests: XCTestCase {
                     self.hasMarker = true
                 },
                 hasNativeMnemonic: {
-                    if self.isNativeMnemonicReadFailing { throw ProbeFailure() }
+                    if self.isNativeMnemonicReadFailing {
+                        throw ProbeFailure()
+                    }
                     return self.hasNativeMnemonic
                 },
                 hasWalletStorage: { self.hasWalletStorage },
                 hasOrphanedRNKeychain: { self.hasOrphanedRNKeychain },
                 hasRNMnemonic: {
-                    if self.isRNMnemonicReadFailing { throw ProbeFailure() }
+                    if self.isRNMnemonicReadFailing {
+                        throw ProbeFailure()
+                    }
                     return self.hasRNMnemonic
                 },
                 wipeKeychain: {
@@ -130,7 +134,9 @@ final class OrphanedKeychainGuardTests: XCTestCase {
         var guardUnderTest = base
         guardUnderTest.hasNativeMnemonic = {
             reads += 1
-            if reads > 1 { throw ProbeFailure() }
+            if reads > 1 {
+                throw ProbeFailure()
+            }
             return true
         }
 

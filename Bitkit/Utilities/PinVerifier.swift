@@ -140,8 +140,7 @@ final class PinVerifier {
     /// False once attempts are exhausted or a wipe is pending or unverifiable, so biometrics can never stand in for a
     /// PIN that may no longer be entered.
     var canUseBiometrics: Bool {
-        guard !coordinator.isGateUp, case .none = coordinator.readIntent() else { return false }
-        guard let failedAttempts = try? store.loadFailedAttempts() else { return false }
+        guard !coordinator.isGateUp, case .none = coordinator.readIntent(), let failedAttempts = try? store.loadFailedAttempts() else { return false }
         return failedAttempts < Env.pinAttempts
     }
 }

@@ -10,7 +10,11 @@ struct WipeGateView: View {
     @State private var hasRetriedWhileBlocked = false
 
     private var isRunning: Bool {
-        if case .failed = coordinator.progress { false } else { coordinator.gate == .wiping }
+        if case .failed = coordinator.progress {
+            false
+        } else {
+            coordinator.gate == .wiping
+        }
     }
 
     private var title: String {

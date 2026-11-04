@@ -31,15 +31,21 @@ private final class FakeNodeLifecycle: Bitkit.NodeLifecycleService {
 
     func start(onEvent _: ((Event) -> Void)?) async throws {
         record("start")
-        if let startError { throw startError }
+        if let startError {
+            throw startError
+        }
         isRunning = true
     }
 
     func stop(clearEventCallback _: Bool) async throws {
         record("stop")
-        if let stopError { throw stopError }
+        if let stopError {
+            throw stopError
+        }
         isRunning = false
-        if stopReleasesNode { hasNode = false }
+        if stopReleasesNode {
+            hasNode = false
+        }
     }
 
     func isNodeRunning() async -> Bool {

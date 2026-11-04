@@ -19,17 +19,23 @@ final class FakePinLockoutStore: PinLockoutStore {
     var dropsSavedIntent = false
 
     func loadPin() throws -> String? {
-        if failsLoadingPin { throw Failure() }
+        if failsLoadingPin {
+            throw Failure()
+        }
         return pin
     }
 
     func loadFailedAttempts() throws -> Int {
-        if failsLoadingAttempts { throw Failure() }
+        if failsLoadingAttempts {
+            throw Failure()
+        }
         return failedAttempts
     }
 
     func saveFailedAttempts(_ count: Int) throws {
-        if failsSavingAttempts || (failsResettingAttempts && count == 0) { throw Failure() }
+        if failsSavingAttempts || (failsResettingAttempts && count == 0) {
+            throw Failure()
+        }
         failedAttempts = count
     }
 
@@ -38,13 +44,19 @@ final class FakePinLockoutStore: PinLockoutStore {
     }
 
     func loadWipeIntent() throws -> Data? {
-        if failsLoadingIntent { throw Failure() }
+        if failsLoadingIntent {
+            throw Failure()
+        }
         return intent
     }
 
     func saveWipeIntent(_ data: Data) throws {
-        if failsSavingIntent { throw Failure() }
-        if !dropsSavedIntent { intent = data }
+        if failsSavingIntent {
+            throw Failure()
+        }
+        if !dropsSavedIntent {
+            intent = data
+        }
     }
 
     var intentReason: WipeReason? {
