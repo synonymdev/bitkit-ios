@@ -1,0 +1,280 @@
+import SwiftUI
+
+struct SpendingConfirm: View {
+    @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
+    @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var transfer: TransferViewModel
+    @EnvironmentObject var wallet: WalletViewModel
+    @Environment(SparkTransferFlow.self) private var flow
+
+    @State private var isPaying = false
+    @State private var hideSwipeButton = false
+
+    /// Fee rates move while the screen is open, so the quote is redone this often as well as on every change.
+    private static let requoteInterval: Duration = .seconds(60)
+
+    private struct QuoteInputs: Equatable {
+        let amountSats: UInt64
+        let isMaxAmount: Bool
+        let speed: SparkTransferSpeed
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("lightning__transfer__nav_title"))
+                .disabled(isPaying)
+                .padding(.bottom, 16)
+
+            DisplayText(t("lightning__transfer__confirm"), accentColor: .purpleAccent)
+
+            SpendingConfirmFees(quote: flow.quote, speed: flow.speed, isLoading: flow.quote == nil && flow.quoteError == nil)
+                .padding(.top, 32)
+
+            if let error = flow.quoteError {
+                quoteError(error)
+                    .padding(.bottom, 16)
+            }
+
+            SpendingSpeedPicker(quote: flow.quote, speed: Bindable(flow).speed)
+                .disabled(isPaying)
+                .padding(.horizontal, -16)
+                .padding(.bottom, 16)
+
+            CustomButton(title: t("common__learn_more"), size: .small) {
+                navigation.navigate(.transferLearnMore)
+            }
+            .disabled(isPaying)
+            .accessibilityIdentifier("SpendingConfirmMore")
+
+            Spacer()
+
+            if !hideSwipeButton {
+                SwipeButton(
+                    title: t("lightning__transfer__swipe"),
+                    accentColor: .purpleAccent,
+                    isLoading: isPaying
+                ) {
+                    try await onConfirm()
+                }
+                .disabled(!canConfirm)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("SpendingConfirm")
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
+        .offlineOverlay(title: t("lightning__transfer__nav_title"))
+        .task(id: QuoteInputs(amountSats: flow.amountSats, isMaxAmount: flow.isMaxAmount, speed: flow.speed)) {
+            guard !SparkTransferFlow.isRunningInPreview else { return }
+            while !Task.isCancelled {
+                if !isPaying {
+                    await flow.refreshQuote(wallet: wallet, feeEstimatesManager: feeEstimatesManager)
+                }
+                try? await Task.sleep(for: Self.requoteInterval)
+            }
+        }
+    }
+
+    private var canConfirm: Bool {
+        guard let quote = flow.quote, !isPaying, !flow.isQuoting else { return false }
+        return quote.networkFeeSats > 0 && quote.toSpendingSats(for: flow.speed) > 0
+    }
+
+    private func quoteError(_ message: String) -> some View {
+        HStack(alignment: .center, spacing: 16) {
+            BodyMText(message, textColor: .redAccent)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            CustomButton(title: t("common__retry"), size: .small, isLoading: flow.isQuoting) {
+                await flow.refreshQuote(wallet: wallet, feeEstimatesManager: feeEstimatesManager)
+            }
+            .fixedSize()
+            .accessibilityIdentifier("SpendingConfirmRetry")
+        }
+    }
+
+    private func onConfirm() async throws {
+        guard let shown = flow.quote, !isPaying else { return }
+        isPaying = true
+        defer { isPaying = false }
+
+        guard let fresh = await flow.refreshQuote(wallet: wallet, feeEstimatesManager: feeEstimatesManager) else {
+            throw AppError(message: t("lightning__spending_confirm__error_quote"), debugMessage: "Re-quote before sending failed")
+        }
+        let speed = flow.speed
+        let shownCost = shown.networkFeeSats.saturatingAdd(shown.claimFeeSats(for: speed))
+        let freshCost = fresh.networkFeeSats.saturatingAdd(fresh.claimFeeSats(for: speed))
+        if freshCost > shownCost {
+            app.toast(
+                type: .info,
+                title: t("lightning__spending_confirm__fees_changed_title"),
+                description: t(
+                    "lightning__spending_confirm__fees_changed_network",
+                    variables: ["amount": currency.primaryAmountText(sats: freshCost - shownCost)]
+                )
+            )
+            throw SpendingFeesIncreasedError()
+        }
+
+        do {
+            let txid = try await transfer.fundSpark(
+                address: fresh.address,
+                amountSats: fresh.depositSats,
+                satsPerVbyte: fresh.satsPerVbyte,
+                txFee: fresh.networkFeeSats,
+                isMaxAmount: flow.isMaxAmount
+            )
+            flow.onBroadcast(txid: txid)
+            await wallet.updateBalanceState()
+            navigation.navigate(.settingUp)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                hideSwipeButton = true
+            }
+        } catch {
+            Logger.error("Failed to transfer to spending: \(error)", context: "SpendingConfirm")
+            app.toast(
+                type: .error,
+                title: t("wallet__send_error_tx_failed"),
+                description: AppError(error: error).message
+            )
+            throw error
+        }
+    }
+}
+
+/// The swipe reset after the fees went up while the screen was open; the toast says by how much.
+struct SpendingFeesIncreasedError: Error {}
+
+/// Network fee, spending fee, what reaches spending and what leaves savings, in the confirm screen's grid.
+struct SpendingConfirmFees: View {
+    let quote: SparkTransferQuote?
+    let speed: SparkTransferSpeed
+    var isLoading = false
+
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack {
+                FeeDisplayRow(
+                    label: t("lightning__spending_confirm__network_fee"),
+                    amount: quote?.networkFeeSats ?? 0,
+                    isLoading: isLoading
+                )
+                .frame(maxWidth: .infinity)
+
+                FeeDisplayRow(
+                    label: t("lightning__spending_confirm__spending_fee"),
+                    amount: quote?.claimFeeSats(for: speed) ?? 0,
+                    prefix: SpendingSpeedPicker.feePrefix(for: speed),
+                    isLoading: isLoading
+                )
+                .frame(maxWidth: .infinity)
+            }
+
+            HStack {
+                FeeDisplayRow(
+                    label: t("lightning__spending_confirm__amount"),
+                    amount: quote?.toSpendingSats(for: speed) ?? 0,
+                    isLoading: isLoading
+                )
+                .frame(maxWidth: .infinity)
+
+                FeeDisplayRow(
+                    label: t("lightning__spending_confirm__total"),
+                    amount: quote?.totalSats ?? 0,
+                    isLoading: isLoading
+                )
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("SpendingConfirmFees")
+    }
+}
+
+/// Instant or Later, in the style of the send flow's fee-speed rows.
+struct SpendingSpeedPicker: View {
+    let quote: SparkTransferQuote?
+    @Binding var speed: SparkTransferSpeed
+
+    static func feePrefix(for speed: SparkTransferSpeed) -> String {
+        switch speed {
+        case .instant: t("lightning__spending_confirm__up_to")
+        case .later: "≈"
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            FeeItem(
+                title: t("fee__instant__title"),
+                subtitle: t("lightning__spending_confirm__instant_text"),
+                iconName: TransactionSpeed.fast.iconName,
+                iconColor: .purpleAccent,
+                amount: quote?.claimFees.instantMaxSats ?? 0,
+                amountPrefix: Self.feePrefix(for: .instant),
+                isSelected: speed == .instant,
+                isDisabled: false
+            ) {
+                speed = .instant
+            }
+            .accessibilityIdentifier("SpendingConfirmInstant")
+
+            FeeItem(
+                title: t("lightning__spending_confirm__later"),
+                subtitle: t("lightning__spending_confirm__later_text"),
+                iconName: TransactionSpeed.slow.iconName,
+                iconColor: .purpleAccent,
+                amount: quote?.claimFees.laterSats ?? 0,
+                amountPrefix: Self.feePrefix(for: .later),
+                isSelected: speed == .later,
+                isDisabled: false
+            ) {
+                speed = .later
+            }
+            .accessibilityIdentifier("SpendingConfirmLater")
+
+            Divider()
+                .padding(.horizontal, 16)
+        }
+    }
+}
+
+private extension SparkTransferQuote {
+    static let preview = SparkTransferQuote(
+        address: "bcrt1qpreview",
+        satsPerVbyte: 6,
+        networkFeeSats: 577,
+        depositSats: 100_000,
+        claimFees: SparkClaimFees(instantMaxSats: 1093, laterSats: 198)
+    )
+}
+
+#Preview("Instant") {
+    spendingConfirmPreview(SparkTransferFlow(amountSats: 100_000, speed: .instant, quote: .preview))
+}
+
+#Preview("Later") {
+    spendingConfirmPreview(SparkTransferFlow(amountSats: 100_000, speed: .later, quote: .preview))
+}
+
+#Preview("Loading") {
+    spendingConfirmPreview(SparkTransferFlow(amountSats: 100_000))
+}
+
+@MainActor
+private func spendingConfirmPreview(_ flow: SparkTransferFlow) -> some View {
+    NavigationStack {
+        SpendingConfirm()
+            .environmentObject(AppViewModel())
+            .environmentObject(CurrencyViewModel())
+            .environmentObject(FeeEstimatesManager())
+            .environmentObject(NavigationViewModel())
+            .environmentObject(SettingsViewModel.shared)
+            .environmentObject(TransferViewModel())
+            .environmentObject(WalletViewModel())
+            .environment(flow)
+    }
+    .preferredColorScheme(.dark)
+}

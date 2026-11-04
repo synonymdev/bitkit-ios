@@ -39,14 +39,17 @@ enum Route: Hashable {
     case subscriptions(showPayments: Bool)
     case paymentRequestDetail(PaykitPaymentRequest.ID)
     case subscriptionDetail(PaykitSubscription.ID)
+    case transferIntro
     case fundingOptions
+    case spendingIntro
+    case spendingAmount
+    case spendingConfirm
+    case transferLearnMore
+    case settingUp
     case fundManual(nodeUri: String?)
     case fundManualAmount(lnPeer: LnPeer)
     case fundManualConfirm(lnPeer: LnPeer, amountSats: UInt64)
     case fundManualSuccess
-    case sparkFundingAmount
-    case sparkFundingConfirm(amountSats: UInt64, isMaxAmount: Bool)
-    case sparkFundingDeposit(txid: String)
     case lnurlChannel(channelData: LnurlChannelData)
     case savingsIntro
     case savingsAvailability

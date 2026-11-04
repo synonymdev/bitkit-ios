@@ -1,8 +1,12 @@
 import SwiftUI
 
 struct FundingOptions: View {
+    @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var wallet: WalletViewModel
+
+    @State private var showNoFundsAlert = false
 
     /// Spark keeps Spending fundable from savings or another wallet without a channel.
     private var canFundWithSpark: Bool {
@@ -27,7 +31,13 @@ struct FundingOptions: View {
             VStack(spacing: 8) {
                 if canFundWithSpark {
                     RectangleButton(icon: "transfer", title: t("lightning__funding__button1"), testID: "FundTransfer") {
-                        navigation.navigate(.sparkFundingAmount)
+                        if wallet.totalOnchainSats == 0 {
+                            showNoFundsAlert = true
+                        } else if app.hasSeenTransferToSpendingIntro {
+                            navigation.navigate(.spendingAmount)
+                        } else {
+                            navigation.navigate(.spendingIntro)
+                        }
                     }
                     RectangleButton(icon: "qr", title: t("lightning__funding__button2"), testID: "FundReceive") {
                         navigation.reset()
@@ -69,5 +79,18 @@ struct FundingOptions: View {
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
+        .alert(
+            t("lightning__no_funds__title"),
+            isPresented: $showNoFundsAlert
+        ) {
+            Button(t("lightning__no_funds__fund")) {
+                navigation.reset()
+                sheets.showSheet(.receive, data: ReceiveConfig(view: .qr(tab: .savings)))
+            }
+            Button(t("common__cancel"), role: .cancel) {}
+        } message: {
+            Text(t("lightning__no_funds__description"))
+        }
+        .tint(.purpleAccent)
     }
 }

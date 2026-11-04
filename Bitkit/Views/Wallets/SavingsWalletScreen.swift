@@ -122,10 +122,12 @@ struct SavingsWalletScreen: View {
                 .frame(width: 16, height: 16)
                 .foregroundColor(.white80)
         ) {
-            if SparkManager.shared.isReady {
-                navigation.navigate(.sparkFundingAmount)
-            } else {
+            if !SparkManager.shared.isReady {
                 sheets.showSheet(.transferUnavailable)
+            } else if app.hasSeenTransferToSpendingIntro {
+                navigation.navigate(.spendingAmount)
+            } else {
+                navigation.navigate(.spendingIntro)
             }
         }
         .accessibilityIdentifier("TransferToSpending")

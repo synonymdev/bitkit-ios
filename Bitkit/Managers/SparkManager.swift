@@ -100,9 +100,11 @@ final class SparkManager: ChannelFreeLightningRail {
         let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
         var config = defaultConfig(network: network)
         config.apiKey = Env.breezApiKey
+        // Lowering it below the spread keeps the deposit from being claimed early, and does not hold back its claim at
+        // maturity. An early claim is made only when the user chose Instant (`claimEarly`).
         config.maxDepositClaimFee = MaxFee(
             onchain: .networkRecommended(leewaySatPerVbyte: Self.depositClaimFeeLeewaySatPerVbyte),
-            proportionalPpm: Self.depositClaimFeePpm
+            proportionalPpm: nil
         )
         let storageDir = Env.sparkStorage(walletIndex: walletIndex)
         try FileManager.default.createDirectory(at: storageDir, withIntermediateDirectories: true)
@@ -200,10 +202,18 @@ final class SparkManager: ChannelFreeLightningRail {
     /// times this size before the provider quotes it (breez/spark-sdk `CLAIM_TX_SIZE_VBYTES`).
     private nonisolated static let claimTxSizeVbytes: UInt64 = 99
 
-    /// The most Spark may keep to claim a deposit of `amountSats` under this wallet's fee cap. The provider quotes the
-    /// real fee only once the deposit exists.
-    func estimateDepositClaimFeeSats(amountSats: UInt64) async throws -> UInt64 {
-        try await Self.maxDepositClaimFeeSats(fastestFeeRate: requireSdk().recommendedFees().fastestFee, amountSats: amountSats)
+    /// What claiming a deposit of `amountSats` costs for each speed. The provider quotes the real fee only once the
+    /// deposit exists, so Instant is the ceiling the user accepts and Later the mature claim at the half-hour rate.
+    func depositClaimFees(amountSats: UInt64) async throws -> SparkClaimFees {
+        let fees = try await requireSdk().recommendedFees()
+        return SparkClaimFees(
+            instantMaxSats: Self.maxDepositClaimFeeSats(fastestFeeRate: fees.fastestFee, amountSats: amountSats),
+            laterSats: Self.matureDepositClaimFeeSats(halfHourFeeRate: fees.halfHourFee)
+        )
+    }
+
+    nonisolated static func matureDepositClaimFeeSats(halfHourFeeRate: UInt64) -> UInt64 {
+        halfHourFeeRate * claimTxSizeVbytes
     }
 
     nonisolated static func maxDepositClaimFeeSats(fastestFeeRate: UInt64, amountSats: UInt64) -> UInt64 {
@@ -595,6 +605,13 @@ struct SparkClaimOffer: Equatable {
         }
         self.init(txid: txid, vout: vout, kind: kind)
     }
+}
+
+/// What claiming a deposit costs: at most `instantMaxSats` to add it before confirmations, about `laterSats` to add it
+/// after 3 confirmations.
+struct SparkClaimFees: Equatable {
+    let instantMaxSats: UInt64
+    let laterSats: UInt64
 }
 
 /// What accepting an early claim did.
