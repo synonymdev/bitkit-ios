@@ -663,24 +663,75 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     func testAutomaticPaymentAsksWithoutLimitReachedWhenOnlyAnAllowanceWithUncheckedLimitsFits() async throws {
+        let candidateSets: [(name: String, unchecked: Paykit.AllowanceAccountingBlock?)] = [
+            ("unchecked candidate unblocked", nil),
+            ("unchecked candidate blocked", .sharedRule(code: "no_eligible_endpoint")),
+        ]
+
+        for candidateSet in candidateSets {
+            let harness = AllowanceHarness()
+            await harness.sdk.setCandidates(Self.checkedAndUncheckedCandidates(
+                checked: .sharedRule(code: "amount_outside_range"),
+                unchecked: candidateSet.unchecked
+            ))
+            let events = AllowanceEventRecorder()
+
+            let result = try await harness.executor.autoPay(
+                Fixtures.paymentRequest(amount: "0.0002"),
+                allowances: Self.checkedAndUncheckedAllowances(),
+                identity: Fixtures.identityKey
+            )
+
+            XCTAssertEqual(result, .manual, candidateSet.name)
+            XCTAssertFalse(harness.log.entries.contains("acceptPaymentRequestAutomatically"), candidateSet.name)
+            XCTAssertTrue(events.events.isEmpty, "\(candidateSet.name): a request an allowance still fits raises no Limit Reached")
+        }
+    }
+
+    func testACheckedAllowanceTheSdkBlocksStaysManualWithoutLimitReachedWhenItFits() async throws {
         let harness = AllowanceHarness()
-        await harness.sdk.setCandidates(Self.checkedAndUncheckedCandidates())
+        let lowCapId = "allowance-low-cap"
+        await harness.sdk.setCandidates([
+            AllowanceHarness.candidate(blocked: .sharedRule(code: "no_eligible_endpoint")),
+            Paykit.AllowanceCandidate(allowanceId: lowCapId, eligiblePaymentEndpointIdentifiers: [Fixtures.lightningIdentifier], blocked: nil),
+        ])
         let events = AllowanceEventRecorder()
 
         let result = try await harness.executor.autoPay(
-            Fixtures.paymentRequest(amount: "0.0002"),
-            allowances: Self.checkedAndUncheckedAllowances(),
+            Fixtures.paymentRequest(amount: "0.00002"),
+            allowances: [Fixtures.allowance(), Fixtures.allowance(allowanceId: lowCapId, perPaymentMaxSats: 1000)],
             identity: Fixtures.identityKey
         )
 
         XCTAssertEqual(result, .manual)
         XCTAssertFalse(harness.log.entries.contains("acceptPaymentRequestAutomatically"))
-        XCTAssertTrue(events.events.isEmpty, "A request an allowance still fits raises no Limit Reached")
+        XCTAssertTrue(events.events.isEmpty, "A checked allowance that fits but the SDK blocks raises no Limit Reached")
+    }
+
+    func testAllowancesThatAllEndedHereHandTheRequestBackWithoutLimitReached() async throws {
+        let request = try Fixtures.paymentRequest(amount: "0.0002")
+        let ended = PaykitAllowanceLocalState(endedAllowanceIds: [PaykitAllowance.scopedId(
+            counterparty: Fixtures.counterpartyKey,
+            allowanceId: Fixtures.walletAllowanceId
+        )])
+        let events = AllowanceEventRecorder()
+        let handBack = AllowanceHarness()
+        handBack.store.seed(ended, identity: Fixtures.identityKey)
+        let online = AllowanceHarness()
+        online.store.seed(ended, identity: Fixtures.identityKey)
+        await online.sdk.setCandidates([AllowanceHarness.candidate(blocked: .sharedRule(code: "amount_outside_range"))])
+
+        let isManual = await handBack.executor.exceedsLimits(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+        let result = await online.executor.autoPay(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertTrue(isManual)
+        XCTAssertEqual(result, .manual)
+        XCTAssertTrue(events.events.isEmpty, "An allowance ended here raises no Limit Reached, even while the SDK still lists it")
     }
 
     func testAutomaticPaymentPaysThroughTheAllowanceWithCheckedLimitsWhenItFits() async throws {
         let harness = AllowanceHarness()
-        await harness.sdk.setCandidates(Self.checkedAndUncheckedCandidates().reversed())
+        await harness.sdk.setCandidates(Self.checkedAndUncheckedCandidates(checked: nil, unchecked: nil).reversed())
 
         let isManual = try await harness.executor.exceedsLimits(
             Fixtures.paymentRequest(),
@@ -724,13 +775,16 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         ]
     }
 
-    private static func checkedAndUncheckedCandidates() -> [Paykit.AllowanceCandidate] {
+    private static func checkedAndUncheckedCandidates(
+        checked: Paykit.AllowanceAccountingBlock?,
+        unchecked: Paykit.AllowanceAccountingBlock?
+    ) -> [Paykit.AllowanceCandidate] {
         [
-            AllowanceHarness.candidate(),
+            AllowanceHarness.candidate(blocked: checked),
             Paykit.AllowanceCandidate(
                 allowanceId: Fixtures.otherAllowanceId,
                 eligiblePaymentEndpointIdentifiers: [Fixtures.lightningIdentifier],
-                blocked: nil
+                blocked: unchecked
             ),
         ]
     }

@@ -328,8 +328,9 @@ enum PaykitAllowanceCapacity {
     }
 
     enum Fit: Equatable {
-        /// An allowance with only the limits this wallet checks fits the request, so it can pay automatically through it.
-        case automatic(PaykitAllowance)
+        /// The allowances with only the limits this wallet checks that fit the request, in the order given; the request can
+        /// pay automatically through one of them.
+        case automatic([PaykitAllowance])
         /// Only allowances with limits this wallet does not check fit, so the request asks without Limit Reached.
         case uncheckedOnly
         /// No allowance fits the request, so it asks and Limit Reached is raised.
@@ -342,7 +343,8 @@ enum PaykitAllowanceCapacity {
         let fitting = allowances.filter {
             fits(amountSats: amountSats, allowance: $0, attempts: attempts, now: now, localAttempts: localAttempts)
         }
-        if let automatic = fitting.first(where: { !$0.hasUncheckedLimits }) {
+        let automatic = fitting.filter { !$0.hasUncheckedLimits }
+        if !automatic.isEmpty {
             return .automatic(automatic)
         }
         return fitting.isEmpty ? .none : .uncheckedOnly

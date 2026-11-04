@@ -697,14 +697,16 @@ actor PaykitAllowanceExecutor {
         return false
     }
 
-    /// Whether a covered request is over every limit of the contact's accepted allowances, decided without the node.
+    /// Whether a covered request goes back to the manual flow without waiting for the node, decided like an automatic payment:
+    /// it waits only while an allowance with just the limits this wallet checks fits it. Limit Reached is raised only when no
+    /// matching allowance fits at all. Allowances that all ended here hand the request back without it.
     func exceedsLimits(_ request: PaykitPaymentRequest, allowances: [PaykitAllowance], identity: String) async -> Bool {
-        let covering = allowances.filter {
-            $0.isAllower && $0.status(at: now()) == .active && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty)
-        }
+        let covering = coveringAllowances(for: request, allowances: allowances)
         guard !covering.isEmpty else { return false }
         // Paused automatic payments keep the request manual, without waiting for the node.
         guard !isPausedAfterRestore() else { return true }
+        let matching = unendedAllowances(covering, identity: identity)
+        guard !matching.isEmpty else { return true }
         var attempts: [PaykitAllowanceCapacity.Attempt] = []
         do {
             let ledger = try await sdk.allowanceAccountingState()
@@ -717,7 +719,7 @@ actor PaykitAllowanceExecutor {
         let localAttempts = PaykitAllowanceCapacity.attempts(from: localState(identity: identity).automaticSpends)
         switch PaykitAllowanceCapacity.fit(
             amountSats: request.allowanceAmountSats,
-            allowances: covering,
+            allowances: matching,
             attempts: attempts,
             now: now(),
             localAttempts: localAttempts
@@ -730,6 +732,18 @@ actor PaykitAllowanceExecutor {
             notifyLimitReached(request, identity: identity)
             return true
         }
+    }
+
+    private func coveringAllowances(for request: PaykitPaymentRequest, allowances: [PaykitAllowance]) -> [PaykitAllowance] {
+        allowances.filter {
+            $0.isAllower && $0.status(at: now()) == .active && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty)
+        }
+    }
+
+    /// An End saved here stops an allowance even while the SDK still lists it as accepted.
+    private func unendedAllowances(_ allowances: [PaykitAllowance], identity: String) -> [PaykitAllowance] {
+        let ended = localState(identity: identity).endedAllowanceIds
+        return allowances.filter { !ended.contains($0.scopedId) }
     }
 
     private struct NodeHistoryUnavailable: Error {}
@@ -960,29 +974,15 @@ actor PaykitAllowanceExecutor {
         let selectionTime = trustedTime(identity: identity)
         let candidates = try await sdk.evaluateAllowanceCandidates(scope: scope, trustedTime: selectionTime)
         let local = localState(identity: identity)
-        let unblocked = candidates.filter { $0.blocked == nil }
-        let unended = unblocked.filter {
-            !local.endedAllowanceIds.contains(PaykitAllowance.scopedId(counterparty: request.counterparty, allowanceId: $0.allowanceId))
-        }
-        if unended.isEmpty, !unblocked.isEmpty {
-            Logger.info("Kept an incoming request manual: its allowance has ended", context: "PaykitAllowance")
-            return .manual
-        }
-        let eligible = unended.compactMap { candidate in
-            allowances.first(where: {
-                $0.allowanceId == candidate.allowanceId && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty)
-            }).map { (candidate: candidate, allowance: $0) }
-        }
-        guard !eligible.isEmpty else {
-            let reasons = candidates.compactMap { $0.blocked.map { String(describing: $0) } }
-            Logger.info("No eligible allowance for an incoming request: \(reasons)", context: "PaykitAllowance")
-            // The SDK blocks a request above the per-payment limit before the capacity check below can notify.
-            if allowances.contains(where: {
-                $0.isAllower && $0.lifecycleState == .accepted && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty) &&
-                    $0.perPaymentMaxSats.map { request.allowanceAmountSats > $0 } == true
-            }) {
-                notifyLimitReached(request, identity: identity)
-            }
+        let covering = coveringAllowances(for: request, allowances: allowances)
+        let matching = unendedAllowances(covering, identity: identity)
+        guard !matching.isEmpty else {
+            Logger.info(
+                covering.isEmpty
+                    ? "Kept an incoming request manual: no active allowance covers it"
+                    : "Kept an incoming request manual: its allowance has ended",
+                context: "PaykitAllowance"
+            )
             return .manual
         }
 
@@ -991,20 +991,32 @@ actor PaykitAllowanceExecutor {
             Logger.info("Kept an incoming request manual: the ledger is behind this wallet", context: "PaykitAllowance")
             return .manual
         }
-        // Bitkit checks the per-payment cap and one monthly amount itself, so only an allowance without other limits pays.
+        // Bitkit checks the per-payment cap and one monthly amount itself, so only an allowance without other limits pays,
+        // through the first candidate the SDK leaves unblocked.
         let fit = PaykitAllowanceCapacity.fit(
             amountSats: request.allowanceAmountSats,
-            allowances: eligible.map(\.allowance),
+            allowances: matching,
             attempts: ledger.map { PaykitAllowanceCapacity.attempts(from: $0.history) } ?? [],
             now: now(),
             localAttempts: PaykitAllowanceCapacity.attempts(from: local.automaticSpends)
         )
-        guard case let .automatic(allowance) = fit, let candidate = eligible.first(where: { $0.allowance == allowance })?.candidate else {
-            if fit == .uncheckedOnly {
-                Logger.info("Kept an incoming request manual: only allowances with unchecked limits fit it", context: "PaykitAllowance")
-            } else {
-                Logger.info("Allowance monthly limit reached; the request stays on the manual flow", context: "PaykitAllowance")
+        let payable = if case let .automatic(allowances) = fit {
+            allowances
+        } else {
+            [PaykitAllowance]()
+        }
+        guard let candidate = candidates.first(where: { candidate in
+            candidate.blocked == nil && payable.contains { $0.allowanceId == candidate.allowanceId }
+        }) else {
+            let reasons = candidates.compactMap { $0.blocked.map { String(describing: $0) } }
+            if fit == .none {
+                Logger.info("No allowance fits an incoming request; it stays on the manual flow: \(reasons)", context: "PaykitAllowance")
                 notifyLimitReached(request, identity: identity)
+            } else {
+                Logger.info(
+                    "No allowance can pay an incoming request automatically; it stays on the manual flow: \(reasons)",
+                    context: "PaykitAllowance"
+                )
             }
             return .manual
         }
