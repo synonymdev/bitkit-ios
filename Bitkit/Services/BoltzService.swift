@@ -12,7 +12,15 @@ import LDKNode
 ///
 /// The Lightning side (paying invoices, fresh onchain addresses) is owned by
 /// `LightningService`; this service only talks to Boltz + the chain.
-class BoltzService {
+/// The Boltz swap updates stream in bitkit-core, which `WalletViewModel` drives.
+protocol SwapUpdatesStreaming: AnyObject {
+    var isSwapEnabled: Bool { get }
+    func startUpdates(feeRateSatPerVb: Double?, acceptZeroConf: Bool) async throws
+    func stopUpdates() async
+    func events() -> AsyncStream<BoltzSwapEvent>
+}
+
+class BoltzService: SwapUpdatesStreaming {
     static let shared = BoltzService()
 
     private let continuationsLock = NSLock()

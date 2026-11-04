@@ -348,21 +348,20 @@ struct PaymentRequestAmountView: View {
                         }
                     }
 
-                    Spacer().frame(height: 16)
+                    Spacer(minLength: 12)
 
                     amountControls(showUnit: allowedAssets.contains(.btc))
                         .hidden()
                         .overlay(alignment: .topTrailing) {
                             amountControls(showUnit: asset == .btc)
                         }
-                        .padding(.bottom, 16)
+                        .padding(.bottom, 12)
 
                     if conversionError {
                         BodySText(t("wallet__payment_request_rate_unavailable"), textColor: .white64)
                     }
                     CustomDivider()
                         .accessibilityIdentifier("\(testIdentifierPrefix)AmountDivider")
-                    Spacer(minLength: 16)
                     NumberPad(
                         type: asset == .usd ? .decimal : amountViewModel.getNumberPadType(currency: currency),
                         errorKey: amountViewModel.errorKey
@@ -379,8 +378,6 @@ struct PaymentRequestAmountView: View {
                             amountViewModel.handleNumberPadInput(key, currency: currency)
                         }
                     }
-
-                    Spacer(minLength: 24)
 
                     CustomButton(title: t("common__continue"), isDisabled: !allowedAssets.contains(asset) || (amount?.atomic ?? 0) == 0) {
                         guard allowedAssets.contains(asset), let amount else { return }
@@ -667,7 +664,7 @@ struct PaymentRequestSentView: View {
             Image("check")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 256, height: 256)
+                .frame(maxWidth: UIScreen.main.bounds.width * 0.8, maxHeight: UIScreen.main.bounds.width * 0.8)
                 .frame(maxWidth: .infinity)
 
             Spacer(minLength: 8)
@@ -676,14 +673,16 @@ struct PaymentRequestSentView: View {
                 .padding(.bottom, 8)
 
             BodyMText(description, textColor: .white64)
-                .padding(.bottom, 16)
+                .padding(.bottom, 32)
+
+            CaptionMText(t("wallet__payment_request_recipient").localizedUppercase, textColor: .white64, lineHeight: 18)
+                .padding(.bottom, 8)
 
             PaymentRequestCard(
                 request: request,
                 isHighlighted: false
             )
-
-            Spacer(minLength: 32)
+            .padding(.bottom, 16)
 
             CustomButton(title: t("common__ok")) {
                 sheets.hideSheet(reason: "Payment request created")

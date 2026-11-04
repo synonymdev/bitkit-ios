@@ -656,6 +656,14 @@
 "security__use_pin" = "Использовать PIN-код";
 "security__wiped_title" = "Данные Кошелька Удалены";
 "security__wiped_message" = "Bitkit был сброшен, и все данные кошелька были удалены.";
+"security__pin_unavailable" = "Bitkit не смог проверить ваш PIN-код. Пожалуйста, попробуйте снова.";
+"security__wipe_not_started" = "Не удалось начать сброс. Ничего не было удалено.";
+"security__wipe_gate_title" = "Сброс Bitkit";
+"security__wipe_gate_text" = "Bitkit удаляет данные кошелька на этом устройстве. Не закрывайте приложение, пока процесс не завершится.";
+"security__wipe_gate_failed" = "Bitkit не смог завершить удаление данных кошелька и попробует снова. Вы можете повторить попытку сейчас или экспортировать логи для поддержки.";
+"security__wipe_gate_step" = "Шаг {step} из {total}";
+"security__wipe_gate_blocked_title" = "Bitkit Заблокирован";
+"security__wipe_gate_blocked_text" = "Bitkit не может проверить состояние своей безопасности. Попробуйте снова или экспортируйте логи для поддержки.";
 "security__authorization__title" = "Авторизация";
 "security__authorization__description" = "Убедитесь, что вы доверяете этому сервису, прежде чем предоставлять разрешение на управление вашими данными.";
 "security__authorization__authorize" = "Авторизовать";
@@ -1830,6 +1838,9 @@
 "usdt__deposit_refund_address_network" = "Адрес USDT в сети {network}";
 "subscriptions__allowances" = "Лимиты автооплаты";
 "subscriptions__allowances_empty_headline" = "Настройте\n<accent>лимиты автооплаты</accent>";
+"subscriptions__allowances_paused_description" = "Данные ваших бюджетов старше тех, что этот кошелёк уже использовал. Запросы будут ждать вашего подтверждения, пока вы не возобновите платежи.";
+"subscriptions__allowances_paused_resume" = "Возобновить";
+"subscriptions__allowances_paused_title" = "Автоматические платежи приостановлены";
 "subscriptions__allowances_empty_description" = "Вы можете задать лимиты расходов, чтобы автоматически оплачивать запросы на оплату от доверенных контактов.";
 "subscriptions__allowance_add" = "Добавить Лимит";
 "subscriptions__allowance_title" = "Лимит автооплаты";

@@ -12,7 +12,6 @@ struct DevSettingsView: View {
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
-    @EnvironmentObject var session: SessionManager
     @EnvironmentObject var wallet: WalletViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
@@ -164,25 +163,8 @@ struct DevSettingsView: View {
                     }
 
                     Button {
-                        Task {
-                            guard let zipURL = LogService.shared.zipLogs() else {
-                                app.toast(type: .error, title: "Error", description: "Failed to create log zip file")
-                                return
-                            }
-
-                            // Present share sheet
-                            await MainActor.run {
-                                let activityViewController = UIActivityViewController(
-                                    activityItems: [zipURL],
-                                    applicationActivities: nil
-                                )
-
-                                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                                   let window = windowScene.windows.first
-                                {
-                                    window.rootViewController?.present(activityViewController, animated: true)
-                                }
-                            }
+                        if !LogService.shared.shareLogs() {
+                            app.toast(type: .error, title: "Error", description: "Failed to create log zip file")
                         }
                     } label: {
                         SettingsRow(title: "Export Logs", rightIcon: nil)
@@ -195,17 +177,7 @@ struct DevSettingsView: View {
                     }
 
                     Button {
-                        Task {
-                            do {
-                                try await AppReset.wipe(
-                                    app: app,
-                                    wallet: wallet,
-                                    session: session
-                                )
-                            } catch {
-                                app.toast(error)
-                            }
-                        }
+                        AppReset.begin(.dev, app: app)
                     } label: {
                         SettingsRow(title: "Wipe Wallet", rightIcon: nil)
                     }
