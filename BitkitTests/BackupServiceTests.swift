@@ -6,6 +6,57 @@ import XCTest
 
 @MainActor
 final class BackupServiceTests: XCTestCase {
+    func testExplicitBackupsRefusePayloadCaptureDuringWipe() async throws {
+        let suite = "BackupServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let recorder = BackupRecorder()
+        let service = BackupService(defaults: defaults, backupData: { _ in
+            await recorder.recordExport()
+            return Data("original-wallet".utf8)
+        }, uploadBackup: { key, data in
+            await recorder.recordUpload(key: key, data: data)
+        })
+        service.setWiping(true)
+        for category in [BackupCategory.settings, .widgets, .activity, .blocktank] {
+            let outcome = await service.triggerBackup(category: category)
+            XCTAssertEqual(outcome, .failed)
+        }
+        let exports = await recorder.exports
+        let uploads = await recorder.uploads
+        XCTAssertEqual(exports, 0)
+        XCTAssertTrue(uploads.isEmpty)
+        service.setWiping(false)
+        await service.stopObservingBackups()
+    }
+
+    func testExplicitPayloadCannotUploadAfterWipeFlagReopens() async throws {
+        let suite = "BackupServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let captured = expectation(description: "Original wallet payload capture held")
+        let gate = BackupDelayGate()
+        let recorder = BackupRecorder()
+        let service = BackupService(defaults: defaults, backupData: { _ in
+            await gate.wait(started: captured)
+            return Data("original-wallet".utf8)
+        }, uploadBackup: { key, data in
+            await recorder.recordUpload(key: key, data: data)
+        })
+        let backup = Task { await service.triggerBackup(category: .settings) }
+        await fulfillment(of: [captured], timeout: 2)
+        service.setWiping(true)
+        service.setWiping(false)
+        await gate.release()
+        let outcome = await backup.value
+        XCTAssertEqual(outcome, .failed)
+        let uploads = await recorder.uploads
+        XCTAssertTrue(uploads.isEmpty)
+        XCTAssertTrue(service.getBackupStatus(category: .settings).isRequired)
+        XCTAssertFalse(service.getBackupStatus(category: .settings).running)
+        await service.stopObservingBackups()
+    }
+
     func testReleasedVssAuthTransportIsTemporaryWithoutRetryingAuthorizationFailures() {
         let requestFailure = "error sending request for url (https://backup.example/lnurl_auth/auth)"
         for details in [requestFailure, "error performing external request: \(requestFailure)",
