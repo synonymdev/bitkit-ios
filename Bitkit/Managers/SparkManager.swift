@@ -258,17 +258,7 @@ final class SparkManager: ChannelFreeLightningRail {
             throw CustomServiceError.mnemonicNotFound
         }
         let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
-        var config = defaultConfig(network: network)
-        config.apiKey = Env.breezApiKey
-        // Lowering it below the spread keeps the deposit from being claimed early, and does not hold back its claim at
-        // maturity. An early claim is made only when the user chose Instant (`claimEarly`).
-        config.maxDepositClaimFee = MaxFee(
-            onchain: .networkRecommended(leewaySatPerVbyte: Self.depositClaimFeeLeewaySatPerVbyte),
-            proportionalPpm: nil
-        )
-        // Optimizing swaps leaves with the operators, which would hand the leaves an exit is spending to someone
-        // else, whose refunds then confirm first. Off for as long as an emergency exit runs.
-        config.leafOptimizationConfig.autoEnabled = !isExiting
+        let config = Self.sdkConfig(network: network, apiKey: Env.breezApiKey, isExiting: isExiting)
         let storageDir = Env.sparkStorage(walletIndex: walletIndex)
         try FileManager.default.createDirectory(at: storageDir, withIntermediateDirectories: true)
         let connected = try await BreezSdkSpark.connect(request: ConnectRequest(
@@ -283,6 +273,25 @@ final class SparkManager: ChannelFreeLightningRail {
         Logger.info("Connected Spark wallet on '\(network)'", context: "SparkManager")
         await importRestoredExitState(walletIndex: walletIndex)
         Self.exitStateChanged.send()
+    }
+
+    /// The SDK config Bitkit connects with.
+    nonisolated static func sdkConfig(network: BreezSdkSpark.Network, apiKey: String?, isExiting: Bool) -> BreezSdkSpark.Config {
+        var config = defaultConfig(network: network)
+        config.apiKey = apiKey
+        // No Breez data sync server and no Lightning address server: Bitkit uses neither.
+        config.realTimeSyncServerUrl = nil
+        config.lnurlDomain = nil
+        // Lowering it below the spread keeps the deposit from being claimed early, and does not hold back its claim at
+        // maturity. An early claim is made only when the user chose Instant (`claimEarly`).
+        config.maxDepositClaimFee = MaxFee(
+            onchain: .networkRecommended(leewaySatPerVbyte: depositClaimFeeLeewaySatPerVbyte),
+            proportionalPpm: nil
+        )
+        // Optimizing swaps leaves with the operators, which would hand the leaves an exit is spending to someone
+        // else, whose refunds then confirm first. Off for as long as an emergency exit runs.
+        config.leafOptimizationConfig.autoEnabled = !isExiting
+        return config
     }
 
     func wipe(walletIndex: Int) async {
