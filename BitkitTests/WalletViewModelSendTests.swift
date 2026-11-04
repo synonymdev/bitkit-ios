@@ -60,6 +60,21 @@ final class WalletViewModelSendTests: XCTestCase {
         }
     }
 
+    func testRestoringTheScannedAmountClearsCoinsChosenForAnEditedAmount() {
+        let wallet = WalletViewModel()
+        let utxo = SpendableUtxo(outpoint: OutPoint(txid: String(repeating: "a", count: 64), vout: 0), valueSats: 20000)
+
+        wallet.sendAmountSats = 10000
+        wallet.selectedUtxos = [utxo]
+        wallet.restoreScannedSendAmount(50000)
+        XCTAssertEqual(wallet.sendAmountSats, 50000)
+        XCTAssertNil(wallet.selectedUtxos)
+
+        wallet.selectedUtxos = [utxo]
+        wallet.restoreScannedSendAmount(50000)
+        XCTAssertEqual(wallet.selectedUtxos?.map(\.valueSats), [20000])
+    }
+
     func testSoftwareMaxUsesSpendableOutputsInsteadOfFixedAmountSelection() async throws {
         let wallet = WalletViewModel()
         wallet.sendAmountSats = 99819

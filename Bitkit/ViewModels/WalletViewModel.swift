@@ -1801,6 +1801,15 @@ class WalletViewModel: ObservableObject {
         availableUtxos = []
     }
 
+    /// Amount restores the scanned amount over an edited one; coins chosen for the edit no longer fit,
+    /// and a Confirm opened directly from the scan keeps them unless they are cleared here.
+    func restoreScannedSendAmount(_ amountSats: UInt64) {
+        if sendAmountSats != amountSats {
+            selectedUtxos = nil
+        }
+        sendAmountSats = amountSats
+    }
+
     func resetSendState(speed: TransactionSpeed) {
         sendAmountSats = nil
         selectedFeeRateSatsPerVByte = nil
