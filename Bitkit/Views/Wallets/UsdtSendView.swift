@@ -34,8 +34,8 @@ struct UsdtSendView: View {
     @State private var preparingMaximum = false
     @State private var editingRecipient = false
     @State private var editingAmount = false
-    /// A scanned or linked request that names an amount fixes it; the payee set it.
-    @State private var isAmountFixed = false
+    /// The recipient whose scanned or linked request named the amount; the payee set it, so it cannot be edited.
+    @State private var fixedAmountRecipient: String?
     @State private var busy = false
     @State private var error: String?
     @State private var submissionError: SubmissionFailure?
@@ -83,7 +83,9 @@ struct UsdtSendView: View {
         _recipient = State(initialValue: initialRecipient)
         _amount = State(initialValue: (try? usdtParseAmount(value: initialAmount)) == 0 ? "" : initialAmount)
         _editingAmount = State(initialValue: !initialRecipient.isEmpty)
-        _isAmountFixed = State(initialValue: (try? usdtParseAmount(value: initialAmount)).map { $0 > 0 } ?? false)
+        _fixedAmountRecipient = State(
+            initialValue: (try? usdtParseAmount(value: initialAmount)).map { $0 > 0 } == true ? initialRecipient : nil
+        )
     }
 
     private var paymentRequest: PaykitPaymentRequest? {
@@ -716,10 +718,10 @@ struct UsdtSendView: View {
             if request.chainId != nil {
                 destination = .arbitrum
             }
-            isAmountFixed = Self.isAmountFixed(
+            fixedAmountRecipient = Self.fixedAmountRecipient(
+                recipient: request.recipient,
                 requestedAmount: request.amount,
-                wasFixed: isAmountFixed,
-                isSameRecipient: request.recipient == recipient
+                fixedRecipient: fixedAmountRecipient
             )
             recipient = request.recipient
             if let requestedAmount = request.amount {
@@ -736,13 +738,17 @@ struct UsdtSendView: View {
         }
     }
 
-    /// A request that names a positive amount fixes it. Continuing with the same recipient and no amount,
-    /// as after Back from review, keeps an earlier fixed amount.
-    static func isAmountFixed(requestedAmount: UInt64?, wasFixed: Bool, isSameRecipient: Bool) -> Bool {
+    private var isAmountFixed: Bool {
+        fixedAmountRecipient != nil
+    }
+
+    /// The recipient whose request fixes the amount. A positive requested amount fixes it for that recipient.
+    /// Continuing with the same recipient and no amount, as after Back from review, keeps it; any other recipient clears it.
+    static func fixedAmountRecipient(recipient: String, requestedAmount: UInt64?, fixedRecipient: String?) -> String? {
         if let requestedAmount {
-            return requestedAmount > 0
+            return requestedAmount > 0 ? recipient : nil
         }
-        return wasFixed && isSameRecipient
+        return fixedRecipient?.caseInsensitiveCompare(recipient) == .orderedSame ? fixedRecipient : nil
     }
 
     private func readImage(_ item: PhotosPickerItem?) async {

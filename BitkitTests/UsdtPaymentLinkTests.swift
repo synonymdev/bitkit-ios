@@ -95,11 +95,15 @@ final class UsdtPaymentLinkTests: XCTestCase {
         }
     }
 
-    func testFixedAmountSurvivesContinuingWithTheSameRecipient() {
-        XCTAssertTrue(UsdtSendView.isAmountFixed(requestedAmount: 10001, wasFixed: false, isSameRecipient: false))
-        XCTAssertFalse(UsdtSendView.isAmountFixed(requestedAmount: 0, wasFixed: true, isSameRecipient: true))
-        XCTAssertTrue(UsdtSendView.isAmountFixed(requestedAmount: nil, wasFixed: true, isSameRecipient: true))
-        XCTAssertFalse(UsdtSendView.isAmountFixed(requestedAmount: nil, wasFixed: true, isSameRecipient: false))
-        XCTAssertFalse(UsdtSendView.isAmountFixed(requestedAmount: nil, wasFixed: false, isSameRecipient: true))
+    func testFixedAmountStaysWithTheRecipientThatSetIt() {
+        let payee = "0x1111111111111111111111111111111111111111"
+        let other = "0x2222222222222222222222222222222222222222"
+        XCTAssertEqual(UsdtSendView.fixedAmountRecipient(recipient: payee, requestedAmount: 10001, fixedRecipient: nil), payee)
+        XCTAssertNil(UsdtSendView.fixedAmountRecipient(recipient: payee, requestedAmount: 0, fixedRecipient: payee))
+        // Back from review then Continue with the same address keeps the fixed amount.
+        XCTAssertEqual(UsdtSendView.fixedAmountRecipient(recipient: payee, requestedAmount: nil, fixedRecipient: payee), payee)
+        // A different address typed after Back does not inherit it.
+        XCTAssertNil(UsdtSendView.fixedAmountRecipient(recipient: other, requestedAmount: nil, fixedRecipient: payee))
+        XCTAssertNil(UsdtSendView.fixedAmountRecipient(recipient: payee, requestedAmount: nil, fixedRecipient: nil))
     }
 }
