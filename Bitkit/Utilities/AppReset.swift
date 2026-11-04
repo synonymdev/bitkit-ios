@@ -39,9 +39,19 @@ enum AppReset {
             BackupService.shared.setWiping(false)
         }
 
-        // Stop backup observers and reset VSS client
         await BackupService.shared.stopObservingBackups()
-        await VssBackupClient.shared.reset()
+        try await VssBackupClient.shared.withSuspendedClients {
+            try await wipeWithClientsSuspended(app: app, wallet: wallet, session: session, toastType: toastType)
+        }
+    }
+
+    @MainActor
+    private static func wipeWithClientsSuspended(
+        app: AppViewModel,
+        wallet: WalletViewModel,
+        session: SessionManager,
+        toastType: Toast.ToastType
+    ) async throws {
         VssStoreIdProvider.shared.clearCache()
 
         OnChainHwService.shared.stopAllWatchers()
