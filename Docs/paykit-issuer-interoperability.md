@@ -38,10 +38,10 @@ This conservative bound keeps the product exact before rounding to payment units
 quotes outside the bound are rejected even when a particular product could fit.
 
 On-chain amounts round upward once to satoshis. Lightning amounts round upward once
-to millisatoshis and must then be exactly representable in whole satoshis. The existing
-send sheet uses one amount across its available rails: requests with differing BTC
-amounts across those rails, per-period quotes, and conversion-based subscriptions are
-unsupported. Normal unpriced BTC requests are unchanged.
+to millisatoshis and must then be exactly representable in whole satoshis. Selecting a
+funding source uses that rail's exact quoted amount and refreshes fees before payment.
+Per-period quotes and conversion-based subscriptions are outside this one-time contract.
+Normal unpriced BTC requests are unchanged.
 
 Bitkit displays the payable BTC amount and its own market-rate fiat estimate, not the
 original denomination as a fiat estimate. Original request terms remain unchanged in Paykit.
