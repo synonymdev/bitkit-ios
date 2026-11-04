@@ -334,6 +334,12 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertEqual(paymentSheetRoute(for: app), .amount)
     }
 
+    func testScannedOnchainAmountBelowMinimumIsRejected() async throws {
+        let app = AppViewModel()
+        try await app.handleScannedData("bitcoin:bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x?amount=0.000005")
+        XCTAssertTrue(app.didRejectScannedPayment)
+    }
+
     func testOnchainInvoiceBelowMinimumOpensAmount() {
         let app = appWithOnchainInvoice(amountSatoshis: UInt64(Env.dustLimit) - 1)
 
