@@ -1,12 +1,13 @@
 <journey name="Allowance Paused After Restore">
   <description>
-    A payer restored from its recovery phrase pays nothing automatically until it resumes: the
-    Allowances tab shows "Automatic payments paused" with the restore explanation, a request within
-    the limits asks as an ordinary Payment Request, the pause survives a relaunch, and Resume brings
-    automatic payments back. Reset And Restore wipes the keychain, so a restore on the same instance
-    is enough. Requires the Active allowance from set-and-accept.xml, the payer's notification
-    permission granted and a usable channel on the payer after the restore. The journey wipes the
-    payer half way through, so do not run it against a wallet whose funds matter.
+    Automatic payments stay paused after a payer restores its wallet from its recovery phrase, until
+    the payer resumes them: the Allowances tab explains the pause, a request within the limits asks
+    for approval instead of paying, the pause survives a relaunch, and Resume turns automatic
+    payments back on. Reset And Restore wipes the keychain and reads the allowance state back from
+    the wallet backup, so no second install is needed. Requires the Active allowance from
+    set-and-accept.xml and the payer's notification permission granted. When the payer requires a
+    PIN for payments, Resume asks for it, as in pin-gates-allowance-changes.xml. The journey wipes
+    the payer half way through, so do not run it against a wallet whose funds matter.
   </description>
   <actions>
     <action>Launch the E2E Bitkit app on both instances with the $5 a payment, $50 a month allowance from set-and-accept.xml Active, and the payer's notification permission granted</action>
@@ -16,13 +17,15 @@
     <action>On the onboarding screen tap "Restore" (id "RestoreWallet"), then "MultipleDevices-button", enter the recorded words into the word inputs (id "Word-0" onwards) and tap Restore (id "RestoreButton")</action>
     <action>Wait for the restore to finish and tap "Get Started" (id "GetStartedButton")</action>
     <action>Open the drawer menu, tap Subscriptions and tap the Allowances tab (id "Tab-allowances")</action>
-    <action>Verify the paused notice (id "AllowancesPaused") reads "Automatic payments paused" and "This wallet was restored from a backup. Requests ask for your approval until you resume.", and the payee's row (id "AllowanceRow-&lt;entryId&gt;") is listed as Active</action>
+    <action>Verify the paused notice (id "AllowancesPaused") reads "Automatic payments paused" and "This wallet was restored from a backup. Requests ask for your approval until you resume.", shows Resume (id "AllowancesResume"), and the payee's row (id "AllowanceRow-&lt;entryId&gt;") is listed as Active</action>
     <action>On the payee instance, open the drawer menu, tap Subscriptions, tap the Payments tab (id "Tab-payments") and send the payer a one-time Payment Request for $2 with the note "Paused"</action>
-    <action>Switch to the payer instance and verify the Payment Request sheet (id "PaymentRequestsSheet") opens for $2.00 from the payee, or the bell (id "PaymentRequestsBell") shows one pending request, and that no "Payment Executed" notification is posted</action>
-    <action>Dismiss the request (id "PaymentRequestDismiss-&lt;paymentRequestId&gt;") without paying</action>
-    <action>Terminate Bitkit on the payer instance, relaunch it, open the drawer menu, tap Subscriptions and tap the Allowances tab, and verify the paused notice (id "AllowancesPaused") is still shown</action>
-    <action>Tap Resume (id "AllowancesResume"), complete the PIN check if one is asked, and verify the paused notice is gone</action>
+    <action>Switch to the payer instance, with Bitkit in the foreground, and verify the Payment Request sheet (id "PaymentRequestsSheet") opens for the request, or the bell (id "PaymentRequestsBell") shows one pending request, and that no "Payment Executed" notification is posted, checking banners and Bitkit's entries in Notification Center</action>
+    <action>Pay it from the sheet (id "PaymentRequestPay-&lt;paymentRequestId&gt;") and complete Swipe To Pay, then verify Bitcoin Sent shows about $2.00</action>
+    <action>Relaunch the payer with `xcrun simctl terminate &lt;udid&gt; to.bitkit` and `xcrun simctl launch &lt;udid&gt; to.bitkit`, open the drawer menu, tap Subscriptions and tap the Allowances tab</action>
+    <action>Verify the paused notice (id "AllowancesPaused") still reads "This wallet was restored from a backup. Requests ask for your approval until you resume."</action>
+    <action>Tap Resume (id "AllowancesResume") and, if the PIN pad shows, enter the PIN</action>
+    <action>Verify the paused notice (id "AllowancesPaused") is gone and the payee's row is still listed as Active</action>
     <action>On the payee instance, send the payer a one-time Payment Request for $2 with the note "Resumed"</action>
-    <action>Switch to the payer instance, with Bitkit in the foreground, and verify no Payment Request sheet opens and a "Payment Executed" notification with the text "Auto-pay sent $2.00 to &lt;payee&gt;" is posted as a banner, or under Bitkit in Notification Center</action>
+    <action>Switch to the payer instance, with Bitkit in the foreground, and verify a "Payment Executed" notification with the text "Auto-pay sent $2.00 to &lt;payee&gt;" is posted, checking the banner or Bitkit's entries in Notification Center</action>
   </actions>
 </journey>

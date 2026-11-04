@@ -32,6 +32,8 @@ UI snapshot cannot see.
 Request sheet for the same request opens at the same time; behind the PIN screen the sheet waits, so
 the notification is posted.
 
+A wallet restore leaves automatic payments paused until Resume. Journeys that restore, such as `restore-keeps-history.xml`, end with automatic payments paused, so tap Resume in Allowances before running an automatic payment journey on the same instance.
+
 The journeys set $5 a payment and $50 a month, the second stop on each slider, and the cap journey
 sets $5 a payment and $10 a month, the first monthly stop. Requests are one-time Payment Requests
 created from the Payments tab of the payee, priced in bitcoin. On Android, enter the amount in sats:
