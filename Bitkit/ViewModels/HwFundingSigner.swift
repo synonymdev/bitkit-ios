@@ -340,6 +340,8 @@ final class HwSendCoordinator {
     private(set) var isRebroadcasting = false
     /// A broadcast past its deadline is still running, so its bytes are not broadcast again until it answers.
     private(set) var isLateBroadcastRunning = false
+    /// A Shop broadcast's success that came after the screen deadline, for the sign screen to complete as it would in time.
+    private(set) var lateShopResult: HwFundingBroadcastResult?
     private(set) var isPassphraseRequired = false
     private(set) var isVerifyingPassphrase = false
 
@@ -357,6 +359,8 @@ final class HwSendCoordinator {
     private let signerFactory: @MainActor (HwWalletManager, String, UInt64) -> HwFundingSigner
     @ObservationIgnored private let heldBroadcasts: HwHeldBroadcastStore
     private let broadcastDeadline: Duration
+    /// Counted from the screen deadline, so a broadcast stops blocking another about when the store's bound, counted from its
+    /// start, lets it.
     private let staleBroadcastAfter: Duration
     private let recordSeenSend: (HwHeldBroadcast) async -> Void
     /// Bumped by every broadcast, so a late answer of one never acts after another of the same bytes began.
@@ -395,7 +399,7 @@ final class HwSendCoordinator {
         },
         heldBroadcasts: HwHeldBroadcastStore = .shared,
         broadcastDeadline: Duration = .seconds(60),
-        staleBroadcastAfter: Duration = .seconds(120),
+        staleBroadcastAfter: Duration = .seconds(60),
         recordSeenSend: @escaping (HwHeldBroadcast) async -> Void = HwSendRecord.saveSeen
     ) {
         self.walletId = walletId
@@ -493,6 +497,7 @@ final class HwSendCoordinator {
         let request = PaymentRequest(address: address, sats: sats, satsPerVByte: satsPerVByte)
         if pendingPayment?.request != request {
             pendingPayment = nil
+            unresolvedSend = nil
         }
         do {
             let signer = signerFactory(manager, address, satsPerVByte)
@@ -885,7 +890,7 @@ final class HwSendCoordinator {
             await store.rebroadcast(held) { _ = try await signer.broadcastSignedFunding(signed) }
         }
         let outcome = await awaitUntilDeadline(rebroadcast) ?? .mayConfirm
-        if outcome == .neverConfirms, unresolvedSend == unresolved {
+        if outcome == .neverConfirms || outcome == .released, unresolvedSend == unresolved {
             releasedSendTxId = unresolved.txId
             resetBroadcast()
         }
@@ -894,7 +899,7 @@ final class HwSendCoordinator {
 
     private func retryUnresolvedSend(manager: HwWalletManager) async throws -> Never {
         switch await rebroadcastUnresolvedSend(manager: manager) {
-        case .neverConfirms:
+        case .neverConfirms, .released:
             throw HwTransferError.broadcastNeverConfirms
         case .accepted, .mayConfirm, .inFlight:
             throw HwTransferError.broadcastUncertain
@@ -960,6 +965,7 @@ final class HwSendCoordinator {
             case let .success(result):
                 Logger.info("A late Shop hardware broadcast was taken", context: "HwSendCoordinator")
                 await afterBroadcast(result)
+                lateShopResult = result
             case let .failure(error):
                 let underlying = (error as? AppError)?.underlyingError ?? error
                 guard !(underlying is PreparedOnchainSendNotSubmitted), error.isHardwareBroadcastRefusal() else { return }

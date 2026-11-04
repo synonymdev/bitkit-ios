@@ -96,6 +96,7 @@
 "hardware__send_held_unreadable" = "Bitkit no ha podido leer un pago anterior de este monedero de hardware, así que no firmará uno nuevo.";
 "hardware__send_already_sent_title" = "Ya enviado";
 "hardware__send_already_sent_text" = "Este pago ya se envió el {date}. ¿Quieres enviarlo de nuevo?";
+"hardware__send_already_sent_text_undated" = "Este pago ya se envió. ¿Quieres enviarlo de nuevo?";
 "hardware__send_again" = "Enviar de nuevo";
 "hardware__send_show_payment" = "Ver pago";
 "hardware__send_broadcast_running" = "Este pago aún se está transmitiendo. Inténtalo de nuevo dentro de un momento.";

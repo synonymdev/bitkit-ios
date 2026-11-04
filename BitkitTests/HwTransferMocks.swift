@@ -229,8 +229,12 @@ final class FakeHeldBroadcastResolver: HwHeldBroadcastResolving {
     var spentElsewhere: Set<String> = []
     var spentElsewhereError: Error?
 
+    /// Runs on each observation before it answers, so a test can act between two reads.
+    var onObservation: ((Int) -> Void)?
+
     func isObserved(_ held: HwHeldBroadcast) async throws -> Bool {
         observationCalls += 1
+        onObservation?(observationCalls)
         if let observedError {
             throw observedError
         }

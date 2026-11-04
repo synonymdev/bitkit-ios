@@ -675,7 +675,7 @@ struct SendPendingScreen: View {
             )
         case .inFlight:
             app.toast(type: .info, title: t("hardware__send_broadcast_running"))
-        case .neverConfirms:
+        case .neverConfirms, .released:
             // The released payment closes this screen through `releasedSendTxId`
             break
         }

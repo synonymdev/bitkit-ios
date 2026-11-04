@@ -97,6 +97,7 @@
 "hardware__send_held_unreadable" = "Bitkit не смог прочитать предыдущий платёж с этого аппаратного кошелька, поэтому не будет подписывать новый.";
 "hardware__send_already_sent_title" = "Уже отправлено";
 "hardware__send_already_sent_text" = "Этот платёж уже был отправлен {date}. Отправить его снова?";
+"hardware__send_already_sent_text_undated" = "Этот платёж уже был отправлен. Отправить его снова?";
 "hardware__send_again" = "Отправить снова";
 "hardware__send_show_payment" = "Показать платёж";
 "hardware__send_broadcast_running" = "Этот платёж всё ещё отправляется в сеть. Попробуйте ещё раз через минуту.";

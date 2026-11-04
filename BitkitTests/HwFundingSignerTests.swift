@@ -25,7 +25,7 @@ final class HwFundingSignerTests: XCTestCase {
         signerFactory: (@MainActor (HwWalletManager, String, UInt64) -> HwFundingSigner)? = nil,
         heldBroadcasts: HwHeldBroadcastStore? = nil,
         broadcastDeadline: Duration = .seconds(60),
-        staleBroadcastAfter: Duration = .seconds(120),
+        staleBroadcastAfter: Duration = .seconds(60),
         recordSeenSend: @escaping (HwHeldBroadcast) async -> Void = { _ in }
     ) -> HwSendCoordinator {
         let store = heldBroadcasts ?? {
@@ -545,7 +545,8 @@ final class HwFundingSignerTests: XCTestCase {
         _ = await first.result
         XCTAssertFalse(try heldBroadcasts.isHeld(heldSignedTx), "Nothing else was sent, so the first answer proves nothing went out")
         let afterRelease = await secondSheet.rebroadcastUnresolvedSend(manager: HwWalletManager())
-        XCTAssertEqual(afterRelease, .neverConfirms, "A released send is never broadcast again from a stale sheet")
+        XCTAssertEqual(afterRelease, .released, "A released send is never broadcast again from a stale sheet")
+        XCTAssertEqual(secondSheet.releasedSendTxId, Self.signedTransactionId, "The stale sheet lets the payment be made again")
         XCTAssertEqual(funding.broadcastCalls, 1)
 
         // With a second dispatch taken while the first was in flight, the first's not-sent answer keeps the hold
@@ -571,7 +572,8 @@ final class HwFundingSignerTests: XCTestCase {
         await eventually("the late success reached the proof flow") { callbacks.completed == [funding.broadcastTxId] }
 
         XCTAssertEqual(callbacks.refusals, [false])
-        XCTAssertTrue(coordinator.isBroadcastUnresolved, "The payment stays uncertain until its proof resolves it")
+        await eventually("the sign screen is handed the late success") { coordinator.lateShopResult?.txId == funding.broadcastTxId }
+        XCTAssertTrue(coordinator.isBroadcastUnresolved, "The sign screen completes the payment as it would in time")
         XCTAssertTrue(coordinator.hasPendingBroadcast)
         XCTAssertEqual(funding.broadcastCalls, 1)
     }
@@ -585,6 +587,7 @@ final class HwFundingSignerTests: XCTestCase {
         await eventually("the late refusal marked the candidate") { callbacks.refusals == [false, true] }
 
         XCTAssertTrue(callbacks.completed.isEmpty)
+        XCTAssertNil(coordinator.lateShopResult)
         XCTAssertFalse(coordinator.isBroadcastUnresolved)
         XCTAssertTrue(coordinator.canLeave)
         XCTAssertTrue(coordinator.hasPendingBroadcast, "The refused candidate stays retained")
@@ -627,6 +630,30 @@ final class HwFundingSignerTests: XCTestCase {
         }
         XCTAssertEqual(funding.broadcastCalls, 1, "A retry waits for the running broadcast to answer")
         return (coordinator, funding, gate, callbacks)
+    }
+
+    func testBroadcastAgainOnASendJustRecordedAsSeenRoutesToSuccess() async throws {
+        let funding = MockHwFunding()
+        funding.signedTx = heldSignedTx
+        funding.broadcastError = MockHwFunding.TestError()
+        let coordinator = try await holdUnknownSend(funding)
+        let seen = HwHeldBroadcast(heldSignedTx, walletId: "trezor:wallet", address: "bc1qtest", amountSats: 42000)
+        heldResolver.resetObservationCount()
+        // The wallet sees it right after Broadcast Again read it as unseen, and the app records and releases it
+        heldResolver.onObservation = { [heldBroadcasts, heldResolver] call in
+            guard call == 1 else { return }
+            heldResolver?.observedFromCall = 2
+            try? heldBroadcasts?.release(seen.signedTx)
+        }
+
+        let outcome = await coordinator.rebroadcastUnresolvedSend(manager: HwWalletManager())
+
+        XCTAssertEqual(outcome, .accepted, "A send released as seen is not reported as never confirming")
+        XCTAssertNil(coordinator.releasedSendTxId)
+        XCTAssertEqual(coordinator.unresolvedSend?.txId, Self.signedTransactionId)
+        let completed = await coordinator.completeObservedSend { _ in }
+        XCTAssertTrue(completed, "Its pending screen moves on to success")
+        XCTAssertEqual(funding.broadcastCalls, 1)
     }
 
     func testASuccessfulSendStaysHeldUntilItIsRecorded() async throws {
@@ -826,7 +853,7 @@ final class HwFundingSignerTests: XCTestCase {
         try store.release(held.signedTx)
         XCTAssertFalse(store.isDispatching(held.signedTx))
         let afterRelease = await store.rebroadcast(held) { XCTFail("A released send is never broadcast again") }
-        XCTAssertEqual(afterRelease, .neverConfirms)
+        XCTAssertEqual(afterRelease, .released)
     }
 
     func testBroadcastAgainIsAllowedAgainOnceALateBroadcastPassesItsBound() async throws {

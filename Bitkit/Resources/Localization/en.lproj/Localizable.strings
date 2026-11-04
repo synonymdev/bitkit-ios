@@ -99,6 +99,7 @@
 "hardware__send_held_unreadable" = "Bitkit could not read an earlier payment from this hardware wallet, so it will not sign a new one.";
 "hardware__send_already_sent_title" = "Already sent";
 "hardware__send_already_sent_text" = "This payment was already sent on {date}. Send it again?";
+"hardware__send_already_sent_text_undated" = "This payment was already sent. Send it again?";
 "hardware__send_again" = "Send Again";
 "hardware__send_show_payment" = "Show Payment";
 "hardware__send_broadcast_running" = "This payment is still being broadcast. Try again in a moment.";

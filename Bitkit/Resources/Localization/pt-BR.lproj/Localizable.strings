@@ -98,6 +98,7 @@
 "hardware__send_held_unreadable" = "O Bitkit não conseguiu ler um pagamento anterior desta carteira de hardware, por isso não vai assinar um novo.";
 "hardware__send_already_sent_title" = "Já enviado";
 "hardware__send_already_sent_text" = "Este pagamento já foi enviado em {date}. Enviar novamente?";
+"hardware__send_already_sent_text_undated" = "Este pagamento já foi enviado. Enviar novamente?";
 "hardware__send_again" = "Enviar novamente";
 "hardware__send_show_payment" = "Ver pagamento";
 "hardware__send_broadcast_running" = "Este pagamento ainda está sendo transmitido. Tente novamente em instantes.";

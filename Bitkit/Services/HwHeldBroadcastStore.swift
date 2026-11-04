@@ -87,6 +87,8 @@ enum HwHeldRebroadcastOutcome: Equatable {
     case mayConfirm
     /// Another broadcast of the same bytes is still running, so it was not broadcast again.
     case inFlight
+    /// Another path released it after proving it never went out or can never confirm, so the payment can be made again.
+    case released
 }
 
 protocol HwHeldBroadcastResolving {
@@ -311,7 +313,12 @@ final class HwHeldBroadcastStore: @unchecked Sendable {
         do {
             dispatch = try beginDispatch(held, isRebroadcast: true)
         } catch HwHeldDispatchRefusal.released {
-            return .neverConfirms
+            // Released elsewhere since the read above: recorded once the wallet saw it, or proven never to have gone out
+            do {
+                return try await resolver.isObserved(held) ? .accepted : .released
+            } catch {
+                return .mayConfirm
+            }
         } catch HwHeldDispatchRefusal.inFlight {
             return .inFlight
         } catch {

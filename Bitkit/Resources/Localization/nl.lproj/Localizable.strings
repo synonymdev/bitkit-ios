@@ -98,6 +98,7 @@
 "hardware__send_held_unreadable" = "Bitkit kon een eerdere betaling van deze hardware wallet niet lezen en ondertekent daarom geen nieuwe.";
 "hardware__send_already_sent_title" = "Al verzonden";
 "hardware__send_already_sent_text" = "Deze betaling is al verzonden op {date}. Opnieuw verzenden?";
+"hardware__send_already_sent_text_undated" = "Deze betaling is al verzonden. Opnieuw verzenden?";
 "hardware__send_again" = "Opnieuw verzenden";
 "hardware__send_show_payment" = "Betaling tonen";
 "hardware__send_broadcast_running" = "Deze betaling wordt nog uitgezonden. Probeer het zo opnieuw.";

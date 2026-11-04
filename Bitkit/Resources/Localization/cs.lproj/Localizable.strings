@@ -98,6 +98,7 @@
 "hardware__send_held_unreadable" = "Bitkit nemohl přečíst dřívější platbu z této hardwarové peněženky, proto nepodepíše novou.";
 "hardware__send_already_sent_title" = "Již odesláno";
 "hardware__send_already_sent_text" = "Tato platba už byla odeslána {date}. Odeslat ji znovu?";
+"hardware__send_already_sent_text_undated" = "Tato platba už byla odeslána. Odeslat ji znovu?";
 "hardware__send_again" = "Odeslat znovu";
 "hardware__send_show_payment" = "Zobrazit platbu";
 "hardware__send_broadcast_running" = "Tato platba se stále odesílá do sítě. Zkus to za chvíli znovu.";

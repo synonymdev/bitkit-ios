@@ -95,6 +95,7 @@
 "hardware__send_held_unreadable" = "Το Bitkit δεν μπόρεσε να διαβάσει μια προηγούμενη πληρωμή από αυτό το πορτοφόλι υλικού, οπότε δεν θα υπογράψει νέα.";
 "hardware__send_already_sent_title" = "Έχει ήδη σταλεί";
 "hardware__send_already_sent_text" = "Αυτή η πληρωμή στάλθηκε ήδη στις {date}. Να σταλεί ξανά;";
+"hardware__send_already_sent_text_undated" = "Αυτή η πληρωμή έχει ήδη σταλεί. Να σταλεί ξανά;";
 "hardware__send_again" = "Αποστολή ξανά";
 "hardware__send_show_payment" = "Εμφάνιση πληρωμής";
 "hardware__send_broadcast_running" = "Η μετάδοση αυτής της πληρωμής βρίσκεται ακόμα σε εξέλιξη. Δοκίμασε ξανά σε λίγο.";

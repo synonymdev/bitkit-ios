@@ -98,6 +98,7 @@
 "hardware__send_held_unreadable" = "Bitkit no ha pogut llegir un pagament anterior d'aquesta cartera de maquinari, així que no en signarà cap de nou.";
 "hardware__send_already_sent_title" = "Ja enviat";
 "hardware__send_already_sent_text" = "Aquest pagament ja es va enviar el {date}. El vols tornar a enviar?";
+"hardware__send_already_sent_text_undated" = "Aquest pagament ja es va enviar. El vols tornar a enviar?";
 "hardware__send_again" = "Torna a enviar";
 "hardware__send_show_payment" = "Mostra el pagament";
 "hardware__send_broadcast_running" = "Aquest pagament encara s'està difonent. Torna-ho a provar d'aquí a un moment.";

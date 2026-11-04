@@ -97,6 +97,7 @@
 "hardware__send_held_unreadable" = "Bitkit non è riuscito a leggere un pagamento precedente da questo hardware wallet, quindi non ne firmerà uno nuovo.";
 "hardware__send_already_sent_title" = "Già inviato";
 "hardware__send_already_sent_text" = "Questo pagamento è già stato inviato il {date}. Inviarlo di nuovo?";
+"hardware__send_already_sent_text_undated" = "Questo pagamento è già stato inviato. Inviarlo di nuovo?";
 "hardware__send_again" = "Invia di nuovo";
 "hardware__send_show_payment" = "Mostra pagamento";
 "hardware__send_broadcast_running" = "Questo pagamento è ancora in fase di trasmissione. Riprova tra un momento.";
