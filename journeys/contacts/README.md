@@ -6,6 +6,11 @@ disposable, request-capable identities. Record readiness timing separately from 
 A natural run may finish linking before backgrounding; the controlled pending-operation checks
 below are still needed to verify that pending work resumes.
 
+`contact-pay-private-link-pending.xml` checks that paying a contact saved on one side only waits
+for the private connection instead of using the contact's public payment details, and that Pay
+works once the contact saves you back. It requires two disposable identities, the second one
+sharing public payment details. The pending message is a toast, so read it from a screenshot.
+
 `delete-newly-saved-contact.xml` checks deletion directly from Contact Saved and adding that
 contact again. It is mirrored on Android. Deleted contact screens must not remain in Back history.
 

@@ -1076,6 +1076,7 @@
 "contacts__add_retrieving" = "Pobieranie\ndanych kontaktu";
 "contacts__add_error" = "Nie udało się dodać kontaktu";
 "contacts__add_disclaimer" = "Pamiętaj, że Ty i {name} musicie dodać się nawzajem do kontaktów, aby płacić sobie prywatnie. W przeciwnym razie płatność będzie widoczna publicznie.";
+"contacts__pay_private_link_pending" = "Bitkit konfiguruje prywatne połączenie z tym kontaktem. Spróbuj ponownie za chwilę lub poproś tę osobę o wysłanie żądania płatności.";
 "contacts__import_nav_title" = "Import";
 "contacts__import_found_title" = "Znaleziono\n<accent>profil i kontakty</accent>";
 "contacts__import_found_description" = "Bitkit znalazł dane profilu i kontaktów powiązane z pubky <accent>{key}</accent>";

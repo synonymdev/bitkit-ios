@@ -888,6 +888,7 @@
 "contacts__add_retrieving" = "Λήψη στοιχείων\nεπαφής";
 "contacts__add_error" = "Αποτυχία προσθήκης επαφής";
 "contacts__add_disclaimer" = "Σημειώστε ότι εσείς και ο/η {name} πρέπει να προσθέσετε ο ένας τον άλλον ως επαφές για να πληρώνεστε ιδιωτικά. Διαφορετικά, η πληρωμή θα είναι δημόσια ορατή.";
+"contacts__pay_private_link_pending" = "Το Bitkit ρυθμίζει μια ιδιωτική σύνδεση με αυτή την επαφή. Δοκιμάστε ξανά σε λίγο ή ζητήστε από την επαφή να σας στείλει ένα αίτημα πληρωμής.";
 "contacts__import_nav_title" = "Εισαγωγή";
 "contacts__import_found_title" = "Βρέθηκαν\n<accent>προφίλ και επαφές</accent>";
 "contacts__import_found_description" = "Το Bitkit βρήκε δεδομένα προφίλ και επαφών συνδεδεμένα με το pubky <accent>{key}</accent>";

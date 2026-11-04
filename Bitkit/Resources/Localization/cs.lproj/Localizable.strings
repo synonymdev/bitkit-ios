@@ -1066,6 +1066,7 @@
 "contacts__add_retrieving" = "Načítání\ninformací o kontaktu";
 "contacts__add_error" = "Kontakt se nepodařilo přidat";
 "contacts__add_disclaimer" = "Upozorňujeme, že vy a {name} se musíte navzájem přidat jako kontakty, abyste si mohli platit soukromě. Jinak bude platba veřejně viditelná.";
+"contacts__pay_private_link_pending" = "Bitkit nastavuje soukromé spojení s tímto kontaktem. Zkuste to za chvíli znovu nebo kontakt požádejte, ať vám pošle žádost o platbu.";
 "contacts__import_nav_title" = "Import";
 "contacts__import_found_title" = "Nalezen\n<accent>profil a kontakty</accent>";
 "contacts__import_found_description" = "Bitkit našel data profilu a kontaktů propojená s pubky <accent>{key}</accent>";

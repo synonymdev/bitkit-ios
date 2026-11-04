@@ -981,6 +981,16 @@ actor PaykitSdkService {
         }
     }
 
+    /// Fetches the identity's verified Paykit Noise key authorization. A missing one throws `PaykitError.NotFound`.
+    func paykitNoiseKeyAuthorization(
+        publicKey: String,
+        priority: PaykitPublicReadPriority = .interactive
+    ) async throws -> Paykit.PaykitNoiseKeyAuthorization {
+        try await withPublicRead(priority: priority) { sdk in
+            try await sdk.paykitNoiseKeyAuthorization(publicKey: publicKey)
+        }
+    }
+
     func syncPaykitApp(
         privatePaymentsEnabled: Bool?,
         priority: PaykitSdkOperationLock.Priority = .ordered,
