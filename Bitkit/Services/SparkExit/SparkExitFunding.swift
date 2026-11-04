@@ -119,6 +119,34 @@ enum SparkExitMath {
         }.max()
     }
 
+    /// The next height above `tip` at which a timelocked step matures, for the reminder.
+    static func nextMaturityHeight(_ recovery: RecoverFundsResponse, tip: UInt32) -> UInt32? {
+        recovery.transactions.compactMap { tx -> UInt32? in
+            if case let .waitingForTimelock(height) = tx.status {
+                return height
+            }
+            return nil
+        }.filter { $0 > tip }.min()
+    }
+
+    /// Whether every refund's timelock is behind it: none still waits for its parents or its height.
+    static func areTimelocksMatured(_ transactions: [RecoveryTransaction]) -> Bool {
+        let refunds = transactions.filter { $0.kind == .refund }
+        return !refunds.isEmpty && !refunds.contains {
+            switch $0.status {
+            case .waitingForDependencies, .waitingForTimelock: true
+            default: false
+            }
+        }
+    }
+
+    /// The active exit transfers no running exit owns: a record set aside as unreadable, or one written without its
+    /// transfer id before a crash, would otherwise count its amount as in transfer to savings for good.
+    static func orphanedTransferIds(_ activeTransfers: [Transfer], record: SparkExitRecord?) -> [String] {
+        let owned = record?.isActive == true ? record?.transferId : nil
+        return activeTransfers.filter { $0.type == .sparkExit && $0.id != owned }.map(\.id)
+    }
+
     /// The steps already in a block, for progress.
     static func confirmedCount(_ recovery: RecoverFundsResponse) -> Int {
         recovery.transactions.filter {

@@ -128,7 +128,7 @@ struct SparkExitDriver {
             record.phase = .awaitingFunding(requiredSats: 0)
             return
         }
-        let checked = try await recovering.check(stored)
+        let checked = try await recovering.check(withConfirmations(stored))
         record.recovery = StoredRecovery(checked.recovery)
         switch checked.verdict {
         case .valid:
@@ -143,6 +143,25 @@ struct SparkExitDriver {
             guard isRebuildDue(record) else { return }
             try await build(&record, recovering: recovering)
         }
+    }
+
+    /// Marks the next steps the chain host shows in a block as confirmed. The SDK asks the chain about a step only
+    /// once the caller saw it in a block; otherwise it looks for who spent its input, which an Electrum-backed
+    /// mempool, such as Spark's regtest, does not report.
+    private func withConfirmations(_ recovery: RecoverFundsResponse) async -> RecoverFundsResponse {
+        var recovery = recovery
+        var confirmed = Set(recovery.transactions.compactMap { tx -> String? in
+            if case .confirmed = tx.status {
+                return tx.txid
+            }
+            return nil
+        })
+        for (i, tx) in recovery.transactions.enumerated() where !confirmed.contains(tx.txid) && tx.dependsOn.allSatisfy(confirmed.contains) {
+            guard let status = try? await chain.txStatus(txid: tx.txid), status.confirmed else { continue }
+            confirmed.insert(tx.txid)
+            recovery.transactions[i].status = .confirmed(blockHeight: status.blockHeight)
+        }
+        return recovery
     }
 
     private func isRebuildDue(_ record: SparkExitRecord) -> Bool {

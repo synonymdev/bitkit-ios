@@ -551,6 +551,29 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(record.phase, .running)
     }
 
+    func testCheckSeesStepsTheChainHostShowsInABlock() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.adopt(SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("fanout", status: .ready),
+            SparkExitFixtures.tx("n1", cpfp: "03c1", dependsOn: ["fanout"], status: .waitingForDependencies),
+            SparkExitFixtures.tx("n2", cpfp: "03c2", dependsOn: ["n1"], status: .waitingForDependencies),
+            SparkExitFixtures.tx("r1", kind: .refund, dependsOn: ["n3"], status: .waitingForDependencies),
+        ]))
+        chain.confirmedTxids = ["fanout", "n1", "r1"]
+        let stored = try XCTUnwrap(record.recovery?.response)
+        sdk.checks = [CheckRecoverFundsResponse(recovery: stored, verdict: .valid)]
+
+        _ = try await driver().tick(record)
+
+        let statuses = sdk.checkedRecoveries.first?.transactions.map(\.status)
+        XCTAssertEqual(statuses, [
+            .confirmed(blockHeight: 900),
+            .confirmed(blockHeight: 900),
+            .waitingForDependencies,
+            .waitingForDependencies,
+        ])
+    }
+
     func testDoesNothingOnceFinished() async throws {
         let record = try await driver().tick(SparkExitFixtures.record(phase: .done))
 
@@ -596,6 +619,46 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.claimableAtHeight(recovery), 2400)
         XCTAssertEqual(SparkExitMath.confirmedCount(recovery), 1)
         XCTAssertNil(SparkExitMath.claimableAtHeight(SparkExitFixtures.recovery([SparkExitFixtures.tx("d")])))
+    }
+
+    func testReminderIsTheNextTimelockAboveTheTip() {
+        let recovery = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("a", status: .waitingForTimelock(spendableAtHeight: 900)),
+            SparkExitFixtures.tx("b", status: .waitingForTimelock(spendableAtHeight: 2400)),
+            SparkExitFixtures.tx("c", status: .waitingForTimelock(spendableAtHeight: 1500)),
+        ])
+
+        XCTAssertEqual(SparkExitMath.nextMaturityHeight(recovery, tip: 1000), 1500)
+        XCTAssertEqual(SparkExitMath.claimableAtHeight(recovery), 2400)
+        XCTAssertNil(SparkExitMath.nextMaturityHeight(recovery, tip: 2400))
+    }
+
+    func testTimelocksMatureOnlyOnceNoRefundWaits() {
+        let node = SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 5))
+        let waitingForParent = SparkExitFixtures.tx("r1", kind: .refund, dependsOn: ["n1"], status: .waitingForDependencies)
+        let waitingForHeight = SparkExitFixtures.tx("r1", kind: .refund, dependsOn: ["n1"], status: .waitingForTimelock(spendableAtHeight: 2000))
+        let ready = SparkExitFixtures.tx("r1", kind: .refund, dependsOn: ["n1"], status: .ready)
+
+        XCTAssertFalse(SparkExitMath.areTimelocksMatured([]))
+        XCTAssertFalse(SparkExitMath.areTimelocksMatured([node]))
+        XCTAssertFalse(SparkExitMath.areTimelocksMatured([node, waitingForParent]))
+        XCTAssertFalse(SparkExitMath.areTimelocksMatured([node, waitingForHeight, ready]))
+        XCTAssertTrue(SparkExitMath.areTimelocksMatured([node, ready]))
+    }
+
+    func testSettlesExitTransfersNoRunningExitOwns() {
+        let transfers = [
+            Bitkit.Transfer(id: "transfer-1", type: .sparkExit, amountSats: 1000, createdAt: 0),
+            Bitkit.Transfer(id: "orphan", type: .sparkExit, amountSats: 1000, createdAt: 0),
+            Bitkit.Transfer(id: "channel", type: .toSavings, amountSats: 1000, createdAt: 0),
+        ]
+        var unowned = SparkExitFixtures.record(phase: .running)
+        unowned.transferId = nil
+
+        XCTAssertEqual(SparkExitMath.orphanedTransferIds(transfers, record: SparkExitFixtures.record(phase: .running)), ["orphan"])
+        XCTAssertEqual(SparkExitMath.orphanedTransferIds(transfers, record: unowned), ["transfer-1", "orphan"])
+        XCTAssertEqual(SparkExitMath.orphanedTransferIds(transfers, record: SparkExitFixtures.record(phase: .done)), ["transfer-1", "orphan"])
+        XCTAssertEqual(SparkExitMath.orphanedTransferIds(transfers, record: nil), ["transfer-1", "orphan"])
     }
 
     func testFundingUtxoMustBeConfirmedAndLargeEnough() {

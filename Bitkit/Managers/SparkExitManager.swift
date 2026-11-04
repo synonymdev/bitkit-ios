@@ -65,8 +65,12 @@ final class SparkExitManager {
         if isExiting {
             SparkManager.shared.detachForExit()
         }
-        if let record {
-            Task { await settleIfFinished(record) }
+        let record = record
+        Task {
+            if let record {
+                await settleIfFinished(record)
+            }
+            await settleOrphanedTransfers(record)
         }
     }
 
@@ -168,6 +172,15 @@ final class SparkExitManager {
         try? await TransferService(lightningService: .shared).markSettled(id: transferId)
     }
 
+    /// Settles exit transfers no running exit owns, so their amount never stays in transfer to savings for good.
+    private func settleOrphanedTransfers(_ record: SparkExitRecord?) async {
+        guard let active = try? TransferStorage.shared.getActiveTransfers() else { return }
+        for id in SparkExitMath.orphanedTransferIds(active, record: record) {
+            Logger.warn("Settling Spark exit transfer \(id) with no running exit", context: "SparkExitManager")
+            try? await TransferService(lightningService: .shared).markSettled(id: id)
+        }
+    }
+
     private func reattachSpark() async {
         let spark = SparkManager.shared
         await spark.reconnectForExit()
@@ -264,7 +277,7 @@ final class SparkExitManager {
         Task { await tick() }
     }
 
-    /// Pays the fee funding from savings, as a transfer activity.
+    /// Pays the fee funding from savings. It shows as an ordinary payment, not as a transfer to spending.
     func payFunding(address: String, sats: UInt64, satsPerVbyte: UInt32, feeSats: UInt64) async throws {
         let lightning = LightningService.shared
         let attempts = OnchainSendAttemptService.shared
@@ -290,7 +303,6 @@ final class SparkExitManager {
             walletId: OnchainSendAttemptService.walletId(index: lightning.currentWalletIndex),
             observedTxid: txid
         )
-        await CoreService.shared.activity.markOnchainActivityAsTransfer(txId: txid)
         Logger.info("Funded the Spark exit with \(sats) sats in \(txid)", context: "SparkExitManager")
     }
 
@@ -351,7 +363,10 @@ final class SparkExitManager {
             }
             seconds = 1
         case .running:
-            if let target = record.claimableAtHeight, let tipHeight, target > tipHeight {
+            // The next step to mature, not the last: each opens its own window for the operators' version.
+            if let tipHeight, let recovery = record.recovery?.response,
+               let target = SparkExitMath.nextMaturityHeight(recovery, tip: tipHeight)
+            {
                 seconds = SparkExitMath.secondsUntil(height: target, tip: tipHeight, network: Env.network)
             } else {
                 seconds = SparkExitMath.reminderSeconds(network: Env.network)

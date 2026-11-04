@@ -459,7 +459,7 @@ struct SparkExitSteps: View {
             step(
                 t("lightning__spark_exit__step_timelock"),
                 detail: remainingDuration.map { t("lightning__spark_exit__ready_in", variables: ["duration": $0]) },
-                isDone: record.phase == .done || (isFunded && record.claimableAtHeight == nil && !transactions.isEmpty)
+                isDone: record.phase == .done || SparkExitMath.areTimelocksMatured(transactions)
             )
             step(t("lightning__spark_exit__step_sweep"), isDone: record.phase == .done)
         }
