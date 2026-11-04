@@ -97,6 +97,11 @@
 "hardware__send_broadcast_failed_text" = "Revise su conexión y vuelva a intentarlo.";
 "hardware__send_broadcast_failed_title" = "Pago no confirmado";
 "hardware__send_held_unreadable" = "Bitkit no pudo leer un pago anterior de esta billetera de hardware, así que no firmará uno nuevo.";
+"hardware__send_already_sent_title" = "Ya enviado";
+"hardware__send_already_sent_text" = "Este pago ya se envió el {date}. ¿Quieres enviarlo de nuevo?";
+"hardware__send_again" = "Enviar de nuevo";
+"hardware__send_show_payment" = "Ver pago";
+"hardware__send_broadcast_running" = "Este pago aún se está transmitiendo. Inténtalo de nuevo en un momento.";
 "hardware__send_confirm_address" = "A la dirección (confirme en el dispositivo)";
 "hardware__send_onchain_only_title" = "Se requiere una dirección de Bitcoin";
 "hardware__send_onchain_only_text" = "Esta billetera de hardware solo puede enviar a una dirección de Bitcoin.";

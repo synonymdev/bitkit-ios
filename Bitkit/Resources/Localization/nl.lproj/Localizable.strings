@@ -96,6 +96,11 @@
 "hardware__send_broadcast_failed_text" = "Controleer uw verbinding en probeer het opnieuw.";
 "hardware__send_broadcast_failed_title" = "Betaling niet bevestigd";
 "hardware__send_held_unreadable" = "Bitkit kon een eerdere betaling van deze hardware wallet niet lezen en ondertekent daarom geen nieuwe.";
+"hardware__send_already_sent_title" = "Al verzonden";
+"hardware__send_already_sent_text" = "Deze betaling is al verzonden op {date}. Opnieuw verzenden?";
+"hardware__send_again" = "Opnieuw verzenden";
+"hardware__send_show_payment" = "Betaling tonen";
+"hardware__send_broadcast_running" = "Deze betaling wordt nog uitgezonden. Probeer het zo opnieuw.";
 "hardware__send_confirm_address" = "Naar adres (bevestig op apparaat)";
 "hardware__send_onchain_only_title" = "Bitcoin-adres vereist";
 "hardware__send_onchain_only_text" = "Deze hardwarewallet kan alleen naar een Bitcoin-adres versturen.";

@@ -20,6 +20,13 @@ struct HwSendSignView: View {
     @State private var passphraseTask: Task<Void, Never>?
     @State private var observedResolution: PaykitOnchainPaymentResolution?
     @State private var appliedResolution = false
+    @State private var alreadySentPayment: AlreadySentPayment?
+
+    private struct AlreadySentPayment {
+        let txId: String
+        let walletId: String
+        let date: String
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -71,6 +78,24 @@ struct HwSendSignView: View {
         .allowSwipeBack(false)
         .padding(.horizontal, 16)
         .sheetBackground()
+        .alert(
+            t("hardware__send_already_sent_title"),
+            isPresented: Binding(get: { alreadySentPayment != nil }, set: {
+                if !$0 {
+                    alreadySentPayment = nil
+                }
+            }),
+            presenting: alreadySentPayment
+        ) { payment in
+            Button(t("hardware__send_show_payment"), role: .cancel) {
+                navigationPath.append(.success(paymentId: payment.txId, walletId: payment.walletId))
+            }
+            Button(t("hardware__send_again")) {
+                startSigning()
+            }
+        } message: { payment in
+            Text(t("hardware__send_already_sent_text", variables: ["date": payment.date]))
+        }
         .sheet(isPresented: passphrasePromptBinding) {
             HwPassphrasePromptSheet(
                 isVerifying: hwSend.isVerifyingPassphrase,
@@ -178,6 +203,8 @@ struct HwSendSignView: View {
                         satsPerVByte: UInt64(feeRate),
                         paymentDeadline: deadline,
                         paymentRequestId: requestId,
+                        recordTags: tags,
+                        recordContactPublicKey: contactPublicKey,
                         loadSignedPayment: {
                             guard let requestId else { return nil }
                             guard let identity = contactPaymentIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
@@ -257,7 +284,6 @@ struct HwSendSignView: View {
             } catch where hwSend.unresolvedSend != nil {
                 guard let unresolved = hwSend.unresolvedSend else { return }
                 Logger.warn("Held hardware send of '\(walletId)' after an unknown broadcast outcome", context: "HwSendSignView")
-                hwSend.annotateUnresolvedSend(contactPublicKey: contactPublicKey, tags: tags)
                 navigationPath.append(.hardwarePending(
                     requestId: nil, walletId: walletId, transactionId: unresolved.txId, paymentIdentity: nil
                 ))
@@ -265,6 +291,12 @@ struct HwSendSignView: View {
                 app.toast(type: .error, title: t("common__error"), description: t("hardware__send_held_unreadable"))
             } catch is HwPassphraseError {
                 hwSend.requestPassphrase()
+            } catch let HwTransferError.paymentAlreadySent(txId) {
+                let activity = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: txId, walletId: walletId)
+                alreadySentPayment = AlreadySentPayment(
+                    txId: txId, walletId: walletId,
+                    date: activity.map { DateFormatterHelpers.formatActivityDetail($0.timestamp).date } ?? ""
+                )
             } catch let error as HwTransferError {
                 app.toast(error)
             } catch {
@@ -323,41 +355,9 @@ struct HwSendSignView: View {
         requestId: PaykitPaymentRequest.ID?,
         proofVerified: Bool
     ) async {
-        let metadata = PreActivityMetadata(
-            walletId: walletId,
-            paymentId: result.txId,
-            tags: tags,
-            paymentHash: nil,
-            txId: result.txId,
-            address: address,
-            isReceive: false,
-            feeRate: result.feeRate,
-            isTransfer: false,
-            channelId: nil,
-            createdAt: UInt64(Date().timeIntervalSince1970)
+        await HwSendRecord.save(
+            result, walletId: walletId, address: address, amount: amount, contactPublicKey: contactPublicKey, tags: tags,
+            requestId: requestId, proofVerified: proofVerified
         )
-        try? await CoreService.shared.activity.addPreActivityMetadata(metadata)
-
-        // Retain original metadata for an eventual exact observation. A Shop payment's
-        // local Core txid alone must not create a Sent row.
-        guard requestId == nil || proofVerified else { return }
-        await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
-            txid: result.txId,
-            address: address,
-            amount: amount,
-            fee: result.miningFeeSats,
-            feeRate: UInt32(clamping: result.feeRate),
-            contact: contactPublicKey,
-            walletId: walletId
-        )
-        if !tags.isEmpty {
-            try? await CoreService.shared.activity.appendTags(
-                toActivity: result.txId,
-                tags,
-                walletId: walletId
-            )
-        }
-
-        Logger.info("Hardware onchain send result txid: \(result.txId)")
     }
 }

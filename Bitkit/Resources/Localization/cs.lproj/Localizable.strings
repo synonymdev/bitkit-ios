@@ -96,6 +96,11 @@
 "hardware__send_broadcast_failed_text" = "Zkontrolujte připojení a zkuste to znovu.";
 "hardware__send_broadcast_failed_title" = "Platba nebyla potvrzena";
 "hardware__send_held_unreadable" = "Bitkit nemohl přečíst dřívější platbu z této hardwarové peněženky, proto nepodepíše novou.";
+"hardware__send_already_sent_title" = "Již odesláno";
+"hardware__send_already_sent_text" = "Tato platba už byla odeslána {date}. Odeslat ji znovu?";
+"hardware__send_again" = "Odeslat znovu";
+"hardware__send_show_payment" = "Zobrazit platbu";
+"hardware__send_broadcast_running" = "Tato platba se stále odesílá do sítě. Zkus to za chvíli znovu.";
 "hardware__send_confirm_address" = "Na adresu (potvrďte na zařízení)";
 "hardware__send_onchain_only_title" = "Je vyžadována bitcoinová adresa";
 "hardware__send_onchain_only_text" = "Tato hardwarová peněženka může odesílat pouze na bitcoinovou adresu.";

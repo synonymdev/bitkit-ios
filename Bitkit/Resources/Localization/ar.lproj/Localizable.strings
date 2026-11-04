@@ -85,6 +85,11 @@
 "hardware__send_broadcast_failed_text" = "تحقق من اتصالك وحاول مرة أخرى.";
 "hardware__send_broadcast_failed_title" = "الدفعة غير مؤكدة";
 "hardware__send_held_unreadable" = "تعذّر على Bitkit قراءة دفعة سابقة من محفظة الأجهزة هذه، لذلك لن يوقّع دفعة جديدة.";
+"hardware__send_already_sent_title" = "أُرسلت بالفعل";
+"hardware__send_already_sent_text" = "أُرسلت هذه الدفعة بالفعل في {date}. هل تريد إرسالها مرة أخرى؟";
+"hardware__send_again" = "إرسال مرة أخرى";
+"hardware__send_show_payment" = "عرض الدفعة";
+"hardware__send_broadcast_running" = "لا يزال بث هذه الدفعة جاريًا. حاول مرة أخرى بعد قليل.";
 "hardware__send_confirm_address" = "إلى العنوان (أكّد على الجهاز)";
 "hardware__send_onchain_only_title" = "مطلوب عنوان Bitcoin";
 "hardware__send_onchain_only_text" = "يمكن لمحفظة الأجهزة هذه الإرسال إلى عنوان Bitcoin فقط.";

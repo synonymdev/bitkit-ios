@@ -24,7 +24,9 @@ final class HwFundingSignerTests: XCTestCase {
         walletId: String? = nil,
         signerFactory: (@MainActor (HwWalletManager, String, UInt64) -> HwFundingSigner)? = nil,
         heldBroadcasts: HwHeldBroadcastStore? = nil,
-        broadcastDeadline: Duration = .seconds(60)
+        broadcastDeadline: Duration = .seconds(60),
+        staleBroadcastAfter: Duration = .seconds(120),
+        recordSeenSend: @escaping (HwHeldBroadcast) async -> Void = { _ in }
     ) -> HwSendCoordinator {
         let store = heldBroadcasts ?? {
             let suiteName = "HwFundingSignerTests.\(UUID().uuidString)"
@@ -32,10 +34,14 @@ final class HwFundingSignerTests: XCTestCase {
             return HwHeldBroadcastStore(defaults: UserDefaults(suiteName: suiteName)!, resolver: FakeHeldBroadcastResolver())
         }()
         guard let signerFactory else {
-            return HwSendCoordinator(walletId: walletId, heldBroadcasts: store, broadcastDeadline: broadcastDeadline)
+            return HwSendCoordinator(
+                walletId: walletId, heldBroadcasts: store, broadcastDeadline: broadcastDeadline,
+                staleBroadcastAfter: staleBroadcastAfter, recordSeenSend: recordSeenSend
+            )
         }
         return HwSendCoordinator(
-            walletId: walletId, signerFactory: signerFactory, heldBroadcasts: store, broadcastDeadline: broadcastDeadline
+            walletId: walletId, signerFactory: signerFactory, heldBroadcasts: store, broadcastDeadline: broadcastDeadline,
+            staleBroadcastAfter: staleBroadcastAfter, recordSeenSend: recordSeenSend
         )
     }
 
@@ -344,12 +350,12 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(funding.signCalls, 2, "The address of a held send matches whatever its case")
 
         heldResolver.observed = [heldSignedTx.serializedTx]
-        let seen = openSheet()
-        await assertThrowsAsync { try await self.send(seen) }
-        XCTAssertEqual(funding.signCalls, 2, "A seen payment is completed rather than signed again")
-        _ = await seen.completeObservedSend { _ in }
+        await assertThrowsAsync { try await self.send(openSheet()) } _: { error in
+            XCTAssertEqual(error as? HwTransferError, .paymentAlreadySent(txId: Self.signedTransactionId))
+        }
+        XCTAssertEqual(funding.signCalls, 2, "A seen payment is not signed again without the user's say-so")
         try await send(openSheet())
-        XCTAssertEqual(funding.signCalls, 3, "Once the seen payment is recorded, a new one can be made")
+        XCTAssertEqual(funding.signCalls, 3, "Sending it again after the prompt signs a new payment")
     }
 
     func testARetriedHeldSendThatCanNeverConfirmIsReleasedAndSignedAfresh() async throws {
@@ -506,9 +512,9 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(funding.broadcastCalls, 1)
 
         // The store refuses a dispatch beside one in flight, for any sheet; here a second dispatch got in and was taken
-        let accepted = try XCTUnwrap(heldBroadcasts.beginDispatch(
+        let accepted = try heldBroadcasts.beginDispatch(
             HwHeldBroadcast(heldSignedTx, walletId: "trezor:wallet", address: "bc1qtest", amountSats: 42000), isRebroadcast: false
-        ))
+        )
         heldBroadcasts.endDispatch(accepted, isAccepted: true)
         firstBroadcast.open()
         await eventually("the first broadcast answered") { !coordinator.isLateBroadcastRunning }
@@ -549,7 +555,7 @@ final class HwFundingSignerTests: XCTestCase {
         let third = Task { try await self.send(thirdSheet) }
         await eventually("the next broadcast started") { funding.broadcastCalls == 2 }
         let held = HwHeldBroadcast(heldSignedTx, walletId: "trezor:wallet", address: "bc1qtest", amountSats: 42000)
-        let other = try XCTUnwrap(heldBroadcasts.beginDispatch(held, isRebroadcast: false))
+        let other = try heldBroadcasts.beginDispatch(held, isRebroadcast: false)
         heldBroadcasts.endDispatch(other, isAccepted: true)
         funding.broadcastGateForCall[2]?.open()
         _ = await third.result
@@ -674,7 +680,7 @@ final class HwFundingSignerTests: XCTestCase {
         heldResolver.observed = [heldSignedTx.serializedTx]
         let seen = await coordinator.completeObservedSend { send in
             recorded.append(send)
-            XCTAssertNotNil(self.heldDefaults.data(forKey: "hwHeldBroadcasts"), "The hold outlives the recording")
+            XCTAssertNil(self.heldDefaults.data(forKey: "hwHeldBroadcasts"), "A seen send is released first, so it is recorded once")
         }
         let again = await coordinator.completeObservedSend { recorded.append($0) }
 
@@ -714,31 +720,141 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertTrue(try relaunched.isHeld(heldSignedTx), "A send the wallet has seen stays held until it is recorded")
     }
 
-    func testARetryOfASendTheWalletHasSeenIsRecordedInsteadOfSignedAgain() async throws {
+    func testARetryOfASendTheWalletHasSeenAsksBeforeSigningAgain() async throws {
         let funding = MockHwFunding()
         funding.signedTx = heldSignedTx
         funding.broadcastError = MockHwFunding.TestError()
-        try await holdUnknownSend(funding)
+        let first = makeCoordinator(walletId: "trezor:wallet", signerFactory: signerFactory(funding), heldBroadcasts: heldBroadcasts)
+        await assertThrowsAsync {
+            _ = try await first.signAndBroadcast(
+                manager: HwWalletManager(), address: "bc1qtest", sats: 42000, satsPerVByte: 2,
+                recordTags: ["rent"], recordContactPublicKey: "pubkycontact"
+            )
+        }
         heldResolver.observed = [heldSignedTx.serializedTx]
         funding.broadcastError = nil
+        var recorded: [HwHeldBroadcast] = []
 
-        let retry = makeCoordinator(walletId: "trezor:wallet", signerFactory: signerFactory(funding), heldBroadcasts: heldBroadcasts)
+        // After a relaunch the same payment is made to the same address
+        let retry = makeCoordinator(
+            walletId: "trezor:wallet", signerFactory: signerFactory(funding), heldBroadcasts: heldBroadcasts,
+            recordSeenSend: { recorded.append($0) }
+        )
         await assertThrowsAsync { try await self.send(retry) } _: { error in
-            XCTAssertEqual(error as? HwTransferError, .broadcastUncertain)
+            XCTAssertEqual(error as? HwTransferError, .paymentAlreadySent(txId: Self.signedTransactionId))
         }
-        XCTAssertEqual(funding.signCalls, 1, "A payment the wallet has seen is never signed again")
-        XCTAssertEqual(funding.broadcastCalls, 1)
-        XCTAssertEqual(retry.unresolvedSend?.txId, Self.signedTransactionId, "It shows on the pending screen, which completes it")
 
-        retry.annotateUnresolvedSend(contactPublicKey: nil, tags: ["rent"])
-        var recorded: [HwUnresolvedSend] = []
-        let completed = await retry.completeObservedSend { recorded.append($0) }
-        XCTAssertTrue(completed)
-        XCTAssertEqual(recorded.map(\.tags), [["rent"]])
+        XCTAssertEqual(funding.signCalls, 1, "Nothing is signed until the user chooses to send again")
+        XCTAssertEqual(funding.broadcastCalls, 1)
+        XCTAssertEqual(recorded.map(\.tags), [["rent"]], "The earlier payment is recorded with its tags")
+        XCTAssertEqual(recorded.first?.contactPublicKey, "pubkycontact")
         XCTAssertFalse(try heldBroadcasts.isHeld(heldSignedTx))
 
-        try await send(makeCoordinator(walletId: "trezor:wallet", signerFactory: signerFactory(funding), heldBroadcasts: heldBroadcasts))
-        XCTAssertEqual(funding.signCalls, 2, "Only a payment started after it completed is signed")
+        try await send(retry)
+        XCTAssertEqual(funding.signCalls, 2, "Send again signs a new payment")
+        XCTAssertEqual(recorded.count, 1)
+    }
+
+    func testHeldSendsTheWalletHasSeenAreRecordedAndReleasedOnce() async throws {
+        let seen = HwHeldBroadcast(heldSignedTx, walletId: "trezor:wallet", address: "bc1qtest", amountSats: 42000, tags: ["rent"])
+        let unseen = HwHeldBroadcast(
+            HwFundingSignedTx(serializedTx: "unseen", miningFeeSats: 1, feeRate: 1, totalSpent: 2),
+            walletId: "trezor:wallet", address: "bc1qother", amountSats: 1000
+        )
+        try heldBroadcasts.hold(seen)
+        try heldBroadcasts.hold(unseen)
+        heldResolver.observed = [seen.serializedTx]
+        var recorded: [HwHeldBroadcast] = []
+
+        await heldBroadcasts.releaseObservedSends { recorded.append($0) }
+        await heldBroadcasts.releaseObservedSends { recorded.append($0) }
+        let claimedAgain = await heldBroadcasts.claimObserved(seen) { recorded.append($0) }
+
+        XCTAssertEqual(recorded, [seen], "A seen send is recorded once, with its tags")
+        XCTAssertFalse(claimedAgain)
+        XCTAssertFalse(try heldBroadcasts.isHeld(seen.signedTx))
+        XCTAssertTrue(try heldBroadcasts.isHeld(unseen.signedTx))
+    }
+
+    func testASendCountsAsSeenOnlyWhileTheWalletStillHasIt() async throws {
+        var activity: OnchainActivity?
+        let resolver = HwHeldBroadcastResolver(findActivity: { _, _ in activity })
+        let held = HwHeldBroadcast(heldSignedTx, walletId: "trezor:wallet", address: "bc1qtest", amountSats: 42000)
+        func onchainActivity(doesExist: Bool) -> OnchainActivity {
+            OnchainActivity(
+                walletId: "trezor:wallet", id: Self.signedTransactionId, txType: .sent, txId: Self.signedTransactionId, value: 42000,
+                fee: 141, feeRate: 2, address: "bc1qtest", confirmed: false, timestamp: 123,
+                isBoosted: false, boostTxIds: [], isTransfer: false, doesExist: doesExist, confirmTimestamp: nil,
+                channelId: nil, transferTxId: nil, contact: nil, createdAt: 123, updatedAt: 123, seenAt: nil
+            )
+        }
+
+        let missing = try await resolver.isObserved(held)
+        activity = onchainActivity(doesExist: false)
+        let replaced = try await resolver.isObserved(held)
+        activity = onchainActivity(doesExist: true)
+        let present = try await resolver.isObserved(held)
+
+        XCTAssertFalse(missing)
+        XCTAssertFalse(replaced, "A replaced or dropped transaction is not seen")
+        XCTAssertTrue(present)
+    }
+
+    func testADispatchThatNeverAnswersStopsBlockingAfterItsBound() async throws {
+        var clock = Date(timeIntervalSince1970: 1000)
+        let store = try HwHeldBroadcastStore(
+            defaults: makeIsolatedDefaults(), resolver: FakeHeldBroadcastResolver(), staleDispatchAfter: 120, now: { clock }
+        )
+        let held = HwHeldBroadcast(heldSignedTx, walletId: "trezor:wallet", address: "bc1qtest", amountSats: 42000)
+        let stuck = try store.beginDispatch(held, isRebroadcast: false)
+
+        let refused = await store.rebroadcast(held) { XCTFail("Broadcast beside a running dispatch") }
+        XCTAssertEqual(refused, .inFlight)
+        XCTAssertTrue(store.isDispatching(held.signedTx))
+
+        clock += 121
+        XCTAssertFalse(store.isDispatching(held.signedTx), "A dispatch past its bound no longer blocks")
+        var rebroadcasts = 0
+        let accepted = await store.rebroadcast(held) { rebroadcasts += 1 }
+        XCTAssertEqual(accepted, .accepted)
+        XCTAssertEqual(rebroadcasts, 1)
+
+        store.endDispatch(stuck, isAccepted: false)
+        XCTAssertFalse(try store.releaseUnsent(stuck), "A dispatch past its bound may have sent, so it never releases")
+        XCTAssertTrue(try store.isHeld(held.signedTx))
+
+        try store.release(held.signedTx)
+        XCTAssertFalse(store.isDispatching(held.signedTx))
+        let afterRelease = await store.rebroadcast(held) { XCTFail("A released send is never broadcast again") }
+        XCTAssertEqual(afterRelease, .neverConfirms)
+    }
+
+    func testBroadcastAgainIsAllowedAgainOnceALateBroadcastPassesItsBound() async throws {
+        let funding = MockHwFunding()
+        funding.signedTx = heldSignedTx
+        funding.broadcastGateForCall[1] = AsyncGate()
+        let coordinator = makeCoordinator(
+            walletId: "trezor:wallet", signerFactory: signerFactory(funding), heldBroadcasts: heldBroadcasts,
+            broadcastDeadline: .milliseconds(50), staleBroadcastAfter: .milliseconds(150)
+        )
+        await assertThrowsAsync { try await self.send(coordinator) }
+        XCTAssertFalse(coordinator.canBroadcastAgain)
+
+        await eventually("the late broadcast passed its bound") { coordinator.canBroadcastAgain }
+        XCTAssertEqual(coordinator.unresolvedSend?.txId, Self.signedTransactionId)
+        XCTAssertTrue(try heldBroadcasts.isHeld(heldSignedTx))
+    }
+
+    func testAWalletWipeClearsTheHeldSends() throws {
+        let suiteName = "HwHeldWipe.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suiteName) }
+        let store = HwHeldBroadcastStore(defaults: defaults, resolver: FakeHeldBroadcastResolver())
+        try store.hold(HwHeldBroadcast(heldSignedTx, walletId: "trezor:wallet", address: "bc1qtest", amountSats: 42000))
+
+        AppReset.wipeUserDefaults(defaults, domain: suiteName)
+
+        XCTAssertFalse(try HwHeldBroadcastStore(defaults: defaults, resolver: FakeHeldBroadcastResolver()).isHeld(heldSignedTx))
     }
 
     func testAnUnreadableHeldStoreRefusesTheSendBeforeSigning() async {

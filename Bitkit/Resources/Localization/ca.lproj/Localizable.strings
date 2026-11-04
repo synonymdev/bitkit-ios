@@ -96,6 +96,11 @@
 "hardware__send_broadcast_failed_text" = "Comprova la connexió i torna-ho a provar.";
 "hardware__send_broadcast_failed_title" = "Pagament no confirmat";
 "hardware__send_held_unreadable" = "Bitkit no ha pogut llegir un pagament anterior d'aquesta cartera de maquinari, així que no en signarà cap de nou.";
+"hardware__send_already_sent_title" = "Ja enviat";
+"hardware__send_already_sent_text" = "Aquest pagament ja es va enviar el {date}. El vols tornar a enviar?";
+"hardware__send_again" = "Torna a enviar";
+"hardware__send_show_payment" = "Mostra el pagament";
+"hardware__send_broadcast_running" = "Aquest pagament encara s'està difonent. Torna-ho a provar d'aquí a un moment.";
 "hardware__send_confirm_address" = "A l'adreça (confirma al dispositiu)";
 "hardware__send_onchain_only_title" = "Cal una adreça Bitcoin";
 "hardware__send_onchain_only_text" = "Aquesta cartera de maquinari només pot enviar a una adreça de Bitcoin.";

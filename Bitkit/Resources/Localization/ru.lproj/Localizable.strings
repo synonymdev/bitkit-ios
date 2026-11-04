@@ -95,6 +95,11 @@
 "hardware__send_broadcast_failed_text" = "Проверьте подключение и попробуйте снова.";
 "hardware__send_broadcast_failed_title" = "Платёж не подтверждён";
 "hardware__send_held_unreadable" = "Bitkit не смог прочитать предыдущий платёж с этого аппаратного кошелька, поэтому не будет подписывать новый.";
+"hardware__send_already_sent_title" = "Уже отправлено";
+"hardware__send_already_sent_text" = "Этот платёж уже был отправлен {date}. Отправить его снова?";
+"hardware__send_again" = "Отправить снова";
+"hardware__send_show_payment" = "Показать платёж";
+"hardware__send_broadcast_running" = "Этот платёж всё ещё отправляется в сеть. Попробуйте ещё раз через минуту.";
 "hardware__send_confirm_address" = "На адрес (подтвердите на устройстве)";
 "hardware__send_onchain_only_title" = "Нужен Bitcoin-адрес";
 "hardware__send_onchain_only_text" = "Этот аппаратный кошелёк может отправлять только на Bitcoin-адрес.";

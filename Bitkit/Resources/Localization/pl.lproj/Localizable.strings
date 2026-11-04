@@ -96,6 +96,11 @@
 "hardware__send_broadcast_failed_text" = "Sprawdź połączenie i spróbuj ponownie.";
 "hardware__send_broadcast_failed_title" = "Płatność niepotwierdzona";
 "hardware__send_held_unreadable" = "Bitkit nie mógł odczytać wcześniejszej płatności z tego portfela sprzętowego, więc nie podpisze nowej.";
+"hardware__send_already_sent_title" = "Już wysłano";
+"hardware__send_already_sent_text" = "Ta płatność została już wysłana {date}. Wysłać ją ponownie?";
+"hardware__send_again" = "Wyślij ponownie";
+"hardware__send_show_payment" = "Pokaż płatność";
+"hardware__send_broadcast_running" = "Ta płatność jest nadal rozgłaszana. Spróbuj ponownie za chwilę.";
 "hardware__send_confirm_address" = "Na adres (potwierdź na urządzeniu)";
 "hardware__send_onchain_only_title" = "Wymagany adres Bitcoin";
 "hardware__send_onchain_only_text" = "Ten portfel sprzętowy może wysyłać tylko na adres Bitcoin.";

@@ -357,6 +357,12 @@ final class HwSendCoordinator {
     private let signerFactory: @MainActor (HwWalletManager, String, UInt64) -> HwFundingSigner
     @ObservationIgnored private let heldBroadcasts: HwHeldBroadcastStore
     private let broadcastDeadline: Duration
+    private let staleBroadcastAfter: Duration
+    private let recordSeenSend: (HwHeldBroadcast) async -> Void
+    /// Bumped by every broadcast, so a late answer of one never acts after another of the same bytes began.
+    private var broadcastGeneration = 0
+    private var recordTags: [String] = []
+    private var recordContactPublicKey: String?
 
     var isActive: Bool {
         walletId != nil
@@ -388,12 +394,16 @@ final class HwSendCoordinator {
             )
         },
         heldBroadcasts: HwHeldBroadcastStore = .shared,
-        broadcastDeadline: Duration = .seconds(60)
+        broadcastDeadline: Duration = .seconds(60),
+        staleBroadcastAfter: Duration = .seconds(120),
+        recordSeenSend: @escaping (HwHeldBroadcast) async -> Void = HwSendRecord.saveSeen
     ) {
         self.walletId = walletId
         self.signerFactory = signerFactory
         self.heldBroadcasts = heldBroadcasts
         self.broadcastDeadline = broadcastDeadline
+        self.staleBroadcastAfter = staleBroadcastAfter
+        self.recordSeenSend = recordSeenSend
     }
 
     func seedAvailable(walletId: String, availableSats: UInt64, retainedFeeSats: UInt64? = nil) {
@@ -508,6 +518,8 @@ final class HwSendCoordinator {
         satsPerVByte: UInt64,
         paymentDeadline: PaykitPreciseInstant? = nil,
         paymentRequestId: PaykitPaymentRequest.ID? = nil,
+        recordTags: [String] = [],
+        recordContactPublicKey: String? = nil,
         loadSignedPayment: @escaping () async throws -> RetainedHardwareOnchainPayment? = { nil },
         beforeFirstBroadcast: @escaping (HwFundingSignedTx) async throws -> Void = { _ in },
         beforeBroadcastAttempt: @escaping () async throws -> Void = {},
@@ -521,6 +533,10 @@ final class HwSendCoordinator {
             throw AppError(message: "Unknown hardware wallet", debugMessage: "The send flow has no wallet id")
         }
         let request = PaymentRequest(address: address, sats: sats, satsPerVByte: satsPerVByte)
+        if pendingPayment?.isOutcomeUnknown != true {
+            self.recordTags = recordTags
+            self.recordContactPublicKey = recordContactPublicKey
+        }
         // A send whose broadcast may have gone out is only ever broadcast again as signed, and nothing is signed beside it
         if let pendingPayment, pendingPayment.isOutcomeUnknown {
             guard pendingPayment.request.pays(request) else { throw HwTransferError.broadcastUncertain }
@@ -560,17 +576,22 @@ final class HwSendCoordinator {
                 isBroadcastUnresolved = restored.hasAttemptedBroadcast && !restored.isRefusedForNavigation
             }
             // A send that may have gone out from an earlier sheet or launch is pending, and is never signed again. One the wallet
-            // has seen is completed by its pending screen, and only a new payment started after that is signed.
+            // has seen is recorded and released, and the user decides whether to pay again.
             if paymentRequestId == nil, pendingPayment == nil,
                let heldSend = try await heldBroadcasts.heldSend(walletId: walletId, address: address, amountSats: sats)
             {
+                if case let .observed(held) = heldSend {
+                    _ = await heldBroadcasts.claimObserved(held, record: recordSeenSend)
+                    throw HwTransferError.paymentAlreadySent(txId: held.result?.txId ?? "")
+                }
+                if let tags = heldSend.held.tags {
+                    self.recordTags = tags
+                    self.recordContactPublicKey = heldSend.held.contactPublicKey
+                }
                 pendingPayment = PendingPayment(request: request, signedTx: heldSend.held.signedTx, paymentRequestId: nil)
                 pendingPayment?.isPreparedForBroadcast = true
                 pendingPayment?.hasBroadcastAttempted = true
                 holdUnresolvedSend(heldSend.held.signedTx)
-                if case .observed = heldSend {
-                    throw HwTransferError.broadcastUncertain
-                }
                 try await retryUnresolvedSend(manager: manager)
             }
             let signed: HwFundingSignedTx
@@ -642,8 +663,14 @@ final class HwSendCoordinator {
                     }
                 }
                 let dispatch = try paymentRequestId == nil ? heldBroadcasts.beginDispatch(
-                    HwHeldBroadcast(signed, walletId: walletId, address: address, amountSats: sats), isRebroadcast: false
+                    HwHeldBroadcast(
+                        signed, walletId: walletId, address: address, amountSats: sats,
+                        tags: self.recordTags, contactPublicKey: self.recordContactPublicKey
+                    ),
+                    isRebroadcast: false
                 ) : nil
+                broadcastGeneration += 1
+                let generation = broadcastGeneration
                 isBroadcastUnresolved = true
                 broadcastWasAttempted = true
                 pendingPayment?.hasBroadcastAttempted = true
@@ -684,7 +711,8 @@ final class HwSendCoordinator {
                         finishLateSend(broadcast, signed: signed, dispatch: dispatch)
                     } else {
                         finishLateShopPayment(
-                            broadcast, signed: signed, afterBroadcast: afterBroadcast, markSignedPaymentRefused: markSignedPaymentRefused
+                            broadcast, signed: signed, generation: generation,
+                            afterBroadcast: afterBroadcast, markSignedPaymentRefused: markSignedPaymentRefused
                         )
                     }
                     throw HwTransferError.broadcastUncertain
@@ -837,8 +865,9 @@ final class HwSendCoordinator {
         )
         guard await heldBroadcasts.isObserved(held), unresolvedSend == unresolved else { return false }
         unresolvedSend = nil
-        await record(unresolved)
-        completeBroadcast()
+        // Released before it is recorded, which is safe as the wallet already has it; whoever releases it records it, once
+        _ = await heldBroadcasts.claimObserved(held) { _ in await record(unresolved) }
+        resetBroadcast()
         return true
     }
 
@@ -867,7 +896,7 @@ final class HwSendCoordinator {
         switch await rebroadcastUnresolvedSend(manager: manager) {
         case .neverConfirms:
             throw HwTransferError.broadcastNeverConfirms
-        case .accepted, .mayConfirm:
+        case .accepted, .mayConfirm, .inFlight:
             throw HwTransferError.broadcastUncertain
         }
     }
@@ -881,7 +910,10 @@ final class HwSendCoordinator {
         let result = HwFundingBroadcastResult(
             txId: txId, miningFeeSats: signed.miningFeeSats, feeRate: UInt64(signed.feeRate.rounded(.up)), totalSpent: signed.totalSpent
         )
-        unresolvedSend = HwUnresolvedSend(result: result, walletId: walletId, address: request.address, amountSats: request.sats)
+        unresolvedSend = HwUnresolvedSend(
+            result: result, walletId: walletId, address: request.address, amountSats: request.sats,
+            contactPublicKey: recordContactPublicKey, tags: recordTags
+        )
     }
 
     private func finishLateSend(
@@ -889,11 +921,13 @@ final class HwSendCoordinator {
         signed: HwFundingSignedTx,
         dispatch: HwHeldDispatch?
     ) {
-        isLateBroadcastRunning = true
+        let lateGeneration = markLateBroadcastRunning()
         Task { @MainActor [weak self] in
             let answer = await broadcast.value
             guard let self else { return }
-            isLateBroadcastRunning = false
+            if broadcastGeneration == lateGeneration {
+                isLateBroadcastRunning = false
+            }
             guard case let .failure(error) = answer, pendingPayment?.signedTx.serializedTx == signed.serializedTx else { return }
             let underlying = (error as? AppError)?.underlyingError ?? error
             let notSubmitted = underlying as? PreparedOnchainSendNotSubmitted
@@ -910,15 +944,18 @@ final class HwSendCoordinator {
     private func finishLateShopPayment(
         _ broadcast: Task<Result<HwFundingBroadcastResult, Error>, Never>,
         signed: HwFundingSignedTx,
+        generation: Int,
         afterBroadcast: @escaping (HwFundingBroadcastResult) async -> Void,
         markSignedPaymentRefused: @escaping (HwFundingSignedTx, Bool) async throws -> Void
     ) {
-        isLateBroadcastRunning = true
+        let lateGeneration = markLateBroadcastRunning()
         Task { @MainActor [weak self] in
             let answer = await broadcast.value
             guard let self else { return }
-            isLateBroadcastRunning = false
-            guard pendingPayment?.signedTx.serializedTx == signed.serializedTx else { return }
+            if broadcastGeneration == lateGeneration {
+                isLateBroadcastRunning = false
+            }
+            guard pendingPayment?.signedTx.serializedTx == signed.serializedTx, broadcastGeneration == generation else { return }
             switch answer {
             case let .success(result):
                 Logger.info("A late Shop hardware broadcast was taken", context: "HwSendCoordinator")
@@ -931,6 +968,19 @@ final class HwSendCoordinator {
                 isBroadcastUnresolved = false
             }
         }
+    }
+
+    /// Electrum has no read timeout, so a broadcast may never answer. Past the bound it counts as possibly sent, and its bytes
+    /// may be broadcast again, which can never pay twice.
+    private func markLateBroadcastRunning() -> Int {
+        isLateBroadcastRunning = true
+        let generation = broadcastGeneration
+        Task { @MainActor [weak self, staleBroadcastAfter] in
+            try? await Task.sleep(for: staleBroadcastAfter)
+            guard let self, broadcastGeneration == generation else { return }
+            isLateBroadcastRunning = false
+        }
+        return generation
     }
 
     /// Releases the hold of a send whose dispatch proved nothing was sent, unless the same bytes may have gone out another way.
@@ -1057,6 +1107,8 @@ enum HwTransferError: Error, Equatable {
     case broadcastUncertain
     /// A rebroadcast proved the held send can never confirm, so it was released and can be made again.
     case broadcastNeverConfirms
+    /// The wallet has already seen this payment; it was recorded, and paying again is the user's call.
+    case paymentAlreadySent(txId: String)
     /// Signed tx is retained but Electrum/network is unreachable — retry broadcast later.
     case broadcastConnectivity
     /// The device is locked or otherwise busy before signing can start. Carries the vendor so the

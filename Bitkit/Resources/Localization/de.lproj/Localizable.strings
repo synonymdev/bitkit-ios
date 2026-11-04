@@ -96,6 +96,11 @@
 "hardware__send_broadcast_failed_text" = "Überprüfe deine Verbindung und versuche es erneut.";
 "hardware__send_broadcast_failed_title" = "Zahlung nicht bestätigt";
 "hardware__send_held_unreadable" = "Bitkit konnte eine frühere Zahlung von dieser Hardware-Wallet nicht lesen und signiert daher keine neue.";
+"hardware__send_already_sent_title" = "Bereits gesendet";
+"hardware__send_already_sent_text" = "Diese Zahlung wurde bereits am {date} gesendet. Erneut senden?";
+"hardware__send_again" = "Erneut senden";
+"hardware__send_show_payment" = "Zahlung anzeigen";
+"hardware__send_broadcast_running" = "Diese Zahlung wird noch gesendet. Versuche es gleich noch einmal.";
 "hardware__send_confirm_address" = "An Adresse (am Gerät bestätigen)";
 "hardware__send_onchain_only_title" = "Bitcoin-Adresse erforderlich";
 "hardware__send_onchain_only_text" = "Dieses Hardware-Wallet kann nur an eine Bitcoin-Adresse senden.";

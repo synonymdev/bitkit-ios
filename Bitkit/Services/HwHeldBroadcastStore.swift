@@ -1,3 +1,4 @@
+import BitkitCore
 import Foundation
 
 /// A signed hardware-wallet send handed to the network whose outcome is not known. Fields added later must be optional, so an
@@ -10,8 +11,18 @@ struct HwHeldBroadcast: Codable, Equatable {
     let miningFeeSats: UInt64
     let feeRate: Float
     let totalSpent: UInt64
+    /// What the payment is recorded with once the wallet sees it.
+    var tags: [String]?
+    var contactPublicKey: String?
 
-    init(_ signedTx: HwFundingSignedTx, walletId: String, address: String, amountSats: UInt64) {
+    init(
+        _ signedTx: HwFundingSignedTx,
+        walletId: String,
+        address: String,
+        amountSats: UInt64,
+        tags: [String]? = nil,
+        contactPublicKey: String? = nil
+    ) {
         self.walletId = walletId
         self.address = address
         self.amountSats = amountSats
@@ -19,6 +30,15 @@ struct HwHeldBroadcast: Codable, Equatable {
         miningFeeSats = signedTx.miningFeeSats
         feeRate = signedTx.feeRate
         totalSpent = signedTx.totalSpent
+        self.tags = tags
+        self.contactPublicKey = contactPublicKey
+    }
+
+    var result: HwFundingBroadcastResult? {
+        guard let txId = try? SignedTransactionId.fromHex(serializedTx) else { return nil }
+        return HwFundingBroadcastResult(
+            txId: txId, miningFeeSats: miningFeeSats, feeRate: UInt64(feeRate.rounded(.up)), totalSpent: totalSpent
+        )
     }
 
     var signedTx: HwFundingSignedTx {
@@ -39,7 +59,7 @@ enum HwHeldBroadcastStoreError: Error, Equatable {
 enum HwHeldSend: Equatable {
     /// It may have gone out, so it is only ever broadcast again as signed.
     case unresolved(HwHeldBroadcast)
-    /// The wallet has seen it; it is recorded and released once its pending screen completes it.
+    /// The wallet has seen it, so it was recorded and released, and paying again needs the user's say-so.
     case observed(HwHeldBroadcast)
 
     var held: HwHeldBroadcast {
@@ -65,10 +85,13 @@ enum HwHeldRebroadcastOutcome: Equatable {
     case neverConfirms
     /// It may still confirm, so it stays held.
     case mayConfirm
+    /// Another broadcast of the same bytes is still running, so it was not broadcast again.
+    case inFlight
 }
 
 protocol HwHeldBroadcastResolving {
-    /// Whether the wallet has seen the transaction. Throws when that cannot be read.
+    /// Whether the wallet has seen the transaction and still has it, rather than one that replaced it. Throws when that cannot
+    /// be read.
     func isObserved(_ held: HwHeldBroadcast) async throws -> Bool
     /// Whether a fresh read of the account shows one of its coins spent by another transaction deep enough to be final.
     func isSpentElsewhere(_ held: HwHeldBroadcast) async throws -> Bool
@@ -80,9 +103,13 @@ struct HwHeldBroadcastResolver: HwHeldBroadcastResolving {
     /// The most transactions one check reads, so it finishes while the pending screen waits.
     static let maximumSpendReads = 25
 
+    var findActivity: (String, String) async throws -> OnchainActivity? = { txid, walletId in
+        try await CoreService.shared.activity.getOnchainActivityByTxId(txid: txid, walletId: walletId)
+    }
+
     func isObserved(_ held: HwHeldBroadcast) async throws -> Bool {
         let txid = try SignedTransactionId.fromHex(held.serializedTx)
-        return try await CoreService.shared.activity.getOnchainActivityByTxId(txid: txid, walletId: held.walletId) != nil
+        return try await findActivity(txid, held.walletId)?.doesExist == true
     }
 
     func isSpentElsewhere(_ held: HwHeldBroadcast) async throws -> Bool {
@@ -116,6 +143,11 @@ struct HwHeldBroadcastResolver: HwHeldBroadcastResolving {
     }
 }
 
+enum HwHeldDispatchRefusal: Error {
+    case released
+    case inFlight
+}
+
 enum HwHeldSpendCheckError: Error {
     /// More final spends than one check reads, so it proves nothing.
     case tooManySpends
@@ -138,8 +170,9 @@ final class HwHeldBroadcastStore: @unchecked Sendable {
     }
 
     private struct DispatchState {
-        var generation = 0
-        var inFlight = 0
+        var latestGeneration = 0
+        /// When each running dispatch started, by generation.
+        var inFlight: [Int: Date] = [:]
         var isAccepted = false
     }
 
@@ -147,11 +180,23 @@ final class HwHeldBroadcastStore: @unchecked Sendable {
     private let resolver: any HwHeldBroadcastResolving
     private let key = "hwHeldBroadcasts"
     private let lock = NSLock()
+    private let staleDispatchAfter: TimeInterval
+    private let now: () -> Date
     private var dispatches: [String: DispatchState] = [:]
+    private var nextGeneration = 0
 
-    init(defaults: UserDefaults = .standard, resolver: any HwHeldBroadcastResolving = HwHeldBroadcastResolver()) {
+    /// A dispatch running past `staleDispatchAfter` may have sent the bytes and never releases the send, but no longer stops
+    /// them from being broadcast again: Electrum has no read timeout, so a dead connection may never answer.
+    init(
+        defaults: UserDefaults = .standard,
+        resolver: any HwHeldBroadcastResolving = HwHeldBroadcastResolver(),
+        staleDispatchAfter: TimeInterval = 120,
+        now: @escaping () -> Date = Date.init
+    ) {
         self.defaults = defaults
         self.resolver = resolver
+        self.staleDispatchAfter = staleDispatchAfter
+        self.now = now
     }
 
     func hold(_ held: HwHeldBroadcast) throws {
@@ -168,44 +213,70 @@ final class HwHeldBroadcastStore: @unchecked Sendable {
     }
 
     /// Persists the send and counts a dispatch of its bytes, before they are handed to the network. A rebroadcast starts only
-    /// while the send is still held and no other dispatch of the same bytes is in flight, and returns nil otherwise.
-    func beginDispatch(_ held: HwHeldBroadcast, isRebroadcast: Bool) throws -> HwHeldDispatch? {
+    /// while the send is still held and no other recent dispatch of the same bytes is running; otherwise it throws.
+    func beginDispatch(_ held: HwHeldBroadcast, isRebroadcast: Bool) throws -> HwHeldDispatch {
         let raw = try JSONSerialization.jsonObject(with: JSONEncoder().encode(held))
         return try lock.withLock {
-            var state = dispatches[held.serializedTx] ?? DispatchState()
+            var state = currentState(held.serializedTx)
             if isRebroadcast {
-                guard state.inFlight == 0, try load().contains(where: { $0.held?.serializedTx == held.serializedTx }) else { return nil }
+                guard try load().contains(where: { $0.held?.serializedTx == held.serializedTx }) else {
+                    throw HwHeldDispatchRefusal.released
+                }
+                guard state.inFlight.isEmpty else { throw HwHeldDispatchRefusal.inFlight }
             }
             try holdLocked(held, raw: raw)
-            state.generation += 1
-            state.inFlight += 1
+            nextGeneration += 1
+            state.latestGeneration = nextGeneration
+            state.inFlight[nextGeneration] = now()
             dispatches[held.serializedTx] = state
-            return HwHeldDispatch(serializedTx: held.serializedTx, generation: state.generation)
+            return HwHeldDispatch(serializedTx: held.serializedTx, generation: nextGeneration)
         }
     }
 
     func endDispatch(_ dispatch: HwHeldDispatch, isAccepted: Bool) {
         lock.withLock {
             guard var state = dispatches[dispatch.serializedTx] else { return }
-            state.inFlight = max(0, state.inFlight - 1)
+            state.inFlight[dispatch.generation] = nil
             state.isAccepted = state.isAccepted || isAccepted
             dispatches[dispatch.serializedTx] = state
         }
     }
 
     func isDispatching(_ signedTx: HwFundingSignedTx) -> Bool {
-        lock.withLock { (dispatches[signedTx.serializedTx]?.inFlight ?? 0) > 0 }
+        lock.withLock { !currentState(signedTx.serializedTx).inFlight.isEmpty }
     }
 
-    /// Releases the send after `dispatch` proved nothing was sent, unless another dispatch of the same bytes began since, is in
-    /// flight or was taken, as the network may then have it. Returns whether it was released.
+    /// Releases the send after `dispatch` proved nothing was sent, unless another dispatch of the same bytes began since, is
+    /// running or was taken, as the network may then have it. Returns whether it was released.
     func releaseUnsent(_ dispatch: HwHeldDispatch) throws -> Bool {
         try lock.withLock {
-            let state = dispatches[dispatch.serializedTx] ?? DispatchState()
-            guard state.generation == dispatch.generation, state.inFlight == 0, !state.isAccepted else { return false }
+            let state = currentState(dispatch.serializedTx)
+            guard state.latestGeneration == dispatch.generation, state.inFlight.isEmpty, !state.isAccepted else { return false }
             try releaseLocked(dispatch.serializedTx)
             return true
         }
+    }
+
+    /// Releases every held send the wallet has seen, recording each first time it is released.
+    func releaseObservedSends(record: (HwHeldBroadcast) async -> Void) async {
+        guard let entries = try? lock.withLock({ try load() }) else { return }
+        for held in entries.compactMap(\.held) where await isObserved(held) {
+            guard await claimObserved(held, record: record) else { continue }
+            Logger.info("Released a held hardware send the wallet has seen", context: "HwHeldBroadcastStore")
+        }
+    }
+
+    /// Releases a held send the wallet has seen and records it. Only the caller that releases it records it, so it is recorded
+    /// once; the wallet already has its activity, so releasing first never lets the payment be signed again unseen.
+    func claimObserved(_ held: HwHeldBroadcast, record: (HwHeldBroadcast) async -> Void) async -> Bool {
+        let claimed = (try? lock.withLock { () -> HwHeldBroadcast? in
+            guard let stored = try load().compactMap(\.held).first(where: { $0.serializedTx == held.serializedTx }) else { return nil }
+            try releaseLocked(held.serializedTx)
+            return stored
+        }) ?? nil
+        guard let claimed else { return false }
+        await record(claimed)
+        return true
     }
 
     /// The held send of this payment, and whether the wallet has seen it. A held send of this wallet that cannot be read
@@ -238,10 +309,11 @@ final class HwHeldBroadcastStore: @unchecked Sendable {
         }
         let dispatch: HwHeldDispatch
         do {
-            guard let started = try beginDispatch(held, isRebroadcast: true) else {
-                return (try? isHeld(held.signedTx)) == false ? .neverConfirms : .mayConfirm
-            }
-            dispatch = started
+            dispatch = try beginDispatch(held, isRebroadcast: true)
+        } catch HwHeldDispatchRefusal.released {
+            return .neverConfirms
+        } catch HwHeldDispatchRefusal.inFlight {
+            return .inFlight
         } catch {
             return .mayConfirm
         }
@@ -279,7 +351,19 @@ final class HwHeldBroadcastStore: @unchecked Sendable {
         try save(entries)
     }
 
+    /// A dispatch running past the bound may have sent the bytes, so it counts as taken.
+    private func currentState(_ serializedTx: String) -> DispatchState {
+        guard var state = dispatches[serializedTx] else { return DispatchState() }
+        let stale = state.inFlight.filter { now().timeIntervalSince($0.value) >= staleDispatchAfter }
+        guard !stale.isEmpty else { return state }
+        stale.keys.forEach { state.inFlight[$0] = nil }
+        state.isAccepted = true
+        dispatches[serializedTx] = state
+        return state
+    }
+
     private func releaseLocked(_ serializedTx: String) throws {
+        dispatches[serializedTx] = nil
         let entries = try load()
         let remaining = entries.filter { $0.held?.serializedTx != serializedTx }
         guard remaining.count != entries.count else { return }

@@ -97,6 +97,11 @@
 "hardware__send_broadcast_failed_text" = "Vérifiez votre connexion et réessayez.";
 "hardware__send_broadcast_failed_title" = "Paiement non confirmé";
 "hardware__send_held_unreadable" = "Bitkit n'a pas pu lire un paiement précédent de ce portefeuille matériel et n'en signera donc pas de nouveau.";
+"hardware__send_already_sent_title" = "Déjà envoyé";
+"hardware__send_already_sent_text" = "Ce paiement a déjà été envoyé le {date}. L'envoyer à nouveau ?";
+"hardware__send_again" = "Envoyer à nouveau";
+"hardware__send_show_payment" = "Voir le paiement";
+"hardware__send_broadcast_running" = "Ce paiement est encore en cours de diffusion. Réessayez dans un instant.";
 "hardware__send_confirm_address" = "Vers l'adresse (confirmer sur l'appareil)";
 "hardware__send_onchain_only_title" = "Adresse Bitcoin requise";
 "hardware__send_onchain_only_text" = "Ce portefeuille matériel ne peut envoyer qu'à une adresse Bitcoin.";

@@ -673,6 +673,8 @@ struct SendPendingScreen: View {
                 title: t("lightning__transfer_hw__broadcast_uncertain_title"),
                 description: t("wallet__onchain_hardware_may_confirm")
             )
+        case .inFlight:
+            app.toast(type: .info, title: t("hardware__send_broadcast_running"))
         case .neverConfirms:
             // The released payment closes this screen through `releasedSendTxId`
             break
