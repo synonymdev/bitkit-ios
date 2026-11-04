@@ -21,6 +21,8 @@ final class MockHwFunding: HwTransferFunding {
     /// Holds every sign until opened, so a test can act while the device is signing.
     var signGate: AsyncGate?
     var broadcastError: Error?
+    /// One outcome per broadcast, used before `broadcastError`; nil means that broadcast succeeds.
+    var broadcastErrors: [Error?] = []
     var broadcastDelay: Double = 0
     var broadcastNow: () -> Date = Date.init
     /// Holds every broadcast until opened, so a test can act while its outcome is unknown.
@@ -136,10 +138,57 @@ final class MockHwFunding: HwTransferFunding {
         if broadcastDelay > 0 {
             try await Task.sleep(nanoseconds: UInt64(broadcastDelay * 1_000_000_000))
         }
+        if !broadcastErrors.isEmpty {
+            if let error = broadcastErrors.removeFirst() {
+                throw error
+            }
+            return broadcastTxId
+        }
         if let broadcastError {
             throw broadcastError
         }
         return broadcastTxId
+    }
+}
+
+final class MockHwRetainedSendStore: HwRetainedSendStoring, @unchecked Sendable {
+    struct StoreError: Error {}
+
+    private let lock = NSLock()
+    private var sends: [String: HwRetainedSend] = [:]
+    private var failsLoad = false
+    private var failsSave = false
+
+    func setFailures(load: Bool = false, save: Bool = false) {
+        lock.withLock {
+            failsLoad = load
+            failsSave = save
+        }
+    }
+
+    func load() throws -> [String: HwRetainedSend] {
+        try lock.withLock {
+            if failsLoad {
+                throw StoreError()
+            }
+            return sends
+        }
+    }
+
+    func save(_ sends: [String: HwRetainedSend]) throws {
+        try lock.withLock {
+            if failsSave {
+                throw StoreError()
+            }
+            self.sends = sends
+        }
+    }
+}
+
+extension HwRetainedSendService {
+    /// Lets a test build a coordinator without touching the real keychain record.
+    static func inMemory() -> HwRetainedSendService {
+        HwRetainedSendService(store: MockHwRetainedSendStore())
     }
 }
 

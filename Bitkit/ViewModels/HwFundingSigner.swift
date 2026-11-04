@@ -7,6 +7,15 @@ struct RetainedHardwareOnchainPayment {
     var isRefusedForNavigation: Bool = false
 }
 
+/// What an ordinary hardware send must do about the wallet's retained send before any device contact.
+enum HwRetainedSendStatus: Equatable {
+    case none
+    /// The same payment may go out again, using these original bytes and no device prompt.
+    case retry(HwFundingSignedTx)
+    /// A different payment, or a retry that was refused. Signing needs the user to abandon the retained send first.
+    case blocking
+}
+
 /// Orchestrates an on-chain payment from a hardware wallet: reconnect the device, compose the exact
 /// payment, sign it on-device, and broadcast. Owns the per-phase timeouts and fee-reserve math.
 ///
@@ -359,6 +368,8 @@ final class HwSendCoordinator {
     private var availabilityRequestId = 0
     private var previewRequestId = 0
     private let signerFactory: @MainActor (HwWalletManager, String, UInt64) -> HwFundingSigner
+    /// Durable because this coordinator only lives for one presentation of the send sheet.
+    private let retainedSends: HwRetainedSendService
 
     var isActive: Bool {
         walletId != nil
@@ -383,10 +394,12 @@ final class HwSendCoordinator {
                 address: address,
                 satsPerVByte: satsPerVByte
             )
-        }
+        },
+        retainedSends: HwRetainedSendService = .shared
     ) {
         self.walletId = walletId
         self.signerFactory = signerFactory
+        self.retainedSends = retainedSends
     }
 
     func seedAvailable(walletId: String, availableSats: UInt64, retainedFeeSats: UInt64? = nil) {
@@ -474,7 +487,7 @@ final class HwSendCoordinator {
         isPreviewLoading = true
         previewFeeSats = 0
         let request = PaymentRequest(address: address, sats: sats, satsPerVByte: satsPerVByte)
-        if pendingPayment?.request != request {
+        if pendingPayment?.request != request, pendingPayment?.isAttemptedOrdinarySend != true {
             pendingPayment = nil
         }
         do {
@@ -514,11 +527,15 @@ final class HwSendCoordinator {
             throw AppError(message: "Unknown hardware wallet", debugMessage: "The send flow has no wallet id")
         }
         let request = PaymentRequest(address: address, sats: sats, satsPerVByte: satsPerVByte)
-        if let pendingPayment,
-           isBroadcastUnresolved || (pendingPayment.paymentRequestId != nil && pendingPayment.hasBroadcastAttempted)
-        {
-            guard pendingPayment.request == request, pendingPayment.paymentRequestId == paymentRequestId else {
-                throw PaykitPaymentRequestError.operationInProgress
+        if let pendingPayment, isBroadcastUnresolved || pendingPayment.hasBroadcastAttempted {
+            if pendingPayment.paymentRequestId == nil, paymentRequestId == nil {
+                guard pendingPayment.request.isSamePayment(address: address, sats: sats) else {
+                    throw HwTransferError.broadcastUncertain
+                }
+            } else {
+                guard pendingPayment.request == request, pendingPayment.paymentRequestId == paymentRequestId else {
+                    throw PaykitPaymentRequestError.operationInProgress
+                }
             }
         }
         if let operationTask {
@@ -545,8 +562,23 @@ final class HwSendCoordinator {
                 pendingPayment?.hasBroadcastAttempted = restored.hasAttemptedBroadcast
                 isBroadcastUnresolved = restored.hasAttemptedBroadcast && !restored.isRefusedForNavigation
             }
+            if paymentRequestId == nil, let retained = try await retainedSends.record(walletId: walletId) {
+                guard retained.isSamePayment(address: address, sats: sats) else { throw HwTransferError.broadcastUncertain }
+                try Task.checkCancellation()
+                pendingPayment = PendingPayment(
+                    request: request,
+                    signedTx: retained.signedTx,
+                    paymentRequestId: nil,
+                    isPreparedForBroadcast: true,
+                    hasBroadcastAttempted: true
+                )
+                isBroadcastUnresolved = false
+            }
             let signed: HwFundingSignedTx
-            if let pendingPayment, pendingPayment.request == request {
+            if let pendingPayment,
+               pendingPayment.request == request
+               || (pendingPayment.isAttemptedOrdinarySend && pendingPayment.request.isSamePayment(address: address, sats: sats))
+            {
                 signed = pendingPayment.signedTx
             } else {
                 signed = try await signer.prepareSignedPayment(
@@ -573,6 +605,13 @@ final class HwSendCoordinator {
                 pendingPayment?.isPreparedForBroadcast = true
             }
 
+            func clearBeforeDispatch() async -> Bool {
+                if paymentRequestId == nil {
+                    return await releaseRetainedSend(walletId: walletId)
+                }
+                return await clearSignedPaymentBeforeDispatch(signed)
+            }
+
             let hadPriorBroadcastAttempt = pendingPayment?.hasBroadcastAttempted == true
             let priorBroadcastWasUnresolved = isBroadcastUnresolved
             var broadcastWasAttempted = hadPriorBroadcastAttempt
@@ -597,15 +636,28 @@ final class HwSendCoordinator {
                     // retained for submission or durably cleared. No newer task may reuse it meanwhile.
                     isRetainingSignedPayment = true
                     defer { isRetainingSignedPayment = false }
-                    try await retainSignedPayment(signed)
+                    if paymentRequestId == nil {
+                        try await retainedSends.retain(HwRetainedSend(
+                            walletId: walletId,
+                            address: address,
+                            sats: sats,
+                            satsPerVByte: satsPerVByte,
+                            serializedTx: signed.serializedTx,
+                            miningFeeSats: signed.miningFeeSats,
+                            feeRate: signed.feeRate,
+                            totalSpent: signed.totalSpent
+                        ))
+                    } else {
+                        try await retainSignedPayment(signed)
+                    }
                     do {
                         try Task.checkCancellation()
                         guard signingAttempt == attempt else { throw CancellationError() }
                     } catch {
                         if !hadPriorBroadcastAttempt {
-                            let cleared = await clearSignedPaymentBeforeDispatch(signed)
+                            let cleared = await clearBeforeDispatch()
                             if !cleared {
-                                isBroadcastUnresolved = true
+                                isBroadcastUnresolved = paymentRequestId != nil
                                 broadcastWasAttempted = true
                                 pendingPayment?.hasBroadcastAttempted = true
                             }
@@ -623,6 +675,9 @@ final class HwSendCoordinator {
                         try await markSignedPaymentRefused(signed, false)
                         try Task.checkCancellation()
                         guard signingAttempt == attempt else { throw CancellationError() }
+                    }
+                    if paymentRequestId == nil {
+                        await releaseRetainedSend(walletId: walletId)
                     }
                     await afterBroadcast(result)
                     return result
@@ -645,10 +700,10 @@ final class HwSendCoordinator {
                         let cleared: Bool = if hadPriorBroadcastAttempt {
                             false
                         } else {
-                            await clearSignedPaymentBeforeDispatch(signed)
+                            await clearBeforeDispatch()
                         }
                         let retainsBroadcastAttempt = hadPriorBroadcastAttempt || !cleared
-                        isBroadcastUnresolved = hadPriorBroadcastAttempt ? priorBroadcastWasUnresolved : !cleared
+                        isBroadcastUnresolved = hadPriorBroadcastAttempt ? priorBroadcastWasUnresolved : !cleared && paymentRequestId != nil
                         broadcastWasAttempted = retainsBroadcastAttempt
                         pendingPayment?.hasBroadcastAttempted = retainsBroadcastAttempt
                         if !retainsBroadcastAttempt {
@@ -656,9 +711,8 @@ final class HwSendCoordinator {
                         }
                         throw failure
                     }
-                    let outcomeIsUncertain = (failure as? HwTransferError) == .broadcastUncertain
-                    if paymentRequestId == nil, !outcomeIsUncertain, !failure.isBroadcastConnectivityFailure() {
-                        pendingPayment = nil
+                    if paymentRequestId == nil {
+                        await settleRetainedSend(walletId: walletId, failure: failure, isRetry: hadPriorBroadcastAttempt)
                     }
                     throw failure
                 }
@@ -682,6 +736,32 @@ final class HwSendCoordinator {
             }
         }
         return try await task.value
+    }
+
+    /// Whether the selected wallet's retained send lets this ordinary payment go out. Unreadable storage counts as blocking,
+    /// because treating it as no record would allow a second signature.
+    func retainedSendStatus(address: String, sats: UInt64) async -> HwRetainedSendStatus {
+        guard let walletId else { return .none }
+        do {
+            if let retained = try await retainedSends.record(walletId: walletId) {
+                guard retained.isSamePayment(address: address, sats: sats), !retained.retryWasRefused else { return .blocking }
+                return .retry(retained.signedTx)
+            }
+        } catch {
+            Logger.warn("Failed to read retained hardware send: \(type(of: error))", context: "HwSendCoordinator")
+            return .blocking
+        }
+        guard let pendingPayment, pendingPayment.isAttemptedOrdinarySend else { return .none }
+        return pendingPayment.request.isSamePayment(address: address, sats: sats) ? .retry(pendingPayment.signedTx) : .blocking
+    }
+
+    /// Discards the retained ordinary send so the next attempt signs anew. Only call this after the user accepted a second payment.
+    func abandonRetainedPayment() async {
+        guard let walletId, operationTask == nil else { return }
+        await releaseRetainedSend(walletId: walletId)
+        if pendingPayment?.paymentRequestId == nil {
+            pendingPayment = nil
+        }
     }
 
     func reconnectWithPassphrase(
@@ -750,7 +830,7 @@ final class HwSendCoordinator {
         isVerifyingPassphrase = false
         isPassphraseRequired = false
         guard !isBroadcastUnresolved else { return }
-        let retainsSubmittedShopPayment = pendingPayment?.paymentRequestId != nil && pendingPayment?.hasBroadcastAttempted == true
+        let retainsAttemptedPayment = pendingPayment?.hasBroadcastAttempted == true
         let abandonedSession = operationSession
         operationTask?.cancel()
         // Receipt persistence/cleanup is suspended work. Keep the cancelled operation registered
@@ -760,7 +840,7 @@ final class HwSendCoordinator {
         operationTask = nil
         operationRequest = nil
         operationSession = nil
-        if !retainsSubmittedShopPayment {
+        if !retainsAttemptedPayment {
             pendingPayment = nil
         }
         isSigning = false
@@ -769,6 +849,38 @@ final class HwSendCoordinator {
         // a PIN) for a payment nobody is waiting on. The next connect waits for this release.
         if let abandonedSession {
             abandonedSession.connecting.scheduleStaleSessionCleanup(walletId: abandonedSession.walletId)
+        }
+    }
+
+    /// Decides whether a failed ordinary broadcast keeps its retained send. `isRetry` matters because a refusal such as
+    /// `bad-txns-inputs-missingorspent` on a retry may describe our own earlier accepted transaction.
+    private func settleRetainedSend(walletId: String, failure: Error, isRetry: Bool) async {
+        let refused = failure.isHardwareBroadcastRefusal()
+        if isRetry {
+            guard refused else { return }
+            do {
+                try await retainedSends.markRetryRefused(walletId: walletId)
+            } catch {
+                Logger.warn("Failed to mark retained hardware send refused: \(type(of: error))", context: "HwSendCoordinator")
+            }
+        } else if refused {
+            await releaseRetainedSend(walletId: walletId)
+            pendingPayment = nil
+        } else if failure.isDefiniteElectrumConnectFailure() {
+            await releaseRetainedSend(walletId: walletId)
+            pendingPayment?.hasBroadcastAttempted = false
+        }
+    }
+
+    /// A failed release only leaves the record behind, so the next attempt rebroadcasts or warns rather than signing again.
+    @discardableResult
+    private func releaseRetainedSend(walletId: String) async -> Bool {
+        do {
+            try await retainedSends.release(walletId: walletId)
+            return true
+        } catch {
+            Logger.warn("Failed to release retained hardware send: \(type(of: error))", context: "HwSendCoordinator")
+            return false
         }
     }
 
@@ -790,6 +902,10 @@ final class HwSendCoordinator {
         let address: String
         let sats: UInt64
         let satsPerVByte: UInt64
+
+        func isSamePayment(address: String, sats: UInt64) -> Bool {
+            self.address == address && self.sats == sats
+        }
     }
 
     private struct PendingPayment {
@@ -798,11 +914,26 @@ final class HwSendCoordinator {
         let paymentRequestId: PaykitPaymentRequest.ID?
         var isPreparedForBroadcast = false
         var hasBroadcastAttempted = false
+
+        var isAttemptedOrdinarySend: Bool {
+            paymentRequestId == nil && hasBroadcastAttempted
+        }
     }
 
     private struct OperationSession {
         let walletId: String
         let connecting: HwTransferConnecting
+    }
+}
+
+private extension HwRetainedSend {
+    var signedTx: HwFundingSignedTx {
+        HwFundingSignedTx(serializedTx: serializedTx, miningFeeSats: miningFeeSats, feeRate: feeRate, totalSpent: totalSpent)
+    }
+
+    /// Fee is deliberately not compared: a changed fee on the same payee and amount is the sharpest double-pay case.
+    func isSamePayment(address: String, sats: UInt64) -> Bool {
+        self.address == address && self.sats == sats
     }
 }
 
