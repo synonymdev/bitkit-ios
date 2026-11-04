@@ -558,6 +558,71 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(thirdSheet.unresolvedSend?.txId, Self.signedTransactionId, "The payment stays pending")
     }
 
+    func testALateShopSuccessReachesTheProofFlow() async throws {
+        let (coordinator, funding, gate, callbacks) = try await startShopPaymentPastItsDeadline(lateError: nil)
+
+        gate.open()
+        await eventually("the late success reached the proof flow") { callbacks.completed == [funding.broadcastTxId] }
+
+        XCTAssertEqual(callbacks.refusals, [false])
+        XCTAssertTrue(coordinator.isBroadcastUnresolved, "The payment stays uncertain until its proof resolves it")
+        XCTAssertTrue(coordinator.hasPendingBroadcast)
+        XCTAssertEqual(funding.broadcastCalls, 1)
+    }
+
+    func testALateShopRefusalMarksTheRetainedCandidateRefused() async throws {
+        let (coordinator, funding, gate, callbacks) = try await startShopPaymentPastItsDeadline(
+            lateError: refusal("min relay fee not met, 100 < 141")
+        )
+
+        gate.open()
+        await eventually("the late refusal marked the candidate") { callbacks.refusals == [false, true] }
+
+        XCTAssertTrue(callbacks.completed.isEmpty)
+        XCTAssertFalse(coordinator.isBroadcastUnresolved)
+        XCTAssertTrue(coordinator.canLeave)
+        XCTAssertTrue(coordinator.hasPendingBroadcast, "The refused candidate stays retained")
+        XCTAssertEqual(funding.signCalls, 1)
+    }
+
+    private final class ShopCallbacks {
+        var completed: [String] = []
+        var refusals: [Bool] = []
+    }
+
+    private func startShopPaymentPastItsDeadline(
+        lateError: Error?
+    ) async throws -> (HwSendCoordinator, MockHwFunding, AsyncGate, ShopCallbacks) {
+        let funding = MockHwFunding()
+        let gate = AsyncGate()
+        funding.broadcastGateForCall[1] = gate
+        funding.broadcastErrorForCall[1] = lateError
+        let coordinator = makeCoordinator(
+            walletId: "jade:wallet", signerFactory: signerFactory(funding), broadcastDeadline: .milliseconds(50)
+        )
+        let callbacks = ShopCallbacks()
+        let requestId = PaykitPaymentRequest.ID(paymentRequestId: "original-request", counterparty: "original-merchant")
+        func pay() async throws {
+            _ = try await coordinator.signAndBroadcast(
+                manager: HwWalletManager(), address: "bc1qtest", sats: 42000, satsPerVByte: 2, paymentRequestId: requestId,
+                markSignedPaymentRefused: { _, refused in callbacks.refusals.append(refused) },
+                afterBroadcast: { callbacks.completed.append($0.txId) }
+            )
+        }
+
+        await assertThrowsAsync { try await pay() } _: { error in
+            XCTAssertEqual(error as? HwTransferError, .broadcastUncertain)
+        }
+        XCTAssertFalse(coordinator.isSigning, "The sign screen stops waiting")
+        XCTAssertTrue(coordinator.isBroadcastUnresolved)
+        XCTAssertFalse(coordinator.canLeave)
+        await assertThrowsAsync { try await pay() } _: { error in
+            XCTAssertEqual(error as? HwTransferError, .broadcastUncertain)
+        }
+        XCTAssertEqual(funding.broadcastCalls, 1, "A retry waits for the running broadcast to answer")
+        return (coordinator, funding, gate, callbacks)
+    }
+
     func testASuccessfulSendStaysHeldUntilItIsRecorded() async throws {
         let funding = MockHwFunding()
         funding.signedTx = heldSignedTx

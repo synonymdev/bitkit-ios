@@ -533,6 +533,8 @@ final class HwSendCoordinator {
                 throw PaykitPaymentRequestError.operationInProgress
             }
         }
+        // Bytes still being broadcast past the deadline are not broadcast again until that answer lands
+        guard !isLateBroadcastRunning else { throw HwTransferError.broadcastUncertain }
         if let operationTask {
             guard operationRequest == request else { throw HwTransferError.deviceBusy(manager.vendor(walletId: walletId)) }
             return try await operationTask.value
@@ -669,20 +671,22 @@ final class HwSendCoordinator {
                     }
                     return answer
                 }
-                // A Shop payment's proof flow needs its answer, so only a plain send stops waiting at the deadline
-                let answer: Result<HwFundingBroadcastResult, Error>? = await withTaskCancellationHandler {
-                    if paymentRequestId == nil {
-                        return await awaitUntilDeadline(broadcast)
-                    }
-                    return await broadcast.value
+                let answer = await withTaskCancellationHandler {
+                    await awaitUntilDeadline(broadcast)
                 } onCancel: {
                     broadcast.cancel()
                 }
                 // The broadcast keeps running past the deadline, as it cannot be stopped, and its late answer still lands
                 guard let answer else {
                     Logger.warn("Hardware broadcast still running after its deadline", context: "HwSendCoordinator")
-                    holdUnresolvedSend(signed)
-                    finishLateSend(broadcast, signed: signed, dispatch: dispatch)
+                    if paymentRequestId == nil {
+                        holdUnresolvedSend(signed)
+                        finishLateSend(broadcast, signed: signed, dispatch: dispatch)
+                    } else {
+                        finishLateShopPayment(
+                            broadcast, signed: signed, afterBroadcast: afterBroadcast, markSignedPaymentRefused: markSignedPaymentRefused
+                        )
+                    }
                     throw HwTransferError.broadcastUncertain
                 }
                 do {
@@ -898,6 +902,34 @@ final class HwSendCoordinator {
             Logger.info("A late hardware broadcast answer proved nothing was sent", context: "HwSendCoordinator")
             releasedSendTxId = unresolvedSend?.txId
             resetBroadcast()
+        }
+    }
+
+    /// A late Shop answer goes where an answer before the deadline goes: a success to the proof flow, a refusal to the
+    /// retained candidate. Anything else leaves the candidate retained and the payment uncertain.
+    private func finishLateShopPayment(
+        _ broadcast: Task<Result<HwFundingBroadcastResult, Error>, Never>,
+        signed: HwFundingSignedTx,
+        afterBroadcast: @escaping (HwFundingBroadcastResult) async -> Void,
+        markSignedPaymentRefused: @escaping (HwFundingSignedTx, Bool) async throws -> Void
+    ) {
+        isLateBroadcastRunning = true
+        Task { @MainActor [weak self] in
+            let answer = await broadcast.value
+            guard let self else { return }
+            isLateBroadcastRunning = false
+            guard pendingPayment?.signedTx.serializedTx == signed.serializedTx else { return }
+            switch answer {
+            case let .success(result):
+                Logger.info("A late Shop hardware broadcast was taken", context: "HwSendCoordinator")
+                await afterBroadcast(result)
+            case let .failure(error):
+                let underlying = (error as? AppError)?.underlyingError ?? error
+                guard !(underlying is PreparedOnchainSendNotSubmitted), error.isHardwareBroadcastRefusal() else { return }
+                Logger.info("A late Shop hardware broadcast was refused", context: "HwSendCoordinator")
+                try? await markSignedPaymentRefused(signed, true)
+                isBroadcastUnresolved = false
+            }
         }
     }
 
