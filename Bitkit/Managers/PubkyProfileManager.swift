@@ -1544,6 +1544,22 @@ class PubkyProfileManager: ObservableObject {
         try? await removePrivatePaykitEndpoints(context: context, deferAppSync: deferAppSync, isSessionCurrent: isSessionCurrent)
     }
 
+    /// For a wallet wipe, which never retries the removal: unlike the best-effort variant it records no pending cleanup, so
+    /// a removal that finishes after the wipe stopped waiting for it leaves nothing behind for the next wallet.
+    static func removePublicPaykitEndpointsForWipe(context: String) async {
+        try? await removePublicPaykitEndpoints(context: context)
+    }
+
+    /// As `removePublicPaykitEndpointsForWipe`. The wipe cancels it when it stops waiting, and from then on it writes no
+    /// local Paykit state and records no pending cleanup.
+    static func removePrivatePaykitEndpointsForWipe(context: String) async {
+        do {
+            try await PrivatePaykitService.shared.removePublishedEndpoints(isSessionCurrent: { !Task.isCancelled })
+        } catch {
+            Logger.warn("Failed to remove private Paykit endpoints for the wipe: \(error)", context: context)
+        }
+    }
+
     func signOut() async throws {
         try await signOut(cleanPrivatePaykitEndpoints: true)
     }

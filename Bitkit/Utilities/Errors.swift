@@ -8,6 +8,7 @@ enum CustomServiceError: LocalizedError {
     case mnemonicNotFound
     case vssAuthRequired
     case nodeStillRunning
+    case wipeInProgress
     case onchainWalletStillRunning
     case invalidNodeSigningMessage
     case regtestOnlyMethod
@@ -27,6 +28,8 @@ enum CustomServiceError: LocalizedError {
             return "VSS requires LNURL-auth"
         case .nodeStillRunning:
             return "Node is still running"
+        case .wipeInProgress:
+            return "Wallet wipe in progress"
         case .onchainWalletStillRunning:
             return "Onchain wallet is still running"
         case .invalidNodeSigningMessage:
@@ -149,6 +152,9 @@ struct AppError: LocalizedError {
             debugMessage = nil
         case .nodeStillRunning:
             message = "Node is still running"
+            debugMessage = nil
+        case .wipeInProgress:
+            message = "Wallet wipe in progress"
             debugMessage = nil
         case .onchainWalletStillRunning:
             message = "Onchain wallet is still running"
