@@ -95,7 +95,8 @@ struct SparkExitDriver {
 
     private func build(_ record: inout SparkExitRecord, recovering: SparkExitRecovering) async throws {
         guard let prepared = try await prepare(&record, recovering: recovering) else {
-            await finish(&record, phase: .failed(reason: "No leaf can be exited"))
+            // The last leaf lost on a tick that could not read the funding address ends here, still as lost.
+            await finish(&record, phase: .failed(reason: record.isEveryLeafLost ? SparkExitRecord.lostReason : "No leaf can be exited"))
             return
         }
         guard !prepared.leaves.isEmpty else {
