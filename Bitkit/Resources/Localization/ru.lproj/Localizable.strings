@@ -216,6 +216,8 @@
 "lightning__transfer_hw__broadcast_uncertain_description" = "Ваша транзакция пополнения могла быть отправлена. Проверьте активность, прежде чем пробовать снова.";
 "lightning__transfer_hw__reconnect_error_description" = "Переподключите аппаратное устройство: похоже, оно отключилось от телефона.";
 "lightning__transfer_hw__reconnect_error_title" = "Переподключите Аппаратное Устройство";
+"lightning__transfer_hw__sign_title" = "Подпишите на\n<accent>устройстве</accent>";
+"lightning__transfer_hw__signed_title" = "Транзакция\n<accent>подписана</accent>";
 "lightning__transfer_to_savings_button" = "Перевести в Сбережения";
 "lightning__transfer_to_spending_button" = "Перевести на Расходы";
 "lightning__spending_intro__title" = "Перевод\n<accent>на Расходы</accent>";

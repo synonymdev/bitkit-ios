@@ -190,6 +190,8 @@
 "lightning__transfer_hw__broadcast_uncertain_description" = "ربما تم بث معاملة التمويل. يرجى التحقق من نشاطك قبل المحاولة مرة أخرى.";
 "lightning__transfer_hw__reconnect_error_description" = "يرجى إعادة توصيل جهازك، يبدو أنه غير متصل بهاتفك.";
 "lightning__transfer_hw__reconnect_error_title" = "إعادة توصيل الجهاز";
+"lightning__transfer_hw__sign_title" = "وقّع باستخدام\n<accent>جهازك</accent>";
+"lightning__transfer_hw__signed_title" = "تم توقيع\n<accent>المعاملة</accent>";
 "lightning__transfer_to_savings_button" = "تحويل إلى المدخرات";
 "lightning__transfer_to_spending_button" = "تحويل إلى الإنفاق";
 "lightning__spending_intro__title" = "تحويل\n<accent>إلى الإنفاق</accent>";

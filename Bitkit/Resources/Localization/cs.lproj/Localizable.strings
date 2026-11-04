@@ -217,6 +217,8 @@
 "lightning__transfer_hw__broadcast_uncertain_description" = "Vaše financující transakce mohla být odeslána do sítě. Než to zkusíte znovu, zkontrolujte prosím svou aktivitu.";
 "lightning__transfer_hw__reconnect_error_description" = "Připojte prosím znovu své hardwarové zařízení, zdá se, že je od telefonu odpojené.";
 "lightning__transfer_hw__reconnect_error_title" = "Znovu připojte hardwarové zařízení";
+"lightning__transfer_hw__sign_title" = "Podepište\n<accent>svým zařízením</accent>";
+"lightning__transfer_hw__signed_title" = "Transakce\n<accent>podepsána</accent>";
 "lightning__transfer_to_savings_button" = "Převést do úspor";
 "lightning__transfer_to_spending_button" = "Převést do útraty";
 "lightning__spending_intro__title" = "Převést\n<accent>do výdajů</accent>";

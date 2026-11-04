@@ -216,6 +216,8 @@
 "lightning__transfer_hw__broadcast_uncertain_description" = "És possible que la teva transacció de finançament s'hagi difós. Comprova la teva activitat abans de tornar-ho a provar.";
 "lightning__transfer_hw__reconnect_error_description" = "Torna a connectar el teu dispositiu de maquinari; sembla que s'ha desconnectat del telèfon.";
 "lightning__transfer_hw__reconnect_error_title" = "Torna a connectar el dispositiu";
+"lightning__transfer_hw__sign_title" = "Signa amb\n<accent>el teu dispositiu</accent>";
+"lightning__transfer_hw__signed_title" = "Transacció\n<accent>signada</accent>";
 "lightning__transfer_to_savings_button" = "Transferir a estalvis";
 "lightning__transfer_to_spending_button" = "Transferir a despesa";
 "lightning__spending_intro__title" = "Transferir\n<accent>a despesa</accent>";

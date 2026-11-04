@@ -241,6 +241,8 @@
 "lightning__transfer_hw__broadcast_uncertain_description" = "A sua transação de financiamento pode ter sido difundida. Verifique a sua atividade antes de tentar novamente.";
 "lightning__transfer_hw__reconnect_error_description" = "Volte a ligar o seu dispositivo de hardware; parece estar desligado do telemóvel.";
 "lightning__transfer_hw__reconnect_error_title" = "Voltar a ligar o dispositivo";
+"lightning__transfer_hw__sign_title" = "Assine com\n<accent>o seu dispositivo</accent>";
+"lightning__transfer_hw__signed_title" = "Transação\n<accent>assinada</accent>";
 "lightning__transfer_to_savings_button" = "Transferir Para Poupança";
 "lightning__transfer_to_spending_button" = "Transferir Para Gastos";
 "lightning__spending_intro__title" = "Transferir\n<accent>para gastos</accent>";

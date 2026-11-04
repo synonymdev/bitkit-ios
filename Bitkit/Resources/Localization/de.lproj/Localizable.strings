@@ -217,6 +217,8 @@
 "lightning__transfer_hw__broadcast_uncertain_description" = "Deine Finanzierungstransaktion wurde möglicherweise bereits übertragen. Bitte überprüfe deine Aktivität, bevor du es erneut versuchst.";
 "lightning__transfer_hw__reconnect_error_description" = "Bitte verbinde dein Hardware-Gerät erneut, es scheint von deinem Telefon getrennt zu sein.";
 "lightning__transfer_hw__reconnect_error_title" = "Hardware-Gerät neu verbinden";
+"lightning__transfer_hw__sign_title" = "Mit deinem\n<accent>Gerät signieren</accent>";
+"lightning__transfer_hw__signed_title" = "Transaktion\n<accent>signiert</accent>";
 "lightning__transfer_to_savings_button" = "Zu Ersparnissen transferieren";
 "lightning__transfer_to_spending_button" = "Zu Ausgaben transferieren";
 "lightning__spending_intro__title" = "<accent>zu den Ausgaben</accent>";

@@ -42,7 +42,11 @@ enum Route: Hashable {
     case transferIntro
     case fundingOptions
     case spendingIntro
+    case spendingIntroHw(walletId: String)
     case spendingAmount
+    case spendingAmountHw(walletId: String)
+    case spendingHwSign(walletId: String)
+    case spendingHwSigned
     case spendingConfirm
     case transferLearnMore
     case settingUp

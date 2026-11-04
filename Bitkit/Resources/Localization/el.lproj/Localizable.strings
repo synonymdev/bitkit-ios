@@ -212,6 +212,8 @@
 "lightning__transfer_hw__broadcast_uncertain_description" = "Η συναλλαγή χρηματοδότησης μπορεί να έχει μεταδοθεί. Ελέγξτε τη δραστηριότητά σας πριν δοκιμάσετε ξανά.";
 "lightning__transfer_hw__reconnect_error_description" = "Σύνδεσε ξανά τη συσκευή υλικού σου, φαίνεται ότι αποσυνδέθηκε από το τηλέφωνό σου.";
 "lightning__transfer_hw__reconnect_error_title" = "Επανασύνδεση συσκευής υλικού";
+"lightning__transfer_hw__sign_title" = "Υπόγραψε με\n<accent>τη συσκευή σου</accent>";
+"lightning__transfer_hw__signed_title" = "Η συναλλαγή\n<accent>υπογράφηκε</accent>";
 "lightning__transfer_to_savings_button" = "Μεταφορά στις Αποταμιεύσεις";
 "lightning__transfer_to_spending_button" = "Μεταφορά στις Δαπάνες";
 "lightning__spending_intro__title" = "Μεταφορά\n<accent>στις δαπάνες</accent>";

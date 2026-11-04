@@ -102,6 +102,10 @@ final class SparkTransferFlow {
 
     var amountSats: UInt64 = 0
     var isMaxAmount = false
+    /// The paired hardware wallet that funds the transfer, or nil for savings.
+    private(set) var walletId: String?
+    /// Signs and broadcasts a transfer funded from a hardware wallet.
+    let hwSend = HwSendCoordinator()
     var speed: SparkTransferSpeed = .instant
 
     var quote: SparkTransferQuote?
@@ -129,12 +133,13 @@ final class SparkTransferFlow {
         self.claimState = claimState
     }
 
-    func start(amountSats: UInt64, isMaxAmount: Bool) {
-        if self.amountSats != amountSats || self.isMaxAmount != isMaxAmount {
+    func start(amountSats: UInt64, isMaxAmount: Bool, walletId: String? = nil) {
+        if self.amountSats != amountSats || self.isMaxAmount != isMaxAmount || self.walletId != walletId {
             quote = nil
         }
         self.amountSats = amountSats
         self.isMaxAmount = isMaxAmount
+        self.walletId = walletId
         quoteError = nil
     }
 
@@ -142,11 +147,16 @@ final class SparkTransferFlow {
 
     /// Prices the transfer at the fast rate with fresh fee estimates, so the confirm screen never shows a stale fee.
     @discardableResult
-    func refreshQuote(wallet: WalletViewModel, feeEstimatesManager: FeeEstimatesManager) async -> SparkTransferQuote? {
+    func refreshQuote(
+        wallet: WalletViewModel,
+        feeEstimatesManager: FeeEstimatesManager,
+        hwWalletManager: HwWalletManager? = nil
+    ) async -> SparkTransferQuote? {
         quoteRequestId += 1
         let requestId = quoteRequestId
         let amountSats = amountSats
         let isMaxAmount = isMaxAmount
+        let walletId = walletId
         isQuoting = true
         defer {
             if requestId == quoteRequestId {
@@ -161,7 +171,15 @@ final class SparkTransferFlow {
             let rate = TransactionSpeed.fast.getFeeRate(from: feeRates)
             let networkFeeSats: UInt64
             let depositSats: UInt64
-            if isMaxAmount {
+            if let walletId, let hwWalletManager {
+                networkFeeSats = try await hwWalletManager.estimateOfflineFundingMiningFee(
+                    walletId: walletId,
+                    address: address,
+                    sats: amountSats,
+                    satsPerVByte: UInt64(rate)
+                )
+                depositSats = amountSats
+            } else if isMaxAmount {
                 networkFeeSats = try await wallet.estimateSendAllFee(address: address, satsPerVByte: rate)
                 depositSats = UInt64(max(0, wallet.spendableOnchainBalanceSats)).saturatingSub(networkFeeSats)
             } else {
