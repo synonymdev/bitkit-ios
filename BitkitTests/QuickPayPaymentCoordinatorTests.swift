@@ -620,6 +620,28 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertEqual(store.spentCentsToday(), 100, "The 1000-sat payment counts against the daily limit")
     }
 
+    func testAQuickPayOfAnInvoiceAnOnchainSendMayStillPayFailsWithoutSending() async throws {
+        let invoiceHash = try Self.invoiceHash
+        var sendCount = 0
+        let coordinator = QuickPayPaymentCoordinator(
+            store: store,
+            sendBolt11: { _ in
+                sendCount += 1
+                return invoiceHash
+            },
+            isHeldByOnchainSend: { $0 == invoiceHash },
+            listRows: { [] }
+        )
+
+        let route = await firstRoute(from: coordinator)
+
+        guard case let .failure(context) = route else { return XCTFail("Expected failure, got \(String(describing: route))") }
+        XCTAssertEqual(context.message, t("wallet__send_lightning_onchain_pending"))
+        XCTAssertEqual(sendCount, 0)
+        XCTAssertNil(store.record(matching: invoiceHash))
+        XCTAssertEqual(store.spentCentsToday(), 0)
+    }
+
     func testSameSessionReattachesResultWithoutDispatchingAgain() async throws {
         let app = appWithInvoice
         let session = QuickPayPaymentCoordinator.SessionID(

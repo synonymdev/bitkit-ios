@@ -47,6 +47,7 @@ final class QuickPayPaymentCoordinator {
     private let store: QuickPaySpendStore
     private let sendBolt11: (String) async throws -> String
     private let fetchLnurlInvoice: (LnurlPayData) async throws -> String
+    private let isHeldByOnchainSend: (_ paymentHash: String) async -> Bool
     private let listRows: () async throws -> [QuickPayReconcileRow]?
 
     private var operations: [String: InFlightOp] = [:]
@@ -65,6 +66,7 @@ final class QuickPayPaymentCoordinator {
         store: QuickPaySpendStore = .shared,
         sendBolt11: ((String) async throws -> String)? = nil,
         fetchLnurlInvoice: ((LnurlPayData) async throws -> String)? = nil,
+        isHeldByOnchainSend: ((_ paymentHash: String) async -> Bool)? = nil,
         listRows: (() async throws -> [QuickPayReconcileRow]?)? = nil
     ) {
         self.store = store
@@ -73,6 +75,9 @@ final class QuickPayPaymentCoordinator {
         }
         self.fetchLnurlInvoice = fetchLnurlInvoice ?? { data in
             try await LnurlHelper.fetchLnurlInvoice(data: data, amountMsats: data.callbackAmountMsats())
+        }
+        self.isHeldByOnchainSend = isHeldByOnchainSend ?? { paymentHash in
+            await OnchainSendAttemptService.shared.holdsLightningPayment(paymentHash: paymentHash)
         }
         self.listRows = listRows ?? {
             await LightningService.shared.listPayments()?.map(QuickPayReconcileRow.init)
@@ -290,6 +295,13 @@ final class QuickPayPaymentCoordinator {
             register(op)
             await settleRecovered(op)
             op.runActive = false
+            return
+        }
+
+        // An on-chain send to the address that came with this invoice already pays it, so it is never paid over Lightning too
+        if let refusal = await LightningPaymentHeldRefusal.check(paymentHash: invoiceHash, isHeldByOnchainSend: isHeldByOnchainSend) {
+            guard generation == self.generation, app.sendStateGeneration == sendStateGeneration else { return }
+            fail(presentation, error: refusal, bolt11: bolt11)
             return
         }
 

@@ -1168,7 +1168,8 @@
 "wallet__send_pending_note" = "Este pago está tardando un poco más de lo esperado. Puede seguir usando Bitkit.";
 "wallet__send_onchain_lightning_pending" = "Un pago Lightning de esta factura aún puede completarse. Para evitar pagarla dos veces, Bitkit no la pagará en cadena salvo que ese pago falle.";
 "wallet__send_onchain_lightning_paid" = "Un pago Lightning de esta factura ya se completó, así que Bitkit no la volverá a pagar en cadena.";
-"wallet__send_onchain_lightning_unknown" = "Bitkit necesita comprobar el pago Lightning de esta factura antes de pagarla en cadena. Inténtelo de nuevo cuando la billetera se haya iniciado.";
+"wallet__send_onchain_lightning_unknown" = "Bitkit necesita comprobar el pago Lightning de esta factura antes de pagarla en cadena. Inténtelo de nuevo cuando la billetera se haya iniciado o pague solo la dirección.";
+"wallet__send_lightning_onchain_pending" = "Un pago en cadena a la dirección de esta factura aún puede confirmarse. Para evitar pagarla dos veces, Bitkit no pagará la factura por Lightning.";
 "wallet__send_instant_failed" = "Pagamiento instantáneo he fallado.";
 "wallet__send_regular" = "Pagamiento regular";
 "wallet__send_error_slash_ln" = "Lamentablemente, el contacto no se puede pagar al instante. Puede intentar un pago regular (más caro, más lento).";

@@ -100,6 +100,26 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertEqual(app.scannedLightningPaymentHash, paymentHash, "The address is checked again before it is paid")
     }
 
+    func testAUnifiedCodeWhoseAddressAnOnchainSendMayStillPayIsRefusedAtTheScan() async throws {
+        let paymentHash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.expiredRegtestBolt11).paymentHash())
+        let uri = "bitcoin:\(address)?amount=0.0001&lightning=\(Self.expiredRegtestBolt11)"
+        let held = makeApp(isHeldByOnchainSend: { $0 == paymentHash })
+        ToastWindowManager.shared.hideToast()
+
+        try await held.handleScannedData(uri)
+
+        XCTAssertNil(held.scannedOnchainInvoice)
+        XCTAssertNil(held.scannedLightningInvoice)
+        XCTAssertTrue(held.didRejectScannedPayment)
+        XCTAssertEqual(ToastWindowManager.shared.currentToast?.accessibilityIdentifier, "OnchainPaymentPendingToast")
+
+        let free = makeApp()
+        ToastWindowManager.shared.hideToast()
+        try await free.handleScannedData(uri)
+        XCTAssertEqual(free.scannedOnchainInvoice?.address, address)
+        XCTAssertFalse(free.didRejectScannedPayment)
+    }
+
     func testAUnifiedCodeScannedBeforeTheNodeRunsIsPaidOnchainOnlyOnceTheNodeShowsItUnpaid() async throws {
         let paymentHash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.expiredRegtestBolt11).paymentHash())
         let payments = PaymentStore(payments: nil)
@@ -539,7 +559,8 @@ final class AppViewModelTests: XCTestCase {
 
     private func makeApp(
         listPayments: @escaping () async -> [LDKNode.PaymentDetails]? = { [] },
-        nodeId: @escaping () -> String? = { nil }
+        nodeId: @escaping () -> String? = { nil },
+        isHeldByOnchainSend: @escaping (String) async -> Bool = { _ in false }
     ) -> AppViewModel {
         AppViewModel(
             sheetViewModel: SheetViewModel(),
@@ -556,7 +577,8 @@ final class AppViewModelTests: XCTestCase {
                 },
                 canSendLightning: { _ in false },
                 listPayments: listPayments,
-                nodeId: nodeId
+                nodeId: nodeId,
+                isHeldByOnchainSend: isHeldByOnchainSend
             )
         )
     }

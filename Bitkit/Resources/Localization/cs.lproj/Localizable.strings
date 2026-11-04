@@ -1258,7 +1258,8 @@
 "wallet__send_pending_note" = "Tato platba trvá o něco déle, než se očekávalo. Bitkit můžete používat i nadále.";
 "wallet__send_onchain_lightning_pending" = "Platba Lightning této faktury může být ještě dokončena. Aby nebyla zaplacena dvakrát, Bitkit ji nezaplatí on-chain, dokud tato platba neselže.";
 "wallet__send_onchain_lightning_paid" = "Platba Lightning této faktury již proběhla úspěšně, proto ji Bitkit znovu on-chain nezaplatí.";
-"wallet__send_onchain_lightning_unknown" = "Bitkit musí před zaplacením on-chain zkontrolovat platbu Lightning této faktury. Zkuste to znovu, až se peněženka spustí.";
+"wallet__send_onchain_lightning_unknown" = "Bitkit musí před zaplacením on-chain zkontrolovat platbu Lightning této faktury. Zkuste to znovu, až se peněženka spustí, nebo zaplaťte jen samotnou adresu.";
+"wallet__send_lightning_onchain_pending" = "On-chain platba na adresu této faktury může být ještě potvrzena. Aby nebyla zaplacena dvakrát, Bitkit fakturu přes Lightning nezaplatí.";
 "wallet__send_instant_failed" = "Okamžitá platba se nezdařila";
 "wallet__send_regular" = "Pravidelná platba";
 "wallet__send_error_slash_ln" = "Bohužel kontakt nemohl obdržet okamžitou platbu. Můžete zkusit běžnou platbu (dražší, pomalejší).";

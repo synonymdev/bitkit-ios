@@ -1256,7 +1256,8 @@
 "wallet__send_pending_note" = "Diese Zahlung dauert länger als erwartet. Du kannst Bitkit weiterhin verwenden.";
 "wallet__send_onchain_lightning_pending" = "Eine Lightning-Zahlung dieser Rechnung kann noch abgeschlossen werden. Damit sie nicht doppelt bezahlt wird, bezahlt Bitkit sie nicht on-chain, außer diese Zahlung schlägt fehl.";
 "wallet__send_onchain_lightning_paid" = "Eine Lightning-Zahlung dieser Rechnung war bereits erfolgreich, daher bezahlt Bitkit sie nicht erneut on-chain.";
-"wallet__send_onchain_lightning_unknown" = "Bitkit muss die Lightning-Zahlung dieser Rechnung prüfen, bevor sie on-chain bezahlt wird. Versuche es erneut, sobald die Wallet gestartet ist.";
+"wallet__send_onchain_lightning_unknown" = "Bitkit muss die Lightning-Zahlung dieser Rechnung prüfen, bevor sie on-chain bezahlt wird. Versuche es erneut, sobald die Wallet gestartet ist, oder bezahle stattdessen nur die Adresse.";
+"wallet__send_lightning_onchain_pending" = "Eine On-chain-Zahlung an die Adresse dieser Rechnung kann noch bestätigt werden. Damit sie nicht doppelt bezahlt wird, bezahlt Bitkit die Rechnung nicht über Lightning.";
 "wallet__send_instant_failed" = "Sofortige Zahlung fehlgeschlagen";
 "wallet__send_regular" = "Reguläre Zahlung";
 "wallet__send_error_slash_ln" = "Dieser Kontakt konnte leider nicht sofort bezahlt werden. Du kannst eine reguläre Zahlung versuchen (teurer, langsamer).";

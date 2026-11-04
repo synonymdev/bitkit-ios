@@ -138,6 +138,81 @@ final class OnchainSendLightningPaymentHashTests: XCTestCase {
         }
     }
 
+    func testAnOnchainSendOfAnInvoicesAddressHoldsThatInvoiceUntilItIsReplaced() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let none = await service.holdsLightningPayment(paymentHash: paymentHash)
+        XCTAssertFalse(none, "No on-chain send holds anything")
+
+        _ = try await dispatchedOriginal(service, store: store, sender: PreparedAttemptNodeMock(), lightningPaymentHash: paymentHash)
+        let held = await service.holdsLightningPayment(paymentHash: paymentHash.uppercased())
+        let other = await service.holdsLightningPayment(paymentHash: String(repeating: "ef", count: 32))
+        XCTAssertTrue(held)
+        XCTAssertFalse(other)
+
+        // An accepted send keeps holding it, as its transaction pays the invoice once it confirms
+        var accepted = try XCTUnwrap(store.snapshot().first)
+        accepted.status = .accepted
+        accepted.localFollowupComplete = true
+        try store.save([accepted])
+        let heldOnceAccepted = await service.holdsLightningPayment(paymentHash: paymentHash)
+        XCTAssertTrue(heldOnceAccepted)
+
+        store.failLoad = true
+        let heldWhileUnreadable = await service.holdsLightningPayment(paymentHash: String(repeating: "ef", count: 32))
+        XCTAssertTrue(heldWhileUnreadable, "An attempt store that cannot be read holds every invoice")
+    }
+
+    /// Both directions: an unresolved on-chain send of a unified code's address refuses its invoice over Lightning, at the scan
+    /// and at Confirm, and a pending Lightning payment of the invoice refuses its address
+    func testAUnifiedCodeIsNeverPaidBothWays() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        _ = try await dispatchedOriginal(service, store: store, sender: PreparedAttemptNodeMock(), lightningPaymentHash: paymentHash)
+        let app = AppViewModel(
+            sheetViewModel: SheetViewModel(),
+            navigationViewModel: NavigationViewModel(),
+            scanPaymentOperations: ScanPaymentOperations(
+                state: {
+                    ScanPaymentState(
+                        isNodeRunning: true, spendableOnchainBalanceSats: 0, totalLightningBalanceSats: 0,
+                        hasChannels: false, hasUsableChannels: false
+                    )
+                },
+                canSendLightning: { _ in false },
+                listPayments: { [] },
+                isHeldByOnchainSend: { await service.holdsLightningPayment(paymentHash: $0) }
+            )
+        )
+
+        let lightningRefusal = await SendConfirmationView.lightningDispatchRefusal(
+            walletType: .lightning, paymentHash: paymentHash, isHeldByOnchainSend: app.isHeldByOnchainSend
+        )
+        let onchainUnaffected = await SendConfirmationView.lightningDispatchRefusal(
+            walletType: .onchain, paymentHash: paymentHash, isHeldByOnchainSend: app.isHeldByOnchainSend
+        )
+        XCTAssertNotNil(lightningRefusal)
+        XCTAssertNil(onchainUnaffected)
+
+        let otherInvoice = await SendConfirmationView.lightningDispatchRefusal(
+            walletType: .lightning, paymentHash: String(repeating: "ef", count: 32), isHeldByOnchainSend: app.isHeldByOnchainSend
+        )
+        XCTAssertNil(otherInvoice)
+
+        let pending = makeApp(listPayments: { [AppViewModelTests.outboundBolt11Payment(paymentHash: self.paymentHash, status: .pending)] })
+        let addressRefusal = await SendConfirmationView.onchainDispatchRefusal(
+            walletType: .onchain, lightningPaymentHash: paymentHash, lightningPaymentStatus: pending.lightningPaymentStatus
+        )
+        XCTAssertEqual(addressRefusal?.status, .pending)
+    }
+
+    func testTheRefusalOfAHeldInvoiceSaysWhy() {
+        let refusal = LightningPaymentHeldRefusal()
+        XCTAssertEqual(refusal.title, t("common__error"))
+        XCTAssertEqual(refusal.description, t("wallet__send_lightning_onchain_pending"))
+        XCTAssertEqual(sendFailureMessage(for: refusal), t("wallet__send_lightning_onchain_pending"))
+    }
+
     private func dispatchedOriginal(
         _ service: OnchainSendAttemptService, store: MemoryAttemptStore, sender: PreparedAttemptNodeMock,
         lightningPaymentHash: String?

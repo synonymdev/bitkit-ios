@@ -1170,6 +1170,17 @@ actor OnchainSendAttemptService {
         try currentAttempt()?.requestId == requestId
     }
 
+    /// Whether the current on-chain send pays an address that came with the Lightning invoice of this hash, so paying the invoice
+    /// would pay twice once that transaction confirms. An attempt store that cannot be read holds every invoice.
+    func holdsLightningPayment(paymentHash: String) -> Bool {
+        do {
+            guard let attempt = try currentAttempt(), let held = attempt.lightningPaymentHash else { return false }
+            return held.caseInsensitiveCompare(paymentHash) == .orderedSame
+        } catch {
+            return true
+        }
+    }
+
     private func currentAttemptForPending() throws -> OnchainSendAttempt? {
         do { return try currentAttempt() }
         catch {

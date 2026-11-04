@@ -172,6 +172,34 @@ struct OnchainPaymentRefusal: LocalizedError {
     }
 }
 
+/// Refuses paying a Lightning invoice while an on-chain send to the address that came with it may still confirm, or did.
+struct LightningPaymentHeldRefusal: LocalizedError {
+    var title: String {
+        t("common__error")
+    }
+
+    var description: String {
+        t("wallet__send_lightning_onchain_pending")
+    }
+
+    var accessibilityIdentifier: String {
+        "OnchainPaymentPendingToast"
+    }
+
+    var errorDescription: String? {
+        description
+    }
+
+    /// The refusal for paying this invoice over Lightning, or nil when no on-chain send holds it.
+    static func check(
+        paymentHash: String?,
+        isHeldByOnchainSend: (_ paymentHash: String) async -> Bool
+    ) async -> LightningPaymentHeldRefusal? {
+        guard let paymentHash, await isHeldByOnchainSend(paymentHash) else { return nil }
+        return LightningPaymentHeldRefusal()
+    }
+}
+
 /// How falling back from a unified send's invoice to its address ended.
 enum OnchainFallbackOutcome: Equatable {
     /// The send pays the address, keeping the invoice's hash for its confirmation to check again
@@ -189,6 +217,10 @@ struct ScanPaymentOperations {
     var listPayments: () async -> [PaymentDetails]? = { await LightningService.shared.listPayments() }
     /// This node's id, or nil before the node is built.
     var nodeId: () -> String? = { LightningService.shared.nodeId }
+    /// Whether an on-chain send to the address that came with the Lightning invoice of this hash may still confirm, or did.
+    var isHeldByOnchainSend: (_ paymentHash: String) async -> Bool = {
+        await OnchainSendAttemptService.shared.holdsLightningPayment(paymentHash: $0)
+    }
 
     @MainActor
     static func live(lightningService: LightningService) -> ScanPaymentOperations {
@@ -816,6 +848,14 @@ extension AppViewModel {
         toast(type: .error, title: refusal.title, description: refusal.description, accessibilityIdentifier: refusal.accessibilityIdentifier)
     }
 
+    func isHeldByOnchainSend(paymentHash: String) async -> Bool {
+        await scanPaymentOperations.isHeldByOnchainSend(paymentHash)
+    }
+
+    func showLightningPaymentHeldRefusal(_ refusal: LightningPaymentHeldRefusal) {
+        toast(type: .error, title: refusal.title, description: refusal.description, accessibilityIdentifier: refusal.accessibilityIdentifier)
+    }
+
     func contactPaymentContext(forPendingPaymentHash hash: String) -> ContactPaymentContext? {
         pendingContactPaymentContexts[hash]
     }
@@ -1111,6 +1151,13 @@ extension AppViewModel {
                     if !isIssuedByThisNode(payeeNodeId: lightningInvoice.payeeNodeId?.hex) {
                         lightningPaymentHash = lightningInvoice.paymentHash.hex
                     }
+                    // An on-chain send to this address that may still confirm already pays the invoice, so neither is paid again
+                    guard try await canPayLightningInstead(
+                        paymentHash: lightningPaymentHash,
+                        handlingId: handlingId,
+                        claimedContactPaymentContext: claimedContactPaymentContext,
+                        isCurrentScan: isCurrentScanGeneration
+                    ) else { return }
                     // Check lightning invoice network
                     let lnNetwork = NetworkValidationHelper.convertNetworkType(lightningInvoice.networkType)
                     let lnNetworkMatch = !NetworkValidationHelper.isNetworkMismatch(addressNetwork: lnNetwork, currentNetwork: Env.network)
@@ -1231,6 +1278,13 @@ extension AppViewModel {
                 throw PaykitPaymentRequestError.amountMismatch
             }
 
+            guard try await canPayLightningInstead(
+                paymentHash: invoice.paymentHash.hex,
+                handlingId: handlingId,
+                claimedContactPaymentContext: claimedContactPaymentContext,
+                isCurrentScan: isCurrentScanGeneration
+            ) else { return }
+
             // If node is running, we can check for channels and validate immediately
             if paymentState.isNodeRunning {
                 let paymentAmount = requestedAmount ?? invoice.amountSatoshis
@@ -1315,6 +1369,25 @@ extension AppViewModel {
         guard status.refusesOnchainFallback else { return true }
         didRejectScannedPayment = true
         showOnchainPaymentRefusal(OnchainPaymentRefusal(status))
+        return false
+    }
+
+    /// A Lightning invoice is not paid while an on-chain send to the address that came with it may still confirm, or did, as that
+    /// would pay it twice.
+    private func canPayLightningInstead(
+        paymentHash: String?,
+        handlingId: UUID,
+        claimedContactPaymentContext: ContactPaymentContext?,
+        isCurrentScan: () -> Bool
+    ) async throws -> Bool {
+        let refusal = await LightningPaymentHeldRefusal.check(
+            paymentHash: paymentHash,
+            isHeldByOnchainSend: scanPaymentOperations.isHeldByOnchainSend
+        )
+        try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext, isCurrentScan: isCurrentScan)
+        guard let refusal else { return true }
+        didRejectScannedPayment = true
+        showLightningPaymentHeldRefusal(refusal)
         return false
     }
 
