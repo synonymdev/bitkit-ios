@@ -35,7 +35,12 @@ final class OrphanedKeychainGuardTests: XCTestCase {
                     return self.hasNativeMnemonic
                 },
                 hasWalletStorage: { self.hasWalletStorage },
-                hasOrphanedRNKeychain: { self.hasOrphanedRNKeychain },
+                hasOrphanedRNKeychain: {
+                    if self.isRNMnemonicReadFailing {
+                        throw ProbeFailure()
+                    }
+                    return self.hasOrphanedRNKeychain
+                },
                 hasRNMnemonic: {
                     if self.isRNMnemonicReadFailing {
                         throw ProbeFailure()
@@ -191,5 +196,20 @@ final class OrphanedKeychainGuardTests: XCTestCase {
         XCTAssertThrowsError(try harness.guardUnderTest.run())
         XCTAssertEqual(harness.rnKeychainRemovals, 0)
         XCTAssertEqual(harness.markerWrites, 0)
+    }
+
+    func testAnRNKeychainThatCannotBeReadKeepsHoldingTheLaunchAfterTheNativeSeedIsGone() {
+        let harness = Harness()
+        harness.hasNativeMnemonic = true
+        harness.hasOrphanedRNKeychain = true
+        harness.isRNMnemonicReadFailing = true
+        harness.isWipeFailingAfterSeeds = true
+
+        for run in 1 ... 2 {
+            XCTAssertThrowsError(try harness.guardUnderTest.run(), "Run \(run) must hold the launch") { error in
+                XCTAssertTrue(error is OrphanedKeychainGuard.WipeFailed, "Expected the launch to be held, got \(error)")
+            }
+        }
+        XCTAssertEqual(harness.markerWrites, 0, "An RN keychain that cannot be read may still hold a seed")
     }
 }

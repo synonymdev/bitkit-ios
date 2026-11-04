@@ -630,8 +630,18 @@ extension MigrationsService {
     /// Returns true if RN keychain has mnemonic but RN app files don't exist.
     /// This indicates an orphaned keychain from a deleted RN app install.
     func hasOrphanedRNKeychain() -> Bool {
+        do {
+            return try checkOrphanedRNKeychain()
+        } catch {
+            Logger.error("Error checking for an orphaned RN keychain: \(error)", context: "Migration")
+            return false
+        }
+    }
+
+    /// Throws when the React Native keychain cannot be read, which may hide an orphaned seed.
+    func checkOrphanedRNKeychain() throws -> Bool {
         // Check if RN keychain has mnemonic
-        guard hasRNWalletData() else {
+        guard try hasRNMnemonic() else {
             return false
         }
 

@@ -14,7 +14,7 @@ struct OrphanedKeychainGuard {
     var hasNativeMnemonic: () throws -> Bool
     /// Whether the Lightning storage folder exists, which node setup creates and a reinstall never has.
     var hasWalletStorage: () -> Bool
-    var hasOrphanedRNKeychain: () -> Bool
+    var hasOrphanedRNKeychain: () throws -> Bool
     var hasRNMnemonic: () throws -> Bool
     var wipeKeychain: () throws -> Void
     var removeRNKeychain: () -> Void
@@ -24,7 +24,7 @@ struct OrphanedKeychainGuard {
         createInstallationMarker: { try InstallationMarker.create() },
         hasNativeMnemonic: { try Keychain.exists(key: .bip39Mnemonic(index: 0)) },
         hasWalletStorage: { FileManager.default.fileExists(atPath: Env.ldkStorage(walletIndex: 0).path) },
-        hasOrphanedRNKeychain: { MigrationsService.shared.hasOrphanedRNKeychain() },
+        hasOrphanedRNKeychain: { try MigrationsService.shared.checkOrphanedRNKeychain() },
         hasRNMnemonic: { try MigrationsService.shared.hasRNMnemonic() },
         wipeKeychain: {
             SharedPubkyKeychain.removeAllOwn()
@@ -42,14 +42,15 @@ struct OrphanedKeychainGuard {
         }
 
         let hasNativeKeychain: Bool
+        let hasOrphanedRNKeychain: Bool
         do {
             hasNativeKeychain = try hasNativeMnemonic()
+            hasOrphanedRNKeychain = try self.hasOrphanedRNKeychain()
         } catch {
             // An orphaned seed may be behind the read, and a wallet started on it would look like this install's
             Logger.error("Failed to read the keychain for the orphaned keychain check: \(error)", context: "OrphanedKeychainGuard")
             throw WipeFailed(underlying: error)
         }
-        let hasOrphanedRNKeychain = hasOrphanedRNKeychain()
         var isRNKeychainRemoved = false
 
         if hasNativeKeychain || hasOrphanedRNKeychain {
