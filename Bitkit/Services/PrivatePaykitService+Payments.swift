@@ -114,8 +114,10 @@ extension PrivatePaykitService {
     /// private payment path once this wallet keeps any private payment state for it, the SDK keeps a link record for it in
     /// any state, or it publishes a Noise key authorization. Only a contact without any of these, whose authorization is
     /// definitely missing, is paid through public endpoints; any other lookup failure throws, as does a missing identity.
+    /// A signed-out identity still takes the private path, since the SDK resolves cached private payment details without
+    /// a live session.
     func hasPrivatePaymentPath(_ publicKey: String) async throws -> Bool {
-        guard let identity = try await contactPaymentOperations.identityStatus(), identity.capability != .signedOut else {
+        guard let identity = try await contactPaymentOperations.identityStatus(), identity.publicKey != nil else {
             throw PubkyServiceError.sessionNotActive
         }
         if identity.capability == .publicOnly {

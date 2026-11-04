@@ -1791,7 +1791,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
         let statuses: [(name: String, read: () async throws -> IdentityStatus?)] = [
             ("unreadable", { throw PaykitError.Storage(code: "storage_unavailable", context: "") }),
             ("missing", { nil }),
-            ("signed out", { IdentityStatus(publicKey: nil, capability: .signedOut) }),
+            ("missing identity key", { IdentityStatus(publicKey: nil, capability: .privateLinkCapable) }),
         ]
 
         for status in statuses {
@@ -1822,6 +1822,39 @@ final class PrivatePaykitServiceTests: XCTestCase {
             XCTAssertFalse(paidPublicly, status.name)
             XCTAssertFalse(resolvedPrivately, status.name)
             await service.clearTestPendingMessageDrainRetries()
+        }
+    }
+
+    @MainActor
+    func testSignedOutPayerWithCachedPrivateEndpointsStaysOnThePrivatePath() async throws {
+        for capability: PubkyIdentityCapability in [.signedOut, .unknown] {
+            var paidPublicly = false
+            var resolvedPrivately = false
+            let service = contactPaymentService(.testing(
+                prepareContactPayment: { _, _ in
+                    resolvedPrivately = true
+                    return Self.preparedContactPayment(linkState: .linked)
+                },
+                identityStatus: { IdentityStatus(publicKey: Self.ownContactPaymentKey, capability: capability) },
+                beginPublicPayment: { _ in
+                    paidPublicly = true
+                    return .notOpened
+                }
+            ))
+            await service.setTestContactState(
+                PrivatePaykitService.ContactState(cachedResolvedEndpoints: [.init(methodId: "lightning", endpointData: "{}")]),
+                publicKey: Self.contactPaymentKey
+            )
+            _ = await service.rememberSavedContacts([Self.contactPaymentKey], replacing: false)
+
+            let result = try await service.beginSavedContactPayment(to: Self.contactPaymentKey, wallet: WalletViewModel())
+
+            guard case .noEndpoint = result else {
+                XCTFail("\(capability): expected the private resolution result, got \(result)")
+                continue
+            }
+            XCTAssertTrue(resolvedPrivately, "\(capability)")
+            XCTAssertFalse(paidPublicly, "\(capability)")
         }
     }
 
