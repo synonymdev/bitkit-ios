@@ -334,6 +334,19 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertEqual(paymentSheetRoute(for: app), .amount)
     }
 
+    func testOnchainInvoiceBelowMinimumOpensAmount() {
+        let app = appWithOnchainInvoice(amountSatoshis: UInt64(Env.dustLimit) - 1)
+
+        XCTAssertEqual(sendRoute(for: app), .amount)
+        XCTAssertEqual(paymentSheetRoute(for: app), .amount)
+    }
+
+    func testOnchainInvoiceAtMinimumOpensConfirm() {
+        let app = appWithOnchainInvoice(amountSatoshis: UInt64(Env.dustLimit))
+
+        XCTAssertEqual(sendRoute(for: app), .confirm)
+    }
+
     func testOnchainInvoiceWithAmountSkipsQuickpay() {
         let app = appWithOnchainInvoice(amountSatoshis: 1000)
 

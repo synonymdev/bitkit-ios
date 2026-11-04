@@ -172,7 +172,10 @@ struct PaymentNavigationHelper {
     /// A BIP21 request with an amount skips Amount; the balance was already checked when it was scanned.
     /// Contact payments keep Amount because it records the reviewed amount for the payment.
     static func onchainInvoiceRoute(app: AppViewModel) -> SendRoute {
-        guard let invoice = app.scannedOnchainInvoice, invoice.amountSatoshis > 0, app.contactPaymentContext == nil else {
+        // Below the on-chain minimum, Amount shows why it cannot be sent.
+        guard let invoice = app.scannedOnchainInvoice, invoice.amountSatoshis >= UInt64(Env.dustLimit),
+              app.contactPaymentContext == nil
+        else {
             return .amount
         }
         return .confirm
