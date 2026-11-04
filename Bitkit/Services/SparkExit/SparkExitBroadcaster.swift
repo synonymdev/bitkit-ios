@@ -21,7 +21,11 @@ struct EsploraUtxo: Codable, Equatable {
 /// What a broadcast came to. Accepted includes a transaction the node already had.
 enum SparkExitBroadcastOutcome: Equatable {
     case accepted
-    /// Not final yet (timelock), or its parent is not visible yet: the next tick tries again.
+    /// Its relative timelock has not matured (`non-BIP68-final`): the next tick tries again. Never a rejection.
+    case notMature(String)
+    /// An input is missing or already spent: its parent is not visible yet, or another transaction spent it.
+    case inputsMissing(String)
+    /// The host or node could not take it now: the next tick tries again.
     case retryLater(String)
     /// Refused for good at this fee or policy; a later check or rebuild replaces it.
     case rejected(String)
@@ -29,6 +33,8 @@ enum SparkExitBroadcastOutcome: Equatable {
     var summary: String {
         switch self {
         case .accepted: "accepted"
+        case let .notMature(reason): "not mature: \(reason)"
+        case let .inputsMissing(reason): "inputs missing: \(reason)"
         case let .retryLater(reason): "retry: \(reason)"
         case let .rejected(reason): "rejected: \(reason)"
         }
@@ -166,7 +172,8 @@ enum SparkExitBroadcastClassifier {
         "txn-same-nonwitness-data-in-mempool",
         "already in block chain",
     ]
-    private static let waitMessages = ["non-BIP68-final", "non-final", "bad-txns-inputs-missingorspent", "missing-inputs", "missingorspent"]
+    private static let notMatureMessages = ["non-BIP68-final", "non-final"]
+    private static let missingInputMessages = ["bad-txns-inputs-missingorspent", "missing-inputs", "missingorspent"]
 
     static func single(status: Int, body: Data) -> SparkExitBroadcastOutcome {
         let text = String(decoding: body, as: UTF8.self)
@@ -201,16 +208,17 @@ enum SparkExitBroadcastClassifier {
         if outcomes.allSatisfy({ $0 == .accepted }) {
             return .accepted
         }
-        if let rejected = outcomes.first(where: {
-            if case .rejected = $0 {
-                true
-            } else {
-                false
+        // A child reports missing inputs when its parent is the one not mature yet, so the timelock wins over them.
+        let precedence: (SparkExitBroadcastOutcome) -> Int = {
+            switch $0 {
+            case .rejected: 0
+            case .notMature: 1
+            case .inputsMissing: 2
+            case .retryLater: 3
+            case .accepted: 4
             }
-        }) {
-            return rejected
         }
-        return outcomes.first { $0 != .accepted } ?? .accepted
+        return outcomes.min { precedence($0) < precedence($1) } ?? .accepted
     }
 
     /// A host that is down, rate limiting or behind a challenge page says nothing about the transaction.
@@ -222,8 +230,11 @@ enum SparkExitBroadcastClassifier {
         if knownMessages.contains(where: text.contains) || hasRpcCode(-27, in: text) {
             return .accepted
         }
-        if waitMessages.contains(where: text.contains) || hasRpcCode(-25, in: text) {
-            return .retryLater(text)
+        if notMatureMessages.contains(where: text.contains) {
+            return .notMature(text)
+        }
+        if missingInputMessages.contains(where: text.contains) || hasRpcCode(-25, in: text) {
+            return .inputsMissing(text)
         }
         return .rejected(text)
     }

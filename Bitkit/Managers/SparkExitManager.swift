@@ -27,6 +27,8 @@ final class SparkExitManager {
     private(set) var tipHeight: UInt32?
     /// Confirmed or not, what reached the funding address and is not a funding input yet.
     private(set) var fundingSeenSats: UInt64 = 0
+    /// What the running exit shows about its fee funding while it lacks some.
+    private(set) var fundingState: SparkExitFundingState?
     private(set) var fundingAddress: String?
     private(set) var lastError: String?
 
@@ -38,6 +40,7 @@ final class SparkExitManager {
     @ObservationIgnored private var isTicking = false
     @ObservationIgnored private var pendingDestination: String?
     @ObservationIgnored private var pendingFeeRate: UInt64?
+    @ObservationIgnored private var pendingFundingIndex: UInt32?
 
     private init() {}
 
@@ -48,6 +51,11 @@ final class SparkExitManager {
     /// The exit runs, or its leftover fee funding is still on its way to savings.
     var needsDriving: Bool {
         record?.needsDriving == true
+    }
+
+    /// Emergency exit opens this exit's progress or result instead of a new exit.
+    var showsResult: Bool {
+        record?.showsResult == true
     }
 
     private var store: SparkExitStore {
@@ -88,6 +96,7 @@ final class SparkExitManager {
         try? store.delete()
         record = nil
         quote = nil
+        pendingFundingIndex = nil
         Self.clearReminders()
     }
 
@@ -136,7 +145,7 @@ final class SparkExitManager {
         let driver = SparkExitDriver(
             chain: chain,
             recovering: SparkManager.shared.exitRecovering,
-            makeSigner: { try Self.signer(walletIndex: walletIndex) },
+            makeSigner: { try Self.signer(walletIndex: walletIndex, index: $0) },
             save: { try store.save($0) }
         )
         do {
@@ -204,8 +213,15 @@ final class SparkExitManager {
     private func refreshFundingSeen(chain: SparkExitChain, record: SparkExitRecord) async {
         guard let address = record.funding.first?.address else { return }
         fundingAddress = address
-        guard record.fundingShortfallSats != nil, let utxos = try? await chain.utxos(address: address) else { return }
-        fundingSeenSats = SparkExitMath.newFunding(utxos, record: record).reduce(0) { $0 + $1.value }
+        guard record.fundingShortfallSats != nil else {
+            fundingState = nil
+            return
+        }
+        let utxos = try? await chain.utxos(address: address)
+        if let utxos {
+            fundingSeenSats = SparkExitMath.newFunding(utxos, record: record).reduce(0) { $0 + $1.value }
+        }
+        fundingState = SparkExitMath.fundingState(record, utxos: utxos)
     }
 
     // MARK: Quote
@@ -232,10 +248,12 @@ final class SparkExitManager {
                 destination: destination,
                 selection: .all
             ))
+            let fundingIndex = pendingFundingIndex ?? nextFundingIndex()
             pendingDestination = destination
             pendingFeeRate = feeRate
+            pendingFundingIndex = fundingIndex
             quote = SparkExitQuote(prepared: prepared)
-            fundingAddress = try Self.fundingKey(walletIndex: walletIndex).address
+            fundingAddress = try Self.fundingKey(walletIndex: walletIndex, index: fundingIndex).address
         } catch {
             Logger.error("Failed to quote the Spark exit: \(error)", context: "SparkExitManager")
             quote = nil
@@ -259,10 +277,12 @@ final class SparkExitManager {
     /// Starts the exit for the current quote: writes its record, moves the Spark balance into transfer to savings
     /// and, with `fundFromSavings`, pays the fee funding from savings at `savingsFeeRate`.
     func start() async throws {
-        guard !isExiting, let quote, let destination = pendingDestination, let feeRate = pendingFeeRate, let network = SparkManager.exitNetwork else {
+        guard !isExiting, let quote, let destination = pendingDestination, let feeRate = pendingFeeRate,
+              let fundingIndex = pendingFundingIndex, let network = SparkManager.exitNetwork
+        else {
             throw AppError(message: t("lightning__spark_exit__quote_error"), debugMessage: "No quote to start from")
         }
-        let key = try Self.fundingKey(walletIndex: walletIndex)
+        let key = try Self.fundingKey(walletIndex: walletIndex, index: fundingIndex)
         var record = SparkExitRecord(
             network: "\(network)",
             createdAt: Date(),
@@ -271,7 +291,7 @@ final class SparkExitManager {
             destination: destination,
             leafIds: quote.leafIds,
             leafTotalSats: quote.leafTotalSats,
-            funding: [.init(index: 0, address: key.address, pubkey: key.pubkey)],
+            funding: [.init(index: fundingIndex, address: key.address, pubkey: key.pubkey)],
             expectedSats: quote.incomingSats,
             skippedLeafCount: quote.prepared.skipped.count
         )
@@ -280,6 +300,8 @@ final class SparkExitManager {
         record.transferId = try await TransferService(lightningService: .shared).createTransfer(type: .sparkExit, amountSats: quote.incomingSats)
         try store.save(record)
         UserDefaults.standard.set(walletIndex, forKey: Self.walletIndexKey)
+        UserDefaults.standard.set(Int(fundingIndex) + 1, forKey: fundingIndexKey)
+        pendingFundingIndex = nil
         self.record = record
         SparkManager.shared.detachForExit()
         // Reconnecting cuts an optimization short, which would leave its counter-swap unclaimed for a while.
@@ -288,13 +310,42 @@ final class SparkExitManager {
         Logger.info("Started Spark exit of \(quote.exitSats) sats over \(quote.leafIds.count) leaves", context: "SparkExitManager")
 
         if fundFromSavings, quote.fundingSats > 0 {
-            try await payFunding(address: key.address, sats: quote.fundingSats, satsPerVbyte: savingsFeeRate, feeSats: savingsFeeSats)
+            let txid = try await payFunding(address: key.address, sats: quote.fundingSats, satsPerVbyte: savingsFeeRate, feeSats: savingsFeeSats)
+            await notePaidFunding(txid: txid)
         }
         Task { await tick() }
     }
 
+    /// Keeps the savings payment in the record, so the exit waits for it instead of asking for the funding again.
+    /// Written between ticks, so a tick in flight never saves over it.
+    private func notePaidFunding(txid: String) async {
+        while isTicking {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        guard var record else { return }
+        record.fundingPaymentTxid = txid
+        do {
+            try store.save(record)
+        } catch {
+            Logger.error("Failed to save the Spark exit funding payment: \(error)", context: "SparkExitManager")
+        }
+        self.record = record
+        fundingState = SparkExitMath.fundingState(record, utxos: nil)
+    }
+
+    /// The funding key index of the next exit: one no exit of this wallet used, from the counter the last start
+    /// left and the stored record, so leftover of an earlier exit never mixes into a new one.
+    private func nextFundingIndex() -> UInt32 {
+        SparkExitMath.nextFundingIndex(counter: UserDefaults.standard.integer(forKey: fundingIndexKey), record: record)
+    }
+
+    private var fundingIndexKey: String {
+        "sparkExitNextFundingIndex-\(Env.network)-\(walletIndex)"
+    }
+
     /// Pays the fee funding from savings. It shows as an ordinary payment, not as a transfer to spending.
-    func payFunding(address: String, sats: UInt64, satsPerVbyte: UInt32, feeSats: UInt64) async throws {
+    @discardableResult
+    func payFunding(address: String, sats: UInt64, satsPerVbyte: UInt32, feeSats: UInt64) async throws -> String {
         let lightning = LightningService.shared
         let attempts = OnchainSendAttemptService.shared
         let result = try await attempts.send(
@@ -320,20 +371,21 @@ final class SparkExitManager {
             observedTxid: txid
         )
         Logger.info("Funded the Spark exit with \(sats) sats in \(txid)", context: "SparkExitManager")
+        return txid
     }
 
     // MARK: Keys
 
-    private nonisolated static func fundingKey(walletIndex: Int) throws -> SparkExitFundingKey.Derived {
+    private nonisolated static func fundingKey(walletIndex: Int, index: UInt32) throws -> SparkExitFundingKey.Derived {
         guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
             throw CustomServiceError.mnemonicNotFound
         }
         let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
-        return try SparkExitFundingKey.derive(index: 0, mnemonic: mnemonic, passphrase: passphrase, network: Env.bitkitCoreNetwork)
+        return try SparkExitFundingKey.derive(index: index, mnemonic: mnemonic, passphrase: passphrase, network: Env.bitkitCoreNetwork)
     }
 
-    private nonisolated static func signer(walletIndex: Int) throws -> CpfpSigner {
-        try singleKeyCpfpSigner(secretKeyBytes: fundingKey(walletIndex: walletIndex).secretKey)
+    private nonisolated static func signer(walletIndex: Int, index: UInt32) throws -> CpfpSigner {
+        try singleKeyCpfpSigner(secretKeyBytes: fundingKey(walletIndex: walletIndex, index: index).secretKey)
     }
 
     // MARK: Background
@@ -366,7 +418,7 @@ final class SparkExitManager {
                 SparkExitDriver(
                     chain: chain,
                     recovering: recovering,
-                    makeSigner: { try Self.signer(walletIndex: walletIndex) },
+                    makeSigner: { try Self.signer(walletIndex: walletIndex, index: $0) },
                     save: { try store.save($0) }
                 )
             },
@@ -463,7 +515,7 @@ final class SparkExitManager {
         let center = UNUserNotificationCenter.current()
         let now = Date()
         let remembered = Self.rememberedReminders()
-        let planned = record.isActive ? SparkExitMath.reminders(record, tip: tipHeight, now: now, network: Env.network) : []
+        let planned = SparkExitMath.reminders(record, tip: tipHeight, now: now, network: Env.network)
         var kept: [String: TimeInterval] = [:]
         var requests: [UNNotificationRequest] = []
         for reminder in planned {
@@ -479,7 +531,10 @@ final class SparkExitManager {
             kept[id] = fireAt.timeIntervalSince1970
             let content = UNMutableNotificationContent()
             content.title = t("lightning__spark_exit__notification_title")
-            content.body = t(reminder.isFunding ? "lightning__spark_exit__notification_funding" : "lightning__spark_exit__notification_body")
+            content.body = t(
+                reminder.isLostLeaves ? "lightning__spark_exit__notification_lost"
+                    : reminder.isFunding ? "lightning__spark_exit__notification_funding" : "lightning__spark_exit__notification_body"
+            )
             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: fireAt.timeIntervalSince(now), repeats: false)
             requests.append(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
         }

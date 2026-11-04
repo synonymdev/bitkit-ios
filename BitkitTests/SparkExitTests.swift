@@ -86,6 +86,24 @@ enum SparkExitFixtures {
         )
     }
 
+    /// A version 3 transaction with one input spending `csvParentTxid`:0 under a 10-block BIP68 lock.
+    static let csvParentTxid = String(repeating: "11", count: 32)
+    static let csvHex = "03000000" + "01" + String(repeating: "11", count: 32) + "00000000" + "00" + "0a000000"
+        + "01" + "e803000000000000" + "16" + "0014" + String(repeating: "22", count: 20) + "00000000"
+
+    static func refund(_ txid: String, leafId: String, dependsOn: [String], status: ExitTransactionStatus = .ready) -> RecoveryTransaction {
+        RecoveryTransaction(
+            kind: .refund,
+            nodeId: leafId,
+            txid: txid,
+            txHex: "02\(txid)",
+            cpfpTxHex: "03\(txid)",
+            csvTimelockBlocks: nil,
+            dependsOn: dependsOn,
+            status: status
+        )
+    }
+
     static func utxo(_ txid: String, vout: UInt32 = 0, value: UInt64, confirmed: Bool = true) -> EsploraUtxo {
         EsploraUtxo(txid: txid, vout: vout, value: value, status: EsploraTxStatus(confirmed: confirmed, blockHeight: confirmed ? 100 : nil))
     }
@@ -205,6 +223,33 @@ final class SparkExitRecordTests: XCTestCase {
         XCTAssertEqual(decoded.recovery?.response, recovery)
     }
 
+    /// A record written before the qa-03 fields reads as before; the new fields round-trip.
+    func testReadsARecordWithoutTheNewFieldsAndRoundTripsThem() throws {
+        let json = #"""
+        {"version":1,"network":"regtest","createdAt":1700000000000,"phase":{"done":{}},"feeRateSatPerVbyte":2,
+         "destination":"bcrt1qdestination","leafIds":["leaf-1"],"funding":[{"index":0,"address":"bcrt1qfunding","pubkey":"02ab"}],
+         "generation":1,"broadcastLog":[{"generation":1,"txid":"n1","attempts":1,"rejections":0,"lastAttemptAt":1700000000000,
+         "lastOutcome":"accepted","isAccepted":true}],"expectedSats":1000,"leftover":[{"txid":"c","vout":0,"valueSats":700}],
+         "leftoverSweep":{"txid":"t","txHex":"02","valueSats":400,"isAccepted":true},"skippedLeafCount":0,"failedLeafCount":0,
+         "isRebuilding":false}
+        """#
+
+        var record = try SparkExitRecordCoder.decode(Data(json.utf8))
+
+        XCTAssertEqual(record.fundingIndex, 0)
+        XCTAssertNil(record.broadcastLog[0].isInputSpent)
+        XCTAssertNil(record.leftoverSweep?.isConfirmed)
+        XCTAssertNil(record.fundingPaymentTxid)
+        XCTAssertTrue(record.showsResult, "an accepted sweep not known to be confirmed keeps the result")
+
+        record.broadcastLog[0].isInputSpent = true
+        record.leftoverSweep?.isConfirmed = true
+        record.fundingPaymentTxid = "pay"
+        record.spentStepStrikes = ["r1": 1]
+        record.lostLeaves = [.init(leafId: "leaf-1", valueSats: 5000)]
+        XCTAssertEqual(try SparkExitRecordCoder.decode(SparkExitRecordCoder.encode(record)), record)
+    }
+
     func testRecoveryUsesSparkSdkSerdeShape() throws {
         let recovery = SparkExitFixtures.recovery([
             SparkExitFixtures.tx("a", cpfp: "03c", status: .confirmed(blockHeight: 7)),
@@ -295,7 +340,7 @@ final class SparkExitDriverTests: XCTestCase {
         SparkExitDriver(
             chain: chain,
             recovering: withSdk ? sdk : nil,
-            makeSigner: { StubCpfpSigner() },
+            makeSigner: { _ in StubCpfpSigner() },
             save: { [unowned self] in saved.append($0) },
             now: { [unowned self] in clock }
         )
@@ -575,7 +620,7 @@ final class SparkExitDriverTests: XCTestCase {
         let persisting = SparkExitDriver(
             chain: chain,
             recovering: sdk,
-            makeSigner: { StubCpfpSigner() },
+            makeSigner: { _ in StubCpfpSigner() },
             save: { try store.save($0) },
             now: { [unowned self] in clock }
         )
@@ -632,6 +677,222 @@ final class SparkExitDriverTests: XCTestCase {
         ])
     }
 
+    // MARK: qa-03
+
+    /// The keyless pass counts a relative timelock from the confirmation height of the parent each input spends,
+    /// and sends a step only once it would be valid in the next block.
+    func testWithoutTheSdkWaitsForEachRelativeTimelockFromItsParentsHeight() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        let fromHex = RecoveryTransaction(
+            kind: .refund,
+            nodeId: "leaf-1",
+            txid: "r1",
+            txHex: SparkExitFixtures.csvHex,
+            cpfpTxHex: nil,
+            csvTimelockBlocks: 10,
+            dependsOn: [SparkExitFixtures.csvParentTxid],
+            status: .waitingForDependencies
+        )
+        let fallback = SparkExitFixtures.tx("r2", kind: .refund, dependsOn: ["n1"], status: .waitingForDependencies, csv: 5)
+        record.adopt(SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 995)),
+            fromHex,
+            fallback,
+        ]))
+        chain.confirmedTxids = [SparkExitFixtures.csvParentTxid]
+
+        chain.tip = 908
+        record = try await driver(withSdk: false).tick(record)
+        XCTAssertTrue(chain.broadcasts.isEmpty)
+        XCTAssertEqual(record.recovery?.response.transactions[1].status, .waitingForTimelock(spendableAtHeight: 910))
+        XCTAssertEqual(record.recovery?.response.transactions[2].status, .waitingForTimelock(spendableAtHeight: 1000))
+
+        chain.tip = 909
+        record = try await driver(withSdk: false).tick(record)
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["r1"])
+
+        chain.tip = 999
+        _ = try await driver(withSdk: false).tick(record)
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["r1", "r2"])
+    }
+
+    func testWithoutTheSdkSkipsATimelockedStepWhoseParentHeightIsUnknown() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.adopt(SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: nil)),
+            SparkExitFixtures.tx("r1", kind: .refund, dependsOn: ["n1"], status: .waitingForDependencies, csv: 5),
+        ]))
+        chain.tip = 5000
+
+        _ = try await driver(withSdk: false).tick(record)
+
+        XCTAssertTrue(chain.broadcasts.isEmpty)
+    }
+
+    /// A timelock not yet final is retried and never counts towards the rejection alert.
+    func testNotMatureIsNeverARejection() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.adopt(SparkExitFixtures.recovery([SparkExitFixtures.tx("n1")]))
+        chain.outcome = .notMature("non-BIP68-final")
+
+        for _ in 0 ..< 4 {
+            record = try await driver(withSdk: false).tick(record)
+        }
+
+        XCTAssertEqual(chain.broadcasts.count, 4)
+        XCTAssertEqual(record.broadcastLog.first?.rejections, 0)
+        XCTAssertNil(record.broadcastLog.first?.isInputSpent)
+        XCTAssertNil(record.surfacedRejection)
+    }
+
+    /// The operators went first: with its parents confirmed, missing inputs mean another transaction spent the
+    /// step's input. The keyless pass stops sending it; the SDK path still follows its check.
+    func testWithoutTheSdkStopsAStepWhoseInputSomeoneElseSpent() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.adopt(SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 10)),
+            SparkExitFixtures.tx("n2", cpfp: "03c", dependsOn: ["n1"]),
+        ]))
+        chain.outcome = .inputsMissing("bad-txns-inputs-missingorspent")
+
+        record = try await driver(withSdk: false).tick(record)
+        record = try await driver(withSdk: false).tick(record)
+
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2"])
+        XCTAssertEqual(record.broadcastLog.first?.isInputSpent, true)
+        XCTAssertEqual(record.broadcastLog.first?.rejections, 0)
+
+        sdk.checks = try [CheckRecoverFundsResponse(recovery: XCTUnwrap(record.recovery?.response), verdict: .valid)]
+        record = try await driver().tick(record)
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2", "n2"])
+    }
+
+    /// qa-03 repro: an older state's refund took the leaf, so every rebuild reproduces the same refund, whose input
+    /// is spent. After two such rebuilds the leaf is lost and the exit goes on with the rest.
+    func testALeafAnOlderStateClaimedIsLostAfterTwoRebuildsThatReproduceItsRefund() async throws {
+        var record = SparkExitRecord(
+            network: "regtest",
+            createdAt: clock,
+            phase: .running,
+            feeRateSatPerVbyte: 2,
+            destination: "bcrt1qdestination",
+            leafIds: ["leaf-1", "leaf-2"],
+            funding: [.init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 20000)],
+            expectedSats: 150_000
+        )
+        let stuck = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 10)),
+            SparkExitFixtures.refund("r1", leafId: "leaf-1", dependsOn: ["n1"]),
+            SparkExitFixtures.refund("r2", leafId: "leaf-2", dependsOn: ["n1"], status: .waitingForTimelock(spendableAtHeight: 5000)),
+        ])
+        record.adopt(stuck, at: clock)
+        let redo = CheckRecoverFundsResponse(recovery: stuck, verdict: .redo(reason: .onChainStateDiverged))
+        sdk.checks = [CheckRecoverFundsResponse(recovery: stuck, verdict: .valid), redo, redo]
+        sdk.builds = [stuck, stuck]
+        chain.outcome = .inputsMissing(#"sendrawtransaction RPC error: {"code":-25}"#)
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.broadcastLog.first { $0.txid == "r1" }?.isInputSpent, true)
+
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.generation, 2)
+        XCTAssertEqual(record.spentStepStrikes, ["r1": 1])
+        XCTAssertNil(record.lostLeaves)
+
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.generation, 2, "the build that found the lost leaf is not adopted")
+        XCTAssertEqual(record.lostLeaves, [.init(leafId: "leaf-1", valueSats: 100_000)])
+        XCTAssertEqual(record.lostSats, 100_000)
+        XCTAssertTrue(record.isRebuilding)
+        XCTAssertEqual(record.phase, .running)
+        XCTAssertEqual(SparkExitMath.reminders(record, tip: 1000, now: clock, network: .regtest).first?.id, "lost-1")
+
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 10)), SparkExitFixtures.refund(
+            "r2",
+            leafId: "leaf-2",
+            dependsOn: ["n1"],
+            status: .waitingForTimelock(spendableAtHeight: 5000)
+        )])]
+        record = try await driver().tick(record)
+        guard case let .specific(leafIds) = sdk.prepareRequests.last?.selection else { return XCTFail("Expected a specific selection") }
+        XCTAssertEqual(leafIds, ["leaf-2"])
+        XCTAssertEqual(record.generation, 3)
+        XCTAssertFalse(record.isRebuilding)
+    }
+
+    func testAnExitWhoseEveryLeafAnOlderStateClaimedFails() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        let stuck = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 10)),
+            SparkExitFixtures.refund("r1", leafId: "leaf-1", dependsOn: ["n1"]),
+        ])
+        record.adopt(stuck, at: .distantPast)
+        record.spentStepStrikes = ["r1": 1]
+        record.broadcastLog = [.init(
+            generation: 1,
+            txid: "r1",
+            attempts: 1,
+            rejections: 0,
+            lastAttemptAt: clock,
+            lastOutcome: "inputs missing",
+            isAccepted: false,
+            isInputSpent: true
+        )]
+        sdk.checks = [CheckRecoverFundsResponse(recovery: stuck, verdict: .redo(reason: .onChainStateDiverged))]
+        sdk.builds = [stuck]
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.phase, .failed(reason: "Claimed by an older state"))
+        XCTAssertEqual(record.lostSats, 100_000)
+        XCTAssertEqual(SparkExitMath.reminders(record, tip: 1000, now: clock, network: .regtest).map(\.id), ["lost-1"])
+    }
+
+    /// A rebuild that replaces the spent step, the operators having gone first, is no strike.
+    func testARebuildThatReplacesTheSpentStepIsNoStrike() {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.adopt(SparkExitFixtures.recovery([SparkExitFixtures.refund("r1", leafId: "leaf-1", dependsOn: [])]))
+        record.broadcastLog = [.init(
+            generation: 1,
+            txid: "r1",
+            attempts: 1,
+            rejections: 0,
+            lastAttemptAt: clock,
+            lastOutcome: "inputs missing",
+            isAccepted: false,
+            isInputSpent: true
+        )]
+
+        XCTAssertEqual(
+            record.strikes(rebuiltInto: SparkExitFixtures.recovery([SparkExitFixtures.refund("r1b", leafId: "leaf-1", dependsOn: [])])),
+            [:]
+        )
+        XCTAssertEqual(
+            record.strikes(rebuiltInto: SparkExitFixtures.recovery([SparkExitFixtures.refund("r1", leafId: "leaf-1", dependsOn: [])])),
+            ["r1": 1]
+        )
+    }
+
+    /// Top-ups join the exit under its own funding index, and the build signs with that index's key.
+    func testFundingAndSigningUseTheRecordsFundingIndex() async throws {
+        var record = SparkExitFixtures.record()
+        record.funding = [.init(index: 3, address: "bcrt1qfunding3", pubkey: "03cd")]
+        chain.utxosByAddress["bcrt1qfunding3"] = [SparkExitFixtures.utxo("f0", value: 12000), SparkExitFixtures.utxo("f1", value: 9000)]
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1")])]
+        var indexes: [UInt32] = []
+        let driver = SparkExitDriver(chain: chain, recovering: sdk, makeSigner: { index in
+            indexes.append(index)
+            return StubCpfpSigner()
+        }, save: { _ in })
+
+        record = try await driver.tick(record)
+
+        XCTAssertEqual(record.funding.map(\.index), [3, 3])
+        XCTAssertEqual(indexes, [3])
+    }
+
     func testDoesNothingOnceFinished() async throws {
         let record = try await driver().tick(SparkExitFixtures.record(phase: .done))
 
@@ -667,7 +928,7 @@ final class SparkExitBackgroundRunTests: XCTestCase {
         return SparkExitBackgroundRun(
             load: { try store.load() },
             makeDriver: { chain, recovering in
-                SparkExitDriver(chain: chain, recovering: recovering, makeSigner: { StubCpfpSigner() }, save: { try store.save($0) })
+                SparkExitDriver(chain: chain, recovering: recovering, makeSigner: { _ in StubCpfpSigner() }, save: { try store.save($0) })
             },
             chain: chain,
             connected: nil,
@@ -930,6 +1191,51 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertNil(SparkExitMath.outsideExitSats(sparkBalanceSats: 49865, record: record))
     }
 
+    /// qa-03: once Bitkit paid the funding from savings, or a payment covering it is seen, the exit waits for it
+    /// instead of asking again; only what stays short after confirmation is asked for.
+    func testFundingStateWaitsForAPaymentInsteadOfAskingAgain() {
+        var record = SparkExitFixtures.record(phase: .awaitingFunding(requiredSats: 9000))
+
+        XCTAssertEqual(SparkExitMath.fundingState(record, utxos: []), .ask(sats: 9000))
+        XCTAssertEqual(SparkExitMath.fundingState(record, utxos: [SparkExitFixtures.utxo("a", value: 4000)]), .ask(sats: 5000))
+        XCTAssertEqual(SparkExitMath.fundingState(record, utxos: [SparkExitFixtures.utxo("x", value: 9000, confirmed: false)]), .seen(txid: "x"))
+
+        record.fundingPaymentTxid = "pay"
+        XCTAssertEqual(SparkExitMath.fundingState(record, utxos: nil), .paid(txid: "pay"))
+        XCTAssertEqual(SparkExitMath.fundingState(record, utxos: []), .paid(txid: "pay"))
+        XCTAssertEqual(SparkExitMath.fundingState(record, utxos: [SparkExitFixtures.utxo("pay", value: 9000, confirmed: false)]), .paid(txid: "pay"))
+        XCTAssertEqual(SparkExitMath.fundingState(record, utxos: [SparkExitFixtures.utxo("pay", value: 6000)]), .ask(sats: 3000))
+
+        record.phase = .running
+        XCTAssertNil(SparkExitMath.fundingState(record, utxos: []))
+    }
+
+    func testEachExitTakesAFundingIndexNoEarlierExitUsed() {
+        var record = SparkExitFixtures.record(phase: .done)
+
+        XCTAssertEqual(SparkExitMath.nextFundingIndex(counter: 0, record: nil), 0)
+        XCTAssertEqual(SparkExitMath.nextFundingIndex(counter: 0, record: record), 1, "a record from before per-exit indexes used 0")
+        XCTAssertEqual(SparkExitMath.nextFundingIndex(counter: 3, record: record), 3)
+        record.funding[0] = .init(index: 4, address: "a", pubkey: "02ab")
+        XCTAssertEqual(SparkExitMath.nextFundingIndex(counter: 1, record: record), 5)
+    }
+
+    /// qa-03: value the quote cannot exit, such as a counter-swap still unclaimed, is said on the quote screen.
+    func testQuoteNamesTheBalanceItCannotExit() {
+        let quote = SparkExitQuote(prepared: SparkExitFixtures.prepared())
+
+        XCTAssertEqual(SparkExitMath.unexitableSats(sparkBalanceSats: 133_068, quote: quote), 32768)
+        XCTAssertNil(SparkExitMath.unexitableSats(sparkBalanceSats: 100_300, quote: quote))
+    }
+
+    /// With the operators down an older state's refund can take a leaf 100 blocks after ours matures, and the
+    /// watchtower may publish after 50: reminders land well inside the smaller window.
+    func testRemindersLandWellInsideTheDeadline() {
+        let deadline = min(SparkExitMath.operatorWindowBlocks, SparkExitMath.olderStateLeadBlocks)
+        XCTAssertLessThanOrEqual(SparkExitMath.reminderGraceBlocks * 2, deadline)
+        XCTAssertLessThanOrEqual(UInt32(SparkExitMath.reminderSeconds(network: .bitcoin) / 600) * 2, deadline)
+    }
+
     func testSavingsMustCoverTheFundingAndItsFee() {
         XCTAssertTrue(SparkExitMath.canFundFromSavings(spendableSats: 10500, fundingSats: 10000, paymentFeeSats: 500))
         XCTAssertFalse(SparkExitMath.canFundFromSavings(spendableSats: 10499, fundingSats: 10000, paymentFeeSats: 500))
@@ -1080,8 +1386,11 @@ final class SparkExitBroadcasterTests: XCTestCase {
     func testClassifiesNodeAnswers() {
         XCTAssertEqual(SparkExitBroadcastClassifier.single(status: 400, body: Data(#"sendrawtransaction RPC error: {"code":-27}"#.utf8)), .accepted)
         XCTAssertEqual(
-            SparkExitBroadcastClassifier.single(status: 400, body: Data(#"sendrawtransaction RPC error: {"code":-25}"#.utf8)),
-            .retryLater(#"sendrawtransaction RPC error: {"code":-25}"#)
+            SparkExitBroadcastClassifier.single(
+                status: 400,
+                body: Data(#"sendrawtransaction RPC error: {"code":-26,"message":"non-BIP68-final"}"#.utf8)
+            ),
+            .notMature(#"sendrawtransaction RPC error: {"code":-26,"message":"non-BIP68-final"}"#)
         )
         XCTAssertEqual(SparkExitBroadcastClassifier.single(status: 503, body: Data()), .retryLater("HTTP 503"))
         if case .rejected = SparkExitBroadcastClassifier.single(status: 400, body: Data(#"{"code":-26,"message":"min relay fee not met"}"#.utf8)) {}
@@ -1089,18 +1398,26 @@ final class SparkExitBroadcasterTests: XCTestCase {
             XCTFail("Expected a rejection")
         }
         let missing = #"{"package_msg":"transaction failed","tx-results":{"w1":{"txid":"a","error":"bad-txns-inputs-missingorspent"},"w2":{"txid":"b","error":"bad-txns-inputs-missingorspent"}},"replaced-transactions":[]}"#
-        if case .retryLater = SparkExitBroadcastClassifier.package(status: 200, body: Data(missing.utf8)) {} else {
-            XCTFail("Missing inputs should be retried")
+        if case .inputsMissing = SparkExitBroadcastClassifier.package(status: 200, body: Data(missing.utf8)) {} else {
+            XCTFail("Missing inputs are their own outcome")
+        }
+        if case .inputsMissing = SparkExitBroadcastClassifier.single(status: 400, body: Data(#"sendrawtransaction RPC error: {"code":-25}"#.utf8)) {}
+        else {
+            XCTFail("RPC -25 is missing inputs")
+        }
+        let parentNotFinal = #"{"package_msg":"transaction failed","tx-results":{"w1":{"txid":"a","error":"non-BIP68-final"},"w2":{"txid":"b","error":"bad-txns-inputs-missingorspent"}}}"#
+        if case .notMature = SparkExitBroadcastClassifier.package(status: 200, body: Data(parentNotFinal.utf8)) {} else {
+            XCTFail("A child missing its immature parent is not mature, not spent")
         }
         let known = #"{"package_msg":"transaction failed","tx-results":{"w1":{"txid":"a","error":"txn-already-in-mempool"},"w2":{"txid":"b"}}}"#
         XCTAssertEqual(SparkExitBroadcastClassifier.package(status: 200, body: Data(known.utf8)), .accepted)
         let nonFinal = #"{"package_msg":"transaction failed","tx-results":{"w1":{"txid":"a","error":"non-BIP68-final"}}}"#
-        if case .retryLater = SparkExitBroadcastClassifier.package(status: 200, body: Data(nonFinal.utf8)) {} else {
-            XCTFail("A timelock should be retried")
+        if case .notMature = SparkExitBroadcastClassifier.package(status: 200, body: Data(nonFinal.utf8)) {} else {
+            XCTFail("A timelock is not mature")
         }
         XCTAssertEqual(
             SparkExitBroadcastClassifier.package(status: 400, body: Data(#"{"error":"submitpackage RPC error: {\"code\":-25}"}"#.utf8)),
-            .retryLater(#"{"error":"submitpackage RPC error: {\"code\":-25}"}"#)
+            .inputsMissing(#"{"error":"submitpackage RPC error: {\"code\":-25}"}"#)
         )
     }
 

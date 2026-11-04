@@ -400,6 +400,15 @@
 "lightning__spark_exit__failed_leaves" = "{count} amounts the Spark operators could not sign for stayed on Spark.";
 "lightning__spark_exit__leftover" = "{amount} of fee funding is still at {address}.";
 "lightning__spark_exit__leftover_swept" = "{amount} of leftover fee funding was sent to savings.";
+"lightning__spark_exit__leftover_sending" = "Sending {amount} of leftover fee funding to savings.";
+"lightning__spark_exit__leftover_dust" = "{amount} of leftover fee funding is too small to send and stays at {address}.";
+"lightning__spark_exit__leftover_txid" = "Transaction ID: {txid}";
+"lightning__spark_exit__fund_paid" = "Paid from savings, waiting for confirmation.";
+"lightning__spark_exit__fund_pending" = "Payment seen, waiting for confirmation.";
+"lightning__spark_exit__funding_txid" = "Transaction ID: {txid}";
+"lightning__spark_exit__lost_leaves" = "{amount} was claimed on-chain by an older state of this wallet and can't be recovered.";
+"lightning__spark_exit__notification_lost" = "Part of your exit can't be recovered. Open Bitkit to see why.";
+"lightning__spark_exit__quote_outside" = "{amount} of your Spark balance can't be exited right now. It is still moving inside Spark and stays there.";
 "lightning__spark_exit__needs_funding_title" = "More fees\n<accent>needed</accent>";
 "lightning__spark_exit__needs_funding_text" = "The exit needs <accent>{amount}</accent> more to pay its fees. Fund it to continue.";
 "lightning__spark_exit__failed_title" = "Exit\n<accent>stopped</accent>";

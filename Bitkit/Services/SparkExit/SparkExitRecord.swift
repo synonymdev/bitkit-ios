@@ -47,6 +47,15 @@ struct SparkExitRecord: Codable, Equatable {
         var lastAttemptAt: Date
         var lastOutcome: String
         var isAccepted: Bool
+        /// Its input was spent by another transaction, the operators' version of the step: the keyless pass stops
+        /// sending it and the next SDK check rebuilds.
+        var isInputSpent: Bool?
+    }
+
+    /// A leaf an older state of the wallet claimed on-chain first, which this exit cannot recover.
+    struct LostLeaf: Codable, Equatable {
+        let leafId: String
+        let valueSats: UInt64
     }
 
     struct Leftover: Codable, Equatable {
@@ -65,6 +74,8 @@ struct SparkExitRecord: Codable, Equatable {
         var isAccepted = false
         /// The node's refusal; the sweep is not sent again.
         var rejection: String?
+        /// Set once the chain host shows the accepted sweep in a block.
+        var isConfirmed: Bool?
     }
 
     var version: Int = Self.currentVersion
@@ -84,6 +95,8 @@ struct SparkExitRecord: Codable, Equatable {
     var recovery: StoredRecovery?
     var broadcastLog: [BroadcastAttempt] = []
     var transferId: String?
+    /// The fee funding payment Bitkit broadcast from savings, so the exit shows it as paid instead of asking again.
+    var fundingPaymentTxid: String?
     /// What reaches savings: the exited value less the fees paid out of it.
     let expectedSats: UInt64
     var claimableAtHeight: UInt32?
@@ -94,6 +107,9 @@ struct SparkExitRecord: Codable, Equatable {
     var skippedLeafCount: Int = 0
     /// Cooperative leaves the last build could not recover.
     var failedLeafCount: Int = 0
+    /// Per step txid, how many rebuilds in a row reproduced it after another transaction spent its input.
+    var spentStepStrikes: [String: Int]?
+    var lostLeaves: [LostLeaf]?
     /// Set and saved before a rebuild, so nothing of the diverged generation is broadcast while it is replaced.
     var isRebuilding = false
     var lastBuildAt: Date?
@@ -105,11 +121,43 @@ struct SparkExitRecord: Codable, Equatable {
         }
     }
 
-    /// An ended exit whose leftover fee funding still has to reach savings: not swept yet, or sent but not accepted.
+    /// An ended exit whose leftover fee funding still has to reach savings: not swept yet, or sent but not
+    /// confirmed.
     var isLeftoverSweepPending: Bool {
         guard !isActive, !leftover.isEmpty else { return false }
         guard let leftoverSweep else { return true }
-        return leftoverSweep.txid != nil && !leftoverSweep.isAccepted && leftoverSweep.rejection == nil
+        return leftoverSweep.txid != nil && leftoverSweep.rejection == nil && leftoverSweep.isConfirmed != true
+    }
+
+    /// Whether Emergency exit opens this exit rather than a new one: it runs, its leftover is still on its way to
+    /// savings, or the leftover sweep was refused and the leftover waits at the funding address.
+    var showsResult: Bool {
+        needsDriving || (!leftover.isEmpty && leftoverSweep?.rejection != nil)
+    }
+
+    /// The leaves builds select: the quote's, less those an older state claimed.
+    var exitLeafIds: [String] {
+        let lost = Set((lostLeaves ?? []).map(\.leafId))
+        return leafIds.filter { !lost.contains($0) }
+    }
+
+    var lostSats: UInt64 {
+        (lostLeaves ?? []).reduce(0) { $0 + $1.valueSats }
+    }
+
+    /// The strikes of the steps a rebuild into `built` reproduces after their input was spent in this generation.
+    func strikes(rebuiltInto built: RecoverFundsResponse) -> [String: Int] {
+        let spent = Set(broadcastLog.filter { $0.generation == generation && $0.isInputSpent == true }.map(\.txid))
+        var strikes: [String: Int] = [:]
+        for tx in built.transactions where spent.contains(tx.txid) {
+            strikes[tx.txid] = (spentStepStrikes?[tx.txid] ?? 0) + 1
+        }
+        return strikes
+    }
+
+    /// The funding key's index, which every funding entry of one exit shares.
+    var fundingIndex: UInt32 {
+        funding.first?.index ?? 0
     }
 
     /// Whether the driver still has work: the exit runs, or its leftover fee funding is on its way to savings.
