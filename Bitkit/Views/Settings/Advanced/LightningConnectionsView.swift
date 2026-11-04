@@ -98,6 +98,7 @@ struct LightningConnectionsView: View {
 
                                                 CustomDivider()
                                             }
+                                            .contentShape(Rectangle())
                                         }
                                         .buttonStyle(PlainButtonStyle())
                                         .accessibilityIdentifier("Channel")
