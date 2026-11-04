@@ -404,8 +404,8 @@ final class SparkExitManager {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: nil) { task in
             let completion = SparkExitTaskCompletion(task)
             let work = Task { @MainActor in
-                let outcome = await SparkExitManager.shared.runInBackground(deadline: Date(timeIntervalSinceNow: seconds))
-                completion.complete(success: !Task.isCancelled && outcome.record != nil)
+                await SparkExitManager.shared.runInBackground(deadline: Date(timeIntervalSinceNow: seconds))
+                completion.complete(success: !Task.isCancelled)
             }
             // The driver stops before its next SDK call or broadcast and has saved every broadcast, so the record on
             // disk is whole whenever the OS suspends the app.

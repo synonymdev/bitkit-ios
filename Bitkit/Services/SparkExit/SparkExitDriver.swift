@@ -29,6 +29,8 @@ struct SparkExitDriver {
     static let rejectionsToSurface = 3
     /// The least time between two builds, so a divergence that persists does not rebuild every tick.
     static let rebuildInterval: TimeInterval = 600
+    /// Chain host reads in flight at once.
+    static let concurrentReads = 8
 
     @discardableResult
     func tick(_ record: SparkExitRecord) async throws -> SparkExitRecord {
@@ -155,18 +157,45 @@ struct SparkExitDriver {
     /// mempool, such as Spark's regtest, does not report.
     private func withConfirmations(_ recovery: RecoverFundsResponse) async -> RecoverFundsResponse {
         var recovery = recovery
-        var confirmed = Set(recovery.transactions.compactMap { tx -> String? in
-            if case .confirmed = tx.status {
-                return tx.txid
+        var confirmed = Set(recovery.transactions.filter(\.isConfirmed).map(\.txid))
+        var asked = Set<String>()
+        // One round per depth, each read at once: a 30-transaction exit takes a few rounds instead of 30 reads in a row.
+        while !Task.isCancelled {
+            let next = recovery.transactions.indices.filter { i in
+                let tx = recovery.transactions[i]
+                return !confirmed.contains(tx.txid) && !asked.contains(tx.txid) && tx.dependsOn.allSatisfy(confirmed.contains)
             }
-            return nil
-        })
-        for (i, tx) in recovery.transactions.enumerated() where !confirmed.contains(tx.txid) && tx.dependsOn.allSatisfy(confirmed.contains) {
-            guard let status = try? await chain.txStatus(txid: tx.txid), status.confirmed else { continue }
-            confirmed.insert(tx.txid)
-            recovery.transactions[i].status = .confirmed(blockHeight: status.blockHeight)
+            guard !next.isEmpty else { break }
+            let statuses = await statuses(next.map { recovery.transactions[$0].txid })
+            asked.formUnion(next.map { recovery.transactions[$0].txid })
+            for i in next {
+                guard let status = statuses[recovery.transactions[i].txid], status.confirmed else { continue }
+                confirmed.insert(recovery.transactions[i].txid)
+                recovery.transactions[i].status = .confirmed(blockHeight: status.blockHeight)
+            }
         }
         return recovery
+    }
+
+    /// The chain host's status of each transaction, read concurrently; one it could not answer is left out.
+    private func statuses(_ txids: [String]) async -> [String: EsploraTxStatus] {
+        await withTaskGroup(of: (String, EsploraTxStatus?).self) { group in
+            var results: [String: EsploraTxStatus] = [:]
+            var pending = Set(txids).makeIterator()
+            func addNext() -> Bool {
+                guard let txid = pending.next() else { return false }
+                group.addTask { [chain] in await (txid, try? chain.txStatus(txid: txid)) }
+                return true
+            }
+            for _ in 0 ..< Self.concurrentReads {
+                guard addNext() else { break }
+            }
+            while let (txid, status) = await group.next() {
+                results[txid] = status
+                _ = addNext()
+            }
+            return results
+        }
     }
 
     private func isRebuildDue(_ record: SparkExitRecord) -> Bool {
@@ -197,33 +226,25 @@ struct SparkExitDriver {
     private func broadcastWithoutSdk(_ record: inout SparkExitRecord) async throws {
         guard var recovery = record.recovery?.response else { return }
         let tip = try await chain.tipHeight()
-        var confirmed: [String: Bool] = [:]
-        func isConfirmed(_ txid: String) async -> Bool {
-            if let known = confirmed[txid] {
-                return known
-            }
-            let status = try? await chain.txStatus(txid: txid)
-            confirmed[txid] = status?.confirmed ?? false
-            return confirmed[txid] ?? false
-        }
+        let listed = Set(recovery.transactions.map(\.txid))
+        var confirmed = Set(recovery.transactions.filter(\.isConfirmed).map(\.txid))
+        let unknown = recovery.transactions.filter { !$0.isConfirmed }.map(\.txid)
+            + Set(recovery.transactions.flatMap(\.dependsOn)).subtracting(listed).subtracting(confirmed)
+        let statuses = await statuses(unknown)
+        confirmed.formUnion(statuses.filter(\.value.confirmed).keys)
         for (i, tx) in recovery.transactions.enumerated() {
             guard !Task.isCancelled else { break }
-            if case .confirmed = tx.status {
+            if tx.isConfirmed {
                 continue
             }
-            if let status = try? await chain.txStatus(txid: tx.txid), status.confirmed {
-                confirmed[tx.txid] = true
+            if let status = statuses[tx.txid], status.confirmed {
                 recovery.transactions[i].status = .confirmed(blockHeight: status.blockHeight)
                 continue
             }
             if case let .waitingForTimelock(height?) = tx.status, height > tip {
                 continue
             }
-            var parentsConfirmed = true
-            for parent in tx.dependsOn where await !isConfirmed(parent) {
-                parentsConfirmed = false
-            }
-            guard parentsConfirmed, isDue(tx.txid, in: record) else { continue }
+            guard tx.dependsOn.allSatisfy(confirmed.contains), isDue(tx.txid, in: record) else { continue }
             await broadcast(tx, into: &record)
             record.recovery = StoredRecovery(recovery)
             try save(record)
@@ -262,6 +283,15 @@ struct SparkExitDriver {
                 isAccepted: isAccepted
             ))
         }
+    }
+}
+
+private extension RecoveryTransaction {
+    var isConfirmed: Bool {
+        if case .confirmed = status {
+            return true
+        }
+        return false
     }
 }
 
