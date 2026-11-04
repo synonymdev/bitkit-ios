@@ -501,14 +501,20 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             let (service, _, _, attempt) = try await unknownRequestPayment(state: state)
             try await service.authorizeUncheckedOnchainRecovery(attempt)
         }
-        // A request the payee ended, or one Bitkit cannot read, is never re-sent.
-        for (state, hasRecord) in [(PaymentRequestLifecycleState.canceled, true), (.rejected, true), (.accepted, false)] {
-            let (service, _, _, attempt) = try await unknownRequestPayment(state: state, records: hasRecord)
+        // A request the payee ended is never re-sent.
+        for state in [PaymentRequestLifecycleState.canceled, .rejected] {
+            let (service, _, _, attempt) = try await unknownRequestPayment(state: state)
             do {
                 try await service.authorizeUncheckedOnchainRecovery(attempt)
-                XCTFail("A \(state) request (record: \(hasRecord)) must refuse the re-send")
+                XCTFail("A \(state) request must refuse the re-send")
             } catch PaykitPaymentRequestError.requestUnavailable {}
         }
+        // Nor is one whose record cannot be read, which says nothing about whether it is paid.
+        let (unreadable, _, _, unreadableAttempt) = try await unknownRequestPayment(state: .accepted, records: false)
+        do {
+            try await unreadable.authorizeUncheckedOnchainRecovery(unreadableAttempt)
+            XCTFail("A request whose record cannot be read must refuse the re-send")
+        } catch is OnchainOriginalStatusUnknownError {}
         // A request already marked as paid, or carrying a proof, is never paid twice.
         let (submitted, _, _, submittedAttempt) = try await unknownRequestPayment(state: .accepted, proofSubmitted: true)
         do {

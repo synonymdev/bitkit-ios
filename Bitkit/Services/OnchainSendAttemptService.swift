@@ -71,9 +71,12 @@ extension LightningService: OnchainSending {
             guard self.currentWalletIndex == expectedWalletIndex, self.onchainDispatchNode === node, expectedNode === node else {
                 throw NodeError.NotRunning(message: "Wallet or node changed before reading on-chain spends")
             }
+            let bestBlockHeight = node.status().currentBestBlock.height
             return node.listPayments().compactMap { payment in
                 guard case let .onchain(txid, _) = payment.kind, let details = node.getTransactionDetails(txid: txid) else { return nil }
-                return OnchainInputSpend(payment: payment, details: details, guarding: inputs) { node.getTransactionDetails(txid: $0) }
+                return OnchainInputSpend(payment: payment, details: details, guarding: inputs, bestBlockHeight: bestBlockHeight) {
+                    node.getTransactionDetails(txid: $0)
+                }
             }
         }
     }
@@ -246,6 +249,10 @@ struct OnchainInputSpend: Equatable {
     var feeSats: UInt64?
     /// The rate `feeSats` pays on its signed size, rounded up.
     var satsPerVbyte: UInt32?
+    /// Blocks deep, from the wallet's best block; 0 while unconfirmed.
+    var confirmations: UInt32 = 0
+    /// Its signed virtual size, which a replacement at a given rate is about as large as.
+    var vsize: UInt64?
 
     /// Every candidate pays its recipient the whole amount in one output.
     func pays(_ address: String, atLeast amountSats: UInt64) -> Bool {
@@ -260,17 +267,18 @@ extension OnchainInputSpend {
     /// fee reads zero when the node cannot work it out, so the fee is worked out from `previous`, the wallet's transactions.
     init?(
         payment: LDKNode.PaymentDetails, details: LDKNode.TransactionDetails, guarding inputs: [OnchainSendInput],
-        previous: (String) -> LDKNode.TransactionDetails?
+        bestBlockHeight: UInt32? = nil, previous: (String) -> LDKNode.TransactionDetails?
     ) {
         guard case let .onchain(txid, status) = payment.kind else { return nil }
         let guarded = Set(inputs.map { OnchainSendInput(txid: $0.txid.lowercased(), vout: $0.vout) })
         let spent = details.inputs.map { OnchainSendInput(txid: $0.txid.lowercased(), vout: $0.vout) }
         guard spent.contains(where: guarded.contains) else { return nil }
-        let isConfirmed = if case .confirmed = status {
-            true
+        let confirmedHeight: UInt32? = if case let .confirmed(_, height, _) = status {
+            height
         } else {
-            false
+            nil
         }
+        let isConfirmed = confirmedHeight != nil
         // A fee that cannot be worked out exactly stays unknown, which only ever keeps a spend from being taken as a payment.
         let feeSats = try? OnchainSendLocalFollowup.exactFee(details: details, previous: previous)
         self.init(
@@ -278,7 +286,9 @@ extension OnchainInputSpend {
             isFinal: isConfirmed && payment.status == .succeeded,
             outputValues: details.outputs.map { UInt64(clamping: $0.value) },
             feeSats: feeSats,
-            satsPerVbyte: feeSats.map { UInt32(clamping: details.feeRate(paying: $0)) }
+            satsPerVbyte: feeSats.map { UInt32(clamping: details.feeRate(paying: $0)) },
+            confirmations: confirmedHeight.flatMap { height in bestBlockHeight.map { $0 >= height ? $0 - height + 1 : 0 } } ?? 0,
+            vsize: details.vsize
         )
     }
 }
@@ -366,6 +376,13 @@ struct OnchainCancellationFeeTooLowError: LocalizedError {
 struct OnchainCancellationNotRecordedError: LocalizedError {
     var errorDescription: String? {
         t("wallet__onchain_cancel_not_recorded")
+    }
+}
+
+/// Whether the original payment's request is already paid could not be checked, so it is not sent again unchecked.
+struct OnchainOriginalStatusUnknownError: LocalizedError {
+    var errorDescription: String? {
+        t("wallet__onchain_resend_unchecked")
     }
 }
 
@@ -1198,8 +1215,11 @@ actor OnchainSendAttemptService {
     /// so cannot build another spend of the same coins. Every output of a Cancel payment is this wallet's, so the replacement
     /// still pays the recipient nothing. ldk-node builds and broadcasts it in one call, so it is saved once sent; the
     /// cancellation it replaces is saved already, so no retry or release is offered meanwhile.
+    /// The bump may add other wallet coins to pay its fee, so `approveEstimate` gets the fee at the held transaction's size, an
+    /// estimate, before `authorize`.
     func speedUpCancellation(
         using sender: any OnchainSending, context: OnchainSendPendingContext, satsPerVbyte: UInt32,
+        approveEstimate: (UInt64) async throws -> Void = { _ in },
         authorize: () async throws -> Void
     ) async throws -> String {
         guard nativeDispatchInProgress == nil, let original = try currentAttempt(),
@@ -1214,11 +1234,17 @@ actor OnchainSendAttemptService {
         }
         nativeDispatchInProgress = original.id
         defer { nativeDispatchInProgress = nil }
-        guard let held = try await cancellation(of: original, using: sender), !held.isFinal else { throw OnchainSendAttemptError.unresolved }
+        // A transaction with a confirmation can no longer be replaced.
+        guard let held = try await cancellation(of: original, using: sender), !held.isFinal, held.confirmations == 0 else {
+            throw OnchainSendAttemptError.unresolved
+        }
+        guard let vsize = held.vsize else { throw OnchainSendAttemptError.retryUnavailable }
         let heldRate = max(held.satsPerVbyte ?? 0, Self.replacedFee(original).satsPerVbyte)
         guard satsPerVbyte > heldRate else {
             throw OnchainCancellationFeeTooLowError(requiredFeeSats: held.feeSats ?? 0, feeRate: heldRate)
         }
+        try Task.checkCancellation()
+        try await approveEstimate(vsize.saturatingMultiply(UInt64(satsPerVbyte)))
         try Task.checkCancellation()
         try await authorize()
         try Task.checkCancellation()

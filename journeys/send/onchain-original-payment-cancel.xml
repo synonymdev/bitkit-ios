@@ -17,10 +17,10 @@
   <actions>
     <action>Open the retained original payment's Pending screen and record its displayed transaction ID</action>
     <action>Verify Pending says other payments remain blocked and offers Retry original payment, Cancel payment and Retry without checking</action>
-    <action>Tap Retry without checking and verify a warning says the request, quote or order may have expired, the recipient may not accept a late payment, and Bitkit will not send it if it is already marked as paid</action>
+    <action>Tap Retry without checking and verify a warning says the request or quote may have expired, the recipient may not accept a late payment, and Bitkit will not send it if it is already marked as paid</action>
     <action>Tap Cancel on the warning and verify the original Pending payment remains retained</action>
     <action>Tap Cancel payment</action>
-    <action>Verify the dialog shows the original recipient and amount, explains the cancellation needs 6 confirmations, and prefills a fee rate above the original</action>
+    <action>Verify the dialog explains the cancellation needs 6 confirmations, does not show the original recipient as being paid, and prefills a fee rate above the original and at least the normal fee rate</action>
     <action>Enter a valid fee rate that the funded fixture can support and tap Continue</action>
     <action>Verify the exact prepared mining fee in sats is shown without a recipient amount; tap Authorize cancellation, accept any normal fee warnings, and verify the normal payment PIN screen appears before dispatch</action>
     <action>Enter the fixture's normal payment PIN without recording entered digits</action>

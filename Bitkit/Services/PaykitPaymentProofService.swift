@@ -583,10 +583,11 @@ actor PaykitPaymentProofService {
               proof.onchainAmountSats == nil || proof.onchainAmountSats == attempt.amountSats,
               proof.paymentIdentifier == nil || attempt.containsCandidate(proof.paymentIdentifier)
         else { throw PaykitPaymentRequestError.operationInProgress }
+        // A record that cannot be found says nothing about whether the request is paid.
         guard let record = try await sdk.paymentRequests().first(where: {
             $0.localRole == .payer && $0.paymentRequestId == requestId.paymentRequestId &&
                 PubkyPublicKeyFormat.matches($0.counterparty, requestId.counterparty)
-        }) else { throw PaykitPaymentRequestError.requestUnavailable }
+        }) else { throw OnchainOriginalStatusUnknownError() }
         if record.state == .proofSubmitted ||
             record.paymentProofs.contains(where: { Self.billingPeriod($0.billingPeriod, matches: proof.billingPeriod) })
         {

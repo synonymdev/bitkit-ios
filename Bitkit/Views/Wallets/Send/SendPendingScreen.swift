@@ -36,6 +36,7 @@ struct OnchainCancellationState: Equatable {
     /// The wallet's history holds `txid`, so the wallet cannot build another spend of the same coins until it drops out.
     private(set) var isHeldByWallet = false
     private(set) var heldFeeRate: UInt32?
+    private(set) var heldConfirmations: UInt32 = 0
     private(set) var hasUnknownOutcome = false
     private(set) var highestFeeRate: UInt32?
     /// A wallet sync after the latest release or Cancel payment was sent did not find it. The node reports most refusals, such
@@ -47,7 +48,13 @@ struct OnchainCancellationState: Equatable {
         isFinal = spend.isFinal
         isHeldByWallet = true
         heldFeeRate = spend.satsPerVbyte
+        heldConfirmations = spend.confirmations
         mayNotHaveReachedNetwork = false
+    }
+
+    /// Shown while a cancellation confirms, up to the 6 that release the guard.
+    var confirmations: UInt32 {
+        min(heldConfirmations, 6)
     }
 
     /// Applies a read of the wallet's cancellations: `spend` it holds, or none, after a wallet sync since the latest release or
@@ -61,6 +68,7 @@ struct OnchainCancellationState: Equatable {
         isHeldByWallet = false
         isFinal = false
         heldFeeRate = nil
+        heldConfirmations = 0
         mayNotHaveReachedNetwork = syncedSinceSent
     }
 
@@ -109,8 +117,9 @@ struct OnchainCancellationState: Equatable {
         attempt.canRetrySamePayment && !isFinal && !isHeldByWallet
     }
 
+    /// A transaction with a confirmation can no longer be replaced, so it is only waited for.
     func canSpeedUp(_ attempt: OnchainSendAttempt) -> Bool {
-        attempt.canRetrySamePayment && isHeldByWallet && !isFinal
+        attempt.canRetrySamePayment && isHeldByWallet && !isFinal && heldConfirmations == 0
     }
 
     /// A release spends the original's coins too, so it is not sent beside another cancellation or a second release.
@@ -318,21 +327,29 @@ struct SendPendingScreen: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 16)
                 }
-                if recoverableAttempt != nil, cancellation.mayNotHaveReachedNetwork {
-                    BodyMText(t("wallet__onchain_cancel_not_seen"))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 16)
-                } else if let attempt = recoverableAttempt, let txid = cancellation.sentTxid(for: attempt) {
-                    BodyMText(t(cancellation.isFinalButHeld ? "wallet__onchain_cancel_final_held" : "wallet__onchain_cancel_pending"))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 16)
+                if let attempt = recoverableAttempt, let txid = cancellation.sentTxid(for: attempt) ?? attempt.releaseTxid {
+                    if cancellation.isFinalButHeld {
+                        BodyMText(t("wallet__onchain_cancel_final_held"))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 16)
+                    } else if cancellation.mayNotHaveReachedNetwork {
+                        BodyMText(t("wallet__onchain_cancel_unheld"))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 16)
+                    } else if cancellation.isHeldByWallet || cancellation.sentTxid(for: attempt) != nil {
+                        BodyMText(t("wallet__onchain_cancel_pending"))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 16)
+                        BodyMText(t("wallet__onchain_cancel_confirmations", variables: ["count": String(cancellation.confirmations)]))
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        BodyMText(t("wallet__onchain_abandon_pending"))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 16)
+                    }
                     BodyMText(t("wallet__onchain_transaction_id", variables: ["txid": txid]))
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
-                } else if recoverableAttempt?.releaseTxid != nil {
-                    BodyMText(t("wallet__onchain_abandon_pending"))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 16)
                 }
             } else {
                 BodyMText(t("wallet__send_pending_note"))
@@ -441,7 +458,7 @@ struct SendPendingScreen: View {
             }
         )) {
             Button(t("common__cancel"), role: .cancel) { finishRetryApproval(false) }
-            Button(retryApprovalAction == .cancel ? t("wallet__onchain_cancel_authorize") : t("wallet__send_yes")) {
+            Button([.cancel, .speedUp].contains(retryApprovalAction) ? t("wallet__onchain_cancel_authorize") : t("wallet__send_yes")) {
                 finishRetryApproval(true)
             }
         } message: {
@@ -663,7 +680,7 @@ struct SendPendingScreen: View {
                         reauthorizeOriginal: { try await reauthorizeOriginal($0, paymentDeadline: paymentDeadline) },
                         authorizeUnchecked: { attempt in
                             // A request that cannot be read fresh is never re-sent unchecked.
-                            guard await paymentRequests.refresh(forceFresh: true) else { throw PaykitPaymentRequestError.requestUnavailable }
+                            guard await paymentRequests.refresh(forceFresh: true) else { throw OnchainOriginalStatusUnknownError() }
                             try await proofService.authorizeUncheckedOnchainRecovery(attempt)
                         }
                     )
@@ -735,7 +752,9 @@ struct SendPendingScreen: View {
                 return
             }
             _ = try await attemptService.speedUpCancellation(
-                using: LightningService.shared, context: context, satsPerVbyte: feeRate, authorize: { try await authenticateSpend() }
+                using: LightningService.shared, context: context, satsPerVbyte: feeRate,
+                approveEstimate: { try await approveSpeedUpFee($0, original: original) },
+                authorize: { try await authenticateSpend() }
             )
             cancellation.outbid(rate: feeRate)
         } catch is CancellationError {
@@ -761,6 +780,18 @@ struct SendPendingScreen: View {
         // A cancellation pays only this wallet, so its own address and dust output are not shown.
         let message = action == .cancel ? feeTotal : original.address + "\n" + CurrencyFormatter.formatSats(original.amountSats) + "\n" + feeTotal
         guard await requestRetryApproval(message, action: action) else { throw CancellationError() }
+        try await approveFeeWarnings(fee, original: original, action: action)
+    }
+
+    @MainActor
+    private func approveSpeedUpFee(_ estimatedFee: UInt64, original: OnchainSendAttempt) async throws {
+        let message = t("wallet__onchain_cancel_speed_up_fee", variables: ["fee": CurrencyFormatter.formatSats(estimatedFee)])
+        guard await requestRetryApproval(message, action: .speedUp) else { throw CancellationError() }
+        try await approveFeeWarnings(estimatedFee, original: original, action: .speedUp)
+    }
+
+    @MainActor
+    private func approveFeeWarnings(_ fee: UInt64, original: OnchainSendAttempt, action: RecoveryAction) async throws {
         if let usd = currency.convert(sats: fee, to: "USD"), usd.value > 10 {
             guard await requestRetryApproval(t("wallet__send_dialog4"), action: action) else { throw CancellationError() }
         }

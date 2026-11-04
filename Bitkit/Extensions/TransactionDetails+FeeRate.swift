@@ -15,9 +15,14 @@ extension LDKNode.TransactionDetails {
         return baseBytes * witnessScaleFactor + segwitMarkerAndFlagWeight + witnessBytes
     }
 
+    /// The virtual size of this signed transaction, rounded up.
+    var vsize: UInt64 {
+        divideRoundingUp(weight, by: witnessScaleFactor)
+    }
+
     /// The rate `feeSats` pays on this signed transaction, per virtual byte and rounded up.
     func feeRate(paying feeSats: UInt64) -> UInt64 {
-        divideRoundingUp(feeSats, by: divideRoundingUp(weight, by: witnessScaleFactor))
+        divideRoundingUp(feeSats, by: vsize)
     }
 }
 
