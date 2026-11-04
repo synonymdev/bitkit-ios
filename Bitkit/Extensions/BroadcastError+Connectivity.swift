@@ -99,6 +99,18 @@ extension Error {
         return false
     }
 
+    /// Whether core gave up connecting to Electrum, which it reports before sending any transaction bytes.
+    func isDefiniteElectrumConnectFailure() -> Bool {
+        if let error = self as? BroadcastError {
+            guard case let .ElectrumError(details) = error else { return false }
+            return details.lowercased().hasPrefix("failed to connect to electrum:")
+        }
+        if let error = self as? AppError, let underlyingError = error.underlyingError {
+            return underlyingError.isDefiniteElectrumConnectFailure()
+        }
+        return false
+    }
+
     func isBroadcastConnectivityFailure() -> Bool {
         if let broadcastError = self as? BroadcastError {
             return broadcastError.isConnectivityFailure
