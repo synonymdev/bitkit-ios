@@ -71,17 +71,6 @@ struct LightningConnectionsView: View {
                             EmptyStateView()
                                 .padding(.top, 16)
                         } else {
-                            if MoveToSparkMath.canMove(
-                                channels: wallet.channels,
-                                isSparkUsable: SparkManager.shared.isReady && !SparkManager.shared.isExiting
-                            ) {
-                                CustomButton(title: t("lightning__move_to_spark__nav_title")) {
-                                    navigation.navigate(.moveToSpark)
-                                }
-                                .accessibilityIdentifier("MoveToSpark")
-                                .padding(.vertical, 16)
-                            }
-
                             if SparkConnectionRow.isVisible {
                                 SettingsSectionHeader(t("lightning__spark"))
                                 SparkConnectionRow()
@@ -164,6 +153,17 @@ struct LightningConnectionsView: View {
                                         .accessibilityIdentifier("Channel")
                                     }
                                 }
+                            }
+
+                            if MoveToSparkMath.canMove(
+                                channels: wallet.channels,
+                                isSparkUsable: SparkManager.shared.isReady && !SparkManager.shared.isExiting
+                            ) {
+                                CustomButton(title: t("lightning__move_to_spark__nav_title")) {
+                                    navigation.navigate(.moveToSpark)
+                                }
+                                .accessibilityIdentifier("MoveToSpark")
+                                .padding(.vertical, 16)
                             }
 
                             // Closed Connections section
