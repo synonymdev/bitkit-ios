@@ -971,6 +971,28 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(record.phase, .failed(reason: "No leaf can be exited"))
         XCTAssertEqual(record.leftBehindSats, 100_000)
         XCTAssertTrue(sdk.recoverRequests.isEmpty)
+        XCTAssertEqual(SparkExitMath.reminders(record, tip: 1000, now: clock, network: .regtest).map(\.id), ["failed"])
+    }
+
+    /// qa-03: a failed or lost-leaf exit with nothing left to sweep ended at once and Emergency exit opened a new
+    /// intro, so the user never saw why.
+    func testAFailedOrLostLeafResultStaysReachableUntilSeen() {
+        var failed = SparkExitFixtures.record(phase: .failed(reason: "No leaf can be exited"))
+        XCTAssertFalse(failed.needsDriving)
+        XCTAssertTrue(failed.showsResult)
+        failed.isResultSeen = true
+        XCTAssertFalse(failed.showsResult)
+
+        var partlyLost = SparkExitFixtures.record(phase: .done)
+        XCTAssertFalse(partlyLost.showsResult)
+        partlyLost.lostLeaves = [.init(leafId: "leaf-1", valueSats: 4000)]
+        XCTAssertTrue(partlyLost.showsResult)
+        partlyLost.isResultSeen = true
+        XCTAssertFalse(partlyLost.showsResult)
+
+        var running = SparkExitFixtures.record(phase: .running)
+        running.lostLeaves = [.init(leafId: "leaf-1", valueSats: 4000)]
+        XCTAssertFalse(running.hasUnseenResult)
     }
 
     private func twoLeafRecord() -> SparkExitRecord {
@@ -1313,6 +1335,13 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertNil(SparkExitMath.partialFundingSats(receivedSats: 0, requiredSats: 4348))
         XCTAssertEqual(SparkExitMath.partialFundingSats(receivedSats: 2000, requiredSats: 4348), 2348)
         XCTAssertNil(SparkExitMath.partialFundingSats(receivedSats: 4348, requiredSats: 4348))
+        // qa-03: bitcoind refuses a 68-sat output, so no ask goes below the P2WPKH dust limit.
+        XCTAssertEqual(SparkExitMath.partialFundingSats(receivedSats: 4280, requiredSats: 4348), 294)
+        let short = SparkExitFixtures.record(phase: .awaitingFunding(requiredSats: 4348))
+        XCTAssertEqual(
+            SparkExitMath.fundingState(short, utxos: [SparkExitFixtures.utxo("a", value: 4280)]),
+            .ask(sats: 294, receivedSats: 4280)
+        )
 
         // A top-up counts only new funding: the adopted input and CPFP change at the address are not received.
         var record = SparkExitFixtures.record(phase: .needsFunding(requiredSats: 9000))

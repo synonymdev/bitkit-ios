@@ -118,6 +118,7 @@ struct SparkExitReminder: Equatable {
     let fireAt: Date
     var isFunding = false
     var isLostLeaves = false
+    var isFailed = false
 }
 
 /// What the exit shows about its fee funding while it lacks some.
@@ -158,7 +159,11 @@ enum SparkExitMath {
     /// its reminder before it fires.
     static func reminders(_ record: SparkExitRecord, tip: UInt32?, now: Date, network: LDKNode.Network) -> [SparkExitReminder] {
         let lost = record.lostLeaves ?? []
-        let lostReminder = lost.isEmpty ? [] : [SparkExitReminder(id: "lost-\(lost.count)", fireAt: now, isLostLeaves: true)]
+        var lostReminder = lost.isEmpty ? [] : [SparkExitReminder(id: "lost-\(lost.count)", fireAt: now, isLostLeaves: true)]
+        // An exit stopped because every leaf was lost is told by the lost reminder alone.
+        if case let .failed(reason) = record.phase, reason != SparkExitRecord.lostReason {
+            lostReminder.append(SparkExitReminder(id: "failed", fireAt: now, isFailed: true))
+        }
         if case let .needsFunding(requiredSats) = record.phase {
             return lostReminder + [SparkExitReminder(id: "funding-\(requiredSats)", fireAt: now, isFunding: true)]
         }
@@ -274,12 +279,16 @@ enum SparkExitMath {
         if seenSats >= shortfall, let pending = fresh.first(where: { !$0.status.confirmed }) ?? fresh.first {
             return .seen(txid: pending.txid)
         }
-        return .ask(sats: shortfall.saturatingSub(seenSats), receivedSats: seenSats)
+        return .ask(sats: max(shortfall.saturatingSub(seenSats), fundingDustSats), receivedSats: seenSats)
     }
 
-    /// What a partial payment leaves to send: nil before any new funding arrives and once it covers `requiredSats`.
+    /// The least a P2WPKH funding output can hold: nodes refuse a payment below it.
+    static let fundingDustSats: UInt64 = 294
+
+    /// What a partial payment leaves to send, at least the dust limit: nil before any new funding arrives and once
+    /// it covers `requiredSats`.
     static func partialFundingSats(receivedSats: UInt64, requiredSats: UInt64) -> UInt64? {
-        receivedSats > 0 && receivedSats < requiredSats ? requiredSats - receivedSats : nil
+        receivedSats > 0 && receivedSats < requiredSats ? max(requiredSats - receivedSats, fundingDustSats) : nil
     }
 
     /// The funding key index of a new exit: past the counter the last start left and every index the stored record

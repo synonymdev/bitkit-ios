@@ -110,6 +110,19 @@ final class SparkExitManager {
         return false
     }
 
+    /// Notes that the user opened the result of an exit that failed or lost leaves, so Emergency exit starts a new
+    /// one next time.
+    func markResultSeen() {
+        guard var record, record.hasUnseenResult else { return }
+        record.isResultSeen = true
+        do {
+            try store.save(record)
+            self.record = record
+        } catch {
+            Logger.error("Failed to save the seen Spark exit result: \(error)", context: "SparkExitManager")
+        }
+    }
+
     func cancel() async {
         guard canCancel, let record else { return }
         try? store.delete()
@@ -151,7 +164,12 @@ final class SparkExitManager {
         do {
             tipHeight = try? await chain.tipHeight()
             await refreshFundingSeen(chain: chain, record: current)
-            let updated = try await driver.tick(current)
+            var updated = try await driver.tick(current)
+            // The result may have been opened while this tick ran.
+            if record?.isResultSeen == true, updated.isResultSeen != true {
+                updated.isResultSeen = true
+                try? store.save(updated)
+            }
             record = updated
             lastError = nil
             await afterTick(updated, wasActive: current.isActive)
@@ -531,10 +549,13 @@ final class SparkExitManager {
             kept[id] = fireAt.timeIntervalSince1970
             let content = UNMutableNotificationContent()
             content.title = t("lightning__spark_exit__notification_title")
-            content.body = t(
-                reminder.isLostLeaves ? "lightning__spark_exit__notification_lost"
-                    : reminder.isFunding ? "lightning__spark_exit__notification_funding" : "lightning__spark_exit__notification_body"
-            )
+            content.body = if reminder.isLostLeaves {
+                t("lightning__spark_exit__notification_lost", variables: ["amount": "₿ \(CurrencyFormatter.formatSats(record.lostSats))"])
+            } else if reminder.isFailed {
+                t("lightning__spark_exit__notification_failed")
+            } else {
+                t(reminder.isFunding ? "lightning__spark_exit__notification_funding" : "lightning__spark_exit__notification_body")
+            }
             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: fireAt.timeIntervalSince(now), repeats: false)
             requests.append(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
         }

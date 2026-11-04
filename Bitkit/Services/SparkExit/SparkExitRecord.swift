@@ -118,6 +118,8 @@ struct SparkExitRecord: Codable, Equatable {
     var spentStepStrikes: [String: Int]?
     var lostLeaves: [LostLeaf]?
     var leftBehindLeaves: [LeftBehindLeaf]?
+    /// Set once the user opened the result of an exit that failed or lost leaves.
+    var isResultSeen: Bool?
     /// Set and saved before a rebuild, so nothing of the diverged generation is broadcast while it is replaced.
     var isRebuilding = false
     var lastBuildAt: Date?
@@ -137,10 +139,25 @@ struct SparkExitRecord: Codable, Equatable {
         return leftoverSweep.txid != nil && leftoverSweep.rejection == nil && leftoverSweep.isConfirmed != true
     }
 
+    static let lostReason = "Claimed by an older state"
+
+    var isFailed: Bool {
+        if case .failed = phase {
+            return true
+        }
+        return false
+    }
+
+    /// An ended exit that failed or lost leaves, whose result the user has not opened yet.
+    var hasUnseenResult: Bool {
+        !isActive && (isFailed || lostSats > 0) && isResultSeen != true
+    }
+
     /// Whether Emergency exit opens this exit rather than a new one: it runs, its leftover is still on its way to
-    /// savings, or the leftover sweep was refused and the leftover waits at the funding address.
+    /// savings, the leftover sweep was refused and the leftover waits at the funding address, or it failed or lost
+    /// leaves and the user has not seen that yet.
     var showsResult: Bool {
-        needsDriving || (!leftover.isEmpty && leftoverSweep?.rejection != nil)
+        needsDriving || (!leftover.isEmpty && leftoverSweep?.rejection != nil) || hasUnseenResult
     }
 
     /// The leaves builds select: the quote's, less those an older state claimed and those left behind.

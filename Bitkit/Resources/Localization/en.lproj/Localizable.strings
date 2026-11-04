@@ -388,7 +388,7 @@
 "lightning__spark_exit__fund_external_text" = "Send at least {amount} to this address. The exit starts once it confirms.";
 "lightning__spark_exit__fund_insufficient" = "Your savings can't cover the fee funding.";
 "lightning__spark_exit__fund_seen" = "Payment seen.";
-"lightning__spark_exit__fund_partial" = "{received} of {required} received, send {remaining} more.";
+"lightning__spark_exit__fund_partial" = "{received} of {required} received, send {missing} more.";
 "lightning__spark_exit__confirm_title" = "Start\n<accent>exit?</accent>";
 "lightning__spark_exit__confirm_text" = "You won't be able to use these funds for <accent>up to 4 weeks</accent>.";
 "lightning__spark_exit__swipe" = "Swipe To Exit";
@@ -413,7 +413,8 @@
 "lightning__spark_exit__fund_pending" = "Payment seen, waiting for confirmation.";
 "lightning__spark_exit__funding_txid" = "Transaction ID: {txid}";
 "lightning__spark_exit__lost_leaves" = "{amount} was claimed on-chain by an older owner of these funds and can't be recovered.";
-"lightning__spark_exit__notification_lost" = "Part of your exit can't be recovered. Open Bitkit to see why.";
+"lightning__spark_exit__notification_lost" = "{amount} of your exit can't be recovered. Open Bitkit to see why.";
+"lightning__spark_exit__notification_failed" = "Your emergency exit stopped. Open Bitkit to see why.";
 "lightning__spark_exit__quote_outside" = "{amount} of your Spark balance can't be exited right now: amounts too small to pay their own fees, or still moving inside Spark. It stays on Spark.";
 "lightning__spark_exit__left_behind_leaves" = "{amount} can't be exited at this fee rate and stays on Spark.";
 "lightning__spark_exit__needs_funding_title" = "More fees\n<accent>needed</accent>";

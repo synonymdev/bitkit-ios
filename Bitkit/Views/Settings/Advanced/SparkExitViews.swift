@@ -282,11 +282,11 @@ struct SparkExitFundingAddress: View {
             .buttonStyle(PlainButtonStyle())
             .accessibilityIdentifier("SparkExitFundingAddress")
 
-            if let remainingSats = SparkExitMath.partialFundingSats(receivedSats: receivedSats, requiredSats: targetSats) {
+            if let missingSats = SparkExitMath.partialFundingSats(receivedSats: receivedSats, requiredSats: targetSats) {
                 CaptionMText(t("lightning__spark_exit__fund_partial", variables: [
                     "received": currency.primaryAmountText(sats: receivedSats),
                     "required": currency.primaryAmountText(sats: targetSats),
-                    "remaining": currency.primaryAmountText(sats: remainingSats),
+                    "missing": currency.primaryAmountText(sats: missingSats),
                 ]))
                 .accessibilityIdentifier("SparkExitFundingPartial")
             } else if showsSeen, receivedSats >= targetSats, targetSats > 0 {
@@ -497,7 +497,7 @@ struct SparkExitProgressView: View {
                                     address: address,
                                     requiredSats: sats,
                                     receivedSats: receivedSats,
-                                    targetSats: sats + receivedSats,
+                                    targetSats: record.fundingShortfallSats ?? sats + receivedSats,
                                     showsSeen: false
                                 )
                                 .padding(.top, 24)
@@ -583,6 +583,9 @@ struct SparkExitProgressView: View {
         .task {
             await SparkManager.shared.refreshState()
             await exit.tick()
+        }
+        .task(id: record?.hasUnseenResult) {
+            exit.markResultSeen()
         }
     }
 }

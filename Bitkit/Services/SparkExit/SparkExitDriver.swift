@@ -149,7 +149,7 @@ struct SparkExitDriver {
             record.isRebuilding = true
             record.lastBuildAt = nil
             if record.exitLeafIds.isEmpty {
-                await finish(&record, phase: .failed(reason: "Claimed by an older state"))
+                await finish(&record, phase: .failed(reason: SparkExitRecord.lostReason))
             }
             return
         }
