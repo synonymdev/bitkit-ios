@@ -75,7 +75,7 @@ struct SparkExitQuoteView: View {
                         SparkExitQuoteRows(quote: quote)
 
                         if let unexitableSats = SparkExitMath.unexitableSats(sparkBalanceSats: SparkManager.shared.balanceSats, quote: quote) {
-                            CaptionMText(t(
+                            BodySText(t(
                                 "lightning__spark_exit__quote_outside",
                                 variables: ["amount": currency.primaryAmountText(sats: unexitableSats)]
                             ))
@@ -216,7 +216,7 @@ struct SparkExitFundingView: View {
                 .accessibilityIdentifier("SparkExitFundingContinue")
             } else {
                 if hasSavingsFeeFailed || (savingsFeeSats != nil && !canFundFromSavings) {
-                    CaptionMText(t("lightning__spark_exit__fund_insufficient"))
+                    BodySText(t("lightning__spark_exit__fund_insufficient"))
                         .padding(.bottom, 16)
                 }
 
@@ -282,7 +282,7 @@ struct SparkExitFundingAddress: View {
                 .frame(maxWidth: 200)
                 .frame(maxWidth: .infinity)
 
-            CaptionMText(t("lightning__spark_exit__fund_external_text", variables: ["amount": currency.primaryAmountText(sats: requiredSats)]))
+            BodySText(t("lightning__spark_exit__fund_external_text", variables: ["amount": currency.primaryAmountText(sats: requiredSats)]))
 
             Button {
                 UIPasteboard.general.string = address
@@ -298,14 +298,14 @@ struct SparkExitFundingAddress: View {
             .accessibilityIdentifier("SparkExitFundingAddress")
 
             if let missingSats = SparkExitMath.partialFundingSats(receivedSats: receivedSats, requiredSats: targetSats) {
-                CaptionMText(t("lightning__spark_exit__fund_partial", variables: [
+                BodySText(t("lightning__spark_exit__fund_partial", variables: [
                     "received": currency.primaryAmountText(sats: receivedSats),
                     "required": currency.primaryAmountText(sats: targetSats),
                     "missing": currency.primaryAmountText(sats: missingSats),
                 ]))
                 .accessibilityIdentifier("SparkExitFundingPartial")
             } else if showsSeen, receivedSats >= targetSats, targetSats > 0 {
-                CaptionMText(t("lightning__spark_exit__fund_seen"), textColor: .greenAccent)
+                BodySText(t("lightning__spark_exit__fund_seen"), textColor: .greenAccent)
             }
         }
     }
@@ -318,8 +318,8 @@ struct SparkExitWaitingPayment: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(text, textColor: .greenAccent)
-            CaptionMText(t("lightning__spark_exit__funding_txid", variables: ["txid": txid]))
+            BodySText(text, textColor: .greenAccent)
+            BodySText(t("lightning__spark_exit__funding_txid", variables: ["txid": txid]))
                 .lineLimit(2)
                 .truncationMode(.middle)
         }
@@ -344,21 +344,21 @@ struct SparkExitLeftoverStatus: View {
             if let sweep = record.leftoverSweep, sweep.rejection == nil {
                 if let txid = sweep.txid {
                     let key = sweep.isAccepted ? "lightning__spark_exit__leftover_swept" : "lightning__spark_exit__leftover_sending"
-                    CaptionMText(t(key, variables: ["amount": currency.primaryAmountText(sats: sweep.valueSats)]))
+                    BodySText(t(key, variables: ["amount": currency.primaryAmountText(sats: sweep.valueSats)]))
                     if sweep.isAccepted {
-                        CaptionMText(t("lightning__spark_exit__leftover_txid", variables: ["txid": txid]))
+                        BodySText(t("lightning__spark_exit__leftover_txid", variables: ["txid": txid]))
                             .lineLimit(2)
                             .truncationMode(.middle)
                     }
                 } else {
-                    CaptionMText(t(
+                    BodySText(t(
                         "lightning__spark_exit__leftover_dust",
                         variables: ["amount": currency.primaryAmountText(sats: leftoverSats), "address": address]
                     ))
                 }
             } else {
                 ForEach(Array(record.leftover.enumerated()), id: \.offset) { _, leftover in
-                    CaptionMText(t(
+                    BodySText(t(
                         "lightning__spark_exit__leftover",
                         variables: ["amount": currency.primaryAmountText(sats: leftover.valueSats), "address": address]
                     ))
@@ -531,7 +531,7 @@ struct SparkExitProgressView: View {
                         }
 
                         if record.leftBehindSats > 0 {
-                            CaptionMText(t(
+                            BodySText(t(
                                 "lightning__spark_exit__left_behind_leaves",
                                 variables: ["amount": currency.primaryAmountText(sats: record.leftBehindSats)]
                             ))
@@ -542,19 +542,19 @@ struct SparkExitProgressView: View {
 
                         // An exit that failed says it in its text.
                         if let lostText, !isFailed {
-                            CaptionMText(lostText, textColor: .redAccent)
+                            BodySText(lostText, textColor: .redAccent)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .padding(.top, 16)
                                 .accessibilityIdentifier("SparkExitLostLeaves")
                         }
 
                         if let rejection = record.surfacedRejection {
-                            CaptionMText(t("lightning__spark_exit__errors", variables: ["error": rejection]), textColor: .redAccent)
+                            BodySText(t("lightning__spark_exit__errors", variables: ["error": rejection]), textColor: .redAccent)
                                 .padding(.top, 16)
                         }
 
                         if let outsideSats = SparkExitMath.outsideExitSats(sparkBalanceSats: SparkManager.shared.balanceSats, record: record) {
-                            CaptionMText(t(
+                            BodySText(t(
                                 "lightning__spark_exit__outside_exit",
                                 variables: ["amount": currency.primaryAmountText(sats: outsideSats)]
                             ))
@@ -626,7 +626,7 @@ struct SparkExitBackgroundNotes: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(notes, id: \.self) { note in
-                CaptionMText(note, textColor: .yellowAccent)
+                BodySText(note, textColor: .yellowAccent)
             }
         }
         .accessibilityElement(children: .contain)
