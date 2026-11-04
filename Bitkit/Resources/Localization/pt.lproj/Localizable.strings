@@ -577,6 +577,14 @@
 "security__cp_changed_text" = "Você alterou com sucesso seu PIN para uma nova combinação de 4 dígitos.";
 "security__wiped_title" = "Dados da Carteira Deletados";
 "security__wiped_message" = "O Bitkit foi redefinido e todos os dados da carteira foram excluídos.";
+"security__pin_unavailable" = "A Bitkit não conseguiu verificar o seu PIN. Tente novamente.";
+"security__wipe_not_started" = "Não foi possível iniciar a reposição. Nada foi eliminado.";
+"security__wipe_gate_title" = "A repor a Bitkit";
+"security__wipe_gate_text" = "A Bitkit está a eliminar os dados da carteira deste dispositivo. Mantenha a app aberta até terminar.";
+"security__wipe_gate_failed" = "A Bitkit não conseguiu terminar a eliminação dos dados da carteira e vai tentar novamente. Pode tentar novamente agora ou exportar os logs para o suporte.";
+"security__wipe_gate_step" = "Passo {step} de {total}";
+"security__wipe_gate_blocked_title" = "A Bitkit está bloqueada";
+"security__wipe_gate_blocked_text" = "A Bitkit não consegue verificar o seu estado de segurança. Tente novamente ou exporte os logs para o suporte.";
 "pubky_auth__title" = "Autorizar";
 "pubky_auth__description_prefix" = "Um serviço está a pedir permissão para aceder e editar os seus dados de ";
 "pubky_auth__description_suffix" = ".";
@@ -1496,6 +1504,9 @@
 "usdt__deposit_refund_address_network" = "Endereço USDT na rede {network}";
 "subscriptions__allowances" = "Pré-aprovações";
 "subscriptions__allowances_empty_headline" = "Configure\n<accent>pré-aprovações</accent>";
+"subscriptions__allowances_paused_description" = "Os registos das suas mesadas são mais antigos do que outros que esta carteira já usou. Os pedidos vão pedir a sua aprovação até retomar.";
+"subscriptions__allowances_paused_resume" = "Retomar";
+"subscriptions__allowances_paused_title" = "Pagamentos automáticos em pausa";
 "subscriptions__allowances_empty_description" = "Pode definir limites de gastos para pagar automaticamente pedidos de pagamento de contactos de confiança.";
 "subscriptions__allowance_add" = "Adicionar pré-aprovação";
 "subscriptions__allowance_title" = "Pré-aprovação";
@@ -1549,3 +1560,5 @@
 "onboarding__connection_settings" = "Definições de ligação";
 "onboarding__connection_saved" = "Guardado. Tente novamente para continuar o restauro.";
 "wallet__balance_updating" = "A atualizar o saldo…";
+"other__error_keychain" = "Problema de Ligação de Dados";
+"other__error_keychain_msg" = "Não foi possível carregar a chave principal do porta-chaves.";

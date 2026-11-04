@@ -559,6 +559,14 @@
 "security__cp_changed_text" = "Αλλάξατε επιτυχώς το PIN σας σε νέο 4ψήφιο συνδυασμό.";
 "security__wiped_title" = "Τα Δεδομένα Πορτοφολιού Διαγράφηκαν";
 "security__wiped_message" = "Το Bitkit επαναφέρθηκε και όλα τα δεδομένα πορτοφολιού διαγράφηκαν.";
+"security__pin_unavailable" = "Το Bitkit δεν μπόρεσε να ελέγξει το PIN σας. Δοκιμάστε ξανά.";
+"security__wipe_not_started" = "Η επαναφορά δεν μπόρεσε να ξεκινήσει. Δεν διαγράφηκε τίποτα.";
+"security__wipe_gate_title" = "Επαναφορά του Bitkit";
+"security__wipe_gate_text" = "Το Bitkit διαγράφει τα δεδομένα πορτοφολιού σε αυτή τη συσκευή. Κρατήστε την εφαρμογή ανοιχτή μέχρι να ολοκληρωθεί.";
+"security__wipe_gate_failed" = "Το Bitkit δεν μπόρεσε να ολοκληρώσει τη διαγραφή των δεδομένων πορτοφολιού και θα προσπαθήσει ξανά. Μπορείτε να δοκιμάσετε ξανά τώρα ή να εξαγάγετε τα αρχεία καταγραφής για την υποστήριξη.";
+"security__wipe_gate_step" = "Βήμα {step} από {total}";
+"security__wipe_gate_blocked_title" = "Το Bitkit Είναι Κλειδωμένο";
+"security__wipe_gate_blocked_text" = "Το Bitkit δεν μπορεί να επαληθεύσει την κατάσταση ασφαλείας του. Δοκιμάστε ξανά ή εξαγάγετε τα αρχεία καταγραφής για την υποστήριξη.";
 "security__authorization__success" = "Επιτυχία";
 "pubky_auth__title" = "Εξουσιοδότηση";
 "pubky_auth__description_prefix" = "Μια υπηρεσία ζητά άδεια πρόσβασης και επεξεργασίας των δεδομένων ";
@@ -1571,6 +1579,9 @@
 "wallet__send_error_support" = "Επικοινωνία με Υποστήριξη";
 "subscriptions__allowances" = "Προεγκρίσεις";
 "subscriptions__allowances_empty_headline" = "Ρύθμισε\n<accent>προεγκρίσεις</accent>";
+"subscriptions__allowances_paused_description" = "Τα αρχεία των προϋπολογισμών σου είναι παλαιότερα από αρχεία που έχει ήδη χρησιμοποιήσει αυτό το πορτοφόλι. Τα αιτήματα θα ζητούν την έγκρισή σου μέχρι να συνεχίσεις.";
+"subscriptions__allowances_paused_resume" = "Συνέχεια";
+"subscriptions__allowances_paused_title" = "Οι αυτόματες πληρωμές έχουν παυθεί";
 "subscriptions__allowances_empty_description" = "Μπορείς να ορίσεις όρια δαπανών για να εξοφλούνται αυτόματα αιτήματα πληρωμής από αξιόπιστες επαφές.";
 "subscriptions__allowance_add" = "Προσθήκη προέγκρισης";
 "subscriptions__allowance_title" = "Προέγκριση";
@@ -1624,3 +1635,5 @@
 "onboarding__connection_settings" = "Ρυθμίσεις σύνδεσης";
 "onboarding__connection_saved" = "Αποθηκεύτηκε. Δοκιμάστε ξανά για να συνεχίσετε την επαναφορά.";
 "wallet__balance_updating" = "Ενημέρωση υπολοίπου…";
+"other__error_keychain" = "Πρόβλημα Σύνδεσης Δεδομένων";
+"other__error_keychain_msg" = "Δεν ήταν δυνατή η φόρτωση του κύριου κλειδιού από την κλειδοθήκη.";

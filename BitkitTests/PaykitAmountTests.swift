@@ -35,6 +35,21 @@ final class PaykitAmountTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testRequestAmountTextPreservesExactTokenAmounts() throws {
+        for (asset, value, expected): (PaykitAsset, String, String) in [
+            (.usdt, "0.123456", "0.123456"), (.usdt, "0.000001", "0.000001"),
+            (.usdt, "150.50", "150.50"), (.usdt, "1234.567891", "1,234.567891"),
+            (.usdt, "18446744073709.551615", "18,446,744,073,709.551615"), (.usd, "150.50", "150.50"),
+        ] {
+            let amount = try PaykitAmount(asset: asset, value: value)
+            for size: MoneySize in [.bodyMSB, .display] {
+                XCTAssertEqual(PaykitAmountText(amount: amount, size: size).displayValue, expected)
+            }
+            XCTAssertEqual(try PaykitAmount(asset: asset, value: amount.value), amount)
+        }
+    }
+
     func testConversionPreservesValueAndRoundsPaymentUnitsUpward() throws {
         let cases: [(PaykitAsset, String, PaykitAsset, String)] = [
             (.usd, "5", .usdt, "5"),

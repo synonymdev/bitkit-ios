@@ -36,6 +36,7 @@ struct Header: View {
             HStack(alignment: .center, spacing: 8) {
                 AppStatus(
                     testID: "HeaderAppStatus",
+                    minHeight: ScreenLayout.headerHeight,
                     onPress: {
                         if dismissCalculatorIfNeeded() {
                             return
@@ -56,7 +57,7 @@ struct Header: View {
                             .scaledToFit()
                             .foregroundColor(.brandAccent)
                             .frame(width: 24, height: 24)
-                            .frame(width: 32, height: 32)
+                            .frame(width: 32, height: ScreenLayout.headerHeight)
                             .contentShape(Rectangle())
                             .shadow(color: .brandAccent.opacity(0.5), radius: 8)
                     }
@@ -81,7 +82,7 @@ struct Header: View {
                             .resizable()
                             .foregroundColor(.textPrimary)
                             .frame(width: 24, height: 24)
-                            .frame(width: 32, height: 32)
+                            .frame(width: 32, height: ScreenLayout.headerHeight)
                             .padding(.leading, 16)
                             .contentShape(Rectangle())
                     }
@@ -101,16 +102,19 @@ struct Header: View {
                         .resizable()
                         .foregroundColor(.textPrimary)
                         .frame(width: 24, height: 24)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 32, height: ScreenLayout.headerHeight)
                         .contentShape(Rectangle())
                 }
                 .accessibilityIdentifier("HeaderMenu")
             }
         }
-        .frame(height: 48)
-        .zIndex(.infinity)
+        .frame(height: ScreenLayout.headerHeight)
         .padding(.leading, 16)
         .padding(.trailing, 10)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            _ = dismissCalculatorIfNeeded()
+        }
     }
 
     private var profileButton: some View {
@@ -132,6 +136,7 @@ struct Header: View {
                     TitleText(t("slashtags__your_name_capital"))
                 }
             }
+            .frame(height: ScreenLayout.headerHeight)
             .contentShape(Rectangle())
         }
         .accessibilityLabel(pubkyProfile.displayName ?? t("profile__nav_title"))

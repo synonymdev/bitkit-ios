@@ -1,4 +1,4 @@
-import Foundation
+import UIKit
 
 class LogService {
     static let shared = LogService()
@@ -39,6 +39,20 @@ class LogService {
             Logger.error(error, context: "Failed to create zip file for logs")
             return nil
         }
+    }
+
+    /// Zips the logs and presents the share sheet for them. Returns false when there are no logs to share.
+    @MainActor
+    func shareLogs() -> Bool {
+        guard let zipURL = zipLogs() else { return false }
+
+        let activityViewController = UIActivityViewController(activityItems: [zipURL], applicationActivities: nil)
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first
+        {
+            window.rootViewController?.present(activityViewController, animated: true)
+        }
+        return true
     }
 
     /// Creates a zip file with only the latest log files for support requests

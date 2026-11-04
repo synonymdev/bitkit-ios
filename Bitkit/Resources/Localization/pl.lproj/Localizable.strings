@@ -661,6 +661,14 @@
 "security__use_pin" = "Użyj kodu PIN";
 "security__wiped_title" = "Usunięto dane portfela";
 "security__wiped_message" = "Bitkit został zresetowany, a wszystkie dane portfela zostały usunięte.";
+"security__pin_unavailable" = "Bitkit nie mógł sprawdzić Twojego kodu PIN. Spróbuj ponownie.";
+"security__wipe_not_started" = "Nie udało się rozpocząć resetowania. Nic nie zostało usunięte.";
+"security__wipe_gate_title" = "Resetowanie Bitkit";
+"security__wipe_gate_text" = "Bitkit usuwa dane portfela z tego urządzenia. Nie zamykaj aplikacji, dopóki się nie zakończy.";
+"security__wipe_gate_failed" = "Bitkit nie mógł dokończyć usuwania danych portfela i spróbuje ponownie. Możesz spróbować ponownie teraz lub wyeksportować logi dla pomocy technicznej.";
+"security__wipe_gate_step" = "Krok {step} z {total}";
+"security__wipe_gate_blocked_title" = "Bitkit jest zablokowany";
+"security__wipe_gate_blocked_text" = "Bitkit nie może zweryfikować swojego stanu bezpieczeństwa. Spróbuj ponownie lub wyeksportuj logi dla pomocy technicznej.";
 "security__authorization__title" = "Autoryzacja";
 "security__authorization__description" = "Proszę upewnić się, że ufają Państwo tej usłudze przed udzieleniem zgody na zarządzanie Państwa danymi.";
 "security__authorization__authorize" = "Autoryzuj";
@@ -1849,6 +1857,9 @@
 "usdt__deposit_refund_address_network" = "Adres USDT w sieci {network}";
 "subscriptions__allowances" = "Przydziały";
 "subscriptions__allowances_empty_headline" = "Ustaw\n<accent>przydziały</accent>";
+"subscriptions__allowances_paused_description" = "Dane Twoich budżetów są starsze niż te, których ten portfel już użył. Prośby będą czekać na Twoją zgodę, dopóki nie wznowisz.";
+"subscriptions__allowances_paused_resume" = "Wznów";
+"subscriptions__allowances_paused_title" = "Płatności automatyczne wstrzymane";
 "subscriptions__allowances_empty_description" = "Możesz ustawić limity wydatków, aby automatycznie realizować żądania płatności od zaufanych kontaktów.";
 "subscriptions__allowance_add" = "Dodaj przydział";
 "subscriptions__allowance_title" = "Przydział";

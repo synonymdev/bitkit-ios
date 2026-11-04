@@ -1,17 +1,20 @@
 import SwiftUI
 
 struct WalletRestoreError: View {
+    var title = t("onboarding__restore_failed_header")
+    var message = t("onboarding__restore_failed_text")
     let onRetry: () async -> Void
     var onConnectionSettings: (() -> Void)?
+    var onExportLogs: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 0) {
-            DisplayText(t("onboarding__restore_failed_header"), accentColor: .redAccent)
+            DisplayText(title, accentColor: .redAccent)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 40)
                 .padding(.bottom, 14)
 
-            BodyMText(t("onboarding__restore_failed_text"))
+            BodyMText(message)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Spacer()
@@ -35,6 +38,11 @@ struct WalletRestoreError: View {
                 Task {
                     await onRetry()
                 }
+            }
+
+            if let onExportLogs {
+                CustomButton(title: t("lightning__conn_button_export_logs"), variant: .secondary, action: onExportLogs)
+                    .padding(.top, 16)
             }
         }
         .padding(.horizontal, 32)

@@ -39,11 +39,7 @@ final class NodeEventListener {
 
         do {
             try await ServiceQueue.background(.ldk) {
-                do {
-                    try node.stop()
-                } catch NodeError.NotRunning {
-                    // An unsuccessful start leaves a node without a running event consumer.
-                }
+                try LightningService.stopReleasingFinishedNode(node.stop)
             }
         } catch {
             if previous != nil {
