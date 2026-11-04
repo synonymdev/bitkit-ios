@@ -150,6 +150,58 @@ final class HwRetainedSendServiceTests: XCTestCase {
         XCTAssertEqual(try Keychain.load(key: .hwRetainedSends), corrupt)
     }
 
+    func testCorruptDataThrowsTheTypedError() async throws {
+        try Keychain.upsert(key: .hwRetainedSends, data: Data("not json".utf8))
+
+        do {
+            _ = try await HwRetainedSendService().record(walletId: wallet)
+            XCTFail("Expected an error")
+        } catch {
+            guard case HwRetainedSendError.corruptStore = error else { return XCTFail("\(error)") }
+        }
+    }
+
+    func testAbandonDeletesACorruptEntryAndTheNextRetainSucceeds() async throws {
+        try Keychain.upsert(key: .hwRetainedSends, data: Data("not json".utf8))
+        let service = HwRetainedSendService()
+
+        try await service.abandon(walletId: wallet)
+
+        XCTAssertNil(try Keychain.load(key: .hwRetainedSends))
+        try await service.retain(send())
+        let record = try await service.record(walletId: wallet)
+        XCTAssertEqual(record, send())
+    }
+
+    func testAbandonOfAReadableStoreOnlyReleasesThatWallet() async throws {
+        let store = MockHwRetainedSendStore()
+        let service = HwRetainedSendService(store: store)
+        try await service.retain(send())
+        try await service.retain(send(walletId: otherWallet))
+
+        try await service.abandon(walletId: wallet)
+
+        let released = try await service.record(walletId: wallet)
+        let kept = try await service.record(walletId: otherWallet)
+        XCTAssertNil(released)
+        XCTAssertNotNil(kept)
+        XCTAssertEqual(store.deleteEntryCalls, 0)
+    }
+
+    func testAbandonAfterAReadFailureThrowsAndDeletesNothing() async throws {
+        let store = MockHwRetainedSendStore()
+        let service = HwRetainedSendService(store: store)
+        try await service.retain(send())
+        store.setFailures(load: true)
+
+        await assertThrows { try await service.abandon(walletId: self.wallet) }
+
+        store.setFailures()
+        XCTAssertEqual(store.deleteEntryCalls, 0)
+        let record = try await service.record(walletId: wallet)
+        XCTAssertEqual(record, send())
+    }
+
     func testFullKeychainWipeClearsRecords() async throws {
         try await HwRetainedSendService().retain(send())
 
@@ -175,6 +227,10 @@ private final class MemoryRetainedSendStore: HwRetainedSendStoring, @unchecked S
             }
             self.sends = sends
         }
+    }
+
+    func deleteEntry() {
+        lock.withLock { sends = [:] }
     }
 }
 

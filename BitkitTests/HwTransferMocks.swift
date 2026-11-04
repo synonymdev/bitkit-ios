@@ -158,6 +158,7 @@ final class MockHwRetainedSendStore: HwRetainedSendStoring, @unchecked Sendable 
     private var sends: [String: HwRetainedSend] = [:]
     private var failsLoad = false
     private var failsSave = false
+    private(set) var deleteEntryCalls = 0
 
     func setFailures(load: Bool = false, save: Bool = false) {
         lock.withLock {
@@ -181,6 +182,13 @@ final class MockHwRetainedSendStore: HwRetainedSendStoring, @unchecked Sendable 
                 throw StoreError()
             }
             self.sends = sends
+        }
+    }
+
+    func deleteEntry() {
+        lock.withLock {
+            deleteEntryCalls += 1
+            sends = [:]
         }
     }
 }

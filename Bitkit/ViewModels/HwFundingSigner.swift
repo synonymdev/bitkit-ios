@@ -758,7 +758,11 @@ final class HwSendCoordinator {
     /// Discards the retained ordinary send so the next attempt signs anew. Only call this after the user accepted a second payment.
     func abandonRetainedPayment() async {
         guard let walletId, operationTask == nil else { return }
-        await releaseRetainedSend(walletId: walletId)
+        do {
+            try await retainedSends.abandon(walletId: walletId)
+        } catch {
+            Logger.warn("Failed to abandon retained hardware send: \(type(of: error))", context: "HwSendCoordinator")
+        }
         if pendingPayment?.paymentRequestId == nil {
             pendingPayment = nil
         }

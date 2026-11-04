@@ -17,11 +17,14 @@ struct HwRetainedSend: Codable, Equatable {
 
 enum HwRetainedSendError: Error {
     case differentTransactionRetained
+    /// The stored entry was read but cannot be decoded. Carries nothing from the entry, because those bytes reveal the payment.
+    case corruptStore
 }
 
 protocol HwRetainedSendStoring: Sendable {
     func load() throws -> [String: HwRetainedSend]
     func save(_ sends: [String: HwRetainedSend]) throws
+    func deleteEntry() throws
 }
 
 /// Device-only keychain storage, cleared by `Keychain.wipeEntireKeychain`. A backup must not carry these records, so unlike
@@ -29,11 +32,18 @@ protocol HwRetainedSendStoring: Sendable {
 struct HwRetainedSendStore: HwRetainedSendStoring {
     func load() throws -> [String: HwRetainedSend] {
         guard let data = try Keychain.load(key: .hwRetainedSends) else { return [:] }
-        return try JSONDecoder().decode([String: HwRetainedSend].self, from: data)
+        guard let sends = try? JSONDecoder().decode([String: HwRetainedSend].self, from: data) else {
+            throw HwRetainedSendError.corruptStore
+        }
+        return sends
     }
 
     func save(_ sends: [String: HwRetainedSend]) throws {
         try Keychain.upsert(key: .hwRetainedSends, data: JSONEncoder().encode(sends))
+    }
+
+    func deleteEntry() throws {
+        try Keychain.delete(key: .hwRetainedSends)
     }
 }
 
@@ -74,6 +84,17 @@ actor HwRetainedSendService {
         var sends = try store.load()
         guard sends.removeValue(forKey: walletId) != nil else { return }
         try store.save(sends)
+    }
+
+    /// Only for a user who accepted a second payment. A corrupt store cannot be read per wallet, so this is the one path that
+    /// deletes the whole entry, otherwise the wallet stays blocked until a full wipe. A failed read deletes nothing, because it
+    /// says nothing about the stored data and may recover on its own.
+    func abandon(walletId: String) throws {
+        do {
+            try release(walletId: walletId)
+        } catch HwRetainedSendError.corruptStore {
+            try store.deleteEntry()
+        }
     }
 
     /// Releases the wallet's record when one of `txIds` is its transaction. Returns whether it released one.

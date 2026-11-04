@@ -832,6 +832,13 @@ final class HwFundingSignerTests: XCTestCase {
         _ = try await coordinator.signAndBroadcast(manager: HwWalletManager(), address: address, sats: sats, satsPerVByte: satsPerVByte)
     }
 
+    private func storeCorruptRetainedSends() throws -> Data {
+        let corrupt = Data("not json".utf8)
+        try Keychain.upsert(key: .hwRetainedSends, data: corrupt)
+        addTeardownBlock { try? Keychain.delete(key: .hwRetainedSends) }
+        return corrupt
+    }
+
     private func failSend(
         _ coordinator: HwSendCoordinator,
         address: String = "bc1qtest",
@@ -1211,6 +1218,78 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(status, .blocking)
         XCTAssertEqual(connecting.ensureCalls, 0)
         XCTAssertEqual(funding.signCalls, 0)
+    }
+
+    func testCorruptStoreBlocksEveryWalletWithoutDeviceContact() async throws {
+        let corrupt = try storeCorruptRetainedSends()
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+
+        for walletId in ["jade:wallet", "trezor:wallet"] {
+            let coordinator = makeCoordinator(walletId: walletId, funding: funding, connecting: connecting, retainedSends: HwRetainedSendService())
+            let status = await coordinator.retainedSendStatus(address: "bc1qtest", sats: 42000)
+            XCTAssertEqual(status, .blocking)
+        }
+
+        XCTAssertEqual(connecting.ensureCalls, 0)
+        XCTAssertEqual(funding.signCalls, 0)
+        XCTAssertEqual(try Keychain.load(key: .hwRetainedSends), corrupt)
+    }
+
+    func testCorruptStoreFailsSigningClosedAndStaysInPlace() async throws {
+        let corrupt = try storeCorruptRetainedSends()
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: connecting, retainedSends: HwRetainedSendService())
+
+        await assertThrowsAsync {
+            try await self.send(coordinator)
+        } _: { error in
+            guard case HwRetainedSendError.corruptStore = error else { return XCTFail("\(error)") }
+        }
+
+        XCTAssertEqual(connecting.ensureCalls, 0)
+        XCTAssertEqual(funding.signCalls, 0)
+        XCTAssertEqual(funding.broadcastCalls, 0)
+        XCTAssertEqual(try Keychain.load(key: .hwRetainedSends), corrupt)
+    }
+
+    func testAbandonClearsACorruptStoreAndTheNextSendSignsAnew() async throws {
+        _ = try storeCorruptRetainedSends()
+        let funding = MockHwFunding()
+        let coordinator = makeCoordinator(
+            walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: HwRetainedSendService()
+        )
+
+        await coordinator.abandonRetainedPayment()
+
+        let status = await coordinator.retainedSendStatus(address: "bc1qtest", sats: 42000)
+        XCTAssertEqual(status, .none)
+        try await send(coordinator)
+        XCTAssertEqual(funding.signCalls, 1)
+        XCTAssertEqual(funding.broadcastCalls, 1)
+    }
+
+    func testReadFailureSurvivesAbandonAndRecoversOnItsOwn() async {
+        let funding = MockHwFunding()
+        let store = MockHwRetainedSendStore()
+        let coordinator = makeCoordinator(
+            walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: HwRetainedSendService(store: store)
+        )
+        funding.broadcastError = Failure.unknown
+        await failSend(coordinator)
+        funding.broadcastError = nil
+
+        store.setFailures(load: true)
+        await coordinator.abandonRetainedPayment()
+        await failSend(coordinator)
+        XCTAssertEqual(funding.signCalls, 1)
+        XCTAssertEqual(funding.broadcastCalls, 1)
+        XCTAssertEqual(store.deleteEntryCalls, 0)
+
+        store.setFailures()
+        let status = await coordinator.retainedSendStatus(address: "bc1qtest", sats: 42000)
+        guard case .retry = status else { return XCTFail("\(status)") }
     }
 
     func testNotSubmittedFirstAttemptReleasesTheRecord() async throws {
