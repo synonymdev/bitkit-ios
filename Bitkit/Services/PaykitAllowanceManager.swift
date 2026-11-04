@@ -212,7 +212,7 @@ final class PaykitAllowanceManager {
         localState = state
         automaticPaymentPause = if isLedgerBehind {
             .ledgerBehind
-        } else if isPausedAfterRestore, allowances.contains(where: \.isAllower) {
+        } else if isPausedAfterRestore, allowances.contains(where: { $0.isAllower && [.proposed, .accepted].contains($0.lifecycleState) }) {
             .walletRestored
         } else {
             nil
@@ -302,11 +302,16 @@ final class PaykitAllowanceManager {
     }
 
     /// Resumes automatic payments from the ledger read now, also after a wallet restore; see
-    /// `PaykitAllowanceExecutor.acceptCurrentLedger(identity:)`.
+    /// `PaykitAllowanceExecutor.acceptCurrentLedger(identity:)`. A Resume of the restore pause first reads the ledger again:
+    /// one that has fallen behind since is not accepted, and the refresh shows its own notice instead.
     func resumeAutomaticPayments() async throws {
         isWorking = true
         defer { isWorking = false }
         guard let identity else { throw PaykitAllowanceError.unavailable }
+        if automaticPaymentPause == .walletRestored, try await executor.checkedIsLedgerBehind(identity: identity) {
+            await refresh()
+            return
+        }
         try await executor.acceptCurrentLedger(identity: identity)
         try await executor.resumeAfterRestore()
         await executor.recover(identity: identity)

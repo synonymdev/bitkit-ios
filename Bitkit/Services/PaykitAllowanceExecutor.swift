@@ -541,13 +541,14 @@ actor PaykitAllowanceExecutor {
 
     /// True while the ledger read is older than one this wallet has read, which keeps automatic payments paused.
     func isLedgerBehind(identity: String) async -> Bool {
+        await (try? checkedIsLedgerBehind(identity: identity)) ?? false
+    }
+
+    /// Like `isLedgerBehind(identity:)`, but throws when the ledger can't be read.
+    func checkedIsLedgerBehind(identity: String) async throws -> Bool {
         guard let floor = localState(identity: identity).ledgerRevisionFloor else { return false }
-        do {
-            guard let ledger = try await sdk.allowanceAccountingState() else { return true }
-            return ledger.revision < floor
-        } catch {
-            return false
-        }
+        guard let ledger = try await sdk.allowanceAccountingState() else { return true }
+        return ledger.revision < floor
     }
 
     /// Takes the ledger read now as current, so automatic payments resume from it. This wallet's own spends, paid requests and
@@ -557,7 +558,8 @@ actor PaykitAllowanceExecutor {
         try checkedUpdateLocalState(identity: identity) { $0.ledgerRevisionFloor = ledger?.revision }
     }
 
-    /// True from a wallet restore until the user resumes automatic payments. A pause that can't be read counts as paused.
+    /// True from a wallet restore until the user resumes automatic payments, also when no allowance this wallet pays through
+    /// existed at the restore: the pause is kept per device, not per allowance. A pause that can't be read counts as paused.
     func isPausedAfterRestore() -> Bool {
         (try? store.isPausedAfterRestore()) ?? true
     }
@@ -703,6 +705,9 @@ actor PaykitAllowanceExecutor {
         guard !covering.isEmpty else { return false }
         // Paused automatic payments keep the request manual, without waiting for the node.
         guard !isPausedAfterRestore() else { return true }
+        // An allowance with a limit this wallet does not check never pays automatically, so it hands the request back too.
+        let checked = covering.filter { !$0.hasUncheckedLimits }
+        guard !checked.isEmpty else { return true }
         var attempts: [PaykitAllowanceCapacity.Attempt] = []
         do {
             let ledger = try await sdk.allowanceAccountingState()
@@ -713,7 +718,7 @@ actor PaykitAllowanceExecutor {
             Logger.warn("Failed to read allowance accounting for the limit check: \(error)", context: "PaykitAllowance")
         }
         let localAttempts = PaykitAllowanceCapacity.attempts(from: localState(identity: identity).automaticSpends)
-        guard !covering.contains(where: {
+        guard !checked.contains(where: {
             PaykitAllowanceCapacity.fits(
                 amountSats: request.allowanceAmountSats,
                 allowance: $0,
