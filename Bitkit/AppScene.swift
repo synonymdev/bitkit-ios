@@ -2112,14 +2112,14 @@ struct AppScene: View {
             return
         }
         guard IncomingPaykitPaymentRequestPresentationDispatcher.canHandleSubscriptionNotification(
-                  manager: paykitPaymentRequestManager, app: app, sheets: sheets
-              ), await refreshIncomingPaykitPaymentRequests(presentItems: false, mode: .stored),
-              !Task.isCancelled,
-              pubkyProfile.automaticPaykitSession == session,
-              PaykitSubscriptionNotificationTargetStore.load() == target,
-              IncomingPaykitPaymentRequestPresentationDispatcher.canHandleSubscriptionNotification(
-                  manager: paykitPaymentRequestManager, app: app, sheets: sheets
-              )
+            manager: paykitPaymentRequestManager, app: app, sheets: sheets
+        ), await refreshIncomingPaykitPaymentRequests(presentItems: false, mode: .stored),
+        !Task.isCancelled,
+        pubkyProfile.automaticPaykitSession == session,
+        PaykitSubscriptionNotificationTargetStore.load() == target,
+        IncomingPaykitPaymentRequestPresentationDispatcher.canHandleSubscriptionNotification(
+            manager: paykitPaymentRequestManager, app: app, sheets: sheets
+        )
         else { return }
         guard let request = paykitPaymentRequestManager.pendingRequests.first(where: target.matches) else {
             if paykitPaymentRequestManager.historyRequests.contains(where: target.matches) {
