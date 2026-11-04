@@ -24,10 +24,12 @@ struct MoveToSparkSheet: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 VStack(alignment: .leading, spacing: 8) {
                     DisplayText(t("lightning__move_to_spark__intro_title"), accentColor: .purpleAccent)
+                        .fixedSize(horizontal: false, vertical: true)
                     BodyMText(t("lightning__move_to_spark__intro_text"))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.top, 32)
+                .layoutPriority(1)
                 let buttonLayout = dynamicTypeSize.isAccessibilitySize
                     ? AnyLayout(VStackLayout(spacing: 16))
                     : AnyLayout(HStackLayout(spacing: 16))

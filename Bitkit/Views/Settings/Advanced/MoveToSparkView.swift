@@ -37,6 +37,7 @@ struct MoveToSparkView: View {
     private func header(title: String, text: String) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             DisplayText(title, accentColor: .purpleAccent)
+                .fixedSize(horizontal: false, vertical: true)
             BodyMText(text)
                 .fixedSize(horizontal: false, vertical: true)
         }
