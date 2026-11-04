@@ -45,6 +45,7 @@ struct AppStatus: View {
             .frame(minWidth: 32, minHeight: minHeight)
             .contentShape(Rectangle())
         }
+        .allowsHitTesting(showReady || appStatus != .ready)
         .accessibilityIdentifier(testID)
         .buttonStyle(PlainButtonStyle())
         .onAppear {
