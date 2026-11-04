@@ -56,7 +56,9 @@ actor VssClientCoordinator {
 
     /// Keep admission closed while the caller replaces or removes wallet credentials.
     func withSuspendedClients<T>(shutdown: () -> Void, operation: () async throws -> T) async throws -> T {
-        guard !resetting else { throw CancellationError() }
+        while resetting {
+            await withCheckedContinuation { resetWaiters.append($0) }
+        }
         await closeAdmission()
         shutdown()
         defer { reopenAdmission() }

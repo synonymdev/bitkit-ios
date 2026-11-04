@@ -327,6 +327,12 @@ class BackupService {
 
     @MainActor
     func stopObservingBackups() async {
+        await requestStopObservingBackups().value
+    }
+
+    @MainActor
+    @discardableResult
+    func requestStopObservingBackups() -> Task<Void, Never> {
         let previous = observationTask
         let stopping = Task {
             await previous?.value
@@ -362,7 +368,7 @@ class BackupService {
             Logger.debug("Stopped observing backup statuses and data store changes", context: "BackupService")
         }
         observationTask = stopping
-        await stopping.value
+        return stopping
     }
 
     @discardableResult
@@ -749,7 +755,11 @@ class BackupService {
                 if let paymentState = payload.paykitPaymentState {
                     // VssBackupClient's existing custom backup namespace is explicitly wallet index 0.
                     let backupWallet = try await PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet.backupNamespace(index: 0)
-                    try await PaykitPaymentProofService.shared.restoreBackup(paymentState, wallet: backupWallet)
+                    try await PaykitPaymentProofService.shared.restoreBackup(
+                        paymentState,
+                        wallet: backupWallet,
+                        hasLedger: payload.paykitSdkBackupState != nil
+                    )
                 }
                 try TransferStorage.shared.upsertList(payload.transfers)
                 await PrivatePaykitAddressReservationStore.shared.restoreBackup(
@@ -857,17 +867,17 @@ class BackupService {
         for category in BackupCategory.allCases {
             let categoryPublisher = backupStatusesPublisher
                 .prepend(getAllBackupStatuses())
-                .map { statuses -> BackupItemStatus in
+                .map { @Sendable statuses -> BackupItemStatus in
                     statuses[category] ?? BackupItemStatus()
                 }
 
             let distinctPublisher = categoryPublisher
-                .removeDuplicates { old, new in
+                .removeDuplicates { @Sendable old, new in
                     old.synced == new.synced && old.required == new.required
                 }
 
             distinctPublisher
-                .sink { [weak self] status in
+                .sink { @Sendable [weak self] status in
                     guard let self, !self.shouldSkipBackup(category: category) else { return }
                     if status.isRequired && !status.running {
                         let generation = currentSchedulingGeneration
@@ -887,7 +897,7 @@ class BackupService {
         var listeners = Set<AnyCancellable>()
         // SETTINGS
         SettingsViewModel.shared.settingsPublisher
-            .sink { [weak self] _ in
+            .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markObservedBackupRequired(category: .settings)
             }
@@ -895,7 +905,7 @@ class BackupService {
 
         // WIDGETS
         SettingsViewModel.shared.widgetsPublisher
-            .sink { [weak self] _ in
+            .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markObservedBackupRequired(category: .widgets)
             }
@@ -904,7 +914,7 @@ class BackupService {
         // Record requirements synchronously; the scheduled upload already has a debounce.
         WalletBackupChangeTracker.localChanges
             .merge(with: PaykitSdkService.walletBackupDataChangedPublisher)
-            .sink { [weak self] _ in
+            .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markObservedBackupRequired(category: .wallet)
             }
@@ -912,7 +922,7 @@ class BackupService {
 
         UsdtWalletManager.walletBackupDataChangedPublisher
             .merge(with: PaykitUsdtPaymentService.walletBackupDataChangedPublisher)
-            .sink { [weak self] _ in
+            .sink { @Sendable [weak self] _ in
                 guard let self, !self.isWipingOrRestoringUsdt() else { return }
                 markObservedBackupRequired(category: .usdt)
             }
@@ -920,7 +930,7 @@ class BackupService {
 
         // ACTIVITIES
         CoreService.shared.activity.activitiesChangedPublisher
-            .sink { [weak self] _ in
+            .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markObservedBackupRequired(category: .activity)
             }
@@ -928,7 +938,7 @@ class BackupService {
 
         // METADATA (from ActivityService)
         CoreService.shared.activity.metadataChangedPublisher
-            .sink { [weak self] _ in
+            .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markObservedBackupRequired(category: .metadata)
             }
@@ -937,7 +947,7 @@ class BackupService {
         // METADATA (hardware wallet names). Scoped to the names alone: the known-device store is also
         // rewritten by every connect, and reconnect traffic must not re-upload the whole envelope.
         HwKnownDeviceStorage.namesChangedPublisher
-            .sink { [weak self] _ in
+            .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markObservedBackupRequired(category: .metadata)
             }
@@ -945,7 +955,7 @@ class BackupService {
 
         // APP STATE (UserDefaults changes, etc.)
         SettingsViewModel.shared.appStatePublisher
-            .sink { [weak self] _ in
+            .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markObservedBackupRequired(category: .metadata)
             }
@@ -953,7 +963,7 @@ class BackupService {
 
         // BLOCKTANK
         CoreService.shared.blocktank.stateChangedPublisher
-            .sink { [weak self] _ in
+            .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markObservedBackupRequired(category: .blocktank)
             }
@@ -962,7 +972,7 @@ class BackupService {
         // LIGHTNING SYNC STATUS
         LightningService.shared.syncStatusChangedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
-            .sink { [weak self] lastSync in
+            .sink { @Sendable [weak self] lastSync in
                 guard let self, !self.shouldSkipBackup() else { return }
                 updateBackupStatus(category: .lightningConnections) { _ in
                     BackupItemStatus(

@@ -92,6 +92,7 @@ final class SendPresentationState {
     var hasValidatedAfterSync = false
     var incomingPaymentRequest: PaykitPaymentRequest?
     var isSubmittingPayment = false
+    var isAmountReviewRequired = false
     var paymentReview: UUID?
     var isReviewingUsdtPayment = false
     var pendingEmbeddedRetryRoute: SendRoute?
@@ -110,6 +111,29 @@ final class SendPresentationState {
     @ObservationIgnored var hwSend: HwSendCoordinator?
     @ObservationIgnored private(set) var lnurlAmountInput: AmountInputViewModel?
     @ObservationIgnored private var lnurlAmountGeneration: UUID?
+
+    var amountNavigationPath: Binding<[SendRoute]> {
+        Binding(
+            get: { self.navigationPath },
+            set: { path in
+                let currentRoot = self.rootOverride ?? self.rootRoute
+                if self.isAmountReviewRequired,
+                   (self.navigationPath.last ?? currentRoot) == .amount,
+                   path.count > self.navigationPath.count, path.starts(with: self.navigationPath)
+                {
+                    self.isAmountReviewRequired = false
+                    if currentRoot == .confirm {
+                        // Continuing a fallback review must retire the failed root confirmation.
+                        self.rootOverride = .amount
+                        self.navigationPath = Array(path.dropFirst())
+                        self.rootRouteGeneration &+= 1
+                        return
+                    }
+                }
+                self.navigationPath = path
+            }
+        )
+    }
 
     @MainActor
     func amountInput(for generation: UUID) -> AmountInputViewModel {
@@ -989,7 +1013,7 @@ struct SendSheet: View {
         case .manual:
             SendEnterManuallyView(navigationPath: $flow.navigationPath, hwSend: hwSend)
         case .amount:
-            SendAmountView(navigationPath: $flow.navigationPath, hwSend: hwSend)
+            SendAmountView(navigationPath: flow.amountNavigationPath, hwSend: hwSend)
         case let .usdt(recipient, amount):
             UsdtSendView(onDetails: { id in
                 flow.usdtDetails = id
@@ -1032,6 +1056,7 @@ struct SendSheet: View {
                 prepareIncomingPaymentRequest: prepareIncomingPaymentRequest,
                 routingCacheResetAttempted: flow.routingCacheResetAttempted,
                 preparingRequest: isPreparingRequest ? config.preparation?.request : nil,
+                isAmountReviewRequired: $flow.isAmountReviewRequired,
                 amountIsRoot: currentRoot == .amount,
                 isSetupPending: flow.isSetupPending || flow.isFallbackFundingPending
             )

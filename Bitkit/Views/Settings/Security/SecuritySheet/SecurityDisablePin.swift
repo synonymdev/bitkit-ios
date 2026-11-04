@@ -1,12 +1,9 @@
 import SwiftUI
 
 struct SecurityDisablePin: View {
-    @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
-    @EnvironmentObject private var session: SessionManager
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
-    @EnvironmentObject private var wallet: WalletViewModel
 
     @State private var pinInput: String = ""
     @State private var errorMessage: String = ""
@@ -50,7 +47,8 @@ struct SecurityDisablePin: View {
     }
 
     private func onPinEntered(_ pin: String) {
-        if settings.pinCheck(pin: pin) {
+        let result = settings.verifyPin(pin)
+        if result == .correct {
             do {
                 try settings.removePin(pin: pin)
                 navigation.navigateBack()
@@ -66,22 +64,11 @@ struct SecurityDisablePin: View {
 
         pinInput = ""
 
-        let pinAttemptOutcome = settings.pinAttemptOutcomeAfterFailure()
-        if case .exceededAttempts = pinAttemptOutcome {
-            Task {
-                await settings.wipeWalletAfterExceededPinAttempts(
-                    app: app,
-                    wallet: wallet,
-                    session: session,
-                    sheets: sheets,
-                    context: "SecurityDisablePin"
-                )
-            }
-            return
-        }
+        // A lockout raises the wipe gate in place of this screen.
+        guard result != .lockedOut else { return }
 
-        errorMessage = pinAttemptOutcome.errorMessage ?? ""
-        errorIdentifier = pinAttemptOutcome.errorIdentifier
+        errorMessage = result.errorMessage ?? ""
+        errorIdentifier = result.errorIdentifier
 
         Haptics.notify(.error)
     }

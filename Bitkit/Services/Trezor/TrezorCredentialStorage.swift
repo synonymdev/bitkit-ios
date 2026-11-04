@@ -6,8 +6,8 @@ import Security
 enum TrezorCredentialStorage {
     // MARK: - Keychain Configuration
 
-    /// Keychain service identifier for Trezor credentials
-    private static let serviceName = "to.bitkit.trezor.thp"
+    /// A test run gets its own, so it never reads or deletes the pairings of the app it runs in
+    private static let serviceName = Env.isUnitTest ? "unit-tests.to.bitkit.trezor.thp" : "to.bitkit.trezor.thp"
 
     // MARK: - Public API
 
@@ -98,16 +98,17 @@ enum TrezorCredentialStorage {
         }
     }
 
-    /// Delete all stored THP credentials.
-    static func deleteAll() {
+    /// Delete all stored THP credentials. Throws if they could not be deleted, so a wipe never reports them as gone.
+    static func deleteAll(delete: (CFDictionary) -> OSStatus = { SecItemDelete($0) }) throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
         ]
 
-        let status = SecItemDelete(query as CFDictionary)
+        let status = delete(query as CFDictionary)
         if status != errSecSuccess, status != errSecItemNotFound {
             Logger.warn("Failed to delete all THP credentials: \(status)", context: "TrezorCredentialStorage")
+            throw KeychainError.failedToDelete
         }
     }
 
