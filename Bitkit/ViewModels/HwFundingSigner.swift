@@ -350,6 +350,7 @@ final class HwSendCoordinator {
     private var availabilityRequestId = 0
     private var previewRequestId = 0
     private let signerFactory: @MainActor (HwWalletManager, String, UInt64) -> HwFundingSigner
+    @ObservationIgnored private let heldBroadcasts: HwHeldBroadcastStore
 
     var isActive: Bool {
         walletId != nil
@@ -374,10 +375,12 @@ final class HwSendCoordinator {
                 address: address,
                 satsPerVByte: satsPerVByte
             )
-        }
+        },
+        heldBroadcasts: HwHeldBroadcastStore = .shared
     ) {
         self.walletId = walletId
         self.signerFactory = signerFactory
+        self.heldBroadcasts = heldBroadcasts
     }
 
     func seedAvailable(walletId: String, availableSats: UInt64, retainedFeeSats: UInt64? = nil) {
@@ -538,6 +541,16 @@ final class HwSendCoordinator {
                 pendingPayment?.hasBroadcastAttempted = restored.hasAttemptedBroadcast
                 isBroadcastUnresolved = restored.hasAttemptedBroadcast && !restored.isRefusedForNavigation
             }
+            // A send that may have gone out from an earlier sheet or launch is pending, and is never signed again
+            if paymentRequestId == nil, pendingPayment == nil,
+               let held = try await heldBroadcasts.unresolvedSend(walletId: walletId, address: address, amountSats: sats)
+            {
+                pendingPayment = PendingPayment(request: request, signedTx: held.signedTx, paymentRequestId: nil)
+                pendingPayment?.isPreparedForBroadcast = true
+                pendingPayment?.hasBroadcastAttempted = true
+                holdUnresolvedSend(held.signedTx)
+                throw HwTransferError.broadcastUncertain
+            }
             let signed: HwFundingSignedTx
             if let pendingPayment, pendingPayment.request == request {
                 signed = pendingPayment.signedTx
@@ -606,6 +619,9 @@ final class HwSendCoordinator {
                         throw error
                     }
                 }
+                if paymentRequestId == nil {
+                    try heldBroadcasts.hold(HwHeldBroadcast(signed, walletId: walletId, address: address, amountSats: sats))
+                }
                 isBroadcastUnresolved = true
                 broadcastWasAttempted = true
                 pendingPayment?.hasBroadcastAttempted = true
@@ -616,6 +632,9 @@ final class HwSendCoordinator {
                         try await markSignedPaymentRefused(signed, false)
                         try Task.checkCancellation()
                         guard signingAttempt == attempt else { throw CancellationError() }
+                    }
+                    if paymentRequestId == nil {
+                        releaseHeldSend(signed)
                     }
                     await afterBroadcast(result)
                     return result
@@ -646,14 +665,20 @@ final class HwSendCoordinator {
                         pendingPayment?.hasBroadcastAttempted = retainsBroadcastAttempt
                         if !retainsBroadcastAttempt {
                             pendingPayment = nil
+                            if paymentRequestId == nil {
+                                releaseHeldSend(signed)
+                            }
                         }
                         throw failure
                     }
                     if paymentRequestId == nil {
                         if !failure.isHardwareBroadcastNotSent() {
                             holdUnresolvedSend(signed)
-                        } else if !failure.isBroadcastConnectivityFailure() {
-                            pendingPayment = nil
+                        } else {
+                            releaseHeldSend(signed)
+                            if !failure.isBroadcastConnectivityFailure() {
+                                pendingPayment = nil
+                            }
                         }
                     }
                     throw failure
@@ -749,6 +774,14 @@ final class HwSendCoordinator {
                 feeRate: UInt64(signed.feeRate.rounded(.up)),
                 totalSpent: signed.totalSpent
             )
+        }
+    }
+
+    private func releaseHeldSend(_ signed: HwFundingSignedTx) {
+        do {
+            try heldBroadcasts.release(signed)
+        } catch {
+            Logger.warn("Failed to release a held hardware send: \(error)", context: "HwSendCoordinator")
         }
     }
 

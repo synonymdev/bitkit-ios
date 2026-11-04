@@ -204,3 +204,12 @@ final class MockHwConnecting: HwTransferConnecting {
         staleDisconnects.append(walletId)
     }
 }
+
+/// Says which held transactions the wallet has seen, by their signed bytes.
+final class FakeHeldBroadcastResolver: HwHeldBroadcastResolving {
+    var observed: Set<String> = []
+
+    func isObserved(_ held: HwHeldBroadcast) async -> Bool {
+        observed.contains(held.serializedTx)
+    }
+}
