@@ -523,7 +523,7 @@ struct SendConfirmationView: View {
             }
             .onChange(of: hwSend.walletId) {
                 guard preparingRequest == nil else { return }
-                Task { await calculateTransactionFee() }
+                Task { await calculateTransactionFee(afterFundingSwitch: true) }
             }
             .alert(
                 t("security__bio_error_title"),
@@ -1197,10 +1197,10 @@ struct SendConfirmationView: View {
             || Self.isCalculatingOnchainFee(calculationId: onchainFeeCalculationId, latestCalculationId: feeCalculationId)
     }
 
-    /// A hardware preview that fails leaves no fee to send with. Amount shows the reason, as its Continue does;
-    /// a contact payment has its own amount review.
-    static func returnsToAmountAfterFeeFailure(isHardwarePayment: Bool, isContactPayment: Bool) -> Bool {
-        isHardwarePayment && !isContactPayment
+    /// A hardware preview that fails leaves no fee to send with, so Confirm is left with the reason; a contact payment
+    /// has its own amount review. After a funding switch Confirm stays, so another source can still be picked.
+    static func leavesConfirmAfterFeeFailure(isHardwarePayment: Bool, isContactPayment: Bool, afterFundingSwitch: Bool) -> Bool {
+        isHardwarePayment && !isContactPayment && !afterFundingSwitch
     }
 
     /// Only the newest fee calculation can hold the swipe, so a calculation superseded by a funding switch never leaves it disabled.
@@ -2042,7 +2042,7 @@ struct SendConfirmationView: View {
     }
 
     @MainActor
-    private func calculateTransactionFee() async {
+    private func calculateTransactionFee(afterFundingSwitch: Bool = false) async {
         guard !Task.isCancelled, let context = confirmationContext else { return }
         feeCalculationId += 1
         let requestId = feeCalculationId
@@ -2147,9 +2147,15 @@ struct SendConfirmationView: View {
             guard isCurrentSend(), !(error is CancellationError) else { return }
             Logger.error("Failed to calculate actual fee: \(error)")
             transactionFee = 0
-            if Self.returnsToAmountAfterFeeFailure(isHardwarePayment: hwSend.isActive, isContactPayment: app.contactPaymentContext != nil) {
+            if hwSend.isActive, app.contactPaymentContext == nil {
                 app.toast(type: .error, title: t("other__try_again"), description: error.localizedDescription)
-                leaveAfterPreparationFailure()
+                if Self.leavesConfirmAfterFeeFailure(
+                    isHardwarePayment: true,
+                    isContactPayment: false,
+                    afterFundingSwitch: afterFundingSwitch
+                ) {
+                    leaveAfterPreparationFailure()
+                }
                 return
             }
             if app.contactPaymentContext?.incomingPaymentRequest != nil {

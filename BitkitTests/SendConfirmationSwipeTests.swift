@@ -171,10 +171,16 @@ final class SendConfirmationSwipeTests: XCTestCase {
         XCTAssertTrue(SendConfirmationView.canEditScannedAmount(walletToPayFrom: .onchain, lightningAmountSats: nil, onchainAmountSats: nil))
     }
 
-    func testAFailedHardwarePreviewReturnsToAmountOutsideContactPayments() {
-        XCTAssertTrue(SendConfirmationView.returnsToAmountAfterFeeFailure(isHardwarePayment: true, isContactPayment: false))
-        XCTAssertFalse(SendConfirmationView.returnsToAmountAfterFeeFailure(isHardwarePayment: true, isContactPayment: true))
-        XCTAssertFalse(SendConfirmationView.returnsToAmountAfterFeeFailure(isHardwarePayment: false, isContactPayment: false))
+    func testAFailedHardwarePreviewLeavesConfirmOnlyForItsInitialSource() {
+        XCTAssertTrue(SendConfirmationView.leavesConfirmAfterFeeFailure(isHardwarePayment: true, isContactPayment: false, afterFundingSwitch: false))
+        // A switch to a device that cannot pay keeps Confirm, so another source can be picked.
+        XCTAssertFalse(SendConfirmationView.leavesConfirmAfterFeeFailure(isHardwarePayment: true, isContactPayment: false, afterFundingSwitch: true))
+        XCTAssertFalse(SendConfirmationView.leavesConfirmAfterFeeFailure(isHardwarePayment: true, isContactPayment: true, afterFundingSwitch: false))
+        XCTAssertFalse(SendConfirmationView.leavesConfirmAfterFeeFailure(
+            isHardwarePayment: false,
+            isContactPayment: false,
+            afterFundingSwitch: false
+        ))
     }
 
     func testOnlyTheNewestFeeCalculationHoldsTheSwipe() {
