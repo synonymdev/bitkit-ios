@@ -974,6 +974,23 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.reminders(record, tip: 1000, now: clock, network: .regtest).map(\.id), ["failed"])
     }
 
+    /// The last leaf lost on a tick that could not read the funding address: the next tick ends the exit through the
+    /// no-leaf path, still as lost, and only the lost notification fires.
+    func testASingleLostLeafEndedThroughTheNoLeafPathNotifiesOnlyTheLoss() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.adopt(SparkExitFixtures.recovery([SparkExitFixtures.tx("old")]), at: .distantPast)
+        record.lostLeaves = [.init(leafId: "leaf-1", valueSats: 100_000)]
+        record.isRebuilding = true
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.phase, .failed(reason: SparkExitRecord.lostReason))
+        XCTAssertTrue(sdk.prepareRequests.isEmpty)
+        XCTAssertEqual(SparkExitMath.reminders(record, tip: 1000, now: clock, network: .regtest).map(\.id), ["lost-1"])
+        record.phase = .failed(reason: "No leaf can be exited")
+        XCTAssertEqual(SparkExitMath.reminders(record, tip: 1000, now: clock, network: .regtest).map(\.id), ["lost-1"])
+    }
+
     /// qa-03: a failed or lost-leaf exit with nothing left to sweep ended at once and Emergency exit opened a new
     /// intro, so the user never saw why.
     func testAFailedOrLostLeafResultStaysReachableUntilSeen() {

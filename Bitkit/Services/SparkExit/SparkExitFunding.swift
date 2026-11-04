@@ -161,7 +161,7 @@ enum SparkExitMath {
         let lost = record.lostLeaves ?? []
         var lostReminder = lost.isEmpty ? [] : [SparkExitReminder(id: "lost-\(lost.count)", fireAt: now, isLostLeaves: true)]
         // An exit stopped because every leaf was lost is told by the lost reminder alone.
-        if case let .failed(reason) = record.phase, reason != SparkExitRecord.lostReason {
+        if case .failed = record.phase, !record.isEveryLeafLost {
             lostReminder.append(SparkExitReminder(id: "failed", fireAt: now, isFailed: true))
         }
         if case let .needsFunding(requiredSats) = record.phase {

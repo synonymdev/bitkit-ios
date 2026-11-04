@@ -170,6 +170,12 @@ struct SparkExitRecord: Codable, Equatable {
         (leftBehindLeaves ?? []).reduce(0) { $0 + $1.valueSats }
     }
 
+    /// Every leaf of the exit was claimed by an older state, none left behind.
+    var isEveryLeafLost: Bool {
+        let lost = Set((lostLeaves ?? []).map(\.leafId))
+        return !lost.isEmpty && leafIds.allSatisfy(lost.contains)
+    }
+
     var lostSats: UInt64 {
         (lostLeaves ?? []).reduce(0) { $0 + $1.valueSats }
     }
