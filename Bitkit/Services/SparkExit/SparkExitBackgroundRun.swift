@@ -34,9 +34,14 @@ struct SparkExitBackgroundRun {
     static let reserveSeconds: TimeInterval = 8
 
     func run() async -> Outcome {
-        let timings = SparkExitTimings()
         let started = now()
-        defer { timings.add(.total, now().timeIntervalSince(started)) }
+        var outcome = await steps()
+        outcome.seconds[.total] = now().timeIntervalSince(started)
+        return outcome
+    }
+
+    private func steps() async -> Outcome {
+        let timings = SparkExitTimings()
         var outcome = Outcome()
         let loadStarted = now()
         do {

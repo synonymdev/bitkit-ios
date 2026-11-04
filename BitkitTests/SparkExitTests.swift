@@ -772,6 +772,29 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.reminders(record, tip: 1000, now: now, network: .regtest).map(\.id), ["1-h1500", "1-h2400"])
     }
 
+    func testRemindsWhenStepsWaitingForParentsStopMoving() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var record = SparkExitFixtures.record(phase: .running)
+        record.adopt(SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("f", kind: .fanOut),
+            SparkExitFixtures.tx("n1", dependsOn: ["f"], status: .waitingForDependencies),
+            SparkExitFixtures.tx("r1", kind: .refund, dependsOn: ["n1"], status: .waitingForDependencies),
+        ]))
+        record.broadcastLog = [.init(
+            generation: 1,
+            txid: "f",
+            attempts: 1,
+            rejections: 0,
+            lastAttemptAt: now,
+            lastOutcome: "accepted",
+            isAccepted: true
+        )]
+
+        let reminders = SparkExitMath.reminders(record, tip: 1000, now: now, network: .bitcoin)
+
+        XCTAssertEqual(reminders, [SparkExitReminder(id: "1-idle-0-1", fireAt: now.addingTimeInterval(4 * 60 * 60))])
+    }
+
     func testRemindsAtOnceForFeeFundingAndRepeatedRejections() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let funding = SparkExitFixtures.record(phase: .needsFunding(requiredSats: 5000))
@@ -794,6 +817,7 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.reminders(record, tip: 1000, now: now, network: .bitcoin), [
             SparkExitReminder(id: "rejected-1-n1", fireAt: now),
             SparkExitReminder(id: "1-ready-n1", fireAt: now.addingTimeInterval(TimeInterval(SparkExitMath.reminderGraceBlocks) * 600)),
+            SparkExitReminder(id: "1-idle-0-0", fireAt: now.addingTimeInterval(4 * 60 * 60)),
         ])
         XCTAssertTrue(SparkExitMath.reminders(SparkExitFixtures.record(phase: .done), tip: 1000, now: now, network: .bitcoin).isEmpty)
     }

@@ -417,17 +417,25 @@ final class SparkExitManager {
     }
 
     nonisolated static func scheduleBackgroundRuns() {
-        let refresh = BGAppRefreshTaskRequest(identifier: backgroundTaskId)
-        refresh.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
-        let processing = BGProcessingTaskRequest(identifier: processingTaskId)
-        processing.requiresNetworkConnectivity = true
-        processing.requiresExternalPower = false
-        processing.earliestBeginDate = Date(timeIntervalSinceNow: 30 * 60)
-        for request in [refresh, processing] as [BGTaskRequest] {
-            do {
-                try BGTaskScheduler.shared.submit(request)
-            } catch {
-                Logger.warn("Failed to schedule Spark exit run \(request.identifier): \(error)", context: "SparkExitManager")
+        // The refresh moves out on every run; the processing task is left alone while pending, or runs ticking more
+        // often than its floor would keep it from ever coming due.
+        BGTaskScheduler.shared.getPendingTaskRequests { pending in
+            let refresh = BGAppRefreshTaskRequest(identifier: backgroundTaskId)
+            refresh.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+            var requests: [BGTaskRequest] = [refresh]
+            if !pending.contains(where: { $0.identifier == processingTaskId }) {
+                let processing = BGProcessingTaskRequest(identifier: processingTaskId)
+                processing.requiresNetworkConnectivity = true
+                processing.requiresExternalPower = false
+                processing.earliestBeginDate = Date(timeIntervalSinceNow: 30 * 60)
+                requests.append(processing)
+            }
+            for request in requests {
+                do {
+                    try BGTaskScheduler.shared.submit(request)
+                } catch {
+                    Logger.warn("Failed to schedule Spark exit run \(request.identifier): \(error)", context: "SparkExitManager")
+                }
             }
         }
     }

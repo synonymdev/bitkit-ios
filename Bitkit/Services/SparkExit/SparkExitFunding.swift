@@ -170,6 +170,14 @@ enum SparkExitMath {
         if let readyTxid {
             reminders.append(SparkExitReminder(id: "\(generation)-ready-\(readyTxid)", fireAt: now.addingTimeInterval(grace)))
         }
+        // Steps waiting for parents have no height yet, which only a run learns: remind once progress stalls. Any
+        // confirmation or accepted broadcast changes the id, which starts the wait again.
+        let confirmed = confirmedCount(recovery)
+        let isAhead = heights.contains { height in tip.map { height > $0 } ?? true }
+        if !isAhead, confirmed < recovery.transactions.count {
+            let id = "\(generation)-idle-\(confirmed)-\(accepted.count)"
+            reminders.append(SparkExitReminder(id: id, fireAt: now.addingTimeInterval(reminderSeconds(network: network))))
+        }
         return reminders
     }
 
@@ -212,7 +220,8 @@ enum SparkExitMath {
         return TimeInterval(BlockTimeHelpers.blocksRemaining(until: height, currentHeight: tip)) * blockSeconds
     }
 
-    /// How far out to remind about a timelocked step when the tip could not be read.
+    /// How far out to remind about a timelocked step when the tip could not be read, and about an exit whose steps
+    /// wait for parents with no progress.
     static func reminderSeconds(network: LDKNode.Network) -> TimeInterval {
         network == .regtest ? 10 * 60 : 4 * 60 * 60
     }
