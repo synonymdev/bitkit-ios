@@ -87,8 +87,8 @@ struct PaymentNavigationHelper {
         }
 
         // Handle lightning invoice
-        if app.scannedLightningInvoice != nil {
-            let amount = app.scannedLightningInvoice!.amountSatoshis
+        if let invoice = app.scannedLightningInvoice {
+            let amount = invoice.amountSatoshis
 
             if amount > 0 && shouldUseQuickpay {
                 sheetViewModel.showSheet(.send, data: SendConfig(view: .quickpay))

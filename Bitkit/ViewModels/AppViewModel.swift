@@ -794,7 +794,7 @@ extension AppViewModel {
                 let data = try await scanPaymentOperations.decodeInvoice(endpoint.paymentRequest)
                 try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: context, isCurrentScan: isCurrentScanGeneration)
                 switch data {
-                case let .onChain(invoice): scannedOnchainInvoice = invoice
+                case let .onChain(invoice) where invoice.amountSatoshis <= Env.maxBitcoinSats: scannedOnchainInvoice = invoice
                 case let .lightning(invoice): scannedLightningInvoice = invoice
                 case let .lnurlPay(data): lnurlPayData = data
                 default: break
@@ -942,10 +942,13 @@ extension AppViewModel {
             let requestedAmount = try contactPaymentContext?.incomingPaymentRequest?.payment(
                 using: PublicPaykitService.onchainMethodId(for: invoice.address)
             ).amount.atomic
-            // Check network first - treat wrong network as decoding error
+            // Check network and amount first - treat wrong network or an amount above the bitcoin supply as decoding error.
+            // bitkit-core saturates a BIP21 amount it cannot represent instead of rejecting it.
             let addressValidation = try? validateBitcoinAddress(address: invoice.address)
             let addressNetwork: LDKNode.Network? = addressValidation.map { NetworkValidationHelper.convertNetworkType($0.network) }
-            if NetworkValidationHelper.isNetworkMismatch(addressNetwork: addressNetwork, currentNetwork: Env.network) {
+            if NetworkValidationHelper.isNetworkMismatch(addressNetwork: addressNetwork, currentNetwork: Env.network) ||
+                invoice.amountSatoshis > Env.maxBitcoinSats
+            {
                 toast(
                     type: .error,
                     title: t("other__scan_err_decoding"),
@@ -1503,7 +1506,7 @@ extension AppViewModel {
             let amountSats = invoice.amountSatoshis
 
             // Priority 1: Insufficient spending balance (only check if amount > 0)
-            if amountSats > 0 && spendingBalanceSats < Int(amountSats) {
+            if amountSats > 0 && UInt64(clamping: spendingBalanceSats) < amountSats {
                 result = .insufficientSpending
             } else if invoice.isExpired {
                 // Priority 2: Expired invoice (only after balance check passes)
@@ -1511,10 +1514,12 @@ extension AppViewModel {
             }
 
         case let .onChain(invoice):
-            // Priority 0: Check network first - treat wrong network as invalid
+            // Priority 0: Check network and amount first - treat wrong network or an amount above the bitcoin supply as invalid
             let addressValidation = try? validateBitcoinAddress(address: invoice.address)
             let addressNetwork: LDKNode.Network? = addressValidation.map { NetworkValidationHelper.convertNetworkType($0.network) }
-            if NetworkValidationHelper.isNetworkMismatch(addressNetwork: addressNetwork, currentNetwork: Env.network) {
+            if NetworkValidationHelper.isNetworkMismatch(addressNetwork: addressNetwork, currentNetwork: Env.network) ||
+                invoice.amountSatoshis > Env.maxBitcoinSats
+            {
                 result = .invalid
                 break
             }
@@ -1533,12 +1538,12 @@ extension AppViewModel {
 
                 // Has lightning fallback - check if lightning is viable
                 canPayLightning = lnNetworkMatch && !lightningInvoice.isExpired &&
-                    (lightningInvoice.amountSatoshis == 0 || spendingBalanceSats >= Int(lightningInvoice.amountSatoshis))
+                    (lightningInvoice.amountSatoshis == 0 || UInt64(clamping: spendingBalanceSats) >= lightningInvoice.amountSatoshis)
             }
 
             if !canPayLightning {
                 // On-chain: check savings balance
-                if invoice.amountSatoshis > 0 && savingsBalanceSats < Int(invoice.amountSatoshis) {
+                if invoice.amountSatoshis > 0 && UInt64(clamping: savingsBalanceSats) < invoice.amountSatoshis {
                     result = .insufficientSavings
                 } else if invoice.amountSatoshis == 0 && savingsBalanceSats == 0 {
                     // Zero-amount invoice: user must have some balance to proceed

@@ -430,6 +430,8 @@ enum Env {
 
     static let dustLimit = 547
     static let msatsPerSat: UInt64 = 1000
+    /// The bitcoin supply cap of 21 000 000 BTC, in sats.
+    static let maxBitcoinSats: UInt64 = 2_100_000_000_000_000
     static let appStoreUrl = "https://apps.apple.com/app/bitkit-wallet/id6502440655"
     static let playStoreUrl = "https://play.google.com/store/apps/details?id=to.bitkit"
     static let githubUrl = "https://www.github.com/synonymdev/bitkit"

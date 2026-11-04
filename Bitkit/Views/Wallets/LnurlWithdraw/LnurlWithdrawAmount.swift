@@ -1,3 +1,4 @@
+import BitkitCore
 import SwiftUI
 
 struct LnurlWithdrawAmount: View {
@@ -8,24 +9,30 @@ struct LnurlWithdrawAmount: View {
 
     @State private var amountViewModel = AmountInputViewModel()
 
-    var minAmount: Int {
-        Int(max(1, app.lnurlWithdrawData!.minWithdrawableSat))
+    private func minAmount(for withdrawData: LnurlWithdrawData) -> Int {
+        Int(clamping: max(1, withdrawData.minWithdrawableSat))
     }
 
-    var maxAmount: Int {
-        Int(app.lnurlWithdrawData!.maxWithdrawableSat)
+    private func maxAmount(for withdrawData: LnurlWithdrawData) -> Int {
+        Int(clamping: withdrawData.maxWithdrawableSat)
     }
 
     var amount: UInt64 {
         amountViewModel.amountSats
     }
 
-    var isValid: Bool {
-        amount >= minAmount && amount <= max(minAmount, maxAmount)
+    var body: some View {
+        ZStack {
+            if let withdrawData = app.lnurlWithdrawData {
+                amountContent(minAmount: minAmount(for: withdrawData), maxAmount: maxAmount(for: withdrawData))
+            }
+        }
     }
 
-    var body: some View {
-        VStack(spacing: 0) {
+    private func amountContent(minAmount: Int, maxAmount: Int) -> some View {
+        let isValid = amount >= minAmount && amount <= max(minAmount, maxAmount)
+
+        return VStack(spacing: 0) {
             SheetHeader(title: t("wallet__lnurl_w_title"), showBackButton: true)
 
             VStack(alignment: .leading, spacing: 0) {
@@ -65,7 +72,7 @@ struct LnurlWithdrawAmount: View {
                 }
 
                 CustomButton(title: t("common__continue"), isDisabled: !isValid) {
-                    handleContinue()
+                    handleContinue(minAmount: minAmount)
                 }
                 .accessibilityIdentifier("ContinueAmount")
             }
@@ -78,11 +85,11 @@ struct LnurlWithdrawAmount: View {
                 amountViewModel.updateFromSats(UInt64(minAmount), currency: currency)
             }
         }
-        .onChange(of: maxAmount, initial: true) { updateInputCap() }
+        .onChange(of: maxAmount, initial: true) { _, newMaxAmount in updateInputCap(minAmount: minAmount, maxAmount: newMaxAmount) }
         .onChange(of: amountViewModel.maxExceededCount) { showMaxExceededToast() }
     }
 
-    private func updateInputCap() {
+    private func updateInputCap(minAmount: Int, maxAmount: Int) {
         let cap = max(minAmount, maxAmount)
         amountViewModel.maxAmountOverride = cap > 0 ? UInt64(cap) : nil
     }
@@ -97,7 +104,7 @@ struct LnurlWithdrawAmount: View {
         )
     }
 
-    private func handleContinue() {
+    private func handleContinue(minAmount: Int) {
         // If minimum is above the amount the user entered, automatically set amount to that minimum
         if amount < minAmount {
             amountViewModel.updateFromSats(UInt64(minAmount), currency: currency)

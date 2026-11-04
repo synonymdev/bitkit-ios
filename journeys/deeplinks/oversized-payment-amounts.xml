@@ -1,0 +1,36 @@
+<journey name="oversized payment amounts are refused">
+  <description>
+    Verifies that a BIP21 payment URI whose amount is above the bitcoin supply (more than 21 000 000 BTC)
+    is refused with the decoding error toast instead of crashing the app, whether it arrives as a deep
+    link or is typed into the Send sheet. Also verifies that a payment link handed to the app while the
+    Send sheet is open closes that sheet before the new payment opens, while a refused link leaves any
+    other open sheet, such as Receive, in place.
+    The LNURL pay and withdraw screens rely on the same close-first routing; how they behave when the
+    send state is reset under them is covered by unit tests, because reaching them needs a Lightning
+    spending balance the journey environment does not provide.
+
+    iOS-only: Android keeps these amounts as unsigned longs end to end and never crashed on them.
+
+    Precondition: an onboarded E2E build on regtest with the node running and at least 20 000 sats of
+    confirmed Savings (see ../README.md). Have a valid regtest bitcoin address ready; nothing is sent, so
+    any wallet's receive address works. Hand each link to the app with
+    xcrun simctl openurl &lt;simulator-id&gt; "&lt;uri&gt;". Start on the wallet home screen.
+  </description>
+  <actions>
+    <action>Hand "bitcoin:&lt;address&gt;?amount=100000000000" to the app with xcrun simctl openurl</action>
+    <action>Verify an error toast titled "Decoding Error" appears (id "InvalidAddressToast") and the Send amount screen (id "SendAmount") does not open</action>
+    <action>Tap the "Receive" button (id "Receive") on the home screen and wait for the Receive screen (id "ReceiveScreen")</action>
+    <action>Hand "bitcoin:&lt;address&gt;?amount=inf" to the app with xcrun simctl openurl</action>
+    <action>Verify an error toast titled "Decoding Error" appears (id "InvalidAddressToast"), the Send amount screen (id "SendAmount") does not open and the Receive screen (id "ReceiveScreen") stays open</action>
+    <action>Close the Receive sheet and return to the wallet home screen</action>
+    <action>Tap the Send button (id "Send")</action>
+    <action>If a camera permission dialog appears, dismiss it by choosing "Don't Allow"</action>
+    <action>Tap "Enter Manually" (id "RecipientManual")</action>
+    <action>Type "bitcoin:&lt;address&gt;?amount=100000000000" into the recipient field (id "RecipientInput")</action>
+    <action>Within about two seconds, verify an error toast titled "Decoding Error" appears (id "InvalidAddressToast") and Continue (id "AddressContinue") stays disabled</action>
+    <action>Clear the recipient field (id "RecipientInput"), type the address alone and tap Continue (id "AddressContinue")</action>
+    <action>Verify the Send amount screen (id "SendAmount") is visible</action>
+    <action>Hand "bitcoin:&lt;address&gt;?amount=0.0001" to the app with xcrun simctl openurl</action>
+    <action>Verify the Send sheet closes, then opens again on the Send amount screen (id "SendAmount") with the 10 000 sats from the link in the amount field (id "SendNumberField")</action>
+  </actions>
+</journey>

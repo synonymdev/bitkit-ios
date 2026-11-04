@@ -333,14 +333,14 @@ struct SendConfirmationView: View {
                     }
                 } else if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                     MoneyStack(
-                        sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis),
+                        sats: Int(clamping: wallet.sendAmountSats ?? invoice.amountSatoshis),
                         showSymbol: true,
                         testIdPrefix: "ReviewAmount",
                         onTap: navigateToAmount
                     )
                 } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                     MoneyStack(
-                        sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis),
+                        sats: Int(clamping: wallet.sendAmountSats ?? invoice.amountSatoshis),
                         showSymbol: true,
                         testIdPrefix: "ReviewAmount",
                         onTap: navigateToAmount

@@ -800,19 +800,8 @@ struct MainNavView: View {
 
                 await wallet.waitForNodeToRun()
                 try await Task.sleep(nanoseconds: Self.nodeReadyDelayNanoseconds)
-                try await app.handleScannedData(
-                    uri,
-                    alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
-                )
-
-                try await Task.sleep(nanoseconds: Self.statePropagationDelayNanoseconds)
-                if shouldOpenPaymentSheet(for: uri) {
-                    PaymentNavigationHelper.openPaymentSheet(
-                        app: app,
-                        currency: currency,
-                        settings: settings,
-                        sheetViewModel: sheets
-                    )
+                await performAfterClosingSendSheet(reason: "Clipboard routed scanned data") {
+                    await handleScannedClipboardUri(uri)
                 }
             } catch {
                 if !(error is CancellationError) {
@@ -823,6 +812,42 @@ struct MainNavView: View {
 
             // Clear stored URI after processing
             clipboardUri = nil
+        }
+    }
+
+    /// Handling scanned data resets the send state, so a sheet showing it closes first.
+    /// Any other sheet stays open unless the payment sheet that follows replaces it.
+    private func performAfterClosingSendSheet(reason: String, _ handle: @escaping () async -> Void) async {
+        guard sheets.isShowingSendState else {
+            await handle()
+            return
+        }
+        sheets.hideSheetBeforePerforming(reason: reason) {
+            Task { await handle() }
+        }
+    }
+
+    private func handleScannedClipboardUri(_ uri: String) async {
+        do {
+            try await app.handleScannedData(
+                uri,
+                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+            )
+
+            try await Task.sleep(nanoseconds: Self.statePropagationDelayNanoseconds)
+            if shouldOpenPaymentSheet(for: uri) {
+                PaymentNavigationHelper.openPaymentSheet(
+                    app: app,
+                    currency: currency,
+                    settings: settings,
+                    sheetViewModel: sheets
+                )
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            Logger.error(error, context: "Failed to read data from clipboard")
+            showScanError()
         }
     }
 
@@ -928,6 +953,19 @@ struct MainNavView: View {
                 await scannerManager.handleScan(publicKey, context: .main)
                 return
             }
+            await performAfterClosingSendSheet(reason: "Deeplink routed scanned data") {
+                await handleScannedDeepLink(url)
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            Logger.error(error, context: "Failed to handle deeplink")
+            showScanError()
+        }
+    }
+
+    private func handleScannedDeepLink(_ url: URL) async {
+        do {
             try await app.handleScannedData(
                 url.absoluteString,
                 alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
