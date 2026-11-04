@@ -47,7 +47,7 @@ gh workflow run e2e-tests.yml --ref codex/264-inventory-shadow \
 
 To test a PR merge, including a stacked PR, also pass `-f pr=NUMBER -f selection=auto`. The merge must match the PR's actual base and head. `selection=full` exercises all lanes. The optional `shards=2` experiment applies only to manual local execution; automatic runs use one shard. Each shard has isolated infrastructure and shares the same built local app. Staging/migration share one network app build.
 
-Attempts are bounded to three, stop on success, and retain first-failure evidence. Missing selected cases or failed selected jobs fail the aggregate status. Builds are capped at 40 minutes; execution budgets depend on the selected pack as described below. Diagnostic artifacts expire after seven days. Compare end-to-end duration and billed Mac/backend usage before making two shards automatic.
+Attempts are bounded to three, stop on success, and retain first-failure evidence. Missing selected cases or failed selected jobs fail the aggregate status. Builds are capped at 40 minutes; execution budgets depend on the selected pack as described below. Diagnostic artifacts, including RN wallet preparation logs, expire after seven days; prepared wallet environments expire after one day. Compare end-to-end duration and billed Mac/backend usage before making two shards automatic.
 
 Land the E2E producer first. Validate these branches before merging this consumer. The migration fixture workflow is pinned to the producer commit that supports immutable source selection, allowing full branch validation before either PR merges. There is no shadow workflow and no additional smoke-test replacement.
 

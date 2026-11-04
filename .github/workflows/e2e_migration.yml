@@ -203,7 +203,7 @@ jobs:
       - e2e-branch
       - resolve-e2e-ref
       - migration-plan
-    uses: synonymdev/bitkit-e2e-tests/.github/workflows/migration-wallet-setup.yml@39f8964ee28c801874bae1cc7667505c9bb03065
+    uses: synonymdev/bitkit-e2e-tests/.github/workflows/migration-wallet-setup.yml@e49cfab3c25b8bfe18c59ae471405d0b6d45bdfc
     strategy:
       fail-fast: false
       matrix:
@@ -215,6 +215,7 @@ jobs:
       setup_type: ${{ matrix.scenario.setup_type }}
       scenario_name: ${{ matrix.scenario.name }}
       e2e_sha: ${{ needs.migration-plan.outputs.e2eSha }}
+      diagnostics_retention_days: 7
   rn-tests:
     runs-on: macos-latest
     needs:
