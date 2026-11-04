@@ -66,9 +66,11 @@ final class WalletViewModelSendTests: XCTestCase {
 
         wallet.sendAmountSats = 10000
         wallet.selectedUtxos = [utxo]
+        wallet.isMaxAmountSend = true
         wallet.restoreScannedSendAmount(50000)
         XCTAssertEqual(wallet.sendAmountSats, 50000)
         XCTAssertNil(wallet.selectedUtxos)
+        XCTAssertFalse(wallet.isMaxAmountSend)
 
         wallet.selectedUtxos = [utxo]
         wallet.restoreScannedSendAmount(50000)
