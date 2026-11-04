@@ -338,6 +338,8 @@ final class HwSendCoordinator {
     /// The txid of the last unresolved send proven never to confirm, which can be made again.
     private(set) var releasedSendTxId: String?
     private(set) var isRebroadcasting = false
+    /// A broadcast past its deadline is still running, so its bytes are not broadcast again until it answers.
+    private(set) var isLateBroadcastRunning = false
     private(set) var isPassphraseRequired = false
     private(set) var isVerifyingPassphrase = false
 
@@ -362,6 +364,11 @@ final class HwSendCoordinator {
 
     var hasPendingBroadcast: Bool {
         pendingPayment != nil
+    }
+
+    /// Whether the unresolved send may be broadcast again now: no broadcast of its bytes from this sheet is still running.
+    var canBroadcastAgain: Bool {
+        unresolvedSend != nil && !isRebroadcasting && !isLateBroadcastRunning
     }
 
     /// Whether the sign screen may be left. Reaching the device (a Jade may wait minutes for its PIN)
@@ -550,14 +557,18 @@ final class HwSendCoordinator {
                 pendingPayment?.hasBroadcastAttempted = restored.hasAttemptedBroadcast
                 isBroadcastUnresolved = restored.hasAttemptedBroadcast && !restored.isRefusedForNavigation
             }
-            // A send that may have gone out from an earlier sheet or launch is pending, and is never signed again
+            // A send that may have gone out from an earlier sheet or launch is pending, and is never signed again. One the wallet
+            // has seen is completed by its pending screen, and only a new payment started after that is signed.
             if paymentRequestId == nil, pendingPayment == nil,
-               let held = try await heldBroadcasts.unresolvedSend(walletId: walletId, address: address, amountSats: sats)
+               let heldSend = try await heldBroadcasts.heldSend(walletId: walletId, address: address, amountSats: sats)
             {
-                pendingPayment = PendingPayment(request: request, signedTx: held.signedTx, paymentRequestId: nil)
+                pendingPayment = PendingPayment(request: request, signedTx: heldSend.held.signedTx, paymentRequestId: nil)
                 pendingPayment?.isPreparedForBroadcast = true
                 pendingPayment?.hasBroadcastAttempted = true
-                holdUnresolvedSend(held.signedTx)
+                holdUnresolvedSend(heldSend.held.signedTx)
+                if case .observed = heldSend {
+                    throw HwTransferError.broadcastUncertain
+                }
                 try await retryUnresolvedSend(manager: manager)
             }
             let signed: HwFundingSignedTx
@@ -628,15 +639,17 @@ final class HwSendCoordinator {
                         throw error
                     }
                 }
-                if paymentRequestId == nil {
-                    try heldBroadcasts.hold(HwHeldBroadcast(signed, walletId: walletId, address: address, amountSats: sats))
-                }
+                let dispatch = try paymentRequestId == nil ? heldBroadcasts.beginDispatch(
+                    HwHeldBroadcast(signed, walletId: walletId, address: address, amountSats: sats), isRebroadcast: false
+                ) : nil
                 isBroadcastUnresolved = true
                 broadcastWasAttempted = true
                 pendingPayment?.hasBroadcastAttempted = true
+                let store = heldBroadcasts
                 let broadcast = Task { @MainActor () -> Result<HwFundingBroadcastResult, Error> in
+                    let answer: Result<HwFundingBroadcastResult, Error>
                     do {
-                        return try await .success(signer.broadcastSignedFunding(signed, paymentDeadline: paymentDeadline) { [self] in
+                        answer = try await .success(signer.broadcastSignedFunding(signed, paymentDeadline: paymentDeadline) { [self] in
                             try Task.checkCancellation()
                             guard signingAttempt == attempt else { throw CancellationError() }
                             try await markSignedPaymentRefused(signed, false)
@@ -644,21 +657,32 @@ final class HwSendCoordinator {
                             guard signingAttempt == attempt else { throw CancellationError() }
                         })
                     } catch {
-                        return .failure(error)
+                        answer = .failure(error)
                     }
+                    if let dispatch {
+                        let isAccepted = if case .success = answer {
+                            true
+                        } else {
+                            false
+                        }
+                        store.endDispatch(dispatch, isAccepted: isAccepted)
+                    }
+                    return answer
                 }
-                let answer = await withTaskCancellationHandler {
-                    await awaitUntilDeadline(broadcast)
+                // A Shop payment's proof flow needs its answer, so only a plain send stops waiting at the deadline
+                let answer: Result<HwFundingBroadcastResult, Error>? = await withTaskCancellationHandler {
+                    if paymentRequestId == nil {
+                        return await awaitUntilDeadline(broadcast)
+                    }
+                    return await broadcast.value
                 } onCancel: {
                     broadcast.cancel()
                 }
                 // The broadcast keeps running past the deadline, as it cannot be stopped, and its late answer still lands
                 guard let answer else {
                     Logger.warn("Hardware broadcast still running after its deadline", context: "HwSendCoordinator")
-                    if paymentRequestId == nil {
-                        holdUnresolvedSend(signed)
-                        finishLateSend(broadcast, signed: signed)
-                    }
+                    holdUnresolvedSend(signed)
+                    finishLateSend(broadcast, signed: signed, dispatch: dispatch)
                     throw HwTransferError.broadcastUncertain
                 }
                 do {
@@ -691,8 +715,11 @@ final class HwSendCoordinator {
                         isBroadcastUnresolved = hadPriorBroadcastAttempt ? priorBroadcastWasUnresolved : !cleared
                         broadcastWasAttempted = retainsBroadcastAttempt
                         pendingPayment?.hasBroadcastAttempted = retainsBroadcastAttempt
-                        if paymentRequestId == nil {
-                            releaseHeldSend(signed)
+                        if paymentRequestId == nil, !releaseUnsentSend(dispatch) {
+                            broadcastWasAttempted = true
+                            pendingPayment?.hasBroadcastAttempted = true
+                            holdUnresolvedSend(signed)
+                            throw HwTransferError.broadcastUncertain
                         }
                         if !retainsBroadcastAttempt {
                             pendingPayment = nil
@@ -700,13 +727,10 @@ final class HwSendCoordinator {
                         throw failure
                     }
                     if paymentRequestId == nil {
-                        if !failure.isHardwareBroadcastNotSent() {
+                        if !failure.isHardwareBroadcastNotSent() || !releaseUnsentSend(dispatch) {
                             holdUnresolvedSend(signed)
-                        } else {
-                            releaseHeldSend(signed)
-                            if !failure.isBroadcastConnectivityFailure() {
-                                pendingPayment = nil
-                            }
+                        } else if !failure.isBroadcastConnectivityFailure() {
+                            pendingPayment = nil
                         }
                     }
                     throw failure
@@ -817,7 +841,7 @@ final class HwSendCoordinator {
     /// Broadcasts the unresolved send's own signed bytes again, never signing anything. A rebroadcast that proves it can never
     /// confirm releases the payment, so it can be made again.
     func rebroadcastUnresolvedSend(manager: HwWalletManager) async -> HwHeldRebroadcastOutcome {
-        guard let unresolved = unresolvedSend, let pendingPayment, !isRebroadcasting else { return .mayConfirm }
+        guard let unresolved = unresolvedSend, let pendingPayment, canBroadcastAgain else { return .mayConfirm }
         isRebroadcasting = true
         defer { isRebroadcasting = false }
         let signed = pendingPayment.signedTx
@@ -856,19 +880,35 @@ final class HwSendCoordinator {
         unresolvedSend = HwUnresolvedSend(result: result, walletId: walletId, address: request.address, amountSats: request.sats)
     }
 
-    private func finishLateSend(_ broadcast: Task<Result<HwFundingBroadcastResult, Error>, Never>, signed: HwFundingSignedTx) {
+    private func finishLateSend(
+        _ broadcast: Task<Result<HwFundingBroadcastResult, Error>, Never>,
+        signed: HwFundingSignedTx,
+        dispatch: HwHeldDispatch?
+    ) {
+        isLateBroadcastRunning = true
         Task { @MainActor [weak self] in
-            guard case let .failure(error) = await broadcast.value, let self else { return }
+            let answer = await broadcast.value
+            guard let self else { return }
+            isLateBroadcastRunning = false
+            guard case let .failure(error) = answer, pendingPayment?.signedTx.serializedTx == signed.serializedTx else { return }
             let underlying = (error as? AppError)?.underlyingError ?? error
             let notSubmitted = underlying as? PreparedOnchainSendNotSubmitted
             let failure = notSubmitted?.underlying ?? error
-            guard notSubmitted != nil || failure.isHardwareBroadcastNotSent(),
-                  pendingPayment?.signedTx.serializedTx == signed.serializedTx
-            else { return }
+            guard notSubmitted != nil || failure.isHardwareBroadcastNotSent(), releaseUnsentSend(dispatch) else { return }
             Logger.info("A late hardware broadcast answer proved nothing was sent", context: "HwSendCoordinator")
-            releaseHeldSend(signed)
             releasedSendTxId = unresolvedSend?.txId
             resetBroadcast()
+        }
+    }
+
+    /// Releases the hold of a send whose dispatch proved nothing was sent, unless the same bytes may have gone out another way.
+    private func releaseUnsentSend(_ dispatch: HwHeldDispatch?) -> Bool {
+        guard let dispatch else { return true }
+        do {
+            return try heldBroadcasts.releaseUnsent(dispatch)
+        } catch {
+            Logger.warn("Failed to release an unsent hardware send: \(error)", context: "HwSendCoordinator")
+            return false
         }
     }
 

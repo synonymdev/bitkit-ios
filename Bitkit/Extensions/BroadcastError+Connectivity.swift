@@ -73,8 +73,8 @@ extension Error {
     }
 
     /// Whether a refused rebroadcast of a hardware send proves the transaction can never confirm anywhere: core cannot decode
-    /// it, it breaks consensus, or one of its outputs can never relay. A refusal for fees, mempool limits or anything unread
-    /// leaves a valid transaction another node may still confirm.
+    /// it, or it breaks consensus. A refusal for relay policy, fees, mempool limits or anything unread leaves a transaction a
+    /// miner may still confirm.
     func isHardwareBroadcastNeverConfirmable() -> Bool {
         if isDefiniteHardwarePreBroadcastFailure() {
             return true
@@ -82,14 +82,13 @@ extension Error {
         guard let message = hardwareBroadcastRefusalMessage() else { return false }
         return hardwareRefusalReason(of: message).matchesRefusalCode(in: [
             "mandatory-script-verify-flag-failed",
+            "block-script-verify-flag-failed",
             "bad-txns-in-belowout",
             "bad-txns-inputs-duplicate",
             "bad-txns-vout-negative",
             "bad-txns-vout-toolarge",
             "bad-txns-txouttotal-toolarge",
             "bad-txns-oversize",
-            "dust",
-            "scriptpubkey",
         ])
     }
 
@@ -116,8 +115,6 @@ extension Error {
         return false
     }
 
-    /// The node's refusal of a hardware broadcast, lowercased and unwrapped from core's and the server's envelopes, or nil
-    /// when the failure is not a refusal that can be read.
     private func hardwareBroadcastRefusalMessage() -> String? {
         if let error = self as? BroadcastError, case let .ElectrumError(details) = error {
             let prefix = "broadcast failed: "

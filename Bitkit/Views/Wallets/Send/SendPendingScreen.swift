@@ -172,7 +172,7 @@ struct SendPendingScreen: View {
                hwSend.unresolvedSend?.txId == hardwareTransactionId
             {
                 CustomButton(
-                    title: t("wallet__onchain_hardware_broadcast_again"), variant: .secondary, isDisabled: hwSend.isRebroadcasting
+                    title: t("wallet__onchain_hardware_broadcast_again"), variant: .secondary, isDisabled: !hwSend.canBroadcastAgain
                 ) {
                     Task { await broadcastHardwareSendAgain(hwSend, manager: hwWalletManager) }
                 }

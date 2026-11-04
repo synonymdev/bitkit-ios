@@ -35,6 +35,9 @@ final class MockHwFunding: HwTransferFunding {
     private(set) var signCalls = 0
     private(set) var broadcastCalls = 0
     private(set) var broadcastTransactions: [String] = []
+    /// Per broadcast call, counted from one: a gate it waits on and an error it throws, overriding the shared ones.
+    var broadcastGateForCall: [Int: AsyncGate] = [:]
+    var broadcastErrorForCall: [Int: Error] = [:]
 
     func getFundingAccount(walletId _: String, addressType _: AddressScriptType) throws -> HwFundingAccount {
         if let accountError {
@@ -129,7 +132,18 @@ final class MockHwFunding: HwTransferFunding {
             throw PreparedOnchainSendNotSubmitted(underlying: error)
         }
         broadcastCalls += 1
+        let call = broadcastCalls
         broadcastTransactions.append(serializedTx)
+        if let gate = broadcastGateForCall[call] {
+            await gate.wait()
+            if let error = broadcastErrorForCall[call] {
+                throw error
+            }
+            return broadcastTxId
+        }
+        if let error = broadcastErrorForCall[call] {
+            throw error
+        }
         if let broadcastGate {
             await broadcastGate.wait()
         }

@@ -54,12 +54,11 @@ final class BroadcastConnectivityTests: XCTestCase {
         XCTAssertFalse(BroadcastError.ElectrumError(errorDetails: "offline").isHardwareBroadcastNotSent())
     }
 
-    func testOnlyARefusalProvingTheTransactionInvalidMeansItCanNeverConfirm() {
+    func testOnlyAConsensusRefusalMeansTheTransactionCanNeverConfirm() {
         let neverConfirmable = [
             "mandatory-script-verify-flag-failed (Signature must be zero for failed CHECK(MULTI)SIG operation)",
+            "block-script-verify-flag-failed (Script evaluated without error but finished with a false/empty top stack element)",
             "bad-txns-in-belowout, value in (0.0001) < value out (0.0002)",
-            "dust",
-            "scriptpubkey",
         ]
         for reason in neverConfirmable {
             let error = BroadcastError.ElectrumError(errorDetails: "Broadcast failed: sendrawtransaction RPC error -26: \(reason)")
@@ -75,6 +74,9 @@ final class BroadcastConnectivityTests: XCTestCase {
             "max-fee-exceeded, Fee exceeds maximum configured by user",
             "txn-mempool-conflict",
             "non-mandatory-script-verify-flag (Witness program hash mismatch)",
+            "mempool-script-verify-flag-failed (Witness program hash mismatch)",
+            "dust",
+            "scriptpubkey",
             "bad-txns-inputs-missingorspent",
         ]
         for reason in mayConfirm {
