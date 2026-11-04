@@ -28,10 +28,21 @@ enum BiometricAuth {
         return context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
     }
 
-    /// Authenticate using biometrics (Face ID or Touch ID)
+    /// Authenticate using biometrics (Face ID or Touch ID). Never succeeds while the PIN is locked out, including a lockout
+    /// that starts while the prompt is up.
     /// - Returns: Result indicating success, cancellation, or failure with error message
     @MainActor
     static func authenticate() async -> BiometricAuthResult {
+        guard PinVerifier.shared.canUseBiometrics else { return .cancelled }
+        let result = await evaluate()
+        if case .success = result, !PinVerifier.shared.canUseBiometrics {
+            return .cancelled
+        }
+        return result
+    }
+
+    @MainActor
+    private static func evaluate() async -> BiometricAuthResult {
         await withCheckedContinuation { continuation in
             let context = LAContext()
             var error: NSError?

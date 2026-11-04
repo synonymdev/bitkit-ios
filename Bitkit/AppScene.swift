@@ -376,6 +376,42 @@ struct PaykitPaymentRequestPollingSchedule {
     }
 }
 
+/// What the root of the app shows. The wipe gate wins over every other state, so nothing can be reached above it while a
+/// wipe is pending or the lockout state cannot be verified.
+enum AppRootContent: Equatable {
+    case wipeGate
+    case trezorEmulatorTest
+    case migrationLoading
+    case recovery
+    case criticalUpdate
+    case wallet
+
+    static func resolve(
+        isWipeGateUp: Bool,
+        isTrezorEmulatorTesting: Bool,
+        isShowingMigrationLoading: Bool,
+        isRecoveryShown: Bool,
+        hasCriticalUpdate: Bool
+    ) -> AppRootContent {
+        if isWipeGateUp {
+            return .wipeGate
+        }
+        if isTrezorEmulatorTesting {
+            return .trezorEmulatorTest
+        }
+        if isShowingMigrationLoading {
+            return .migrationLoading
+        }
+        if isRecoveryShown {
+            return .recovery
+        }
+        if hasCriticalUpdate {
+            return .criticalUpdate
+        }
+        return .wallet
+    }
+}
+
 struct AppScene: View {
     @Environment(\.scenePhase) var scenePhase
     @EnvironmentObject private var session: SessionManager
@@ -400,6 +436,7 @@ struct AppScene: View {
     @StateObject private var transferTracking: TransferTrackingManager
     @StateObject private var channelDetails = ChannelDetailsViewModel.shared
     @StateObject private var migrations = MigrationsService.shared
+    @StateObject private var wipeCoordinator = WipeCoordinator.shared
     @StateObject private var languageManager = LanguageManager.shared
     @StateObject private var pubkyProfile: PubkyProfileManager
     @StateObject private var contactsManager = ContactsManager()
@@ -422,6 +459,7 @@ struct AppScene: View {
 
     @State private var hideSplash = false
     @State private var removeSplash = false
+    @State private var isOrphanedKeychainKept = false
     @State private var walletIsInitializing: Bool? = nil
     @State private var isWalletBackupRestoreRunning = false
     @State private var didWalletBackupRestoreFail = false
@@ -521,8 +559,8 @@ struct AppScene: View {
                 let reservations = PrivatePaykitAddressReservationStore.shared
                 let reservationRevision = await reservations.attributionRevision
                 guard let combined = try? await contacts.includingReservations(for: outputAddresses, lookup: {
-                    try await reservations.contactPublicKeyForAttribution(forReservedAddress: $0)
-                }), pubkyProfile.authState == .authenticated,
+                          try await reservations.contactPublicKeyForAttribution(forReservedAddress: $0)
+                      }), pubkyProfile.authState == .authenticated,
                       PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey),
                       contacts == paykitPaymentRequestManager.receivedPaymentContacts,
                       await reservations.attributionRevision == reservationRevision
@@ -558,13 +596,19 @@ struct AppScene: View {
                 config in AppUpdateSheet(config: config)
             }
             .task(priority: .userInitiated, setupTask)
-            .task(id: [scenePhase == .active, wallet.walletExists == true, isWalletBackupRestoreRunning, network.isConnected]) {
-                guard scenePhase == .active, wallet.walletExists == true,
+            .task(id: [
+                scenePhase == .active,
+                wallet.walletExists == true,
+                isWalletBackupRestoreRunning,
+                network.isConnected,
+                wipeCoordinator.isGateUp,
+            ]) {
+                guard scenePhase == .active, wallet.walletExists == true, !wipeCoordinator.isGateUp,
                       !isWalletBackupRestoreRunning, !BackupService.shared.hasPendingWalletRestore()
                 else { return }
                 await pubkyProfile.retrySessionRestoration()
             }
-            .task(id: [scenePhase == .active, network.isConnected]) { await pollIncomingPaykitPaymentRequests() }
+            .task(id: [scenePhase == .active, network.isConnected, wipeCoordinator.isGateUp]) { await pollIncomingPaykitPaymentRequests() }
             .task(id: [scenePhase == .active, SparkExitManager.shared.needsDriving]) {
                 guard scenePhase == .active else { return }
                 await SparkExitManager.shared.runWhileActive()
@@ -592,6 +636,7 @@ struct AppScene: View {
             .onChange(of: wallet.nodeLifecycleState) { _, newValue in handleNodeLifecycleChange(newValue) }
             .onChange(of: scenePhase, initial: true) { _, newValue in handleScenePhaseChange(newValue) }
             .onChange(of: network.isConnected) { _, isConnected in handleNetworkChange(isConnected) }
+            .onChange(of: wipeCoordinator.gate) { previous, gate in handleWipeGateChange(from: previous, to: gate) }
             .onOpenURL { url in app.retainDeepLink(url, whileLocked: isLockedForDeepLinks) }
             // Bridge the vendor managers' device state into the watch-only manager without coupling them:
             // each bumps devicesRevision on any device or connection change.
@@ -858,20 +903,30 @@ struct AppScene: View {
 
     private var mainContent: some View {
         ZStack {
-            if Env.isTrezorEmulatorTesting {
+            switch AppRootContent.resolve(
+                isWipeGateUp: wipeCoordinator.isGateUp,
+                isTrezorEmulatorTesting: Env.isTrezorEmulatorTesting,
+                isShowingMigrationLoading: migrations.isShowingMigrationLoading,
+                isRecoveryShown: showRecoveryScreen,
+                hasCriticalUpdate: hasCriticalUpdate
+            ) {
+            case .wipeGate:
+                WipeGateView(coordinator: wipeCoordinator)
+            case .trezorEmulatorTest:
                 trezorEmulatorTestContent
-            } else if migrations.isShowingMigrationLoading {
+            case .migrationLoading:
                 migrationLoadingContent
-            } else if showRecoveryScreen {
+            case .recovery:
                 RecoveryRouter()
                     .accentColor(.white)
-            } else if hasCriticalUpdate {
+            case .criticalUpdate:
                 AppUpdateScreen()
-            } else {
+            case .wallet:
                 walletContent
             }
 
-            if !Env.isTrezorEmulatorTesting, !removeSplash, !session.skipSplashOnce {
+            // The launch that would remove the splash does not run behind the wipe gate.
+            if !Env.isTrezorEmulatorTesting, !wipeCoordinator.isGateUp, !removeSplash, !session.skipSplashOnce {
                 SplashView()
                     .opacity(hideSplash ? 0 : 1)
             }
@@ -926,7 +981,18 @@ struct AppScene: View {
 
     @ViewBuilder
     private var walletContent: some View {
-        if wallet.walletExists == true {
+        if isOrphanedKeychainKept {
+            WalletRestoreError(
+                title: t("other__error_keychain"),
+                message: t("other__error_keychain_msg"),
+                onRetry: { await retryOrphanedKeychainWipe() },
+                onExportLogs: {
+                    if !LogService.shared.shareLogs() {
+                        app.toast(type: .error, title: t("lightning__error_logs"))
+                    }
+                }
+            )
+        } else if wallet.walletExists == true {
             existingWalletContent
         } else if wallet.walletExists == false {
             onboardingContent
@@ -1022,7 +1088,7 @@ struct AppScene: View {
             }
         }
 
-        guard wallet.walletExists == true else { return }
+        guard wallet.walletExists == true, !wipeCoordinator.isGateUp else { return }
 
         // Don't start wallet if we're in recovery mode
         guard !showRecoveryScreen else { return }
@@ -1076,6 +1142,7 @@ struct AppScene: View {
 
         do {
             try await wallet.start()
+            guard !wipeCoordinator.isGateUp else { return }
             try await activity.syncLdkNodePayments()
             if !PaykitFeatureFlags.isUIEnabled {
                 await retryPendingPaykitEndpointRemoval()
@@ -1102,48 +1169,36 @@ struct AppScene: View {
         }
     }
 
-    /// Handle orphaned keychain entries from previous app installs.
-    /// If the installation marker doesn't exist but keychain has data, the app was reinstalled
-    /// and the keychain data is orphaned (corresponding wallet data was deleted with the app).
-    private func handleOrphanedKeychain() {
-        // If marker exists, app was installed before - keychain is valid
-        if InstallationMarker.exists() {
-            Logger.debug("Installation marker exists, skipping orphaned keychain check", context: "AppScene")
-            return
-        }
-
-        // Check if native keychain has data (orphaned from previous install)
-        let hasNativeKeychain = (try? Keychain.exists(key: .bip39Mnemonic(index: 0))) == true
-
-        // Check if RN keychain has data without corresponding RN files (orphaned)
-        let hasOrphanedRNKeychain = MigrationsService.shared.hasOrphanedRNKeychain()
-
-        if hasNativeKeychain || hasOrphanedRNKeychain {
-            Logger.warn("Orphaned keychain detected, wiping", context: "AppScene")
-            SharedPubkyKeychain.removeAllOwn()
-            try? Keychain.wipeEntireKeychain()
-
-            if hasOrphanedRNKeychain {
-                MigrationsService.shared.cleanupRNKeychain()
-            }
-        }
-
-        // Create marker for this installation
-        do {
-            try InstallationMarker.create()
-        } catch {
-            Logger.error("Failed to create installation marker: \(error)", context: "AppScene")
-        }
-    }
-
     @Sendable
     private func setupTask() async {
         configurePrivatePaykitContactResolvers()
-        AppReset.hardwareWallets = hwWalletManager
-        do {
-            // Handle orphaned keychain before anything else
-            handleOrphanedKeychain()
+        AppReset.register(app: app, wallet: wallet, session: session, hardwareWallets: hwWalletManager)
 
+        // Ahead of the orphaned keychain check, migration and wallet state: a pending wipe resumes here, even after a
+        // reinstall, and a lockout state that cannot be read holds the launch.
+        guard await wipeCoordinator.prepareForLaunch(), checkOrphanedKeychain() else { return }
+        await continueLaunch()
+    }
+
+    private func checkOrphanedKeychain() -> Bool {
+        do {
+            try OrphanedKeychainGuard.live.run()
+        } catch {
+            isOrphanedKeychainKept = true
+            removeSplash = true
+            return false
+        }
+        isOrphanedKeychainKept = false
+        return true
+    }
+
+    private func retryOrphanedKeychainWipe() async {
+        guard isOrphanedKeychainKept, checkOrphanedKeychain() else { return }
+        await continueLaunch()
+    }
+
+    private func continueLaunch() async {
+        do {
             await checkAndPerformRNMigration()
             try wallet.setWalletExistsState()
 
@@ -1207,7 +1262,7 @@ struct AppScene: View {
     }
 
     private func restoreWalletBackupAndStart() async {
-        guard !isWalletBackupRestoreRunning else { return }
+        guard !isWalletBackupRestoreRunning, !wipeCoordinator.isGateUp else { return }
         isWalletBackupRestoreRunning = true
         walletIsInitializing = true
         didWalletBackupRestoreFail = false
@@ -1361,6 +1416,11 @@ struct AppScene: View {
 
         // `.inactive` is left alone: the iOS Bluetooth pairing alert puts the app there mid-connect.
         if newPhase == .active {
+            if wipeCoordinator.isGateUp {
+                wipeCoordinator.retry()
+                guard !wipeCoordinator.isGateUp else { return }
+            }
+
             // Called even behind the PIN screen, so a background release still pending is called off.
             hwWalletManager.onAppBecameActive()
             // Reconnect a known hardware device so its connection indicator turns green again;
@@ -1474,6 +1534,7 @@ struct AppScene: View {
     ) async -> Bool {
         guard PaykitFeatureFlags.isUIEnabled,
               wallet.walletExists == true,
+              !wipeCoordinator.isGateUp,
               pubkyProfile.authState == .authenticated
         else {
             paykitPaymentRequestManager.clearEligibleTargets()
@@ -1590,7 +1651,7 @@ struct AppScene: View {
     }
 
     private func pollIncomingPaykitPaymentRequests() async {
-        guard scenePhase == .active, network.isConnected else { return }
+        guard scenePhase == .active, network.isConnected, !wipeCoordinator.isGateUp else { return }
 
         if let session = pubkyProfile.automaticPaykitSession {
             await PubkyService.republishIdentityIfNeeded(publicKey: session.publicKey)
@@ -1605,6 +1666,7 @@ struct AppScene: View {
             }
             guard !isWalletBackupRestoreRunning,
                   !BackupService.shared.hasPendingWalletRestore(),
+                  !wipeCoordinator.isGateUp,
                   let session = pubkyProfile.automaticPaykitSession
             else { continue }
             let mode: PaykitPaymentRequestRefreshMode
@@ -2050,14 +2112,14 @@ struct AppScene: View {
             return
         }
         guard IncomingPaykitPaymentRequestPresentationDispatcher.canHandleSubscriptionNotification(
-            manager: paykitPaymentRequestManager, app: app, sheets: sheets
-        ), await refreshIncomingPaykitPaymentRequests(presentItems: false, mode: .stored),
-        !Task.isCancelled,
-        pubkyProfile.automaticPaykitSession == session,
-        PaykitSubscriptionNotificationTargetStore.load() == target,
-        IncomingPaykitPaymentRequestPresentationDispatcher.canHandleSubscriptionNotification(
-            manager: paykitPaymentRequestManager, app: app, sheets: sheets
-        )
+                  manager: paykitPaymentRequestManager, app: app, sheets: sheets
+              ), await refreshIncomingPaykitPaymentRequests(presentItems: false, mode: .stored),
+              !Task.isCancelled,
+              pubkyProfile.automaticPaykitSession == session,
+              PaykitSubscriptionNotificationTargetStore.load() == target,
+              IncomingPaykitPaymentRequestPresentationDispatcher.canHandleSubscriptionNotification(
+                  manager: paykitPaymentRequestManager, app: app, sheets: sheets
+              )
         else { return }
         guard let request = paykitPaymentRequestManager.pendingRequests.first(where: target.matches) else {
             if paykitPaymentRequestManager.historyRequests.contains(where: target.matches) {
@@ -2248,7 +2310,7 @@ struct AppScene: View {
         )
 
         if isConnected {
-            guard wallet.walletExists == true else { return }
+            guard wallet.walletExists == true, !wipeCoordinator.isGateUp else { return }
 
             if retryPendingWalletRestoreIfNeeded() {
                 return
@@ -2281,7 +2343,8 @@ struct AppScene: View {
     }
 
     private func handleQuickAction(_ notification: Notification) {
-        guard let userInfo = notification.userInfo,
+        guard !wipeCoordinator.isGateUp,
+              let userInfo = notification.userInfo,
               let shortcutType = userInfo["shortcutType"] as? String
         else {
             return
@@ -2292,6 +2355,16 @@ struct AppScene: View {
             showRecoveryScreen = true
         default:
             break
+        }
+    }
+
+    private func handleWipeGateChange(from previous: WipeCoordinator.Gate, to gate: WipeCoordinator.Gate) {
+        if gate != .none {
+            sheets.hideSheet(reason: "Wipe gate raised")
+        } else if previous == .blocked, wipeCoordinator.didHoldLaunch {
+            // The launch stopped while the lockout state could not be verified: start it over. A block raised later lifts
+            // over a session that is still running, behind its own PIN check.
+            session.bump()
         }
     }
 

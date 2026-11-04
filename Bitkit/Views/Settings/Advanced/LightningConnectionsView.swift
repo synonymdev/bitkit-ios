@@ -344,25 +344,8 @@ struct LightningConnectionsView: View {
     }
 
     private func onExportLogs() {
-        Task {
-            guard let zipURL = LogService.shared.zipLogs() else {
-                app.toast(type: .error, title: "Error", description: "Failed to create log zip file")
-                return
-            }
-
-            // Present share sheet
-            await MainActor.run {
-                let activityViewController = UIActivityViewController(
-                    activityItems: [zipURL],
-                    applicationActivities: nil
-                )
-
-                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                   let window = windowScene.windows.first
-                {
-                    window.rootViewController?.present(activityViewController, animated: true)
-                }
-            }
+        if !LogService.shared.shareLogs() {
+            app.toast(type: .error, title: "Error", description: "Failed to create log zip file")
         }
     }
 }

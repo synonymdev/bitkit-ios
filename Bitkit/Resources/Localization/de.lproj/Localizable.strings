@@ -786,6 +786,14 @@
 "security__use_pin" = "PIN-Code verwenden";
 "security__wiped_title" = "Wallet";
 "security__wiped_message" = "Bitkit wurde zurückgesetzt und alle Wallet-Daten wurden gelöscht.";
+"security__pin_unavailable" = "Bitkit konnte deinen PIN nicht überprüfen. Bitte versuche es erneut.";
+"security__wipe_not_started" = "Das Zurücksetzen konnte nicht gestartet werden. Es wurde nichts gelöscht.";
+"security__wipe_gate_title" = "Bitkit wird zurückgesetzt";
+"security__wipe_gate_text" = "Bitkit löscht die Wallet-Daten auf diesem Gerät. Lass die App geöffnet, bis der Vorgang abgeschlossen ist.";
+"security__wipe_gate_failed" = "Bitkit konnte das Löschen der Wallet-Daten nicht abschließen und versucht es erneut. Du kannst es jetzt erneut versuchen oder die Logs für den Support exportieren.";
+"security__wipe_gate_step" = "Schritt {step} von {total}";
+"security__wipe_gate_blocked_title" = "Bitkit ist gesperrt";
+"security__wipe_gate_blocked_text" = "Bitkit kann seinen Sicherheitsstatus nicht überprüfen. Versuche es erneut oder exportiere die Logs für den Support.";
 "security__authorization__title" = "Autorisierung";
 "security__authorization__description" = "Vergewissern Sie sich, dass Sie diesem Dienst vertrauen, bevor Sie die Erlaubnis zur Verwaltung Ihrer Daten erteilen.";
 "security__authorization__authorize" = "Autorisieren Sie";

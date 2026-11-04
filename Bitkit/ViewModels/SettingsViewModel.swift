@@ -113,7 +113,6 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     // PIN Management
     @Published var pinEnabled: Bool = false
-    @AppStorage("pinFailedAttempts") var pinFailedAttempts: Int = 0
     @AppStorage("requirePinForPayments") var requirePinForPayments: Bool = false
     @AppStorage("useBiometrics") var useBiometrics: Bool = false
 
@@ -235,7 +234,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         UserDefaults.standard.set(true, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
         ignoresSwitchUnitToast = false
         ignoresHideBalanceToast = false
-        pinFailedAttempts = 0
         requirePinForPayments = false
         useBiometrics = false
         showWidgets = true

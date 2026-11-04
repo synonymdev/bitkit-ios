@@ -28,7 +28,7 @@ final class OrphanedKeychainTests: XCTestCase {
         XCTAssertFalse(InstallationMarker.exists())
         XCTAssertFalse((try? Keychain.exists(key: .bip39Mnemonic(index: 0))) ?? false)
 
-        // This is what handleOrphanedKeychain() should do:
+        // This is what the orphaned keychain guard should do:
         // 1. No orphaned data to clean
         // 2. Create the marker
 
@@ -49,7 +49,7 @@ final class OrphanedKeychainTests: XCTestCase {
         XCTAssertTrue(try Keychain.exists(key: .bip39Mnemonic(index: 0)))
 
         // When marker exists, keychain should NOT be wiped
-        // (handleOrphanedKeychain returns early when marker exists)
+        // (the orphaned keychain guard returns early when marker exists)
 
         // Keychain data should still be there
         XCTAssertEqual(try Keychain.loadString(key: .bip39Mnemonic(index: 0)), "test mnemonic words")
@@ -67,7 +67,7 @@ final class OrphanedKeychainTests: XCTestCase {
         XCTAssertTrue(hasNativeKeychain)
 
         // This is orphaned: keychain exists but marker doesn't
-        // handleOrphanedKeychain() should wipe the keychain
+        // the orphaned keychain guard should wipe the keychain
 
         try Keychain.wipeEntireKeychain()
 
@@ -94,7 +94,7 @@ final class OrphanedKeychainTests: XCTestCase {
         XCTAssertTrue(try Keychain.exists(key: .bip39Mnemonic(index: 1)))
         XCTAssertTrue(try Keychain.exists(key: .securityPin))
 
-        // Wipe entire keychain (what handleOrphanedKeychain does)
+        // Wipe entire keychain (what the orphaned keychain guard does)
         try Keychain.wipeEntireKeychain()
 
         // All keys should be gone

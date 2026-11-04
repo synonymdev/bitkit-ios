@@ -2,6 +2,9 @@ import BitkitCore
 import LDKNode
 import SwiftUI
 
+/// The swap updates stream did not stop within `WalletViewModel.swapUpdatesWipeStopTimeout`.
+struct SwapUpdatesStopTimeoutError: Error {}
+
 @MainActor
 class WalletViewModel: ObservableObject {
     let usdtWallet: UsdtWalletManager
@@ -87,7 +90,11 @@ class WalletViewModel: ObservableObject {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
     }
 
+    private let swapUpdatesStream: SwapUpdatesStreaming
+    private let swapUpdatesWipeStopTimeout: Duration
+    private let nodeLifecycleWipeTimeout: Duration
     private let lightningService: LightningService
+    private let nodeLifecycle: NodeLifecycleService
     private let coreService: CoreService
     private let electrumConfigService: ElectrumConfigService
     private let rgsConfigService: RgsConfigService
@@ -104,8 +111,15 @@ class WalletViewModel: ObservableObject {
     @Published var currentBlockHeight: UInt32 = 0
     @Published var isRetryingLightningPayment = false
 
+    private var isNodeLifecycleOperationActive = false
+    private var nodeLifecycleWaiters: [(id: UUID, continuation: CheckedContinuation<Bool, Never>)] = []
+    /// How long a wipe waits for a start or stop in flight, which a hung node start could otherwise hold forever.
+    nonisolated static let nodeLifecycleWipeTimeout: Duration = .seconds(30)
+    private var isStartAdmissionClosedForWipe = false
+
     init(
         lightningService: LightningService = .shared,
+        nodeLifecycle: NodeLifecycleService? = nil,
         coreService: CoreService = .shared,
         electrumConfigService: ElectrumConfigService = ElectrumConfigService(),
         rgsConfigService: RgsConfigService = RgsConfigService(),
@@ -114,10 +128,17 @@ class WalletViewModel: ObservableObject {
         feeEstimatesManager: FeeEstimatesManager,
         onchainAttemptService: OnchainSendAttemptService = .shared,
         pubkyProfile: PubkyProfileManager? = nil,
-        usdtWallet: UsdtWalletManager? = nil
+        usdtWallet: UsdtWalletManager? = nil,
+        swapUpdatesStream: SwapUpdatesStreaming = BoltzService.shared,
+        swapUpdatesWipeStopTimeout: Duration = WalletViewModel.swapUpdatesWipeStopTimeout,
+        nodeLifecycleWipeTimeout: Duration = WalletViewModel.nodeLifecycleWipeTimeout
     ) {
+        self.nodeLifecycleWipeTimeout = nodeLifecycleWipeTimeout
         self.usdtWallet = usdtWallet ?? UsdtWalletManager()
+        self.swapUpdatesStream = swapUpdatesStream
+        self.swapUpdatesWipeStopTimeout = swapUpdatesWipeStopTimeout
         self.lightningService = lightningService
+        self.nodeLifecycle = nodeLifecycle ?? lightningService
         self.coreService = coreService
         self.electrumConfigService = electrumConfigService
         self.rgsConfigService = rgsConfigService
@@ -197,7 +218,44 @@ class WalletViewModel: ObservableObject {
     }
 
     func start(walletIndex: Int = 0) async throws {
-        if !lightningService.hasNode, nodeLifecycleState == .running {
+        guard try await withNodeLifecycleLock({ try await startNode(walletIndex: walletIndex) }) else { return }
+        // A start that finished late does nothing more once a wipe is under way
+        guard !isStartAdmissionClosedForWipe, !WipeCoordinator.shared.isGateUp else { return }
+
+        do {
+            try await lightningService.disconnectIdlePeers()
+        } catch {
+            Logger.error("Failed to disconnect idle peers: \(error)")
+        }
+
+        // Migration only: fetch peers from remote backup (once) and persist in ldk-node
+        let peerUris = await MigrationsService.shared.tryFetchMigrationPeersFromBackup(walletIndex: walletIndex)
+        for uri in peerUris {
+            guard let peer = try? LnPeer(connection: uri) else { continue }
+            do {
+                try await lightningService.connectPeer(peer: peer, persist: true)
+            } catch {
+                Logger.error("Failed to connect migration peer \(peer.nodeId): \(error)")
+            }
+        }
+
+        Task { @MainActor in
+            try? await refreshBip21(syncPublicPaykit: false)
+        }
+
+        // Always sync on start but don't need to wait for this
+        Task { @MainActor in
+            try? await sync()
+        }
+    }
+
+    private func startNode(walletIndex: Int) async throws -> Bool {
+        guard !isStartAdmissionClosedForWipe, !WipeCoordinator.shared.isGateUp else {
+            Logger.warn("Refusing to start the node while a wallet wipe is pending", context: "WalletViewModel")
+            throw AppError(serviceError: .wipeInProgress)
+        }
+
+        if !nodeLifecycle.hasNode, nodeLifecycleState == .running {
             Logger.warn("Node lifecycle was running but service node is missing, restarting", context: "WalletViewModel")
             nodeLifecycleState = .stopped
         }
@@ -208,7 +266,7 @@ class WalletViewModel: ObservableObject {
             break // Allowed to proceed
         case .starting, .running, .stopping:
             Logger.debug("Node already starting or running, skipping start")
-            return
+            return false
         }
 
         if nodeLifecycleState != .initializing {
@@ -233,14 +291,14 @@ class WalletViewModel: ObservableObject {
 
                 await runLegacyNetworkGraphCleanupIfNeeded()
 
-                try await lightningService.setup(
+                try await nodeLifecycle.setup(
                     walletIndex: walletIndex,
                     electrumServerUrl: electrumServerUrl,
                     rgsServerUrl: rgsServerUrl.isEmpty ? nil : rgsServerUrl,
                     channelMigration: channelMigration
                 )
             }
-            try await lightningService.start(onEvent: { event in
+            try await nodeLifecycle.start(onEvent: { event in
                 Task { @MainActor in
                     // Notify all event handlers
                     for handler in self.eventHandlers.values {
@@ -374,32 +432,7 @@ class WalletViewModel: ObservableObject {
         nodeLifecycleState = .running
 
         syncState()
-
-        do {
-            try await lightningService.disconnectIdlePeers()
-        } catch {
-            Logger.error("Failed to disconnect idle peers: \(error)")
-        }
-
-        // Migration only: fetch peers from remote backup (once) and persist in ldk-node
-        let peerUris = await MigrationsService.shared.tryFetchMigrationPeersFromBackup(walletIndex: walletIndex)
-        for uri in peerUris {
-            guard let peer = try? LnPeer(connection: uri) else { continue }
-            do {
-                try await lightningService.connectPeer(peer: peer, persist: true)
-            } catch {
-                Logger.error("Failed to connect migration peer \(peer.nodeId): \(error)")
-            }
-        }
-
-        Task { @MainActor in
-            try? await refreshBip21(syncPublicPaykit: false)
-        }
-
-        // Always sync on start but don't need to wait for this
-        Task { @MainActor in
-            try? await sync()
-        }
+        return true
     }
 
     /// Fetches orphaned channel monitors from RN remote backup before LDK setup.
@@ -440,15 +473,44 @@ class WalletViewModel: ObservableObject {
     }
 
     func stopLightningNode(clearEventCallback: Bool = false) async throws {
+        try await withNodeLifecycleLock {
+            try await stopNodeLocked(clearEventCallback: clearEventCallback)
+        }
+    }
+
+    /// Refuses every later start, then stops whatever node is built once a start in flight has settled, whatever state
+    /// it reports: a start that failed leaves a node that is built but not running.
+    func stopForWipe() async throws {
+        closeStartAdmissionForWipe()
+        try await withNodeLifecycleLockForWipe {
+            // With or without a node, as a swap flow opens the stream without one. First, so a stop that times out fails the
+            // wipe with the node untouched.
+            try await stopSwapUpdatesForWipe()
+            if nodeLifecycle.hasNode {
+                try await stopNodeLocked(clearEventCallback: true, swapUpdatesStopped: true)
+            }
+            guard !nodeLifecycle.hasNode else {
+                throw AppError(serviceError: .nodeStillRunning)
+            }
+        }
+    }
+
+    func closeStartAdmissionForWipe() {
+        isStartAdmissionClosedForWipe = true
+    }
+
+    private func stopNodeLocked(clearEventCallback: Bool, swapUpdatesStopped: Bool = false) async throws {
         nodeLifecycleState = .stopping
-        // Stop the swap updates stream with the node; it restarts on the next wallet start.
-        await stopSwapUpdates()
+        if !swapUpdatesStopped {
+            // Stop the swap updates stream with the node; it restarts on the next wallet start.
+            await stopSwapUpdates()
+        }
 
         do {
-            try await lightningService.stop(clearEventCallback: clearEventCallback)
+            try await nodeLifecycle.stop(clearEventCallback: clearEventCallback)
         } catch {
             Logger.warn("Failed to stop Lightning node: \(error)", context: "WalletViewModel")
-            nodeLifecycleState = lightningService.hasNode ? .running : .stopped
+            nodeLifecycleState = await nodeLifecycle.isNodeRunning() ? .running : .stopped
             syncState()
             throw error
         }
@@ -456,6 +518,52 @@ class WalletViewModel: ObservableObject {
         nodeLifecycleState = .stopped
         probeOutcomes.removeAll()
         syncState()
+    }
+
+    private func withNodeLifecycleLock<T>(_ operation: () async throws -> T) async rethrows -> T {
+        _ = await acquireNodeLifecycleLock(timeout: nil)
+        defer { releaseNodeLifecycleLock() }
+        return try await operation()
+    }
+
+    private func withNodeLifecycleLockForWipe<T>(_ operation: () async throws -> T) async throws -> T {
+        guard await acquireNodeLifecycleLock(timeout: nodeLifecycleWipeTimeout) else {
+            Logger.warn("A node start or stop in flight held the wipe too long", context: "WalletViewModel")
+            throw WipeWaitTimeoutError(wait: "node lifecycle")
+        }
+        defer { releaseNodeLifecycleLock() }
+        return try await operation()
+    }
+
+    private func acquireNodeLifecycleLock(timeout: Duration?) async -> Bool {
+        guard isNodeLifecycleOperationActive else {
+            isNodeLifecycleOperationActive = true
+            return true
+        }
+
+        let id = UUID()
+        return await withCheckedContinuation { continuation in
+            nodeLifecycleWaiters.append((id, continuation))
+            guard let timeout else { return }
+            Task { [weak self] in
+                try? await Task.sleep(for: timeout)
+                self?.abandonNodeLifecycleWait(id)
+            }
+        }
+    }
+
+    private func abandonNodeLifecycleWait(_ id: UUID) {
+        guard let index = nodeLifecycleWaiters.firstIndex(where: { $0.id == id }) else { return }
+        nodeLifecycleWaiters.remove(at: index).continuation.resume(returning: false)
+    }
+
+    private func releaseNodeLifecycleLock() {
+        guard !nodeLifecycleWaiters.isEmpty else {
+            isNodeLifecycleOperationActive = false
+            return
+        }
+
+        nodeLifecycleWaiters.removeFirst().continuation.resume(returning: true)
     }
 
     // MARK: - Boltz swap updates stream
@@ -467,6 +575,9 @@ class WalletViewModel: ObservableObject {
     /// Ceiling on swap updates stream start attempts per run (~14 min of backoff). Giving up is
     /// safe: the stream is retried on the next node start and when entering a swap flow.
     private static let swapUpdatesMaxAttempts = 20
+    /// Upper bound on how long a wipe waits for the stream to stop. bitkit-core subscribes each pending swap while it holds
+    /// the lock its stop takes, for up to about 10 s a swap while Boltz is unreachable.
+    nonisolated static let swapUpdatesWipeStopTimeout: Duration = .seconds(30)
 
     private var swapUpdatesTask: Task<Void, Never>?
     private var swapEventsTask: Task<Void, Never>?
@@ -477,7 +588,8 @@ class WalletViewModel: ObservableObject {
     /// background tasks and could race an in-flight claim. Safe to call repeatedly. Runs only
     /// where swaps are supported and enabled in dev settings, see `BoltzService.isSwapEnabled`.
     func ensureSwapUpdatesRunning() {
-        guard BoltzService.shared.isSwapEnabled else { return }
+        // The stream holds the wallet's mnemonic, so once a wipe starts nothing opens it again.
+        guard !isStartAdmissionClosedForWipe, swapUpdatesStream.isSwapEnabled else { return }
         collectSwapEventsOnce()
         guard !swapUpdatesRunning, swapUpdatesTask == nil else { return }
         swapUpdatesTask = Task { [weak self] in
@@ -498,7 +610,7 @@ class WalletViewModel: ObservableObject {
                 if let rates = await feeEstimatesManager.getEstimates() {
                     feeRate = Double(SettingsViewModel.shared.defaultTransactionSpeed.getFeeRate(from: rates))
                 }
-                try await BoltzService.shared.startUpdates(feeRateSatPerVb: feeRate, acceptZeroConf: true)
+                try await swapUpdatesStream.startUpdates(feeRateSatPerVb: feeRate, acceptZeroConf: true)
                 swapUpdatesRunning = true
                 return
             } catch {
@@ -519,8 +631,8 @@ class WalletViewModel: ObservableObject {
     /// Refresh balances when a swap lands on-chain so savings reflect it without a manual sync.
     private func collectSwapEventsOnce() {
         guard swapEventsTask == nil else { return }
-        swapEventsTask = Task { [weak self] in
-            for await event in BoltzService.shared.events() {
+        swapEventsTask = Task { [weak self, swapUpdatesStream] in
+            for await event in swapUpdatesStream.events() {
                 if case let .claimed(swapId, _) = event {
                     Logger.info("Savings swap claimed: \(swapId)", context: "WalletViewModel")
                     await self?.syncStateAsync()
@@ -529,11 +641,25 @@ class WalletViewModel: ObservableObject {
         }
     }
 
-    private func stopSwapUpdates() async {
-        swapUpdatesTask?.cancel()
+    /// With `awaitingStart`, returns only once no start can land any more: a start handed to bitkit-core cannot be cancelled,
+    /// and one landing after the stop would keep the stream running. A node stop does not wait, as the next start reopens it.
+    private func stopSwapUpdates(awaitingStart: Bool = false) async {
+        let startTask = swapUpdatesTask
+        startTask?.cancel()
+        if awaitingStart {
+            await startTask?.value
+        }
         swapUpdatesTask = nil
         swapUpdatesRunning = false
-        await BoltzService.shared.stopUpdates()
+        await swapUpdatesStream.stopUpdates()
+    }
+
+    /// Bounded, so a wipe fails before it deletes anything instead of waiting on Boltz. The stop goes on after a timeout,
+    /// and a retried wipe waits for it again.
+    private func stopSwapUpdatesForWipe() async throws {
+        guard await withDeadline(swapUpdatesWipeStopTimeout, { await self.stopSwapUpdates(awaitingStart: true) }) != nil else {
+            throw SwapUpdatesStopTimeoutError()
+        }
     }
 
     func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
@@ -1924,15 +2050,13 @@ class WalletViewModel: ObservableObject {
         return (false, false)
     }
 
+    /// Deletes the wallet's Lightning storage and display state. Throws when a node is still held: call `stopForWipe` first.
     func wipe() async throws {
         Logger.warn("Starting wallet wipe", context: "WalletViewModel")
-        await waitForNodeToRun(timeoutSeconds: 5.0)
-
-        if nodeLifecycleState == .starting || nodeLifecycleState == .running {
-            try await stopLightningNode(clearEventCallback: true)
+        try await withNodeLifecycleLockForWipe {
+            try await nodeLifecycle.wipeStorage(walletIndex: 0)
         }
 
-        try await lightningService.wipeStorage(walletIndex: 0)
         await SparkManager.shared.wipe(walletIndex: 0)
 
         probeOutcomes.removeAll()

@@ -3,137 +3,85 @@ import SwiftUI
 
 // MARK: - PIN Management
 
-enum PinAttemptOutcome {
-    case exceededAttempts
-    case lastAttempt
-    case attemptsRemaining(Int)
-
-    var errorIdentifier: String? {
+extension PinResult {
+    /// What a PIN pad shows for an entry that did not unlock it.
+    var errorMessage: String? {
         switch self {
-        case .exceededAttempts:
+        case .correct, .lockedOut:
             return nil
-        case .lastAttempt:
-            return "LastAttempt"
-        case .attemptsRemaining:
-            return "AttemptsRemaining"
+        case let .incorrect(remaining) where remaining == 1:
+            return t("security__pin_last_attempt")
+        case let .incorrect(remaining):
+            return t("security__pin_attempts", variables: ["attemptsRemaining": "\(remaining)"])
+        case .unavailable:
+            return t("security__pin_unavailable")
         }
     }
 
-    var errorMessage: String? {
+    var errorIdentifier: String? {
         switch self {
-        case .exceededAttempts:
+        case let .incorrect(remaining):
+            return remaining == 1 ? "LastAttempt" : "AttemptsRemaining"
+        case .correct, .lockedOut, .unavailable:
             return nil
-        case .lastAttempt:
-            return t("security__pin_last_attempt")
-        case let .attemptsRemaining(remainingAttempts):
-            return t("security__pin_attempts", variables: ["attemptsRemaining": "\(remainingAttempts)"])
         }
     }
 }
 
 extension SettingsViewModel {
     func updatePinEnabledState() {
-        let newState = checkPinExists()
+        let newState = Self.isPinRequired { try Keychain.exists(key: .securityPin) }
         if pinEnabled != newState {
             pinEnabled = newState
             Logger.debug("PIN enabled state updated to \(newState)", context: "SettingsViewModel")
         }
     }
 
-    private func checkPinExists() -> Bool {
+    /// A PIN whose presence cannot be read counts as set, so a keychain error locks the app instead of opening it.
+    static func isPinRequired(pinExists: () throws -> Bool) -> Bool {
         do {
-            return try Keychain.exists(key: .securityPin)
+            return try pinExists()
         } catch {
             Logger.error("Failed to check if PIN exists in keychain: \(error)", context: "SettingsViewModel")
-            return false
+            return true
         }
     }
 
     func setPin(_ pin: String) throws {
+        // A new PIN starts with every attempt, whatever a removed one left behind, and is not saved until it does
+        try KeychainPinLockoutStore().saveFailedAttempts(0)
         try Keychain.saveString(key: .securityPin, str: pin)
         updatePinEnabledState()
     }
 
-    func pinCheck(pin: String) -> Bool {
+    private func clearPinAttempts() {
         do {
-            guard let storedPin = try Keychain.loadString(key: .securityPin) else {
-                return false
-            }
-
-            let isCorrect = storedPin == pin
-
-            if isCorrect {
-                // Reset failed attempts on successful PIN entry
-                pinFailedAttempts = 0
-            } else {
-                // Increment failed attempts
-                pinFailedAttempts += 1
-            }
-
-            return isCorrect
+            try KeychainPinLockoutStore().saveFailedAttempts(0)
         } catch {
-            Logger.error("Failed to check PIN from keychain: \(error)", context: "SettingsViewModel")
-            return false
+            Logger.warn("Failed to clear the PIN attempt counter: \(error)", context: "SettingsViewModel")
         }
     }
 
-    func getRemainingPinAttempts() -> Int {
-        return max(0, Env.pinAttempts - pinFailedAttempts)
+    func verifyPin(_ pin: String) -> PinResult {
+        PinVerifier.shared.verify(pin)
     }
 
-    func hasExceededPinAttempts() -> Bool {
-        return pinFailedAttempts >= Env.pinAttempts
-    }
-
-    func resetPinAttempts() {
-        pinFailedAttempts = 0
-    }
-
-    func pinAttemptOutcomeAfterFailure() -> PinAttemptOutcome {
-        if hasExceededPinAttempts() {
-            return .exceededAttempts
-        }
-
-        let remainingAttempts = getRemainingPinAttempts()
-        return remainingAttempts == 1 ? .lastAttempt : .attemptsRemaining(remainingAttempts)
-    }
-
-    func wipeWalletAfterExceededPinAttempts(
-        app: AppViewModel,
-        wallet: WalletViewModel,
-        session: SessionManager,
-        sheets: SheetViewModel? = nil,
-        context: String
-    ) async {
-        do {
-            try await AppReset.wipe(
-                app: app,
-                wallet: wallet,
-                session: session,
-                toastType: .warning
-            )
-            sheets?.hideSheet()
-        } catch {
-            Logger.error("Failed to wipe wallet after PIN attempts exceeded: \(error)", context: context)
-            app.toast(error)
-        }
-    }
-
+    /// Leaves the PIN and its attempt counter alone: a restore must not lift a lockout or open a wallet whose PIN is set.
     @MainActor
     func resetPinSettings() {
-        pinEnabled = false
-        pinFailedAttempts = 0
         requirePinForPayments = false
         useBiometrics = false
+        updatePinEnabledState()
         Logger.debug("PIN settings reset after app wipe", context: "SettingsViewModel")
     }
 
     func removePin(pin: String, resetSettings: Bool = true) throws {
-        guard pinCheck(pin: pin) else {
+        guard verifyPin(pin) == .correct else {
             throw NSError(domain: "SettingsViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "PIN does not match"])
         }
 
         try Keychain.delete(key: .securityPin)
+        clearPinAttempts()
 
         if resetSettings {
             // Reset all PIN-related settings when PIN is disabled
@@ -145,7 +93,7 @@ extension SettingsViewModel {
     }
 
     func changePin(currentPin: String, newPin: String) throws {
-        guard pinCheck(pin: currentPin) else {
+        guard verifyPin(currentPin) == .correct else {
             throw NSError(domain: "SettingsViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "PIN does not match"])
         }
 

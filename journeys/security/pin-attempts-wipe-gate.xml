@@ -1,0 +1,21 @@
+<journey name="pin attempts wipe gate">
+  <description>
+    Verifies that running out of PIN attempts wipes the wallet behind a gate that a relaunch cannot get past: once the
+    last attempt fails, no PIN pad or biometric prompt is shown until the wipe has finished, and a relaunch resumes the
+    wipe instead of offering the PIN again.
+
+    Precondition: a disposable, unfunded dev wallet with the app PIN enabled (Settings > Security) and a known PIN,
+    biometrics off, on the PIN pad after a relaunch. This deletes the wallet. Terminating the app while the gate shows
+    only lands on a step if the wipe is still running. Killing it at each wipe step on a real device, and relaunching
+    through the Recovery home-screen quick action, stay manual checks: the harness cannot trigger a quick action.
+  </description>
+  <actions>
+    <action>Verify the PIN pad is visible (identifier "PinPad")</action>
+    <action>Enter a wrong PIN with the number pad keys (identifiers "N0" to "N9") until the last-attempt message (identifier "LastAttempt") is visible</action>
+    <action>Enter a wrong PIN once more</action>
+    <action>Verify the wipe gate is visible (identifier "WipeGate") and the PIN pad (identifier "PinPad") is not</action>
+    <action>Terminate the app with xcodebuildmcp and launch it again</action>
+    <action>Verify either the wipe gate (identifier "WipeGate") or wallet onboarding is visible, and the PIN pad (identifier "PinPad") is not</action>
+    <action>Wait for the wipe to finish and verify wallet onboarding is visible</action>
+  </actions>
+</journey>

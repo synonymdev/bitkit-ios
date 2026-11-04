@@ -686,6 +686,14 @@
 "security__cp_changed_text" = "Αλλάξατε επιτυχώς το PIN σας σε νέο 4ψήφιο συνδυασμό.";
 "security__wiped_title" = "Τα Δεδομένα Πορτοφολιού Διαγράφηκαν";
 "security__wiped_message" = "Το Bitkit επαναφέρθηκε και όλα τα δεδομένα πορτοφολιού διαγράφηκαν.";
+"security__pin_unavailable" = "Το Bitkit δεν μπόρεσε να ελέγξει το PIN σας. Δοκιμάστε ξανά.";
+"security__wipe_not_started" = "Η επαναφορά δεν μπόρεσε να ξεκινήσει. Δεν διαγράφηκε τίποτα.";
+"security__wipe_gate_title" = "Επαναφορά του Bitkit";
+"security__wipe_gate_text" = "Το Bitkit διαγράφει τα δεδομένα πορτοφολιού σε αυτή τη συσκευή. Κρατήστε την εφαρμογή ανοιχτή μέχρι να ολοκληρωθεί.";
+"security__wipe_gate_failed" = "Το Bitkit δεν μπόρεσε να ολοκληρώσει τη διαγραφή των δεδομένων πορτοφολιού και θα προσπαθήσει ξανά. Μπορείτε να δοκιμάσετε ξανά τώρα ή να εξαγάγετε τα αρχεία καταγραφής για την υποστήριξη.";
+"security__wipe_gate_step" = "Βήμα {step} από {total}";
+"security__wipe_gate_blocked_title" = "Το Bitkit Είναι Κλειδωμένο";
+"security__wipe_gate_blocked_text" = "Το Bitkit δεν μπορεί να επαληθεύσει την κατάσταση ασφαλείας του. Δοκιμάστε ξανά ή εξαγάγετε τα αρχεία καταγραφής για την υποστήριξη.";
 "security__authorization__success" = "Επιτυχία";
 "pubky_auth__title" = "Εξουσιοδότηση";
 "pubky_auth__description_prefix" = "Μια υπηρεσία ζητά άδεια πρόσβασης και επεξεργασίας των δεδομένων ";
@@ -1753,3 +1761,5 @@
 "subscriptions__allowance_auto_paid" = "Πληρώθηκε αυτόματα";
 
 "wallet__balance_updating" = "Ενημέρωση υπολοίπου…";
+"other__error_keychain" = "Πρόβλημα Σύνδεσης Δεδομένων";
+"other__error_keychain_msg" = "Δεν ήταν δυνατή η φόρτωση του κύριου κλειδιού από την κλειδοθήκη.";
