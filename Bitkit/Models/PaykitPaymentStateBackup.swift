@@ -14,6 +14,18 @@ struct PaykitPaymentStateBackup: Codable {
     /// merged before the active attempt on restore. Readers that predate this key restore without them.
     var onchainPaidInvoices: [OnchainPaidInvoice]? = nil
 
+    /// The backup's paid invoices that can be read; a malformed one is dropped rather than failing the restore.
+    func restoredOnchainPaidInvoices() -> [HeldLightningInvoice] {
+        (onchainPaidInvoices ?? []).compactMap { invoice in
+            do {
+                return try invoice.restored()
+            } catch {
+                Logger.warn("Dropped a malformed paid invoice from the backup: \(error)", context: "PaykitPaymentStateBackup")
+                return nil
+            }
+        }
+    }
+
     struct OnchainPaidInvoice: Codable {
         let paymentHash: String
         /// Seconds since 1970 as a decimal integer string, as integers are elsewhere in this record

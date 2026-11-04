@@ -182,6 +182,8 @@ struct LightningPaymentHeldRefusal: LocalizedError {
     }
 
     let reason: Reason
+    /// Whether the on-chain send was accepted, so the invoice is paid and the refusal will not end otherwise
+    var isSettled = false
 
     var title: String {
         t("common__error")
@@ -216,6 +218,7 @@ struct LightningPaymentHeldRefusal: LocalizedError {
         switch await lightningHold(paymentHash) {
         case .none: return nil
         case .held: return LightningPaymentHeldRefusal(reason: .onchainSend)
+        case .paid: return LightningPaymentHeldRefusal(reason: .onchainSend, isSettled: true)
         case .unreadable: return cameWithAddress ? LightningPaymentHeldRefusal(reason: .unreadableRecords) : nil
         }
     }
@@ -1216,6 +1219,12 @@ extension AppViewModel {
                !isIssuedByThisNode(payeeNodeId: bolt11.recoverPayeePubKey())
             {
                 lightningPaymentHash = bolt11.paymentHash()
+                // Decoding a bolt11 invoice resolves nothing, unlike the LNURL a request can also hold
+                if let request = (lightningParam ?? contactBolt11)?.removingLightningSchemes(),
+                   case let .lightning(decoded)? = try? await scanPaymentOperations.decodeInvoice(request)
+                {
+                    lightningInvoiceExpiresAt = decoded.timestampSeconds.addingReportingOverflow(decoded.expirySeconds).partialValue
+                }
                 guard try await canPayOnchainInstead(
                     paymentHash: lightningPaymentHash,
                     handlingId: handlingId,
@@ -1479,8 +1488,8 @@ extension AppViewModel {
         // Unreadable records go on to Confirm and QuickPay, which refuse them before sending
         guard let refusal, refusal.reason == .onchainSend else { return true }
         didRejectScannedPayment = true
-        // The on-chain send may still fail, and the records may become readable
-        isScannedPaymentRefusalTransient = true
+        // An on-chain send that may still fail leaves the payment open; an accepted one paid it
+        isScannedPaymentRefusalTransient = !refusal.isSettled
         showLightningPaymentHeldRefusal(refusal)
         return false
     }

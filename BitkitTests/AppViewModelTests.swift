@@ -223,6 +223,29 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertEqual(sendFailureMessage(for: OnchainPaymentRefusal(.pending)), t("wallet__send_onchain_lightning_pending"))
     }
 
+    func testARefusalForAnAcceptedOnchainSendCompletesAPaymentRequest() async throws {
+        let app = makeApp(lightningHold: { _ in .paid })
+
+        try await app.handleScannedData("bitcoin:\(address)?amount=0.0001&lightning=\(Self.expiredRegtestBolt11)")
+
+        XCTAssertTrue(app.didRejectScannedPayment)
+        XCTAssertFalse(app.isScannedPaymentRefusalTransient)
+        XCTAssertEqual(ToastWindowManager.shared.currentToast?.accessibilityIdentifier, "OnchainPaymentPendingToast")
+    }
+
+    func testAHardwareSendKeepsItsInvoicesExpiry() async throws {
+        guard case let .lightning(invoice) = try await decode(invoice: Self.expiredRegtestBolt11) else { return XCTFail("Not an invoice") }
+        let app = makeApp(listPayments: { nil })
+
+        try await app.handleScannedData(
+            "bitcoin:\(address)?amount=0.0001&lightning=\(Self.expiredRegtestBolt11)",
+            scope: .onchainPayments
+        )
+
+        XCTAssertNil(app.scannedLightningInvoice)
+        XCTAssertEqual(app.scannedLightningInvoiceExpiresAt, invoice.timestampSeconds + invoice.expirySeconds)
+    }
+
     func testUnreadableOnchainRecordsLeaveTheScanToConfirmAndQuickPay() async throws {
         let app = makeApp(lightningHold: { _ in .unreadable })
 

@@ -53,7 +53,6 @@ final class QuickPayPaymentCoordinator {
     private let store: QuickPaySpendStore
     private let sendBolt11: (String) async throws -> String
     private let fetchLnurlInvoice: (LnurlPayData) async throws -> String
-    /// Nil reads the hold through the send's app state.
     private let lightningHold: ((_ paymentHash: String) async -> OnchainLightningHold)?
     private let listRows: () async throws -> [QuickPayReconcileRow]?
 

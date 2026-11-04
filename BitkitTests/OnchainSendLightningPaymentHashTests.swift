@@ -282,13 +282,15 @@ final class OnchainSendLightningPaymentHashTests: XCTestCase {
             HeldLightningInvoice(paymentHash: String(repeating: "ef", count: 32), expiresAt: 10),
         ])
         let service = OnchainSendAttemptService(store: MemoryAttemptStore(), lightningHolds: holds, now: { clock.now })
-        let backup = try await service.lightningHoldsBackup().map(PaykitPaymentStateBackup.OnchainPaidInvoice.init)
+        let backedUp = await service.lightningHoldsBackup()
+        let backup = try XCTUnwrap(backedUp).map(PaykitPaymentStateBackup.OnchainPaidInvoice.init)
         let wire = try JSONDecoder().decode([PaykitPaymentStateBackup.OnchainPaidInvoice].self, from: JSONEncoder().encode(backup))
         XCTAssertEqual(wire.count, 1, "An expired invoice is not backed up")
 
         let restoredHolds = MemoryLightningHoldStore()
         let restoredService = OnchainSendAttemptService(store: MemoryAttemptStore(), lightningHolds: restoredHolds, now: { clock.now })
-        try await restoredService.restoreLightningHolds(wire.map { try $0.restored() })
+        let restored = try wire.map { try $0.restored() }
+        await restoredService.restoreLightningHolds(restored)
 
         let held = await restoredService.lightningHold(paymentHash: paymentHash)
         XCTAssertEqual(held, .held)
@@ -322,6 +324,51 @@ final class OnchainSendLightningPaymentHashTests: XCTestCase {
             ))) as? [String: Any]
         )
         XCTAssertNil(empty["onchainPaidInvoices"])
+    }
+
+    func testAnUnreadablePaidInvoiceListNeverBlocksASendABackupOrARestore() async throws {
+        let store = MemoryAttemptStore()
+        let holds = MemoryLightningHoldStore()
+        holds.failLoad = true
+        let service = OnchainSendAttemptService(store: store, lightningHolds: holds)
+
+        let original = try await dispatchedOriginal(
+            service, store: store, sender: PreparedAttemptNodeMock(), lightningPaymentHash: paymentHash, lightningInvoiceExpiresAt: 4_000_000_000
+        )
+        XCTAssertEqual(store.snapshot(), [original], "The outcome is saved")
+        let hold = await service.lightningHold(paymentHash: String(repeating: "ef", count: 32))
+        XCTAssertEqual(hold, .unreadable, "The Lightning check still fails closed")
+        let backup = await service.lightningHoldsBackup()
+        XCTAssertNil(backup, "The backup leaves the list out")
+
+        await service.restoreLightningHolds([HeldLightningInvoice(paymentHash: paymentHash, expiresAt: 4_000_000_000)])
+        let restoredStore = MemoryAttemptStore()
+        let restoring = OnchainSendAttemptService(store: restoredStore, lightningHolds: holds)
+        try await restoring.restoreBackup(original)
+        XCTAssertEqual(restoredStore.snapshot().first?.id, original.id, "The attempt is restored")
+    }
+
+    func testAMalformedPaidInvoiceIsDroppedFromARestore() throws {
+        let json = #"{"subscriptions":{},"pendingProofs":[],"onchainPaidInvoices":[{"paymentHash":"\#(paymentHash)","expiresAt":"1700000000"},{"paymentHash":"not-a-hash","expiresAt":"1"}]}"#
+        let state = try JSONDecoder().decode(PaykitPaymentStateBackup.self, from: Data(json.utf8))
+
+        XCTAssertEqual(state.restoredOnchainPaidInvoices(), [HeldLightningInvoice(paymentHash: paymentHash, expiresAt: 1_700_000_000)])
+    }
+
+    func testAnAcceptedSendHoldsItsInvoiceAsPaid() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store, lightningHolds: MemoryLightningHoldStore())
+        let sender = PreparedAttemptNodeMock()
+        sender.result = .accepted(txid: sender.txid)
+        _ = try await service.send(
+            using: sender, address: "bcrt1qrecipient", amountSats: sender.amount, satsPerVbyte: 2, utxosToSpend: nil,
+            isMaxAmount: false, lightningPaymentHash: paymentHash
+        )
+
+        let hold = await service.lightningHold(paymentHash: paymentHash)
+        XCTAssertEqual(hold, .paid)
+        let refusal = await LightningPaymentHeldRefusal.check(paymentHash: paymentHash, cameWithAddress: true, lightningHold: { _ in hold })
+        XCTAssertEqual(refusal?.isSettled, true)
     }
 
     func testOnlyADispatchedSendWithAKnownInvoiceExpiryIsRemembered() async throws {
