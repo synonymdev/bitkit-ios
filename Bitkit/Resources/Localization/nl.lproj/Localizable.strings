@@ -95,6 +95,7 @@
 "hardware__remove_keep_error" = "Kon de tags van deze wallet niet in uw backup bewaren. Probeer het opnieuw, of verwijder de wallet zonder ze te bewaren.";
 "hardware__send_broadcast_failed_text" = "Controleer uw verbinding en probeer het opnieuw.";
 "hardware__send_broadcast_failed_title" = "Betaling niet bevestigd";
+"hardware__send_held_unreadable" = "Bitkit kon een eerdere betaling van deze hardware wallet niet lezen en ondertekent daarom geen nieuwe.";
 "hardware__send_confirm_address" = "Naar adres (bevestig op apparaat)";
 "hardware__send_onchain_only_title" = "Bitcoin-adres vereist";
 "hardware__send_onchain_only_text" = "Deze hardwarewallet kan alleen naar een Bitcoin-adres versturen.";
@@ -1702,6 +1703,11 @@
 "wallet__onchain_hardware_pending" = "Deze hardwarewallet-transactie wacht op geverifieerde verwerking van de betaling. Verstuur deze betaling niet opnieuw.";
 "wallet__onchain_rejected_pending" = "De backend heeft deze transactie geweigerd. Mogelijk heeft deze het netwerk toch bereikt. Start geen aparte betaling. {reason}";
 "wallet__onchain_unknown_pending" = "Deze transactie is mogelijk verzonden. De uitkomst is onbekend. Start geen aparte betaling.";
+"wallet__onchain_hardware_broadcast_again" = "Opnieuw uitzenden";
+"wallet__onchain_hardware_broadcast_accepted" = "Dezelfde ondertekende betaling is opnieuw uitgezonden. Hij wordt afgerond zodra je wallet hem ziet.";
+"wallet__onchain_hardware_may_confirm" = "Deze betaling kan nog worden bevestigd. Hij blijft in behandeling tot je wallet hem ziet of de munten ervan elders worden uitgegeven.";
+"wallet__onchain_hardware_not_sent_title" = "Betaling niet verzonden";
+"wallet__onchain_hardware_not_sent_text" = "Deze betaling kan nooit worden bevestigd. Je kunt hem opnieuw doen.";
 "wallet__onchain_earlier_restored" = "De lokale gegevens van de eerdere betaling zijn hersteld. Er is geen nieuwe betaling verzonden.";
 "wallet__onchain_pending_followup_failed" = "Deze betaling is verzonden, maar de lokale gegevens konden niet worden hersteld. Verstuur deze betaling niet opnieuw.";
 "wallet__onchain_pending_followup" = "Deze betaling is verzonden. De lokale verwerking is nog bezig. Verstuur deze betaling niet opnieuw.";

@@ -96,6 +96,7 @@
 "hardware__remove_keep_error" = "Could not keep this wallet's tags in your backup. Try again, or remove it without keeping them.";
 "hardware__send_broadcast_failed_text" = "Check your connection and try again.";
 "hardware__send_broadcast_failed_title" = "Payment not confirmed";
+"hardware__send_held_unreadable" = "Bitkit could not read an earlier payment from this hardware wallet, so it will not sign a new one.";
 "hardware__send_confirm_address" = "To address (confirm on device)";
 "hardware__send_onchain_only_title" = "Bitcoin address required";
 "hardware__send_onchain_only_text" = "This hardware wallet can only send to a Bitcoin address.";
@@ -1777,6 +1778,11 @@
 "wallet__onchain_hardware_pending" = "This hardware-wallet transaction is awaiting verified payment follow-up. Do not send this payment again.";
 "wallet__onchain_rejected_pending" = "The backend rejected this transaction. It may still have reached the network. Do not start a separate payment. {reason}";
 "wallet__onchain_unknown_pending" = "This transaction may have been sent. Its outcome is unknown. Do not start a separate payment.";
+"wallet__onchain_hardware_broadcast_again" = "Broadcast Again";
+"wallet__onchain_hardware_broadcast_accepted" = "The same signed payment was broadcast again. It completes once your wallet sees it.";
+"wallet__onchain_hardware_may_confirm" = "This payment may still confirm. It stays pending until your wallet sees it or its coins are spent elsewhere.";
+"wallet__onchain_hardware_not_sent_title" = "Payment not sent";
+"wallet__onchain_hardware_not_sent_text" = "This payment can never confirm. You can make it again.";
 "wallet__onchain_earlier_restored" = "The earlier payment's local details were restored. No new payment was sent.";
 "wallet__onchain_pending_followup_failed" = "This payment was sent, but its local details could not be restored. Do not send this payment again.";
 "wallet__onchain_pending_followup" = "This payment was sent. Local follow-up is still pending. Do not send this payment again.";

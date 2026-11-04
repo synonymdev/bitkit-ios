@@ -96,6 +96,7 @@
 "hardware__remove_keep_error" = "Impossible de garder les étiquettes de ce portefeuille dans votre sauvegarde. Réessayez ou retirez-le sans les garder.";
 "hardware__send_broadcast_failed_text" = "Vérifiez votre connexion et réessayez.";
 "hardware__send_broadcast_failed_title" = "Paiement non confirmé";
+"hardware__send_held_unreadable" = "Bitkit n'a pas pu lire un paiement précédent de ce portefeuille matériel et n'en signera donc pas de nouveau.";
 "hardware__send_confirm_address" = "Vers l'adresse (confirmer sur l'appareil)";
 "hardware__send_onchain_only_title" = "Adresse Bitcoin requise";
 "hardware__send_onchain_only_text" = "Ce portefeuille matériel ne peut envoyer qu'à une adresse Bitcoin.";
@@ -1708,6 +1709,11 @@
 "wallet__onchain_hardware_pending" = "Cette transaction du portefeuille matériel attend la vérification du paiement. N'envoyez pas ce paiement à nouveau.";
 "wallet__onchain_rejected_pending" = "Le serveur a rejeté cette transaction. Elle a peut-être quand même atteint le réseau. Ne lancez pas de paiement séparé. {reason}";
 "wallet__onchain_unknown_pending" = "Cette transaction a peut-être été envoyée. Son résultat est inconnu. Ne lancez pas de paiement séparé.";
+"wallet__onchain_hardware_broadcast_again" = "Diffuser à nouveau";
+"wallet__onchain_hardware_broadcast_accepted" = "Le même paiement signé a été diffusé à nouveau. Il sera finalisé dès que votre portefeuille le verra.";
+"wallet__onchain_hardware_may_confirm" = "Ce paiement peut encore être confirmé. Il reste en attente jusqu'à ce que votre portefeuille le voie ou que ses pièces soient dépensées ailleurs.";
+"wallet__onchain_hardware_not_sent_title" = "Paiement non envoyé";
+"wallet__onchain_hardware_not_sent_text" = "Ce paiement ne pourra jamais être confirmé. Vous pouvez le refaire.";
 "wallet__onchain_earlier_restored" = "Les détails locaux du paiement précédent ont été restaurés. Aucun nouveau paiement n'a été envoyé.";
 "wallet__onchain_pending_followup_failed" = "Ce paiement a été envoyé, mais ses détails locaux n'ont pas pu être restaurés. N'envoyez pas ce paiement à nouveau.";
 "wallet__onchain_pending_followup" = "Ce paiement a été envoyé. Le suivi local est toujours en attente. N'envoyez pas ce paiement à nouveau.";

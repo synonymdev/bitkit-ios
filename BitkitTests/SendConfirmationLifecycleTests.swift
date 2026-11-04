@@ -224,10 +224,13 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             SettingsViewModel.shared.coinSelectionMethod = manual ? .manual : .autopilot
             let funding = MockHwFunding()
             let connecting = MockHwConnecting()
-            let hwSend = HwSendCoordinator(signerFactory: { _, address, rate in
-                HwFundingSigner(funding: funding, connecting: connecting, feeRateProvider: { rate },
-                                addressProvider: { address }, timeouts: (5, 5))
-            })
+            let hwSend = try HwSendCoordinator(
+                signerFactory: { _, address, rate in
+                    HwFundingSigner(funding: funding, connecting: connecting, feeRateProvider: { rate },
+                                    addressProvider: { address }, timeouts: (5, 5))
+                },
+                heldBroadcasts: HwHeldBroadcastStore(defaults: makeIsolatedDefaults(), resolver: FakeHeldBroadcastResolver())
+            )
             let setup = SendConfirmationTestSetup()
             let navigation = SendConfirmationTestNavigation()
             navigation.path = []

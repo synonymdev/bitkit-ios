@@ -96,6 +96,7 @@
 "hardware__remove_keep_error" = "No se pudieron conservar las etiquetas de esta billetera en su copia de seguridad. Vuelva a intentarlo o quítela sin conservarlas.";
 "hardware__send_broadcast_failed_text" = "Revise su conexión y vuelva a intentarlo.";
 "hardware__send_broadcast_failed_title" = "Pago no confirmado";
+"hardware__send_held_unreadable" = "Bitkit no pudo leer un pago anterior de esta billetera de hardware, así que no firmará uno nuevo.";
 "hardware__send_confirm_address" = "A la dirección (confirme en el dispositivo)";
 "hardware__send_onchain_only_title" = "Se requiere una dirección de Bitcoin";
 "hardware__send_onchain_only_text" = "Esta billetera de hardware solo puede enviar a una dirección de Bitcoin.";
@@ -1700,6 +1701,11 @@
 "wallet__onchain_hardware_pending" = "Esta transacción de la billetera de hardware está pendiente de un seguimiento de pago verificado. No envíe este pago de nuevo.";
 "wallet__onchain_rejected_pending" = "El backend rechazó esta transacción. Es posible que haya llegado a la red de todos modos. No inicie un pago aparte. {reason}";
 "wallet__onchain_unknown_pending" = "Es posible que esta transacción se haya enviado. Su resultado es desconocido. No inicie un pago aparte.";
+"wallet__onchain_hardware_broadcast_again" = "Transmitir de nuevo";
+"wallet__onchain_hardware_broadcast_accepted" = "Se volvió a transmitir el mismo pago firmado. Se completará cuando tu billetera lo vea.";
+"wallet__onchain_hardware_may_confirm" = "Este pago aún puede confirmarse. Seguirá pendiente hasta que tu billetera lo vea o sus monedas se gasten en otro lugar.";
+"wallet__onchain_hardware_not_sent_title" = "Pago no enviado";
+"wallet__onchain_hardware_not_sent_text" = "Este pago nunca podrá confirmarse. Puedes volver a hacerlo.";
 "wallet__onchain_earlier_restored" = "Se restauraron los detalles locales del pago anterior. No se envió ningún pago nuevo.";
 "wallet__onchain_pending_followup_failed" = "Este pago se envió, pero no se pudieron restaurar sus detalles locales. No envíe este pago de nuevo.";
 "wallet__onchain_pending_followup" = "Este pago se envió. El seguimiento local aún está pendiente. No envíe este pago de nuevo.";

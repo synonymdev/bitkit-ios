@@ -205,11 +205,35 @@ final class MockHwConnecting: HwTransferConnecting {
     }
 }
 
-/// Says which held transactions the wallet has seen, by their signed bytes.
+/// Says which held transactions the wallet has seen, or a fresh read shows spent elsewhere, by their signed bytes.
 final class FakeHeldBroadcastResolver: HwHeldBroadcastResolving {
     var observed: Set<String> = []
+    var observedError: Error?
+    /// Every observation from this call on, counted from one, reports the transaction as seen.
+    var observedFromCall: Int?
+    private(set) var observationCalls = 0
+    var spentElsewhere: Set<String> = []
+    var spentElsewhereError: Error?
 
-    func isObserved(_ held: HwHeldBroadcast) async -> Bool {
-        observed.contains(held.serializedTx)
+    func isObserved(_ held: HwHeldBroadcast) async throws -> Bool {
+        observationCalls += 1
+        if let observedError {
+            throw observedError
+        }
+        if let observedFromCall, observationCalls >= observedFromCall {
+            return true
+        }
+        return observed.contains(held.serializedTx)
+    }
+
+    func isSpentElsewhere(_ held: HwHeldBroadcast) async throws -> Bool {
+        if let spentElsewhereError {
+            throw spentElsewhereError
+        }
+        return spentElsewhere.contains(held.serializedTx)
+    }
+
+    func resetObservationCount() {
+        observationCalls = 0
     }
 }

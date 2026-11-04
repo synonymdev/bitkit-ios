@@ -38,6 +38,8 @@ struct SendPendingScreen: View {
     var hardwareWalletId: String?
     var hardwareTransactionId: String?
     var hardwarePaymentIdentity: String?
+    var hwSend: HwSendCoordinator?
+    var hwWalletManager: HwWalletManager?
     var proofService: PaykitPaymentProofService = .shared
     var requestPinCheck: () async -> Bool = { false }
     @Binding var navigationPath: [SendRoute]
@@ -163,6 +165,18 @@ struct SendPendingScreen: View {
                     showingRetryConfirmation = true
                 }
                 .accessibilityIdentifier("RetryOriginalOnchainPayment")
+                .padding(.bottom, 16)
+            }
+
+            if isUnresolvedHardwareSend, !ordinarySendResolved, let hwSend, let hwWalletManager,
+               hwSend.unresolvedSend?.txId == hardwareTransactionId
+            {
+                CustomButton(
+                    title: t("wallet__onchain_hardware_broadcast_again"), variant: .secondary, isDisabled: hwSend.isRebroadcasting
+                ) {
+                    Task { await broadcastHardwareSendAgain(hwSend, manager: hwWalletManager) }
+                }
+                .accessibilityIdentifier("HardwareBroadcastAgain")
                 .padding(.bottom, 16)
             }
 
@@ -342,6 +356,11 @@ struct SendPendingScreen: View {
                 do { try await Task.sleep(for: .seconds(30)) }
                 catch { return }
             }
+        }
+        .onChange(of: hwSend?.releasedSendTxId) { _, txid in
+            guard isUnresolvedHardwareSend, !ordinarySendResolved, let txid, txid == hardwareTransactionId else { return }
+            app.toast(HwTransferError.broadcastNeverConfirms)
+            sheets.hideSheet()
         }
         .onChange(of: app.sendSheetPendingResolution) { _, resolution in
             applyPendingResolutionIfNeeded(resolution)
@@ -622,13 +641,42 @@ struct SendPendingScreen: View {
     }
 
     private func completeObservedHardwareSend() async {
-        guard isUnresolvedHardwareSend, !ordinarySendResolved, let walletId = hardwareWalletId, let txid = hardwareTransactionId,
-              let activity = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: txid, walletId: walletId),
-              !ordinarySendResolved
+        guard isUnresolvedHardwareSend, !ordinarySendResolved, let hwSend, let walletId = hardwareWalletId,
+              let txid = hardwareTransactionId, hwSend.unresolvedSend?.txId == txid
         else { return }
+        let completed = await hwSend.completeObservedSend { send in
+            await HwSendSignView.recordPaymentResult(
+                send.result, walletId: send.walletId, address: send.address, amount: send.amountSats,
+                contactPublicKey: send.contactPublicKey, tags: send.tags, requestId: nil, proofVerified: true
+            )
+        }
+        guard completed, !ordinarySendResolved else { return }
         ordinarySendResolved = true
-        foundActivity = .onchain(activity)
+        if let activity = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: txid, walletId: walletId) {
+            foundActivity = .onchain(activity)
+        }
         navigationPath.append(.success(paymentId: txid, walletId: walletId))
+    }
+
+    private func broadcastHardwareSendAgain(_ hwSend: HwSendCoordinator, manager: HwWalletManager) async {
+        switch await hwSend.rebroadcastUnresolvedSend(manager: manager) {
+        case .accepted:
+            app.toast(
+                type: .info,
+                title: t("wallet__onchain_hardware_broadcast_again"),
+                description: t("wallet__onchain_hardware_broadcast_accepted")
+            )
+            await completeObservedHardwareSend()
+        case .mayConfirm:
+            app.toast(
+                type: .warning,
+                title: t("lightning__transfer_hw__broadcast_uncertain_title"),
+                description: t("wallet__onchain_hardware_may_confirm")
+            )
+        case .neverConfirms:
+            // The released payment closes this screen through `releasedSendTxId`
+            break
+        }
     }
 
     private func applyOrdinarySendResolution(_ resolution: OnchainSendLocalResolution) {

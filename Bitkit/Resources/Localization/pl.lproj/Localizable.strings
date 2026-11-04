@@ -95,6 +95,7 @@
 "hardware__remove_keep_error" = "Nie udało się zachować tagów tego portfela w kopii zapasowej. Spróbuj ponownie lub usuń go bez ich zachowywania.";
 "hardware__send_broadcast_failed_text" = "Sprawdź połączenie i spróbuj ponownie.";
 "hardware__send_broadcast_failed_title" = "Płatność niepotwierdzona";
+"hardware__send_held_unreadable" = "Bitkit nie mógł odczytać wcześniejszej płatności z tego portfela sprzętowego, więc nie podpisze nowej.";
 "hardware__send_confirm_address" = "Na adres (potwierdź na urządzeniu)";
 "hardware__send_onchain_only_title" = "Wymagany adres Bitcoin";
 "hardware__send_onchain_only_text" = "Ten portfel sprzętowy może wysyłać tylko na adres Bitcoin.";
@@ -1707,6 +1708,11 @@
 "wallet__onchain_hardware_pending" = "Ta transakcja z portfela sprzętowego oczekuje na zweryfikowane dokończenie płatności. Nie wysyłaj tej płatności ponownie.";
 "wallet__onchain_rejected_pending" = "Serwer odrzucił tę transakcję. Mogła ona jednak dotrzeć do sieci. Nie rozpoczynaj osobnej płatności. {reason}";
 "wallet__onchain_unknown_pending" = "Ta transakcja mogła zostać wysłana. Jej wynik jest nieznany. Nie rozpoczynaj osobnej płatności.";
+"wallet__onchain_hardware_broadcast_again" = "Wyślij ponownie";
+"wallet__onchain_hardware_broadcast_accepted" = "Ta sama podpisana płatność została ponownie rozgłoszona. Zakończy się, gdy Twój portfel ją zobaczy.";
+"wallet__onchain_hardware_may_confirm" = "Ta płatność może jeszcze zostać potwierdzona. Pozostanie oczekująca, dopóki Twój portfel jej nie zobaczy lub jej monety nie zostaną wydane gdzie indziej.";
+"wallet__onchain_hardware_not_sent_title" = "Płatność nie została wysłana";
+"wallet__onchain_hardware_not_sent_text" = "Tej płatności nigdy nie da się potwierdzić. Możesz wykonać ją ponownie.";
 "wallet__onchain_earlier_restored" = "Przywrócono lokalne dane wcześniejszej płatności. Nie wysłano nowej płatności.";
 "wallet__onchain_pending_followup_failed" = "Ta płatność została wysłana, ale nie udało się przywrócić jej lokalnych danych. Nie wysyłaj tej płatności ponownie.";
 "wallet__onchain_pending_followup" = "Ta płatność została wysłana. Lokalne dokończenie wciąż trwa. Nie wysyłaj tej płatności ponownie.";

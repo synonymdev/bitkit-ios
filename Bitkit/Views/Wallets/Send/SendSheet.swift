@@ -1143,7 +1143,7 @@ struct SendSheet: View {
                 paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: requestId,
                 routingCacheResetAttempted: flow.routingCacheResetAttempted,
                 hardwareWalletId: walletId, hardwareTransactionId: transactionId,
-                hardwarePaymentIdentity: paymentIdentity,
+                hardwarePaymentIdentity: paymentIdentity, hwSend: hwSend, hwWalletManager: hwWalletManager,
                 navigationPath: $flow.navigationPath
             )
         case let .success(paymentId, walletId):

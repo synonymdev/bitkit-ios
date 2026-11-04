@@ -95,6 +95,7 @@
 "hardware__remove_keep_error" = "Die Tags dieses Wallets konnten nicht in deinem Backup behalten werden. Versuche es erneut oder entferne es, ohne sie zu behalten.";
 "hardware__send_broadcast_failed_text" = "Überprüfe deine Verbindung und versuche es erneut.";
 "hardware__send_broadcast_failed_title" = "Zahlung nicht bestätigt";
+"hardware__send_held_unreadable" = "Bitkit konnte eine frühere Zahlung von dieser Hardware-Wallet nicht lesen und signiert daher keine neue.";
 "hardware__send_confirm_address" = "An Adresse (am Gerät bestätigen)";
 "hardware__send_onchain_only_title" = "Bitcoin-Adresse erforderlich";
 "hardware__send_onchain_only_text" = "Dieses Hardware-Wallet kann nur an eine Bitcoin-Adresse senden.";
@@ -1694,6 +1695,11 @@
 "wallet__onchain_hardware_pending" = "Diese Hardware-Wallet-Transaktion wartet auf die verifizierte Nachverfolgung der Zahlung. Sende diese Zahlung nicht erneut.";
 "wallet__onchain_rejected_pending" = "Das Backend hat diese Transaktion abgelehnt. Sie hat das Netzwerk möglicherweise trotzdem erreicht. Starte keine separate Zahlung. {reason}";
 "wallet__onchain_unknown_pending" = "Diese Transaktion wurde möglicherweise gesendet. Ihr Ergebnis ist unbekannt. Starte keine separate Zahlung.";
+"wallet__onchain_hardware_broadcast_again" = "Erneut senden";
+"wallet__onchain_hardware_broadcast_accepted" = "Dieselbe signierte Zahlung wurde erneut gesendet. Sie wird abgeschlossen, sobald deine Wallet sie sieht.";
+"wallet__onchain_hardware_may_confirm" = "Diese Zahlung kann noch bestätigt werden. Sie bleibt ausstehend, bis deine Wallet sie sieht oder ihre Coins anderweitig ausgegeben werden.";
+"wallet__onchain_hardware_not_sent_title" = "Zahlung nicht gesendet";
+"wallet__onchain_hardware_not_sent_text" = "Diese Zahlung kann nie bestätigt werden. Du kannst sie erneut ausführen.";
 "wallet__onchain_earlier_restored" = "Die lokalen Details der früheren Zahlung wurden wiederhergestellt. Es wurde keine neue Zahlung gesendet.";
 "wallet__onchain_pending_followup_failed" = "Diese Zahlung wurde gesendet, aber ihre lokalen Details konnten nicht wiederhergestellt werden. Sende diese Zahlung nicht erneut.";
 "wallet__onchain_pending_followup" = "Diese Zahlung wurde gesendet. Die lokale Nachverfolgung steht noch aus. Sende diese Zahlung nicht erneut.";

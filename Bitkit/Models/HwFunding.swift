@@ -50,10 +50,33 @@ struct HwFundingBroadcastResult: Equatable {
     let totalSpent: UInt64
 }
 
+/// A plain hardware send whose broadcast may have gone out, with what is recorded once the wallet sees it.
+struct HwUnresolvedSend: Equatable {
+    let result: HwFundingBroadcastResult
+    let walletId: String
+    let address: String
+    let amountSats: UInt64
+    var contactPublicKey: String?
+    var tags: [String] = []
+
+    var txId: String {
+        result.txId
+    }
+}
+
 /// Matches Android's txid calculation: hash consensus bytes without marker, flag or witness.
 /// This identifies a signed candidate; it does not establish backend acceptance.
 enum SignedTransactionId {
     static func fromHex(_ hex: String) throws -> String {
+        try parse(hex).txid
+    }
+
+    /// The coins a consensus-encoded signed transaction spends.
+    static func inputsFromHex(_ hex: String) throws -> [OnchainSendInput] {
+        try parse(hex).inputs
+    }
+
+    private static func parse(_ hex: String) throws -> (txid: String, inputs: [OnchainSendInput]) {
         func invalid() -> PaykitPaymentRequestError {
             .requestUnavailable
         }
@@ -94,8 +117,15 @@ enum SignedTransactionId {
         let baseStart = offset
         let inputCount = try compactSize()
         guard inputCount > 0, inputCount <= bytes.count / 41 else { throw invalid() }
+        var inputs: [OnchainSendInput] = []
         for _ in 0 ..< inputCount {
+            let outpointStart = offset
             try skip(36)
+            let txid = bytes[outpointStart ..< outpointStart + 32].reversed().map { String(format: "%02x", $0) }.joined()
+            let vout = bytes[outpointStart + 32 ..< outpointStart + 36].enumerated().reduce(UInt32(0)) {
+                $0 | UInt32($1.element) << (8 * $1.offset)
+            }
+            inputs.append(OnchainSendInput(txid: txid, vout: vout))
             try skip(compactSize())
             try skip(4)
         }
@@ -119,6 +149,7 @@ enum SignedTransactionId {
         try skip(4)
         guard offset == bytes.count else { throw invalid() }
         let canonical = Data(bytes[0 ..< 4] + bytes[baseStart ..< baseEnd] + bytes[lockTimeStart ..< offset])
-        return SHA256.hash(data: Data(SHA256.hash(data: canonical))).reversed().map { String(format: "%02x", $0) }.joined()
+        let txid = SHA256.hash(data: Data(SHA256.hash(data: canonical))).reversed().map { String(format: "%02x", $0) }.joined()
+        return (txid, inputs)
     }
 }

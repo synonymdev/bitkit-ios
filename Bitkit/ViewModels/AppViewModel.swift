@@ -636,6 +636,12 @@ extension AppViewModel {
                 title: t("lightning__transfer_hw__broadcast_uncertain_title"),
                 description: t("lightning__transfer_hw__broadcast_uncertain_description")
             )
+        case .broadcastNeverConfirms:
+            toast(
+                type: .info,
+                title: t("wallet__onchain_hardware_not_sent_title"),
+                description: t("wallet__onchain_hardware_not_sent_text")
+            )
         case .broadcastConnectivity:
             toast(
                 type: .warning,

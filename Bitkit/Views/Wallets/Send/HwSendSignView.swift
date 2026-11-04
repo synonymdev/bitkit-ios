@@ -1,5 +1,4 @@
 import BitkitCore
-import Combine
 import SwiftUI
 
 struct HwSendSignView: View {
@@ -256,7 +255,14 @@ struct HwSendSignView: View {
             } catch is CancellationError {
                 return
             } catch where hwSend.unresolvedSend != nil {
-                showUnresolvedSend(walletId: walletId, address: invoice.address, amount: amount, contactPublicKey: contactPublicKey, tags: tags)
+                guard let unresolved = hwSend.unresolvedSend else { return }
+                Logger.warn("Held hardware send of '\(walletId)' after an unknown broadcast outcome", context: "HwSendSignView")
+                hwSend.annotateUnresolvedSend(contactPublicKey: contactPublicKey, tags: tags)
+                navigationPath.append(.hardwarePending(
+                    requestId: nil, walletId: walletId, transactionId: unresolved.txId, paymentIdentity: nil
+                ))
+            } catch is HwHeldBroadcastStoreError {
+                app.toast(type: .error, title: t("common__error"), description: t("hardware__send_held_unreadable"))
             } catch is HwPassphraseError {
                 hwSend.requestPassphrase()
             } catch let error as HwTransferError {
@@ -264,34 +270,6 @@ struct HwSendSignView: View {
             } catch {
                 showHardwareError(error)
             }
-        }
-    }
-
-    /// The payment shows as pending until the wallet sees it, and is recorded then, as one that never went out must not show
-    /// as sent.
-    private func showUnresolvedSend(walletId: String, address: String, amount: UInt64, contactPublicKey: String?, tags: [String]) {
-        guard let result = hwSend.unresolvedSend else { return }
-        Logger.warn("Held hardware send of '\(walletId)' after an unknown broadcast outcome", context: "HwSendSignView")
-        navigationPath.append(.hardwarePending(requestId: nil, walletId: walletId, transactionId: result.txId, paymentIdentity: nil))
-        Task {
-            await Self.awaitObservedTransaction(result.txId, walletId: walletId)
-            await Self.recordPaymentResult(
-                result, walletId: walletId, address: address, amount: amount, contactPublicKey: contactPublicKey, tags: tags,
-                requestId: nil, proofVerified: true
-            )
-        }
-    }
-
-    static func awaitObservedTransaction(
-        _ txid: String,
-        walletId: String,
-        activitiesChanged: AnyPublisher<Void, Never> = CoreService.shared.activity.activitiesChangedPublisher,
-        findTransaction: @escaping (String, String) async -> Bool = { txid, walletId in
-            await (try? CoreService.shared.activity.getOnchainActivityByTxId(txid: txid, walletId: walletId)) != nil
-        }
-    ) async {
-        for await _ in activitiesChanged.prepend(()).values where await findTransaction(txid, walletId) {
-            return
         }
     }
 
