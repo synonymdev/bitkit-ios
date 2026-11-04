@@ -749,7 +749,7 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
         let authorization = Task { @MainActor in
             try await manager.beginSetupAuthorization(attempt: authorizationAttempt)
         }
-        try await waitUntil { !node.trackingChanges.isEmpty }
+        try await waitUntil { await trackingGate.isWaiting }
         let reconciliation = Task { @MainActor in
             try await manager.reconcileTracking()
         }
@@ -848,7 +848,7 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
         let authorization = Task { @MainActor in
             try await manager.beginSetupAuthorization(attempt: authorizationAttempt)
         }
-        try await waitUntil { !node.trackingChanges.isEmpty }
+        try await waitUntil { await trackingGate.isWaiting }
         let restore = Task { @MainActor in
             try await manager.restore([restored], allocationState: nil)
         }
@@ -1075,6 +1075,10 @@ private actor LifecycleLockProbe {
 private actor LifecycleTestGate {
     private var isOpen = false
     private var waiter: CheckedContinuation<Void, Never>?
+
+    var isWaiting: Bool {
+        waiter != nil
+    }
 
     func wait() async {
         guard !isOpen else { return }
