@@ -1068,7 +1068,7 @@
 "contacts__add_error_self" = "No puede añadir su propio pubky como contacto.";
 "contacts__add_retrieving" = "Obteniendo\ninformación del contacto";
 "contacts__add_error" = "No se pudo añadir el contacto";
-"contacts__add_disclaimer" = "Tenga en cuenta que usted y {name} deben añadirse mutuamente como contactos antes de poder pagarse de forma privada. Los pagos desde esta pantalla son visibles públicamente.";
+"contacts__add_disclaimer" = "Tenga en cuenta que usted y {name} deben añadirse mutuamente como contactos antes de poder pagarse de forma privada. Si paga sin guardar el contacto, el pago será visible públicamente.";
 "contacts__pay_private_link_pending" = "Bitkit todavía está configurando una conexión privada con este contacto. Asegúrate de que también te haya añadido como contacto o pídele que te envíe una solicitud de pago.";
 "contacts__import_nav_title" = "Importar";
 "contacts__import_found_title" = "Perfil y contactos\n<accent>encontrados</accent>";

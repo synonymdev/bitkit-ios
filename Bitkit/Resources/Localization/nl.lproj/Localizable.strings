@@ -1071,7 +1071,7 @@
 "contacts__add_error_self" = "U kunt uw eigen pubky niet als contact toevoegen.";
 "contacts__add_retrieving" = "Contactgegevens\nophalen";
 "contacts__add_error" = "Contact toevoegen mislukt";
-"contacts__add_disclaimer" = "Let op: u en {name} moeten elkaar als contact toevoegen voordat u elkaar privé kunt betalen. Betalingen vanaf dit scherm zijn openbaar zichtbaar.";
+"contacts__add_disclaimer" = "Let op: u en {name} moeten elkaar als contact toevoegen voordat u elkaar privé kunt betalen. Als u betaalt zonder het contact op te slaan, is de betaling openbaar zichtbaar.";
 "contacts__pay_private_link_pending" = "Bitkit zet nog een privéverbinding op met dit contact. Zorg dat dit contact jou ook heeft toegevoegd, of vraag het om je een betaalverzoek te sturen.";
 "contacts__import_nav_title" = "Importeren";
 "contacts__import_found_title" = "Gevonden:\n<accent>profiel & contacten</accent>";
