@@ -17,6 +17,7 @@ struct AddContactView: View {
     @State private var fetchedProfile: PubkyProfile?
     @State private var isLoading = true
     @State private var isSaving = false
+    @State private var isPaying = false
     @State private var errorMessage: String?
     @State private var canRetryError = true
     @State private var hasPayableEndpoint = false
@@ -151,8 +152,10 @@ struct AddContactView: View {
 
                     HStack(spacing: 16) {
                         if hasPayableEndpoint {
-                            CustomButton(title: t("common__pay"), variant: .secondary) {
-                                await payContact()
+                            CustomButton(title: t("common__pay"), variant: .secondary, isLoading: isPaying) {
+                                await Self.payOnce(isPaying: $isPaying) {
+                                    await payContact()
+                                }
                             }
                             .accessibilityIdentifier("AddContactPay")
                         }
@@ -272,18 +275,11 @@ struct AddContactView: View {
         }
 
         do {
-            let result = try await Self.beginPayment(to: normalizedPublicKey, wallet: wallet)
-
-            switch result {
-            case let .opened(paymentRequest, privatePaymentContext, endpoints):
-                _ = await openContactPayment(
-                    paymentRequest: paymentRequest,
-                    publicKey: normalizedPublicKey,
-                    privatePaymentContext: privatePaymentContext,
-                    endpoints: endpoints
-                )
-            case .noEndpoint, .notOpened, .privateLinkPending, .waitingForUpdatedPaymentList:
-                if let messageKey = result.contactPaymentFailureMessageKey {
+            switch try await Self.preparePayment(to: normalizedPublicKey, wallet: wallet) {
+            case let .open(paymentRequest, contactPaymentContext):
+                _ = await openContactPayment(paymentRequest: paymentRequest, contactPaymentContext: contactPaymentContext)
+            case let .failure(messageKey):
+                if let messageKey {
                     app.toast(
                         type: .warning,
                         title: t("slashtags__error_pay_title"),
@@ -299,24 +295,37 @@ struct AddContactView: View {
         }
     }
 
+    enum Payment: Equatable {
+        case open(paymentRequest: String, context: ContactPaymentContext)
+        case failure(messageKey: String?)
+    }
+
     /// The contacts list can still be loading when a scanned or pasted pubky opens this screen, so a key that is already a
     /// saved contact keeps its private path. A key that is not saved is paid through its public payment details.
-    static func beginPayment(
-        to publicKey: String,
-        wallet: WalletViewModel,
-        service: PrivatePaykitService = .shared
-    ) async throws -> PublicPaykitPaymentLaunchResult {
-        try await service.beginSavedContactPayment(to: publicKey, wallet: wallet)
+    static func preparePayment(to publicKey: String, wallet: WalletViewModel, service: PrivatePaykitService = .shared) async throws -> Payment {
+        let result = try await service.beginSavedContactPayment(to: publicKey, wallet: wallet)
+        switch result {
+        case let .opened(paymentRequest, privatePaymentContext, endpoints):
+            return .open(
+                paymentRequest: paymentRequest,
+                context: ContactPaymentContext(publicKey: publicKey, privatePaymentContext: privatePaymentContext, endpoints: endpoints)
+            )
+        case .noEndpoint, .notOpened, .privateLinkPending, .waitingForUpdatedPaymentList:
+            return .failure(messageKey: result.contactPaymentFailureMessageKey)
+        }
+    }
+
+    /// A private payment can take seconds to resolve, so a second tap while one runs does nothing.
+    @MainActor
+    static func payOnce(isPaying: Binding<Bool>, _ pay: () async -> Void) async {
+        guard !isPaying.wrappedValue else { return }
+        isPaying.wrappedValue = true
+        defer { isPaying.wrappedValue = false }
+        await pay()
     }
 
     @MainActor
-    private func openContactPayment(
-        paymentRequest: String,
-        publicKey: String,
-        privatePaymentContext: PrivatePaykitPaymentContext?,
-        endpoints: [PublicPaykitService.Endpoint]
-    ) async -> Bool {
-        let contactPaymentContext = ContactPaymentContext(publicKey: publicKey, privatePaymentContext: privatePaymentContext, endpoints: endpoints)
+    private func openContactPayment(paymentRequest: String, contactPaymentContext: ContactPaymentContext) async -> Bool {
         guard app.claimContactPaymentContext(contactPaymentContext) else { return false }
 
         do {

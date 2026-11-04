@@ -1069,7 +1069,7 @@
 "contacts__add_retrieving" = "Obteniendo\ninformación del contacto";
 "contacts__add_error" = "No se pudo añadir el contacto";
 "contacts__add_disclaimer" = "Tenga en cuenta que usted y {name} deben añadirse mutuamente como contactos antes de poder pagarse de forma privada. Si paga sin guardar el contacto, el pago será visible públicamente.";
-"contacts__pay_private_link_pending" = "Bitkit todavía está configurando una conexión privada con este contacto. Asegúrate de que también te haya añadido como contacto o pídele que te envíe una solicitud de pago.";
+"contacts__pay_private_link_pending" = "Bitkit todavía está configurando una conexión privada con este contacto. Asegúrese de que también le haya añadido como contacto o pídale que le envíe una solicitud de pago.";
 "contacts__import_nav_title" = "Importar";
 "contacts__import_found_title" = "Perfil y contactos\n<accent>encontrados</accent>";
 "contacts__import_found_description" = "Bitkit encontró datos de perfil y contactos vinculados al pubky <accent>{key}</accent>";

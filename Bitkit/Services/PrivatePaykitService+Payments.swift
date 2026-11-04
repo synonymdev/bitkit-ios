@@ -69,9 +69,10 @@ extension PrivatePaykitService {
     }
 
     func beginSavedContactPayment(to publicKey: String, wallet: WalletViewModel) async throws -> PublicPaykitPaymentLaunchResult {
-        guard let normalizedKey = try await savedContactKey(publicKey) else {
+        guard let savedContact = try await savedContact(publicKey) else {
             return try await contactPaymentOperations.beginPublicPayment(publicKey)
         }
+        let normalizedKey = savedContact.publicKey
 
         if prePaymentPublicationKeys.insert(normalizedKey).inserted {
             Task {
@@ -85,7 +86,7 @@ extension PrivatePaykitService {
             }
         }
 
-        guard try await hasPrivatePaymentPath(normalizedKey) else {
+        guard try await hasPrivatePaymentPath(normalizedKey, identity: savedContact.identity) else {
             return try await contactPaymentOperations.beginPublicPayment(normalizedKey)
         }
 
@@ -98,35 +99,37 @@ extension PrivatePaykitService {
         return result
     }
 
-    /// The normalized key of a saved contact, registering one the saved contacts list has not reached yet. Nil for a key
-    /// that is not a saved contact.
-    private func savedContactKey(_ publicKey: String) async throws -> String? {
-        guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else { return nil }
-        guard !isKnownSavedContact(normalizedKey) else { return normalizedKey }
+    /// The normalized key of a saved contact and the payer's identity, registering a contact the saved contacts list has not
+    /// reached yet. Nil for a key that is not a saved contact, and for a payer without an identity, who has no saved
+    /// contacts. A status that can't be read throws.
+    private func savedContact(_ publicKey: String) async throws -> (publicKey: String, identity: IdentityStatus)? {
+        guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey),
+              let identity = try await contactPaymentOperations.identityStatus(), identity.publicKey != nil
+        else { return nil }
+        guard !isKnownSavedContact(normalizedKey) else { return (normalizedKey, identity) }
         guard try await contactPaymentOperations.isSavedContact(normalizedKey) else { return nil }
         if !isDeletingProfile {
             _ = rememberSavedContacts([normalizedKey], replacing: false)
         }
-        return normalizedKey
+        return (normalizedKey, identity)
     }
 
-    /// A wallet whose own identity can only pay publicly has no private path to any contact. Otherwise a contact has a
-    /// private payment path once this wallet keeps any private payment state for it, the SDK keeps a link record for it in
-    /// any state, or it publishes a Noise key authorization. Only a contact without any of these, whose authorization is
-    /// definitely missing, is paid through public endpoints; any other lookup failure throws, as does a missing identity.
-    /// A signed-out identity still takes the private path, since the SDK resolves cached private payment details without
-    /// a live session.
-    func hasPrivatePaymentPath(_ publicKey: String) async throws -> Bool {
-        guard let identity = try await contactPaymentOperations.identityStatus(), identity.publicKey != nil else {
-            throw PubkyServiceError.sessionNotActive
-        }
+    /// A contact has a private payment path once this wallet keeps any private payment state for it, the SDK keeps a link
+    /// record for it in any state, or it publishes a Noise key authorization. Only a contact without any of these, whose
+    /// authorization is definitely missing, is paid through public endpoints; any other lookup failure throws. A payer whose
+    /// identity can only pay publicly pays a contact publicly only without stored private state or a link record, and is
+    /// refused otherwise. A signed-out identity still takes the private path, since the SDK resolves cached private payment
+    /// details without a live session.
+    func hasPrivatePaymentPath(_ publicKey: String, identity: IdentityStatus) async throws -> Bool {
+        let hasStoredPrivateState = state.contacts[publicKey]?.hasCacheState == true
         if identity.capability == .publicOnly {
+            guard !hasStoredPrivateState, try await !hasLinkRecord(publicKey) else { throw PubkyServiceError.sessionNotActive }
             return false
         }
-        if state.contacts[publicKey]?.hasCacheState == true {
+        if hasStoredPrivateState {
             return true
         }
-        if try await contactPaymentOperations.linkedPeers().contains(where: { PubkyPublicKeyFormat.matches($0.counterparty, publicKey) }) {
+        if try await hasLinkRecord(publicKey) {
             return true
         }
         do {
@@ -135,6 +138,10 @@ extension PrivatePaykitService {
         } catch PaykitError.NotFound {
             return false
         }
+    }
+
+    private func hasLinkRecord(_ publicKey: String) async throws -> Bool {
+        try await contactPaymentOperations.linkedPeers().contains { PubkyPublicKeyFormat.matches($0.counterparty, publicKey) }
     }
 
     func beginPaymentRequest(_ request: PaykitPaymentRequest) async throws -> PublicPaykitPaymentLaunchResult {
