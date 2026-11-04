@@ -327,6 +327,27 @@ enum PaykitAllowanceCapacity {
         return used + amountSats <= monthlyLimitSats
     }
 
+    enum Fit: Equatable {
+        /// An allowance with only the limits this wallet checks fits the request, so it can pay automatically through it.
+        case automatic(PaykitAllowance)
+        /// Only allowances with limits this wallet does not check fit, so the request asks without Limit Reached.
+        case uncheckedOnly
+        /// No allowance fits the request, so it asks and Limit Reached is raised.
+        case none
+    }
+
+    /// Which of a request's matching allowances can pay it automatically. Every allowance is measured against the
+    /// per-payment cap and monthly amount this wallet checks; only one without other limits can pay automatically.
+    static func fit(amountSats: UInt64, allowances: [PaykitAllowance], attempts: [Attempt], now: Date, localAttempts: [Attempt] = []) -> Fit {
+        let fitting = allowances.filter {
+            fits(amountSats: amountSats, allowance: $0, attempts: attempts, now: now, localAttempts: localAttempts)
+        }
+        if let automatic = fitting.first(where: { !$0.hasUncheckedLimits }) {
+            return .automatic(automatic)
+        }
+        return fitting.isEmpty ? .none : .uncheckedOnly
+    }
+
     static func attempts(from spends: [PaykitAllowanceLocalState.AutomaticSpend]) -> [Attempt] {
         spends.map {
             Attempt(

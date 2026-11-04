@@ -705,9 +705,6 @@ actor PaykitAllowanceExecutor {
         guard !covering.isEmpty else { return false }
         // Paused automatic payments keep the request manual, without waiting for the node.
         guard !isPausedAfterRestore() else { return true }
-        // An allowance with a limit this wallet does not check never pays automatically, so it hands the request back too.
-        let checked = covering.filter { !$0.hasUncheckedLimits }
-        guard !checked.isEmpty else { return true }
         var attempts: [PaykitAllowanceCapacity.Attempt] = []
         do {
             let ledger = try await sdk.allowanceAccountingState()
@@ -718,17 +715,21 @@ actor PaykitAllowanceExecutor {
             Logger.warn("Failed to read allowance accounting for the limit check: \(error)", context: "PaykitAllowance")
         }
         let localAttempts = PaykitAllowanceCapacity.attempts(from: localState(identity: identity).automaticSpends)
-        guard !checked.contains(where: {
-            PaykitAllowanceCapacity.fits(
-                amountSats: request.allowanceAmountSats,
-                allowance: $0,
-                attempts: attempts,
-                now: now(),
-                localAttempts: localAttempts
-            )
-        }) else { return false }
-        notifyLimitReached(request, identity: identity)
-        return true
+        switch PaykitAllowanceCapacity.fit(
+            amountSats: request.allowanceAmountSats,
+            allowances: covering,
+            attempts: attempts,
+            now: now(),
+            localAttempts: localAttempts
+        ) {
+        case .automatic:
+            return false
+        case .uncheckedOnly:
+            return true
+        case .none:
+            notifyLimitReached(request, identity: identity)
+            return true
+        }
     }
 
     private struct NodeHistoryUnavailable: Error {}
@@ -967,11 +968,12 @@ actor PaykitAllowanceExecutor {
             Logger.info("Kept an incoming request manual: its allowance has ended", context: "PaykitAllowance")
             return .manual
         }
-        guard let candidate = unended.first,
-              let allowance = allowances.first(where: {
-                  $0.allowanceId == candidate.allowanceId && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty)
-              })
-        else {
+        let eligible = unended.compactMap { candidate in
+            allowances.first(where: {
+                $0.allowanceId == candidate.allowanceId && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty)
+            }).map { (candidate: candidate, allowance: $0) }
+        }
+        guard !eligible.isEmpty else {
             let reasons = candidates.compactMap { $0.blocked.map { String(describing: $0) } }
             Logger.info("No eligible allowance for an incoming request: \(reasons)", context: "PaykitAllowance")
             // The SDK blocks a request above the per-payment limit before the capacity check below can notify.
@@ -983,26 +985,27 @@ actor PaykitAllowanceExecutor {
             }
             return .manual
         }
-        // Bitkit checks the per-payment cap and one monthly amount itself; any other limit is left to the user.
-        guard !allowance.hasUncheckedLimits else {
-            Logger.info("Kept an incoming request manual: its allowance has limits this wallet does not check", context: "PaykitAllowance")
-            return .manual
-        }
 
         let ledger = try await sdk.allowanceAccountingState()
         guard try acceptsLedger(ledger, identity: identity) else {
             Logger.info("Kept an incoming request manual: the ledger is behind this wallet", context: "PaykitAllowance")
             return .manual
         }
-        guard PaykitAllowanceCapacity.fits(
+        // Bitkit checks the per-payment cap and one monthly amount itself, so only an allowance without other limits pays.
+        let fit = PaykitAllowanceCapacity.fit(
             amountSats: request.allowanceAmountSats,
-            allowance: allowance,
+            allowances: eligible.map(\.allowance),
             attempts: ledger.map { PaykitAllowanceCapacity.attempts(from: $0.history) } ?? [],
             now: now(),
             localAttempts: PaykitAllowanceCapacity.attempts(from: local.automaticSpends)
-        ) else {
-            Logger.info("Allowance monthly limit reached; the request stays on the manual flow", context: "PaykitAllowance")
-            notifyLimitReached(request, identity: identity)
+        )
+        guard case let .automatic(allowance) = fit, let candidate = eligible.first(where: { $0.allowance == allowance })?.candidate else {
+            if fit == .uncheckedOnly {
+                Logger.info("Kept an incoming request manual: only allowances with unchecked limits fit it", context: "PaykitAllowance")
+            } else {
+                Logger.info("Allowance monthly limit reached; the request stays on the manual flow", context: "PaykitAllowance")
+                notifyLimitReached(request, identity: identity)
+            }
             return .manual
         }
 

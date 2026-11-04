@@ -648,6 +648,93 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertTrue(events.events.isEmpty, "An allowance with limits this wallet does not check raises no Limit Reached")
     }
 
+    func testLimitCheckHandsBackARequestOnlyAnAllowanceWithUncheckedLimitsFitsWithoutLimitReached() async throws {
+        let harness = AllowanceHarness()
+        let events = AllowanceEventRecorder()
+
+        let isManual = try await harness.executor.exceedsLimits(
+            Fixtures.paymentRequest(amount: "0.0002"),
+            allowances: Self.checkedAndUncheckedAllowances(),
+            identity: Fixtures.identityKey
+        )
+
+        XCTAssertTrue(isManual)
+        XCTAssertTrue(events.events.isEmpty, "A request an allowance still fits raises no Limit Reached")
+    }
+
+    func testAutomaticPaymentAsksWithoutLimitReachedWhenOnlyAnAllowanceWithUncheckedLimitsFits() async throws {
+        let harness = AllowanceHarness()
+        await harness.sdk.setCandidates(Self.checkedAndUncheckedCandidates())
+        let events = AllowanceEventRecorder()
+
+        let result = try await harness.executor.autoPay(
+            Fixtures.paymentRequest(amount: "0.0002"),
+            allowances: Self.checkedAndUncheckedAllowances(),
+            identity: Fixtures.identityKey
+        )
+
+        XCTAssertEqual(result, .manual)
+        XCTAssertFalse(harness.log.entries.contains("acceptPaymentRequestAutomatically"))
+        XCTAssertTrue(events.events.isEmpty, "A request an allowance still fits raises no Limit Reached")
+    }
+
+    func testAutomaticPaymentPaysThroughTheAllowanceWithCheckedLimitsWhenItFits() async throws {
+        let harness = AllowanceHarness()
+        await harness.sdk.setCandidates(Self.checkedAndUncheckedCandidates().reversed())
+
+        let isManual = try await harness.executor.exceedsLimits(
+            Fixtures.paymentRequest(),
+            allowances: Self.checkedAndUncheckedAllowances(),
+            identity: Fixtures.identityKey
+        )
+        let result = try await harness.executor.autoPay(
+            Fixtures.paymentRequest(),
+            allowances: Self.checkedAndUncheckedAllowances(),
+            identity: Fixtures.identityKey
+        )
+
+        XCTAssertFalse(isManual, "A request a checked allowance fits waits for the node")
+        XCTAssertEqual(result, .started)
+        let selections = await harness.sdk.selections
+        XCTAssertEqual(selections.map(\.allowanceId), [Fixtures.walletAllowanceId])
+    }
+
+    func testARequestNoAllowanceFitsRaisesLimitReached() async throws {
+        let unchecked = [Fixtures.allowance(perPaymentMaxSats: 50000, hasUncheckedLimits: true)]
+        let request = try Fixtures.paymentRequest(amount: "0.001")
+        let handBack = AllowanceHarness()
+        let events = AllowanceEventRecorder()
+
+        let isManual = await handBack.executor.exceedsLimits(request, allowances: unchecked, identity: Fixtures.identityKey)
+        let handBackEvents = events.events
+        let online = AllowanceHarness()
+        let result = await online.executor.autoPay(request, allowances: unchecked, identity: Fixtures.identityKey)
+
+        XCTAssertTrue(isManual)
+        XCTAssertEqual(handBackEvents, [.limitReached(counterparty: Fixtures.counterpartyKey, amountSats: 100_000)])
+        XCTAssertEqual(result, .manual)
+        XCTAssertEqual(events.events.filter { $0 == .limitReached(counterparty: Fixtures.counterpartyKey, amountSats: 100_000) }.count, 2)
+    }
+
+    /// A Bitkit-style allowance with a 5,000-sat cap and another with a 50,000-sat cap and limits this wallet does not check.
+    private static func checkedAndUncheckedAllowances() -> [PaykitAllowance] {
+        [
+            Fixtures.allowance(),
+            Fixtures.allowance(allowanceId: Fixtures.otherAllowanceId, perPaymentMaxSats: 50000, monthlyLimitSats: 500_000, hasUncheckedLimits: true),
+        ]
+    }
+
+    private static func checkedAndUncheckedCandidates() -> [Paykit.AllowanceCandidate] {
+        [
+            AllowanceHarness.candidate(),
+            Paykit.AllowanceCandidate(
+                allowanceId: Fixtures.otherAllowanceId,
+                eligiblePaymentEndpointIdentifiers: [Fixtures.lightningIdentifier],
+                blocked: nil
+            ),
+        ]
+    }
+
     private static func walletPayload(paymentState: PaykitPaymentStateBackup? = nil, sdkState: String? = nil) -> WalletBackupV1 {
         WalletBackupV1(
             version: 1,

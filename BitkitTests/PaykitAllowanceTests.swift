@@ -808,7 +808,8 @@ enum PaykitAllowanceFixtures {
         monthlyLimitSats: UInt64? = 50000,
         monthlyAnchor: Date? = septemberAnchor,
         expiresAt: Date? = nil,
-        isProposedByMe: Bool? = nil
+        isProposedByMe: Bool? = nil,
+        hasUncheckedLimits: Bool = false
     ) -> PaykitAllowance {
         PaykitAllowance(
             id: PaykitAllowance.ID(counterparty: counterparty, allowanceId: allowanceId),
@@ -819,7 +820,8 @@ enum PaykitAllowanceFixtures {
             monthlyLimitSats: monthlyLimitSats,
             monthlyAnchor: monthlyAnchor,
             expiresAt: expiresAt,
-            allowedPaymentEndpointIdentifiers: [lightningIdentifier]
+            allowedPaymentEndpointIdentifiers: [lightningIdentifier],
+            hasUncheckedLimits: hasUncheckedLimits
         )
     }
 
