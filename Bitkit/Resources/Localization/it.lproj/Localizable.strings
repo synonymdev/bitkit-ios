@@ -1696,6 +1696,8 @@
 "wallet__onchain_cancelled_title" = "Pagamento Annullato";
 "wallet__onchain_cancelled_description" = "L'annullamento ha 6 conferme. I pagamenti on-chain sono di nuovo disponibili.";
 "wallet__onchain_cancel_final_held" = "L'annullamento ha 6 conferme. Bitkit rilascia questo pagamento alla prossima sincronizzazione del wallet, e allora gli altri pagamenti on-chain vengono sbloccati.";
+"wallet__onchain_cancel_not_seen" = "Il wallet si è sincronizzato e non vede l'annullamento, quindi potrebbe non aver raggiunto la rete, ad esempio perché la commissione era troppo bassa. I fondi del pagamento restano protetti. Puoi inviare un nuovo annullamento con una commissione più alta.";
+"wallet__onchain_cancel_not_recorded" = "L'annullamento più rapido è stato inviato, ma Bitkit non è riuscito a salvarlo. I fondi del pagamento restano protetti, e il wallet lo troverà alla prossima sincronizzazione.";
 "wallet__onchain_cancel_speed_up" = "Accelera l'annullamento";
 "wallet__onchain_cancel_speed_up_note" = "L'annullamento è ancora in attesa di conferma. Sostituiscilo con lo stesso annullamento a una tariffa superiore agli attuali {fee} sat/vB, così viene confermato prima. I fondi di questo pagamento tornano comunque al tuo wallet.";
 "wallet__onchain_abandon_pending" = "L'annullamento è stato inviato ma non è ancora confermato. Gli altri pagamenti on-chain si sbloccano quando avrà 6 conferme. Se non viene confermato, puoi annullare di nuovo.";

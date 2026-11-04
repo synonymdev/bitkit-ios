@@ -1586,6 +1586,8 @@
 "wallet__onchain_cancelled_title" = "Pagament cancel·lat";
 "wallet__onchain_cancelled_description" = "La cancel·lació té 6 confirmacions. Els pagaments onchain tornen a estar disponibles.";
 "wallet__onchain_cancel_final_held" = "La cancel·lació té 6 confirmacions. Bitkit allibera aquest pagament a la propera sincronització del moneder, i llavors es desbloquegen els altres pagaments on-chain.";
+"wallet__onchain_cancel_not_seen" = "El moneder s'ha sincronitzat i no veu la cancel·lació, així que potser no ha arribat a la xarxa, per exemple perquè la comissió era massa baixa. Els fons del pagament continuen protegits. Pots enviar una nova cancel·lació amb una comissió més alta.";
+"wallet__onchain_cancel_not_recorded" = "La cancel·lació més ràpida s'ha enviat, però Bitkit no l'ha pogut desar. Els fons del pagament continuen protegits, i el moneder la trobarà a la propera sincronització.";
 "wallet__onchain_cancel_speed_up" = "Accelera la cancel·lació";
 "wallet__onchain_cancel_speed_up_note" = "La cancel·lació encara espera la confirmació. Substitueix-la per la mateixa cancel·lació amb una taxa superior als seus {fee} sat/vB actuals, perquè es confirmi abans. Els fons d'aquest pagament continuen tornant al teu moneder.";
 "wallet__onchain_abandon_pending" = "La cancel·lació s'ha enviat, però encara no està confirmada. Els altres pagaments onchain es desbloquejaran quan tingui 6 confirmacions. Si no es confirma, pots tornar a cancel·lar.";

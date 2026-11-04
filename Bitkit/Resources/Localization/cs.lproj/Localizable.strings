@@ -1726,6 +1726,8 @@
 "wallet__onchain_cancelled_title" = "Platba zrušena";
 "wallet__onchain_cancelled_description" = "Zrušení má 6 potvrzení. On-chain platby jsou opět k dispozici.";
 "wallet__onchain_cancel_final_held" = "Zrušení má 6 potvrzení. Bitkit tuto platbu uvolní při příští synchronizaci peněženky a ostatní on-chain platby se pak odblokují.";
+"wallet__onchain_cancel_not_seen" = "Peněženka se synchronizovala a zrušení nevidí, takže se možná nedostalo do sítě, například kvůli příliš nízkému poplatku. Prostředky platby zůstávají chráněny. Můžete odeslat nové zrušení s vyšším poplatkem.";
+"wallet__onchain_cancel_not_recorded" = "Rychlejší zrušení bylo odesláno, ale Bitkit ho nemohl uložit. Prostředky platby zůstávají chráněny a peněženka ho najde při příští synchronizaci.";
 "wallet__onchain_cancel_speed_up" = "Urychlit zrušení";
 "wallet__onchain_cancel_speed_up_note" = "Zrušení stále čeká na potvrzení. Nahraďte ho stejným zrušením se sazbou vyšší než jeho současných {fee} sat/vB, aby se potvrdilo dříve. Prostředky této platby se stále vrátí do vaší peněženky.";
 "wallet__onchain_abandon_pending" = "Zrušení bylo odesláno, ale zatím není potvrzeno. Ostatní on-chain platby se odemknou, jakmile bude mít 6 potvrzení. Pokud nebude potvrzeno, můžete platbu zrušit znovu.";

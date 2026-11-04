@@ -1731,6 +1731,8 @@
 "wallet__onchain_cancelled_title" = "Betaling geannuleerd";
 "wallet__onchain_cancelled_description" = "De annulering heeft 6 bevestigingen. On-chain betalingen zijn weer beschikbaar.";
 "wallet__onchain_cancel_final_held" = "De annulering heeft 6 bevestigingen. Bitkit geeft deze betaling vrij bij de volgende synchronisatie van de wallet, en dan worden andere on-chain betalingen weer mogelijk.";
+"wallet__onchain_cancel_not_seen" = "De wallet is gesynchroniseerd en ziet de annulering niet, dus ze heeft het netwerk mogelijk niet bereikt, bijvoorbeeld omdat de vergoeding te laag was. De middelen van de betaling blijven beschermd. U kunt een nieuwe annulering met een hogere vergoeding sturen.";
+"wallet__onchain_cancel_not_recorded" = "De snellere annulering is verstuurd, maar Bitkit kon haar niet opslaan. De middelen van de betaling blijven beschermd, en de wallet vindt haar bij de volgende synchronisatie.";
 "wallet__onchain_cancel_speed_up" = "Annulering versnellen";
 "wallet__onchain_cancel_speed_up_note" = "De annulering wacht nog op bevestiging. Vervang haar door dezelfde annulering tegen een tarief boven de huidige {fee} sat/vB, zodat ze sneller wordt bevestigd. De munten van deze betaling gaan nog steeds terug naar uw wallet.";
 "wallet__onchain_abandon_pending" = "De annulering is verzonden, maar nog niet bevestigd. Andere on-chain betalingen worden vrijgegeven zodra deze 6 bevestigingen heeft. Als deze niet wordt bevestigd, kunt u opnieuw annuleren.";

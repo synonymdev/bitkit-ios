@@ -1729,6 +1729,8 @@
 "wallet__onchain_cancelled_title" = "Pago cancelado";
 "wallet__onchain_cancelled_description" = "La cancelación tiene 6 confirmaciones. Los pagos onchain vuelven a estar disponibles.";
 "wallet__onchain_cancel_final_held" = "La cancelación tiene 6 confirmaciones. Bitkit libera este pago en la próxima sincronización de la billetera, y entonces se desbloquean los demás pagos on-chain.";
+"wallet__onchain_cancel_not_seen" = "La billetera se sincronizó y no ve la cancelación, así que es posible que no haya llegado a la red, por ejemplo porque su comisión era demasiado baja. Los fondos del pago siguen protegidos. Puedes enviar una nueva cancelación con una comisión más alta.";
+"wallet__onchain_cancel_not_recorded" = "La cancelación más rápida se envió, pero Bitkit no pudo guardarla. Los fondos del pago siguen protegidos, y la billetera la encontrará en su próxima sincronización.";
 "wallet__onchain_cancel_speed_up" = "Acelerar la cancelación";
 "wallet__onchain_cancel_speed_up_note" = "La cancelación todavía espera su confirmación. Reemplázala por la misma cancelación con una tasa de comisión superior a sus {fee} sat/vB actuales, para que se confirme antes. Los fondos de este pago siguen volviendo a tu billetera.";
 "wallet__onchain_abandon_pending" = "La cancelación se envió, pero aún no está confirmada. Los demás pagos onchain se desbloquearán cuando tenga 6 confirmaciones. Si no se confirma, puede cancelar de nuevo.";

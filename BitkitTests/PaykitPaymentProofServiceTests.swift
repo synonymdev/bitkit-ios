@@ -527,6 +527,18 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             try await withProof.authorizeUncheckedOnchainRecovery(attempt)
             XCTFail("A request that already carries a proof must not be paid again")
         } catch is OnchainOriginalPaidError {}
+        // A blocked contact is never paid again.
+        let blockedSdk = try PaymentProofSdkMock(identity: identity, records: [paymentRequestRecord(endpoints: [endpoint], state: .accepted)])
+        await blockedSdk.setLinkedPeers([LinkedPeerRecord(
+            counterparty: counterparty, state: .blocked, lastSyncAt: nil, lastPrivateReceiveAt: nil, failureCount: 0,
+            localRecoveryAttemptId: nil, localRecoveryMarkerCreatedAt: nil, localRecoveryMarkerLastError: nil,
+            remoteRecoveryAttemptId: nil, remoteRecoveryMarkerObservedAt: nil
+        )])
+        let blocked = paymentProofService(sdk: blockedSdk, store: proofs, attemptService: OnchainSendAttemptService(store: attemptsStore))
+        do {
+            try await blocked.authorizeUncheckedOnchainRecovery(attempt)
+            XCTFail("A request from a blocked contact must not be re-sent")
+        } catch PaykitPaymentRequestError.requestUnavailable {}
         // Another Pubky identity cannot re-send the payer's payment.
         let otherPayer = try paymentProofService(
             sdk: PaymentProofSdkMock(identity: counterparty, records: [paymentRequestRecord(endpoints: [endpoint], state: .accepted)]),
@@ -4125,6 +4137,16 @@ actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
 
     func setIdentityAvailable(_ isAvailable: Bool) {
         isIdentityAvailable = isAvailable
+    }
+
+    private var linkedPeerRecords: [LinkedPeerRecord] = []
+
+    func setLinkedPeers(_ peers: [LinkedPeerRecord]) {
+        linkedPeerRecords = peers
+    }
+
+    func linkedPeers() async -> [LinkedPeerRecord] {
+        linkedPeerRecords
     }
 
     func paymentRequests() async -> [PaymentRequestRecord] {

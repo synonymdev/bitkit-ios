@@ -1809,6 +1809,8 @@
 "wallet__onchain_cancelled_title" = "Payment Cancelled";
 "wallet__onchain_cancelled_description" = "The cancellation has 6 confirmations. On-chain payments are available again.";
 "wallet__onchain_cancel_final_held" = "The cancellation has 6 confirmations. Bitkit releases this payment at the next wallet sync, and other on-chain payments unlock then.";
+"wallet__onchain_cancel_not_seen" = "The wallet has synced and does not see the cancellation, so it may not have reached the network, for example because its fee was too low. The payment's funds remain protected. You can send a new cancellation at a higher fee.";
+"wallet__onchain_cancel_not_recorded" = "The faster cancellation was sent, but Bitkit could not save it. The payment's funds remain protected, and the wallet finds it at its next sync.";
 "wallet__onchain_cancel_speed_up" = "Speed up cancellation";
 "wallet__onchain_cancel_speed_up_note" = "The cancellation is still waiting to confirm. Replace it with the same cancellation at a fee rate above its current {fee} sat/vB, so it confirms sooner. It still sends this payment's coins back to your wallet.";
 "wallet__onchain_abandon" = "Cancel expired payment";

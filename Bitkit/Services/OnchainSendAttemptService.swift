@@ -246,8 +246,6 @@ struct OnchainInputSpend: Equatable {
     var feeSats: UInt64?
     /// The rate `feeSats` pays on its signed size, rounded up.
     var satsPerVbyte: UInt32?
-    /// The node reports it failed, as for a transaction that dropped out of mempools or was replaced.
-    var isDropped = false
 
     /// Every candidate pays its recipient the whole amount in one output.
     func pays(_ address: String, atLeast amountSats: UInt64) -> Bool {
@@ -280,8 +278,7 @@ extension OnchainInputSpend {
             isFinal: isConfirmed && payment.status == .succeeded,
             outputValues: details.outputs.map { UInt64(clamping: $0.value) },
             feeSats: feeSats,
-            satsPerVbyte: feeSats.map { UInt32(clamping: details.feeRate(paying: $0)) },
-            isDropped: payment.status == .failed
+            satsPerVbyte: feeSats.map { UInt32(clamping: details.feeRate(paying: $0)) }
         )
     }
 }
@@ -365,6 +362,13 @@ struct OnchainCancellationFeeTooLowError: LocalizedError {
     }
 }
 
+/// A Speed up cancellation was broadcast but not saved. The cancellation it replaces stays saved, so nothing is offered beside it.
+struct OnchainCancellationNotRecordedError: LocalizedError {
+    var errorDescription: String? {
+        t("wallet__onchain_cancel_not_recorded")
+    }
+}
+
 /// The original payment's request is already reported paid, so it is not sent again.
 struct OnchainOriginalPaidError: LocalizedError {
     var errorDescription: String? {
@@ -429,6 +433,8 @@ struct OnchainSendAttempt: Codable, Equatable {
     var cancellationTxid: String? = nil
     var cancellationFeeRate: UInt32? = nil
     var cancellationFeeSats: UInt64? = nil
+    /// When the latest release or Cancel payment was saved, so a wallet sync after it that does not find it can say so.
+    var lastCancellationSentAt: UInt64? = nil
 
     /// A release or Cancel payment may have reached the network, so a retry beside it could replace it.
     var mayHaveRelayedCancellation: Bool {
@@ -749,6 +755,10 @@ actor OnchainSendAttemptService {
         await requestedSync.endWait()
     }
 
+    private static func now() -> UInt64 {
+        UInt64(max(Date().timeIntervalSince1970, 0))
+    }
+
     static func walletId(index: Int) -> String {
         "node:\(Env.networkName):\(WalletScope.default):\(index)"
     }
@@ -821,6 +831,7 @@ actor OnchainSendAttemptService {
             previous.cancellationTxid = nil
             previous.cancellationFeeRate = nil
             previous.cancellationFeeSats = nil
+            previous.lastCancellationSentAt = nil
             // The backup stamps its own follow-up time, which the live attempt never stores.
             previous.followupContext?.backupCreatedAtMillis = nil
             incoming.followupContext?.backupCreatedAtMillis = nil
@@ -1111,10 +1122,14 @@ actor OnchainSendAttemptService {
         else { throw OnchainSendAttemptError.unresolved }
         try Self.checkOutbids(prepared, replacing: current, satsPerVbyte: satsPerVbyte)
         // Saved before the broadcast, so a reopened Pending, a retry or a release knows it may have been relayed.
-        let earlier = (txid: current.cancellationTxid, feeRate: current.cancellationFeeRate, feeSats: current.cancellationFeeSats)
+        let earlier = (
+            txid: current.cancellationTxid, feeRate: current.cancellationFeeRate, feeSats: current.cancellationFeeSats,
+            sentAt: current.lastCancellationSentAt
+        )
         current.cancellationTxid = prepared.txid.lowercased()
         current.cancellationFeeRate = satsPerVbyte
         current.cancellationFeeSats = prepared.miningFeeSats
+        current.lastCancellationSentAt = Self.now()
         try store.save([current])
         knownAttempt = current
         isBroadcastingCancellation = true
@@ -1150,13 +1165,14 @@ actor OnchainSendAttemptService {
     }
 
     private func restoreEarlierCancellation(
-        replacing txid: String, with earlier: (txid: String?, feeRate: UInt32?, feeSats: UInt64?)
+        replacing txid: String, with earlier: (txid: String?, feeRate: UInt32?, feeSats: UInt64?, sentAt: UInt64?)
     ) {
         do {
             guard var current = try currentAttempt(), current.cancellationTxid == txid.lowercased() else { return }
             current.cancellationTxid = earlier.txid
             current.cancellationFeeRate = earlier.feeRate
             current.cancellationFeeSats = earlier.feeSats
+            current.lastCancellationSentAt = earlier.sentAt
             try store.save([current])
             knownAttempt = current
         } catch {
@@ -1215,29 +1231,48 @@ actor OnchainSendAttemptService {
         let txid = try await sender.bumpFee(
             ofTransaction: held.txid, satsPerVbyte: satsPerVbyte, expectedWalletIndex: index, expectedNode: node
         ).lowercased()
-        if var latest = try currentAttempt(), latest.id == original.id {
-            latest.cancellationTxid = txid
-            latest.cancellationFeeRate = satsPerVbyte
-            // ldk-node does not report the replacement's fee, so a later Cancel payment outbids its rate and the other fees.
-            latest.cancellationFeeSats = nil
-            try store.save([latest])
-            knownAttempt = latest
+        do {
+            if var latest = try currentAttempt(), latest.id == original.id {
+                latest.cancellationTxid = txid
+                latest.cancellationFeeRate = satsPerVbyte
+                // ldk-node does not report the replacement's fee, so it is saved once the wallet holds it.
+                latest.cancellationFeeSats = nil
+                latest.lastCancellationSentAt = Self.now()
+                try store.save([latest])
+                knownAttempt = latest
+            }
+        } catch {
+            // The earlier cancellation stays recorded, so nothing is offered beside the replacement.
+            Logger.warn("Sped up cancellation \(txid) of on-chain send \(original.id) was not saved: \(error)", context: "OnchainSendAttempt")
+            throw OnchainCancellationNotRecordedError()
         }
         Logger.info("Sped up cancellation \(held.txid) of on-chain send \(original.id) as \(txid)", context: "OnchainSendAttempt")
         return txid
     }
 
+    /// Saves the exact fee of the recorded Cancel payment once the wallet holds it, as for one sped up, whose fee ldk-node does not
+    /// report, so a replacement over the same coins outbids it.
+    func recordHeldCancellationFee(_ spend: OnchainInputSpend, attemptId: UUID) throws {
+        guard nativeDispatchInProgress == nil, var attempt = try currentAttempt(), attempt.id == attemptId,
+              attempt.cancellationFeeSats == nil, let fee = spend.feeSats,
+              attempt.cancellationTxid?.caseInsensitiveCompare(spend.txid) == .orderedSame
+        else { return }
+        attempt.cancellationFeeSats = fee
+        attempt.cancellationFeeRate = max(attempt.cancellationFeeRate ?? 0, spend.satsPerVbyte ?? 0)
+        try store.save([attempt])
+        knownAttempt = attempt
+    }
+
     /// The wallet's own spend that cancels `attempt`, final or still confirming, if one exists: a final one first, then the
-    /// recorded Cancel payment. One that dropped out no longer holds the coins, so a new Cancel payment can be built.
+    /// recorded Cancel payment. One that dropped out of mempools leaves the wallet's history, so it is no longer found.
     func cancellation(of attempt: OnchainSendAttempt, using sender: any OnchainSending) async throws -> OnchainInputSpend? {
         let index = sender.currentWalletIndex
         guard attempt.walletId == Self.walletId(index: index) else { throw OnchainSendAttemptError.unresolved }
         guard let inputs = attempt.recoveryContext?.inputs, !inputs.isEmpty else { return nil }
         let cancellations = try await sender.walletSpends(of: inputs, expectedWalletIndex: index, expectedNode: sender.onchainDispatchNode)
             .filter(attempt.isCancelled(by:))
-        let held = cancellations.filter { !$0.isDropped }
         return cancellations.first(where: \.isFinal) ??
-            held.first { $0.txid.caseInsensitiveCompare(attempt.cancellationTxid ?? "") == .orderedSame } ?? held.first
+            cancellations.first { $0.txid.caseInsensitiveCompare(attempt.cancellationTxid ?? "") == .orderedSame } ?? cancellations.first
     }
 
     /// Settles an unsettled guard from the wallet's own final spends of its inputs, read once. It is released only on positive
@@ -1617,6 +1652,7 @@ actor OnchainSendAttemptService {
         attempt.releaseTxid = txid.lowercased()
         attempt.releaseFeeRate = feeRate
         attempt.releaseFeeSats = feeSats
+        attempt.lastCancellationSentAt = Self.now()
         try store.save([attempt])
         knownAttempt = attempt
         return attempt

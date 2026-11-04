@@ -166,6 +166,7 @@ struct PaykitPaymentProofStore: PaykitPaymentProofStoring {
 protocol PaykitPaymentProofSdkHandling: Sendable {
     func identityStatus() async throws -> Paykit.IdentityStatus?
     func paymentRequests() async throws -> [Paykit.PaymentRequestRecord]
+    func linkedPeers() async throws -> [Paykit.LinkedPeerRecord]
     func readPaymentRequests(counterparty: String, expectedIdentity: String?) async throws -> Paykit.PaymentRequestRead
     func processOutboundPrivateMessages(
         counterparty: String, priority: PaykitSdkOperationLock.Priority, expectedIdentity: String?
@@ -567,7 +568,8 @@ actor PaykitPaymentProofService {
 
     /// Authorizes Retry without checking, which re-sends the original payment once its request or quote may have expired: only
     /// expiry and the payment deadline are waived. The original payer must be signed in and the request's record read. A
-    /// request its payee canceled or rejected, or one already paid for this payment or billing period, is never paid again.
+    /// request its payee canceled or rejected, one from a blocked contact, or one already paid for this payment or billing
+    /// period, is never paid again.
     func authorizeUncheckedOnchainRecovery(_ attempt: OnchainSendAttempt, now: Date = Date()) async throws {
         guard let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity else {
             throw PaykitPaymentRequestError.requestUnavailable
@@ -590,7 +592,9 @@ actor PaykitPaymentProofService {
         {
             throw OnchainOriginalPaidError()
         }
-        guard record.state != .canceled, record.state != .rejected else { throw PaykitPaymentRequestError.requestUnavailable }
+        guard record.state != .canceled, record.state != .rejected, try await !sdk.linkedPeers().contains(where: {
+            $0.state == .blocked && PubkyPublicKeyFormat.matches($0.counterparty, requestId.counterparty)
+        }) else { throw PaykitPaymentRequestError.requestUnavailable }
         let request: PaykitPaymentRequest
         if let period = proof.billingPeriod {
             // A period of an active subscription that is due, whatever its own deadline.

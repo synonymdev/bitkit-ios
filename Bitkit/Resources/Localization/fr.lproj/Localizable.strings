@@ -1737,6 +1737,8 @@
 "wallet__onchain_cancelled_title" = "Paiement annulé";
 "wallet__onchain_cancelled_description" = "L'annulation a 6 confirmations. Les paiements on-chain sont de nouveau disponibles.";
 "wallet__onchain_cancel_final_held" = "L'annulation a 6 confirmations. Bitkit libère ce paiement à la prochaine synchronisation du portefeuille, et les autres paiements on-chain sont alors débloqués.";
+"wallet__onchain_cancel_not_seen" = "Le portefeuille s'est synchronisé et ne voit pas l'annulation : elle n'a peut-être pas atteint le réseau, par exemple parce que ses frais étaient trop bas. Les fonds du paiement restent protégés. Vous pouvez envoyer une nouvelle annulation avec des frais plus élevés.";
+"wallet__onchain_cancel_not_recorded" = "L'annulation plus rapide a été envoyée, mais Bitkit n'a pas pu l'enregistrer. Les fonds du paiement restent protégés, et le portefeuille la retrouvera à sa prochaine synchronisation.";
 "wallet__onchain_cancel_speed_up" = "Accélérer l'annulation";
 "wallet__onchain_cancel_speed_up_note" = "L'annulation attend encore sa confirmation. Remplacez-la par la même annulation à un taux de frais supérieur à ses {fee} sat/vB actuels, pour qu'elle soit confirmée plus vite. Les fonds de ce paiement reviennent toujours dans votre portefeuille.";
 "wallet__onchain_abandon_pending" = "L'annulation a été envoyée mais n'est pas encore confirmée. Les autres paiements on-chain seront débloqués dès qu'elle aura 6 confirmations. Si elle n'est pas confirmée, vous pourrez annuler à nouveau.";

@@ -2281,6 +2281,65 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertTrue(after.blocksNewSend, "The guard stays until a cancellation is final")
     }
 
+    func testASpedUpCancellationThatCannotBeSavedSaysSoAndKeepsTheEarlierOne() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        let original = try await dispatchedOriginal(service, store: store, sender: sender)
+        let cancelTxid = prepareCancellationReceipt(sender)
+        _ = try await service.cancelOriginalPayment(using: sender, context: pendingContext(original), satsPerVbyte: 5) {}
+        let held = try XCTUnwrap(store.snapshot().first)
+        sender.spends = try [OnchainInputSpend(txid: cancelTxid, inputs: XCTUnwrap(original.recoveryContext?.inputs),
+                                               outputAddresses: ["bcrt1qown", "bcrt1qchange"], isFinal: false, satsPerVbyte: 5)]
+
+        do {
+            _ = try await service.speedUpCancellation(using: sender, context: pendingContext(original), satsPerVbyte: 12) {
+                store.failSave = true
+            }
+            XCTFail("A bump that could not be saved must say so")
+        } catch is OnchainCancellationNotRecordedError {}
+
+        XCTAssertEqual(sender.bumps.count, 1, "The bump itself was sent")
+        store.failSave = false
+        XCTAssertEqual(store.snapshot(), [held], "The earlier cancellation stays recorded")
+    }
+
+    func testAHeldCancellationsExactFeeIsSavedOnceTheWalletHoldsIt() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        let original = try await dispatchedOriginal(service, store: store, sender: sender)
+        let cancelTxid = prepareCancellationReceipt(sender)
+        let before = UInt64(Date().timeIntervalSince1970)
+        _ = try await service.cancelOriginalPayment(using: sender, context: pendingContext(original), satsPerVbyte: 5) {}
+        let cancelled = try XCTUnwrap(store.snapshot().first)
+        XCTAssertGreaterThanOrEqual(cancelled.lastCancellationSentAt ?? 0, before)
+        let inputs = try XCTUnwrap(original.recoveryContext?.inputs)
+        sender.spends = [OnchainInputSpend(txid: cancelTxid, inputs: inputs, outputAddresses: ["bcrt1qown", "bcrt1qchange"],
+                                           isFinal: false, satsPerVbyte: 5)]
+        _ = try await service.speedUpCancellation(using: sender, context: pendingContext(original), satsPerVbyte: 12) {}
+        let sped = try XCTUnwrap(store.snapshot().first)
+        XCTAssertNil(sped.cancellationFeeSats, "ldk-node does not report the bump's fee")
+
+        // Another spend, or one whose fee is unknown, is not the recorded one.
+        for other in [
+            OnchainInputSpend(txid: cancelTxid, inputs: inputs, outputAddresses: ["bcrt1qown"], isFinal: false, feeSats: 900),
+            OnchainInputSpend(txid: sender.bumpedTxid, inputs: inputs, outputAddresses: ["bcrt1qown"], isFinal: false),
+        ] {
+            try await service.recordHeldCancellationFee(other, attemptId: original.id)
+            XCTAssertEqual(store.snapshot(), [sped])
+        }
+        try await service.recordHeldCancellationFee(
+            OnchainInputSpend(txid: sender.bumpedTxid.uppercased(), inputs: inputs, outputAddresses: ["bcrt1qown"], isFinal: false,
+                              feeSats: 1500, satsPerVbyte: 13),
+            attemptId: original.id
+        )
+        let recorded = try XCTUnwrap(store.snapshot().first)
+        XCTAssertEqual(recorded.cancellationFeeSats, 1500)
+        XCTAssertEqual(recorded.cancellationFeeRate, 13)
+        XCTAssertEqual(OnchainSendAttemptService.replacedFee(recorded).feeSats, 1500, "A new Cancel payment outbids the bump's fee")
+    }
+
     func testAConfirmationSeenWhileACancellationIsBroadcastWaitsForItsOutcome() async throws {
         let store = MemoryAttemptStore()
         let service = OnchainSendAttemptService(store: store)
@@ -2356,6 +2415,25 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertEqual(held.suggestedSpeedUpRate(normalRate: nil), 7)
         XCTAssertEqual(held.suggestedSpeedUpRate(normalRate: 25), 25)
         XCTAssertFalse(held.isFinalButHeld)
+
+        // A later read that finds nothing drops the held state. After a wallet sync since it was sent, the cancellation may
+        // never have reached the network, so a new one can be sent, while retries stay hidden in case it is elsewhere.
+        var dropped = held
+        dropped.read(nil, syncedSinceSent: false)
+        XCTAssertFalse(dropped.canSpeedUp(original))
+        XCTAssertTrue(dropped.canCancel(original))
+        XCTAssertFalse(dropped.mayNotHaveReachedNetwork)
+        dropped.read(nil, syncedSinceSent: true)
+        XCTAssertTrue(dropped.mayNotHaveReachedNetwork)
+        XCTAssertTrue(dropped.canCancel(original))
+        XCTAssertFalse(dropped.canRetry(original), "It may still confirm in another mempool")
+        XCTAssertFalse(dropped.canAbandon(original))
+        XCTAssertNil(dropped.record(.accepted(txid: String(repeating: "fd", count: 32)), feeRate: 9))
+        XCTAssertFalse(dropped.mayNotHaveReachedNetwork, "A new cancellation was just sent")
+        var unseen = OnchainCancellationState()
+        unseen.read(nil, syncedSinceSent: true)
+        XCTAssertTrue(unseen.canCancel(cancelled))
+        XCTAssertFalse(unseen.canRetry(cancelled))
 
         var final = OnchainCancellationState()
         final.found(OnchainInputSpend(txid: String(repeating: "fe", count: 32), inputs: recovery.inputs, outputAddresses: ["bcrt1qown"],

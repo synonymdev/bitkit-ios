@@ -38,12 +38,30 @@ struct OnchainCancellationState: Equatable {
     private(set) var heldFeeRate: UInt32?
     private(set) var hasUnknownOutcome = false
     private(set) var highestFeeRate: UInt32?
+    /// A wallet sync after the latest release or Cancel payment was sent did not find it. The node reports most refusals, such
+    /// as a fee too low, as an unknown outcome, so it may never have reached the network, or may sit in another mempool.
+    private(set) var mayNotHaveReachedNetwork = false
 
     mutating func found(_ spend: OnchainInputSpend) {
         txid = spend.txid
         isFinal = spend.isFinal
         isHeldByWallet = true
         heldFeeRate = spend.satsPerVbyte
+        mayNotHaveReachedNetwork = false
+    }
+
+    /// Applies a read of the wallet's cancellations: `spend` it holds, or none, after a wallet sync since the latest release or
+    /// Cancel payment was sent when `syncedSinceSent`. A cancellation that is no longer found is not held, so a new Cancel
+    /// payment can be built, but it may still confirm elsewhere, so retries stay hidden.
+    mutating func read(_ spend: OnchainInputSpend?, syncedSinceSent: Bool) {
+        if let spend {
+            found(spend)
+            return
+        }
+        isHeldByWallet = false
+        isFinal = false
+        heldFeeRate = nil
+        mayNotHaveReachedNetwork = syncedSinceSent
     }
 
     /// A cancellation refused before approval for paying too little must pay a higher rate than `rate`.
@@ -60,9 +78,11 @@ struct OnchainCancellationState: Equatable {
         switch result {
         case let .accepted(txid):
             self.txid = txid
+            mayNotHaveReachedNetwork = false
             return nil
         case .unknown:
             hasUnknownOutcome = true
+            mayNotHaveReachedNetwork = false
             return nil
         case .rejected:
             return earlierFailureMessage
@@ -298,7 +318,11 @@ struct SendPendingScreen: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 16)
                 }
-                if let attempt = recoverableAttempt, let txid = cancellation.sentTxid(for: attempt) {
+                if recoverableAttempt != nil, cancellation.mayNotHaveReachedNetwork {
+                    BodyMText(t("wallet__onchain_cancel_not_seen"))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 16)
+                } else if let attempt = recoverableAttempt, let txid = cancellation.sentTxid(for: attempt) {
                     BodyMText(t(cancellation.isFinalButHeld ? "wallet__onchain_cancel_final_held" : "wallet__onchain_cancel_pending"))
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 16)
@@ -544,7 +568,10 @@ struct SendPendingScreen: View {
             applyPendingResolutionIfNeeded(resolution)
         }
         .onReceive(activityList.activitiesChangedPublisher.receive(on: DispatchQueue.main)) { _ in
-            Task { await refreshVisibleOrdinaryOutcome() }
+            Task {
+                await refreshVisibleOrdinaryOutcome()
+                await showKnownCancellation()
+            }
         }
         .onReceive(OnchainSendAttemptService.localResolutionPublisher.receive(on: DispatchQueue.main)) { resolution in
             applyOrdinarySendResolution(resolution)
@@ -601,8 +628,6 @@ struct SendPendingScreen: View {
         }
     }
 
-    /// Without `reauthorize`, the user has accepted that the request or quote may have expired, so neither expiry nor the
-    /// payment deadline applies, but a request reported as already paid still refuses the re-send.
     @MainActor
     private func retryOriginalPayment(feeRate: UInt32, reauthorize: Bool) async {
         guard canRetryOriginal, !isRecoveryRunning, let original = recoverableAttempt else { return }
@@ -718,6 +743,9 @@ struct SendPendingScreen: View {
         } catch let error as OnchainCancellationFeeTooLowError {
             cancellation.outbid(rate: error.feeRate)
             app.toast(type: .error, title: t("common__error"), description: error.localizedDescription)
+        } catch let error as OnchainCancellationNotRecordedError {
+            cancellation.outbid(rate: feeRate)
+            app.toast(type: .warning, title: t("common__error"), description: error.localizedDescription)
         } catch {
             Logger.warn("The cancellation was not sped up: \(error)", context: "SendPendingScreen")
             app.toast(type: .error, title: t("common__error"), description: t("wallet__onchain_cancel_error"))
@@ -837,10 +865,19 @@ struct SendPendingScreen: View {
 
     @MainActor
     private func showKnownCancellation() async {
-        guard let attempt = recoverableAttempt,
-              let walletCancellation = try? await attemptService.cancellation(of: attempt, using: LightningService.shared)
-        else { return }
-        cancellation.found(walletCancellation)
+        guard let attempt = recoverableAttempt else { return }
+        let sentAt = attempt.lastCancellationSentAt
+        do {
+            let walletCancellation = try await attemptService.cancellation(of: attempt, using: LightningService.shared)
+            let latestSync = LightningService.shared.status?.latestOnchainWalletSyncTimestamp
+            let syncedSinceSent = attempt.mayHaveRelayedCancellation && sentAt.map { sent in latestSync.map { $0 > sent } ?? false } == true
+            cancellation.read(walletCancellation, syncedSinceSent: syncedSinceSent)
+            if let walletCancellation {
+                try? await attemptService.recordHeldCancellationFee(walletCancellation, attemptId: attempt.id)
+            }
+        } catch {
+            // A read that fails proves nothing, so what is known stays as it is.
+        }
     }
 
     @MainActor
