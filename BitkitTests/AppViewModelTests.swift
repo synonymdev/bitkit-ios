@@ -103,7 +103,7 @@ final class AppViewModelTests: XCTestCase {
     func testAUnifiedCodeWhoseAddressAnOnchainSendMayStillPayIsRefusedAtTheScan() async throws {
         let paymentHash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.expiredRegtestBolt11).paymentHash())
         let uri = "bitcoin:\(address)?amount=0.0001&lightning=\(Self.expiredRegtestBolt11)"
-        let held = makeApp(isHeldByOnchainSend: { $0 == paymentHash })
+        let held = makeApp(lightningHold: { $0 == paymentHash ? .held : .none })
         ToastWindowManager.shared.hideToast()
 
         try await held.handleScannedData(uri)
@@ -118,6 +118,109 @@ final class AppViewModelTests: XCTestCase {
         try await free.handleScannedData(uri)
         XCTAssertEqual(free.scannedOnchainInvoice?.address, address)
         XCTAssertFalse(free.didRejectScannedPayment)
+    }
+
+    func testAContactIsPaidOnchainAgainWhileItsReusableInvoiceIsHeldOrPending() async throws {
+        let paymentHash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.expiredRegtestBolt11).paymentHash())
+        // A Lightning payment to the contact's reusable invoice is pending, and an earlier on-chain payment to the contact holds it
+        let app = makeApp(
+            listPayments: { [Self.outboundBolt11Payment(paymentHash: paymentHash, status: .pending)] },
+            lightningHold: { _ in .held }
+        )
+        let endpoints = Self.contactEndpoints(address: address)
+        let context = ContactPaymentContext(publicKey: "contact", endpoints: endpoints)
+        XCTAssertTrue(app.claimContactPaymentContext(context))
+        ToastWindowManager.shared.hideToast()
+
+        try await app.handleScannedData(PublicPaykitService.paymentRequest(from: endpoints), claimedContactPaymentContext: context)
+
+        XCTAssertEqual(app.scannedOnchainInvoice?.address, address)
+        XCTAssertFalse(app.didRejectScannedPayment)
+        XCTAssertNil(ToastWindowManager.shared.currentToast)
+        XCTAssertNil(app.scannedLightningPaymentHash, "A contact's on-chain payment carries no invoice hash")
+        let onchainRefusal = await confirmRefusal(app)
+        XCTAssertNil(onchainRefusal)
+    }
+
+    func testAContactIsPaidOverLightningAgainAfterAnOnchainPayment() async {
+        let paymentHash = String(repeating: "ab", count: 32)
+        let app = makeApp(lightningHold: { _ in .held })
+        let context = ContactPaymentContext(publicKey: "contact", endpoints: Self.contactEndpoints(address: address))
+        XCTAssertTrue(app.claimContactPaymentContext(context))
+        setUnifiedSend(app, paymentHash: paymentHash)
+        app.selectedWalletToPayFrom = .lightning
+
+        XCTAssertFalse(app.tracksInvoiceAcrossRails)
+        let refusal = await SendConfirmationView.lightningDispatchRefusal(
+            walletType: .lightning,
+            paymentHash: app.tracksInvoiceAcrossRails ? app.scannedLightningInvoice?.paymentHash.hex : nil,
+            cameWithAddress: true,
+            lightningHold: app.lightningHold
+        )
+        XCTAssertNil(refusal)
+
+        // A scanned code with the same invoice is still one payment
+        app.resetSendState()
+        XCTAssertTrue(app.tracksInvoiceAcrossRails)
+    }
+
+    func testAQuickPayLedgerRecordCountsOnlyWhereTheNodeCannotShowItEnded() async {
+        let paymentHash = String(repeating: "ab", count: 32)
+        let cases: [(state: QuickPayOperationState, payments: [LDKNode.PaymentDetails]?, status: LightningPaymentStatus)] = [
+            (.recorded, [], .unpaid),
+            (.recorded, [Self.outboundBolt11Payment(paymentHash: paymentHash, status: .failed)], .unpaid),
+            (.recorded, [Self.outboundBolt11Payment(paymentHash: paymentHash, status: .pending)], .pending),
+            (.recorded, nil, .pending),
+            (.none, nil, .unknown),
+            (.live, [], .pending),
+        ]
+        for (index, entry) in cases.enumerated() {
+            let app = makeApp(listPayments: { entry.payments }, quickPayState: { _ in entry.state })
+
+            let status = await app.lightningPaymentStatus(paymentHash: paymentHash)
+
+            XCTAssertEqual(status, entry.status, "case \(index)")
+        }
+    }
+
+    func testAPendingRefusalOffersAPaymentRequestAgainButASucceededOneDoesNot() async throws {
+        let paymentHash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.expiredRegtestBolt11).paymentHash())
+        let uri = "bitcoin:\(address)?amount=0.0001&lightning=\(Self.expiredRegtestBolt11)"
+        for (status, isTransient) in [(PaymentStatus.pending, true), (.succeeded, false)] {
+            let app = makeApp(listPayments: { [Self.outboundBolt11Payment(paymentHash: paymentHash, status: status)] })
+
+            try await app.handleScannedData(uri)
+
+            XCTAssertTrue(app.didRejectScannedPayment, "\(status)")
+            XCTAssertEqual(app.isScannedPaymentRefusalTransient, isTransient, "\(status)")
+        }
+        let held = makeApp(lightningHold: { $0 == paymentHash ? .held : .none })
+        try await held.handleScannedData(uri)
+        XCTAssertTrue(held.isScannedPaymentRefusalTransient)
+    }
+
+    func testASendBeingDispatchedHoldsItsInvoiceOnTheOtherRail() async {
+        let paymentHash = String(repeating: "ab", count: 32)
+        let app = makeApp(listPayments: { [] })
+
+        let onchain = app.beginDispatch(paymentHash: paymentHash.uppercased(), walletType: .onchain)
+        let heldWhileOnchain = await app.lightningHold(paymentHash: paymentHash)
+        app.endDispatch(onchain)
+        let heldAfter = await app.lightningHold(paymentHash: paymentHash)
+        XCTAssertEqual(heldWhileOnchain, .held)
+        XCTAssertEqual(heldAfter, .none)
+
+        let lightning = app.beginDispatch(paymentHash: paymentHash, walletType: .lightning)
+        let statusWhileLightning = await app.lightningPaymentStatus(paymentHash: paymentHash)
+        app.endDispatch(lightning)
+        let statusAfter = await app.lightningPaymentStatus(paymentHash: paymentHash)
+        XCTAssertEqual(statusWhileLightning, .pending)
+        XCTAssertEqual(statusAfter, .unpaid)
+        XCTAssertNil(app.beginDispatch(paymentHash: nil, walletType: .onchain))
+    }
+
+    func testTheAutomaticConfirmShowsAnOnchainRefusalOnItsFailureScreen() {
+        XCTAssertEqual(sendFailureMessage(for: OnchainPaymentRefusal(.pending)), t("wallet__send_onchain_lightning_pending"))
     }
 
     func testAUnifiedCodeScannedBeforeTheNodeRunsIsPaidOnchainOnlyOnceTheNodeShowsItUnpaid() async throws {
@@ -165,21 +268,20 @@ final class AppViewModelTests: XCTestCase {
         await assertConfirmPaysTheAddressOnlyOnceItsLightningPaymentFailed(app, paymentHash: paymentHash, payments: payments)
     }
 
-    func testAHardwareSendToAContactKeepsTheContactsInvoiceForConfirmToCheck() async throws {
-        let paymentHash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.expiredRegtestBolt11).paymentHash())
-        // A contact whose invoice was published with a scheme, as some apps do
-        for bolt11 in [Self.expiredRegtestBolt11, "lightning:\(Self.expiredRegtestBolt11)", "LIGHTNING:\(Self.expiredRegtestBolt11)"] {
-            let payments = PaymentStore(payments: nil)
-            let app = makeApp(listPayments: { await payments.list() })
-            let context = ContactPaymentContext(publicKey: "contact", endpoints: Self.contactEndpoints(address: address, bolt11: bolt11))
-            XCTAssertTrue(app.claimContactPaymentContext(context))
+    func testAHardwareSendToAContactCarriesNoInvoiceHash() async throws {
+        let payments = PaymentStore(payments: [Self.outboundBolt11Payment(paymentHash: "unused", status: .pending)])
+        let app = makeApp(listPayments: { await payments.list() }, lightningHold: { _ in .held })
+        let context = ContactPaymentContext(publicKey: "contact", endpoints: Self.contactEndpoints(address: address))
+        XCTAssertTrue(app.claimContactPaymentContext(context))
 
-            try await app.handleScannedData(
-                PublicPaykitService.paymentRequest(from: context.endpoints), claimedContactPaymentContext: context, scope: .onchainPayments
-            )
+        try await app.handleScannedData(
+            PublicPaykitService.paymentRequest(from: context.endpoints), claimedContactPaymentContext: context, scope: .onchainPayments
+        )
 
-            await assertConfirmPaysTheAddressOnlyOnceItsLightningPaymentFailed(app, paymentHash: paymentHash, payments: payments)
-        }
+        XCTAssertEqual(app.scannedOnchainInvoice?.address, address)
+        XCTAssertNil(app.scannedLightningPaymentHash, "A contact's reusable invoice is not one payment with its address")
+        let refusal = await confirmRefusal(app)
+        XCTAssertNil(refusal)
     }
 
     func testAHardwareScanRefusesAnAddressWhoseInvoiceMayStillBePaidOrWas() async throws {
@@ -199,19 +301,6 @@ final class AppViewModelTests: XCTestCase {
 
             XCTAssertNil(unifiedCode.scannedOnchainInvoice, "\(status)")
             XCTAssertTrue(unifiedCode.didRejectScannedPayment, "\(status)")
-            XCTAssertEqual(ToastWindowManager.shared.currentToast?.accessibilityIdentifier, toast)
-
-            let contact = makeApp(listPayments: { await payments.list() })
-            let context = ContactPaymentContext(publicKey: "contact", endpoints: Self.contactEndpoints(address: address))
-            XCTAssertTrue(contact.claimContactPaymentContext(context))
-            ToastWindowManager.shared.hideToast()
-
-            try await contact.handleScannedData(
-                PublicPaykitService.paymentRequest(from: context.endpoints), claimedContactPaymentContext: context, scope: .onchainPayments
-            )
-
-            XCTAssertNil(contact.scannedOnchainInvoice, "\(status)")
-            XCTAssertTrue(contact.didRejectScannedPayment, "\(status)")
             XCTAssertEqual(ToastWindowManager.shared.currentToast?.accessibilityIdentifier, toast)
         }
     }
@@ -356,30 +445,6 @@ final class AppViewModelTests: XCTestCase {
         await payments.set([Self.outboundBolt11Payment(paymentHash: paymentHash, status: .pending)])
         let refusal = await confirmRefusal(app)
         XCTAssertEqual(refusal, .pending, "Confirm checks the kept hash again")
-    }
-
-    func testAContactWhoseInvoiceIsBeingPaidIsNotPaidOnchainAsWell() async throws {
-        let paymentHash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.expiredRegtestBolt11).paymentHash())
-        let payments = PaymentStore(payments: [Self.outboundBolt11Payment(paymentHash: paymentHash, status: .pending)])
-        let app = makeApp(listPayments: { await payments.list() })
-        let endpoints = Self.contactEndpoints(address: address)
-
-        let context = ContactPaymentContext(publicKey: "contact", endpoints: endpoints)
-        XCTAssertTrue(app.claimContactPaymentContext(context))
-        try await app.handleScannedData(PublicPaykitService.paymentRequest(from: endpoints), claimedContactPaymentContext: context)
-
-        XCTAssertNil(app.scannedOnchainInvoice)
-        XCTAssertEqual(ToastWindowManager.shared.currentToast?.accessibilityIdentifier, "LightningPaymentPendingToast")
-
-        await payments.set([Self.outboundBolt11Payment(paymentHash: paymentHash, status: .failed)])
-        ToastWindowManager.shared.hideToast()
-        app.resetSendState()
-        let retry = ContactPaymentContext(publicKey: "contact", endpoints: endpoints)
-        XCTAssertTrue(app.claimContactPaymentContext(retry))
-        try await app.handleScannedData(PublicPaykitService.paymentRequest(from: endpoints), claimedContactPaymentContext: retry)
-
-        XCTAssertEqual(app.scannedOnchainInvoice?.address, address)
-        XCTAssertEqual(app.scannedLightningPaymentHash, paymentHash)
     }
 
     func testALightningPaymentStatusIsTheNodesOutboundPaymentOfTheInvoice() async {
@@ -560,7 +625,8 @@ final class AppViewModelTests: XCTestCase {
     private func makeApp(
         listPayments: @escaping () async -> [LDKNode.PaymentDetails]? = { [] },
         nodeId: @escaping () -> String? = { nil },
-        isHeldByOnchainSend: @escaping (String) async -> Bool = { _ in false }
+        lightningHold: @escaping (String) async -> OnchainLightningHold = { _ in .none },
+        quickPayState: @escaping @MainActor (String) -> QuickPayOperationState = { _ in .none }
     ) -> AppViewModel {
         AppViewModel(
             sheetViewModel: SheetViewModel(),
@@ -578,7 +644,8 @@ final class AppViewModelTests: XCTestCase {
                 canSendLightning: { _ in false },
                 listPayments: listPayments,
                 nodeId: nodeId,
-                isHeldByOnchainSend: isHeldByOnchainSend
+                lightningHold: lightningHold,
+                quickPayState: quickPayState
             )
         )
     }

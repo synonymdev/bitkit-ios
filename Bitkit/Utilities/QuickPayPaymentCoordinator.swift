@@ -2,6 +2,12 @@ import BitkitCore
 import Foundation
 import LDKNode
 
+enum QuickPayOperationState: Equatable {
+    case none
+    case recorded
+    case live
+}
+
 @MainActor
 final class QuickPayPaymentCoordinator {
     static let shared = QuickPayPaymentCoordinator()
@@ -47,7 +53,8 @@ final class QuickPayPaymentCoordinator {
     private let store: QuickPaySpendStore
     private let sendBolt11: (String) async throws -> String
     private let fetchLnurlInvoice: (LnurlPayData) async throws -> String
-    private let isHeldByOnchainSend: (_ paymentHash: String) async -> Bool
+    /// Nil reads the hold through the send's app state.
+    private let lightningHold: ((_ paymentHash: String) async -> OnchainLightningHold)?
     private let listRows: () async throws -> [QuickPayReconcileRow]?
 
     private var operations: [String: InFlightOp] = [:]
@@ -66,7 +73,7 @@ final class QuickPayPaymentCoordinator {
         store: QuickPaySpendStore = .shared,
         sendBolt11: ((String) async throws -> String)? = nil,
         fetchLnurlInvoice: ((LnurlPayData) async throws -> String)? = nil,
-        isHeldByOnchainSend: ((_ paymentHash: String) async -> Bool)? = nil,
+        lightningHold: ((_ paymentHash: String) async -> OnchainLightningHold)? = nil,
         listRows: (() async throws -> [QuickPayReconcileRow]?)? = nil
     ) {
         self.store = store
@@ -76,12 +83,20 @@ final class QuickPayPaymentCoordinator {
         self.fetchLnurlInvoice = fetchLnurlInvoice ?? { data in
             try await LnurlHelper.fetchLnurlInvoice(data: data, amountMsats: data.callbackAmountMsats())
         }
-        self.isHeldByOnchainSend = isHeldByOnchainSend ?? { paymentHash in
-            await OnchainSendAttemptService.shared.holdsLightningPayment(paymentHash: paymentHash)
-        }
+        self.lightningHold = lightningHold
         self.listRows = listRows ?? {
             await LightningService.shared.listPayments()?.map(QuickPayReconcileRow.init)
         }
+    }
+
+    /// Where the QuickPay of the invoice with this hash stands: run by this process, only recorded in the spend ledger (which
+    /// survives a crash, sent or not), or neither.
+    func operationState(paymentHash: String) -> QuickPayOperationState {
+        guard !paymentHash.isEmpty else { return .none }
+        if operations[paymentHash] != nil {
+            return .live
+        }
+        return store.record(matching: paymentHash) != nil ? .recorded : .none
     }
 
     func hasOpen(_ paymentHash: String) -> Bool {
@@ -299,7 +314,11 @@ final class QuickPayPaymentCoordinator {
         }
 
         // An on-chain send to the address that came with this invoice already pays it, so it is never paid over Lightning too
-        if let refusal = await LightningPaymentHeldRefusal.check(paymentHash: invoiceHash, isHeldByOnchainSend: isHeldByOnchainSend) {
+        if let refusal = await LightningPaymentHeldRefusal.check(
+            paymentHash: app.tracksInvoiceAcrossRails ? invoiceHash : nil,
+            cameWithAddress: app.scannedOnchainInvoice != nil,
+            lightningHold: lightningHold ?? app.lightningHold
+        ) {
             guard generation == self.generation, app.sendStateGeneration == sendStateGeneration else { return }
             fail(presentation, error: refusal, bolt11: bolt11)
             return

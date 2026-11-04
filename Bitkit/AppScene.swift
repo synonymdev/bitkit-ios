@@ -1777,7 +1777,8 @@ struct AppScene: View {
                         let setupTime = ProcessInfo.processInfo.systemUptime - started - resolvedAfter
                         Logger.debug("Paykit request preparation: resolveMs=\(Int(resolvedAfter * 1000)) setupMs=\(Int(setupTime * 1000))")
                         guard PaymentNavigationHelper.appropriateSendRoute(app: app, currency: currency, settings: settings) != nil else {
-                            if app.didRejectScannedPayment {
+                            // A refusal that may end otherwise, such as a pending payment, offers the request again later
+                            if app.didRejectScannedPayment, !app.isScannedPaymentRefusalTransient {
                                 PaykitPaymentRequestPresentationCoordinator.handleUnavailablePaymentRoute(
                                     request,
                                     app: app,

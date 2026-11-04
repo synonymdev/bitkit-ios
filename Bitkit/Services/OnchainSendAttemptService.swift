@@ -295,6 +295,8 @@ struct OnchainSendAttempt: Codable, Equatable {
     /// The hash of the Lightning invoice the address came with, whose payment every re-send checks again. An attempt saved or
     /// backed up before the hash was kept carries none.
     var lightningPaymentHash: String? = nil
+    /// When that invoice expires, in seconds since 1970, after which it can no longer be paid over Lightning.
+    var lightningInvoiceExpiresAt: UInt64? = nil
 
     var blocksNewSend: Bool {
         status.blocksNewSend || !localFollowupComplete
@@ -443,6 +445,44 @@ struct OnchainSendLocalFollowup: OnchainSendLocalFollowupHandling {
     }
 }
 
+/// A Lightning invoice whose address an on-chain send paid, kept after that send is replaced so the invoice is never paid over
+/// Lightning as well. Kept until the invoice expired, plus a margin; without a known expiry it is kept.
+struct HeldLightningInvoice: Codable, Equatable {
+    static let expiryMarginSeconds: UInt64 = 3600
+
+    let paymentHash: String
+    let expiresAt: UInt64?
+
+    func hasExpired(at now: Date) -> Bool {
+        guard let expiresAt else { return false }
+        return UInt64(max(0, now.timeIntervalSince1970)) > expiresAt.addingReportingOverflow(Self.expiryMarginSeconds).partialValue
+    }
+}
+
+/// Whether an on-chain send holds a Lightning invoice, so paying it over Lightning would pay it twice.
+enum OnchainLightningHold: Equatable {
+    case none
+    case held
+    /// The on-chain payment records cannot be read, so nothing shows that the invoice is free
+    case unreadable
+}
+
+protocol OnchainLightningHoldStoring: Sendable {
+    func load() throws -> [HeldLightningInvoice]
+    func save(_ holds: [HeldLightningInvoice]) throws
+}
+
+struct OnchainLightningHoldStore: OnchainLightningHoldStoring {
+    func load() throws -> [HeldLightningInvoice] {
+        guard let data = try Keychain.load(key: .onchainLightningHolds) else { return [] }
+        return try JSONDecoder().decode([HeldLightningInvoice].self, from: data)
+    }
+
+    func save(_ holds: [HeldLightningInvoice]) throws {
+        try Keychain.upsert(key: .onchainLightningHolds, data: JSONEncoder().encode(holds))
+    }
+}
+
 protocol OnchainSendAttemptStoring: Sendable {
     func load() throws -> [OnchainSendAttempt]
     func save(_ attempts: [OnchainSendAttempt]) throws
@@ -524,6 +564,8 @@ actor OnchainSendAttemptService {
     private let localFollowup: any OnchainSendLocalFollowupHandling
     private let winningFee: (OnchainSendAttempt) async throws -> UInt64?
     private let store: any OnchainSendAttemptStoring
+    private let lightningHolds: any OnchainLightningHoldStoring
+    private let now: @Sendable () -> Date
     private var knownAttempt: OnchainSendAttempt?
     private var nativeDispatchInProgress: UUID?
     private var requestFollowupInProgress: UUID?
@@ -532,11 +574,15 @@ actor OnchainSendAttemptService {
     init(
         store: any OnchainSendAttemptStoring = OnchainSendAttemptStore(),
         localFollowup: any OnchainSendLocalFollowupHandling = OnchainSendLocalFollowup(),
-        winningFee: @escaping (OnchainSendAttempt) async throws -> UInt64? = OnchainSendLocalFollowup.observedFee
+        winningFee: @escaping (OnchainSendAttempt) async throws -> UInt64? = OnchainSendLocalFollowup.observedFee,
+        lightningHolds: any OnchainLightningHoldStoring = OnchainLightningHoldStore(),
+        now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.localFollowup = localFollowup
         self.winningFee = winningFee
         self.store = store
+        self.lightningHolds = lightningHolds
+        self.now = now
     }
 
     func backupSnapshot(wallet: PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet,
@@ -576,6 +622,7 @@ actor OnchainSendAttemptService {
             guard previous == incoming else { throw OnchainSendAttemptError.unresolved }
             return
         }
+        try retainLightningHold(of: currentAttempt())
         var restored = attempt
         restored?.restoredFromBackup = true
         try store.save(restored.map { [$0] } ?? [])
@@ -593,6 +640,7 @@ actor OnchainSendAttemptService {
         orderId: String? = nil,
         paymentIdentity: String? = nil,
         lightningPaymentHash: String? = nil,
+        lightningInvoiceExpiresAt: UInt64? = nil,
         followupContext: OnchainSendFollowupContext? = nil,
         transferContext: OnchainSendTransferContext? = nil,
         paymentDeadline: PaykitPreciseInstant? = nil,
@@ -617,6 +665,7 @@ actor OnchainSendAttemptService {
             amountSats: amountSats,
             isMaxAmount: isMaxAmount,
             lightningPaymentHash: lightningPaymentHash,
+            lightningInvoiceExpiresAt: lightningInvoiceExpiresAt,
             followupContext: followupContext,
             transferContext: transferContext
         )
@@ -874,6 +923,7 @@ actor OnchainSendAttemptService {
         amountSats: UInt64,
         isMaxAmount: Bool,
         lightningPaymentHash: String? = nil,
+        lightningInvoiceExpiresAt: UInt64? = nil,
         followupContext: OnchainSendFollowupContext? = nil,
         transferContext: OnchainSendTransferContext? = nil
     ) throws -> UUID {
@@ -885,6 +935,8 @@ actor OnchainSendAttemptService {
             guard !(requestId != nil && previous.requestId == requestId),
                   !(orderId != nil && previous.orderId == orderId)
             else { throw OnchainSendAttemptError.duplicate }
+            do { try retainLightningHold(of: previous) }
+            catch { throw OnchainSendAttemptError.unresolved }
         }
         let attempt = OnchainSendAttempt(
             id: UUID(),
@@ -897,7 +949,8 @@ actor OnchainSendAttemptService {
             status: .pending,
             followupContext: followupContext,
             transferContext: transferContext,
-            lightningPaymentHash: lightningPaymentHash
+            lightningPaymentHash: lightningPaymentHash,
+            lightningInvoiceExpiresAt: lightningPaymentHash == nil ? nil : lightningInvoiceExpiresAt
         )
         try store.save([attempt])
         knownAttempt = attempt
@@ -1170,15 +1223,47 @@ actor OnchainSendAttemptService {
         try currentAttempt()?.requestId == requestId
     }
 
-    /// Whether the current on-chain send pays an address that came with the Lightning invoice of this hash, so paying the invoice
-    /// would pay twice once that transaction confirms. An attempt store that cannot be read holds every invoice.
-    func holdsLightningPayment(paymentHash: String) -> Bool {
+    /// Whether an on-chain send paid, or may still pay, an address that came with the Lightning invoice of this hash, so paying the
+    /// invoice would pay twice: the current attempt, whatever its status, or an earlier dispatched one whose invoice has not expired.
+    func lightningHold(paymentHash: String) -> OnchainLightningHold {
         do {
-            guard let attempt = try currentAttempt(), let held = attempt.lightningPaymentHash else { return false }
-            return held.caseInsensitiveCompare(paymentHash) == .orderedSame
+            if let held = try currentAttempt()?.lightningPaymentHash, held.caseInsensitiveCompare(paymentHash) == .orderedSame {
+                return .held
+            }
+            let date = now()
+            let holds = try lightningHolds.load()
+            return holds.contains { !$0.hasExpired(at: date) && $0.paymentHash.caseInsensitiveCompare(paymentHash) == .orderedSame }
+                ? .held : .none
         } catch {
-            return true
+            return .unreadable
         }
+    }
+
+    /// The invoices earlier dispatched sends hold, for the backup.
+    func lightningHoldsBackup() throws -> [HeldLightningInvoice] {
+        let date = now()
+        return try lightningHolds.load().filter { !$0.hasExpired(at: date) }
+    }
+
+    /// Adds the backup's held invoices to the local ones, so a restored wallet still refuses to pay them over Lightning.
+    func restoreLightningHolds(_ restored: [HeldLightningInvoice]) throws {
+        let date = now()
+        var holds = try lightningHolds.load().filter { !$0.hasExpired(at: date) }
+        for hold in restored where !hold.hasExpired(at: date) && !holds.contains(hold) {
+            holds.append(hold)
+        }
+        try lightningHolds.save(holds)
+    }
+
+    /// Keeps the invoice of an attempt that went out before it is replaced or removed, as its transaction may still pay it.
+    private func retainLightningHold(of attempt: OnchainSendAttempt?) throws {
+        guard let attempt, let paymentHash = attempt.lightningPaymentHash, attempt.txid != nil else { return }
+        let date = now()
+        var holds = try lightningHolds.load().filter { !$0.hasExpired(at: date) }
+        let hold = HeldLightningInvoice(paymentHash: paymentHash.lowercased(), expiresAt: attempt.lightningInvoiceExpiresAt)
+        guard !holds.contains(hold) else { return }
+        holds.append(hold)
+        try lightningHolds.save(holds)
     }
 
     private func currentAttemptForPending() throws -> OnchainSendAttempt? {

@@ -1270,6 +1270,7 @@
 "wallet__send_onchain_lightning_paid" = "Płatność Lightning tej faktury już się powiodła, więc Bitkit nie zapłaci jej ponownie on-chain.";
 "wallet__send_onchain_lightning_unknown" = "Bitkit musi sprawdzić płatność Lightning tej faktury przed zapłaceniem jej on-chain. Spróbuj ponownie po uruchomieniu portfela albo zapłać tylko na sam adres.";
 "wallet__send_lightning_onchain_pending" = "Płatność on-chain na adres tej faktury może zostać jeszcze potwierdzona. Aby nie zapłacić jej dwa razy, Bitkit nie zapłaci faktury przez Lightning.";
+"wallet__send_lightning_onchain_unreadable" = "Bitkit nie może odczytać swoich zapisów płatności on-chain, więc nie wie, czy adres tej faktury został już opłacony. Spróbuj później albo zapłać fakturę bez adresu.";
 "wallet__send_instant_failed" = "Natychmiastowa płatność nie powiodła się";
 "wallet__send_regular" = "Regularna płatność";
 "wallet__send_error_slash_ln" = "Nie udało się wykonać szybkiej płatności. Możesz spróbować regularnej płatności (droższej, wolniejszej).";

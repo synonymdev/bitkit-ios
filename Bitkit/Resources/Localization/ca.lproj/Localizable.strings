@@ -1153,6 +1153,7 @@
 "wallet__send_onchain_lightning_paid" = "Un pagament Lightning d'aquesta factura ja s'ha completat, així que Bitkit no la tornarà a pagar en cadena.";
 "wallet__send_onchain_lightning_unknown" = "Bitkit ha de comprovar el pagament Lightning d'aquesta factura abans de pagar-la en cadena. Torna-ho a provar quan el moneder s'hagi iniciat, o paga només l'adreça.";
 "wallet__send_lightning_onchain_pending" = "Un pagament en cadena a l'adreça d'aquesta factura encara es pot confirmar. Per evitar pagar-la dues vegades, Bitkit no pagarà la factura per Lightning.";
+"wallet__send_lightning_onchain_unreadable" = "Bitkit no pot llegir els seus registres de pagaments en cadena, així que no pot saber si l'adreça d'aquesta factura ja s'ha pagat. Torna-ho a provar més tard o paga una factura sense adreça.";
 "wallet__send_instant_failed" = "Pagament Instantani Fallit";
 "wallet__send_regular" = "Pagament regular";
 "wallet__send_error_slash_ln" = "Desafortunadament, el contacte no es pot pagar instantàniament. Podeu provar un pagament regular (més car, més lent).";

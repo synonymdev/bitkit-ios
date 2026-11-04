@@ -900,7 +900,7 @@ struct SendConfirmationView: View {
             }
         }
 
-        try await refuseDoublePayment()
+        try await refuseDoublePayment(isAutomatic: isAutomatic)
 
         // Validate payment and show warnings if needed
         let warnings = await validatePayment()
@@ -957,11 +957,20 @@ struct SendConfirmationView: View {
 
         guard app.selectedWalletToPayFrom == reviewedWalletType else { throw CancellationError() }
         // Checked again after the warnings and authentication, right before the payment is sent or signed
-        try await refuseDoublePayment()
+        try await refuseDoublePayment(isAutomatic: isAutomatic)
+        guard app.selectedWalletToPayFrom == reviewedWalletType else { throw CancellationError() }
 
         if hwSend.isActive {
             navigationPath.append(.hardwareSign)
         } else {
+            // Registered in the same turn as the check, so a check on the other rail sees this send before it leaves a record
+            let dispatching = app.beginDispatch(
+                paymentHash: reviewedWalletType == .lightning
+                    ? (app.tracksInvoiceAcrossRails ? app.scannedLightningInvoice?.paymentHash.hex : nil)
+                    : app.scannedLightningPaymentHash,
+                walletType: reviewedWalletType
+            )
+            defer { app.endDispatch(dispatching) }
             try await performPayment(isAutomatic: isAutomatic)
         }
     }
@@ -985,35 +994,43 @@ struct SendConfirmationView: View {
         isFeeRateMissing && !feeRateLoadFailed
     }
 
-    /// Refuses a payment that would pay a unified invoice twice: its address while a Lightning payment of it may still complete or
-    /// did, or the invoice while an on-chain send to its address may still confirm or did. The swipe resets and the sheet stays.
-    private func refuseDoublePayment() async throws {
+    private func refuseDoublePayment(isAutomatic: Bool) async throws {
         if let refusal = await Self.onchainDispatchRefusal(
             walletType: app.selectedWalletToPayFrom,
             lightningPaymentHash: app.scannedLightningPaymentHash,
             lightningPaymentStatus: app.lightningPaymentStatus
         ) {
+            // The automatic start shows its failure screen with the refusal; a swipe resets with a toast and the sheet stays
+            if isAutomatic {
+                throw refusal
+            }
             app.showOnchainPaymentRefusal(refusal)
             throw CancellationError()
         }
         if let refusal = await Self.lightningDispatchRefusal(
             walletType: app.selectedWalletToPayFrom,
-            paymentHash: app.scannedLightningInvoice?.paymentHash.hex,
-            isHeldByOnchainSend: app.isHeldByOnchainSend
+            paymentHash: app.tracksInvoiceAcrossRails ? app.scannedLightningInvoice?.paymentHash.hex : nil,
+            cameWithAddress: app.scannedOnchainInvoice != nil,
+            lightningHold: app.lightningHold
         ) {
+            if isAutomatic {
+                throw refusal
+            }
             app.showLightningPaymentHeldRefusal(refusal)
             throw CancellationError()
         }
     }
 
-    /// What stops paying a Lightning invoice, or nil when nothing does: an on-chain send to the address that came with it.
+    /// What stops paying a Lightning invoice, or nil when nothing does: an on-chain send to the address that came with it, or
+    /// on-chain records that cannot be read when the invoice came with an address.
     static func lightningDispatchRefusal(
         walletType: WalletType,
         paymentHash: String?,
-        isHeldByOnchainSend: (_ paymentHash: String) async -> Bool
+        cameWithAddress: Bool,
+        lightningHold: (_ paymentHash: String) async -> OnchainLightningHold
     ) async -> LightningPaymentHeldRefusal? {
         guard walletType == .lightning else { return nil }
-        return await LightningPaymentHeldRefusal.check(paymentHash: paymentHash, isHeldByOnchainSend: isHeldByOnchainSend)
+        return await LightningPaymentHeldRefusal.check(paymentHash: paymentHash, cameWithAddress: cameWithAddress, lightningHold: lightningHold)
     }
 
     /// What stops paying a unified invoice's address, or nil when nothing does. Paying it while a Lightning payment of the invoice
@@ -1416,6 +1433,7 @@ struct SendConfirmationView: View {
                 }
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                 let lightningPaymentHash = app.scannedLightningPaymentHash
+                let lightningInvoiceExpiresAt = app.scannedLightningInvoiceExpiresAt
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 wallet.sendAmountSats = amount
                 let useMaxAmount = await shouldUseMaxOnchainSend(address: invoice.address, amountSats: amount)
@@ -1448,6 +1466,7 @@ struct SendConfirmationView: View {
                             isMaxAmount: useMaxAmount,
                             requestId: incomingPaymentRequest?.id, paymentIdentity: originalPaymentIdentity,
                             lightningPaymentHash: lightningPaymentHash,
+                            lightningInvoiceExpiresAt: lightningInvoiceExpiresAt,
                             followupContext: OnchainSendFollowupContext(
                                 feeSats: UInt64(transactionFee), feeRate: wallet.selectedFeeRateSatsPerVByte ?? 1,
                                 tags: tagManager.selectedTagsArray, contact: contactPublicKey,

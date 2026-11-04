@@ -394,8 +394,6 @@ struct SendSheet: View {
         )
     }
 
-    /// Identity for checking the Lightning payment of the invoice the send's address came with. The node's payment store cannot
-    /// be read before the node runs, so the check runs again once it does.
     private struct LightningPaymentCheck: Equatable {
         let paymentHash: String?
         let isNodeRunning: Bool
@@ -585,7 +583,6 @@ struct SendSheet: View {
         endQuickPay()
     }
 
-    /// Ends the send's QuickPay, so a QuickPay screen shown next starts a new payment and the sync wait may stand in again
     private func endQuickPay() {
         app.resetQuickPay()
         QuickPayPaymentCoordinator.shared.detach()
@@ -933,8 +930,6 @@ struct SendSheet: View {
         return .ready
     }
 
-    /// The address of a unified invoice is not paid while a Lightning payment of the invoice may still complete, or once it did,
-    /// as the invoice would then be paid twice.
     private func fallBackToOnchainCheckingLightningPayment(
         from lightningInvoice: LightningInvoice,
         to onchainInvoice: OnChainInvoice,

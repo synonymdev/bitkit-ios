@@ -10,6 +10,31 @@ struct PaykitPaymentStateBackup: Codable {
     var acceptedOneTimeRequests: [String: [RequestID]]? = nil
     /// Local allowance state by identity, so a restored wallet keeps its USD labels and can still verify open attempts.
     var allowances: PaykitAllowanceStateBackups? = nil
+    /// Lightning invoices whose address an earlier on-chain send paid, so a restored wallet never pays them over Lightning.
+    /// Readers that predate this key restore without them.
+    var heldLightningInvoices: [HeldLightningInvoiceRecord]? = nil
+
+    struct HeldLightningInvoiceRecord: Codable {
+        let paymentHash: String
+        /// Seconds since 1970 as an integer string, or nil when the invoice's expiry is unknown
+        let expiresAt: String?
+
+        init(_ hold: HeldLightningInvoice) {
+            paymentHash = hold.paymentHash.lowercased()
+            expiresAt = hold.expiresAt.map(String.init)
+        }
+
+        func restored() throws -> HeldLightningInvoice {
+            guard paymentHash.count == 64, paymentHash.allSatisfy({ "0123456789abcdef".contains($0) }) else {
+                throw invalidBackup("Invalid held Lightning payment hash")
+            }
+            let expiry = try expiresAt.map { value -> UInt64 in
+                guard let seconds = UInt64(value), String(seconds) == value else { throw invalidBackup("Invalid held invoice expiry") }
+                return seconds
+            }
+            return HeldLightningInvoice(paymentHash: paymentHash, expiresAt: expiry)
+        }
+    }
 
     struct RequestID: Codable {
         let paymentRequestId: String
@@ -226,6 +251,8 @@ struct PaykitPaymentStateBackup: Codable {
         /// The hash of the Lightning invoice the address came with, which a re-send after a restore checks again. Readers that
         /// predate this key restore the attempt without it.
         let lightningPaymentHash: String?
+        /// When that invoice expires, as an integer string of seconds since 1970.
+        let lightningInvoiceExpiresAt: String?
         let followup: Followup?
         let transfer: Transfer?
 
@@ -264,6 +291,7 @@ struct PaykitPaymentStateBackup: Codable {
             }
             feeRateSatsPerVByte = String(attempt.recoveryContext?.satsPerVbyte ?? attempt.followupContext?.feeRate ?? 0)
             lightningPaymentHash = attempt.lightningPaymentHash?.lowercased()
+            lightningInvoiceExpiresAt = attempt.lightningPaymentHash == nil ? nil : attempt.lightningInvoiceExpiresAt.map(String.init)
             guard attempt.followupContext?.createdAt.multipliedReportingOverflow(by: 1000).overflow != true else {
                 throw invalidBackup("Invalid local follow-up timestamp")
             }
@@ -330,6 +358,7 @@ struct PaykitPaymentStateBackup: Codable {
                 throw invalidBackup("Conflicting original candidate fee rate")
             }
             guard lightningPaymentHash.map(validTxid) != false else { throw invalidBackup("Invalid Lightning payment hash") }
+            let invoiceExpiresAt: UInt64? = try lightningPaymentHash == nil ? nil : lightningInvoiceExpiresAt.map { try number($0) }
             let restoredRequest = try requestId.map { value in
                 let date = try value.billingPeriodStartsAt.map { try parseTimestamp($0).date }
                 return PaykitPaymentRequest.ID(paymentRequestId: value.paymentRequestId, counterparty: value.counterparty,
@@ -375,7 +404,7 @@ struct PaykitPaymentStateBackup: Codable {
                                                                                          paymentIdentity: payerIdentity,
                                                                                          candidateTxids: candidateTxids, candidateFeeRates: rates,
                                                                                          candidateFeeSats: miningFees),
-                                             lightningPaymentHash: lightningPaymentHash)
+                                             lightningPaymentHash: lightningPaymentHash, lightningInvoiceExpiresAt: invoiceExpiresAt)
             return (attempt, restoredProofs)
         }
 

@@ -12,6 +12,10 @@ func sendFailureMessage(for error: Error) -> String {
         return refusal.description
     }
 
+    if let refusal = error as? OnchainPaymentRefusal {
+        return refusal.description
+    }
+
     if let reason = (error as? AppError)?.paymentFailureReason {
         return PaymentFailureReason.userMessage(for: reason)
     }

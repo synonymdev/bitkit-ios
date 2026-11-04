@@ -174,29 +174,50 @@ struct OnchainPaymentRefusal: LocalizedError {
 
 /// Refuses paying a Lightning invoice while an on-chain send to the address that came with it may still confirm, or did.
 struct LightningPaymentHeldRefusal: LocalizedError {
+    enum Reason: Equatable {
+        /// An on-chain send to the address that came with the invoice may still confirm, or did
+        case onchainSend
+        /// The on-chain payment records cannot be read, so nothing shows that the address was not paid
+        case unreadableRecords
+    }
+
+    let reason: Reason
+
     var title: String {
         t("common__error")
     }
 
     var description: String {
-        t("wallet__send_lightning_onchain_pending")
+        switch reason {
+        case .onchainSend: t("wallet__send_lightning_onchain_pending")
+        case .unreadableRecords: t("wallet__send_lightning_onchain_unreadable")
+        }
     }
 
     var accessibilityIdentifier: String {
-        "OnchainPaymentPendingToast"
+        switch reason {
+        case .onchainSend: "OnchainPaymentPendingToast"
+        case .unreadableRecords: "OnchainRecordsUnreadableToast"
+        }
     }
 
     var errorDescription: String? {
         description
     }
 
-    /// The refusal for paying this invoice over Lightning, or nil when no on-chain send holds it.
+    /// The refusal for paying this invoice over Lightning, or nil when nothing holds it. Records that cannot be read hold only an
+    /// invoice that came with an on-chain address, which is the one an on-chain send could have paid.
     static func check(
         paymentHash: String?,
-        isHeldByOnchainSend: (_ paymentHash: String) async -> Bool
+        cameWithAddress: Bool,
+        lightningHold: (_ paymentHash: String) async -> OnchainLightningHold
     ) async -> LightningPaymentHeldRefusal? {
-        guard let paymentHash, await isHeldByOnchainSend(paymentHash) else { return nil }
-        return LightningPaymentHeldRefusal()
+        guard let paymentHash else { return nil }
+        switch await lightningHold(paymentHash) {
+        case .none: return nil
+        case .held: return LightningPaymentHeldRefusal(reason: .onchainSend)
+        case .unreadable: return cameWithAddress ? LightningPaymentHeldRefusal(reason: .unreadableRecords) : nil
+        }
     }
 }
 
@@ -217,9 +238,14 @@ struct ScanPaymentOperations {
     var listPayments: () async -> [PaymentDetails]? = { await LightningService.shared.listPayments() }
     /// This node's id, or nil before the node is built.
     var nodeId: () -> String? = { LightningService.shared.nodeId }
-    /// Whether an on-chain send to the address that came with the Lightning invoice of this hash may still confirm, or did.
-    var isHeldByOnchainSend: (_ paymentHash: String) async -> Bool = {
-        await OnchainSendAttemptService.shared.holdsLightningPayment(paymentHash: $0)
+    /// Whether an on-chain send paid, or may still pay, the address that came with the Lightning invoice of this hash.
+    var lightningHold: (_ paymentHash: String) async -> OnchainLightningHold = {
+        await OnchainSendAttemptService.shared.lightningHold(paymentHash: $0)
+    }
+
+    /// Where the QuickPay of the invoice with this hash stands in this process and its ledger.
+    var quickPayState: @MainActor (_ paymentHash: String) -> QuickPayOperationState = {
+        QuickPayPaymentCoordinator.shared.operationState(paymentHash: $0)
     }
 
     @MainActor
@@ -277,6 +303,10 @@ class AppViewModel: ObservableObject {
     /// Whether the scanned address is held back for the Lightning payment of the invoice it came with.
     @Published private(set) var isScannedAddressBlocked = false
     private(set) var didRejectScannedPayment = false
+    /// Whether the scan was refused for a payment that may still end otherwise, so a payment request is offered again later.
+    private(set) var isScannedPaymentRefusalTransient = false
+    private var dispatchingPayments: [String: WalletType] = [:]
+    @Published private(set) var scannedAddressInvoiceExpiresAt: UInt64?
     @Published var paykitUsesUsdt = false
     @Published var paykitReviewedAmount: PaykitAmount?
     @Published var paykitPaymentTerms: PaykitRequestPricing.Payment?
@@ -291,7 +321,25 @@ class AppViewModel: ObservableObject {
 
     /// The hash of the Lightning invoice this send's address came with, whether or not the send may still pay the invoice.
     var scannedLightningPaymentHash: String? {
-        scannedLightningInvoice?.paymentHash.hex ?? scannedAddressPaymentHash
+        guard tracksInvoiceAcrossRails else { return nil }
+        return scannedLightningInvoice?.paymentHash.hex ?? scannedAddressPaymentHash
+    }
+
+    /// When that invoice expires, in seconds since 1970.
+    var scannedLightningInvoiceExpiresAt: UInt64? {
+        guard tracksInvoiceAcrossRails else { return nil }
+        if let invoice = scannedLightningInvoice {
+            return invoice.timestampSeconds.addingReportingOverflow(invoice.expirySeconds).partialValue
+        }
+        return scannedAddressInvoiceExpiresAt
+    }
+
+    /// Whether a payment of the invoice and one of the address it came with would pay the same thing twice. A contact's public
+    /// endpoints are not one payment: each payment to the contact is new, and its reusable invoice comes with every address it
+    /// publishes. A payment request is one payment, as is a code that was scanned.
+    var tracksInvoiceAcrossRails: Bool {
+        guard let context = contactPaymentContext else { return true }
+        return context.incomingPaymentRequest != nil
     }
 
     // LNURL
@@ -815,16 +863,54 @@ extension AppViewModel {
 
     /// This wallet's payment of the Lightning invoice with this hash. The wallet's own records of a send are incomplete, so only
     /// the node's payment store shows that the invoice is unpaid.
+    /// A QuickPay ledger record without a live operation counts only while the store cannot be read: a record the store shows
+    /// failed, or never sent, pays nothing.
     func lightningPaymentStatus(paymentHash: String) async -> LightningPaymentStatus {
-        if pendingPaymentHashes.contains(paymentHash) || QuickPayPaymentCoordinator.shared.hasOpen(paymentHash) {
+        let quickPay = scanPaymentOperations.quickPayState(paymentHash)
+        if isSendingOverLightning(paymentHash) || quickPay == .live {
             return .pending
         }
-        guard let payments = await scanPaymentOperations.listPayments() else { return .unknown }
+        let payments = await scanPaymentOperations.listPayments()
+        // A send may have started while the store was read
+        if isSendingOverLightning(paymentHash) || scanPaymentOperations.quickPayState(paymentHash) == .live {
+            return .pending
+        }
+        guard let payments else { return quickPay == .recorded ? .pending : .unknown }
         switch payments.lazy.compactMap({ $0.outboundPaymentStatus(paymentHash: paymentHash) }).first {
         case .pending: return .pending
         case .succeeded: return .succeeded
         case .failed, nil: return .unpaid
         }
+    }
+
+    private func isSendingOverLightning(_ paymentHash: String) -> Bool {
+        pendingPaymentHashes.contains(paymentHash) || dispatchingPayments[paymentHash.lowercased()] == .lightning
+    }
+
+    /// Whether an on-chain send paid, may still pay, or is being sent to the address that came with the invoice of this hash.
+    func lightningHold(paymentHash: String) async -> OnchainLightningHold {
+        if dispatchingPayments[paymentHash.lowercased()] == .onchain {
+            return .held
+        }
+        let hold = await scanPaymentOperations.lightningHold(paymentHash)
+        // A send may have started while the records were read
+        if dispatchingPayments[paymentHash.lowercased()] == .onchain {
+            return .held
+        }
+        return hold
+    }
+
+    /// Marks a payment of the invoice with this hash as being sent over `walletType`, from Confirm's final check until the send
+    /// ends, so a check on the other rail sees it before the send leaves a record of its own.
+    func beginDispatch(paymentHash: String?, walletType: WalletType) -> String? {
+        guard let paymentHash = paymentHash?.lowercased() else { return nil }
+        dispatchingPayments[paymentHash] = walletType
+        return paymentHash
+    }
+
+    func endDispatch(_ paymentHash: String?) {
+        guard let paymentHash else { return }
+        dispatchingPayments.removeValue(forKey: paymentHash)
     }
 
     /// The scanned address is not offered while the Lightning invoice it came with may still be paid, was paid, or cannot be
@@ -846,10 +932,6 @@ extension AppViewModel {
 
     func showOnchainPaymentRefusal(_ refusal: OnchainPaymentRefusal) {
         toast(type: .error, title: refusal.title, description: refusal.description, accessibilityIdentifier: refusal.accessibilityIdentifier)
-    }
-
-    func isHeldByOnchainSend(paymentHash: String) async -> Bool {
-        await scanPaymentOperations.isHeldByOnchainSend(paymentHash)
     }
 
     func showLightningPaymentHeldRefusal(_ refusal: LightningPaymentHeldRefusal) {
@@ -944,6 +1026,7 @@ extension AppViewModel {
         }
         scannedDataHandlingId = handlingId
         didRejectScannedPayment = false
+        isScannedPaymentRefusalTransient = false
         defer {
             if scannedDataHandlingId == handlingId {
                 scannedDataHandlingId = nil
@@ -1128,7 +1211,8 @@ extension AppViewModel {
             // A hardware send pays only the address, but keeps the hash of a bolt11 invoice that came with it, so that the address
             // is not paid while a payment of that invoice may still complete or after it did.
             var lightningPaymentHash: String?
-            if scope == .onchainPayments, let bolt11 = Self.bolt11Invoice(lightningParam ?? contactBolt11),
+            var lightningInvoiceExpiresAt: UInt64?
+            if scope == .onchainPayments, tracksInvoiceAcrossRails, let bolt11 = Self.bolt11Invoice(lightningParam ?? contactBolt11),
                !isIssuedByThisNode(payeeNodeId: bolt11.recoverPayeePubKey())
             {
                 lightningPaymentHash = bolt11.paymentHash()
@@ -1148,12 +1232,15 @@ extension AppViewModel {
                     isCurrentScan: isCurrentScanGeneration
                 )
                 if case let .lightning(lightningInvoice) = lightningData {
-                    if !isIssuedByThisNode(payeeNodeId: lightningInvoice.payeeNodeId?.hex) {
+                    if tracksInvoiceAcrossRails, !isIssuedByThisNode(payeeNodeId: lightningInvoice.payeeNodeId?.hex) {
                         lightningPaymentHash = lightningInvoice.paymentHash.hex
+                        lightningInvoiceExpiresAt = lightningInvoice.timestampSeconds
+                            .addingReportingOverflow(lightningInvoice.expirySeconds).partialValue
                     }
                     // An on-chain send to this address that may still confirm already pays the invoice, so neither is paid again
                     guard try await canPayLightningInstead(
                         paymentHash: lightningPaymentHash,
+                        cameWithAddress: true,
                         handlingId: handlingId,
                         claimedContactPaymentContext: claimedContactPaymentContext,
                         isCurrentScan: isCurrentScanGeneration
@@ -1211,7 +1298,11 @@ extension AppViewModel {
                             }
 
                             // Onchain is sufficient → proceed with onchain flow, do not open lightning flow.
-                            handleScannedOnchainInvoice(invoice, lightningPaymentHash: lightningPaymentHash)
+                            handleScannedOnchainInvoice(
+                                invoice,
+                                lightningPaymentHash: lightningPaymentHash,
+                                lightningInvoiceExpiresAt: lightningInvoiceExpiresAt
+                            )
                             return
                         }
 
@@ -1249,7 +1340,7 @@ extension AppViewModel {
                 }
             }
 
-            handleScannedOnchainInvoice(invoice, lightningPaymentHash: lightningPaymentHash)
+            handleScannedOnchainInvoice(invoice, lightningPaymentHash: lightningPaymentHash, lightningInvoiceExpiresAt: lightningInvoiceExpiresAt)
         case let .lightning(invoice):
             let requestedAmount = try contactPaymentContext?.incomingPaymentRequest?.payment(using: .bitcoinLightningBolt11).amount.atomic
             // Check network first - treat wrong network as decoding error
@@ -1279,7 +1370,8 @@ extension AppViewModel {
             }
 
             guard try await canPayLightningInstead(
-                paymentHash: invoice.paymentHash.hex,
+                paymentHash: tracksInvoiceAcrossRails ? invoice.paymentHash.hex : nil,
+                cameWithAddress: false,
                 handlingId: handlingId,
                 claimedContactPaymentContext: claimedContactPaymentContext,
                 isCurrentScan: isCurrentScanGeneration
@@ -1355,8 +1447,6 @@ extension AppViewModel {
         }
     }
 
-    /// A unified code's address is not paid while a Lightning payment of its invoice may still complete, or once it did, as that
-    /// would pay the invoice twice. A payment that cannot be checked yet is left to the send's confirmation, which checks it again.
     private func canPayOnchainInstead(
         paymentHash: String?,
         handlingId: UUID,
@@ -1368,36 +1458,37 @@ extension AppViewModel {
         try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext, isCurrentScan: isCurrentScan)
         guard status.refusesOnchainFallback else { return true }
         didRejectScannedPayment = true
+        isScannedPaymentRefusalTransient = status != .succeeded
         showOnchainPaymentRefusal(OnchainPaymentRefusal(status))
         return false
     }
 
-    /// A Lightning invoice is not paid while an on-chain send to the address that came with it may still confirm, or did, as that
-    /// would pay it twice.
     private func canPayLightningInstead(
         paymentHash: String?,
+        cameWithAddress: Bool,
         handlingId: UUID,
         claimedContactPaymentContext: ContactPaymentContext?,
         isCurrentScan: () -> Bool
     ) async throws -> Bool {
         let refusal = await LightningPaymentHeldRefusal.check(
             paymentHash: paymentHash,
-            isHeldByOnchainSend: scanPaymentOperations.isHeldByOnchainSend
+            cameWithAddress: cameWithAddress,
+            lightningHold: lightningHold
         )
         try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext, isCurrentScan: isCurrentScan)
         guard let refusal else { return true }
         didRejectScannedPayment = true
+        // The on-chain send may still fail, and the records may become readable
+        isScannedPaymentRefusalTransient = true
         showLightningPaymentHeldRefusal(refusal)
         return false
     }
 
-    /// This wallet never paid an invoice its own node issued, so the address that came with one has nothing to wait for.
     private func isIssuedByThisNode(payeeNodeId: String?) -> Bool {
         guard let payeeNodeId, let nodeId = scanPaymentOperations.nodeId() else { return false }
         return payeeNodeId.caseInsensitiveCompare(nodeId) == .orderedSame
     }
 
-    /// A bolt11 invoice, read without resolving anything else a request can hold, such as an LNURL.
     private static func bolt11Invoice(_ paymentRequest: String?) -> Bolt11Invoice? {
         paymentRequest.flatMap { try? Bolt11Invoice.fromStr(invoiceStr: $0.removingLightningSchemes()) }
     }
@@ -1465,11 +1556,12 @@ extension AppViewModel {
 
     /// Sets the send to pay this address. The hash of a Lightning invoice the address came with stays with the send, so that its
     /// confirmation checks the invoice's payment before the address is paid.
-    func handleScannedOnchainInvoice(_ invoice: OnChainInvoice, lightningPaymentHash: String? = nil) {
+    func handleScannedOnchainInvoice(_ invoice: OnChainInvoice, lightningPaymentHash: String? = nil, lightningInvoiceExpiresAt: UInt64? = nil) {
         selectedWalletToPayFrom = .onchain
         scannedOnchainInvoice = invoice
         scannedLightningInvoice = nil
         scannedAddressPaymentHash = lightningPaymentHash
+        scannedAddressInvoiceExpiresAt = lightningPaymentHash == nil ? nil : lightningInvoiceExpiresAt
     }
 
     /// Moves a unified send from its invoice to its address, unless a Lightning payment of the invoice may still complete or did.
@@ -1480,12 +1572,16 @@ extension AppViewModel {
         isCurrent: () -> Bool
     ) async -> OnchainFallbackOutcome {
         let paymentHash = lightningInvoice.paymentHash.hex
-        let status = await lightningPaymentStatus(paymentHash: paymentHash)
+        let status: LightningPaymentStatus = tracksInvoiceAcrossRails ? await lightningPaymentStatus(paymentHash: paymentHash) : .unpaid
         guard isCurrent(), scannedLightningInvoice == lightningInvoice, scannedOnchainInvoice == onchainInvoice else {
             return .superseded
         }
         guard !status.refusesOnchainFallback else { return .refused(status) }
-        handleScannedOnchainInvoice(onchainInvoice, lightningPaymentHash: paymentHash)
+        handleScannedOnchainInvoice(
+            onchainInvoice,
+            lightningPaymentHash: tracksInvoiceAcrossRails ? paymentHash : nil,
+            lightningInvoiceExpiresAt: lightningInvoice.timestampSeconds.addingReportingOverflow(lightningInvoice.expirySeconds).partialValue
+        )
         return .fellBack
     }
 
@@ -1658,6 +1754,7 @@ extension AppViewModel {
         scannedLightningInvoice = nil
         scannedOnchainInvoice = nil
         scannedAddressPaymentHash = nil
+        scannedAddressInvoiceExpiresAt = nil
         isScannedAddressBlocked = false
         selectedWalletToPayFrom = .onchain // Reset to default
         lnurlPayData = nil

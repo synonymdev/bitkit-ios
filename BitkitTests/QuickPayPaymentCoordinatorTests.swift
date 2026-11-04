@@ -629,7 +629,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
                 sendCount += 1
                 return invoiceHash
             },
-            isHeldByOnchainSend: { $0 == invoiceHash },
+            lightningHold: { $0 == invoiceHash ? .held : .none },
             listRows: { [] }
         )
 
