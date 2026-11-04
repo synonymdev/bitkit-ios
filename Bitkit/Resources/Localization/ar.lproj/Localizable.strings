@@ -875,8 +875,8 @@
 "contacts__add_error_self" = "لا يمكنك إضافة pubky الخاص بك كجهة اتصال.";
 "contacts__add_retrieving" = "جارٍ جلب\nمعلومات جهة الاتصال";
 "contacts__add_error" = "فشلت إضافة جهة الاتصال";
-"contacts__add_disclaimer" = "يرجى ملاحظة أنه يجب عليك وعلى {name} إضافة بعضكما كجهتي اتصال للدفع لبعضكما بشكل خاص. وإلا ستكون الدفعة مرئية للعامة.";
-"contacts__pay_private_link_pending" = "يُعدّ Bitkit اتصالًا خاصًا مع جهة الاتصال هذه. حاول مرة أخرى بعد قليل، أو اطلب منها أن ترسل إليك طلب دفع.";
+"contacts__add_disclaimer" = "يرجى ملاحظة أنه يجب عليك وعلى {name} إضافة بعضكما كجهتي اتصال قبل أن تتمكنا من الدفع لبعضكما بشكل خاص. الدفعات من هذه الشاشة مرئية للعامة.";
+"contacts__pay_private_link_pending" = "لا يزال Bitkit يُعدّ اتصالًا خاصًا مع جهة الاتصال هذه. تأكد من أنها أضافتك أيضًا كجهة اتصال، أو اطلب منها أن ترسل إليك طلب دفع.";
 "contacts__import_nav_title" = "استيراد";
 "contacts__import_found_title" = "تم العثور على\n<accent>ملف شخصي وجهات اتصال</accent>";
 "contacts__import_found_description" = "عثر Bitkit على بيانات ملف شخصي وجهات اتصال مرتبطة بـ pubky <accent>{key}</accent>";

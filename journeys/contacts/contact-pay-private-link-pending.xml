@@ -10,7 +10,7 @@
     <action>On the first device, open Contacts and add the second identity by its Pubky key</action>
     <action>Save the contact and verify Contact Saved shows the second identity's name</action>
     <action>Open the saved contact from Contacts and tap Pay (id "ContactPay")</action>
-    <action>Verify from a screenshot that a toast titled "Unable To Pay Contact" with "Bitkit is setting up a private connection with this contact. Try again shortly, or ask them to send you a payment request." appears</action>
+    <action>Verify from a screenshot that a toast titled "Unable To Pay Contact" with "Bitkit is still setting up a private connection with this contact. Make sure they've added you as a contact too, or ask them to send you a payment request." appears</action>
     <action>Verify the send amount screen (id "SendAmount") does not open</action>
     <action>On the second device, open Contacts and add the first identity by its Pubky key, then keep Bitkit open</action>
     <action>On the first device, tap Pay (id "ContactPay") again; if the same toast appears, retry after 5 seconds</action>

@@ -1076,8 +1076,8 @@
 "contacts__add_error_self" = "Você não pode adicionar sua própria pubky como contato.";
 "contacts__add_retrieving" = "Obtendo informações\ndo contato";
 "contacts__add_error" = "Falha ao adicionar contato";
-"contacts__add_disclaimer" = "Observe que você e {name} precisam adicionar um ao outro como contatos para pagarem um ao outro de forma privada. Caso contrário, o pagamento ficará visível publicamente.";
-"contacts__pay_private_link_pending" = "O Bitkit está configurando uma conexão privada com este contato. Tente novamente em instantes ou peça a esse contato que envie uma solicitação de pagamento para você.";
+"contacts__add_disclaimer" = "Observe que você e {name} precisam adicionar um ao outro como contatos antes de poderem pagar um ao outro de forma privada. Os pagamentos feitos nesta tela ficam visíveis publicamente.";
+"contacts__pay_private_link_pending" = "O Bitkit ainda está configurando uma conexão privada com este contato. Verifique se esse contato também adicionou você ou peça que ele envie uma solicitação de pagamento para você.";
 "contacts__import_nav_title" = "Importar";
 "contacts__import_found_title" = "Perfil e contatos\n<accent>encontrados</accent>";
 "contacts__import_found_description" = "A Bitkit encontrou dados de perfil e contatos vinculados à pubky <accent>{key}</accent>";

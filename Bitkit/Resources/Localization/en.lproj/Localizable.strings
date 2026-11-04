@@ -1074,8 +1074,8 @@
 "contacts__add_retrieving" = "Retrieving\ncontact info";
 "contacts__add_success" = "Contact added";
 "contacts__add_error" = "Failed to add contact";
-"contacts__add_disclaimer" = "Please note that you and {name} must add each other as contacts to pay each other privately. Otherwise, the payment will be visible publicly.";
-"contacts__pay_private_link_pending" = "Bitkit is setting up a private connection with this contact. Try again shortly, or ask them to send you a payment request.";
+"contacts__add_disclaimer" = "Please note that you and {name} must add each other as contacts before you can pay each other privately. Payments from this screen are visible publicly.";
+"contacts__pay_private_link_pending" = "Bitkit is still setting up a private connection with this contact. Make sure they've added you as a contact too, or ask them to send you a payment request.";
 "contacts__import_nav_title" = "Import";
 "contacts__import_found_title" = "Found\n<accent>profile & contacts</accent>";
 "contacts__import_found_description" = "Bitkit found profile and contacts data connected to pubky <accent>{key}</accent>";
