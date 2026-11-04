@@ -167,32 +167,39 @@ extension LightningService {
     /// knows the transactions its coins came from. A candidate that reached the mempool or the chain spends wallet
     /// coins, so a sync adds it to the wallet.
     func onchainCandidatesNeverReachedNetwork(_ attempt: OnchainSendAttempt, syncTimeout: Duration) async throws -> Bool {
-        guard attempt.walletId == OnchainSendAttemptService.walletId(index: currentWalletIndex),
-              let node = onchainDispatchNode as? Node, let inputs = attempt.recoveryContext?.inputs, !inputs.isEmpty
+        try await Self.onchainCandidatesNeverReachedNetwork(
+            attempt, syncTimeout: syncTimeout, currentWallet: { (self.currentWalletIndex, self.onchainDispatchNode as? Node) },
+            sync: { try await self.sync() }
+        )
+    }
+
+    /// Reads whichever node `currentWallet` runs at the time: a node restarted during the check holds the same wallet, and
+    /// reports the timestamp of a sync it ran before the restart, so only one it ran after the request counts. A wallet
+    /// without a node, or one switched during the check, leaves no fresh view to check, so the sync is unavailable.
+    static func onchainCandidatesNeverReachedNetwork(
+        _ attempt: OnchainSendAttempt,
+        syncTimeout: Duration,
+        pollInterval: Duration = .milliseconds(500),
+        currentWallet: @escaping @Sendable () -> (index: Int, node: Node?),
+        sync: @escaping @Sendable () async throws -> Void
+    ) async throws -> Bool {
+        let wallet = currentWallet()
+        guard attempt.walletId == OnchainSendAttemptService.walletId(index: wallet.index),
+              let inputs = attempt.recoveryContext?.inputs, !inputs.isEmpty
         else { return false }
-        // The requested sync runs on the serial LDK queue after any sync already in flight, so its success proves a
-        // fresh view. Failing that, an on-chain sync that finishes later than the one read here also counts.
-        let previousSync = node.status().latestOnchainWalletSyncTimestamp ?? 0
-        let requestedSync = RequestedSyncResult()
-        Task {
-            if await (try? self.sync()) != nil {
-                await requestedSync.markSucceeded()
-            }
-        }
-        let deadline = ContinuousClock.now + syncTimeout
-        while true {
-            let requestedSyncSucceeded = await requestedSync.succeeded
-            if OnchainSendAttemptService.isOnchainSync(
-                node.status().latestOnchainWalletSyncTimestamp, after: previousSync, requestedSyncSucceeded: requestedSyncSucceeded
-            ) {
-                break
-            }
-            guard ContinuousClock.now < deadline else { throw OnchainSendAbandonError.syncUnavailable }
-            try await Task.sleep(for: .milliseconds(500))
-        }
+        guard wallet.node != nil else { throw OnchainSendAbandonError.syncUnavailable }
+        try await OnchainSendAttemptService.waitForOnchainSyncAfterRequest(
+            timeout: syncTimeout,
+            pollInterval: pollInterval,
+            latestSync: { currentWallet().node?.status().latestOnchainWalletSyncTimestamp },
+            sync: sync
+        )
         return try await ServiceQueue.background(.ldk, wrapErrors: false) {
-            guard self.onchainDispatchNode === node,
-                  attempt.candidateTxids.allSatisfy({ node.getTransactionDetails(txid: $0) == nil }) else { return false }
+            let wallet = currentWallet()
+            guard attempt.walletId == OnchainSendAttemptService.walletId(index: wallet.index), let node = wallet.node else {
+                throw OnchainSendAbandonError.syncUnavailable
+            }
+            guard attempt.candidateTxids.allSatisfy({ node.getTransactionDetails(txid: $0) == nil }) else { return false }
             return inputs.allSatisfy { node.getTransactionDetails(txid: $0.txid) != nil }
         }
     }
@@ -647,10 +654,51 @@ actor OnchainSendAttemptService {
         UInt32(clamping: targetFeeSats.saturatingMultiply(UInt64(satsPerVbyte)) / max(feeSats.saturatingSub(1), 1))
     }
 
-    /// The sync requested for a check proves a fresh view once it succeeds. Otherwise only a sync that finished later
-    /// than the one read before the request counts; one finished in the same second may predate it.
-    static func isOnchainSync(_ latest: UInt64?, after previous: UInt64, requestedSyncSucceeded: Bool = false) -> Bool {
-        requestedSyncSucceeded || (latest ?? 0) > previous
+    /// A sync known to have started after a check's request proves a fresh view once it succeeds. Otherwise only a sync that
+    /// finished later than `previous`, read once no sync from before the request can still run, counts; one finished in the
+    /// same second may predate that read, and without `previous` none counts.
+    static func isOnchainSync(_ latest: UInt64?, after previous: UInt64?, requestedSyncSucceeded: Bool = false) -> Bool {
+        requestedSyncSucceeded || previous.map { (latest ?? 0) > $0 } ?? false
+    }
+
+    /// Waits for an on-chain sync that started after this call, or throws `OnchainSendAbandonError.syncUnavailable` once
+    /// `timeout` passes. ldk-node joins a wallet sync already under way, which may have started before the call, and returns
+    /// once it completes. So only a sync after a successful first one counts: the second requested sync, or one that finishes
+    /// later than the sync `latestSync` reads once the first returned. A first sync that fails may never have joined the
+    /// earlier one, which may still finish, and a missing reading sets no baseline at all.
+    static func waitForOnchainSyncAfterRequest(
+        timeout: Duration,
+        pollInterval: Duration = .milliseconds(500),
+        latestSync: @escaping @Sendable () -> UInt64?,
+        sync: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        let requestedSync = RequestedSyncResult()
+        // The sync blocks in native code and ignores cancellation, so it runs apart and the wait keeps its limit. Once the
+        // wait has ended, the second sync is not started.
+        Task {
+            do {
+                try await sync()
+                if let baseline = latestSync() {
+                    await requestedSync.setBaseline(baseline)
+                }
+                guard await !requestedSync.isWaitOver else { return }
+                try await sync()
+                await requestedSync.markSucceeded()
+            } catch {
+                Logger.warn("Requested on-chain sync failed: \(error)", context: "OnchainSendAttempt")
+            }
+        }
+        do {
+            let deadline = ContinuousClock.now + timeout
+            while await !isOnchainSync(latestSync(), after: requestedSync.baseline, requestedSyncSucceeded: requestedSync.succeeded) {
+                guard ContinuousClock.now < deadline else { throw OnchainSendAbandonError.syncUnavailable }
+                try await Task.sleep(for: pollInterval)
+            }
+        } catch {
+            await requestedSync.endWait()
+            throw error
+        }
+        await requestedSync.endWait()
     }
 
     static func walletId(index: Int) -> String {
@@ -1518,11 +1566,21 @@ actor OnchainSendAttemptService {
     }
 }
 
-/// Records whether the sync a check requested has succeeded, so the check can stop waiting on it.
+/// What the syncs a check requested have shown so far, so the check can stop waiting on them.
 private actor RequestedSyncResult {
     private(set) var succeeded = false
+    private(set) var baseline: UInt64?
+    private(set) var isWaitOver = false
 
     func markSucceeded() {
         succeeded = true
+    }
+
+    func endWait() {
+        isWaitOver = true
+    }
+
+    func setBaseline(_ value: UInt64) {
+        baseline = value
     }
 }

@@ -300,6 +300,14 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         }
     }
 
+    private func pollUntil(_ description: String, timeout: Duration = .seconds(5), _ condition: () -> Bool) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while !condition() {
+            guard ContinuousClock.now < deadline else { return XCTFail("Timed out waiting until \(description)") }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
     func testEndedRequestSendsAReleaseAndKeepsTheGuardUntilItIsFinal() async throws {
         for state in [PaymentRequestLifecycleState.canceled, .proposalExpired, .rejected] {
             let (service, attempts, proofs, attempt) = try await unknownRequestPayment(state: state)
@@ -587,6 +595,134 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertTrue(OnchainSendAttemptService.isOnchainSync(1_800_000_001, after: 1_800_000_000))
         // The requested sync's own success counts even when it finished in the same second.
         XCTAssertTrue(OnchainSendAttemptService.isOnchainSync(1_800_000_000, after: 1_800_000_000, requestedSyncSucceeded: true))
+        // Without a reading taken once the first requested sync returned, no timestamp counts.
+        XCTAssertFalse(OnchainSendAttemptService.isOnchainSync(1_800_000_001, after: nil))
+    }
+
+    func testTheSecondRequestedSyncEndsTheWait() async throws {
+        let syncs = LockedValue(0)
+        try await OnchainSendAttemptService.waitForOnchainSyncAfterRequest(
+            timeout: .seconds(5), pollInterval: .milliseconds(10), latestSync: { 1_800_000_000 }, sync: { syncs.update { $0 += 1 } }
+        )
+        XCTAssertEqual(syncs.get(), 2)
+    }
+
+    func testASyncFromBeforeTheRequestDoesNotEndTheWait() async throws {
+        // The first requested sync joins one already under way and returns once that one wrote its timestamp.
+        let latest = LockedValue<UInt64?>(1_800_000_000)
+        let syncs = LockedValue(0)
+        let secondSync = AsyncGate()
+        let isWaiting = LockedValue(true)
+        let wait = Task {
+            defer { isWaiting.set(false) }
+            try await OnchainSendAttemptService.waitForOnchainSyncAfterRequest(
+                timeout: .seconds(5), pollInterval: .milliseconds(10), latestSync: { latest.get() },
+                sync: {
+                    syncs.update { $0 += 1 }
+                    if syncs.get() == 1 {
+                        latest.set(1_800_000_001)
+                    } else {
+                        await secondSync.wait()
+                    }
+                }
+            )
+        }
+        try await pollUntil("the second requested sync runs") { syncs.get() == 2 }
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertTrue(isWaiting.get(), "The joined sync's timestamp is the baseline, so it cannot end the wait")
+        secondSync.open()
+        try await wait.value
+    }
+
+    func testAWaitThatTimedOutStartsNoFurtherSync() async throws {
+        let syncs = LockedValue(0)
+        let firstSync = AsyncGate()
+        do {
+            try await OnchainSendAttemptService.waitForOnchainSyncAfterRequest(
+                timeout: .milliseconds(100), pollInterval: .milliseconds(10), latestSync: { 1_800_000_000 },
+                sync: {
+                    syncs.update { $0 += 1 }
+                    if syncs.get() == 1 {
+                        await firstSync.wait()
+                    }
+                }
+            )
+            XCTFail("A sync that never returns must not end the wait")
+        } catch OnchainSendAbandonError.syncUnavailable {}
+        // The first sync returns only after the wait gave up, so the one that would follow it is never started.
+        firstSync.open()
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(syncs.get(), 1)
+    }
+
+    func testAMissingSyncReadingSetsNoBaseline() async throws {
+        // The node stopped after the first requested sync, and the restarted one reports an older sync's timestamp.
+        let latest = LockedValue<UInt64?>(1_800_000_000)
+        let syncs = LockedValue(0)
+        do {
+            try await OnchainSendAttemptService.waitForOnchainSyncAfterRequest(
+                timeout: .milliseconds(300), pollInterval: .milliseconds(10), latestSync: { latest.get() },
+                sync: {
+                    syncs.update { $0 += 1 }
+                    guard syncs.get() == 1 else { throw NodeError.NotRunning(message: "Node not set up") }
+                    latest.set(nil)
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(50))
+                        latest.set(1_800_000_005)
+                    }
+                }
+            )
+            XCTFail("A later timestamp without a baseline must not end the wait")
+        } catch OnchainSendAbandonError.syncUnavailable {}
+    }
+
+    // Regression: the check read only the node it started on, so a node restarted during it ended in "may still reach the
+    // network", though the restarted node holds the same wallet
+    func testANodeRestartedDuringTheCandidateCheckIsReadInItsPlace() async throws {
+        let inputs = [OnchainSendInput(txid: String(repeating: "cd", count: 32), vout: 0)]
+        let candidate = String(repeating: "ab", count: 32)
+        let attempt = OnchainSendAttempt(
+            id: UUID(), walletId: OnchainSendAttemptService.walletId(index: 0), requestId: nil, orderId: nil,
+            address: onchainAddress, amountSats: 1000, isMaxAmount: false, status: .rejected, txid: candidate,
+            recoveryContext: OnchainSendRecoveryContext(inputs: inputs, satsPerVbyte: 2, paymentIdentity: nil, candidateTxids: [candidate])
+        )
+        for restartingSync in [1, 2] {
+            let original = SyncCheckNode(noPointer: .init())
+            original.latestOnchainSync.set(1_800_000_000)
+            original.knownTxids = [inputs[0].txid]
+            // The restarted node loads the same wallet, with the timestamp of its last sync before the restart.
+            let restarted = SyncCheckNode(noPointer: .init())
+            restarted.latestOnchainSync.set(1_800_000_000)
+            restarted.knownTxids = [inputs[0].txid]
+            let current = LockedValue<Node?>(original)
+            let syncs = LockedValue(0)
+
+            let neverReachedNetwork = try await Bitkit.LightningService.onchainCandidatesNeverReachedNetwork(
+                attempt, syncTimeout: .seconds(5), pollInterval: .milliseconds(10), currentWallet: { (0, current.get()) },
+                sync: {
+                    syncs.update { $0 += 1 }
+                    if syncs.get() == restartingSync {
+                        current.set(restarted)
+                    }
+                }
+            )
+
+            XCTAssertTrue(neverReachedNetwork, "Restarted during sync \(restartingSync)")
+            XCTAssertEqual(syncs.get(), 2)
+        }
+
+        // A switch to another wallet, or a node gone, leaves no fresh view of this one, which is no evidence either way.
+        let switched = LockedValue<(index: Int, node: Node?)>((0, nil))
+        for unavailable in [(index: 1, node: SyncCheckNode(noPointer: .init())), (index: 0, node: nil)] as [(index: Int, node: Node?)] {
+            switched.set((0, SyncCheckNode(noPointer: .init())))
+            do {
+                _ = try await Bitkit.LightningService.onchainCandidatesNeverReachedNetwork(
+                    attempt, syncTimeout: .seconds(5), pollInterval: .milliseconds(10), currentWallet: { switched.get() },
+                    sync: { switched.set(unavailable) }
+                )
+                XCTFail("A check that cannot read this wallet must not decide whether a candidate reached the network")
+            } catch OnchainSendAbandonError.syncUnavailable {}
+        }
     }
 
     func testApprovedReleaseSendsItsReleaseAfterItsProofWasRemoved() async throws {
@@ -4151,5 +4287,46 @@ private final class ReleaseWalletMock: OnchainReleasing, @unchecked Sendable {
                 return result
             }
         )
+    }
+}
+
+/// A node wallet that reports the given on-chain sync timestamp and knows only the given transactions.
+private final class SyncCheckNode: Node, @unchecked Sendable {
+    let latestOnchainSync = LockedValue<UInt64?>(nil)
+    var knownTxids: Set<String> = []
+
+    override func status() -> LDKNode.NodeStatus {
+        LDKNode.NodeStatus(
+            isRunning: true, currentBestBlock: LDKNode.BestBlock(blockHash: String(repeating: "00", count: 32), height: 100),
+            latestLightningWalletSyncTimestamp: nil, latestOnchainWalletSyncTimestamp: latestOnchainSync.get(),
+            latestFeeRateCacheUpdateTimestamp: nil, latestRgsSnapshotTimestamp: nil, latestPathfindingScoresSyncTimestamp: nil,
+            latestNodeAnnouncementBroadcastTimestamp: nil, latestChannelMonitorArchivalHeight: nil
+        )
+    }
+
+    override func getTransactionDetails(txid: LDKNode.Txid) -> LDKNode.TransactionDetails? {
+        knownTxids.contains(txid) ? LDKNode.TransactionDetails(amountSats: 0, inputs: [], outputs: []) : nil
+    }
+}
+
+/// A value read and written from any thread.
+private final class LockedValue<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Value
+
+    init(_ value: Value) {
+        self.value = value
+    }
+
+    func get() -> Value {
+        lock.withLock { value }
+    }
+
+    func set(_ newValue: Value) {
+        lock.withLock { value = newValue }
+    }
+
+    func update(_ transform: (inout Value) -> Void) {
+        lock.withLock { transform(&value) }
     }
 }
