@@ -559,8 +559,8 @@ struct AppScene: View {
                 let reservations = PrivatePaykitAddressReservationStore.shared
                 let reservationRevision = await reservations.attributionRevision
                 guard let combined = try? await contacts.includingReservations(for: outputAddresses, lookup: {
-                          try await reservations.contactPublicKeyForAttribution(forReservedAddress: $0)
-                      }), pubkyProfile.authState == .authenticated,
+                    try await reservations.contactPublicKeyForAttribution(forReservedAddress: $0)
+                }), pubkyProfile.authState == .authenticated,
                       PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey),
                       contacts == paykitPaymentRequestManager.receivedPaymentContacts,
                       await reservations.attributionRevision == reservationRevision
