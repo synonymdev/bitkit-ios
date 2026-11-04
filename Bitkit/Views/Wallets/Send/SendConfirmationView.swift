@@ -43,7 +43,7 @@ struct SendConfirmationView: View {
     @State private var walletSwitchRun: WalletSwitchRun?
     @State private var manualCoinsRequestedContext: ConfirmationContext?
     @State private var isPreparingDirectOnchainSend = false
-    @State private var isCalculatingOnchainFee = false
+    @State private var onchainFeeCalculationId: Int?
     @State private var presentationID: UUID?
 
     private struct WalletSwitchRun {
@@ -1183,7 +1183,13 @@ struct SendConfirmationView: View {
     }
 
     private var isPreparingOnchainSend: Bool {
-        isPreparingDirectOnchainSend || isCalculatingOnchainFee
+        isPreparingDirectOnchainSend
+            || Self.isCalculatingOnchainFee(calculationId: onchainFeeCalculationId, latestCalculationId: feeCalculationId)
+    }
+
+    /// Only the newest fee calculation can hold the swipe, so a calculation superseded by a funding switch never leaves it disabled.
+    static func isCalculatingOnchainFee(calculationId: Int?, latestCalculationId: Int) -> Bool {
+        calculationId == latestCalculationId
     }
 
     private func requiresManualConfirmation(isAutomatic: Bool) -> Bool {
@@ -2080,10 +2086,10 @@ struct SendConfirmationView: View {
             }
 
             // A swipe before the fee is known would skip the fee warnings and record a zero fee.
-            isCalculatingOnchainFee = true
+            onchainFeeCalculationId = requestId
             defer {
-                if feeCalculationId == requestId {
-                    isCalculatingOnchainFee = false
+                if onchainFeeCalculationId == requestId {
+                    onchainFeeCalculationId = nil
                 }
             }
             let useMaxAmount = await shouldUseMaxOnchainSend(

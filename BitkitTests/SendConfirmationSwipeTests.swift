@@ -163,6 +163,13 @@ final class SendConfirmationSwipeTests: XCTestCase {
         ))
     }
 
+    func testOnlyTheNewestFeeCalculationHoldsTheSwipe() {
+        XCTAssertTrue(SendConfirmationView.isCalculatingOnchainFee(calculationId: 3, latestCalculationId: 3))
+        // A funding switch starts a newer calculation that may not be on-chain at all.
+        XCTAssertFalse(SendConfirmationView.isCalculatingOnchainFee(calculationId: 3, latestCalculationId: 4))
+        XCTAssertFalse(SendConfirmationView.isCalculatingOnchainFee(calculationId: nil, latestCalculationId: 4))
+    }
+
     func testOnchainPreparationKeepsSwipeDisabledWithKnownFeeRate() {
         XCTAssertTrue(SendConfirmationView.isSwipeDisabled(
             walletType: .onchain,
