@@ -1847,6 +1847,9 @@
 "usdt__deposit_refund_address_network" = "Adresa USDT v síti {network}";
 "subscriptions__allowances" = "Povolení plateb";
 "subscriptions__allowances_empty_headline" = "Nastavte\n<accent>povolení plateb</accent>";
+"subscriptions__allowances_paused_description" = "Záznamy vašich rozpočtů jsou starší než ty, které tato peněženka už použila. Požadavky budou čekat na vaše schválení, dokud platby neobnovíte.";
+"subscriptions__allowances_paused_resume" = "Obnovit";
+"subscriptions__allowances_paused_title" = "Automatické platby pozastaveny";
 "subscriptions__allowances_empty_description" = "Můžete nastavit limity útraty a automaticky tak vyřizovat žádosti o platbu od důvěryhodných kontaktů.";
 "subscriptions__allowance_add" = "Přidat povolení";
 "subscriptions__allowance_title" = "Povolení plateb";

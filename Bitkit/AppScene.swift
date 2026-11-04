@@ -1369,9 +1369,7 @@ struct AppScene: View {
                 await refreshIncomingPaykitPaymentRequests(onlyWhileActive: true)
             }
         } else {
-            Task {
-                await BackupService.shared.stopObservingBackups()
-            }
+            BackupService.shared.requestStopObservingBackups()
         }
     }
 
@@ -1784,9 +1782,11 @@ struct AppScene: View {
                     }
                 }
                 do {
+                    let started = ProcessInfo.processInfo.systemUptime
                     let result = try await preparation.whilePreparing {
                         try await PrivatePaykitService.shared.beginPaymentRequest(request)
                     }
+                    let resolvedAfter = ProcessInfo.processInfo.systemUptime - started
                     guard isCurrentIncomingPaymentRequestPreparation(preparation), app.contactPaymentContext == nil
                     else { return }
                     if case .privateLinkPending = result {
@@ -1836,6 +1836,8 @@ struct AppScene: View {
                             }
                             return
                         }
+                        let setupTime = ProcessInfo.processInfo.systemUptime - started - resolvedAfter
+                        Logger.debug("Paykit request preparation: resolveMs=\(Int(resolvedAfter * 1000)) setupMs=\(Int(setupTime * 1000))")
                         guard PaymentNavigationHelper.appropriateSendRoute(app: app, currency: currency, settings: settings) != nil else {
                             if app.didRejectScannedPayment {
                                 PaykitPaymentRequestPresentationCoordinator.handleUnavailablePaymentRoute(

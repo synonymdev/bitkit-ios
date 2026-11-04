@@ -1838,6 +1838,9 @@
 "usdt__deposit_refund_address_network" = "Адрес USDT в сети {network}";
 "subscriptions__allowances" = "Лимиты автооплаты";
 "subscriptions__allowances_empty_headline" = "Настройте\n<accent>лимиты автооплаты</accent>";
+"subscriptions__allowances_paused_description" = "Данные ваших бюджетов старше тех, что этот кошелёк уже использовал. Запросы будут ждать вашего подтверждения, пока вы не возобновите платежи.";
+"subscriptions__allowances_paused_resume" = "Возобновить";
+"subscriptions__allowances_paused_title" = "Автоматические платежи приостановлены";
 "subscriptions__allowances_empty_description" = "Вы можете задать лимиты расходов, чтобы автоматически оплачивать запросы на оплату от доверенных контактов.";
 "subscriptions__allowance_add" = "Добавить Лимит";
 "subscriptions__allowance_title" = "Лимит автооплаты";
