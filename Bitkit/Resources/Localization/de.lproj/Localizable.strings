@@ -257,6 +257,7 @@
 "lightning__savings_confirm__amount_too_low" = "Der Betrag ist zu niedrig für eine Übertragung auf das Sparkonto.";
 "lightning__savings_confirm__close_instead" = "Stattdessen Kanal schließen";
 "lightning__savings_confirm__network_fee" = "Netzwerkgebühr";
+"lightning__savings_confirm__spark_fee" = "Spark-Gebühr";
 "lightning__savings_confirm__receive" = "Du erhältst";
 "lightning__savings_confirm__service_fee" = "Servicegebühr";
 "lightning__savings_advanced__title" = "Fonds auswählen\n<accent>zu übertragen</accent>";

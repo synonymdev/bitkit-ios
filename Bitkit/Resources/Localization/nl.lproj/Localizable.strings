@@ -257,6 +257,7 @@
 "lightning__savings_confirm__amount_too_low" = "Bedrag is te laag om naar spaargeld over te boeken.";
 "lightning__savings_confirm__close_instead" = "In plaats daarvan kanaal sluiten";
 "lightning__savings_confirm__network_fee" = "Netwerkvergoeding";
+"lightning__savings_confirm__spark_fee" = "Spark-vergoeding";
 "lightning__savings_confirm__receive" = "U ontvangt";
 "lightning__savings_confirm__service_fee" = "Servicevergoeding";
 "lightning__savings_advanced__title" = "Selecteer geld\n<accent>om over te boeken</accent>";

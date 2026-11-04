@@ -251,6 +251,7 @@
 "lightning__savings_confirm__amount_too_low" = "L'import és massa baix per transferir-lo a estalvis.";
 "lightning__savings_confirm__close_instead" = "Tancar el canal";
 "lightning__savings_confirm__network_fee" = "Tarifa de xarxa";
+"lightning__savings_confirm__spark_fee" = "Tarifa de Spark";
 "lightning__savings_confirm__receive" = "Rebràs";
 "lightning__savings_confirm__service_fee" = "Tarifa de servei";
 "lightning__savings_advanced__title" = "Selecciona fons\n<accent>per transferir</accent>";

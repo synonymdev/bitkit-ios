@@ -439,6 +439,13 @@ final class SparkManager: ChannelFreeLightningRail {
         try await refresh()
     }
 
+    /// The fee `withdrawAll(to:)` pays at its speed, which comes out of the balance it moves.
+    func withdrawAllFeeSats(to address: String) async throws -> UInt64 {
+        let prepared = try await prepareSend(paymentRequest: address, amountSats: balanceSats, feePolicy: .feesIncluded)
+        guard case let .bitcoinAddress(_, feeQuote) = prepared.paymentMethod else { return 0 }
+        return feeQuote.speedMedium.userFeeSat + feeQuote.speedMedium.l1BroadcastFeeSat
+    }
+
     /// What a unilateral exit needs if the Spark operators stop cooperating; it can reach several MB.
     func exportExitState() async throws -> String {
         try await requireSdk().exportUnilateralExitState().exitState

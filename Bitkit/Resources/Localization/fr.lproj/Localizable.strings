@@ -260,6 +260,7 @@
 "lightning__savings_confirm__amount_too_low" = "Le montant est trop faible pour être transféré vers l'épargne.";
 "lightning__savings_confirm__close_instead" = "Fermer plutôt le canal";
 "lightning__savings_confirm__network_fee" = "Frais de réseau";
+"lightning__savings_confirm__spark_fee" = "Frais Spark";
 "lightning__savings_confirm__receive" = "Vous recevrez";
 "lightning__savings_confirm__service_fee" = "Frais de service";
 "lightning__savings_advanced__title" = "Sélectionnez les fonds\n<accent>à transférer</accent>";

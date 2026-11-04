@@ -259,6 +259,7 @@
 "lightning__savings_confirm__amount_too_low" = "Částka je příliš nízká pro převod do úspor.";
 "lightning__savings_confirm__close_instead" = "Místo toho uzavřít kanál";
 "lightning__savings_confirm__network_fee" = "Síťový poplatek";
+"lightning__savings_confirm__spark_fee" = "Poplatek Spark";
 "lightning__savings_confirm__receive" = "Obdržíte";
 "lightning__savings_confirm__service_fee" = "Poplatek za službu";
 "lightning__savings_advanced__title" = "Vyberte prostředky\n<accent>k převodu</accent>";

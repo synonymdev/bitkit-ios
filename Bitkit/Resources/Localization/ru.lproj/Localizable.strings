@@ -255,6 +255,7 @@
 "lightning__savings_confirm__amount_too_low" = "Сумма слишком мала для перевода в сбережения.";
 "lightning__savings_confirm__close_instead" = "Вместо этого закрыть канал";
 "lightning__savings_confirm__network_fee" = "Сетевая комиссия";
+"lightning__savings_confirm__spark_fee" = "Комиссия Spark";
 "lightning__savings_confirm__receive" = "Вы получите";
 "lightning__savings_confirm__service_fee" = "Сервисная комиссия";
 "lightning__savings_advanced__title" = "Выберите Средства\n<accent>для Перевода</accent>";

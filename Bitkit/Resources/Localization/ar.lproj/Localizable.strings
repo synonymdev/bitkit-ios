@@ -224,6 +224,7 @@
 "lightning__savings_confirm__amount_too_low" = "المبلغ منخفض جدًا للتحويل إلى المدخرات.";
 "lightning__savings_confirm__close_instead" = "إغلاق القناة بدلاً من ذلك";
 "lightning__savings_confirm__network_fee" = "رسوم الشبكة";
+"lightning__savings_confirm__spark_fee" = "رسوم Spark";
 "lightning__savings_confirm__receive" = "ستستلم";
 "lightning__savings_confirm__service_fee" = "رسوم الخدمة";
 "lightning__savings_advanced__title" = "اختر الأموال\n<accent>للتحويل</accent>";

@@ -247,6 +247,7 @@
 "lightning__savings_confirm__amount_too_low" = "Το ποσό είναι πολύ χαμηλό για μεταφορά στις αποταμιεύσεις.";
 "lightning__savings_confirm__close_instead" = "Κλείσιμο καναλιού αντί αυτού";
 "lightning__savings_confirm__network_fee" = "Τέλος δικτύου";
+"lightning__savings_confirm__spark_fee" = "Τέλος Spark";
 "lightning__savings_confirm__receive" = "Θα λάβεις";
 "lightning__savings_confirm__service_fee" = "Τέλος υπηρεσίας";
 "lightning__savings_advanced__title" = "Επιλέξτε κεφάλαια\n<accent>για μεταφορά</accent>";

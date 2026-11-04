@@ -252,6 +252,7 @@
 "lightning__savings_confirm__amount_too_low" = "Amount is too low to transfer to savings.";
 "lightning__savings_confirm__close_instead" = "Close channel instead";
 "lightning__savings_confirm__network_fee" = "Network fee";
+"lightning__savings_confirm__spark_fee" = "Spark fee";
 "lightning__savings_confirm__receive" = "You'll receive";
 "lightning__savings_confirm__service_fee" = "Service fee";
 "lightning__savings_advanced__title" = "Select funds\n<accent>to transfer</accent>";

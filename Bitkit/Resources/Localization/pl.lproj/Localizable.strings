@@ -259,6 +259,7 @@
 "lightning__savings_confirm__amount_too_low" = "Kwota jest zbyt niska, aby przesłać ją na oszczędności.";
 "lightning__savings_confirm__close_instead" = "Zamiast tego zamknij kanał";
 "lightning__savings_confirm__network_fee" = "Opłata sieciowa";
+"lightning__savings_confirm__spark_fee" = "Opłata Spark";
 "lightning__savings_confirm__receive" = "Otrzymasz";
 "lightning__savings_confirm__service_fee" = "Opłata serwisowa";
 "lightning__savings_advanced__title" = "Wybierz fundusze \n<accent>do przesłania</accent>";

@@ -254,6 +254,7 @@
 "lightning__savings_confirm__amount_too_low" = "L'importo è troppo basso per essere trasferito ai risparmi.";
 "lightning__savings_confirm__close_instead" = "Chiudi invece il canale";
 "lightning__savings_confirm__network_fee" = "Commissione di rete";
+"lightning__savings_confirm__spark_fee" = "Commissione Spark";
 "lightning__savings_confirm__receive" = "Riceverai";
 "lightning__savings_confirm__service_fee" = "Commissione di servizio";
 "lightning__savings_advanced__title" = "Seleziona fondi\n<accent>da trasferire</accent>";

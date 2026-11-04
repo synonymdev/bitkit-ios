@@ -275,6 +275,7 @@
 "lightning__savings_confirm__amount_too_low" = "O montante é demasiado baixo para transferir para a poupança.";
 "lightning__savings_confirm__close_instead" = "Fechar o canal";
 "lightning__savings_confirm__network_fee" = "Taxa de rede";
+"lightning__savings_confirm__spark_fee" = "Taxa do Spark";
 "lightning__savings_confirm__receive" = "Vai receber";
 "lightning__savings_confirm__service_fee" = "Taxa de serviço";
 "lightning__savings_advanced__title" = "Selecione fundos\n<accent>para transferir</accent>";
