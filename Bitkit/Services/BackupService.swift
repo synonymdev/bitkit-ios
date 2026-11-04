@@ -691,6 +691,8 @@ class BackupService {
             try await performRestore(category: .wallet, retainedData: retainedWalletBackup) { dataBytes in
                 try walletRestoreGate.retain(dataBytes)
                 let payload = try JSONDecoder().decode(WalletBackupV1.self, from: dataBytes)
+                // A backup can predate payments made since, so automatic payments stay paused until the user resumes them.
+                try PaykitAllowanceKeychainStore().setPausedAfterRestore(true)
                 if let paymentState = payload.paykitPaymentState {
                     // VssBackupClient's existing custom backup namespace is explicitly wallet index 0.
                     let backupWallet = try await PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet.backupNamespace(index: 0)

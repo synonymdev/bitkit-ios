@@ -280,6 +280,47 @@ final class PaykitAllowanceTests: XCTestCase {
         XCTAssertNil(PaykitAllowance(record: Fixtures.record(terms: nil)))
     }
 
+    func testRecordFlagsLimitsBitkitDoesNotCheckItself() throws {
+        func hasUncheckedLimits(_ terms: Paykit.AllowanceTerms, localRole: Paykit.AllowanceLocalRole = .allower) throws -> Bool {
+            try XCTUnwrap(PaykitAllowance(record: Fixtures.record(localRole: localRole, terms: terms))).hasUncheckedLimits
+        }
+
+        XCTAssertFalse(try hasUncheckedLimits(Fixtures.standardTerms()), "Bitkit's own terms pay automatically")
+        XCTAssertFalse(try hasUncheckedLimits(Fixtures.customTerms()))
+        XCTAssertTrue(try hasUncheckedLimits(Fixtures.customTerms(lifetimeAmountLimit: "0.001")))
+        XCTAssertTrue(try hasUncheckedLimits(Fixtures.customTerms(monthlyPaymentCountLimit: 3)))
+        XCTAssertTrue(try hasUncheckedLimits(Fixtures.customTerms(otherPeriodLimits: [Fixtures.weeklyLimit()])))
+        let secondMonthly = try Paykit.AllowancePeriodLimit(
+            amountLimit: "0.0001",
+            paymentCountLimit: nil,
+            period: Paykit.AllowancePeriod(kind: "anchored", every: 1, unit: "month", anchor: "2026-09-15T00:00:00Z")
+        )
+        XCTAssertTrue(try hasUncheckedLimits(Fixtures.customTerms(otherPeriodLimits: [secondMonthly])))
+        XCTAssertTrue(try hasUncheckedLimits(Fixtures.customTerms(lifetimeAmountLimit: "0.001"), localRole: .allowee))
+    }
+
+    func testTheWalletRestorePauseStaysUntilItIsCleared() throws {
+        try? Keychain.delete(key: .paykitAllowancesPausedAfterRestore)
+        try? Keychain.delete(key: .paykitAllowanceState)
+        defer {
+            try? Keychain.delete(key: .paykitAllowancesPausedAfterRestore)
+            try? Keychain.delete(key: .paykitAllowanceState)
+        }
+        let notPaused = try PaykitAllowanceKeychainStore().isPausedAfterRestore()
+
+        try PaykitAllowanceKeychainStore().setPausedAfterRestore(true)
+        PaykitAllowanceKeychainStore().restoreBackup(PaykitAllowanceStateBackups([
+            Fixtures.identityKey: PaykitAllowanceStateBackup(PaykitAllowanceLocalState(ledgerRevisionFloor: 5)),
+        ]))
+        let pausedAfterReload = try PaykitAllowanceKeychainStore().isPausedAfterRestore()
+        try PaykitAllowanceKeychainStore().setPausedAfterRestore(false)
+        let resumed = try PaykitAllowanceKeychainStore().isPausedAfterRestore()
+
+        XCTAssertFalse(notPaused)
+        XCTAssertTrue(pausedAfterReload)
+        XCTAssertFalse(resumed)
+    }
+
     func testStatusMapsEveryLifecycleState() throws {
         func status(
             _ state: Paykit.AllowanceLifecycleState,
@@ -675,18 +716,24 @@ enum PaykitAllowanceFixtures {
         try limits.terms(monthAnchor: septemberAnchor, allowedPaymentEndpointIdentifiers: [lightningIdentifier])
     }
 
-    static func customTerms(activeFrom: Date? = nil, expiresAt: Date? = nil) throws -> Paykit.AllowanceTerms {
+    static func customTerms(
+        activeFrom: Date? = nil,
+        expiresAt: Date? = nil,
+        monthlyPaymentCountLimit: UInt64? = nil,
+        otherPeriodLimits: [Paykit.AllowancePeriodLimit] = [],
+        lifetimeAmountLimit: String? = nil
+    ) throws -> Paykit.AllowanceTerms {
         try Paykit.AllowanceTerms(
             asset: PaykitIssuerInterop.bitcoinAsset,
             perPaymentAmount: Paykit.AllowanceAmountRange(minimum: "0", maximum: "0.00005"),
             periodLimits: [
                 Paykit.AllowancePeriodLimit(
                     amountLimit: "0.0005",
-                    paymentCountLimit: nil,
+                    paymentCountLimit: monthlyPaymentCountLimit,
                     period: Paykit.AllowancePeriod(kind: "anchored", every: 1, unit: "month", anchor: "2026-09-01T00:00:00Z")
                 ),
-            ],
-            lifetimeAmountLimit: nil,
+            ] + otherPeriodLimits,
+            lifetimeAmountLimit: lifetimeAmountLimit,
             activeFrom: activeFrom.map(PaykitAllowanceTime.format),
             expiresAt: expiresAt.map(PaykitAllowanceTime.format),
             allowedPaymentEndpointIdentifiers: [lightningIdentifier]
@@ -773,6 +820,14 @@ enum PaykitAllowanceFixtures {
             monthlyAnchor: monthlyAnchor,
             expiresAt: expiresAt,
             allowedPaymentEndpointIdentifiers: [lightningIdentifier]
+        )
+    }
+
+    static func weeklyLimit() throws -> Paykit.AllowancePeriodLimit {
+        try Paykit.AllowancePeriodLimit(
+            amountLimit: "0.0001",
+            paymentCountLimit: nil,
+            period: Paykit.AllowancePeriod(kind: "anchored", every: 1, unit: "week", anchor: "2026-09-01T00:00:00Z")
         )
     }
 

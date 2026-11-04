@@ -144,6 +144,9 @@ extension PaykitAllowanceLocalState {
 protocol PaykitAllowanceStoring: Sendable {
     func load(identity: String) throws -> PaykitAllowanceLocalState
     func save(_ state: PaykitAllowanceLocalState, identity: String) throws
+    /// Whether automatic payments are paused since the wallet was restored from a backup, until the user resumes them.
+    func isPausedAfterRestore() throws -> Bool
+    func setPausedAfterRestore(_ isPaused: Bool) throws
 }
 
 struct PaykitAllowanceKeychainStore: PaykitAllowanceStoring {
@@ -168,6 +171,19 @@ struct PaykitAllowanceKeychainStore: PaykitAllowanceStoring {
         unchanged.lastTrustedTime = previous?.lastTrustedTime
         if unchanged != previous {
             Self.backupChanged.send()
+        }
+    }
+
+    /// Kept on this device only and never in a backup, so every restore pauses automatic payments again.
+    func isPausedAfterRestore() throws -> Bool {
+        try Keychain.load(key: .paykitAllowancesPausedAfterRestore) != nil
+    }
+
+    func setPausedAfterRestore(_ isPaused: Bool) throws {
+        if isPaused {
+            try Keychain.upsert(key: .paykitAllowancesPausedAfterRestore, data: Data([1]))
+        } else {
+            try Keychain.delete(key: .paykitAllowancesPausedAfterRestore)
         }
     }
 
@@ -541,6 +557,16 @@ actor PaykitAllowanceExecutor {
         try checkedUpdateLocalState(identity: identity) { $0.ledgerRevisionFloor = ledger?.revision }
     }
 
+    /// True from a wallet restore until the user resumes automatic payments. A pause that can't be read counts as paused.
+    func isPausedAfterRestore() -> Bool {
+        (try? store.isPausedAfterRestore()) ?? true
+    }
+
+    /// Ends the pause a wallet restore started; the restored spends, paid requests and ended allowances still apply.
+    func resumeAfterRestore() throws {
+        try store.setPausedAfterRestore(false)
+    }
+
     func isHandling(_ requestId: PaykitPaymentRequest.ID) -> Bool {
         inFlightRequestIds.contains(requestId)
     }
@@ -675,6 +701,8 @@ actor PaykitAllowanceExecutor {
             $0.isAllower && $0.status(at: now()) == .active && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty)
         }
         guard !covering.isEmpty else { return false }
+        // Paused automatic payments keep the request manual, without waiting for the node.
+        guard !isPausedAfterRestore() else { return true }
         var attempts: [PaykitAllowanceCapacity.Attempt] = []
         do {
             let ledger = try await sdk.allowanceAccountingState()
@@ -886,6 +914,10 @@ actor PaykitAllowanceExecutor {
                       PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty)
               })
         else { return .notCovered }
+        guard !isPausedAfterRestore() else {
+            Logger.info("Kept an incoming request manual: automatic payments are paused since the wallet was restored", context: "PaykitAllowance")
+            return .manual
+        }
 
         inFlightRequestIds.insert(request.id)
         defer { inFlightRequestIds.remove(request.id) }
@@ -944,6 +976,11 @@ actor PaykitAllowanceExecutor {
             }) {
                 notifyLimitReached(request, identity: identity)
             }
+            return .manual
+        }
+        // Bitkit checks the per-payment cap and one monthly amount itself; any other limit is left to the user.
+        guard !allowance.hasUncheckedLimits else {
+            Logger.info("Kept an incoming request manual: its allowance has limits this wallet does not check", context: "PaykitAllowance")
             return .manual
         }
 

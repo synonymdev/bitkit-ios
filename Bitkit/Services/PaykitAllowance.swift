@@ -40,6 +40,9 @@ struct PaykitAllowance: Identifiable, Hashable {
     let lastEventAt: Date?
     /// The proposal's stream item as displayed; acceptance names it so a re-sent proposal asks again.
     let proposalStreamItemId: UInt64?
+    /// Terms with a limit beyond the per-payment cap and the one monthly amount Bitkit checks itself, such as a lifetime
+    /// amount, a payment count or another period. Bitkit never proposes these, and they never pay automatically.
+    let hasUncheckedLimits: Bool
 
     var counterparty: String {
         id.counterparty
@@ -65,7 +68,8 @@ struct PaykitAllowance: Identifiable, Hashable {
               terms.asset() == PaykitIssuerInterop.bitcoinAsset
         else { return nil }
 
-        let monthly = terms.periodLimits().first { Self.isMonthly($0.period()) }
+        let periodLimits = terms.periodLimits()
+        let monthly = periodLimits.first { Self.isMonthly($0.period()) }
         let perPaymentMaxSats = terms.perPaymentAmount().flatMap { Self.sats(fromBitcoinAmount: $0.maximum()) }
         let monthlyLimitSats = monthly?.amountLimit().flatMap { Self.sats(fromBitcoinAmount: $0) }
         let monthlyAnchor = monthly?.period().anchor().flatMap(PaykitAllowanceTime.parse)
@@ -85,6 +89,8 @@ struct PaykitAllowance: Identifiable, Hashable {
         allowedPaymentEndpointIdentifiers = terms.allowedPaymentEndpointIdentifiers()
         lastEventAt = record.lastEventAt.flatMap(PaykitAllowanceTime.parse)
         proposalStreamItemId = record.proposalStreamItemId
+        hasUncheckedLimits = terms.lifetimeAmountLimit() != nil || periodLimits.count > 1 ||
+            periodLimits.contains { !Self.isMonthly($0.period()) || $0.paymentCountLimit() != nil }
     }
 
     init(
@@ -99,7 +105,8 @@ struct PaykitAllowance: Identifiable, Hashable {
         expiresAt: Date? = nil,
         allowedPaymentEndpointIdentifiers: [String]? = nil,
         lastEventAt: Date? = nil,
-        proposalStreamItemId: UInt64? = nil
+        proposalStreamItemId: UInt64? = nil,
+        hasUncheckedLimits: Bool = false
     ) {
         self.id = id
         self.role = role
@@ -113,6 +120,7 @@ struct PaykitAllowance: Identifiable, Hashable {
         self.allowedPaymentEndpointIdentifiers = allowedPaymentEndpointIdentifiers
         self.lastEventAt = lastEventAt
         self.proposalStreamItemId = proposalStreamItemId
+        self.hasUncheckedLimits = hasUncheckedLimits
     }
 
     func status(at now: Date) -> Status {

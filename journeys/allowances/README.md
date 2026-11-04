@@ -7,6 +7,8 @@ pins the one rule that must never break: a payment interrupted mid-flight is nev
 The PIN journey checks that the payer's grant, accept and end ask for the payment PIN when the
 user requires one, while automatic payments never prompt.
 The restore journey checks that a payer restored from its recovery phrase keeps its allowance history.
+`allowance-paused-after-restore.xml` checks that the restored payer pays nothing automatically until it
+taps Resume, also after a relaunch.
 
 ## Setup
 

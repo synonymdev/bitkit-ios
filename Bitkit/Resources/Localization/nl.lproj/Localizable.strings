@@ -1845,6 +1845,7 @@
 "subscriptions__allowances" = "Toelagen";
 "subscriptions__allowances_empty_headline" = "Stel\n<accent>toelagen</accent> in";
 "subscriptions__allowances_paused_description" = "Je toelagengegevens zijn ouder dan gegevens die deze wallet al heeft gebruikt. Verzoeken vragen om je goedkeuring tot je hervat.";
+"subscriptions__allowances_paused_restore_description" = "Deze wallet is hersteld vanuit een backup. Verzoeken vragen om je goedkeuring tot je hervat.";
 "subscriptions__allowances_paused_resume" = "Hervatten";
 "subscriptions__allowances_paused_title" = "Automatische betalingen gepauzeerd";
 "subscriptions__allowances_empty_description" = "U kunt bestedingslimieten instellen om betaalverzoeken van vertrouwde contacten automatisch te voldoen.";

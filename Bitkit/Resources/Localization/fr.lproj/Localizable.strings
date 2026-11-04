@@ -1851,6 +1851,7 @@
 "subscriptions__allowances" = "Allocations";
 "subscriptions__allowances_empty_headline" = "Configurez\n<accent>des allocations</accent>";
 "subscriptions__allowances_paused_description" = "Vos données d'allocations sont plus anciennes que celles que ce portefeuille a déjà utilisées. Les demandes attendront votre accord jusqu'à la reprise.";
+"subscriptions__allowances_paused_restore_description" = "Ce portefeuille a été restauré à partir d'une sauvegarde. Les demandes attendront votre accord jusqu'à la reprise.";
 "subscriptions__allowances_paused_resume" = "Reprendre";
 "subscriptions__allowances_paused_title" = "Paiements automatiques en pause";
 "subscriptions__allowances_empty_description" = "Vous pouvez définir des limites de dépenses pour régler automatiquement les demandes de paiement de contacts de confiance.";
