@@ -461,6 +461,25 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(record.fundingShortfallSats, 2000)
     }
 
+    /// Gen 1's change outlives a rebuild that needed no funding; a later shortfall still counts it as held.
+    func testChangeOfAnEarlierGenerationIsNotNewFunding() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 20000)
+        record.adopt(SparkExitFixtures.recovery([SparkExitFixtures.tx("n1", cpfp: SparkExitFixtures.parentHex)]))
+        let second = SparkExitFixtures.recovery([SparkExitFixtures.tx("n2")])
+        record.adopt(second)
+        chain.utxosByAddress["bcrt1qfunding"] = [SparkExitFixtures.utxo(SparkExitFixtures.parentTxid, value: 13000)]
+        sdk.checks = [CheckRecoverFundsResponse(recovery: second, verdict: .redo(reason: .onChainStateDiverged))]
+        sdk.recoverError = SdkError.InsufficientCpfpFunds(requiredSats: 15000, docsUrl: "")
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.earlierCpfpTxids, [SparkExitFixtures.parentTxid])
+        XCTAssertEqual(record.fundingShortfallSats, 2000)
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.funding.count, 1, "the change is not adopted as a top-up")
+    }
+
     func testTopUpIgnoresCpfpChangeChainedToTheFundingAddress() async throws {
         var record = SparkExitFixtures.record(phase: .needsFunding(requiredSats: 23000))
         record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 20000)

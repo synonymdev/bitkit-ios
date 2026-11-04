@@ -89,6 +89,8 @@ struct SparkExitRecord: Codable, Equatable {
     var claimableAtHeight: UInt32?
     var leftover: [Leftover] = []
     var leftoverSweep: LeftoverSweep?
+    /// The CPFP children of earlier generations, whose change at the funding address is not new funding.
+    var earlierCpfpTxids: [String]?
     var skippedLeafCount: Int = 0
     /// Cooperative leaves the last build could not recover.
     var failedLeafCount: Int = 0
@@ -132,6 +134,12 @@ struct SparkExitRecord: Codable, Equatable {
 
     /// Starts a new generation from a fresh build, forgetting what was broadcast for the previous one.
     mutating func adopt(_ built: RecoverFundsResponse, at date: Date = Date()) {
+        if let recovery {
+            let txids = SparkExitTxid.cpfpChildTxids(recovery.response)
+            if !txids.isEmpty {
+                earlierCpfpTxids = (earlierCpfpTxids ?? []) + txids
+            }
+        }
         generation += 1
         recovery = StoredRecovery(built)
         broadcastLog = []

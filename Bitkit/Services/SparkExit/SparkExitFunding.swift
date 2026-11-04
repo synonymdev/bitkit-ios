@@ -213,11 +213,11 @@ enum SparkExitMath {
         }.count
     }
 
-    /// UTXOs at the funding address that are new fee funding: neither a funding input yet nor CPFP change the
-    /// exit chained there.
+    /// UTXOs at the funding address that are new fee funding: neither a funding input yet nor CPFP change any
+    /// generation of the exit chained there.
     static func newFunding(_ utxos: [EsploraUtxo], record: SparkExitRecord) -> [EsploraUtxo] {
         let known = Set(record.funding.compactMap { funding in funding.txid.map { "\($0):\(funding.vout ?? 0)" } })
-        let chained = Set(record.recovery.map { SparkExitTxid.cpfpChildTxids($0.response) } ?? [])
+        let chained = Set((record.recovery.map { SparkExitTxid.cpfpChildTxids($0.response) } ?? []) + (record.earlierCpfpTxids ?? []))
         return utxos.filter { !known.contains("\($0.txid):\($0.vout)") && !chained.contains($0.txid) }
     }
 
