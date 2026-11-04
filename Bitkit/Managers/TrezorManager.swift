@@ -59,6 +59,9 @@ final class TrezorManager: Sendable {
 
     var showPinEntry: Bool = false
 
+    /// The PIN request the sheet answers, or nil while core waits for none
+    private(set) var pinRequestId: Int?
+
     var showPassphraseEntry: Bool = false
 
     var showPairingCode: Bool = false
@@ -139,10 +142,11 @@ final class TrezorManager: Sendable {
             }
             .store(in: &cancellables)
 
-        uiHandler.needsPinPublisher
+        uiHandler.pinRequestIds
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] in
-                self?.showPinEntry = true
+            .sink { [weak self] requestId in
+                self?.pinRequestId = requestId
+                self?.showPinEntry = requestId != nil
             }
             .store(in: &cancellables)
 
@@ -438,14 +442,28 @@ final class TrezorManager: Sendable {
         connectedDevice != nil || isAutoReconnecting || isConnectionOperationActive || autoReconnectTask != nil
     }
 
+    /// Calls off a pending reconnect, pairing prompt and PIN request first rather than waiting for them. A connect waiting on
+    /// its PIN would otherwise hold the connection work for the whole PIN timeout, even on a foreground reconnect that shows
+    /// no PIN sheet.
     func releaseSession() async {
+        // Until the connection work already running has ended, a connect that only now reaches its pairing or PIN prompt is
+        // answered at once too
+        transport.refusePairingCodeRequests()
+        uiHandler.refusePinRequests()
         cancelAutoReconnect()
         cancelPairingCode()
+        cancelPin()
         // Detached because `withConnectionOperation` bails out on a cancelled task, and a caller
         // abandoning its own work must still leave the radio free for the other vendor.
-        await Task.detached { @MainActor [weak self] in
-            guard let self else { return }
+        await Task.detached { @MainActor [weak self, transport, uiHandler] in
+            guard let self else {
+                transport.allowPairingCodeRequests()
+                uiHandler.allowPinRequests()
+                return
+            }
             try? await withConnectionOperation {
+                transport.allowPairingCodeRequests()
+                uiHandler.allowPinRequests()
                 await self.disconnect()
                 // Handing the radio to the other vendor is not a manual disconnect, so the next
                 // foreground reconnect still runs.
@@ -459,19 +477,26 @@ final class TrezorManager: Sendable {
     /// cleared them. Clearing the loaded entries keeps a later reconnect from starting at all.
     func resetForWipe() async {
         await releaseSession()
+        // A failed reconnect can leave a host passphrase selected with no device connected, which the
+        // release above skips
+        clearDisconnectedDeviceState()
         knownDevices = []
     }
 
     // MARK: - UI Callbacks
 
-    func submitPin(_ pin: String) {
+    /// `requestId` is the PIN request the sheet was shown for, so positions read off an earlier matrix never answer a
+    /// newer request. Nil only for a sheet shown without a request, which has nothing to answer.
+    func submitPin(_ pin: String, requestId: Int?) {
         showPinEntry = false
-        uiHandler.submitPin(pin)
+        guard let requestId else { return }
+        uiHandler.submitPin(pin, requestId: requestId)
     }
 
-    func cancelPin() {
+    /// Cancels PIN request `requestId`, or whichever request is pending when nil.
+    func cancelPin(requestId: Int? = nil) {
         showPinEntry = false
-        uiHandler.cancelPin()
+        uiHandler.cancelPin(requestId: requestId)
     }
 
     /// Opens the corresponding hidden wallet (or the standard wallet when empty) by resetting the session.

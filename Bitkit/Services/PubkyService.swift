@@ -1570,8 +1570,8 @@ actor PaykitSdkService {
         }
     }
 
-    func withWalletWipe<T>(_ operation: () async throws -> T) async throws -> T {
-        try await operationLock.withWalletWipe {
+    func withWalletWipe<T>(acquireTimeout: Duration? = nil, _ operation: () async throws -> T) async throws -> T {
+        try await operationLock.withWalletWipe(acquireTimeout: acquireTimeout) {
             resetRuntime()
             defer {
                 sessionProvider.clearLiveSessionAccess()
@@ -1690,6 +1690,7 @@ actor PaykitSdkService {
                             )
                         #endif
                         try await beforeOperation()
+                        try operationLock.checkWipeOwnership()
                         return try await .some(operation(handle()))
                     }
                 } catch OperationDeferral.paymentActive {
@@ -1888,6 +1889,9 @@ actor PaykitSdkService {
     private func paykitKey(for root: PubkyLocalSecretKey) async throws -> PaykitIdentitySecretKey {
         let publicKey = try Paykit.pubkyPublicKeyFromSecret(localSecretKey: root)
         let registry = try await handle().paykitAppRegistry(publicKey: publicKey)
+        // The registry call ignores cancellation, so a wipe may have stopped waiting for it meanwhile.
+        try Task.checkCancellation()
+        try operationLock.checkWipeOwnership()
         let generation = registry?.keyGeneration ?? 1
         let saved = try Keychain.load(key: .paykitKeyGeneration(publicKey: publicKey))
             .map { try JSONDecoder().decode(UInt64.self, from: $0) }
@@ -2084,7 +2088,7 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
         generation expectedGeneration: Int? = nil,
         _ operation: () async throws -> T
     ) async throws -> T {
-        if ownsWipe() {
+        if try isWipeOwned() {
             return try await operation()
         }
         let admittedGeneration = try admit()
@@ -2103,7 +2107,7 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
     /// is in progress. A wipe cannot drain work that does not hold the lock, so a result that a wipe overtakes is
     /// discarded and the caller gets the wipe error instead.
     func withoutLock<T>(_ operation: () async throws -> T) async throws -> T {
-        if ownsWipe() {
+        if try isWipeOwned() {
             return try await operation()
         }
         let admittedGeneration = try admit()
@@ -2114,10 +2118,16 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
         return result
     }
 
-    func withWalletWipe<T>(_ operation: () async throws -> T) async throws -> T {
+    /// With `acquireTimeout`, throws `WipeWaitTimeoutError` without running `operation` when Paykit work already holding the
+    /// lock has not drained by then.
+    func withWalletWipe<T>(acquireTimeout: Duration? = nil, _ operation: () async throws -> T) async throws -> T {
         let wipeID = try beginWipe()
         defer { endWipe() }
-        await acquire(priority: .ordered)
+        if let acquireTimeout {
+            try await acquire(within: acquireTimeout)
+        } else {
+            await acquire(priority: .ordered)
+        }
         defer { release() }
         try Task.checkCancellation()
         return try await Self.$walletWipeOwner.withValue(wipeID) {
@@ -2125,10 +2135,18 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
         }
     }
 
-    private func ownsWipe() -> Bool {
+    /// Throws once the wipe that started this work has ended or given up on it, so work a wipe abandoned at a deadline
+    /// cannot write state or reach the next wallet's runtime when it resumes.
+    func checkWipeOwnership() throws {
+        _ = try isWipeOwned()
+    }
+
+    private func isWipeOwned() throws -> Bool {
+        guard let owner = Self.walletWipeOwner else { return false }
         lock.lock()
         defer { lock.unlock() }
-        return isWiping && activeWipeID != nil && Self.walletWipeOwner == activeWipeID
+        guard isWiping, activeWipeID == owner else { throw wipeError() }
+        return true
     }
 
     private func admit() throws -> Int {
@@ -2169,7 +2187,7 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
     /// Leaves the queue as soon as the caller is cancelled and never runs `operation` for a cancelled caller,
     /// so an abandoned read cannot take the lock ahead of work queued after it.
     func withCancellableLock<T>(_ operation: () async throws -> T) async throws -> T {
-        if ownsWipe() {
+        if try isWipeOwned() {
             return try await operation()
         }
         let admittedGeneration = try admit()
@@ -2186,6 +2204,25 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
             if isLocked {
                 waiters.append(.uncancellable(priority, continuation))
                 lock.unlock()
+            } else {
+                isLocked = true
+                lock.unlock()
+                continuation.resume()
+            }
+        }
+    }
+
+    private func acquire(within timeout: Duration) async throws {
+        let id = UUID()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            lock.lock()
+            if isLocked {
+                waiters.append(.cancellable(id, .ordered, continuation))
+                lock.unlock()
+                Task { [self] in
+                    try? await Task.sleep(for: timeout)
+                    removeWaiter(id: id)?.resume(throwing: WipeWaitTimeoutError(wait: "Paykit"))
+                }
             } else {
                 isLocked = true
                 lock.unlock()

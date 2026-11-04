@@ -118,6 +118,95 @@ final class VssClientCoordinatorTests: XCTestCase {
         await fulfillment(of: [setup], timeout: 2)
     }
 
+    @MainActor
+    func testWipeDrainsAfterNodeStopAndKeepsAdmissionClosedThroughCommit() async throws {
+        for (holdSetup, resetBeforeWipe) in [(true, false), (false, false), (false, true)] {
+            let clients = VssClientCoordinator()
+            let oldGate = Gate()
+            let tailGate = Gate()
+            let started = expectation(description: "Original VSS work admitted")
+            let prefixFinished = expectation(description: "Node stop and remote cleanup finished")
+            let credentialsRemoved = expectation(description: "Credential deletion reached")
+            let store = FakePinLockoutStore()
+            store.pin = "1234"
+            let recording = RecordingWipeExecutor(device: FakeWipedDevice(store: store))
+            let executor = VssWipeExecutor(recording: recording, clients: clients)
+            executor.onStep = { step in
+                if step == .removeRemoteEndpoints {
+                    prefixFinished.fulfill()
+                }
+                if step == .wipeKeychain || step == .commit {
+                    await self.assertClosed(clients)
+                }
+                if step == .wipeKeychain {
+                    credentialsRemoved.fulfill()
+                    await tailGate.wait()
+                }
+            }
+            let old = Task {
+                try await clients.withClient(domain: .app, setup: {
+                    if holdSetup {
+                        started.fulfill()
+                        await oldGate.wait()
+                    }
+                }, operation: {
+                    if holdSetup {
+                        XCTFail("Retired setup must not dispatch")
+                    } else {
+                        started.fulfill()
+                        await oldGate.wait()
+                    }
+                })
+            }
+            await fulfillment(of: [started], timeout: 2)
+            let reset: Task<Void, Never>?
+            if resetBeforeWipe {
+                reset = Task { await clients.reset {} }
+                await waitForClosedAdmission(clients, domain: .ldk)
+            } else {
+                reset = nil
+            }
+            let wipe = WipeCoordinator(store: store, makeExecutor: { executor }, retryDelays: [])
+            try wipe.begin(.userReset)
+            await fulfillment(of: [prefixFinished], timeout: 2)
+            guard await waitForClosedAdmission(clients, domain: .ldk) else {
+                await oldGate.release()
+                await tailGate.release()
+                _ = await old.result
+                await wipe.waitForCurrentAttempt()
+                continue
+            }
+
+            XCTAssertEqual(recording.ranSteps, [.quiesce, .stopNode, .removeRemoteEndpoints])
+            XCTAssertEqual(executor.shutdowns.value, 0)
+            XCTAssertEqual(store.pin, "1234")
+            await assertClosed(clients)
+            await oldGate.release()
+            await assertCancelled(old)
+            await reset?.value
+            await fulfillment(of: [credentialsRemoved], timeout: 2)
+
+            XCTAssertEqual(executor.shutdowns.value, 1)
+            XCTAssertEqual(recording.ranSteps.last, .wipeKeychain)
+            XCTAssertEqual(store.pin, "1234")
+            XCTAssertNotNil(store.intent)
+            XCTAssertTrue(recording.finishedReasons.isEmpty)
+            await assertClosed(clients)
+            await tailGate.release()
+            await wipe.waitForCurrentAttempt()
+
+            XCTAssertEqual(recording.ranSteps, WipeStep.allCases)
+            XCTAssertEqual(recording.finishedReasons, [.userReset])
+            XCTAssertEqual(wipe.gate, .none)
+            XCTAssertEqual(executor.shutdowns.value, 1)
+            let freshSetups = Counter()
+            for domain in [VssClientCoordinator.Domain.app, .ldk] {
+                try await clients.withClient(domain: domain, setup: { freshSetups.increment() }, operation: {})
+            }
+            XCTAssertEqual(freshSetups.value, 2)
+        }
+    }
+
     func testRetiredNativeFailureIsCancellationRatherThanNewOwnerAuthFailure() async {
         let coordinator = VssClientCoordinator()
         let gate = Gate()
@@ -193,14 +282,58 @@ final class VssClientCoordinatorTests: XCTestCase {
         } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)", file: file, line: line) }
     }
 
-    private func waitForClosedAdmission(_ coordinator: VssClientCoordinator) async {
+    @discardableResult
+    private func waitForClosedAdmission(_ coordinator: VssClientCoordinator, domain: VssClientCoordinator.Domain = .app) async -> Bool {
         for _ in 0 ..< 100 {
-            do { try await coordinator.withClient(domain: .app, setup: {}, operation: {}) }
-            catch is CancellationError { return }
-            catch { XCTFail("Unexpected error: \(error)"); return }
+            do { try await coordinator.withClient(domain: domain, setup: {}, operation: {}) }
+            catch is CancellationError { return true }
+            catch { XCTFail("Unexpected error: \(error)"); return false }
             await Task.yield()
         }
         XCTFail("Reset did not close admission")
+        return false
+    }
+
+    private func assertClosed(_ coordinator: VssClientCoordinator) async {
+        for domain in [VssClientCoordinator.Domain.app, .ldk] {
+            do {
+                try await coordinator.withClient(domain: domain, setup: {
+                    XCTFail("Credentials must not be read during the wipe")
+                }, operation: { XCTFail("Native work must not start during the wipe") })
+                XCTFail("Admission must stay closed through commit")
+            } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+        }
+    }
+
+    @MainActor
+    private final class VssWipeExecutor: WipeStepExecutor {
+        let recording: RecordingWipeExecutor
+        let clients: VssClientCoordinator
+        let shutdowns = Counter()
+        var onStep: ((WipeStep) async -> Void)?
+
+        init(recording: RecordingWipeExecutor, clients: VssClientCoordinator) {
+            self.recording = recording
+            self.clients = clients
+        }
+
+        func withWipeScope(_ steps: () async throws -> Void) async throws {
+            try await recording.withWipeScope(steps)
+        }
+
+        func withLocalStateWipeScope(_ steps: () async throws -> Void) async throws {
+            let shutdowns = shutdowns
+            try await clients.withSuspendedClients(shutdown: { shutdowns.increment() }, operation: steps)
+        }
+
+        func run(_ step: WipeStep) async throws {
+            try await recording.run(step)
+            await onStep?(step)
+        }
+
+        func finish(reason: WipeReason?) {
+            recording.finish(reason: reason)
+        }
     }
 
     private final class Counter: @unchecked Sendable {

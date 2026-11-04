@@ -123,7 +123,9 @@ private struct TrezorDialogsModifier: ViewModifier {
         @Bindable var trezorManager = trezorManager
         content
             .sheet(isPresented: $trezorManager.showPinEntry) {
-                TrezorPinEntrySheet()
+                // A new request means a new matrix on the device, so its sheet starts empty
+                TrezorPinEntrySheet(requestId: trezorManager.pinRequestId)
+                    .id(trezorManager.pinRequestId)
             }
             // Pairing code is presented app-wide via the SheetViewModel system (see MainNavView),
             // so the home hardware feature shows it regardless of being on this dev screen.
@@ -227,6 +229,9 @@ private struct NetworkSelectorRow: View {
 // MARK: - PIN Entry Sheet
 
 struct TrezorPinEntrySheet: View {
+    /// The PIN request this sheet answers
+    let requestId: Int?
+
     @Environment(TrezorManager.self) private var trezorManager
     @Environment(\.dismiss) private var dismiss
     @State private var pin: String = ""
@@ -256,7 +261,7 @@ struct TrezorPinEntrySheet: View {
             // Buttons
             HStack(spacing: 16) {
                 Button(action: {
-                    trezorManager.cancelPin()
+                    trezorManager.cancelPin(requestId: requestId)
                     dismiss()
                 }) {
                     Text("Cancel")
@@ -270,7 +275,7 @@ struct TrezorPinEntrySheet: View {
                 .accessibilityIdentifier("TrezorPinCancel")
 
                 Button(action: {
-                    trezorManager.submitPin(pin)
+                    trezorManager.submitPin(pin, requestId: requestId)
                     dismiss()
                 }) {
                     Text("Confirm")
