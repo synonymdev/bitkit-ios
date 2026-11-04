@@ -42,6 +42,25 @@ final class SendConfirmationViewTests: XCTestCase {
         XCTAssertFalse(SendConfirmationView.canEditConfirmationFee(retained: signed, isLoading: false))
     }
 
+    func testAmountScreenAcceptsOnlyTheRetainedAmountAboveTheCurrentMaximum() {
+        let available: UInt64 = 90000
+        let retained: UInt64 = 95000
+
+        XCTAssertTrue(SendAmountView.isWithinSendableLimit(amountSats: retained, availableSats: available, retainedRetrySats: retained))
+        XCTAssertTrue(SendAmountView.isWithinSendableLimit(amountSats: available, availableSats: available, retainedRetrySats: retained))
+        XCTAssertFalse(SendAmountView.isWithinSendableLimit(amountSats: retained - 1, availableSats: available, retainedRetrySats: retained))
+        XCTAssertFalse(SendAmountView.isWithinSendableLimit(amountSats: retained + 1, availableSats: available, retainedRetrySats: retained))
+        XCTAssertFalse(SendAmountView.isWithinSendableLimit(amountSats: retained, availableSats: available, retainedRetrySats: nil))
+    }
+
+    func testAmountInputCapLetsTheRetainedAmountBeTyped() {
+        XCTAssertEqual(SendAmountView.amountInputCap(availableSats: 90000, retainedRetrySats: 95000), 95000)
+        XCTAssertEqual(SendAmountView.amountInputCap(availableSats: 90000, retainedRetrySats: 42000), 90000)
+        XCTAssertEqual(SendAmountView.amountInputCap(availableSats: 90000, retainedRetrySats: nil), 90000)
+        XCTAssertEqual(SendAmountView.amountInputCap(availableSats: 0, retainedRetrySats: 95000), 95000)
+        XCTAssertNil(SendAmountView.amountInputCap(availableSats: 0, retainedRetrySats: nil))
+    }
+
     func testAutomaticPaymentRequiresManualConfirmationOnlyForHardwareFunding() {
         for isHardwarePayment in [false, true] {
             XCTAssertEqual(

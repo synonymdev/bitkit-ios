@@ -484,7 +484,8 @@ final class HwSendCoordinator {
         manager: HwWalletManager,
         address: String,
         sats: UInt64,
-        satsPerVByte: UInt64
+        satsPerVByte: UInt64,
+        hasIncomingRequest: Bool
     ) async throws -> UInt64? {
         guard let walletId else { return nil }
         previewRequestId += 1
@@ -494,6 +495,15 @@ final class HwSendCoordinator {
         let request = PaymentRequest(address: address, sats: sats, satsPerVByte: satsPerVByte)
         if pendingPayment?.request != request, pendingPayment?.isAttemptedOrdinarySend != true {
             pendingPayment = nil
+        }
+        // The signed bytes already fix the fee, so a composition at today's fee could only block a valid retry.
+        let status = await retainedSendStatus(address: address, sats: sats, hasIncomingRequest: hasIncomingRequest)
+        if let retained = status.retrySignedTx {
+            guard self.walletId == walletId, previewRequestId == requestId else { return nil }
+            previewFeeSats = retained.miningFeeSats
+            isFundingSourceLoading = false
+            isPreviewLoading = false
+            return retained.miningFeeSats
         }
         do {
             let signer = signerFactory(manager, address, satsPerVByte)
@@ -762,6 +772,16 @@ final class HwSendCoordinator {
         }
         guard let pendingPayment, pendingPayment.isAttemptedOrdinarySend else { return .none }
         return pendingPayment.request.isSamePayment(address: address, sats: sats) ? .retry(pendingPayment.signedTx) : .blocking
+    }
+
+    /// The amount a retry to this address would rebroadcast. It was fundable when signed, so the amount screen must accept it
+    /// even above the maximum at today's fee.
+    func retainedRetrySats(address: String, hasIncomingRequest: Bool) async -> UInt64? {
+        guard !hasIncomingRequest, let walletId else { return nil }
+        let attemptedSats = pendingPayment?.isAttemptedOrdinarySend == true ? pendingPayment?.request.sats : nil
+        guard let sats = await (try? retainedSends.record(walletId: walletId))?.sats ?? attemptedSats else { return nil }
+        let status = await retainedSendStatus(address: address, sats: sats, hasIncomingRequest: false)
+        return status.retrySignedTx == nil ? nil : sats
     }
 
     /// Discards the retained ordinary send so the next attempt signs anew. Only call this after the user accepted a second payment.

@@ -140,6 +140,8 @@ The iOS `shop-onchain-proof.xml` recovery contract permits local Success after e
 proof, and activity persistence without waiting for remote proof delivery. Unit fixtures cover
 held delivery, acknowledgement failure, and restart; the live journey does not inject these faults.
 
+Broadcast faults on an ordinary send are not a journey capability; the manual recipe is [broadcast-unknown-retry.md](broadcast-unknown-retry.md).
+
 ## Blockstream Jade
 
 There is no Jade emulator in `bitkit-docker`, and iOS reaches a Jade over Bluetooth only, which the

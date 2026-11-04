@@ -2068,7 +2068,8 @@ struct SendConfirmationView: View {
                     manager: hwWalletManager,
                     address: address,
                     sats: amountSats,
-                    satsPerVByte: UInt64(feeRate)
+                    satsPerVByte: UInt64(feeRate),
+                    hasIncomingRequest: app.contactPaymentContext?.incomingPaymentRequest != nil
                 ) else { return }
                 apply(fee)
                 return

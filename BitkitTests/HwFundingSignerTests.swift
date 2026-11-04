@@ -189,7 +189,8 @@ final class HwFundingSignerTests: XCTestCase {
                 manager: manager,
                 address: "bc1qtest",
                 sats: 42000,
-                satsPerVByte: 2
+                satsPerVByte: 2,
+                hasIncomingRequest: false
             )
         }
         await Task.yield()
@@ -224,7 +225,8 @@ final class HwFundingSignerTests: XCTestCase {
                 manager: manager,
                 address: "bc1qtest",
                 sats: 42000,
-                satsPerVByte: 2
+                satsPerVByte: 2,
+                hasIncomingRequest: false
             )
             XCTFail("Expected preview preparation to fail")
         } catch {
@@ -924,13 +926,130 @@ final class HwFundingSignerTests: XCTestCase {
             let retry = reopensSheet
                 ? makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: service)
                 : original
-            _ = try await retry.preparePreview(manager: HwWalletManager(), address: "bc1qtest", sats: 42000, satsPerVByte: 9)
+            _ = try await retry.preparePreview(
+                manager: HwWalletManager(), address: "bc1qtest", sats: 42000, satsPerVByte: 9, hasIncomingRequest: false
+            )
             let status = await retry.retainedSendStatus(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
             XCTAssertEqual(status, .retry(funding.signedTx))
             try await send(retry, satsPerVByte: 9)
 
             assertSingleSignature(funding, broadcasts: 2)
         }
+    }
+
+    func testPreviewOfTheRetainedPaymentSkipsCompositionEvenWhenItWouldFail() async throws {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        let service = HwRetainedSendService.inMemory()
+        funding.broadcastError = Failure.unknown
+        await failSend(makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: connecting, retainedSends: service))
+        funding.composeError = MockHwFunding.TestError()
+        let connects = connecting.ensureCalls
+
+        let reopened = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: connecting, retainedSends: service)
+        reopened.selectWallet("trezor:other")
+        reopened.selectWallet("jade:wallet", showsLoading: true)
+        let fee = try await reopened.preparePreview(
+            manager: HwWalletManager(), address: "bc1qtest", sats: 42000, satsPerVByte: 99, hasIncomingRequest: false
+        )
+
+        XCTAssertEqual(fee, funding.signedTx.miningFeeSats)
+        XCTAssertEqual(reopened.previewFeeSats, funding.signedTx.miningFeeSats)
+        XCTAssertFalse(reopened.isFundingSourceLoading)
+        XCTAssertFalse(reopened.isPreviewLoading)
+        XCTAssertTrue(funding.estimateCalls.isEmpty)
+        XCTAssertEqual(connecting.ensureCalls, connects, "A preview must not contact the device")
+        assertSingleSignature(funding, broadcasts: 1)
+    }
+
+    func testPreviewOfAnotherPaymentStillComposesAndCanFail() async throws {
+        let payments: [(address: String, sats: UInt64)] = [("bc1qother", 42000), ("bc1qtest", 50000)]
+        for payment in payments {
+            let funding = MockHwFunding()
+            let service = HwRetainedSendService.inMemory()
+            let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: service)
+            funding.broadcastError = Failure.unknown
+            await failSend(coordinator)
+
+            funding.composeError = MockHwFunding.TestError()
+            await assertThrowsAsync {
+                _ = try await coordinator.preparePreview(
+                    manager: HwWalletManager(), address: payment.address, sats: payment.sats, satsPerVByte: 9, hasIncomingRequest: false
+                )
+            } _: { error in
+                XCTAssertTrue(error is MockHwFunding.TestError)
+            }
+            XCTAssertEqual(funding.estimateCalls.count, 1)
+            XCTAssertEqual(coordinator.previewFeeSats, 0)
+
+            funding.composeError = nil
+            let fee = try await coordinator.preparePreview(
+                manager: HwWalletManager(), address: payment.address, sats: payment.sats, satsPerVByte: 9, hasIncomingRequest: false
+            )
+            XCTAssertEqual(fee, funding.funding.miningFeeSats)
+            XCTAssertEqual(funding.estimateCalls.count, 2)
+        }
+    }
+
+    func testPreviewComposesWhenTheRetainedSendCannotBeRetried() async throws {
+        let funding = MockHwFunding()
+        let store = MockHwRetainedSendStore()
+        let coordinator = makeCoordinator(
+            walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: HwRetainedSendService(store: store)
+        )
+        funding.broadcastErrors = [Failure.unknown, Failure.refused]
+        await failSend(coordinator)
+        _ = try await coordinator.preparePreview(
+            manager: HwWalletManager(), address: "bc1qtest", sats: 42000, satsPerVByte: 9, hasIncomingRequest: true
+        )
+        XCTAssertEqual(funding.estimateCalls.count, 1, "A Shop payment never reuses an ordinary retained send")
+
+        await failSend(coordinator)
+        _ = try await coordinator.preparePreview(
+            manager: HwWalletManager(), address: "bc1qtest", sats: 42000, satsPerVByte: 9, hasIncomingRequest: false
+        )
+        XCTAssertEqual(funding.estimateCalls.count, 2, "A refused retry goes through the warning and signs anew")
+
+        store.setFailures(load: true)
+        _ = try await coordinator.preparePreview(
+            manager: HwWalletManager(), address: "bc1qtest", sats: 42000, satsPerVByte: 9, hasIncomingRequest: false
+        )
+        XCTAssertEqual(funding.estimateCalls.count, 3, "An unreadable store is not a retry")
+    }
+
+    func testRetainedRetrySatsOnlyCoversARetryToTheSameAddress() async {
+        let funding = MockHwFunding()
+        let store = MockHwRetainedSendStore()
+        let coordinator = makeCoordinator(
+            walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: HwRetainedSendService(store: store)
+        )
+        let noRecord = await coordinator.retainedRetrySats(address: "bc1qtest", hasIncomingRequest: false)
+        XCTAssertNil(noRecord)
+
+        funding.broadcastError = Failure.unknown
+        await failSend(coordinator)
+
+        let sameAddress = await coordinator.retainedRetrySats(address: "bc1qtest", hasIncomingRequest: false)
+        let otherAddress = await coordinator.retainedRetrySats(address: "bc1qother", hasIncomingRequest: false)
+        let incoming = await coordinator.retainedRetrySats(address: "bc1qtest", hasIncomingRequest: true)
+        XCTAssertEqual(sameAddress, 42000)
+        XCTAssertNil(otherAddress)
+        XCTAssertNil(incoming)
+
+        store.setFailures(load: true)
+        let unreadable = await coordinator.retainedRetrySats(address: "bc1qtest", hasIncomingRequest: false)
+        XCTAssertNil(unreadable)
+    }
+
+    func testRetainedRetrySatsIsNilAfterARefusedRetry() async {
+        let funding = MockHwFunding()
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
+        funding.broadcastErrors = [Failure.unknown, Failure.refused]
+        await failSend(coordinator)
+        await failSend(coordinator)
+
+        let refused = await coordinator.retainedRetrySats(address: "bc1qtest", hasIncomingRequest: false)
+        XCTAssertNil(refused)
     }
 
     func testFirstAttemptRefusalReleasesAndTheNextAttemptSignsAnew() async throws {
@@ -1493,7 +1612,9 @@ final class HwFundingSignerTests: XCTestCase {
         await failSend(coordinator)
         funding.broadcastError = nil
 
-        _ = try await coordinator.preparePreview(manager: HwWalletManager(), address: "bc1qother", sats: 50000, satsPerVByte: 9)
+        _ = try await coordinator.preparePreview(
+            manager: HwWalletManager(), address: "bc1qother", sats: 50000, satsPerVByte: 9, hasIncomingRequest: false
+        )
 
         XCTAssertTrue(coordinator.hasPendingBroadcast)
         await assertThrowsAsync { try await self.send(coordinator, address: "bc1qother", sats: 50000) } _: { error in
@@ -1771,7 +1892,9 @@ final class HwFundingSignerTests: XCTestCase {
                 XCTAssertTrue(original.canLeave)
                 let retry = relaunch ? makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting()) : original
                 if !relaunch {
-                    _ = try await retry.preparePreview(manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 3)
+                    _ = try await retry.preparePreview(
+                        manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 3, hasIncomingRequest: true
+                    )
                 }
                 funding.broadcastError = nil
                 let deadline = PaykitPreciseInstant(date: Date().addingTimeInterval(60))
