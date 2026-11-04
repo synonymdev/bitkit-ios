@@ -24,6 +24,7 @@ final class SparkManager: ChannelFreeLightningRail {
     private nonisolated static let depositClaimFeePpm: UInt32 = 2000
 
     private(set) var isReady = false
+    private(set) var walletIndex = 0
     private(set) var balanceSats: UInt64 = 0
     /// Deposits seen on-chain that Spark claims into `balanceSats` after 3 confirmations.
     private(set) var pendingDepositSats: UInt64 = 0
@@ -54,6 +55,37 @@ final class SparkManager: ChannelFreeLightningRail {
         sdk != nil
     }
 
+    /// An emergency exit is moving the Spark balance on-chain: Spark then neither sends nor receives, and its
+    /// balance counts as in transfer to savings.
+    var isExiting: Bool {
+        SparkExitManager.shared.isExiting
+    }
+
+    /// Takes Spark off the Lightning rail for an emergency exit, so no payment moves leaves the exit is spending.
+    func detachForExit() {
+        if LightningService.shared.channelFreeRail === self {
+            LightningService.shared.channelFreeRail = nil
+        }
+    }
+
+    /// The SDK calls of an emergency exit, or nil while Spark is not connected.
+    var exitRecovering: SparkExitRecovering? {
+        sdk.map(BreezSparkExitRecovering.init)
+    }
+
+    /// The fee rate an exit is built at: the fastest the SDK's chain service recommends, at least 1 sat/vB.
+    func exitFeeRate() async throws -> UInt64 {
+        try await max(1, requireSdk().recommendedFees().fastestFee)
+    }
+
+    nonisolated static var exitNetwork: BreezSdkSpark.Network? {
+        switch Env.network {
+        case .bitcoin: .mainnet
+        case .regtest: .regtest
+        default: nil
+        }
+    }
+
     /// Spark's regtest has no Lightning network, so there a Lightning invoice from another Spark wallet is paid as a
     /// Spark transfer, which lets two dev builds pay each other's invoices.
     nonisolated static var prefersSpark: Bool {
@@ -76,6 +108,8 @@ final class SparkManager: ChannelFreeLightningRail {
 
     func start(walletIndex: Int) async {
         guard let network = Self.sparkNetwork else { return }
+        self.walletIndex = walletIndex
+        SparkExitManager.shared.load(walletIndex: walletIndex)
         do {
             if sdk == nil {
                 if connectTask == nil {
@@ -85,8 +119,10 @@ final class SparkManager: ChannelFreeLightningRail {
                 connectTask = nil
             }
             // Registered before the first refresh marks Spark ready, so Lightning calls never see it ready while they
-            // still go to LDK, even when that refresh or the activity sync fails.
-            LightningService.shared.channelFreeRail = self
+            // still go to LDK, even when that refresh or the activity sync fails. An emergency exit keeps it out.
+            if !isExiting {
+                LightningService.shared.channelFreeRail = self
+            }
             try await refresh()
             try await syncActivities()
         } catch {
@@ -137,6 +173,7 @@ final class SparkManager: ChannelFreeLightningRail {
         sdk = nil
         listenerId = nil
         isReady = false
+        SparkExitManager.shared.wipe()
         balanceSats = 0
         pendingDepositSats = 0
         recoverableFundsSats = 0
@@ -659,6 +696,22 @@ struct SparkWithdrawal: Identifiable, Equatable {
 
     var id: String {
         txid
+    }
+}
+
+struct BreezSparkExitRecovering: SparkExitRecovering {
+    let sdk: BreezSdk
+
+    func prepare(_ request: PrepareRecoverFundsRequest) async throws -> PrepareRecoverFundsResponse {
+        try await sdk.prepareRecoverFunds(request: request)
+    }
+
+    func recover(_ request: RecoverFundsRequest, signer: CpfpSigner?) async throws -> RecoverFundsResponse {
+        try await sdk.recoverFunds(request: request, signer: signer)
+    }
+
+    func check(_ recovery: RecoverFundsResponse) async throws -> CheckRecoverFundsResponse {
+        try await sdk.checkRecoverFunds(request: CheckRecoverFundsRequest(recovery: recovery))
     }
 }
 

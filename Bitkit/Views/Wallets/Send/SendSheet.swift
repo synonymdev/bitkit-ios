@@ -306,7 +306,7 @@ struct SendSheet: View {
     private var sparkCanPayScannedInvoice: Bool {
         let spark = SparkManager.shared
         let amountSats = wallet.sendAmountSats ?? app.scannedLightningInvoice?.amountSatoshis ?? 0
-        return spark.isReady && amountSats > 0 && spark.balanceSats >= amountSats
+        return spark.isReady && !spark.isExiting && amountSats > 0 && spark.balanceSats >= amountSats
     }
 
     /// Identity for the sync timeout task. The timer only counts down while the overlay is visible

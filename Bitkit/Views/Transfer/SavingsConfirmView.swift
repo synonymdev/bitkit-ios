@@ -39,7 +39,7 @@ struct SavingsConfirmView: View {
     }
 
     private var headlineSats: UInt64 {
-        (swapState.quote?.amountSat ?? totalSats) + SparkManager.shared.balanceSats
+        (swapState.quote?.amountSat ?? totalSats) + (SparkManager.shared.isExiting ? 0 : SparkManager.shared.balanceSats)
     }
 
     var body: some View {

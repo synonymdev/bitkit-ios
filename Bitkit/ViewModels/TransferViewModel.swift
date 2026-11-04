@@ -257,7 +257,7 @@ class TransferViewModel: ObservableObject {
 
     private func withdrawSparkToSavings() async throws {
         let spark = SparkManager.shared
-        guard spark.balanceSats > 0 else { return }
+        guard spark.balanceSats > 0, !spark.isExiting else { return }
         let address = try await lightningService.newAddress()
         try await spark.withdrawAll(to: address)
     }

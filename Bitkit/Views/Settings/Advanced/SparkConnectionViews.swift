@@ -9,7 +9,8 @@ struct SparkConnectionRow: View {
 
     static var isVisible: Bool {
         let spark = SparkManager.shared
-        return spark.isReady && (spark.balanceSats > 0 || !spark.deposits.isEmpty || Env.network == .regtest)
+        let hasExit = spark.isExiting || spark.recoverableFundsSats > 0
+        return spark.isReady && (spark.balanceSats > 0 || !spark.deposits.isEmpty || hasExit || Env.network == .regtest)
     }
 
     var body: some View {
@@ -111,6 +112,11 @@ struct SparkConnectionDetailView: View {
 
     private let spark = SparkManager.shared
 
+    /// The emergency exit is offered while Spark holds funds, and leads to its progress once one ran.
+    private var showsExit: Bool {
+        spark.balanceSats > 0 || spark.recoverableFundsSats > 0 || spark.isExiting
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("lightning__spark"))
@@ -198,8 +204,16 @@ struct SparkConnectionDetailView: View {
                                 navigation.navigate(.savingsIntro)
                             }
                         }
-                        .disabled(spark.balanceSats == 0)
+                        .disabled(spark.balanceSats == 0 || spark.isExiting)
                         .accessibilityIdentifier("SparkTransferToSavings")
+
+                        if showsExit {
+                            CustomButton(title: t("lightning__spark_exit__button"), variant: .tertiary) {
+                                navigation.navigate(spark.isExiting ? .sparkExitProgress : .sparkExitIntro)
+                            }
+                            .padding(.top, 8)
+                            .accessibilityIdentifier("SparkEmergencyExit")
+                        }
                     }
                     .frame(minHeight: geometry.size.height)
                     .bottomSafeAreaPadding()

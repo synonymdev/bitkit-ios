@@ -1285,13 +1285,15 @@ class WalletViewModel: ObservableObject {
             let spark = SparkManager.shared
             balanceInTransferToSavings = Int(state.balanceInTransferToSavings)
             balanceInTransferToSpending = Int(state.balanceInTransferToSpending + spark.pendingDepositSats)
+            // During an emergency exit the Spark balance is on its way to savings and counted there instead.
+            let sparkBalanceSats = spark.isExiting ? 0 : spark.balanceSats
 
             // Update display values with adjusted balances
             totalOnchainSats = Int(state.totalOnchainSats)
-            totalLightningSats = Int(state.totalLightningSats + spark.balanceSats)
-            totalBalanceSats = Int(state.totalBalanceSats + spark.balanceSats + spark.pendingDepositSats)
+            totalLightningSats = Int(state.totalLightningSats + sparkBalanceSats)
+            totalBalanceSats = Int(state.totalBalanceSats + sparkBalanceSats + spark.pendingDepositSats)
             // A payment goes over one rail, so the larger of the two balances caps it.
-            maxSendLightningSats = Int(max(state.maxSendLightningSats, spark.sendableSats))
+            maxSendLightningSats = Int(max(state.maxSendLightningSats, spark.isExiting ? 0 : spark.sendableSats))
 
             // Update channel fundable balance (excludes Legacy UTXOs and accounts for funding tx fee)
             let (selectedType, monitoredTypes) = LightningService.addressTypeStateFromUserDefaults()
@@ -1306,6 +1308,8 @@ class WalletViewModel: ObservableObject {
             let activeTransfers = try? transferService.getActiveTransfers()
             let forceCloseTransfer = activeTransfers?.first {
                 $0.type == .forceClose && !$0.isSettled
+            } ?? activeTransfers?.first {
+                $0.type == .sparkExit && !$0.isSettled
             }
             forceCloseClaimableAtHeight = forceCloseTransfer?.claimableAtHeight
         } catch {
