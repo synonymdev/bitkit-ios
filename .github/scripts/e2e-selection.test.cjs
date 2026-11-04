@@ -25,6 +25,15 @@ const tracked = execFileSync("git", ["-C", app, "ls-files", "-z"], {
   .filter(Boolean);
 const pick = (files, options = {}) => select(cases, { files, ...options });
 
+test("the E2E workflow has no migration job, dependency, output or reusable-workflow call", () => {
+  const workflows = path.join(app, ".github/workflows");
+  const e2e = fs.readFileSync(path.join(workflows, "e2e-tests.yml"), "utf8");
+  const migration = fs.readFileSync(path.join(workflows, "e2e_migration.yml"), "utf8");
+  assert.doesNotMatch(e2e, /migration/i);
+  assert.doesNotMatch(migration, /^  workflow_call:/m);
+  assert.match(migration, /^  schedule:/m);
+  assert.match(migration, /^  push:\n    branches: \["release-\*"\]/m);
+});
 test("policy covers the actual iOS tree and contains no stale paths or case IDs", () =>
   validateTree(policy, tracked, cases));
 test("base remains exactly the five existing cases", () =>
@@ -36,53 +45,47 @@ test("base remains exactly the five existing cases", () =>
     "transfer_2",
   ]));
 
-for (const [file, added, staging, migration] of [
+for (const [file, added, staging] of [
   [
     "Bitkit/Services/Widgets/NewsService.swift",
     ["widgets_1", "widgets_2", "widgets_3", "settings_12"],
-    false,
     false,
   ],
   [
     "Bitkit/Models/NewsWidgetData.swift",
     ["widgets_1", "widgets_2", "widgets_3", "settings_12"],
     false,
-    false,
   ],
-  ["Bitkit/Services/PaykitPaymentRequestService.swift", [], true, false],
-  ["Bitkit/Managers/ContactsManager.swift", [], true, false],
+  ["Bitkit/Services/PaykitPaymentRequestService.swift", [], true],
+  ["Bitkit/Managers/ContactsManager.swift", [], true],
   [
     "Bitkit/Services/Trezor/TrezorService.swift",
     ["hardware_wallet_1", "hardware_wallet_2", "hardware_wallet_4"],
-    false,
     false,
   ],
   [
     "Bitkit/Managers/FeeEstimatesManager.swift",
     ["boost_1", "onchain_3", "settings_03"],
     false,
-    false,
   ],
   [
     "Bitkit/Services/BackupService.swift",
     ["backup_1", "onboarding_1", "onboarding_2", "security_1", "settings_07"],
     true,
-    false,
   ],
   [
     "Bitkit/Services/ElectrumConfigService.swift",
     ["settings_10"],
     false,
-    false,
   ],
-  ["Bitkit/Services/RgsConfigService.swift", ["settings_11"], false, false],
+  ["Bitkit/Services/RgsConfigService.swift", ["settings_11"], false],
 ])
   test(`actual ${file} selects exact domain coverage`, () => {
     assert.ok(tracked.includes(file), "Example must exist in the app");
     const s = pick([file]);
     assert.deepEqual(s.ids, [...new Set([...policy.base, ...added])].sort());
     assert.equal(s.staging, staging);
-    assert.equal(s.migration, migration);
+    assert.equal(Object.hasOwn(s, "migration"), false);
   });
 
 test("on-chain service retains public Paykit dispatch coverage without migration", () => {
@@ -92,7 +95,7 @@ test("on-chain service retains public Paykit dispatch coverage without migration
     [...new Set([...policy.base, ...policy.groups.send])].sort(),
   );
   assert.equal(s.staging, true);
-  assert.equal(s.migration, false);
+  assert.equal(Object.hasOwn(s, "migration"), false);
 });
 for (const f of [
   "Bitkit/Services/CoreService.swift",
@@ -104,7 +107,7 @@ for (const f of [
     const s = pick([f]);
     assert.equal(s.ids.length, 42);
     assert.equal(s.staging, true);
-    assert.equal(s.migration, false);
+    assert.equal(Object.hasOwn(s, "migration"), false);
   });
 test("scanner entry points retain Pubky routes, Electrum input and hardware recipients", () => {
   for (const file of [
@@ -119,7 +122,7 @@ test("scanner entry points retain Pubky routes, Electrum input and hardware reci
     assert.ok(s.ids.includes("settings_10"));
     assert.ok(s.ids.includes("hardware_wallet_4"));
     assert.equal(s.staging, true, "pubky_profile_3/_5 exercise scanner routes");
-    assert.equal(s.migration, false);
+    assert.equal(Object.hasOwn(s, "migration"), false);
   }
 });
 test("backup transport, payload and restore retain profile persistence assertions", () => {
@@ -134,7 +137,7 @@ test("backup transport, payload and restore retain profile persistence assertion
       true,
       "pubky_profile_2/_4 restore profile/contact state",
     );
-    assert.equal(s.migration, false);
+    assert.equal(Object.hasOwn(s, "migration"), false);
   }
 });
 test("shared send entry/confirmation retains Paykit and hardware consumers", () => {
@@ -146,7 +149,7 @@ test("shared send entry/confirmation retains Paykit and hardware consumers", () 
     const s = pick([file]);
     assert.equal(s.staging, true, "paykit_1 pays through this shared flow");
     assert.ok(s.ids.includes("hardware_wallet_4"));
-    assert.equal(s.migration, false);
+    assert.equal(Object.hasOwn(s, "migration"), false);
   }
 });
 test("unknown service/new area fails cheaply, never silently selects base or full", () => {
@@ -250,18 +253,18 @@ test("migration is excluded from all PR gates even when the base policy requests
   for (const mode of ["auto", "base", "full", "nightly"]) {
     for (const release of [false, true]) {
       const result = pick(files, { mode, pr: true, release, previousPolicy });
-      assert.equal(result.migration, false);
+      assert.equal(Object.hasOwn(result, "migration"), false);
       assert.equal(result.staging, mode !== "base");
       assert.equal(result.ids.length, mode === "base" ? 5 : 42);
     }
   }
 });
-test("nightly includes migration while manual full includes local/staging; gaps stay explicit", () => {
+test("nightly and manual full select local/staging only; gaps stay explicit", () => {
   for (const mode of ["full", "nightly"]) {
     const s = pick([], { mode });
     assert.equal(s.ids.length, 42);
     assert.equal(s.staging, true);
-    assert.equal(s.migration, mode === "nightly");
+    assert.equal(Object.hasOwn(s, "migration"), false);
     assert.ok(s.gaps.some((g) => g.id === "transfer_1"));
     assert.ok(!s.ids.includes("transfer_1"));
   }
@@ -346,6 +349,15 @@ test("actual CLI uses tested app policy and pinned E2E inventory; rejects drift 
       [path.join(root, ".github/scripts/e2e-selection.cjs")],
       { cwd: temp, env, encoding: "utf8" },
     );
+  env.E2E_SELECTION = "nightly";
+  const manualNightly = run();
+  assert.notEqual(manualNightly.status, 0);
+  assert.match(manualNightly.stderr, /requires a scheduled event/);
+  env.GITHUB_EVENT_NAME = "schedule";
+  assert.equal(run().status, 0);
+  assert.ok(!Object.hasOwn(JSON.parse(fs.readFileSync(path.join(temp, "selection.json"))), "migration"));
+  env.GITHUB_EVENT_NAME = "workflow_dispatch";
+  env.E2E_SELECTION = "base";
   const r = run();
   assert.equal(r.status, 0, r.stderr);
   const s = JSON.parse(

@@ -36,7 +36,7 @@ The E2E checkout must contain the matching inventory. Add a real-path regression
 
 ## Execution
 
-Every night at 03:00 UTC the entry point runs all applicable local, staging and extended migration cases, even for an unchanged revision. The existing staging/migration workflows provide reusable execution and retain standalone manual dispatch. A push to a `release-*` branch runs all six migrations in the dedicated migration workflow, including the extended RN cases. Known skipped cases and unsupported mainnet fixtures are reported as gaps, not successful coverage.
+Two independent workflows run at 03:00 UTC. `e2e-tests.yml` runs 42 local and six staging cases. `e2e_migration.yml` builds its own network app and runs all six migrations with its own result. The migration workflow also runs on each push to `release-*` and supports its own manual dispatch for diagnosis.
 
 Manual validation uses the branch containing the changed workflow:
 
@@ -45,7 +45,7 @@ gh workflow run e2e-tests.yml --ref codex/264-inventory-shadow \
   -f e2e_branch=codex/264-inventory-shadow -f selection=base -f shards=1
 ```
 
-To test an open same-repository PR merge, including a stacked PR, also pass `-f pr=NUMBER -f selection=auto`. The merge must match the PR's actual base and head. `selection=full` runs the local and staging suites. To reproduce the nightly including migration, dispatch `selection=nightly` on a branch. PR merges always use local and staging coverage. The optional `shards=2` experiment applies only to manual local execution; automatic runs use one shard. Each shard has isolated infrastructure and shares the same built local app. Staging/migration share one network app build.
+To test an open same-repository PR merge, including a stacked PR, also pass `-f pr=NUMBER -f selection=auto`. The merge must match the PR's actual base and head. `selection=full` runs the local and staging suites. Manual E2E and PR merge runs use local and staging coverage. The optional `shards=2` experiment applies only to manual local execution; automatic runs use one shard. Each shard has isolated infrastructure and shares the same built local app. The staging job uses its network app build.
 
 Attempts are bounded to three, stop on success, and retain first-failure evidence. Missing selected cases or failed selected jobs fail the aggregate status. Builds are capped at 40 minutes; execution budgets depend on the selected pack as described below. Diagnostic artifacts, including RN wallet preparation logs, expire after seven days; prepared wallet environments expire after one day. Compare end-to-end duration and billed Mac/backend usage before making two shards automatic.
 

@@ -102,7 +102,6 @@ function select(
     files = [],
     shards = 1,
     release = false,
-    pr = false,
     currentPolicy = policy,
     previousPolicy,
   } = {},
@@ -121,14 +120,11 @@ function select(
   const policies = previousPolicy
     ? [currentPolicy, previousPolicy]
     : [currentPolicy];
-  // Release pushes run the dedicated migration workflow. This workflow adds
-  // migration only in a nightly run (or its explicit branch rehearsal).
-  const includeMigration = !pr && mode === "nightly";
   const runnable = cases.filter(
     (c) =>
       c.kind === "test" &&
       c.platforms.ios.disposition === "required" &&
-      (includeMigration || c.platforms.ios.pack !== "migration"),
+      c.platforms.ios.pack !== "migration",
   );
   const local = runnable.filter((c) => c.platforms.ios.backend === "local");
   const selected = new Set(currentPolicy.base);
@@ -210,7 +206,6 @@ function select(
         c.platforms.ios.backend === "regtest" &&
         c.platforms.ios.pack !== "migration",
     ),
-    migration: expected.some((c) => c.platforms.ios.pack === "migration"),
     reasons,
     coverageNotes: [...coverageNotes],
     gaps: cases
@@ -281,13 +276,14 @@ function main() {
       : process.env.GITHUB_EVENT_NAME === "pull_request"
         ? "auto"
         : process.env.E2E_SELECTION || "full";
+  if (mode === "nightly" && process.env.GITHUB_EVENT_NAME !== "schedule")
+    throw Error("Nightly mode requires a scheduled event");
   if (mode === "auto" && !base)
     throw Error("Automatic manual selection requires a PR number");
   const result = select(inventory.cases, {
     mode,
     files,
     previousPolicy,
-    pr: Boolean(pr),
     shards:
       process.env.GITHUB_EVENT_NAME === "workflow_dispatch"
         ? Number(process.env.E2E_SHARDS || 1)
@@ -314,7 +310,6 @@ function main() {
       "code",
       "matrix",
       "staging",
-      "migration",
       "appSha",
       "e2eSha",
     ])
@@ -325,7 +320,7 @@ function main() {
   if (process.env.GITHUB_STEP_SUMMARY)
     fs.appendFileSync(
       process.env.GITHUB_STEP_SUMMARY,
-      `## iOS E2E selection\n\nApp/policy: ${tested}; tests: ${result.e2eSha}\n\nLocal cases (${result.ids.length}): ${result.ids.join(", ") || "none"}\n\nStaging: ${result.staging}; migration: ${result.migration}; shards: ${result.matrix.length}\n\n${result.reasons.map((r) => `- ${r.file}: ${r.rule} (${r.policy})`).join("\n")}\n\nCoverage notes: ${result.coverageNotes.join("; ") || "none"}\n\nKnown gaps: ${result.gaps.map((g) => g.id).join(", ")}\n`,
+      `## iOS E2E selection\n\nApp/policy: ${tested}; tests: ${result.e2eSha}\n\nLocal cases (${result.ids.length}): ${result.ids.join(", ") || "none"}\n\nStaging: ${result.staging}; shards: ${result.matrix.length}\n\n${result.reasons.map((r) => `- ${r.file}: ${r.rule} (${r.policy})`).join("\n")}\n\nCoverage notes: ${result.coverageNotes.join("; ") || "none"}\n\nKnown gaps: ${result.gaps.map((g) => g.id).join(", ")}\n`,
     );
   console.log(JSON.stringify(result, null, 2));
 }

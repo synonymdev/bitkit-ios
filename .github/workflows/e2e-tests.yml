@@ -33,13 +33,12 @@ on:
         description: Recovery helper branch or tag
         default: master
       selection:
-        description: "auto: PR changes; base: five cases; full: local/staging; nightly: rehearse all lanes on a branch"
+        description: "auto: PR changes; base: five cases; full: all local/staging cases"
         type: choice
         options:
           - full
           - auto
           - base
-          - nightly
         default: full
       shards:
         description: Manual local-shard cost experiment; automatic runs use one
@@ -79,7 +78,6 @@ jobs:
       code: ${{ steps.selection.outputs.code }}
       matrix: ${{ steps.selection.outputs.matrix }}
       staging: ${{ steps.selection.outputs.staging }}
-      migration: ${{ steps.selection.outputs.migration }}
       appSha: ${{ steps.selection.outputs.appSha }}
       e2eSha: ${{ steps.selection.outputs.e2eSha }}
     steps:
@@ -422,7 +420,6 @@ jobs:
       - build-local
       - e2e-tests-local
       - staging
-      - migration
       - build-network
     steps:
       - name: Require all selected jobs
@@ -435,8 +432,7 @@ jobs:
           assert j['detect-changes']['result']=='success', 'Selection did not succeed'
           s=j['detect-changes']['outputs']
           required=['build-local','e2e-tests-local'] if s['code']=='true' else []
-          if s['staging']=='true' or s['migration']=='true': required.append('build-network')
-          required += [k for k in ['staging','migration'] if s[k]=='true']
+          if s['staging']=='true': required += ['build-network', 'staging']
           failed={k:j[k]['result'] for k in required if j[k]['result']!='success'}
           assert not failed, f'Selected jobs did not pass: {failed}'
           print('All selected E2E jobs passed' if required else 'No app code changes')
@@ -484,19 +480,6 @@ jobs:
     with:
       app_ref: ${{ needs.detect-changes.outputs.appSha }}
       e2e_ref: ${{ needs.detect-changes.outputs.e2eSha }}
-      app_artifact: bitkit-e2e-ios-network_${{ github.run_number }}
-      post_to_slack: ${{ github.event_name == 'schedule' }}
-    secrets: inherit
-  migration:
-    needs:
-      - detect-changes
-      - build-network
-    if: needs.detect-changes.outputs.migration == 'true'
-    uses: ./.github/workflows/e2e_migration.yml
-    with:
-      app_ref: ${{ needs.detect-changes.outputs.appSha }}
-      e2e_ref: ${{ needs.detect-changes.outputs.e2eSha }}
-      extended_rn: true
       app_artifact: bitkit-e2e-ios-network_${{ github.run_number }}
       post_to_slack: ${{ github.event_name == 'schedule' }}
     secrets: inherit
@@ -589,4 +572,4 @@ jobs:
       appSha: ${{ steps.app.outputs.sha }}
     needs:
       - detect-changes
-    if: needs.detect-changes.outputs.staging == 'true' || needs.detect-changes.outputs.migration == 'true'
+    if: needs.detect-changes.outputs.staging == 'true'

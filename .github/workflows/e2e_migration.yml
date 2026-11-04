@@ -1,5 +1,7 @@
 name: E2E Migration (iOS)
 on:
+  schedule:
+    - cron: "0 3 * * *"
   push:
     branches: ["release-*"]
   workflow_dispatch:
@@ -21,28 +23,11 @@ on:
         type: boolean
         default: false
         required: false
-  workflow_call:
-    inputs:
-      app_ref:
-        type: string
-        required: true
-      e2e_ref:
-        type: string
-        required: true
-      extended_rn:
-        type: boolean
-        default: true
-      app_artifact:
-        type: string
-        default: ""
-      post_to_slack:
-        type: boolean
-        default: false
 env:
   TERM: xterm-256color
   FORCE_COLOR: 1
   GIT_LFS_SKIP_SMUDGE: "1"
-  MIGRATION_EXTENDED: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release-')) || inputs.extended_rn || false }}
+  MIGRATION_EXTENDED: ${{ github.event_name == 'schedule' || github.event_name == 'push' || inputs.extended_rn || false }}
   SIMULATOR_NAME: iPhone 17
   IOS_VERSION: "26.2"
 concurrency:
@@ -51,22 +36,19 @@ concurrency:
 jobs:
   build:
     if: github.event_name != 'push' || !github.event.deleted
-    runs-on: ${{ inputs.app_artifact != '' && 'ubuntu-latest' || 'macos-latest' }}
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.app_ref || github.sha }}
-        if: inputs.app_artifact == ''
+          ref: ${{ github.sha }}
       - name: Record selected revision
         id: app
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-        if: inputs.app_artifact == ''
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.2"
-        if: inputs.app_artifact == ''
       - name: System Information
         run: |
           echo "=== System Information ==="
@@ -75,20 +57,16 @@ jobs:
           echo ""
           echo "Xcode Version:"
           xcodebuild -version
-        if: inputs.app_artifact == ''
       - name: Install xcbeautify
         run: |
           brew install xcbeautify
-        if: inputs.app_artifact == ''
       - name: Swift packages
         uses: ./.github/actions/swift-packages
-        if: inputs.app_artifact == ''
       - name: Pre-start simulator
         run: |
           echo "⏱️  Starting simulator at $(date)"
           xcrun simctl boot "${{ env.SIMULATOR_NAME }}" || true
           echo "✅ Simulator started at $(date)"
-        if: inputs.app_artifact == ''
       - name: Build iOS app (regtest)
         env:
           GITHUB_ACTOR: ${{ github.actor }}
@@ -119,13 +97,11 @@ jobs:
             SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) E2E_BUILD' \
             -allowProvisioningUpdates \
             build
-        if: inputs.app_artifact == ''
       - name: Prepare app for E2E tests (regtest)
         run: |
           # Copy the .app bundle to the expected location and name
           mkdir -p e2e-app
           cp -r DerivedData/Build/Products/Debug-iphonesimulator/Bitkit.app e2e-app/bitkit.app
-        if: inputs.app_artifact == ''
       - name: Record app build identity
         run: |-
           python3 - <<'PY'
@@ -133,22 +109,15 @@ jobs:
           from pathlib import Path
           Path('e2e-app/e2e-build.json').write_text(json.dumps({'appSha': subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(), 'platform':'ios', 'backend':'regtest'}))
           PY
-        if: inputs.app_artifact == ''
       - name: Upload iOS app (regtest)
         uses: actions/upload-artifact@v7
         with:
           name: bitkit-e2e-migration-ios_${{ github.run_number }}
           path: e2e-app/
           retention-days: 7
-        if: inputs.app_artifact == ''
-      - name: Reuse the network app build
-        if: inputs.app_artifact != ''
-        env:
-          APP_ARTIFACT: ${{ inputs.app_artifact }}
-        run: echo "Using app artifact $APP_ARTIFACT"
     timeout-minutes: 40
     outputs:
-      appSha: ${{ inputs.app_ref || steps.app.outputs.sha }}
+      appSha: ${{ steps.app.outputs.sha }}
   e2e-branch:
     if: github.event_name != 'push' || !github.event.deleted
     uses: synonymdev/bitkit-e2e-tests/.github/workflows/determine-e2e-branch.yml@main
@@ -160,7 +129,7 @@ jobs:
       - e2e-branch
     runs-on: ubuntu-latest
     outputs:
-      ref: ${{ inputs.e2e_ref || steps.e2e-ref.outputs.ref }}
+      ref: ${{ steps.e2e-ref.outputs.ref }}
     steps:
       - name: Resolve E2E tests ref
         id: e2e-ref
@@ -168,7 +137,6 @@ jobs:
         with:
           selected: ${{ needs.e2e-branch.outputs.branch }}
           e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
-        if: inputs.e2e_ref == ''
     timeout-minutes: 135
   migration-plan:
     needs:
@@ -187,12 +155,11 @@ jobs:
         with:
           selected: ${{ needs.e2e-branch.outputs.branch }}
           e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
-        if: inputs.e2e_ref == ''
       - name: Checkout E2E tests
         uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-e2e-tests
-          ref: ${{ inputs.e2e_ref || steps.e2e-ref.outputs.ref || 'main' }}
+          ref: ${{ steps.e2e-ref.outputs.ref || 'main' }}
       - name: Resolve migration cases and baseline
         id: plan
         run: python3 scripts/migration-matrix.py ios
@@ -246,13 +213,6 @@ jobs:
       E2E_VARIANT: network-regtest-migration
       E2E_CASE_TAG: ${{ matrix.scenario.grep }}
     steps:
-      - name: Resolve E2E tests ref
-        id: e2e-ref
-        uses: synonymdev/bitkit-e2e-tests/.github/actions/resolve-e2e-ref@main
-        with:
-          selected: ${{ needs.e2e-branch.outputs.branch }}
-          e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
-        if: inputs.e2e_ref == ''
       - name: Clone E2E tests
         uses: actions/checkout@v7
         with:
@@ -262,7 +222,7 @@ jobs:
       - name: Download iOS app
         uses: actions/download-artifact@v8
         with:
-          name: ${{ inputs.app_artifact || format('bitkit-e2e-migration-ios_{0}', github.run_number) }}
+          name: bitkit-e2e-migration-ios_${{ github.run_number }}
           path: bitkit-e2e-tests/aut
       - name: Download migration env
         uses: actions/download-artifact@v8
@@ -419,13 +379,6 @@ jobs:
       E2E_VARIANT: network-regtest-migration
       E2E_CASE_TAG: ${{ matrix.scenario.grep }}
     steps:
-      - name: Resolve E2E tests ref
-        id: e2e-ref
-        uses: synonymdev/bitkit-e2e-tests/.github/actions/resolve-e2e-ref@main
-        with:
-          selected: ${{ needs.e2e-branch.outputs.branch }}
-          e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
-        if: inputs.e2e_ref == ''
       - name: Clone E2E tests
         uses: actions/checkout@v7
         with:
@@ -435,7 +388,7 @@ jobs:
       - name: Download iOS app
         uses: actions/download-artifact@v8
         with:
-          name: ${{ inputs.app_artifact || format('bitkit-e2e-migration-ios_{0}', github.run_number) }}
+          name: bitkit-e2e-migration-ios_${{ github.run_number }}
           path: bitkit-e2e-tests/aut
       - name: Download migration source
         working-directory: bitkit-e2e-tests
@@ -576,7 +529,7 @@ jobs:
           PYTHON
     timeout-minutes: 135
   slack-report:
-    if: always() && inputs.post_to_slack == true
+    if: always() && (github.event_name == 'schedule' || inputs.post_to_slack == true)
     runs-on: ubuntu-latest
     needs:
       - build
@@ -595,12 +548,11 @@ jobs:
         with:
           selected: ${{ needs.e2e-branch.outputs.branch }}
           e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
-        if: inputs.e2e_ref == ''
       - name: Checkout E2E tests
         uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-e2e-tests
-          ref: ${{ inputs.e2e_ref || steps.e2e-ref.outputs.ref || 'main' }}
+          ref: ${{ steps.e2e-ref.outputs.ref || 'main' }}
       - name: Post Slack summary
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_STAGING }}
