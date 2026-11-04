@@ -56,13 +56,13 @@ struct FundingOptions: View {
                 if !canFundWithSpark {
                     RectangleButton(icon: "transfer", title: t("lightning__funding__button1"), isDisabled: true, testID: "FundTransfer") {}
                 }
-                RectangleButton(
-                    icon: "device-tablet-speaker",
-                    title: t("lightning__funding__button_hw"),
-                    isDisabled: true,
-                    testID: "FundHardware"
-                ) {}
                 if !canFundWithSpark {
+                    RectangleButton(
+                        icon: "device-tablet-speaker",
+                        title: t("lightning__funding__button_hw"),
+                        isDisabled: true,
+                        testID: "FundHardware"
+                    ) {}
                     RectangleButton(icon: "qr", title: t("lightning__funding__button2"), isDisabled: true, testID: "FundReceive") {}
                 }
             }

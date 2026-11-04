@@ -38,6 +38,14 @@ struct SettingUpView: View {
         }
     }
 
+    /// The speed the user chose, or Later once they chose to wait.
+    var speedText: String {
+        let isLater = flow.speed == .later || state == .later
+        return t("lightning__setting_up_speed", variables: [
+            "speed": isLater ? t("lightning__spending_confirm__later") : t("fee__instant__title"),
+        ])
+    }
+
     var buttonTitle: String {
         isTransferring ? t("lightning__setting_up_button") : randomOkText
     }
@@ -70,6 +78,12 @@ struct SettingUpView: View {
                 BodyMText(text, accentColor: .white, accentFont: Fonts.bold)
                     .layoutPriority(1)
                     .accessibilityIdentifier("SettingUpText")
+
+                if isTransferring {
+                    CaptionMText(speedText)
+                        .padding(.top, 8)
+                        .accessibilityIdentifier("SettingUpSpeed")
+                }
 
                 if isTransferring {
                     EllipseLoader(variant: .transfer)

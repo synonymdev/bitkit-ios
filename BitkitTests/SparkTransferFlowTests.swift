@@ -63,6 +63,68 @@ final class SparkTransferFlowTests: XCTestCase {
         XCTAssertEqual(flow.claimState, .later)
     }
 
+    @MainActor
+    func testTimeoutWhenSparkNeverListsTheDeposit() async {
+        let flow = pollingFlow(offers: [nil, nil, nil])
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+        XCTAssertEqual(flow.claimState, .notSeen)
+    }
+
+    @MainActor
+    func testDepositListedThenGoneWasAdded() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 900), nil], claims: [.waiting])
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+        XCTAssertEqual(flow.claimState, .adding)
+    }
+
+    @MainActor
+    func testWaitingKeepsPollingUntilClaimed() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 900), choice(earlyFee: 900)], claims: [.waiting, .claimed])
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+        XCTAssertEqual(flow.claimState, .adding)
+    }
+
+    @MainActor
+    func testPayAfterRepriceClaimsAtTheNewFee() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 1500), choice(earlyFee: 1500)], claims: [.claimed])
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 1500))
+
+        flow.payRepriced()
+        XCTAssertEqual(flow.claimState, .claiming)
+        await flow.waitForClaim()
+        XCTAssertEqual(flow.claimState, .adding)
+    }
+
+    @MainActor
+    func testDeclinedEarlyClaimWaitsForConfirmations() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 900)], claims: [.declined])
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+        XCTAssertEqual(flow.claimState, .unavailable)
+    }
+
+    /// A flow whose poll answers with `offers` in turn (nil once they run out) and whose claims answer with `claims`.
+    @MainActor
+    private func pollingFlow(offers: [SparkClaimOffer.Kind?], claims: [SparkEarlyClaim] = []) -> SparkTransferFlow {
+        var offers = offers
+        var claims = claims
+        let operations = SparkClaimOperations(
+            offer: { txid in
+                guard !offers.isEmpty, let kind = offers.removeFirst() else { return nil }
+                return SparkClaimOffer(txid: txid, vout: 0, kind: kind)
+            },
+            claimEarly: { _ in claims.isEmpty ? .waiting : claims.removeFirst() },
+            refresh: {},
+            sleep: { _ in }
+        )
+        return SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: offers.count + 1)
+    }
+
     func testQuoteTiles() {
         XCTAssertEqual(quote.toSpendingSats(for: .instant), 100_000 - 1093)
         XCTAssertEqual(quote.toSpendingSats(for: .later), 100_000 - 198)

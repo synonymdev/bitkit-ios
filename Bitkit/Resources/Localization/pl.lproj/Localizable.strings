@@ -298,6 +298,7 @@
 "lightning__setting_up_step1" = "Przetwarzanie płatności";
 "lightning__setting_up_step2" = "Płatność powiodła się";
 "lightning__setting_up_step_spark" = "Adding To Spending";
+"lightning__setting_up_speed" = "Speed: {speed}";
 "lightning__setting_up_button" = "Kontunuuj korzystanie z Bitkit\'a";
 "lightning__node_info" = "Węzeł Lightning";
 "lightning__node_id" = "Identyfikator węzła LDK";

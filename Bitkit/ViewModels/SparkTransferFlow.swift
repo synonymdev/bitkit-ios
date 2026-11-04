@@ -84,13 +84,30 @@ enum SparkClaimDecision {
     }
 }
 
+/// The Spark calls the deposit claim makes, injectable so the polling can be tested without the SDK.
+struct SparkClaimOperations {
+    var offer: (String) async throws -> SparkClaimOffer?
+    var claimEarly: (SparkClaimOffer) async throws -> SparkEarlyClaim
+    var refresh: () async -> Void
+    var sleep: (Duration) async -> Void
+
+    static var live: SparkClaimOperations {
+        SparkClaimOperations(
+            offer: { try await SparkManager.shared.depositClaimOffer(txid: $0) },
+            claimEarly: { try await SparkManager.shared.claimEarly($0) },
+            refresh: { await SparkManager.shared.refreshState() },
+            sleep: { try? await Task.sleep(for: $0) }
+        )
+    }
+}
+
 /// Savings to Spending through Spark: the amount, speed and quote of the confirm screen, and the deposit's claim on the
 /// setting-up screen. Lives for the navigation stack so the claim goes on after the user leaves the setting-up screen.
 @Observable
 @MainActor
 final class SparkTransferFlow {
     /// Looks for the deposit for 5 minutes, after which Spark still adds it after 3 confirmations.
-    static let pollAttempts = 60
+    nonisolated static let pollAttempts = 60
     static let pollInterval: Duration = .seconds(5)
     /// Confirmations before Spark claims a deposit by itself, and roughly how long they take.
     static let matureConfirmations = 3
@@ -118,14 +135,20 @@ final class SparkTransferFlow {
     @ObservationIgnored private var ceilingSats: UInt64 = 0
     @ObservationIgnored private var watchTask: Task<Void, Never>?
     @ObservationIgnored private var quoteRequestId = 0
+    @ObservationIgnored private let operations: SparkClaimOperations
+    @ObservationIgnored private let pollAttempts: Int
 
     init(
         amountSats: UInt64 = 0,
         isMaxAmount: Bool = false,
         speed: SparkTransferSpeed = .instant,
         quote: SparkTransferQuote? = nil,
-        claimState: SparkClaimState = .looking
+        claimState: SparkClaimState = .looking,
+        operations: SparkClaimOperations = .live,
+        pollAttempts: Int = SparkTransferFlow.pollAttempts
     ) {
+        self.operations = operations
+        self.pollAttempts = pollAttempts
         self.amountSats = amountSats
         self.isMaxAmount = isMaxAmount
         self.speed = speed
@@ -248,6 +271,11 @@ final class SparkTransferFlow {
         claimState = .later
     }
 
+    /// Waits for the running claim to settle; for tests.
+    func waitForClaim() async {
+        await watchTask?.value
+    }
+
     private func watch(txid: String) {
         watchTask?.cancel()
         watchTask = Task { [weak self] in
@@ -256,12 +284,12 @@ final class SparkTransferFlow {
     }
 
     private func pollDeposit(txid: String) async {
-        for _ in 0 ..< Self.pollAttempts {
+        for _ in 0 ..< pollAttempts {
             if Task.isCancelled {
                 return
             }
             do {
-                let found = try await SparkManager.shared.depositClaimOffer(txid: txid)
+                let found = try await operations.offer(txid)
                 if found == nil, offer != nil {
                     // Listed before and no longer unclaimed: the early claim went through.
                     claimState = .adding
@@ -275,7 +303,7 @@ final class SparkTransferFlow {
                         return
                     }
                     claimState = .claiming
-                    let claim = try await SparkManager.shared.claimEarly(found)
+                    let claim = try await operations.claimEarly(found)
                     if let state = SparkClaimDecision.onClaim(claim) {
                         claimState = state
                         return
@@ -284,8 +312,8 @@ final class SparkTransferFlow {
             } catch {
                 Logger.warn("Failed to claim Spark deposit \(txid) early: \(error)", context: "SparkTransferFlow")
             }
-            await SparkManager.shared.refreshState()
-            try? await Task.sleep(for: Self.pollInterval)
+            await operations.refresh()
+            await operations.sleep(Self.pollInterval)
         }
         guard !Task.isCancelled else { return }
         Logger.warn("Spark did not list deposit \(txid) in time", context: "SparkTransferFlow")

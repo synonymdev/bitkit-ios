@@ -296,6 +296,7 @@
 "lightning__setting_up_step1" = "Zahlung wird verarbeitet";
 "lightning__setting_up_step2" = "Zahlung erfolgreich";
 "lightning__setting_up_step_spark" = "Adding To Spending";
+"lightning__setting_up_speed" = "Speed: {speed}";
 "lightning__setting_up_button" = "Bitkit weiter verwenden";
 "lightning__node_info" = "Lightning Node";
 "lightning__node_id" = "LDK Node ID";

@@ -298,6 +298,7 @@
 "lightning__setting_up_step1" = "Processando Pagamento";
 "lightning__setting_up_step2" = "Pagamento Realizado";
 "lightning__setting_up_step_spark" = "Adding To Spending";
+"lightning__setting_up_speed" = "Speed: {speed}";
 "lightning__setting_up_button" = "Continuar Usando o Bitkit";
 "lightning__node_info" = "Nó Lightning";
 "lightning__node_id" = "ID do LDK Node ";

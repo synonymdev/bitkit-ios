@@ -298,6 +298,7 @@
 "lightning__setting_up_step1" = "Zpracování platby";
 "lightning__setting_up_step2" = "Platba úspěšně proběhla";
 "lightning__setting_up_step_spark" = "Adding To Spending";
+"lightning__setting_up_speed" = "Speed: {speed}";
 "lightning__setting_up_button" = "Pokračujte v používání Bitkit";
 "lightning__node_info" = "Lightning uzel";
 "lightning__node_id" = "ID uzlu LDK";

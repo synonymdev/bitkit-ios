@@ -294,6 +294,7 @@
 "lightning__setting_up_step1" = "Обработка Платежа";
 "lightning__setting_up_step2" = "Платеж Успешен";
 "lightning__setting_up_step_spark" = "Adding To Spending";
+"lightning__setting_up_speed" = "Speed: {speed}";
 "lightning__setting_up_button" = "Продолжить Использование Bitkit";
 "lightning__node_info" = "Lightning Узел";
 "lightning__node_id" = "ID Узла LDK";
