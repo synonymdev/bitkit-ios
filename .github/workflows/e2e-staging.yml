@@ -142,7 +142,7 @@ jobs:
       e2e_branch_input: ${{ inputs.e2e_branch || 'default-feature-branch' }}
   e2e-tests-staging:
     runs-on: macos-latest
-    # Three complete six-case packs, plus setup and artifact collection.
+    # Up to three attempts, retrying failed cases, plus setup and artifact collection.
     timeout-minutes: 285
     needs:
       - build-staging
@@ -236,11 +236,31 @@ jobs:
       - name: Prepare exact run plan
         working-directory: bitkit-e2e-tests
         run: node --experimental-strip-types scripts/ci-run.ts prepare
-      - name: Run selected tests (up to three attempts)
-        id: tests
+      - name: Run E2E Tests 1
+        id: test1
+        continue-on-error: true
         working-directory: bitkit-e2e-tests
-        run: node --experimental-strip-types scripts/ci-run.ts run
+        run: node --experimental-strip-types scripts/ci-run.ts attempt
         env:
+          ATTEMPT: "1"
+          RECORD_VIDEO: "true"
+      - name: Run E2E Tests 2
+        id: test2
+        continue-on-error: true
+        if: steps.test1.outcome == 'failure'
+        working-directory: bitkit-e2e-tests
+        run: node --experimental-strip-types scripts/ci-run.ts attempt
+        env:
+          ATTEMPT: "2"
+          RECORD_VIDEO: "true"
+      - name: Run E2E Tests 3
+        id: test3
+        continue-on-error: true
+        if: steps.test1.outcome == 'failure' && steps.test2.outcome == 'failure'
+        working-directory: bitkit-e2e-tests
+        run: node --experimental-strip-types scripts/ci-run.ts attempt
+        env:
+          ATTEMPT: "3"
           RECORD_VIDEO: "true"
       - name: Report all attempts
         if: always()
