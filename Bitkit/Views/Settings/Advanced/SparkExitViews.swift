@@ -344,12 +344,13 @@ struct SparkExitProgressView: View {
     private var text: String {
         switch record?.phase {
         case .done:
-            if let record, record.skippedLeafCount > 0 {
-                t("lightning__spark_exit__done_text") + " "
-                    + t("lightning__spark_exit__partial_text", variables: ["count": "\(record.skippedLeafCount)"])
-            } else {
-                t("lightning__spark_exit__done_text")
-            }
+            [
+                t("lightning__spark_exit__done_text"),
+                (record?.skippedLeafCount ?? 0) > 0
+                    ? t("lightning__spark_exit__partial_text", variables: ["count": "\(record?.skippedLeafCount ?? 0)"]) : nil,
+                (record?.failedLeafCount ?? 0) > 0
+                    ? t("lightning__spark_exit__failed_leaves", variables: ["count": "\(record?.failedLeafCount ?? 0)"]) : nil,
+            ].compactMap { $0 }.joined(separator: " ")
         case .failed: t("lightning__spark_exit__failed_text")
         case .needsFunding:
             t("lightning__spark_exit__needs_funding_text", variables: ["amount": currency.primaryAmountText(sats: record?.fundingShortfallSats ?? 0)])

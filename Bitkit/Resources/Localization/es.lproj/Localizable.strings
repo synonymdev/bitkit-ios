@@ -387,6 +387,7 @@
 "lightning__spark_exit__done_title" = "Exit\n<accent>complete</accent>";
 "lightning__spark_exit__done_text" = "Your funds are in savings.";
 "lightning__spark_exit__partial_text" = "{count} small amounts stayed on Spark.";
+"lightning__spark_exit__failed_leaves" = "{count} amounts the Spark operators could not sign for stayed on Spark.";
 "lightning__spark_exit__leftover" = "{amount} of fee funding is still at {address}.";
 "lightning__spark_exit__needs_funding_title" = "More fees\n<accent>needed</accent>";
 "lightning__spark_exit__needs_funding_text" = "The exit needs <accent>{amount}</accent> more to pay its fees. Fund it to continue.";

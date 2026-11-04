@@ -68,6 +68,26 @@ final class SparkManager: ChannelFreeLightningRail {
         }
     }
 
+    /// Connects Spark again so its leaf optimization follows whether an exit runs: off when one starts, back on
+    /// once it ends.
+    func reconnectForExit() async {
+        guard let network = Self.sparkNetwork else { return }
+        if let sdk {
+            if let listenerId {
+                _ = await sdk.removeEventListener(id: listenerId)
+            }
+            try? await sdk.disconnect()
+        }
+        sdk = nil
+        listenerId = nil
+        do {
+            try await connect(walletIndex: walletIndex, network: network)
+            try await refresh()
+        } catch {
+            Logger.error("Failed to reconnect Spark for the exit: \(error)", context: "SparkManager")
+        }
+    }
+
     /// The SDK calls of an emergency exit, or nil while Spark is not connected.
     var exitRecovering: SparkExitRecovering? {
         sdk.map(BreezSparkExitRecovering.init)
@@ -144,6 +164,9 @@ final class SparkManager: ChannelFreeLightningRail {
             onchain: .networkRecommended(leewaySatPerVbyte: Self.depositClaimFeeLeewaySatPerVbyte),
             proportionalPpm: nil
         )
+        // Optimizing swaps leaves with the operators, which would hand the leaves an exit is spending to someone
+        // else, whose refunds then confirm first. Off for as long as an emergency exit runs.
+        config.leafOptimizationConfig.autoEnabled = !isExiting
         let storageDir = Env.sparkStorage(walletIndex: walletIndex)
         try FileManager.default.createDirectory(at: storageDir, withIntermediateDirectories: true)
         let connected = try await BreezSdkSpark.connect(request: ConnectRequest(

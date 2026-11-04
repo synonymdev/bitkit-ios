@@ -170,7 +170,7 @@ final class SparkExitManager {
 
     private func reattachSpark() async {
         let spark = SparkManager.shared
-        await spark.refreshState()
+        await spark.reconnectForExit()
         if LightningService.shared.channelFreeRail == nil, spark.isReady {
             LightningService.shared.channelFreeRail = spark
         }
@@ -255,6 +255,7 @@ final class SparkExitManager {
         UserDefaults.standard.set(walletIndex, forKey: Self.walletIndexKey)
         self.record = record
         SparkManager.shared.detachForExit()
+        await SparkManager.shared.reconnectForExit()
         Logger.info("Started Spark exit of \(quote.exitSats) sats over \(quote.leafIds.count) leaves", context: "SparkExitManager")
 
         if fundFromSavings, quote.fundingSats > 0 {
