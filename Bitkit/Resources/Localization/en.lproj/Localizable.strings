@@ -428,7 +428,7 @@
 "lightning__spark_exit__bg_refresh_off" = "Background App Refresh is off for Bitkit, so the exit only moves while Bitkit is open. Turn it on in Settings to let it run in the background.";
 "lightning__spark_exit__low_power" = "Low Power Mode pauses background work. The exit continues once it is off, or when you open Bitkit.";
 "lightning__spark_exit__notifications_off" = "Notifications are off, so Bitkit can't tell you when the exit needs you. Turn them on in Settings to be reminded.";
-"lightning__spark_learn__title" = "Instant\n<accent>or later</accent>";
+"lightning__spark_learn__title" = "Transfer\n<accent>speed</accent>";
 "lightning__spark_learn__text" = "Instant pays the provider to add your transfer to your spending balance before it confirms, so it is ready in a few minutes.\n\nLater waits for 3 confirmations, about 30 minutes, and costs less.";
 "lightning__spark_learn__label" = "Spending balance after transfer";
 "lightning__reserve_balance" = "Reserve balance (not spendable)";
