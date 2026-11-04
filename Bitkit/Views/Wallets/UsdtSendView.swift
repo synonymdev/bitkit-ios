@@ -423,6 +423,9 @@ struct UsdtSendView: View {
         defer { busy = false }
         do {
             quote = try await prepareQuote()
+            // A new review must ask again for warnings accepted on an earlier one.
+            showDetails = false
+            confirmedWarnings = []
         } catch is CancellationError {
         } catch {
             self.error = UsdtWalletManager.message(for: error)
