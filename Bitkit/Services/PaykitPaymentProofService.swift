@@ -869,11 +869,11 @@ actor PaykitPaymentProofService {
             }
             let proofs = try await loadProofs()
             guard let proof = proofs.first(where: {
-                PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId &&
-                    $0.kind == .onchain && $0.paymentStarted && $0.onchainWalletId == walletId &&
-                    $0.onchainAddress == address && $0.onchainAmountSats == amountSats &&
-                    $0.proofData == nil && $0.onchainAcceptanceVerified != true
-            }), let raw = proof.hardwareSignedTransaction,
+                      PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId &&
+                          $0.kind == .onchain && $0.paymentStarted && $0.onchainWalletId == walletId &&
+                          $0.onchainAddress == address && $0.onchainAmountSats == amountSats &&
+                          $0.proofData == nil && $0.onchainAcceptanceVerified != true
+                  }), let raw = proof.hardwareSignedTransaction,
                   try SignedTransactionId.fromHex(raw) == proof.paymentIdentifier,
                   let fee = proof.hardwareMiningFeeSats, let rate = proof.hardwareFeeRate,
                   let spent = proof.hardwareTotalSpent
@@ -1275,6 +1275,8 @@ actor PaykitPaymentProofService {
         let underlyingError = (submissionError as? AppError)?.underlyingError ?? submissionError
         if underlyingError as? PaykitPaymentRequestError == .requestExpired {
             // The local deadline gate runs before submitting to the node.
+        } else if underlyingError is ChannelFreeRailSendRefused {
+            // Spark refused it before sending: not connected, not preparable, or over the fee limit.
         } else if let serviceError = underlyingError as? CustomServiceError {
             guard serviceError == .nodeNotSetup || serviceError == .nodeNotStarted else { return false }
         } else if let nodeError = underlyingError as? NodeError {

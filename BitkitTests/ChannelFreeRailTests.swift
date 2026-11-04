@@ -87,6 +87,7 @@ final class ChannelFreeRailTests: XCTestCase {
             _ = try await Bitkit.LightningService.shared.send(bolt11: "lnbcrt1rail", sats: 100, params: limit)
             XCTFail("Expected the fee limit to stop the payment")
         } catch {
+            XCTAssertTrue(error is Bitkit.ChannelFreeRailSendRefused, "A refusal before sending must read as never left: \(error)")
             XCTAssertNil(rail.sentBolt11)
         }
 
@@ -98,11 +99,60 @@ final class ChannelFreeRailTests: XCTestCase {
     }
 }
 
+@MainActor
+extension ChannelFreeRailTests {
+    func testFailedFeeEstimateIsARefusalBeforeSending() async {
+        rail.estimateError = NSError(domain: "spark", code: 1)
+        let limit = RouteParametersConfig(
+            maxTotalRoutingFeeMsat: 1000, maxTotalCltvExpiryDelta: 1008, maxPathCount: 10, maxChannelSaturationPowerOfHalf: 2
+        )
+
+        do {
+            _ = try await Bitkit.LightningService.shared.send(bolt11: "lnbcrt1rail", sats: 100, params: limit)
+            XCTFail("Expected the failed estimate to stop the payment")
+        } catch {
+            XCTAssertTrue(error is Bitkit.ChannelFreeRailSendRefused)
+            XCTAssertNil(rail.sentBolt11)
+        }
+    }
+
+    func testCanSendLeavesRoomForTheSparkFee() {
+        rail.balanceSats = 100_000
+        let sendable = Bitkit.ChannelFreeRailFees.sendableSats(balanceSats: 100_000)
+
+        XCTAssertEqual(rail.sendableSats, sendable)
+        XCTAssertTrue(Bitkit.LightningService.shared.canSend(amountSats: sendable))
+        XCTAssertFalse(Bitkit.LightningService.shared.canSend(amountSats: 100_000))
+    }
+
+    func testSendableSatsFitsTheFeeBesideTheAmount() {
+        for balance: UInt64 in [0, 1, 400, 401, 9572, 100_000, 21_000_000] {
+            let sendable = Bitkit.ChannelFreeRailFees.sendableSats(balanceSats: balance)
+            let fee = (sendable * Bitkit.ChannelFreeRailFees.serviceFeePpm + 999_999) / 1_000_000
+            XCTAssertLessThanOrEqual(sendable + fee, balance, "\(balance)")
+            let next = sendable + 1
+            let nextFee = (next * Bitkit.ChannelFreeRailFees.serviceFeePpm + 999_999) / 1_000_000
+            XCTAssertGreaterThan(next + nextFee, balance, "\(balance) leaves room for more")
+        }
+        XCTAssertEqual(Bitkit.ChannelFreeRailFees.sendableSats(balanceSats: 100_000), 99750)
+    }
+
+    func testSparkReadyTriggersOnceUntilItDropsAgain() {
+        var transition = SparkReadinessTransition()
+        XCTAssertFalse(transition.becameReady(false))
+        XCTAssertTrue(transition.becameReady(true))
+        XCTAssertFalse(transition.becameReady(true))
+        XCTAssertFalse(transition.becameReady(false))
+        XCTAssertTrue(transition.becameReady(true))
+    }
+}
+
 private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     var isReady = true
     var balanceSats: UInt64 = 9572
     var payments: [Bitkit.ChannelFreeRailPayment] = []
     var routingFeeSats: UInt64 = 0
+    var estimateError: Error?
     var sentBolt11: String?
 
     func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String {
@@ -115,7 +165,10 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     }
 
     func estimateRoutingFees(bolt11: String, amountSats: UInt64?) async throws -> UInt64 {
-        routingFeeSats
+        if let estimateError {
+            throw estimateError
+        }
+        return routingFeeSats
     }
 
     func lightningPayments() async -> [Bitkit.ChannelFreeRailPayment] {

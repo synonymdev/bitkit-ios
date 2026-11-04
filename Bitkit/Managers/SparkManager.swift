@@ -84,9 +84,11 @@ final class SparkManager: ChannelFreeLightningRail {
                 try await connectTask?.value
                 connectTask = nil
             }
+            // Registered before the first refresh marks Spark ready, so Lightning calls never see it ready while they
+            // still go to LDK, even when that refresh or the activity sync fails.
+            LightningService.shared.channelFreeRail = self
             try await refresh()
             try await syncActivities()
-            LightningService.shared.channelFreeRail = self
         } catch {
             connectTask = nil
             Logger.error("Failed to start Spark wallet: \(error)", context: "SparkManager")
@@ -140,6 +142,7 @@ final class SparkManager: ChannelFreeLightningRail {
         recoverableFundsSats = 0
         deposits = []
         try? FileManager.default.removeItem(at: Env.sparkStorage(walletIndex: walletIndex))
+        onStateChanged?()
     }
 
     // MARK: ChannelFreeLightningRail
@@ -155,12 +158,21 @@ final class SparkManager: ChannelFreeLightningRail {
         return try await requireSdk().receivePayment(request: ReceivePaymentRequest(paymentMethod: method)).paymentRequest
     }
 
+    /// Errors before `sendPayment` are `ChannelFreeRailSendRefused`, since nothing left the wallet; a failure inside it
+    /// stays uncertain, as the payment may have been dispatched.
     nonisolated func send(bolt11: String, sats: UInt64?) async throws -> PaymentHash {
-        let prepared = try await prepareSend(paymentRequest: bolt11, amountSats: sats)
-        guard case let .bolt11Invoice(invoiceDetails, _, _) = prepared.paymentMethod else {
-            throw AppError(message: "Unexpected Spark payment method", debugMessage: "\(prepared.paymentMethod)")
+        let prepared: PrepareSendPaymentResponse
+        let sdk: BreezSdk
+        do {
+            sdk = try await requireSdk()
+            prepared = try await prepareSend(paymentRequest: bolt11, amountSats: sats)
+        } catch {
+            throw ChannelFreeRailSendRefused(reason: "Spark could not prepare the payment", underlying: error)
         }
-        let response = try await requireSdk().sendPayment(request: SendPaymentRequest(
+        guard case let .bolt11Invoice(invoiceDetails, _, _) = prepared.paymentMethod else {
+            throw ChannelFreeRailSendRefused(reason: "Unexpected Spark payment method: \(prepared.paymentMethod)")
+        }
+        let response = try await sdk.sendPayment(request: SendPaymentRequest(
             prepareResponse: prepared,
             options: Self.bolt11SendOptions
         ))

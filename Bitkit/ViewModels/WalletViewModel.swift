@@ -21,6 +21,7 @@ class WalletViewModel: ObservableObject {
     @Published private(set) var isReceiveInvoiceUpdating = false
     @Published private(set) var receiveInvoiceError: String?
     private var receiveRefreshID = UUID()
+    private var sparkReadiness = SparkReadinessTransition()
     private var receiveCommitID = UUID()
 
     var hasCoherentReceiveInvoice: Bool {
@@ -154,8 +155,15 @@ class WalletViewModel: ObservableObject {
         lightningService.onchainTransactionConfirmed = { await onchainObservation($0, true) }
         SparkManager.shared.onStateChanged = { [weak self] in
             Task { @MainActor in
-                await self?.updateBalanceState()
-                try? await self?.refreshBip21(reportsError: false)
+                guard let self else { return }
+                // Paykit may have published without a Lightning endpoint before Spark connected, so republish once
+                // it becomes ready; that refresh also updates the balance and the receive invoice.
+                if self.sparkReadiness.becameReady(SparkManager.shared.isReady) {
+                    await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "spark-ready refresh", forceRefreshLightning: true)
+                    return
+                }
+                await self.updateBalanceState()
+                try? await self.refreshBip21(reportsError: false)
             }
         }
         lightningService.onchainActivityWillPersist = { [weak self] in
@@ -1283,7 +1291,7 @@ class WalletViewModel: ObservableObject {
             totalLightningSats = Int(state.totalLightningSats + spark.balanceSats)
             totalBalanceSats = Int(state.totalBalanceSats + spark.balanceSats + spark.pendingDepositSats)
             // A payment goes over one rail, so the larger of the two balances caps it.
-            maxSendLightningSats = Int(max(state.maxSendLightningSats, spark.balanceSats))
+            maxSendLightningSats = Int(max(state.maxSendLightningSats, spark.sendableSats))
 
             // Update channel fundable balance (excludes Legacy UTXOs and accounts for funding tx fee)
             let (selectedType, monitoredTypes) = LightningService.addressTypeStateFromUserDefaults()
@@ -1942,5 +1950,15 @@ class WalletViewModel: ObservableObject {
         try setWalletExistsState()
 
         Logger.warn("Wallet wipe completed", context: "WalletViewModel")
+    }
+}
+
+/// Tells when Spark goes from not ready to ready, so work that ran without it (Paykit endpoints) runs once more.
+struct SparkReadinessTransition {
+    private var wasReady = false
+
+    mutating func becameReady(_ isReady: Bool) -> Bool {
+        defer { wasReady = isReady }
+        return isReady && !wasReady
     }
 }

@@ -16,6 +16,37 @@ protocol ChannelFreeLightningRail: AnyObject {
     func lightningPayments() async -> [ChannelFreeRailPayment]
 }
 
+@MainActor
+extension ChannelFreeLightningRail {
+    /// The most the rail can send once its fee is paid, so a payment near the full balance isn't offered and then refused.
+    var sendableSats: UInt64 {
+        ChannelFreeRailFees.sendableSats(balanceSats: balanceSats)
+    }
+}
+
+enum ChannelFreeRailFees {
+    /// Spark keeps 0.25% of a Lightning send as its service fee, on top of routing.
+    static let serviceFeePpm: UInt64 = 2500
+
+    static func sendableSats(balanceSats: UInt64) -> UInt64 {
+        // The fee on the sent amount, rounded up, must fit beside it: amount + ceil(amount * ppm / 1e6) <= balance.
+        let sendable = balanceSats * 1_000_000 / (1_000_000 + serviceFeePpm)
+        let fee = (sendable * serviceFeePpm + 999_999) / 1_000_000
+        return sendable + fee <= balanceSats || sendable == 0 ? sendable : sendable - 1
+    }
+}
+
+/// The channel-free rail refused a payment before anything left the wallet: the rail was not connected, could not
+/// prepare the payment, or its fee was over the caller's limit. A Paykit request or allowance can then end as failed.
+struct ChannelFreeRailSendRefused: LocalizedError {
+    let reason: String
+    var underlying: Error?
+
+    var errorDescription: String? {
+        (underlying as? LocalizedError)?.errorDescription ?? reason
+    }
+}
+
 /// A Lightning payment the channel-free rail sent or received, for checks that would otherwise read only LDK's payments.
 struct ChannelFreeRailPayment: Equatable {
     let paymentHash: String
@@ -789,7 +820,7 @@ class LightningService {
         guard rail.isReady else { return false }
         let invoiceSats = (try? Bolt11Invoice.fromStr(invoiceStr: bolt11).amountMilliSatoshis()).flatMap { $0 }.map { $0 / 1000 }
         guard let amountSats = sats ?? invoiceSats else { return false }
-        return !canSendWithChannels(amountSats: amountSats) && rail.balanceSats >= amountSats
+        return !canSendWithChannels(amountSats: amountSats) && rail.sendableSats >= amountSats
     }
 
     /// Checks if we have the correct outbound capacity to send the amount
@@ -798,7 +829,7 @@ class LightningService {
     /// Note: Uses cached channels for fast, non-blocking checks
     @MainActor
     func canSend(amountSats: UInt64) -> Bool {
-        if let rail = channelFreeRail, rail.isReady, rail.balanceSats >= amountSats, !canSendWithChannels(amountSats: amountSats) {
+        if let rail = channelFreeRail, rail.isReady, rail.sendableSats >= amountSats, !canSendWithChannels(amountSats: amountSats) {
             return true
         }
         return canSendWithChannels(amountSats: amountSats)
@@ -888,11 +919,15 @@ class LightningService {
         if let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: sats) {
             // Spark takes no route parameters, so a caller's routing fee cap is checked against its estimate instead.
             if let maxFeeMsat = params?.maxTotalRoutingFeeMsat {
-                let feeSats = try await rail.estimateRoutingFees(bolt11: bolt11, amountSats: sats)
+                let feeSats: UInt64
+                do {
+                    feeSats = try await rail.estimateRoutingFees(bolt11: bolt11, amountSats: sats)
+                } catch {
+                    throw error as? ChannelFreeRailSendRefused ?? ChannelFreeRailSendRefused(reason: "Spark fee estimate failed", underlying: error)
+                }
                 guard feeSats * 1000 <= maxFeeMsat else {
-                    throw AppError(
-                        message: "Spark routing fee exceeds the limit",
-                        debugMessage: "Fee \(feeSats) sats, limit \(maxFeeMsat / 1000) sats"
+                    throw ChannelFreeRailSendRefused(
+                        reason: "Spark routing fee of \(feeSats) sats exceeds the limit of \(maxFeeMsat / 1000) sats"
                     )
                 }
             }
