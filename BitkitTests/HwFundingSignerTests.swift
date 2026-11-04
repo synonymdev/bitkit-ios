@@ -963,7 +963,11 @@ final class HwFundingSignerTests: XCTestCase {
             let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: connecting, retainedSends: service)
             funding.broadcastErrors = [Failure.unknown, refusal]
             await failSend(coordinator)
-            await failSend(coordinator)
+            await assertThrowsAsync {
+                try await self.send(coordinator)
+            } _: { error in
+                XCTAssertEqual(error as? HwTransferError, .broadcastUncertain)
+            }
 
             let record = try await service.record(walletId: "jade:wallet")
             XCTAssertEqual(record?.retryWasRefused, true)
@@ -1435,7 +1439,6 @@ final class HwFundingSignerTests: XCTestCase {
             (Failure.refused, nil), // First attempt refusal.
             (Failure.connect, nil), // First attempt connect failure.
             (task, nil), (offline, nil), // Kept, connectivity.
-            (Failure.unknown, Failure.refused), // Retry refusal.
             (Failure.unknown, Failure.connect), // Retry connect failure.
             (Failure.unknown, task),
         ]

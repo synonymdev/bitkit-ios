@@ -877,6 +877,7 @@ final class HwSendCoordinator {
                 } catch {
                     Logger.warn("Failed to mark retained hardware send refused: \(type(of: error))", context: "HwSendCoordinator")
                 }
+                return HwTransferError.broadcastUncertain
             }
         } else if refused {
             await releaseRetainedSend(walletId: walletId)
