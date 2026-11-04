@@ -1708,6 +1708,21 @@
 "wallet__onchain_retry_unavailable" = "Die Wiederholung konnte gerade nicht vorbereitet werden. Die ursprüngliche Zahlung hat das Netzwerk möglicherweise bereits erreicht. Überprüfe deine Verbindung und wiederhole nur diese ursprüngliche Zahlung.";
 "wallet__onchain_retry_invalid_fee" = "Gib einen ganzzahligen Gebührensatz von 1 bis 4.294.967.295 sat/vB ein.";
 "wallet__onchain_retry_max_note" = "Sende {amount} sats erneut an {address} mit denselben ursprünglichen Coins und dem ursprünglichen Gebührensatz von {fee} sat/vB. „Alles senden“ lässt keine Coins für eine höhere Gebühr übrig, ohne den Empfängerbetrag zu verringern. Der Betrag bleibt unverändert. Dadurch kann keine separate Zahlung entstehen.";
+
+"wallet__onchain_resend" = "Ohne Prüfung erneut versuchen";
+"wallet__onchain_resend_warning" = "Bitkit kann nicht mehr prüfen, ob diese Zahlungsanforderung, dieses Angebot oder dieser Auftrag noch gültig ist. Die Gültigkeit ist möglicherweise abgelaufen, und der Empfänger akzeptiert eine verspätete Zahlung eventuell nicht. Bitkit sendet die Zahlung nicht, wenn die Anforderung oder der Auftrag bereits als bezahlt markiert ist. Kann dieser Status jedoch nicht geprüft werden, könnte doppelt bezahlt werden. Dieselbe Zahlung trotzdem erneut versuchen?";
+"wallet__onchain_resend_paid" = "Diese Zahlungsanforderung oder dieser Auftrag ist bereits als bezahlt markiert, daher hat Bitkit die Zahlung nicht erneut gesendet. Du kannst diese Zahlung stornieren, um ihr Guthaben in deiner Wallet zu behalten.";
+"wallet__onchain_cancel_payment" = "Zahlung stornieren";
+"wallet__onchain_cancel_hint" = "Wenn diese Zahlung nicht mehr durchgehen kann, kannst du sie stornieren und ihr Guthaben in deiner Wallet behalten.";
+"wallet__onchain_cancel_note" = "Storniere {amount} sats an {address}, indem die Inputs dieser Zahlung an deine Wallet zurückgesendet werden. Gib den Gebührensatz, den du autorisierst, in sat/vB ein; verwende einen höheren Satz als den ursprünglichen, damit die Stornierung die Zahlung ersetzen kann. Eine frühere Stornierung kann erst ersetzt werden, nachdem sie unbestätigt aus dem Netzwerk gefallen ist. Andere Onchain-Zahlungen bleiben gesperrt, bis eine Stornierung 6 Bestätigungen hat.";
+"wallet__onchain_cancel_authorize" = "Stornierung autorisieren";
+"wallet__onchain_cancel_error" = "Die Zahlung konnte nicht storniert werden. Ihr Guthaben bleibt geschützt. Versuche eine höhere Gebühr oder prüfe den Transaktionsstatus.";
+"wallet__onchain_cancel_pending" = "Stornierung gesendet. Andere Onchain-Zahlungen werden freigegeben, sobald sie 6 Bestätigungen hat. Fällt sie unbestätigt aus dem Netzwerk, kannst du erneut stornieren.";
+"wallet__onchain_cancel_below_release" = "Eine neue Stornierung muss eine höhere Netzwerkgebühr zahlen als die {fee} sats der früheren Stornierung. Gib einen höheren Gebührensatz ein.";
+"wallet__onchain_cancel_pending_error" = "Eine frühere Stornierung ist noch ausstehend, daher kann eine neue sie noch nicht ersetzen. Das Guthaben der Zahlung bleibt geschützt. Warte, bis sie bestätigt ist, oder storniere erneut, falls sie unbestätigt aus dem Netzwerk fällt.";
+"wallet__onchain_cancelled_title" = "Zahlung storniert";
+"wallet__onchain_cancelled_description" = "Die Stornierung hat 6 Bestätigungen. Onchain-Zahlungen sind wieder verfügbar.";
+"wallet__onchain_abandon_pending" = "Die Stornierung wurde gesendet, ist aber noch nicht bestätigt. Andere Onchain-Zahlungen werden freigegeben, sobald sie 6 Bestätigungen hat. Wird sie nicht bestätigt, kannst du erneut stornieren.";
 "usdt__address" = "Empfängeradresse";
 "usdt__amount" = "Betrag";
 "usdt__bridge_attention" = "Bridge erfordert Prüfung";

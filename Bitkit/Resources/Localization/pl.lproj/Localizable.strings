@@ -1721,6 +1721,21 @@
 "wallet__onchain_retry_unavailable" = "Nie udało się teraz przygotować ponowienia. Oryginalna płatność mogła już dotrzeć do sieci. Sprawdź połączenie i ponów tylko tę oryginalną płatność.";
 "wallet__onchain_retry_invalid_fee" = "Wprowadź stawkę opłaty jako liczbę całkowitą od 1 do 4 294 967 295 sat/vB.";
 "wallet__onchain_retry_max_note" = "Ponów wysłanie {amount} sats na {address} przy użyciu tych samych oryginalnych monet i oryginalnej stawki opłaty {fee} sat/vB. Wysłanie wszystkiego nie zostawia monet na wyższą opłatę bez zmniejszenia kwoty dla odbiorcy. Kwota pozostaje bez zmian. Nie może to utworzyć osobnej płatności.";
+
+"wallet__onchain_resend" = "Ponów bez sprawdzania";
+"wallet__onchain_resend_warning" = "Bitkit nie może już sprawdzić, czy to żądanie płatności, ta wycena lub to zamówienie są nadal ważne. Mogły już wygasnąć, a odbiorca może nie przyjąć spóźnionej płatności. Bitkit nie wyśle płatności, jeśli żądanie lub zamówienie jest już oznaczone jako opłacone, ale jeśli tego stanu nie da się sprawdzić, płatność może zostać wykonana dwukrotnie. Mimo to ponowić tę samą płatność?";
+"wallet__onchain_resend_paid" = "To żądanie płatności lub zamówienie jest już oznaczone jako opłacone, więc Bitkit nie wysłał płatności ponownie. Możesz anulować tę płatność, aby zachować jej środki w swoim portfelu.";
+"wallet__onchain_cancel_payment" = "Anuluj płatność";
+"wallet__onchain_cancel_hint" = "Jeśli ta płatność nie może już zostać zrealizowana, możesz ją anulować i zachować jej środki w swoim portfelu.";
+"wallet__onchain_cancel_note" = "Anuluj wysłanie {amount} sats na {address}, odsyłając wejścia tej płatności z powrotem do swojego portfela. Wpisz zatwierdzaną stawkę opłaty w sat/vB; użyj wyższej stawki niż pierwotna, aby anulowanie mogło zastąpić pierwotną płatność. Wcześniejsze anulowanie można zastąpić dopiero wtedy, gdy wypadnie z sieci bez potwierdzenia. Inne płatności on-chain pozostają zablokowane, dopóki anulowanie nie uzyska 6 potwierdzeń.";
+"wallet__onchain_cancel_authorize" = "Zatwierdź anulowanie";
+"wallet__onchain_cancel_error" = "Nie udało się anulować płatności. Jej środki pozostają chronione. Spróbuj wyższej opłaty lub sprawdź stan transakcji.";
+"wallet__onchain_cancel_pending" = "Wysłano anulowanie. Inne płatności on-chain zostaną odblokowane, gdy uzyska ono 6 potwierdzeń. Jeśli wypadnie z sieci bez potwierdzenia, możesz anulować ponownie.";
+"wallet__onchain_cancel_below_release" = "Nowe anulowanie musi zapłacić wyższą opłatę sieciową niż {fee} sats płacone przez wcześniejsze anulowanie. Wpisz wyższą stawkę opłaty.";
+"wallet__onchain_cancel_pending_error" = "Wcześniejsze anulowanie nadal oczekuje, więc nowe nie może go jeszcze zastąpić. Środki płatności pozostają chronione. Poczekaj na jego potwierdzenie lub anuluj ponownie, jeśli wypadnie z sieci bez potwierdzenia.";
+"wallet__onchain_cancelled_title" = "Płatność anulowana";
+"wallet__onchain_cancelled_description" = "Anulowanie ma 6 potwierdzeń. Płatności on-chain są znowu dostępne.";
+"wallet__onchain_abandon_pending" = "Anulowanie zostało wysłane, ale nie jest jeszcze potwierdzone. Inne płatności on-chain zostaną odblokowane, gdy uzyska ono 6 potwierdzeń. Jeśli nie zostanie potwierdzone, możesz anulować ponownie.";
 "usdt__address" = "Adres odbiorcy";
 "usdt__amount" = "Kwota";
 "usdt__bridge_attention" = "Most wymaga uwagi";

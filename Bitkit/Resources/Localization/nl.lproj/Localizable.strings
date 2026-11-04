@@ -1716,6 +1716,21 @@
 "wallet__onchain_retry_unavailable" = "De nieuwe poging kon nu niet worden voorbereid. De oorspronkelijke betaling heeft het netwerk mogelijk al bereikt. Controleer uw verbinding en probeer alleen deze oorspronkelijke betaling opnieuw.";
 "wallet__onchain_retry_invalid_fee" = "Voer een vergoedingstarief in als geheel getal van 1 tot 4.294.967.295 sat/vB.";
 "wallet__onchain_retry_max_note" = "Probeer {amount} sats naar {address} opnieuw met dezelfde oorspronkelijke coins en het oorspronkelijke vergoedingstarief van {fee} sat/vB. Bij alles versturen blijven er geen coins over voor een hogere vergoeding zonder het bedrag voor de ontvanger te verlagen. Het bedrag blijft ongewijzigd. Dit kan geen aparte betaling aanmaken.";
+
+"wallet__onchain_resend" = "Opnieuw proberen zonder controle";
+"wallet__onchain_resend_warning" = "Bitkit kan niet meer controleren of dit betaalverzoek, deze offerte of deze order nog geldig is. Mogelijk is deze verlopen en accepteert de ontvanger een late betaling misschien niet. Bitkit verstuurt de betaling niet als het verzoek of de order al als betaald is gemarkeerd, maar als die status niet kan worden gecontroleerd, kan er twee keer worden betaald. Toch dezelfde betaling opnieuw proberen?";
+"wallet__onchain_resend_paid" = "Dit betaalverzoek of deze order is al als betaald gemarkeerd, dus Bitkit heeft de betaling niet opnieuw verstuurd. U kunt deze betaling annuleren om het geld in uw wallet te houden.";
+"wallet__onchain_cancel_payment" = "Betaling annuleren";
+"wallet__onchain_cancel_hint" = "Als deze betaling niet meer kan worden voltooid, kunt u deze annuleren en het geld in uw wallet houden.";
+"wallet__onchain_cancel_note" = "Annuleer {amount} sats naar {address} door de inputs van deze betaling terug te sturen naar uw wallet. Voer het vergoedingstarief in dat u autoriseert in sat/vB; gebruik een hoger tarief dan het oorspronkelijke, zodat de annulering de betaling kan vervangen. Een eerdere annulering kan pas worden vervangen nadat deze onbevestigd uit het netwerk is verdwenen. Andere on-chain betalingen blijven geblokkeerd tot een annulering 6 bevestigingen heeft.";
+"wallet__onchain_cancel_authorize" = "Annulering autoriseren";
+"wallet__onchain_cancel_error" = "De betaling kon niet worden geannuleerd. Het geld blijft beschermd. Probeer een hogere vergoeding of controleer de transactiestatus.";
+"wallet__onchain_cancel_pending" = "Annulering verzonden. Andere on-chain betalingen worden vrijgegeven zodra deze 6 bevestigingen heeft. Als deze onbevestigd uit het netwerk verdwijnt, kunt u opnieuw annuleren.";
+"wallet__onchain_cancel_below_release" = "Een nieuwe annulering moet een hogere netwerkvergoeding betalen dan de {fee} sats die de eerdere annulering betaalt. Voer een hoger vergoedingstarief in.";
+"wallet__onchain_cancel_pending_error" = "Een eerdere annulering is nog in behandeling, dus een nieuwe kan deze nog niet vervangen. Het geld van de betaling blijft beschermd. Wacht tot deze is bevestigd, of annuleer opnieuw als deze onbevestigd uit het netwerk verdwijnt.";
+"wallet__onchain_cancelled_title" = "Betaling geannuleerd";
+"wallet__onchain_cancelled_description" = "De annulering heeft 6 bevestigingen. On-chain betalingen zijn weer beschikbaar.";
+"wallet__onchain_abandon_pending" = "De annulering is verzonden, maar nog niet bevestigd. Andere on-chain betalingen worden vrijgegeven zodra deze 6 bevestigingen heeft. Als deze niet wordt bevestigd, kunt u opnieuw annuleren.";
 "usdt__address" = "Adres ontvanger";
 "usdt__amount" = "Bedrag";
 "usdt__bridge_attention" = "Bridge vereist aandacht";

@@ -633,9 +633,10 @@ actor PaykitPaymentProofService {
         }
     }
 
-    /// Cancels an unresolved payment whose request has ended. After a fresh sync shows that none of its transactions
-    /// reached the network, it spends the original's coins back to the wallet at a higher fee, so no candidate can
-    /// confirm. The guard and the started proof stay until that release is accepted or the wallet sees it.
+    /// Sends the coins of an unresolved payment whose request has ended back to the wallet, once a fresh sync shows that none of
+    /// its transactions reached the network. Until that release, or another spend of the original's coins that pays the
+    /// recipient nothing, is final, a candidate may still confirm, so the guard and the started proof stay and this throws
+    /// `OnchainSendAbandonError.releasePending`. `OnchainSendAttemptService.settleFromWallet` then releases both.
     func abandonUnbroadcastOnchainPayment(
         context: OnchainSendPendingContext,
         wallet: any OnchainReleasing,
@@ -645,72 +646,37 @@ actor PaykitPaymentProofService {
         else { throw OnchainSendAttemptError.unresolved }
         guard try await onchainRequestHasEnded(attempt) else { throw OnchainSendAbandonError.requestOpen }
         if let releaseTxid = attempt.releaseTxid, await wallet.walletKnowsTransaction(releaseTxid) {
-            try await finishRelease(attempt, context: context)
-            return
+            throw OnchainSendAbandonError.releasePending
         }
         guard try await wallet.onchainCandidatesNeverReachedNetwork(attempt) else { throw OnchainSendAbandonError.mayStillConfirm }
-        // Approve before anything changes, so a cancel cut short after the proof is removed can still finish.
+        // Approve before anything is sent, so a cancel cut short can finish once the request record is gone.
         if attempt.releaseApproved != true {
             attempt = try await attemptService.approveRelease(attempt)
         }
-        // No candidate is known, yet a coin is spent: an earlier release, or another transaction, already made the
-        // original unconfirmable, including one whose ID a restart or a restore lost.
+        // No candidate is known, yet a coin is spent. A spend that pays the recipient nothing, such as an earlier release or a
+        // Cancel payment whose ID a restart or a restore lost, ends the payment once it is final. Any other spend, such as a
+        // candidate a restore lost, may pay the request.
         if try await wallet.originalCoinSpentElsewhere(attempt) {
-            try await finishRelease(attempt, context: context)
-            return
+            let spends = try await wallet.originalCoinSpends(attempt)
+            guard !spends.isEmpty, spends.allSatisfy(attempt.isCancelled(by:)) else { throw OnchainSendAbandonError.mayStillConfirm }
+            throw OnchainSendAbandonError.releasePending
         }
         let prepared = try await wallet.prepareRelease(attempt)
         guard OnchainSendAttemptService.releaseOutbids(prepared, attempt) else { throw OnchainSendAttemptError.retryConstruction }
         try await approveRelease(prepared)
-        attempt = try await attemptService.recordRelease(attempt, txid: prepared.txid)
+        attempt = try await attemptService.recordRelease(
+            attempt, txid: prepared.txid, feeRate: prepared.satsPerVbyte, feeSats: prepared.miningFeeSats
+        )
         switch try await prepared.broadcast() {
         case .accepted:
-            try await finishRelease(attempt, context: context)
+            logInfo("Sent release \(attempt.releaseTxid ?? "") of on-chain payment \(attempt.txid ?? "")")
+            throw OnchainSendAbandonError.releasePending
         case .rejected:
             // A conflicting candidate may be in a mempool; keep the guard until a sync resolves it.
             throw OnchainSendAbandonError.mayStillConfirm
         case .unknown:
             throw OnchainSendAbandonError.releasePending
         }
-    }
-
-    /// Removes the started proof, then the attempt, so a crash in between leaves an attempt a later cancel finishes.
-    private func finishRelease(_ attempt: OnchainSendAttempt, context: OnchainSendPendingContext) async throws {
-        if attempt.isBlocktankFunding {
-            // A Blocktank funding has no Shop proof to remove.
-            try await mutationLock.withLock {
-                guard try await attemptService.pendingAttempt(context: context) == attempt else { throw OnchainSendAttemptError.unresolved }
-                try await attemptService.abandonUnbroadcast(attempt)
-            }
-            logInfo("Released Blocktank funding \(attempt.txid ?? "") through \(attempt.releaseTxid ?? "")")
-            return
-        }
-        guard let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity else {
-            throw OnchainSendAttemptError.unresolved
-        }
-        try await mutationLock.withLock {
-            guard try await attemptService.pendingAttempt(context: context) == attempt else { throw OnchainSendAttemptError.unresolved }
-            let proofs = try await loadProofs()
-            let remaining = proofs.filter { proof in
-                !(PubkyPublicKeyFormat.matches(proof.identity, payer) && proof.requestId == requestId && proof.kind == .onchain &&
-                    !proof.hasUnsupportedOnchainWallet && proof.proofData == nil && proof.onchainAcceptanceVerified != true &&
-                    (proof.onchainWalletId == nil || proof.onchainWalletId == WalletScope.default) &&
-                    (proof.paymentIdentifier == nil || attempt.containsCandidate(proof.paymentIdentifier)))
-            }
-            if remaining != proofs {
-                try await persist(remaining)
-            }
-            do {
-                try await attemptService.abandonUnbroadcast(attempt)
-            } catch {
-                if remaining != proofs {
-                    try? await persist(proofs)
-                }
-                throw error
-            }
-        }
-        Self.proofStateChangedSubject.send()
-        logInfo("Released on-chain payment \(attempt.txid ?? "") through \(attempt.releaseTxid ?? "") after its request ended")
     }
 
     func resolvedOnchainPayment(requestId: PaykitPaymentRequest.ID, identity: String,
@@ -1300,6 +1266,38 @@ actor PaykitPaymentProofService {
                 return false
             }
         }
+    }
+
+    /// Removes the unproven proof of an attempt a final wallet spend cancelled, so its request is not left started. Its
+    /// candidates may have exposed the private address, so that payment list version stays consumed. The proof may name one
+    /// of the attempt's candidates, none of which can confirm once the cancellation is final.
+    func removeCancelledOnchainProof(_ attempt: OnchainSendAttempt) async -> Bool {
+        guard let requestId = attempt.requestId else { return true }
+        guard let payer = attempt.recoveryContext?.paymentIdentity else { return false }
+        let removed: Bool? = await mutationLock.withLock {
+            do {
+                let proofs = try await loadProofs()
+                let original = proofs.filter { $0.requestId == requestId && PubkyPublicKeyFormat.matches($0.identity, payer) }
+                guard original.allSatisfy({
+                    $0.kind == .onchain && !$0.hasUnsupportedOnchainWallet && $0.proofData == nil &&
+                        ($0.onchainWalletId == nil || $0.onchainWalletId == WalletScope.default) &&
+                        ($0.paymentIdentifier.map { attempt.containsCandidate($0) } ?? true) && $0.onchainAcceptanceVerified != true &&
+                        (!$0.paymentStarted || ($0.onchainAddress == attempt.address && $0.onchainAmountSats == attempt.amountSats))
+                }) else { return nil }
+                if !original.isEmpty {
+                    try await persist(proofs.filter { !original.contains($0) })
+                }
+                return !original.isEmpty
+            } catch {
+                logWarning("Failed to remove a cancelled Paykit on-chain payment proof: \(error)")
+                return nil
+            }
+        }
+        guard let removed else { return false }
+        if removed {
+            Self.proofStateChangedSubject.send()
+        }
+        return true
     }
 
     func cancelHardwarePaymentBeforeDispatch(

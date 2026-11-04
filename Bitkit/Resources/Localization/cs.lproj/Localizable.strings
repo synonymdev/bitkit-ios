@@ -1711,6 +1711,21 @@
 "wallet__onchain_retry_unavailable" = "Opakování se teď nepodařilo připravit. Původní platba se už mohla dostat do sítě. Zkontrolujte připojení a opakujte pouze tuto původní platbu.";
 "wallet__onchain_retry_invalid_fee" = "Zadejte sazbu poplatku jako celé číslo od 1 do 4 294 967 295 sat/vB.";
 "wallet__onchain_retry_max_note" = "Zopakovat {amount} sats na {address} se stejnými původními mincemi a původní sazbou poplatku {fee} sat/vB. Odeslání všeho nenechává žádné mince na vyšší poplatek bez snížení částky pro příjemce. Částka zůstane beze změny. Tímto nelze vytvořit samostatnou platbu.";
+
+"wallet__onchain_resend" = "Zkusit znovu bez kontroly";
+"wallet__onchain_resend_warning" = "Bitkit již nemůže ověřit, zda je tato platební žádost, nabídka nebo objednávka stále platná. Její platnost mohla vypršet a příjemce nemusí přijmout opožděnou platbu. Bitkit platbu neodešle, pokud je žádost nebo objednávka již označena jako zaplacená, ale pokud tento stav nelze ověřit, platba by mohla proběhnout dvakrát. Přesto zopakovat stejnou platbu?";
+"wallet__onchain_resend_paid" = "Tato platební žádost nebo objednávka je již označena jako zaplacená, proto Bitkit platbu znovu neodeslal. Tuto platbu můžete zrušit a ponechat si její prostředky v peněžence.";
+"wallet__onchain_cancel_payment" = "Zrušit platbu";
+"wallet__onchain_cancel_hint" = "Pokud tato platba již nemůže projít, můžete ji zrušit a ponechat si její prostředky v peněžence.";
+"wallet__onchain_cancel_note" = "Zrušte {amount} sats na {address} odesláním vstupů této platby zpět do vaší peněženky. Zadejte sazbu poplatku, kterou schvalujete, v sat/vB; použijte vyšší sazbu než původní, aby zrušení mohlo původní platbu nahradit. Dřívější zrušení lze nahradit až poté, co vypadne ze sítě bez potvrzení. Ostatní on-chain platby zůstanou zablokované, dokud zrušení nebude mít 6 potvrzení.";
+"wallet__onchain_cancel_authorize" = "Schválit zrušení";
+"wallet__onchain_cancel_error" = "Platbu se nepodařilo zrušit. Její prostředky zůstávají chráněny. Zkuste vyšší poplatek nebo zkontrolujte stav transakce.";
+"wallet__onchain_cancel_pending" = "Zrušení odesláno. Ostatní on-chain platby se odemknou, jakmile bude mít 6 potvrzení. Pokud vypadne ze sítě bez potvrzení, můžete platbu zrušit znovu.";
+"wallet__onchain_cancel_below_release" = "Nové zrušení musí zaplatit vyšší síťový poplatek než {fee} sats, které platí dřívější zrušení. Zadejte vyšší sazbu poplatku.";
+"wallet__onchain_cancel_pending_error" = "Dřívější zrušení stále čeká na potvrzení, proto ho nové zatím nemůže nahradit. Prostředky platby zůstávají chráněny. Počkejte, až bude potvrzeno, nebo platbu zrušte znovu, pokud vypadne ze sítě bez potvrzení.";
+"wallet__onchain_cancelled_title" = "Platba zrušena";
+"wallet__onchain_cancelled_description" = "Zrušení má 6 potvrzení. On-chain platby jsou opět k dispozici.";
+"wallet__onchain_abandon_pending" = "Zrušení bylo odesláno, ale zatím není potvrzeno. Ostatní on-chain platby se odemknou, jakmile bude mít 6 potvrzení. Pokud nebude potvrzeno, můžete platbu zrušit znovu.";
 "usdt__address" = "Adresa příjemce";
 "usdt__amount" = "Částka";
 "usdt__bridge_attention" = "Most vyžaduje pozornost";

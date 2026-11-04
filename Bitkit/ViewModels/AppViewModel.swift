@@ -2008,6 +2008,11 @@ extension AppViewModel {
                     await self.completePendingRestoreActivitySeen(syncedBlockHeight: syncedBlockHeight)
                 }
             }
+            if syncType == .onchainWallet {
+                Task { @MainActor in
+                    await self.settleOnchainSendFromWallet()
+                }
+            }
 
             beginPostMigrationSync()
 
@@ -2015,6 +2020,25 @@ extension AppViewModel {
 
         case let .balanceChanged(oldSpendableOnchain, newSpendableOnchain, _, _, oldLightning, newLightning):
             Logger.debug("Balance changed: onchain \(oldSpendableOnchain)->\(newSpendableOnchain) lightning \(oldLightning)->\(newLightning)")
+        }
+    }
+
+    private func settleOnchainSendFromWallet() async {
+        do {
+            switch try await OnchainSendAttemptService.shared.settleFromWallet(
+                using: lightningService,
+                removeOriginalProof: { await PaykitPaymentProofService.shared.removeCancelledOnchainProof($0) }
+            ) {
+            case .cancelled:
+                toast(type: .success, title: t("wallet__onchain_cancelled_title"), description: t("wallet__onchain_cancelled_description"))
+            case let .confirmed(txid):
+                // Followed up as its confirmation event would have been, which never reached the attempt.
+                await lightningService.onchainTransactionConfirmed?(txid)
+            case nil:
+                break
+            }
+        } catch {
+            Logger.warn("Failed to check for a final on-chain send spend: \(error)", context: "AppViewModel")
         }
     }
 

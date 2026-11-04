@@ -1714,6 +1714,21 @@
 "wallet__onchain_retry_unavailable" = "No se pudo preparar el reintento en este momento. Es posible que el pago original ya haya llegado a la red. Revise su conexión y reintente solo este pago original.";
 "wallet__onchain_retry_invalid_fee" = "Introduzca una tarifa en número entero de 1 a 4,294,967,295 sat/vB.";
 "wallet__onchain_retry_max_note" = "Reintentar {amount} sats a {address} con las mismas monedas originales y la tarifa original de {fee} sat/vB. Enviar todo no deja monedas para una comisión mayor sin reducir el monto del destinatario. El monto no cambia. Esto no puede crear un pago aparte.";
+
+"wallet__onchain_resend" = "Reintentar sin verificar";
+"wallet__onchain_resend_warning" = "Bitkit ya no puede verificar que esta solicitud de pago, cotización u orden siga siendo válida. Es posible que haya vencido y que el destinatario no acepte un pago tardío. Bitkit no lo enviará si la solicitud o la orden ya figuran como pagadas, pero si no se puede verificar ese estado, podría pagarse dos veces. ¿Reintentar el mismo pago de todos modos?";
+"wallet__onchain_resend_paid" = "Esta solicitud de pago u orden ya figura como pagada, por lo que Bitkit no volvió a enviar el pago. Puede cancelar este pago para conservar sus fondos en su billetera.";
+"wallet__onchain_cancel_payment" = "Cancelar pago";
+"wallet__onchain_cancel_hint" = "Si este pago ya no puede completarse, puede cancelarlo y conservar sus fondos en su billetera.";
+"wallet__onchain_cancel_note" = "Cancele el envío de {amount} sats a {address} devolviendo las entradas de este pago a su billetera. Ingrese la tarifa que autoriza en sat/vB; use una tarifa más alta que la original para que la cancelación pueda reemplazarlo. Una cancelación anterior solo puede reemplazarse después de que salga de la red sin confirmarse. Los demás pagos onchain seguirán bloqueados hasta que una cancelación tenga 6 confirmaciones.";
+"wallet__onchain_cancel_authorize" = "Autorizar cancelación";
+"wallet__onchain_cancel_error" = "No se pudo cancelar el pago. Sus fondos siguen protegidos. Pruebe con una comisión más alta o revise el estado de la transacción.";
+"wallet__onchain_cancel_pending" = "Cancelación enviada. Los demás pagos onchain se desbloquearán cuando tenga 6 confirmaciones. Si sale de la red sin confirmarse, puede cancelar de nuevo.";
+"wallet__onchain_cancel_below_release" = "Una nueva cancelación debe pagar una comisión de red mayor que los {fee} sats que paga la cancelación anterior. Ingrese una tarifa más alta.";
+"wallet__onchain_cancel_pending_error" = "Una cancelación anterior sigue pendiente, por lo que una nueva aún no puede reemplazarla. Los fondos del pago siguen protegidos. Espere a que se confirme o vuelva a cancelar si sale de la red sin confirmarse.";
+"wallet__onchain_cancelled_title" = "Pago cancelado";
+"wallet__onchain_cancelled_description" = "La cancelación tiene 6 confirmaciones. Los pagos onchain vuelven a estar disponibles.";
+"wallet__onchain_abandon_pending" = "La cancelación se envió, pero aún no está confirmada. Los demás pagos onchain se desbloquearán cuando tenga 6 confirmaciones. Si no se confirma, puede cancelar de nuevo.";
 "usdt__address" = "Dirección de destino";
 "usdt__amount" = "Monto";
 "usdt__bridge_attention" = "El puente requiere atención";

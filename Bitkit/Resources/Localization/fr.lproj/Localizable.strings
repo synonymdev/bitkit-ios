@@ -1722,6 +1722,21 @@
 "wallet__onchain_retry_unavailable" = "La nouvelle tentative n'a pas pu être préparée pour le moment. Le paiement d'origine a peut-être déjà atteint le réseau. Vérifiez votre connexion et ne réessayez que ce paiement d'origine.";
 "wallet__onchain_retry_invalid_fee" = "Saisissez un taux de frais entier compris entre 1 et 4 294 967 295 sat/vB.";
 "wallet__onchain_retry_max_note" = "Réessayer l'envoi de {amount} sats à {address} avec les mêmes UTXO d'origine et le taux de frais d'origine de {fee} sat/vB. Un envoi total ne laisse aucun UTXO pour des frais plus élevés sans réduire le montant du destinataire. Le montant reste inchangé. Cela ne peut pas créer de paiement séparé.";
+
+"wallet__onchain_resend" = "Réessayer sans vérifier";
+"wallet__onchain_resend_warning" = "Bitkit ne peut plus vérifier que cette demande de paiement, ce devis ou cette commande est toujours valide. Sa validité a peut-être expiré, et le destinataire pourrait ne pas accepter un paiement tardif. Bitkit n'enverra pas le paiement si la demande ou la commande est déjà marquée comme payée, mais si ce statut ne peut pas être vérifié, le paiement pourrait être effectué deux fois. Réessayer quand même le même paiement ?";
+"wallet__onchain_resend_paid" = "Cette demande de paiement ou cette commande est déjà marquée comme payée, Bitkit ne l'a donc pas envoyée à nouveau. Vous pouvez annuler ce paiement pour conserver ses fonds dans votre portefeuille.";
+"wallet__onchain_cancel_payment" = "Annuler le paiement";
+"wallet__onchain_cancel_hint" = "Si ce paiement ne peut plus aboutir, vous pouvez l'annuler et conserver ses fonds dans votre portefeuille.";
+"wallet__onchain_cancel_note" = "Annuler l'envoi de {amount} sats à {address} en renvoyant les entrées de ce paiement vers votre portefeuille. Saisissez le taux de frais que vous autorisez en sat/vB ; utilisez un taux plus élevé que l'original pour que l'annulation puisse le remplacer. Une annulation précédente ne peut être remplacée qu'après avoir quitté le réseau sans être confirmée. Les autres paiements on-chain restent bloqués jusqu'à ce qu'une annulation ait 6 confirmations.";
+"wallet__onchain_cancel_authorize" = "Autoriser l'annulation";
+"wallet__onchain_cancel_error" = "Le paiement n'a pas pu être annulé. Ses fonds restent protégés. Essayez des frais plus élevés ou vérifiez le statut de la transaction.";
+"wallet__onchain_cancel_pending" = "Annulation envoyée. Les autres paiements on-chain seront débloqués dès qu'elle aura 6 confirmations. Si elle quitte le réseau sans être confirmée, vous pourrez annuler à nouveau.";
+"wallet__onchain_cancel_below_release" = "Une nouvelle annulation doit payer des frais de réseau supérieurs aux {fee} sats payés par l'annulation précédente. Saisissez un taux de frais plus élevé.";
+"wallet__onchain_cancel_pending_error" = "Une annulation précédente est toujours en attente, une nouvelle ne peut donc pas encore la remplacer. Les fonds du paiement restent protégés. Attendez qu'elle soit confirmée, ou annulez à nouveau si elle quitte le réseau sans être confirmée.";
+"wallet__onchain_cancelled_title" = "Paiement annulé";
+"wallet__onchain_cancelled_description" = "L'annulation a 6 confirmations. Les paiements on-chain sont de nouveau disponibles.";
+"wallet__onchain_abandon_pending" = "L'annulation a été envoyée mais n'est pas encore confirmée. Les autres paiements on-chain seront débloqués dès qu'elle aura 6 confirmations. Si elle n'est pas confirmée, vous pourrez annuler à nouveau.";
 "usdt__address" = "Adresse du destinataire";
 "usdt__amount" = "Montant";
 "usdt__bridge_attention" = "Le pont requiert une action";

@@ -10,6 +10,9 @@ protocol OnchainSending {
                             utxosToSpend: [SpendableUtxo]?, isMaxAmount: Bool,
                             expectedWalletIndex: Int, expectedNode: AnyObject?, paymentDeadline: PaykitPreciseInstant?) async throws
         -> PreparedOnchainSendDispatch
+    func newAddress() async throws -> String
+    func walletSpends(of inputs: [OnchainSendInput], expectedWalletIndex: Int, expectedNode: AnyObject?) async throws
+        -> [OnchainInputSpend]
 }
 
 extension LightningService: OnchainSending {
@@ -55,6 +58,22 @@ extension LightningService: OnchainSending {
             }
         )
     }
+
+    /// Reads spends of `inputs` from the node wallet's own history, never from a backend or mempool query.
+    func walletSpends(of inputs: [OnchainSendInput], expectedWalletIndex: Int, expectedNode: AnyObject?) async throws
+        -> [OnchainInputSpend]
+    {
+        guard let node = onchainDispatchNode as? Node else { throw NodeError.NotRunning(message: "Node not set up") }
+        return try await ServiceQueue.background(.ldk, wrapErrors: false) {
+            guard self.currentWalletIndex == expectedWalletIndex, self.onchainDispatchNode === node, expectedNode === node else {
+                throw NodeError.NotRunning(message: "Wallet or node changed before reading on-chain spends")
+            }
+            return node.listPayments().compactMap { payment in
+                guard case let .onchain(txid, _) = payment.kind, let details = node.getTransactionDetails(txid: txid) else { return nil }
+                return OnchainInputSpend(payment: payment, details: details, guarding: inputs) { node.getTransactionDetails(txid: $0) }
+            }
+        }
+    }
 }
 
 /// The wallet side of cancelling a payment: proving that none of its transactions reached the network, and spending
@@ -64,6 +83,8 @@ protocol OnchainReleasing {
     func walletKnowsTransaction(_ txid: String) async -> Bool
     /// Whether a transaction that is not a candidate already spent one of the original's coins.
     func originalCoinSpentElsewhere(_ attempt: OnchainSendAttempt) async throws -> Bool
+    /// The wallet's own transactions that spend one of the original's coins.
+    func originalCoinSpends(_ attempt: OnchainSendAttempt) async throws -> [OnchainInputSpend]
     func prepareRelease(_ attempt: OnchainSendAttempt) async throws -> PreparedOnchainSendDispatch
 }
 
@@ -80,6 +101,11 @@ extension LightningService: OnchainReleasing {
         guard let original = attempt.recoveryContext?.inputs, !original.isEmpty else { return false }
         let spendable = try await Set(listSpendableOutputs().map { OnchainSendInput(txid: $0.outpoint.txid, vout: $0.outpoint.vout) })
         return original.contains { !spendable.contains($0) }
+    }
+
+    func originalCoinSpends(_ attempt: OnchainSendAttempt) async throws -> [OnchainInputSpend] {
+        guard let original = attempt.recoveryContext?.inputs, !original.isEmpty else { return [] }
+        return try await walletSpends(of: original, expectedWalletIndex: currentWalletIndex, expectedNode: onchainDispatchNode)
     }
 
     func walletKnowsTransaction(_ txid: String) async -> Bool {
@@ -124,7 +150,10 @@ extension LightningService: OnchainReleasing {
                     .isSubset(of: prepared.inputs)
                 else { throw OnchainSendAttemptError.retryConstruction }
                 if OnchainSendAttemptService.releaseOutbids(prepared, attempt) {
-                    return prepared
+                    // A Cancel payment over the same coins must pay a higher rate than the release.
+                    var release = prepared
+                    release.satsPerVbyte = feeRate
+                    return release
                 }
                 feeRate *= 2
             }
@@ -178,6 +207,57 @@ struct OnchainSendInput: Codable, Equatable, Hashable {
     }
 }
 
+/// A transaction in the node's own wallet history that spends at least one guarded input.
+struct OnchainInputSpend: Equatable {
+    let txid: String
+    let inputs: [OnchainSendInput]
+    /// A nil entry is an output without an address, which never proves the recipient went unpaid.
+    let outputAddresses: [String?]
+    /// Confirmed at the node's anti-reorg depth, so no conflicting candidate can replace it.
+    let isFinal: Bool
+    /// The value of each output, in the order of `outputAddresses`.
+    var outputValues: [UInt64] = []
+    /// Exact, from the transactions its coins came from. Nil when the wallet lacks one of them.
+    var feeSats: UInt64?
+    /// The rate `feeSats` pays on its signed size, rounded up.
+    var satsPerVbyte: UInt32?
+
+    /// Every candidate pays its recipient the whole amount in one output.
+    func pays(_ address: String, atLeast amountSats: UInt64) -> Bool {
+        zip(outputAddresses, outputValues).contains { outputAddress, value in
+            outputAddress?.caseInsensitiveCompare(address) == .orderedSame && value >= amountSats
+        }
+    }
+}
+
+extension OnchainInputSpend {
+    /// LDK reports an on-chain payment succeeded only once its transaction is ANTI_REORG_DELAY blocks deep. The payment's own
+    /// fee reads zero when the node cannot work it out, so the fee is worked out from `previous`, the wallet's transactions.
+    init?(
+        payment: LDKNode.PaymentDetails, details: LDKNode.TransactionDetails, guarding inputs: [OnchainSendInput],
+        previous: (String) -> LDKNode.TransactionDetails?
+    ) {
+        guard case let .onchain(txid, status) = payment.kind else { return nil }
+        let guarded = Set(inputs.map { OnchainSendInput(txid: $0.txid.lowercased(), vout: $0.vout) })
+        let spent = details.inputs.map { OnchainSendInput(txid: $0.txid.lowercased(), vout: $0.vout) }
+        guard spent.contains(where: guarded.contains) else { return nil }
+        let isConfirmed = if case .confirmed = status {
+            true
+        } else {
+            false
+        }
+        // A fee that cannot be worked out exactly stays unknown, which only ever keeps a spend from being taken as a payment.
+        let feeSats = try? OnchainSendLocalFollowup.exactFee(details: details, previous: previous)
+        self.init(
+            txid: txid.lowercased(), inputs: spent, outputAddresses: details.outputs.map(\.scriptpubkeyAddress),
+            isFinal: isConfirmed && payment.status == .succeeded,
+            outputValues: details.outputs.map { UInt64(clamping: $0.value) },
+            feeSats: feeSats,
+            satsPerVbyte: feeSats.map { UInt32(clamping: details.feeRate(paying: $0)) }
+        )
+    }
+}
+
 /// Produced only by the adapter before entering the native broadcast call.
 struct PreparedOnchainSendNotSubmitted: Error {
     let underlying: Error
@@ -188,6 +268,8 @@ struct PreparedOnchainSendDispatch {
     let inputs: [OnchainSendInput]
     let recipientAmountSats: UInt64
     var miningFeeSats: UInt64?
+    /// The rate it was prepared at, when known. The rate it pays can only be higher.
+    var satsPerVbyte: UInt32?
     let broadcast: () async throws -> OnchainSendResult
 }
 
@@ -242,6 +324,24 @@ enum OnchainSendAttemptError: LocalizedError, CustomStringConvertible {
     }
 }
 
+/// A Cancel payment must pay more in all than the release of the expired payment it replaces, which may have spent other coins.
+struct OnchainCancellationBelowReleaseError: LocalizedError {
+    let releaseFeeSats: UInt64
+    /// The highest rate that still pays too little: every higher one pays enough.
+    let feeRate: UInt32
+
+    var errorDescription: String? {
+        t("wallet__onchain_cancel_below_release", variables: ["fee": CurrencyFormatter.formatSats(releaseFeeSats)])
+    }
+}
+
+/// The original payment's request is already reported paid, so it is not sent again.
+struct OnchainOriginalPaidError: LocalizedError {
+    var errorDescription: String? {
+        t("wallet__onchain_resend_paid")
+    }
+}
+
 enum OnchainSendAbandonError: LocalizedError {
     case requestOpen
     case mayStillConfirm
@@ -292,6 +392,9 @@ struct OnchainSendAttempt: Codable, Equatable {
     var releaseApproved: Bool? = nil
     /// The transaction spending the original's coins back to the wallet, saved before it is broadcast.
     var releaseTxid: String? = nil
+    /// The release's rate and mining fee, which a Cancel payment over the same coins must both outbid.
+    var releaseFeeRate: UInt32? = nil
+    var releaseFeeSats: UInt64? = nil
 
     var blocksNewSend: Bool {
         status.blocksNewSend || !localFollowupComplete
@@ -331,6 +434,26 @@ struct OnchainSendAttempt: Codable, Equatable {
               !recovery.inputs.isEmpty, let txid, recovery.candidateTxids.contains(txid)
         else { return false }
         return requestId == nil || recovery.paymentIdentity != nil
+    }
+
+    /// Every candidate spends all original inputs and pays `address`, including one a stale backup never recorded.
+    /// A spend of any original input that pays nothing to `address` therefore conflicts with all of them unpaid.
+    func isCancelled(by spend: OnchainInputSpend) -> Bool {
+        guard status != .accepted, let recovery = recoveryContext, !recovery.candidateTxids.isEmpty else { return false }
+        let originals = Set(recovery.inputs.map { OnchainSendInput(txid: $0.txid.lowercased(), vout: $0.vout) })
+        return spend.inputs.contains { originals.contains(OnchainSendInput(txid: $0.txid.lowercased(), vout: $0.vout)) } &&
+            !containsCandidate(spend.txid) && !spend.outputAddresses.isEmpty &&
+            spend.outputAddresses.allSatisfy { $0.map { $0.caseInsensitiveCompare(address) != .orderedSame } ?? false }
+    }
+
+    /// A spend of exactly the original inputs that pays `address` at least the amount in one output is a candidate of this
+    /// payment even when none records it, such as a fee bump a restore lost.
+    func isUnrecordedCandidate(_ spend: OnchainInputSpend) -> Bool {
+        guard status != .accepted, let recovery = recoveryContext, !recovery.inputs.isEmpty, !containsCandidate(spend.txid)
+        else { return false }
+        let originals = recovery.inputs.map { OnchainSendInput(txid: $0.txid.lowercased(), vout: $0.vout) }
+        let spent = spend.inputs.map { OnchainSendInput(txid: $0.txid.lowercased(), vout: $0.vout) }
+        return spent.count == originals.count && Set(spent) == Set(originals) && spend.pays(address, atLeast: amountSats)
     }
 }
 
@@ -462,6 +585,14 @@ struct OnchainSendAttemptStore: OnchainSendAttemptStoring {
     }
 }
 
+/// What the wallet's own final spends of an unsettled attempt's inputs showed.
+enum OnchainSendWalletSettlement: Equatable {
+    /// A spend that pays nothing to the recipient conflicts with every candidate, and released this attempt's guard.
+    case cancelled(OnchainSendAttempt)
+    /// This candidate is final, and is now the winner.
+    case confirmed(txid: String)
+}
+
 struct OnchainSendPendingContext: Hashable {
     let attemptId: UUID
     let walletId: String
@@ -502,6 +633,20 @@ actor OnchainSendAttemptService {
         return fee > candidateFee
     }
 
+    /// The least a Cancel payment paying `feeSats` at `satsPerVbyte` must pay to replace a release that paid `releaseFeeSats`:
+    /// more than the release, by at least its own size at the 1 sat/vB incremental relay fee (BIP125 rules 3 and 4). Its fee
+    /// is rounded up, so the fee over the rate, rounded up, is at least its size.
+    static func cancellationFeeFloor(releaseFeeSats: UInt64, feeSats: UInt64, satsPerVbyte: UInt32) -> UInt64 {
+        let rate = UInt64(max(satsPerVbyte, 1))
+        return releaseFeeSats.saturatingAdd(feeSats / rate + (feeSats.isMultiple(of: rate) ? 0 : 1))
+    }
+
+    /// The highest rate at which a transaction paying `feeSats` at `satsPerVbyte` pays no more than `targetFeeSats`. Its fee is
+    /// rounded up, so its size is above (`feeSats` - 1) / `satsPerVbyte`, and every higher rate pays more.
+    static func highestFeeRate(notAbove targetFeeSats: UInt64, feeSats: UInt64, satsPerVbyte: UInt32) -> UInt32 {
+        UInt32(clamping: targetFeeSats.saturatingMultiply(UInt64(satsPerVbyte)) / max(feeSats.saturatingSub(1), 1))
+    }
+
     /// The sync requested for a check proves a fresh view once it succeeds. Otherwise only a sync that finished later
     /// than the one read before the request counts; one finished in the same second may predate it.
     static func isOnchainSync(_ latest: UInt64?, after previous: UInt64, requestedSyncSucceeded: Bool = false) -> Bool {
@@ -517,6 +662,12 @@ actor OnchainSendAttemptService {
     nonisolated static var localResolutionPublisher: AnyPublisher<OnchainSendLocalResolution, Never> {
         localResolutionSubject.receive(on: DispatchQueue.main).eraseToAnyPublisher()
     }
+
+    private static let cancellationReleaseSubject = PassthroughSubject<UUID, Never>()
+
+    /// The ID of each attempt released after a final cancellation. Stored, so a view's `onReceive` keeps one subscription
+    /// across body evaluations.
+    static let cancellationReleasePublisher = cancellationReleaseSubject.receive(on: DispatchQueue.main).eraseToAnyPublisher()
 
     private let localFollowup: any OnchainSendLocalFollowupHandling
     private let winningFee: (OnchainSendAttempt) async throws -> UInt64?
@@ -567,6 +718,8 @@ actor OnchainSendAttemptService {
             // A local release approval and its transaction are not part of the shared backup record.
             previous.releaseApproved = nil
             previous.releaseTxid = nil
+            previous.releaseFeeRate = nil
+            previous.releaseFeeSats = nil
             // The backup stamps its own follow-up time, which the live attempt never stores.
             previous.followupContext?.backupCreatedAtMillis = nil
             incoming.followupContext?.backupCreatedAtMillis = nil
@@ -810,6 +963,137 @@ actor OnchainSendAttemptService {
         do { try record(result, attemptId: original.id) }
         catch { Logger.warn("Could not persist the known recovery outcome; original inputs remain guarded", context: "OnchainSendAttempt") }
         return (try? winningResult(attemptId: original.id)) ?? result
+    }
+
+    /// Spends the exact original inputs back to this wallet, conflicting with every candidate without paying anyone.
+    /// The guard is left as it is until that spend is final, through `settleFromWallet`.
+    func cancelOriginalPayment(
+        using sender: any OnchainSending, context: OnchainSendPendingContext, satsPerVbyte: UInt32,
+        approvePrepared: (PreparedOnchainSendDispatch) async throws -> Void = { _ in },
+        authorize: () async throws -> Void
+    ) async throws -> OnchainSendResult {
+        guard nativeDispatchInProgress == nil, let original = try currentAttempt(),
+              original.id == context.attemptId, original.walletId == context.walletId,
+              original.containsCandidate(context.txid), original.canRetrySamePayment,
+              let recovery = original.recoveryContext
+        else { throw OnchainSendAttemptError.unresolved }
+        let index = sender.currentWalletIndex
+        let node = sender.onchainDispatchNode
+        guard original.walletId == Self.walletId(index: index), satsPerVbyte > 0, satsPerVbyte <= 999 else {
+            throw OnchainSendAttemptError.unresolved
+        }
+        nativeDispatchInProgress = original.id
+        defer { nativeDispatchInProgress = nil }
+        // Both outputs stay in this wallet: a dust-limit output to a fresh address plus change. Unlike a sweep, this
+        // stays within the node's spendable-balance and anchor-reserve checks for any original input set.
+        let address = try await sender.newAddress()
+        try checkWallet(sender, index: index, node: node)
+        guard address.caseInsensitiveCompare(original.address) != .orderedSame else { throw OnchainSendAttemptError.unresolved }
+        let prepared = try await sender.prepareOnchainSend(
+            address: address, sats: UInt64(Env.dustLimit), satsPerVbyte: satsPerVbyte,
+            utxosToSpend: recovery.inputs.map(\.utxo), isMaxAmount: false,
+            expectedWalletIndex: index, expectedNode: node, paymentDeadline: nil
+        )
+        try validateReceipt(prepared, amount: UInt64(Env.dustLimit), inputs: recovery.inputs)
+        guard !original.containsCandidate(prepared.txid) else { throw OnchainSendAttemptError.unresolved }
+        // A release may also have spent other wallet coins, so a cancellation replacing it must also pay more in all, by at
+        // least its own size.
+        if original.releaseTxid != nil, let releaseFee = original.releaseFeeSats {
+            guard let fee = prepared.miningFeeSats else { throw OnchainSendAttemptError.retryUnavailable }
+            let floor = Self.cancellationFeeFloor(releaseFeeSats: releaseFee, feeSats: fee, satsPerVbyte: satsPerVbyte)
+            if fee < floor {
+                throw OnchainCancellationBelowReleaseError(
+                    releaseFeeSats: releaseFee,
+                    feeRate: Self.highestFeeRate(notAbove: floor - 1, feeSats: fee, satsPerVbyte: satsPerVbyte)
+                )
+            }
+        }
+        try Task.checkCancellation()
+        try await approvePrepared(prepared)
+        try Task.checkCancellation()
+        try await authorize()
+        try Task.checkCancellation()
+        try checkWallet(sender, index: index, node: node)
+        // A candidate that gained positive evidence meanwhile may still confirm, so it is never conflicted with.
+        guard let current = try currentAttempt(), current.id == original.id, current.status != .accepted,
+              current.recoveryContext?.inputs == recovery.inputs
+        else { throw OnchainSendAttemptError.unresolved }
+        do { return try await normalized(prepared.broadcast(), candidate: prepared.txid) }
+        catch let failure as PreparedOnchainSendNotSubmitted { throw OnchainSendAttemptError.preDispatch(failure.underlying) }
+        catch { return .unknown(txid: prepared.txid) }
+    }
+
+    /// The wallet's own spend that cancels `attempt`, final or still confirming, if one exists.
+    func cancellation(of attempt: OnchainSendAttempt, using sender: any OnchainSending) async throws -> OnchainInputSpend? {
+        let index = sender.currentWalletIndex
+        guard attempt.walletId == Self.walletId(index: index) else { throw OnchainSendAttemptError.unresolved }
+        guard let inputs = attempt.recoveryContext?.inputs, !inputs.isEmpty else { return nil }
+        let cancellations = try await sender.walletSpends(of: inputs, expectedWalletIndex: index, expectedNode: sender.onchainDispatchNode)
+            .filter(attempt.isCancelled(by:))
+        return cancellations.first(where: \.isFinal) ?? cancellations.first
+    }
+
+    /// Settles an unsettled guard from the wallet's own final spends of its inputs, read once. It is released only on positive
+    /// evidence that no candidate can ever confirm: a final spend of an original input that pays nothing to the recipient.
+    /// Rejection, expiry or mempool absence never do. A final candidate is settled as the winner, for when no confirmation
+    /// event reaches the attempt. So is a final spend of exactly the original inputs that pays the recipient, which no
+    /// candidate records when a restore lost it, once its exact fee is known.
+    func settleFromWallet(
+        using sender: any OnchainSending, removeOriginalProof: (OnchainSendAttempt) async -> Bool
+    ) async throws -> OnchainSendWalletSettlement? {
+        guard nativeDispatchInProgress == nil, let attempt = try currentAttempt(), attempt.status != .accepted,
+              attempt.walletId == Self.walletId(index: sender.currentWalletIndex),
+              let inputs = attempt.recoveryContext?.inputs, !inputs.isEmpty
+        else { return nil }
+        let finalSpends = try await sender.walletSpends(of: inputs, expectedWalletIndex: sender.currentWalletIndex,
+                                                        expectedNode: sender.onchainDispatchNode).filter(\.isFinal)
+        guard nativeDispatchInProgress == nil, try currentAttempt() == attempt else { return nil }
+        if let spend = finalSpends.first(where: attempt.isCancelled(by:)) {
+            return try await releaseCancelled(attempt, by: spend, removeOriginalProof: removeOriginalProof).map { .cancelled($0) }
+        }
+        if let winner = finalSpends.lazy.compactMap({ attempt.storedCandidate($0.txid) }).first {
+            return try observeConfirmedTransaction(txid: winner) ? .confirmed(txid: winner) : nil
+        }
+        guard let payment = finalSpends.first(where: attempt.isUnrecordedCandidate),
+              try adoptFinalCandidate(attempt, spend: payment)
+        else { return nil }
+        let txid = payment.txid.lowercased()
+        guard try observeConfirmedTransaction(txid: txid) else { return nil }
+        Logger.info("Settled on-chain send \(attempt.id) by unrecorded final payment \(txid)", context: "OnchainSendAttempt")
+        return .confirmed(txid: txid)
+    }
+
+    private func adoptFinalCandidate(_ expected: OnchainSendAttempt, spend: OnchainInputSpend) throws -> Bool {
+        guard nativeDispatchInProgress == nil, var attempt = try currentAttempt(), attempt == expected,
+              attempt.isUnrecordedCandidate(spend), var recovery = attempt.recoveryContext
+        else { return false }
+        let txid = spend.txid.lowercased()
+        // Its activity and backup record the fee and rate it paid, so it is never adopted with an estimate.
+        guard let fee = spend.feeSats, let rate = spend.satsPerVbyte, rate > 0 else {
+            Logger.warn("Not adopting final payment \(txid) of on-chain send \(attempt.id) without its exact fee", context: "OnchainSendAttempt")
+            return false
+        }
+        recovery.candidateTxids.append(txid)
+        recovery.candidateFeeRates = (recovery.candidateFeeRates ?? [:]).merging([txid: rate]) { _, adopted in adopted }
+        recovery.candidateFeeSats = (recovery.candidateFeeSats ?? [:]).merging([txid: fee]) { _, adopted in adopted }
+        attempt.recoveryContext = recovery
+        try store.save([attempt])
+        knownAttempt = attempt
+        return true
+    }
+
+    private func releaseCancelled(
+        _ attempt: OnchainSendAttempt, by spend: OnchainInputSpend, removeOriginalProof: (OnchainSendAttempt) async -> Bool
+    ) async throws -> OnchainSendAttempt? {
+        nativeDispatchInProgress = attempt.id
+        defer { nativeDispatchInProgress = nil }
+        // The unproven proof goes first, so a failure leaves the guard holding its request.
+        guard await removeOriginalProof(attempt), try currentAttempt() == attempt, attempt.isCancelled(by: spend) else { return nil }
+        try store.save([])
+        knownAttempt = nil
+        Logger.info("Released on-chain send \(attempt.id) after final cancellation \(spend.txid)", context: "OnchainSendAttempt")
+        Self.cancellationReleaseSubject.send(attempt.id)
+        return attempt
     }
 
     private func discardUnsubmittedRetryCandidate(_ txid: String, attemptId: UUID, wasAdded: Bool) throws {
@@ -1106,7 +1390,7 @@ actor OnchainSendAttemptService {
                                           amountSats: activity.value, contact: activity.contact, activity: activity)
     }
 
-    /// Records that the payment's request has ended before its proof is removed.
+    /// Records that the payment's request has ended, before its release is prepared.
     func approveRelease(_ expected: OnchainSendAttempt) throws -> OnchainSendAttempt {
         guard nativeDispatchInProgress == nil, var attempt = try currentAttempt(), attempt == expected,
               attempt.canBeAbandoned
@@ -1117,24 +1401,18 @@ actor OnchainSendAttemptService {
         return attempt
     }
 
-    /// Saves the release transaction before it is broadcast, so a later cancel can find it in the wallet.
-    func recordRelease(_ expected: OnchainSendAttempt, txid: String) throws -> OnchainSendAttempt {
+    /// Saves the release transaction before it is broadcast, so a later cancel can find it in the wallet, and a Cancel payment
+    /// knows the rate and fee it must outbid, also after the screen is reopened.
+    func recordRelease(_ expected: OnchainSendAttempt, txid: String, feeRate: UInt32?, feeSats: UInt64?) throws -> OnchainSendAttempt {
         guard nativeDispatchInProgress == nil, var attempt = try currentAttempt(), attempt == expected,
               attempt.canBeAbandoned, attempt.releaseApproved == true, !attempt.containsCandidate(txid)
         else { throw OnchainSendAttemptError.unresolved }
         attempt.releaseTxid = txid.lowercased()
+        attempt.releaseFeeRate = feeRate
+        attempt.releaseFeeSats = feeSats
         try store.save([attempt])
         knownAttempt = attempt
         return attempt
-    }
-
-    /// Removes a payment whose coins were spent back to the wallet, so new sends can use them.
-    func abandonUnbroadcast(_ expected: OnchainSendAttempt) throws {
-        guard nativeDispatchInProgress == nil, let attempt = try currentAttempt(), attempt == expected,
-              attempt.canBeAbandoned
-        else { throw OnchainSendAttemptError.unresolved }
-        try store.save([])
-        knownAttempt = nil
     }
 
     func clearBeforeDispatch(attemptId: UUID) throws {
