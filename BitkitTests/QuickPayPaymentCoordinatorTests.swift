@@ -543,6 +543,83 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         sendCont?.resume(returning: invoiceHash)
     }
 
+    func testAStartedPaymentBelongsToItsSendPresentationUntilDetach() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let sendStarted = expectation(description: "send started")
+        var sendCont: CheckedContinuation<String, Never>?
+        let coordinator = QuickPayPaymentCoordinator(
+            store: store,
+            sendBolt11: { _ in
+                await withCheckedContinuation { (cont: CheckedContinuation<String, Never>) in
+                    sendCont = cont
+                    sendStarted.fulfill()
+                }
+            },
+            listRows: { [] }
+        )
+        let app = appWithInvoice
+        let presentationID = UUID()
+        XCTAssertFalse(coordinator.hasStartedPayment(presentationID: presentationID))
+
+        coordinator.pay(
+            app: app,
+            wallet: WalletViewModel(),
+            settings: settings,
+            currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            presentation: presentation(onRoute: { _ in }, onConfirm: {}),
+            sessionID: .init(presentationID: presentationID, sendStateGeneration: app.sendStateGeneration, attempt: 0)
+        )
+        await fulfillment(of: [sendStarted], timeout: 2)
+
+        XCTAssertTrue(coordinator.hasStartedPayment(presentationID: presentationID))
+        XCTAssertFalse(coordinator.hasStartedPayment(presentationID: UUID()), "Another send's sync wait is not held back")
+        coordinator.detach()
+        XCTAssertFalse(coordinator.hasStartedPayment(presentationID: presentationID))
+        sendCont?.resume(returning: invoiceHash)
+    }
+
+    func testTheAmountReservedAgainstTheDailyLimitIsReadBeforeTheLnurlInvoiceIsFetched() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let app = AppViewModel()
+        app.lnurlPayData = LnurlPayData(
+            uri: "https://example.com/pay", callback: "https://example.com/callback",
+            minSendable: 1_000_000, maxSendable: 1_000_000,
+            metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
+        )
+        app.selectedWalletToPayFrom = .lightning
+        let wallet = WalletViewModel()
+        let coordinator = QuickPayPaymentCoordinator(
+            store: store,
+            sendBolt11: { [store] _ in
+                store?.signalCompletion(paymentId: nil, paymentHash: invoiceHash, success: true)
+                return invoiceHash
+            },
+            fetchLnurlInvoice: { _ in
+                // The send's amount is reset while the invoice is fetched
+                wallet.sendAmountSats = nil
+                return Self.regtestBolt11
+            },
+            listRows: { [] }
+        )
+        var route: SendRoute?
+        let routed = expectation(description: "route")
+
+        coordinator.pay(
+            app: app,
+            wallet: wallet,
+            settings: settings,
+            currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            presentation: presentation(onRoute: {
+                route = $0
+                routed.fulfill()
+            }, onConfirm: {})
+        )
+        await fulfillment(of: [routed], timeout: 2)
+
+        guard case .success = route else { return XCTFail("Expected success, got \(String(describing: route))") }
+        XCTAssertEqual(store.spentCentsToday(), 100, "The 1000-sat payment counts against the daily limit")
+    }
+
     func testSameSessionReattachesResultWithoutDispatchingAgain() async throws {
         let app = appWithInvoice
         let session = QuickPayPaymentCoordinator.SessionID(

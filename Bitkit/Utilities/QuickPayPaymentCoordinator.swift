@@ -1,3 +1,4 @@
+import BitkitCore
 import Foundation
 import LDKNode
 
@@ -45,6 +46,7 @@ final class QuickPayPaymentCoordinator {
 
     private let store: QuickPaySpendStore
     private let sendBolt11: (String) async throws -> String
+    private let fetchLnurlInvoice: (LnurlPayData) async throws -> String
     private let listRows: () async throws -> [QuickPayReconcileRow]?
 
     private var operations: [String: InFlightOp] = [:]
@@ -62,11 +64,15 @@ final class QuickPayPaymentCoordinator {
     init(
         store: QuickPaySpendStore = .shared,
         sendBolt11: ((String) async throws -> String)? = nil,
+        fetchLnurlInvoice: ((LnurlPayData) async throws -> String)? = nil,
         listRows: (() async throws -> [QuickPayReconcileRow]?)? = nil
     ) {
         self.store = store
         self.sendBolt11 = sendBolt11 ?? { bolt11 in
             try await String(LightningService.shared.send(bolt11: bolt11))
+        }
+        self.fetchLnurlInvoice = fetchLnurlInvoice ?? { data in
+            try await LnurlHelper.fetchLnurlInvoice(data: data, amountMsats: data.callbackAmountMsats())
         }
         self.listRows = listRows ?? {
             await LightningService.shared.listPayments()?.map(QuickPayReconcileRow.init)
@@ -76,6 +82,11 @@ final class QuickPayPaymentCoordinator {
     func hasOpen(_ paymentHash: String) -> Bool {
         guard !paymentHash.isEmpty else { return false }
         return operations[paymentHash] != nil || store.record(matching: paymentHash) != nil
+    }
+
+    /// Whether `pay` started a QuickPay for this send presentation, which `detach` has not ended yet.
+    func hasStartedPayment(presentationID: UUID) -> Bool {
+        payRequested && sessionID?.presentationID == presentationID
     }
 
     func detach() {
@@ -225,15 +236,16 @@ final class QuickPayPaymentCoordinator {
         guard generation == self.generation, app.sendStateGeneration == sendStateGeneration else { return }
 
         var bolt11: String?
+        // Kept here, as the send's amount may be reset while the invoice is fetched
+        var amountSats: UInt64?
         do {
             if let lnurlPayData = app.lnurlPayData {
-                wallet.sendAmountSats = lnurlPayData.minSendableSat
-                bolt11 = try await LnurlHelper.fetchLnurlInvoice(
-                    data: lnurlPayData,
-                    amountMsats: lnurlPayData.callbackAmountMsats()
-                )
+                amountSats = lnurlPayData.minSendableSat
+                wallet.sendAmountSats = amountSats
+                bolt11 = try await fetchLnurlInvoice(lnurlPayData)
             } else if let scannedInvoice = app.scannedLightningInvoice {
-                wallet.sendAmountSats = scannedInvoice.amountSatoshis
+                amountSats = scannedInvoice.amountSatoshis
+                wallet.sendAmountSats = amountSats
                 bolt11 = scannedInvoice.bolt11
             }
         } catch {
@@ -283,7 +295,6 @@ final class QuickPayPaymentCoordinator {
 
         guard generation == self.generation else { return }
 
-        let amountSats = wallet.sendAmountSats ?? 0
         let op = InFlightOp(invoiceHash: invoiceHash, bolt11: bolt11, presentation: presentation)
         op.runActive = true
         register(op)
@@ -291,7 +302,7 @@ final class QuickPayPaymentCoordinator {
         do {
             guard try store.reserveBound(
                 paymentHash: invoiceHash,
-                amountSats: amountSats,
+                amountSats: amountSats ?? 0,
                 thresholdUsd: settings.quickpayAmount,
                 multiplier: settings.quickpayDailyLimitMultiplier,
                 rates: .live(currency),

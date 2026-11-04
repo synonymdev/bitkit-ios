@@ -7,19 +7,32 @@ final class SendSheetSyncWaitTests: XCTestCase {
 
     func testSyncTimeoutFallsBackToOnchainOnlyBeforeASendWentOut() {
         let failure = SendRoute.failure(SendFailureContext(error: AppError(message: "failed", debugMessage: nil), retryRoute: .confirm))
+        func timeoutAction(_ route: SendRoute, isNodeRunning: Bool, isUnifiedInvoice: Bool) -> SendSheet.SyncTimeoutAction? {
+            SendSheet.syncTimeoutAction(route: route, isQuickPayActive: false, isNodeRunning: isNodeRunning, isUnifiedInvoice: isUnifiedInvoice)
+        }
         for route in postSendRoutes() {
-            XCTAssertNil(SendSheet.syncTimeoutAction(route: route, isNodeRunning: true, isUnifiedInvoice: true), "\(route)")
-            XCTAssertNil(SendSheet.syncTimeoutAction(route: route, isNodeRunning: false, isUnifiedInvoice: false), "\(route)")
+            XCTAssertNil(timeoutAction(route, isNodeRunning: true, isUnifiedInvoice: true), "\(route)")
+            XCTAssertNil(timeoutAction(route, isNodeRunning: false, isUnifiedInvoice: false), "\(route)")
         }
         for route in [SendRoute.amount, .confirm, .quickpay, failure] {
-            XCTAssertEqual(SendSheet.syncTimeoutAction(route: route, isNodeRunning: true, isUnifiedInvoice: true), .fallBackToOnchain, "\(route)")
-            XCTAssertEqual(
-                SendSheet.syncTimeoutAction(route: route, isNodeRunning: false, isUnifiedInvoice: true), .showConnectionIssues, "\(route)"
-            )
-            XCTAssertEqual(
-                SendSheet.syncTimeoutAction(route: route, isNodeRunning: true, isUnifiedInvoice: false), .showConnectionIssues, "\(route)"
-            )
+            XCTAssertEqual(timeoutAction(route, isNodeRunning: true, isUnifiedInvoice: true), .fallBackToOnchain, "\(route)")
+            XCTAssertEqual(timeoutAction(route, isNodeRunning: false, isUnifiedInvoice: true), .showConnectionIssues, "\(route)")
+            XCTAssertEqual(timeoutAction(route, isNodeRunning: true, isUnifiedInvoice: false), .showConnectionIssues, "\(route)")
         }
+    }
+
+    func testTheSyncWaitNeverStandsInForAQuickPayUnderWay() {
+        for route in [SendRoute.quickpay, .amount, .confirm] {
+            XCTAssertTrue(SendSheet.canWaitForSync(route: route, isQuickPayActive: false), "\(route)")
+            XCTAssertFalse(SendSheet.canWaitForSync(route: route, isQuickPayActive: true), "\(route)")
+            for isNodeRunning in [true, false] {
+                XCTAssertNil(
+                    SendSheet.syncTimeoutAction(route: route, isQuickPayActive: true, isNodeRunning: isNodeRunning, isUnifiedInvoice: true),
+                    "\(route)"
+                )
+            }
+        }
+        XCTAssertFalse(SendSheet.canWaitForSync(route: .success(paymentId: paymentHash), isQuickPayActive: false))
     }
 
     func testValidationAfterSyncWaitsWhileConfirmSendsAndStopsOnceTheSendWentOut() {

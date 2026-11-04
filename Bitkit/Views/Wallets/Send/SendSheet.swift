@@ -295,6 +295,10 @@ struct SendSheet: View {
     /// How long the sync overlay may wait for channels to become usable before falling back
     private static let syncTimeoutSeconds: TimeInterval = 20
 
+    private var isQuickPayActive: Bool {
+        QuickPayPaymentCoordinator.shared.hasStartedPayment(presentationID: flow.quickPayPresentationID)
+    }
+
     private var visibleRoute: SendRoute {
         flow.navigationPath.last ?? currentRoot
     }
@@ -315,11 +319,22 @@ struct SendSheet: View {
         case showConnectionIssues
     }
 
-    /// What the sync wait does once it has run for `syncTimeoutSeconds` without channels becoming usable, or nil on a route
-    /// that shows a sent payment. A unified invoice falls back to on-chain, unless a Lightning payment of it may still
+    /// Whether the sync wait may stand in for the send's screens. Not once the send went out, nor while a QuickPay of it is
+    /// under way, which the wait would hide.
+    static func canWaitForSync(route: SendRoute, isQuickPayActive: Bool) -> Bool {
+        !isPostSendRoute(route) && !isQuickPayActive
+    }
+
+    /// What the sync wait does once it has run for `syncTimeoutSeconds` without channels becoming usable, or nil when the send
+    /// may not wait (`canWaitForSync`). A unified invoice falls back to on-chain, unless a Lightning payment of it may still
     /// complete; anything else shows the connection-issues screen (via the forced `offlineSheetOverlay`) and keeps waiting.
-    static func syncTimeoutAction(route: SendRoute, isNodeRunning: Bool, isUnifiedInvoice: Bool) -> SyncTimeoutAction? {
-        guard !isPostSendRoute(route) else { return nil }
+    static func syncTimeoutAction(
+        route: SendRoute,
+        isQuickPayActive: Bool,
+        isNodeRunning: Bool,
+        isUnifiedInvoice: Bool
+    ) -> SyncTimeoutAction? {
+        guard canWaitForSync(route: route, isQuickPayActive: isQuickPayActive) else { return nil }
         return isNodeRunning && isUnifiedInvoice ? .fallBackToOnchain : .showConnectionIssues
     }
 
@@ -336,7 +351,7 @@ struct SendSheet: View {
     private var shouldShowSyncOverlay: Bool {
         if isPreparingRequest || hwSend.isActive || flow.isResumingAcceptedOrdinarySend || app.paykitUsesUsdt ||
             (app.contactPaymentContext?.requiresAssetSelection == true && currentRoot == .amount && flow.navigationPath.isEmpty) ||
-            Self.isPostSendRoute(visibleRoute)
+            !Self.canWaitForSync(route: visibleRoute, isQuickPayActive: isQuickPayActive)
         {
             return false
         }
@@ -567,6 +582,11 @@ struct SendSheet: View {
         guard ownsSendState else { return }
         app.resetSendState(ownerID: config.presentationID)
         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+        endQuickPay()
+    }
+
+    /// Ends the send's QuickPay, so a QuickPay screen shown next starts a new payment and the sync wait may stand in again
+    private func endQuickPay() {
         app.resetQuickPay()
         QuickPayPaymentCoordinator.shared.detach()
     }
@@ -668,6 +688,7 @@ struct SendSheet: View {
     private func handleSyncTimeout() {
         let action = Self.syncTimeoutAction(
             route: visibleRoute,
+            isQuickPayActive: isQuickPayActive,
             isNodeRunning: wallet.nodeLifecycleState == .running,
             isUnifiedInvoice: app.scannedLightningInvoice != nil && app.scannedOnchainInvoice != nil
         )
@@ -925,7 +946,8 @@ struct SendSheet: View {
         flow.isFallbackFundingPending = true
         flow.onchainFallbackTask = Task {
             let outcome = await app.fallBackToOnchain(from: lightningInvoice, to: onchainInvoice) {
-                !Task.isCancelled && Self.canValidateAfterSync(route: visibleRoute, isSubmittingPayment: flow.isSubmittingPayment)
+                !Task.isCancelled && !isQuickPayActive &&
+                    Self.canValidateAfterSync(route: visibleRoute, isSubmittingPayment: flow.isSubmittingPayment)
             }
             if !Task.isCancelled {
                 flow.isFallbackFundingPending = false
@@ -1474,7 +1496,7 @@ struct SendSheet: View {
     }
 
     private func replaceQuickPay(with route: SendRoute) {
-        app.resetQuickPay()
+        endQuickPay()
         let next = PaymentNavigationHelper.replacingQuickPay(in: flow.navigationPath, root: currentRoot, with: route)
         flow.rootOverride = next.root == config.initialRoute ? nil : next.root
         flow.navigationPath = next.path
@@ -1494,7 +1516,7 @@ struct SendSheet: View {
     private func resetNavigationForRetry(_ retryRoute: SendRetryRoute) {
         let route = retryRoute.sendRoute
         if retryRoute == .quickpay {
-            app.resetQuickPay()
+            endQuickPay()
             flow.quickPaySession += 1
         }
         if route == config.initialRoute || currentRoot == route {
