@@ -1732,11 +1732,15 @@
 "wallet__onchain_cancel_authorize" = "Autoriser l'annulation";
 "wallet__onchain_cancel_error" = "Le paiement n'a pas pu être annulé. Ses fonds restent protégés. Essayez des frais plus élevés ou vérifiez le statut de la transaction.";
 "wallet__onchain_cancel_pending" = "Annulation envoyée. Les autres paiements on-chain seront débloqués dès qu'elle aura 6 confirmations. Si elle quitte le réseau sans être confirmée, vous pourrez annuler à nouveau.";
-"wallet__onchain_cancel_below_release" = "Une nouvelle annulation doit payer des frais de réseau supérieurs aux {fee} sats payés par l'annulation précédente. Saisissez un taux de frais plus élevé.";
+"wallet__onchain_cancel_fee_too_low" = "Une nouvelle annulation doit payer des frais de réseau supérieurs à {fee} sats, à un taux de frais plus élevé que la transaction qu'elle remplace. Saisissez un taux de frais plus élevé.";
 "wallet__onchain_cancel_pending_error" = "Une annulation précédente est toujours en attente, une nouvelle ne peut donc pas encore la remplacer. Les fonds du paiement restent protégés. Attendez qu'elle soit confirmée, ou annulez à nouveau si elle quitte le réseau sans être confirmée.";
 "wallet__onchain_cancelled_title" = "Paiement annulé";
 "wallet__onchain_cancelled_description" = "L'annulation a 6 confirmations. Les paiements on-chain sont de nouveau disponibles.";
+"wallet__onchain_cancel_final_held" = "L'annulation a 6 confirmations. Bitkit libère ce paiement à la prochaine synchronisation du portefeuille, et les autres paiements on-chain sont alors débloqués.";
+"wallet__onchain_cancel_speed_up" = "Accélérer l'annulation";
+"wallet__onchain_cancel_speed_up_note" = "L'annulation attend encore sa confirmation. Remplacez-la par la même annulation à un taux de frais supérieur à ses {fee} sat/vB actuels, pour qu'elle soit confirmée plus vite. Les fonds de ce paiement reviennent toujours dans votre portefeuille.";
 "wallet__onchain_abandon_pending" = "L'annulation a été envoyée mais n'est pas encore confirmée. Les autres paiements on-chain seront débloqués dès qu'elle aura 6 confirmations. Si elle n'est pas confirmée, vous pourrez annuler à nouveau.";
+"wallet__onchain_abandon_checking" = "Vérification du réseau. Cela peut prendre jusqu'à 2 minutes.";
 "usdt__address" = "Adresse du destinataire";
 "usdt__amount" = "Montant";
 "usdt__bridge_attention" = "Le pont requiert une action";

@@ -565,6 +565,51 @@ actor PaykitPaymentProofService {
         return try (request, request.submissionDeadline(quoteId: proof.conversionQuoteId))
     }
 
+    /// Authorizes Retry without checking, which re-sends the original payment once its request or quote may have expired: only
+    /// expiry and the payment deadline are waived. The original payer must be signed in and the request's record read. A
+    /// request its payee canceled or rejected, or one already paid for this payment or billing period, is never paid again.
+    func authorizeUncheckedOnchainRecovery(_ attempt: OnchainSendAttempt, now: Date = Date()) async throws {
+        guard let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+        try await requireRecoveryPayer(payer)
+        guard let proof = try await loadProofs().last(where: {
+                  PubkyPublicKeyFormat.matches($0.identity, payer) && $0.requestId == requestId && $0.kind == .onchain
+              }),
+              !proof.hasUnsupportedOnchainWallet, proof.onchainAcceptanceVerified != true, proof.proofData == nil,
+              proof.onchainAddress == nil || proof.onchainAddress == attempt.address,
+              proof.onchainAmountSats == nil || proof.onchainAmountSats == attempt.amountSats,
+              proof.paymentIdentifier == nil || attempt.containsCandidate(proof.paymentIdentifier)
+        else { throw PaykitPaymentRequestError.operationInProgress }
+        guard let record = try await sdk.paymentRequests().first(where: {
+            $0.localRole == .payer && $0.paymentRequestId == requestId.paymentRequestId &&
+                PubkyPublicKeyFormat.matches($0.counterparty, requestId.counterparty)
+        }) else { throw PaykitPaymentRequestError.requestUnavailable }
+        if record.state == .proofSubmitted ||
+            record.paymentProofs.contains(where: { Self.billingPeriod($0.billingPeriod, matches: proof.billingPeriod) })
+        {
+            throw OnchainOriginalPaidError()
+        }
+        guard record.state != .canceled, record.state != .rejected else { throw PaykitPaymentRequestError.requestUnavailable }
+        let request: PaykitPaymentRequest
+        if let period = proof.billingPeriod {
+            // A period of an active subscription that is due, whatever its own deadline.
+            guard let subscription = PaykitSubscription(record: record), subscription.isPayer,
+                  subscription.recurrence.unit.isSupported, subscription.recurrence.canMaterializePeriods,
+                  period.startsAt <= now, subscription.recurrence.contains(period)
+            else { throw PaykitPaymentRequestError.requestUnavailable }
+            request = PaykitPaymentRequest(subscription: subscription, billingPeriod: period, lifecycleState: .activeRecurring)
+        } else {
+            guard let original = PaykitPaymentRequest(record: record, now: now) ?? PaykitPaymentRequest(historyRecord: record, now: now)
+            else { throw PaykitPaymentRequestError.requestUnavailable }
+            request = original
+        }
+        guard request.id == requestId, request.matchesOnchainPayment(proof, amountSats: attempt.amountSats), !request.requiresAcceptance,
+              request.acceptedPaymentEndpointIdentifiers.contains(proof.paymentEndpointIdentifier)
+        else { throw PaykitPaymentRequestError.requestUnavailable }
+        try await requireRecoveryPayer(payer)
+    }
+
     /// Whether the request behind an unresolved payment can no longer be paid: the payee ended it, or its deadline
     /// passed. A record that is missing, carries a proof or needs recovery never counts as ended.
     func onchainRequestHasEnded(_ attempt: OnchainSendAttempt, now: Date = Date()) async throws -> Bool {
@@ -644,6 +689,8 @@ actor PaykitPaymentProofService {
     ) async throws {
         guard var attempt = try await attemptService.pendingAttempt(context: context), attempt.canBeAbandoned
         else { throw OnchainSendAttemptError.unresolved }
+        // A Cancel payment that may have been relayed already ends the payment once it is final.
+        guard attempt.cancellationTxid == nil else { throw OnchainSendAbandonError.releasePending }
         guard try await onchainRequestHasEnded(attempt) else { throw OnchainSendAbandonError.requestOpen }
         if let releaseTxid = attempt.releaseTxid, await wallet.walletKnowsTransaction(releaseTxid) {
             throw OnchainSendAbandonError.releasePending
@@ -1278,12 +1325,19 @@ actor PaykitPaymentProofService {
             do {
                 let proofs = try await loadProofs()
                 let original = proofs.filter { $0.requestId == requestId && PubkyPublicKeyFormat.matches($0.identity, payer) }
-                guard original.allSatisfy({
-                    $0.kind == .onchain && !$0.hasUnsupportedOnchainWallet && $0.proofData == nil &&
+                // Every proof of the request is this payment's own unproven one, or none is removed.
+                if let kept = original.first(where: {
+                    !($0.kind == .onchain && !$0.hasUnsupportedOnchainWallet && $0.proofData == nil &&
                         ($0.onchainWalletId == nil || $0.onchainWalletId == WalletScope.default) &&
                         ($0.paymentIdentifier.map { attempt.containsCandidate($0) } ?? true) && $0.onchainAcceptanceVerified != true &&
-                        (!$0.paymentStarted || ($0.onchainAddress == attempt.address && $0.onchainAmountSats == attempt.amountSats))
-                }) else { return nil }
+                        (!$0.paymentStarted || ($0.onchainAddress == attempt.address && $0.onchainAmountSats == attempt.amountSats)))
+                }) {
+                    logWarning(
+                        "Kept the guard of cancelled on-chain send \(attempt.id): its request has a \(kept.kind.rawValue) proof that is not "
+                            + "its own unproven one (identifier \(kept.paymentIdentifier ?? "none"), proven \(kept.proofData != nil))"
+                    )
+                    return nil
+                }
                 if !original.isEmpty {
                     try await persist(proofs.filter { !original.contains($0) })
                 }

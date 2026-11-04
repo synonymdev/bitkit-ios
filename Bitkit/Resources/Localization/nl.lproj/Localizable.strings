@@ -1726,11 +1726,15 @@
 "wallet__onchain_cancel_authorize" = "Annulering autoriseren";
 "wallet__onchain_cancel_error" = "De betaling kon niet worden geannuleerd. Het geld blijft beschermd. Probeer een hogere vergoeding of controleer de transactiestatus.";
 "wallet__onchain_cancel_pending" = "Annulering verzonden. Andere on-chain betalingen worden vrijgegeven zodra deze 6 bevestigingen heeft. Als deze onbevestigd uit het netwerk verdwijnt, kunt u opnieuw annuleren.";
-"wallet__onchain_cancel_below_release" = "Een nieuwe annulering moet een hogere netwerkvergoeding betalen dan de {fee} sats die de eerdere annulering betaalt. Voer een hoger vergoedingstarief in.";
+"wallet__onchain_cancel_fee_too_low" = "Een nieuwe annulering moet een netwerkvergoeding van meer dan {fee} sats betalen, tegen een hoger tarief dan de transactie die ze vervangt. Voer een hoger tarief in.";
 "wallet__onchain_cancel_pending_error" = "Een eerdere annulering is nog in behandeling, dus een nieuwe kan deze nog niet vervangen. Het geld van de betaling blijft beschermd. Wacht tot deze is bevestigd, of annuleer opnieuw als deze onbevestigd uit het netwerk verdwijnt.";
 "wallet__onchain_cancelled_title" = "Betaling geannuleerd";
 "wallet__onchain_cancelled_description" = "De annulering heeft 6 bevestigingen. On-chain betalingen zijn weer beschikbaar.";
+"wallet__onchain_cancel_final_held" = "De annulering heeft 6 bevestigingen. Bitkit geeft deze betaling vrij bij de volgende synchronisatie van de wallet, en dan worden andere on-chain betalingen weer mogelijk.";
+"wallet__onchain_cancel_speed_up" = "Annulering versnellen";
+"wallet__onchain_cancel_speed_up_note" = "De annulering wacht nog op bevestiging. Vervang haar door dezelfde annulering tegen een tarief boven de huidige {fee} sat/vB, zodat ze sneller wordt bevestigd. De munten van deze betaling gaan nog steeds terug naar uw wallet.";
 "wallet__onchain_abandon_pending" = "De annulering is verzonden, maar nog niet bevestigd. Andere on-chain betalingen worden vrijgegeven zodra deze 6 bevestigingen heeft. Als deze niet wordt bevestigd, kunt u opnieuw annuleren.";
+"wallet__onchain_abandon_checking" = "Het netwerk wordt gecontroleerd. Dit kan tot 2 minuten duren.";
 "usdt__address" = "Adres ontvanger";
 "usdt__amount" = "Bedrag";
 "usdt__bridge_attention" = "Bridge vereist aandacht";

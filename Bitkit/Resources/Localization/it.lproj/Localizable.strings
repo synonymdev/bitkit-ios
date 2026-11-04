@@ -1691,11 +1691,15 @@
 "wallet__onchain_cancel_authorize" = "Autorizza annullamento";
 "wallet__onchain_cancel_error" = "Non è stato possibile annullare il pagamento. I suoi fondi restano protetti. Prova con una commissione più alta o controlla lo stato della transazione.";
 "wallet__onchain_cancel_pending" = "Annullamento inviato. Gli altri pagamenti on-chain si sbloccano quando avrà 6 conferme. Se esce dalla rete senza essere confermato, puoi annullare di nuovo.";
-"wallet__onchain_cancel_below_release" = "Un nuovo annullamento deve pagare una commissione di rete più alta dei {fee} sats pagati dall'annullamento precedente. Inserisci un tasso di commissione più alto.";
+"wallet__onchain_cancel_fee_too_low" = "Un nuovo annullamento deve pagare una commissione di rete superiore a {fee} sats, con una tariffa più alta della transazione che sostituisce. Inserisci una tariffa più alta.";
 "wallet__onchain_cancel_pending_error" = "Un annullamento precedente è ancora in attesa, quindi uno nuovo non può ancora sostituirlo. I fondi del pagamento restano protetti. Attendi che venga confermato, oppure annulla di nuovo se esce dalla rete senza essere confermato.";
 "wallet__onchain_cancelled_title" = "Pagamento Annullato";
 "wallet__onchain_cancelled_description" = "L'annullamento ha 6 conferme. I pagamenti on-chain sono di nuovo disponibili.";
+"wallet__onchain_cancel_final_held" = "L'annullamento ha 6 conferme. Bitkit rilascia questo pagamento alla prossima sincronizzazione del wallet, e allora gli altri pagamenti on-chain vengono sbloccati.";
+"wallet__onchain_cancel_speed_up" = "Accelera l'annullamento";
+"wallet__onchain_cancel_speed_up_note" = "L'annullamento è ancora in attesa di conferma. Sostituiscilo con lo stesso annullamento a una tariffa superiore agli attuali {fee} sat/vB, così viene confermato prima. I fondi di questo pagamento tornano comunque al tuo wallet.";
 "wallet__onchain_abandon_pending" = "L'annullamento è stato inviato ma non è ancora confermato. Gli altri pagamenti on-chain si sbloccano quando avrà 6 conferme. Se non viene confermato, puoi annullare di nuovo.";
+"wallet__onchain_abandon_checking" = "Verifica della rete in corso. Può richiedere fino a 2 minuti.";
 "usdt__address" = "Indirizzo destinatario";
 "usdt__amount" = "Importo";
 "usdt__bridge_attention" = "Il bridge richiede attenzione";

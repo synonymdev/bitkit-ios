@@ -1732,11 +1732,15 @@
 "wallet__onchain_cancel_authorize" = "Autorizar cancelamento";
 "wallet__onchain_cancel_error" = "Não foi possível cancelar o pagamento. Os fundos dele continuam protegidos. Tente uma taxa maior ou verifique o status da transação.";
 "wallet__onchain_cancel_pending" = "Cancelamento enviado. Os outros pagamentos onchain serão desbloqueados quando ele tiver 6 confirmações. Se ele sair da rede sem ser confirmado, você pode cancelar novamente.";
-"wallet__onchain_cancel_below_release" = "Um novo cancelamento precisa pagar uma taxa de rede maior que os {fee} sats pagos pelo cancelamento anterior. Informe uma taxa maior.";
+"wallet__onchain_cancel_fee_too_low" = "Um novo cancelamento precisa pagar uma taxa de rede acima de {fee} sats, com uma taxa por byte maior que a da transação que ele substitui. Digite uma taxa maior.";
 "wallet__onchain_cancel_pending_error" = "Um cancelamento anterior ainda está pendente, então um novo ainda não pode substituí-lo. Os fundos do pagamento continuam protegidos. Aguarde a confirmação dele ou cancele novamente se ele sair da rede sem ser confirmado.";
 "wallet__onchain_cancelled_title" = "Pagamento Cancelado";
 "wallet__onchain_cancelled_description" = "O cancelamento tem 6 confirmações. Os pagamentos onchain estão disponíveis novamente.";
+"wallet__onchain_cancel_final_held" = "O cancelamento tem 6 confirmações. O Bitkit libera este pagamento na próxima sincronização da carteira, e então os outros pagamentos on-chain são desbloqueados.";
+"wallet__onchain_cancel_speed_up" = "Acelerar o cancelamento";
+"wallet__onchain_cancel_speed_up_note" = "O cancelamento ainda está aguardando confirmação. Substitua-o pelo mesmo cancelamento com uma taxa acima dos atuais {fee} sat/vB, para que ele seja confirmado mais rápido. Os fundos deste pagamento continuam voltando para a sua carteira.";
 "wallet__onchain_abandon_pending" = "O cancelamento foi enviado, mas ainda não foi confirmado. Os outros pagamentos onchain serão desbloqueados quando ele tiver 6 confirmações. Se não for confirmado, você pode cancelar novamente.";
+"wallet__onchain_abandon_checking" = "Verificando a rede. Isso pode levar até 2 minutos.";
 "usdt__address" = "Endereço do destinatário";
 "usdt__amount" = "Valor";
 "usdt__bridge_attention" = "A ponte precisa de atenção";

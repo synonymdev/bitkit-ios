@@ -1718,11 +1718,15 @@
 "wallet__onchain_cancel_authorize" = "Stornierung autorisieren";
 "wallet__onchain_cancel_error" = "Die Zahlung konnte nicht storniert werden. Ihr Guthaben bleibt geschützt. Versuche eine höhere Gebühr oder prüfe den Transaktionsstatus.";
 "wallet__onchain_cancel_pending" = "Stornierung gesendet. Andere Onchain-Zahlungen werden freigegeben, sobald sie 6 Bestätigungen hat. Fällt sie unbestätigt aus dem Netzwerk, kannst du erneut stornieren.";
-"wallet__onchain_cancel_below_release" = "Eine neue Stornierung muss eine höhere Netzwerkgebühr zahlen als die {fee} sats der früheren Stornierung. Gib einen höheren Gebührensatz ein.";
+"wallet__onchain_cancel_fee_too_low" = "Eine neue Stornierung muss eine Netzwerkgebühr über {fee} Sats zahlen, mit einer höheren Gebührenrate als die Transaktion, die sie ersetzt. Gib eine höhere Gebührenrate ein.";
 "wallet__onchain_cancel_pending_error" = "Eine frühere Stornierung ist noch ausstehend, daher kann eine neue sie noch nicht ersetzen. Das Guthaben der Zahlung bleibt geschützt. Warte, bis sie bestätigt ist, oder storniere erneut, falls sie unbestätigt aus dem Netzwerk fällt.";
 "wallet__onchain_cancelled_title" = "Zahlung storniert";
 "wallet__onchain_cancelled_description" = "Die Stornierung hat 6 Bestätigungen. Onchain-Zahlungen sind wieder verfügbar.";
+"wallet__onchain_cancel_final_held" = "Die Stornierung hat 6 Bestätigungen. Bitkit gibt diese Zahlung bei der nächsten Wallet-Synchronisierung frei, dann werden andere Onchain-Zahlungen freigegeben.";
+"wallet__onchain_cancel_speed_up" = "Stornierung beschleunigen";
+"wallet__onchain_cancel_speed_up_note" = "Die Stornierung wartet noch auf ihre Bestätigung. Ersetze sie durch dieselbe Stornierung mit einer Gebührenrate über den aktuellen {fee} sat/vB, damit sie schneller bestätigt wird. Die Coins dieser Zahlung gehen weiterhin zurück an deine Wallet.";
 "wallet__onchain_abandon_pending" = "Die Stornierung wurde gesendet, ist aber noch nicht bestätigt. Andere Onchain-Zahlungen werden freigegeben, sobald sie 6 Bestätigungen hat. Wird sie nicht bestätigt, kannst du erneut stornieren.";
+"wallet__onchain_abandon_checking" = "Das Netzwerk wird geprüft. Das kann bis zu 2 Minuten dauern.";
 "usdt__address" = "Empfängeradresse";
 "usdt__amount" = "Betrag";
 "usdt__bridge_attention" = "Bridge erfordert Prüfung";

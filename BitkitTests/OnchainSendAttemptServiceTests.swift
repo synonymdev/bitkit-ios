@@ -1528,7 +1528,11 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertEqual(sender.lastMax, false)
         XCTAssertEqual(sender.lastInputs, original.recoveryContext?.inputs)
         XCTAssertEqual(sender.broadcasts, 2)
-        XCTAssertEqual(store.snapshot(), [original], "The guard stays until the cancellation is final")
+        let held = try XCTUnwrap(store.snapshot().first)
+        XCTAssertEqual(held.id, original.id)
+        XCTAssertEqual(held.recoveryContext, original.recoveryContext)
+        XCTAssertEqual(held.cancellationTxid, cancelTxid)
+        XCTAssertTrue(held.blocksNewSend, "The guard stays until the cancellation is final")
         do {
             _ = try await service.admit(walletId: original.walletId, requestId: nil, orderId: nil,
                                         address: "bcrt1qnext", amountSats: 1000, isMaxAmount: false)
@@ -1731,8 +1735,8 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
                     XCTFail("A cancellation below the release is never authorized")
                 }
                 XCTFail("A cancellation must pay more than the release it replaces, by its own size")
-            } catch let error as OnchainCancellationBelowReleaseError {
-                XCTAssertEqual(error.releaseFeeSats, 2000)
+            } catch let error as OnchainCancellationFeeTooLowError {
+                XCTAssertEqual(error.requiredFeeSats, 2000)
                 XCTAssertEqual(error.feeRate, 15, "Every higher rate pays at least 2,141 sats")
             }
         }
@@ -1751,7 +1755,10 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         sender.miningFee = 141 * 16
         let result = try await service.cancelOriginalPayment(using: sender, context: pendingContext(releasing), satsPerVbyte: 16) {}
         XCTAssertEqual(result, .accepted(txid: cancelTxid))
-        XCTAssertEqual(store.snapshot(), [releasing], "The guard stays until the cancellation is final")
+        let held = try XCTUnwrap(store.snapshot().first)
+        XCTAssertEqual(held.cancellationTxid, cancelTxid)
+        XCTAssertEqual(held.releaseTxid, releasing.releaseTxid)
+        XCTAssertTrue(held.blocksNewSend, "The guard stays until the cancellation is final")
     }
 
     func testACancellationFeeFloorCoversTheReleaseAndItsOwnSize() {
@@ -1957,8 +1964,7 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertFalse(state.canRetry(original))
 
         var unknown = OnchainCancellationState()
-        let unknownOutcome = unknown.record(.unknown(txid: cancelTxid), feeRate: 5)
-        XCTAssertEqual(unknownOutcome, t("wallet__onchain_cancel_error"), "No earlier cancellation holds the inputs")
+        XCTAssertNil(unknown.record(.unknown(txid: cancelTxid), feeRate: 5), "A cancellation that may have been relayed shows as sent")
         XCTAssertNil(unknown.txid)
         XCTAssertFalse(unknown.canRetry(original), "An unknown cancellation may have been relayed")
         XCTAssertTrue(unknown.canCancel(original))
@@ -1968,8 +1974,8 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         var reopened = OnchainCancellationState()
         reopened.found(OnchainInputSpend(txid: cancelTxid, inputs: recovery.inputs, outputAddresses: ["bcrt1qown"], isFinal: false))
         XCTAssertFalse(reopened.canRetry(original))
-        XCTAssertTrue(reopened.canCancel(original))
-        XCTAssertEqual(reopened.suggestedFeeRate(cancelling: original), 4)
+        XCTAssertFalse(reopened.canCancel(original), "The wallet cannot build another spend of the coins it holds spent")
+        XCTAssertTrue(reopened.canSpeedUp(original))
         XCTAssertEqual(reopened.failureMessage, t("wallet__onchain_cancel_pending_error"))
 
         // A recorded release of an expired payment holds the original as a sent cancellation, before the wallet knows it.
@@ -1977,14 +1983,12 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         releasing.releaseTxid = String(repeating: "77", count: 32)
         releasing.releaseFeeRate = 20
         var releaseRecorded = OnchainCancellationState()
-        releaseRecorded.recordedRelease(of: original)
         XCTAssertTrue(releaseRecorded.canRetry(original), "No release was recorded")
-        releaseRecorded.recordedRelease(of: releasing)
         XCTAssertFalse(releaseRecorded.canRetry(releasing))
         XCTAssertFalse(releaseRecorded.canRetryWithoutChecking(releasing))
         XCTAssertTrue(releaseRecorded.canCancel(releasing))
         XCTAssertEqual(releaseRecorded.suggestedFeeRate(cancelling: releasing), 21, "A Cancel payment outbids the release's rate")
-        XCTAssertEqual(releaseRecorded.failureMessage, t("wallet__onchain_cancel_pending_error"))
+        XCTAssertEqual(releaseRecorded.failureMessage(for: releasing), t("wallet__onchain_cancel_pending_error"))
 
         // A Cancel payment refused for paying too little beside the release suggests a rate that outbids it next.
         releaseRecorded.outbid(rate: 25)
@@ -2009,9 +2013,9 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertTrue(OnchainCancellationState().canAbandon(original))
         XCTAssertFalse(OnchainCancellationState().canAbandon(releasing), "A second release is never sent")
 
-        var recorded = OnchainCancellationState()
-        recorded.recordedRelease(of: releasing)
-        XCTAssertFalse(recorded.canAbandon(original), "A recorded release may have reached the network")
+        var cancelled = original
+        cancelled.cancellationTxid = String(repeating: "fd", count: 32)
+        XCTAssertFalse(OnchainCancellationState().canAbandon(cancelled), "A recorded Cancel payment may have reached the network")
 
         var found = OnchainCancellationState()
         found.found(cancellation)
@@ -2024,19 +2028,17 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         // A Cancel payment that failed before it was sent shows what the wallet holds: the release spends the same coins, so it
         // is reported as an earlier cancellation still pending, and nothing else is offered over it.
         var failedCancel = OnchainCancellationState()
-        XCTAssertEqual(failedCancel.failureMessage, t("wallet__onchain_cancel_error"))
-        failedCancel.showKnown(of: releasing, walletCancellation: cancellation)
+        XCTAssertEqual(failedCancel.failureMessage(for: original), t("wallet__onchain_cancel_error"))
+        XCTAssertEqual(failedCancel.failureMessage(for: releasing), t("wallet__onchain_cancel_pending_error"))
+        failedCancel.found(cancellation)
         XCTAssertEqual(failedCancel.txid, cancellation.txid)
-        XCTAssertEqual(failedCancel.failureMessage, t("wallet__onchain_cancel_pending_error"))
+        XCTAssertEqual(failedCancel.failureMessage(for: original), t("wallet__onchain_cancel_pending_error"))
         XCTAssertFalse(failedCancel.canAbandon(original))
         XCTAssertFalse(failedCancel.canRetry(original))
-        XCTAssertTrue(failedCancel.canCancel(original))
-        var nothingKnown = OnchainCancellationState()
-        nothingKnown.showKnown(of: original, walletCancellation: nil)
-        XCTAssertEqual(nothingKnown, OnchainCancellationState())
+        XCTAssertTrue(failedCancel.canSpeedUp(original))
     }
 
-    func testRetryWithoutCheckingRefusesARequestReportedPaidButNotAFailedOrUnpaidLookup() async throws {
+    func testRetryWithoutCheckingIsOfferedOnlyForAPaymentRequest() {
         let recovery = OnchainSendRecoveryContext(
             inputs: [.init(txid: String(repeating: "cd", count: 32), vout: 0)], satsPerVbyte: 2, paymentIdentity: nil, candidateTxids: [txid]
         )
@@ -2044,24 +2046,9 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
                                             amountSats: 1000, isMaxAmount: false, status: .rejected, txid: txid, recoveryContext: recovery)
         XCTAssertTrue(OnchainCancellationState().canCancel(orderBound))
         XCTAssertFalse(OnchainCancellationState().canRetryWithoutChecking(orderBound), "A Blocktank order is never paid again")
-        try await SendPendingScreen.ensureOriginalUnpaid(orderBound) { _ in
-            XCTFail("An order has no request to look up")
-            return nil
-        }
-
-        let request = try paymentRequest()
-        let requestBound = OnchainSendAttempt(id: UUID(), walletId: walletId, requestId: request.id, orderId: nil, address: "bcrt1qshop",
-                                              amountSats: 1000, isMaxAmount: false, status: .unknown, txid: txid)
-        do {
-            try await SendPendingScreen.ensureOriginalUnpaid(requestBound) { _ in request.updatingLifecycleState(.proofSubmitted) }
-            XCTFail("A request with a submitted proof must not be paid again")
-        } catch is OnchainOriginalPaidError {}
-        for refreshed in [request, nil] {
-            try await SendPendingScreen.ensureOriginalUnpaid(requestBound) { _ in refreshed }
-        }
     }
 
-    func testRetryWithoutCheckingSkipsReauthorizationButRefusesAPaidRequestBeforeDispatch() async throws {
+    func testRetryWithoutCheckingSkipsReauthorizationButRefusesAnUnauthorizedRequestBeforeDispatch() async throws {
         let store = MemoryAttemptStore()
         let service = OnchainSendAttemptService(store: store)
         let sender = PreparedAttemptNodeMock()
@@ -2080,39 +2067,302 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
                         reauthorized = true
                         throw PaykitPaymentRequestError.requestUnavailable
                     },
-                    request: { _ in
-                        XCTFail("A checked retry re-authorizes the request instead")
-                        return nil
-                    }
+                    authorizeUnchecked: { _ in XCTFail("A checked retry re-authorizes the request instead") }
                 )
             }
             XCTFail("An expired request must refuse a checked retry")
         } catch PaykitPaymentRequestError.requestUnavailable {}
         XCTAssertTrue(reauthorized)
 
-        do {
-            _ = try await service.retrySamePayment(using: sender, context: context, satsPerVbyte: 2) { attempt, _ in
-                try await SendPendingScreen.authorizeOriginalRetry(
-                    attempt, reauthorize: false,
-                    reauthorizeOriginal: { _ in XCTFail("Retry without checking must not re-authorize the request") },
-                    request: { _ in request.updatingLifecycleState(.proofSubmitted) }
-                )
-            }
-            XCTFail("A request reported paid must not be paid again")
-        } catch is OnchainOriginalPaidError {}
+        for refusal: Error in [OnchainOriginalPaidError(), PaykitPaymentRequestError.requestUnavailable] {
+            do {
+                _ = try await service.retrySamePayment(using: sender, context: context, satsPerVbyte: 2) { attempt, _ in
+                    try await SendPendingScreen.authorizeOriginalRetry(
+                        attempt, reauthorize: false,
+                        reauthorizeOriginal: { _ in XCTFail("Retry without checking must not re-authorize the request") },
+                        authorizeUnchecked: { _ in throw refusal }
+                    )
+                }
+                XCTFail("A request that is paid or cannot be read must not be paid again")
+            } catch {}
+        }
         XCTAssertEqual(sender.broadcasts, 1)
         XCTAssertEqual(store.snapshot().first?.status, original.status)
         XCTAssertEqual(store.snapshot().first?.recoveryContext?.candidateTxids, original.recoveryContext?.candidateTxids)
 
+        var checked = false
         let result = try await service.retrySamePayment(using: sender, context: context, satsPerVbyte: 2) { attempt, _ in
             try await SendPendingScreen.authorizeOriginalRetry(
                 attempt, reauthorize: false,
                 reauthorizeOriginal: { _ in XCTFail("Retry without checking must not re-authorize the request") },
-                request: { _ in nil }
+                authorizeUnchecked: { _ in checked = true }
             )
         }
-        XCTAssertEqual(result, .accepted(txid: sender.txid), "A failed lookup proves nothing, so the re-send goes out")
+        XCTAssertTrue(checked)
+        XCTAssertEqual(result, .accepted(txid: sender.txid))
         XCTAssertEqual(sender.broadcasts, 2)
+    }
+
+    func testARecordedReleaseOrCancellationRefusesEveryRetry() async throws {
+        let request = PaykitPaymentRequest.ID(paymentRequestId: "expired-shop", counterparty: "merchant", billingPeriodStartsAt: nil)
+        for recorded in ["release", "cancellation"] {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = PreparedAttemptNodeMock()
+            let original = try await dispatchedOriginal(service, store: store, sender: sender, requestId: request)
+            let held: OnchainSendAttempt
+            if recorded == "release" {
+                let approved = try await service.approveRelease(original)
+                held = try await service.recordRelease(approved, txid: String(repeating: "77", count: 32), feeRate: 9, feeSats: 1500)
+            } else {
+                _ = prepareCancellationReceipt(sender)
+                sender.result = .unknown(txid: sender.txid)
+                _ = try await service.cancelOriginalPayment(using: sender, context: pendingContext(original), satsPerVbyte: 5) {}
+                held = try XCTUnwrap(store.snapshot().first)
+            }
+            XCTAssertTrue(held.mayHaveRelayedCancellation)
+            sender.txid = String(repeating: "cd", count: 32)
+            sender.amount = original.amountSats
+            sender.result = .accepted(txid: sender.txid)
+            let broadcasts = sender.broadcasts
+            do {
+                _ = try await service.retrySamePayment(using: sender, context: pendingContext(held), satsPerVbyte: 3) { _, _ in
+                    XCTFail("A retry beside a \(recorded) that may confirm is never authorized")
+                }
+                XCTFail("A retry beside a recorded \(recorded) must be refused")
+            } catch OnchainSendAttemptError.unresolved {}
+            XCTAssertEqual(sender.broadcasts, broadcasts, "Nothing went out beside the recorded \(recorded)")
+            XCTAssertEqual(store.snapshot(), [held])
+        }
+    }
+
+    func testACancellationIsSavedBeforeItIsBroadcastAndKeptUnlessRefused() async throws {
+        for result in ["accepted", "unknown", "rejected", "notSubmitted"] {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = PreparedAttemptNodeMock()
+            let original = try await dispatchedOriginal(service, store: store, sender: sender)
+            let cancelTxid = prepareCancellationReceipt(sender)
+            sender.miningFee = 700
+            var savedBeforeBroadcast: OnchainSendAttempt?
+            sender.onBroadcast = {
+                savedBeforeBroadcast = store.snapshot().first
+                if result == "notSubmitted" {
+                    throw PreparedOnchainSendNotSubmitted(underlying: NodeError.NotRunning(message: "stopped"))
+                }
+            }
+            sender.result = switch result {
+            case "accepted": .accepted(txid: cancelTxid)
+            case "unknown": .unknown(txid: cancelTxid)
+            default: .rejected(txid: cancelTxid, reason: "insufficient fee")
+            }
+
+            _ = try? await service.cancelOriginalPayment(using: sender, context: pendingContext(original), satsPerVbyte: 5) {}
+
+            XCTAssertEqual(savedBeforeBroadcast?.cancellationTxid, cancelTxid, "Saved before \(result) broadcast")
+            XCTAssertEqual(savedBeforeBroadcast?.cancellationFeeRate, 5)
+            XCTAssertEqual(savedBeforeBroadcast?.cancellationFeeSats, 700)
+            let after = try XCTUnwrap(store.snapshot().first)
+            XCTAssertEqual(after.id, original.id)
+            XCTAssertTrue(after.blocksNewSend)
+            if result == "accepted" || result == "unknown" {
+                XCTAssertEqual(after.cancellationTxid, cancelTxid, "A \(result) cancellation may confirm")
+            } else {
+                XCTAssertEqual(after, original, "A \(result) cancellation never reached the network")
+            }
+        }
+    }
+
+    func testARefusedReplacementKeepsTheEarlierCancellation() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        let original = try await dispatchedOriginal(service, store: store, sender: sender)
+        let firstTxid = prepareCancellationReceipt(sender)
+        sender.miningFee = 700
+        _ = try await service.cancelOriginalPayment(using: sender, context: pendingContext(original), satsPerVbyte: 5) {}
+        let first = try XCTUnwrap(store.snapshot().first)
+        XCTAssertEqual(first.cancellationTxid, firstTxid)
+
+        sender.txid = String(repeating: "fd", count: 32)
+        sender.miningFee = 900
+        sender.result = .rejected(txid: sender.txid, reason: "insufficient fee")
+        _ = try await service.cancelOriginalPayment(using: sender, context: pendingContext(first), satsPerVbyte: 7) {}
+
+        XCTAssertEqual(store.snapshot(), [first], "The refused replacement leaves the earlier cancellation recorded")
+    }
+
+    func testACancellationMustOutbidTheHighestCandidateAndTheRecordedCancellation() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        // A large candidate: 2,000 sats at 2 sat/vB, so a small cancellation needs more than its rate to pay more in all.
+        sender.miningFee = 2000
+        let original = try await dispatchedOriginal(service, store: store, sender: sender)
+        XCTAssertEqual(original.recoveryContext?.candidateFeeSats?.values.max(), 2000)
+        _ = prepareCancellationReceipt(sender)
+        // A cancellation of 110 vB.
+        sender.onPrepare = { sender.miningFee = 110 * UInt64(sender.lastFeeRate ?? 0) }
+        let broadcasts = sender.broadcasts
+        for rate: UInt32 in [5, 18] {
+            do {
+                _ = try await service.cancelOriginalPayment(using: sender, context: pendingContext(original), satsPerVbyte: rate) {
+                    XCTFail("A cancellation below the candidate's fee is never authorized")
+                }
+                XCTFail("A cancellation must pay more than the candidate it replaces, by its own size (\(rate) sat/vB)")
+            } catch let error as OnchainCancellationFeeTooLowError {
+                XCTAssertEqual(error.requiredFeeSats, 2000)
+                XCTAssertEqual(error.feeRate, 19, "Every higher rate pays at least 2,110 sats")
+            }
+        }
+        XCTAssertEqual(sender.broadcasts, broadcasts)
+
+        _ = try await service.cancelOriginalPayment(using: sender, context: pendingContext(original), satsPerVbyte: 20) {}
+        let held = try XCTUnwrap(store.snapshot().first)
+        XCTAssertEqual(held.cancellationFeeRate, 20)
+        XCTAssertEqual(held.cancellationFeeSats, 2200)
+
+        // A replacement must also pay a higher rate than the cancellation it replaces, even when it pays more in all.
+        sender.txid = String(repeating: "fd", count: 32)
+        sender.result = .accepted(txid: sender.txid)
+        sender.onPrepare = { sender.miningFee = 400 * UInt64(sender.lastFeeRate ?? 0) }
+        do {
+            _ = try await service.cancelOriginalPayment(using: sender, context: pendingContext(held), satsPerVbyte: 20) {
+                XCTFail("A replacement at the same rate is never authorized")
+            }
+            XCTFail("A replacement must outbid the recorded cancellation's rate")
+        } catch let error as OnchainCancellationFeeTooLowError {
+            XCTAssertEqual(error.feeRate, 20)
+        }
+        XCTAssertEqual(sender.broadcasts, broadcasts + 1)
+    }
+
+    func testAHeldCancellationIsSpedUpByReplacingItAtAHigherRate() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        let original = try await dispatchedOriginal(service, store: store, sender: sender)
+        let context = pendingContext(original)
+        do {
+            _ = try await service.speedUpCancellation(using: sender, context: context, satsPerVbyte: 9) {}
+            XCTFail("Nothing held by the wallet can be sped up")
+        } catch OnchainSendAttemptError.unresolved {}
+
+        let cancelTxid = prepareCancellationReceipt(sender)
+        _ = try await service.cancelOriginalPayment(using: sender, context: context, satsPerVbyte: 5) {}
+        let held = try XCTUnwrap(store.snapshot().first)
+        sender.spends = try [OnchainInputSpend(txid: cancelTxid, inputs: XCTUnwrap(original.recoveryContext?.inputs),
+                                               outputAddresses: ["bcrt1qown", "bcrt1qchange"], isFinal: false,
+                                               outputValues: [546, 700], feeSats: 600, satsPerVbyte: 5)]
+        for rate: UInt32 in [5, 1000] {
+            do {
+                _ = try await service.speedUpCancellation(using: sender, context: context, satsPerVbyte: rate) {
+                    XCTFail("A bump at \(rate) sat/vB is never authorized")
+                }
+                XCTFail("A bump must pay a higher rate than the held cancellation, up to 999 sat/vB")
+            } catch {}
+        }
+        XCTAssertTrue(sender.bumps.isEmpty)
+
+        var authorized = false
+        let bumped = try await service.speedUpCancellation(using: sender, context: context, satsPerVbyte: 12) {
+            XCTAssertTrue(sender.bumps.isEmpty, "Nothing is sent before authorization")
+            authorized = true
+        }
+
+        XCTAssertTrue(authorized)
+        XCTAssertEqual(sender.bumps.map(\.txid), [cancelTxid])
+        XCTAssertEqual(sender.bumps.map(\.satsPerVbyte), [12])
+        XCTAssertEqual(bumped, sender.bumpedTxid)
+        let after = try XCTUnwrap(store.snapshot().first)
+        XCTAssertEqual(after.cancellationTxid, sender.bumpedTxid)
+        XCTAssertEqual(after.cancellationFeeRate, 12)
+        XCTAssertEqual(after.id, held.id)
+        XCTAssertTrue(after.blocksNewSend, "The guard stays until a cancellation is final")
+    }
+
+    func testAConfirmationSeenWhileACancellationIsBroadcastWaitsForItsOutcome() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        let original = try await dispatchedOriginal(service, store: store, sender: sender)
+        let originalTxid = try XCTUnwrap(original.txid)
+        let cancelTxid = prepareCancellationReceipt(sender)
+        let broadcast = AsyncGate()
+        let broadcastStarted = expectation(description: "The cancellation is being broadcast")
+        sender.onBroadcast = {
+            broadcastStarted.fulfill()
+            await broadcast.wait()
+        }
+        let cancel = Task { try await service.cancelOriginalPayment(using: sender, context: pendingContext(original), satsPerVbyte: 5) {} }
+        await fulfillment(of: [broadcastStarted], timeout: 2)
+        let observed = Task { try await service.observeConfirmedTransaction(txid: originalTxid) }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(store.snapshot().first?.status, .rejected, "The confirmation waits for the broadcast")
+
+        broadcast.open()
+        let result = try await cancel.value
+        let didObserve = try await observed.value
+
+        XCTAssertEqual(result, .accepted(txid: cancelTxid))
+        XCTAssertTrue(didObserve)
+        let after = try XCTUnwrap(store.snapshot().first)
+        XCTAssertEqual(after.status, .accepted)
+        XCTAssertEqual(after.txid, originalTxid)
+        XCTAssertEqual(after.cancellationTxid, cancelTxid)
+    }
+
+    func testCancellationStateReadsRecordedCancellationsAndThePendingEstimate() {
+        let request = PaykitPaymentRequest.ID(paymentRequestId: "shop", counterparty: "merchant", billingPeriodStartsAt: nil)
+        let recovery = OnchainSendRecoveryContext(
+            inputs: [.init(txid: String(repeating: "cd", count: 32), vout: 0)], satsPerVbyte: 2, paymentIdentity: "payer",
+            candidateTxids: [txid], candidateFeeRates: [txid: 3]
+        )
+        let original = OnchainSendAttempt(id: UUID(), walletId: walletId, requestId: request, orderId: nil, address: "bcrt1qrecipient",
+                                          amountSats: 1000, isMaxAmount: false, status: .rejected, txid: txid, recoveryContext: recovery)
+        var cancelled = original
+        cancelled.cancellationTxid = String(repeating: "fe", count: 32)
+        cancelled.cancellationFeeRate = 30
+        var released = original
+        released.releaseTxid = String(repeating: "77", count: 32)
+        released.releaseFeeRate = 40
+
+        let state = OnchainCancellationState()
+        XCTAssertEqual(state.suggestedFeeRate(cancelling: original, normalRate: nil), 4)
+        XCTAssertEqual(state.suggestedFeeRate(cancelling: original, normalRate: 25), 25, "A cancellation confirms at least as fast as a normal send")
+        for recorded in [cancelled, released] {
+            XCTAssertFalse(state.canRetry(recorded), "A recorded cancellation may confirm, as soon as the attempt loads")
+            XCTAssertFalse(state.canRetryWithoutChecking(recorded))
+            XCTAssertFalse(state.canAbandon(recorded))
+            XCTAssertTrue(state.canCancel(recorded))
+            XCTAssertEqual(state.failureMessage(for: recorded), t("wallet__onchain_cancel_pending_error"))
+        }
+        XCTAssertEqual(state.suggestedFeeRate(cancelling: cancelled, normalRate: 25), 31)
+        XCTAssertEqual(state.suggestedFeeRate(cancelling: released, normalRate: 25), 41)
+        XCTAssertEqual(state.sentTxid(for: cancelled), cancelled.cancellationTxid)
+        XCTAssertNil(state.sentTxid(for: original))
+        XCTAssertTrue(state.canRetry(original))
+
+        // The first cancellation whose outcome is unknown may have been relayed, so it shows as sent rather than failed.
+        var unknown = OnchainCancellationState()
+        XCTAssertNil(unknown.record(.unknown(txid: String(repeating: "fe", count: 32)), feeRate: 5))
+
+        // A cancellation the wallet holds unconfirmed is sped up rather than replaced, which the wallet cannot build.
+        var held = OnchainCancellationState()
+        held.found(OnchainInputSpend(txid: String(repeating: "fe", count: 32), inputs: recovery.inputs, outputAddresses: ["bcrt1qown"],
+                                     isFinal: false, satsPerVbyte: 6))
+        XCTAssertFalse(held.canCancel(original))
+        XCTAssertTrue(held.canSpeedUp(original))
+        XCTAssertEqual(held.suggestedSpeedUpRate(normalRate: nil), 7)
+        XCTAssertEqual(held.suggestedSpeedUpRate(normalRate: 25), 25)
+        XCTAssertFalse(held.isFinalButHeld)
+
+        var final = OnchainCancellationState()
+        final.found(OnchainInputSpend(txid: String(repeating: "fe", count: 32), inputs: recovery.inputs, outputAddresses: ["bcrt1qown"],
+                                      isFinal: true))
+        XCTAssertFalse(final.canCancel(original))
+        XCTAssertFalse(final.canSpeedUp(original))
+        XCTAssertTrue(final.isFinalButHeld, "A final cancellation whose guard is still held says so")
     }
 
     private func dispatchedOriginal(
@@ -2134,6 +2384,8 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         let cancelTxid = String(repeating: "fe", count: 32)
         sender.txid = cancelTxid
         sender.amount = UInt64(Env.dustLimit)
+        // Above every candidate's 500 sats by its own size, as a replacement must be.
+        sender.miningFee = 1000
         sender.result = .accepted(txid: cancelTxid)
         return cancelTxid
     }
@@ -2383,6 +2635,12 @@ final class AttemptNodeMock: OnchainSending {
         "bcrt1qown"
     }
 
+    func bumpFee(ofTransaction txid: String, satsPerVbyte: UInt32, expectedWalletIndex: Int, expectedNode: AnyObject?) async throws
+        -> String
+    {
+        throw NodeError.NotRunning(message: "Not used")
+    }
+
     func walletSpends(of inputs: [OnchainSendInput], expectedWalletIndex: Int, expectedNode: AnyObject?) async throws
         -> [OnchainInputSpend]
     {
@@ -2448,6 +2706,18 @@ final class PreparedAttemptNodeMock: OnchainSending {
     var ownAddress = "bcrt1qown"
     var spends: [OnchainInputSpend] = []
     var spendsError: Error?
+    var bumpedTxid = String(repeating: "bb", count: 32)
+    var bumps: [(txid: String, satsPerVbyte: UInt32)] = []
+
+    func bumpFee(ofTransaction txid: String, satsPerVbyte: UInt32, expectedWalletIndex: Int, expectedNode: AnyObject?) async throws
+        -> String
+    {
+        guard expectedWalletIndex == currentWalletIndex, expectedNode === dispatchNode else {
+            throw NodeError.NotRunning(message: "Wallet changed")
+        }
+        bumps.append((txid, satsPerVbyte))
+        return bumpedTxid
+    }
 
     func newAddress() async throws -> String {
         ownAddress

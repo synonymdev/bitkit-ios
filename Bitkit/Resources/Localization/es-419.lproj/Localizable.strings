@@ -1724,11 +1724,15 @@
 "wallet__onchain_cancel_authorize" = "Autorizar cancelación";
 "wallet__onchain_cancel_error" = "No se pudo cancelar el pago. Sus fondos siguen protegidos. Pruebe con una comisión más alta o revise el estado de la transacción.";
 "wallet__onchain_cancel_pending" = "Cancelación enviada. Los demás pagos onchain se desbloquearán cuando tenga 6 confirmaciones. Si sale de la red sin confirmarse, puede cancelar de nuevo.";
-"wallet__onchain_cancel_below_release" = "Una nueva cancelación debe pagar una comisión de red mayor que los {fee} sats que paga la cancelación anterior. Ingrese una tarifa más alta.";
+"wallet__onchain_cancel_fee_too_low" = "Una nueva cancelación debe pagar una comisión de red superior a {fee} sats, con una tasa de comisión más alta que la transacción que reemplaza. Ingresa una tasa de comisión más alta.";
 "wallet__onchain_cancel_pending_error" = "Una cancelación anterior sigue pendiente, por lo que una nueva aún no puede reemplazarla. Los fondos del pago siguen protegidos. Espere a que se confirme o vuelva a cancelar si sale de la red sin confirmarse.";
 "wallet__onchain_cancelled_title" = "Pago cancelado";
 "wallet__onchain_cancelled_description" = "La cancelación tiene 6 confirmaciones. Los pagos onchain vuelven a estar disponibles.";
+"wallet__onchain_cancel_final_held" = "La cancelación tiene 6 confirmaciones. Bitkit libera este pago en la próxima sincronización de la billetera, y entonces se desbloquean los demás pagos on-chain.";
+"wallet__onchain_cancel_speed_up" = "Acelerar la cancelación";
+"wallet__onchain_cancel_speed_up_note" = "La cancelación todavía espera su confirmación. Reemplázala por la misma cancelación con una tasa de comisión superior a sus {fee} sat/vB actuales, para que se confirme antes. Los fondos de este pago siguen volviendo a tu billetera.";
 "wallet__onchain_abandon_pending" = "La cancelación se envió, pero aún no está confirmada. Los demás pagos onchain se desbloquearán cuando tenga 6 confirmaciones. Si no se confirma, puede cancelar de nuevo.";
+"wallet__onchain_abandon_checking" = "Verificando la red. Puede tardar hasta 2 minutos.";
 "usdt__address" = "Dirección de destino";
 "usdt__amount" = "Monto";
 "usdt__bridge_attention" = "El puente requiere atención";

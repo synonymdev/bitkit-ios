@@ -27,46 +27,34 @@ struct HourglassLoadingView: View {
     }
 }
 
-/// What a Pending screen knows of a cancellation of its original on-chain payment.
+/// What a Pending screen knows of a cancellation of its original on-chain payment, beside the release and Cancel payment the
+/// attempt itself records before broadcasting them.
 struct OnchainCancellationState: Equatable {
     /// A cancellation the wallet holds, from its own history or accepted on this screen.
     private(set) var txid: String?
     private(set) var isFinal = false
+    /// The wallet's history holds `txid`, so the wallet cannot build another spend of the same coins until it drops out.
+    private(set) var isHeldByWallet = false
+    private(set) var heldFeeRate: UInt32?
     private(set) var hasUnknownOutcome = false
     private(set) var highestFeeRate: UInt32?
 
     mutating func found(_ spend: OnchainInputSpend) {
         txid = spend.txid
         isFinal = spend.isFinal
+        isHeldByWallet = true
+        heldFeeRate = spend.satsPerVbyte
     }
 
-    /// An expired payment's release may have reached the network once recorded, even before the wallet knows it, so it holds
-    /// the original like a sent cancellation, and a Cancel payment must outbid its rate.
-    mutating func recordedRelease(of attempt: OnchainSendAttempt) {
-        guard attempt.releaseTxid != nil else { return }
-        hasUnknownOutcome = true
-        if let rate = attempt.releaseFeeRate {
-            highestFeeRate = max(highestFeeRate ?? 0, rate)
-        }
-    }
-
-    /// Shows a cancellation of `attempt` that was recorded before it was sent, and `walletCancellation`, one the wallet holds.
-    mutating func showKnown(of attempt: OnchainSendAttempt, walletCancellation: OnchainInputSpend?) {
-        recordedRelease(of: attempt)
-        if let walletCancellation {
-            found(walletCancellation)
-        }
-    }
-
-    /// A Cancel payment refused before approval for paying too little beside a release must pay a higher rate than `rate`.
+    /// A cancellation refused before approval for paying too little must pay a higher rate than `rate`.
     mutating func outbid(rate: UInt32) {
         highestFeeRate = max(highestFeeRate ?? 0, rate)
     }
 
     /// Returns the error for a cancellation that was not accepted, judged by the cancellations before it: only an earlier
-    /// one can still hold the inputs.
-    mutating func record(_ result: OnchainSendResult, feeRate: UInt32) -> String? {
-        let earlierFailureMessage = failureMessage
+    /// one can still hold the inputs. One whose outcome is unknown may have been relayed, so it shows as sent instead.
+    mutating func record(_ result: OnchainSendResult, feeRate: UInt32, attempt: OnchainSendAttempt? = nil) -> String? {
+        let earlierFailureMessage = attempt.map { failureMessage(for: $0) } ?? failureMessage
         // Any dispatched cancellation may have been relayed, so a replacement must pay more than it.
         highestFeeRate = max(highestFeeRate ?? 0, feeRate)
         switch result {
@@ -75,15 +63,19 @@ struct OnchainCancellationState: Equatable {
             return nil
         case .unknown:
             hasUnknownOutcome = true
-            return earlierFailureMessage
+            return nil
         case .rejected:
             return earlierFailureMessage
         }
     }
 
+    private func mayHaveCancellation(_ attempt: OnchainSendAttempt) -> Bool {
+        txid != nil || hasUnknownOutcome || attempt.mayHaveRelayedCancellation
+    }
+
     /// A sent or possibly relayed cancellation may still confirm, so the original must not be retried beside it.
     func canRetry(_ attempt: OnchainSendAttempt) -> Bool {
-        attempt.canRetrySamePayment && txid == nil && !hasUnknownOutcome
+        attempt.canRetrySamePayment && !mayHaveCancellation(attempt)
     }
 
     /// Only a payment request can be re-sent after it may have expired; a Blocktank order is never paid again.
@@ -91,14 +83,28 @@ struct OnchainCancellationState: Equatable {
         canRetry(attempt) && attempt.requestId != nil
     }
 
-    /// A cancellation can drop out of mempools until it is final, so it stays replaceable over the same inputs.
+    /// A cancellation can drop out of mempools until it is final, so it stays replaceable over the same inputs. One the wallet
+    /// holds is sped up instead.
     func canCancel(_ attempt: OnchainSendAttempt) -> Bool {
-        attempt.canRetrySamePayment && !isFinal
+        attempt.canRetrySamePayment && !isFinal && !isHeldByWallet
+    }
+
+    func canSpeedUp(_ attempt: OnchainSendAttempt) -> Bool {
+        attempt.canRetrySamePayment && isHeldByWallet && !isFinal
     }
 
     /// A release spends the original's coins too, so it is not sent beside another cancellation or a second release.
     func canAbandon(_ attempt: OnchainSendAttempt) -> Bool {
-        attempt.releaseTxid == nil && txid == nil && !hasUnknownOutcome
+        !mayHaveCancellation(attempt)
+    }
+
+    /// A final cancellation releases the guard at the next on-chain sync, so one still shown has not been released yet.
+    var isFinalButHeld: Bool {
+        isFinal
+    }
+
+    func sentTxid(for attempt: OnchainSendAttempt) -> String? {
+        txid ?? attempt.cancellationTxid
     }
 
     /// A known cancellation holds the original inputs until it confirms or drops out, so a new one fails meanwhile.
@@ -106,10 +112,22 @@ struct OnchainCancellationState: Equatable {
         !isFinal && (txid != nil || hasUnknownOutcome) ? t("wallet__onchain_cancel_pending_error") : t("wallet__onchain_cancel_error")
     }
 
-    /// A replacement must pay a higher rate than every candidate and cancellation it conflicts with.
-    func suggestedFeeRate(cancelling attempt: OnchainSendAttempt) -> UInt32 {
+    func failureMessage(for attempt: OnchainSendAttempt) -> String {
+        !isFinal && mayHaveCancellation(attempt) ? t("wallet__onchain_cancel_pending_error") : t("wallet__onchain_cancel_error")
+    }
+
+    /// A replacement must pay a higher rate than every candidate and cancellation it conflicts with, and confirms at least as
+    /// fast as a normal send, so a stuck payment is not held for long.
+    func suggestedFeeRate(cancelling attempt: OnchainSendAttempt, normalRate: UInt32? = nil) -> UInt32 {
         let candidateRate = attempt.recoveryContext.map { $0.candidateFeeRates?.values.max() ?? $0.satsPerVbyte } ?? 0
-        return min(max(candidateRate, highestFeeRate ?? 0), 998) + 1
+        let releaseRate = attempt.releaseTxid == nil ? 0 : attempt.releaseFeeRate ?? 0
+        let cancellationRate = attempt.cancellationTxid == nil ? 0 : attempt.cancellationFeeRate ?? 0
+        let outbid = min(max(candidateRate, highestFeeRate ?? 0, releaseRate, cancellationRate), 998) + 1
+        return min(max(outbid, normalRate ?? 0), 999)
+    }
+
+    func suggestedSpeedUpRate(normalRate: UInt32? = nil) -> UInt32 {
+        min(max(min(max(heldFeeRate ?? 0, highestFeeRate ?? 0), 998) + 1, normalRate ?? 0), 999)
     }
 }
 
@@ -118,6 +136,7 @@ struct SendPendingScreen: View {
         case retry
         case retryWithoutChecking
         case cancel
+        case speedUp
         case abandon
 
         var title: String {
@@ -125,6 +144,7 @@ struct SendPendingScreen: View {
             case .retry: t("wallet__onchain_retry_original")
             case .retryWithoutChecking: t("wallet__onchain_resend")
             case .cancel: t("wallet__onchain_cancel_payment")
+            case .speedUp: t("wallet__onchain_cancel_speed_up")
             case .abandon: t("wallet__onchain_abandon")
             }
         }
@@ -165,6 +185,7 @@ struct SendPendingScreen: View {
     @State private var retryFeeRate = ""
     @State private var retryingOnchain = false
     @State private var cancellation = OnchainCancellationState()
+    @State private var normalFeeRate: UInt32?
     @State private var pendingOnchainProof: PendingPaykitPaymentProof?
     @State private var retryApprovalAction = RecoveryAction.retry
     @State private var retryApprovalMessage: String?
@@ -238,6 +259,10 @@ struct SendPendingScreen: View {
         recoverableAttempt.map(cancellation.canCancel) == true
     }
 
+    private var canSpeedUpCancellation: Bool {
+        recoverableAttempt.map(cancellation.canSpeedUp) == true
+    }
+
     private var canAbandon: Bool {
         abandonableAttempt.map(cancellation.canAbandon) == true && pendingHardwareWalletId == nil && !ordinarySendResolved
     }
@@ -268,13 +293,13 @@ struct SendPendingScreen: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 16)
                 }
-                if canRetryOriginal {
+                if canCancelOriginal, recoverableAttempt.map(cancellation.canAbandon) == true {
                     BodyMText(t("wallet__onchain_cancel_hint"))
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 16)
                 }
-                if recoverableAttempt != nil, let txid = cancellation.txid {
-                    BodyMText(t("wallet__onchain_cancel_pending"))
+                if let attempt = recoverableAttempt, let txid = cancellation.sentTxid(for: attempt) {
+                    BodyMText(t(cancellation.isFinalButHeld ? "wallet__onchain_cancel_final_held" : "wallet__onchain_cancel_pending"))
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 16)
                     BodyMText(t("wallet__onchain_transaction_id", variables: ["txid": txid]))
@@ -292,7 +317,7 @@ struct SendPendingScreen: View {
             Spacer()
 
             // The recovery actions take the hourglass's place, so they fit on small screens.
-            if !canRetryOriginal && !canCancelOriginal && !canAbandon {
+            if !canRetryOriginal && !canCancelOriginal && !canSpeedUpCancellation && !canAbandon {
                 HourglassLoadingView()
 
                 Spacer()
@@ -311,6 +336,14 @@ struct SendPendingScreen: View {
                     beginRecovery(.cancel)
                 }
                 .accessibilityIdentifier("CancelOriginalOnchainPayment")
+                .padding(.bottom, 16)
+            }
+
+            if canSpeedUpCancellation {
+                CustomButton(title: RecoveryAction.speedUp.title, variant: .secondary, isDisabled: isRecoveryRunning) {
+                    beginRecovery(.speedUp)
+                }
+                .accessibilityIdentifier("SpeedUpOnchainCancellation")
                 .padding(.bottom, 16)
             }
 
@@ -360,7 +393,7 @@ struct SendPendingScreen: View {
                 }
             }
         ), presenting: feeEntryAction) { action in
-            if action == .cancel || onchainAttempt?.isMaxAmount != true {
+            if action == .cancel || action == .speedUp || onchainAttempt?.isMaxAmount != true {
                 TextField(t("wallet__onchain_retry_fee"), text: $retryFeeRate).keyboardType(.numberPad)
             }
             Button(t("common__cancel"), role: .cancel) {}
@@ -481,6 +514,7 @@ struct SendPendingScreen: View {
                         }
                     } catch { onchainStateUnavailable = true }
                     await showKnownCancellation()
+                    normalFeeRate = await wallet.normalFeeRate()
                 }
             }
             applyPendingResolutionIfNeeded(app.sendSheetPendingResolution)
@@ -529,7 +563,11 @@ struct SendPendingScreen: View {
     @MainActor
     private func beginRecovery(_ action: RecoveryAction) {
         guard let attempt = recoverableAttempt else { return }
-        let feeRate = action == .cancel ? cancellation.suggestedFeeRate(cancelling: attempt) : attempt.recoveryContext?.satsPerVbyte ?? 1
+        let feeRate = switch action {
+        case .cancel: cancellation.suggestedFeeRate(cancelling: attempt, normalRate: normalFeeRate)
+        case .speedUp: cancellation.suggestedSpeedUpRate(normalRate: normalFeeRate)
+        case .retry, .retryWithoutChecking, .abandon: attempt.recoveryContext?.satsPerVbyte ?? 1
+        }
         retryFeeRate = String(feeRate)
         feeEntryAction = action
     }
@@ -543,6 +581,10 @@ struct SendPendingScreen: View {
         if action == .cancel {
             return t("wallet__onchain_cancel_note", variables: variables)
         }
+        if action == .speedUp {
+            let current = cancellation.heldFeeRate.map(String.init) ?? "?"
+            return t("wallet__onchain_cancel_speed_up_note", variables: ["fee": current])
+        }
         let note = t(onchainAttempt?.isMaxAmount == true ? "wallet__onchain_retry_max_note" : "wallet__onchain_retry_note", variables: variables)
         return action == .retryWithoutChecking ? t("wallet__onchain_resend_warning") + "\n\n" + note : note
     }
@@ -553,6 +595,7 @@ struct SendPendingScreen: View {
         case .retry: await retryOriginalPayment(feeRate: feeRate, reauthorize: true)
         case .retryWithoutChecking: await retryOriginalPayment(feeRate: feeRate, reauthorize: false)
         case .cancel: await cancelOriginalPayment(feeRate: feeRate)
+        case .speedUp: await speedUpCancellation(feeRate: feeRate)
         // Prices its own release, so it never asks for a fee rate.
         case .abandon: await abandonExpiredPayment()
         }
@@ -593,10 +636,10 @@ struct SendPendingScreen: View {
                         attempt,
                         reauthorize: reauthorize,
                         reauthorizeOriginal: { try await reauthorizeOriginal($0, paymentDeadline: paymentDeadline) },
-                        request: { requestId in
-                            // The cached lists start empty, so load them first; a failed refresh still allows the re-send.
-                            _ = await paymentRequests.refresh()
-                            return (paymentRequests.pendingRequests + paymentRequests.historyRequests).first { $0.id == requestId }
+                        authorizeUnchecked: { attempt in
+                            // A request that cannot be read fresh is never re-sent unchecked.
+                            guard await paymentRequests.refresh(forceFresh: true) else { throw PaykitPaymentRequestError.requestUnavailable }
+                            try await proofService.authorizeUncheckedOnchainRecovery(attempt)
                         }
                     )
                 }
@@ -635,23 +678,52 @@ struct SendPendingScreen: View {
                 authorize: { try await authenticateSpend() }
             )
             // A refused or unknown cancellation leaves the guard unchanged.
-            if let failureMessage = cancellation.record(result, feeRate: feeRate) {
+            if let failureMessage = cancellation.record(result, feeRate: feeRate, attempt: original) {
                 app.toast(type: .error, title: t("common__error"), description: failureMessage)
             }
         } catch is CancellationError {
             // Declined before dispatch, so nothing was sent.
-        } catch let error as OnchainCancellationBelowReleaseError {
-            // The next Cancel payment suggests a rate that outbids the release.
+        } catch let error as OnchainCancellationFeeTooLowError {
+            // The next Cancel payment suggests a rate that outbids what it replaces.
             cancellation.outbid(rate: error.feeRate)
             app.toast(type: .error, title: t("common__error"), description: error.localizedDescription)
         } catch {
             Logger.warn("The original on-chain payment was not cancelled: \(error)", context: "SendPendingScreen")
             // A cancellation the wallet now holds spends the same coins, so a new one cannot be built over them.
             await showKnownCancellation()
-            app.toast(type: .error, title: t("common__error"), description: cancellation.failureMessage)
+            app.toast(type: .error, title: t("common__error"), description: cancellation.failureMessage(for: original))
         }
         // A positive original observation may have won while the cancellation was prepared.
         try? await refreshOriginalOutcome(context: context)
+    }
+
+    @MainActor
+    private func speedUpCancellation(feeRate: UInt32) async {
+        guard canSpeedUpCancellation, !isRecoveryRunning, let original = recoverableAttempt else { return }
+        retryingOnchain = true
+        defer { retryingOnchain = false }
+        let context = OnchainSendPendingContext(attemptId: original.id, walletId: original.walletId, txid: original.txid)
+        do {
+            let feeLimits = await wallet.getFeeLimits()
+            guard feeRate > 0, feeRate <= feeLimits.maxFee else {
+                app.toast(type: .warning, title: t("wallet__onchain_retry_invalid_fee"))
+                return
+            }
+            _ = try await attemptService.speedUpCancellation(
+                using: LightningService.shared, context: context, satsPerVbyte: feeRate, authorize: { try await authenticateSpend() }
+            )
+            cancellation.outbid(rate: feeRate)
+        } catch is CancellationError {
+            // Declined before dispatch, so nothing was sent.
+        } catch let error as OnchainCancellationFeeTooLowError {
+            cancellation.outbid(rate: error.feeRate)
+            app.toast(type: .error, title: t("common__error"), description: error.localizedDescription)
+        } catch {
+            Logger.warn("The cancellation was not sped up: \(error)", context: "SendPendingScreen")
+            app.toast(type: .error, title: t("common__error"), description: t("wallet__onchain_cancel_error"))
+        }
+        try? await refreshOriginalOutcome(context: context)
+        await showKnownCancellation()
     }
 
     @MainActor
@@ -690,27 +762,18 @@ struct SendPendingScreen: View {
         try await proofService.requireRecoveryPayer(payer)
     }
 
-    /// Without `reauthorize`, the request is not checked again, but one already reported as paid is never paid twice.
+    /// Without `reauthorize`, the request's expiry and deadline are waived, but it is read fresh, and one its payee ended or
+    /// that is already paid is never paid twice.
     static func authorizeOriginalRetry(
         _ attempt: OnchainSendAttempt,
         reauthorize: Bool,
         reauthorizeOriginal: (OnchainSendAttempt) async throws -> Void,
-        request: (PaykitPaymentRequest.ID) async -> PaykitPaymentRequest?
+        authorizeUnchecked: (OnchainSendAttempt) async throws -> Void
     ) async throws {
         if reauthorize {
             try await reauthorizeOriginal(attempt)
         } else {
-            try await ensureOriginalUnpaid(attempt, request: request)
-        }
-    }
-
-    /// A failed or empty lookup proves nothing, so only a reported payment refuses the re-send.
-    static func ensureOriginalUnpaid(
-        _ attempt: OnchainSendAttempt,
-        request: (PaykitPaymentRequest.ID) async -> PaykitPaymentRequest?
-    ) async throws {
-        if let requestId = attempt.requestId, await request(requestId)?.lifecycleState == .proofSubmitted {
-            throw OnchainOriginalPaidError()
+            try await authorizeUnchecked(attempt)
         }
     }
 
@@ -763,20 +826,21 @@ struct SendPendingScreen: View {
         await showKnownCancellation()
     }
 
-    /// Whether the guard of `context` is gone. A store that cannot be read proves nothing.
     private func isGuardReleased(_ context: OnchainSendPendingContext) async -> Bool {
         do {
             return try await attemptService.pendingAttempt(context: context) == nil
         } catch {
+            // A store that cannot be read proves nothing.
             return false
         }
     }
 
     @MainActor
     private func showKnownCancellation() async {
-        guard let attempt = recoverableAttempt else { return }
-        let walletCancellation = try? await attemptService.cancellation(of: attempt, using: LightningService.shared)
-        cancellation.showKnown(of: attempt, walletCancellation: walletCancellation)
+        guard let attempt = recoverableAttempt,
+              let walletCancellation = try? await attemptService.cancellation(of: attempt, using: LightningService.shared)
+        else { return }
+        cancellation.found(walletCancellation)
     }
 
     @MainActor
