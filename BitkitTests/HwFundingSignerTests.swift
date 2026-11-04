@@ -1,5 +1,6 @@
 @testable import Bitkit
 import BitkitCore
+import Combine
 import Paykit
 import XCTest
 
@@ -54,12 +55,17 @@ final class HwFundingSignerTests: XCTestCase {
         )
     }
 
+    /// A signed transaction whose txid is `signedTransactionId`.
+    private static let signedTransactionHex =
+        "02000000000101f7c5a048189164c6b05b07516b5dbb9c826c601d12dc4ed97f0069618b8b7c160100000000fdffffff024179010000000000160014f066a63663b0d464b31a7a88619beae011c3fb7be80300000000000016001483ea855bb508cb08ed9e8cf9152d8927871c19aa02473044022052c5a15ade616af16f314bcc2ae15bf4ef4996e0f2315794e647ba6c955745b602200f3095f4a7deb39a94716c0fd2001a2fbff1861a8ff0c2015739a40a62891c22012102cb13c86b55418d0e3bccf29115394e1fb6a9f209d3f59dc9bbb0805b253464cb724c0300"
+    private static let signedTransactionId = "605fe246a6d51450ecff51ac3d0415f8824964e06a60ed6e186fa163cf1e9d4e"
+
     private func makeSigner(
         funding: MockHwFunding,
         connecting: MockHwConnecting,
         feeRate: UInt64? = 2,
         address: String? = "bc1qtest",
-        timeouts: (compose: Double, sign: Double, broadcast: Double) = (compose: 5, sign: 5, broadcast: 5)
+        timeouts: (compose: Double, sign: Double) = (compose: 5, sign: 5)
     ) -> HwFundingSigner {
         HwFundingSigner(
             funding: funding,
@@ -231,8 +237,62 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(coordinator.previewFeeSats, 0)
     }
 
-    func testCoordinatorRetryReusesSignedPaymentAfterUncertainBroadcast() async throws {
-        try await assertCoordinatorRetryReusesSignedPayment(error: HwTransferError.broadcastUncertain)
+    func testAPlainSendWhoseBroadcastOutcomeIsUnknownIsHeldAndNeverSentAgain() async throws {
+        let unknownOutcomes: [Error] = [
+            BroadcastError.ElectrumError(errorDetails: "Broadcast failed: connection reset by peer"),
+            BroadcastError.ElectrumError(errorDetails: "offline"),
+            BroadcastError.TaskError(errorDetails: "task failed"),
+            MockHwFunding.TestError(),
+        ]
+        for error in unknownOutcomes {
+            let funding = MockHwFunding()
+            funding.signedTx = HwFundingSignedTx(serializedTx: Self.signedTransactionHex, miningFeeSats: 141, feeRate: 2, totalSpent: 43186)
+            funding.broadcastError = error
+            let coordinator = HwSendCoordinator(walletId: "trezor:wallet", signerFactory: { [self] _, address, rate in
+                makeSigner(funding: funding, connecting: MockHwConnecting(), feeRate: rate, address: address)
+            })
+            func send() async throws {
+                _ = try await coordinator.signAndBroadcast(manager: HwWalletManager(), address: "bc1qtest", sats: 42000, satsPerVByte: 2)
+            }
+
+            await assertThrowsAsync { try await send() }
+            XCTAssertEqual(coordinator.unresolvedSend?.txId, Self.signedTransactionId, "\(error)")
+            XCTAssertTrue(coordinator.isBroadcastUnresolved, "\(error)")
+            XCTAssertFalse(coordinator.canLeave, "\(error)")
+            coordinator.cancel()
+            XCTAssertTrue(coordinator.hasPendingBroadcast, "Leaving keeps the signed transaction: \(error)")
+            funding.broadcastError = nil
+            await assertThrowsAsync { try await send() }
+
+            XCTAssertEqual(funding.signCalls, 1, "\(error)")
+            XCTAssertEqual(funding.broadcastCalls, 1, "A payment that may have gone out is not sent again: \(error)")
+        }
+    }
+
+    func testAnUnresolvedSendIsRecordedOnceTheWalletSeesItsTransaction() async {
+        let activitiesChanged = PassthroughSubject<Void, Never>()
+        var lookups = 0
+        var isObserved = false
+        let observation = Task {
+            await HwSendSignView.awaitObservedTransaction(
+                Self.signedTransactionId,
+                walletId: "trezor:wallet",
+                activitiesChanged: activitiesChanged.eraseToAnyPublisher(),
+                findTransaction: { txid, walletId in
+                    lookups += 1
+                    return isObserved && txid == Self.signedTransactionId && walletId == "trezor:wallet"
+                }
+            )
+        }
+        await eventually("the transaction was looked up at once") { lookups == 1 }
+        activitiesChanged.send()
+        await eventually("an activity change looked it up again") { lookups == 2 }
+
+        isObserved = true
+        activitiesChanged.send()
+        await observation.value
+
+        XCTAssertEqual(lookups, 3)
     }
 
     func testCoordinatorRoutesOnlyUnverifiedShopBroadcastToPending() async throws {
@@ -280,14 +340,13 @@ final class HwFundingSignerTests: XCTestCase {
 
     func testCoordinatorRetryReusesSignedPaymentAfterConnectivityFailure() async throws {
         try await assertCoordinatorRetryReusesSignedPayment(
-            error: BroadcastError.ElectrumError(errorDetails: "offline")
+            error: BroadcastError.ElectrumError(errorDetails: "Failed to connect to Electrum: offline")
         )
     }
 
     func testCoordinatorDeniedRetryPreservesAttemptedPayment() async throws {
         let broadcastErrors: [Error] = [
-            HwTransferError.broadcastUncertain,
-            BroadcastError.ElectrumError(errorDetails: "offline"),
+            BroadcastError.ElectrumError(errorDetails: "Failed to connect to Electrum: offline"),
         ]
 
         for broadcastError in broadcastErrors {
@@ -523,7 +582,7 @@ final class HwFundingSignerTests: XCTestCase {
                 )
             }
         )
-        funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "offline")
+        funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "Failed to connect to Electrum: offline")
 
         await assertThrowsAsync {
             _ = try await coordinator.signAndBroadcast(
@@ -612,7 +671,7 @@ final class HwFundingSignerTests: XCTestCase {
                     }
                 )
                 if hadPriorAttempt {
-                    funding.broadcastError = HwTransferError.broadcastUncertain
+                    funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "Failed to connect to Electrum: offline")
                     await assertThrowsAsync {
                         _ = try await coordinator.signAndBroadcast(manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2)
                     }
@@ -754,7 +813,7 @@ final class HwFundingSignerTests: XCTestCase {
             }
         )
         var failureOutcomes: [PrivatePaymentListSendOutcome] = []
-        funding.broadcastError = MockHwFunding.TestError()
+        funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "Broadcast failed: min relay fee not met")
 
         await assertThrowsAsync {
             _ = try await coordinator.signAndBroadcast(
@@ -1818,20 +1877,17 @@ final class HwFundingSignerTests: XCTestCase {
 
     // MARK: - Sign orchestration
 
-    func testBroadcastTimeoutThrowsBroadcastUncertainWithoutClearingSession() async {
+    func testABroadcastThatAnswersLateIsKept() async throws {
         let funding = MockHwFunding()
         funding.broadcastDelay = 0.4
         let connecting = MockHwConnecting()
-        let signer = makeSigner(funding: funding, connecting: connecting, timeouts: (compose: 5, sign: 5, broadcast: 0.05))
+        let signer = makeSigner(funding: funding, connecting: connecting, timeouts: (compose: 0.05, sign: 0.05))
 
-        await assertThrowsAsync {
-            _ = try await signer.broadcastSignedFunding(funding.signedTx)
-        } _: { error in
-            XCTAssertEqual(error as? HwTransferError, .broadcastUncertain)
-        }
-        XCTAssertEqual(funding.signCalls, 0, "retrying broadcast does not require signing")
+        let result = try await signer.broadcastSignedFunding(funding.signedTx)
+
+        XCTAssertEqual(result.txId, funding.broadcastTxId)
         XCTAssertEqual(funding.broadcastCalls, 1)
-        XCTAssertTrue(connecting.staleDisconnects.isEmpty, "a broadcast timeout must not tear down the device session")
+        XCTAssertTrue(connecting.staleDisconnects.isEmpty, "a slow broadcast must not tear down the device session")
     }
 
     func testRawBroadcastErrorPropagatesUnwrapped() async {
@@ -1882,5 +1938,27 @@ func assertThrowsAsync(
         XCTFail(message.isEmpty ? "Expected error but none thrown" : message, file: file, line: line)
     } catch {
         errorHandler(error)
+    }
+}
+
+@MainActor
+extension XCTestCase {
+    /// Waits until `condition` holds, failing at the caller's line if it does not within `timeout`, so a test cannot go on
+    /// without the state it waited for.
+    func eventually(
+        _ description: String = "the condition holds",
+        timeout: Duration = .seconds(5),
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ condition: () async -> Bool
+    ) async {
+        let deadline = ContinuousClock.now + timeout
+        while await !condition() {
+            guard ContinuousClock.now < deadline else {
+                XCTFail("Timed out waiting until \(description)", file: file, line: line)
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
     }
 }

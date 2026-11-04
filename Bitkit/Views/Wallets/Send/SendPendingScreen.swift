@@ -107,8 +107,15 @@ struct SendPendingScreen: View {
     }
 
     private var pendingAmountSats: UInt64? {
-        pendingHardwareWalletId == nil ? onchainAttempt?.amountSats ?? pendingOnchainProof?.onchainAmountSats ?? wallet
-            .sendAmountSats : pendingOnchainProof?.onchainAmountSats
+        if pendingHardwareWalletId == nil {
+            return onchainAttempt?.amountSats ?? pendingOnchainProof?.onchainAmountSats ?? wallet.sendAmountSats
+        }
+        return paykitPaymentRequestId == nil ? wallet.sendAmountSats : pendingOnchainProof?.onchainAmountSats
+    }
+
+    /// A hardware send with no request whose broadcast outcome is unknown, which completes once the wallet sees its transaction.
+    private var isUnresolvedHardwareSend: Bool {
+        hardwareWalletId != nil && hardwareTransactionId != nil && paykitPaymentRequestId == nil
     }
 
     private var pendingTransactionId: String? {
@@ -313,6 +320,7 @@ struct SendPendingScreen: View {
                 }
             }
             applyPendingResolutionIfNeeded(app.sendSheetPendingResolution)
+            await completeObservedHardwareSend()
             await searchForActivity()
             // Completion events are one-shot. Keep the visible original operation in sync
             // with its durable result even when an event preceded subscription or initialization.
@@ -339,7 +347,10 @@ struct SendPendingScreen: View {
             applyPendingResolutionIfNeeded(resolution)
         }
         .onReceive(activityList.activitiesChangedPublisher.receive(on: DispatchQueue.main)) { _ in
-            Task { await refreshVisibleOrdinaryOutcome() }
+            Task {
+                await refreshVisibleOrdinaryOutcome()
+                await completeObservedHardwareSend()
+            }
         }
         .onReceive(OnchainSendAttemptService.localResolutionPublisher.receive(on: DispatchQueue.main)) { resolution in
             applyOrdinarySendResolution(resolution)
@@ -545,6 +556,9 @@ struct SendPendingScreen: View {
         if onchainStateUnavailable {
             return t("wallet__onchain_state_unavailable")
         }
+        if isUnresolvedHardwareSend {
+            return t("wallet__onchain_unknown_pending")
+        }
         if pendingHardwareWalletId != nil {
             return t("wallet__onchain_hardware_pending")
         }
@@ -605,6 +619,16 @@ struct SendPendingScreen: View {
         } catch {
             localFollowupUnavailable = true
         }
+    }
+
+    private func completeObservedHardwareSend() async {
+        guard isUnresolvedHardwareSend, !ordinarySendResolved, let walletId = hardwareWalletId, let txid = hardwareTransactionId,
+              let activity = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: txid, walletId: walletId),
+              !ordinarySendResolved
+        else { return }
+        ordinarySendResolved = true
+        foundActivity = .onchain(activity)
+        navigationPath.append(.success(paymentId: txid, walletId: walletId))
     }
 
     private func applyOrdinarySendResolution(_ resolution: OnchainSendLocalResolution) {

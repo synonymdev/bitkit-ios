@@ -99,6 +99,21 @@ extension Error {
         return false
     }
 
+    /// Whether a hardware broadcast proves it sent nothing: core could not decode the transaction or connect to the server,
+    /// or the node refused it. Any other failure may follow the write, so the payment may still confirm.
+    func isHardwareBroadcastNotSent() -> Bool {
+        if isHardwareBroadcastRefusal() {
+            return true
+        }
+        if let error = self as? BroadcastError, case let .ElectrumError(details) = error {
+            return details.lowercased().hasPrefix("failed to connect to electrum:")
+        }
+        if let error = self as? AppError, let underlyingError = error.underlyingError {
+            return underlyingError.isHardwareBroadcastNotSent()
+        }
+        return false
+    }
+
     func isBroadcastConnectivityFailure() -> Bool {
         if let broadcastError = self as? BroadcastError {
             return broadcastError.isConnectivityFailure

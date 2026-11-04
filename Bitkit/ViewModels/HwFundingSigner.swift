@@ -25,7 +25,7 @@ struct HwFundingSigner {
     let feeRateProvider: () async -> UInt64?
     /// Provides a fee-estimation destination address (an app receive address); never broadcast to.
     let addressProvider: () async throws -> String
-    let timeouts: (compose: Double, sign: Double, broadcast: Double)
+    let timeouts: (compose: Double, sign: Double)
 
     /// Conservative vbyte reserve, used only as a fallback when the real coin-selection estimate
     /// (a `sendMax` compose) is unavailable.
@@ -235,25 +235,14 @@ struct HwFundingSigner {
         }
     }
 
-    /// Broadcast the signed tx under its own timeout, separate from signing. A broadcast that has
-    /// already been handed to the network must never be reported as a signing timeout, so a timeout
-    /// here surfaces `.broadcastUncertain` (the funding tx may still confirm) without tearing down the
-    /// device session.
+    /// No deadline: the broadcast runs to its end on the core queue, so one could only discard the outcome of a payment that
+    /// went out.
     private func broadcastStep(
         serializedTx: String,
         paymentDeadline: PaykitPreciseInstant?,
         beforeDispatch: @escaping @MainActor @Sendable () async throws -> Void
     ) async throws -> String {
-        do {
-            return try await withTimeout(timeouts.broadcast) {
-                try await funding.broadcastFunding(serializedTx: serializedTx, paymentDeadline: paymentDeadline, beforeDispatch: beforeDispatch)
-            }
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch is Timeout {
-            throw HwTransferError.broadcastUncertain
-        }
-        // Any other (real broadcast) error propagates to the caller's generic handler.
+        try await funding.broadcastFunding(serializedTx: serializedTx, paymentDeadline: paymentDeadline, beforeDispatch: beforeDispatch)
     }
 
     private func resolvedSatsPerVByte() async -> UInt64 {
@@ -344,6 +333,8 @@ final class HwSendCoordinator {
     private(set) var isSigning = false
     private(set) var isConnectingDevice = false
     private(set) var isBroadcastUnresolved = false
+    /// A plain send whose broadcast may have gone out: it is pending until the wallet sees it, and is never sent again.
+    private(set) var unresolvedSend: HwFundingBroadcastResult?
     private(set) var isPassphraseRequired = false
     private(set) var isVerifyingPassphrase = false
 
@@ -513,6 +504,8 @@ final class HwSendCoordinator {
         guard let walletId else {
             throw AppError(message: "Unknown hardware wallet", debugMessage: "The send flow has no wallet id")
         }
+        // A send whose broadcast may have gone out is never sent again, nor another signed beside it
+        guard pendingPayment?.isOutcomeUnknown != true else { throw HwTransferError.broadcastUncertain }
         let request = PaymentRequest(address: address, sats: sats, satsPerVByte: satsPerVByte)
         if let pendingPayment,
            isBroadcastUnresolved || (pendingPayment.paymentRequestId != nil && pendingPayment.hasBroadcastAttempted)
@@ -656,9 +649,12 @@ final class HwSendCoordinator {
                         }
                         throw failure
                     }
-                    let outcomeIsUncertain = (failure as? HwTransferError) == .broadcastUncertain
-                    if paymentRequestId == nil, !outcomeIsUncertain, !failure.isBroadcastConnectivityFailure() {
-                        pendingPayment = nil
+                    if paymentRequestId == nil {
+                        if !failure.isHardwareBroadcastNotSent() {
+                            holdUnresolvedSend(signed)
+                        } else if !failure.isBroadcastConnectivityFailure() {
+                            pendingPayment = nil
+                        }
                     }
                     throw failure
                 }
@@ -740,6 +736,20 @@ final class HwSendCoordinator {
     func completeBroadcast() {
         pendingPayment = nil
         isBroadcastUnresolved = false
+        unresolvedSend = nil
+    }
+
+    private func holdUnresolvedSend(_ signed: HwFundingSignedTx) {
+        pendingPayment?.isOutcomeUnknown = true
+        isBroadcastUnresolved = true
+        if let txId = try? SignedTransactionId.fromHex(signed.serializedTx) {
+            unresolvedSend = HwFundingBroadcastResult(
+                txId: txId,
+                miningFeeSats: signed.miningFeeSats,
+                feeRate: UInt64(signed.feeRate.rounded(.up)),
+                totalSpent: signed.totalSpent
+            )
+        }
     }
 
     func cancel() {
@@ -782,7 +792,7 @@ final class HwSendCoordinator {
             connecting: manager,
             feeRateProvider: { satsPerVByte },
             addressProvider: { address },
-            timeouts: (compose: 45, sign: 120, broadcast: 120)
+            timeouts: (compose: 45, sign: 120)
         )
     }
 
@@ -798,6 +808,7 @@ final class HwSendCoordinator {
         let paymentRequestId: PaykitPaymentRequest.ID?
         var isPreparedForBroadcast = false
         var hasBroadcastAttempted = false
+        var isOutcomeUnknown = false
     }
 
     private struct OperationSession {
@@ -813,6 +824,7 @@ enum HwTransferError: Error, Equatable {
     /// (advertises intermittently — "check that it is unlocked and try again") vs the ERROR toast.
     case reconnect(isBluetooth: Bool)
     case signingTimeout
+    /// The broadcast may have sent the transaction, so it is kept and never signed again.
     case broadcastUncertain
     /// Signed tx is retained but Electrum/network is unreachable — retry broadcast later.
     case broadcastConnectivity
