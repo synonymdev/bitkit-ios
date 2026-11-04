@@ -1187,6 +1187,12 @@ struct SendConfirmationView: View {
             || Self.isCalculatingOnchainFee(calculationId: onchainFeeCalculationId, latestCalculationId: feeCalculationId)
     }
 
+    /// A hardware preview that fails leaves no fee to send with. Amount shows the reason, as its Continue does;
+    /// a contact payment has its own amount review.
+    static func returnsToAmountAfterFeeFailure(isHardwarePayment: Bool, isContactPayment: Bool) -> Bool {
+        isHardwarePayment && !isContactPayment
+    }
+
     /// Only the newest fee calculation can hold the swipe, so a calculation superseded by a funding switch never leaves it disabled.
     static func isCalculatingOnchainFee(calculationId: Int?, latestCalculationId: Int) -> Bool {
         calculationId == latestCalculationId
@@ -2117,6 +2123,11 @@ struct SendConfirmationView: View {
             guard isCurrentSend(), !(error is CancellationError) else { return }
             Logger.error("Failed to calculate actual fee: \(error)")
             transactionFee = 0
+            if Self.returnsToAmountAfterFeeFailure(isHardwarePayment: hwSend.isActive, isContactPayment: app.contactPaymentContext != nil) {
+                app.toast(type: .error, title: t("other__try_again"), description: error.localizedDescription)
+                navigateToAmount()
+                return
+            }
             if app.contactPaymentContext?.incomingPaymentRequest != nil {
                 returnToAmountReview()
             }

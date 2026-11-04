@@ -163,6 +163,12 @@ final class SendConfirmationSwipeTests: XCTestCase {
         ))
     }
 
+    func testAFailedHardwarePreviewReturnsToAmountOutsideContactPayments() {
+        XCTAssertTrue(SendConfirmationView.returnsToAmountAfterFeeFailure(isHardwarePayment: true, isContactPayment: false))
+        XCTAssertFalse(SendConfirmationView.returnsToAmountAfterFeeFailure(isHardwarePayment: true, isContactPayment: true))
+        XCTAssertFalse(SendConfirmationView.returnsToAmountAfterFeeFailure(isHardwarePayment: false, isContactPayment: false))
+    }
+
     func testOnlyTheNewestFeeCalculationHoldsTheSwipe() {
         XCTAssertTrue(SendConfirmationView.isCalculatingOnchainFee(calculationId: 3, latestCalculationId: 3))
         // A funding switch starts a newer calculation that may not be on-chain at all.
