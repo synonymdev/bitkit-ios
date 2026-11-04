@@ -45,6 +45,7 @@ struct SparkExitIntroView: View {
 
 /// What the exit takes on-chain, what it costs, and what stays behind.
 struct SparkExitQuoteView: View {
+    @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var navigation: NavigationViewModel
 
     private let exit = SparkExitManager.shared
@@ -70,6 +71,13 @@ struct SparkExitQuoteView: View {
 
             if let quote = exit.quote {
                 SparkExitQuoteRows(quote: quote)
+
+                if let unexitableSats = SparkExitMath.unexitableSats(sparkBalanceSats: SparkManager.shared.balanceSats, quote: quote) {
+                    CaptionMText(t("lightning__spark_exit__quote_outside", variables: ["amount": currency.primaryAmountText(sats: unexitableSats)]))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 16)
+                        .accessibilityIdentifier("SparkExitQuoteOutside")
+                }
             } else if exit.isQuoting {
                 BodyMText(t(SparkManager.shared.isSettlingForExit ? "lightning__spark_exit__quote_settling" : "lightning__spark_exit__quote_loading"))
                     .fixedSize(horizontal: false, vertical: true)
@@ -246,6 +254,8 @@ struct SparkExitFundingAddress: View {
 
     let address: String
     let requiredSats: UInt64
+    /// Off where the caller shows what was seen itself.
+    var showsSeen = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -268,10 +278,69 @@ struct SparkExitFundingAddress: View {
             .buttonStyle(PlainButtonStyle())
             .accessibilityIdentifier("SparkExitFundingAddress")
 
-            if SparkExitManager.shared.fundingSeenSats >= requiredSats, requiredSats > 0 {
+            if showsSeen, SparkExitManager.shared.fundingSeenSats >= requiredSats, requiredSats > 0 {
                 CaptionMText(t("lightning__spark_exit__fund_seen"), textColor: .greenAccent)
             }
         }
+    }
+}
+
+/// A fee funding payment on its way: no QR and no amount to send, only what is awaited and its transaction.
+struct SparkExitWaitingPayment: View {
+    let text: String
+    let txid: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(text, textColor: .greenAccent)
+            CaptionMText(t("lightning__spark_exit__funding_txid", variables: ["txid": txid]))
+                .lineLimit(2)
+                .truncationMode(.middle)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("SparkExitFundingWaiting")
+    }
+}
+
+/// Where the ended exit's leftover fee funding is: on its way to savings, sent, or too small to send.
+struct SparkExitLeftoverStatus: View {
+    @EnvironmentObject var currency: CurrencyViewModel
+
+    let record: SparkExitRecord
+    let address: String
+
+    private var leftoverSats: UInt64 {
+        record.leftover.reduce(0) { $0 + $1.valueSats }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let sweep = record.leftoverSweep, sweep.rejection == nil {
+                if let txid = sweep.txid {
+                    let key = sweep.isAccepted ? "lightning__spark_exit__leftover_swept" : "lightning__spark_exit__leftover_sending"
+                    CaptionMText(t(key, variables: ["amount": currency.primaryAmountText(sats: sweep.valueSats)]))
+                    if sweep.isAccepted {
+                        CaptionMText(t("lightning__spark_exit__leftover_txid", variables: ["txid": txid]))
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                    }
+                } else {
+                    CaptionMText(t(
+                        "lightning__spark_exit__leftover_dust",
+                        variables: ["amount": currency.primaryAmountText(sats: leftoverSats), "address": address]
+                    ))
+                }
+            } else {
+                ForEach(Array(record.leftover.enumerated()), id: \.offset) { _, leftover in
+                    CaptionMText(t(
+                        "lightning__spark_exit__leftover",
+                        variables: ["amount": currency.primaryAmountText(sats: leftover.valueSats), "address": address]
+                    ))
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("SparkExitLeftover")
     }
 }
 
@@ -340,6 +409,16 @@ struct SparkExitProgressView: View {
         exit.record
     }
 
+    private var fundingState: SparkExitFundingState? {
+        guard let record, record.fundingShortfallSats != nil else { return nil }
+        return exit.fundingState ?? SparkExitMath.fundingState(record, utxos: nil)
+    }
+
+    private var lostText: String? {
+        guard let record, record.lostSats > 0 else { return nil }
+        return t("lightning__spark_exit__lost_leaves", variables: ["amount": currency.primaryAmountText(sats: record.lostSats)])
+    }
+
     private var title: String {
         switch record?.phase {
         case .done: t("lightning__spark_exit__done_title")
@@ -359,11 +438,28 @@ struct SparkExitProgressView: View {
                 (record?.failedLeafCount ?? 0) > 0
                     ? t("lightning__spark_exit__failed_leaves", variables: ["count": "\(record?.failedLeafCount ?? 0)"]) : nil,
             ].compactMap { $0 }.joined(separator: " ")
-        case .failed: t("lightning__spark_exit__failed_text")
+        case .failed: lostText ?? t("lightning__spark_exit__failed_text")
         case .needsFunding:
-            t("lightning__spark_exit__needs_funding_text", variables: ["amount": currency.primaryAmountText(sats: record?.fundingShortfallSats ?? 0)])
+            t(
+                "lightning__spark_exit__needs_funding_text",
+                variables: ["amount": currency.primaryAmountText(sats: askSats ?? record?.fundingShortfallSats ?? 0)]
+            )
         default: t("lightning__spark_exit__progress_text")
         }
+    }
+
+    private var isFailed: Bool {
+        if case .failed = record?.phase {
+            return true
+        }
+        return false
+    }
+
+    private var askSats: UInt64? {
+        if case let .ask(sats) = fundingState {
+            return sats
+        }
+        return nil
     }
 
     var body: some View {
@@ -383,9 +479,38 @@ struct SparkExitProgressView: View {
                     if let record {
                         SparkExitSteps(record: record, tipHeight: exit.tipHeight)
 
-                        if let requiredSats = record.fundingShortfallSats, let address = record.funding.first?.address {
-                            SparkExitFundingAddress(address: address, requiredSats: requiredSats)
-                                .padding(.top, 24)
+                        if let address = record.funding.first?.address {
+                            switch fundingState {
+                            case let .ask(sats):
+                                SparkExitFundingAddress(address: address, requiredSats: sats, showsSeen: false)
+                                    .padding(.top, 24)
+                            case let .paid(txid):
+                                SparkExitWaitingPayment(text: t("lightning__spark_exit__fund_paid"), txid: txid)
+                                    .padding(.top, 24)
+                            case let .seen(txid):
+                                SparkExitWaitingPayment(text: t("lightning__spark_exit__fund_pending"), txid: txid)
+                                    .padding(.top, 24)
+                            case nil:
+                                EmptyView()
+                            }
+                        }
+
+                        if record.leftBehindSats > 0 {
+                            CaptionMText(t(
+                                "lightning__spark_exit__left_behind_leaves",
+                                variables: ["amount": currency.primaryAmountText(sats: record.leftBehindSats)]
+                            ))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 16)
+                            .accessibilityIdentifier("SparkExitLeftBehind")
+                        }
+
+                        // An exit that failed says it in its text.
+                        if let lostText, !isFailed {
+                            CaptionMText(lostText, textColor: .redAccent)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.top, 16)
+                                .accessibilityIdentifier("SparkExitLostLeaves")
                         }
 
                         if let rejection = record.surfacedRejection {
@@ -407,21 +532,9 @@ struct SparkExitProgressView: View {
                                 .padding(.top, 16)
                         }
 
-                        if let sweep = record.leftoverSweep, sweep.isAccepted {
-                            CaptionMText(t(
-                                "lightning__spark_exit__leftover_swept",
-                                variables: ["amount": currency.primaryAmountText(sats: sweep.valueSats)]
-                            ))
-                            .padding(.top, 16)
-                            .accessibilityIdentifier("SparkExitLeftoverSwept")
-                        } else if !record.isActive, let address = record.funding.first?.address {
-                            ForEach(record.leftover, id: \.txid) { leftover in
-                                CaptionMText(t(
-                                    "lightning__spark_exit__leftover",
-                                    variables: ["amount": currency.primaryAmountText(sats: leftover.valueSats), "address": address]
-                                ))
+                        if !record.isActive, !record.leftover.isEmpty, let address = record.funding.first?.address {
+                            SparkExitLeftoverStatus(record: record, address: address)
                                 .padding(.top, 16)
-                            }
                         }
                     }
                 }

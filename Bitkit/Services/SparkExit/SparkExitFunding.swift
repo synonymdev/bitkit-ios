@@ -117,6 +117,17 @@ struct SparkExitReminder: Equatable {
     let id: String
     let fireAt: Date
     var isFunding = false
+    var isLostLeaves = false
+}
+
+/// What the exit shows about its fee funding while it lacks some.
+enum SparkExitFundingState: Equatable {
+    /// Ask for `sats` more at the funding address, with its QR.
+    case ask(sats: UInt64)
+    /// Bitkit paid it from savings in `txid`, which has not confirmed yet.
+    case paid(txid: String)
+    /// A payment covering the shortfall reached the address, and the exit waits for it to confirm or to build.
+    case seen(txid: String)
 }
 
 enum SparkExitMath {
@@ -130,8 +141,13 @@ enum SparkExitMath {
         }.max()
     }
 
-    /// Blocks after a step matures before its reminder fires: well inside the ~50 blocks after which the operators
-    /// may publish their own version, and time for a background run to publish it first.
+    /// Blocks after a step matures before the operators' watchtower may publish their own version.
+    static let operatorWindowBlocks: UInt32 = 50
+    /// Blocks after a refund matures before an older state of the wallet, with a refund 100 blocks shorter, can
+    /// claim the leaf while the operators are down.
+    static let olderStateLeadBlocks: UInt32 = 100
+    /// Blocks after a step matures before its reminder fires: well inside the smaller of the two windows above, and
+    /// time for a background run to publish it first.
     static let reminderGraceBlocks: UInt32 = 12
     /// Below the OS's 64 pending notifications per app.
     static let maxTimelockReminders = 20
@@ -141,11 +157,13 @@ enum SparkExitMath {
     /// reminds at once. A step published or confirmed needs none, so a background run that publishes a step drops
     /// its reminder before it fires.
     static func reminders(_ record: SparkExitRecord, tip: UInt32?, now: Date, network: LDKNode.Network) -> [SparkExitReminder] {
+        let lost = record.lostLeaves ?? []
+        let lostReminder = lost.isEmpty ? [] : [SparkExitReminder(id: "lost-\(lost.count)", fireAt: now, isLostLeaves: true)]
         if case let .needsFunding(requiredSats) = record.phase {
-            return [SparkExitReminder(id: "funding-\(requiredSats)", fireAt: now, isFunding: true)]
+            return lostReminder + [SparkExitReminder(id: "funding-\(requiredSats)", fireAt: now, isFunding: true)]
         }
-        guard case .running = record.phase, let recovery = record.recovery?.response else { return [] }
-        var reminders: [SparkExitReminder] = []
+        guard case .running = record.phase, let recovery = record.recovery?.response else { return lostReminder }
+        var reminders = lostReminder
         let generation = record.generation
         if let rejected = record.broadcastLog.first(where: {
             $0.generation == generation && $0.rejections >= SparkExitDriver.rejectionsToSurface && !$0.isAccepted
@@ -238,6 +256,51 @@ enum SparkExitMath {
         let fresh = Set(newFunding(utxos, record: record).map { "\($0.txid):\($0.vout)" })
         let held = utxos.filter { $0.status.confirmed && !fresh.contains("\($0.txid):\($0.vout)") }.reduce(0) { $0 + $1.value }
         return record.fundedSats + max(requiredSats.saturatingSub(held), 1)
+    }
+
+    /// The funding state while the exit lacks fee funding, nil once it lacks none. A payment Bitkit made from savings
+    /// or one seen unconfirmed is waited for rather than asked for again; only what they leave short is asked for.
+    static func fundingState(_ record: SparkExitRecord, utxos: [EsploraUtxo]?) -> SparkExitFundingState? {
+        guard let shortfall = record.fundingShortfallSats else { return nil }
+        // Paid until it confirms or the exit adopted it; adopted, a later rebuild may have spent it already.
+        if let paid = record.fundingPaymentTxid, !record.funding.contains(where: { $0.txid == paid }),
+           !(utxos ?? []).contains(where: { $0.txid == paid && $0.status.confirmed })
+        {
+            return .paid(txid: paid)
+        }
+        let fresh = utxos.map { newFunding($0, record: record) } ?? []
+        let seenSats = fresh.reduce(0) { $0 + $1.value }
+        // Covered by confirmed funding alone, the next tick builds.
+        if seenSats >= shortfall, let pending = fresh.first(where: { !$0.status.confirmed }) ?? fresh.first {
+            return .seen(txid: pending.txid)
+        }
+        return .ask(sats: shortfall.saturatingSub(seenSats))
+    }
+
+    /// The funding key index of a new exit: past the counter the last start left and every index the stored record
+    /// used. Records from before per-exit indexes used 0.
+    static func nextFundingIndex(counter: Int, record: SparkExitRecord?) -> UInt32 {
+        let afterRecord = record?.funding.map(\.index).max().map { $0 + 1 } ?? 0
+        return max(UInt32(clamping: max(0, counter)), afterRecord)
+    }
+
+    /// The Spark balance a quote cannot exit: the leaves it skips, and what the balance holds beyond every leaf the
+    /// SDK lists, such as a counter-swap still unclaimed. Nil when there is none.
+    static func unexitableSats(sparkBalanceSats: UInt64, quote: SparkExitQuote) -> UInt64? {
+        let listed = quote.leafTotalSats + quote.leftBehindSats
+        let unexitable = quote.leftBehindSats + sparkBalanceSats.saturatingSub(listed)
+        return unexitable > 0 ? unexitable : nil
+    }
+
+    /// Whether the SDK refused a `Specific` selection because a leaf in it cannot be exited.
+    static func isUnexitableLeafError(_ message: String) -> Bool {
+        message.contains("cannot be exited")
+    }
+
+    /// The leaf an untyped "Leaf X cannot be exited: …" error names, if it names one.
+    static func unexitableLeafId(_ message: String) -> String? {
+        guard let match = message.firstMatch(of: #/Leaf ([^\s:]+) cannot be exited/#) else { return nil }
+        return String(match.1)
     }
 
     /// What the Spark balance holds beyond the exit's leaves: value that reached Spark after the quote, such as a

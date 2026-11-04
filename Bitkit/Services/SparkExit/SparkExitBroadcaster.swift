@@ -21,7 +21,11 @@ struct EsploraUtxo: Codable, Equatable {
 /// What a broadcast came to. Accepted includes a transaction the node already had.
 enum SparkExitBroadcastOutcome: Equatable {
     case accepted
-    /// Not final yet (timelock), or its parent is not visible yet: the next tick tries again.
+    /// Its relative timelock has not matured (`non-BIP68-final`): the next tick tries again. Never a rejection.
+    case notMature(String)
+    /// An input is missing or already spent: its parent is not visible yet, or another transaction spent it.
+    case inputsMissing(String)
+    /// The host or node could not take it now: the next tick tries again.
     case retryLater(String)
     /// Refused for good at this fee or policy; a later check or rebuild replaces it.
     case rejected(String)
@@ -29,6 +33,8 @@ enum SparkExitBroadcastOutcome: Equatable {
     var summary: String {
         switch self {
         case .accepted: "accepted"
+        case let .notMature(reason): "not mature: \(reason)"
+        case let .inputsMissing(reason): "inputs missing: \(reason)"
         case let .retryLater(reason): "retry: \(reason)"
         case let .rejected(reason): "rejected: \(reason)"
         }
@@ -91,7 +97,7 @@ struct EsploraSparkExitChain: SparkExitChain {
         var outcomes: [SparkExitBroadcastOutcome] = []
         for host in hosts {
             let attempt: SparkExitBroadcastOutcome? = if let child = tx.cpfpTxHex {
-                await submitPackage(host: host, hexes: [tx.txHex, child])
+                await submitPackage(host: host, hexes: [tx.txHex, child], txid: tx.txid)
             } else {
                 await submitSingle(host: host, hex: tx.txHex)
             }
@@ -111,7 +117,7 @@ struct EsploraSparkExitChain: SparkExitChain {
         } ?? outcomes.first ?? .retryLater("no chain host reachable")
     }
 
-    private func submitPackage(host: URL, hexes: [String]) async -> SparkExitBroadcastOutcome? {
+    private func submitPackage(host: URL, hexes: [String], txid: String) async -> SparkExitBroadcastOutcome? {
         for path in ["/v1/txs/package", "/txs/package"] {
             var request = URLRequest(url: host.appendingPathComponent(path))
             request.httpMethod = "POST"
@@ -122,7 +128,7 @@ struct EsploraSparkExitChain: SparkExitChain {
             if response.statusCode == 404 || response.statusCode == 405 {
                 continue
             }
-            return SparkExitBroadcastClassifier.package(status: response.statusCode, body: data)
+            return SparkExitBroadcastClassifier.package(status: response.statusCode, body: data, txid: txid)
         }
         return nil
     }
@@ -166,7 +172,8 @@ enum SparkExitBroadcastClassifier {
         "txn-same-nonwitness-data-in-mempool",
         "already in block chain",
     ]
-    private static let waitMessages = ["non-BIP68-final", "non-final", "bad-txns-inputs-missingorspent", "missing-inputs", "missingorspent"]
+    private static let notMatureMessages = ["non-BIP68-final", "non-final"]
+    private static let missingInputMessages = ["bad-txns-inputs-missingorspent", "missing-inputs", "missingorspent"]
 
     static func single(status: Int, body: Data) -> SparkExitBroadcastOutcome {
         let text = String(decoding: body, as: UTF8.self)
@@ -179,7 +186,9 @@ enum SparkExitBroadcastClassifier {
         return classify(error: text)
     }
 
-    static func package(status: Int, body: Data) -> SparkExitBroadcastOutcome {
+    /// `txid` is the package's parent, the step itself: missing inputs count as such only when the step reports them.
+    /// The CPFP child's own missing input (its funding or chained change) is retried.
+    static func package(status: Int, body: Data, txid: String? = nil) -> SparkExitBroadcastOutcome {
         let text = String(decoding: body, as: UTF8.self)
         if let unavailable = unavailable(status) {
             return unavailable
@@ -193,24 +202,31 @@ enum SparkExitBroadcastClassifier {
             return .accepted
         }
         let results = (json["tx-results"] as? [String: Any])?.values.compactMap { $0 as? [String: Any] } ?? []
-        let errors = results.compactMap { $0["error"] as? String }
+        let errors = results.compactMap { result in (result["error"] as? String).map { (txid: result["txid"] as? String, error: $0) } }
         if errors.isEmpty {
             return results.isEmpty ? .retryLater(text) : .accepted
         }
-        let outcomes = errors.map(classify(error:))
+        let outcomes = errors.map { result in
+            let outcome = classify(error: result.error)
+            if case .inputsMissing = outcome, let txid, let resultTxid = result.txid, resultTxid != txid {
+                return SparkExitBroadcastOutcome.retryLater(result.error)
+            }
+            return outcome
+        }
         if outcomes.allSatisfy({ $0 == .accepted }) {
             return .accepted
         }
-        if let rejected = outcomes.first(where: {
-            if case .rejected = $0 {
-                true
-            } else {
-                false
+        // A child of a parent not mature yet can fail with any error, so the timelock wins over them all.
+        let precedence: (SparkExitBroadcastOutcome) -> Int = {
+            switch $0 {
+            case .notMature: 0
+            case .rejected: 1
+            case .inputsMissing: 2
+            case .retryLater: 3
+            case .accepted: 4
             }
-        }) {
-            return rejected
         }
-        return outcomes.first { $0 != .accepted } ?? .accepted
+        return outcomes.min { precedence($0) < precedence($1) } ?? .accepted
     }
 
     /// A host that is down, rate limiting or behind a challenge page says nothing about the transaction.
@@ -222,8 +238,11 @@ enum SparkExitBroadcastClassifier {
         if knownMessages.contains(where: text.contains) || hasRpcCode(-27, in: text) {
             return .accepted
         }
-        if waitMessages.contains(where: text.contains) || hasRpcCode(-25, in: text) {
-            return .retryLater(text)
+        if notMatureMessages.contains(where: text.contains) {
+            return .notMature(text)
+        }
+        if missingInputMessages.contains(where: text.contains) || hasRpcCode(-25, in: text) {
+            return .inputsMissing(text)
         }
         return .rejected(text)
     }

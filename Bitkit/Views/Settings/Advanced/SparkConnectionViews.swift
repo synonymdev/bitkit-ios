@@ -9,8 +9,10 @@ struct SparkConnectionRow: View {
 
     static var isVisible: Bool {
         let spark = SparkManager.shared
+        // An exit's progress and result stay reachable while Spark is not ready, such as with the operators down.
         let hasExit = spark.isExiting || spark.recoverableFundsSats > 0
-        return spark.isReady && (spark.balanceSats > 0 || !spark.deposits.isEmpty || hasExit || Env.network == .regtest)
+        return SparkExitManager.shared.showsResult
+            || spark.isReady && (spark.balanceSats > 0 || !spark.deposits.isEmpty || hasExit || Env.network == .regtest)
     }
 
     var body: some View {
@@ -113,9 +115,10 @@ struct SparkConnectionDetailView: View {
 
     private let spark = SparkManager.shared
 
-    /// The emergency exit is offered while Spark holds funds, and leads to its progress once one ran.
+    /// The emergency exit is offered while Spark holds funds, and leads to the exit's progress or result while it
+    /// runs or its leftover fee funding is still on its way to savings.
     private var showsExit: Bool {
-        spark.balanceSats > 0 || spark.recoverableFundsSats > 0 || spark.isExiting
+        spark.balanceSats > 0 || spark.recoverableFundsSats > 0 || SparkExitManager.shared.showsResult
     }
 
     var body: some View {
@@ -210,7 +213,7 @@ struct SparkConnectionDetailView: View {
 
                         if showsExit {
                             CustomButton(title: t("lightning__spark_exit__button"), variant: .tertiary) {
-                                navigation.navigate(spark.isExiting ? .sparkExitProgress : .sparkExitIntro)
+                                navigation.navigate(SparkExitManager.shared.showsResult ? .sparkExitProgress : .sparkExitIntro)
                             }
                             .padding(.top, 8)
                             .accessibilityIdentifier("SparkEmergencyExit")

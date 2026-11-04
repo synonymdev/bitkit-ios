@@ -28,7 +28,7 @@ final class SparkExitSweepTests: XCTestCase {
         SparkExitDriver(
             chain: chain,
             recovering: nil,
-            makeSigner: { [unowned self] in try signer() },
+            makeSigner: { [unowned self] _ in try signer() },
             save: { [unowned self] in saved.append($0) }
         )
     }
@@ -125,12 +125,99 @@ final class SparkExitSweepTests: XCTestCase {
 
         chain.outcome = .accepted
         record = try await driver().tick(record)
+        XCTAssertEqual(record.leftoverSweep?.isAccepted, true)
+        XCTAssertTrue(record.needsDriving, "driven until the sweep confirms")
+        XCTAssertTrue(record.showsResult)
+
+        chain.confirmedTxids = [sweepTxid]
         record = try await driver().tick(record)
 
         XCTAssertEqual(chain.broadcasts.map(\.txid), [sweepTxid, sweepTxid])
-        XCTAssertEqual(record.leftoverSweep?.isAccepted, true)
+        XCTAssertEqual(record.leftoverSweep?.isConfirmed, true)
         XCTAssertFalse(record.needsDriving)
+        XCTAssertFalse(record.showsResult, "a new exit may start")
         XCTAssertEqual(record.phase, .done)
+    }
+
+    /// qa-03: Done keeps the result reachable while the sweep is unconfirmed or refused, and sends an accepted sweep
+    /// again until it confirms, in case a node dropped it.
+    func testTheResultStaysReachableUntilTheSweepConfirms() async throws {
+        chain.utxosByAddress[key.address] = [SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 5035)]
+        var record = try await driver().tick(endedRecord())
+        XCTAssertEqual(record.leftoverSweep?.isAccepted, true)
+
+        record = try await driver().tick(record)
+        record = try await driver().tick(record)
+        XCTAssertEqual(chain.broadcasts.count, 3)
+        XCTAssertTrue(record.showsResult)
+
+        var refused = endedRecord()
+        refused.leftoverSweep = .init(txid: "t", txHex: "02", valueSats: 4000, rejection: "min relay fee not met")
+        XCTAssertFalse(refused.needsDriving)
+        XCTAssertTrue(refused.showsResult, "the leftover waits at the funding address")
+
+        var dust = endedRecord()
+        dust.leftoverSweep = .init()
+        XCTAssertFalse(dust.showsResult)
+    }
+
+    /// qa-03: after a Redo that needed no funding, 3,514 sats of generation 1's change in five UTXOs stayed at the
+    /// funding address. Done sweeps them all in one transaction.
+    func testDoneAfterARedoWithoutFundingSweepsEveryLeftoverOfTheFirstGeneration() async throws {
+        var record = endedRecord(phase: .running)
+        record.leftover = []
+        let first = SparkExitFixtures.recovery([SparkExitFixtures.tx("n1", cpfp: "03c1")])
+        record.adopt(first, at: .distantPast)
+        let second = SparkExitFixtures.recovery([SparkExitFixtures.tx("s", kind: .sweep)])
+        let sdk = FakeSparkExitRecovering()
+        sdk.preparedResponse = SparkExitFixtures.prepared(funding: nil)
+        sdk.builds = [second]
+        sdk.checks = [
+            CheckRecoverFundsResponse(recovery: first, verdict: .redo(reason: .onChainStateDiverged)),
+            CheckRecoverFundsResponse(
+                recovery: SparkExitFixtures.recovery([SparkExitFixtures.tx("s", kind: .sweep, status: .confirmed(blockHeight: 50))]),
+                verdict: .done
+            ),
+        ]
+        let utxos = [1200, 900, 700, 414, 300].enumerated().map { i, value in
+            SparkExitFixtures.utxo(String(repeating: "\(i + 1)", count: 64), vout: UInt32(i), value: UInt64(value))
+        }
+        chain.utxosByAddress[key.address] = utxos
+        let driver = SparkExitDriver(chain: chain, recovering: sdk, makeSigner: { [unowned self] _ in try signer() }, save: { _ in })
+
+        record = try await driver.tick(record)
+        XCTAssertEqual(record.generation, 2)
+        XCTAssertEqual(sdk.recoverRequests.first?.fundingInputs, [])
+
+        record = try await driver.tick(record)
+
+        XCTAssertEqual(record.phase, .done)
+        XCTAssertEqual(record.leftover.count, 5)
+        let sweep = try XCTUnwrap(record.leftoverSweep)
+        let fee = SparkExitLeftoverSweep.feeSats(inputs: 5, outputScriptLength: 22, feeRateSatPerVbyte: 2)
+        XCTAssertEqual(sweep.valueSats, 3514 - fee)
+        XCTAssertEqual(sweep.isAccepted, true)
+        try assertValidP2wpkhSpend(.init(txid: XCTUnwrap(sweep.txid), txHex: XCTUnwrap(sweep.txHex), valueSats: sweep.valueSats), utxos: utxos)
+        XCTAssertTrue(record.showsResult)
+    }
+
+    /// Each exit signs with the key at its own funding index, so a later exit never spends an earlier one's address.
+    func testSignsWithTheKeyAtTheRecordsFundingIndex() async throws {
+        let second = try SparkExitFundingKey.derive(index: 4, mnemonic: Self.mnemonic, passphrase: nil, network: .regtest)
+        XCTAssertNotEqual(second.address, key.address)
+        var record = endedRecord()
+        record.funding = [.init(index: 4, address: second.address, pubkey: second.pubkey, txid: "f0", vout: 1, valueSats: 9000)]
+        chain.utxosByAddress[second.address] = [SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 5035)]
+        var indexes: [UInt32] = []
+        let driver = SparkExitDriver(chain: chain, recovering: nil, makeSigner: { index in
+            indexes.append(index)
+            return try singleKeyCpfpSigner(secretKeyBytes: second.secretKey)
+        }, save: { _ in })
+
+        record = try await driver.tick(record)
+
+        XCTAssertEqual(indexes, [4])
+        XCTAssertEqual(record.leftoverSweep?.isAccepted, true)
     }
 
     func testWaitsForTheLeftoverToConfirmAndLeavesDustAlone() async throws {
@@ -145,6 +232,7 @@ final class SparkExitSweepTests: XCTestCase {
 
         XCTAssertEqual(record.leftoverSweep, SparkExitRecord.LeftoverSweep())
         XCTAssertFalse(record.needsDriving)
+        XCTAssertFalse(record.showsResult, "dust is kept, and a new exit may start")
         XCTAssertTrue(chain.broadcasts.isEmpty)
     }
 
@@ -156,7 +244,7 @@ final class SparkExitSweepTests: XCTestCase {
         let sdk = FakeSparkExitRecovering()
         sdk.checks = [CheckRecoverFundsResponse(recovery: done, verdict: .done)]
         chain.utxosByAddress[key.address] = [SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 5035)]
-        let driver = SparkExitDriver(chain: chain, recovering: sdk, makeSigner: { [unowned self] in try signer() }, save: { _ in })
+        let driver = SparkExitDriver(chain: chain, recovering: sdk, makeSigner: { [unowned self] _ in try signer() }, save: { _ in })
 
         record = try await driver.tick(record)
 
@@ -175,7 +263,7 @@ final class SparkExitSweepTests: XCTestCase {
         let run = SparkExitBackgroundRun(
             load: { try store.load() },
             makeDriver: { [unowned self] chain, recovering in
-                SparkExitDriver(chain: chain, recovering: recovering, makeSigner: { try self.signer() }, save: { try store.save($0) })
+                SparkExitDriver(chain: chain, recovering: recovering, makeSigner: { _ in try self.signer() }, save: { try store.save($0) })
             },
             chain: chain,
             connected: nil,
