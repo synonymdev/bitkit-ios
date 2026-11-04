@@ -20,12 +20,14 @@ final class TrezorTransport: TrezorTransportCallback, @unchecked Sendable {
     let needsPairingCodePublisher = PassthroughSubject<Void, Never>()
 
     private var submittedPairingCode: String = ""
+    private var pairingCodeRefusals = 0
     private let pairingCodeLock = NSLock()
 
-    /// Timeout for pairing code entry (2 minutes)
-    private static let pairingCodeTimeoutSeconds: TimeInterval = 120
+    private let pairingCodeTimeout: TimeInterval
 
-    private init() {}
+    init(pairingCodeTimeout: TimeInterval = 120) {
+        self.pairingCodeTimeout = pairingCodeTimeout
+    }
 
     // MARK: - Debug Logging
 
@@ -194,15 +196,26 @@ final class TrezorTransport: TrezorTransportCallback, @unchecked Sendable {
     /// Get the pairing code from the user (blocks until user enters code)
     /// This is called when the Trezor displays a 6-digit code for BLE pairing
     func getPairingCode() -> String {
-        debugLog("getPairingCode: waiting for user input...")
-
         pairingCodeLock.lock()
+        // The cancel sent ahead of a wipe is drained below, so a connect that only now reaches pairing is refused here
+        let isRefused = pairingCodeRefusals > 0
         submittedPairingCode = ""
         pairingCodeLock.unlock()
+        guard !isRefused else {
+            debugLog("getPairingCode: refused")
+            return ""
+        }
 
         // Drain any leftover signal from a prior (cancelled/submitted) pairing so this request
         // doesn't return an empty code instantly and abort the handshake mid-pairing.
         while pairingCodeSemaphore.wait(timeout: DispatchTime.now()) == .success {}
+
+        // A wipe refuses before it cancels, so a cancel the drain just took is seen here as a refusal
+        guard !pairingCodeLock.withLock({ pairingCodeRefusals > 0 }) else {
+            debugLog("getPairingCode: refused")
+            return ""
+        }
+        debugLog("getPairingCode: waiting for user input...")
 
         // Notify UI to show pairing code dialog
         DispatchQueue.main.async {
@@ -222,7 +235,7 @@ final class TrezorTransport: TrezorTransportCallback, @unchecked Sendable {
 
     /// Blocking wait for pairing code with timeout
     private func blockForPairingCode() -> String {
-        let timeout = DispatchTime.now() + Self.pairingCodeTimeoutSeconds
+        let timeout = DispatchTime.now() + pairingCodeTimeout
         let result = pairingCodeSemaphore.wait(timeout: timeout)
 
         if result == .timedOut {
@@ -256,6 +269,16 @@ final class TrezorTransport: TrezorTransportCallback, @unchecked Sendable {
         pairingCodeLock.unlock()
 
         pairingCodeSemaphore.signal()
+    }
+
+    /// Answers every pairing-code request with an empty code at once, publishing none, until a matching
+    /// `allowPairingCodeRequests()`.
+    func refusePairingCodeRequests() {
+        pairingCodeLock.withLock { pairingCodeRefusals += 1 }
+    }
+
+    func allowPairingCodeRequests() {
+        pairingCodeLock.withLock { pairingCodeRefusals = max(pairingCodeRefusals - 1, 0) }
     }
 
     /// Save THP credential to secure storage

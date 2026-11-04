@@ -24,6 +24,7 @@ struct HomeScreen: View {
     var body: some View {
         ZStack(alignment: .top) {
             Header(showWidgetEditButton: currentPage == 1, isEditingWidgets: $isEditingWidgets)
+                .zIndex(1)
 
             GeometryReader { geometry in
                 ScrollView(showsIndicators: false) {

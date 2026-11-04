@@ -43,11 +43,8 @@ private struct AuthCheckBiometricAttempt {
 
 struct AuthCheck: View {
     @Environment(\.scenePhase) private var scenePhase
-    @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
-    @EnvironmentObject private var wallet: WalletViewModel
-    @EnvironmentObject private var session: SessionManager
 
     @State private var pinInput: String = ""
     @State private var errorMessage: String = ""
@@ -63,6 +60,10 @@ struct AuthCheck: View {
         BiometricAuth.biometryTypeName
     }
 
+    private var canUseBiometrics: Bool {
+        settings.useBiometrics && PinVerifier.shared.canUseBiometrics
+    }
+
     private func handlePinChange(_ pin: String) {
         if pin.count == 4 {
             handlePinComplete(pin)
@@ -74,42 +75,30 @@ struct AuthCheck: View {
     }
 
     private func handlePinComplete(_ pin: String) {
-        if settings.pinCheck(pin: pin) {
-            // PIN is correct
+        let result = settings.verifyPin(pin)
+        if result == .correct {
             Haptics.notify(.success)
             onPinVerified()
-        } else {
-            // PIN is incorrect
-            handleIncorrectPin()
-        }
-    }
-
-    private func handleIncorrectPin() {
-        pinInput = ""
-        Haptics.notify(.error)
-
-        let pinAttemptOutcome = settings.pinAttemptOutcomeAfterFailure()
-        if case .exceededAttempts = pinAttemptOutcome {
-            Task {
-                await settings.wipeWalletAfterExceededPinAttempts(
-                    app: app,
-                    wallet: wallet,
-                    session: session,
-                    context: "AuthCheck"
-                )
-            }
-
             return
         }
 
-        errorMessage = pinAttemptOutcome.errorMessage ?? ""
-        errorIdentifier = pinAttemptOutcome.errorIdentifier
+        pinInput = ""
+        Haptics.notify(.error)
+
+        // A lockout raises the wipe gate in place of this screen.
+        guard result != .lockedOut else { return }
+
+        if result == .unavailable {
+            settings.updatePinEnabledState()
+        }
+        errorMessage = result.errorMessage ?? ""
+        errorIdentifier = result.errorIdentifier
     }
 
     private func handleBiometricAuthentication(attemptKind: AuthCheckBiometricAttemptKind = .manual) {
         guard AuthCheckBiometricPolicy.shouldStart(
             scenePhase: scenePhase,
-            isEnabled: settings.useBiometrics,
+            isEnabled: canUseBiometrics,
             hasActiveAttempt: biometricAttempt != nil,
             attemptKind: attemptKind,
             hasAutomaticallyAttempted: hasAutomaticallyAttemptedBiometrics
@@ -141,7 +130,8 @@ struct AuthCheck: View {
                 guard biometricAttempt?.context === context else { return }
                 biometricAttempt = nil
 
-                if success {
+                // A lockout that started while the prompt was up outranks the prompt's success.
+                if success, PinVerifier.shared.canUseBiometrics {
                     Haptics.notify(.success)
                     onPinVerified()
                 } else {
@@ -205,7 +195,7 @@ struct AuthCheck: View {
             BodyMSBText(t("security__pin_enter"))
 
             VStack(alignment: .center, spacing: 12) {
-                if settings.useBiometrics && shouldShowBiometricRetry {
+                if canUseBiometrics && shouldShowBiometricRetry {
                     CustomButton(
                         title: t("security__pin_use_biometrics", variables: ["biometricsName": biometryTypeName]),
                         size: .small,
@@ -254,10 +244,7 @@ struct AuthCheck: View {
             print("PIN verified!")
         }
     )
-    .environmentObject(AppViewModel())
     .environmentObject(SettingsViewModel.shared)
     .environmentObject(SheetViewModel())
-    .environmentObject(WalletViewModel())
-    .environmentObject(SessionManager())
     .preferredColorScheme(.dark)
 }

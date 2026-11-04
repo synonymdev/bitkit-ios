@@ -485,12 +485,12 @@ struct UsdtSendView: View {
             .accessibilityIdentifier("UsdtReviewDetails")
     }
 
-    private func confirmation(_ quote: UsdtQuote) -> some View {
+    func confirmation(_ quote: UsdtQuote) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             GeometryReader { geometry in
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
-                        UsdtAmountHeader(amount: usdtFormatAmount(amount: quote.amount), displayAmount: usdtOverviewAmount(quote.amount))
+                        UsdtAmountHeader(amount: usdtFormatAmount(amount: quote.amount), displayAmount: usdtExactAmount(quote.amount))
                             .contentShape(Rectangle()).onTapGesture(perform: goBack)
                             .allowsHitTesting(!busy && !embedded)
                         Spacer().frame(height: 24)
@@ -539,7 +539,7 @@ struct UsdtSendView: View {
         }
     }
 
-    private func quoteDetails(_ quote: UsdtQuote) -> some View {
+    func quoteDetails(_ quote: UsdtQuote) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 16) {
                 SendSectionView(t("usdt__pay_from"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
@@ -555,19 +555,19 @@ struct UsdtSendView: View {
                 UsdtDetailCell(title: t("usdt__network"), value: UsdtDestination.arbitrum.label, icon: "usdt-network", minimumValueHeight: 28)
             }
             HStack(alignment: .top, spacing: 16) {
-                UsdtDetailCell(title: t("wallet__activity_payment"), value: usdtOverviewAmount(quote.amount), icon: "user")
-                UsdtDetailCell(title: t("wallet__activity_fee"), value: usdtOverviewAmount(quote.maximumFee), icon: "speed-normal")
+                UsdtDetailCell(title: t("wallet__activity_payment"), value: usdtExactAmount(quote.amount), icon: "user")
+                UsdtDetailCell(title: t("wallet__activity_fee"), value: usdtExactAmount(quote.maximumFee), icon: "speed-normal")
             }
             if quote.destination != .arbitrum {
                 HStack(alignment: .top, spacing: 16) {
                     UsdtDetailCell(title: t("usdt__recipient_gets"),
-                                   value: (quote.bridgeProvider == .orchestra ? "±" : "") + usdtOverviewAmount(quote.receivedAmount),
+                                   value: (quote.bridgeProvider == .orchestra ? "±" : "") + usdtExactAmount(quote.receivedAmount),
                                    icon: "arrow-down-right")
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("UsdtRecipientAmount")
                     UsdtDetailCell(
                         title: t("usdt__maximum_total"),
-                        value: usdtOverviewAmount(quote.amount + quote.maximumFee),
+                        value: usdtExactAmount(quote.amount + quote.maximumFee),
                         icon: "arrow-up-right"
                     )
                     .accessibilityElement(children: .contain)
