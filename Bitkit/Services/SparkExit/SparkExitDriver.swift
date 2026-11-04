@@ -289,10 +289,16 @@ struct SparkExitDriver {
         return now().timeIntervalSince(last) >= Self.rebuildInterval
     }
 
-    /// Ends the exit and notes what is left at the funding address, which the next step sweeps to savings.
+    /// Ends the exit and notes what is left at the funding address, which the next step sweeps to savings. While the
+    /// address cannot be read the exit keeps its phase: one ended without its leftover read would never sweep it, so
+    /// the next tick ends it instead.
     private func finish(_ record: inout SparkExitRecord, phase: SparkExitRecord.Phase) async {
+        guard let address = record.funding.first?.address else {
+            record.phase = phase
+            return
+        }
+        guard let utxos = try? await chain.utxos(address: address) else { return }
         record.phase = phase
-        guard let address = record.funding.first?.address, let utxos = try? await chain.utxos(address: address) else { return }
         record.leftover = utxos.map { SparkExitRecord.Leftover(txid: $0.txid, vout: $0.vout, valueSats: $0.value) }
         if record.isLeftoverSweepPending, !Task.isCancelled {
             try? await sweepLeftover(&record)

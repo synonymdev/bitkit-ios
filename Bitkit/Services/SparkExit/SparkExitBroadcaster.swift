@@ -186,8 +186,9 @@ enum SparkExitBroadcastClassifier {
         return classify(error: text)
     }
 
-    /// `txid` is the package's parent, the step itself: missing inputs count as such only when the step reports them.
-    /// The CPFP child's own missing input (its funding or chained change) is retried.
+    /// `txid` is the package's parent, the step itself: an error on it decides the outcome. Missing inputs count as
+    /// such only when the step reports them; the CPFP child's own missing input (its funding or chained change) is
+    /// retried.
     static func package(status: Int, body: Data, txid: String? = nil) -> SparkExitBroadcastOutcome {
         let text = String(decoding: body, as: UTF8.self)
         if let unavailable = unavailable(status) {
@@ -205,6 +206,13 @@ enum SparkExitBroadcastClassifier {
         let errors = results.compactMap { result in (result["error"] as? String).map { (txid: result["txid"] as? String, error: $0) } }
         if errors.isEmpty {
             return results.isEmpty ? .retryLater(text) : .accepted
+        }
+        // The step's own error decides, whatever its child reports and in whatever order the results come.
+        if let txid, let own = errors.first(where: { $0.txid == txid }) {
+            let outcome = classify(error: own.error)
+            if outcome != .accepted {
+                return outcome
+            }
         }
         let outcomes = errors.map { result in
             let outcome = classify(error: result.error)

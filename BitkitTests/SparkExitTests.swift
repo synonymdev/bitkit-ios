@@ -115,6 +115,7 @@ final class FakeSparkExitChain: SparkExitChain, @unchecked Sendable {
     var utxosByAddress: [String: [EsploraUtxo]] = [:]
     var confirmedTxids: Set<String> = []
     var outcome: SparkExitBroadcastOutcome = .accepted
+    var isUtxosUnreadable = false
     private(set) var broadcasts: [RecoveryTransaction] = []
     var onBroadcast: (() -> Void)?
 
@@ -123,7 +124,10 @@ final class FakeSparkExitChain: SparkExitChain, @unchecked Sendable {
     }
 
     func utxos(address: String) async throws -> [EsploraUtxo] {
-        lock.withLock { utxosByAddress[address] ?? [] }
+        if isUtxosUnreadable {
+            throw URLError(.timedOut)
+        }
+        return lock.withLock { utxosByAddress[address] ?? [] }
     }
 
     func txStatus(txid: String) async throws -> EsploraTxStatus {
@@ -433,6 +437,26 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(record.leftover, [.init(txid: "change", vout: 0, valueSats: 700)])
         XCTAssertTrue(chain.broadcasts.isEmpty)
         XCTAssertEqual(saved.last, record)
+    }
+
+    func testDoneWaitsForTheFundingAddressToBeReadBeforeEnding() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.adopt(SparkExitFixtures.recovery([SparkExitFixtures.tx("s", kind: .sweep)]))
+        let done = SparkExitFixtures.recovery([SparkExitFixtures.tx("s", kind: .sweep, status: .confirmed(blockHeight: 50))])
+        sdk.checks = Array(repeating: CheckRecoverFundsResponse(recovery: done, verdict: .done), count: 2)
+        chain.utxosByAddress["bcrt1qfunding"] = [SparkExitFixtures.utxo("change", value: 700)]
+        chain.isUtxosUnreadable = true
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.phase, .running)
+        XCTAssertTrue(record.leftover.isEmpty)
+
+        chain.isUtxosUnreadable = false
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.phase, .done)
+        XCTAssertEqual(record.leftover, [.init(txid: "change", vout: 0, valueSats: 700)])
     }
 
     func testRedoRebuildsAsANewGenerationAndNeverSendsTheOldOne() async throws {
@@ -1503,6 +1527,18 @@ final class SparkExitBroadcasterTests: XCTestCase {
         let childRejected = #"{"package_msg":"transaction failed","tx-results":{"w1":{"txid":"step","error":"non-BIP68-final"},"w2":{"txid":"child","error":"min relay fee not met"}}}"#
         if case .notMature = SparkExitBroadcastClassifier.package(status: 200, body: Data(childRejected.utf8), txid: "step") {} else {
             XCTFail("An immature parent outranks the child's refusal")
+        }
+        let stepRejected = #"{"package_msg":"transaction failed","tx-results":{"w1":{"txid":"child","error":"non-BIP68-final"},"w2":{"txid":"step","error":"min relay fee not met"}}}"#
+        if case .rejected = SparkExitBroadcastClassifier.package(status: 200, body: Data(stepRejected.utf8), txid: "step") {} else {
+            XCTFail("The step's own refusal decides, whatever its child reports")
+        }
+        let stepSpent = #"{"package_msg":"transaction failed","tx-results":{"w1":{"txid":"child","error":"non-BIP68-final"},"w2":{"txid":"step","error":"bad-txns-inputs-missingorspent"}}}"#
+        if case .inputsMissing = SparkExitBroadcastClassifier.package(status: 200, body: Data(stepSpent.utf8), txid: "step") {} else {
+            XCTFail("The step's own missing input decides, whatever its child reports")
+        }
+        let stepKnown = #"{"package_msg":"transaction failed","tx-results":{"w1":{"txid":"step","error":"txn-already-in-mempool"},"w2":{"txid":"child","error":"min relay fee not met"}}}"#
+        if case .rejected = SparkExitBroadcastClassifier.package(status: 200, body: Data(stepKnown.utf8), txid: "step") {} else {
+            XCTFail("A step the node already has leaves the outcome to its child")
         }
         let known = #"{"package_msg":"transaction failed","tx-results":{"w1":{"txid":"a","error":"txn-already-in-mempool"},"w2":{"txid":"b"}}}"#
         XCTAssertEqual(SparkExitBroadcastClassifier.package(status: 200, body: Data(known.utf8)), .accepted)
