@@ -183,6 +183,13 @@ final class SendConfirmationSwipeTests: XCTestCase {
         ))
     }
 
+    func testAFixedAmountSavingsCannotPayMovesToAHardwareWalletThatCovers() {
+        let balances: [(walletId: String, balanceSats: UInt64)] = [("small", 20000), ("large", 549_577)]
+        XCTAssertEqual(SendConfirmationView.hardwareWalletCovering(amount: 300_000, balances: balances), "large")
+        XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 600_000, balances: balances))
+        XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 300_000, balances: []))
+    }
+
     func testOnlyTheNewestFeeCalculationHoldsTheSwipe() {
         XCTAssertTrue(SendConfirmationView.isCalculatingOnchainFee(calculationId: 3, latestCalculationId: 3))
         // A funding switch starts a newer calculation that may not be on-chain at all.

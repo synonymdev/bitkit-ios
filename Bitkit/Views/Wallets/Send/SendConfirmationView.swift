@@ -1203,6 +1203,11 @@ struct SendConfirmationView: View {
         isHardwarePayment && !isContactPayment && !afterFundingSwitch
     }
 
+    /// The first hardware wallet whose balance covers the amount; its fee preview decides whether it can pay.
+    static func hardwareWalletCovering(amount: UInt64, balances: [(walletId: String, balanceSats: UInt64)]) -> String? {
+        balances.first { $0.balanceSats >= amount }?.walletId
+    }
+
     /// Only the newest fee calculation can hold the swipe, so a calculation superseded by a funding switch never leaves it disabled.
     static func isCalculatingOnchainFee(calculationId: Int?, latestCalculationId: Int) -> Bool {
         calculationId == latestCalculationId
@@ -2024,6 +2029,16 @@ struct SendConfirmationView: View {
         } catch {
             guard isCurrentSend(), !(error is CancellationError) else { return }
             Logger.error("Failed to select UTXOs for on-chain request: \(error)", context: "SendConfirmationView")
+            // Savings cannot pay the fixed amount, but a hardware wallet can, so Confirm switches to it instead of leaving.
+            if let amount = wallet.sendAmountSats,
+               let walletId = Self.hardwareWalletCovering(
+                   amount: amount,
+                   balances: hwWalletManager.wallets.map { ($0.walletId, hwWalletManager.fundingBalance(walletId: $0.walletId)) }
+               )
+            {
+                selectFundingSource(.hardware(walletId: walletId))
+                return
+            }
             app.toast(type: .error, title: t("other__try_again"), description: error.localizedDescription)
             leaveAfterPreparationFailure()
         }
