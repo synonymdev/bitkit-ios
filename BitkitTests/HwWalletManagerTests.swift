@@ -1548,7 +1548,7 @@ final class HwWalletManagerTests: XCTestCase {
         ))
     }
 
-    /// Delivers `activity` to the wallet's own watcher, with that wallet holding a retained send, and returns the record left.
+    /// Delivers `activity` to the wallet's own watcher, with that wallet holding a retained send, and returns the record it leaves.
     private func retainedSendAfterWatcherEvent(activity: (_ retainedTxId: String) -> Activity) async throws -> HwRetainedSend? {
         let xpubs = ["nativeSegwit": "z"]
         let walletId = try HwWalletId.derive(xpubs: xpubs)
@@ -1565,16 +1565,43 @@ final class HwWalletManagerTests: XCTestCase {
         return try await service.record(walletId: walletId)
     }
 
-    func testWatcherEventWithTheRetainedTxReleasesTheRecord() async throws {
+    func testWatcherEventWithTheRetainedTxMarksTheRecordAndDoesNotDeleteIt() async throws {
         let record = try await retainedSendAfterWatcherEvent { makeActivity(txId: $0, value: 42000, txType: .sent) }
 
-        XCTAssertNil(record)
+        XCTAssertEqual(record?.observed, true)
+        XCTAssertEqual(record?.serializedTx, retainedSerializedTx)
+    }
+
+    func testFailedObservedWriteRetriesOnTheNextWatcherEvent() async throws {
+        let xpubs = ["nativeSegwit": "z"]
+        let walletId = try HwWalletId.derive(xpubs: xpubs)
+        let device = makeDevice(id: "dev1", xpubs: xpubs)
+        let store = MockHwRetainedSendStore()
+        let service = HwRetainedSendService(store: store)
+        try await retainSend(walletId: walletId, in: service)
+        let vm = makeViewModel(monitored: ["nativeSegwit"], retainedSends: service)
+        vm.updateDevices(knownDevices: [device], connectedDeviceId: nil)
+        let txId = try SignedTransactionId.fromHex(retainedSerializedTx)
+        let event = makeEvent([makeActivity(txId: txId, value: 42000, txType: .sent)], total: 1000)
+
+        store.setFailures(save: true)
+        vm.handleWatcherEvent(watcherId: watcherId(device, "nativeSegwit"), event: event)
+        await vm.drainPendingPersists()
+        let unmarked = try await service.record(walletId: walletId)
+        XCTAssertEqual(unmarked?.observed, false)
+
+        store.setFailures()
+        vm.handleWatcherEvent(watcherId: watcherId(device, "nativeSegwit"), event: event)
+        await vm.drainPendingPersists()
+        let marked = try await service.record(walletId: walletId)
+        XCTAssertEqual(marked?.observed, true)
+        XCTAssertTrue(store.deletedWalletIds.isEmpty)
     }
 
     func testWatcherEventWithAnotherTxKeepsTheRecord() async throws {
         let record = try await retainedSendAfterWatcherEvent { _ in makeActivity(txId: "other", value: 42000, txType: .sent) }
 
-        XCTAssertNotNil(record)
+        XCTAssertEqual(record?.observed, false)
     }
 
     /// A row that no longer exists on chain, such as a replaced or dropped tx, does not show the payment went through.
@@ -1583,7 +1610,7 @@ final class HwWalletManagerTests: XCTestCase {
             makeActivity(txId: $0, value: 42000, txType: .sent, doesExist: false)
         }
 
-        XCTAssertNotNil(record)
+        XCTAssertEqual(record?.observed, false)
     }
 
     func testAnotherWalletsWatcherEventKeepsTheRecord() async throws {
@@ -1602,7 +1629,7 @@ final class HwWalletManagerTests: XCTestCase {
         await vm.drainPendingPersists()
 
         let record = try await service.record(walletId: walletId)
-        XCTAssertNotNil(record)
+        XCTAssertEqual(record?.observed, false)
     }
 
     func testRemovingAWalletReleasesOnlyItsOwnRecord() async throws {

@@ -12,7 +12,8 @@ enum HwRetainedSendStatus: Equatable {
     case none
     /// The same payment may go out again, using these original bytes and no device prompt.
     case retry(HwFundingSignedTx)
-    /// A different payment, or a retry that was refused. Signing needs the user to abandon the retained send first.
+    /// A different payment, a retry that was refused, or a repeat of a payment already observed on the network.
+    /// Signing needs the user to abandon the retained send first.
     case blocking
 
     var retrySignedTx: HwFundingSignedTx? {
@@ -498,6 +499,10 @@ final class HwSendCoordinator {
         }
         // The signed bytes already fix the fee, so a composition at today's fee could only block a valid retry.
         let status = await retainedSendStatus(address: address, sats: sats, hasIncomingRequest: hasIncomingRequest)
+        // Only an observed record for another payment gets here with an attempted send, and that first payment is resolved.
+        if status == .none, !hasIncomingRequest, pendingPayment?.isAttemptedOrdinarySend == true {
+            pendingPayment = nil
+        }
         if let retained = status.retrySignedTx {
             guard self.walletId == walletId, previewRequestId == requestId else { return nil }
             previewFeeSats = retained.miningFeeSats
@@ -544,8 +549,10 @@ final class HwSendCoordinator {
         let request = PaymentRequest(address: address, sats: sats, satsPerVByte: satsPerVByte)
         if let pendingPayment, isBroadcastUnresolved || pendingPayment.hasBroadcastAttempted {
             if pendingPayment.paymentRequestId == nil, paymentRequestId == nil {
-                guard pendingPayment.request.isSamePayment(address: address, sats: sats) else {
-                    throw HwTransferError.broadcastUncertain
+                if !pendingPayment.request.isSamePayment(address: address, sats: sats) {
+                    guard await (try? retainedSends.record(walletId: walletId))?.observed == true else {
+                        throw HwTransferError.broadcastUncertain
+                    }
                 }
             } else {
                 guard pendingPayment.request == request, pendingPayment.paymentRequestId == paymentRequestId else {
@@ -578,16 +585,25 @@ final class HwSendCoordinator {
                 isBroadcastUnresolved = restored.hasAttemptedBroadcast && !restored.isRefusedForNavigation
             }
             if paymentRequestId == nil, let retained = try await retainedSends.record(walletId: walletId) {
-                guard retained.isSamePayment(address: address, sats: sats) else { throw HwTransferError.broadcastUncertain }
-                try Task.checkCancellation()
-                pendingPayment = PendingPayment(
-                    request: request,
-                    signedTx: retained.signedTx,
-                    paymentRequestId: nil,
-                    isPreparedForBroadcast: true,
-                    hasBroadcastAttempted: true
-                )
-                isBroadcastUnresolved = false
+                if retained.isSamePayment(address: address, sats: sats) {
+                    try Task.checkCancellation()
+                    pendingPayment = PendingPayment(
+                        request: request,
+                        signedTx: retained.signedTx,
+                        paymentRequestId: nil,
+                        isPreparedForBroadcast: true,
+                        hasBroadcastAttempted: true
+                    )
+                    isBroadcastUnresolved = false
+                } else {
+                    guard retained.observed else { throw HwTransferError.broadcastUncertain }
+                    try Task.checkCancellation()
+                    // A failed release throws here, before any device contact.
+                    try await retainedSends.release(walletId: walletId)
+                    if pendingPayment?.request.isSamePayment(address: address, sats: sats) != true {
+                        pendingPayment = nil
+                    }
+                }
             }
             let signed: HwFundingSignedTx
             if let pendingPayment,
@@ -730,6 +746,10 @@ final class HwSendCoordinator {
                         throw failure
                     }
                     if paymentRequestId == nil {
+                        if let result = await completeObservedSend(walletId: walletId, signed: signed, failure: failure) {
+                            await afterBroadcast(result)
+                            return result
+                        }
                         throw await settleRetainedSend(walletId: walletId, failure: failure, isRetry: hadPriorBroadcastAttempt)
                     }
                     throw failure
@@ -763,7 +783,12 @@ final class HwSendCoordinator {
         guard !hasIncomingRequest, let walletId else { return .none }
         do {
             if let retained = try await retainedSends.record(walletId: walletId) {
-                guard retained.isSamePayment(address: address, sats: sats), !retained.retryWasRefused else { return .blocking }
+                let isSamePayment = retained.isSamePayment(address: address, sats: sats)
+                if retained.observed {
+                    // The first payment went out: a repeat is a second payment to confirm, and another payment needs no warning.
+                    return isSamePayment ? .blocking : .none
+                }
+                guard isSamePayment, !retained.retryWasRefused else { return .blocking }
                 return .retry(retained.signedTx)
             }
         } catch {
@@ -772,6 +797,20 @@ final class HwSendCoordinator {
         }
         guard let pendingPayment, pendingPayment.isAttemptedOrdinarySend else { return .none }
         return pendingPayment.request.isSamePayment(address: address, sats: sats) ? .retry(pendingPayment.signedTx) : .blocking
+    }
+
+    /// The bytes `signAndBroadcast` would rebroadcast for this payment from the sign screen. Unlike `retainedSendStatus`, which
+    /// decides what the review warns about, this ignores `observed` and `retryWasRefused`: a Retry skips the review and always
+    /// reuses the same bytes, so it needs no current fee rate and must keep reading Retry.
+    func retainedRebroadcastTx(address: String, sats: UInt64, hasIncomingRequest: Bool) async -> HwFundingSignedTx? {
+        guard !hasIncomingRequest, let walletId else { return nil }
+        if let retained = try? await retainedSends.record(walletId: walletId) {
+            return retained.isSamePayment(address: address, sats: sats) ? retained.signedTx : nil
+        }
+        guard let pendingPayment, pendingPayment.isAttemptedOrdinarySend,
+              pendingPayment.request.isSamePayment(address: address, sats: sats)
+        else { return nil }
+        return pendingPayment.signedTx
     }
 
     /// The amount a retry to this address would rebroadcast. It was fundable when signed, so the amount screen must accept it
@@ -883,6 +922,23 @@ final class HwSendCoordinator {
         if let abandonedSession {
             abandonedSession.connecting.scheduleStaleSessionCleanup(walletId: abandonedSession.walletId)
         }
+    }
+
+    /// A transaction the watcher has already seen is out, whatever this broadcast reported, so the send succeeds with the retained
+    /// bytes. A cancellation reports no broadcast outcome, so it leaves the record for the next attempt to settle.
+    private func completeObservedSend(walletId: String, signed: HwFundingSignedTx, failure: Error) async -> HwFundingBroadcastResult? {
+        guard !(failure is CancellationError),
+              let retained = try? await retainedSends.record(walletId: walletId),
+              retained.observed, retained.serializedTx == signed.serializedTx,
+              let txId = try? SignedTransactionId.fromHex(signed.serializedTx)
+        else { return nil }
+        await releaseRetainedSend(walletId: walletId)
+        return HwFundingBroadcastResult(
+            txId: txId,
+            miningFeeSats: signed.miningFeeSats,
+            feeRate: UInt64(signed.feeRate.rounded(.up)),
+            totalSpent: signed.totalSpent
+        )
     }
 
     /// Decides whether a failed ordinary broadcast keeps its retained send, and returns the error to surface: a send that is

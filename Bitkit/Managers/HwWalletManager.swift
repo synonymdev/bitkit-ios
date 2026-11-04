@@ -979,17 +979,17 @@ final class HwWalletManager: Sendable {
         recomputeDerivedState(groups: groups)
         persistGroupSnapshot(forWallet: walletId, groups: groups)
         emitReceivedTxs(previous: previous, activities: activities)
-        releaseRetainedSendIfObserved(walletId: walletId, activities: activities)
+        markRetainedSendObserved(walletId: walletId, activities: activities)
     }
 
-    /// A failed release keeps the record, which is the safe side: the next watcher event tries again.
-    private func releaseRetainedSendIfObserved(walletId: String, activities: [Activity]) {
+    /// A failed write leaves the record unmarked, which is the safe side: the next watcher event tries again.
+    private func markRetainedSendObserved(walletId: String, activities: [Activity]) {
         let txIds = Array(onchainTxIds(in: activities, existingOnly: true))
         persistQueue.enqueue(walletId: walletId) { [retainedSends] in
             do {
-                try await retainedSends.releaseIfObserved(walletId: walletId, txIds: txIds)
+                try await retainedSends.markObserved(walletId: walletId, txIds: txIds)
             } catch {
-                Logger.error("Failed to release observed send of HW wallet '\(walletId)': \(error)", context: "HwWalletManager")
+                Logger.error("Failed to mark observed send of HW wallet '\(walletId)': \(error)", context: "HwWalletManager")
             }
         }
     }

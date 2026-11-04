@@ -103,11 +103,11 @@ struct HwSendSignView: View {
         }
         .task(id: hwSend.isSigning) {
             guard !hwSend.isSigning, let invoice = app.scannedOnchainInvoice, let amount = wallet.sendAmountSats else { return }
-            let status = await hwSend.retainedSendStatus(
+            let retained = await hwSend.retainedRebroadcastTx(
                 address: invoice.address, sats: amount, hasIncomingRequest: contactPaymentRequestId != nil
             )
             guard !Task.isCancelled else { return }
-            hasRetainedRetry = status.retrySignedTx != nil
+            hasRetainedRetry = retained != nil
         }
         .onDisappear {
             guard !hwSend.isBroadcastUnresolved else { return }
@@ -177,9 +177,9 @@ struct HwSendSignView: View {
                 let deadline = try app.contactPaymentContext?.incomingPaymentRequest?.submissionDeadline(quoteId: quoteId)
                 var retainedSignedTx = retained?.retainedHardwareRetry?.signedTx
                 if retainedSignedTx == nil {
-                    retainedSignedTx = await hwSend.retainedSendStatus(
+                    retainedSignedTx = await hwSend.retainedRebroadcastTx(
                         address: invoice.address, sats: amount, hasIncomingRequest: requestId != nil
-                    ).retrySignedTx
+                    )
                 }
                 guard let feeRate = SendConfirmationView.confirmationFeeRate(
                     retained: retainedSignedTx, selected: wallet.selectedFeeRateSatsPerVByte

@@ -12,6 +12,25 @@ struct HwRetainedSend: Codable, Equatable {
     let feeRate: Float
     let totalSpent: UInt64
     var retryWasRefused = false
+    /// The wallet's watcher has seen this transaction. It stays retained, because a delivered transaction is exactly when a
+    /// new signature would pay twice.
+    var observed = false
+}
+
+extension HwRetainedSend {
+    /// Written by hand because synthesized decoding requires every key, and a record stored before `observed` existed lacks it.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        walletId = try container.decode(String.self, forKey: .walletId)
+        address = try container.decode(String.self, forKey: .address)
+        sats = try container.decode(UInt64.self, forKey: .sats)
+        serializedTx = try container.decode(String.self, forKey: .serializedTx)
+        miningFeeSats = try container.decode(UInt64.self, forKey: .miningFeeSats)
+        feeRate = try container.decode(Float.self, forKey: .feeRate)
+        totalSpent = try container.decode(UInt64.self, forKey: .totalSpent)
+        retryWasRefused = try container.decode(Bool.self, forKey: .retryWasRefused)
+        observed = try container.decodeIfPresent(Bool.self, forKey: .observed) ?? false
+    }
 }
 
 enum HwRetainedSendError: Error {
@@ -93,11 +112,13 @@ actor HwRetainedSendService {
         }
     }
 
-    /// Releases the wallet's record when one of `txIds` is its transaction.
-    func releaseIfObserved(walletId: String, txIds: [String]) throws {
-        guard let send = try store.load(walletId: walletId), let txid = try? SignedTransactionId.fromHex(send.serializedTx),
+    /// Marks the wallet's record as observed when one of `txIds` is its transaction. Never deletes the record.
+    func markObserved(walletId: String, txIds: [String]) throws {
+        guard var send = try store.load(walletId: walletId), !send.observed,
+              let txid = try? SignedTransactionId.fromHex(send.serializedTx),
               txIds.contains(where: { $0.caseInsensitiveCompare(txid) == .orderedSame })
         else { return }
-        try release(walletId: walletId)
+        send.observed = true
+        try store.save(send)
     }
 }

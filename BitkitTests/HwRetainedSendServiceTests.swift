@@ -109,19 +109,34 @@ final class HwRetainedSendServiceTests: XCTestCase {
         await assertThrows { try await service.retain(self.send()) }
     }
 
-    func testObservedTxidReleasesCaseInsensitively() async throws {
+    func testObservedTxidMarksCaseInsensitivelyAndKeepsTheRecord() async throws {
         let service = HwRetainedSendService(store: MemoryRetainedSendStore())
         try await service.retain(send(serializedTx: segwitTx))
         let txid = try SignedTransactionId.fromHex(segwitTx)
 
-        try await service.releaseIfObserved(walletId: wallet, txIds: [String(repeating: "0", count: 64)])
-        try await service.releaseIfObserved(walletId: otherWallet, txIds: [txid])
-        let stillHeld = try await service.record(walletId: wallet)
-        XCTAssertNotNil(stillHeld)
+        try await service.markObserved(walletId: wallet, txIds: [String(repeating: "0", count: 64)])
+        try await service.markObserved(walletId: otherWallet, txIds: [txid])
+        let unmarked = try await service.record(walletId: wallet)
+        XCTAssertEqual(unmarked?.observed, false)
 
-        try await service.releaseIfObserved(walletId: wallet, txIds: [txid.uppercased()])
+        try await service.markObserved(walletId: wallet, txIds: [txid.uppercased()])
+        let marked = try await service.record(walletId: wallet)
+        XCTAssertEqual(marked?.observed, true)
+        XCTAssertEqual(marked?.serializedTx, segwitTx)
+    }
+
+    func testMarkObservedIsIdempotentAndCreatesNoRecord() async throws {
+        let service = HwRetainedSendService(store: MemoryRetainedSendStore())
+        try await service.retain(send(serializedTx: segwitTx))
+        let txid = try SignedTransactionId.fromHex(segwitTx)
+
+        try await service.markObserved(walletId: wallet, txIds: [txid])
+        try await service.markObserved(walletId: wallet, txIds: [txid])
+
         let record = try await service.record(walletId: wallet)
-        XCTAssertNil(record)
+        let missing = try await service.record(walletId: otherWallet)
+        XCTAssertEqual(record?.observed, true)
+        XCTAssertNil(missing)
     }
 
     func testInvalidHexNeverMatchesAnObservedTxid() async throws {
@@ -129,10 +144,42 @@ final class HwRetainedSendServiceTests: XCTestCase {
         let invalid = "not hex"
         try await service.retain(send(serializedTx: invalid))
 
-        try await service.releaseIfObserved(walletId: wallet, txIds: [invalid, ""])
+        try await service.markObserved(walletId: wallet, txIds: [invalid, ""])
 
         let record = try await service.record(walletId: wallet)
-        XCTAssertEqual(record?.serializedTx, invalid)
+        XCTAssertEqual(record?.observed, false)
+    }
+
+    func testRetainingIdenticalBytesKeepsObservedFlag() async throws {
+        let service = HwRetainedSendService(store: MemoryRetainedSendStore())
+        try await service.retain(send(serializedTx: segwitTx))
+        try await service.markObserved(walletId: wallet, txIds: [SignedTransactionId.fromHex(segwitTx)])
+
+        try await service.retain(send(serializedTx: segwitTx))
+
+        let record = try await service.record(walletId: wallet)
+        XCTAssertEqual(record?.observed, true)
+    }
+
+    func testObservedFlagSurvivesANewServiceInstance() async throws {
+        try await HwRetainedSendService().retain(send(serializedTx: segwitTx))
+        try await HwRetainedSendService().markObserved(walletId: wallet, txIds: [SignedTransactionId.fromHex(segwitTx)])
+
+        let reloaded = try await HwRetainedSendService().record(walletId: wallet)
+
+        XCTAssertEqual(reloaded?.observed, true)
+    }
+
+    func testRecordStoredWithoutTheObservedFieldDecodesAsNotObserved() async throws {
+        let stored = #"{"walletId":"jade:wallet","address":"bcrt1qaddress","sats":42000,"serializedTx":"aabb","#
+            + #""miningFeeSats":141,"feeRate":2.5,"totalSpent":42141,"retryWasRefused":true}"#
+        try Keychain.upsert(key: walletKey, data: Data(stored.utf8))
+
+        let record = try await HwRetainedSendService().record(walletId: wallet)
+
+        XCTAssertEqual(record?.observed, false)
+        XCTAssertEqual(record?.retryWasRefused, true)
+        XCTAssertEqual(record?.serializedTx, "aabb")
     }
 
     func testCorruptDataThrowsAndIsNotOverwritten() async throws {
@@ -144,7 +191,7 @@ final class HwRetainedSendServiceTests: XCTestCase {
         await assertThrows { try await service.retain(self.send()) }
         await assertThrows { try await service.markRetryRefused(walletId: self.wallet) }
         await assertThrows { try await service.release(walletId: self.wallet) }
-        await assertThrows { try await service.releaseIfObserved(walletId: self.wallet, txIds: []) }
+        await assertThrows { try await service.markObserved(walletId: self.wallet, txIds: []) }
 
         XCTAssertEqual(try Keychain.load(key: walletKey), corrupt)
     }
