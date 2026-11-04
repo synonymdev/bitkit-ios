@@ -1323,6 +1323,18 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertNil(SparkExitMath.outsideExitSats(sparkBalanceSats: 49865, record: record))
     }
 
+    /// A failed exit claims only what Spark still holds beyond its leaves, never the leaves it lost.
+    func testFailedExitNamesWhatStaysOnSpark() {
+        var record = SparkExitFixtures.record(phase: .failed(reason: "Claimed by an older state"))
+        record.leafTotalSats = 17097
+        record.lostLeaves = [.init(leafId: "leaf-1", valueSats: 17097)]
+
+        XCTAssertEqual(SparkExitMath.staysOnSparkSats(sparkBalanceSats: 49865, record: record), 32768)
+        XCTAssertNil(SparkExitMath.staysOnSparkSats(sparkBalanceSats: 17097, record: record))
+        XCTAssertNil(SparkExitMath.staysOnSparkSats(sparkBalanceSats: 0, record: record))
+        XCTAssertNil(SparkExitMath.outsideExitSats(sparkBalanceSats: 49865, record: record))
+    }
+
     /// qa-03: once Bitkit paid the funding from savings, or a payment covering it is seen, the exit waits for it
     /// instead of asking again; only what stays short after confirmation is asked for.
     func testFundingStateWaitsForAPaymentInsteadOfAskingAgain() {

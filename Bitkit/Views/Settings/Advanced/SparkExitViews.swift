@@ -448,6 +448,15 @@ struct SparkExitProgressView: View {
         return t("lightning__spark_exit__lost_leaves", variables: ["amount": currency.primaryAmountText(sats: record.lostSats)])
     }
 
+    /// Lost leaves are gone, so the text claims only what Spark still holds.
+    private var failedText: String {
+        let staysSats = record.flatMap { SparkExitMath.staysOnSparkSats(sparkBalanceSats: SparkManager.shared.balanceSats, record: $0) }
+        return [
+            t("lightning__spark_exit__failed_text"),
+            staysSats.map { t("lightning__spark_exit__failed_stays", variables: ["amount": currency.primaryAmountText(sats: $0)]) },
+        ].compactMap { $0 }.joined(separator: " ")
+    }
+
     private var title: String {
         switch record?.phase {
         case .done: t("lightning__spark_exit__done_title")
@@ -467,7 +476,7 @@ struct SparkExitProgressView: View {
                 (record?.failedLeafCount ?? 0) > 0
                     ? t("lightning__spark_exit__failed_leaves", variables: ["count": "\(record?.failedLeafCount ?? 0)"]) : nil,
             ].compactMap { $0 }.joined(separator: " ")
-        case .failed: lostText ?? t("lightning__spark_exit__failed_text")
+        case .failed: failedText
         case .needsFunding:
             t(
                 "lightning__spark_exit__needs_funding_text",
@@ -475,13 +484,6 @@ struct SparkExitProgressView: View {
             )
         default: t("lightning__spark_exit__progress_text")
         }
-    }
-
-    private var isFailed: Bool {
-        if case .failed = record?.phase {
-            return true
-        }
-        return false
     }
 
     private var askSats: UInt64? {
@@ -540,8 +542,7 @@ struct SparkExitProgressView: View {
                             .accessibilityIdentifier("SparkExitLeftBehind")
                         }
 
-                        // An exit that failed says it in its text.
-                        if let lostText, !isFailed {
+                        if let lostText {
                             BodySText(lostText, textColor: .redAccent)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .padding(.top, 16)

@@ -423,7 +423,8 @@
 "lightning__spark_exit__needs_funding_text" = "The exit needs <accent>{amount}</accent> more to pay its fees. Fund it to continue.";
 "lightning__spark_exit__failed_title" = "Exit\n<accent>stopped</accent>";
 "lightning__spark_exit__cancel" = "Cancel exit";
-"lightning__spark_exit__failed_text" = "Nothing could be recovered. Your balance stays on Spark.";
+"lightning__spark_exit__failed_text" = "Nothing could be recovered.";
+"lightning__spark_exit__failed_stays" = "{amount} stays on Spark.";
 "lightning__spark_exit__notification_title" = "Emergency exit";
 "lightning__spark_exit__notification_body" = "Open Bitkit to continue your exit.";
 "lightning__spark_exit__notification_funding" = "Your exit needs more fees to continue. Open Bitkit to fund it.";
