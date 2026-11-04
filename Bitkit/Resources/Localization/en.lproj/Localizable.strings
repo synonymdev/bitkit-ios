@@ -1269,6 +1269,9 @@
 "wallet__send_quickpay__nav_title" = "QuickPay";
 "wallet__send_quickpay__title" = "Paying\n<accent>invoice...</accent>";
 "wallet__send_pending_note" = "This payment is taking a bit longer than expected. You can continue using Bitkit.";
+"wallet__send_onchain_lightning_pending" = "A Lightning payment of this invoice may still complete. To avoid paying it twice, Bitkit will not pay it on-chain unless that payment fails.";
+"wallet__send_onchain_lightning_paid" = "A Lightning payment of this invoice already succeeded, so Bitkit will not pay it again on-chain.";
+"wallet__send_onchain_lightning_unknown" = "Bitkit needs to check this invoice's Lightning payment before paying it on-chain. Try again once the wallet has started.";
 "wallet__send_instant_failed" = "Payment Failed";
 "wallet__send_regular" = "Regular Payment";
 "wallet__send_error_slash_ln" = "Unfortunately contact could not be paid instantly. You can try a regular payment (more expensive, slower).";

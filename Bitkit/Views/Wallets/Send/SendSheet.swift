@@ -1,3 +1,4 @@
+import BitkitCore
 import SwiftUI
 
 enum SendRetryRoute: Hashable {
@@ -101,6 +102,7 @@ final class SendPresentationState {
     var isResumingAcceptedOrdinarySend = false
     var pinCheckContinuations: [CheckedContinuation<Bool, Never>] = []
     var setupTask: Task<Void, Never>?
+    var onchainFallbackTask: Task<Void, Never>?
     var usdtDetails: String?
     var isSetupPending = true
     var isFallbackFundingPending = false
@@ -293,13 +295,48 @@ struct SendSheet: View {
     /// How long the sync overlay may wait for channels to become usable before falling back
     private static let syncTimeoutSeconds: TimeInterval = 20
 
+    private var visibleRoute: SendRoute {
+        flow.navigationPath.last ?? currentRoot
+    }
+
+    /// The routes that show a send which went out. The sync wait has nothing left to send there, and falling back to on-chain
+    /// would invite paying the invoice again.
+    static func isPostSendRoute(_ route: SendRoute) -> Bool {
+        switch route {
+        case .pending, .onchainPending, .onchainOperationPending, .hardwarePending, .success, .recoveredSuccess:
+            true
+        default:
+            false
+        }
+    }
+
+    enum SyncTimeoutAction {
+        case fallBackToOnchain
+        case showConnectionIssues
+    }
+
+    /// What the sync wait does once it has run for `syncTimeoutSeconds` without channels becoming usable, or nil on a route
+    /// that shows a sent payment. A unified invoice falls back to on-chain, unless a Lightning payment of it may still
+    /// complete; anything else shows the connection-issues screen (via the forced `offlineSheetOverlay`) and keeps waiting.
+    static func syncTimeoutAction(route: SendRoute, isNodeRunning: Bool, isUnifiedInvoice: Bool) -> SyncTimeoutAction? {
+        guard !isPostSendRoute(route) else { return nil }
+        return isNodeRunning && isUnifiedInvoice ? .fallBackToOnchain : .showConnectionIssues
+    }
+
+    /// Whether the send may still be validated after the sync wait, which can fall back to on-chain. Not once it went out, as the
+    /// balance it spent would read as too low and a fallback would pay twice, nor while Confirm sends it.
+    static func canValidateAfterSync(route: SendRoute, isSubmittingPayment: Bool) -> Bool {
+        !isPostSendRoute(route) && !isSubmittingPayment
+    }
+
     /// Show sync overlay when node is not ready for payments
     /// For lightning: need node running AND at least one usable channel (peer connected).
     /// If there are no channels at all, we should NOT wait behind the sync UI – that's a capacity issue, not a sync issue.
     /// For onchain: only need node running.
     private var shouldShowSyncOverlay: Bool {
         if isPreparingRequest || hwSend.isActive || flow.isResumingAcceptedOrdinarySend || app.paykitUsesUsdt ||
-            (app.contactPaymentContext?.requiresAssetSelection == true && currentRoot == .amount && flow.navigationPath.isEmpty)
+            (app.contactPaymentContext?.requiresAssetSelection == true && currentRoot == .amount && flow.navigationPath.isEmpty) ||
+            Self.isPostSendRoute(visibleRoute)
         {
             return false
         }
@@ -340,6 +377,13 @@ struct SendSheet: View {
             isActive: shouldShowSyncOverlay && network.isConnected,
             isNodeRunning: wallet.nodeLifecycleState == .running
         )
+    }
+
+    /// Identity for checking the Lightning payment of the invoice the send's address came with. The node's payment store cannot
+    /// be read before the node runs, so the check runs again once it does.
+    private struct LightningPaymentCheck: Equatable {
+        let paymentHash: String?
+        let isNodeRunning: Bool
     }
 
     var body: some View {
@@ -448,6 +492,9 @@ struct SendSheet: View {
 
             handleSyncTimeout()
         }
+        .task(id: LightningPaymentCheck(paymentHash: app.scannedLightningPaymentHash, isNodeRunning: wallet.nodeLifecycleState == .running)) {
+            await app.refreshScannedAddressBlocked()
+        }
         .onDisappear(perform: cleanup)
     }
 
@@ -489,6 +536,11 @@ struct SendSheet: View {
         }
         flow.setupTask?.cancel()
         flow.setupTask = nil
+        if flow.onchainFallbackTask != nil {
+            flow.onchainFallbackTask?.cancel()
+            flow.onchainFallbackTask = nil
+            flow.isFallbackFundingPending = false
+        }
         if retainsReview {
             flow.didStartSetup = false
             flow.isSetupPending = true
@@ -613,18 +665,19 @@ struct SendSheet: View {
         }
     }
 
-    /// Called when the sync overlay has been visible for `syncTimeoutSeconds` without channels becoming usable.
-    /// Unified invoices fall back to onchain; everything else shows the connection-issues screen
-    /// (via the forced `offlineSheetOverlay`) and keeps waiting for the peer.
     private func handleSyncTimeout() {
-        let canFallBackToOnchain = wallet.nodeLifecycleState == .running
-            && app.scannedLightningInvoice != nil
-            && app.scannedOnchainInvoice != nil
-
-        if canFallBackToOnchain {
+        let action = Self.syncTimeoutAction(
+            route: visibleRoute,
+            isNodeRunning: wallet.nodeLifecycleState == .running,
+            isUnifiedInvoice: app.scannedLightningInvoice != nil && app.scannedOnchainInvoice != nil
+        )
+        switch action {
+        case .fallBackToOnchain:
             validatePaymentAfterSync(ignoreChannelWait: true)
-        } else {
+        case .showConnectionIssues:
             flow.syncTimedOut = true
+        case nil:
+            break
         }
     }
 
@@ -722,8 +775,13 @@ struct SendSheet: View {
     /// For onchain: validates balance and shows error if insufficient
     /// Pass `ignoreChannelWait: true` to validate even while channels are unusable (sync timeout).
     private func validatePaymentAfterSync(ignoreChannelWait: Bool = false) {
-        guard !flow.isResumingAcceptedOrdinarySend else { return }
-        let result = performPaymentValidationAfterSync(ignoreChannelWait: ignoreChannelWait)
+        guard !flow.isResumingAcceptedOrdinarySend,
+              Self.canValidateAfterSync(route: visibleRoute, isSubmittingPayment: flow.isSubmittingPayment)
+        else { return }
+        resolvePendingEmbeddedRetryRoute(performPaymentValidationAfterSync(ignoreChannelWait: ignoreChannelWait))
+    }
+
+    private func resolvePendingEmbeddedRetryRoute(_ result: PaymentValidationResult) {
         guard let route = flow.pendingEmbeddedRetryRoute else { return }
 
         switch result {
@@ -813,42 +871,14 @@ struct SendSheet: View {
             if !canSend {
                 // For unified invoices, fall back to onchain
                 if let onchainInvoice = app.scannedOnchainInvoice {
-                    // Switch to onchain wallet type
-                    app.selectedWalletToPayFrom = .onchain
-                    app.scannedOnchainInvoice = onchainInvoice
-                    app.scannedLightningInvoice = nil
-
-                    let onchainAmount = try? request?.payment(using: app.paykitPaymentMethod).amount.atomic
-                    if request != nil && onchainAmount == nil {
-                        return .failed
-                    }
-                    if let onchainAmount {
-                        wallet.sendAmountSats = onchainAmount
-                    }
-
-                    // Validate onchain balance BEFORE navigating
-                    let onchainBalance = max(
-                        LightningService.shared.balances?.spendableOnchainBalanceSats ?? 0,
-                        hwWalletManager.maximumFundingBalanceSats
-                    )
-                    guard validateOnchainBalanceAndDismissIfInsufficient(
-                        invoiceAmount: onchainAmount ?? onchainInvoice.amountSatoshis,
-                        onchainBalance: onchainBalance
-                    ) else {
-                        flow.hasValidatedAfterSync = true
-                        return .failed
-                    }
-
-                    // Onchain balance is sufficient → navigate to amount screen
-                    // (the sheet may have opened with .confirm or .quickpay route)
-                    if requestedAmount == nil {
-                        flow.navigationPath = [.amount]
-                    }
-                    if let onchainAmount {
-                        selectHardwareFundingSourceAfterOnchainFallback(amountSats: onchainAmount)
-                    }
                     flow.hasValidatedAfterSync = true
-                    return .ready
+                    fallBackToOnchainCheckingLightningPayment(
+                        from: lightningInvoice,
+                        to: onchainInvoice,
+                        request: request,
+                        requestedAmount: requestedAmount
+                    )
+                    return .waiting
                 } else {
                     // For pure lightning invoices, show error toast and dismiss sheet
                     let spendingBalance = LightningService.shared.balances?.totalLightningBalanceSats ?? 0
@@ -879,6 +909,79 @@ struct SendSheet: View {
         }
 
         flow.hasValidatedAfterSync = true
+        return .ready
+    }
+
+    /// The address of a unified invoice is not paid while a Lightning payment of the invoice may still complete, or once it did,
+    /// as the invoice would then be paid twice.
+    private func fallBackToOnchainCheckingLightningPayment(
+        from lightningInvoice: LightningInvoice,
+        to onchainInvoice: OnChainInvoice,
+        request: PaykitPaymentRequest?,
+        requestedAmount: UInt64?
+    ) {
+        flow.onchainFallbackTask?.cancel()
+        // Holds Confirm's swipe while the payment store is read, so the method it confirms cannot change under it
+        flow.isFallbackFundingPending = true
+        flow.onchainFallbackTask = Task {
+            let outcome = await app.fallBackToOnchain(from: lightningInvoice, to: onchainInvoice) {
+                !Task.isCancelled && Self.canValidateAfterSync(route: visibleRoute, isSubmittingPayment: flow.isSubmittingPayment)
+            }
+            if !Task.isCancelled {
+                flow.isFallbackFundingPending = false
+            }
+            switch outcome {
+            case .superseded:
+                return
+            case let .refused(status):
+                let refusal = OnchainPaymentRefusal(status)
+                showPaymentSetupFailure(
+                    title: refusal.title,
+                    description: refusal.description,
+                    accessibilityIdentifier: refusal.accessibilityIdentifier
+                )
+                resolvePendingEmbeddedRetryRoute(.failed)
+            case .fellBack:
+                resolvePendingEmbeddedRetryRoute(
+                    continueOnchainFallback(to: onchainInvoice, request: request, requestedAmount: requestedAmount)
+                )
+            }
+        }
+    }
+
+    private func continueOnchainFallback(
+        to onchainInvoice: OnChainInvoice,
+        request: PaykitPaymentRequest?,
+        requestedAmount: UInt64?
+    ) -> PaymentValidationResult {
+        let onchainAmount = try? request?.payment(using: app.paykitPaymentMethod).amount.atomic
+        if request != nil && onchainAmount == nil {
+            return .failed
+        }
+        if let onchainAmount {
+            wallet.sendAmountSats = onchainAmount
+        }
+
+        // Validate onchain balance BEFORE navigating
+        let onchainBalance = max(
+            LightningService.shared.balances?.spendableOnchainBalanceSats ?? 0,
+            hwWalletManager.maximumFundingBalanceSats
+        )
+        guard validateOnchainBalanceAndDismissIfInsufficient(
+            invoiceAmount: onchainAmount ?? onchainInvoice.amountSatoshis,
+            onchainBalance: onchainBalance
+        ) else {
+            return .failed
+        }
+
+        // Onchain balance is sufficient → navigate to amount screen
+        // (the sheet may have opened with .confirm or .quickpay route)
+        if requestedAmount == nil {
+            flow.navigationPath = [.amount]
+        }
+        if let onchainAmount {
+            selectHardwareFundingSourceAfterOnchainFallback(amountSats: onchainAmount)
+        }
         return .ready
     }
 

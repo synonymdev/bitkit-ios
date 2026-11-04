@@ -128,7 +128,7 @@ struct SendConfirmationView: View {
         if app.scannedLightningInvoice != nil {
             sources.append(.spending)
         }
-        if app.scannedOnchainInvoice != nil {
+        if app.scannedOnchainInvoice != nil, !app.isScannedAddressBlocked {
             sources.append(.savings)
             sources.append(contentsOf: hwWalletManager.wallets.compactMap { hardwareWallet in
                 guard hardwareWallet.fundingBalanceSats > 0 || hardwareWallet.walletId == hwSend.walletId else {
@@ -181,7 +181,8 @@ struct SendConfirmationView: View {
     }
 
     var canSwitchWallet: Bool {
-        guard !hwSend.isActive, app.scannedOnchainInvoice != nil, app.scannedLightningInvoice != nil else { return false }
+        guard !hwSend.isActive, !app.isScannedAddressBlocked, app.scannedOnchainInvoice != nil, app.scannedLightningInvoice != nil
+        else { return false }
         let amount = wallet.sendAmountSats ?? app.scannedOnchainInvoice?.amountSatoshis ?? 0
         return wallet.canSwitchWalletForUnifiedInvoice(amountSats: amount)
     }
@@ -856,6 +857,8 @@ struct SendConfirmationView: View {
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
         guard !isSubmittingPayment else { return }
+        // The swipe confirms the payment method shown, which the sync fallback could change while this awaits
+        let reviewedWalletType = app.selectedWalletToPayFrom
         guard !requiresAmountReview, preparingRequest == nil, !isRequestSetupPending, walletSwitchContext == nil,
               isAutomatic || !prepareRequestCoinsIfNeeded() else { throw CancellationError() }
         if isAutomatic, isFeeRateMissing {
@@ -895,6 +898,15 @@ struct SendConfirmationView: View {
                 showManualConfirmation(reason: "onchain fee unknown")
                 return
             }
+        }
+
+        if let refusal = await Self.onchainDispatchRefusal(
+            walletType: app.selectedWalletToPayFrom,
+            lightningPaymentHash: app.scannedLightningPaymentHash,
+            lightningPaymentStatus: app.lightningPaymentStatus
+        ) {
+            app.showOnchainPaymentRefusal(refusal)
+            throw CancellationError()
         }
 
         // Validate payment and show warnings if needed
@@ -950,6 +962,17 @@ struct SendConfirmationView: View {
             return
         }
 
+        guard app.selectedWalletToPayFrom == reviewedWalletType else { throw CancellationError() }
+        // Checked again after the warnings and authentication, right before the payment is sent or signed
+        if let refusal = await Self.onchainDispatchRefusal(
+            walletType: app.selectedWalletToPayFrom,
+            lightningPaymentHash: app.scannedLightningPaymentHash,
+            lightningPaymentStatus: app.lightningPaymentStatus
+        ) {
+            app.showOnchainPaymentRefusal(refusal)
+            throw CancellationError()
+        }
+
         if hwSend.isActive {
             navigationPath.append(.hardwareSign)
         } else {
@@ -974,6 +997,17 @@ struct SendConfirmationView: View {
     /// A missing rate that has not failed is still loading, so the automatic payment waits instead of asking for a swipe.
     static func automaticPaymentAwaitsFeeRate(isFeeRateMissing: Bool, feeRateLoadFailed: Bool) -> Bool {
         isFeeRateMissing && !feeRateLoadFailed
+    }
+
+    /// What stops paying a unified invoice's address, or nil when nothing does. Paying it while a Lightning payment of the invoice
+    /// may still complete, or once it did, would pay the invoice twice. Hardware sends are checked here too, before they are signed.
+    static func onchainDispatchRefusal(
+        walletType: WalletType,
+        lightningPaymentHash: String?,
+        lightningPaymentStatus: (_ paymentHash: String) async -> LightningPaymentStatus
+    ) async -> OnchainPaymentRefusal? {
+        guard walletType == .onchain else { return nil }
+        return await OnchainPaymentRefusal.check(lightningPaymentHash: lightningPaymentHash, lightningPaymentStatus: lightningPaymentStatus)
     }
 
     /// An automatic on-chain payment must not be sent before its fee is known, because the fee warnings read it.
@@ -1364,6 +1398,7 @@ struct SendConfirmationView: View {
                     }
                 }
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
+                let lightningPaymentHash = app.scannedLightningPaymentHash
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 wallet.sendAmountSats = amount
                 let useMaxAmount = await shouldUseMaxOnchainSend(address: invoice.address, amountSats: amount)
@@ -1395,6 +1430,7 @@ struct SendConfirmationView: View {
                             sats: amount,
                             isMaxAmount: useMaxAmount,
                             requestId: incomingPaymentRequest?.id, paymentIdentity: originalPaymentIdentity,
+                            lightningPaymentHash: lightningPaymentHash,
                             followupContext: OnchainSendFollowupContext(
                                 feeSats: UInt64(transactionFee), feeRate: wallet.selectedFeeRateSatsPerVByte ?? 1,
                                 tags: tagManager.selectedTagsArray, contact: contactPublicKey,
@@ -1567,7 +1603,8 @@ struct SendConfirmationView: View {
             }
             Logger.error("Payment failed: \(error)")
 
-            if let paymentId = createdMetadataPaymentId {
+            // On a duplicate payment LDK still holds the earlier send of the invoice, whose metadata this is
+            if let paymentId = createdMetadataPaymentId, !PrivatePaykitService.isDuplicatePaymentError(error) {
                 try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: paymentId)
             }
 

@@ -1026,6 +1026,9 @@
 "wallet__send_quickpay__nav_title" = "QuickPay";
 "wallet__send_quickpay__title" = "جارٍ الدفع\n<accent>للفاتورة...</accent>";
 "wallet__send_pending_note" = "تستغرق هذه الدفعة وقتًا أطول قليلاً من المتوقع. يمكنك متابعة استخدام Bitkit.";
+"wallet__send_onchain_lightning_pending" = "قد تكتمل دفعة Lightning لهذه الفاتورة. لتجنب الدفع مرتين، لن يدفعها Bitkit على السلسلة ما لم تفشل تلك الدفعة.";
+"wallet__send_onchain_lightning_paid" = "نجحت بالفعل دفعة Lightning لهذه الفاتورة، لذلك لن يدفعها Bitkit مرة أخرى على السلسلة.";
+"wallet__send_onchain_lightning_unknown" = "يحتاج Bitkit إلى التحقق من دفعة Lightning لهذه الفاتورة قبل دفعها على السلسلة. حاول مرة أخرى بعد بدء تشغيل المحفظة.";
 "wallet__send_instant_failed" = "فشل الدفع";
 "wallet__send_error_tx_failed" = "فشلت المعاملة";
 "wallet__activity_contact" = "جهة الاتصال";

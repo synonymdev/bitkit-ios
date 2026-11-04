@@ -25,4 +25,10 @@ extension PaymentDetails {
         // LDKNode timestamps are in seconds since Unix epoch
         Date(timeIntervalSince1970: TimeInterval(latestUpdateTimestamp))
     }
+
+    /// The status of this payment if it is one this wallet sent of the Lightning invoice with this hash, or nil otherwise.
+    func outboundPaymentStatus(paymentHash: String) -> PaymentStatus? {
+        guard direction == .outbound, case let .bolt11(hash, _, _, _, _) = kind, hash == paymentHash else { return nil }
+        return status
+    }
 }

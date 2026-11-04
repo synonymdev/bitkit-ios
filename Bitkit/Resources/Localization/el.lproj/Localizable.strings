@@ -1045,6 +1045,9 @@
 "wallet__send_quickpay__nav_title" = "QuickPay";
 "wallet__send_quickpay__title" = "Πληρωμή\n<accent>τιμολογίου...</accent>";
 "wallet__send_pending_note" = "Αυτή η πληρωμή διαρκεί λίγο περισσότερο από το αναμενόμενο. Μπορείτε να συνεχίσετε να χρησιμοποιείτε το Bitkit.";
+"wallet__send_onchain_lightning_pending" = "Μια πληρωμή Lightning αυτού του τιμολογίου μπορεί ακόμη να ολοκληρωθεί. Για να μην πληρωθεί δύο φορές, το Bitkit δεν θα το πληρώσει on-chain εκτός αν αυτή η πληρωμή αποτύχει.";
+"wallet__send_onchain_lightning_paid" = "Μια πληρωμή Lightning αυτού του τιμολογίου έχει ήδη ολοκληρωθεί, οπότε το Bitkit δεν θα το πληρώσει ξανά on-chain.";
+"wallet__send_onchain_lightning_unknown" = "Το Bitkit πρέπει να ελέγξει την πληρωμή Lightning αυτού του τιμολογίου πριν το πληρώσει on-chain. Δοκιμάστε ξανά μόλις ξεκινήσει το πορτοφόλι.";
 "wallet__send_instant_failed" = "Αποτυχία πληρωμής";
 "wallet__send_error_tx_failed" = "Η Συναλλαγή Απέτυχε";
 "wallet__send_details" = "Λεπτομέρειες";

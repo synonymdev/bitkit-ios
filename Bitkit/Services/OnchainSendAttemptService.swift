@@ -292,6 +292,9 @@ struct OnchainSendAttempt: Codable, Equatable {
     var releaseApproved: Bool? = nil
     /// The transaction spending the original's coins back to the wallet, saved before it is broadcast.
     var releaseTxid: String? = nil
+    /// The hash of the Lightning invoice the address came with, whose payment every re-send checks again. An attempt saved or
+    /// backed up before the hash was kept carries none.
+    var lightningPaymentHash: String? = nil
 
     var blocksNewSend: Bool {
         status.blocksNewSend || !localFollowupComplete
@@ -589,6 +592,7 @@ actor OnchainSendAttemptService {
         requestId: PaykitPaymentRequest.ID? = nil,
         orderId: String? = nil,
         paymentIdentity: String? = nil,
+        lightningPaymentHash: String? = nil,
         followupContext: OnchainSendFollowupContext? = nil,
         transferContext: OnchainSendTransferContext? = nil,
         paymentDeadline: PaykitPreciseInstant? = nil,
@@ -612,6 +616,7 @@ actor OnchainSendAttemptService {
             address: address,
             amountSats: amountSats,
             isMaxAmount: isMaxAmount,
+            lightningPaymentHash: lightningPaymentHash,
             followupContext: followupContext,
             transferContext: transferContext
         )
@@ -868,6 +873,7 @@ actor OnchainSendAttemptService {
         address: String,
         amountSats: UInt64,
         isMaxAmount: Bool,
+        lightningPaymentHash: String? = nil,
         followupContext: OnchainSendFollowupContext? = nil,
         transferContext: OnchainSendTransferContext? = nil
     ) throws -> UUID {
@@ -890,7 +896,8 @@ actor OnchainSendAttemptService {
             isMaxAmount: isMaxAmount,
             status: .pending,
             followupContext: followupContext,
-            transferContext: transferContext
+            transferContext: transferContext,
+            lightningPaymentHash: lightningPaymentHash
         )
         try store.save([attempt])
         knownAttempt = attempt

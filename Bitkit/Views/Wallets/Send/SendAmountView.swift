@@ -47,7 +47,7 @@ struct SendAmountView: View {
         if app.scannedLightningInvoice != nil || app.lnurlPayData != nil {
             sources.append(.spending)
         }
-        if app.scannedOnchainInvoice != nil {
+        if app.scannedOnchainInvoice != nil, !app.isScannedAddressBlocked {
             sources.append(.savings)
             sources.append(contentsOf: hwWalletManager.wallets.compactMap { hardwareWallet in
                 guard hardwareWallet.fundingBalanceSats > 0 || hardwareWallet.walletId == hwSend.walletId else {
@@ -269,10 +269,12 @@ struct SendAmountView: View {
         .padding(.horizontal, 16)
         .modifier(SheetBackgroundModifier(base: app.paykitUsesUsdt ? .gray7 : .black, applyGradient: !app.paykitUsesUsdt))
         .preference(key: SheetBackgroundPreferenceKey.self, value: app.paykitUsesUsdt ? .gray7 : nil)
+        .onChange(of: app.isScannedAddressBlocked) {
+            // The address may be held back once the screen shows, as the Lightning check reads the node's payment store
+            replaceFundingSourceIfNotOffered()
+        }
         .onAppear {
-            if !fundingSources.contains(selectedFundingSource), let firstSource = fundingSources.first {
-                selectFundingSource(firstSource)
-            }
+            replaceFundingSourceIfNotOffered()
 
             if app.contactPaymentContext?.incomingPaymentRequest == nil {
                 if let invoice = app.scannedOnchainInvoice, invoice.amountSatoshis > 0 {
@@ -546,6 +548,14 @@ struct SendAmountView: View {
         }
     }
 
+    private func replaceFundingSourceIfNotOffered() {
+        if let source = Self.fundingSourceReplacing(
+            selectedFundingSource, offered: fundingSources, isHeldHardwareSend: hwSend.isActive && app.isScannedAddressBlocked
+        ) {
+            selectFundingSource(source)
+        }
+    }
+
     private func selectFundingSource(_ source: SendFundingSource) {
         guard source != selectedFundingSource, fundingSources.contains(source) else { return }
         let target: PaykitAsset = source == .usdt ? .usdt : .btc
@@ -712,4 +722,18 @@ struct SendAmountView: View {
             }
         )
         .preferredColorScheme(.dark)
+}
+
+extension SendAmountView {
+    /// The source the screen moves to when the selected one is not offered, or nil to keep it. A hardware send whose address is
+    /// held back for the Lightning payment of the invoice it came with keeps its wallet, as Confirm checks that payment again,
+    /// rather than turning into another kind of payment.
+    static func fundingSourceReplacing(
+        _ selected: SendFundingSource,
+        offered sources: [SendFundingSource],
+        isHeldHardwareSend: Bool
+    ) -> SendFundingSource? {
+        guard !isHeldHardwareSend, !sources.contains(selected) else { return nil }
+        return sources.first
+    }
 }

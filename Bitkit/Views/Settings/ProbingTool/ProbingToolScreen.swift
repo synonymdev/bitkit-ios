@@ -171,7 +171,7 @@ struct ProbingToolScreen: View {
             let data = try await decode(invoice: trimmed)
             switch data {
             case let .onChain(onChainInvoice):
-                guard let lnInvoice = onChainInvoice.params?["lightning"] else { return nil }
+                guard let lnInvoice = onChainInvoice.lightningParam else { return nil }
                 if case let .lightning(invoice) = try? await decode(invoice: lnInvoice) {
                     return (lnInvoice, invoice.amountSatoshis)
                 }
