@@ -44,6 +44,7 @@ struct SparkConnectionRow: View {
 
                 CustomDivider()
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
         .accessibilityIdentifier("SparkConnection")
