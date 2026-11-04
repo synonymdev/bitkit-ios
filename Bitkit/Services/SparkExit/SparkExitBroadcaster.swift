@@ -97,7 +97,7 @@ struct EsploraSparkExitChain: SparkExitChain {
         var outcomes: [SparkExitBroadcastOutcome] = []
         for host in hosts {
             let attempt: SparkExitBroadcastOutcome? = if let child = tx.cpfpTxHex {
-                await submitPackage(host: host, hexes: [tx.txHex, child])
+                await submitPackage(host: host, hexes: [tx.txHex, child], txid: tx.txid)
             } else {
                 await submitSingle(host: host, hex: tx.txHex)
             }
@@ -117,7 +117,7 @@ struct EsploraSparkExitChain: SparkExitChain {
         } ?? outcomes.first ?? .retryLater("no chain host reachable")
     }
 
-    private func submitPackage(host: URL, hexes: [String]) async -> SparkExitBroadcastOutcome? {
+    private func submitPackage(host: URL, hexes: [String], txid: String) async -> SparkExitBroadcastOutcome? {
         for path in ["/v1/txs/package", "/txs/package"] {
             var request = URLRequest(url: host.appendingPathComponent(path))
             request.httpMethod = "POST"
@@ -128,7 +128,7 @@ struct EsploraSparkExitChain: SparkExitChain {
             if response.statusCode == 404 || response.statusCode == 405 {
                 continue
             }
-            return SparkExitBroadcastClassifier.package(status: response.statusCode, body: data)
+            return SparkExitBroadcastClassifier.package(status: response.statusCode, body: data, txid: txid)
         }
         return nil
     }
@@ -186,7 +186,9 @@ enum SparkExitBroadcastClassifier {
         return classify(error: text)
     }
 
-    static func package(status: Int, body: Data) -> SparkExitBroadcastOutcome {
+    /// `txid` is the package's parent, the step itself: missing inputs count as such only when the step reports them.
+    /// The CPFP child's own missing input (its funding or chained change) is retried.
+    static func package(status: Int, body: Data, txid: String? = nil) -> SparkExitBroadcastOutcome {
         let text = String(decoding: body, as: UTF8.self)
         if let unavailable = unavailable(status) {
             return unavailable
@@ -200,19 +202,25 @@ enum SparkExitBroadcastClassifier {
             return .accepted
         }
         let results = (json["tx-results"] as? [String: Any])?.values.compactMap { $0 as? [String: Any] } ?? []
-        let errors = results.compactMap { $0["error"] as? String }
+        let errors = results.compactMap { result in (result["error"] as? String).map { (txid: result["txid"] as? String, error: $0) } }
         if errors.isEmpty {
             return results.isEmpty ? .retryLater(text) : .accepted
         }
-        let outcomes = errors.map(classify(error:))
+        let outcomes = errors.map { result in
+            let outcome = classify(error: result.error)
+            if case .inputsMissing = outcome, let txid, let resultTxid = result.txid, resultTxid != txid {
+                return SparkExitBroadcastOutcome.retryLater(result.error)
+            }
+            return outcome
+        }
         if outcomes.allSatisfy({ $0 == .accepted }) {
             return .accepted
         }
-        // A child reports missing inputs when its parent is the one not mature yet, so the timelock wins over them.
+        // A child of a parent not mature yet can fail with any error, so the timelock wins over them all.
         let precedence: (SparkExitBroadcastOutcome) -> Int = {
             switch $0 {
-            case .rejected: 0
-            case .notMature: 1
+            case .notMature: 0
+            case .rejected: 1
             case .inputsMissing: 2
             case .retryLater: 3
             case .accepted: 4

@@ -58,6 +58,13 @@ struct SparkExitRecord: Codable, Equatable {
         let valueSats: UInt64
     }
 
+    /// A leaf the SDK cannot exit at the exit's fee rate, such as a fee-ladder leaf whose refund cannot pay its fee.
+    struct LeftBehindLeaf: Codable, Equatable {
+        let leafId: String
+        let valueSats: UInt64
+        let reason: String
+    }
+
     struct Leftover: Codable, Equatable {
         let txid: String
         let vout: UInt32
@@ -110,6 +117,7 @@ struct SparkExitRecord: Codable, Equatable {
     /// Per step txid, how many rebuilds in a row reproduced it after another transaction spent its input.
     var spentStepStrikes: [String: Int]?
     var lostLeaves: [LostLeaf]?
+    var leftBehindLeaves: [LeftBehindLeaf]?
     /// Set and saved before a rebuild, so nothing of the diverged generation is broadcast while it is replaced.
     var isRebuilding = false
     var lastBuildAt: Date?
@@ -135,10 +143,14 @@ struct SparkExitRecord: Codable, Equatable {
         needsDriving || (!leftover.isEmpty && leftoverSweep?.rejection != nil)
     }
 
-    /// The leaves builds select: the quote's, less those an older state claimed.
+    /// The leaves builds select: the quote's, less those an older state claimed and those left behind.
     var exitLeafIds: [String] {
-        let lost = Set((lostLeaves ?? []).map(\.leafId))
-        return leafIds.filter { !lost.contains($0) }
+        let dropped = Set((lostLeaves ?? []).map(\.leafId) + (leftBehindLeaves ?? []).map(\.leafId))
+        return leafIds.filter { !dropped.contains($0) }
+    }
+
+    var leftBehindSats: UInt64 {
+        (leftBehindLeaves ?? []).reduce(0) { $0 + $1.valueSats }
     }
 
     var lostSats: UInt64 {

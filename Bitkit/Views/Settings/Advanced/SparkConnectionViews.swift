@@ -9,8 +9,10 @@ struct SparkConnectionRow: View {
 
     static var isVisible: Bool {
         let spark = SparkManager.shared
-        let hasExit = SparkExitManager.shared.showsResult || spark.recoverableFundsSats > 0
-        return spark.isReady && (spark.balanceSats > 0 || !spark.deposits.isEmpty || hasExit || Env.network == .regtest)
+        // An exit's progress and result stay reachable while Spark is not ready, such as with the operators down.
+        let hasExit = spark.isExiting || spark.recoverableFundsSats > 0
+        return SparkExitManager.shared.showsResult
+            || spark.isReady && (spark.balanceSats > 0 || !spark.deposits.isEmpty || hasExit || Env.network == .regtest)
     }
 
     var body: some View {

@@ -262,7 +262,10 @@ enum SparkExitMath {
     /// or one seen unconfirmed is waited for rather than asked for again; only what they leave short is asked for.
     static func fundingState(_ record: SparkExitRecord, utxos: [EsploraUtxo]?) -> SparkExitFundingState? {
         guard let shortfall = record.fundingShortfallSats else { return nil }
-        if let paid = record.fundingPaymentTxid, !(utxos ?? []).contains(where: { $0.txid == paid && $0.status.confirmed }) {
+        // Paid until it confirms or the exit adopted it; adopted, a later rebuild may have spent it already.
+        if let paid = record.fundingPaymentTxid, !record.funding.contains(where: { $0.txid == paid }),
+           !(utxos ?? []).contains(where: { $0.txid == paid && $0.status.confirmed })
+        {
             return .paid(txid: paid)
         }
         let fresh = utxos.map { newFunding($0, record: record) } ?? []
@@ -281,11 +284,23 @@ enum SparkExitMath {
         return max(UInt32(clamping: max(0, counter)), afterRecord)
     }
 
-    /// The Spark balance a quote cannot exit: beyond its leaves and the dust it leaves behind, such as a
-    /// counter-swap still unclaimed. Nil when there is none.
+    /// The Spark balance a quote cannot exit: the leaves it skips, and what the balance holds beyond every leaf the
+    /// SDK lists, such as a counter-swap still unclaimed. Nil when there is none.
     static func unexitableSats(sparkBalanceSats: UInt64, quote: SparkExitQuote) -> UInt64? {
-        let covered = quote.leafTotalSats + quote.leftBehindSats
-        return sparkBalanceSats > covered ? sparkBalanceSats - covered : nil
+        let listed = quote.leafTotalSats + quote.leftBehindSats
+        let unexitable = quote.leftBehindSats + sparkBalanceSats.saturatingSub(listed)
+        return unexitable > 0 ? unexitable : nil
+    }
+
+    /// Whether the SDK refused a `Specific` selection because a leaf in it cannot be exited.
+    static func isUnexitableLeafError(_ message: String) -> Bool {
+        message.contains("cannot be exited")
+    }
+
+    /// The leaf an untyped "Leaf X cannot be exited: …" error names, if it names one.
+    static func unexitableLeafId(_ message: String) -> String? {
+        guard let match = message.firstMatch(of: #/Leaf ([^\s:]+) cannot be exited/#) else { return nil }
+        return String(match.1)
     }
 
     /// What the Spark balance holds beyond the exit's leaves: value that reached Spark after the quote, such as a

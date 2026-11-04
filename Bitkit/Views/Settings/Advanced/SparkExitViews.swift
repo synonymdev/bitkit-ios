@@ -495,6 +495,16 @@ struct SparkExitProgressView: View {
                             }
                         }
 
+                        if record.leftBehindSats > 0 {
+                            CaptionMText(t(
+                                "lightning__spark_exit__left_behind_leaves",
+                                variables: ["amount": currency.primaryAmountText(sats: record.leftBehindSats)]
+                            ))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 16)
+                            .accessibilityIdentifier("SparkExitLeftBehind")
+                        }
+
                         // An exit that failed says it in its text.
                         if let lostText, !isFailed {
                             CaptionMText(lostText, textColor: .redAccent)

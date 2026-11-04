@@ -94,12 +94,10 @@ struct SparkExitDriver {
     // MARK: Build
 
     private func build(_ record: inout SparkExitRecord, recovering: SparkExitRecovering) async throws {
-        let prepared = try await recovering.prepare(PrepareRecoverFundsRequest(
-            feeRateSatPerVbyte: record.feeRateSatPerVbyte,
-            fundingKind: .p2wpkh,
-            destination: record.destination,
-            selection: .specific(leafIds: record.exitLeafIds)
-        ))
+        guard let prepared = try await prepare(&record, recovering: recovering) else {
+            await finish(&record, phase: .failed(reason: "No leaf can be exited"))
+            return
+        }
         guard !prepared.leaves.isEmpty else {
             // A leaf the chain could not be read for comes back on a later tick; finished leaves are not listed.
             if prepared.skipped.contains(where: { $0.reason == .unverified }) {
@@ -115,6 +113,14 @@ struct SparkExitDriver {
                 RecoverFundsRequest(prepared: prepared, fundingInputs: prepared.funding == nil ? [] : record.fundingInputs),
                 signer: prepared.funding == nil ? nil : makeSigner(record.fundingIndex)
             )
+        } catch let SdkError.SparkError(message) where SparkExitMath.isUnexitableLeafError(message) {
+            // Built at the same fee rate, a leaf can still fail here: leave it behind and rebuild at once.
+            if let leafId = SparkExitMath.unexitableLeafId(message), record.exitLeafIds.contains(leafId) {
+                leaveBehind([leafId], reason: message, in: &record)
+            }
+            record.isRebuilding = record.recovery != nil
+            record.lastBuildAt = nil
+            return
         } catch let SdkError.InsufficientCpfpFunds(requiredSats, _) {
             // The SDK names the total all inputs must hold, not what is missing.
             var utxos: [EsploraUtxo]?
@@ -152,6 +158,46 @@ struct SparkExitDriver {
         // Saved before any of it is broadcast, so a crash never leaves broadcast transactions without their record.
         try save(record)
         try await broadcastReady(&record)
+    }
+
+    /// Prepares the exit's leaves. `Specific` fails as a whole when one fee-ladder leaf cannot pay its refund's fee:
+    /// that leaf is left behind and the rest prepared again, and when the error names no leaf, `RecoverableOnly`
+    /// prepares what it can and the leaves it leaves out stay behind. Nil once no leaf can be exited.
+    private func prepare(_ record: inout SparkExitRecord, recovering: SparkExitRecovering) async throws -> PrepareRecoverFundsResponse? {
+        var isRecoverableOnly = false
+        while !record.exitLeafIds.isEmpty {
+            do {
+                let prepared = try await recovering.prepare(PrepareRecoverFundsRequest(
+                    feeRateSatPerVbyte: record.feeRateSatPerVbyte,
+                    fundingKind: .p2wpkh,
+                    destination: record.destination,
+                    selection: isRecoverableOnly ? .recoverableOnly : .specific(leafIds: record.exitLeafIds)
+                ))
+                if isRecoverableOnly {
+                    let kept = Set(prepared.leaves.map(\.leafId))
+                    leaveBehind(record.exitLeafIds.filter { !kept.contains($0) }, reason: "Not recoverable at this fee rate", in: &record)
+                }
+                return prepared
+            } catch let SdkError.SparkError(message) where SparkExitMath.isUnexitableLeafError(message) {
+                if let leafId = SparkExitMath.unexitableLeafId(message), record.exitLeafIds.contains(leafId) {
+                    leaveBehind([leafId], reason: message, in: &record)
+                } else if isRecoverableOnly {
+                    throw SdkError.SparkError(message)
+                } else {
+                    isRecoverableOnly = true
+                }
+            }
+        }
+        return nil
+    }
+
+    private func leaveBehind(_ leafIds: [String], reason: String, in record: inout SparkExitRecord) {
+        guard !leafIds.isEmpty else { return }
+        let values = Dictionary((record.recovery?.response.leaves ?? []).map { ($0.leafId, $0.valueSats) }, uniquingKeysWith: { first, _ in first })
+        Logger.warn("Spark exit leaves left behind: \(leafIds): \(reason)", context: "SparkExitDriver")
+        record.leftBehindLeaves = (record.leftBehindLeaves ?? []) + leafIds.map {
+            SparkExitRecord.LeftBehindLeaf(leafId: $0, valueSats: values[$0] ?? 0, reason: reason)
+        }
     }
 
     /// The leaves whose refund a rebuild reproduced after its input was spent by another transaction in each of the

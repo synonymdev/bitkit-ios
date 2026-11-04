@@ -144,13 +144,19 @@ final class FakeSparkExitRecovering: SparkExitRecovering, @unchecked Sendable {
     var builds: [RecoverFundsResponse] = []
     var checks: [CheckRecoverFundsResponse] = []
     var recoverError: Error?
+    /// Thrown by the next prepares, in order.
+    var prepareErrors: [Error] = []
+    var preparedByRequest: ((PrepareRecoverFundsRequest) -> PrepareRecoverFundsResponse)?
     private(set) var prepareRequests: [PrepareRecoverFundsRequest] = []
     private(set) var recoverRequests: [RecoverFundsRequest] = []
     private(set) var checkedRecoveries: [RecoverFundsResponse] = []
 
     func prepare(_ request: PrepareRecoverFundsRequest) async throws -> PrepareRecoverFundsResponse {
         prepareRequests.append(request)
-        return preparedResponse
+        if !prepareErrors.isEmpty {
+            throw prepareErrors.removeFirst()
+        }
+        return preparedByRequest?(request) ?? preparedResponse
     }
 
     func recover(_ request: RecoverFundsRequest, signer _: CpfpSigner?) async throws -> RecoverFundsResponse {
@@ -893,6 +899,69 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(indexes, [3])
     }
 
+    /// A fee-ladder leaf whose refund cannot pay its fee fails a `Specific` rebuild as a whole: that leaf stays
+    /// behind and the rest are prepared again.
+    func testARebuildLeavesBehindTheLeafThatCannotPayItsRefund() async throws {
+        var record = twoLeafRecord()
+        let first = SparkExitFixtures.recovery([SparkExitFixtures.tx("old")])
+        record.adopt(first, at: .distantPast)
+        sdk.checks = [CheckRecoverFundsResponse(recovery: first, verdict: .redo(reason: .onChainStateDiverged))]
+        sdk.prepareErrors = [SdkError.SparkError("Leaf leaf-1 cannot be exited: its refund cannot pay its own fee at this fee rate")]
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("new")])]
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(sdk.prepareRequests.map(\.selection), [.specific(leafIds: ["leaf-1", "leaf-2"]), .specific(leafIds: ["leaf-2"])])
+        XCTAssertEqual(record.leftBehindLeaves?.map(\.leafId), ["leaf-1"])
+        XCTAssertEqual(record.leftBehindSats, 100_000)
+        XCTAssertEqual(record.generation, 2)
+        XCTAssertEqual(record.exitLeafIds, ["leaf-2"])
+    }
+
+    /// An error that names no leaf falls back to `RecoverableOnly`, and what it leaves out stays behind.
+    func testARebuildFallsBackToRecoverableOnlyWhenTheErrorNamesNoLeaf() async throws {
+        var record = twoLeafRecord()
+        let first = SparkExitFixtures.recovery([SparkExitFixtures.tx("old")])
+        record.adopt(first, at: .distantPast)
+        sdk.checks = [CheckRecoverFundsResponse(recovery: first, verdict: .redo(reason: .onChainStateDiverged))]
+        sdk.prepareErrors = [SdkError.SparkError("A leaf cannot be exited")]
+        sdk.preparedResponse = SparkExitFixtures.prepared(leaves: ["leaf-2"])
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("new")])]
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(sdk.prepareRequests.last?.selection, .recoverableOnly)
+        XCTAssertEqual(record.leftBehindLeaves?.map(\.leafId), ["leaf-1"])
+        XCTAssertEqual(record.generation, 2)
+    }
+
+    func testAnExitWithNoLeafLeftToExitFails() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        let first = SparkExitFixtures.recovery([SparkExitFixtures.tx("old")])
+        record.adopt(first, at: .distantPast)
+        sdk.checks = [CheckRecoverFundsResponse(recovery: first, verdict: .redo(reason: .onChainStateDiverged))]
+        sdk.prepareErrors = [SdkError.SparkError("Leaf leaf-1 cannot be exited: its refund cannot pay its own fee at this fee rate")]
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.phase, .failed(reason: "No leaf can be exited"))
+        XCTAssertEqual(record.leftBehindSats, 100_000)
+        XCTAssertTrue(sdk.recoverRequests.isEmpty)
+    }
+
+    private func twoLeafRecord() -> SparkExitRecord {
+        SparkExitRecord(
+            network: "regtest",
+            createdAt: clock,
+            phase: .running,
+            feeRateSatPerVbyte: 2,
+            destination: "bcrt1qdestination",
+            leafIds: ["leaf-1", "leaf-2"],
+            funding: [.init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 20000)],
+            expectedSats: 150_000
+        )
+    }
+
     func testDoesNothingOnceFinished() async throws {
         let record = try await driver().tick(SparkExitFixtures.record(phase: .done))
 
@@ -1206,6 +1275,11 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.fundingState(record, utxos: [SparkExitFixtures.utxo("pay", value: 9000, confirmed: false)]), .paid(txid: "pay"))
         XCTAssertEqual(SparkExitMath.fundingState(record, utxos: [SparkExitFixtures.utxo("pay", value: 6000)]), .ask(sats: 3000))
 
+        // Adopted, and spent by a rebuild's CPFP: a later shortfall is asked for, not shown as paid.
+        record.funding = [.init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "pay", vout: 0, valueSats: 9000)]
+        record.phase = .needsFunding(requiredSats: 12000)
+        XCTAssertEqual(SparkExitMath.fundingState(record, utxos: []), .ask(sats: 3000))
+
         record.phase = .running
         XCTAssertNil(SparkExitMath.fundingState(record, utxos: []))
     }
@@ -1224,8 +1298,17 @@ final class SparkExitMathTests: XCTestCase {
     func testQuoteNamesTheBalanceItCannotExit() {
         let quote = SparkExitQuote(prepared: SparkExitFixtures.prepared())
 
-        XCTAssertEqual(SparkExitMath.unexitableSats(sparkBalanceSats: 133_068, quote: quote), 32768)
-        XCTAssertNil(SparkExitMath.unexitableSats(sparkBalanceSats: 100_300, quote: quote))
+        XCTAssertEqual(SparkExitMath.unexitableSats(sparkBalanceSats: 133_068, quote: quote), 300 + 32768)
+        XCTAssertEqual(SparkExitMath.unexitableSats(sparkBalanceSats: 100_300, quote: quote), 300, "the skipped leaves")
+        XCTAssertEqual(SparkExitMath.unexitableSats(sparkBalanceSats: 90000, quote: quote), 300)
+    }
+
+    func testReadsTheLeafAnUnexitableErrorNames() {
+        let message = "Leaf 0193a7c2-11aa-7bbb-8ccc-1234567890ab cannot be exited: its refund cannot pay its own fee at this fee rate"
+        XCTAssertTrue(SparkExitMath.isUnexitableLeafError("SparkError: " + message))
+        XCTAssertEqual(SparkExitMath.unexitableLeafId("SparkError: " + message), "0193a7c2-11aa-7bbb-8ccc-1234567890ab")
+        XCTAssertNil(SparkExitMath.unexitableLeafId("The leaf cannot be exited: no refund"))
+        XCTAssertFalse(SparkExitMath.isUnexitableLeafError("operators unavailable"))
     }
 
     /// With the operators down an older state's refund can take a leaf 100 blocks after ours matures, and the
@@ -1408,6 +1491,18 @@ final class SparkExitBroadcasterTests: XCTestCase {
         let parentNotFinal = #"{"package_msg":"transaction failed","tx-results":{"w1":{"txid":"a","error":"non-BIP68-final"},"w2":{"txid":"b","error":"bad-txns-inputs-missingorspent"}}}"#
         if case .notMature = SparkExitBroadcastClassifier.package(status: 200, body: Data(parentNotFinal.utf8)) {} else {
             XCTFail("A child missing its immature parent is not mature, not spent")
+        }
+        let childMissing = #"{"package_msg":"transaction failed","tx-results":{"w1":{"txid":"step"},"w2":{"txid":"child","error":"bad-txns-inputs-missingorspent"}}}"#
+        if case .retryLater = SparkExitBroadcastClassifier.package(status: 200, body: Data(childMissing.utf8), txid: "step") {} else {
+            XCTFail("Only the step's own missing input means it was spent")
+        }
+        let stepMissing = #"{"package_msg":"transaction failed","tx-results":{"w1":{"txid":"step","error":"bad-txns-inputs-missingorspent"}}}"#
+        if case .inputsMissing = SparkExitBroadcastClassifier.package(status: 200, body: Data(stepMissing.utf8), txid: "step") {} else {
+            XCTFail("The step's own input is missing")
+        }
+        let childRejected = #"{"package_msg":"transaction failed","tx-results":{"w1":{"txid":"step","error":"non-BIP68-final"},"w2":{"txid":"child","error":"min relay fee not met"}}}"#
+        if case .notMature = SparkExitBroadcastClassifier.package(status: 200, body: Data(childRejected.utf8), txid: "step") {} else {
+            XCTFail("An immature parent outranks the child's refusal")
         }
         let known = #"{"package_msg":"transaction failed","tx-results":{"w1":{"txid":"a","error":"txn-already-in-mempool"},"w2":{"txid":"b"}}}"#
         XCTAssertEqual(SparkExitBroadcastClassifier.package(status: 200, body: Data(known.utf8)), .accepted)
