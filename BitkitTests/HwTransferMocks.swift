@@ -138,14 +138,8 @@ final class MockHwFunding: HwTransferFunding {
         if broadcastDelay > 0 {
             try await Task.sleep(nanoseconds: UInt64(broadcastDelay * 1_000_000_000))
         }
-        if !broadcastErrors.isEmpty {
-            if let error = broadcastErrors.removeFirst() {
-                throw error
-            }
-            return broadcastTxId
-        }
-        if let broadcastError {
-            throw broadcastError
+        if let error = broadcastErrors.isEmpty ? broadcastError : broadcastErrors.removeFirst() {
+            throw error
         }
         return broadcastTxId
     }
@@ -158,37 +152,42 @@ final class MockHwRetainedSendStore: HwRetainedSendStoring, @unchecked Sendable 
     private var sends: [String: HwRetainedSend] = [:]
     private var failsLoad = false
     private var failsSave = false
-    private(set) var deleteEntryCalls = 0
+    private var failsDelete = false
+    private(set) var deletedWalletIds: [String] = []
 
-    func setFailures(load: Bool = false, save: Bool = false) {
+    func setFailures(load: Bool = false, save: Bool = false, delete: Bool = false) {
         lock.withLock {
             failsLoad = load
             failsSave = save
+            failsDelete = delete
         }
     }
 
-    func load() throws -> [String: HwRetainedSend] {
+    func load(walletId: String) throws -> HwRetainedSend? {
         try lock.withLock {
             if failsLoad {
                 throw StoreError()
             }
-            return sends
+            return sends[walletId]
         }
     }
 
-    func save(_ sends: [String: HwRetainedSend]) throws {
+    func save(_ send: HwRetainedSend) throws {
         try lock.withLock {
             if failsSave {
                 throw StoreError()
             }
-            self.sends = sends
+            sends[send.walletId] = send
         }
     }
 
-    func deleteEntry() {
-        lock.withLock {
-            deleteEntryCalls += 1
-            sends = [:]
+    func delete(walletId: String) throws {
+        try lock.withLock {
+            if failsDelete {
+                throw StoreError()
+            }
+            deletedWalletIds.append(walletId)
+            sends[walletId] = nil
         }
     }
 }
@@ -197,6 +196,16 @@ extension HwRetainedSendService {
     /// Lets a test build a coordinator without touching the real keychain record.
     static func inMemory() -> HwRetainedSendService {
         HwRetainedSendService(store: MockHwRetainedSendStore())
+    }
+}
+
+extension Keychain {
+    /// Clears every retained send in the test namespace, whichever wallet it belongs to.
+    static func deleteAllRetainedHwSends() throws {
+        let prefix = account(for: .hwRetainedSend(walletId: ""))
+        for account in getAllKeyChainStorageKeys() where account.hasPrefix(prefix) {
+            try delete(key: .hwRetainedSend(walletId: String(account.dropFirst(prefix.count))))
+        }
     }
 }
 

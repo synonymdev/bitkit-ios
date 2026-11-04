@@ -984,10 +984,7 @@ final class HwWalletManager: Sendable {
 
     /// A failed release keeps the record, which is the safe side: the next watcher event tries again.
     private func releaseRetainedSendIfObserved(walletId: String, activities: [Activity]) {
-        let txIds = activities.compactMap { activity -> String? in
-            guard case let .onchain(onchain) = activity, onchain.doesExist else { return nil }
-            return onchain.txId
-        }
+        let txIds = Array(onchainTxIds(in: activities, existingOnly: true))
         persistQueue.enqueue(walletId: walletId) { [retainedSends] in
             do {
                 try await retainedSends.releaseIfObserved(walletId: walletId, txIds: txIds)
@@ -1007,9 +1004,9 @@ final class HwWalletManager: Sendable {
         }
     }
 
-    private func onchainTxIds(in activities: [Activity]) -> Set<String> {
+    private func onchainTxIds(in activities: [Activity], existingOnly: Bool = false) -> Set<String> {
         Set(activities.compactMap { activity in
-            guard case let .onchain(onchain) = activity else { return nil }
+            guard case let .onchain(onchain) = activity, !existingOnly || onchain.doesExist else { return nil }
             return onchain.txId
         })
     }

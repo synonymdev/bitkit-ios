@@ -157,16 +157,6 @@ struct SendConfirmationView: View {
         retainedHardwareRetry?.retainedHardwareRetry?.signedTx ?? retainedOrdinarySignedTx
     }
 
-    /// The original bytes an ordinary hardware send goes out with. A Shop payment keeps its own retained receipt instead.
-    static func retainedRetrySignedTx(hasIncomingRequest: Bool, status: HwRetainedSendStatus) -> HwFundingSignedTx? {
-        guard !hasIncomingRequest, case let .retry(signedTx) = status else { return nil }
-        return signedTx
-    }
-
-    static func requiresRetainedPaymentWarning(isHardwarePayment: Bool, hasIncomingRequest: Bool, status: HwRetainedSendStatus) -> Bool {
-        isHardwarePayment && !hasIncomingRequest && status == .blocking
-    }
-
     static func confirmationFeeRate(retained: HwFundingSignedTx?, selected: UInt32?) -> UInt32? {
         guard let retained else { return selected }
         return UInt32(exactly: retained.feeRate.rounded(.up))
@@ -1677,12 +1667,10 @@ struct SendConfirmationView: View {
         }
 
         if let address = app.scannedOnchainInvoice?.address {
-            let status = await hwSend.retainedSendStatus(address: address, sats: amount)
-            if Self.requiresRetainedPaymentWarning(
-                isHardwarePayment: hwSend.isActive,
-                hasIncomingRequest: app.contactPaymentContext?.incomingPaymentRequest != nil,
-                status: status
-            ) {
+            let status = await hwSend.retainedSendStatus(
+                address: address, sats: amount, hasIncomingRequest: app.contactPaymentContext?.incomingPaymentRequest != nil
+            )
+            if status == .blocking {
                 warnings.append(.retainedHardwarePayment)
             }
         }
@@ -2029,12 +2017,11 @@ struct SendConfirmationView: View {
 
         // A retained send needs no current fee rate, so it must stay reachable while rates cannot load.
         if let walletId = hwSend.walletId {
-            let status = await hwSend.retainedSendStatus(address: address, sats: amountSats)
-            guard isCurrentSend() else { return }
-            retainedOrdinarySignedTx = Self.retainedRetrySignedTx(
-                hasIncomingRequest: app.contactPaymentContext?.incomingPaymentRequest != nil,
-                status: status
+            let status = await hwSend.retainedSendStatus(
+                address: address, sats: amountSats, hasIncomingRequest: app.contactPaymentContext?.incomingPaymentRequest != nil
             )
+            guard isCurrentSend() else { return }
+            retainedOrdinarySignedTx = status.retrySignedTx
             if let retainedOrdinarySignedTx {
                 hwSend.seedAvailable(
                     walletId: walletId,

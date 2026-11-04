@@ -1541,7 +1541,6 @@ final class HwWalletManagerTests: XCTestCase {
             walletId: walletId,
             address: "bcrt1qaddress",
             sats: 42000,
-            satsPerVByte: 2,
             serializedTx: retainedSerializedTx,
             miningFeeSats: 141,
             feeRate: 2.5,

@@ -14,7 +14,7 @@ import XCTest
 final class PaykitPaymentRequestServiceTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
-        try Keychain.delete(key: .hwRetainedSends)
+        try Keychain.deleteAllRetainedHwSends()
     }
 
     func testPreparationUsesAcceptedMethodsBeforeWalletSelection() throws {

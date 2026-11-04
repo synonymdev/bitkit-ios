@@ -103,9 +103,11 @@ struct HwSendSignView: View {
         }
         .task(id: hwSend.isSigning) {
             guard !hwSend.isSigning, let invoice = app.scannedOnchainInvoice, let amount = wallet.sendAmountSats else { return }
-            let signedTx = await retainedRetrySignedTx(address: invoice.address, sats: amount)
+            let status = await hwSend.retainedSendStatus(
+                address: invoice.address, sats: amount, hasIncomingRequest: contactPaymentRequestId != nil
+            )
             guard !Task.isCancelled else { return }
-            hasRetainedRetry = signedTx != nil
+            hasRetainedRetry = status.retrySignedTx != nil
         }
         .onDisappear {
             guard !hwSend.isBroadcastUnresolved else { return }
@@ -131,13 +133,6 @@ struct HwSendSignView: View {
                     dismissPassphrase()
                 }
             }
-        )
-    }
-
-    private func retainedRetrySignedTx(address: String, sats: UInt64) async -> HwFundingSignedTx? {
-        await SendConfirmationView.retainedRetrySignedTx(
-            hasIncomingRequest: contactPaymentRequestId != nil,
-            status: hwSend.retainedSendStatus(address: address, sats: sats)
         )
     }
 
@@ -182,7 +177,9 @@ struct HwSendSignView: View {
                 let deadline = try app.contactPaymentContext?.incomingPaymentRequest?.submissionDeadline(quoteId: quoteId)
                 var retainedSignedTx = retained?.retainedHardwareRetry?.signedTx
                 if retainedSignedTx == nil {
-                    retainedSignedTx = await retainedRetrySignedTx(address: invoice.address, sats: amount)
+                    retainedSignedTx = await hwSend.retainedSendStatus(
+                        address: invoice.address, sats: amount, hasIncomingRequest: requestId != nil
+                    ).retrySignedTx
                 }
                 guard let feeRate = SendConfirmationView.confirmationFeeRate(
                     retained: retainedSignedTx, selected: wallet.selectedFeeRateSatsPerVByte
@@ -317,19 +314,9 @@ struct HwSendSignView: View {
             app.toast(HwTransferError.firmwareReconnect)
         } else if hwSend.hasPendingBroadcast, error.isBroadcastConnectivityFailure() {
             app.toast(HwTransferError.broadcastConnectivity)
-        } else if Self.reportsBroadcastUncertain(
-            hasPendingBroadcast: hwSend.hasPendingBroadcast,
-            hasIncomingRequest: contactPaymentRequestId != nil
-        ) {
-            app.toast(HwTransferError.broadcastUncertain)
         } else {
             app.toast(error)
         }
-    }
-
-    /// A kept ordinary send may already be out, so its raw error must not read as a definite failure. Shop errors stay as they were.
-    static func reportsBroadcastUncertain(hasPendingBroadcast: Bool, hasIncomingRequest: Bool) -> Bool {
-        hasPendingBroadcast && !hasIncomingRequest
     }
 
     static func recordPaymentResult(

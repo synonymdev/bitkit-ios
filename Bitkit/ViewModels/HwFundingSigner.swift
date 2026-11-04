@@ -14,6 +14,11 @@ enum HwRetainedSendStatus: Equatable {
     case retry(HwFundingSignedTx)
     /// A different payment, or a retry that was refused. Signing needs the user to abandon the retained send first.
     case blocking
+
+    var retrySignedTx: HwFundingSignedTx? {
+        guard case let .retry(signedTx) = self else { return nil }
+        return signedTx
+    }
 }
 
 /// Orchestrates an on-chain payment from a hardware wallet: reconnect the device, compose the exact
@@ -605,6 +610,22 @@ final class HwSendCoordinator {
                 pendingPayment?.isPreparedForBroadcast = true
             }
 
+            func retainBeforeDispatch() async throws {
+                if paymentRequestId == nil {
+                    try await retainedSends.retain(HwRetainedSend(
+                        walletId: walletId,
+                        address: address,
+                        sats: sats,
+                        serializedTx: signed.serializedTx,
+                        miningFeeSats: signed.miningFeeSats,
+                        feeRate: signed.feeRate,
+                        totalSpent: signed.totalSpent
+                    ))
+                } else {
+                    try await retainSignedPayment(signed)
+                }
+            }
+
             func clearBeforeDispatch() async -> Bool {
                 if paymentRequestId == nil {
                     return await releaseRetainedSend(walletId: walletId)
@@ -636,20 +657,7 @@ final class HwSendCoordinator {
                     // retained for submission or durably cleared. No newer task may reuse it meanwhile.
                     isRetainingSignedPayment = true
                     defer { isRetainingSignedPayment = false }
-                    if paymentRequestId == nil {
-                        try await retainedSends.retain(HwRetainedSend(
-                            walletId: walletId,
-                            address: address,
-                            sats: sats,
-                            satsPerVByte: satsPerVByte,
-                            serializedTx: signed.serializedTx,
-                            miningFeeSats: signed.miningFeeSats,
-                            feeRate: signed.feeRate,
-                            totalSpent: signed.totalSpent
-                        ))
-                    } else {
-                        try await retainSignedPayment(signed)
-                    }
+                    try await retainBeforeDispatch()
                     do {
                         try Task.checkCancellation()
                         guard signingAttempt == attempt else { throw CancellationError() }
@@ -712,7 +720,7 @@ final class HwSendCoordinator {
                         throw failure
                     }
                     if paymentRequestId == nil {
-                        await settleRetainedSend(walletId: walletId, failure: failure, isRetry: hadPriorBroadcastAttempt)
+                        throw await settleRetainedSend(walletId: walletId, failure: failure, isRetry: hadPriorBroadcastAttempt)
                     }
                     throw failure
                 }
@@ -739,9 +747,10 @@ final class HwSendCoordinator {
     }
 
     /// Whether the selected wallet's retained send lets this ordinary payment go out. Unreadable storage counts as blocking,
-    /// because treating it as no record would allow a second signature.
-    func retainedSendStatus(address: String, sats: UInt64) async -> HwRetainedSendStatus {
-        guard let walletId else { return .none }
+    /// because treating it as no record would allow a second signature. A Shop payment keeps its own retained receipt, so an
+    /// incoming request never consults the store.
+    func retainedSendStatus(address: String, sats: UInt64, hasIncomingRequest: Bool) async -> HwRetainedSendStatus {
+        guard !hasIncomingRequest, let walletId else { return .none }
         do {
             if let retained = try await retainedSends.record(walletId: walletId) {
                 guard retained.isSamePayment(address: address, sats: sats), !retained.retryWasRefused else { return .blocking }
@@ -856,16 +865,18 @@ final class HwSendCoordinator {
         }
     }
 
-    /// Decides whether a failed ordinary broadcast keeps its retained send. `isRetry` matters because a refusal such as
-    /// `bad-txns-inputs-missingorspent` on a retry may describe our own earlier accepted transaction.
-    private func settleRetainedSend(walletId: String, failure: Error, isRetry: Bool) async {
+    /// Decides whether a failed ordinary broadcast keeps its retained send, and returns the error to surface: a send that is
+    /// kept for an unknown reason may already be out, so it must not read as a definite failure. `isRetry` matters because a
+    /// refusal such as `bad-txns-inputs-missingorspent` on a retry may describe our own earlier accepted transaction.
+    private func settleRetainedSend(walletId: String, failure: Error, isRetry: Bool) async -> Error {
         let refused = failure.isHardwareBroadcastRefusal()
         if isRetry {
-            guard refused else { return }
-            do {
-                try await retainedSends.markRetryRefused(walletId: walletId)
-            } catch {
-                Logger.warn("Failed to mark retained hardware send refused: \(type(of: error))", context: "HwSendCoordinator")
+            if refused {
+                do {
+                    try await retainedSends.markRetryRefused(walletId: walletId)
+                } catch {
+                    Logger.warn("Failed to mark retained hardware send refused: \(type(of: error))", context: "HwSendCoordinator")
+                }
             }
         } else if refused {
             await releaseRetainedSend(walletId: walletId)
@@ -874,6 +885,10 @@ final class HwSendCoordinator {
             await releaseRetainedSend(walletId: walletId)
             pendingPayment?.hasBroadcastAttempted = false
         }
+        if refused || failure.isBroadcastConnectivityFailure() || failure is CancellationError {
+            return failure
+        }
+        return HwTransferError.broadcastUncertain
     }
 
     /// A failed release only leaves the record behind, so the next attempt rebroadcasts or warns rather than signing again.
