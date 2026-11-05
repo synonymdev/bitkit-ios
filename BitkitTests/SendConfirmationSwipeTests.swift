@@ -193,6 +193,14 @@ final class SendConfirmationSwipeTests: XCTestCase {
         XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 300_000, savingsBalanceSats: 209_714, balances: []))
     }
 
+    func testAFailedPreviewOfTheSavingsFallbackWalletIsInsufficientSavings() {
+        XCTAssertTrue(SendConfirmationView.isSavingsFallbackShortOfFee(fallbackWalletId: "trezor", walletId: "trezor"))
+        // A source the user picked, or none, keeps the Try again handling.
+        XCTAssertFalse(SendConfirmationView.isSavingsFallbackShortOfFee(fallbackWalletId: nil, walletId: "trezor"))
+        XCTAssertFalse(SendConfirmationView.isSavingsFallbackShortOfFee(fallbackWalletId: "trezor", walletId: "jade"))
+        XCTAssertFalse(SendConfirmationView.isSavingsFallbackShortOfFee(fallbackWalletId: nil, walletId: nil))
+    }
+
     func testACoinSelectionFailureWithEnoughSavingsDoesNotMoveToAHardwareWallet() {
         let balances: [(walletId: String, balanceSats: UInt64)] = [("large", 549_577)]
         XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 10000, savingsBalanceSats: 209_714, balances: balances))

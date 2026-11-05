@@ -43,6 +43,8 @@ struct SendConfirmationView: View {
     @State private var walletSwitchRun: WalletSwitchRun?
     @State private var manualCoinsRequestedContext: ConfirmationContext?
     @State private var isPreparingDirectOnchainSend = false
+    /// The hardware wallet Confirm switched to because Savings could not pay the fixed amount.
+    @State private var savingsFallbackWalletId: String?
     @State private var onchainFeeCalculationId: Int?
     @State private var presentationID: UUID?
 
@@ -844,6 +846,7 @@ struct SendConfirmationView: View {
     }
 
     private func selectFundingSource(_ source: SendFundingSource) {
+        savingsFallbackWalletId = nil
         switch source {
         case .usdt:
             navigationPath = amountIsRoot ? [] : [.amount]
@@ -1212,6 +1215,11 @@ struct SendConfirmationView: View {
     ) -> String? {
         guard savingsBalanceSats < amount else { return nil }
         return balances.first { $0.balanceSats >= amount }?.walletId
+    }
+
+    /// The fallback wallet's balance covers the amount, so a failed preview means the fee does not fit: no source can pay.
+    static func isSavingsFallbackShortOfFee(fallbackWalletId: String?, walletId: String?) -> Bool {
+        fallbackWalletId != nil && fallbackWalletId == walletId
     }
 
     /// Only the newest fee calculation can hold the swipe, so a calculation superseded by a funding switch never leaves it disabled.
@@ -2044,6 +2052,7 @@ struct SendConfirmationView: View {
                )
             {
                 selectFundingSource(.hardware(walletId: walletId))
+                savingsFallbackWalletId = walletId
                 return
             }
             app.toast(type: .error, title: t("other__try_again"), description: error.localizedDescription)
@@ -2134,6 +2143,7 @@ struct SendConfirmationView: View {
                     satsPerVByte: UInt64(feeRate)
                 ) else { return }
                 apply(fee)
+                savingsFallbackWalletId = nil
                 return
             }
 
@@ -2170,6 +2180,17 @@ struct SendConfirmationView: View {
             Logger.error("Failed to calculate actual fee: \(error)")
             transactionFee = 0
             if hwSend.isActive, app.contactPaymentContext == nil {
+                if Self.isSavingsFallbackShortOfFee(fallbackWalletId: savingsFallbackWalletId, walletId: hwSend.walletId) {
+                    savingsFallbackWalletId = nil
+                    app.toast(
+                        type: .error,
+                        title: t("other__pay_insufficient_savings"),
+                        description: t("other__pay_insufficient_savings_description"),
+                        accessibilityIdentifier: "InsufficientSavingsToast"
+                    )
+                    leaveAfterPreparationFailure()
+                    return
+                }
                 app.toast(type: .error, title: t("other__try_again"), description: error.localizedDescription)
                 if Self.leavesConfirmAfterFeeFailure(
                     isHardwarePayment: true,
