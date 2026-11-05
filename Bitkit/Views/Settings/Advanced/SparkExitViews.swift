@@ -367,11 +367,16 @@ struct SparkExitLeftoverStatus: View {
                             .lineLimit(2)
                             .truncationMode(.middle)
                     }
+                } else if sweep.isWaitingForFees {
+                    BodySText(t("lightning__spark_exit__leftover_waiting", variables: ["amount": currency.primaryAmountText(sats: leftoverSats)]))
+                        .fixedSize(horizontal: false, vertical: true)
                 } else {
-                    BodySText(t(
-                        "lightning__spark_exit__leftover_dust",
-                        variables: ["amount": currency.primaryAmountText(sats: leftoverSats), "address": address]
-                    ))
+                    BodySText(t("lightning__spark_exit__leftover_dust", variables: [
+                        "amount": currency.primaryAmountText(sats: leftoverSats),
+                        "address": address,
+                        "path": SparkExitFundingKey.path(index: record.fundingIndex, network: Env.bitkitCoreNetwork),
+                    ]))
+                    .fixedSize(horizontal: false, vertical: true)
                 }
             } else if let sweep = record.leftoverSweep, !sweep.isFeeRejection {
                 // Refused for good: where the coins stay, and the path that spends them with the recovery phrase.

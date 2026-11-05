@@ -161,9 +161,15 @@ final class FakeSparkExitChain: SparkExitChain, @unchecked Sendable {
     }
 
     var fastestFee: UInt64 = 5
+    /// The network's economy rate; nil reads as the fastest one.
+    var economyFee: UInt64?
 
     func fastestFeeRate() async throws -> UInt64 {
         fastestFee
+    }
+
+    func networkFees() async throws -> SparkExitNetworkFees {
+        SparkExitNetworkFees(fastest: fastestFee, halfHour: fastestFee, economy: economyFee ?? fastestFee)
     }
 }
 

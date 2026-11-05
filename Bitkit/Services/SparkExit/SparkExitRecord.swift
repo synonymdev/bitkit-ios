@@ -103,6 +103,18 @@ struct SparkExitRecord: Codable, Equatable {
         var sentAtHeight: UInt32?
         /// The sweeps this one replaced: any of them confirming also ends the sweep.
         var replacedTxids: [String]?
+        /// With no `txid`: the tip when nothing at the address was worth sending at the network's economy rate. The
+        /// sweep checks again every `sweepRecheckBlocks` and keeps the change after `sweepWaitBlocks`.
+        var waitingSince: UInt32?
+        /// The tip of the last such check.
+        var checkedAtHeight: UInt32?
+        /// The wait ran out: what is left stays at the funding address, with the path that spends it.
+        var isDustKept: Bool?
+
+        /// Waiting for fees to drop before sending the fee change.
+        var isWaitingForFees: Bool {
+            txid == nil && waitingSince != nil && isDustKept != true
+        }
 
         /// A refusal for its fee is not final: the sweep is built again at the network's current rate.
         var isFeeRejection: Bool {
@@ -194,6 +206,9 @@ struct SparkExitRecord: Codable, Equatable {
     var isLeftoverSweepPending: Bool {
         guard !isActive, !leftover.isEmpty else { return false }
         guard let leftoverSweep else { return true }
+        if leftoverSweep.isWaitingForFees {
+            return true
+        }
         return leftoverSweep.txid != nil && (leftoverSweep.rejection == nil || leftoverSweep.isFeeRejection) && leftoverSweep.isConfirmed != true
     }
 

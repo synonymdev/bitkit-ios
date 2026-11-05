@@ -59,7 +59,7 @@ protocol SparkExitChain: Sendable {
 extension SparkExitChain {
     func networkFees() async throws -> SparkExitNetworkFees {
         let fastest = try await fastestFeeRate()
-        return SparkExitNetworkFees(fastest: fastest, halfHour: fastest)
+        return SparkExitNetworkFees(fastest: fastest, halfHour: fastest, economy: fastest)
     }
 }
 
@@ -150,7 +150,9 @@ struct EsploraSparkExitChain: SparkExitChain {
         let estimates = try await JSONDecoder().decode([String: Double].self, from: get("/fee-estimates"))
         guard let fastest = estimates["1"] else { throw URLError(.cannotParseResponse) }
         let rate = { (value: Double) in max(1, UInt64(value.rounded(.up))) }
-        return SparkExitNetworkFees(fastest: rate(fastest), halfHour: rate(estimates["3"] ?? fastest))
+        // The slowest tier is the longest target the host estimates (mempool's `economyFee` is its day-long rate).
+        let slowest = estimates.compactMap { key, value in Int(key).map { ($0, value) } }.max { $0.0 < $1.0 }?.1 ?? fastest
+        return SparkExitNetworkFees(fastest: rate(fastest), halfHour: rate(estimates["3"] ?? fastest), economy: rate(slowest))
     }
 
     /// `/tx/{txid}/hex` looks in the mempool and the chain alike; `/status` of an unknown transaction may answer

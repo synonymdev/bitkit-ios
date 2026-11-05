@@ -57,6 +57,10 @@ struct SparkExitDriver {
     static let releaseBlocks: UInt32 = 1008
     /// Blocks an accepted leftover sweep may stay unconfirmed before it is replaced at a higher rate.
     static let sweepReplaceBlocks: UInt32 = 144
+    /// While the fee change is not worth sending, the sweep checks the network's rate again after this many blocks.
+    static let sweepRecheckBlocks: UInt32 = 144
+    /// About four weeks: then the change too small to send stays at the funding address.
+    static let sweepWaitBlocks: UInt32 = 4032
 
     @discardableResult
     func tick(_ record: SparkExitRecord) async throws -> SparkExitRecord {
@@ -602,9 +606,9 @@ struct SparkExitDriver {
             }
             if isReplaceDue, let fastest = try? await chain.fastestFeeRate() {
                 let rate = max(fastest, oldRate + 1)
-                let utxos = record.leftover.map {
+                let utxos = SparkExitMath.economicalUtxos(record.leftover.map {
                     EsploraUtxo(txid: $0.txid, vout: $0.vout, value: $0.valueSats, status: EsploraTxStatus(confirmed: true, blockHeight: nil))
-                }
+                }, rate: rate)
                 Logger.info("Spark exit rebuilds its leftover sweep at \(rate) sat/vB", context: "SparkExitDriver")
                 let built = try await SparkExitLeftoverSweep.build(
                     utxos: utxos,
@@ -623,27 +627,20 @@ struct SparkExitDriver {
                     )
                     try save(record)
                 } else if !sweep.isAccepted {
-                    // Too small to send at the new rate, and nothing of it is in the mempool: kept where it is, as dust.
-                    record.leftoverSweep = SparkExitRecord.LeftoverSweep(feeRateSatPerVbyte: rate, replacedTxids: sweep.replacedTxids)
+                    // Too small to send at the new rate, and nothing of it is in the mempool: it waits for fees to drop.
+                    let tip = try? await chain.tipHeight()
+                    record.leftoverSweep = SparkExitRecord.LeftoverSweep(
+                        feeRateSatPerVbyte: rate,
+                        replacedTxids: sweep.replacedTxids,
+                        waitingSince: tip ?? 0,
+                        checkedAtHeight: tip ?? 0
+                    )
                     try save(record)
                 }
             }
         }
-        if record.leftoverSweep == nil {
-            guard let address = record.funding.first?.address else { return }
-            let utxos = try await chain.utxos(address: address)
-            record.leftover = utxos.map { SparkExitRecord.Leftover(txid: $0.txid, vout: $0.vout, valueSats: $0.value) }
-            let confirmed = utxos.filter(\.status.confirmed)
-            guard !confirmed.isEmpty, confirmed.count == utxos.count else { return }
-            let built = try await SparkExitLeftoverSweep.build(
-                utxos: confirmed,
-                fundingAddress: address,
-                destination: record.destination,
-                feeRateSatPerVbyte: record.feeRateSatPerVbyte,
-                signer: makeSigner(record.fundingIndex)
-            )
-            record.leftoverSweep = SparkExitRecord.LeftoverSweep(txid: built?.txid, txHex: built?.txHex, valueSats: built?.valueSats ?? 0)
-            try save(record)
+        if record.leftoverSweep == nil || record.leftoverSweep?.isWaitingForFees == true {
+            try await sweepWhenEconomical(&record)
         }
         guard let sweep = record.leftoverSweep, let txid = sweep.txid, let hex = sweep.txHex, sweep.rejection == nil,
               sweep.isConfirmed != true, !Task.isCancelled
@@ -673,6 +670,55 @@ struct SparkExitDriver {
         case let .rejected(reason) where !sweep.isAccepted: record.leftoverSweep?.rejection = reason
         default: break
         }
+    }
+
+    /// Builds the leftover sweep at the network's economy rate (`sweepFeeRate`) from the UTXOs worth more than their
+    /// own input fee. While nothing is worth sending it waits, checking the rate again every `sweepRecheckBlocks`,
+    /// and after `sweepWaitBlocks` keeps the change at the funding address, shown with the path that spends it.
+    private func sweepWhenEconomical(_ record: inout SparkExitRecord) async throws {
+        guard let address = record.funding.first?.address else { return }
+        let waiting = record.leftoverSweep
+        let tip = try? await chain.tipHeight()
+        if let waiting, let since = waiting.waitingSince {
+            guard let tip else { return }
+            if tip.saturatingSub(since) >= Self.sweepWaitBlocks {
+                Logger.info("Spark exit keeps its fee change at the funding address after waiting for fees", context: "SparkExitDriver")
+                record.leftoverSweep?.isDustKept = true
+                try save(record)
+                return
+            }
+            guard tip.saturatingSub(waiting.checkedAtHeight ?? since) >= Self.sweepRecheckBlocks else { return }
+        }
+        let utxos = try await chain.utxos(address: address)
+        record.leftover = utxos.map { SparkExitRecord.Leftover(txid: $0.txid, vout: $0.vout, valueSats: $0.value) }
+        let confirmed = utxos.filter(\.status.confirmed)
+        guard !confirmed.isEmpty, confirmed.count == utxos.count else { return }
+        let economy = try? await chain.networkFees().economy
+        let rate = SparkExitMath.sweepFeeRate(economy: economy, exitRate: record.feeRateSatPerVbyte)
+        let built = try await SparkExitLeftoverSweep.build(
+            utxos: SparkExitMath.economicalUtxos(confirmed, rate: rate),
+            fundingAddress: address,
+            destination: record.destination,
+            feeRateSatPerVbyte: rate,
+            signer: makeSigner(record.fundingIndex)
+        )
+        if let built {
+            record.leftoverSweep = SparkExitRecord.LeftoverSweep(
+                txid: built.txid,
+                txHex: built.txHex,
+                valueSats: built.valueSats,
+                feeRateSatPerVbyte: rate
+            )
+        } else {
+            let since = waiting?.waitingSince ?? tip ?? 0
+            Logger.info("Spark exit waits for lower fees to send its fee change (\(rate) sat/vB)", context: "SparkExitDriver")
+            record.leftoverSweep = SparkExitRecord.LeftoverSweep(
+                feeRateSatPerVbyte: rate,
+                waitingSince: since,
+                checkedAtHeight: tip ?? since
+            )
+        }
+        try save(record)
     }
 
     // MARK: Broadcast

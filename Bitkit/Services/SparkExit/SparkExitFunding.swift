@@ -170,6 +170,8 @@ struct SparkExitQuote: Equatable {
 struct SparkExitNetworkFees: Equatable {
     let fastest: UInt64
     let halfHour: UInt64
+    /// The slowest tier: what the leftover sweep pays, since the change can wait.
+    var economy: UInt64 = 1
 }
 
 /// A higher fee rate an exit can move to, and what moving costs: the funding the exit lacks at that rate (`extraSats`,
@@ -462,6 +464,21 @@ enum SparkExitMath {
 
     /// The least a P2WPKH funding output can hold: nodes refuse a payment below it.
     static let fundingDustSats: UInt64 = 294
+
+    /// The lowest rate nodes relay.
+    static let minRelayFeeRate: UInt64 = 1
+
+    /// The leftover sweep's rate: the network's economy rate, never above the exit's own and never under the relay
+    /// floor. Per-node funding leaves each step's change of at least 294 at the funding address; at the exit's rate
+    /// the sweep can cost more per input than the input holds.
+    static func sweepFeeRate(economy: UInt64?, exitRate: UInt64) -> UInt64 {
+        max(minRelayFeeRate, min(economy ?? exitRate, exitRate))
+    }
+
+    /// The UTXOs worth sending at `rate`: each holds more than the fee of its own input.
+    static func economicalUtxos(_ utxos: [EsploraUtxo], rate: UInt64) -> [EsploraUtxo] {
+        utxos.filter { $0.value > inputVbytes * rate }
+    }
 
     /// What the exit says it still needs: the ask, or, while a payment is awaited or before the funding address was
     /// read, the shortfall. Never under the dust limit.

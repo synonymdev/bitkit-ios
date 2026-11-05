@@ -232,6 +232,7 @@ final class SparkExitSweepTests: XCTestCase {
         var record = try await driver().tick(endedRecord())
         let first = try XCTUnwrap(record.leftoverSweep)
         XCTAssertEqual(first.sentAtHeight, 1000)
+        XCTAssertEqual(first.feeRateSatPerVbyte, 1, "the network's economy rate of 1, under the exit's 2")
 
         chain.tip = 1143
         record = try await driver().tick(record)
@@ -241,7 +242,7 @@ final class SparkExitSweepTests: XCTestCase {
         record = try await driver().tick(record)
         let replacement = try XCTUnwrap(record.leftoverSweep)
         XCTAssertNotEqual(replacement.txid, first.txid)
-        XCTAssertEqual(replacement.feeRateSatPerVbyte, 3, "the old rate of 2 plus one, over the network's 1")
+        XCTAssertEqual(replacement.feeRateSatPerVbyte, 2, "the old rate of 1 plus one, over the network's 1")
         XCTAssertEqual(replacement.sentAtHeight, 1144)
         try assertValidP2wpkhSpend(
             .init(txid: XCTUnwrap(replacement.txid), txHex: XCTUnwrap(replacement.txHex), valueSats: replacement.valueSats),
@@ -359,10 +360,88 @@ final class SparkExitSweepTests: XCTestCase {
         chain.utxosByAddress[key.address] = [SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 400)]
         record = try await driver().tick(record)
 
-        XCTAssertEqual(record.leftoverSweep, SparkExitRecord.LeftoverSweep())
-        XCTAssertFalse(record.needsDriving)
-        XCTAssertFalse(record.showsResult, "dust is kept, and a new exit may start")
+        // Too small to send now: it waits for fees to drop instead of being kept at once.
+        XCTAssertEqual(record.leftoverSweep?.waitingSince, 1000)
+        XCTAssertTrue(record.leftoverSweep?.isWaitingForFees == true)
+        XCTAssertTrue(record.needsDriving)
         XCTAssertTrue(chain.broadcasts.isEmpty)
+
+        // A record from before the wait, with nothing sent and no wait, stays kept as dust.
+        var legacy = endedRecord()
+        legacy.leftoverSweep = SparkExitRecord.LeftoverSweep()
+        XCTAssertFalse(legacy.needsDriving)
+        XCTAssertFalse(legacy.showsResult, "dust is kept, and a new exit may start")
+    }
+
+    // MARK: Fee change at the economy rate
+
+    func testTheSweepPaysTheEconomyRateNeverAboveTheExitsOrUnderTheRelayFloor() {
+        XCTAssertEqual(SparkExitMath.sweepFeeRate(economy: 1, exitRate: 5), 1)
+        XCTAssertEqual(SparkExitMath.sweepFeeRate(economy: 9, exitRate: 5), 5)
+        XCTAssertEqual(SparkExitMath.sweepFeeRate(economy: 0, exitRate: 5), 1)
+        XCTAssertEqual(SparkExitMath.sweepFeeRate(economy: nil, exitRate: 5), 5)
+    }
+
+    func testOnlyInputsWorthMoreThanTheirOwnFeeAreSwept() {
+        let utxos = [
+            SparkExitFixtures.utxo("a", value: 294),
+            SparkExitFixtures.utxo("b", value: 341),
+            SparkExitFixtures.utxo("c", value: 5000),
+        ]
+        // 68 vB at 5 sat/vB is 340.
+        XCTAssertEqual(SparkExitMath.economicalUtxos(utxos, rate: 5).map(\.txid), ["b", "c"])
+        XCTAssertEqual(SparkExitMath.economicalUtxos(utxos, rate: 1).count, 3)
+    }
+
+    /// Per-node change at 20 sat/vB: every 600-sat output costs more to spend than it holds. The sweep waits, checks
+    /// the rate again after 144 blocks, and sends the change once the economy rate makes it worth it.
+    func testChangeWaitsForFeesToDropThenSweepsAtTheEconomyRate() async throws {
+        var record = endedRecord()
+        record.feeRateSatPerVbyte = 20
+        chain.economyFee = 20
+        chain.utxosByAddress[key.address] = (0 ..< 3).map { SparkExitFixtures.utxo(String(repeating: "\($0 + 1)", count: 64), value: 600) }
+
+        record = try await driver().tick(record)
+        XCTAssertTrue(record.leftoverSweep?.isWaitingForFees == true)
+        XCTAssertEqual(record.leftoverSweep?.checkedAtHeight, 1000)
+
+        chain.economyFee = 1
+        chain.tip = 1143
+        record = try await driver().tick(record)
+        XCTAssertTrue(record.leftoverSweep?.isWaitingForFees == true, "not checked again before 144 blocks")
+
+        chain.tip = 1144
+        record = try await driver().tick(record)
+        let sweep = try XCTUnwrap(record.leftoverSweep)
+        XCTAssertNotNil(sweep.txid)
+        XCTAssertEqual(sweep.feeRateSatPerVbyte, 1)
+        XCTAssertEqual(sweep.isAccepted, true)
+        try assertValidP2wpkhSpend(
+            .init(txid: XCTUnwrap(sweep.txid), txHex: XCTUnwrap(sweep.txHex), valueSats: sweep.valueSats),
+            utxos: chain.utxosByAddress[key.address] ?? []
+        )
+    }
+
+    /// After about four weeks (4,032 blocks) the change stays at the funding address and the exit is let go.
+    func testChangeTooSmallForFourWeeksIsKept() async throws {
+        var record = endedRecord()
+        record.feeRateSatPerVbyte = 20
+        chain.economyFee = 20
+        chain.utxosByAddress[key.address] = [SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 600)]
+        record = try await driver().tick(record)
+        XCTAssertTrue(record.needsDriving)
+        XCTAssertTrue(record.showsResult)
+
+        chain.tip = 1000 + SparkExitDriver.sweepWaitBlocks
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.leftoverSweep?.isDustKept, true)
+        XCTAssertFalse(record.isLeftoverSweepPending)
+        XCTAssertFalse(record.needsDriving)
+        XCTAssertTrue(chain.broadcasts.isEmpty)
+        XCTAssertTrue(t("lightning__spark_exit__leftover_waiting", variables: ["amount": "₿ 600"]).contains("when network fees drop"))
+        XCTAssertTrue(t("lightning__spark_exit__leftover_dust", variables: ["amount": "₿ 600", "address": "a", "path": "m/84'"])
+            .contains("derivation path m/84'"))
     }
 
     func testFinishingAnExitSweepsTheLeftoverInTheSameTick() async throws {
