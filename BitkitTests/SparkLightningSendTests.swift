@@ -27,6 +27,13 @@ final class SparkLightningSendTests: XCTestCase {
         XCTAssertNil(completionTimeoutSecs)
     }
 
+    func testExpiredInvoiceRefusalUsesTheScannerExpiryCopy() {
+        let refusal = SparkManager.expiredInvoiceRefusal(SdkError.InvalidInput("Invoice has expired"))
+        XCTAssertEqual(refusal?.errorDescription, t("other__scan__error__expired"))
+        XCTAssertNil(SparkManager.expiredInvoiceRefusal(SdkError.InvalidInput("Invalid amount")))
+        XCTAssertNil(SparkManager.expiredInvoiceRefusal(SdkError.Generic("Invoice has expired")))
+    }
+
     func testLightningInvoiceWithoutChannelsOrSparkIsRejected() async throws {
         let app = makeApp(hasChannelFreeRail: false) { _ in false }
 

@@ -168,7 +168,8 @@ final class SparkManager: ChannelFreeLightningRail {
             amountSats: amountSats,
             expirySecs: expirySecs,
             paymentHash: nil,
-            receiverIdentityPublicKey: nil
+            receiverIdentityPublicKey: nil,
+            preimage: nil
         )
         return try await requireSdk().receivePayment(request: ReceivePaymentRequest(paymentMethod: method)).paymentRequest
     }
@@ -182,17 +183,29 @@ final class SparkManager: ChannelFreeLightningRail {
             sdk = try await requireSdk()
             prepared = try await prepareSend(paymentRequest: bolt11, amountSats: sats)
         } catch {
-            throw ChannelFreeRailSendRefused(reason: "Spark could not prepare the payment", underlying: error)
+            throw Self.expiredInvoiceRefusal(error) ?? ChannelFreeRailSendRefused(reason: "Spark could not prepare the payment", underlying: error)
         }
         guard case let .bolt11Invoice(invoiceDetails, _, _) = prepared.paymentMethod else {
             throw ChannelFreeRailSendRefused(reason: "Unexpected Spark payment method: \(prepared.paymentMethod)")
         }
-        let response = try await sdk.sendPayment(request: SendPaymentRequest(
-            prepareResponse: prepared,
-            options: Self.bolt11SendOptions
-        ))
+        let response: SendPaymentResponse
+        do {
+            response = try await sdk.sendPayment(request: SendPaymentRequest(
+                prepareResponse: prepared,
+                options: Self.bolt11SendOptions
+            ))
+        } catch {
+            // The SDK checks the expiry again before sending, so an invoice that expired on the confirm screen left nothing.
+            throw Self.expiredInvoiceRefusal(error) ?? error
+        }
         Logger.info("Sent Spark payment '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
         return invoiceDetails.paymentHash
+    }
+
+    /// The SDK refuses an expired Lightning invoice before anything leaves the wallet, with the scanner's expiry copy.
+    nonisolated static func expiredInvoiceRefusal(_ error: Error) -> ChannelFreeRailSendRefused? {
+        guard case let SdkError.InvalidInput(message) = error, message.localizedCaseInsensitiveContains("invoice has expired") else { return nil }
+        return ChannelFreeRailSendRefused(reason: t("other__scan__error__expired"))
     }
 
     nonisolated func lightningPayments() async -> [ChannelFreeRailPayment] {
@@ -288,7 +301,7 @@ final class SparkManager: ChannelFreeLightningRail {
             options: .bitcoinAddress(confirmationSpeed: .medium)
         ))
         preparedWithdrawal = nil
-        if case let .withdraw(txId) = response.payment.details {
+        if case let .withdraw(txId, _, _) = response.payment.details {
             sentWithdrawalTxIds.insert(txId)
         }
         try await refresh()
@@ -437,6 +450,9 @@ final class SparkManager: ChannelFreeLightningRail {
     private func refresh() async throws {
         let sdk = try await requireSdk()
         let info = try await sdk.getInfo(request: GetInfoRequest(ensureSynced: false))
+        if let syncError = info.lastSyncError {
+            Logger.warn("Spark's last sync failed: \(syncError)", context: "SparkManager")
+        }
         let unclaimed = try await sdk.listUnclaimedDeposits(request: ListUnclaimedDepositsRequest()).deposits
         let payments = try await sdk.listPayments(request: ListPaymentsRequest()).payments
         let claimed = payments.filter { $0.method == .deposit && $0.status == .completed }
@@ -465,7 +481,7 @@ final class SparkManager: ChannelFreeLightningRail {
 
     nonisolated static func withdrawals(_ payments: [Payment]) -> [SparkWithdrawal] {
         payments.compactMap { payment in
-            guard payment.status != .failed, case let .withdraw(txId) = payment.details else { return nil }
+            guard payment.status != .failed, case let .withdraw(txId, _, _) = payment.details else { return nil }
             return SparkWithdrawal(txid: txId, amountSats: sats(payment.amount), feeSats: sats(payment.fees))
         }
     }
@@ -475,7 +491,7 @@ final class SparkManager: ChannelFreeLightningRail {
         unclaimed.map(\.txid) + payments.compactMap { payment in
             guard payment.status != .failed else { return nil }
             switch payment.details {
-            case let .deposit(txId, _), let .withdraw(txId): return txId
+            case let .deposit(txId, _), let .withdraw(txId, _, _): return txId
             default: return nil
             }
         }
