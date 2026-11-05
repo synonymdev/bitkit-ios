@@ -29,6 +29,14 @@ final class SparkExitManager {
     private(set) var tipHeight: UInt32?
     /// Confirmed or not, what reached the funding address and is not a funding input yet.
     private(set) var fundingSeenSats: UInt64 = 0
+    /// How many payments make up `fundingSeenSats` on the pre-start funding screen.
+    private(set) var fundingSeenCount = 0
+    /// The network's rates now, read on every tick: the SDK's recommendation, or the chain host's without the SDK.
+    private(set) var networkFees: SparkExitNetworkFees?
+    /// The higher rates a fee bump offers, priced against the running exit.
+    private(set) var feeBumpOptions: [SparkExitFeeBumpOption] = []
+    private(set) var isPricingFeeBump = false
+    private(set) var feeBumpError: String?
     /// What the running exit shows about its fee funding while it lacks some.
     private(set) var fundingState: SparkExitFundingState?
     private(set) var fundingAddress: String?
@@ -47,6 +55,11 @@ final class SparkExitManager {
     @ObservationIgnored private var pendingFundingIndex: UInt32?
 
     private init() {}
+
+    /// The fee rate of the quote on screen.
+    var quoteFeeRate: UInt64? {
+        pendingFeeRate
+    }
 
     var isExiting: Bool {
         record?.isActive == true
@@ -206,6 +219,7 @@ final class SparkExitManager {
         )
         do {
             tipHeight = try? await chain.tipHeight()
+            await refreshNetworkFees(chain: chain)
             await refreshFundingSeen(chain: chain, record: current)
             var updated = try await driver.tick(current)
             // A tick that adopted the funding and came up short would otherwise keep showing that payment as seen.
@@ -238,18 +252,20 @@ final class SparkExitManager {
         }
     }
 
-    /// Ends the exit's transfer once the sweep reaches savings, or once the exit ended, so its amount is never
-    /// counted both as in transfer and in the on-chain balance. Runs on every tick and launch until it holds.
+    /// Ends the exit's transfer once the sweep reaches savings, once only leaves the operators moved on-chain are left,
+    /// or once the exit ended, so its amount is never counted both as in transfer and in the on-chain balance. Runs on
+    /// every tick and launch until it holds. A sweep of a generation the failed-leaf retry replaced is looked for too.
     private func settleIfFinished(_ record: SparkExitRecord) async {
         guard let transferId = record.transferId,
               let transfer = try? TransferStorage.shared.getById(transferId), !transfer.isSettled
         else { return }
         let activity = CoreService.shared.activity
-        var isFinished = !record.isActive
-        if let sweep = record.recovery?.response.transactions.first(where: { $0.kind == .sweep }),
-           await activity.hasOnchainActivityForTxid(txid: sweep.txid)
-        {
-            await activity.markOnchainActivityAsTransfer(txId: sweep.txid)
+        var isFinished = !record.isActive || record.isRetryingFailedLeaves
+        let sweeps = (record.recovery?.response.transactions ?? []).filter { $0.kind == .sweep }.map(\.txid)
+            + (record.earlierReceivedSats ?? [:]).keys.sorted()
+        for txid in sweeps {
+            guard await activity.hasOnchainActivityForTxid(txid: txid) else { continue }
+            await activity.markOnchainActivityAsTransfer(txId: txid)
             isFinished = true
         }
         guard isFinished else { return }
@@ -287,6 +303,93 @@ final class SparkExitManager {
             fundingSeenSats = SparkExitMath.newFunding(utxos, record: record).reduce(0) { $0 + $1.value }
         }
         fundingState = SparkExitMath.fundingState(record, utxos: utxos)
+    }
+
+    private func refreshNetworkFees(chain: SparkExitChain) async {
+        if SparkManager.shared.exitRecovering != nil, let fees = try? await SparkManager.shared.exitNetworkFees() {
+            networkFees = fees
+        } else if let fees = try? await chain.networkFees() {
+            networkFees = fees
+        }
+    }
+
+    // MARK: Fee bump
+
+    /// Whether the running exit can move to a higher fee: it is underpriced (refused under the mempool's minimum, or
+    /// accepted and unconfirmed for more than `unconfirmedBlocksToSurface` blocks), or the network's next-block rate
+    /// is above its own. Not while it rebuilds or waits for funding, and not once only leaves the operators hold are left.
+    var canPayHigherFee: Bool {
+        guard let record, record.phase == .running, !record.isRebuilding, record.recovery != nil, !record.isRetryingFailedLeaves else {
+            return false
+        }
+        return record.underpricedStep(tip: tipHeight) != nil || isNetworkAboveExitRate
+    }
+
+    /// The network's next-block rate is above the exit's.
+    var isNetworkAboveExitRate: Bool {
+        guard let record, let networkFees else { return false }
+        return networkFees.fastest > record.feeRateSatPerVbyte
+    }
+
+    /// Prices each higher rate against what the exit's funding holds now.
+    func loadFeeBumpOptions() async {
+        guard let record, let chain else { return }
+        isPricingFeeBump = true
+        feeBumpError = nil
+        defer { isPricingFeeBump = false }
+        await refreshNetworkFees(chain: chain)
+        guard let networkFees else {
+            feeBumpError = t("lightning__spark_exit__fee_bump_error")
+            return
+        }
+        let walletIndex = walletIndex
+        let driver = SparkExitDriver(
+            chain: chain,
+            recovering: SparkManager.shared.exitRecovering,
+            makeSigner: { try Self.signer(walletIndex: walletIndex, index: $0) },
+            save: { _ in }
+        )
+        var options = SparkExitFeeBumpOption.options(exitRate: record.feeRateSatPerVbyte, fees: networkFees)
+        for i in options.indices {
+            do {
+                options[i].extraSats = try await driver.feeBumpShortfall(record, rate: options[i].rate)
+            } catch {
+                Logger.warn("Failed to price a Spark exit fee bump to \(options[i].rate) sat/vB: \(error)", context: "SparkExitManager")
+            }
+        }
+        feeBumpOptions = options.filter { $0.extraSats != nil }
+        if feeBumpOptions.isEmpty {
+            feeBumpError = t("lightning__spark_exit__fee_bump_error")
+        }
+    }
+
+    /// Notes what savings pays in fees to send the extra funding of `rate`.
+    func setFeeBumpPaymentFee(rate: UInt64, sats: UInt64) {
+        guard let i = feeBumpOptions.firstIndex(where: { $0.rate == rate }) else { return }
+        feeBumpOptions[i].paymentFeeSats = sats
+    }
+
+    /// Moves the exit to `option`'s rate: pays its extra funding from savings at `savingsFeeRate` first, then rebuilds
+    /// what has not confirmed at the new rate, which replaces it on the network.
+    func payHigherFee(_ option: SparkExitFeeBumpOption, savingsFeeRate: UInt32) async throws {
+        guard let extraSats = option.extraSats, let address = record?.funding.first?.address, canPayHigherFee else {
+            throw AppError(message: t("lightning__spark_exit__fee_bump_error"), debugMessage: "No fee bump to pay")
+        }
+        var txid: String?
+        if extraSats > 0 {
+            txid = try await payFunding(address: address, sats: extraSats, satsPerVbyte: savingsFeeRate, feeSats: option.paymentFeeSats ?? 0)
+        }
+        // Written between ticks, so a tick in flight never saves over it.
+        while isTicking {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        guard var record else { return }
+        record.applyFeeBump(rate: option.rate, extraSats: extraSats, paymentTxid: txid)
+        try saveRecord(record)
+        self.record = record
+        fundingState = SparkExitMath.fundingState(record, utxos: nil)
+        Logger.info("Spark exit moves to \(option.rate) sat/vB with \(extraSats) sats more funding", context: "SparkExitManager")
+        Task { await tick() }
     }
 
     // MARK: Quote
@@ -332,6 +435,7 @@ final class SparkExitManager {
         while !Task.isCancelled {
             if let utxos = try? await chain.utxos(address: fundingAddress) {
                 fundingSeenSats = utxos.reduce(0) { $0 + $1.value }
+                fundingSeenCount = utxos.count
             }
             try? await Task.sleep(nanoseconds: 15 * 1_000_000_000)
         }
@@ -360,6 +464,7 @@ final class SparkExitManager {
             expectedSats: quote.incomingSats,
             skippedLeafCount: quote.prepared.skipped.count
         )
+        record.fundingStrategy = SparkExitRecord.perNodeStrategy
         // Saved before the transfer exists, so a failed save never leaves a transfer counted with no exit behind it.
         try store.save(record)
         record.transferId = try await TransferService(lightningService: .shared).createTransfer(type: .sparkExit, amountSats: quote.incomingSats)

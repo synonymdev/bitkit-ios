@@ -78,10 +78,17 @@ struct SparkExitQuote: Equatable {
         _ recovering: SparkExitRecovering,
         feeRateSatPerVbyte: UInt64,
         destination: String,
-        lostLeafIds: Set<String>
+        lostLeafIds: Set<String>,
+        fundingStrategy: CpfpFundingStrategy = .perNode
     ) async throws -> SparkExitQuote {
         func request(_ selection: ExitLeafSelection) -> PrepareRecoverFundsRequest {
-            PrepareRecoverFundsRequest(feeRateSatPerVbyte: feeRateSatPerVbyte, fundingKind: .p2wpkh, destination: destination, selection: selection)
+            PrepareRecoverFundsRequest(
+                feeRateSatPerVbyte: feeRateSatPerVbyte,
+                fundingKind: .p2wpkh,
+                fundingStrategy: fundingStrategy,
+                destination: destination,
+                selection: selection
+            )
         }
         let all = try await recovering.prepare(request(.all))
         let lostLeafSats = all.leaves.filter { lostLeafIds.contains($0.leafId) }.map(\.valueSats)
@@ -124,9 +131,15 @@ struct SparkExitQuote: Equatable {
         exitSats.saturatingSub(networkFeeSats)
     }
 
-    /// The on-chain payment that funds the CPFP fees, or 0 when every leaf is recovered cooperatively.
+    /// The on-chain payment that funds the CPFP fees, or 0 when every leaf is recovered cooperatively. One payment,
+    /// from savings or another wallet: the SDK splits it into one output per fee-bumped transaction (`fundedSteps`).
     var fundingSats: UInt64 {
         prepared.funding?.singleUtxoSats ?? 0
+    }
+
+    /// The transactions the funding pays a fee for, each from its own share.
+    var fundedSteps: Int {
+        prepared.funding?.perBranch.count ?? 0
     }
 
     /// What the sweep and the cooperative recoveries pay to savings: `receiveSats` plus the fee funding the exit
@@ -150,6 +163,44 @@ struct SparkExitQuote: Equatable {
     /// Breez's rule: only exit when the value is more than its fees.
     var isWorthExiting: Bool {
         !prepared.leaves.isEmpty && exitSats > networkFeeSats
+    }
+}
+
+/// The network's fee rates now, in sat/vB: for the next block, and for about half an hour.
+struct SparkExitNetworkFees: Equatable {
+    let fastest: UInt64
+    let halfHour: UInt64
+}
+
+/// A higher fee rate an exit can move to, and what moving costs: the funding the exit lacks at that rate (`extraSats`,
+/// nil while it is priced or when it could not be) and, when savings pays it, that payment's own fee.
+struct SparkExitFeeBumpOption: Equatable, Identifiable {
+    let speed: TransactionSpeed
+    let rate: UInt64
+    var extraSats: UInt64?
+    var paymentFeeSats: UInt64?
+
+    var id: UInt64 {
+        rate
+    }
+
+    /// What leaves savings: the extra funding and its payment's fee. Nothing when the funding already covers the rate.
+    var totalSats: UInt64? {
+        guard let extraSats else { return nil }
+        guard extraSats > 0 else { return 0 }
+        return paymentFeeSats.map { extraSats + $0 }
+    }
+
+    /// The rates a fee bump offers, each strictly above the exit's: replacements must pay a higher rate. Fast is the
+    /// next-block rate, or one above the exit's when the network's estimate is no higher; Normal the half-hour rate,
+    /// when it lies between the two.
+    static func options(exitRate: UInt64, fees: SparkExitNetworkFees) -> [SparkExitFeeBumpOption] {
+        let fast = max(fees.fastest, exitRate + 1)
+        var options = [SparkExitFeeBumpOption(speed: .fast, rate: fast)]
+        if fees.halfHour > exitRate, fees.halfHour < fast {
+            options.append(SparkExitFeeBumpOption(speed: .normal, rate: fees.halfHour))
+        }
+        return options
     }
 }
 
@@ -244,7 +295,7 @@ enum SparkExitMath {
         guard case .running = record.phase, let recovery = record.recovery?.response else { return lostReminder }
         var reminders = lostReminder
         // Waiting for a leaf that may still move is the background runs' job, for up to a week.
-        if record.isWaitingForLeaves {
+        if record.isWaitingForLeaves || record.isWaitingForOperators {
             return reminders
         }
         let generation = record.generation
@@ -346,11 +397,11 @@ enum SparkExitMath {
         }.count
     }
 
-    /// UTXOs at the funding address that are new fee funding: neither a funding input yet nor CPFP change any
-    /// generation of the exit chained there.
+    /// UTXOs at the funding address that are new fee funding: neither a funding input yet nor an output any
+    /// generation of the exit made there, a CPFP child's change or a fan-out's split of the funding.
     static func newFunding(_ utxos: [EsploraUtxo], record: SparkExitRecord) -> [EsploraUtxo] {
         let known = Set(record.funding.compactMap { funding in funding.txid.map { "\($0):\(funding.vout ?? 0)" } })
-        let chained = Set((record.recovery.map { SparkExitTxid.cpfpChildTxids($0.response) } ?? []) + (record.earlierCpfpTxids ?? []))
+        let chained = Set((record.recovery.map { SparkExitTxid.chainedTxids($0.response) } ?? []) + (record.earlierCpfpTxids ?? []))
         return utxos.filter { !known.contains("\($0.txid):\($0.vout)") && !chained.contains($0.txid) }
     }
 
@@ -417,6 +468,15 @@ enum SparkExitMath {
             return sats
         }
         return record.fundingShortfallSats.map { max($0, fundingDustSats) }
+    }
+
+    /// The fee funding the pre-start screen counts towards once `payments` reached the funding address: the quote's
+    /// funding, priced for one payment, plus the input fee of each further one. `toSend` adds the input of the
+    /// payment still to come while what arrived falls short, as the Progress top-up does.
+    static func prestartFunding(fundingSats: UInt64, payments: Int, receivedSats: UInt64, feeRate: UInt64) -> (covered: UInt64, toSend: UInt64) {
+        let inputFee = inputVbytes * feeRate
+        let covered = fundingSats + inputFee * UInt64(max(0, payments - 1))
+        return (covered, receivedSats >= covered || payments == 0 ? covered : covered + inputFee)
     }
 
     /// What a partial payment leaves to send, at least the dust limit: nil before any new funding arrives and once

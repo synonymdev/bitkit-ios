@@ -52,6 +52,15 @@ protocol SparkExitChain: Sendable {
     func broadcast(_ tx: RecoveryTransaction) async -> SparkExitBroadcastOutcome
     /// The rate for the next block, rounded up, at least 1 sat/vB.
     func fastestFeeRate() async throws -> UInt64
+    /// The rates for the next block and for about half an hour, for a fee bump while the SDK is not connected.
+    func networkFees() async throws -> SparkExitNetworkFees
+}
+
+extension SparkExitChain {
+    func networkFees() async throws -> SparkExitNetworkFees {
+        let fastest = try await fastestFeeRate()
+        return SparkExitNetworkFees(fastest: fastest, halfHour: fastest)
+    }
 }
 
 protocol SparkExitHTTP: Sendable {
@@ -134,6 +143,14 @@ struct EsploraSparkExitChain: SparkExitChain {
         let estimates = try await JSONDecoder().decode([String: Double].self, from: get("/fee-estimates"))
         guard let rate = estimates["1"] else { throw URLError(.cannotParseResponse) }
         return max(1, UInt64(rate.rounded(.up)))
+    }
+
+    /// esplora's targets of one and three blocks, mempool's `fastestFee` and `halfHourFee`.
+    func networkFees() async throws -> SparkExitNetworkFees {
+        let estimates = try await JSONDecoder().decode([String: Double].self, from: get("/fee-estimates"))
+        guard let fastest = estimates["1"] else { throw URLError(.cannotParseResponse) }
+        let rate = { (value: Double) in max(1, UInt64(value.rounded(.up))) }
+        return SparkExitNetworkFees(fastest: rate(fastest), halfHour: rate(estimates["3"] ?? fastest))
     }
 
     /// `/tx/{txid}/hex` looks in the mempool and the chain alike; `/status` of an unknown transaction may answer

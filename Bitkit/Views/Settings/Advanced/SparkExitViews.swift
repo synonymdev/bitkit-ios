@@ -169,6 +169,16 @@ struct SparkExitFundingView: View {
         exit.quote?.fundingSats ?? 0
     }
 
+    /// What the funding address has to hold for the payments seen so far, and what the next one should bring it to.
+    private var prestartFunding: (covered: UInt64, toSend: UInt64) {
+        SparkExitMath.prestartFunding(
+            fundingSats: fundingSats,
+            payments: exit.fundingSeenCount,
+            receivedSats: exit.fundingSeenSats,
+            feeRate: exit.quoteFeeRate ?? 0
+        )
+    }
+
     private var canFundFromSavings: Bool {
         guard let savingsFeeSats else { return false }
         return SparkExitMath.canFundFromSavings(
@@ -194,12 +204,19 @@ struct SparkExitFundingView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 16)
 
+                    if let steps = exit.quote?.fundedSteps, steps > 1 {
+                        BodySText(t("lightning__spark_exit__funding_split", variables: ["count": "\(steps)"]))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 16)
+                            .accessibilityIdentifier("SparkExitFundingSplit")
+                    }
+
                     if showsAddress, let address = exit.fundingAddress {
                         SparkExitFundingAddress(
                             address: address,
                             requiredSats: fundingSats,
                             receivedSats: exit.fundingSeenSats,
-                            targetSats: fundingSats
+                            targetSats: prestartFunding.toSend
                         )
                         .padding(.top, 24)
                     }
@@ -212,7 +229,7 @@ struct SparkExitFundingView: View {
                     exit.fundFromSavings = false
                     navigation.navigate(.sparkExitConfirm)
                 }
-                .disabled(exit.fundingSeenSats < fundingSats)
+                .disabled(exit.fundingSeenSats < prestartFunding.covered)
                 .accessibilityIdentifier("SparkExitFundingContinue")
             } else {
                 if hasSavingsFeeFailed || (savingsFeeSats != nil && !canFundFromSavings) {
@@ -465,11 +482,19 @@ struct SparkExitProgressView: View {
         ].compactMap { $0 }.joined(separator: " ")
     }
 
+    /// A top-up already paid, such as a higher fee's from savings, or seen at the address: nothing to ask for.
+    private var isFundingOnItsWay: Bool {
+        switch fundingState {
+        case .paid, .seen: true
+        default: false
+        }
+    }
+
     private var title: String {
         switch record?.phase {
         case .done: t("lightning__spark_exit__done_title")
         case .failed: t("lightning__spark_exit__failed_title")
-        case .needsFunding: t("lightning__spark_exit__needs_funding_title")
+        case .needsFunding where !isFundingOnItsWay: t("lightning__spark_exit__needs_funding_title")
         default: t("lightning__spark_exit__progress_title")
         }
     }
@@ -484,11 +509,12 @@ struct SparkExitProgressView: View {
                 },
                 (record?.skippedLeafCount ?? 0) > 0
                     ? t("lightning__spark_exit__partial_text", variables: ["count": "\(record?.skippedLeafCount ?? 0)"]) : nil,
-                (record?.failedLeafCount ?? 0) > 0
-                    ? t("lightning__spark_exit__failed_leaves", variables: ["count": "\(record?.failedLeafCount ?? 0)"]) : nil,
+                record.flatMap { $0.isFailedLeavesReleased == true && $0.failedLeavesSats > 0 ? $0.failedLeavesSats : nil }.map {
+                    t("lightning__spark_exit__failed_leaves", variables: ["amount": currency.primaryAmountText(sats: $0)])
+                },
             ].compactMap { $0 }.joined(separator: " ")
         case .failed: failedText
-        case .needsFunding:
+        case .needsFunding where !isFundingOnItsWay:
             t(
                 "lightning__spark_exit__needs_funding_text",
                 variables: ["amount": currency.primaryAmountText(sats: record.flatMap { SparkExitMath.neededSats($0, state: fundingState) } ?? 0)]
@@ -534,6 +560,16 @@ struct SparkExitProgressView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                                 .padding(.top, 16)
                                 .accessibilityIdentifier("SparkExitWaitingLeaves")
+                        }
+
+                        if record.isWaitingForOperators {
+                            BodySText(t(
+                                "lightning__spark_exit__waiting_operators",
+                                variables: ["amount": currency.primaryAmountText(sats: record.failedLeavesSats)]
+                            ))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 16)
+                            .accessibilityIdentifier("SparkExitWaitingOperators")
                         }
 
                         if let address = record.funding.first?.address {
@@ -587,6 +623,17 @@ struct SparkExitProgressView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                                 .padding(.top, 16)
                                 .accessibilityIdentifier("SparkExitFeeLow")
+                        } else if exit.canPayHigherFee {
+                            Button {
+                                navigation.navigate(.sparkExitFeeBump)
+                            } label: {
+                                BodySText(t("lightning__spark_exit__fee_rose"), textColor: .yellowAccent)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .multilineTextAlignment(.leading)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .padding(.top, 16)
+                            .accessibilityIdentifier("SparkExitFeeRose")
                         }
 
                         if let outsideSats = SparkExitMath.outsideExitSats(sparkBalanceSats: SparkManager.shared.balanceSats, record: record) {
@@ -609,6 +656,14 @@ struct SparkExitProgressView: View {
                         }
                     }
                 }
+            }
+
+            if exit.canPayHigherFee {
+                CustomButton(title: t("lightning__spark_exit__fee_bump_button"), variant: .secondary) {
+                    navigation.navigate(.sparkExitFeeBump)
+                }
+                .padding(.bottom, 16)
+                .accessibilityIdentifier("SparkExitFeeBump")
             }
 
             if exit.canCancel {
@@ -640,6 +695,138 @@ struct SparkExitProgressView: View {
         }
         .task(id: record?.hasUnseenResult) {
             exit.markResultSeen()
+        }
+    }
+}
+
+/// Moves a running exit to a higher fee rate: each rate with what it costs from savings, then pays the extra fee
+/// funding and rebuilds what has not confirmed, which replaces it on the network.
+struct SparkExitFeeBumpView: View {
+    @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
+    @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var wallet: WalletViewModel
+
+    @State private var selectedRate: UInt64?
+    @State private var savingsFeeRate: UInt32?
+    @State private var isPaying = false
+
+    private let exit = SparkExitManager.shared
+
+    private var selected: SparkExitFeeBumpOption? {
+        exit.feeBumpOptions.first { $0.rate == selectedRate }
+    }
+
+    private func canPay(_ option: SparkExitFeeBumpOption) -> Bool {
+        guard let total = option.totalSats else { return false }
+        return total == 0 || UInt64(max(0, wallet.spendableOnchainBalanceSats)) >= total
+    }
+
+    private var isInsufficient: Bool {
+        guard let selected, selected.totalSats != nil else { return false }
+        return !canPay(selected)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("lightning__spark_exit__nav_title"))
+                .padding(.bottom, 16)
+
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    DisplayText(t("lightning__spark_exit__fee_bump_title"), accentColor: .yellowAccent)
+
+                    BodyMText(
+                        t("lightning__spark_exit__fee_bump_text", variables: ["rate": "\(exit.record?.feeRateSatPerVbyte ?? 0)"]),
+                        accentFont: Fonts.bold
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 16)
+                    .padding(.bottom, 24)
+
+                    if exit.isPricingFeeBump {
+                        BodyMText(t("lightning__spark_exit__fee_bump_loading"))
+                    } else if let error = exit.feeBumpError {
+                        BodyMText(error, textColor: .redAccent)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("SparkExitFeeBumpError")
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(exit.feeBumpOptions) { option in
+                                FeeItem(
+                                    title: option.speed.title,
+                                    subtitle: "\(option.speed.range) · \(option.rate) sat/vB",
+                                    iconName: option.speed.iconName,
+                                    iconColor: option.speed.iconColor,
+                                    amount: option.totalSats ?? 0,
+                                    isSelected: option.rate == selectedRate,
+                                    isDisabled: !canPay(option)
+                                ) {
+                                    selectedRate = option.rate
+                                }
+                                .accessibilityIdentifier("SparkExitFeeBumpRate-\(option.rate)")
+                            }
+                        }
+                        .padding(.horizontal, -16)
+                    }
+                }
+                .padding(.bottom, 16)
+            }
+
+            if isInsufficient {
+                BodySText(t("lightning__spark_exit__fund_insufficient"))
+                    .padding(.bottom, 16)
+                    .accessibilityIdentifier("SparkExitFeeBumpInsufficient")
+            }
+
+            CustomButton(
+                title: t(selected?.extraSats == 0 ? "lightning__spark_exit__fee_bump_confirm" : "lightning__spark_exit__fund_savings"),
+                isLoading: isPaying || exit.isPricingFeeBump
+            ) {
+                await pay()
+            }
+            .disabled(selected.map { !canPay($0) } ?? true)
+            .accessibilityIdentifier("SparkExitFeeBumpPay")
+        }
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
+        .task {
+            await exit.loadFeeBumpOptions()
+            await priceSavingsPayments()
+            selectedRate = exit.feeBumpOptions.first(where: canPay)?.rate
+        }
+    }
+
+    /// What savings pays in fees to send each option's extra funding, at its fast rate.
+    private func priceSavingsPayments() async {
+        guard let address = exit.record?.funding.first?.address,
+              let feeRates = await feeEstimatesManager.getEstimates(refresh: true)
+        else { return }
+        let rate = TransactionSpeed.fast.getFeeRate(from: feeRates)
+        savingsFeeRate = rate
+        for option in exit.feeBumpOptions {
+            guard let extraSats = option.extraSats, extraSats > 0 else { continue }
+            do {
+                let fee = try await wallet.calculateTotalFee(address: address, amountSats: extraSats, satsPerVByte: rate)
+                exit.setFeeBumpPaymentFee(rate: option.rate, sats: fee)
+            } catch {
+                // Savings can't send it, usually because it doesn't hold enough: the option stays unpriced and disabled.
+                Logger.warn("Failed to price a Spark exit fee bump payment: \(error)", context: "SparkExitFeeBumpView")
+            }
+        }
+    }
+
+    private func pay() async {
+        guard let selected else { return }
+        isPaying = true
+        defer { isPaying = false }
+        do {
+            try await exit.payHigherFee(selected, savingsFeeRate: savingsFeeRate ?? 1)
+            navigation.navigateBack()
+        } catch {
+            app.toast(error)
         }
     }
 }
@@ -704,20 +891,25 @@ struct SparkExitSteps: View {
         return BlockTimeHelpers.getDurationForBlocks(blocks)
     }
 
+    /// The exit's own steps all landed: done, or only leaves the operators moved on-chain are left.
+    private var isLanded: Bool {
+        record.phase == .done || record.isRetryingFailedLeaves
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             step(t("lightning__spark_exit__step_funding"), isDone: isFunded)
             step(
                 t("lightning__spark_exit__step_publish"),
                 detail: record.recovery.map { "\(SparkExitMath.confirmedCount($0.response))/\(transactions.count)" },
-                isDone: record.phase == .done
+                isDone: isLanded
             )
             step(
                 t("lightning__spark_exit__step_timelock"),
                 detail: remainingDuration.map { t("lightning__spark_exit__ready_in", variables: ["duration": $0]) },
-                isDone: record.phase == .done || SparkExitMath.areTimelocksMatured(transactions)
+                isDone: isLanded || SparkExitMath.areTimelocksMatured(transactions)
             )
-            step(t("lightning__spark_exit__step_sweep"), isDone: record.phase == .done)
+            step(t("lightning__spark_exit__step_sweep"), isDone: isLanded)
         }
     }
 

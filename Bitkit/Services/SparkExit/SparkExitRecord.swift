@@ -73,6 +73,12 @@ struct SparkExitRecord: Codable, Equatable {
         let reason: String
     }
 
+    /// A cooperative leaf the operators' watchtower moved on-chain that they could not co-sign a recovery for.
+    struct FailedLeaf: Codable, Equatable {
+        let leafId: String
+        var valueSats: UInt64
+    }
+
     struct Leftover: Codable, Equatable {
         let txid: String
         let vout: UInt32
@@ -128,8 +134,18 @@ struct SparkExitRecord: Codable, Equatable {
     var claimableAtHeight: UInt32?
     var leftover: [Leftover] = []
     var leftoverSweep: LeftoverSweep?
-    /// The CPFP children of earlier generations, whose change at the funding address is not new funding.
+    /// The CPFP children and fan-outs of earlier generations, whose outputs at the funding address are not new funding.
     var earlierCpfpTxids: [String]?
+    /// How the funding pays the CPFP children, the one every prepare and rebuild of the exit uses: `perNode` for exits
+    /// started on SDK 0.28, absent for those started earlier, which keep resuming per branch.
+    var fundingStrategy: String?
+    /// Cooperative leaves a finished recovery listed as failed, tried again as their own recovery for about a week.
+    var failedLeaves: [FailedLeaf]?
+    /// The tip when the exit first finished with failed leaves, and of their last try.
+    var failedLeafRetrySince: UInt32?
+    var failedLeafRetriedAt: UInt32?
+    /// The failed leaves were let go after about a week: the exit ended without them.
+    var isFailedLeavesReleased: Bool?
     var skippedLeafCount: Int = 0
     /// Cooperative leaves the last build could not recover.
     var failedLeafCount: Int = 0
@@ -258,7 +274,7 @@ struct SparkExitRecord: Codable, Equatable {
     /// Starts a new generation from a fresh build, forgetting what was broadcast for the previous one.
     mutating func adopt(_ built: RecoverFundsResponse, at date: Date = Date()) {
         if let recovery {
-            let txids = SparkExitTxid.cpfpChildTxids(recovery.response)
+            let txids = SparkExitTxid.chainedTxids(recovery.response)
             if !txids.isEmpty {
                 earlierCpfpTxids = (earlierCpfpTxids ?? []) + txids
             }
@@ -286,6 +302,41 @@ struct SparkExitRecord: Codable, Equatable {
     /// Whether a build that found nothing to build is waiting for a leaf that may still move.
     var isWaitingForLeaves: Bool {
         retrySince != nil
+    }
+
+    /// The SDK strategy for `fundingStrategy`.
+    var cpfpFundingStrategy: CpfpFundingStrategy {
+        fundingStrategy == Self.perNodeStrategy ? .perNode : .perBranch
+    }
+
+    static let perNodeStrategy = "perNode"
+
+    /// The exit's own steps all landed and it waits for the operators to co-sign leaves they moved on-chain.
+    var isRetryingFailedLeaves: Bool {
+        isActive && failedLeafRetrySince != nil
+    }
+
+    /// Waiting for the operators to co-sign leaves they moved on-chain: nothing of the exit's own is left to send.
+    var isWaitingForOperators: Bool {
+        isRetryingFailedLeaves && !(recovery?.response.failed.isEmpty ?? true)
+    }
+
+    var failedLeavesSats: UInt64 {
+        (failedLeaves ?? []).reduce(0) { $0 + $1.valueSats }
+    }
+
+    /// Takes a higher fee rate for the steps still to confirm. With `extraSats` to come at the funding address the
+    /// exit waits for it as for a top-up; with none it rebuilds at once at the new rate, replacing what is unconfirmed.
+    mutating func applyFeeBump(rate: UInt64, extraSats: UInt64, paymentTxid: String?) {
+        feeRateSatPerVbyte = rate
+        isRedoRebuild = nil
+        if extraSats > 0 {
+            phase = .needsFunding(requiredSats: fundedSats + extraSats)
+            fundingPaymentTxid = paymentTxid
+        } else {
+            isRebuilding = true
+            lastBuildAt = nil
+        }
     }
 
     /// A step of this generation that keeps being refused, or whose fee chain keeps failing. One the chain shows

@@ -710,6 +710,7 @@ struct MainNavView: View {
                 case .sparkExitFunding: SparkExitFundingView()
                 case .sparkExitConfirm: SparkExitConfirmView()
                 case .sparkExitProgress: SparkExitProgressView()
+                case .sparkExitFeeBump: SparkExitFeeBumpView()
                 case let .closeConnection(channel: channel): CloseConnectionConfirmation(channel: channel)
                 case .node: NodeStateView()
                 case .electrumSettings: ElectrumSettingsScreen()

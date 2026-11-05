@@ -204,6 +204,12 @@ final class SparkManager: ChannelFreeLightningRail {
         try await max(1, requireSdk().recommendedFees().fastestFee)
     }
 
+    /// The SDK's recommended rates for an exit's fee bump.
+    func exitNetworkFees() async throws -> SparkExitNetworkFees {
+        let fees = try await requireSdk().recommendedFees()
+        return SparkExitNetworkFees(fastest: max(1, fees.fastestFee), halfHour: max(1, fees.halfHourFee))
+    }
+
     nonisolated static var exitNetwork: BreezSdkSpark.Network? {
         switch Env.network {
         case .bitcoin: .mainnet

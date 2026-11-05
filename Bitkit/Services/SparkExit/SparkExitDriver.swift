@@ -11,6 +11,10 @@ protocol SparkExitRecovering: Sendable {
     func importExitState(_ exitState: String) async throws
 }
 
+enum SparkExitFeeBumpError: Error {
+    case notConnected
+}
+
 /// Moves an exit one step forward each tick: builds it once its fee funding confirms, broadcasts what is ready,
 /// rebuilds when the chain diverged, and finishes when everything confirmed. Without the SDK (a background launch,
 /// or operators down at connect) it still broadcasts the stored, already signed transactions whose parents
@@ -219,11 +223,8 @@ struct SparkExitDriver {
         var isRecoverableOnly = false
         while !record.exitLeafIds.isEmpty {
             do {
-                let prepared = try await recovering.prepare(PrepareRecoverFundsRequest(
-                    feeRateSatPerVbyte: record.feeRateSatPerVbyte,
-                    fundingKind: .p2wpkh,
-                    destination: record.destination,
-                    selection: isRecoverableOnly ? .recoverableOnly : .specific(leafIds: record.exitLeafIds)
+                let prepared = try await recovering.prepare(record.prepareRequest(
+                    isRecoverableOnly ? .recoverableOnly : .specific(leafIds: record.exitLeafIds)
                 ))
                 guard isRecoverableOnly else { return prepared }
                 let kept = Set(prepared.leaves.map(\.leafId))
@@ -232,12 +233,7 @@ struct SparkExitDriver {
                 // earlier exit: the exit's own are prepared again on their own.
                 guard prepared.leaves.contains(where: { !record.exitLeafIds.contains($0.leafId) }) else { return prepared }
                 guard !record.exitLeafIds.isEmpty else { return nil }
-                return try await recovering.prepare(PrepareRecoverFundsRequest(
-                    feeRateSatPerVbyte: record.feeRateSatPerVbyte,
-                    fundingKind: .p2wpkh,
-                    destination: record.destination,
-                    selection: .specific(leafIds: record.exitLeafIds)
-                ))
+                return try await recovering.prepare(record.prepareRequest(.specific(leafIds: record.exitLeafIds)))
             } catch let SdkError.SparkError(message) where SparkExitMath.isUnexitableLeafError(message) {
                 if let leafId = SparkExitMath.unexitableLeafId(message), record.exitLeafIds.contains(leafId) {
                     leaveBehind([leafId], reason: message, in: &record)
@@ -370,11 +366,93 @@ struct SparkExitDriver {
                 try await rebuildStalled(&record, recovering: recovering)
             }
         case .done:
+            if try await retryFailedLeaves(&record, failed: checked.recovery.failed, recovering: recovering, tip: tip) {
+                return
+            }
             await finish(&record, phase: .done)
         case .redo:
             Logger.warn("Spark exit diverged on-chain, rebuilding generation \(record.generation + 1)", context: "SparkExitDriver")
             record.isRedoRebuild = true
             try await rebuild(&record, recovering: recovering)
+        }
+    }
+
+    /// Cooperative leaves a finished recovery lists as failed: the operators' watchtower moved them on-chain and the
+    /// operators could not co-sign their recovery. They stay part of the exit and are prepared again as a recovery of
+    /// their own, at once and then at Glow's doubling gaps (`isRetryDue`), until they land or about a week passed
+    /// (`releaseBlocks`). True while the exit keeps waiting for them, false once it can end.
+    private func retryFailedLeaves(
+        _ record: inout SparkExitRecord,
+        failed: [CooperativeRecoveryFailure],
+        recovering: SparkExitRecovering,
+        tip: UInt32?
+    ) async throws -> Bool {
+        let failedIds = failed.map(\.leafId)
+        guard !failedIds.isEmpty, record.isFailedLeavesReleased != true else { return false }
+        guard let tip else { return true }
+        let since = record.failedLeafRetrySince ?? tip
+        record.failedLeafRetrySince = since
+        if tip.saturatingSub(since) >= Self.releaseBlocks {
+            Logger.warn("Spark exit lets go of leaves the operators could not co-sign: \(failedIds)", context: "SparkExitDriver")
+            record.isFailedLeavesReleased = true
+            return false
+        }
+        if let retriedAt = record.failedLeafRetriedAt, !Self.isRetryDue(since: since, retriedAt: retriedAt, tip: tip) {
+            return true
+        }
+        record.failedLeafRetriedAt = tip
+        try save(record)
+        guard !Task.isCancelled else { return true }
+        do {
+            let prepared = try await recovering.prepare(record.prepareRequest(.specific(leafIds: failedIds)))
+            noteFailedLeafValues(prepared, failedIds: failedIds, in: &record)
+            guard !prepared.leaves.isEmpty else { return true }
+            let built = try await recovering.recover(
+                RecoverFundsRequest(prepared: prepared, fundingInputs: prepared.funding == nil ? [] : record.fundingInputs),
+                signer: prepared.funding == nil ? nil : makeSigner(record.fundingIndex)
+            )
+            guard !built.transactions.isEmpty else { return true }
+            Logger.info("Spark exit recovers \(built.leaves.count) leaves the operators moved on-chain", context: "SparkExitDriver")
+            record.adopt(built, at: now())
+            try save(record)
+            try await broadcastReady(&record, tip: tip)
+        } catch {
+            Logger.warn("Spark exit could not recover the leaves the operators moved on-chain yet: \(error)", context: "SparkExitDriver")
+        }
+        return true
+    }
+
+    /// Keeps the value of each failed leaf from what the SDK reports for it, listed or skipped.
+    private func noteFailedLeafValues(_ prepared: PrepareRecoverFundsResponse, failedIds: [String], in record: inout SparkExitRecord) {
+        let reported = Dictionary(
+            prepared.leaves.map { ($0.leafId, $0.valueSats) } + prepared.skipped.map { ($0.leafId, $0.valueSats) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let known = Dictionary((record.failedLeaves ?? []).map { ($0.leafId, $0.valueSats) }, uniquingKeysWith: { first, _ in first })
+        record.failedLeaves = failedIds.map { SparkExitRecord.FailedLeaf(leafId: $0, valueSats: reported[$0] ?? known[$0] ?? 0) }
+    }
+
+    // MARK: Fee bump
+
+    /// What the funding address still has to receive for the exit to rebuild at `rate`, 0 when what it holds covers
+    /// it. Builds the exit's leaves at that rate with the funding it has, the way a rebuild would, and broadcasts
+    /// nothing; a shortfall is sized like a rebuild's (`neededFunding`), the input fee of the payment to come included.
+    func feeBumpShortfall(_ record: SparkExitRecord, rate: UInt64) async throws -> UInt64 {
+        guard let recovering else { throw SparkExitFeeBumpError.notConnected }
+        let prepared = try await recovering.prepare(record.prepareRequest(.specific(leafIds: record.exitLeafIds), feeRate: rate))
+        guard prepared.funding != nil, !prepared.leaves.isEmpty else { return 0 }
+        do {
+            _ = try await recovering.recover(
+                RecoverFundsRequest(prepared: prepared, fundingInputs: record.fundingInputs),
+                signer: makeSigner(record.fundingIndex)
+            )
+            return 0
+        } catch let SdkError.InsufficientCpfpFunds(requiredSats, _) {
+            var atRate = record
+            atRate.feeRateSatPerVbyte = rate
+            let utxos = try? await chain.utxos(address: record.funding.first?.address ?? "")
+            let needed = SparkExitMath.neededFunding(requiredSats: requiredSats, record: atRate, utxos: utxos)
+            return max(needed.saturatingSub(record.fundedSats), SparkExitMath.fundingDustSats)
         }
     }
 
@@ -747,6 +825,17 @@ extension SparkExitRecord {
     var surfacedRejection: String? {
         isStalled ? stuckStep?.lastOutcome : nil
     }
+
+    /// A prepare of `selection` at the exit's fee rate, or at `feeRate`, funded the way the exit was started.
+    func prepareRequest(_ selection: ExitLeafSelection, feeRate: UInt64? = nil) -> PrepareRecoverFundsRequest {
+        PrepareRecoverFundsRequest(
+            feeRateSatPerVbyte: feeRate ?? feeRateSatPerVbyte,
+            fundingKind: .p2wpkh,
+            fundingStrategy: cpfpFundingStrategy,
+            destination: destination,
+            selection: selection
+        )
+    }
 }
 
 /// When a step's relative timelocks mature, as the SDK's `spendable_at_height` computes it: each input's BIP68 block
@@ -795,6 +884,11 @@ enum SparkExitTimelock {
 enum SparkExitTxid {
     static func cpfpChildTxids(_ recovery: RecoverFundsResponse) -> [String] {
         recovery.transactions.compactMap { $0.cpfpTxHex.flatMap(txid(hex:)) }
+    }
+
+    /// The exit's own transactions that pay the funding script: the CPFP children's change and the fan-out's split.
+    static func chainedTxids(_ recovery: RecoverFundsResponse) -> [String] {
+        cpfpChildTxids(recovery) + recovery.transactions.filter { $0.kind == .fanOut }.map(\.txid)
     }
 
     /// The txids a serialized transaction spends; nil when the hex does not decode.
