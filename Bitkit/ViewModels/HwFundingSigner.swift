@@ -359,7 +359,7 @@ final class HwSendCoordinator {
     private var availabilityRequestId = 0
     private var previewRequestId = 0
     /// A fee already composed for an exact payment, so the confirmation does not compose it again.
-    /// Holds only while the wallet's balance is unchanged, which stands in for its UTXO set.
+    /// Holds only while the wallet's funding state (balance and transactions) is unchanged.
     private var composedPreview: ComposedPreview?
     private let signerFactory: @MainActor (HwWalletManager, String, UInt64) -> HwFundingSigner
 
@@ -467,20 +467,20 @@ final class HwSendCoordinator {
     }
 
     /// Records the fee of a compose already run for this exact payment, such as the one that chose
-    /// this wallet to fund it. `preparePreview` reuses it while the payment and balance match.
+    /// this wallet to fund it. `preparePreview` reuses it while the payment and funding state match.
     func seedPreview(
         walletId: String,
         address: String,
         sats: UInt64,
         satsPerVByte: UInt64,
-        balanceSats: UInt64,
+        fundingState: Int,
         feeSats: UInt64
     ) {
         guard self.walletId == walletId else { return }
         composedPreview = ComposedPreview(
             walletId: walletId,
             request: PaymentRequest(address: address, sats: sats, satsPerVByte: satsPerVByte),
-            balanceSats: balanceSats,
+            fundingState: fundingState,
             feeSats: feeSats
         )
         previewFeeSats = feeSats
@@ -499,12 +499,12 @@ final class HwSendCoordinator {
         if pendingPayment?.request != request {
             pendingPayment = nil
         }
-        // Read before composing, so a balance that moves during the compose invalidates the result.
-        let balanceSats = manager.fundingBalance(walletId: walletId)
+        // Read before composing, so coins that change during the compose invalidate the result.
+        let fundingState = manager.fundingStateFingerprint(walletId: walletId)
         let reusable = ComposedPreview(
             walletId: walletId,
             request: request,
-            balanceSats: balanceSats,
+            fundingState: fundingState,
             feeSats: composedPreview?.feeSats ?? 0
         )
         if composedPreview == reusable {
@@ -520,7 +520,7 @@ final class HwSendCoordinator {
             let signer = signerFactory(manager, address, satsPerVByte)
             let fee = try await signer.estimateOfflineFundingMiningFee(walletId: walletId, address: address, sats: sats)
             guard self.walletId == walletId, previewRequestId == requestId else { return nil }
-            composedPreview = ComposedPreview(walletId: walletId, request: request, balanceSats: balanceSats, feeSats: fee)
+            composedPreview = ComposedPreview(walletId: walletId, request: request, fundingState: fundingState, feeSats: fee)
             previewFeeSats = fee
             isFundingSourceLoading = false
             isPreviewLoading = false
@@ -835,7 +835,7 @@ final class HwSendCoordinator {
     private struct ComposedPreview: Equatable {
         let walletId: String
         let request: PaymentRequest
-        let balanceSats: UInt64
+        let fundingState: Int
         let feeSats: UInt64
     }
 

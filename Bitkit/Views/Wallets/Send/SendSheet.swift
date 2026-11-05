@@ -970,6 +970,7 @@ struct SendSheet: View {
             // Composing the exact payment both proves this wallet can pay and gives the confirmation
             // its fee, so the confirmation does not compose the same payment a second time.
             let balance = hwWalletManager.fundingBalance(walletId: hardwareWallet.walletId)
+            let fundingState = hwWalletManager.fundingStateFingerprint(walletId: hardwareWallet.walletId)
             if balance >= amountSats {
                 do {
                     let fee = try await hwWalletManager.estimateOfflineFundingMiningFee(
@@ -988,7 +989,7 @@ struct SendSheet: View {
                         address: invoice.address,
                         sats: amountSats,
                         satsPerVByte: UInt64(satsPerVByte),
-                        balanceSats: balance,
+                        fundingState: fundingState,
                         feeSats: fee
                     )
                     return true

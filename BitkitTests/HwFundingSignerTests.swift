@@ -254,7 +254,7 @@ final class HwFundingSignerTests: XCTestCase {
             address: "bc1qtest",
             sats: 42000,
             satsPerVByte: 2,
-            balanceSats: manager.fundingBalance(walletId: "trezor:wallet"),
+            fundingState: manager.fundingStateFingerprint(walletId: "trezor:wallet"),
             feeSats: 321
         )
 
@@ -276,7 +276,7 @@ final class HwFundingSignerTests: XCTestCase {
             address: "bc1qtest",
             sats: 42000,
             satsPerVByte: 2,
-            balanceSats: manager.fundingBalance(walletId: "trezor:wallet"),
+            fundingState: manager.fundingStateFingerprint(walletId: "trezor:wallet"),
             feeSats: 321
         )
 
@@ -300,6 +300,26 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(funding.estimateCalls.count, 1)
     }
 
+    func testCoordinatorPreviewComposesAgainWhenFundingStateChanges() async throws {
+        let funding = MockHwFunding()
+        let manager = HwWalletManager()
+        let coordinator = makePreviewCoordinator(funding: funding)
+        coordinator.selectWallet("trezor:wallet")
+        coordinator.seedPreview(
+            walletId: "trezor:wallet",
+            address: "bc1qtest",
+            sats: 42000,
+            satsPerVByte: 2,
+            fundingState: manager.fundingStateFingerprint(walletId: "trezor:wallet") &+ 1,
+            feeSats: 321
+        )
+
+        let fee = try await coordinator.preparePreview(manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2)
+
+        XCTAssertEqual(fee, funding.funding.miningFeeSats)
+        XCTAssertEqual(funding.estimateCalls.count, 1)
+    }
+
     func testCoordinatorDropsSeededPreviewWhenWalletChanges() async throws {
         let funding = MockHwFunding()
         let manager = HwWalletManager()
@@ -310,7 +330,7 @@ final class HwFundingSignerTests: XCTestCase {
             address: "bc1qtest",
             sats: 42000,
             satsPerVByte: 2,
-            balanceSats: 0,
+            fundingState: manager.fundingStateFingerprint(walletId: "trezor:wallet"),
             feeSats: 321
         )
         coordinator.selectWallet("trezor:other")
