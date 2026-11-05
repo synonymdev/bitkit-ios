@@ -99,15 +99,14 @@ extension PrivatePaykitService {
         return result
     }
 
-    /// The normalized key of a saved contact and the payer's identity, registering a contact the saved contacts list has not
-    /// reached yet. Nil for a key that is not a saved contact, and for a payer without an identity, who has no saved
-    /// contacts. A status that can't be read throws.
     private func savedContact(_ publicKey: String) async throws -> (publicKey: String, identity: IdentityStatus)? {
-        guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey),
-              let identity = try await contactPaymentOperations.identityStatus(), identity.publicKey != nil
-        else { return nil }
-        guard !isKnownSavedContact(normalizedKey) else { return (normalizedKey, identity) }
-        guard try await contactPaymentOperations.isSavedContact(normalizedKey) else { return nil }
+        guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else { return nil }
+        let identity = try await contactPaymentOperations.identityStatus().flatMap { $0.publicKey == nil ? nil : $0 }
+        if isKnownSavedContact(normalizedKey) {
+            guard let identity else { throw PubkyServiceError.sessionNotActive }
+            return (normalizedKey, identity)
+        }
+        guard let identity, try await contactPaymentOperations.isSavedContact(normalizedKey) else { return nil }
         if !isDeletingProfile {
             _ = rememberSavedContacts([normalizedKey], replacing: false)
         }

@@ -1847,6 +1847,92 @@ final class PrivatePaykitServiceTests: XCTestCase {
     }
 
     @MainActor
+    func testLoadedContactWithoutAPayerIdentityFailsInsteadOfPayingPublicly() async throws {
+        let statuses: [(name: String, status: IdentityStatus?)] = [
+            ("missing", nil),
+            ("missing identity key", IdentityStatus(publicKey: nil, capability: .privateLinkCapable)),
+        ]
+
+        for entry in statuses {
+            var paidPublicly = false
+            var lookedUpSavedContact = false
+            var resolvedPrivately = false
+            let service = contactPaymentService(.testing(
+                prepareContactPayment: { _, _ in
+                    resolvedPrivately = true
+                    return Self.preparedContactPayment(linkState: nil)
+                },
+                identityStatus: { entry.status },
+                isSavedContact: { _ in
+                    lookedUpSavedContact = true
+                    return true
+                },
+                beginPublicPayment: { _ in
+                    paidPublicly = true
+                    return .noEndpoint
+                }
+            ))
+            await service.setTestContactState(
+                PrivatePaykitService.ContactState(consumedPrivatePaymentListVersion: 3),
+                publicKey: Self.contactPaymentKey
+            )
+            _ = await service.rememberSavedContacts([Self.contactPaymentKey], replacing: false)
+
+            do {
+                let result = try await service.beginSavedContactPayment(to: Self.contactPaymentKey, wallet: WalletViewModel())
+                XCTFail("\(entry.name): expected the payment to fail, got \(result)")
+            } catch PubkyServiceError.sessionNotActive {}
+
+            XCTAssertFalse(paidPublicly, entry.name)
+            XCTAssertFalse(lookedUpSavedContact, entry.name)
+            XCTAssertFalse(resolvedPrivately, entry.name)
+        }
+    }
+
+    @MainActor
+    func testSavedContactWaitsForTheLinkWhenPrivateDetailsExistButNoneIsPayableYet() async throws {
+        let cases: [(linkState: LinkedPeerState?, waits: Bool)] = [
+            (nil, true), (.notLinked, true), (.linking, true), (.recoveryRequired, true), (.linked, false),
+        ]
+
+        for testCase in cases {
+            var paidPublicly = false
+            let service = contactPaymentService(.testing(
+                prepareContactPayment: { _, _ in Self.preparedUnpayablePrivateDetails(linkState: testCase.linkState) },
+                beginPublicPayment: { _ in
+                    paidPublicly = true
+                    return .noEndpoint
+                }
+            ))
+            await service.setTestContactState(
+                PrivatePaykitService.ContactState(consumedPrivatePaymentListVersion: 3),
+                publicKey: Self.contactPaymentKey
+            )
+            _ = await service.rememberSavedContacts([Self.contactPaymentKey], replacing: false)
+
+            let result = try await service.beginSavedContactPayment(to: Self.contactPaymentKey, wallet: WalletViewModel())
+
+            let name = String(describing: testCase.linkState)
+            XCTAssertFalse(paidPublicly, name)
+            let retryKeys = await service.testPendingMessageDrainRetryKeys()
+            if testCase.waits {
+                guard case .privateLinkPending = result else {
+                    XCTFail("\(name): expected the payment to wait for the private link, got \(result)")
+                    continue
+                }
+                XCTAssertEqual(retryKeys, [Self.contactPaymentKey], name)
+            } else {
+                guard case .notOpened = result else {
+                    XCTFail("\(name): expected no payable private endpoint, got \(result)")
+                    continue
+                }
+                XCTAssertTrue(retryKeys.isEmpty, name)
+            }
+            await service.clearTestPendingMessageDrainRetries()
+        }
+    }
+
+    @MainActor
     func testPayerWithoutAnIdentityPaysAnUnsavedKeyPublicly() async throws {
         let statuses: [(name: String, status: IdentityStatus?)] = [
             ("no status", nil),
@@ -2069,6 +2155,29 @@ final class PrivatePaykitServiceTests: XCTestCase {
     private static let contactPaymentKey = "pubkyybndrfg8ejkmcpqxot1uwisza345h769ybndrfg8ejkmcpqxot1u"
     private static let otherContactPaymentKey = "pubky1rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
     fileprivate static let ownContactPaymentKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+
+    private static func preparedUnpayablePrivateDetails(linkState: LinkedPeerState?) -> PreparedPrivateContactPayment {
+        let payload = PaymentPayload(text: (try? PublicPaykitService.serializePayload(value: "lnbcrt1notaninvoice")) ?? "")
+        return PreparedPrivateContactPayment(
+            resolution: PrivateContactPaymentResolution(
+                status: .payable,
+                state: .available,
+                privatePaymentListVersion: 7,
+                payableEndpoints: [ResolvedPrivatePaymentEndpoint(
+                    counterparty: contactPaymentKey,
+                    appId: "bitkit",
+                    identifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+                    payload: payload,
+                    target: PaymentTarget(payload: payload)
+                )]
+            ),
+            linkReport: linkState.map {
+                LinkedPeerHandshakeReport(counterparty: contactPaymentKey, state: $0, generation: 1, handshakeRole: nil)
+            },
+            receiveReport: nil,
+            outboundReport: nil
+        )
+    }
 
     fileprivate static func preparedContactPayment(
         state: PrivatePaymentResolutionState = .noPrivateEndpoint,
