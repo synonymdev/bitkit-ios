@@ -90,4 +90,27 @@ final class CryptoTests: XCTestCase {
 
         XCTAssertEqual(String(data: value, encoding: .utf8), decryptedPayload)
     }
+
+    /// Expected values computed with an independent secp256k1 implementation (RFC 6979 nonces, low-S).
+    func testGetPublicKeyMatchesReferenceVector() throws {
+        let privateKey = "cc74b1a4fdcd35916c766d3318c5a93b7e33a36ebeff0463128bf284975c2680".hexaData
+        let publicKey = try Crypto.getPublicKey(privateKey: privateKey)
+        XCTAssertEqual(publicKey.hex, "02f7c231fe139475b8193194b42043ae546768167e5cf836f5a4063f5d448a127f")
+    }
+
+    func testSignMatchesReferenceVector() throws {
+        let privateKey = "cc74b1a4fdcd35916c766d3318c5a93b7e33a36ebeff0463128bf284975c2680".hexaData
+        let signature = try Crypto.sign(message: "hello bitkit", privateKey: privateKey)
+        XCTAssertEqual(
+            signature,
+            "204b84a4bfc77965c2ea561930829fca5a05610027d3591268e13f4e0cbb65aea2176f20bd78ca453a23214323ac1a6df88045f71b40f2e9dadab360743606a655"
+        )
+    }
+
+    func testGenerateKeyPairPublicKeyMatchesPrivateKey() throws {
+        let keyPair = try Crypto.generateKeyPair()
+        XCTAssertEqual(keyPair.privateKey.count, 32)
+        XCTAssertEqual(keyPair.publicKey.count, 33)
+        XCTAssertEqual(try Crypto.getPublicKey(privateKey: keyPair.privateKey), keyPair.publicKey)
+    }
 }

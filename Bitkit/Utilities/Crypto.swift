@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
-import secp256k1
+import libsecp256k1
+import P256K
 
 class Crypto {
     struct KeyPair {
@@ -23,11 +24,11 @@ class Crypto {
     }
 
     static func generateSharedSecret(privateKey: Data, nodePubkey: String, derivationName: String? = nil) throws -> Data {
-        let privateKey = try secp256k1.KeyAgreement.PrivateKey(dataRepresentation: privateKey.bytes)
+        let privateKey = try P256K.KeyAgreement.PrivateKey(dataRepresentation: privateKey.bytes)
 
-        let publicKey = try secp256k1.KeyAgreement.PublicKey(dataRepresentation: nodePubkey.hexaBytes)
+        let publicKey = try P256K.KeyAgreement.PublicKey(dataRepresentation: nodePubkey.hexaBytes)
 
-        let baseSecret = try privateKey.sharedSecretFromKeyAgreement(with: publicKey, format: .compressed).bytes
+        let baseSecret = privateKey.sharedSecretFromKeyAgreement(with: publicKey, format: .compressed).bytes
 
         if let derivationName {
             let bytes = stringToBytes(derivationName)
