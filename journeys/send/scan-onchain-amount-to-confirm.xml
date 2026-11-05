@@ -1,0 +1,27 @@
+<journey name="scan onchain amount to confirm">
+  <description>
+    Verifies that pasting or scanning an on-chain BIP21 request that carries an amount, with enough
+    Savings balance, opens the Confirm screen directly instead of the Amount screen, and that the send
+    completes. The amount is fixed: tapping it on Confirm does not open Amount.
+
+    Precondition: onboarded dev wallet on regtest with at least 50 000 confirmed sats in Savings,
+    a running synced node, Coin Selection set to Autopilot, and a regtest address the wallet does not
+    own. Start on the wallet home screen.
+
+    iOS: the simulator has no camera, so set the clipboard with
+    xcrun simctl pbcopy &lt;device&gt; and use Paste Invoice inside Send.
+  </description>
+  <actions>
+    <action>Copy "bitcoin:&lt;test recipient address&gt;?amount=0.0001" to the simulator clipboard</action>
+    <action>Tap the Send button (id "Send"), and if a camera permission dialog appears, choose "Don't Allow"</action>
+    <action>Tap Paste Invoice (id "RecipientInvoice")</action>
+    <action>Verify the Confirm screen (id "SendConfirm") is visible without passing through the Send amount screen (id "SendAmount")</action>
+    <action>Verify the review amount (id "ReviewAmount-primary") shows 10 000</action>
+    <action>Tap Show Details (id "SendConfirmToggleDetails") and verify the recipient address (id "ReviewUri") and a non-zero network fee are shown</action>
+    <action>Tap the review amount (id "ReviewAmount-primary") and verify the Confirm screen (id "SendConfirm") stays open with 10 000 and the Send amount screen (id "SendAmount") does not open</action>
+    <action>Swipe the send handle (id "GRAB") fully to the right, then tap Yes, Send (id "DialogConfirm") if a confirmation dialog appears</action>
+    <action>Wait for the success screen (id "SendSuccess") and verify it shows 10 000 sats</action>
+    <action>Run xcrun simctl openurl &lt;device&gt; "bitcoin:&lt;test recipient address&gt;?amount=0.000005"</action>
+    <action>Verify the Amount Too Low toast (id "AmountTooLowToast") says the minimum is 547 sats, and neither the Send amount screen (id "SendAmount") nor the Confirm screen (id "SendConfirm") opens</action>
+  </actions>
+</journey>
