@@ -18,6 +18,8 @@ final class SparkExitManager {
     /// Reminder ids with their fire dates, so one that fired is not posted again on the next run.
     private nonisolated static let remindersKey = "sparkExitReminders"
     private nonisolated static let walletIndexKey = "sparkExitWalletIndex"
+    /// The `bitkit_action` of the exit's notifications, so tapping one opens the exit.
+    nonisolated static let notificationAction = "spark_exit"
     private static let foregroundTickSeconds: UInt64 = 60
 
     private(set) var record: SparkExitRecord?
@@ -31,6 +33,8 @@ final class SparkExitManager {
     private(set) var fundingState: SparkExitFundingState?
     private(set) var fundingAddress: String?
     private(set) var lastError: String?
+    /// Set when the user tapped an exit notification, until the app shows the exit.
+    var opensProgress = false
 
     /// The funding choice made on the funding screen, used when the exit starts.
     @ObservationIgnored var fundFromSavings = false
@@ -87,8 +91,12 @@ final class SparkExitManager {
         self.walletIndex = walletIndex
         do {
             record = try Self.loadRecord(store: store, lostLeafStore: lostLeafStore)
+        } catch is SparkExitStore.Unavailable {
+            // Before the first unlock the file is there but cannot be read yet: it is read again on the next load.
+            Logger.warn("The Spark exit record cannot be read yet", context: "SparkExitManager")
+            record = nil
         } catch {
-            // Kept aside for support, so a new exit never overwrites it; a new exit prepares from chain state.
+            // Names no active exit it could rebuild: kept aside for support, so a new exit never overwrites it.
             Logger.error("Failed to read the Spark exit record: \(error)", context: "SparkExitManager")
             try? store.setAside()
             record = nil
@@ -107,11 +115,21 @@ final class SparkExitManager {
 
     /// Loads the stored exit and adds its lost leaves to the lost-leaf list, ended exits included, so leaves an exit
     /// lost before that list existed stay out of the next quote too.
+    /// A record of an unknown version, or one that does not decode, is not forgotten while it names an active exit:
+    /// what it still tells is kept, the exit rebuilds from the chain with its funding, and the original stays aside.
     nonisolated static func loadRecord(store: SparkExitStore, lostLeafStore: SparkExitLostLeafStore) throws -> SparkExitRecord? {
-        let record = try store.load()
-        if let record {
-            try? lostLeafStore.add(lostIn: record)
+        guard let data = try store.loadData() else { return nil }
+        let record: SparkExitRecord
+        do {
+            record = try SparkExitRecordCoder.decode(data)
+        } catch {
+            guard let salvaged = SparkExitRecordCoder.salvage(data) else { throw error }
+            Logger.warn("Rebuilding the Spark exit from the chain, its record could not be read: \(error)", context: "SparkExitManager")
+            try store.setAside()
+            try store.save(salvaged)
+            record = salvaged
         }
+        try? lostLeafStore.add(lostIn: record)
         return record
     }
 
@@ -449,6 +467,13 @@ final class SparkExitManager {
         }
         if record == nil {
             load(walletIndex: UserDefaults.standard.integer(forKey: Self.walletIndexKey))
+            // Before the first unlock after a restart the record cannot be read yet: this run ends, and the next one
+            // comes once it can.
+            if record == nil, FileManager.default.fileExists(atPath: store.url.path) {
+                Logger.info("Spark exit background run waits for the first unlock", context: "SparkExitManager")
+                Self.scheduleBackgroundRuns()
+                return .init(record: nil)
+            }
         }
         while isTicking, !Task.isCancelled, Date() < deadline {
             try? await Task.sleep(nanoseconds: 250_000_000)
@@ -579,11 +604,14 @@ final class SparkExitManager {
             let fireAt = max(now.addingTimeInterval(1), min(reminder.fireAt, rememberedAt ?? reminder.fireAt))
             kept[id] = fireAt.timeIntervalSince1970
             let content = UNMutableNotificationContent()
+            content.userInfo = ["bitkit_action": Self.notificationAction]
             content.title = t("lightning__spark_exit__notification_title")
             content.body = if reminder.isLostLeaves {
                 t("lightning__spark_exit__notification_lost", variables: ["amount": "₿ \(CurrencyFormatter.formatSats(record.lostSats))"])
             } else if reminder.isFailed {
                 t("lightning__spark_exit__notification_failed")
+            } else if reminder.isNotMoving {
+                t("lightning__spark_exit__notification_not_moving")
             } else {
                 t(reminder.isFunding ? "lightning__spark_exit__notification_funding" : "lightning__spark_exit__notification_body")
             }

@@ -50,6 +50,8 @@ protocol SparkExitChain: Sendable {
     /// transaction.
     func isKnown(txid: String) async throws -> Bool
     func broadcast(_ tx: RecoveryTransaction) async -> SparkExitBroadcastOutcome
+    /// The rate for the next block, rounded up, at least 1 sat/vB.
+    func fastestFeeRate() async throws -> UInt64
 }
 
 protocol SparkExitHTTP: Sendable {
@@ -125,6 +127,13 @@ struct EsploraSparkExitChain: SparkExitChain {
 
     func txStatus(txid: String) async throws -> EsploraTxStatus {
         try await JSONDecoder().decode(EsploraTxStatus.self, from: get("/tx/\(txid)/status"))
+    }
+
+    /// esplora's `/fee-estimates`, whose target of one block is mempool's `fastestFee`.
+    func fastestFeeRate() async throws -> UInt64 {
+        let estimates = try await JSONDecoder().decode([String: Double].self, from: get("/fee-estimates"))
+        guard let rate = estimates["1"] else { throw URLError(.cannotParseResponse) }
+        return max(1, UInt64(rate.rounded(.up)))
     }
 
     /// `/tx/{txid}/hex` looks in the mempool and the chain alike; `/status` of an unknown transaction may answer

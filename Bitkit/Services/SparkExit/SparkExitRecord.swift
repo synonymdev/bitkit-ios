@@ -53,6 +53,9 @@ struct SparkExitRecord: Codable, Equatable {
         /// Attempts in a row, with the step's parents confirmed, that its fee chain failed: its CPFP child did not
         /// pay for it (`min relay fee not met, 0 < N`) or its inputs were missing. Reset by any other outcome.
         var feeChainFailures: Int?
+        /// The tip when a node first accepted it, kept while it stays accepted, so a step the network holds but does
+        /// not confirm shows as underpriced.
+        var acceptedAtHeight: UInt32?
     }
 
     /// A leaf an older state of the wallet claimed on-chain first, which this exit cannot recover.
@@ -86,6 +89,17 @@ struct SparkExitRecord: Codable, Equatable {
         var rejection: String?
         /// Set once the chain host shows the accepted sweep in a block.
         var isConfirmed: Bool?
+        /// The rate it was built at; nil for the exit's own rate.
+        var feeRateSatPerVbyte: UInt64?
+        /// The tip when a node first accepted it, so one that does not confirm is replaced at a higher rate.
+        var sentAtHeight: UInt32?
+        /// The sweeps this one replaced: any of them confirming also ends the sweep.
+        var replacedTxids: [String]?
+
+        /// A refusal for its fee is not final: the sweep is built again at the network's current rate.
+        var isFeeRejection: Bool {
+            rejection.map { $0.range(of: "fee", options: .caseInsensitive) != nil } ?? false
+        }
     }
 
     var version: Int = Self.currentVersion
@@ -120,9 +134,25 @@ struct SparkExitRecord: Codable, Equatable {
     /// Per step txid, how many rebuilds in a row reproduced it after another transaction spent its input.
     var spentStepStrikes: [String: Int]?
     var lostLeaves: [LostLeaf]?
-    /// The steps whose repeated fee chain failures already rebuilt the exit once; from then on they count as
-    /// rejections.
-    var feeChainRebuildTxids: [String]?
+    /// Rebuilds in a row for steps that keep being refused or a fee chain that lost a race, with no step confirming
+    /// in between. At `SparkExitDriver.stallRebuildsToSurface` the exit stops rebuilding and says it is not moving.
+    var stallRebuilds: Int?
+    /// How many steps were confirmed when the last of those rebuilds started; more since then resets the count.
+    var stallConfirmedCount: Int?
+    /// The pending rebuild answers a divergence the SDK reported (`Redo`). Only such a rebuild adds lost-leaf strikes,
+    /// so rebuilds over a stalled chain or an unverified step never make a leaf lost.
+    var isRedoRebuild: Bool?
+    /// The tip of the last rebuild over a step the SDK could not read, so it rebuilds at most once a block.
+    var unverifiedRebuiltAtHeight: UInt32?
+    /// The tip at which each of the exit's leaves was first seen stopped (`exitChainState.stoppedLeafIds`).
+    var stoppedLeafSince: [String: UInt32]?
+    /// The tip at which a build first found nothing to build while a leaf may still move, and of its last try.
+    var retrySince: UInt32?
+    var retriedAt: UInt32?
+    /// The SDK's exit data from just before the first build, imported again before every rebuild.
+    var exitStateSnapshot: String?
+    /// The stored record could not be read, so the exit is rebuilt from the chain with the funding it kept.
+    var isRebuiltFromChain: Bool?
     var leftBehindLeaves: [LeftBehindLeaf]?
     /// Set once the user opened the result of an exit that failed or lost leaves.
     var isResultSeen: Bool?
@@ -142,7 +172,7 @@ struct SparkExitRecord: Codable, Equatable {
     var isLeftoverSweepPending: Bool {
         guard !isActive, !leftover.isEmpty else { return false }
         guard let leftoverSweep else { return true }
-        return leftoverSweep.txid != nil && leftoverSweep.rejection == nil && leftoverSweep.isConfirmed != true
+        return leftoverSweep.txid != nil && (leftoverSweep.rejection == nil || leftoverSweep.isFeeRejection) && leftoverSweep.isConfirmed != true
     }
 
     static let lostReason = "Claimed by an older state"
@@ -236,6 +266,44 @@ struct SparkExitRecord: Codable, Equatable {
         isRebuilding = false
         lastBuildAt = date
         failedLeafCount = built.failed.count
+        isRebuiltFromChain = nil
+        isRedoRebuild = nil
+    }
+
+    /// Whether a build that found nothing to build is waiting for a leaf that may still move.
+    var isWaitingForLeaves: Bool {
+        retrySince != nil
+    }
+
+    /// A step of this generation that keeps being refused, or whose fee chain keeps failing.
+    var stuckStep: BroadcastAttempt? {
+        broadcastLog.first {
+            $0.generation == generation && !$0.isAccepted
+                && ($0.rejections >= SparkExitDriver.rejectionsToSurface || ($0.feeChainFailures ?? 0) >= SparkExitDriver.feeChainFailuresToRebuild)
+        }
+    }
+
+    /// Whether rebuilding over a stuck step already failed to move the exit often enough to stop and say so.
+    var isStalled: Bool {
+        (stallRebuilds ?? 0) >= SparkExitDriver.stallRebuildsToSurface
+    }
+
+    /// A step the network accepted that has not confirmed for more blocks than a fair fee rate needs: the network is
+    /// busier than the exit's rate. Rebuilding at the same rate would not help.
+    func underpricedStep(tip: UInt32?) -> BroadcastAttempt? {
+        guard let tip, let transactions = recovery?.response.transactions else { return nil }
+        let confirmed = Set(transactions.filter {
+            if case .confirmed = $0.status {
+                return true
+            }
+            return false
+        }.map(\.txid))
+        return broadcastLog.first {
+            guard $0.generation == generation, $0.isAccepted, let height = $0.acceptedAtHeight, !confirmed.contains($0.txid) else {
+                return false
+            }
+            return tip > height && tip - height > SparkExitDriver.unconfirmedBlocksToSurface
+        }
     }
 }
 
@@ -254,9 +322,24 @@ struct SparkExitStore {
         url = Env.sparkExitRecord(walletIndex: walletIndex)
     }
 
+    /// The file exists but cannot be read now, such as before the first unlock after a restart: the record is left
+    /// as it is and read again later.
+    struct Unavailable: Error {
+        let underlying: Error
+    }
+
     func load() throws -> SparkExitRecord? {
+        guard let data = try loadData() else { return nil }
+        return try SparkExitRecordCoder.decode(data)
+    }
+
+    func loadData() throws -> Data? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-        return try SparkExitRecordCoder.decode(Data(contentsOf: url))
+        do {
+            return try Data(contentsOf: url)
+        } catch {
+            throw Unavailable(underlying: error)
+        }
     }
 
     /// Moves an unreadable record out of the way, keeping it for support.
@@ -333,9 +416,91 @@ enum SparkExitRecordCoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .millisecondsSince1970
         let version = try decoder.decode(VersionProbe.self, from: data).version
-        guard version == SparkExitRecord.currentVersion else { throw UnsupportedVersion(version: version) }
+        var data = data
+        if version != SparkExitRecord.currentVersion {
+            guard let convert = SparkExitRecordMigration.converters[version] else { throw UnsupportedVersion(version: version) }
+            data = try convert(data)
+        }
         return try decoder.decode(SparkExitRecord.self, from: data)
     }
+
+    /// What a record that cannot be decoded still tells about its exit: enough to build it again from the chain with
+    /// the funding it kept. Nil when it names no active exit, or lacks what a build needs.
+    static func salvage(_ data: Data) -> SparkExitRecord? {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .millisecondsSince1970
+        guard let kept = try? decoder.decode(Salvaged.self, from: data), !kept.leafIds.isEmpty, !kept.funding.isEmpty else { return nil }
+        let phase = kept.phase
+        var record = SparkExitRecord(
+            network: kept.network,
+            createdAt: kept.createdAt,
+            phase: .running,
+            feeRateSatPerVbyte: kept.feeRateSatPerVbyte,
+            destination: kept.destination,
+            leafIds: kept.leafIds,
+            leafTotalSats: kept.leafTotalSats,
+            funding: kept.funding,
+            transferId: kept.transferId,
+            expectedSats: kept.expectedSats
+        )
+        switch phase {
+        case .done, .failed:
+            return nil
+        case .awaitingFunding, .needsFunding:
+            record.phase = phase ?? .running
+        case .running, nil:
+            record.isRebuilding = true
+        }
+        record.lostLeaves = kept.lostLeaves
+        record.leftBehindLeaves = kept.leftBehindLeaves
+        record.exitStateSnapshot = kept.exitStateSnapshot
+        record.isRebuiltFromChain = true
+        return record
+    }
+
+    private struct Salvaged: Decodable {
+        let network: String
+        let createdAt: Date
+        let phase: SparkExitRecord.Phase?
+        let feeRateSatPerVbyte: UInt64
+        let destination: String
+        let leafIds: [String]
+        let leafTotalSats: UInt64?
+        let funding: [SparkExitRecord.Funding]
+        let transferId: String?
+        let expectedSats: UInt64
+        let lostLeaves: [SparkExitRecord.LostLeaf]?
+        let leftBehindLeaves: [SparkExitRecord.LeftBehindLeaf]?
+        let exitStateSnapshot: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case network, createdAt, phase, feeRateSatPerVbyte, destination, leafIds, leafTotalSats, funding, transferId, expectedSats
+            case lostLeaves, leftBehindLeaves, exitStateSnapshot
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            network = try c.decode(String.self, forKey: .network)
+            createdAt = (try? c.decode(Date.self, forKey: .createdAt)) ?? Date()
+            phase = try? c.decodeIfPresent(SparkExitRecord.Phase.self, forKey: .phase)
+            feeRateSatPerVbyte = try c.decode(UInt64.self, forKey: .feeRateSatPerVbyte)
+            destination = try c.decode(String.self, forKey: .destination)
+            leafIds = try c.decode([String].self, forKey: .leafIds)
+            leafTotalSats = try? c.decodeIfPresent(UInt64.self, forKey: .leafTotalSats)
+            funding = try c.decode([SparkExitRecord.Funding].self, forKey: .funding)
+            transferId = try? c.decodeIfPresent(String.self, forKey: .transferId)
+            expectedSats = (try? c.decode(UInt64.self, forKey: .expectedSats)) ?? 0
+            lostLeaves = try? c.decodeIfPresent([SparkExitRecord.LostLeaf].self, forKey: .lostLeaves)
+            leftBehindLeaves = try? c.decodeIfPresent([SparkExitRecord.LeftBehindLeaf].self, forKey: .leftBehindLeaves)
+            exitStateSnapshot = try? c.decodeIfPresent(String.self, forKey: .exitStateSnapshot)
+        }
+    }
+}
+
+/// Converts a record written with another `version` to the current one before it is decoded. Add a converter here
+/// before changing `SparkExitRecord.currentVersion`, so an exit written by the earlier version keeps running as it was.
+enum SparkExitRecordMigration {
+    static let converters: [Int: (Data) throws -> Data] = [:]
 }
 
 // MARK: - RecoverFundsResponse in spark-sdk's serde shape

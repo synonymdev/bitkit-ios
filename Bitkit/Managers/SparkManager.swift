@@ -907,6 +907,19 @@ struct BreezSparkExitRecovering: SparkExitRecovering {
     func check(_ recovery: RecoverFundsResponse) async throws -> CheckRecoverFundsResponse {
         try await sdk.checkRecoverFunds(request: CheckRecoverFundsRequest(recovery: recovery))
     }
+
+    func exportExitState() async throws -> String {
+        try await sdk.exportUnilateralExitState().exitState
+    }
+
+    func importExitState(_ exitState: String) async throws {
+        let imported = try await sdk.importUnilateralExitState(request: ImportUnilateralExitStateRequest(exitState: exitState))
+        Logger.info(
+            "Imported the Spark exit's own exit data: '\(imported.importedLeaves)' leaves, '\(imported.skippedForeignLeaves)' foreign, "
+                + "'\(imported.skippedConflictingLeaves)' conflicting, '\(imported.skippedChains)' already held",
+            context: "SparkManager"
+        )
+    }
 }
 
 private final class SparkEventListener: BreezSdkSpark.EventListener, @unchecked Sendable {

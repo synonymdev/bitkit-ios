@@ -127,6 +127,14 @@ private struct TimedSparkExitRecovering: SparkExitRecovering {
     func check(_ recovery: RecoverFundsResponse) async throws -> CheckRecoverFundsResponse {
         try await timings.time(.check) { try await base.check(recovery) }
     }
+
+    func exportExitState() async throws -> String {
+        try await timings.time(.sign) { try await base.exportExitState() }
+    }
+
+    func importExitState(_ exitState: String) async throws {
+        try await timings.time(.sign) { try await base.importExitState(exitState) }
+    }
 }
 
 private struct TimedSparkExitChain: SparkExitChain {
@@ -151,5 +159,9 @@ private struct TimedSparkExitChain: SparkExitChain {
 
     func broadcast(_ tx: RecoveryTransaction) async -> SparkExitBroadcastOutcome {
         await timings.time(.broadcast) { await base.broadcast(tx) }
+    }
+
+    func fastestFeeRate() async throws -> UInt64 {
+        try await base.fastestFeeRate()
     }
 }

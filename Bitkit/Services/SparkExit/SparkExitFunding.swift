@@ -160,6 +160,7 @@ struct SparkExitReminder: Equatable {
     var isFunding = false
     var isLostLeaves = false
     var isFailed = false
+    var isNotMoving = false
 }
 
 /// What the exit shows about its fee funding while it lacks some.
@@ -173,14 +174,46 @@ enum SparkExitFundingState: Equatable {
 }
 
 enum SparkExitMath {
-    /// The countdown target: the latest block at which a timelocked step of the exit can confirm.
-    static func claimableAtHeight(_ recovery: RecoverFundsResponse) -> UInt32? {
-        recovery.transactions.compactMap { tx -> UInt32? in
+    /// The countdown target: the tip plus the blocks the longest path of steps left still needs, so the countdown
+    /// does not jump when a step's parent confirms and its own timelock starts. Without the tip, the latest block at
+    /// which a timelocked step can confirm.
+    static func claimableAtHeight(_ recovery: RecoverFundsResponse, tip: UInt32? = nil) -> UInt32? {
+        if let tip {
+            return blocksToFinish(recovery.transactions, tip: tip).map { tip.addingReportingOverflow($0).partialValue }
+        }
+        return recovery.transactions.compactMap { tx -> UInt32? in
             if case let .waitingForTimelock(height) = tx.status {
                 return height
             }
             return nil
         }.max()
+    }
+
+    /// Blocks until the last step could confirm: the longest path through the steps left, each costing its remaining
+    /// timelock plus a block to confirm in (Glow's `blocksToFinish`). Nil once every step confirmed. The SDK lists
+    /// steps in broadcast order, so a parent always comes before what depends on it.
+    static func blocksToFinish(_ transactions: [RecoveryTransaction], tip: UInt32) -> UInt32? {
+        var after: [String: UInt32] = [:]
+        var longest: UInt32?
+        for tx in transactions {
+            let timelock: UInt32
+            switch tx.status {
+            case .confirmed:
+                after[tx.txid] = 0
+                continue
+            case .ready:
+                timelock = 0
+            case let .waitingForTimelock(height?):
+                timelock = height > tip ? height - tip : 0
+            default:
+                timelock = tx.csvTimelockBlocks ?? 0
+            }
+            let blocks = (tx.dependsOn.compactMap { after[$0] }.max() ?? 0) + timelock + 1
+            after[tx.txid] = blocks
+            longest = max(longest ?? 0, blocks)
+        }
+        // Everything confirmed: nothing left to wait for.
+        return longest
     }
 
     /// Blocks after a step matures before the operators' watchtower may publish their own version.
@@ -210,6 +243,10 @@ enum SparkExitMath {
         }
         guard case .running = record.phase, let recovery = record.recovery?.response else { return lostReminder }
         var reminders = lostReminder
+        // Waiting for a leaf that may still move is the background runs' job, for up to a week.
+        if record.isWaitingForLeaves {
+            return reminders
+        }
         let generation = record.generation
         let blockSeconds = secondsUntil(height: 1, tip: 0, network: network)
         let grace = TimeInterval(reminderGraceBlocks) * blockSeconds
@@ -219,10 +256,12 @@ enum SparkExitMath {
             reminders.append(SparkExitReminder(id: "\(generation)-rebuild", fireAt: max(due, now).addingTimeInterval(grace)))
             return reminders
         }
-        if let rejected = record.broadcastLog.first(where: {
-            $0.generation == generation && $0.rejections >= SparkExitDriver.rejectionsToSurface && !$0.isAccepted
-        }) {
-            reminders.append(SparkExitReminder(id: "rejected-\(generation)-\(rejected.txid)", fireAt: now))
+        if record.isStalled, let stuck = record.stuckStep {
+            reminders.append(SparkExitReminder(id: "rejected-\(generation)-\(stuck.txid)", fireAt: now, isNotMoving: true))
+        }
+        // Accepted but not confirming: rebuilding would not help, so its reminder is planned once and never moved.
+        if let slow = record.underpricedStep(tip: tip) {
+            reminders.append(SparkExitReminder(id: "\(generation)-slow-\(slow.txid)", fireAt: now.addingTimeInterval(grace)))
         }
         let accepted = Set(record.broadcastLog.filter { $0.generation == generation && $0.isAccepted }.map(\.txid))
         var heights = Set<UInt32>()
@@ -231,7 +270,7 @@ enum SparkExitMath {
             switch tx.status {
             case let .waitingForTimelock(height?):
                 heights.insert(height)
-            case .ready, .unverified:
+            case .ready:
                 readyTxid = readyTxid ?? tx.txid
             default:
                 break
@@ -253,6 +292,18 @@ enum SparkExitMath {
             reminders.append(SparkExitReminder(id: id, fireAt: now.addingTimeInterval(reminderSeconds(network: network))))
         }
         return reminders
+    }
+
+    /// What the exit's sweep and cooperative recoveries paid to its savings address, and the sweep's txid, once it
+    /// ended done. Nil before, or when no output to savings can be read.
+    static func received(_ record: SparkExitRecord) -> (sats: UInt64, sweepTxid: String?)? {
+        guard record.phase == .done, let transactions = record.recovery?.response.transactions,
+              let destination = try? SparkExitAddress.scriptPubKey(record.destination)
+        else { return nil }
+        let paying = transactions.filter { $0.kind == .sweep || $0.kind == .cooperative }
+        let sats = paying.flatMap { SparkExitTxid.outputs(hex: $0.txHex) ?? [] }.filter { $0.script == destination }.reduce(0) { $0 + $1.value }
+        guard sats > 0 else { return nil }
+        return (sats, paying.first { $0.kind == .sweep }?.txid)
     }
 
     /// Whether every refund's timelock is behind it: none still waits for its parents or its height.
@@ -292,22 +343,33 @@ enum SparkExitMath {
     }
 
     /// The confirmed new funding, all of it, once it covers `requiredSats` together: the SDK spends every input it is
-    /// given, so several small payments fund the exit as well as one.
-    static func fundingTopUp(_ newFunding: [EsploraUtxo], requiredSats: UInt64) -> [EsploraUtxo]? {
+    /// given, so several small payments fund the exit as well as one. `requiredSats` assumes one payment; each
+    /// further one adds its own input fee, `inputFeeSats`.
+    static func fundingTopUp(_ newFunding: [EsploraUtxo], requiredSats: UInt64, inputFeeSats: UInt64 = 0) -> [EsploraUtxo]? {
         let confirmed = newFunding.filter(\.status.confirmed)
         let total = confirmed.reduce(0) { $0 + $1.value }
-        return !confirmed.isEmpty && total >= requiredSats ? confirmed : nil
+        let needed = requiredSats + inputFeeSats * UInt64(max(0, confirmed.count - 1))
+        return !confirmed.isEmpty && total >= needed ? confirmed : nil
+    }
+
+    /// A signed P2WPKH input: each payment to the funding address is one more input for the build to pay for.
+    static let inputVbytes: UInt64 = 68
+
+    /// The fee one more funding input adds at the exit's rate (Glow `exitFee.ts`).
+    static func inputFeeSats(_ record: SparkExitRecord) -> UInt64 {
+        inputVbytes * record.feeRateSatPerVbyte
     }
 
     /// The funding total a rebuild asks for once the SDK refused it with `InsufficientCpfpFunds(requiredSats)`.
     /// `requiredSats` is what all the given inputs must hold together now, and what they hold now is the confirmed
     /// value at the funding address apart from new funding (spent inputs live on as chained CPFP change there).
     /// The phase counts against `fundedSats`, so the shortfall it shows is `requiredSats` less what the inputs hold.
+    /// The SDK priced the inputs it had, so the payment still to come adds its own input fee.
     static func neededFunding(requiredSats: UInt64, record: SparkExitRecord, utxos: [EsploraUtxo]?) -> UInt64 {
-        guard let utxos else { return max(requiredSats, record.fundedSats) }
+        guard let utxos else { return max(requiredSats, record.fundedSats) + inputFeeSats(record) }
         let fresh = Set(newFunding(utxos, record: record).map { "\($0.txid):\($0.vout)" })
         let held = utxos.filter { $0.status.confirmed && !fresh.contains("\($0.txid):\($0.vout)") }.reduce(0) { $0 + $1.value }
-        return record.fundedSats + max(requiredSats.saturatingSub(held), 1)
+        return record.fundedSats + max(requiredSats.saturatingSub(held), 1) + inputFeeSats(record)
     }
 
     /// The funding state while the exit lacks fee funding, nil once it lacks none. A payment Bitkit made from savings
@@ -322,11 +384,15 @@ enum SparkExitMath {
         }
         let fresh = utxos.map { newFunding($0, record: record) } ?? []
         let seenSats = fresh.reduce(0) { $0 + $1.value }
+        // The shortfall assumes one payment: each one beyond it, and the one still to send, adds an input fee.
+        let inputFee = inputFeeSats(record)
+        let neededNow = shortfall + inputFee * UInt64(max(0, fresh.count - 1))
         // Covered by confirmed funding alone, the next tick builds.
-        if seenSats >= shortfall, let pending = fresh.first(where: { !$0.status.confirmed }) ?? fresh.first {
+        if seenSats >= neededNow, let pending = fresh.first(where: { !$0.status.confirmed }) ?? fresh.first {
             return .seen(txid: pending.txid)
         }
-        return .ask(sats: max(shortfall.saturatingSub(seenSats), fundingDustSats), receivedSats: seenSats)
+        let needed = neededNow + (fresh.isEmpty ? 0 : inputFee)
+        return .ask(sats: max(needed.saturatingSub(seenSats), fundingDustSats), receivedSats: seenSats)
     }
 
     /// The least a P2WPKH funding output can hold: nodes refuse a payment below it.

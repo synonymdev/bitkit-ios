@@ -356,6 +356,14 @@ struct SparkExitLeftoverStatus: View {
                         variables: ["amount": currency.primaryAmountText(sats: leftoverSats), "address": address]
                     ))
                 }
+            } else if let sweep = record.leftoverSweep, !sweep.isFeeRejection {
+                // Refused for good: where the coins stay, and the path that spends them with the recovery phrase.
+                BodySText(t("lightning__spark_exit__leftover_rejected", variables: [
+                    "amount": currency.primaryAmountText(sats: leftoverSats),
+                    "address": address,
+                    "path": SparkExitFundingKey.path(index: record.fundingIndex, network: Env.bitkitCoreNetwork),
+                ]))
+                .fixedSize(horizontal: false, vertical: true)
             } else {
                 ForEach(Array(record.leftover.enumerated()), id: \.offset) { _, leftover in
                     BodySText(t(
@@ -471,6 +479,9 @@ struct SparkExitProgressView: View {
         case .done:
             [
                 t("lightning__spark_exit__done_text"),
+                record.flatMap(SparkExitMath.received).map {
+                    t("lightning__spark_exit__done_received", variables: ["amount": currency.primaryAmountText(sats: $0.sats)])
+                },
                 (record?.skippedLeafCount ?? 0) > 0
                     ? t("lightning__spark_exit__partial_text", variables: ["count": "\(record?.skippedLeafCount ?? 0)"]) : nil,
                 (record?.failedLeafCount ?? 0) > 0
@@ -503,14 +514,37 @@ struct SparkExitProgressView: View {
                     if let record {
                         SparkExitSteps(record: record, tipHeight: exit.tipHeight)
 
+                        if let sweepTxid = SparkExitMath.received(record)?.sweepTxid {
+                            BodySText(t("lightning__spark_exit__sweep_txid", variables: ["txid": sweepTxid]))
+                                .lineLimit(2)
+                                .truncationMode(.middle)
+                                .padding(.top, 16)
+                                .accessibilityIdentifier("SparkExitSweepTxid")
+                        }
+
+                        if record.isActive, record.isRebuiltFromChain == true {
+                            BodySText(t("lightning__spark_exit__rebuilt_from_chain"))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.top, 16)
+                                .accessibilityIdentifier("SparkExitRebuiltFromChain")
+                        }
+
+                        if record.isActive, record.isWaitingForLeaves {
+                            BodySText(t("lightning__spark_exit__waiting_leaves"))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.top, 16)
+                                .accessibilityIdentifier("SparkExitWaitingLeaves")
+                        }
+
                         if let address = record.funding.first?.address {
                             switch fundingState {
                             case let .ask(sats, receivedSats):
+                                // The ask already counts the input fee of each payment, so it is what is missing.
                                 SparkExitFundingAddress(
                                     address: address,
                                     requiredSats: sats,
                                     receivedSats: receivedSats,
-                                    targetSats: record.fundingShortfallSats ?? sats + receivedSats,
+                                    targetSats: sats + receivedSats,
                                     showsSeen: false
                                 )
                                 .padding(.top, 24)
@@ -542,9 +576,17 @@ struct SparkExitProgressView: View {
                                 .accessibilityIdentifier("SparkExitLostLeaves")
                         }
 
-                        if let rejection = record.surfacedRejection {
-                            BodySText(t("lightning__spark_exit__errors", variables: ["error": rejection]), textColor: .redAccent)
+                        if record.isActive, let rejection = record.surfacedRejection {
+                            BodySText(t("lightning__spark_exit__not_moving", variables: ["error": rejection]), textColor: .redAccent)
                                 .padding(.top, 16)
+                                .accessibilityIdentifier("SparkExitNotMoving")
+                        }
+
+                        if record.isActive, !record.isRebuilding, record.underpricedStep(tip: exit.tipHeight) != nil {
+                            BodySText(t("lightning__spark_exit__fee_low", variables: ["rate": "\(record.feeRateSatPerVbyte)"]))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.top, 16)
+                                .accessibilityIdentifier("SparkExitFeeLow")
                         }
 
                         if let outsideSats = SparkExitMath.outsideExitSats(sparkBalanceSats: SparkManager.shared.balanceSats, record: record) {

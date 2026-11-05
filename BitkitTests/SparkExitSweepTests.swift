@@ -152,7 +152,7 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertTrue(record.showsResult)
 
         var refused = endedRecord()
-        refused.leftoverSweep = .init(txid: "t", txHex: "02", valueSats: 4000, rejection: "min relay fee not met")
+        refused.leftoverSweep = .init(txid: "t", txHex: "02", valueSats: 4000, rejection: "non-mandatory-script-verify-flag")
         XCTAssertFalse(refused.needsDriving)
         XCTAssertTrue(refused.showsResult, "the leftover waits at the funding address")
 
@@ -199,6 +199,113 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertEqual(sweep.isAccepted, true)
         try assertValidP2wpkhSpend(.init(txid: XCTUnwrap(sweep.txid), txHex: XCTUnwrap(sweep.txHex), valueSats: sweep.valueSats), utxos: utxos)
         XCTAssertTrue(record.showsResult)
+    }
+
+    /// R7: a sweep refused for its fee is built again at the network's current rate; any other refusal is final.
+    func testASweepRefusedForItsFeeIsRebuiltAtTheCurrentRate() async throws {
+        chain.utxosByAddress[key.address] = [SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 5035)]
+        chain.outcome = .rejected("min relay fee not met, 300 < 330")
+        chain.fastestFee = 5
+
+        var record = try await driver().tick(endedRecord())
+        let refused = try XCTUnwrap(record.leftoverSweep)
+        XCTAssertTrue(refused.isFeeRejection)
+        XCTAssertTrue(record.needsDriving, "a fee refusal is not final")
+
+        chain.outcome = .accepted
+        record = try await driver().tick(record)
+
+        let rebuilt = try XCTUnwrap(record.leftoverSweep)
+        XCTAssertNotEqual(rebuilt.txid, refused.txid)
+        XCTAssertEqual(rebuilt.feeRateSatPerVbyte, 5)
+        XCTAssertEqual(rebuilt.valueSats, 5035 - SparkExitLeftoverSweep.feeSats(inputs: 1, outputScriptLength: 22, feeRateSatPerVbyte: 5))
+        XCTAssertTrue(rebuilt.isAccepted)
+        XCTAssertNil(rebuilt.rejection)
+        XCTAssertEqual(rebuilt.sentAtHeight, 1000)
+    }
+
+    /// R7: an accepted sweep still unconfirmed 144 blocks later is replaced (RBF) at a higher rate, at least one
+    /// sat/vB over its own.
+    func testAnUnconfirmedSweepIsReplacedAfter144Blocks() async throws {
+        chain.utxosByAddress[key.address] = [SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 5035)]
+        chain.fastestFee = 1
+        var record = try await driver().tick(endedRecord())
+        let first = try XCTUnwrap(record.leftoverSweep)
+        XCTAssertEqual(first.sentAtHeight, 1000)
+
+        chain.tip = 1143
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.leftoverSweep?.txid, first.txid)
+
+        chain.tip = 1144
+        record = try await driver().tick(record)
+        let replacement = try XCTUnwrap(record.leftoverSweep)
+        XCTAssertNotEqual(replacement.txid, first.txid)
+        XCTAssertEqual(replacement.feeRateSatPerVbyte, 3, "the old rate of 2 plus one, over the network's 1")
+        XCTAssertEqual(replacement.sentAtHeight, 1144)
+        try assertValidP2wpkhSpend(
+            .init(txid: XCTUnwrap(replacement.txid), txHex: XCTUnwrap(replacement.txHex), valueSats: replacement.valueSats),
+            utxos: chain.utxosByAddress[key.address] ?? []
+        )
+    }
+
+    /// R7: a replacement never loses the sweep it replaces. One that would be dust keeps the accepted sweep; the
+    /// replaced sweep confirming ends it; a sweep the hosts no longer know counts as unconfirmed.
+    func testAReplacementKeepsTrackOfTheSweepItReplaces() async throws {
+        let utxo = SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 5035)
+        chain.utxosByAddress[key.address] = [utxo]
+        var record = try await driver().tick(endedRecord())
+        let first = try XCTUnwrap(record.leftoverSweep?.txid)
+
+        // The hosts dropped it: replaced, and the replacement remembers it.
+        chain.droppedTxids = [first]
+        chain.tip = 1144
+        record = try await driver().tick(record)
+        let second = try XCTUnwrap(record.leftoverSweep?.txid)
+        XCTAssertNotEqual(second, first)
+        XCTAssertEqual(record.leftoverSweep?.replacedTxids, [first])
+
+        // The first one confirms after all: the sweep is done.
+        chain.droppedTxids = []
+        chain.confirmedTxids = [first]
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.leftoverSweep?.isConfirmed, true)
+        XCTAssertFalse(record.needsDriving)
+
+        // A rate that would leave dust keeps the accepted sweep instead.
+        var accepted = endedRecord()
+        accepted.leftover = [.init(txid: utxo.txid, vout: 0, valueSats: 5035)]
+        accepted.leftoverSweep = .init(txid: "s", txHex: "02", valueSats: 4800, isAccepted: true, feeRateSatPerVbyte: 2, sentAtHeight: 1000)
+        chain.confirmedTxids = []
+        chain.fastestFee = 50
+        accepted = try await driver().tick(accepted)
+        XCTAssertEqual(accepted.leftoverSweep?.txid, "s")
+        XCTAssertTrue(accepted.needsDriving)
+    }
+
+    /// R11: the Done screen reads what the sweep paid to savings, and its txid.
+    func testDoneShowsWhatReachedSavingsAndTheSweepTxid() throws {
+        let script = try SparkExitAddress.scriptPubKey(destination)
+        let hex = "02000000" + "01" + String(repeating: "11", count: 32) + "00000000" + "00" + "ffffffff"
+            + "02" + "a086010000000000" + String(format: "%02x", script.count) + script.hex
+            + "e803000000000000" + "16" + "0014" + String(repeating: "22", count: 20) + "00000000"
+        var record = endedRecord()
+        record.recovery = StoredRecovery(SparkExitFixtures.recovery([RecoveryTransaction(
+            kind: .sweep,
+            nodeId: nil,
+            txid: "sweep-txid",
+            txHex: hex,
+            cpfpTxHex: nil,
+            csvTimelockBlocks: nil,
+            dependsOn: [],
+            status: .confirmed(blockHeight: 50)
+        )]))
+
+        let received = try XCTUnwrap(SparkExitMath.received(record))
+        XCTAssertEqual(received.sats, 100_000)
+        XCTAssertEqual(received.sweepTxid, "sweep-txid")
+        record.phase = .running
+        XCTAssertNil(SparkExitMath.received(record))
     }
 
     /// Each exit signs with the key at its own funding index, so a later exit never spends an earlier one's address.

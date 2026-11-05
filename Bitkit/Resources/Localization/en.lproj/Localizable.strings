@@ -399,7 +399,6 @@
 "lightning__spark_exit__step_timelock" = "Waiting for the timelock";
 "lightning__spark_exit__step_sweep" = "Sending to savings";
 "lightning__spark_exit__ready_in" = "Ready in {duration}";
-"lightning__spark_exit__errors" = "Some transactions were rejected: {error}";
 "lightning__spark_exit__done_title" = "Exit\n<accent>complete</accent>";
 "lightning__spark_exit__done_text" = "Your funds are in savings.";
 "lightning__spark_exit__partial_text" = "{count} small amounts stayed on Spark.";
@@ -429,6 +428,14 @@
 "lightning__spark_exit__bg_refresh_off" = "Background App Refresh is off for Bitkit, so the exit only moves while Bitkit is open. Turn it on in Settings to let it run in the background.";
 "lightning__spark_exit__low_power" = "Low Power Mode pauses background work. The exit continues once it is off, or when you open Bitkit.";
 "lightning__spark_exit__notifications_off" = "Notifications are off, so Bitkit can't tell you when the exit needs you. Turn them on in Settings to be reminded.";
+"lightning__spark_exit__not_moving" = "The exit is not moving: {error}";
+"lightning__spark_exit__fee_low" = "The network is busier than this exit's fee rate of {rate} sat/vB. It confirms once fees drop.";
+"lightning__spark_exit__waiting_leaves" = "Part of this exit can't be read on-chain right now. Bitkit tries again for up to a week.";
+"lightning__spark_exit__rebuilt_from_chain" = "Bitkit couldn't read this exit's saved progress, so it rebuilds it from the chain.";
+"lightning__spark_exit__done_received" = "{amount} reached your savings.";
+"lightning__spark_exit__sweep_txid" = "Transaction ID: {txid}";
+"lightning__spark_exit__leftover_rejected" = "{amount} of leftover fee funding could not be sent and stays at {address}, derivation path {path}.";
+"lightning__spark_exit__notification_not_moving" = "Your emergency exit is not moving. Open Bitkit to see why.";
 "lightning__spark_learn__title" = "Transfer\n<accent>speed</accent>";
 "lightning__spark_learn__text" = "Instant pays the provider to add your transfer to your spending balance before it confirms, so it is ready in a few minutes.\n\nLater waits for 3 confirmations, about 30 minutes, and costs less.";
 "lightning__spark_learn__label" = "Spending balance after transfer";
