@@ -81,6 +81,44 @@ final class NodeEventListenerTests: XCTestCase {
         XCTAssertEqual(node.handledCount, 1)
     }
 
+    func testAcknowledgementDoesNotBlockIndependentNodeReadsAndStopStillDrainsIt() async throws {
+        let listener = NodeEventListener()
+        let node = EventNode(noPointer: .init())
+        node.enqueue()
+        let entered = expectation(description: "Acknowledgement is held")
+        let gate = DispatchSemaphore(value: 0)
+        defer { gate.signal() }
+        node.onHandled = {
+            entered.fulfill()
+            XCTAssertEqual(gate.wait(timeout: .now() + 10), .success)
+        }
+        var delivered = false
+        try await listener.start(node: node) { _ in delivered = true }
+        await fulfillment(of: [entered], timeout: 2)
+        let readFinished = expectation(description: "Independent LDK read completes while acknowledgement is held")
+        let read = Task {
+            let event = try await ServiceQueue.background(.ldk) { node.nextEvent() }
+            XCTAssertNotNil(event)
+            readFinished.fulfill()
+        }
+        await fulfillment(of: [readFinished], timeout: 2)
+        let stopRequested = expectation(description: "Stop requested during acknowledgement")
+        node.onStop = { XCTAssertTrue(delivered) }
+        let stopping = Task {
+            stopRequested.fulfill()
+            try await listener.stop(node: node) { _ in XCTFail("Unexpected resumed delivery") }
+        }
+        await fulfillment(of: [stopRequested], timeout: 2)
+        XCTAssertEqual(node.stopCount, 0)
+        XCTAssertFalse(delivered)
+        gate.signal()
+        try await read.value
+        try await stopping.value
+        XCTAssertTrue(delivered)
+        XCTAssertEqual(node.handledCount, 1)
+        XCTAssertEqual(node.stopCount, 1)
+    }
+
     func testStopFailureResumesOnlyTheRetainedNodeConsumer() async throws {
         let listener = NodeEventListener()
         let node = EventNode(noPointer: .init())
@@ -222,6 +260,7 @@ private final class EventNode: Node {
     var onStart: (() -> Void)?
     var onEmpty: (() -> Void)?
     var onStop: (() -> Void)?
+    var onHandled: (() -> Void)?
     private let lock = NSLock()
     private var running = false
     private var event: Event?
@@ -272,6 +311,7 @@ private final class EventNode: Node {
     }
 
     override func eventHandled() throws {
+        onHandled?()
         lock.withLock {
             handledCount += 1
             event = nil

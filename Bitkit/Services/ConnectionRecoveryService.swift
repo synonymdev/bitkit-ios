@@ -136,14 +136,19 @@ final class ConnectionRecoveryService: ObservableObject {
         }
     }
 
-    func beginWipe() async throws -> UUID {
+    func beginWipe(timeout: Duration = .seconds(30)) async throws -> UUID {
         guard wipeID == nil else { throw AdmissionError.busy }
         let id = UUID()
         wipeID = id
         readyGeneration = nil
         generation = UUID()
         cancelActive?()
-        await drainActive?()
+        if let drainActive, await withDeadline(timeout, { await drainActive() }) == nil {
+            // The original operation still owns activeID until it really finishes. A timeout
+            // releases only this wipe attempt, so Retry can wait again without admitting new work.
+            endWipe(id)
+            throw WipeWaitTimeoutError(wait: "connection recovery")
+        }
         return id
     }
 

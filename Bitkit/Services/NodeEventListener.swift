@@ -54,7 +54,7 @@ final class NodeEventListener {
             while !Task.isCancelled {
                 // The pinned UniFFI nextEventAsync wait ignores Swift cancellation. Polling
                 // keeps empty-queue waits cancellable and binds this consumer to one node.
-                let event = try? await ServiceQueue.background(.ldk) { () -> Event? in
+                let event = try? await ServiceQueue.background(.ldkEvents) { () -> Event? in
                     guard let event = node.nextEvent() else { return nil }
                     do {
                         try node.eventHandled()

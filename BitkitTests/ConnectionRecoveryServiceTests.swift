@@ -575,6 +575,48 @@ final class ConnectionRecoveryServiceTests: XCTestCase {
         XCTAssertNotNil(data)
     }
 
+    func testAppResetTimesOutAndRetriesWhileOriginalStartupStillOwnsAdmission() async throws {
+        let entered = expectation(description: "Noncancellable native startup entered")
+        let gate = DispatchSemaphore(value: 0)
+        defer { gate.signal() }
+        let oldLifecycle = service.lifecycleID
+        var startupCommitted = false
+        let startup = Task {
+            try await service.perform {
+                try await ServiceQueue.background(.ldk) {
+                    entered.fulfill()
+                    XCTAssertEqual(gate.wait(timeout: .now() + 10), .success)
+                }
+                try self.service.checkCurrentOperation()
+                startupCommitted = true
+            }
+        }
+        await fulfillment(of: [entered], timeout: 2)
+        for _ in 0 ..< 2 {
+            do {
+                try await AppReset.withConnectionRecoveryPaused(recovery: service, timeout: .milliseconds(50)) {
+                    XCTFail("No wipe step may run before the original startup drains")
+                }
+                XCTFail("The blocked prerequisite must return a bounded failure")
+            } catch let error as WipeWaitTimeoutError {
+                XCTAssertEqual(error.wait, "connection recovery")
+            }
+            XCTAssertTrue(service.isBusy)
+            XCTAssertFalse(service.isCurrentLifecycle(oldLifecycle))
+            do {
+                try await service.perform { XCTFail("Timed-out work still owns admission") }
+                XCTFail("New work must remain refused")
+            } catch ConnectionRecoveryService.AdmissionError.busy {}
+        }
+        gate.signal()
+        _ = await startup.result
+        XCTAssertFalse(startupCommitted)
+        var wipeEntered = false
+        try await AppReset.withConnectionRecoveryPaused(recovery: service) { wipeEntered = true }
+        XCTAssertTrue(wipeEntered)
+        XCTAssertFalse(service.isBusy)
+    }
+
     func testIdentityReplacementDuringValidationCannotWrite() async throws {
         let editor = try service.editor()
         do {

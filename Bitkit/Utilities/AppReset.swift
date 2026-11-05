@@ -63,9 +63,10 @@ final class AppReset: WipeStepExecutor {
 
     static func withConnectionRecoveryPaused(
         recovery: ConnectionRecoveryService,
+        timeout: Duration = waitTimeout,
         operation: () async throws -> Void
     ) async throws {
-        let connectionWipe = try await recovery.beginWipe()
+        let connectionWipe = try await recovery.beginWipe(timeout: timeout)
         defer { recovery.endWipe(connectionWipe) }
         // A server switch restarts the node, so drain it before acquiring the wipe's SDK scope.
         defer { SettingsViewModel.shared.endServerSettingsWipe() }
