@@ -18,8 +18,8 @@
   </description>
   <actions>
     <action>Hand the receiving test wallet address to the app with xcrun simctl openurl &lt;simulator-id&gt; "bitcoin:&lt;test recipient address&gt;?amount=0.00001"</action>
-    <action>Verify the Send Amount screen is visible with 1 000 sats and Savings selected</action>
-    <action>Tap Continue (id "ContinueAmount"), expand Show Details (id "SendConfirmToggleDetails") if collapsed, and verify the Confirm screen shows the receiving test wallet address (id "ReviewUri")</action>
+    <action>Verify the Confirm screen (id "SendConfirm") opens directly, without the Send Amount screen, with 1 000 sats (id "ReviewAmount-primary")</action>
+    <action>Expand Show Details (id "SendConfirmToggleDetails") if collapsed, and verify Savings is selected and the Confirm screen shows the receiving test wallet address (id "ReviewUri")</action>
     <action>Swipe the send handle (id "GRAB") fully to the right</action>
     <action>Wait for the Bitcoin Sent success screen (id "SendSuccess") and verify it shows the accepted payment amount</action>
     <action>Tap Details (id "Details"), then Explore (id "ActivityTxDetails"), and verify the outbound transaction shows a transaction ID (id "TXID"); record that exact ID without inferring a different transaction from address or amount</action>
