@@ -231,6 +231,96 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(coordinator.previewFeeSats, 0)
     }
 
+    private func makePreviewCoordinator(funding: MockHwFunding) -> HwSendCoordinator {
+        HwSendCoordinator(
+            signerFactory: { [self] _, address, satsPerVByte in
+                makeSigner(
+                    funding: funding,
+                    connecting: MockHwConnecting(),
+                    feeRate: satsPerVByte,
+                    address: address
+                )
+            }
+        )
+    }
+
+    func testCoordinatorPreviewReusesSeededComposeForSamePayment() async throws {
+        let funding = MockHwFunding()
+        let manager = HwWalletManager()
+        let coordinator = makePreviewCoordinator(funding: funding)
+        coordinator.selectWallet("trezor:wallet")
+        coordinator.seedPreview(
+            walletId: "trezor:wallet",
+            address: "bc1qtest",
+            sats: 42000,
+            satsPerVByte: 2,
+            balanceSats: manager.fundingBalance(walletId: "trezor:wallet"),
+            feeSats: 321
+        )
+
+        let fee = try await coordinator.preparePreview(manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2)
+
+        XCTAssertEqual(fee, 321)
+        XCTAssertEqual(coordinator.previewFeeSats, 321)
+        XCTAssertFalse(coordinator.isPreviewLoading)
+        XCTAssertTrue(funding.estimateCalls.isEmpty)
+    }
+
+    func testCoordinatorPreviewComposesAgainWhenPaymentChanges() async throws {
+        let funding = MockHwFunding()
+        let manager = HwWalletManager()
+        let coordinator = makePreviewCoordinator(funding: funding)
+        coordinator.selectWallet("trezor:wallet")
+        coordinator.seedPreview(
+            walletId: "trezor:wallet",
+            address: "bc1qtest",
+            sats: 42000,
+            satsPerVByte: 2,
+            balanceSats: manager.fundingBalance(walletId: "trezor:wallet"),
+            feeSats: 321
+        )
+
+        let fee = try await coordinator.preparePreview(manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 5)
+
+        XCTAssertEqual(fee, funding.funding.miningFeeSats)
+        XCTAssertEqual(funding.estimateCalls.count, 1)
+        XCTAssertEqual(funding.estimateCalls.first?.satsPerVByte, 5)
+    }
+
+    func testCoordinatorPreviewComposesOncePerPayment() async throws {
+        let funding = MockHwFunding()
+        let manager = HwWalletManager()
+        let coordinator = makePreviewCoordinator(funding: funding)
+        coordinator.selectWallet("trezor:wallet")
+
+        _ = try await coordinator.preparePreview(manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2)
+        let fee = try await coordinator.preparePreview(manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2)
+
+        XCTAssertEqual(fee, funding.funding.miningFeeSats)
+        XCTAssertEqual(funding.estimateCalls.count, 1)
+    }
+
+    func testCoordinatorDropsSeededPreviewWhenWalletChanges() async throws {
+        let funding = MockHwFunding()
+        let manager = HwWalletManager()
+        let coordinator = makePreviewCoordinator(funding: funding)
+        coordinator.selectWallet("trezor:wallet")
+        coordinator.seedPreview(
+            walletId: "trezor:wallet",
+            address: "bc1qtest",
+            sats: 42000,
+            satsPerVByte: 2,
+            balanceSats: 0,
+            feeSats: 321
+        )
+        coordinator.selectWallet("trezor:other")
+        coordinator.selectWallet("trezor:wallet")
+
+        _ = try await coordinator.preparePreview(manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2)
+
+        XCTAssertEqual(funding.estimateCalls.count, 1)
+    }
+
     func testCoordinatorRetryReusesSignedPaymentAfterUncertainBroadcast() async throws {
         try await assertCoordinatorRetryReusesSignedPayment(error: HwTransferError.broadcastUncertain)
     }
