@@ -796,7 +796,8 @@ final class HwSendCoordinator {
                         throw await settleRetainedSend(
                             walletId: walletId,
                             failure: failure,
-                            isRetry: hadPriorBroadcastAttempt,
+                            // Signing anew can give bytes identical to the held record, and those may already be out.
+                            isRetry: hadPriorBroadcastAttempt || retainOutcome == .alreadyHeld,
                             signed: signed,
                             retainOutcome: retainOutcome,
                             replacement: replacement
