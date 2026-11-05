@@ -1,0 +1,21 @@
+<journey name="scan onchain no amount to amount">
+  <description>
+    Verifies that pasting or scanning an on-chain BIP21 request without an amount still opens the
+    Send amount screen, so the user can choose the amount before Confirm.
+
+    Precondition: onboarded dev wallet on regtest with confirmed Savings funds, a running synced node,
+    and a regtest address the wallet does not own. Start on the wallet home screen.
+
+    iOS: the simulator has no camera, so set the clipboard with
+    xcrun simctl pbcopy &lt;device&gt; and use Paste Invoice inside Send.
+  </description>
+  <actions>
+    <action>Copy "bitcoin:&lt;test recipient address&gt;" to the simulator clipboard</action>
+    <action>Tap the Send button (id "Send"), and if a camera permission dialog appears, choose "Don't Allow"</action>
+    <action>Tap Paste Invoice (id "RecipientInvoice")</action>
+    <action>Verify the Send amount screen (id "SendAmount") is visible and the Confirm screen (id "SendConfirm") is not</action>
+    <action>Tap "1" (id "N1") and "0" (id "N0") four times, then tap Continue (id "ContinueAmount")</action>
+    <action>Verify the Confirm screen (id "SendConfirm") is visible and the review amount (id "ReviewAmount-primary") shows 10 000</action>
+    <action>Close the sheet without sending</action>
+  </actions>
+</journey>

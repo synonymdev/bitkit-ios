@@ -163,6 +163,59 @@ final class SendConfirmationSwipeTests: XCTestCase {
         ))
     }
 
+    func testAScannedAmountCannotBeEditedFromConfirm() {
+        XCTAssertFalse(SendConfirmationView.canEditScannedAmount(walletToPayFrom: .onchain, lightningAmountSats: nil, onchainAmountSats: 10000))
+        XCTAssertFalse(SendConfirmationView.canEditScannedAmount(walletToPayFrom: .lightning, lightningAmountSats: 10000, onchainAmountSats: 0))
+        XCTAssertTrue(SendConfirmationView.canEditScannedAmount(walletToPayFrom: .onchain, lightningAmountSats: 10000, onchainAmountSats: 0))
+        XCTAssertTrue(SendConfirmationView.canEditScannedAmount(walletToPayFrom: .lightning, lightningAmountSats: 0, onchainAmountSats: 10000))
+        XCTAssertTrue(SendConfirmationView.canEditScannedAmount(walletToPayFrom: .onchain, lightningAmountSats: nil, onchainAmountSats: nil))
+    }
+
+    func testAFailedHardwarePreviewLeavesConfirmOnlyForItsInitialSource() {
+        XCTAssertTrue(SendConfirmationView.leavesConfirmAfterFeeFailure(isHardwarePayment: true, isContactPayment: false, afterFundingSwitch: false))
+        // A switch to a device that cannot pay keeps Confirm, so another source can be picked.
+        XCTAssertFalse(SendConfirmationView.leavesConfirmAfterFeeFailure(isHardwarePayment: true, isContactPayment: false, afterFundingSwitch: true))
+        XCTAssertFalse(SendConfirmationView.leavesConfirmAfterFeeFailure(isHardwarePayment: true, isContactPayment: true, afterFundingSwitch: false))
+        XCTAssertFalse(SendConfirmationView.leavesConfirmAfterFeeFailure(
+            isHardwarePayment: false,
+            isContactPayment: false,
+            afterFundingSwitch: false
+        ))
+    }
+
+    func testAFixedAmountSavingsCannotPayMovesToAHardwareWalletThatCovers() {
+        let balances: [(walletId: String, balanceSats: UInt64)] = [("small", 20000), ("large", 549_577)]
+        XCTAssertEqual(
+            SendConfirmationView.hardwareWalletCovering(amount: 300_000, savingsBalanceSats: 209_714, balances: balances),
+            "large"
+        )
+        XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 600_000, savingsBalanceSats: 209_714, balances: balances))
+        XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 300_000, savingsBalanceSats: 209_714, balances: []))
+    }
+
+    func testACoinSelectionFailureWithEnoughSavingsDoesNotMoveToAHardwareWallet() {
+        let balances: [(walletId: String, balanceSats: UInt64)] = [("large", 549_577)]
+        XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 10000, savingsBalanceSats: 209_714, balances: balances))
+        XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 209_714, savingsBalanceSats: 209_714, balances: balances))
+    }
+
+    func testOnlyTheNewestFeeCalculationHoldsTheSwipe() {
+        XCTAssertTrue(SendConfirmationView.isCalculatingOnchainFee(calculationId: 3, latestCalculationId: 3))
+        // A funding switch starts a newer calculation that may not be on-chain at all.
+        XCTAssertFalse(SendConfirmationView.isCalculatingOnchainFee(calculationId: 3, latestCalculationId: 4))
+        XCTAssertFalse(SendConfirmationView.isCalculatingOnchainFee(calculationId: nil, latestCalculationId: 4))
+    }
+
+    func testOnchainPreparationKeepsSwipeDisabledWithKnownFeeRate() {
+        XCTAssertTrue(SendConfirmationView.isSwipeDisabled(
+            walletType: .onchain,
+            isHardwarePayment: false,
+            isHardwareConfirmationUnavailable: false,
+            feeRate: 5,
+            isPreparingOnchainSend: true
+        ))
+    }
+
     func testPendingRequestPreparationKeepsSwipeDisabledAndLoadingWithKnownFees() {
         for (preparingRequest, setupPending) in [(true, false), (false, true)] {
             for walletType in [WalletType.lightning, .onchain] {
