@@ -51,7 +51,7 @@ concurrency:
 jobs:
   detect-changes:
     if: github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       code: ${{ (github.event_name == 'workflow_dispatch' && !inputs.pr) || steps.filter.outputs.code == 'true' }}
     steps:
@@ -404,7 +404,7 @@ jobs:
   e2e-status:
     if: always() && github.event.pull_request.draft == false
     name: e2e-status
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [detect-changes, e2e-tests-local]
     steps:
       - name: Verify change detection succeeded
@@ -430,7 +430,7 @@ jobs:
     name: Report retarget E2E result
     if: always() && inputs.retarget_run != ''
     needs: [detect-changes, build-local, e2e-branch, e2e-tests-local, e2e-status]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: read

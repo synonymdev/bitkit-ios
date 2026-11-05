@@ -125,7 +125,7 @@ jobs:
   resolve-e2e-ref:
     if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (startsWith(github.head_ref, 'release-') || startsWith(github.base_ref, 'release-')))
     needs: [e2e-branch]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       ref: ${{ steps.e2e-ref.outputs.ref }}
     steps:
@@ -139,7 +139,7 @@ jobs:
   migration-plan:
     if: github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (startsWith(github.head_ref, 'release-') || startsWith(github.base_ref, 'release-')))
     needs: [e2e-branch]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.plan.outputs.version }}
       all: ${{ steps.plan.outputs.all }}
@@ -510,7 +510,7 @@ jobs:
   migration-result:
     if: always() && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (startsWith(github.head_ref, 'release-') || startsWith(github.base_ref, 'release-'))))
     needs: [build, e2e-branch, resolve-e2e-ref, migration-plan, prepare-wallets, rn-tests, native-tests]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Require all migration jobs to succeed
         env:
@@ -529,7 +529,7 @@ jobs:
       always() &&
       (github.event_name == 'schedule' ||
        (github.event_name == 'workflow_dispatch' && inputs.post_to_slack == true))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [build, e2e-branch, resolve-e2e-ref, migration-plan, prepare-wallets, rn-tests, native-tests, migration-result]
     steps:
       - name: Resolve E2E tests ref
