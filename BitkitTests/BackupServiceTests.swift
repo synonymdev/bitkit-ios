@@ -515,7 +515,8 @@ final class BackupServiceTests: XCTestCase {
         let failedAttempts = await remote.attemptedKeys
         let metadata = await remote.metadata
         let wallet = await remote.wallet
-        XCTAssertTrue(outcome == .failed)
+        XCTAssertTrue(outcome == .walletDependencyFailed)
+        XCTAssertFalse(outcome.canRetryPendingBackup)
         XCTAssertEqual(failedAttempts, [BackupCategory.wallet.rawValue])
         XCTAssertEqual(metadata, LegacyMetadataBackupServer.legacyMetadata)
         XCTAssertEqual(wallet, LegacyMetadataBackupServer.legacyWallet)
@@ -532,6 +533,71 @@ final class BackupServiceTests: XCTestCase {
         await assertWalletExclusionsPrecedeMetadataReplacement(remote)
         restarted.setWiping(true)
         await restarted.stopObservingBackups()
+    }
+
+    func testWalletRecoveryResumesMetadataAfterFailedJobRetires() async throws {
+        for stopBeforeRetirement in [false, true] {
+            let remote = LegacyMetadataBackupServer(failWalletUpload: true)
+            let defaults = try makeLegacyMetadataBackupDefaults()
+            let pending = BackupItemStatus(synced: 1, required: 2, running: false)
+            try defaults.set(JSONEncoder().encode([
+                BackupCategory.wallet.rawValue: pending,
+                BackupCategory.metadata.rawValue: pending,
+            ]), forKey: "backupStatuses")
+            let held = expectation(description: "Failed metadata job still occupies its slot")
+            let completed = expectation(description: "Pending metadata resumes only in its active generation")
+            completed.isInverted = stopBeforeRetirement
+            let (retirement, releaseRetirement) = AsyncStream<Void>.makeStream()
+            defer { releaseRetirement.finish() }
+            let service = BackupService(
+                defaults: defaults,
+                backupData: { try await remote.backupData(for: $0) },
+                uploadBackup: { try await remote.upload(key: $0, data: $1) },
+                waitForBackupDelay: { await Task.yield() },
+                waitForScheduledBackupCompletion: { category, outcome in
+                    if category == .metadata, outcome == .walletDependencyFailed {
+                        held.fulfill()
+                        for await _ in retirement {}
+                    }
+                }
+            )
+            let subscription = service.backupStatusesPublisher
+                .filter { $0[.metadata].map { !$0.running && !$0.isRequired } == true }
+                .first().sink { _ in completed.fulfill() }
+            defer { subscription.cancel() }
+
+            await service.startObservingBackups()?.value
+            await fulfillment(of: [held], timeout: 2)
+            XCTAssertEqual(service.getBackupStatus(category: .metadata).required, pending.required)
+            let retainedMetadata = await remote.metadata
+            XCTAssertEqual(retainedMetadata, LegacyMetadataBackupServer.legacyMetadata)
+
+            await remote.setWalletUploadFailure(false)
+            let recovered = await service.triggerBackup(category: .wallet)
+            XCTAssertTrue(recovered == .completed)
+            let heldUploads = await remote.successfulKeys
+            XCTAssertEqual(heldUploads, [BackupCategory.wallet.rawValue])
+            if stopBeforeRetirement {
+                service.setWiping(true)
+                let stopping = service.requestStopObservingBackups()
+                releaseRetirement.finish()
+                await stopping.value
+            } else {
+                releaseRetirement.finish()
+            }
+            await fulfillment(of: [completed], timeout: stopBeforeRetirement ? 0.2 : 2)
+            service.setWiping(true)
+            await service.stopObservingBackups()
+
+            if stopBeforeRetirement {
+                let uploads = await remote.successfulKeys
+                XCTAssertEqual(uploads, [BackupCategory.wallet.rawValue])
+            } else {
+                await assertWalletExclusionsPrecedeMetadataReplacement(remote)
+            }
+            XCTAssertEqual(service.getBackupStatus(category: .metadata).required, pending.required)
+            XCTAssertEqual(service.getBackupStatus(category: .metadata).isRequired, stopBeforeRetirement)
+        }
     }
 
     func testTemporaryWalletFailureKeepsMetadataRetryable() async throws {
