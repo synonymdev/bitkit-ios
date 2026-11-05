@@ -105,6 +105,7 @@ class BackupService {
         case snapshotChanged
         case busy
         case temporarilyUnavailable
+        case walletDependencyFailed
         case failed
 
         var canRetryPendingBackup: Bool {
@@ -137,6 +138,7 @@ class BackupService {
     private let uploadBackup: (String, Data) async throws -> Void
     private let waitForBackupDelay: () async throws -> Void
     private let waitForTemporaryFailureDelay: (UInt64) async throws -> Void
+    private let waitForScheduledBackupCompletion: (BackupCategory, BackupOutcome) async -> Void
     private let waitForForegroundRecoveryTimeout: () async throws -> Void
     private static let backupStatusesKey = "backupStatuses"
     private var backupVersions: [BackupCategory: UInt64] = [:]
@@ -173,6 +175,7 @@ class BackupService {
         waitForTemporaryFailureDelay: @escaping (UInt64) async throws -> Void = {
             try await Task.sleep(nanoseconds: $0)
         },
+        waitForScheduledBackupCompletion: @escaping (BackupCategory, BackupOutcome) async -> Void = { _, _ in },
         waitForForegroundRecoveryTimeout: @escaping () async throws -> Void = {
             try await Task.sleep(for: .seconds(BackupService.backupFailureCheckInterval))
         }
@@ -183,6 +186,7 @@ class BackupService {
         self.uploadBackup = uploadBackup
         self.waitForBackupDelay = waitForBackupDelay
         self.waitForTemporaryFailureDelay = waitForTemporaryFailureDelay
+        self.waitForScheduledBackupCompletion = waitForScheduledBackupCompletion
         self.waitForForegroundRecoveryTimeout = waitForForegroundRecoveryTimeout
         let statuses = getAllBackupStatuses()
         var clearedStatuses = statuses
@@ -416,6 +420,7 @@ class BackupService {
     }
 
     private func runBackup(category: BackupCategory, isScheduled: Bool, wipeGeneration: UInt64) async -> BackupOutcome {
+        let generation = currentSchedulingGeneration
         Logger.debug("Backup starting for: '\(category.rawValue)'", context: "BackupService")
         var outcome = BackupOutcome.failed
         var requiredAtStart: UInt64 = 0
@@ -491,11 +496,19 @@ class BackupService {
                 outcome = .temporarilyUnavailable
                 Logger.warn("Backup temporarily unavailable for: '\(category.rawValue)'", context: "BackupService")
             } else {
+                if case MetadataBackupError.walletBackupFailed = error {
+                    outcome = .walletDependencyFailed
+                }
                 Logger.error("Backup failed for: '\(category.rawValue)': \(error)", context: "BackupService")
                 checkForFailedBackups()
             }
         }
         _ = try? await ServiceQueue.background(.backup) { self.runningBackupTasks.removeValue(forKey: category) }
+        if category == .wallet, outcome == .completed {
+            await resumeMetadataAfterWalletBackup(generation: generation)
+        } else if category == .metadata, outcome == .walletDependencyFailed {
+            await resumeMetadataAfterWalletBackup(generation: generation)
+        }
         return outcome
     }
 
@@ -1101,17 +1114,29 @@ class BackupService {
                 break
             }
         }
+        await waitForScheduledBackupCompletion(category, outcome)
         _ = try? await ServiceQueue.background(.backup) {
             self.backupJobs.removeValue(forKey: category)
             self.updateBackupStatus(category: category) { status in
                 BackupItemStatus(synced: status.synced, required: status.required, running: false)
             }
         }
+        // A wallet recovery may have arrived while this metadata job still occupied its slot.
+        if category == .metadata, outcome == .walletDependencyFailed {
+            await resumeMetadataAfterWalletBackup(generation: generation)
+        }
         if outcome.canRetryPendingBackup, !Task.isCancelled,
            getBackupStatus(category: category).isRequired, !shouldSkipBackup(category: category)
         {
             await scheduleBackup(category: category, generation: generation)
         }
+    }
+
+    @MainActor
+    private func resumeMetadataAfterWalletBackup(generation: UInt64) async {
+        guard !Task.isCancelled, isObserving, !getBackupStatus(category: .wallet).isRequired,
+              getBackupStatus(category: .metadata).isRequired else { return }
+        await scheduleBackup(category: .metadata, generation: generation)
     }
 
     private func checkForFailedBackups() {
