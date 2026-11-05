@@ -160,6 +160,12 @@ struct EditProfileView: View {
             try await pubkyProfile.performProfileDeletion {
                 do {
                     try await performDeleteProfile(session: session)
+                } catch let PubkyServiceError.activeSubscription(endsAt) {
+                    guard !Task.isCancelled, pubkyProfile.currentSession == session else { return }
+                    let description = endsAt.map {
+                        t("subscriptions__expires_date", variables: ["date": $0.formatted(date: .long, time: .omitted)])
+                    }
+                    app.toast(type: .error, title: t("profile__delete_active_subscription"), description: description)
                 } catch {
                     guard !Task.isCancelled, pubkyProfile.publicKey == session.publicKey else { return }
                     Logger.error("Failed to delete profile: \(error)", context: "EditProfileView")
@@ -174,16 +180,27 @@ struct EditProfileView: View {
     }
 
     private func performDeleteProfile(session: PubkyProfileManager.SignedInSession) async throws {
+        try await Self.performDeleteProfile(session: session, pubkyProfile: pubkyProfile, contactsManager: contactsManager) {
+            try await PubkyProfileManager.removePrivatePaykitEndpoints(
+                context: "EditProfileView.deleteProfile", deferAppSync: true,
+                isSessionCurrent: { pubkyProfile.currentSession == session }
+            )
+        }
+        navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
+    }
+
+    static func performDeleteProfile(
+        session: PubkyProfileManager.SignedInSession,
+        pubkyProfile: PubkyProfileManager,
+        contactsManager: ContactsManager,
+        removePrivateEndpoints: () async throws -> Void
+    ) async throws {
+        try await pubkyProfile.validateProfileDeletion(for: session)
+        try await removePrivateEndpoints()
         try pubkyProfile.requireCurrentSession(session)
-        await PubkyProfileManager.removePrivatePaykitEndpointsBestEffort(
-            context: "EditProfileView.deleteProfile", deferAppSync: true,
-            isSessionCurrent: { pubkyProfile.currentSession == session }
-        )
-        try pubkyProfile.requireCurrentSession(session)
-        await contactsManager.deleteAllContactsBestEffort()
+        try await contactsManager.deleteAllContacts()
         try pubkyProfile.requireCurrentSession(session)
         try await pubkyProfile.deleteProfile(cleanPrivatePaykitEndpoints: false, expectedSession: session)
-        navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
     }
 
     private func disconnectAfterFailedDelete() async {

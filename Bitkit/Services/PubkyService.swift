@@ -356,6 +356,10 @@ enum PubkyService {
         try await PaykitSdkService.shared.uploadAvatar(bytes: bytes, contentType: contentType, expectedIdentity: expectedIdentity)
     }
 
+    static func requireNoActiveSubscriptions(expectedIdentity: String) async throws {
+        try await PaykitSdkService.shared.requireNoActiveSubscriptions(expectedIdentity: expectedIdentity)
+    }
+
     static func deletePaykitProfile(expectedIdentity: String? = nil) async throws {
         try await PaykitSdkService.shared.deletePaykitProfile(expectedIdentity: expectedIdentity)
     }
@@ -391,6 +395,10 @@ enum PubkyService {
 
     static func removeContact(publicKey: String) async throws -> Paykit.ContactRecord? {
         try await PaykitSdkService.shared.removeContact(publicKey: publicKey)
+    }
+
+    static func removeContactsForProfile(publicKeys: [String]) async throws -> [Paykit.ContactRecord] {
+        try await PaykitSdkService.shared.removeContactsForProfile(publicKeys: publicKeys)
     }
 
     static func removeContacts(publicKeys: [String]) async throws -> [Paykit.ContactRecord] {
@@ -818,11 +826,35 @@ actor PaykitSdkService {
         return record.uri
     }
 
+    func requireNoActiveSubscriptions(expectedIdentity: String) async throws {
+        try await withStateRevisionTracking { sdk in
+            try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
+            try await Self.requireNoActiveSubscriptions(in: sdk)
+        }
+    }
+
+    private static func requireNoActiveSubscriptions(in sdk: PaykitSdk) async throws {
+        let requests = try await sdk.paymentRequests()
+        try Task.checkCancellation()
+        let now = Date()
+        let activeSubscriptions = requests.filter {
+            $0.state == .activeRecurring &&
+                ($0.terms?.recurrence?.endsAt.flatMap(PaykitPaymentRequest.parseDate).map { $0 > now } ?? true)
+        }
+        guard !activeSubscriptions.isEmpty else { return }
+        let endDates = activeSubscriptions.compactMap {
+            $0.terms?.recurrence?.endsAt.flatMap(PaykitPaymentRequest.parseDate)
+        }
+        let latestEndDate = endDates.count == activeSubscriptions.count ? endDates.max() : nil
+        throw PubkyServiceError.activeSubscription(endsAt: latestEndDate)
+    }
+
     func deletePaykitProfile(expectedIdentity: String? = nil) async throws {
         try await withStateRevisionTracking { sdk in
             if let expectedIdentity {
                 try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
             }
+            try await Self.requireNoActiveSubscriptions(in: sdk)
             guard let publicKey = try await sdk.identityStatus()?.publicKey else { throw PubkyServiceError.sessionNotActive }
             guard let current = try await sdk.fetchPaykitProfile(publicKey: publicKey) else { return }
             try await sdk.deletePaykitProfile(expectedRevision: current.revision)
@@ -940,6 +972,14 @@ actor PaykitSdkService {
             }
             _ = try await sdk.blockPeer(counterparty: publicKey)
             return try await sdk.removeContact(publicKey: publicKey)
+        }
+    }
+
+    func removeContactsForProfile(publicKeys: [String]) async throws -> [Paykit.ContactRecord] {
+        try await withStateRevisionTracking { sdk in
+            try await Self.requireNoActiveSubscriptions(in: sdk)
+            guard !publicKeys.isEmpty else { return [] }
+            return try await sdk.removeContactsAndBlockPeers(publicKeys: publicKeys)
         }
     }
 
