@@ -370,7 +370,7 @@ final class SparkManager: ChannelFreeLightningRail {
         ))
         Logger.info("Sent Spark withdrawal '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
         try await refresh()
-        if case let .withdraw(txId) = response.payment.details {
+        if case let .withdraw(txId, _, _) = response.payment.details {
             return txId
         }
         return response.payment.id
