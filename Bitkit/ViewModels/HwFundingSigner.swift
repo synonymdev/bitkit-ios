@@ -365,6 +365,8 @@ final class HwSendCoordinator {
     private var pendingPayment: PendingPayment?
     /// Memory only, so a restart loses it and a new warning is required.
     private var retainedSendConsent: RetainedSendConsent?
+    /// Set on leaving the flow. `cancel()` can return early while an outcome is unresolved, so a refusal may still settle afterwards.
+    private var isRetainedSendConsentEnded = false
     private var operationTask: Task<HwFundingBroadcastResult, Error>?
     private var operationRequest: PaymentRequest?
     private var operationSession: OperationSession?
@@ -733,7 +735,7 @@ final class HwSendCoordinator {
                         throw error
                     }
                 }
-                // The new bytes hold the record now, so a Retry refers to them and another signature needs a new warning.
+                // The new bytes hold the record now, so a Retry refers to them. Only finding the old record back returns the consent.
                 retainedSendConsent = nil
                 isBroadcastUnresolved = true
                 broadcastWasAttempted = true
@@ -773,7 +775,15 @@ final class HwSendCoordinator {
                         } else {
                             await clearBeforeDispatch()
                         }
-                        let retainsBroadcastAttempt = hadPriorBroadcastAttempt || !cleared
+                        let consentRegranted: Bool = if hadPriorBroadcastAttempt {
+                            false
+                        } else {
+                            await regrantConsentIfOldRecordIsBack(
+                                walletId: walletId, address: address, sats: sats, retainOutcome: retainOutcome, replacement: replacement
+                            )
+                        }
+                        // Regranted consent signs anew, so no held bytes may stay to rebroadcast without a device prompt.
+                        let retainsBroadcastAttempt = hadPriorBroadcastAttempt || (!cleared && !consentRegranted)
                         isBroadcastUnresolved = hadPriorBroadcastAttempt ? priorBroadcastWasUnresolved : !cleared && paymentRequestId != nil
                         broadcastWasAttempted = retainsBroadcastAttempt
                         pendingPayment?.hasBroadcastAttempted = retainsBroadcastAttempt
@@ -789,6 +799,8 @@ final class HwSendCoordinator {
                         }
                         throw await settleRetainedSend(
                             walletId: walletId,
+                            address: address,
+                            sats: sats,
                             failure: failure,
                             // Signing anew can give bytes identical to the held record, and those may already be out.
                             isRetry: hadPriorBroadcastAttempt || retainOutcome == .alreadyHeld,
@@ -886,10 +898,12 @@ final class HwSendCoordinator {
 
     /// Lets exactly this payment sign anew over the wallet's retained send, until a new transaction has been signed and retained.
     /// Only call this after the user accepted a second payment. It deletes nothing, so an attempt that signs nothing leaves the
-    /// original guarded by its record, and the same screen can ask the device again.
+    /// original guarded by its record, and the same screen can ask the device again. A consented payment that settles as not sent
+    /// and puts the old record back gets the same consent again.
     func consentToNewSignature(address: String, sats: UInt64) {
         guard let walletId, operationTask == nil else { return }
         retainedSendConsent = RetainedSendConsent(walletId: walletId, address: address, sats: sats)
+        isRetainedSendConsentEnded = false
         if pendingPayment?.paymentRequestId == nil {
             pendingPayment = nil
         }
@@ -902,6 +916,31 @@ final class HwSendCoordinator {
             retainedSendConsent = nil
             return false
         }
+        return true
+    }
+
+    private func endRetainedSendConsent() {
+        retainedSendConsent = nil
+        isRetainedSendConsentEnded = true
+    }
+
+    /// Gives back the consent a payment used, when its new bytes did not go out. Otherwise the old record would offer a Retry of the
+    /// old bytes, or block a different payment. Reads the record rather than trusting the restore, which does nothing over bytes the
+    /// watcher has seen and can fail. In both cases the new bytes stay the record, and a Retry refers to them.
+    @discardableResult
+    private func regrantConsentIfOldRecordIsBack(
+        walletId: String,
+        address: String,
+        sats: UInt64,
+        retainOutcome: HwRetainOutcome,
+        replacement: HwRetainedSendReplacement
+    ) async -> Bool {
+        guard replacement == .consented, case let .replaced(previous) = retainOutcome,
+              let record = try? await retainedSends.record(walletId: walletId),
+              record.serializedTx == previous.serializedTx,
+              !isRetainedSendConsentEnded
+        else { return false }
+        retainedSendConsent = RetainedSendConsent(walletId: walletId, address: address, sats: sats)
         return true
     }
 
@@ -929,7 +968,7 @@ final class HwSendCoordinator {
 
     func dismissPassphrase() {
         isPassphraseRequired = false
-        retainedSendConsent = nil
+        endRetainedSendConsent()
     }
 
     func completionRoute(
@@ -971,7 +1010,7 @@ final class HwSendCoordinator {
     }
 
     func cancel() {
-        retainedSendConsent = nil
+        endRetainedSendConsent()
         availabilityRequestId += 1
         previewRequestId += 1
         isFundingSourceLoading = false
@@ -1023,6 +1062,8 @@ final class HwSendCoordinator {
     /// refusal such as `bad-txns-inputs-missingorspent` on a retry may describe our own earlier accepted transaction.
     private func settleRetainedSend(
         walletId: String,
+        address: String,
+        sats: UInt64,
         failure: Error,
         isRetry: Bool,
         signed: HwFundingSignedTx,
@@ -1041,6 +1082,9 @@ final class HwSendCoordinator {
             }
         } else if refused {
             await releaseOrRestoreRetainedSend(walletId: walletId, signed: signed, retainOutcome: retainOutcome)
+            await regrantConsentIfOldRecordIsBack(
+                walletId: walletId, address: address, sats: sats, retainOutcome: retainOutcome, replacement: replacement
+            )
             pendingPayment = nil
         } else if failure.isDefiniteElectrumConnectFailure() {
             if await releaseOrRestoreRetainedSend(walletId: walletId, signed: signed, retainOutcome: retainOutcome) {
