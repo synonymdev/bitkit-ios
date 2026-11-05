@@ -59,7 +59,7 @@ enum SparkExitFixtures {
             fanoutFeeSats: 500,
             refundFeeSats: 1000,
             sweepFeeSats: 500,
-            funding: funding.map { RecoveryFunding(singleUtxoSats: $0, perBranch: []) },
+            funding: funding.map { RecoveryFunding(singleUtxoSats: $0, perBranch: [], strategy: .perBranch) },
             feeRateSatPerVbyte: 2,
             destination: "bcrt1qdestination",
             exitChainState: ExitChainState(
@@ -1546,6 +1546,18 @@ final class SparkExitDriverTests: XCTestCase {
         record = try await driver().tick(record)
         XCTAssertEqual(record.phase, .done)
         XCTAssertNil(record.retrySince)
+    }
+
+    /// R3 on SDK 0.28: a leaf the SDK could not ask the operators about waits like one whose funds were not found.
+    func testABuildWaitsForOperatorsUnavailable() async throws {
+        var record = rebuildingRecord()
+        sdk.preparedResponse = preparedSkipping(.operatorsUnavailable)
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.phase, .running)
+        XCTAssertEqual(record.retrySince, 1000)
+        XCTAssertTrue(record.isWaitingForLeaves)
     }
 
     func testIsRetryDueDoublesUpToADay() {

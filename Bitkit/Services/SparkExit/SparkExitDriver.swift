@@ -299,11 +299,11 @@ struct SparkExitDriver {
     }
 
     /// A skip of one of the exit's leaves that may still move: the chain could not be read for it, its funds were not
-    /// found yet, or the watchtower stopped it moments ago.
+    /// found yet, the operators could not be asked where they are, or the watchtower stopped it moments ago.
     private func isProvisional(_ skip: SkippedLeaf, prepared: PrepareRecoverFundsResponse, record: SparkExitRecord, tip: UInt32?) -> Bool {
         guard record.exitLeafIds.contains(skip.leafId) else { return false }
         switch skip.reason {
-        case .unverified, .fundsNotFound: return true
+        case .unverified, .fundsNotFound, .operatorsUnavailable: return true
         case .notRecoverable: return isStoppedRecently(skip.leafId, prepared: prepared, record: record, tip: tip)
         case .feeExceedsValue: return false
         }
