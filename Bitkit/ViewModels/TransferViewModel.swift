@@ -366,7 +366,7 @@ class TransferViewModel: ObservableObject {
         sparkFeeTask = nil
         isPricingSparkWithdrawal = false
         let spark = SparkManager.shared
-        guard spark.balanceSats > 0 else { return }
+        guard spark.balanceSats > 0, !spark.isExiting else { return }
         let address: String = if let sparkWithdrawAddress {
             sparkWithdrawAddress
         } else {
@@ -844,7 +844,8 @@ struct SavingsSelection: Equatable {
         channelIds.isEmpty && !withdrawsSpark
     }
 
-    /// Without a pick (`selectedChannelIds` nil) every ready channel moves. Spark moves when picked and holding a balance.
+    /// Without a pick (`selectedChannelIds` nil) every ready channel moves. Spark moves when picked and holding a
+    /// balance, which is 0 during an emergency exit.
     static func resolve(
         readyChannelIds: [String],
         selectedChannelIds: Set<String>?,

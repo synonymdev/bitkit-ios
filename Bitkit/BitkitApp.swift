@@ -73,6 +73,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool
     {
         UNUserNotificationCenter.current().delegate = self
+        SparkExitManager.registerBackgroundTask()
 
         // Check notification authorization status at launch and re-register with APN if granted
         UNUserNotificationCenter.current().getNotificationSettings { settings in

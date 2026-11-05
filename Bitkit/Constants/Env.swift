@@ -286,6 +286,13 @@ enum Env {
             .appendingPathComponent("wallet\(walletIndex)/spark-exit-restore.json")
     }
 
+    /// The running Spark emergency exit, if any: its signed recovery and how far it got.
+    static func sparkExitRecord(walletIndex: Int) -> URL {
+        appStorageUrl
+            .appendingPathComponent(networkName)
+            .appendingPathComponent("wallet\(walletIndex)/spark-exit.json")
+    }
+
     /// Breez SDK API key, set with the `BREEZ_API_KEY` build setting. Spark on mainnet needs it; its regtest does not.
     static var breezApiKey: String? {
         infoPlistValue("BREEZ_API_KEY")

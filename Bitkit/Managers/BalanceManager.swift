@@ -144,6 +144,11 @@ class BalanceManager {
         var pendingAmount: UInt64 = 0
 
         for transfer in transfers.filter({ $0.type.isToSavings() }) {
+            // A Spark exit has no channel: it is in transfer until its sweep confirms and the exit settles it.
+            if transfer.type == .sparkExit {
+                pendingAmount += transfer.amountSats
+                continue
+            }
             guard let channelId = transfer.channelId else { continue }
 
             let balanceFromLdk = balanceDetails.lightningBalances

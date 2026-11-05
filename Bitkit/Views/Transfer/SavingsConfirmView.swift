@@ -15,7 +15,7 @@ struct SavingsConfirmView: View {
     }
 
     private var sparkSats: UInt64 {
-        SparkManager.shared.balanceSats
+        SparkManager.shared.isExiting ? 0 : SparkManager.shared.balanceSats
     }
 
     /// Each ready channel and a Spark balance is a row of the Advanced list.

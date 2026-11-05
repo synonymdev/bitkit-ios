@@ -1,0 +1,643 @@
+import BreezSdkSpark
+import CryptoKit
+import Foundation
+
+/// The SDK calls an exit makes. `BreezSdk` in the app, a fake in tests.
+protocol SparkExitRecovering: Sendable {
+    func prepare(_ request: PrepareRecoverFundsRequest) async throws -> PrepareRecoverFundsResponse
+    func recover(_ request: RecoverFundsRequest, signer: CpfpSigner?) async throws -> RecoverFundsResponse
+    func check(_ recovery: RecoverFundsResponse) async throws -> CheckRecoverFundsResponse
+}
+
+/// Moves an exit one step forward each tick: builds it once its fee funding confirms, broadcasts what is ready,
+/// rebuilds when the chain diverged, and finishes when everything confirmed. Without the SDK (a background launch,
+/// or operators down at connect) it still broadcasts the stored, already signed transactions whose parents
+/// confirmed. Every built recovery is saved before anything of it is broadcast, and every broadcast is saved as
+/// soon as its outcome is known. Once the task running it is cancelled (a background run expiring) it starts no
+/// SDK call and no broadcast, and saves what it did, so the next run resumes without sending anything twice.
+struct SparkExitDriver {
+    let chain: SparkExitChain
+    /// nil while the Spark SDK is not connected.
+    let recovering: SparkExitRecovering?
+    /// The signer of the funding key at the record's index.
+    let makeSigner: (UInt32) throws -> CpfpSigner
+    let save: (SparkExitRecord) throws -> Void
+    var now: () -> Date = Date.init
+
+    /// A ready transaction accepted in this generation is sent again after this long, in case a node dropped it.
+    static let rebroadcastInterval: TimeInterval = 600
+    /// After this many rejections of one transaction the progress screen shows the error.
+    static let rejectionsToSurface = 3
+    /// The least time between two builds, so a divergence that persists does not rebuild every tick.
+    static let rebuildInterval: TimeInterval = 600
+    /// Chain host reads in flight at once.
+    static let concurrentReads = 8
+    /// Rebuilds in a row that reproduce a step whose input another transaction spent before its leaf counts as lost:
+    /// an older state of the wallet claimed it, and every rebuild would send the same refund again.
+    static let strikesToLoseLeaf = 2
+
+    @discardableResult
+    func tick(_ record: SparkExitRecord) async throws -> SparkExitRecord {
+        var record = record
+        switch record.phase {
+        case .done, .failed:
+            guard record.isLeftoverSweepPending, !Task.isCancelled else { return record }
+            try await sweepLeftover(&record)
+            try save(record)
+            return record
+        case .awaitingFunding, .needsFunding:
+            guard let recovering, !Task.isCancelled else { return record }
+            // Nothing to fund when every leaf is recovered cooperatively.
+            if let shortfall = record.fundingShortfallSats {
+                guard try await adoptFunding(&record, requiredSats: shortfall) else { return record }
+            }
+            try await build(&record, recovering: recovering)
+        case .running where record.isRebuilding:
+            // The diverged generation is never broadcast again; only a rebuild moves on from here.
+            guard let recovering, !Task.isCancelled, isRebuildDue(record) else { return record }
+            try await build(&record, recovering: recovering)
+        case .running:
+            if Task.isCancelled {
+                return record
+            }
+            if let recovering {
+                try await check(&record, recovering: recovering)
+            } else {
+                try await broadcastWithoutSdk(&record)
+            }
+        }
+        record.claimableAtHeight = record.recovery.flatMap { SparkExitMath.claimableAtHeight($0.response) }
+        try save(record)
+        return record
+    }
+
+    // MARK: Funding
+
+    /// Adds every confirmed new UTXO at the funding address as a funding input once together they cover
+    /// `requiredSats`.
+    private func adoptFunding(_ record: inout SparkExitRecord, requiredSats: UInt64) async throws -> Bool {
+        guard let address = record.funding.first?.address, let pubkey = record.funding.first?.pubkey else { return false }
+        let utxos = try await chain.utxos(address: address)
+        guard let topUp = SparkExitMath.fundingTopUp(SparkExitMath.newFunding(utxos, record: record), requiredSats: requiredSats) else {
+            return false
+        }
+        let index = record.fundingIndex
+        if record.funding.count == 1, record.funding[0].txid == nil {
+            record.funding = []
+        }
+        record.funding += topUp.map {
+            SparkExitRecord.Funding(index: index, address: address, pubkey: pubkey, txid: $0.txid, vout: $0.vout, valueSats: $0.value)
+        }
+        return true
+    }
+
+    // MARK: Build
+
+    private func build(_ record: inout SparkExitRecord, recovering: SparkExitRecovering) async throws {
+        guard let prepared = try await prepare(&record, recovering: recovering) else {
+            // The last leaf lost on a tick that could not read the funding address ends here, still as lost.
+            await finish(&record, phase: .failed(reason: record.isEveryLeafLost ? SparkExitRecord.lostReason : "No leaf can be exited"))
+            return
+        }
+        guard !prepared.leaves.isEmpty else {
+            // A leaf the chain could not be read for comes back on a later tick; finished leaves are not listed.
+            if prepared.skipped.contains(where: { $0.reason == .unverified }) {
+                return
+            }
+            record.skippedLeafCount = max(record.skippedLeafCount, prepared.skipped.count)
+            await finish(&record, phase: record.recovery == nil ? .failed(reason: "Nothing left to recover") : .done)
+            return
+        }
+        let built: RecoverFundsResponse
+        do {
+            built = try await recovering.recover(
+                RecoverFundsRequest(prepared: prepared, fundingInputs: prepared.funding == nil ? [] : record.fundingInputs),
+                signer: prepared.funding == nil ? nil : makeSigner(record.fundingIndex)
+            )
+        } catch let SdkError.SparkError(message) where SparkExitMath.isUnexitableLeafError(message) {
+            // Built at the same fee rate, a leaf can still fail here: leave it behind and rebuild at once.
+            if let leafId = SparkExitMath.unexitableLeafId(message), record.exitLeafIds.contains(leafId) {
+                leaveBehind([leafId], reason: message, in: &record)
+            }
+            record.isRebuilding = record.recovery != nil
+            record.lastBuildAt = nil
+            return
+        } catch let SdkError.InsufficientCpfpFunds(requiredSats, _) {
+            // The SDK names the total all inputs must hold, not what is missing.
+            var utxos: [EsploraUtxo]?
+            if let address = record.funding.first?.address {
+                utxos = try? await chain.utxos(address: address)
+            }
+            record.phase = .needsFunding(requiredSats: SparkExitMath.neededFunding(requiredSats: requiredSats, record: record, utxos: utxos))
+            return
+        }
+        guard !built.transactions.isEmpty else {
+            // Cooperative leaves the operators could not co-sign now are tried again on the next tick.
+            if !built.failed.isEmpty {
+                record.failedLeafCount = built.failed.count
+                return
+            }
+            await finish(&record, phase: .failed(reason: "Nothing to recover"))
+            return
+        }
+        let strikes = record.recovery == nil ? [:] : record.strikes(rebuiltInto: built)
+        let lost = lostLeaves(built, strikes: strikes, record: record)
+        if !lost.isEmpty {
+            Logger.warn("Spark exit leaves claimed by an older state: \(lost.map(\.leafId))", context: "SparkExitDriver")
+            record.lostLeaves = (record.lostLeaves ?? []) + lost
+            record.spentStepStrikes = nil
+            // Not adopted: the next tick rebuilds at once without the lost leaves.
+            record.isRebuilding = true
+            record.lastBuildAt = nil
+            if record.exitLeafIds.isEmpty {
+                await finish(&record, phase: .failed(reason: SparkExitRecord.lostReason))
+            }
+            return
+        }
+        record.adopt(built, at: now())
+        record.spentStepStrikes = strikes.isEmpty ? nil : strikes
+        // Saved before any of it is broadcast, so a crash never leaves broadcast transactions without their record.
+        try save(record)
+        try await broadcastReady(&record)
+    }
+
+    /// Prepares the exit's leaves. `Specific` fails as a whole when one fee-ladder leaf cannot pay its refund's fee:
+    /// that leaf is left behind and the rest prepared again, and when the error names no leaf, `RecoverableOnly`
+    /// prepares what it can and the leaves it leaves out stay behind. Nil once no leaf can be exited.
+    private func prepare(_ record: inout SparkExitRecord, recovering: SparkExitRecovering) async throws -> PrepareRecoverFundsResponse? {
+        var isRecoverableOnly = false
+        while !record.exitLeafIds.isEmpty {
+            do {
+                let prepared = try await recovering.prepare(PrepareRecoverFundsRequest(
+                    feeRateSatPerVbyte: record.feeRateSatPerVbyte,
+                    fundingKind: .p2wpkh,
+                    destination: record.destination,
+                    selection: isRecoverableOnly ? .recoverableOnly : .specific(leafIds: record.exitLeafIds)
+                ))
+                if isRecoverableOnly {
+                    let kept = Set(prepared.leaves.map(\.leafId))
+                    leaveBehind(record.exitLeafIds.filter { !kept.contains($0) }, reason: "Not recoverable at this fee rate", in: &record)
+                }
+                return prepared
+            } catch let SdkError.SparkError(message) where SparkExitMath.isUnexitableLeafError(message) {
+                if let leafId = SparkExitMath.unexitableLeafId(message), record.exitLeafIds.contains(leafId) {
+                    leaveBehind([leafId], reason: message, in: &record)
+                } else if isRecoverableOnly {
+                    throw SdkError.SparkError(message)
+                } else {
+                    isRecoverableOnly = true
+                }
+            }
+        }
+        return nil
+    }
+
+    private func leaveBehind(_ leafIds: [String], reason: String, in record: inout SparkExitRecord) {
+        guard !leafIds.isEmpty else { return }
+        let values = Dictionary((record.recovery?.response.leaves ?? []).map { ($0.leafId, $0.valueSats) }, uniquingKeysWith: { first, _ in first })
+        Logger.warn("Spark exit leaves left behind: \(leafIds): \(reason)", context: "SparkExitDriver")
+        record.leftBehindLeaves = (record.leftBehindLeaves ?? []) + leafIds.map {
+            SparkExitRecord.LeftBehindLeaf(leafId: $0, valueSats: values[$0] ?? 0, reason: reason)
+        }
+    }
+
+    /// The leaves whose refund a rebuild reproduced after its input was spent by another transaction in each of the
+    /// last generations. A refund's node id is its leaf.
+    private func lostLeaves(_ built: RecoverFundsResponse, strikes: [String: Int], record: SparkExitRecord) -> [SparkExitRecord.LostLeaf] {
+        let values = Dictionary(
+            ((record.recovery?.response.leaves ?? []) + built.leaves).map { ($0.leafId, $0.valueSats) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var lost: [SparkExitRecord.LostLeaf] = []
+        for tx in built.transactions where tx.kind == .refund && strikes[tx.txid, default: 0] >= Self.strikesToLoseLeaf {
+            guard let leafId = tx.nodeId, record.exitLeafIds.contains(leafId), !lost.contains(where: { $0.leafId == leafId }) else { continue }
+            lost.append(.init(leafId: leafId, valueSats: values[leafId] ?? 0))
+        }
+        return lost
+    }
+
+    // MARK: Check
+
+    private func check(_ record: inout SparkExitRecord, recovering: SparkExitRecovering) async throws {
+        guard let stored = record.recovery?.response else {
+            record.phase = .awaitingFunding(requiredSats: 0)
+            return
+        }
+        let checked = try await recovering.check(withConfirmations(stored))
+        record.recovery = StoredRecovery(checked.recovery)
+        switch checked.verdict {
+        case .valid:
+            try await broadcastReady(&record)
+        case .done:
+            await finish(&record, phase: .done)
+        case .redo:
+            Logger.warn("Spark exit diverged on-chain, rebuilding generation \(record.generation + 1)", context: "SparkExitDriver")
+            record.isRebuilding = true
+            try save(record)
+            guard !Task.isCancelled, isRebuildDue(record) else { return }
+            try await build(&record, recovering: recovering)
+        }
+    }
+
+    /// Marks the next steps the chain host shows in a block as confirmed. The SDK asks the chain about a step only
+    /// once the caller saw it in a block; otherwise it looks for who spent its input, which an Electrum-backed
+    /// mempool, such as Spark's regtest, does not report.
+    private func withConfirmations(_ recovery: RecoverFundsResponse) async -> RecoverFundsResponse {
+        var recovery = recovery
+        var confirmed = Set(recovery.transactions.filter(\.isConfirmed).map(\.txid))
+        var asked = Set<String>()
+        // One round per depth, each read at once: a 30-transaction exit takes a few rounds instead of 30 reads in a row.
+        while !Task.isCancelled {
+            let next = recovery.transactions.indices.filter { i in
+                let tx = recovery.transactions[i]
+                return !confirmed.contains(tx.txid) && !asked.contains(tx.txid) && tx.dependsOn.allSatisfy(confirmed.contains)
+            }
+            guard !next.isEmpty else { break }
+            let statuses = await statuses(next.map { recovery.transactions[$0].txid })
+            asked.formUnion(next.map { recovery.transactions[$0].txid })
+            for i in next {
+                guard let status = statuses[recovery.transactions[i].txid], status.confirmed else { continue }
+                confirmed.insert(recovery.transactions[i].txid)
+                recovery.transactions[i].status = .confirmed(blockHeight: status.blockHeight)
+            }
+        }
+        return recovery
+    }
+
+    /// The chain host's status of each transaction, read concurrently; one it could not answer is left out.
+    private func statuses(_ txids: [String]) async -> [String: EsploraTxStatus] {
+        await withTaskGroup(of: (String, EsploraTxStatus?).self) { group in
+            var results: [String: EsploraTxStatus] = [:]
+            var pending = Set(txids).makeIterator()
+            func addNext() -> Bool {
+                guard let txid = pending.next() else { return false }
+                group.addTask { [chain] in await (txid, try? chain.txStatus(txid: txid)) }
+                return true
+            }
+            for _ in 0 ..< Self.concurrentReads {
+                guard addNext() else { break }
+            }
+            while let (txid, status) = await group.next() {
+                results[txid] = status
+                _ = addNext()
+            }
+            return results
+        }
+    }
+
+    private func isRebuildDue(_ record: SparkExitRecord) -> Bool {
+        guard let last = record.lastBuildAt else { return true }
+        return now().timeIntervalSince(last) >= Self.rebuildInterval
+    }
+
+    /// Ends the exit and notes what is left at the funding address, which the next step sweeps to savings. While the
+    /// address cannot be read the exit keeps its phase: one ended without its leftover read would never sweep it, so
+    /// the next tick ends it instead.
+    private func finish(_ record: inout SparkExitRecord, phase: SparkExitRecord.Phase) async {
+        guard let address = record.funding.first?.address else {
+            record.phase = phase
+            return
+        }
+        guard let utxos = try? await chain.utxos(address: address) else { return }
+        record.phase = phase
+        record.leftover = utxos.map { SparkExitRecord.Leftover(txid: $0.txid, vout: $0.vout, valueSats: $0.value) }
+        if record.isLeftoverSweepPending, !Task.isCancelled {
+            try? await sweepLeftover(&record)
+        }
+    }
+
+    // MARK: Leftover
+
+    /// Sends the confirmed leftover at the funding address to the exit's savings address, signed with the funding
+    /// key. Built and saved once before it is sent, then sent again on later ticks until it confirms. Waits while
+    /// the leftover is unconfirmed, and skips it when the fee would leave less than dust.
+    private func sweepLeftover(_ record: inout SparkExitRecord) async throws {
+        if record.leftoverSweep == nil {
+            guard let address = record.funding.first?.address else { return }
+            let utxos = try await chain.utxos(address: address)
+            record.leftover = utxos.map { SparkExitRecord.Leftover(txid: $0.txid, vout: $0.vout, valueSats: $0.value) }
+            let confirmed = utxos.filter(\.status.confirmed)
+            guard !confirmed.isEmpty, confirmed.count == utxos.count else { return }
+            let built = try await SparkExitLeftoverSweep.build(
+                utxos: confirmed,
+                fundingAddress: address,
+                destination: record.destination,
+                feeRateSatPerVbyte: record.feeRateSatPerVbyte,
+                signer: makeSigner(record.fundingIndex)
+            )
+            record.leftoverSweep = SparkExitRecord.LeftoverSweep(txid: built?.txid, txHex: built?.txHex, valueSats: built?.valueSats ?? 0)
+            try save(record)
+        }
+        guard let sweep = record.leftoverSweep, let txid = sweep.txid, let hex = sweep.txHex, sweep.rejection == nil,
+              sweep.isConfirmed != true, !Task.isCancelled
+        else { return }
+        if sweep.isAccepted, let status = try? await chain.txStatus(txid: txid), status.confirmed {
+            record.leftoverSweep?.isConfirmed = true
+            return
+        }
+        let outcome = await chain.broadcast(RecoveryTransaction(
+            kind: .sweep,
+            nodeId: nil,
+            txid: txid,
+            txHex: hex,
+            cpfpTxHex: nil,
+            csvTimelockBlocks: nil,
+            dependsOn: [],
+            status: .ready
+        ))
+        Logger.info("Spark exit leftover sweep \(txid): \(outcome.summary)", context: "SparkExitDriver")
+        switch outcome {
+        case .accepted: record.leftoverSweep?.isAccepted = true
+        // Once accepted, a later refusal is a node that already has it or a conflict with it confirming.
+        case let .rejected(reason) where !sweep.isAccepted: record.leftoverSweep?.rejection = reason
+        default: break
+        }
+    }
+
+    // MARK: Broadcast
+
+    private func broadcastReady(_ record: inout SparkExitRecord) async throws {
+        guard let recovery = record.recovery?.response else { return }
+        let confirmed = Set(recovery.transactions.filter(\.isConfirmed).map(\.txid))
+        // Unverified: the SDK could not read its parent from the chain; nodes refuse it harmlessly if it is not final.
+        for tx in recovery.transactions where tx.status == .ready || tx.status == .unverified {
+            guard !Task.isCancelled else { return }
+            guard isDue(tx.txid, in: record) else { continue }
+            let hasConfirmedParents = tx.status == .ready && tx.dependsOn.allSatisfy(confirmed.contains)
+            await broadcast(tx, into: &record, hasConfirmedParents: hasConfirmedParents)
+            try save(record)
+        }
+    }
+
+    /// Without the SDK: each unconfirmed transaction whose parents are confirmed on the chain host and whose relative
+    /// timelocks matured, counted from the confirmation height of the parent each input spends. A step whose input
+    /// someone else spent, the operators' version of it, is not sent again; the next SDK check rebuilds. A stale one
+    /// is refused by nodes as a conflict, and only the current generation is stored.
+    private func broadcastWithoutSdk(_ record: inout SparkExitRecord) async throws {
+        guard var recovery = record.recovery?.response else { return }
+        let tip = try await chain.tipHeight()
+        let listed = Set(recovery.transactions.map(\.txid))
+        var confirmed = Set(recovery.transactions.filter(\.isConfirmed).map(\.txid))
+        var heights: [String: UInt32] = [:]
+        for tx in recovery.transactions {
+            if case let .confirmed(height?) = tx.status {
+                heights[tx.txid] = height
+            }
+        }
+        let unknown = recovery.transactions.filter { !$0.isConfirmed }.map(\.txid)
+            + Set(recovery.transactions.flatMap(\.dependsOn)).subtracting(listed).subtracting(confirmed)
+        let statuses = await statuses(unknown)
+        for (txid, status) in statuses where status.confirmed {
+            confirmed.insert(txid)
+            heights[txid] = status.blockHeight
+        }
+        for (i, tx) in recovery.transactions.enumerated() {
+            guard !Task.isCancelled else { break }
+            if tx.isConfirmed {
+                continue
+            }
+            if let status = statuses[tx.txid], status.confirmed {
+                recovery.transactions[i].status = .confirmed(blockHeight: status.blockHeight)
+                continue
+            }
+            guard tx.dependsOn.allSatisfy(confirmed.contains), isDue(tx.txid, in: record, withoutSdk: true) else { continue }
+            if case let .waitingForTimelock(height?) = tx.status, !SparkExitTimelock.isMature(height, tip: tip) {
+                continue
+            }
+            let locks = SparkExitTimelock.locks(of: tx)
+            for parent in Set(locks.map(\.parent)).subtracting(heights.keys) {
+                if let status = try? await chain.txStatus(txid: parent), status.confirmed, let height = status.blockHeight {
+                    heights[parent] = height
+                }
+            }
+            switch SparkExitTimelock.maturity(of: tx, locks: locks, heights: heights) {
+            case .unknown:
+                continue
+            case let .at(height) where !SparkExitTimelock.isMature(height, tip: tip):
+                recovery.transactions[i].status = .waitingForTimelock(spendableAtHeight: height)
+                continue
+            case .none, .at:
+                break
+            }
+            await broadcast(tx, into: &record, hasConfirmedParents: true)
+            record.recovery = StoredRecovery(recovery)
+            try save(record)
+        }
+        record.recovery = StoredRecovery(recovery)
+    }
+
+    /// Without the SDK, a step whose input someone else spent is never due: only a rebuild moves on from it.
+    private func isDue(_ txid: String, in record: SparkExitRecord, withoutSdk: Bool = false) -> Bool {
+        guard let last = record.broadcastLog.first(where: { $0.generation == record.generation && $0.txid == txid }) else { return true }
+        if withoutSdk, last.isInputSpent == true {
+            return false
+        }
+        return !last.isAccepted || now().timeIntervalSince(last.lastAttemptAt) >= Self.rebroadcastInterval
+    }
+
+    /// With every parent of the step confirmed, missing inputs mean another transaction spent one.
+    private func broadcast(_ tx: RecoveryTransaction, into record: inout SparkExitRecord, hasConfirmedParents: Bool) async {
+        let outcome = await chain.broadcast(tx)
+        Logger.info("Spark exit broadcast \(tx.kind) \(tx.txid): \(outcome.summary)", context: "SparkExitDriver")
+        let isAccepted = outcome == .accepted
+        let isInputSpent: Bool? = if hasConfirmedParents, case .inputsMissing = outcome {
+            true
+        } else {
+            nil
+        }
+        let isRejected = if case .rejected = outcome {
+            true
+        } else {
+            false
+        }
+        if let i = record.broadcastLog.firstIndex(where: { $0.generation == record.generation && $0.txid == tx.txid }) {
+            record.broadcastLog[i].attempts += 1
+            record.broadcastLog[i].rejections += isRejected ? 1 : 0
+            record.broadcastLog[i].lastAttemptAt = now()
+            record.broadcastLog[i].lastOutcome = outcome.summary
+            record.broadcastLog[i].isAccepted = isAccepted
+            record.broadcastLog[i].isInputSpent = isInputSpent
+        } else {
+            record.broadcastLog.append(.init(
+                generation: record.generation,
+                txid: tx.txid,
+                attempts: 1,
+                rejections: isRejected ? 1 : 0,
+                lastAttemptAt: now(),
+                lastOutcome: outcome.summary,
+                isAccepted: isAccepted,
+                isInputSpent: isInputSpent
+            ))
+        }
+    }
+}
+
+private extension RecoveryTransaction {
+    var isConfirmed: Bool {
+        if case .confirmed = status {
+            return true
+        }
+        return false
+    }
+}
+
+extension SparkExitRecord {
+    /// The rejection to show on the progress screen once a transaction was refused several times.
+    var surfacedRejection: String? {
+        broadcastLog.first { $0.generation == generation && $0.rejections >= SparkExitDriver.rejectionsToSurface && !$0.isAccepted }?.lastOutcome
+    }
+}
+
+/// When a step's relative timelocks mature, as the SDK's `spendable_at_height` computes it: each input's BIP68 block
+/// lock counts from the confirmation height of the transaction that input spends.
+enum SparkExitTimelock {
+    struct Lock: Equatable {
+        let parent: String
+        let blocks: UInt32
+    }
+
+    enum Maturity: Equatable {
+        /// No relative timelock.
+        case none
+        /// Spendable from this height.
+        case at(UInt32)
+        /// A parent's confirmation height is not known yet.
+        case unknown
+    }
+
+    /// The block locks of the step's inputs, from its hex; from `csvTimelockBlocks` over its parents when the hex
+    /// does not decode. Empty when it has no timelock.
+    static func locks(of tx: RecoveryTransaction) -> [Lock] {
+        guard let csv = tx.csvTimelockBlocks else { return [] }
+        return SparkExitTxid.relativeBlockLocks(hex: tx.txHex) ?? tx.dependsOn.map { Lock(parent: $0, blocks: csv) }
+    }
+
+    static func maturity(of tx: RecoveryTransaction, locks: [Lock], heights: [String: UInt32]) -> Maturity {
+        guard tx.csvTimelockBlocks != nil else { return .none }
+        // The SDK leaves a step with a timelock but no lock it can count as unknown, and so does this.
+        guard !locks.isEmpty else { return .unknown }
+        var spendable: UInt32 = 0
+        for lock in locks {
+            guard let height = heights[lock.parent] else { return .unknown }
+            spendable = max(spendable, height.addingReportingOverflow(lock.blocks).partialValue)
+        }
+        return .at(spendable)
+    }
+
+    /// A transaction is accepted while it would be valid in the next block.
+    static func isMature(_ spendableAtHeight: UInt32, tip: UInt32) -> Bool {
+        UInt64(tip) + 1 >= UInt64(spendableAtHeight)
+    }
+}
+
+/// Transaction ids from raw hex, for the CPFP children the SDK returns without one.
+enum SparkExitTxid {
+    static func cpfpChildTxids(_ recovery: RecoverFundsResponse) -> [String] {
+        recovery.transactions.compactMap { $0.cpfpTxHex.flatMap(txid(hex:)) }
+    }
+
+    /// Each input's BIP68 block lock with the txid it spends; nil when the hex does not decode. Version 1
+    /// transactions and inputs whose sequence disables the lock or counts time carry none.
+    static func relativeBlockLocks(hex: String) -> [SparkExitTimelock.Lock]? {
+        let bytes = hex.hexaBytes
+        guard hex.count == bytes.count * 2 else { return nil }
+        var reader = Reader(bytes: bytes)
+        guard let parsed = reader.inputs() else { return nil }
+        guard parsed.version >= 2 else { return [] }
+        return parsed.inputs.compactMap { input in
+            let sequence = input.sequence
+            let isDisabled = sequence & (1 << 31) != 0
+            let isTime = sequence & (1 << 22) != 0
+            let blocks = sequence & 0xFFFF
+            guard !isDisabled, !isTime, blocks > 0 else { return nil }
+            return SparkExitTimelock.Lock(parent: input.txid, blocks: blocks)
+        }
+    }
+
+    /// The txid of a serialized transaction: double SHA-256 of it without witness data, byte-reversed.
+    static func txid(hex: String) -> String? {
+        let bytes = hex.hexaBytes
+        guard hex.count == bytes.count * 2 else { return nil }
+        var reader = Reader(bytes: bytes)
+        guard let stripped = reader.strippedOfWitness() else { return nil }
+        let hash = Data(SHA256.hash(data: Data(SHA256.hash(data: stripped))))
+        return Data(hash.reversed()).hex
+    }
+
+    private struct Reader {
+        let bytes: [UInt8]
+        var position = 0
+
+        mutating func take(_ count: Int) -> [UInt8]? {
+            guard count >= 0, position + count <= bytes.count else { return nil }
+            defer { position += count }
+            return Array(bytes[position ..< position + count])
+        }
+
+        mutating func varInt() -> (value: Int, raw: [UInt8])? {
+            guard let first = take(1)?.first else { return nil }
+            let width = switch first {
+            case 0xFD: 2
+            case 0xFE: 4
+            case 0xFF: 8
+            default: 0
+            }
+            guard width > 0 else { return (Int(first), [first]) }
+            guard let rest = take(width) else { return nil }
+            let value = rest.enumerated().reduce(0) { $0 | Int($1.element) << (8 * $1.offset) }
+            return (value, [first] + rest)
+        }
+
+        mutating func inputs() -> (version: Int32, inputs: [(txid: String, sequence: UInt32)])? {
+            guard let versionBytes = take(4) else { return nil }
+            let version = Int32(bitPattern: littleEndian(versionBytes))
+            if bytes.count > 5, bytes[4] == 0, bytes[5] == 1 {
+                position += 2
+            }
+            guard let count = varInt() else { return nil }
+            var inputs: [(txid: String, sequence: UInt32)] = []
+            for _ in 0 ..< count.value {
+                guard let txid = take(32), take(4) != nil, let script = varInt(), take(script.value) != nil, let sequence = take(4) else {
+                    return nil
+                }
+                inputs.append((Data(txid.reversed()).hex, littleEndian(sequence)))
+            }
+            return (version, inputs)
+        }
+
+        private func littleEndian(_ bytes: [UInt8]) -> UInt32 {
+            bytes.enumerated().reduce(0) { $0 | UInt32($1.element) << (8 * $1.offset) }
+        }
+
+        mutating func strippedOfWitness() -> Data? {
+            guard let version = take(4) else { return nil }
+            var out = version
+            let isSegwit = bytes.count > 5 && bytes[4] == 0 && bytes[5] == 1
+            if isSegwit {
+                position += 2
+            }
+            guard let inputs = varInt() else { return nil }
+            out += inputs.raw
+            for _ in 0 ..< inputs.value {
+                guard let outpoint = take(36), let script = varInt(), let scriptBytes = take(script.value), let sequence = take(4) else { return nil }
+                out += outpoint + script.raw + scriptBytes + sequence
+            }
+            guard let outputs = varInt() else { return nil }
+            out += outputs.raw
+            for _ in 0 ..< outputs.value {
+                guard let value = take(8), let script = varInt(), let scriptBytes = take(script.value) else { return nil }
+                out += value + script.raw + scriptBytes
+            }
+            if isSegwit {
+                for _ in 0 ..< inputs.value {
+                    guard let items = varInt() else { return nil }
+                    for _ in 0 ..< items.value {
+                        guard let item = varInt(), take(item.value) != nil else { return nil }
+                    }
+                }
+            }
+            guard let lockTime = take(4) else { return nil }
+            return Data(out + lockTime)
+        }
+    }
+}

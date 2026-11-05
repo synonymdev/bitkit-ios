@@ -609,6 +609,10 @@ struct AppScene: View {
                 await pubkyProfile.retrySessionRestoration()
             }
             .task(id: [scenePhase == .active, network.isConnected, wipeCoordinator.isGateUp]) { await pollIncomingPaykitPaymentRequests() }
+            .task(id: [scenePhase == .active, SparkExitManager.shared.needsDriving]) {
+                guard scenePhase == .active else { return }
+                await SparkExitManager.shared.runWhileActive()
+            }
             .task(id: foregroundContactSession) {
                 shopContactImport?.task.cancel()
                 shopContactImport = nil
