@@ -573,9 +573,9 @@ final class HwSendCoordinator {
             return try await operationTask.value
         }
 
-        // Used by this attempt alone, whatever it ends in. A different request loses it too.
+        // A different request ends it. Otherwise it lasts until this attempt's new transaction has been signed and retained below.
         let consent = paymentRequestId == nil && holdsRetainedSendConsent(address: address, sats: sats) ? retainedSendConsent : nil
-        retainedSendConsent = nil
+        retainedSendConsent = consent
 
         signingAttempt += 1
         let attempt = signingAttempt
@@ -635,28 +635,20 @@ final class HwSendCoordinator {
             {
                 signed = pendingPayment.signedTx
             } else {
-                do {
-                    signed = try await signer.prepareSignedPayment(
-                        walletId: walletId,
-                        address: address,
-                        sats: sats,
-                        satsPerVByte: satsPerVByte,
-                        onComposed: { [weak self] composed in
-                            guard let self, signingAttempt == attempt else { return }
-                            previewFeeSats = composed.miningFeeSats
-                        },
-                        onConnectingDevice: { [weak self] isConnecting in
-                            guard let self, signingAttempt == attempt else { return }
-                            isConnectingDevice = isConnecting
-                        }
-                    )
-                } catch let error as HwPassphraseError {
-                    // The passphrase prompt restarts this same attempt once the wallet reopens, before anything was signed.
-                    if signingAttempt == attempt {
-                        retainedSendConsent = consent
+                signed = try await signer.prepareSignedPayment(
+                    walletId: walletId,
+                    address: address,
+                    sats: sats,
+                    satsPerVByte: satsPerVByte,
+                    onComposed: { [weak self] composed in
+                        guard let self, signingAttempt == attempt else { return }
+                        previewFeeSats = composed.miningFeeSats
+                    },
+                    onConnectingDevice: { [weak self] isConnecting in
+                        guard let self, signingAttempt == attempt else { return }
+                        isConnectingDevice = isConnecting
                     }
-                    throw error
-                }
+                )
                 try Task.checkCancellation()
                 pendingPayment = PendingPayment(request: request, signedTx: signed, paymentRequestId: paymentRequestId)
             }
@@ -741,6 +733,8 @@ final class HwSendCoordinator {
                         throw error
                     }
                 }
+                // The new bytes hold the record now, so a Retry refers to them and another signature needs a new warning.
+                retainedSendConsent = nil
                 isBroadcastUnresolved = true
                 broadcastWasAttempted = true
                 pendingPayment?.hasBroadcastAttempted = true
@@ -890,8 +884,9 @@ final class HwSendCoordinator {
         return status.retrySignedTx == nil ? nil : sats
     }
 
-    /// Lets one signing attempt for exactly this payment sign anew over the wallet's retained send. Only call this after the user
-    /// accepted a second payment. It deletes nothing, so an attempt that signs nothing leaves the original guarded by its record.
+    /// Lets exactly this payment sign anew over the wallet's retained send, until a new transaction has been signed and retained.
+    /// Only call this after the user accepted a second payment. It deletes nothing, so an attempt that signs nothing leaves the
+    /// original guarded by its record, and the same screen can ask the device again.
     func consentToNewSignature(address: String, sats: UInt64) {
         guard let walletId, operationTask == nil else { return }
         retainedSendConsent = RetainedSendConsent(walletId: walletId, address: address, sats: sats)
