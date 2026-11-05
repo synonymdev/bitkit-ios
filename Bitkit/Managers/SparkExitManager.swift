@@ -78,7 +78,7 @@ final class SparkExitManager {
 
     private var chain: SparkExitChain? {
         guard let network = SparkManager.exitNetwork else { return nil }
-        return EsploraSparkExitChain(hosts: EsploraSparkExitChain.defaultHosts(for: network))
+        return EsploraSparkExitChain.network(network)
     }
 
     // MARK: Lifecycle

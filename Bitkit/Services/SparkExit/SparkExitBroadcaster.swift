@@ -64,18 +64,50 @@ struct URLSessionSparkExitHTTP: SparkExitHTTP {
     }
 }
 
-/// esplora and mempool.space REST, on the hosts the Spark SDK uses by default: a transaction with a CPFP child goes
-/// out as a package through `/v1/txs/package` (JSON array of hex), one without as a single `/tx`.
+/// esplora and mempool.space REST: a transaction with a CPFP child goes out as a package (JSON array of hex) through
+/// the host's package paths in turn, one without as a single `/tx`.
 struct EsploraSparkExitChain: SparkExitChain {
-    let hosts: [URL]
+    struct BroadcastHost: Equatable {
+        let url: URL
+        var packagePaths = ["/v1/txs/package", "/txs/package"]
+    }
+
+    /// Reads go to these hosts in turn.
+    let readHosts: [URL]
+    /// Broadcasts try these hosts in turn.
+    let broadcastHosts: [BroadcastHost]
     var http: SparkExitHTTP = URLSessionSparkExitHTTP()
 
-    /// The Spark SDK's default chain service for each network (breez spark-sdk `default_rest_chain_services`).
-    static func defaultHosts(for network: BreezSdkSpark.Network) -> [URL] {
+    init(readHosts: [URL], broadcastHosts: [BroadcastHost], http: SparkExitHTTP = URLSessionSparkExitHTTP()) {
+        self.readHosts = readHosts
+        self.broadcastHosts = broadcastHosts
+        self.http = http
+    }
+
+    /// Reads and broadcasts on the same hosts.
+    init(hosts: [URL], http: SparkExitHTTP = URLSessionSparkExitHTTP()) {
+        self.init(readHosts: hosts, broadcastHosts: hosts.map { BroadcastHost(url: $0) }, http: http)
+    }
+
+    /// On mainnet the chain service Spark connects with (`Env.sparkChainServiceUrl`) answers every read and takes
+    /// broadcasts first, on its `/txs/package` (no `/v1`); the SDK's default hosts stay as broadcast fallbacks. On
+    /// regtest the SDK's default host (breez spark-sdk `default_rest_chain_services`) does both.
+    static func network(_ network: BreezSdkSpark.Network) -> EsploraSparkExitChain {
         switch network {
-        case .mainnet: [URL(string: "https://mempool.space/api")!, URL(string: "https://blockstream.info/api")!]
-        case .regtest: [URL(string: "https://regtest-mempool.us-west-2.sparkinfra.net/api")!]
-        default: []
+        case .mainnet:
+            let electrs = URL(string: Env.sparkChainServiceUrl(for: .bitcoin)!)!
+            return EsploraSparkExitChain(
+                readHosts: [electrs],
+                broadcastHosts: [
+                    BroadcastHost(url: electrs, packagePaths: ["/txs/package"]),
+                    BroadcastHost(url: URL(string: "https://mempool.space/api")!),
+                    BroadcastHost(url: URL(string: "https://blockstream.info/api")!),
+                ]
+            )
+        case .regtest:
+            return EsploraSparkExitChain(hosts: [URL(string: "https://regtest-mempool.us-west-2.sparkinfra.net/api")!])
+        default:
+            return EsploraSparkExitChain(hosts: [])
         }
     }
 
@@ -104,11 +136,11 @@ struct EsploraSparkExitChain: SparkExitChain {
     /// Tries each host until one accepts. Otherwise a node's refusal wins over a host that was only unavailable.
     func broadcast(_ tx: RecoveryTransaction) async -> SparkExitBroadcastOutcome {
         var outcomes: [SparkExitBroadcastOutcome] = []
-        for host in hosts {
+        for host in broadcastHosts {
             let attempt: SparkExitBroadcastOutcome? = if let child = tx.cpfpTxHex {
                 await submitPackage(host: host, hexes: [tx.txHex, child], txid: tx.txid)
             } else {
-                await submitSingle(host: host, hex: tx.txHex)
+                await submitSingle(host: host.url, hex: tx.txHex)
             }
             // nil: this host cannot take it (no package endpoint, unreachable).
             guard let attempt else { continue }
@@ -126,9 +158,9 @@ struct EsploraSparkExitChain: SparkExitChain {
         } ?? outcomes.first ?? .retryLater("no chain host reachable")
     }
 
-    private func submitPackage(host: URL, hexes: [String], txid: String) async -> SparkExitBroadcastOutcome? {
-        for path in ["/v1/txs/package", "/txs/package"] {
-            var request = URLRequest(url: host.appendingPathComponent(path))
+    private func submitPackage(host: BroadcastHost, hexes: [String], txid: String) async -> SparkExitBroadcastOutcome? {
+        for path in host.packagePaths {
+            var request = URLRequest(url: host.url.appendingPathComponent(path))
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try? JSONEncoder().encode(hexes)
@@ -163,7 +195,7 @@ struct EsploraSparkExitChain: SparkExitChain {
     /// nil when every host answers 404; a host that fails otherwise makes it throw instead.
     private func getIfFound(_ path: String) async throws -> Data? {
         var lastError: Error?
-        for host in hosts {
+        for host in readHosts {
             var request = URLRequest(url: host.appendingPathComponent(path))
             request.timeoutInterval = 20
             do {
@@ -177,7 +209,7 @@ struct EsploraSparkExitChain: SparkExitChain {
                 lastError = error
             }
         }
-        if hosts.isEmpty {
+        if readHosts.isEmpty {
             throw URLError(.cannotFindHost)
         }
         if let lastError {

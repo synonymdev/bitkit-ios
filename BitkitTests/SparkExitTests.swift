@@ -1924,6 +1924,67 @@ final class SparkExitBroadcasterTests: XCTestCase {
         XCTAssertFalse(SparkExitBroadcastClassifier.isUnpaid(.inputsMissing("min relay fee not met, 0 < 17")))
     }
 
+    func testMainnetReadsOnlyBitkitElectrsAndBroadcastsThereFirst() throws {
+        let chain = EsploraSparkExitChain.network(.mainnet)
+        let electrs = try XCTUnwrap(URL(string: "https://bitkit.to/electrs"))
+        let mempool = try XCTUnwrap(URL(string: "https://mempool.space/api"))
+        let blockstream = try XCTUnwrap(URL(string: "https://blockstream.info/api"))
+
+        XCTAssertEqual(chain.readHosts, [electrs])
+        XCTAssertEqual(chain.broadcastHosts, [
+            .init(url: electrs, packagePaths: ["/txs/package"]),
+            .init(url: mempool, packagePaths: ["/v1/txs/package", "/txs/package"]),
+            .init(url: blockstream, packagePaths: ["/v1/txs/package", "/txs/package"]),
+        ])
+        XCTAssertEqual(EsploraSparkExitChain.network(.regtest).readHosts.map(\.host), ["regtest-mempool.us-west-2.sparkinfra.net"])
+    }
+
+    func testSendsAPackageToBitkitElectrsWithoutTheV1Path() async {
+        let http = FakeHTTP()
+        http.responses = [("bitkit.to/electrs/txs/package", 200, #"{"package_msg":"success"}"#)]
+        let mainnet = EsploraSparkExitChain.network(.mainnet)
+        let chain = EsploraSparkExitChain(readHosts: mainnet.readHosts, broadcastHosts: mainnet.broadcastHosts, http: http)
+
+        let outcome = await chain.broadcast(SparkExitFixtures.tx("n1", cpfp: "03c"))
+
+        XCTAssertEqual(outcome, .accepted)
+        XCTAssertEqual(http.requests.map { $0.url?.absoluteString }, ["https://bitkit.to/electrs/txs/package"])
+    }
+
+    func testBroadcastFallsBackFromBitkitElectrsButReadsNeverDo() async {
+        let http = FakeHTTP()
+        http.responses = [
+            ("bitkit.to/electrs/tx", 503, ""),
+            ("mempool.space/api/tx", 200, "s1"),
+            ("bitkit.to/electrs/blocks/tip/height", 503, ""),
+        ]
+        let mainnet = EsploraSparkExitChain.network(.mainnet)
+        let chain = EsploraSparkExitChain(readHosts: mainnet.readHosts, broadcastHosts: mainnet.broadcastHosts, http: http)
+
+        let outcome = await chain.broadcast(SparkExitFixtures.tx("s1", kind: .sweep))
+        let tip = try? await chain.tipHeight()
+
+        XCTAssertEqual(outcome, .accepted)
+        XCTAssertNil(tip)
+        XCTAssertEqual(http.requests.compactMap { $0.url?.host }, ["bitkit.to", "mempool.space", "bitkit.to"])
+    }
+
+    func testOneReadHostOnlyCallsATransactionGoneOnA404() async throws {
+        let http = FakeHTTP()
+        let chain = EsploraSparkExitChain(hosts: [hostA], http: http)
+
+        http.responses = [("a.example/api/tx/c/hex", 404, "Transaction not found")]
+        let isUnknown = try await chain.isKnown(txid: "c")
+        http.responses = [("a.example/api/tx/c/hex", 503, "")]
+        let failedOnError = await (try? chain.isKnown(txid: "c")) == nil
+        http.responses = []
+        let failedOnTimeout = await (try? chain.isKnown(txid: "c")) == nil
+
+        XCTAssertFalse(isUnknown)
+        XCTAssertTrue(failedOnError, "a 5xx is no proof it is gone")
+        XCTAssertTrue(failedOnTimeout, "an unreachable host is no proof it is gone")
+    }
+
     func testReadsTipAndFundingUtxos() async throws {
         let http = FakeHTTP()
         http.responses = [

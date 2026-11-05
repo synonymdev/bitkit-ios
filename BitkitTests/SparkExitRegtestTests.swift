@@ -46,7 +46,7 @@ final class SparkExitRegtestTests: XCTestCase {
         XCTAssertTrue(prepared.leaves.isEmpty)
         XCTAssertFalse(SparkExitQuote(prepared: prepared).isWorthExiting)
 
-        let chain = EsploraSparkExitChain(hosts: EsploraSparkExitChain.defaultHosts(for: .regtest))
+        let chain = EsploraSparkExitChain.network(.regtest)
         let tip = try await chain.tipHeight()
         XCTAssertGreaterThan(tip, 0)
         let utxos = try await chain.utxos(address: funding.address)
@@ -69,7 +69,7 @@ final class SparkExitRegtestTests: XCTestCase {
             dependsOn: [],
             status: .ready
         )
-        let chain = EsploraSparkExitChain(hosts: EsploraSparkExitChain.defaultHosts(for: .regtest))
+        let chain = EsploraSparkExitChain.network(.regtest)
 
         let outcome = await chain.broadcast(tx)
 
