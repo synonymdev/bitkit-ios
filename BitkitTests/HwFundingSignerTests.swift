@@ -1418,6 +1418,43 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(funding.signCalls, 2)
     }
 
+    func testAbandonedObservedRecordLeavesNothingToLockOrWarnAbout() async throws {
+        let funding = MockHwFunding()
+        let service = HwRetainedSendService.inMemory()
+        _ = try await failThenObserve(funding: funding, service: service)
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: service)
+        coordinator.seedAvailable(walletId: "jade:wallet", availableSats: 90000, retainedFeeSats: 181)
+
+        let warned = await coordinator.retainedSendStatus(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
+        XCTAssertEqual(warned, .blocking)
+
+        await coordinator.abandonRetainedPayment()
+        coordinator.discardPreviewFee()
+
+        let status = await coordinator.retainedSendStatus(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
+        let rebroadcastTx = await coordinator.retainedRebroadcastTx(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
+        XCTAssertEqual(status, .none)
+        XCTAssertNil(rebroadcastTx)
+        XCTAssertEqual(coordinator.previewFeeSats, 0)
+    }
+
+    func testRetainedSendLocksNoFeeForAPaymentThatNoLongerMatches() async {
+        let funding = MockHwFunding()
+        let service = HwRetainedSendService.inMemory()
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: service)
+        funding.broadcastError = MockHwFunding.TestError()
+        await failSend(coordinator)
+
+        let same = await coordinator.retainedSendStatus(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
+        XCTAssertNotNil(same.retrySignedTx)
+        for payment in [(address: "bc1qother", sats: UInt64(42000)), (address: "bc1qtest", sats: UInt64(50000))] {
+            let status = await coordinator.retainedSendStatus(address: payment.address, sats: payment.sats, hasIncomingRequest: false)
+            let rebroadcastTx = await coordinator.retainedRebroadcastTx(address: payment.address, sats: payment.sats, hasIncomingRequest: false)
+            XCTAssertNil(status.retrySignedTx)
+            XCTAssertNil(rebroadcastTx)
+        }
+    }
+
     func testDifferentPaymentWithAnObservedRecordSignsWithNoWarning() async throws {
         let payments: [(address: String, sats: UInt64)] = [("bc1qother", 42000), ("bc1qtest", 50000)]
         for reopensSheet in [false, true] {

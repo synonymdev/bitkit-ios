@@ -101,9 +101,9 @@ actor HwRetainedSendService {
         try store.delete(walletId: walletId)
     }
 
-    /// Only for a user who accepted a second payment. This is the one path that deletes a corrupt entry, otherwise the wallet
-    /// stays blocked until a full wipe. A failed read deletes nothing, because it says nothing about the stored data and may
-    /// recover on its own.
+    /// Only for a user who accepted a second payment or removed the wallet. This is the one path that deletes a corrupt entry,
+    /// otherwise the wallet stays blocked until a full wipe. A failed read deletes nothing, because it says nothing about the
+    /// stored data and may recover on its own.
     func abandon(walletId: String) throws {
         do {
             try release(walletId: walletId)

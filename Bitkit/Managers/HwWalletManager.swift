@@ -323,10 +323,11 @@ final class HwWalletManager: Sendable {
             await jadeSession?.forgetWallet(walletId: walletId, pendingName: pendingName)
         }
         // Last, because suspending any earlier would let a device push re-add the wallet before its entries are forgotten.
+        // The user chose to forget this wallet, so a corrupt record goes too rather than warning again when it is re-paired.
         do {
-            try await retainedSends.release(walletId: walletId)
+            try await retainedSends.abandon(walletId: walletId)
         } catch {
-            Logger.error("Failed to release retained send of HW wallet '\(walletId)': \(error)", context: "HwWalletManager")
+            Logger.error("Failed to delete retained send of HW wallet '\(walletId)': \(type(of: error))", context: "HwWalletManager")
         }
     }
 

@@ -865,6 +865,8 @@ struct SendConfirmationView: View {
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
         guard !isSubmittingPayment else { return }
+        // Read now: returning from the PIN screen recalculates the fee, which would hide what this swipe approved.
+        let reviewedRetainedTx = retainedOrdinarySignedTx
         guard !requiresAmountReview, preparingRequest == nil, !isRequestSetupPending, walletSwitchContext == nil,
               isAutomatic || !prepareRequestCoinsIfNeeded() else { throw CancellationError() }
         if isAutomatic, isFeeRateMissing {
@@ -960,13 +962,42 @@ struct SendConfirmationView: View {
         }
 
         if hwSend.isActive {
-            if warnings.contains(.retainedHardwarePayment) {
+            let abandonedRetainedSend = warnings.contains(.retainedHardwarePayment)
+            if abandonedRetainedSend {
                 await hwSend.abandonRetainedPayment()
+            }
+            let rebroadcastTx: HwFundingSignedTx? = if let address = app.scannedOnchainInvoice?.address, let sats = wallet.sendAmountSats {
+                await hwSend.retainedRebroadcastTx(
+                    address: address, sats: sats, hasIncomingRequest: app.contactPaymentContext?.incomingPaymentRequest != nil
+                )
+            } else {
+                nil
+            }
+            if Self.mustReviewCurrentFeeBeforeSigning(
+                reviewedRetainedTx: reviewedRetainedTx, rebroadcastTx: rebroadcastTx, abandonedRetainedSend: abandonedRetainedSend
+            ) {
+                retainedOrdinarySignedTx = nil
+                transactionFee = 0
+                hwSend.discardPreviewFee()
+                await calculateTransactionFee()
+                // Resets the swipe, so the next one signs the fee now on screen.
+                throw CancellationError()
             }
             navigationPath.append(.hardwareSign)
         } else {
             try await performPayment(isAutomatic: isAutomatic)
         }
+    }
+
+    /// A review locked to a retained fee approved only those signed bytes. Signing anything else there would use a fee the user
+    /// never saw, so the review must show the current fee first.
+    static func mustReviewCurrentFeeBeforeSigning(
+        reviewedRetainedTx: HwFundingSignedTx?,
+        rebroadcastTx: HwFundingSignedTx?,
+        abandonedRetainedSend: Bool
+    ) -> Bool {
+        guard let reviewedRetainedTx else { return false }
+        return abandonedRetainedSend || rebroadcastTx?.serializedTx != reviewedRetainedTx.serializedTx
     }
 
     /// The wallet switch chooses coins separately from send setup, so the automatic start waits for both.

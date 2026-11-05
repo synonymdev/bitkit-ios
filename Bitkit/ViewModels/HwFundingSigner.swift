@@ -418,6 +418,11 @@ final class HwSendCoordinator {
         }
     }
 
+    /// Drops a shown fee that no longer applies. The review stays unavailable until a new preview has a fee to show.
+    func discardPreviewFee() {
+        previewFeeSats = 0
+    }
+
     func selectWallet(
         _ walletId: String?,
         initialAvailableSats: UInt64 = 0,

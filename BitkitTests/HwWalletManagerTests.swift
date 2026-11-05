@@ -1652,6 +1652,39 @@ final class HwWalletManagerTests: XCTestCase {
         XCTAssertNotNil(otherRecord)
     }
 
+    func testRemovingAWalletDeletesItsCorruptRecord() async throws {
+        let walletId = try HwWalletId.derive(xpubs: ["nativeSegwit": "z"])
+        let key = KeychainEntryType.hwRetainedSend(walletId: walletId)
+        addTeardownBlock { try? Keychain.delete(key: key) }
+        try Keychain.upsert(key: key, data: Data("not json".utf8))
+        let service = HwRetainedSendService()
+        let vm = makeViewModel(monitored: ["nativeSegwit"], retainedSends: service)
+        vm.updateDevices(knownDevices: [makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z"])], connectedDeviceId: nil)
+
+        try await vm.removeWallet(walletId: walletId, keepBackupData: false)
+
+        XCTAssertNil(try Keychain.load(key: key))
+        let record = try await service.record(walletId: walletId)
+        XCTAssertNil(record)
+    }
+
+    func testRemovingAWalletSucceedsAndDeletesNothingWhenItsRecordCannotBeRead() async throws {
+        let walletId = try HwWalletId.derive(xpubs: ["nativeSegwit": "z"])
+        let store = MockHwRetainedSendStore()
+        let service = HwRetainedSendService(store: store)
+        try await retainSend(walletId: walletId, in: service)
+        let vm = makeViewModel(monitored: ["nativeSegwit"], retainedSends: service)
+        vm.updateDevices(knownDevices: [makeDevice(id: "dev1", xpubs: ["nativeSegwit": "z"])], connectedDeviceId: nil)
+        store.setFailures(load: true)
+
+        try await vm.removeWallet(walletId: walletId, keepBackupData: false)
+
+        XCTAssertTrue(store.deletedWalletIds.isEmpty)
+        store.setFailures()
+        let record = try await service.record(walletId: walletId)
+        XCTAssertNotNil(record)
+    }
+
     // MARK: - Helpers
 
     private func makeTagMetadata(walletId: String, paymentId: String) -> PreActivityMetadata {

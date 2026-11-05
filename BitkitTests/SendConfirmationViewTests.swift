@@ -42,6 +42,41 @@ final class SendConfirmationViewTests: XCTestCase {
         XCTAssertFalse(SendConfirmationView.canEditConfirmationFee(retained: signed, isLoading: false))
     }
 
+    func testAbandoningARetainedSendFromALockedReviewShowsTheCurrentFeeBeforeSigning() {
+        let signed = HwFundingSignedTx(serializedTx: "original", miningFeeSats: 181, feeRate: 2.25, totalSpent: 42181)
+
+        XCTAssertTrue(SendConfirmationView.mustReviewCurrentFeeBeforeSigning(
+            reviewedRetainedTx: signed, rebroadcastTx: nil, abandonedRetainedSend: true
+        ))
+        // A record that could not be deleted still warns on the next swipe, which must come from the current fee.
+        XCTAssertTrue(SendConfirmationView.mustReviewCurrentFeeBeforeSigning(
+            reviewedRetainedTx: signed, rebroadcastTx: signed, abandonedRetainedSend: true
+        ))
+    }
+
+    func testAbandoningARetainedSendFromAnUnlockedReviewGoesStraightToSigning() {
+        XCTAssertFalse(SendConfirmationView.mustReviewCurrentFeeBeforeSigning(
+            reviewedRetainedTx: nil, rebroadcastTx: nil, abandonedRetainedSend: true
+        ))
+    }
+
+    func testLockedReviewSignsOnlyWhenItsBytesWouldBeRebroadcast() {
+        let signed = HwFundingSignedTx(serializedTx: "original", miningFeeSats: 181, feeRate: 2.25, totalSpent: 42181)
+        let other = HwFundingSignedTx(serializedTx: "other", miningFeeSats: 181, feeRate: 2.25, totalSpent: 42181)
+
+        XCTAssertFalse(SendConfirmationView.mustReviewCurrentFeeBeforeSigning(
+            reviewedRetainedTx: signed, rebroadcastTx: signed, abandonedRetainedSend: false
+        ))
+        for rebroadcastTx in [nil, other] {
+            XCTAssertTrue(SendConfirmationView.mustReviewCurrentFeeBeforeSigning(
+                reviewedRetainedTx: signed, rebroadcastTx: rebroadcastTx, abandonedRetainedSend: false
+            ))
+        }
+        XCTAssertFalse(SendConfirmationView.mustReviewCurrentFeeBeforeSigning(
+            reviewedRetainedTx: nil, rebroadcastTx: signed, abandonedRetainedSend: false
+        ))
+    }
+
     func testAmountScreenAcceptsOnlyTheRetainedAmountAboveTheCurrentMaximum() {
         let available: UInt64 = 90000
         let retained: UInt64 = 95000

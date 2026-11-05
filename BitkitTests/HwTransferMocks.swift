@@ -200,11 +200,15 @@ extension HwRetainedSendService {
 }
 
 extension Keychain {
-    /// Clears every retained send in the test namespace, whichever wallet it belongs to.
+    /// Clears the retained sends of every wallet id the tests pay from. Not `wipeEntireKeychain`: this runs before each test, and
+    /// that wipe would also clear unrelated entries and throw when the host app writes one again while it checks its result.
     static func deleteAllRetainedHwSends() throws {
-        let prefix = account(for: .hwRetainedSend(walletId: ""))
-        for account in getAllKeyChainStorageKeys() where account.hasPrefix(prefix) {
-            try delete(key: .hwRetainedSend(walletId: String(account.dropFirst(prefix.count))))
+        let walletIds = [
+            "hardware", "jade:other-wallet", "jade:wallet", "other", "trezor:original-ios-wallet",
+            "trezor:other", "trezor:selected", "trezor:test-wallet", "trezor:wallet", "wallet",
+        ]
+        for walletId in walletIds {
+            try delete(key: .hwRetainedSend(walletId: walletId))
         }
     }
 }
