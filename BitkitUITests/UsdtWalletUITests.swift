@@ -310,6 +310,17 @@ final class UsdtWalletUITests: XCTestCase {
                 "ethereum:0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9@42161/transfer?address=0x0000000000000000000000000000000000000001&uint256=1.23e6"
             )
         app.buttons["UsdtRecipientContinue"].tap()
+        // A URI with an amount fixes it: the review opens instead of the editable Amount step.
+        XCTAssertTrue(app.descendants(matching: .any)["UsdtConfirmLoading"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["$ 1.23"].exists)
+        XCTAssertFalse(app.buttons["N1"].exists)
+        // Back, then a different recipient: Amount opens editable with the earlier amount.
+        try XCTUnwrap(app.buttons.matching(identifier: "NavigationBack").allElementsBoundByIndex.first(where: \.isHittable)).tap()
+        XCTAssertTrue(recipient.waitForExistence(timeout: 5))
+        recipient.tap()
+        recipient.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 60))
+        recipient.typeText("0x0000000000000000000000000000000000000002")
+        app.buttons["UsdtRecipientContinue"].tap()
         XCTAssertTrue(app.buttons["N1"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["$ 1.23"].exists)
         for digit in 4 ... 8 {
