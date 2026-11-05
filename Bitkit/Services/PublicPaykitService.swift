@@ -132,9 +132,31 @@ enum PublicPaykitService {
     static let onchainPaymentOptionEnabledKey = "paykitPaymentOptionOnchainEnabled"
     static let usdtPaymentOptionEnabledKey = "paykitPaymentOptionUsdtEnabled"
     static let cleanupPendingKey = "publicPaykitCleanupPending"
+    static let reconciliationRevisionKey = "publicPaykitReconciliationRevision"
+    private static let reconciliationLock = NSLock()
 
     static func setCleanupPending(_ isPending: Bool) {
-        UserDefaults.standard.set(isPending, forKey: cleanupPendingKey)
+        reconciliationLock.withLock {
+            UserDefaults.standard.set(isPending, forKey: cleanupPendingKey)
+        }
+    }
+
+    static func queueEndpointReconciliation() {
+        reconciliationLock.withLock {
+            UserDefaults.standard.set(UUID().uuidString, forKey: reconciliationRevisionKey)
+            UserDefaults.standard.set(true, forKey: cleanupPendingKey)
+        }
+    }
+
+    private static var reconciliationRevision: String? {
+        reconciliationLock.withLock { UserDefaults.standard.string(forKey: reconciliationRevisionKey) }
+    }
+
+    private static func acknowledgeReconciliation(revision: String?) {
+        reconciliationLock.withLock {
+            let matches = UserDefaults.standard.string(forKey: reconciliationRevisionKey) == revision
+            UserDefaults.standard.set(!matches, forKey: cleanupPendingKey)
+        }
     }
 
     static var isCleanupPending: Bool {
@@ -339,6 +361,7 @@ enum PublicPaykitService {
         if publish {
             wallet.preparePendingPublicPaykitInvoiceRefresh()
         }
+        let pendingRevision = reconciliationRevision
         var desiredSnapshot: (
             endpoints: [Endpoint],
             invoiceRevision: UUID,
@@ -359,11 +382,14 @@ enum PublicPaykitService {
                     markPublicationPending(wallet: wallet, session: session, isSessionCurrent: isSessionCurrent)
                 }
                 try await apply(endpoints)
+            },
+            onPublished: {
                 if let desiredSnapshot {
                     acknowledgePublishedEndpoints(
                         wallet: wallet,
                         endpoints: desiredSnapshot.endpoints,
                         invoiceRevision: desiredSnapshot.invoiceRevision,
+                        reconciliationRevision: pendingRevision,
                         publicAddress: desiredSnapshot.publicAddress,
                         session: session,
                         isSessionCurrent: isSessionCurrent
@@ -379,7 +405,8 @@ enum PublicPaykitService {
         isSessionCurrent: (@MainActor () -> Bool)? = nil,
         buildEndpoints: () async throws -> [Endpoint],
         syncApp: () async throws -> Void,
-        applyEndpoints: ([Endpoint]) async throws -> Void
+        applyEndpoints: ([Endpoint]) async throws -> Void,
+        onPublished: () -> Void = {}
     ) async throws {
         let desiredEndpoints: Result<[Endpoint], Error>
         do {
@@ -409,12 +436,16 @@ enum PublicPaykitService {
                 return
             }
 
+            // Persist retry work before a remote mutation can commit without an acknowledgement.
+            setCleanupPending(true)
             try await syncApp()
             if let isSessionCurrent, !isSessionCurrent() {
                 throw PubkyServiceError.sessionNotActive
             }
             // Keep the App Registry current even when wallet endpoints are unavailable.
             try await applyEndpoints(desiredEndpoints.get())
+            // A later writer must not begin before this publication's acknowledgement.
+            onPublished()
         }
     }
 
@@ -427,6 +458,7 @@ enum PublicPaykitService {
     ) async throws {
         let session = wallet.publicPaykitSession
         wallet.preparePendingPublicPaykitInvoiceRefresh()
+        let pendingRevision = reconciliationRevision
         let (desiredEndpoints, invoiceRevision, publicAddress) = try await buildWalletEndpoints(
             wallet: wallet,
             session: session,
@@ -442,10 +474,13 @@ enum PublicPaykitService {
             applyEndpoints: { endpoints in
                 markPublicationPending(wallet: wallet, session: session, isSessionCurrent: isSessionCurrent)
                 try await apply(endpoints)
+            },
+            onPublished: {
                 acknowledgePublishedEndpoints(
                     wallet: wallet,
                     endpoints: desiredEndpoints,
                     invoiceRevision: invoiceRevision,
+                    reconciliationRevision: pendingRevision,
                     publicAddress: publicAddress,
                     session: session,
                     isSessionCurrent: isSessionCurrent
@@ -498,6 +533,7 @@ enum PublicPaykitService {
         wallet: WalletViewModel,
         endpoints: [Endpoint],
         invoiceRevision: UUID,
+        reconciliationRevision: String?,
         publicAddress: PrivatePaykitAddressReservationStore.PublicAddressSnapshot?,
         session: PubkyProfileManager.SignedInSession?,
         isSessionCurrent: (@MainActor () -> Bool)?
@@ -515,7 +551,11 @@ enum PublicPaykitService {
             guard !Task.isCancelled, isSessionCurrent(), wallet.publicPaykitSession == session,
                   pendingReconciliationMode() == .publishEndpoints
             else { return }
-            setCleanupPending(!hasCurrentAddress || !publishedCurrentInvoice || !publishedUsdt)
+            if hasCurrentAddress, publishedCurrentInvoice, publishedUsdt {
+                acknowledgeReconciliation(revision: reconciliationRevision)
+            } else {
+                setCleanupPending(true)
+            }
         }
         if !isOnchainPaymentOptionEnabled() {
             acknowledge(true)

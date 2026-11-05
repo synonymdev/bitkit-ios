@@ -12,7 +12,12 @@ protocol PaykitAllowanceSdkHandling: Sendable {
         localRole: Paykit.AllowanceLocalRole,
         terms: Paykit.AllowanceTerms
     ) async throws -> Paykit.AllowanceRecord
-    func acceptAllowance(counterparty: String, allowanceId: String, expectedProposalStreamItemId: UInt64) async throws -> Paykit.AllowanceRecord
+    func acceptAllowance(
+        counterparty: String,
+        allowanceId: String,
+        expectedProposalStreamItemId: UInt64,
+        admit: @Sendable () async throws -> Void
+    ) async throws -> Paykit.AllowanceRecord
     func rejectAllowance(counterparty: String, allowanceId: String) async throws -> Paykit.AllowanceRecord
     func endAllowance(counterparty: String, allowanceId: String) async throws -> Paykit.AllowanceRecord
     @discardableResult

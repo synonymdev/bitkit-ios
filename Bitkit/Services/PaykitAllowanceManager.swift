@@ -266,13 +266,24 @@ final class PaykitAllowanceManager {
         await refresh()
     }
 
-    func accept(_ entry: PaykitAllowanceEntry, showsProgress: Bool = true) async throws {
+    func accept(
+        _ entry: PaykitAllowanceEntry,
+        showsProgress: Bool = true,
+        canContinue: @MainActor @Sendable () -> Bool = { true }
+    ) async throws {
+        guard let identity else { throw PaykitAllowanceError.unavailable }
+        let acceptingActivation = activation
         try await respond(to: entry, showsProgress: showsProgress) { allowance in
             guard let proposalStreamItemId = allowance.proposalStreamItemId else { throw PaykitAllowanceError.unavailable }
             return try await self.sdk.acceptAllowance(
                 counterparty: allowance.counterparty,
                 allowanceId: allowance.allowanceId,
-                expectedProposalStreamItemId: proposalStreamItemId
+                expectedProposalStreamItemId: proposalStreamItemId,
+                admit: { @MainActor in
+                    guard self.identity == identity, self.activation == acceptingActivation, canContinue() else {
+                        throw PaykitAllowanceError.unavailable
+                    }
+                }
             )
         }
     }
@@ -317,10 +328,11 @@ final class PaykitAllowanceManager {
     /// stop or a cancelled refresh cut short is returned by a later call, while this identity is active and `canAnnounce`
     /// holds: the offer is no longer answerable afterwards and nothing else would tell the user about it.
     func acceptOffersFromAllowers(
-        canContinue: @MainActor () -> Bool = { true },
+        canContinue: @MainActor @Sendable () -> Bool = { true },
         canAnnounce: @MainActor () -> Bool = { true }
     ) async -> [PaykitAllowanceEntry] {
         guard let identity, !isAcceptingOffers else { return [] }
+        let acceptingActivation = activation
         isAcceptingOffers = true
         defer { isAcceptingOffers = false }
 
@@ -340,7 +352,9 @@ final class PaykitAllowanceManager {
             }
             do {
                 // A background accept must not clear the progress flag of a proposal the user has in flight.
-                try await accept(offer, showsProgress: false)
+                try await accept(offer, showsProgress: false) {
+                    self.activation == acceptingActivation && canContinue()
+                }
             } catch {
                 Logger.warn("Failed to accept an allowance offer: \(error)", context: "PaykitAllowance")
             }
