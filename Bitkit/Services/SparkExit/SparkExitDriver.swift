@@ -176,11 +176,19 @@ struct SparkExitDriver {
                     destination: record.destination,
                     selection: isRecoverableOnly ? .recoverableOnly : .specific(leafIds: record.exitLeafIds)
                 ))
-                if isRecoverableOnly {
-                    let kept = Set(prepared.leaves.map(\.leafId))
-                    leaveBehind(record.exitLeafIds.filter { !kept.contains($0) }, reason: "Not recoverable at this fee rate", in: &record)
-                }
-                return prepared
+                guard isRecoverableOnly else { return prepared }
+                let kept = Set(prepared.leaves.map(\.leafId))
+                leaveBehind(record.exitLeafIds.filter { !kept.contains($0) }, reason: "Not recoverable at this fee rate", in: &record)
+                // It also takes the wallet's leaves outside this exit, such as one an older state claimed in an
+                // earlier exit: the exit's own are prepared again on their own.
+                guard prepared.leaves.contains(where: { !record.exitLeafIds.contains($0.leafId) }) else { return prepared }
+                guard !record.exitLeafIds.isEmpty else { return nil }
+                return try await recovering.prepare(PrepareRecoverFundsRequest(
+                    feeRateSatPerVbyte: record.feeRateSatPerVbyte,
+                    fundingKind: .p2wpkh,
+                    destination: record.destination,
+                    selection: .specific(leafIds: record.exitLeafIds)
+                ))
             } catch let SdkError.SparkError(message) where SparkExitMath.isUnexitableLeafError(message) {
                 if let leafId = SparkExitMath.unexitableLeafId(message), record.exitLeafIds.contains(leafId) {
                     leaveBehind([leafId], reason: message, in: &record)

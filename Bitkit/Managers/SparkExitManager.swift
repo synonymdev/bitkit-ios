@@ -62,6 +62,20 @@ final class SparkExitManager {
         SparkExitStore(walletIndex: walletIndex)
     }
 
+    private var lostLeafStore: SparkExitLostLeafStore {
+        SparkExitLostLeafStore(walletIndex: walletIndex)
+    }
+
+    /// Saves the record, and keeps the leaves it lost to an older state for every later exit of the wallet.
+    private var saveRecord: (SparkExitRecord) throws -> Void {
+        let store = store
+        let lostLeafStore = lostLeafStore
+        return {
+            try store.save($0)
+            try lostLeafStore.add(lostIn: $0)
+        }
+    }
+
     private var chain: SparkExitChain? {
         guard let network = SparkManager.exitNetwork else { return nil }
         return EsploraSparkExitChain(hosts: EsploraSparkExitChain.defaultHosts(for: network))
@@ -94,6 +108,7 @@ final class SparkExitManager {
     /// Forgets the exit of a wallet being wiped.
     func wipe() {
         try? store.delete()
+        try? lostLeafStore.delete()
         record = nil
         quote = nil
         pendingFundingIndex = nil
@@ -159,7 +174,7 @@ final class SparkExitManager {
             chain: chain,
             recovering: SparkManager.shared.exitRecovering,
             makeSigner: { try Self.signer(walletIndex: walletIndex, index: $0) },
-            save: { try store.save($0) }
+            save: saveRecord
         )
         do {
             tipHeight = try? await chain.tipHeight()
@@ -264,12 +279,12 @@ final class SparkExitManager {
             } else {
                 try await LightningService.shared.newAddress()
             }
-            let prepared = try await recovering.prepare(PrepareRecoverFundsRequest(
+            let prepared = try await SparkExitQuote.prepare(
+                recovering,
                 feeRateSatPerVbyte: feeRate,
-                fundingKind: .p2wpkh,
                 destination: destination,
-                selection: .all
-            ))
+                lostLeafIds: (try? lostLeafStore.load()) ?? []
+            )
             let fundingIndex = pendingFundingIndex ?? nextFundingIndex()
             pendingDestination = destination
             pendingFeeRate = feeRate
@@ -433,6 +448,7 @@ final class SparkExitManager {
         isTicking = true
         defer { isTicking = false }
         let store = store
+        let saveRecord = saveRecord
         let walletIndex = walletIndex
         let run = SparkExitBackgroundRun(
             load: { try store.load() },
@@ -441,7 +457,7 @@ final class SparkExitManager {
                     chain: chain,
                     recovering: recovering,
                     makeSigner: { try Self.signer(walletIndex: walletIndex, index: $0) },
-                    save: { try store.save($0) }
+                    save: saveRecord
                 )
             },
             chain: chain,

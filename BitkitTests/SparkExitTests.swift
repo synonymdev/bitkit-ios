@@ -341,6 +341,27 @@ final class SparkExitRecordTests: XCTestCase {
 
         XCTAssertEqual(try store.load(), SparkExitFixtures.record())
     }
+
+    /// qa-03 rerun: the operators keep listing a leaf an older state claimed, so its loss has to outlive the record.
+    func testLostLeavesOutliveTheExitRecord() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("spark-exit-\(UUID().uuidString)")
+        let store = SparkExitStore(url: folder.appendingPathComponent("spark-exit.json"))
+        let lostLeafStore = SparkExitLostLeafStore(url: folder.appendingPathComponent("spark-exit-lost-leaves.json"))
+        defer { try? FileManager.default.removeItem(at: folder) }
+        XCTAssertEqual(try lostLeafStore.load(), [])
+        var lost = SparkExitFixtures.record(phase: .failed(reason: SparkExitRecord.lostReason))
+        lost.lostLeaves = [.init(leafId: "leaf-1", valueSats: 65536)]
+        try store.save(lost)
+        try lostLeafStore.add(lostIn: lost)
+
+        let next = SparkExitFixtures.record()
+        try store.save(next)
+        try lostLeafStore.add(lostIn: next)
+
+        XCTAssertEqual(try lostLeafStore.load(), ["leaf-1"])
+        try lostLeafStore.delete()
+        XCTAssertEqual(try lostLeafStore.load(), [])
+    }
 }
 
 // MARK: - Driver
@@ -1057,6 +1078,62 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(record.generation, 2)
     }
 
+    /// `RecoverableOnly` also lists a leaf an older state claimed in an earlier exit, which this exit would rebuild
+    /// forever and never find lost: the exit's own leaves are prepared again on their own.
+    func testRecoverableOnlyLeavesOutTheLeavesOfOtherExits() async throws {
+        var record = twoLeafRecord()
+        let first = SparkExitFixtures.recovery([SparkExitFixtures.tx("old")])
+        record.adopt(first, at: .distantPast)
+        sdk.checks = [CheckRecoverFundsResponse(recovery: first, verdict: .redo(reason: .onChainStateDiverged))]
+        sdk.prepareErrors = [SdkError.SparkError("A leaf cannot be exited")]
+        sdk.preparedByRequest = { request in
+            request.selection == .recoverableOnly
+                ? SparkExitFixtures.prepared(leaves: ["leaf-2", "lost-earlier"])
+                : SparkExitFixtures.prepared(leaves: ["leaf-2"])
+        }
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("new")])]
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(sdk.prepareRequests.map(\.selection).suffix(2), [.recoverableOnly, .specific(leafIds: ["leaf-2"])])
+        XCTAssertEqual(record.leftBehindLeaves?.map(\.leafId), ["leaf-1"])
+        XCTAssertEqual(record.generation, 2)
+    }
+
+    /// qa-03 rerun: the next exit quoted the leaf an earlier one lost, lost it again and told the user twice.
+    func testALeafLostInAnEarlierExitIsNotReportedAgain() async throws {
+        sdk.preparedByRequest = { request in
+            request.selection == .all ? SparkExitFixtures.prepared(leaves: ["leaf-1", "lost-earlier"]) : SparkExitFixtures.prepared()
+        }
+        let quote = try await SparkExitQuote(prepared: SparkExitQuote.prepare(
+            sdk,
+            feeRateSatPerVbyte: 2,
+            destination: "bcrt1qdestination",
+            lostLeafIds: ["lost-earlier"]
+        ))
+        var record = SparkExitRecord(
+            network: "regtest",
+            createdAt: clock,
+            phase: .running,
+            feeRateSatPerVbyte: 2,
+            destination: "bcrt1qdestination",
+            leafIds: quote.leafIds,
+            funding: [.init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 20000)],
+            expectedSats: quote.incomingSats
+        )
+        let stuck = SparkExitFixtures.recovery([SparkExitFixtures.refund("r1", leafId: "leaf-1", dependsOn: [])])
+        record.adopt(stuck, at: .distantPast)
+        sdk.checks = [CheckRecoverFundsResponse(recovery: stuck, verdict: .redo(reason: .onChainStateDiverged))]
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.refund("r1b", leafId: "leaf-1", dependsOn: [])])]
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.leafIds, ["leaf-1"])
+        XCTAssertEqual(sdk.prepareRequests.last?.selection, .specific(leafIds: ["leaf-1"]))
+        XCTAssertNil(record.lostLeaves)
+        XCTAssertFalse(SparkExitMath.reminders(record, tip: 1000, now: clock, network: .regtest).contains(where: \.isLostLeaves))
+    }
+
     func testAnExitWithNoLeafLeftToExitFails() async throws {
         var record = SparkExitFixtures.record(phase: .running)
         let first = SparkExitFixtures.recovery([SparkExitFixtures.tx("old")])
@@ -1277,6 +1354,52 @@ final class SparkExitMathTests: XCTestCase {
 
     func testCooperativeOnlyQuoteNeedsNoFunding() {
         XCTAssertEqual(SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: nil)).fundingSats, 0)
+    }
+
+    func testQuoteLeavesOutTheLeavesEarlierExitsLost() async throws {
+        let sdk = FakeSparkExitRecovering()
+        sdk.preparedByRequest = { request in
+            guard request.selection == .all else {
+                var prepared = SparkExitFixtures.prepared(funding: 12000, leaves: ["leaf-1"])
+                prepared.skipped = []
+                return prepared
+            }
+            var prepared = SparkExitFixtures.prepared(funding: 24000, leaves: ["leaf-1", "lost"])
+            prepared.recoverableValueSats = 200_000
+            prepared.skipped += [SkippedLeaf(leafId: "lost", valueSats: 1000, reason: .feeExceedsValue)]
+            return prepared
+        }
+
+        let quote = try await SparkExitQuote(prepared: SparkExitQuote.prepare(
+            sdk,
+            feeRateSatPerVbyte: 2,
+            destination: "bcrt1qdestination",
+            lostLeafIds: ["lost"]
+        ))
+
+        XCTAssertEqual(sdk.prepareRequests.map(\.selection), [.all, .specific(leafIds: ["leaf-1"])])
+        XCTAssertEqual(quote.leafIds, ["leaf-1"])
+        XCTAssertEqual(quote.exitSats, 100_000)
+        XCTAssertEqual(quote.fundingSats, 12000)
+        XCTAssertEqual(quote.prepared.skipped.map(\.leafId), ["dust"], "what All could not exit stays left behind")
+    }
+
+    func testQuoteOfOnlyLostLeavesHasNothingToExit() async throws {
+        let sdk = FakeSparkExitRecovering()
+        sdk.preparedResponse = SparkExitFixtures.prepared(leaves: ["lost"])
+
+        let quote = try await SparkExitQuote(prepared: SparkExitQuote.prepare(
+            sdk,
+            feeRateSatPerVbyte: 2,
+            destination: "bcrt1qdestination",
+            lostLeafIds: ["lost"]
+        ))
+
+        XCTAssertEqual(sdk.prepareRequests.map(\.selection), [.all])
+        XCTAssertTrue(quote.prepared.leaves.isEmpty)
+        XCTAssertEqual(quote.exitSats, 0)
+        XCTAssertEqual(quote.fundingSats, 0)
+        XCTAssertFalse(quote.isWorthExiting)
     }
 
     func testClaimableHeightIsTheLatestTimelock() {

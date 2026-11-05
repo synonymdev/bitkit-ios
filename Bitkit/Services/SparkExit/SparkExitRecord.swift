@@ -276,6 +276,43 @@ struct SparkExitStore {
     }
 }
 
+/// The ids of the leaves an older state of the wallet claimed on-chain, across exits. The operators keep listing such
+/// a leaf under the wallet, so without this a later exit would quote it and lose it again. Not backed up: a restored
+/// wallet finds the loss again in one rebuild cycle.
+struct SparkExitLostLeafStore {
+    let url: URL
+
+    init(url: URL) {
+        self.url = url
+    }
+
+    init(walletIndex: Int) {
+        url = Env.sparkExitLostLeaves(walletIndex: walletIndex)
+    }
+
+    func load() throws -> Set<String> {
+        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+        return try Set(JSONDecoder().decode([String].self, from: Data(contentsOf: url)))
+    }
+
+    /// Adds the record's lost leaves, writing only when one is new.
+    func add(lostIn record: SparkExitRecord) throws {
+        let ids = (record.lostLeaves ?? []).map(\.leafId)
+        guard !ids.isEmpty else { return }
+        // An unreadable list is written anew: a leaf missing from it is found lost again in one rebuild cycle.
+        let stored = (try? load()) ?? []
+        guard !stored.isSuperset(of: ids) else { return }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder().encode(stored.union(ids).sorted())
+            .write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+
+    func delete() throws {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        try FileManager.default.removeItem(at: url)
+    }
+}
+
 enum SparkExitRecordCoder {
     struct UnsupportedVersion: Error, Equatable {
         let version: Int

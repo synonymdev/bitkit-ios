@@ -69,6 +69,41 @@ enum Base58 {
 struct SparkExitQuote: Equatable {
     let prepared: PrepareRecoverFundsResponse
 
+    /// Prepares every leaf less those an older state claimed in an earlier exit, which the operators still list. The
+    /// rest is prepared again on its own, so the amount, fees and funding leave the lost leaves out. With none left
+    /// the quote has no leaf, as when no leaf can be exited.
+    static func prepare(
+        _ recovering: SparkExitRecovering,
+        feeRateSatPerVbyte: UInt64,
+        destination: String,
+        lostLeafIds: Set<String>
+    ) async throws -> PrepareRecoverFundsResponse {
+        func request(_ selection: ExitLeafSelection) -> PrepareRecoverFundsRequest {
+            PrepareRecoverFundsRequest(feeRateSatPerVbyte: feeRateSatPerVbyte, fundingKind: .p2wpkh, destination: destination, selection: selection)
+        }
+        let all = try await recovering.prepare(request(.all))
+        guard all.leaves.contains(where: { lostLeafIds.contains($0.leafId) }) else { return all }
+        let remaining = all.leaves.map(\.leafId).filter { !lostLeafIds.contains($0) }
+        var prepared = all
+        if remaining.isEmpty {
+            prepared.leaves = []
+            prepared.recoverableValueSats = 0
+            prepared.totalFeeSats = 0
+            prepared.cooperativeFeeSats = 0
+            prepared.cpfpFeeSats = 0
+            prepared.fanoutFeeSats = 0
+            prepared.refundFeeSats = 0
+            prepared.sweepFeeSats = 0
+            prepared.funding = nil
+        } else {
+            prepared = try await recovering.prepare(request(.specific(leafIds: remaining)))
+        }
+        // `Specific` lists only its own leaves as skipped; the leaves `All` could not exit stay left behind.
+        let listed = Set(prepared.skipped.map(\.leafId))
+        prepared.skipped += all.skipped.filter { !lostLeafIds.contains($0.leafId) && !listed.contains($0.leafId) }
+        return prepared
+    }
+
     /// The value of the leaves the exit takes on-chain.
     var exitSats: UInt64 {
         prepared.recoverableValueSats
