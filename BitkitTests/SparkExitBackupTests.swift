@@ -31,6 +31,29 @@ final class SparkExitBackupTests: XCTestCase {
         XCTAssertEqual(restored.network, backup.network)
     }
 
+    /// R4: while an exit runs, a fresh export could lack the leaves it moves, so the backup from before it stays.
+    func testDoesNotRefreshTheExitDataWhileAnExitRuns() async throws {
+        let suite = "SparkExitBackupTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var uploads: [String] = []
+        var exports = 0
+        let service = BackupService(
+            defaults: defaults,
+            backupData: { _ in
+                exports += 1
+                return Data("{}".utf8)
+            },
+            isSparkExitActive: { true },
+            uploadBackup: { key, _ in uploads.append(key) }
+        )
+
+        await service.triggerBackup(category: .sparkExit)
+
+        XCTAssertTrue(uploads.isEmpty)
+        XCTAssertEqual(exports, 0)
+    }
+
     func testStagesARestoredExitStateUntilSparkConnects() async throws {
         guard Env.network == .regtest else { throw XCTSkip("Spark's test network is regtest") }
         let backup = SparkExitBackupV1(version: 1, createdAt: 1000, network: "regtest", exitState: "state")
