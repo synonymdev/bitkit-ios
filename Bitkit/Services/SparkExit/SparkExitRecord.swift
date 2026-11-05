@@ -183,8 +183,11 @@ struct SparkExitRecord: Codable, Equatable {
     var retriedAt: UInt32?
     /// The SDK's exit data from just before the first build, imported again before every rebuild.
     var exitStateSnapshot: String?
-    /// The stored record could not be read, so the exit is rebuilt from the chain with the funding it kept.
+    /// The stored record could not be read, so the exit is rebuilt from the chain with the funding it kept. Kept,
+    /// and shown, until a step of the rebuilt exit confirms beyond those already in a block when it was built.
     var isRebuiltFromChain: Bool?
+    /// The steps already confirmed when the rebuild from the chain was adopted.
+    var rebuiltFromChainConfirmedCount: Int?
     /// What confirmed sweeps and cooperative recoveries of replaced generations paid to savings, by txid.
     var earlierReceivedSats: [String: UInt64]?
     var leftBehindLeaves: [LeftBehindLeaf]?
@@ -315,8 +318,19 @@ struct SparkExitRecord: Codable, Equatable {
         isRebuilding = false
         lastBuildAt = date
         failedLeafCount = built.failed.count
-        isRebuiltFromChain = nil
+        if isRebuiltFromChain == true {
+            rebuiltFromChainConfirmedCount = SparkExitMath.confirmedCount(built)
+        }
         isRedoRebuild = nil
+    }
+
+    /// Ends the rebuilt-from-chain note once the rebuilt exit moved: a step confirmed beyond those already in a block.
+    mutating func noteProgressAfterRebuildFromChain(_ checked: RecoverFundsResponse) {
+        guard isRebuiltFromChain == true, let count = rebuiltFromChainConfirmedCount, SparkExitMath.confirmedCount(checked) > count else {
+            return
+        }
+        isRebuiltFromChain = nil
+        rebuiltFromChainConfirmedCount = nil
     }
 
     /// Whether a build that found nothing to build is waiting for a leaf that may still move.

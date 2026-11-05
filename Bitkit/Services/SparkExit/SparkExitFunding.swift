@@ -451,15 +451,33 @@ enum SparkExitMath {
         }
         let fresh = utxos.map { newFunding($0, record: record) } ?? []
         let seenSats = fresh.reduce(0) { $0 + $1.value }
-        // The shortfall assumes one payment: each one beyond it, and the one still to send, adds an input fee.
-        let inputFee = inputFeeSats(record)
-        let neededNow = shortfall + inputFee * UInt64(max(0, fresh.count - 1))
+        let total = fundingTotal(shortfall: shortfall, payments: fresh.count, receivedSats: seenSats, inputFeeSats: inputFeeSats(record))
         // Covered by confirmed funding alone, the next tick builds.
-        if seenSats >= neededNow, let pending = fresh.first(where: { !$0.status.confirmed }) ?? fresh.first {
+        if seenSats >= total.covered, let pending = fresh.first(where: { !$0.status.confirmed }) ?? fresh.first {
             return .seen(txid: pending.txid)
         }
-        let needed = neededNow + (fresh.isEmpty ? 0 : inputFee)
-        return .ask(sats: max(needed.saturatingSub(seenSats), fundingDustSats), receivedSats: seenSats)
+        return .ask(sats: max(total.toSend.saturatingSub(seenSats), fundingDustSats), receivedSats: seenSats)
+    }
+
+    /// The one rule both funding screens state: the funding is priced for one payment, and every payment beyond it,
+    /// the one still to send included, adds its own input fee (68 vB at the exit's rate). `covered` is what the
+    /// payments seen must hold to build; `toSend` the full total to ask for while they hold less, which the
+    /// partial-payment hint names as its target. What is left to send is never asked under the 294-sat dust limit.
+    static func fundingTotal(shortfall: UInt64, payments: Int, receivedSats: UInt64, inputFeeSats: UInt64) -> (covered: UInt64, toSend: UInt64) {
+        let covered = shortfall + inputFeeSats * UInt64(max(0, payments - 1))
+        return (covered, receivedSats >= covered || payments == 0 ? covered : covered + inputFeeSats)
+    }
+
+    /// The total the Progress top-up's partial hint names: `fundingTotal`'s `toSend` for what reached the address.
+    static func fundingAskTotal(_ record: SparkExitRecord, utxos: [EsploraUtxo]?) -> UInt64? {
+        guard let shortfall = record.fundingShortfallSats, let utxos else { return nil }
+        let fresh = newFunding(utxos, record: record)
+        return fundingTotal(
+            shortfall: shortfall,
+            payments: fresh.count,
+            receivedSats: fresh.reduce(0) { $0 + $1.value },
+            inputFeeSats: inputFeeSats(record)
+        ).toSend
     }
 
     /// The least a P2WPKH funding output can hold: nodes refuse a payment below it.
@@ -493,9 +511,7 @@ enum SparkExitMath {
     /// funding, priced for one payment, plus the input fee of each further one. `toSend` adds the input of the
     /// payment still to come while what arrived falls short, as the Progress top-up does.
     static func prestartFunding(fundingSats: UInt64, payments: Int, receivedSats: UInt64, feeRate: UInt64) -> (covered: UInt64, toSend: UInt64) {
-        let inputFee = inputVbytes * feeRate
-        let covered = fundingSats + inputFee * UInt64(max(0, payments - 1))
-        return (covered, receivedSats >= covered || payments == 0 ? covered : covered + inputFee)
+        fundingTotal(shortfall: fundingSats, payments: payments, receivedSats: receivedSats, inputFeeSats: inputVbytes * feeRate)
     }
 
     /// What a partial payment leaves to send, at least the dust limit: nil before any new funding arrives and once

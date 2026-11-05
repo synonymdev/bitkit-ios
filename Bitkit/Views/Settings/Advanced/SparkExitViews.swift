@@ -580,12 +580,13 @@ struct SparkExitProgressView: View {
                         if let address = record.funding.first?.address {
                             switch fundingState {
                             case let .ask(sats, receivedSats):
-                                // The ask already counts the input fee of each payment, so it is what is missing.
+                                // The ask counts the input fee of each payment, so it is what is missing; the hint
+                                // names the full total, not the dust-floored ask added to what arrived.
                                 SparkExitFundingAddress(
                                     address: address,
                                     requiredSats: sats,
                                     receivedSats: receivedSats,
-                                    targetSats: sats + receivedSats,
+                                    targetSats: exit.fundingAskTotal ?? sats + receivedSats,
                                     showsSeen: false
                                 )
                                 .padding(.top, 24)

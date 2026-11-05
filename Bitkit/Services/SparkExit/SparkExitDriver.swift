@@ -340,6 +340,7 @@ struct SparkExitDriver {
         }
         let checked = try await recovering.check(withConfirmations(stored))
         record.recovery = StoredRecovery(checked.recovery)
+        record.noteProgressAfterRebuildFromChain(checked.recovery)
         let tip = try? await chain.tipHeight()
         // A step that confirmed since the last rebuild over a stuck step shows the exit moves again.
         if let count = record.stallConfirmedCount, SparkExitMath.confirmedCount(checked.recovery) > count {

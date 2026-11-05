@@ -330,3 +330,74 @@ final class SparkExitFeeBumpTests: XCTestCase {
         XCTAssertTrue(t("lightning__spark_exit__fee_low", variables: ["rate": "2"]).contains("Pay a higher fee"))
     }
 }
+
+/// Findings of spark-exit's rerun of the Glow hardening (case 4 and R8).
+final class SparkExitRerunTests: XCTestCase {
+    private var chain: FakeSparkExitChain!
+    private var sdk: FakeSparkExitRecovering!
+
+    override func setUp() {
+        super.setUp()
+        chain = FakeSparkExitChain()
+        sdk = FakeSparkExitRecovering()
+    }
+
+    private func driver() -> SparkExitDriver {
+        SparkExitDriver(chain: chain, recovering: sdk, makeSigner: { _ in StubCpfpSigner() }, save: { _ in })
+    }
+
+    /// Case 4: an ask of 2,283 at 2 sat/vB. The first hint already counts the second payment's input (136), and once
+    /// two payments are in, the hint and Progress name one full total, with the third payment's input too.
+    func testThePartialHintAsksForTheFullTotalWithEveryExtraInputsFee() {
+        let first = SparkExitMath.prestartFunding(fundingSats: 2283, payments: 1, receivedSats: 1283, feeRate: 2)
+        XCTAssertEqual(first.toSend, 2419)
+        XCTAssertEqual(SparkExitMath.partialFundingSats(receivedSats: 1283, requiredSats: first.toSend), 1136)
+
+        let second = SparkExitMath.prestartFunding(fundingSats: 2283, payments: 2, receivedSats: 2283, feeRate: 2)
+        XCTAssertEqual(second.covered, 2419, "what two payments must hold to build")
+        XCTAssertEqual(second.toSend, 2555)
+        XCTAssertEqual(SparkExitMath.partialFundingSats(receivedSats: 2283, requiredSats: second.toSend), 294, "272, floored at dust")
+
+        // Progress names the same total: "₿ 2 283 of ₿ 2 555 received, send ₿ 294 more."
+        let record = SparkExitFixtures.record(phase: .awaitingFunding(requiredSats: 2283))
+        let utxos = [SparkExitFixtures.utxo("p1", value: 1283), SparkExitFixtures.utxo("p2", value: 1000)]
+        XCTAssertEqual(SparkExitMath.fundingState(record, utxos: utxos), .ask(sats: 294, receivedSats: 2283))
+        XCTAssertEqual(SparkExitMath.fundingAskTotal(record, utxos: utxos), 2555)
+
+        // Paying the first hint's 1,136 builds without a second round: 2,419 covers two payments.
+        let paid = [SparkExitFixtures.utxo("p1", value: 1283), SparkExitFixtures.utxo("p2", value: 1136)]
+        XCTAssertNotNil(SparkExitMath.fundingTopUp(paid, requiredSats: 2283, inputFeeSats: 136))
+    }
+
+    /// R8: a record rebuilt from the chain keeps saying so after the rebuild is adopted, until a step confirms beyond
+    /// those already in a block.
+    func testTheRebuiltFromChainNoteStaysUntilTheRebuildMoves() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 20000)
+        record.isRebuiltFromChain = true
+        record.isRebuilding = true
+        let built = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("n2", cpfp: "03c2", dependsOn: ["n1"]),
+        ])
+        sdk.builds = [built]
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.generation, 1)
+        XCTAssertEqual(record.isRebuiltFromChain, true, "still shown once the rebuild is adopted")
+        XCTAssertEqual(record.rebuiltFromChainConfirmedCount, 1)
+
+        sdk.checks = [CheckRecoverFundsResponse(recovery: built, verdict: .valid)]
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.isRebuiltFromChain, true, "nothing new confirmed")
+
+        let moved = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("n2", cpfp: "03c2", dependsOn: ["n1"], status: .confirmed(blockHeight: 901)),
+        ])
+        sdk.checks = [CheckRecoverFundsResponse(recovery: moved, verdict: .valid)]
+        record = try await driver().tick(record)
+        XCTAssertNil(record.isRebuiltFromChain)
+        XCTAssertNil(record.rebuiltFromChainConfirmedCount)
+    }
+}

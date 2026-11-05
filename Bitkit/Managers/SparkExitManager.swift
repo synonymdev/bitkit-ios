@@ -39,6 +39,8 @@ final class SparkExitManager {
     private(set) var feeBumpError: String?
     /// What the running exit shows about its fee funding while it lacks some.
     private(set) var fundingState: SparkExitFundingState?
+    /// The full funding the Progress top-up asks for, every extra payment's input fee included.
+    private(set) var fundingAskTotal: UInt64?
     private(set) var fundingAddress: String?
     private(set) var lastError: String?
     /// Set when the user tapped an exit notification, until the app shows the exit.
@@ -303,6 +305,7 @@ final class SparkExitManager {
             fundingSeenSats = SparkExitMath.newFunding(utxos, record: record).reduce(0) { $0 + $1.value }
         }
         fundingState = SparkExitMath.fundingState(record, utxos: utxos)
+        fundingAskTotal = SparkExitMath.fundingAskTotal(record, utxos: utxos)
     }
 
     private func refreshNetworkFees(chain: SparkExitChain) async {
