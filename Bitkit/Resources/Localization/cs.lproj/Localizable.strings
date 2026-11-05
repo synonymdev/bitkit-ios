@@ -1849,6 +1849,7 @@
 "subscriptions__allowances" = "Povolení plateb";
 "subscriptions__allowances_empty_headline" = "Nastavte\n<accent>povolení plateb</accent>";
 "subscriptions__allowances_paused_description" = "Záznamy vašich rozpočtů jsou starší než ty, které tato peněženka už použila. Požadavky budou čekat na vaše schválení, dokud platby neobnovíte.";
+"subscriptions__allowances_paused_restore_description" = "Tato peněženka byla obnovena ze zálohy. Požadavky budou čekat na vaše schválení, dokud platby neobnovíte.";
 "subscriptions__allowances_paused_resume" = "Obnovit";
 "subscriptions__allowances_paused_title" = "Automatické platby pozastaveny";
 "subscriptions__allowances_empty_description" = "Můžete nastavit limity útraty a automaticky tak vyřizovat žádosti o platbu od důvěryhodných kontaktů.";

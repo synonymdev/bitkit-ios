@@ -1859,6 +1859,7 @@
 "subscriptions__allowances" = "Przydziały";
 "subscriptions__allowances_empty_headline" = "Ustaw\n<accent>przydziały</accent>";
 "subscriptions__allowances_paused_description" = "Dane Twoich budżetów są starsze niż te, których ten portfel już użył. Prośby będą czekać na Twoją zgodę, dopóki nie wznowisz.";
+"subscriptions__allowances_paused_restore_description" = "Ten portfel został przywrócony z kopii zapasowej. Prośby będą czekać na Twoją zgodę, dopóki nie wznowisz.";
 "subscriptions__allowances_paused_resume" = "Wznów";
 "subscriptions__allowances_paused_title" = "Płatności automatyczne wstrzymane";
 "subscriptions__allowances_empty_description" = "Możesz ustawić limity wydatków, aby automatycznie realizować żądania płatności od zaufanych kontaktów.";
