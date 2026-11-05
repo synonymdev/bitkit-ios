@@ -8,7 +8,7 @@ struct SpendingWalletScreen: View {
     @EnvironmentObject var wallet: WalletViewModel
 
     private var canMoveToSpark: Bool {
-        MoveToSparkMath.canMove(channels: wallet.channels, isSparkUsable: SparkManager.shared.isReady && !SparkManager.shared.isExiting)
+        MoveToSparkMath.canMove(channels: wallet.channels, isSparkUsable: SparkManager.shared.isReady)
     }
 
     private var shouldShowOnboarding: Bool {

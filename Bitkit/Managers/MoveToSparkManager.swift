@@ -157,7 +157,7 @@ final class MoveToSparkManager {
         let limitSats = MoveToSparkMath.movableSats(channels: channels)
         let wantedSats = min(targetSats ?? limitSats, limitSats)
         guard wantedSats >= MoveToSparkMath.minMoveSats else { throw MoveToSparkError.nothingToMove }
-        guard spark.isReady, !spark.isExiting else { throw MoveToSparkError.sparkUnavailable }
+        guard spark.isReady else { throw MoveToSparkError.sparkUnavailable }
 
         let invoice = try await spark.receive(
             amountSats: nil,

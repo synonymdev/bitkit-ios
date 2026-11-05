@@ -64,9 +64,9 @@ struct MoveToSparkView: View {
         VStack(alignment: .leading, spacing: 0) {
             header(title: t("lightning__move_to_spark__confirm_title"), text: t("lightning__move_to_spark__confirm_text"))
                 .padding(.bottom, 32)
-            SparkExitAmountRow(label: t("lightning__move_to_spark__amount"), sats: quote.amountSats)
+            MoveToSparkAmountRow(label: t("lightning__move_to_spark__amount"), sats: quote.amountSats)
                 .accessibilityIdentifier("MoveToSparkAmount")
-            SparkExitAmountRow(label: t("lightning__move_to_spark__fee"), sats: quote.feeSats)
+            MoveToSparkAmountRow(label: t("lightning__move_to_spark__fee"), sats: quote.feeSats)
                 .accessibilityIdentifier("MoveToSparkFee")
             illustration("lightning")
             SwipeButton(title: t("lightning__move_to_spark__swipe"), accentColor: .purpleAccent, isLoading: isMoving) {
@@ -83,9 +83,9 @@ struct MoveToSparkView: View {
                 text: hasRest ? t("lightning__move_to_spark__done_rest_text") : t("lightning__move_to_spark__done_text")
             )
             .padding(.bottom, 32)
-            SparkExitAmountRow(label: t("lightning__move_to_spark__amount"), sats: amountSats)
+            MoveToSparkAmountRow(label: t("lightning__move_to_spark__amount"), sats: amountSats)
                 .accessibilityIdentifier("MoveToSparkMoved")
-            SparkExitAmountRow(label: t("lightning__move_to_spark__fee"), sats: feeSats)
+            MoveToSparkAmountRow(label: t("lightning__move_to_spark__fee"), sats: feeSats)
                 .accessibilityIdentifier("MoveToSparkFeePaid")
             illustration("check")
             HStack(spacing: 16) {
@@ -161,6 +161,24 @@ struct MoveToSparkView: View {
                     .accessibilityIdentifier("MoveToSparkRetry")
                 }
             }
+        }
+    }
+}
+
+/// A labelled amount, as the Move to Spark screens list the amount and its routing fee.
+struct MoveToSparkAmountRow: View {
+    let label: String
+    let sats: UInt64
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 0) {
+                CaptionBText(label, textColor: .textPrimary)
+                Spacer()
+                MoneyText(sats: Int(sats), size: .captionB, symbol: true)
+            }
+            .frame(height: 50)
+            CustomDivider()
         }
     }
 }

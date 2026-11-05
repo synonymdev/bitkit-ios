@@ -12,7 +12,7 @@ struct MoveToSparkTimedSheet: TimedSheetItem {
     func shouldShow() async -> Bool {
         guard !app.hasSeenMoveToSparkIntro else { return false }
         let spark = SparkManager.shared
-        return MoveToSparkMath.canMove(channels: wallet.channels, isSparkUsable: spark.isReady && !spark.isExiting)
+        return MoveToSparkMath.canMove(channels: wallet.channels, isSparkUsable: spark.isReady)
     }
 
     func onShown() {
