@@ -407,7 +407,7 @@
 "lightning__spark_exit__done_title" = "Exit\n<accent>complete</accent>";
 "lightning__spark_exit__done_text" = "Your funds are in savings.";
 "lightning__spark_exit__partial_text" = "{count} small amounts stayed on Spark.";
-"lightning__spark_exit__failed_leaves" = "{amount} was moved on-chain by the Spark operators and is not on Spark. They can still be asked to release it.";
+"lightning__spark_exit__failed_leaves" = "{amount} was moved on-chain by the Spark operators and is not on Spark. The operators can still release it to you.";
 "lightning__spark_exit__leftover" = "{amount} of fee funding is still at {address}.";
 "lightning__spark_exit__leftover_swept" = "{amount} of leftover fee funding was sent to savings.";
 "lightning__spark_exit__leftover_sending" = "Sending {amount} of leftover fee funding to savings.";
@@ -446,7 +446,7 @@
 "lightning__spark_exit__fee_rose" = "Network fees rose above this exit's fee. It may slow down.";
 "lightning__spark_exit__fee_bump_button" = "Pay a higher fee";
 "lightning__spark_exit__fee_bump_title" = "Pay a\n<accent>higher fee</accent>";
-"lightning__spark_exit__fee_bump_text" = "This exit pays <accent>{rate} sat/vB</accent>, less than the network asks now. Pick a higher rate: Bitkit pays the difference from savings and sends the waiting steps again.";
+"lightning__spark_exit__fee_bump_text" = "This exit pays <accent>{rate} sat/vB</accent>, less than the network asks now. Pick a higher rate and Bitkit sends the waiting steps again. It pays the difference from savings: the amount next to each speed.";
 "lightning__spark_exit__fee_bump_loading" = "Working out what a higher fee costs…";
 "lightning__spark_exit__fee_bump_error" = "Could not price a higher fee. Try again.";
 "lightning__spark_exit__fee_bump_confirm" = "Use this fee";

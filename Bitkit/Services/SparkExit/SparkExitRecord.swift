@@ -146,6 +146,8 @@ struct SparkExitRecord: Codable, Equatable {
     var failedLeafRetriedAt: UInt32?
     /// The failed leaves were let go after about a week: the exit ended without them.
     var isFailedLeavesReleased: Bool?
+    /// The confirmed sweep of a generation the failed-leaf retry replaced, which Done still shows.
+    var landedSweepTxid: String?
     var skippedLeafCount: Int = 0
     /// Cooperative leaves the last build could not recover.
     var failedLeafCount: Int = 0
@@ -286,6 +288,9 @@ struct SparkExitRecord: Codable, Equatable {
             }, destination: destination)
             if !landed.isEmpty {
                 earlierReceivedSats = (earlierReceivedSats ?? [:]).merging(landed) { $1 }
+            }
+            if let sweep = recovery.response.transactions.first(where: { $0.kind == .sweep }), case .confirmed = sweep.status {
+                landedSweepTxid = sweep.txid
             }
         }
         generation += 1

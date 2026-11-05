@@ -503,10 +503,10 @@ struct SparkExitProgressView: View {
         switch record?.phase {
         case .done:
             [
-                t("lightning__spark_exit__done_text"),
+                // The amount that reached savings says it all; the generic line only stands in when it is unknown.
                 record.flatMap(SparkExitMath.received).map {
                     t("lightning__spark_exit__done_received", variables: ["amount": currency.primaryAmountText(sats: $0.sats)])
-                },
+                } ?? t("lightning__spark_exit__done_text"),
                 (record?.skippedLeafCount ?? 0) > 0
                     ? t("lightning__spark_exit__partial_text", variables: ["count": "\(record?.skippedLeafCount ?? 0)"]) : nil,
                 record.flatMap { $0.isFailedLeavesReleased == true && $0.failedLeavesSats > 0 ? $0.failedLeavesSats : nil }.map {
@@ -723,9 +723,13 @@ struct SparkExitFeeBumpView: View {
         return total == 0 || UInt64(max(0, wallet.spendableOnchainBalanceSats)) >= total
     }
 
+    /// Savings can't pay the selected rate, or, with none selected, any rate priced so far.
     private var isInsufficient: Bool {
-        guard let selected, selected.totalSats != nil else { return false }
-        return !canPay(selected)
+        if let selected {
+            return selected.totalSats != nil && !canPay(selected)
+        }
+        let priced = exit.feeBumpOptions.filter { $0.totalSats != nil }
+        return !priced.isEmpty && !priced.contains(where: canPay)
     }
 
     var body: some View {

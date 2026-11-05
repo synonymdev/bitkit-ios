@@ -353,7 +353,7 @@ enum SparkExitMath {
         let paid = (record.earlierReceivedSats ?? [:]).merging(paidToDestination(transactions, destination: record.destination)) { $1 }
         let sats = paid.values.reduce(0, +)
         guard sats > 0 else { return nil }
-        return (sats, transactions.first { $0.kind == .sweep }?.txid)
+        return (sats, transactions.first { $0.kind == .sweep }?.txid ?? record.landedSweepTxid)
     }
 
     /// What each sweep or cooperative recovery among `transactions` pays to `destination`, by txid.

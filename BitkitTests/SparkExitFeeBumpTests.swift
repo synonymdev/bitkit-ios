@@ -250,6 +250,7 @@ final class SparkExitFeeBumpTests: XCTestCase {
 
         XCTAssertEqual(sdk.prepareRequests.count, 2)
         XCTAssertEqual(record.generation, 2)
+        XCTAssertEqual(record.landedSweepTxid, "s", "Done still names the sweep the retry replaced")
         XCTAssertFalse(record.isWaitingForOperators)
         XCTAssertEqual(chain.broadcasts.map(\.txid), ["c1"])
 
@@ -284,6 +285,9 @@ final class SparkExitFeeBumpTests: XCTestCase {
         record.failedLeafRetriedAt = 1006
         record.isFailedLeavesReleased = false
         record.fundingStrategy = SparkExitRecord.perNodeStrategy
+        record.landedSweepTxid = "s"
+        // Whole milliseconds, as the record stores dates.
+        record.lastBuildAt = clock
 
         let decoded = try SparkExitRecordCoder.decode(SparkExitRecordCoder.encode(record))
 
