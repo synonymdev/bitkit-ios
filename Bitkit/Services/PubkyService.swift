@@ -992,8 +992,8 @@ actor PaykitSdkService {
             capabilities.privatePayments = capabilities.privatePayments && privateSharing
             if let isSessionCurrent {
                 guard await isSessionCurrent() else { throw PubkyServiceError.sessionNotActive }
-                try Task.checkCancellation()
             }
+            try checkMutationAdmission()
             _ = try await sdk.publishPaykitApp(displayName: "Bitkit", capabilities: capabilities)
         }
     }
@@ -1004,8 +1004,8 @@ actor PaykitSdkService {
         try await withStateRevisionTracking(priority: endpoints.isEmpty ? .ordered : .background) { sdk in
             if let isSessionCurrent {
                 guard await isSessionCurrent() else { throw PubkyServiceError.sessionNotActive }
-                try Task.checkCancellation()
             }
+            try checkMutationAdmission()
             return try await sdk.syncPublicEndpointsWithReceivingDetails(receivingDetails: endpoints.map(\.paykitPublicReceivingDetail))
         }
     }
@@ -1061,6 +1061,10 @@ actor PaykitSdkService {
             for update in updates where peers.contains(where: {
                 $0.state == .recoveryRequired && PubkyPublicKeyFormat.matches($0.counterparty, update.counterparty)
             }) {
+                if let isSessionCurrent, await !isSessionCurrent() {
+                    throw PubkyServiceError.sessionNotActive
+                }
+                try checkMutationAdmission()
                 do {
                     _ = try await sdk.ensureLinkWithPeer(counterparty: update.counterparty, maxAdvanceSteps: 1)
                 } catch {
@@ -1077,6 +1081,7 @@ actor PaykitSdkService {
             if let isSessionCurrent, await !isSessionCurrent() {
                 throw PubkyServiceError.sessionNotActive
             }
+            try checkMutationAdmission()
             return try await sdk.syncPrivatePaymentListsWithReservationsAndProcessOutbound(
                 updates: updates,
                 clearUnlistedLinkedPeers: false
@@ -1729,6 +1734,11 @@ actor PaykitSdkService {
         cachedBackupState = nil
     }
 
+    private func checkMutationAdmission() throws {
+        try Task.checkCancellation()
+        try operationLock.checkWipeOwnership()
+    }
+
     private func checkRefreshAdmission(_ priority: PaykitSdkOperationLock.Priority) async throws {
         if priority == .background, await PaykitPaymentActivity.shared.shouldDeferRefresh {
             throw PaykitPaymentRequestError.operationInProgress
@@ -1782,7 +1792,10 @@ actor PaykitSdkService {
             cachedSnapshot: cachedBackupState,
             onSnapshot: { self.cachedBackupState = $0 },
             onChange: { self.markWalletBackupDataChanged() },
-            beforeOperation: beforeOperation,
+            beforeOperation: {
+                try await beforeOperation()
+                try self.checkMutationAdmission()
+            },
             operation: operation
         )
     }
