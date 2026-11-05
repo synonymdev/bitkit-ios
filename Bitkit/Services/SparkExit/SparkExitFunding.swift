@@ -68,6 +68,8 @@ enum Base58 {
 /// What an exit costs and returns, from a `prepareRecoverFunds` quote.
 struct SparkExitQuote: Equatable {
     let prepared: PrepareRecoverFundsResponse
+    /// The values of the leaves an older state claimed that the operators still list, which the quote leaves out.
+    var lostLeafSats: [UInt64] = []
 
     /// Prepares every leaf less those an older state claimed in an earlier exit, which the operators still list. The
     /// rest is prepared again on its own, so the amount, fees and funding leave the lost leaves out. With none left
@@ -77,12 +79,16 @@ struct SparkExitQuote: Equatable {
         feeRateSatPerVbyte: UInt64,
         destination: String,
         lostLeafIds: Set<String>
-    ) async throws -> PrepareRecoverFundsResponse {
+    ) async throws -> SparkExitQuote {
         func request(_ selection: ExitLeafSelection) -> PrepareRecoverFundsRequest {
             PrepareRecoverFundsRequest(feeRateSatPerVbyte: feeRateSatPerVbyte, fundingKind: .p2wpkh, destination: destination, selection: selection)
         }
         let all = try await recovering.prepare(request(.all))
-        guard all.leaves.contains(where: { lostLeafIds.contains($0.leafId) }) else { return all }
+        let lostLeafSats = all.leaves.filter { lostLeafIds.contains($0.leafId) }.map(\.valueSats)
+            + all.skipped.filter { lostLeafIds.contains($0.leafId) }.map(\.valueSats)
+        guard all.leaves.contains(where: { lostLeafIds.contains($0.leafId) }) else {
+            return SparkExitQuote(prepared: all, lostLeafSats: lostLeafSats)
+        }
         let remaining = all.leaves.map(\.leafId).filter { !lostLeafIds.contains($0) }
         var prepared = all
         if remaining.isEmpty {
@@ -101,7 +107,7 @@ struct SparkExitQuote: Equatable {
         // `Specific` lists only its own leaves as skipped; the leaves `All` could not exit stay left behind.
         let listed = Set(prepared.skipped.map(\.leafId))
         prepared.skipped += all.skipped.filter { !lostLeafIds.contains($0.leafId) && !listed.contains($0.leafId) }
-        return prepared
+        return SparkExitQuote(prepared: prepared, lostLeafSats: lostLeafSats)
     }
 
     /// The value of the leaves the exit takes on-chain.
@@ -352,8 +358,15 @@ enum SparkExitMath {
     /// SDK lists, such as a counter-swap still unclaimed. Nil when there is none.
     static func unexitableSats(sparkBalanceSats: UInt64, quote: SparkExitQuote) -> UInt64? {
         let listed = quote.leafTotalSats + quote.leftBehindSats
-        let unexitable = quote.leftBehindSats + sparkBalanceSats.saturatingSub(listed)
+        let beyond = beyondLostLeaves(sparkBalanceSats.saturatingSub(listed), lostLeafSats: quote.lostLeafSats)
+        let unexitable = quote.leftBehindSats + beyond
         return unexitable > 0 ? unexitable : nil
+    }
+
+    /// `sats` less the lost leaves it still holds. Spark's balance keeps a leaf an older state claimed until a later
+    /// sync drops it, so each lost leaf, largest first, is taken out only while what is left still covers it.
+    static func beyondLostLeaves(_ sats: UInt64, lostLeafSats: [UInt64]) -> UInt64 {
+        lostLeafSats.sorted(by: >).reduce(sats) { left, lost in left >= lost ? left - lost : left }
     }
 
     /// Whether the SDK refused a `Specific` selection because a leaf in it cannot be exited.
@@ -374,10 +387,14 @@ enum SparkExitMath {
         return staysOnSparkSats(sparkBalanceSats: sparkBalanceSats, record: record)
     }
 
-    /// What the Spark balance holds beyond the exit's leaves, in any phase: what a failed exit leaves on Spark.
+    /// What the Spark balance holds beyond the exit's leaves, in any phase: what a failed exit leaves on Spark. Lost
+    /// leaves count only while the balance still holds them (`beyondLostLeaves`).
     static func staysOnSparkSats(sparkBalanceSats: UInt64, record: SparkExitRecord) -> UInt64? {
-        guard let leafTotal = record.leafTotalSats, sparkBalanceSats > leafTotal else { return nil }
-        return sparkBalanceSats - leafTotal
+        guard let leafTotal = record.leafTotalSats else { return nil }
+        let liveLeafTotal = leafTotal.saturatingSub(record.lostSats)
+        guard sparkBalanceSats > liveLeafTotal else { return nil }
+        let stays = beyondLostLeaves(sparkBalanceSats - liveLeafTotal, lostLeafSats: (record.lostLeaves ?? []).map(\.valueSats))
+        return stays > 0 ? stays : nil
     }
 
     /// About how long until `height`: 10-minute blocks, and Spark's regtest mines one every ~30 seconds.

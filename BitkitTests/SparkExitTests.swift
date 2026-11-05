@@ -362,6 +362,25 @@ final class SparkExitRecordTests: XCTestCase {
         try lostLeafStore.delete()
         XCTAssertEqual(try lostLeafStore.load(), [])
     }
+
+    /// qa-03 rerun of fix 10: a leaf an exit lost before the lost-leaf list existed joins it once the record loads,
+    /// so the first quote after the update leaves it out.
+    func testLoadingTheRecordAddsItsLostLeavesToTheList() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("spark-exit-\(UUID().uuidString)")
+        let store = SparkExitStore(url: folder.appendingPathComponent("spark-exit.json"))
+        let lostLeafStore = SparkExitLostLeafStore(url: folder.appendingPathComponent("spark-exit-lost-leaves.json"))
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        try store.save(SparkExitFixtures.record())
+        XCTAssertEqual(try SparkExitManager.loadRecord(store: store, lostLeafStore: lostLeafStore), SparkExitFixtures.record())
+        XCTAssertFalse(FileManager.default.fileExists(atPath: lostLeafStore.url.path))
+
+        var ended = SparkExitFixtures.record(phase: .failed(reason: SparkExitRecord.lostReason))
+        ended.lostLeaves = [.init(leafId: "lost-before", valueSats: 65536)]
+        try store.save(ended)
+        XCTAssertEqual(try SparkExitManager.loadRecord(store: store, lostLeafStore: lostLeafStore), ended)
+        XCTAssertEqual(try lostLeafStore.load(), ["lost-before"])
+    }
 }
 
 // MARK: - Driver
@@ -1105,12 +1124,12 @@ final class SparkExitDriverTests: XCTestCase {
         sdk.preparedByRequest = { request in
             request.selection == .all ? SparkExitFixtures.prepared(leaves: ["leaf-1", "lost-earlier"]) : SparkExitFixtures.prepared()
         }
-        let quote = try await SparkExitQuote(prepared: SparkExitQuote.prepare(
+        let quote = try await SparkExitQuote.prepare(
             sdk,
             feeRateSatPerVbyte: 2,
             destination: "bcrt1qdestination",
             lostLeafIds: ["lost-earlier"]
-        ))
+        )
         var record = SparkExitRecord(
             network: "regtest",
             createdAt: clock,
@@ -1370,12 +1389,12 @@ final class SparkExitMathTests: XCTestCase {
             return prepared
         }
 
-        let quote = try await SparkExitQuote(prepared: SparkExitQuote.prepare(
+        let quote = try await SparkExitQuote.prepare(
             sdk,
             feeRateSatPerVbyte: 2,
             destination: "bcrt1qdestination",
             lostLeafIds: ["lost"]
-        ))
+        )
 
         XCTAssertEqual(sdk.prepareRequests.map(\.selection), [.all, .specific(leafIds: ["leaf-1"])])
         XCTAssertEqual(quote.leafIds, ["leaf-1"])
@@ -1388,18 +1407,19 @@ final class SparkExitMathTests: XCTestCase {
         let sdk = FakeSparkExitRecovering()
         sdk.preparedResponse = SparkExitFixtures.prepared(leaves: ["lost"])
 
-        let quote = try await SparkExitQuote(prepared: SparkExitQuote.prepare(
+        let quote = try await SparkExitQuote.prepare(
             sdk,
             feeRateSatPerVbyte: 2,
             destination: "bcrt1qdestination",
             lostLeafIds: ["lost"]
-        ))
+        )
 
         XCTAssertEqual(sdk.prepareRequests.map(\.selection), [.all])
         XCTAssertTrue(quote.prepared.leaves.isEmpty)
         XCTAssertEqual(quote.exitSats, 0)
         XCTAssertEqual(quote.fundingSats, 0)
         XCTAssertFalse(quote.isWorthExiting)
+        XCTAssertEqual(quote.lostLeafSats, [100_000])
     }
 
     func testClaimableHeightIsTheLatestTimelock() {
@@ -1604,6 +1624,27 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertNil(SparkExitMath.staysOnSparkSats(sparkBalanceSats: 17097, record: record))
         XCTAssertNil(SparkExitMath.staysOnSparkSats(sparkBalanceSats: 0, record: record))
         XCTAssertNil(SparkExitMath.outsideExitSats(sparkBalanceSats: 49865, record: record))
+    }
+
+    /// qa-03 rerun of fix 10: right after an exit lost a leaf, Spark's balance still counted it for about 10 minutes,
+    /// and a record from before the lost-leaf list also held a leaf the balance had dropped already.
+    func testLostLeavesStayOutOfWhatStaysOnSparkWhetherTheBalanceCountsThemOrNot() {
+        var record = SparkExitFixtures.record(phase: .failed(reason: SparkExitRecord.lostReason))
+        record.leafTotalSats = 65536
+        record.lostLeaves = [.init(leafId: "lost", valueSats: 65536)]
+        XCTAssertEqual(SparkExitMath.staysOnSparkSats(sparkBalanceSats: 68928, record: record), 3392, "balance still counts it")
+        XCTAssertEqual(SparkExitMath.staysOnSparkSats(sparkBalanceSats: 3392, record: record), 3392, "balance synced")
+
+        record.leafTotalSats = 131_072
+        record.lostLeaves = [.init(leafId: "lost-before", valueSats: 65536), .init(leafId: "lost", valueSats: 65536)]
+        XCTAssertEqual(SparkExitMath.staysOnSparkSats(sparkBalanceSats: 68928, record: record), 3392)
+        XCTAssertEqual(SparkExitMath.staysOnSparkSats(sparkBalanceSats: 3392, record: record), 3392)
+
+        var prepared = SparkExitFixtures.prepared(leaves: [])
+        prepared.skipped = [SkippedLeaf(leafId: "small", valueSats: 3392, reason: .feeExceedsValue)]
+        let quote = SparkExitQuote(prepared: prepared, lostLeafSats: [65536, 65536])
+        XCTAssertEqual(SparkExitMath.unexitableSats(sparkBalanceSats: 68928, quote: quote), 3392)
+        XCTAssertEqual(SparkExitMath.unexitableSats(sparkBalanceSats: 3392, quote: quote), 3392)
     }
 
     /// qa-03: once Bitkit paid the funding from savings, or a payment covering it is seen, the exit waits for it

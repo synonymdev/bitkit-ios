@@ -86,7 +86,7 @@ final class SparkExitManager {
     func load(walletIndex: Int) {
         self.walletIndex = walletIndex
         do {
-            record = try store.load()
+            record = try Self.loadRecord(store: store, lostLeafStore: lostLeafStore)
         } catch {
             // Kept aside for support, so a new exit never overwrites it; a new exit prepares from chain state.
             Logger.error("Failed to read the Spark exit record: \(error)", context: "SparkExitManager")
@@ -103,6 +103,16 @@ final class SparkExitManager {
             }
             await settleOrphanedTransfers(record)
         }
+    }
+
+    /// Loads the stored exit and adds its lost leaves to the lost-leaf list, ended exits included, so leaves an exit
+    /// lost before that list existed stay out of the next quote too.
+    nonisolated static func loadRecord(store: SparkExitStore, lostLeafStore: SparkExitLostLeafStore) throws -> SparkExitRecord? {
+        let record = try store.load()
+        if let record {
+            try? lostLeafStore.add(lostIn: record)
+        }
+        return record
     }
 
     /// Forgets the exit of a wallet being wiped.
@@ -279,7 +289,7 @@ final class SparkExitManager {
             } else {
                 try await LightningService.shared.newAddress()
             }
-            let prepared = try await SparkExitQuote.prepare(
+            let newQuote = try await SparkExitQuote.prepare(
                 recovering,
                 feeRateSatPerVbyte: feeRate,
                 destination: destination,
@@ -289,7 +299,7 @@ final class SparkExitManager {
             pendingDestination = destination
             pendingFeeRate = feeRate
             pendingFundingIndex = fundingIndex
-            quote = SparkExitQuote(prepared: prepared)
+            quote = newQuote
             fundingAddress = try Self.fundingKey(walletIndex: walletIndex, index: fundingIndex).address
         } catch {
             Logger.error("Failed to quote the Spark exit: \(error)", context: "SparkExitManager")
@@ -448,10 +458,11 @@ final class SparkExitManager {
         isTicking = true
         defer { isTicking = false }
         let store = store
+        let lostLeafStore = lostLeafStore
         let saveRecord = saveRecord
         let walletIndex = walletIndex
         let run = SparkExitBackgroundRun(
-            load: { try store.load() },
+            load: { try Self.loadRecord(store: store, lostLeafStore: lostLeafStore) },
             makeDriver: { chain, recovering in
                 SparkExitDriver(
                     chain: chain,
