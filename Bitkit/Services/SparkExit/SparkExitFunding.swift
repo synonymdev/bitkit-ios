@@ -296,14 +296,26 @@ enum SparkExitMath {
 
     /// What the exit's sweep and cooperative recoveries paid to its savings address, and the sweep's txid, once it
     /// ended done. Nil before, or when no output to savings can be read.
+    /// Generations a Redo replaced count too, so a cooperative recovery that landed before it is included.
     static func received(_ record: SparkExitRecord) -> (sats: UInt64, sweepTxid: String?)? {
-        guard record.phase == .done, let transactions = record.recovery?.response.transactions,
-              let destination = try? SparkExitAddress.scriptPubKey(record.destination)
-        else { return nil }
-        let paying = transactions.filter { $0.kind == .sweep || $0.kind == .cooperative }
-        let sats = paying.flatMap { SparkExitTxid.outputs(hex: $0.txHex) ?? [] }.filter { $0.script == destination }.reduce(0) { $0 + $1.value }
+        guard record.phase == .done, let transactions = record.recovery?.response.transactions else { return nil }
+        let paid = (record.earlierReceivedSats ?? [:]).merging(paidToDestination(transactions, destination: record.destination)) { $1 }
+        let sats = paid.values.reduce(0, +)
         guard sats > 0 else { return nil }
-        return (sats, paying.first { $0.kind == .sweep }?.txid)
+        return (sats, transactions.first { $0.kind == .sweep }?.txid)
+    }
+
+    /// What each sweep or cooperative recovery among `transactions` pays to `destination`, by txid.
+    static func paidToDestination(_ transactions: [RecoveryTransaction], destination: String) -> [String: UInt64] {
+        guard let script = try? SparkExitAddress.scriptPubKey(destination) else { return [:] }
+        var paid: [String: UInt64] = [:]
+        for tx in transactions where tx.kind == .sweep || tx.kind == .cooperative {
+            let sats = (SparkExitTxid.outputs(hex: tx.txHex) ?? []).filter { $0.script == script }.reduce(0) { $0 + $1.value }
+            if sats > 0 {
+                paid[tx.txid] = sats
+            }
+        }
+        return paid
     }
 
     /// Whether every refund's timelock is behind it: none still waits for its parents or its height.

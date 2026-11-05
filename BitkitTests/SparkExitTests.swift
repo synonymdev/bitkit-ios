@@ -569,6 +569,75 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(record.surfacedRejection, "rejected: min relay fee not met")
     }
 
+    /// The mempool refusing a step's fee rate is no broken chain: the exit says the network is busier than its rate
+    /// at once and does not rebuild. A zero fee and a lost replacement race stay on the broken-chain path.
+    func testAFeeRateUnderTheMempoolsShowsAtOnceWithoutRebuilding() async throws {
+        let lowFee = ["min relay fee not met, 5 < 17", "mempool min fee not met, 120 < 300"]
+        let brokenChain = ["min relay fee not met, 0 < 17", "insufficient fee, rejecting replacement 1234, less fees than conflicting txs; 200 < 300"]
+        for text in lowFee {
+            XCTAssertTrue(SparkExitBroadcastClassifier.isFeeRateTooLow(.rejected(text)), text)
+            XCTAssertFalse(SparkExitBroadcastClassifier.isUnpaid(.rejected(text)), text)
+        }
+        for text in brokenChain {
+            XCTAssertFalse(SparkExitBroadcastClassifier.isFeeRateTooLow(.rejected(text)), text)
+        }
+        XCTAssertTrue(SparkExitBroadcastClassifier.isUnpaid(.rejected(brokenChain[0])))
+
+        for text in lowFee {
+            chain = FakeSparkExitChain()
+            sdk = FakeSparkExitRecovering()
+            var record = SparkExitFixtures.record(phase: .running)
+            let recovery = SparkExitFixtures.recovery([SparkExitFixtures.tx("n1", cpfp: "03c")])
+            record.adopt(recovery, at: Date(timeIntervalSince1970: 1_700_000_050))
+            chain.outcome = .rejected(text)
+            sdk.checks = Array(repeating: CheckRecoverFundsResponse(recovery: recovery, verdict: .valid), count: 4)
+
+            record = try await driver().tick(record)
+            XCTAssertEqual(record.underpricedStep(tip: nil)?.txid, "n1", "shown after the first refusal")
+
+            for _ in 0 ..< 3 {
+                clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+                record = try await driver().tick(record)
+            }
+            XCTAssertTrue(sdk.recoverRequests.isEmpty, text)
+            XCTAssertEqual(record.broadcastLog.first?.rejections, 0, text)
+            XCTAssertNil(record.surfacedRejection, text)
+            XCTAssertTrue(SparkExitMath.reminders(record, tip: 1000, now: clock, network: .regtest).contains { $0.id == "1-slow-n1" })
+        }
+
+        // The lost race rebuilds over the stalled chain.
+        chain = FakeSparkExitChain()
+        sdk = FakeSparkExitRecovering()
+        var record = SparkExitFixtures.record(phase: .running)
+        let recovery = SparkExitFixtures.recovery([SparkExitFixtures.tx("n1", cpfp: "03c")])
+        record.adopt(recovery, at: Date(timeIntervalSince1970: 1_700_000_050))
+        chain.outcome = .rejected(brokenChain[1])
+        sdk.checks = Array(repeating: CheckRecoverFundsResponse(recovery: recovery, verdict: .valid), count: 3)
+        sdk.builds = [recovery]
+        for _ in 0 ..< 3 {
+            record = try await driver().tick(record)
+        }
+        XCTAssertEqual(record.stallRebuilds, 1)
+        XCTAssertNil(record.underpricedStep(tip: nil))
+    }
+
+    /// A refused step the chain shows confirmed since, such as by the operators' copy, is not stuck.
+    func testAConfirmedStepIsNotStuck() {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.adopt(SparkExitFixtures.recovery([SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 900))]))
+        record.broadcastLog = [.init(
+            generation: 1,
+            txid: "n1",
+            attempts: 3,
+            rejections: 3,
+            lastAttemptAt: clock,
+            lastOutcome: "rejected: bad",
+            isAccepted: false
+        )]
+
+        XCTAssertNil(record.stuckStep)
+    }
+
     func testAStepConfirmingResetsTheRebuildCap() async throws {
         var record = SparkExitFixtures.record(phase: .running)
         record.adopt(SparkExitFixtures.recovery([SparkExitFixtures.tx("n1"), SparkExitFixtures.tx("n2", dependsOn: ["n1"])]))

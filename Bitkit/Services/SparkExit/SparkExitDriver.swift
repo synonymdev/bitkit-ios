@@ -697,8 +697,11 @@ struct SparkExitDriver {
         let isInputSpent: Bool? = hasConfirmedParents && isInputsMissing ? true : nil
         let isUnpaid = SparkExitBroadcastClassifier.isUnpaid(outcome)
         let isFeeChainFailure = hasConfirmedParents && (isUnpaid || isInputsMissing)
+        // Neither an unpaid child nor a rate under the mempool's is a refusal to rebuild over: the first is a broken fee
+        // chain, the second needs lower fees, not a build at the same rate.
+        let isFeeRateRefused = SparkExitBroadcastClassifier.isFeeRateTooLow(outcome)
         let isRejected = if case .rejected = outcome {
-            !isFeeChainFailure
+            !isUnpaid && !isFeeRateRefused
         } else {
             false
         }
@@ -711,6 +714,7 @@ struct SparkExitDriver {
             record.broadcastLog[i].isAccepted = isAccepted
             record.broadcastLog[i].isInputSpent = isInputSpent
             record.broadcastLog[i].feeChainFailures = isFeeChainFailure ? (record.broadcastLog[i].feeChainFailures ?? 0) + 1 : nil
+            record.broadcastLog[i].isFeeRateRefused = isFeeRateRefused ? true : nil
         } else {
             record.broadcastLog.append(.init(
                 generation: record.generation,
@@ -722,7 +726,8 @@ struct SparkExitDriver {
                 isAccepted: isAccepted,
                 isInputSpent: isInputSpent,
                 feeChainFailures: isFeeChainFailure ? 1 : nil,
-                acceptedAtHeight: isAccepted ? tip : nil
+                acceptedAtHeight: isAccepted ? tip : nil,
+                isFeeRateRefused: isFeeRateRefused ? true : nil
             ))
         }
     }

@@ -314,6 +314,15 @@ enum SparkExitBroadcastClassifier {
         return text.range(of: #"min relay fee not met,\s*0\s*<"#, options: .regularExpression) != nil
     }
 
+    /// The step paid a fee, but less than the mempool takes now: the network is busier than the exit's rate. A rebuild
+    /// at the same rate would not help. A zero fee (`isUnpaid`) and a lost replacement race
+    /// (`insufficient fee, rejecting replacement`) are a broken fee chain instead.
+    static func isFeeRateTooLow(_ outcome: SparkExitBroadcastOutcome) -> Bool {
+        guard case let .rejected(text) = outcome else { return false }
+        return text.range(of: #"min relay fee not met,\s*[1-9]"#, options: .regularExpression) != nil
+            || text.contains("mempool min fee not met")
+    }
+
     static func classify(error text: String) -> SparkExitBroadcastOutcome {
         if knownMessages.contains(where: text.contains) || hasRpcCode(-27, in: text) {
             return .accepted

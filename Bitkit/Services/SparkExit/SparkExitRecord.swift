@@ -56,6 +56,8 @@ struct SparkExitRecord: Codable, Equatable {
         /// The tip when a node first accepted it, kept while it stays accepted, so a step the network holds but does
         /// not confirm shows as underpriced.
         var acceptedAtHeight: UInt32?
+        /// Its last answer was a fee under the mempool's minimum: the network is busier than the exit's rate.
+        var isFeeRateRefused: Bool?
     }
 
     /// A leaf an older state of the wallet claimed on-chain first, which this exit cannot recover.
@@ -153,6 +155,8 @@ struct SparkExitRecord: Codable, Equatable {
     var exitStateSnapshot: String?
     /// The stored record could not be read, so the exit is rebuilt from the chain with the funding it kept.
     var isRebuiltFromChain: Bool?
+    /// What confirmed sweeps and cooperative recoveries of replaced generations paid to savings, by txid.
+    var earlierReceivedSats: [String: UInt64]?
     var leftBehindLeaves: [LeftBehindLeaf]?
     /// Set once the user opened the result of an exit that failed or lost leaves.
     var isResultSeen: Bool?
@@ -258,6 +262,15 @@ struct SparkExitRecord: Codable, Equatable {
             if !txids.isEmpty {
                 earlierCpfpTxids = (earlierCpfpTxids ?? []) + txids
             }
+            let landed = SparkExitMath.paidToDestination(recovery.response.transactions.filter {
+                if case .confirmed = $0.status {
+                    return true
+                }
+                return false
+            }, destination: destination)
+            if !landed.isEmpty {
+                earlierReceivedSats = (earlierReceivedSats ?? [:]).merging(landed) { $1 }
+            }
         }
         generation += 1
         recovery = StoredRecovery(built)
@@ -275,12 +288,23 @@ struct SparkExitRecord: Codable, Equatable {
         retrySince != nil
     }
 
-    /// A step of this generation that keeps being refused, or whose fee chain keeps failing.
+    /// A step of this generation that keeps being refused, or whose fee chain keeps failing. One the chain shows
+    /// confirmed since, such as by the operators' copy of it, is not stuck.
     var stuckStep: BroadcastAttempt? {
-        broadcastLog.first {
-            $0.generation == generation && !$0.isAccepted
+        let confirmed = confirmedTxids
+        return broadcastLog.first {
+            $0.generation == generation && !$0.isAccepted && !confirmed.contains($0.txid)
                 && ($0.rejections >= SparkExitDriver.rejectionsToSurface || ($0.feeChainFailures ?? 0) >= SparkExitDriver.feeChainFailuresToRebuild)
         }
+    }
+
+    private var confirmedTxids: Set<String> {
+        Set((recovery?.response.transactions ?? []).filter {
+            if case .confirmed = $0.status {
+                return true
+            }
+            return false
+        }.map(\.txid))
     }
 
     /// Whether rebuilding over a stuck step already failed to move the exit often enough to stop and say so.
@@ -288,20 +312,17 @@ struct SparkExitRecord: Codable, Equatable {
         (stallRebuilds ?? 0) >= SparkExitDriver.stallRebuildsToSurface
     }
 
-    /// A step the network accepted that has not confirmed for more blocks than a fair fee rate needs: the network is
-    /// busier than the exit's rate. Rebuilding at the same rate would not help.
+    /// A step the network is busier than the exit's rate for: refused for a fee under the mempool's minimum, or
+    /// accepted but unconfirmed for more blocks than a fair rate needs. Rebuilding at the same rate would not help.
     func underpricedStep(tip: UInt32?) -> BroadcastAttempt? {
-        guard let tip, let transactions = recovery?.response.transactions else { return nil }
-        let confirmed = Set(transactions.filter {
-            if case .confirmed = $0.status {
-                return true
-            }
-            return false
-        }.map(\.txid))
+        guard recovery != nil else { return nil }
+        let confirmed = confirmedTxids
         return broadcastLog.first {
-            guard $0.generation == generation, $0.isAccepted, let height = $0.acceptedAtHeight, !confirmed.contains($0.txid) else {
-                return false
+            guard $0.generation == generation, !confirmed.contains($0.txid) else { return false }
+            if !$0.isAccepted {
+                return $0.isFeeRateRefused == true
             }
+            guard let tip, let height = $0.acceptedAtHeight else { return false }
             return tip > height && tip - height > SparkExitDriver.unconfirmedBlocksToSurface
         }
     }

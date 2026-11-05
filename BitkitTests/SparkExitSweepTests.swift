@@ -308,6 +308,28 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertNil(SparkExitMath.received(record))
     }
 
+    /// A cooperative recovery that landed before a Redo still counts in what reached savings.
+    func testDoneCountsWhatLandedBeforeARedo() throws {
+        let script = try SparkExitAddress.scriptPubKey(destination)
+        func paying(_ sats: String) -> String {
+            "02000000" + "01" + String(repeating: "11", count: 32) + "00000000" + "00" + "ffffffff"
+                + "01" + sats + String(format: "%02x", script.count) + script.hex + "00000000"
+        }
+        func tx(_ txid: String, _ kind: RecoveryTxKind, _ hex: String) -> RecoveryTransaction {
+            RecoveryTransaction(kind: kind, nodeId: nil, txid: txid, txHex: hex, cpfpTxHex: nil, csvTimelockBlocks: nil, dependsOn: [],
+                                status: .confirmed(blockHeight: 50))
+        }
+        var record = endedRecord(phase: .running)
+        // 50,000 and 100,000 sats, little-endian.
+        record.adopt(SparkExitFixtures.recovery([tx("coop", .cooperative, paying("50c3000000000000"))]))
+        record.adopt(SparkExitFixtures.recovery([tx("sweep", .sweep, paying("a086010000000000"))]))
+        record.phase = .done
+
+        let received = try XCTUnwrap(SparkExitMath.received(record))
+        XCTAssertEqual(received.sats, 150_000)
+        XCTAssertEqual(received.sweepTxid, "sweep")
+    }
+
     /// Each exit signs with the key at its own funding index, so a later exit never spends an earlier one's address.
     func testSignsWithTheKeyAtTheRecordsFundingIndex() async throws {
         let second = try SparkExitFundingKey.derive(index: 4, mnemonic: Self.mnemonic, passphrase: nil, network: .regtest)
