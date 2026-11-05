@@ -368,6 +368,18 @@ struct SparkExitRecord: Codable, Equatable {
         (stallRebuilds ?? 0) >= SparkExitDriver.stallRebuildsToSurface
     }
 
+    /// A savings payment Bitkit made to the funding address, such as a higher fee's, that the exit has not adopted yet:
+    /// nothing to ask the user for while it confirms.
+    var isAwaitingOwnPayment: Bool {
+        guard let paid = fundingPaymentTxid, fundingShortfallSats != nil else { return false }
+        return !funding.contains { $0.txid == paid }
+    }
+
+    /// Progress says the exit is underpriced: it runs at its rate, nothing rebuilds it and no higher fee is on its way.
+    func showsFeeLow(tip: UInt32?) -> Bool {
+        phase == .running && !isRebuilding && underpricedStep(tip: tip) != nil
+    }
+
     /// A step the network is busier than the exit's rate for: refused for a fee under the mempool's minimum, or
     /// accepted but unconfirmed for more blocks than a fair rate needs. Rebuilding at the same rate would not help.
     func underpricedStep(tip: UInt32?) -> BroadcastAttempt? {

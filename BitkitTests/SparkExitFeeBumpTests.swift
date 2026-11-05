@@ -188,6 +188,28 @@ final class SparkExitFeeBumpTests: XCTestCase {
         XCTAssertNil(record.isRedoRebuild)
     }
 
+    /// Right after savings paid a higher fee, the step that was underpriced is still in the log: Progress no longer
+    /// says the exit is underpriced, and no "needs more fees" reminder fires for a payment already on its way.
+    func testAPaidFeeBumpNeitherShowsFeeLowNorRemindsToFund() {
+        var record = runningRecord()
+        record.broadcastLog = [.init(
+            generation: record.generation, txid: "n1", attempts: 3, rejections: 0, lastAttemptAt: clock,
+            lastOutcome: "accepted", isAccepted: true, acceptedAtHeight: 990
+        )]
+        XCTAssertTrue(record.showsFeeLow(tip: 1000))
+
+        record.applyFeeBump(rate: 10, extraSats: 5680, paymentTxid: "bump")
+
+        XCTAssertTrue(record.isAwaitingOwnPayment)
+        XCTAssertFalse(record.showsFeeLow(tip: 1000))
+        XCTAssertTrue(SparkExitMath.reminders(record, tip: 1000, now: clock, network: .regtest).isEmpty)
+
+        // Adopted, the payment no longer waits; a shortfall left after it reminds as before.
+        record.funding.append(.init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "bump", vout: 0, valueSats: 5000))
+        XCTAssertFalse(record.isAwaitingOwnPayment)
+        XCTAssertEqual(SparkExitMath.reminders(record, tip: 1000, now: clock, network: .regtest).map(\.isFunding), [true])
+    }
+
     /// The funding already covers the higher rate: the exit rebuilds at once and replaces what has not confirmed.
     func testAFeeBumpWithNothingToPayRebuildsAtOnce() async throws {
         var record = runningRecord()

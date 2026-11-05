@@ -618,7 +618,7 @@ struct SparkExitProgressView: View {
                                 .accessibilityIdentifier("SparkExitNotMoving")
                         }
 
-                        if record.isActive, !record.isRebuilding, record.underpricedStep(tip: exit.tipHeight) != nil {
+                        if record.showsFeeLow(tip: exit.tipHeight) {
                             BodySText(t("lightning__spark_exit__fee_low", variables: ["rate": "\(record.feeRateSatPerVbyte)"]))
                                 .fixedSize(horizontal: false, vertical: true)
                                 .padding(.top, 16)

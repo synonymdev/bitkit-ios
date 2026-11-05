@@ -290,6 +290,8 @@ enum SparkExitMath {
             lostReminder.append(SparkExitReminder(id: "failed", fireAt: now, isFailed: true))
         }
         if case let .needsFunding(requiredSats) = record.phase {
+            // A payment Bitkit already sent from savings, such as a higher fee's, needs no reminder to fund.
+            guard !record.isAwaitingOwnPayment else { return lostReminder }
             return lostReminder + [SparkExitReminder(id: "funding-\(requiredSats)", fireAt: now, isFunding: true)]
         }
         guard case .running = record.phase, let recovery = record.recovery?.response else { return lostReminder }
