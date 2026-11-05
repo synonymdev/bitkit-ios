@@ -1,0 +1,27 @@
+<journey name="spark transfer to spending">
+  <description>
+    Verifies the transfer to spending flow on Spark. With Spark ready, Funding leads with "Transfer from Savings"
+    (testTag "FundTransfer") and "Use Other Wallet" (testTag "FundReceive") above "Manual Setup" (testTag
+    "FundManual"), and the Savings and Spending transfer buttons open the spending intro, then the amount screen
+    (testTag "SpendingAmount"), instead of the Transfer Unavailable sheet. The confirm screen shows the network fee,
+    the spending fee, what reaches spending and the total, and a choice between Instant and Later. What happens after
+    the swipe depends on the deposit Spark sees and the provider's quote; the setting-up states are covered by the
+    previews and unit tests, so this journey stops before the swipe.
+
+    Precondition: dev build with Spark connected on its regtest (no key needed), a freshly onboarded wallet with a
+    positive on-chain Savings balance and no channels. Start on the wallet home screen.
+  </description>
+  <actions>
+    <action>Tap the Savings balance card (testTag "ActivitySavings"), tap "Transfer To Spending" (testTag "TransferToSpending") and verify the spending intro (testTag "SpendingIntro") opens, not the Transfer Unavailable sheet</action>
+    <action>Tap "Get Started" (testTag "SpendingIntro-button") and verify the amount screen (testTag "SpendingAmount") opens with the available amount</action>
+    <action>Tap "25%" (testTag "SpendingAmountQuarter") and verify the amount is about a quarter of the Savings balance; tap "Max" (testTag "SpendingAmountMax") and verify the amount equals the available amount</action>
+    <action>Tap "Continue" (testTag "SpendingAmountContinue") and verify the confirm screen shows "Network fees", "Spending fee", "To spending" and "Total", with "Instant" (testTag "SpendingConfirmInstant") selected and "Later" (testTag "SpendingConfirmLater") below it</action>
+    <action>Verify "Spending fee" reads "up to" an amount equal to the Instant row's fee, and "To spending" equals the amount less that fee</action>
+    <action>Tap "Later" and verify "Spending fee" changes to "≈" the Later row's fee and "To spending" grows by the difference, while "Network fees" and "Total" stay the same</action>
+    <action>Tap "Learn More" (testTag "SpendingConfirmMore"), verify the screen explains Instant and Later and shows a spending-only balance bar, then tap "Understood" (testTag "LiquidityContinue")</action>
+    <action>Go back to the wallet home, tap the Spending balance card (testTag "ActivitySpending"), tap "Transfer From Savings" (testTag "TransferFromSavings") and verify the amount screen opens without the intro</action>
+    <action>Go back to the wallet home, open Settings › Advanced › Lightning Connections and tap add connection (testTag "add_connection_button")</action>
+    <action>Verify "Transfer from Savings" (testTag "FundTransfer") and "Use Other Wallet" (testTag "FundReceive") are enabled above "Manual Setup" (testTag "FundManual")</action>
+    <action>Tap "Transfer from Savings" and verify the amount screen (testTag "SpendingAmount") opens</action>
+  </actions>
+</journey>

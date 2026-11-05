@@ -683,7 +683,7 @@ struct PaykitPaymentRequestService {
             UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
         },
         canReceiveLightning: @escaping @MainActor @Sendable () -> Bool = {
-            LightningService.shared.channels?.contains(where: \.isUsable) ?? false
+            LightningService.shared.channels?.contains(where: \.isUsable) ?? false || SparkManager.shared.isReady
         },
         marketRate: @escaping @MainActor @Sendable ()
             -> PaykitExchangeRate? = { CurrencyService.shared.loadCachedRates()?.first { $0.quote == "USD" }.map { PaykitExchangeRate(

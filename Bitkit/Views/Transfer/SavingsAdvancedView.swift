@@ -8,15 +8,25 @@ struct SavingsAdvancedView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @Environment(\.dismiss) var dismiss
 
-    private var totalSelectedBalance: UInt64 {
-        guard let channels = wallet.channels else { return 0 }
+    private var channels: [ChannelDetails] {
+        wallet.channels?.filter(\.isChannelReady) ?? []
+    }
 
-        return
-            channels
-                .filter { transfer.selectedChannelIds.contains($0.channelId) }
-                .reduce(0) { total, channel in
-                    return total + channel.balanceOnCloseSats
-                }
+    private var sparkSats: UInt64 {
+        SparkManager.shared.balanceSats
+    }
+
+    private var selection: SavingsSelection {
+        transfer.savingsSelection(readyChannelIds: channels.map(\.channelId), sparkSats: sparkSats)
+    }
+
+    private var totalSelectedBalance: UInt64 {
+        let channelSats = channels
+            .filter { selection.channelIds.contains($0.channelId) }
+            .reduce(0) { total, channel in
+                return total + channel.balanceOnCloseSats
+            }
+        return channelSats + (selection.withdrawsSpark ? sparkSats : 0)
     }
 
     var body: some View {
@@ -30,10 +40,12 @@ struct SavingsAdvancedView: View {
             BodyMText(t("lightning__savings_advanced__text"))
                 .padding(.bottom, 16)
 
-            if let channels = wallet.channels {
-                ForEach(Array(channels.enumerated()), id: \.element.channelId) { index, channel in
-                    channelView(channel: channel, index: index, isLast: index == channels.count - 1)
-                }
+            ForEach(Array(channels.enumerated()), id: \.element.channelId) { index, channel in
+                channelView(channel: channel, index: index, isLast: index == channels.count - 1)
+            }
+
+            if sparkSats > 0 {
+                sparkView
             }
 
             Spacer()
@@ -46,7 +58,7 @@ struct SavingsAdvancedView: View {
 
             CustomButton(
                 title: t("common__continue"),
-                isDisabled: transfer.selectedChannelIds.isEmpty
+                isDisabled: selection.isEmpty
             ) {
                 dismiss()
             }
@@ -55,8 +67,8 @@ struct SavingsAdvancedView: View {
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .task {
-            if transfer.selectedChannelIds.isEmpty, let channels = wallet.channels {
-                transfer.selectedChannelIds = channels.map(\.channelId)
+            if transfer.selectedChannelIds == nil {
+                transfer.selectedChannelIds = Set(channels.map(\.channelId))
             }
         }
     }
@@ -78,16 +90,16 @@ struct SavingsAdvancedView: View {
                     "",
                     isOn: Binding(
                         get: {
-                            transfer.selectedChannelIds.contains(channel.channelId)
+                            selection.channelIds.contains(channel.channelId)
                         },
                         set: { isSelected in
+                            var ids = transfer.selectedChannelIds ?? Set(channels.map(\.channelId))
                             if isSelected {
-                                if !transfer.selectedChannelIds.contains(channel.channelId) {
-                                    transfer.selectedChannelIds.append(channel.channelId)
-                                }
+                                ids.insert(channel.channelId)
                             } else {
-                                transfer.selectedChannelIds.removeAll { $0 == channel.channelId }
+                                ids.remove(channel.channelId)
                             }
+                            transfer.selectedChannelIds = ids
                         }
                     )
                 )
@@ -97,6 +109,26 @@ struct SavingsAdvancedView: View {
         .padding(.vertical, 16)
 
         Divider()
+    }
+
+    private var sparkView: some View {
+        VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 8) {
+                    CaptionMText(t("lightning__spark"))
+                    MoneyText(sats: Int(sparkSats), size: .bodySSB, symbol: true)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $transfer.isSparkSelected)
+                    .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
+                    .accessibilityIdentifier("SavingsSparkToggle")
+            }
+            .padding(.vertical, 16)
+
+            Divider()
+        }
     }
 }
 

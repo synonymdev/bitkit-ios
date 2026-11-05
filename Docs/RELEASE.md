@@ -127,6 +127,8 @@ These translated notes are later pasted into App Store Connect when submitting f
 
 ## 2. Build and Upload to TestFlight
 
+Before archiving, make sure `Secrets.xcconfig` exists at the repo root with `BREEZ_API_KEY` set (copy `Secrets.xcconfig.template`; ask the team for the key). Release builds fail without it, so Spark can't ship switched off.
+
 ### Option A: Manual (Xcode)
 
 1. Open `Bitkit.xcodeproj` in Xcode

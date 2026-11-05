@@ -1723,6 +1723,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             NodeError.InvalidInvoice(message: "invalid"),
             NodeError.InvalidAmount(message: "invalid"),
             Bitkit.AppError(error: NodeError.PaymentSendingFailed(message: "no route")),
+            Bitkit.ChannelFreeRailSendRefused(reason: "Spark routing fee exceeds the limit"),
+            Bitkit.AppError(error: Bitkit.ChannelFreeRailSendRefused(reason: "Spark could not prepare the payment")),
         ]
         for error in errors {
             let record = try paymentRequestRecord()

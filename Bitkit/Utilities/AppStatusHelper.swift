@@ -70,10 +70,11 @@ struct AppStatusHelper {
             return .error
         }
 
-        if !hasChannels {
-            return .error
-        } else if wallet.hasUsableChannels {
+        // Spark carries Lightning without channels, so a Spark wallet's connection is ready.
+        if wallet.hasUsableChannels || SparkManager.shared.isReady {
             return .ready
+        } else if !hasChannels {
+            return .error
         } else {
             return .pending
         }

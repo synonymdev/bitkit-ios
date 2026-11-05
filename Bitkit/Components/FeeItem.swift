@@ -2,18 +2,60 @@ import BitkitCore
 import SwiftUI
 
 struct FeeItem: View {
-    let speed: TransactionSpeed
+    let title: String
+    let subtitle: String
+    let iconName: String
+    let iconColor: Color
     let amount: UInt64
+    /// Shown before the amount when it is a bound or an estimate ("up to", "≈").
+    var amountPrefix: String?
     let isSelected: Bool
     let isDisabled: Bool
-    /// When set (e.g. for custom speed with fee estimates), shown instead of `speed.range` as the subtitle.
-    var rangeOverride: String?
     let onPress: () -> Void
 
     @EnvironmentObject var currency: CurrencyViewModel
 
-    private var rangeText: String {
-        rangeOverride ?? speed.range
+    /// - Parameter rangeOverride: When set (e.g. for custom speed with fee estimates), shown instead of `speed.range`.
+    init(
+        speed: TransactionSpeed,
+        amount: UInt64,
+        isSelected: Bool,
+        isDisabled: Bool,
+        rangeOverride: String? = nil,
+        onPress: @escaping () -> Void
+    ) {
+        self.init(
+            title: speed.title,
+            subtitle: rangeOverride ?? speed.range,
+            iconName: speed.iconName,
+            iconColor: speed.iconColor,
+            amount: amount,
+            isSelected: isSelected,
+            isDisabled: isDisabled,
+            onPress: onPress
+        )
+    }
+
+    init(
+        title: String,
+        subtitle: String,
+        iconName: String,
+        iconColor: Color,
+        amount: UInt64,
+        amountPrefix: String? = nil,
+        isSelected: Bool,
+        isDisabled: Bool,
+        onPress: @escaping () -> Void
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.iconName = iconName
+        self.iconColor = iconColor
+        self.amount = amount
+        self.amountPrefix = amountPrefix
+        self.isSelected = isSelected
+        self.isDisabled = isDisabled
+        self.onPress = onPress
     }
 
     var body: some View {
@@ -23,14 +65,14 @@ struct FeeItem: View {
 
             Button(action: onPress) {
                 HStack(spacing: 16) {
-                    Image(speed.iconName)
-                        .foregroundColor(isDisabled ? .gray : speed.iconColor)
+                    Image(iconName)
+                        .foregroundColor(isDisabled ? .gray : iconColor)
                         .frame(width: 32, height: 32)
 
                     HStack {
                         VStack(alignment: .leading, spacing: 0) {
-                            BodyMSBText(speed.title, textColor: isDisabled ? .gray3 : .textPrimary)
-                            BodySSBText(rangeText, textColor: isDisabled ? .gray3 : .textSecondary)
+                            BodyMSBText(title, textColor: isDisabled ? .gray3 : .textPrimary)
+                            BodySSBText(subtitle, textColor: isDisabled ? .gray3 : .textSecondary)
                         }
 
                         Spacer()
@@ -42,6 +84,7 @@ struct FeeItem: View {
                                     unitType: .primary,
                                     size: .bodyMSB,
                                     symbol: true,
+                                    prefix: amountPrefix,
                                     color: isDisabled ? .gray3 : .textPrimary
                                 )
 
@@ -50,6 +93,7 @@ struct FeeItem: View {
                                     unitType: .secondary,
                                     size: .bodySSB,
                                     symbol: true,
+                                    prefix: amountPrefix,
                                     color: isDisabled ? .gray3 : .textSecondary
                                 )
                             }

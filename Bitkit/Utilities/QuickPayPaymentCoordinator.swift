@@ -69,7 +69,11 @@ final class QuickPayPaymentCoordinator {
             try await String(LightningService.shared.send(bolt11: bolt11))
         }
         self.listRows = listRows ?? {
-            await LightningService.shared.listPayments()?.map(QuickPayReconcileRow.init)
+            let railRows = await LightningService.shared.channelFreeRailPayments().map(QuickPayReconcileRow.init(railPayment:))
+            guard let ldkRows = await LightningService.shared.listPayments()?.map(QuickPayReconcileRow.init) else {
+                return railRows.isEmpty ? nil : railRows
+            }
+            return ldkRows + railRows
         }
     }
 
