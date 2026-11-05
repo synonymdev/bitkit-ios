@@ -1371,6 +1371,56 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertTrue(SparkExitMath.reminders(SparkExitFixtures.record(phase: .done), tip: 1000, now: now, network: .bitcoin).isEmpty)
     }
 
+    /// qa-03 case 5 replayed on regtest: a single-leaf exit whose leaf an older state claimed. Generation 2's idle
+    /// reminder, planned when it was built, fired a second before the rebuild that found the leaf lost, so two
+    /// notifications arrived at once. A pending rebuild now replaces its generation's reminders, and the lost exit
+    /// gives only the lost one.
+    func testALostLeafExitGivesOneNotificationAcrossItsRebuilds() {
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let recovery = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 10)),
+            SparkExitFixtures.refund("r1", leafId: "leaf-1", dependsOn: ["n1"]),
+        ])
+        var record = SparkExitFixtures.record(phase: .running)
+        var scheduled: [String: Date] = [:]
+        var fired: [String: Date] = [:]
+        var delivered: [String] = []
+        // As `SparkExitManager.scheduleReminders`: one that fired is not posted again, one ahead keeps its earliest
+        // date, and every reminder no longer planned is removed.
+        func schedule(at seconds: TimeInterval) {
+            let now = start.addingTimeInterval(seconds)
+            for (id, fireAt) in scheduled.sorted(by: { $0.value < $1.value }) where fireAt <= now {
+                delivered.append(id)
+                fired[id] = fireAt
+            }
+            var next: [String: Date] = [:]
+            for reminder in SparkExitMath.reminders(record, tip: 1000, now: now, network: .regtest) where fired[reminder.id] == nil {
+                next[reminder.id] = min(reminder.fireAt, scheduled[reminder.id] ?? reminder.fireAt)
+            }
+            scheduled = next
+        }
+
+        record.adopt(recovery, at: start)
+        schedule(at: 0)
+        XCTAssertEqual(Set(scheduled.keys), ["1-ready-r1", "1-idle-1-0"])
+        // A check says Redo; the rebuild waits for its interval.
+        record.isRebuilding = true
+        schedule(at: 284)
+        XCTAssertEqual(Array(scheduled.keys), ["1-rebuild"])
+        record.adopt(recovery, at: start.addingTimeInterval(645))
+        schedule(at: 645)
+        record.isRebuilding = true
+        schedule(at: 705)
+        // The next rebuild reproduces the spent refund a second time: the leaf is lost and the exit ends.
+        record.lostLeaves = [.init(leafId: "leaf-1", valueSats: 32768)]
+        record.isRebuilding = true
+        record.phase = .failed(reason: SparkExitRecord.lostReason)
+        schedule(at: 1246)
+        schedule(at: 1247)
+
+        XCTAssertEqual(delivered, ["lost-1"])
+    }
+
     func testTimelocksMatureOnlyOnceNoRefundWaits() {
         let node = SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 5))
         let waitingForParent = SparkExitFixtures.tx("r1", kind: .refund, dependsOn: ["n1"], status: .waitingForDependencies)

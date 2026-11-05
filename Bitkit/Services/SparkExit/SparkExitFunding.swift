@@ -155,8 +155,8 @@ enum SparkExitMath {
 
     /// The reminders an exit needs now. Each timelocked step not yet published gets one at its maturity plus a
     /// grace; a step ready to publish gets one after the grace; needing fee funding or a step rejected repeatedly
-    /// reminds at once. A step published or confirmed needs none, so a background run that publishes a step drops
-    /// its reminder before it fires.
+    /// reminds at once. While a rebuild is pending, one reminder past its due time replaces the steps' own. A step
+    /// published or confirmed needs none, so a background run that publishes a step drops its reminder before it fires.
     static func reminders(_ record: SparkExitRecord, tip: UInt32?, now: Date, network: LDKNode.Network) -> [SparkExitReminder] {
         let lost = record.lostLeaves ?? []
         var lostReminder = lost.isEmpty ? [] : [SparkExitReminder(id: "lost-\(lost.count)", fireAt: now, isLostLeaves: true)]
@@ -170,14 +170,20 @@ enum SparkExitMath {
         guard case .running = record.phase, let recovery = record.recovery?.response else { return lostReminder }
         var reminders = lostReminder
         let generation = record.generation
+        let blockSeconds = secondsUntil(height: 1, tip: 0, network: network)
+        let grace = TimeInterval(reminderGraceBlocks) * blockSeconds
+        // A diverged generation is never sent again, so its steps need no reminder: only a rebuild that does not come.
+        if record.isRebuilding {
+            let due = (record.lastBuildAt ?? now).addingTimeInterval(SparkExitDriver.rebuildInterval)
+            reminders.append(SparkExitReminder(id: "\(generation)-rebuild", fireAt: max(due, now).addingTimeInterval(grace)))
+            return reminders
+        }
         if let rejected = record.broadcastLog.first(where: {
             $0.generation == generation && $0.rejections >= SparkExitDriver.rejectionsToSurface && !$0.isAccepted
         }) {
             reminders.append(SparkExitReminder(id: "rejected-\(generation)-\(rejected.txid)", fireAt: now))
         }
         let accepted = Set(record.broadcastLog.filter { $0.generation == generation && $0.isAccepted }.map(\.txid))
-        let blockSeconds = secondsUntil(height: 1, tip: 0, network: network)
-        let grace = TimeInterval(reminderGraceBlocks) * blockSeconds
         var heights = Set<UInt32>()
         var readyTxid: String?
         for tx in recovery.transactions where !accepted.contains(tx.txid) {
