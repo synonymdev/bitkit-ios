@@ -157,7 +157,7 @@ struct LightningConnectionsView: View {
 
                             if MoveToSparkMath.canMove(
                                 channels: wallet.channels,
-                                isSparkUsable: SparkManager.shared.isReady
+                                isSparkUsable: MoveToSparkMath.isSparkUsable(SparkManager.shared)
                             ) {
                                 CustomButton(title: t("lightning__move_to_spark__nav_title")) {
                                     navigation.navigate(.moveToSpark)

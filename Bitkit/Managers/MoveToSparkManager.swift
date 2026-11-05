@@ -16,6 +16,12 @@ enum MoveToSparkMath {
         (channels ?? []).filter(\.isUsable).map { $0.nextOutboundHtlcLimitMsat / 1000 }.reduce(0, +)
     }
 
+    /// Whether Spark can take a move; every Move to Spark check goes through here.
+    @MainActor
+    static func isSparkUsable(_ spark: SparkManager) -> Bool {
+        spark.isReady
+    }
+
     /// Whether the channels hold a balance worth moving to a usable Spark wallet.
     static func canMove(channels: [ChannelDetails]?, isSparkUsable: Bool) -> Bool {
         isSparkUsable && movableSats(channels: channels) >= minMoveSats
@@ -157,7 +163,7 @@ final class MoveToSparkManager {
         let limitSats = MoveToSparkMath.movableSats(channels: channels)
         let wantedSats = min(targetSats ?? limitSats, limitSats)
         guard wantedSats >= MoveToSparkMath.minMoveSats else { throw MoveToSparkError.nothingToMove }
-        guard spark.isReady else { throw MoveToSparkError.sparkUnavailable }
+        guard MoveToSparkMath.isSparkUsable(spark) else { throw MoveToSparkError.sparkUnavailable }
 
         let invoice = try await spark.receive(
             amountSats: nil,

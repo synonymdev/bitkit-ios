@@ -10,7 +10,7 @@ struct HomeScreen: View {
     @EnvironmentObject var wallet: WalletViewModel
 
     private var canMoveToSpark: Bool {
-        MoveToSparkMath.canMove(channels: wallet.channels, isSparkUsable: SparkManager.shared.isReady)
+        MoveToSparkMath.canMove(channels: wallet.channels, isSparkUsable: MoveToSparkMath.isSparkUsable(SparkManager.shared))
     }
 
     @State private var scrollPosition: Int? = 0
