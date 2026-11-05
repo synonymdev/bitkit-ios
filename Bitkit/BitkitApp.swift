@@ -164,6 +164,8 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                 PaykitSubscriptionNotificationTargetStore.save(target)
             }
             NotificationCenter.default.post(name: .paykitSubscriptionPaymentDue, object: nil, userInfo: userInfo)
+        } else if userInfo["bitkit_action"] as? String == SparkExitManager.notificationAction {
+            Task { @MainActor in SparkExitManager.shared.opensProgress = true }
         } else {
             PushNotificationManager.shared.handleNotification(userInfo)
         }

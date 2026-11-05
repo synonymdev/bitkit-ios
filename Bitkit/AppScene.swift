@@ -613,6 +613,19 @@ struct AppScene: View {
                 guard scenePhase == .active else { return }
                 await SparkExitManager.shared.runWhileActive()
             }
+            .task(id: [
+                SparkExitManager.shared.opensProgress,
+                SparkExitManager.shared.showsResult,
+                isLockedForDeepLinks,
+                wallet.walletExists == true,
+            ]) {
+                // A tapped exit notification opens the exit once the wallet is unlocked and its record is loaded.
+                let exit = SparkExitManager.shared
+                guard exit.opensProgress, exit.showsResult, wallet.walletExists == true, !isLockedForDeepLinks else { return }
+                exit.opensProgress = false
+                navigation.reset()
+                navigation.navigate(.sparkExitProgress)
+            }
             .task(id: foregroundContactSession) {
                 shopContactImport?.task.cancel()
                 shopContactImport = nil
