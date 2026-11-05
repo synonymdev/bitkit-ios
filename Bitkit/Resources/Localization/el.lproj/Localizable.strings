@@ -1581,6 +1581,7 @@
 "subscriptions__allowances" = "Προεγκρίσεις";
 "subscriptions__allowances_empty_headline" = "Ρύθμισε\n<accent>προεγκρίσεις</accent>";
 "subscriptions__allowances_paused_description" = "Τα αρχεία των προϋπολογισμών σου είναι παλαιότερα από αρχεία που έχει ήδη χρησιμοποιήσει αυτό το πορτοφόλι. Τα αιτήματα θα ζητούν την έγκρισή σου μέχρι να συνεχίσεις.";
+"subscriptions__allowances_paused_restore_description" = "Αυτό το πορτοφόλι επαναφέρθηκε από αντίγραφο ασφαλείας. Τα αιτήματα θα ζητούν την έγκρισή σου μέχρι να συνεχίσεις.";
 "subscriptions__allowances_paused_resume" = "Συνέχεια";
 "subscriptions__allowances_paused_title" = "Οι αυτόματες πληρωμές έχουν παυθεί";
 "subscriptions__allowances_empty_description" = "Μπορείς να ορίσεις όρια δαπανών για να εξοφλούνται αυτόματα αιτήματα πληρωμής από αξιόπιστες επαφές.";

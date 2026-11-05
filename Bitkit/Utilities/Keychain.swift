@@ -20,6 +20,7 @@ enum KeychainEntryType {
     case paykitPendingBackupRestore
     case usdtPendingBackupRestore
     case paykitAllowanceState
+    case paykitAllowancesPausedAfterRestore
     case pubkySecretKey
 
     var storageKey: String {
@@ -42,6 +43,7 @@ enum KeychainEntryType {
         case .paykitPendingBackupRestore: "paykit_pending_backup_restore"
         case .usdtPendingBackupRestore: "usdt_pending_backup_restore"
         case .paykitAllowanceState: "paykit_allowance_state"
+        case .paykitAllowancesPausedAfterRestore: "paykit_allowances_paused_after_restore"
         case .pubkySecretKey: "pubky_secret_key"
         }
     }
