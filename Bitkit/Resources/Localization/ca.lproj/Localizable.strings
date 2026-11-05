@@ -612,6 +612,14 @@
 "security__use_pin" = "Utilitzar el codi PIN";
 "security__wiped_title" = "Dades de la cartera eliminades";
 "security__wiped_message" = "Bitkit s\'ha restablert i totes les dades de la cartera s\'han eliminat.";
+"security__pin_unavailable" = "Bitkit no ha pogut comprovar el teu PIN. Torna-ho a provar.";
+"security__wipe_not_started" = "No s'ha pogut iniciar el restabliment. No s'ha eliminat res.";
+"security__wipe_gate_title" = "Restablint Bitkit";
+"security__wipe_gate_text" = "Bitkit està eliminant les dades de la cartera d'aquest dispositiu. Mantén l'aplicació oberta fins que acabi.";
+"security__wipe_gate_failed" = "Bitkit no ha pogut acabar d'eliminar les dades de la cartera i ho tornarà a provar. Pots tornar-ho a provar ara o exportar els registres per al suport.";
+"security__wipe_gate_step" = "Pas {step} de {total}";
+"security__wipe_gate_blocked_title" = "Bitkit està bloquejat";
+"security__wipe_gate_blocked_text" = "Bitkit no pot verificar el seu estat de seguretat. Torna-ho a provar o exporta els registres per al suport.";
 "security__authorization__success" = "Èxit";
 "pubky_auth__title" = "Autoritzar";
 "pubky_auth__description_prefix" = "Un servei sol·licita permís per accedir i editar les teves dades de ";
@@ -1702,6 +1710,9 @@
 "wallet__send_error_support" = "Contacta amb el suport";
 "subscriptions__allowances" = "Assignacions";
 "subscriptions__allowances_empty_headline" = "Configura\n<accent>assignacions</accent>";
+"subscriptions__allowances_paused_description" = "Els teus registres d'assignacions són més antics que altres que aquest moneder ja ha fet servir. Les sol·licituds demanaran la teva aprovació fins que reprenguis.";
+"subscriptions__allowances_paused_resume" = "Reprèn";
+"subscriptions__allowances_paused_title" = "Pagaments automàtics en pausa";
 "subscriptions__allowances_empty_description" = "Pots establir límits de despesa per pagar automàticament les sol·licituds de pagament de contactes de confiança.";
 "subscriptions__allowance_add" = "Afegir assignació";
 "subscriptions__allowance_title" = "Assignació";
@@ -1763,3 +1774,5 @@
 "profile__recovery_working" = "S’està completant la neteja del perfil…";
 
 "wallet__balance_updating" = "S’està actualitzant el saldo…";
+"other__error_keychain" = "Problema de connexió de dades";
+"other__error_keychain_msg" = "No s'ha pogut carregar la clau principal del clauer.";

@@ -142,6 +142,7 @@ class BackupService {
     private var isStoppingBackups = false
     private var isRestoring = false
     private var isWiping = false
+    private var wipeGeneration: UInt64 = 0
     private var backupFailureNotificationGate = BackupFailureNotificationGate()
 
     private let defaults: UserDefaults
@@ -230,7 +231,23 @@ class BackupService {
     /// Sets the wiping flag to prevent backups during wipe operations
     func setWiping(_ isWiping: Bool) {
         stateQueue.sync {
+            if isWiping, !self.isWiping {
+                wipeGeneration &+= 1
+            }
             self.isWiping = isWiping
+        }
+    }
+
+    private func captureWipeGeneration() throws -> UInt64 {
+        try stateQueue.sync {
+            guard !isWiping else { throw CancellationError() }
+            return wipeGeneration
+        }
+    }
+
+    private func requireWipeGeneration(_ generation: UInt64) throws {
+        try stateQueue.sync {
+            guard !isWiping, wipeGeneration == generation else { throw CancellationError() }
         }
     }
 
@@ -280,7 +297,9 @@ class BackupService {
 
     private func retryPendingBackups(generation: UInt64, observingAtEntry: Bool) async {
         let tasks = try? await ServiceQueue.background(.backup) { [self] in
-            guard observingAtEntry, !isStoppingBackups, generation == currentSchedulingGeneration else {
+            guard observingAtEntry, !isStoppingBackups, generation == currentSchedulingGeneration,
+                  let wipeGeneration = try? captureWipeGeneration()
+            else {
                 return [Task<BackupOutcome, Never>]()
             }
             return BackupCategory.allCases.compactMap { category -> Task<BackupOutcome, Never>? in
@@ -291,7 +310,7 @@ class BackupService {
                 else { return nil }
 
                 let task = Task {
-                    let outcome = await self.runBackup(category: category, isScheduled: true)
+                    let outcome = await self.runBackup(category: category, isScheduled: true, wipeGeneration: wipeGeneration)
                     if outcome.canRetryPendingBackup, !Task.isCancelled, self.getBackupStatus(category: category).isRequired {
                         await self.scheduleBackup(category: category, generation: generation, initialOutcome: outcome)
                     }
@@ -326,6 +345,12 @@ class BackupService {
 
     @MainActor
     func stopObservingBackups() async {
+        await requestStopObservingBackups().value
+    }
+
+    @MainActor
+    @discardableResult
+    func requestStopObservingBackups() -> Task<Void, Never> {
         let previous = observationTask
         let stopping = Task {
             await previous?.value
@@ -361,7 +386,7 @@ class BackupService {
             Logger.debug("Stopped observing backup statuses and data store changes", context: "BackupService")
         }
         observationTask = stopping
-        await stopping.value
+        return stopping
     }
 
     @discardableResult
@@ -370,17 +395,19 @@ class BackupService {
     }
 
     private func triggerBackup(category: BackupCategory, isScheduled: Bool, waitForExisting: Bool = false) async -> BackupOutcome {
+        guard let wipeGeneration = try? captureWipeGeneration() else { return .failed }
         while !Task.isCancelled {
             let admission = try? await ServiceQueue.background(.backup) { [self] () -> (
                 task: Task<BackupOutcome, Never>?,
                 owned: Bool,
                 stopping: Bool
             ) in
+                try requireWipeGeneration(wipeGeneration)
                 guard !isStoppingBackups else { return (nil, false, true) }
                 if let existing = runningBackupTasks[category] {
                     return (waitForExisting ? existing : nil, false, false)
                 }
-                let task = Task { await self.runBackup(category: category, isScheduled: isScheduled) }
+                let task = Task { await self.runBackup(category: category, isScheduled: isScheduled, wipeGeneration: wipeGeneration) }
                 runningBackupTasks[category] = task
                 return (task, true, false)
             }
@@ -406,7 +433,7 @@ class BackupService {
         await observationTask?.value
     }
 
-    private func runBackup(category: BackupCategory, isScheduled: Bool) async -> BackupOutcome {
+    private func runBackup(category: BackupCategory, isScheduled: Bool, wipeGeneration: UInt64) async -> BackupOutcome {
         Logger.debug("Backup starting for: '\(category.rawValue)'", context: "BackupService")
         var outcome = BackupOutcome.failed
         var requiredAtStart: UInt64 = 0
@@ -421,6 +448,7 @@ class BackupService {
 
         do {
             try Task.checkCancellation()
+            try requireWipeGeneration(wipeGeneration)
             if isScheduled, shouldSkipBackup(category: category) {
                 throw CancellationError()
             }
@@ -442,11 +470,13 @@ class BackupService {
                     try requireMetadataBackupReady()
                 }
                 try Task.checkCancellation()
+                try requireWipeGeneration(wipeGeneration)
                 if isScheduled, shouldSkipBackup(category: category) {
                     throw CancellationError()
                 }
                 try await uploadBackup(category.rawValue, data)
             }
+            try requireWipeGeneration(wipeGeneration)
             updateBackupStatus(category: category) { status in
                 let changed = self.backupVersions[category, default: 0] != versionAtStart
                 return BackupItemStatus(
@@ -757,7 +787,11 @@ class BackupService {
                 if let paymentState = payload.paykitPaymentState {
                     // VssBackupClient's existing custom backup namespace is explicitly wallet index 0.
                     let backupWallet = try await PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet.backupNamespace(index: 0)
-                    try await PaykitPaymentProofService.shared.restoreBackup(paymentState, wallet: backupWallet)
+                    try await PaykitPaymentProofService.shared.restoreBackup(
+                        paymentState,
+                        wallet: backupWallet,
+                        hasLedger: payload.paykitSdkBackupState != nil
+                    )
                 }
                 try TransferStorage.shared.upsertList(payload.transfers)
                 await PrivatePaykitAddressReservationStore.shared.restoreBackup(
@@ -864,17 +898,17 @@ class BackupService {
         for category in BackupCategory.allCases {
             let categoryPublisher = backupStatusesPublisher
                 .prepend(getAllBackupStatuses())
-                .map { statuses -> BackupItemStatus in
+                .map { @Sendable statuses -> BackupItemStatus in
                     statuses[category] ?? BackupItemStatus()
                 }
 
             let distinctPublisher = categoryPublisher
-                .removeDuplicates { old, new in
+                .removeDuplicates { @Sendable old, new in
                     old.synced == new.synced && old.required == new.required
                 }
 
             distinctPublisher
-                .sink { [weak self] status in
+                .sink { @Sendable [weak self] status in
                     guard let self, !self.shouldSkipBackup(category: category) else { return }
                     if status.isRequired && !status.running {
                         let generation = currentSchedulingGeneration
@@ -894,7 +928,7 @@ class BackupService {
         var listeners = Set<AnyCancellable>()
         // SETTINGS
         SettingsViewModel.shared.settingsPublisher
-            .sink { [weak self] _ in
+            .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markObservedBackupRequired(category: .settings)
             }
@@ -902,7 +936,7 @@ class BackupService {
 
         // WIDGETS
         SettingsViewModel.shared.widgetsPublisher
-            .sink { [weak self] _ in
+            .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markObservedBackupRequired(category: .widgets)
             }
@@ -911,7 +945,7 @@ class BackupService {
         // Record requirements synchronously; the scheduled upload already has a debounce.
         WalletBackupChangeTracker.localChanges
             .merge(with: PaykitSdkService.walletBackupDataChangedPublisher)
-            .sink { [weak self] _ in
+            .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markObservedBackupRequired(category: .wallet)
             }
@@ -919,7 +953,7 @@ class BackupService {
 
         UsdtWalletManager.walletBackupDataChangedPublisher
             .merge(with: PaykitUsdtPaymentService.walletBackupDataChangedPublisher)
-            .sink { [weak self] _ in
+            .sink { @Sendable [weak self] _ in
                 guard let self, !self.isWipingOrRestoringUsdt() else { return }
                 markObservedBackupRequired(category: .usdt)
             }
@@ -927,7 +961,7 @@ class BackupService {
 
         // ACTIVITIES
         CoreService.shared.activity.activitiesChangedPublisher
-            .sink { [weak self] _ in
+            .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markObservedBackupRequired(category: .activity)
             }
@@ -935,7 +969,7 @@ class BackupService {
 
         // METADATA (from ActivityService)
         CoreService.shared.activity.metadataChangedPublisher
-            .sink { [weak self] _ in
+            .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markObservedBackupRequired(category: .metadata)
             }
@@ -944,7 +978,7 @@ class BackupService {
         // METADATA (hardware wallet names). Scoped to the names alone: the known-device store is also
         // rewritten by every connect, and reconnect traffic must not re-upload the whole envelope.
         HwKnownDeviceStorage.namesChangedPublisher
-            .sink { [weak self] _ in
+            .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markObservedBackupRequired(category: .metadata)
             }
@@ -952,7 +986,7 @@ class BackupService {
 
         // APP STATE (UserDefaults changes, etc.)
         SettingsViewModel.shared.appStatePublisher
-            .sink { [weak self] _ in
+            .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markObservedBackupRequired(category: .metadata)
             }
@@ -960,7 +994,7 @@ class BackupService {
 
         // BLOCKTANK
         CoreService.shared.blocktank.stateChangedPublisher
-            .sink { [weak self] _ in
+            .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markObservedBackupRequired(category: .blocktank)
             }
@@ -969,7 +1003,7 @@ class BackupService {
         // LIGHTNING SYNC STATUS
         LightningService.shared.syncStatusChangedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
-            .sink { [weak self] lastSync in
+            .sink { @Sendable [weak self] lastSync in
                 guard let self, !self.shouldSkipBackup() else { return }
                 updateBackupStatus(category: .lightningConnections) { _ in
                     BackupItemStatus(

@@ -661,6 +661,14 @@
 "security__use_pin" = "Použít PIN kód";
 "security__wiped_title" = "Odstranění dat peněženky";
 "security__wiped_message" = "Bitkit byla resetována a všechna data peněženky byla vymazána.";
+"security__pin_unavailable" = "Bitkit nemohl ověřit váš PIN. Zkuste to prosím znovu.";
+"security__wipe_not_started" = "Resetování se nepodařilo spustit. Nic nebylo smazáno.";
+"security__wipe_gate_title" = "Resetování Bitkitu";
+"security__wipe_gate_text" = "Bitkit maže data peněženky v tomto zařízení. Nechte aplikaci otevřenou, dokud to nedokončí.";
+"security__wipe_gate_failed" = "Bitkit nemohl dokončit mazání dat peněženky a zkusí to znovu. Můžete to zkusit znovu hned, nebo exportovat protokoly pro podporu.";
+"security__wipe_gate_step" = "Krok {step} z {total}";
+"security__wipe_gate_blocked_title" = "Bitkit je uzamčen";
+"security__wipe_gate_blocked_text" = "Bitkit nemůže ověřit svůj stav zabezpečení. Zkuste to znovu, nebo exportujte protokoly pro podporu.";
 "security__authorization__title" = "Autorizace";
 "security__authorization__description" = "Před udělením povolení ke správě vašich dat se ujistěte, že této službě důvěřujete.";
 "security__authorization__authorize" = "Autorizovat";
@@ -1841,6 +1849,9 @@
 "usdt__deposit_refund_address_network" = "Adresa USDT v síti {network}";
 "subscriptions__allowances" = "Povolení plateb";
 "subscriptions__allowances_empty_headline" = "Nastavte\n<accent>povolení plateb</accent>";
+"subscriptions__allowances_paused_description" = "Záznamy vašich rozpočtů jsou starší než ty, které tato peněženka už použila. Požadavky budou čekat na vaše schválení, dokud platby neobnovíte.";
+"subscriptions__allowances_paused_resume" = "Obnovit";
+"subscriptions__allowances_paused_title" = "Automatické platby pozastaveny";
 "subscriptions__allowances_empty_description" = "Můžete nastavit limity útraty a automaticky tak vyřizovat žádosti o platbu od důvěryhodných kontaktů.";
 "subscriptions__allowance_add" = "Přidat povolení";
 "subscriptions__allowance_title" = "Povolení plateb";

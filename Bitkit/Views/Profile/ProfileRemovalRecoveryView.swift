@@ -4,8 +4,6 @@ struct ProfileRemovalRecoveryView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var pubkyProfile: PubkyProfileManager
-    @EnvironmentObject private var wallet: WalletViewModel
-    @EnvironmentObject private var session: SessionManager
     @State private var isWorking = false
     @State private var confirmWipe = false
     @State private var confirmDisconnect = false
@@ -119,7 +117,7 @@ struct ProfileRemovalRecoveryView: View {
         isWorking = true
         defer { isWorking = false }
         do {
-            try await AppReset.wipe(app: app, wallet: wallet, session: session, expectedPendingID: wipeID)
+            try AppReset.resumeWipe(id: wipeID)
         } catch { show(error, expectedID: wipeID, expectedScope: .walletWipe) }
     }
 

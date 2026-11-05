@@ -586,7 +586,20 @@ final class ProfileOperationAdmission: @unchecked Sendable {
         return scope
     }
 
-    func drain(before scope: Scope) async throws {
+    func drain(before scope: Scope, timeout: Duration? = nil) async throws {
+        if let timeout {
+            let result: Result<Void, Error>? = await withDeadline(timeout) {
+                do {
+                    try await self.drain(before: scope)
+                    return .success(())
+                } catch {
+                    return .failure(error)
+                }
+            }
+            guard let result else { throw WipeWaitTimeoutError(wait: "profile operations") }
+            try result.get()
+            return
+        }
         try validate(scope, access: .control)
         await withCheckedContinuation { continuation in
             let ready = lock.withLock {

@@ -662,6 +662,14 @@
 "security__use_pin" = "Utilizar código PIN";
 "security__wiped_title" = "Datos de la billetera borrados";
 "security__wiped_message" = "Bitkit ha sido reseteado y todos los datos han sido borrados.";
+"security__pin_unavailable" = "Bitkit no pudo verificar su PIN. Intente de nuevo.";
+"security__wipe_not_started" = "No se pudo iniciar el restablecimiento. No se eliminó nada.";
+"security__wipe_gate_title" = "Restableciendo Bitkit";
+"security__wipe_gate_text" = "Bitkit está eliminando los datos de la billetera de este dispositivo. Mantenga la app abierta hasta que termine.";
+"security__wipe_gate_failed" = "Bitkit no pudo terminar de eliminar los datos de la billetera y lo intentará de nuevo. Puede reintentarlo ahora o exportar los logs para el soporte.";
+"security__wipe_gate_step" = "Paso {step} de {total}";
+"security__wipe_gate_blocked_title" = "Bitkit está bloqueado";
+"security__wipe_gate_blocked_text" = "Bitkit no puede verificar su estado de seguridad. Intente de nuevo o exporte los logs para el soporte.";
 "security__authorization__title" = "Autorización";
 "security__authorization__description" = "Asegúrese de que confía en este servicio antes de concederle permiso para gestionar sus datos.";
 "security__authorization__authorize" = "Autorizar";
@@ -1844,6 +1852,9 @@
 "usdt__deposit_refund_address_network" = "Dirección USDT en {network}";
 "subscriptions__allowances" = "Asignaciones";
 "subscriptions__allowances_empty_headline" = "Configure\n<accent>asignaciones</accent>";
+"subscriptions__allowances_paused_description" = "Tus registros de asignaciones son más antiguos que otros que esta billetera ya usó. Las solicitudes pedirán tu aprobación hasta que reanudes.";
+"subscriptions__allowances_paused_resume" = "Reanudar";
+"subscriptions__allowances_paused_title" = "Pagos automáticos en pausa";
 "subscriptions__allowances_empty_description" = "Puede establecer límites de gasto para pagar automáticamente las solicitudes de pago de contactos de confianza.";
 "subscriptions__allowance_add" = "Añadir asignación";
 "subscriptions__allowance_title" = "Asignación";

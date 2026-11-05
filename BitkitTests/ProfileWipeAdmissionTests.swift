@@ -34,9 +34,13 @@ final class ProfileWipeAdmissionTests: XCTestCase {
         var paused: UUID?
         var resumed: UUID?
         var cleanupRan = false
-        try await AppReset.withWipeAdmission(admission: admission, sdkService: sdk,
-                                             pause: { paused = $0 }, resume: { resumed = $0 })
-        { permitsRemote in
+        var committed = false
+        try await AppReset.withWipeAdmission(admission: admission, sdkService: sdk, commit: {
+            XCTAssertTrue(cleanupRan)
+            XCTAssertNil(try self.store.pending())
+            XCTAssertNil(resumed)
+            committed = true
+        }, pause: { paused = $0 }, resume: { resumed = $0 }) { permitsRemote in
             let pending = try XCTUnwrap(self.store.pending())
             XCTAssertEqual(pending.scope, .walletWipe)
             XCTAssertTrue(permitsRemote)
@@ -46,6 +50,7 @@ final class ProfileWipeAdmissionTests: XCTestCase {
             cleanupRan = true
         }
         XCTAssertTrue(cleanupRan)
+        XCTAssertTrue(committed)
         XCTAssertEqual(paused, resumed)
         XCTAssertNil(try store.pending())
         XCTAssertNoThrow(try admission.snapshot())
@@ -60,6 +65,11 @@ final class ProfileWipeAdmissionTests: XCTestCase {
             if hasReplacement {
                 try store.begin(id: replacement, scope: .walletWipe)
             }
+            let lockout = FakePinLockoutStore()
+            let coordinator = WipeCoordinator(store: lockout, makeExecutor: { nil }, retryDelays: [])
+            XCTAssertThrowsError(try AppReset.resumeWipe(id: original, store: store, coordinator: coordinator))
+            XCTAssertNil(lockout.intent)
+            XCTAssertEqual(coordinator.gate, .none)
             do {
                 try await AppReset.withWipeAdmission(admission: admission, sdkService: service(), expectedPendingID: original,
                                                      pause: { _ in XCTFail("Stale recovery paused new work") }, resume: { _ in })
@@ -167,5 +177,52 @@ final class ProfileWipeAdmissionTests: XCTestCase {
         }
         try await operation.value
         XCTAssertNil(try cancelling.pending())
+    }
+
+    func testIntentCommitFailurePropagatesAfterProfileCompletionAndRetryStaysLocal() async throws {
+        struct CommitFailure: Error {}
+        var intentPending = true
+        do {
+            try await AppReset.withWipeAdmission(admission: admission, sdkService: service(), commit: {
+                XCTAssertNil(try self.store.pending())
+                throw CommitFailure()
+            }, pause: { _ in }, resume: { _ in }) { _ in }
+            XCTFail("Commit failure must keep the wipe gate pending")
+        } catch is CommitFailure {}
+        XCTAssertTrue(intentPending)
+        XCTAssertNil(try store.pending())
+        try await AppReset.withWipeAdmission(admission: admission, sdkService: service(), permitsRemoteCleanup: false,
+                                             commit: { intentPending = false }, pause: { _ in }, resume: { _ in })
+        { permitsRemote in
+            XCTAssertFalse(permitsRemote)
+            XCTAssertThrowsError(try self.admission.checkCurrent())
+        }
+        XCTAssertFalse(intentPending)
+        XCTAssertNil(try store.pending())
+    }
+
+    func testDrainDeadlineDoesNotRunCleanupOrReleaseTheOldNativeOwner() async throws {
+        let oldOwner = try admission.capture()
+        defer { admission.release(oldOwner) }
+        do {
+            try await AppReset.withWipeAdmission(admission: admission, sdkService: service(), acquireTimeout: .milliseconds(50),
+                                                 pause: { _ in }, resume: { _ in })
+            { _ in
+                XCTFail("A held native tail must prevent destructive cleanup")
+            }
+            XCTFail("A held native tail must reach the bounded failure")
+        } catch let error as WipeWaitTimeoutError {
+            XCTAssertEqual(error.wait, "profile operations")
+        }
+        XCTAssertNil(try store.pending())
+        XCTAssertThrowsError(try admission.snapshot())
+        admission.release(oldOwner)
+        try await AppReset.withWipeAdmission(admission: admission, sdkService: service(), permitsRemoteCleanup: false,
+                                             acquireTimeout: .seconds(1), pause: { _ in }, resume: { _ in })
+        { permitsRemote in
+            XCTAssertFalse(permitsRemote)
+        }
+        XCTAssertNil(try store.pending())
+        XCTAssertNoThrow(try admission.snapshot())
     }
 }

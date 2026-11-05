@@ -1070,7 +1070,7 @@ final class PaykitSdkOperationLockTests: XCTestCase {
 
     func testWipeRejectsPreviouslyAdmittedOuterOwnerBeforeQueueInsertion() async throws {
         for cancellable in [false, true] {
-            let outer = PaykitSdkOperationLock()
+            let (outerFinished, finishOuter) = AsyncStream<Void>.makeStream()
             let admitted = expectation(description: "Ordinary operation admitted before SDK enqueue")
             let finished = expectation(description: "Old outer owner rejected without waiting behind wipe")
             let wipeEntered = expectation(description: "Wipe waits on original outer owner")
@@ -1080,14 +1080,15 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                 for await _ in gate {}
             })
             let ordinary = Task {
-                defer { finished.fulfill() }
+                defer {
+                    finishOuter.finish()
+                    finished.fulfill()
+                }
                 do {
-                    try await outer.withLock {
-                        if cancellable {
-                            try await sdk.withCancellableLock { XCTFail("Stale SDK operation executed") }
-                        } else {
-                            try await sdk.withLock { XCTFail("Stale SDK operation executed") }
-                        }
+                    if cancellable {
+                        try await sdk.withCancellableLock { XCTFail("Stale SDK operation executed") }
+                    } else {
+                        try await sdk.withLock { XCTFail("Stale SDK operation executed") }
                     }
                     XCTFail("Expected wipe rejection")
                 } catch let PaykitError.Storage(code, _) {
@@ -1099,7 +1100,7 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                 try await sdk.withWalletWipe {
                     wipeEntered.fulfill()
                     // Allow cleanup after a failed assertion without leaving either task suspended.
-                    try await outer.withCancellableLock {}
+                    for await _ in outerFinished {}
                 }
             }
             await fulfillment(of: [wipeEntered], timeout: 2)
@@ -1285,6 +1286,89 @@ final class PaykitSdkOperationLockTests: XCTestCase {
             }
             try await Task.sleep(for: .milliseconds(5))
         }
+    }
+
+    func testWorkAWipeAbandonedIsRejectedOnceThatWipeHasEnded() async throws {
+        let lock = PaykitSdkOperationLock()
+        let resume = AsyncGate()
+        var abandoned: Task<[String], Never>?
+        try await lock.withWalletWipe {
+            abandoned = Task { await Self.attemptEveryBoundary(on: lock, after: resume) }
+        }
+
+        resume.open()
+        let rejections = await abandoned?.value
+        XCTAssertEqual(rejections, ["withLock", "withoutLock", "withCancellableLock", "checkWipeOwnership"])
+        try await lock.withLock {}
+    }
+
+    func testWorkAWipeAbandonedIsRejectedWhileAnotherWipeRuns() async throws {
+        let lock = PaykitSdkOperationLock()
+        let resume = AsyncGate()
+        var abandoned: Task<[String], Never>?
+        try await lock.withWalletWipe {
+            abandoned = Task { await Self.attemptEveryBoundary(on: lock, after: resume) }
+        }
+
+        var rejections: [String]?
+        try await lock.withWalletWipe {
+            try lock.checkWipeOwnership()
+            resume.open()
+            rejections = await abandoned?.value
+        }
+
+        XCTAssertEqual(rejections, ["withLock", "withoutLock", "withCancellableLock", "checkWipeOwnership"])
+    }
+
+    func testAWipeThatCannotTakeTheLockInTimeRunsNothingAndLeavesTheLockUsable() async throws {
+        let lock = PaykitSdkOperationLock()
+        let holder = AsyncGate()
+        let held = Task { try await lock.withLock { await holder.wait() } }
+        try await Task.sleep(for: .milliseconds(20))
+
+        var didRun = false
+        do {
+            try await lock.withWalletWipe(acquireTimeout: .milliseconds(50)) { didRun = true }
+            XCTFail("Expected the wipe to give up waiting")
+        } catch is WipeWaitTimeoutError {}
+
+        XCTAssertFalse(didRun)
+        holder.open()
+        try await held.value
+        try await lock.withWalletWipe(acquireTimeout: .seconds(5)) { didRun = true }
+        XCTAssertTrue(didRun)
+        try await lock.withLock {}
+    }
+
+    func testWorkOutsideAnyWipeOwnsNoWipe() async throws {
+        let lock = PaykitSdkOperationLock()
+
+        XCTAssertNoThrow(try lock.checkWipeOwnership())
+        try await lock.withWalletWipe {
+            try lock.checkWipeOwnership()
+            try await lock.withLock {}
+        }
+    }
+
+    /// Runs as work a wipe started and then stopped waiting for, which keeps that wipe as its owner. Returns the
+    /// boundaries that rejected it with the wipe error.
+    private static func attemptEveryBoundary(on lock: PaykitSdkOperationLock, after resume: AsyncGate) async -> [String] {
+        await resume.wait()
+        var rejections: [String] = []
+        let boundaries: [(String, () async throws -> Void)] = [
+            ("withLock", { try await lock.withLock {} }),
+            ("withoutLock", { try await lock.withoutLock {} }),
+            ("withCancellableLock", { try await lock.withCancellableLock {} }),
+            ("checkWipeOwnership", { try lock.checkWipeOwnership() }),
+        ]
+        for (name, boundary) in boundaries {
+            do {
+                try await boundary()
+            } catch let PaykitError.Storage(code, _) where code == "wallet_wipe_in_progress" {
+                rejections.append(name)
+            } catch {}
+        }
+        return rejections
     }
 }
 
