@@ -278,7 +278,7 @@ struct SendAmountView: View {
                 if let invoice = app.scannedOnchainInvoice, invoice.amountSatoshis > 0 {
                     // Set the amount to the scanned onchain invoice amount if it exists
                     amountViewModel.updateFromSats(invoice.amountSatoshis, currency: currency)
-                    wallet.sendAmountSats = invoice.amountSatoshis
+                    wallet.restoreScannedSendAmount(invoice.amountSatoshis)
                 } else if let lightningInvoice = app.scannedLightningInvoice,
                           lightningInvoice.amountSatoshis > 0,
                           wallet.sendAmountSats == nil || wallet.sendAmountSats == 0

@@ -171,12 +171,12 @@ final class ScannerManagerTests: XCTestCase {
                 }) { staleRoutes.append($0) }
             }
             await fulfillment(of: [started], timeout: 2)
-            await scanner.handleSendScan(paymentURI + "?amount=0.000002") { route in
+            await scanner.handleSendScan(paymentURI + "?amount=0.00001") { route in
                 if let route {
                     flow.navigationPath.append(route)
                 }
             }
-            XCTAssertEqual(app.scannedOnchainInvoice?.amountSatoshis, 200)
+            XCTAssertEqual(app.scannedOnchainInvoice?.amountSatoshis, 1000)
             let generation = app.sendStateGeneration
             let path = flow.navigationPath
             XCTAssertFalse(path.isEmpty)
@@ -188,7 +188,7 @@ final class ScannerManagerTests: XCTestCase {
             await task.value
             XCTAssertEqual(sheets.activeSheetConfiguration?.presentationID, presentation.presentationID)
             XCTAssertEqual(app.sendStateGeneration, generation)
-            XCTAssertEqual(app.scannedOnchainInvoice?.amountSatoshis, 200)
+            XCTAssertEqual(app.scannedOnchainInvoice?.amountSatoshis, 1000)
             XCTAssertEqual(flow.navigationPath, path)
             XCTAssertTrue(staleRoutes.isEmpty)
             XCTAssertEqual(haptics, 1)
