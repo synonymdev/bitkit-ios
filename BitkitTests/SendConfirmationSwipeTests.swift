@@ -185,9 +185,18 @@ final class SendConfirmationSwipeTests: XCTestCase {
 
     func testAFixedAmountSavingsCannotPayMovesToAHardwareWalletThatCovers() {
         let balances: [(walletId: String, balanceSats: UInt64)] = [("small", 20000), ("large", 549_577)]
-        XCTAssertEqual(SendConfirmationView.hardwareWalletCovering(amount: 300_000, balances: balances), "large")
-        XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 600_000, balances: balances))
-        XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 300_000, balances: []))
+        XCTAssertEqual(
+            SendConfirmationView.hardwareWalletCovering(amount: 300_000, savingsBalanceSats: 209_714, balances: balances),
+            "large"
+        )
+        XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 600_000, savingsBalanceSats: 209_714, balances: balances))
+        XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 300_000, savingsBalanceSats: 209_714, balances: []))
+    }
+
+    func testACoinSelectionFailureWithEnoughSavingsDoesNotMoveToAHardwareWallet() {
+        let balances: [(walletId: String, balanceSats: UInt64)] = [("large", 549_577)]
+        XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 10000, savingsBalanceSats: 209_714, balances: balances))
+        XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 209_714, savingsBalanceSats: 209_714, balances: balances))
     }
 
     func testOnlyTheNewestFeeCalculationHoldsTheSwipe() {

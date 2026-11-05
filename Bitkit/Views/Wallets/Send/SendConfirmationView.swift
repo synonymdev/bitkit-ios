@@ -1203,9 +1203,15 @@ struct SendConfirmationView: View {
         isHardwarePayment && !isContactPayment && !afterFundingSwitch
     }
 
-    /// The first hardware wallet whose balance covers the amount; its fee preview decides whether it can pay.
-    static func hardwareWalletCovering(amount: UInt64, balances: [(walletId: String, balanceSats: UInt64)]) -> String? {
-        balances.first { $0.balanceSats >= amount }?.walletId
+    /// The first hardware wallet whose balance covers the amount, used only when Savings is short of it, so any
+    /// other coin-selection failure is reported instead. The wallet's fee preview decides whether it can pay.
+    static func hardwareWalletCovering(
+        amount: UInt64,
+        savingsBalanceSats: UInt64,
+        balances: [(walletId: String, balanceSats: UInt64)]
+    ) -> String? {
+        guard savingsBalanceSats < amount else { return nil }
+        return balances.first { $0.balanceSats >= amount }?.walletId
     }
 
     /// Only the newest fee calculation can hold the swipe, so a calculation superseded by a funding switch never leaves it disabled.
@@ -2033,6 +2039,7 @@ struct SendConfirmationView: View {
             if let amount = wallet.sendAmountSats,
                let walletId = Self.hardwareWalletCovering(
                    amount: amount,
+                   savingsBalanceSats: UInt64(max(wallet.spendableOnchainBalanceSats, 0)),
                    balances: hwWalletManager.wallets.map { ($0.walletId, hwWalletManager.fundingBalance(walletId: $0.walletId)) }
                )
             {
