@@ -86,6 +86,29 @@ final class ContactsManagerTests: XCTestCase {
         }
     }
 
+    func testDiscoveryLeavesOutPubkyAppModerationAccounts() async throws {
+        let ownKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let moderationKeys = [
+            "pubkyeuarj183st16psbzusb44usk8i1k5foubnw7zt3n3j8h9zxg6hro",
+            "nto4u7kkagk5hfjk4wgueemzy61nssic811hid1ty9u81uatmqzy",
+        ]
+        let friend = makeContact(publicKey: "pubky5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo")
+        let cases: [([String], [Bitkit.PubkyContact])] = [
+            (moderationKeys + [friend.publicKey], [friend]),
+            (moderationKeys, []),
+        ]
+
+        for (followKeys, expected) in cases {
+            let manager = ContactsManager()
+            await manager.discoverRemoteContacts(publicKey: ownKey, fetchContactKeys: { _ in followKeys }, resolveProfile: { publicKey in
+                XCTAssertFalse(moderationKeys.contains { PubkyPublicKeyFormat.matches(publicKey, $0) })
+                return friend.profile
+            })
+
+            XCTAssertEqual(manager.pendingImportContacts, expected)
+        }
+    }
+
     func testImportPreservesExistingContactsOnBatchFailureAndRetriesSelectedContacts() async throws {
         let manager = ContactsManager()
         let existing = makeContact(publicKey: "pubky-existing")
