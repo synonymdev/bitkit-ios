@@ -588,10 +588,14 @@ extension MigrationsService {
         userDefaults.bool(forKey: Self.rnMigrationCheckedKey)
     }
 
+    /// Throws when the React Native keychain cannot be read.
+    func hasRNMnemonic() throws -> Bool {
+        try loadStringFromRNKeychain(key: .mnemonic(walletName: rnWalletName))?.isEmpty == false
+    }
+
     func hasRNWalletData() -> Bool {
         do {
-            let mnemonic = try loadStringFromRNKeychain(key: .mnemonic(walletName: rnWalletName))
-            return mnemonic?.isEmpty == false
+            return try hasRNMnemonic()
         } catch {
             Logger.error("Error checking for RN wallet data: \(error)", context: "Migration")
             return false
@@ -626,8 +630,18 @@ extension MigrationsService {
     /// Returns true if RN keychain has mnemonic but RN app files don't exist.
     /// This indicates an orphaned keychain from a deleted RN app install.
     func hasOrphanedRNKeychain() -> Bool {
+        do {
+            return try checkOrphanedRNKeychain()
+        } catch {
+            Logger.error("Error checking for an orphaned RN keychain: \(error)", context: "Migration")
+            return false
+        }
+    }
+
+    /// Throws when the React Native keychain cannot be read, which may hide an orphaned seed.
+    func checkOrphanedRNKeychain() throws -> Bool {
         // Check if RN keychain has mnemonic
-        guard hasRNWalletData() else {
+        guard try hasRNMnemonic() else {
             return false
         }
 
@@ -710,6 +724,7 @@ extension MigrationsService {
 
     private func clearPinSettings() {
         try? Keychain.delete(key: .securityPin)
+        try? Keychain.delete(key: .pinFailedAttempts)
 
         userDefaults.removeObject(forKey: "requirePinForPayments")
         userDefaults.removeObject(forKey: "useBiometrics")
