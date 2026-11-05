@@ -685,8 +685,8 @@ final class HwSendCoordinator {
                 }
             }
 
-            /// Undoes only what this attempt wrote. A record from an earlier payment still guards that payment.
             func clearBeforeDispatch() async -> Bool {
+                // Undoes only what this attempt wrote. A record from an earlier payment still guards that payment.
                 guard paymentRequestId == nil else { return await clearSignedPaymentBeforeDispatch(signed) }
                 switch retainOutcome {
                 case .stored:
