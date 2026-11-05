@@ -118,9 +118,10 @@ actor HwRetainedSendService {
         return .replaced(existing)
     }
 
-    /// Puts back the record that `serializedTx` replaced, when those bytes turned out never to reach dispatch.
+    /// Puts back the record that `serializedTx` replaced, when those bytes never reached dispatch or settled as not sent.
+    /// Bytes the watcher has seen did go out, so they stay as the record.
     func restore(_ previous: HwRetainedSend, replacing serializedTx: String) throws {
-        guard try store.load(walletId: previous.walletId)?.serializedTx == serializedTx else { return }
+        guard let current = try store.load(walletId: previous.walletId), current.serializedTx == serializedTx, !current.observed else { return }
         try store.save(previous)
     }
 

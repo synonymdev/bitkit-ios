@@ -162,6 +162,19 @@ final class HwRetainedSendServiceTests: XCTestCase {
         XCTAssertEqual(record?.serializedTx, "aa")
     }
 
+    func testRestoreLeavesBytesTheWatcherHasSeen() async throws {
+        let store = MemoryRetainedSendStore()
+        let service = HwRetainedSendService(store: store)
+        var observed = send(serializedTx: "bb")
+        observed.observed = true
+        try store.save(observed)
+
+        try await service.restore(send(serializedTx: "aa"), replacing: "bb")
+
+        let record = try await service.record(walletId: wallet)
+        XCTAssertEqual(record, observed)
+    }
+
     func testRetainingIdenticalBytesKeepsRefusedFlag() async throws {
         let service = HwRetainedSendService(store: MemoryRetainedSendStore())
         try await service.retain(send())

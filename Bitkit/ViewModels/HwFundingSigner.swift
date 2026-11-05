@@ -597,7 +597,11 @@ final class HwSendCoordinator {
                 isBroadcastUnresolved = restored.hasAttemptedBroadcast && !restored.isRefusedForNavigation
             }
             var replacement = HwRetainedSendReplacement.none
-            if consent != nil {
+            let heldReplacement = paymentRequestId == nil ? replacementOverRestoredRecord(address: address, sats: sats) : nil
+            if let heldReplacement {
+                // Retrying bytes already signed under that decision, so it needs no new warning. The retain below replaces the old record again.
+                replacement = heldReplacement
+            } else if consent != nil {
                 // Nothing is deleted here: the old record is only replaced once there are new bytes to dispatch.
                 replacement = .consented
                 do {
@@ -627,6 +631,7 @@ final class HwSendCoordinator {
             if let pendingPayment,
                pendingPayment.request == request
                || (pendingPayment.isAttemptedOrdinarySend && pendingPayment.request.isSamePayment(address: address, sats: sats))
+               || heldReplacement != nil
             {
                 signed = pendingPayment.signedTx
             } else {
@@ -739,6 +744,7 @@ final class HwSendCoordinator {
                 isBroadcastUnresolved = true
                 broadcastWasAttempted = true
                 pendingPayment?.hasBroadcastAttempted = true
+                pendingPayment?.replacementOverRestoredRecord = nil
                 do {
                     let result = try await signer.broadcastSignedFunding(signed, paymentDeadline: paymentDeadline) { [self] in
                         try Task.checkCancellation()
@@ -787,7 +793,14 @@ final class HwSendCoordinator {
                             await afterBroadcast(result)
                             return result
                         }
-                        throw await settleRetainedSend(walletId: walletId, failure: failure, isRetry: hadPriorBroadcastAttempt)
+                        throw await settleRetainedSend(
+                            walletId: walletId,
+                            failure: failure,
+                            isRetry: hadPriorBroadcastAttempt,
+                            signed: signed,
+                            retainOutcome: retainOutcome,
+                            replacement: replacement
+                        )
                     }
                     throw failure
                 }
@@ -852,6 +865,9 @@ final class HwSendCoordinator {
     /// reuses the same bytes, so it needs no current fee rate and must keep reading Retry. A payment holding consent signs anew.
     func retainedRebroadcastTx(address: String, sats: UInt64, hasIncomingRequest: Bool) async -> HwFundingSignedTx? {
         guard !hasIncomingRequest, let walletId, !holdsRetainedSendConsent(address: address, sats: sats) else { return nil }
+        if replacementOverRestoredRecord(address: address, sats: sats) != nil {
+            return pendingPayment?.signedTx
+        }
         if let retained = try? await retainedSends.record(walletId: walletId) {
             return retained.isSamePayment(address: address, sats: sats) ? retained.signedTx : nil
         }
@@ -891,6 +907,12 @@ final class HwSendCoordinator {
             return false
         }
         return true
+    }
+
+    /// How to replace the restored record, when this payment's signed bytes are still held in this sheet for a Retry.
+    private func replacementOverRestoredRecord(address: String, sats: UInt64) -> HwRetainedSendReplacement? {
+        guard let pendingPayment, pendingPayment.request.isSamePayment(address: address, sats: sats) else { return nil }
+        return pendingPayment.replacementOverRestoredRecord
     }
 
     func reconnectWithPassphrase(
@@ -1003,7 +1025,14 @@ final class HwSendCoordinator {
     /// Decides whether a failed ordinary broadcast keeps its retained send, and returns the error to surface: a send that is
     /// kept for an unknown reason may already be out, so it must not read as a definite failure. `isRetry` matters because a
     /// refusal such as `bad-txns-inputs-missingorspent` on a retry may describe our own earlier accepted transaction.
-    private func settleRetainedSend(walletId: String, failure: Error, isRetry: Bool) async -> Error {
+    private func settleRetainedSend(
+        walletId: String,
+        failure: Error,
+        isRetry: Bool,
+        signed: HwFundingSignedTx,
+        retainOutcome: HwRetainOutcome,
+        replacement: HwRetainedSendReplacement
+    ) async -> Error {
         let refused = failure.isHardwareBroadcastRefusal()
         if isRetry {
             if refused {
@@ -1015,16 +1044,29 @@ final class HwSendCoordinator {
                 return HwTransferError.broadcastUncertain
             }
         } else if refused {
-            await releaseRetainedSend(walletId: walletId)
+            await releaseOrRestoreRetainedSend(walletId: walletId, signed: signed, retainOutcome: retainOutcome)
             pendingPayment = nil
         } else if failure.isDefiniteElectrumConnectFailure() {
-            await releaseRetainedSend(walletId: walletId)
+            if await releaseOrRestoreRetainedSend(walletId: walletId, signed: signed, retainOutcome: retainOutcome) {
+                pendingPayment?.replacementOverRestoredRecord = replacement
+            }
             pendingPayment?.hasBroadcastAttempted = false
         }
         if refused || failure.isBroadcastConnectivityFailure() || failure is CancellationError {
             return failure
         }
         return HwTransferError.broadcastUncertain
+    }
+
+    /// Ends a record whose bytes did not go out. If it replaced an older record, that payment's outcome is still unknown, so the
+    /// older record comes back rather than leaving nothing. Returns whether it did.
+    @discardableResult
+    private func releaseOrRestoreRetainedSend(walletId: String, signed: HwFundingSignedTx, retainOutcome: HwRetainOutcome) async -> Bool {
+        guard case let .replaced(previous) = retainOutcome else {
+            await releaseRetainedSend(walletId: walletId)
+            return false
+        }
+        return await restoreRetainedSend(previous, replacing: signed)
     }
 
     /// A failed release only leaves the record behind, so the next attempt rebroadcasts or warns rather than signing again.
@@ -1091,6 +1133,8 @@ final class HwSendCoordinator {
         let paymentRequestId: PaykitPaymentRequest.ID?
         var isPreparedForBroadcast = false
         var hasBroadcastAttempted = false
+        /// Set when these bytes failed to connect and the record they replaced was put back, so a Retry may replace it again.
+        var replacementOverRestoredRecord: HwRetainedSendReplacement?
 
         var isAttemptedOrdinarySend: Bool {
             paymentRequestId == nil && hasBroadcastAttempted
