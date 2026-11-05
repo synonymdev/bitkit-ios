@@ -43,10 +43,7 @@ class Crypto {
             throw CryptoError.invalidPublicKey
         }
 
-        guard let context = secp256k1_context_create(UInt32(SECP256K1_CONTEXT_NONE)) else {
-            throw CryptoError.contextCreationFailed
-        }
-        defer { secp256k1_context_destroy(context) }
+        let context = try SharedContext.shared.get()
 
         var publicKey = secp256k1_pubkey()
         guard secp256k1_ec_pubkey_parse(context, &publicKey, publicKeyBytes, publicKeyBytes.count) == 1 else {
@@ -82,6 +79,45 @@ class Crypto {
         return Data(baseSecret)
     }
 
+    /// One libsecp256k1 context for the process, randomized once at creation to blind secret-key
+    /// operations (signing, public key creation) against side-channel leakage. Upstream allows
+    /// concurrent use without locking as long as the context is never randomized again or destroyed.
+    private final class SharedContext: @unchecked Sendable {
+        static let shared = SharedContext()
+
+        private let lock = NSLock()
+        private var context: OpaquePointer?
+
+        func get() throws -> OpaquePointer {
+            lock.lock()
+            defer { lock.unlock() }
+
+            if let context {
+                return context
+            }
+
+            guard let created = secp256k1_context_create(UInt32(SECP256K1_CONTEXT_NONE)) else {
+                throw CryptoError.contextCreationFailed
+            }
+
+            var seed = [UInt8](repeating: 0, count: 32)
+            defer { Crypto.zeroize(&seed) }
+
+            guard SecRandomCopyBytes(kSecRandomDefault, seed.count, &seed) == errSecSuccess else {
+                secp256k1_context_destroy(created)
+                throw CryptoError.randomGenerationFailed
+            }
+
+            guard secp256k1_context_randomize(created, seed) == 1 else {
+                secp256k1_context_destroy(created)
+                throw CryptoError.contextRandomizationFailed
+            }
+
+            context = created
+            return created
+        }
+    }
+
     private static func zeroize(_ bytes: inout [UInt8]) {
         bytes.withUnsafeMutableBytes { buffer in
             guard let base = buffer.baseAddress else { return }
@@ -90,10 +126,7 @@ class Crypto {
     }
 
     static func generateKeyPair() throws -> KeyPair {
-        guard let context = secp256k1_context_create(UInt32(SECP256K1_CONTEXT_SIGN)) else {
-            throw CryptoError.contextCreationFailed
-        }
-        defer { secp256k1_context_destroy(context) }
+        let context = try SharedContext.shared.get()
 
         var privateKey = [UInt8](repeating: 0, count: 32)
         repeat {
@@ -156,10 +189,7 @@ class Crypto {
             throw CryptoError.invalidPrivateKey
         }
 
-        guard let context = secp256k1_context_create(UInt32(SECP256K1_CONTEXT_SIGN)) else {
-            throw CryptoError.contextCreationFailed
-        }
-        defer { secp256k1_context_destroy(context) }
+        let context = try SharedContext.shared.get()
 
         let lightningPrefix = "Lightning Signed Message:"
         let prefixedMessage = lightningPrefix + message
@@ -200,10 +230,7 @@ class Crypto {
             throw CryptoError.invalidPrivateKey
         }
 
-        guard let context = secp256k1_context_create(UInt32(SECP256K1_CONTEXT_SIGN)) else {
-            throw CryptoError.contextCreationFailed
-        }
-        defer { secp256k1_context_destroy(context) }
+        let context = try SharedContext.shared.get()
 
         var publicKey = secp256k1_pubkey()
         let createResult = privateKey.withUnsafeBytes { keyPtr in
@@ -231,6 +258,7 @@ class Crypto {
         case sharedSecretGenerationFailed
         case invalidDerivationName
         case contextCreationFailed
+        case contextRandomizationFailed
         case invalidPublicKey
         case invalidPrivateKey
         case publicKeyCreationFailed

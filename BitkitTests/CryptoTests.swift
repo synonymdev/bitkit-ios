@@ -114,6 +114,50 @@ final class CryptoTests: XCTestCase {
         XCTAssertEqual(try Crypto.getPublicKey(privateKey: keyPair.privateKey), keyPair.publicKey)
     }
 
+    /// All operations share one randomized context; concurrent use must stay correct and deterministic.
+    func testConcurrentOperationsOnSharedContextMatchReferenceVectors() {
+        let privateKey = "cc74b1a4fdcd35916c766d3318c5a93b7e33a36ebeff0463128bf284975c2680".hexaData
+        let expectedSignature =
+            "204b84a4bfc77965c2ea561930829fca5a05610027d3591268e13f4e0cbb65aea2176f20bd78ca453a23214323ac1a6df88045f71b40f2e9dadab360743606a655"
+        let expectedPublicKey = "02f7c231fe139475b8193194b42043ae546768167e5cf836f5a4063f5d448a127f"
+        let expectedSharedSecret = "028ce542975d6d7b2307c92e527d507b03ffb3d897eb2e0830d29f40d5efd80ee3"
+        let serverPublicKey = "031e9923e689a181a803486b7d8c0d4a5aad360edb70c8bb413a98458d91652213"
+
+        let iterations = 200
+        let lock = NSLock()
+        var mismatches: [String] = []
+
+        DispatchQueue.concurrentPerform(iterations: iterations) { index in
+            let outcome: String
+            do {
+                switch index % 4 {
+                case 0:
+                    let signature = try Crypto.sign(message: "hello bitkit", privateKey: privateKey)
+                    outcome = signature == expectedSignature ? "" : "sign: \(signature)"
+                case 1:
+                    let publicKey = try Crypto.getPublicKey(privateKey: privateKey).hex
+                    outcome = publicKey == expectedPublicKey ? "" : "getPublicKey: \(publicKey)"
+                case 2:
+                    let secret = try Crypto.generateSharedSecret(privateKey: privateKey, nodePubkey: serverPublicKey).hex
+                    outcome = secret == expectedSharedSecret ? "" : "generateSharedSecret: \(secret)"
+                default:
+                    let keyPair = try Crypto.generateKeyPair()
+                    let derived = try Crypto.getPublicKey(privateKey: keyPair.privateKey)
+                    outcome = derived == keyPair.publicKey ? "" : "generateKeyPair mismatch"
+                }
+            } catch {
+                outcome = "threw \(error)"
+            }
+
+            guard !outcome.isEmpty else { return }
+            lock.lock()
+            mismatches.append(outcome)
+            lock.unlock()
+        }
+
+        XCTAssertEqual(mismatches, [])
+    }
+
     // MARK: - Input validation (regression: sign/getPublicKey read past the end of short keys)
 
     private static let validPrivateKey = "cc74b1a4fdcd35916c766d3318c5a93b7e33a36ebeff0463128bf284975c2680".hexaData
