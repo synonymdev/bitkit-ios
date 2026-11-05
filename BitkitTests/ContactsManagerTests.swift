@@ -86,7 +86,7 @@ final class ContactsManagerTests: XCTestCase {
         }
     }
 
-    func testDiscoveryLeavesOutPubkyAppModerationAccounts() async throws {
+    func testDiscoveryLeavesOutPubkyAppModerationAccounts() async {
         let ownKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
         let moderationKeys = [
             "pubkyeuarj183st16psbzusb44usk8i1k5foubnw7zt3n3j8h9zxg6hro",
