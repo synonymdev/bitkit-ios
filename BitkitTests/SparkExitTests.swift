@@ -2331,6 +2331,54 @@ final class SparkExitBroadcasterTests: XCTestCase {
         XCTAssertEqual(try String(decoding: XCTUnwrap(http.requests.first?.httpBody), as: UTF8.self), "02s1")
     }
 
+    /// Spark's hosted regtest answers a bare -1 to every lone transaction: the same hex goes again as a package of one,
+    /// on the same host, versioned path first.
+    func testALoneTransactionTheHostRefusesWithABareRpcErrorGoesAgainAsAPackage() async throws {
+        let http = FakeHTTP()
+        http.responses = [
+            ("a.example/api/tx", 400, #"{"error":"sendrawtransaction RPC error: {\"code\":-1}"}"#),
+            ("a.example/api/v1/txs/package", 404, "Not Found"),
+            ("a.example/api/txs/package", 200, #"{"package_msg":"success","tx-results":{}}"#),
+        ]
+        let chain = EsploraSparkExitChain(hosts: [hostA], http: http)
+
+        let outcome = await chain.broadcast(SparkExitFixtures.tx("s1", kind: .sweep))
+
+        XCTAssertEqual(outcome, .accepted)
+        XCTAssertEqual(http.requests.map { $0.url?.path }, ["/api/tx", "/api/v1/txs/package", "/api/txs/package"])
+        XCTAssertEqual(try JSONDecoder().decode([String].self, from: XCTUnwrap(http.requests.last?.httpBody)), ["02s1"])
+    }
+
+    /// The package of one answers with the transaction's own error, which the classifier places.
+    func testThePackageOfOnesErrorIsClassified() async {
+        let http = FakeHTTP()
+        http.responses = [
+            ("a.example/api/tx", 400, #"{"error":"sendrawtransaction RPC error: {\"code\":-1}"}"#),
+            ("a.example/api/v1/txs/package", 200,
+             #"{"package_msg":"transaction failed","tx-results":{"w":{"txid":"s1","error":"bad-txns-inputs-missingorspent"}}}"#),
+        ]
+        let chain = EsploraSparkExitChain(hosts: [hostA], http: http)
+
+        let outcome = await chain.broadcast(SparkExitFixtures.tx("s1", kind: .sweep))
+
+        XCTAssertEqual(outcome, .inputsMissing("bad-txns-inputs-missingorspent"))
+    }
+
+    /// A refusal with a reason stays a refusal, and an accepted lone transaction never goes to the package path.
+    func testOnlyABareRpcErrorTriesThePackagePath() async {
+        XCTAssertTrue(SparkExitBroadcastClassifier.isUnplaced(.rejected(#"sendrawtransaction RPC error: {"code":-1}"#)))
+        let withReason = #"sendrawtransaction RPC error: {"code":-26,"message":"min relay fee not met"}"#
+        XCTAssertFalse(SparkExitBroadcastClassifier.isUnplaced(.rejected(withReason)))
+        XCTAssertFalse(SparkExitBroadcastClassifier.isUnplaced(.rejected(#"{"code":-1,"message":"TX decode failed"}"#)))
+
+        let http = FakeHTTP()
+        http.responses = [("a.example/api/tx", 200, "s1")]
+        let chain = EsploraSparkExitChain(hosts: [hostA], http: http)
+        let outcome = await chain.broadcast(SparkExitFixtures.tx("s1", kind: .sweep))
+        XCTAssertEqual(outcome, .accepted)
+        XCTAssertEqual(http.requests.map { $0.url?.path }, ["/api/tx"])
+    }
+
     func testTriesTheNextHostAfterARejection() async {
         let http = FakeHTTP()
         http.responses = [

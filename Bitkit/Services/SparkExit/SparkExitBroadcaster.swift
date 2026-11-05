@@ -165,10 +165,15 @@ struct EsploraSparkExitChain: SparkExitChain {
     func broadcast(_ tx: RecoveryTransaction) async -> SparkExitBroadcastOutcome {
         var outcomes: [SparkExitBroadcastOutcome] = []
         for host in broadcastHosts {
-            let attempt: SparkExitBroadcastOutcome? = if let child = tx.cpfpTxHex {
+            var attempt: SparkExitBroadcastOutcome? = if let child = tx.cpfpTxHex {
                 await submitPackage(host: host, hexes: [tx.txHex, child], txid: tx.txid)
             } else {
                 await submitSingle(host: host.url, hex: tx.txHex)
+            }
+            // Some hosts (Spark's hosted regtest) refuse every lone transaction with a bare RPC -1, yet give a real answer
+            // to the same hex sent as a package of one.
+            if tx.cpfpTxHex == nil, let refused = attempt, SparkExitBroadcastClassifier.isUnplaced(refused) {
+                attempt = await submitPackage(host: host, hexes: [tx.txHex], txid: tx.txid) ?? refused
             }
             // nil: this host cannot take it (no package endpoint, unreachable).
             guard let attempt else { continue }
@@ -324,6 +329,13 @@ enum SparkExitBroadcastClassifier {
     /// A host that is down, rate limiting or behind a challenge page says nothing about the transaction.
     private static func unavailable(_ status: Int) -> SparkExitBroadcastOutcome? {
         status >= 500 || status == 429 || status == 403 ? .retryLater("HTTP \(status)") : nil
+    }
+
+    /// A refusal that names nothing but RPC error -1, with no reason: the host refused how it was sent, not the
+    /// transaction, so the same hex goes again as a package of one.
+    static func isUnplaced(_ outcome: SparkExitBroadcastOutcome) -> Bool {
+        guard case let .rejected(text) = outcome else { return false }
+        return hasRpcCode(-1, in: text) && !text.contains("message")
     }
 
     /// The step paid no fee of its own and its CPFP child did not pay for it (`min relay fee not met, 0 < 17`): the
