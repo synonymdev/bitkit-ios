@@ -221,6 +221,15 @@ enum Env {
         }
     }
 
+    /// Esplora REST API Spark reads the chain from and broadcasts through, in place of the SDK's default
+    /// (mempool.space with blockstream as fallback on mainnet); nil keeps the default.
+    static func sparkChainServiceUrl(for network: LDKNode.Network) -> String? {
+        switch network {
+        case .bitcoin: "https://bitkit.to/electrs"
+        default: nil
+        }
+    }
+
     static var electrumServerUrl: String {
         if isE2E, e2eBackend == "local" {
             return "tcp://\(e2eLocalHost):60001"
