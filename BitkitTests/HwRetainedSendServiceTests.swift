@@ -78,6 +78,90 @@ final class HwRetainedSendServiceTests: XCTestCase {
         XCTAssertEqual(record?.serializedTx, "aa")
     }
 
+    func testConsentedRetainReplacesDifferentBytesInOneWriteAndReportsTheOld() async throws {
+        let store = MockHwRetainedSendStore()
+        let service = HwRetainedSendService(store: store)
+        try await service.retain(send(serializedTx: "aa"))
+        try await service.markRetryRefused(walletId: wallet)
+        let original = try await service.record(walletId: wallet)
+
+        let outcome = try await service.retain(send(serializedTx: "bb"), replacing: .consented)
+
+        XCTAssertEqual(outcome, original.map(HwRetainOutcome.replaced))
+        let record = try await service.record(walletId: wallet)
+        XCTAssertEqual(record, send(serializedTx: "bb"), "The new record starts with no flags from the old one")
+        XCTAssertTrue(store.deletedWalletIds.isEmpty)
+    }
+
+    func testObservedReplacementRefusesAnUnobservedRecord() async throws {
+        let service = HwRetainedSendService(store: MemoryRetainedSendStore())
+        try await service.retain(send(serializedTx: segwitTx))
+
+        await assertThrows { try await service.retain(self.send(serializedTx: "bb"), replacing: .observedRecord) }
+        var record = try await service.record(walletId: wallet)
+        XCTAssertEqual(record?.serializedTx, segwitTx)
+
+        try await service.markObserved(walletId: wallet, txIds: [SignedTransactionId.fromHex(segwitTx)])
+        try await service.retain(send(serializedTx: "bb"), replacing: .observedRecord)
+        record = try await service.record(walletId: wallet)
+        XCTAssertEqual(record?.serializedTx, "bb")
+        XCTAssertEqual(record?.observed, false)
+    }
+
+    func testFailedReplaceWriteThrowsAndKeepsTheOriginal() async throws {
+        let store = MockHwRetainedSendStore()
+        let service = HwRetainedSendService(store: store)
+        try await service.retain(send(serializedTx: "aa"))
+        store.setFailures(save: true)
+
+        await assertThrows { try await service.retain(self.send(serializedTx: "bb"), replacing: .consented) }
+
+        store.setFailures()
+        let record = try await service.record(walletId: wallet)
+        XCTAssertEqual(record?.serializedTx, "aa")
+    }
+
+    func testReplacingNeverGetsPastAPlainReadFailure() async throws {
+        let store = MockHwRetainedSendStore()
+        let service = HwRetainedSendService(store: store)
+        try await service.retain(send(serializedTx: "aa"))
+        store.setFailures(load: true)
+
+        await assertThrows { try await service.retain(self.send(serializedTx: "bb"), replacing: .consented) }
+
+        store.setFailures()
+        let record = try await service.record(walletId: wallet)
+        XCTAssertEqual(record?.serializedTx, "aa")
+    }
+
+    func testOnlyConsentReplacesACorruptEntry() async throws {
+        let corrupt = Data("not json".utf8)
+        try Keychain.upsert(key: walletKey, data: corrupt)
+        let service = HwRetainedSendService()
+
+        await assertThrows { try await service.retain(self.send(), replacing: .observedRecord) }
+        XCTAssertEqual(try Keychain.load(key: walletKey), corrupt)
+
+        let outcome = try await service.retain(send(), replacing: .consented)
+
+        XCTAssertEqual(outcome, .replacedCorruptEntry)
+        let record = try await service.record(walletId: wallet)
+        XCTAssertEqual(record, send())
+    }
+
+    func testRestorePutsBackTheOldRecordOnlyOverTheBytesThatReplacedIt() async throws {
+        let service = HwRetainedSendService(store: MemoryRetainedSendStore())
+        try await service.retain(send(serializedTx: "bb"))
+
+        try await service.restore(send(serializedTx: "aa"), replacing: "cc")
+        var record = try await service.record(walletId: wallet)
+        XCTAssertEqual(record?.serializedTx, "bb")
+
+        try await service.restore(send(serializedTx: "aa"), replacing: "bb")
+        record = try await service.record(walletId: wallet)
+        XCTAssertEqual(record?.serializedTx, "aa")
+    }
+
     func testRetainingIdenticalBytesKeepsRefusedFlag() async throws {
         let service = HwRetainedSendService(store: MemoryRetainedSendStore())
         try await service.retain(send())

@@ -42,21 +42,21 @@ final class SendConfirmationViewTests: XCTestCase {
         XCTAssertFalse(SendConfirmationView.canEditConfirmationFee(retained: signed, isLoading: false))
     }
 
-    func testAbandoningARetainedSendFromALockedReviewShowsTheCurrentFeeBeforeSigning() {
+    func testConsentingFromALockedReviewShowsTheCurrentFeeBeforeSigning() {
         let signed = HwFundingSignedTx(serializedTx: "original", miningFeeSats: 181, feeRate: 2.25, totalSpent: 42181)
 
         XCTAssertTrue(SendConfirmationView.mustReviewCurrentFeeBeforeSigning(
-            reviewedRetainedTx: signed, rebroadcastTx: nil, abandonedRetainedSend: true
+            reviewedRetainedTx: signed, rebroadcastTx: nil, consentedToNewSignature: true
         ))
-        // A record that could not be deleted still warns on the next swipe, which must come from the current fee.
+        // The record stays until the new bytes are signed, and that must not keep the review on the old fee.
         XCTAssertTrue(SendConfirmationView.mustReviewCurrentFeeBeforeSigning(
-            reviewedRetainedTx: signed, rebroadcastTx: signed, abandonedRetainedSend: true
+            reviewedRetainedTx: signed, rebroadcastTx: signed, consentedToNewSignature: true
         ))
     }
 
-    func testAbandoningARetainedSendFromAnUnlockedReviewGoesStraightToSigning() {
+    func testConsentingFromAnUnlockedReviewGoesStraightToSigning() {
         XCTAssertFalse(SendConfirmationView.mustReviewCurrentFeeBeforeSigning(
-            reviewedRetainedTx: nil, rebroadcastTx: nil, abandonedRetainedSend: true
+            reviewedRetainedTx: nil, rebroadcastTx: nil, consentedToNewSignature: true
         ))
     }
 
@@ -65,15 +65,15 @@ final class SendConfirmationViewTests: XCTestCase {
         let other = HwFundingSignedTx(serializedTx: "other", miningFeeSats: 181, feeRate: 2.25, totalSpent: 42181)
 
         XCTAssertFalse(SendConfirmationView.mustReviewCurrentFeeBeforeSigning(
-            reviewedRetainedTx: signed, rebroadcastTx: signed, abandonedRetainedSend: false
+            reviewedRetainedTx: signed, rebroadcastTx: signed, consentedToNewSignature: false
         ))
         for rebroadcastTx in [nil, other] {
             XCTAssertTrue(SendConfirmationView.mustReviewCurrentFeeBeforeSigning(
-                reviewedRetainedTx: signed, rebroadcastTx: rebroadcastTx, abandonedRetainedSend: false
+                reviewedRetainedTx: signed, rebroadcastTx: rebroadcastTx, consentedToNewSignature: false
             ))
         }
         XCTAssertFalse(SendConfirmationView.mustReviewCurrentFeeBeforeSigning(
-            reviewedRetainedTx: nil, rebroadcastTx: signed, abandonedRetainedSend: false
+            reviewedRetainedTx: nil, rebroadcastTx: signed, consentedToNewSignature: false
         ))
     }
 

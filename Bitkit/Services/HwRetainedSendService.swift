@@ -39,6 +39,23 @@ enum HwRetainedSendError: Error {
     case corruptStore
 }
 
+/// Which existing record `retain` may overwrite with different bytes. A plain read failure stays an error for all of them.
+enum HwRetainedSendReplacement {
+    case none
+    /// Only a record the watcher has seen, because that payment is resolved. The record is checked again at write time.
+    case observedRecord
+    /// The user accepted a second payment, so anything stored may go, including a corrupt entry.
+    case consented
+}
+
+/// What `retain` did to the wallet's entry, so a send that never reaches dispatch can undo exactly that.
+enum HwRetainOutcome: Equatable {
+    case stored
+    case alreadyHeld
+    case replaced(HwRetainedSend)
+    case replacedCorruptEntry
+}
+
 protocol HwRetainedSendStoring: Sendable {
     func load(walletId: String) throws -> HwRetainedSend?
     func save(_ send: HwRetainedSend) throws
@@ -76,13 +93,35 @@ actor HwRetainedSendService {
         self.store = store
     }
 
-    /// Retaining the bytes already held keeps the existing record, including its `retryWasRefused`.
-    func retain(_ send: HwRetainedSend) throws {
-        if let existing = try store.load(walletId: send.walletId) {
-            guard existing.serializedTx == send.serializedTx else { throw HwRetainedSendError.differentTransactionRetained }
-            return
+    /// Retaining the bytes already held keeps the existing record, including its `retryWasRefused`. A replacement is one
+    /// keychain write, so a failed one leaves the old record as it was.
+    @discardableResult
+    func retain(_ send: HwRetainedSend, replacing replacement: HwRetainedSendReplacement = .none) throws -> HwRetainOutcome {
+        let existing: HwRetainedSend?
+        do {
+            existing = try store.load(walletId: send.walletId)
+        } catch HwRetainedSendError.corruptStore where replacement == .consented {
+            try store.save(send)
+            return .replacedCorruptEntry
+        }
+        guard let existing else {
+            try store.save(send)
+            return .stored
+        }
+        if existing.serializedTx == send.serializedTx {
+            return .alreadyHeld
+        }
+        guard replacement == .consented || (replacement == .observedRecord && existing.observed) else {
+            throw HwRetainedSendError.differentTransactionRetained
         }
         try store.save(send)
+        return .replaced(existing)
+    }
+
+    /// Puts back the record that `serializedTx` replaced, when those bytes turned out never to reach dispatch.
+    func restore(_ previous: HwRetainedSend, replacing serializedTx: String) throws {
+        guard try store.load(walletId: previous.walletId)?.serializedTx == serializedTx else { return }
+        try store.save(previous)
     }
 
     func record(walletId: String) throws -> HwRetainedSend? {
@@ -101,9 +140,8 @@ actor HwRetainedSendService {
         try store.delete(walletId: walletId)
     }
 
-    /// Only for a user who accepted a second payment or removed the wallet. This is the one path that deletes a corrupt entry,
-    /// otherwise the wallet stays blocked until a full wipe. A failed read deletes nothing, because it says nothing about the
-    /// stored data and may recover on its own.
+    /// Only for a user who removed the wallet. This is the one path that deletes a corrupt entry, otherwise re-pairing brings
+    /// the warning back. A failed read deletes nothing, because it says nothing about the stored data and may recover on its own.
     func abandon(walletId: String) throws {
         do {
             try release(walletId: walletId)

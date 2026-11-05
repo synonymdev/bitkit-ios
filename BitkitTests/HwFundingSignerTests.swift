@@ -1177,18 +1177,21 @@ final class HwFundingSignerTests: XCTestCase {
         }
     }
 
-    func testAbandonThenSigns() async throws {
+    func testConsentThenSignsAndKeepsTheRecordUntilThen() async throws {
         let funding = MockHwFunding()
-        let service = HwRetainedSendService.inMemory()
+        let store = MockHwRetainedSendStore()
+        let service = HwRetainedSendService(store: store)
         let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: service)
         funding.broadcastError = Failure.unknown
         await failSend(coordinator)
         funding.broadcastError = nil
+        let original = try await service.record(walletId: "jade:wallet")
 
-        await coordinator.abandonRetainedPayment()
+        coordinator.consentToNewSignature(address: "bc1qother", sats: 50000)
 
         let record = try await service.record(walletId: "jade:wallet")
-        XCTAssertNil(record)
+        XCTAssertEqual(record, original)
+        XCTAssertTrue(store.deletedWalletIds.isEmpty)
         XCTAssertFalse(coordinator.hasPendingBroadcast)
         let status = await coordinator.retainedSendStatus(address: "bc1qother", sats: 50000, hasIncomingRequest: false)
         XCTAssertEqual(status, .none)
@@ -1197,7 +1200,7 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(funding.composeCalls.last?.address, "bc1qother")
     }
 
-    func testAbandonLeavesAnInFlightBroadcastRetained() async throws {
+    func testConsentCannotBeGrantedDuringAnInFlightBroadcast() async throws {
         let funding = MockHwFunding()
         let broadcast = AsyncGate()
         funding.broadcastGate = broadcast
@@ -1207,13 +1210,15 @@ final class HwFundingSignerTests: XCTestCase {
         let payment = Task { try await self.send(coordinator) }
         await waitUntil { funding.broadcastCalls == 1 }
 
-        await coordinator.abandonRetainedPayment()
+        coordinator.consentToNewSignature(address: "bc1qtest", sats: 42000)
 
         let record = try await service.record(walletId: "jade:wallet")
         XCTAssertNotNil(record)
         XCTAssertTrue(coordinator.hasPendingBroadcast)
         broadcast.open()
         await assertThrowsAsync { try await payment.value }
+        let rebroadcastTx = await coordinator.retainedRebroadcastTx(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
+        XCTAssertEqual(rebroadcastTx, funding.signedTx)
     }
 
     func testSuccessReleasesARecordWrittenBeforeDispatch() async throws {
@@ -1404,38 +1409,63 @@ final class HwFundingSignerTests: XCTestCase {
         assertSingleSignature(funding, broadcasts: 1)
     }
 
-    func testAbandoningAnObservedRecordSignsTheSamePaymentAnew() async throws {
+    func testConsentOverAnObservedRecordSignsTheSamePaymentAnew() async throws {
         let funding = MockHwFunding()
         let service = HwRetainedSendService.inMemory()
         _ = try await failThenObserve(funding: funding, service: service)
 
         let reopened = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: service)
-        await reopened.abandonRetainedPayment()
+        reopened.consentToNewSignature(address: "bc1qtest", sats: 42000)
 
         let status = await reopened.retainedSendStatus(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
         XCTAssertEqual(status, .none)
+        funding.signedTx = newSignedTx
         try await send(reopened)
         XCTAssertEqual(funding.signCalls, 2)
+        XCTAssertEqual(funding.broadcastTransactions.last, newSignedTx.serializedTx)
     }
 
-    func testAbandonedObservedRecordLeavesNothingToLockOrWarnAbout() async throws {
+    func testYesSendOverAFeeLockedReviewShowsTheCurrentFeeAndTheNextSwipeSignsWithoutWarning() async throws {
         let funding = MockHwFunding()
         let service = HwRetainedSendService.inMemory()
-        _ = try await failThenObserve(funding: funding, service: service)
+        funding.signedTx = observableTx
         let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: service)
-        coordinator.seedAvailable(walletId: "jade:wallet", availableSats: 90000, retainedFeeSats: 181)
+        funding.broadcastError = Failure.unknown
+        await failSend(coordinator)
+        funding.broadcastError = nil
 
+        let locked = await coordinator.retainedSendStatus(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
+        XCTAssertEqual(locked.retrySignedTx, observableTx)
+        try await markObserved(service)
         let warned = await coordinator.retainedSendStatus(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
         XCTAssertEqual(warned, .blocking)
+        let original = try await service.record(walletId: "jade:wallet")
 
-        await coordinator.abandonRetainedPayment()
+        coordinator.consentToNewSignature(address: "bc1qtest", sats: 42000)
         coordinator.discardPreviewFee()
 
-        let status = await coordinator.retainedSendStatus(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
+        // The fee reload must not lock again from the record that is still there.
+        let reloaded = await coordinator.retainedSendStatus(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
         let rebroadcastTx = await coordinator.retainedRebroadcastTx(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
-        XCTAssertEqual(status, .none)
-        XCTAssertNil(rebroadcastTx)
+        let retrySats = await coordinator.retainedRetrySats(address: "bc1qtest", hasIncomingRequest: false)
+        XCTAssertEqual(reloaded, .none, "No lock and no second warning")
+        XCTAssertNil(rebroadcastTx, "Neither the fee nor the Retry label comes from the old bytes")
+        XCTAssertNil(retrySats)
+        XCTAssertFalse(coordinator.hasPendingBroadcast)
         XCTAssertEqual(coordinator.previewFeeSats, 0)
+        let fee = try await coordinator.preparePreview(
+            manager: HwWalletManager(), address: "bc1qtest", sats: 42000, satsPerVByte: 9, hasIncomingRequest: false
+        )
+        XCTAssertEqual(funding.estimateCalls.count, 1)
+        XCTAssertEqual(fee, funding.funding.miningFeeSats)
+        let record = try await service.record(walletId: "jade:wallet")
+        XCTAssertEqual(record, original)
+
+        funding.signedTx = newSignedTx
+        try await send(coordinator, satsPerVByte: 9)
+        XCTAssertEqual(funding.signCalls, 2)
+        XCTAssertEqual(funding.composeCalls.last?.satsPerVByte, 9, "Signs the fee on screen")
+        XCTAssertEqual(funding.broadcastTransactions.last, newSignedTx.serializedTx)
     }
 
     func testRetainedSendLocksNoFeeForAPaymentThatNoLongerMatches() async {
@@ -1491,30 +1521,375 @@ final class HwFundingSignerTests: XCTestCase {
 
         XCTAssertFalse(coordinator.hasPendingBroadcast)
         let record = try await service.record(walletId: "jade:wallet")
-        XCTAssertNotNil(record, "The record is released when that send starts signing")
+        XCTAssertNotNil(record, "The record is replaced only once that send has signed")
     }
 
-    func testFailedReleaseOfAnObservedRecordFailsClosedBeforeDeviceContact() async throws {
+    func testFailedNewSendOverAnObservedRecordLeavesTheOriginalGuarded() async throws {
         let funding = MockHwFunding()
         let connecting = MockHwConnecting()
         let store = MockHwRetainedSendStore()
         let service = HwRetainedSendService(store: store)
-        _ = try await failThenObserve(funding: funding, connecting: connecting, service: service)
-        let connects = connecting.ensureCalls
-        store.setFailures(delete: true)
+        let coordinator = try await failThenObserve(funding: funding, connecting: connecting, service: service)
+        let original = try await service.record(walletId: "jade:wallet")
+
+        connecting.connectError = MockHwFunding.TestError()
+        await failSend(coordinator, address: "bc1qother")
+        connecting.connectError = nil
+
+        XCTAssertEqual(funding.signCalls, 1)
+        XCTAssertTrue(store.deletedWalletIds.isEmpty)
+        let record = try await service.record(walletId: "jade:wallet")
+        XCTAssertEqual(record, original)
 
         let reopened = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: connecting, retainedSends: service)
+        let status = await reopened.retainedSendStatus(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
+        XCTAssertEqual(status, .blocking)
+        try await send(reopened)
+        XCTAssertEqual(funding.signCalls, 1, "Repeating the original rebroadcasts it and never signs again")
+        XCTAssertEqual(funding.broadcastTransactions.last, observableTx.serializedTx)
+    }
+
+    func testFailedReplaceWriteOverAnObservedRecordDoesNotDispatch() async throws {
+        let funding = MockHwFunding()
+        let store = MockHwRetainedSendStore()
+        let service = HwRetainedSendService(store: store)
+        _ = try await failThenObserve(funding: funding, service: service)
+        let original = try await service.record(walletId: "jade:wallet")
+        funding.signedTx = newSignedTx
+        store.setFailures(save: true)
+
+        let reopened = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: service)
         await assertThrowsAsync {
             try await self.send(reopened, address: "bc1qother")
         } _: { error in
             XCTAssertTrue(error is MockHwRetainedSendStore.StoreError, "\(error)")
         }
 
-        XCTAssertEqual(connecting.ensureCalls, connects)
-        XCTAssertEqual(funding.signCalls, 1)
-        XCTAssertEqual(funding.composeCalls.count, 1)
+        store.setFailures()
+        XCTAssertEqual(funding.signCalls, 2)
+        XCTAssertEqual(funding.broadcastCalls, 1, "The new bytes never go out")
         let record = try await service.record(walletId: "jade:wallet")
-        XCTAssertEqual(record?.observed, true)
+        XCTAssertEqual(record, original)
+    }
+
+    func testNotSubmittedReplacementPutsTheOriginalBackForBothReplacementKinds() async throws {
+        for consents in [false, true] {
+            let funding = MockHwFunding()
+            let store = MockHwRetainedSendStore()
+            let service = HwRetainedSendService(store: store)
+            _ = try await failThenObserve(funding: funding, service: service)
+            let original = try await service.record(walletId: "jade:wallet")
+            funding.signedTx = newSignedTx
+
+            let reopened = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: service)
+            if consents {
+                reopened.consentToNewSignature(address: "bc1qother", sats: 42000)
+            }
+            await assertThrowsAsync {
+                _ = try await reopened.signAndBroadcast(
+                    manager: HwWalletManager(), address: "bc1qother", sats: 42000, satsPerVByte: 2,
+                    markSignedPaymentRefused: { _, _ in throw MockHwFunding.TestError() }
+                )
+            }
+
+            XCTAssertEqual(funding.broadcastCalls, 1)
+            XCTAssertTrue(store.deletedWalletIds.isEmpty)
+            let record = try await service.record(walletId: "jade:wallet")
+            XCTAssertEqual(record, original)
+        }
+    }
+
+    func testConsentThenSigningIdenticalBytesThatAreNotSubmittedKeepsTheRecord() async throws {
+        let funding = MockHwFunding()
+        let store = MockHwRetainedSendStore()
+        let service = HwRetainedSendService(store: store)
+        _ = try await failThenObserve(funding: funding, service: service)
+        let original = try await service.record(walletId: "jade:wallet")
+
+        let reopened = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: service)
+        reopened.consentToNewSignature(address: "bc1qtest", sats: 42000)
+        await assertThrowsAsync {
+            _ = try await reopened.signAndBroadcast(
+                manager: HwWalletManager(), address: "bc1qtest", sats: 42000, satsPerVByte: 2,
+                markSignedPaymentRefused: { _, _ in throw MockHwFunding.TestError() }
+            )
+        }
+
+        XCTAssertEqual(funding.signCalls, 2)
+        XCTAssertTrue(store.deletedWalletIds.isEmpty)
+        let record = try await service.record(walletId: "jade:wallet")
+        XCTAssertEqual(record, original)
+    }
+
+    // MARK: Consent to a new signature
+
+    private let newSignedTx = HwFundingSignedTx(serializedTx: "newtx", miningFeeSats: 300, feeRate: 9, totalSpent: 42300)
+
+    func testConsentThenDeviceRejectionKeepsTheRecordAndWarnsAgain() async throws {
+        let payments: [(address: String, sats: UInt64)] = [("bc1qother", 42000), ("bc1qtest", 42000)]
+        for payment in payments {
+            for isObserved in [false, true] {
+                let funding = MockHwFunding()
+                let service = HwRetainedSendService.inMemory()
+                funding.signedTx = observableTx
+                let original = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: service)
+                funding.broadcastError = Failure.unknown
+                await failSend(original)
+                funding.broadcastError = nil
+                if isObserved {
+                    try await markObserved(service)
+                }
+                try await service.markRetryRefused(walletId: "jade:wallet")
+                let before = try await service.record(walletId: "jade:wallet")
+
+                original.consentToNewSignature(address: payment.address, sats: payment.sats)
+                funding.signError = MockHwFunding.TestError()
+                await failSend(original, address: payment.address, sats: payment.sats)
+                funding.signError = nil
+
+                XCTAssertEqual(funding.signCalls, 2)
+                XCTAssertEqual(funding.broadcastCalls, 1)
+                let after = try await service.record(walletId: "jade:wallet")
+                XCTAssertEqual(after, before)
+                let status = await original.retainedSendStatus(address: payment.address, sats: payment.sats, hasIncomingRequest: false)
+                XCTAssertEqual(status, isObserved && payment.address == "bc1qother" ? .none : .blocking)
+            }
+        }
+    }
+
+    func testConsentThenLeavingWarnsAgainWithNoSigning() async throws {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        let service = HwRetainedSendService.inMemory()
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: connecting, retainedSends: service)
+        funding.broadcastError = Failure.unknown
+        await failSend(coordinator)
+        funding.broadcastError = nil
+        let before = try await service.record(walletId: "jade:wallet")
+        let connects = connecting.ensureCalls
+
+        coordinator.consentToNewSignature(address: "bc1qother", sats: 42000)
+        coordinator.cancel()
+
+        let status = await coordinator.retainedSendStatus(address: "bc1qother", sats: 42000, hasIncomingRequest: false)
+        XCTAssertEqual(status, .blocking)
+        await assertThrowsAsync {
+            try await self.send(coordinator, address: "bc1qother")
+        } _: { error in
+            XCTAssertEqual(error as? HwTransferError, .broadcastUncertain)
+        }
+        XCTAssertEqual(funding.signCalls, 1)
+        XCTAssertEqual(connecting.ensureCalls, connects)
+        let record = try await service.record(walletId: "jade:wallet")
+        XCTAssertEqual(record, before)
+    }
+
+    func testLeavingWhileConnectingAfterConsentKeepsTheRecord() async throws {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        let service = HwRetainedSendService.inMemory()
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: connecting, retainedSends: service)
+        funding.broadcastError = Failure.unknown
+        await failSend(coordinator)
+        funding.broadcastError = nil
+        let before = try await service.record(walletId: "jade:wallet")
+        let connect = AsyncGate()
+        connecting.connectGate = connect
+        let connects = connecting.ensureCalls
+
+        coordinator.consentToNewSignature(address: "bc1qother", sats: 42000)
+        let payment = Task { try await self.send(coordinator, address: "bc1qother") }
+        await waitUntil { connecting.ensureCalls == connects + 1 }
+        coordinator.cancel()
+        connect.open()
+        await assertThrowsAsync { try await payment.value }
+
+        XCTAssertEqual(funding.signCalls, 1)
+        let record = try await service.record(walletId: "jade:wallet")
+        XCTAssertEqual(record, before)
+    }
+
+    func testNewCoordinatorHasNoConsent() async throws {
+        let funding = MockHwFunding()
+        let service = HwRetainedSendService.inMemory()
+        let coordinator = try await failThenObserve(funding: funding, service: service)
+        coordinator.consentToNewSignature(address: "bc1qtest", sats: 42000)
+
+        let restarted = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: service)
+        let status = await restarted.retainedSendStatus(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
+
+        XCTAssertEqual(status, .blocking)
+    }
+
+    func testConsentIsUsedByOneAttempt() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        let service = HwRetainedSendService.inMemory()
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: connecting, retainedSends: service)
+        funding.broadcastError = Failure.unknown
+        await failSend(coordinator)
+        funding.broadcastError = nil
+
+        coordinator.consentToNewSignature(address: "bc1qother", sats: 42000)
+        connecting.connectError = MockHwFunding.TestError()
+        await failSend(coordinator, address: "bc1qother")
+        connecting.connectError = nil
+
+        await assertThrowsAsync {
+            try await self.send(coordinator, address: "bc1qother")
+        } _: { error in
+            XCTAssertEqual(error as? HwTransferError, .broadcastUncertain)
+        }
+        XCTAssertEqual(funding.signCalls, 1)
+    }
+
+    func testConsentCoversOnlyItsOwnPaymentAndADifferentRequestEndsIt() async {
+        let others: [(address: String, sats: UInt64)] = [("bc1qother", 50000), ("bc1qtest", 42000)]
+        for other in others {
+            let funding = MockHwFunding()
+            let service = HwRetainedSendService.inMemory()
+            let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: service)
+            funding.broadcastError = Failure.unknown
+            await failSend(coordinator)
+            funding.broadcastError = nil
+
+            coordinator.consentToNewSignature(address: "bc1qother", sats: 42000)
+            let different = await coordinator.retainedSendStatus(address: other.address, sats: other.sats, hasIncomingRequest: false)
+            let back = await coordinator.retainedSendStatus(address: "bc1qother", sats: 42000, hasIncomingRequest: false)
+
+            XCTAssertNotEqual(different, .none)
+            XCTAssertEqual(back, .blocking)
+        }
+    }
+
+    func testSwitchingWalletEndsConsent() async throws {
+        let funding = MockHwFunding()
+        let service = HwRetainedSendService.inMemory()
+        let coordinator = try await failThenObserve(funding: funding, service: service)
+        coordinator.consentToNewSignature(address: "bc1qtest", sats: 42000)
+
+        coordinator.selectWallet("trezor:wallet")
+        coordinator.selectWallet("jade:wallet")
+
+        let status = await coordinator.retainedSendStatus(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
+        XCTAssertEqual(status, .blocking)
+    }
+
+    func testPassphrasePromptKeepsConsentForTheSameAttemptUntilDismissed() async throws {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
+        let service = HwRetainedSendService.inMemory()
+        let coordinator = try await failThenObserve(funding: funding, connecting: connecting, service: service)
+        coordinator.consentToNewSignature(address: "bc1qtest", sats: 42000)
+        connecting.connectError = HwPassphraseError.required
+        await failSend(coordinator)
+        connecting.connectError = nil
+        funding.signedTx = newSignedTx
+
+        coordinator.dismissPassphrase()
+        let dismissed = await coordinator.retainedSendStatus(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
+        XCTAssertEqual(dismissed, .blocking)
+
+        coordinator.consentToNewSignature(address: "bc1qtest", sats: 42000)
+        connecting.connectError = HwPassphraseError.required
+        await failSend(coordinator)
+        connecting.connectError = nil
+
+        try await send(coordinator)
+        XCTAssertEqual(funding.signCalls, 2)
+        XCTAssertEqual(funding.broadcastTransactions.last, newSignedTx.serializedTx)
+    }
+
+    func testConsentReplacesTheRecordOnlyAfterSigningAndBeforeDispatch() async throws {
+        let funding = MockHwFunding()
+        let store = MockHwRetainedSendStore()
+        let service = HwRetainedSendService(store: store)
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: service)
+        funding.broadcastError = Failure.unknown
+        await failSend(coordinator)
+        funding.broadcastError = nil
+        let original = try await service.record(walletId: "jade:wallet")
+
+        funding.signedTx = newSignedTx
+        let sign = AsyncGate()
+        funding.signGate = sign
+        let broadcast = AsyncGate()
+        funding.broadcastGate = broadcast
+        coordinator.consentToNewSignature(address: "bc1qother", sats: 42000)
+        let payment = Task { try await self.send(coordinator, address: "bc1qother") }
+
+        await waitUntil { funding.signCalls == 2 }
+        let whileSigning = try await service.record(walletId: "jade:wallet")
+        XCTAssertEqual(whileSigning, original)
+
+        sign.open()
+        await waitUntil { funding.broadcastCalls == 2 }
+        let whileDispatching = try await service.record(walletId: "jade:wallet")
+        XCTAssertEqual(whileDispatching?.serializedTx, newSignedTx.serializedTx)
+        XCTAssertEqual(whileDispatching?.address, "bc1qother")
+        XCTAssertTrue(store.deletedWalletIds.isEmpty, "Replaced in one write, with no delete in between")
+
+        broadcast.open()
+        try await payment.value
+    }
+
+    func testFailedReplaceWriteWithConsentDoesNotDispatch() async throws {
+        let funding = MockHwFunding()
+        let store = MockHwRetainedSendStore()
+        let service = HwRetainedSendService(store: store)
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: service)
+        funding.broadcastError = Failure.unknown
+        await failSend(coordinator)
+        funding.broadcastError = nil
+        let original = try await service.record(walletId: "jade:wallet")
+        funding.signedTx = newSignedTx
+
+        coordinator.consentToNewSignature(address: "bc1qother", sats: 42000)
+        store.setFailures(save: true)
+        await failSend(coordinator, address: "bc1qother")
+        store.setFailures()
+
+        XCTAssertEqual(funding.signCalls, 2)
+        XCTAssertEqual(funding.broadcastCalls, 1)
+        XCTAssertTrue(store.deletedWalletIds.isEmpty)
+        let record = try await service.record(walletId: "jade:wallet")
+        XCTAssertEqual(record, original)
+        let status = await coordinator.retainedSendStatus(address: "bc1qother", sats: 42000, hasIncomingRequest: false)
+        XCTAssertEqual(status, .blocking)
+    }
+
+    func testFirstAttemptRefusalOfTheNewBytesReleases() async throws {
+        let funding = MockHwFunding()
+        let service = HwRetainedSendService.inMemory()
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: service)
+        funding.broadcastError = Failure.unknown
+        await failSend(coordinator)
+        funding.signedTx = newSignedTx
+        funding.broadcastError = Failure.refused
+
+        coordinator.consentToNewSignature(address: "bc1qother", sats: 42000)
+        await failSend(coordinator, address: "bc1qother")
+
+        let record = try await service.record(walletId: "jade:wallet")
+        XCTAssertNil(record)
+        XCTAssertFalse(coordinator.hasPendingBroadcast)
+    }
+
+    func testUnknownOutcomeOfTheNewBytesKeepsThemAsTheRecord() async throws {
+        let funding = MockHwFunding()
+        let service = HwRetainedSendService.inMemory()
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: service)
+        funding.broadcastError = Failure.unknown
+        await failSend(coordinator)
+        funding.signedTx = newSignedTx
+
+        coordinator.consentToNewSignature(address: "bc1qother", sats: 42000)
+        await failSend(coordinator, address: "bc1qother")
+
+        let record = try await service.record(walletId: "jade:wallet")
+        XCTAssertEqual(record?.serializedTx, newSignedTx.serializedTx)
+        let status = await coordinator.retainedSendStatus(address: "bc1qother", sats: 42000, hasIncomingRequest: false)
+        XCTAssertEqual(status.retrySignedTx, newSignedTx)
     }
 
     func testDifferentPaymentOverAnUnobservedRecordStaysBlocked() async {
@@ -1704,35 +2079,72 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(try Keychain.load(key: .hwRetainedSend(walletId: "jade:wallet")), corrupt)
     }
 
-    func testAbandonClearsACorruptEntryAndTheNextSendSignsAnew() async throws {
-        _ = try storeCorruptRetainedSend()
+    func testConsentReplacesACorruptEntryOnlyAfterSigning() async throws {
+        let corrupt = try storeCorruptRetainedSend()
         let funding = MockHwFunding()
         let coordinator = makeCoordinator(
             walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: HwRetainedSendService()
         )
 
-        await coordinator.abandonRetainedPayment()
-
+        coordinator.consentToNewSignature(address: "bc1qtest", sats: 42000)
         let status = await coordinator.retainedSendStatus(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
         XCTAssertEqual(status, .none)
-        try await send(coordinator)
+
+        funding.signError = MockHwFunding.TestError()
+        await failSend(coordinator)
+        funding.signError = nil
         XCTAssertEqual(funding.signCalls, 1)
+        XCTAssertEqual(try Keychain.load(key: .hwRetainedSend(walletId: "jade:wallet")), corrupt, "Rejected on the device: nothing changes")
+        let warned = await coordinator.retainedSendStatus(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
+        XCTAssertEqual(warned, .blocking)
+
+        coordinator.consentToNewSignature(address: "bc1qtest", sats: 42000)
+        funding.broadcastError = Failure.unknown
+        await failSend(coordinator)
+
+        XCTAssertEqual(funding.signCalls, 2)
         XCTAssertEqual(funding.broadcastCalls, 1)
+        let record = try await HwRetainedSendService().record(walletId: "jade:wallet")
+        XCTAssertEqual(record?.serializedTx, funding.signedTx.serializedTx)
     }
 
-    func testReadFailureSurvivesAbandonAndRecoversOnItsOwn() async {
+    func testNotSubmittedOverACorruptEntryKeepsTheNewBytesAsTheGuard() async throws {
+        _ = try storeCorruptRetainedSend()
         let funding = MockHwFunding()
+        let service = HwRetainedSendService()
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: service)
+
+        coordinator.consentToNewSignature(address: "bc1qtest", sats: 42000)
+        await assertThrowsAsync {
+            _ = try await coordinator.signAndBroadcast(
+                manager: HwWalletManager(), address: "bc1qtest", sats: 42000, satsPerVByte: 2,
+                markSignedPaymentRefused: { _, _ in throw MockHwFunding.TestError() }
+            )
+        }
+
+        XCTAssertEqual(funding.broadcastCalls, 0)
+        let record = try await service.record(walletId: "jade:wallet")
+        XCTAssertEqual(record?.serializedTx, funding.signedTx.serializedTx)
+    }
+
+    func testReadFailureFailsClosedDespiteConsentAndRecoversOnItsOwn() async {
+        let funding = MockHwFunding()
+        let connecting = MockHwConnecting()
         let store = MockHwRetainedSendStore()
         let coordinator = makeCoordinator(
-            walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting(), retainedSends: HwRetainedSendService(store: store)
+            walletId: "jade:wallet", funding: funding, connecting: connecting, retainedSends: HwRetainedSendService(store: store)
         )
         funding.broadcastError = Failure.unknown
         await failSend(coordinator)
         funding.broadcastError = nil
+        let connects = connecting.ensureCalls
 
         store.setFailures(load: true)
-        await coordinator.abandonRetainedPayment()
+        coordinator.consentToNewSignature(address: "bc1qtest", sats: 42000)
+        let unreadable = await coordinator.retainedSendStatus(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
+        XCTAssertEqual(unreadable, .blocking)
         await failSend(coordinator)
+        XCTAssertEqual(connecting.ensureCalls, connects)
         XCTAssertEqual(funding.signCalls, 1)
         XCTAssertEqual(funding.broadcastCalls, 1)
         XCTAssertTrue(store.deletedWalletIds.isEmpty)

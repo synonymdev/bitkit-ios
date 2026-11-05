@@ -13,7 +13,7 @@ enum HwRetainedSendStatus: Equatable {
     /// The same payment may go out again, using these original bytes and no device prompt.
     case retry(HwFundingSignedTx)
     /// A different payment, a retry that was refused, or a repeat of a payment already observed on the network.
-    /// Signing needs the user to abandon the retained send first.
+    /// Signing needs the user to consent to a new signature first.
     case blocking
 
     var retrySignedTx: HwFundingSignedTx? {
@@ -363,6 +363,8 @@ final class HwSendCoordinator {
     private(set) var isVerifyingPassphrase = false
 
     private var pendingPayment: PendingPayment?
+    /// Memory only, so a restart loses it and a new warning is required.
+    private var retainedSendConsent: RetainedSendConsent?
     private var operationTask: Task<HwFundingBroadcastResult, Error>?
     private var operationRequest: PaymentRequest?
     private var operationSession: OperationSession?
@@ -434,6 +436,7 @@ final class HwSendCoordinator {
         previewRequestId += 1
         self.walletId = walletId
         pendingPayment = nil
+        retainedSendConsent = nil
         availableSats = walletId == nil ? 0 : initialAvailableSats
         previewFeeSats = 0
         isFundingSourceLoading = walletId != nil && showsLoading
@@ -570,6 +573,10 @@ final class HwSendCoordinator {
             return try await operationTask.value
         }
 
+        // Used by this attempt alone, whatever it ends in. A different request loses it too.
+        let consent = paymentRequestId == nil && holdsRetainedSendConsent(address: address, sats: sats) ? retainedSendConsent : nil
+        retainedSendConsent = nil
+
         signingAttempt += 1
         let attempt = signingAttempt
         let signer = signerFactory(manager, address, satsPerVByte)
@@ -589,7 +596,14 @@ final class HwSendCoordinator {
                 pendingPayment?.hasBroadcastAttempted = restored.hasAttemptedBroadcast
                 isBroadcastUnresolved = restored.hasAttemptedBroadcast && !restored.isRefusedForNavigation
             }
-            if paymentRequestId == nil, let retained = try await retainedSends.record(walletId: walletId) {
+            var replacement = HwRetainedSendReplacement.none
+            if consent != nil {
+                // Nothing is deleted here: the old record is only replaced once there are new bytes to dispatch.
+                replacement = .consented
+                do {
+                    _ = try await retainedSends.record(walletId: walletId)
+                } catch HwRetainedSendError.corruptStore {}
+            } else if paymentRequestId == nil, let retained = try await retainedSends.record(walletId: walletId) {
                 if retained.isSamePayment(address: address, sats: sats) {
                     try Task.checkCancellation()
                     pendingPayment = PendingPayment(
@@ -603,8 +617,7 @@ final class HwSendCoordinator {
                 } else {
                     guard retained.observed else { throw HwTransferError.broadcastUncertain }
                     try Task.checkCancellation()
-                    // A failed release throws here, before any device contact.
-                    try await retainedSends.release(walletId: walletId)
+                    replacement = .observedRecord
                     if pendingPayment?.request.isSamePayment(address: address, sats: sats) != true {
                         pendingPayment = nil
                     }
@@ -617,20 +630,28 @@ final class HwSendCoordinator {
             {
                 signed = pendingPayment.signedTx
             } else {
-                signed = try await signer.prepareSignedPayment(
-                    walletId: walletId,
-                    address: address,
-                    sats: sats,
-                    satsPerVByte: satsPerVByte,
-                    onComposed: { [weak self] composed in
-                        guard let self, signingAttempt == attempt else { return }
-                        previewFeeSats = composed.miningFeeSats
-                    },
-                    onConnectingDevice: { [weak self] isConnecting in
-                        guard let self, signingAttempt == attempt else { return }
-                        isConnectingDevice = isConnecting
+                do {
+                    signed = try await signer.prepareSignedPayment(
+                        walletId: walletId,
+                        address: address,
+                        sats: sats,
+                        satsPerVByte: satsPerVByte,
+                        onComposed: { [weak self] composed in
+                            guard let self, signingAttempt == attempt else { return }
+                            previewFeeSats = composed.miningFeeSats
+                        },
+                        onConnectingDevice: { [weak self] isConnecting in
+                            guard let self, signingAttempt == attempt else { return }
+                            isConnectingDevice = isConnecting
+                        }
+                    )
+                } catch let error as HwPassphraseError {
+                    // The passphrase prompt restarts this same attempt once the wallet reopens, before anything was signed.
+                    if signingAttempt == attempt {
+                        retainedSendConsent = consent
                     }
-                )
+                    throw error
+                }
                 try Task.checkCancellation()
                 pendingPayment = PendingPayment(request: request, signedTx: signed, paymentRequestId: paymentRequestId)
             }
@@ -641,9 +662,11 @@ final class HwSendCoordinator {
                 pendingPayment?.isPreparedForBroadcast = true
             }
 
+            var retainOutcome = HwRetainOutcome.stored
+
             func retainBeforeDispatch() async throws {
                 if paymentRequestId == nil {
-                    try await retainedSends.retain(HwRetainedSend(
+                    retainOutcome = try await retainedSends.retain(HwRetainedSend(
                         walletId: walletId,
                         address: address,
                         sats: sats,
@@ -651,17 +674,26 @@ final class HwSendCoordinator {
                         miningFeeSats: signed.miningFeeSats,
                         feeRate: signed.feeRate,
                         totalSpent: signed.totalSpent
-                    ))
+                    ), replacing: replacement)
                 } else {
                     try await retainSignedPayment(signed)
                 }
             }
 
+            /// Undoes only what this attempt wrote. A record from an earlier payment still guards that payment.
             func clearBeforeDispatch() async -> Bool {
-                if paymentRequestId == nil {
+                guard paymentRequestId == nil else { return await clearSignedPaymentBeforeDispatch(signed) }
+                switch retainOutcome {
+                case .stored:
                     return await releaseRetainedSend(walletId: walletId)
+                case .alreadyHeld:
+                    return true
+                case let .replaced(previous):
+                    return await restoreRetainedSend(previous, replacing: signed)
+                case .replacedCorruptEntry:
+                    // Nothing readable to put back, and deleting would lose the guard, so these bytes stay as the record.
+                    return false
                 }
-                return await clearSignedPaymentBeforeDispatch(signed)
             }
 
             let hadPriorBroadcastAttempt = pendingPayment?.hasBroadcastAttempted == true
@@ -786,8 +818,17 @@ final class HwSendCoordinator {
     /// incoming request never consults the store.
     func retainedSendStatus(address: String, sats: UInt64, hasIncomingRequest: Bool) async -> HwRetainedSendStatus {
         guard !hasIncomingRequest, let walletId else { return .none }
+        return await retainedSendStatus(
+            walletId: walletId, address: address, sats: sats, holdsConsent: holdsRetainedSendConsent(address: address, sats: sats)
+        )
+    }
+
+    private func retainedSendStatus(walletId: String, address: String, sats: UInt64, holdsConsent: Bool) async -> HwRetainedSendStatus {
         do {
             if let retained = try await retainedSends.record(walletId: walletId) {
+                if holdsConsent {
+                    return .none
+                }
                 let isSamePayment = retained.isSamePayment(address: address, sats: sats)
                 if retained.observed {
                     // The first payment went out: a repeat is a second payment to confirm, and another payment needs no warning.
@@ -796,6 +837,8 @@ final class HwSendCoordinator {
                 guard isSamePayment, !retained.retryWasRefused else { return .blocking }
                 return .retry(retained.signedTx)
             }
+        } catch HwRetainedSendError.corruptStore where holdsConsent {
+            return .none
         } catch {
             Logger.warn("Failed to read retained hardware send: \(type(of: error))", context: "HwSendCoordinator")
             return .blocking
@@ -806,9 +849,9 @@ final class HwSendCoordinator {
 
     /// The bytes `signAndBroadcast` would rebroadcast for this payment from the sign screen. Unlike `retainedSendStatus`, which
     /// decides what the review warns about, this ignores `observed` and `retryWasRefused`: a Retry skips the review and always
-    /// reuses the same bytes, so it needs no current fee rate and must keep reading Retry.
+    /// reuses the same bytes, so it needs no current fee rate and must keep reading Retry. A payment holding consent signs anew.
     func retainedRebroadcastTx(address: String, sats: UInt64, hasIncomingRequest: Bool) async -> HwFundingSignedTx? {
-        guard !hasIncomingRequest, let walletId else { return nil }
+        guard !hasIncomingRequest, let walletId, !holdsRetainedSendConsent(address: address, sats: sats) else { return nil }
         if let retained = try? await retainedSends.record(walletId: walletId) {
             return retained.isSamePayment(address: address, sats: sats) ? retained.signedTx : nil
         }
@@ -824,21 +867,30 @@ final class HwSendCoordinator {
         guard !hasIncomingRequest, let walletId else { return nil }
         let attemptedSats = pendingPayment?.isAttemptedOrdinarySend == true ? pendingPayment?.request.sats : nil
         guard let sats = await (try? retainedSends.record(walletId: walletId))?.sats ?? attemptedSats else { return nil }
-        let status = await retainedSendStatus(address: address, sats: sats, hasIncomingRequest: false)
+        // Asks about the retained amount rather than the payment being sent, so it must not cost that payment its consent.
+        let holdsConsent = retainedSendConsent?.matches(walletId: walletId, address: address, sats: sats) == true
+        let status = await retainedSendStatus(walletId: walletId, address: address, sats: sats, holdsConsent: holdsConsent)
         return status.retrySignedTx == nil ? nil : sats
     }
 
-    /// Discards the retained ordinary send so the next attempt signs anew. Only call this after the user accepted a second payment.
-    func abandonRetainedPayment() async {
+    /// Lets one signing attempt for exactly this payment sign anew over the wallet's retained send. Only call this after the user
+    /// accepted a second payment. It deletes nothing, so an attempt that signs nothing leaves the original guarded by its record.
+    func consentToNewSignature(address: String, sats: UInt64) {
         guard let walletId, operationTask == nil else { return }
-        do {
-            try await retainedSends.abandon(walletId: walletId)
-        } catch {
-            Logger.warn("Failed to abandon retained hardware send: \(type(of: error))", context: "HwSendCoordinator")
-        }
+        retainedSendConsent = RetainedSendConsent(walletId: walletId, address: address, sats: sats)
         if pendingPayment?.paymentRequestId == nil {
             pendingPayment = nil
         }
+    }
+
+    /// False once the payment changes, and a different payment ends the consent, so changing back warns again.
+    private func holdsRetainedSendConsent(address: String, sats: UInt64) -> Bool {
+        guard let consent = retainedSendConsent else { return false }
+        guard consent.matches(walletId: walletId, address: address, sats: sats) else {
+            retainedSendConsent = nil
+            return false
+        }
+        return true
     }
 
     func reconnectWithPassphrase(
@@ -859,6 +911,7 @@ final class HwSendCoordinator {
 
     func dismissPassphrase() {
         isPassphraseRequired = false
+        retainedSendConsent = nil
     }
 
     func completionRoute(
@@ -900,6 +953,7 @@ final class HwSendCoordinator {
     }
 
     func cancel() {
+        retainedSendConsent = nil
         availabilityRequestId += 1
         previewRequestId += 1
         isFundingSourceLoading = false
@@ -985,6 +1039,17 @@ final class HwSendCoordinator {
         }
     }
 
+    /// A failed restore only leaves the new bytes as the record, so the next attempt rebroadcasts or warns rather than signing again.
+    private func restoreRetainedSend(_ previous: HwRetainedSend, replacing signed: HwFundingSignedTx) async -> Bool {
+        do {
+            try await retainedSends.restore(previous, replacing: signed.serializedTx)
+            return true
+        } catch {
+            Logger.warn("Failed to restore retained hardware send: \(type(of: error))", context: "HwSendCoordinator")
+            return false
+        }
+    }
+
     private static func signer(
         manager: HwWalletManager,
         address: String,
@@ -1006,6 +1071,17 @@ final class HwSendCoordinator {
 
         func isSamePayment(address: String, sats: UInt64) -> Bool {
             self.address == address && self.sats == sats
+        }
+    }
+
+    /// Fee is deliberately not part of it: the user approved this payee and amount, at whatever fee the review shows.
+    private struct RetainedSendConsent {
+        let walletId: String
+        let address: String
+        let sats: UInt64
+
+        func matches(walletId: String?, address: String, sats: UInt64) -> Bool {
+            self.walletId == walletId && self.address == address && self.sats == sats
         }
     }
 

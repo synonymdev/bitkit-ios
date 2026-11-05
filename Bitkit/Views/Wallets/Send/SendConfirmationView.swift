@@ -962,9 +962,9 @@ struct SendConfirmationView: View {
         }
 
         if hwSend.isActive {
-            let abandonedRetainedSend = warnings.contains(.retainedHardwarePayment)
-            if abandonedRetainedSend {
-                await hwSend.abandonRetainedPayment()
+            let consentedToNewSignature = warnings.contains(.retainedHardwarePayment)
+            if consentedToNewSignature, let invoice = app.scannedOnchainInvoice {
+                hwSend.consentToNewSignature(address: invoice.address, sats: wallet.sendAmountSats ?? invoice.amountSatoshis)
             }
             let rebroadcastTx: HwFundingSignedTx? = if let address = app.scannedOnchainInvoice?.address, let sats = wallet.sendAmountSats {
                 await hwSend.retainedRebroadcastTx(
@@ -974,13 +974,13 @@ struct SendConfirmationView: View {
                 nil
             }
             if Self.mustReviewCurrentFeeBeforeSigning(
-                reviewedRetainedTx: reviewedRetainedTx, rebroadcastTx: rebroadcastTx, abandonedRetainedSend: abandonedRetainedSend
+                reviewedRetainedTx: reviewedRetainedTx, rebroadcastTx: rebroadcastTx, consentedToNewSignature: consentedToNewSignature
             ) {
                 retainedOrdinarySignedTx = nil
                 transactionFee = 0
                 hwSend.discardPreviewFee()
                 await calculateTransactionFee()
-                // Resets the swipe, so the next one signs the fee now on screen.
+                // Resets the swipe, so the next one signs the fee now on screen. The consent is still held, so it does not warn again.
                 throw CancellationError()
             }
             navigationPath.append(.hardwareSign)
@@ -994,10 +994,10 @@ struct SendConfirmationView: View {
     static func mustReviewCurrentFeeBeforeSigning(
         reviewedRetainedTx: HwFundingSignedTx?,
         rebroadcastTx: HwFundingSignedTx?,
-        abandonedRetainedSend: Bool
+        consentedToNewSignature: Bool
     ) -> Bool {
         guard let reviewedRetainedTx else { return false }
-        return abandonedRetainedSend || rebroadcastTx?.serializedTx != reviewedRetainedTx.serializedTx
+        return consentedToNewSignature || rebroadcastTx?.serializedTx != reviewedRetainedTx.serializedTx
     }
 
     /// The wallet switch chooses coins separately from send setup, so the automatic start waits for both.
