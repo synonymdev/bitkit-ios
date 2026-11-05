@@ -14,4 +14,9 @@ final class SparkConfigTests: XCTestCase {
         }
         XCTAssertFalse(SparkManager.sdkConfig(network: .regtest, apiKey: nil, isExiting: true).leafOptimizationConfig.autoEnabled)
     }
+
+    func testChainServiceIsBitkitElectrsOnMainnetOnly() {
+        XCTAssertEqual(Env.sparkChainServiceUrl(for: .bitcoin), "https://bitkit.to/electrs")
+        XCTAssertNil(Env.sparkChainServiceUrl(for: .regtest))
+    }
 }
