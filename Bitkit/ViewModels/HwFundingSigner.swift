@@ -968,7 +968,6 @@ final class HwSendCoordinator {
 
     func dismissPassphrase() {
         isPassphraseRequired = false
-        endRetainedSendConsent()
     }
 
     func completionRoute(
