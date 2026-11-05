@@ -52,6 +52,63 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testWalletCleanupDiscardsUnreadableReservationsOnlyAfterCredentialAcknowledgement() async throws {
+        snapshotAppDefaultsDomain()
+        let store = PrivatePaykitAddressReservationStore.shared
+        let reservationKey = PrivatePaykitAddressReservationStore.defaultsKey
+        let privateState = try JSONEncoder().encode(PrivatePaykitService.PrivatePaykitState(
+            contacts: ["removed-owner": .init(consumedPrivatePaymentListVersion: 17)]
+        ))
+        for ledgerKind in ["readable", "malformed", "unsupported"] {
+            for failure in ["session", "shared", "none"] {
+                await store.clear()
+                await store.restoreBackup(["taproot": 12], legacyPublicAddresses: ["reserved-address"])
+                let readable = try XCTUnwrap(UserDefaults.standard.data(forKey: reservationKey))
+                let original = ledgerKind == "malformed" ? Data("invalid-ledger".utf8) :
+                    ledgerKind == "unsupported" ? Data("{\"version\":2}".utf8) : readable
+                UserDefaults.standard.set(original, forKey: reservationKey)
+                UserDefaults.standard.set(privateState, forKey: PrivatePaykitService.cacheStateKey)
+                do {
+                    try await PubkyProfileManager.clearLocalState(
+                        scope: .walletWipe,
+                        forgetSessionAccess: {
+                            if failure == "session" {
+                                throw KeychainError.failedToDelete
+                            }
+                        },
+                        removeSharedCredentials: {
+                            if failure == "shared" {
+                                throw KeychainError.failedToDelete
+                            }
+                        }
+                    )
+                    XCTAssertEqual(failure, "none")
+                } catch KeychainError.failedToDelete {
+                    XCTAssertNotEqual(failure, "none")
+                } catch {
+                    XCTFail("Wallet cleanup must discard \(ledgerKind) reservations after credentials are cleared: \(error)")
+                }
+                if failure == "none" {
+                    XCTAssertNil(UserDefaults.standard.object(forKey: reservationKey))
+                    XCTAssertNil(UserDefaults.standard.object(forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey))
+                    do { try await store.validateWipedState() } catch { XCTFail("Reservation wipe was not acknowledged: \(error)") }
+                    let state = try JSONDecoder().decode(PrivatePaykitService.PrivatePaykitState.self,
+                                                         from: XCTUnwrap(UserDefaults.standard.data(forKey: PrivatePaykitService.cacheStateKey)))
+                    XCTAssertTrue(state.contacts.isEmpty)
+                } else {
+                    XCTAssertEqual(UserDefaults.standard.data(forKey: reservationKey), original)
+                    XCTAssertEqual(UserDefaults.standard.data(forKey: PrivatePaykitService.cacheStateKey), privateState)
+                    XCTAssertEqual(
+                        UserDefaults.standard.stringArray(forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey),
+                        ["reserved-address"]
+                    )
+                }
+            }
+        }
+        await store.clear()
+    }
+
+    @MainActor
     func testLocalDisconnectCannotTransferPublicCleanupToReplacementIdentity() async throws {
         try await withEmptyIdentityStorage {
             PublicPaykitService.queueEndpointReconciliation()

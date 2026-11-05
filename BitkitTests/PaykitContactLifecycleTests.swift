@@ -319,13 +319,79 @@ final class PaykitContactLifecycleTests: XCTestCase {
     }
 
     func testBlockedPeerCleanupDoesNotAttemptNetworkDelivery() async throws {
+        snapshotAppDefaultsDomain()
         let sdk = ContactLifecycleSdk(noPointer: .init())
         let service = PaykitSdkService(sdkFactory: { sdk })
+        let privateService = PrivatePaykitService()
+        await privateService.setTestPublishedList(true, for: sdk.publicKey)
+        PrivatePaykitService.markDeletedContactCleanupPending([sdk.publicKey])
         _ = try await service.removeContact(publicKey: sdk.publicKey)
         let eventsBeforeCleanup = sdk.events
         let report = try await service.clearPrivatePaymentLists(to: [sdk.publicKey])
         XCTAssertNil(report)
         XCTAssertEqual(sdk.events, eventsBeforeCleanup)
+
+        let operations = PrivatePaykitService.EndpointCleanupOperations(
+            linkedPeers: { try await service.linkedPeers() },
+            clearPaymentLists: { _ in XCTFail("A blocked peer cannot receive another withdrawal"); return nil },
+            drainMessages: { _ in XCTFail("A blocked peer has nothing to drain") },
+            pendingDrainKeys: { _ in XCTFail("A blocked peer has nothing to drain"); return [] },
+            syncApp: {}
+        )
+        try await privateService.removePublishedEndpoints(for: [sdk.publicKey], operations: operations)
+        let retained = await privateService.testHasPublishedList(for: sdk.publicKey)
+        XCTAssertFalse(retained)
+        XCTAssertFalse(PrivatePaykitService.pendingDeletedContactCleanupKeys().contains(sdk.publicKey))
+        try await privateService.removePublishedEndpoints(deferAppSync: true, operations: operations)
+        XCTAssertEqual(sdk.events, eventsBeforeCleanup)
+        XCTAssertTrue(sdk.withdrawals.isEmpty)
+    }
+
+    func testFullCleanupExcludesBlockedPeersButRequiresOtherPeersAcknowledgements() async throws {
+        snapshotAppDefaultsDomain()
+        let remainingKey = "pubky" + String(repeating: "y", count: 52)
+        for peerState in [LinkedPeerState.linked, .linking, .recoveryRequired] {
+            for acknowledges in [false, true] {
+                UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+                UserDefaults.standard.removeObject(forKey: PrivatePaykitService.deletedContactCleanupKeysKey)
+                let sdk = ContactLifecycleSdk(noPointer: .init())
+                var remaining = sdk.peers[0]
+                remaining.counterparty = remainingKey
+                remaining.state = peerState
+                sdk.peers[0].state = .blocked
+                sdk.peers.append(remaining)
+                sdk.acknowledgesWithdrawal = acknowledges
+                let service = PaykitSdkService(sdkFactory: { sdk })
+                let privateService = PrivatePaykitService()
+                for key in [sdk.publicKey, remainingKey] {
+                    await privateService.setTestPublishedList(true, for: key)
+                }
+                PrivatePaykitService.markDeletedContactCleanupPending([sdk.publicKey, remainingKey])
+                do {
+                    try await privateService.removePublishedEndpoints(deferAppSync: true, operations: .init(
+                        linkedPeers: { try await service.linkedPeers() },
+                        clearPaymentLists: { keys in
+                            XCTAssertEqual(keys, [remainingKey])
+                            return try await service.clearPrivatePaymentLists(to: keys)
+                        },
+                        drainMessages: { _ in XCTFail("An empty queue requires no drain") },
+                        pendingDrainKeys: { _ in [] },
+                        syncApp: { XCTFail("Profile removal defers registry synchronization") }
+                    ))
+                    XCTAssertTrue(acknowledges)
+                } catch PrivatePaykitError.privateUnavailable {
+                    XCTAssertFalse(acknowledges)
+                }
+                XCTAssertEqual(sdk.withdrawals.count, 1)
+                XCTAssertEqual(sdk.withdrawals.first?.map(\.counterparty), [remainingKey])
+                let blockedRetained = await privateService.testHasPublishedList(for: sdk.publicKey)
+                let remainingRetained = await privateService.testHasPublishedList(for: remainingKey)
+                XCTAssertFalse(blockedRetained)
+                XCTAssertEqual(remainingRetained, !acknowledges)
+                XCTAssertEqual(PrivatePaykitService.pendingDeletedContactCleanupKeys(), acknowledges ? [] : [remainingKey])
+                XCTAssertEqual(sdk.peers[0].state, .blocked)
+            }
+        }
     }
 
     func testWithdrawalRechecksContactSnapshotAfterSdkPreflight() async throws {

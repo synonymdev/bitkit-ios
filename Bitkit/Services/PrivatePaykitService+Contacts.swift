@@ -480,6 +480,9 @@ extension PrivatePaykitService {
         let linkedPublicKeys = Set(peers
             .filter { $0.state == .linked || $0.state == .linking || $0.state == .recoveryRequired }
             .compactMap { PubkyPublicKeyFormat.normalized($0.counterparty) })
+        let blockedPublicKeys = Set(peers
+            .filter { $0.state == .blocked }
+            .compactMap { PubkyPublicKeyFormat.normalized($0.counterparty) })
         let publicKeys = publicKeys ?? normalizedSavedContactKeys(Array(
             Set(knownSavedContactKeys)
                 .union(state.contacts.keys)
@@ -487,6 +490,7 @@ extension PrivatePaykitService {
                 .union(linkedPublicKeys)
         ))
         let cleanupKeys = privatePaymentListCleanupKeys(publicKeys, linkedPublicKeys: linkedPublicKeys)
+            .filter { !blockedPublicKeys.contains($0) }
         let publicKeySet = Set(publicKeys)
         let cleanupStateSnapshots = Dictionary(uniqueKeysWithValues: publicKeys.map { publicKey in
             (publicKey, publishedEndpointCleanupState(publicKey: publicKey))

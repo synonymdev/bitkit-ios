@@ -2194,6 +2194,7 @@ class PubkyProfileManager: ObservableObject {
     // MARK: - Sign Out
 
     static func clearLocalState(
+        scope: ProfileRemovalStore.Scope = .profile,
         forgetSessionAccess: @Sendable () async throws -> Void = { try await PubkyService.forgetSessionAccess() },
         removeSharedCredentials: () throws -> Void = { try SharedPubkyKeychain.removeAllOwnOrThrow() },
         flushPreferences: () -> Bool = { UserDefaults.standard.synchronize() }
@@ -2203,17 +2204,25 @@ class PubkyProfileManager: ObservableObject {
             try beginSessionMutation(allowDuringProfileDeletion: true)
             defer { endSessionMutation() }
             try await forgetSessionAccess()
-            try await clearLocalAppState(removeSharedCredentials: removeSharedCredentials, flushPreferences: flushPreferences)
+            try await clearLocalAppState(scope: scope, removeSharedCredentials: removeSharedCredentials, flushPreferences: flushPreferences)
         }
     }
 
     private static func clearLocalAppState(
+        scope: ProfileRemovalStore.Scope = .profile,
         removeSharedCredentials: () throws -> Void = { try SharedPubkyKeychain.removeAllOwnOrThrow() },
         flushPreferences: () -> Bool = { UserDefaults.standard.synchronize() }
     ) async throws {
         try removeSharedCredentials()
         AdoptedPubkyReference.current = nil
-        let reservations = try await PrivatePaykitAddressReservationStore.shared.clearContactAssignmentsForRemoval()
+        let reservations: Data?
+        switch scope {
+        case .profile:
+            reservations = try await PrivatePaykitAddressReservationStore.shared.clearContactAssignmentsForRemoval()
+        case .walletWipe:
+            await PrivatePaykitAddressReservationStore.shared.clear()
+            reservations = nil
+        }
         let privateState = try await PrivatePaykitService.shared.closeAndClear()
         await PubkyImageCache.shared.clear()
         clearCachedIdentityMetadata()
@@ -2236,11 +2245,18 @@ class PubkyProfileManager: ObservableObject {
             ContactPaymentsService.confirmedPreferenceKey, PrivatePaykitService.cleanupPendingKey, PublicPaykitService.cleanupPendingKey,
         ]
         guard removedKeys.allSatisfy({ stored[$0] == nil }), disabledKeys.allSatisfy({ stored[$0] as? Bool == false }),
-              stored[PrivatePaykitService.cacheStateKey] as? Data == privateState,
-              stored[PrivatePaykitAddressReservationStore.defaultsKey] as? Data == reservations
+              stored[PrivatePaykitService.cacheStateKey] as? Data == privateState
         else { throw ProfileRemovalStore.StoreError.changed }
         try await PrivatePaykitService.shared.validateRemovalState(privateState)
-        try await PrivatePaykitAddressReservationStore.shared.validateRemovalState(reservations)
+        if let reservations {
+            guard stored[PrivatePaykitAddressReservationStore.defaultsKey] as? Data == reservations
+            else { throw ProfileRemovalStore.StoreError.changed }
+            try await PrivatePaykitAddressReservationStore.shared.validateRemovalState(reservations)
+        } else {
+            guard stored[PrivatePaykitAddressReservationStore.defaultsKey] == nil
+            else { throw ProfileRemovalStore.StoreError.changed }
+            try await PrivatePaykitAddressReservationStore.shared.validateWipedState()
+        }
         notifyAppStateBackupChanged()
     }
 

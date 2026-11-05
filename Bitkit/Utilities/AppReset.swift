@@ -173,8 +173,7 @@ final class AppReset: WipeStepExecutor {
             Logger.info("Core DB wipe: \(coreWipeResult)")
         case .clearPubkyState:
             // Clear any live Pubky runtime state and cached profile images.
-            try await PubkyProfileManager.clearLocalState()
-            await PrivatePaykitAddressReservationStore.shared.clear()
+            try await PubkyProfileManager.clearLocalState(scope: .walletWipe)
         case .wipeKeychain:
             try Self.wipeKeychain()
             try SharedPubkyKeychain.removeAllOwnOrThrow()

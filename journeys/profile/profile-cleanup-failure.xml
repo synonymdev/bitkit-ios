@@ -16,6 +16,9 @@
     after establishing a saved linked contact and verify the own app registry has privatePayments=false.
     Retain the saved contact and encrypted link, then test first-attempt profile deletion both with
     an acknowledged empty list and with its acknowledgement withheld. Sharing must stay disabled.
+    Separately delete a contact whose private withdrawal fails before its peer is blocked, retaining
+    its local cleanup state. Profile removal must clear that blocked peer locally without another
+    delivery attempt, while still requiring exact acknowledgements from other linked peers.
     Failures before grant logout remain local-only. A confirmed logout retry requires the captured
     original live grant and must not adopt a replacement grant, identity, client or signer.
     These controls are not available in standard staging. This journey covers stopping on incomplete
@@ -35,5 +38,8 @@
     <action>Restart the app and verify no profile deletion is automatically replayed</action>
     <action>In the fresh sharing-disabled fixture, confirm profile deletion and verify an empty private list is acknowledged before contact or profile deletion; verify no app registration or sharing re-enable occurs</action>
     <action>Repeat with another fresh sharing-disabled fixture and withhold the exact withdrawal acknowledgement; verify contact and profile deletion stop and only local recovery remains available</action>
+    <action>In a fresh fixture, delete a contact while its private withdrawal fails; verify the peer is blocked and the contact is removed</action>
+    <action>Confirm profile deletion and verify the blocked peer receives no new withdrawal and its retained local cleanup state is cleared</action>
+    <action>Repeat with another linked contact remaining; withholding that contact's exact withdrawal acknowledgement must still stop profile deletion, while acknowledging it allows cleanup to finish</action>
   </actions>
 </journey>
