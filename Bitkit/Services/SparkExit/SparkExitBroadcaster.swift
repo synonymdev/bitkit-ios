@@ -46,6 +46,9 @@ protocol SparkExitChain: Sendable {
     func tipHeight() async throws -> UInt32
     func utxos(address: String) async throws -> [EsploraUtxo]
     func txStatus(txid: String) async throws -> EsploraTxStatus
+    /// Whether the transaction is in a block or in the mempool; false once every host answers it has no such
+    /// transaction.
+    func isKnown(txid: String) async throws -> Bool
     func broadcast(_ tx: RecoveryTransaction) async -> SparkExitBroadcastOutcome
 }
 
@@ -90,6 +93,12 @@ struct EsploraSparkExitChain: SparkExitChain {
 
     func txStatus(txid: String) async throws -> EsploraTxStatus {
         try await JSONDecoder().decode(EsploraTxStatus.self, from: get("/tx/\(txid)/status"))
+    }
+
+    /// `/tx/{txid}/hex` looks in the mempool and the chain alike; `/status` of an unknown transaction may answer
+    /// unconfirmed instead of not found.
+    func isKnown(txid: String) async throws -> Bool {
+        try await getIfFound("/tx/\(txid)/hex") != nil
     }
 
     /// Tries each host until one accepts. Otherwise a node's refusal wins over a host that was only unavailable.
@@ -147,19 +156,34 @@ struct EsploraSparkExitChain: SparkExitChain {
     }
 
     private func get(_ path: String) async throws -> Data {
-        var lastError: Error = URLError(.cannotFindHost)
+        guard let data = try await getIfFound(path) else { throw URLError(.fileDoesNotExist) }
+        return data
+    }
+
+    /// nil when every host answers 404; a host that fails otherwise makes it throw instead.
+    private func getIfFound(_ path: String) async throws -> Data? {
+        var lastError: Error?
         for host in hosts {
             var request = URLRequest(url: host.appendingPathComponent(path))
             request.timeoutInterval = 20
             do {
                 let (data, response) = try await http.send(request)
+                if response.statusCode == 404 {
+                    continue
+                }
                 guard (200 ..< 300).contains(response.statusCode) else { throw URLError(.badServerResponse) }
                 return data
             } catch {
                 lastError = error
             }
         }
-        throw lastError
+        if hosts.isEmpty {
+            throw URLError(.cannotFindHost)
+        }
+        if let lastError {
+            throw lastError
+        }
+        return nil
     }
 }
 
@@ -240,6 +264,13 @@ enum SparkExitBroadcastClassifier {
     /// A host that is down, rate limiting or behind a challenge page says nothing about the transaction.
     private static func unavailable(_ status: Int) -> SparkExitBroadcastOutcome? {
         status >= 500 || status == 429 || status == 403 ? .retryLater("HTTP \(status)") : nil
+    }
+
+    /// The step paid no fee of its own and its CPFP child did not pay for it (`min relay fee not met, 0 < 17`): the
+    /// child is missing or invalid, such as one spending the change of an earlier child that lost a race.
+    static func isUnpaid(_ outcome: SparkExitBroadcastOutcome) -> Bool {
+        guard case let .rejected(text) = outcome else { return false }
+        return text.range(of: #"min relay fee not met,\s*0\s*<"#, options: .regularExpression) != nil
     }
 
     static func classify(error text: String) -> SparkExitBroadcastOutcome {

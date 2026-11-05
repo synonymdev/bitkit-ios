@@ -104,6 +104,13 @@ enum SparkExitFixtures {
         )
     }
 
+    /// A version 3 transaction spending output 0 of each of `inputs`, with one output.
+    static func rawTx(spending inputs: [String]) -> String {
+        "03000000" + String(format: "%02x", inputs.count)
+            + inputs.map { Data($0.hexaBytes.reversed()).hex + "00000000" + "00" + "ffffffff" }.joined()
+            + "01" + "e803000000000000" + "16" + "0014" + String(repeating: "22", count: 20) + "00000000"
+    }
+
     static func utxo(_ txid: String, vout: UInt32 = 0, value: UInt64, confirmed: Bool = true) -> EsploraUtxo {
         EsploraUtxo(txid: txid, vout: vout, value: value, status: EsploraTxStatus(confirmed: confirmed, blockHeight: confirmed ? 100 : nil))
     }
@@ -114,6 +121,7 @@ final class FakeSparkExitChain: SparkExitChain, @unchecked Sendable {
     var tip: UInt32 = 1000
     var utxosByAddress: [String: [EsploraUtxo]] = [:]
     var confirmedTxids: Set<String> = []
+    var mempoolTxids: Set<String> = []
     var outcome: SparkExitBroadcastOutcome = .accepted
     var isUtxosUnreadable = false
     private(set) var broadcasts: [RecoveryTransaction] = []
@@ -132,6 +140,10 @@ final class FakeSparkExitChain: SparkExitChain, @unchecked Sendable {
 
     func txStatus(txid: String) async throws -> EsploraTxStatus {
         lock.withLock { EsploraTxStatus(confirmed: confirmedTxids.contains(txid), blockHeight: confirmedTxids.contains(txid) ? 900 : nil) }
+    }
+
+    func isKnown(txid: String) async throws -> Bool {
+        lock.withLock { confirmedTxids.contains(txid) || mempoolTxids.contains(txid) }
     }
 
     func broadcast(_ tx: RecoveryTransaction) async -> SparkExitBroadcastOutcome {
@@ -797,6 +809,92 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2", "n2"])
     }
 
+    /// qa-03 shared-ancestor race, with the operators down so nothing else diverges: another wallet's CPFP child
+    /// confirmed node n1, ours never will, and n2's child spends our child's change. `checkRecoverFunds` answers
+    /// Valid, so the exit rebuilds from the same funding and never sends the dead chain again.
+    func testAFeeChainThatLostARaceRebuildsWithoutResendingIt() async throws {
+        let funding = String(repeating: "f0", count: 32)
+        let ourChild = SparkExitFixtures.rawTx(spending: [funding])
+        let chained = try SparkExitFixtures.rawTx(spending: [XCTUnwrap(SparkExitTxid.txid(hex: ourChild))])
+        var record = SparkExitFixtures.record(phase: .running)
+        record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: funding, vout: 0, valueSats: 20000)
+        record.adopt(SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", cpfp: ourChild),
+            SparkExitFixtures.tx("n2", cpfp: chained, dependsOn: ["n1"], status: .waitingForDependencies),
+        ]), at: Date(timeIntervalSince1970: 1_700_000_050))
+        chain.confirmedTxids = ["n1"]
+        sdk.checks = [CheckRecoverFundsResponse(recovery: SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", cpfp: ourChild, status: .confirmed(blockHeight: 10)),
+            SparkExitFixtures.tx("n2", cpfp: chained, dependsOn: ["n1"]),
+        ]), verdict: .valid)]
+        let fresh = SparkExitFixtures.rawTx(spending: [funding])
+        sdk.builds = [SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 10)),
+            SparkExitFixtures.tx("n2", cpfp: fresh, dependsOn: ["n1"]),
+        ])]
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.generation, 2)
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2"])
+        XCTAssertEqual(chain.broadcasts.map(\.cpfpTxHex), [fresh])
+        XCTAssertEqual(sdk.recoverRequests.first?.fundingInputs, [.p2wpkh(txid: funding, vout: 0, valueSats: 20000, pubkey: "02ab")])
+        XCTAssertNil(record.surfacedRejection)
+    }
+
+    func testAChildStillInTheMempoolIsNotDead() async throws {
+        let ourChild = SparkExitFixtures.rawTx(spending: [String(repeating: "f0", count: 32)])
+        let childTxid = try XCTUnwrap(SparkExitTxid.txid(hex: ourChild))
+        let chained = SparkExitFixtures.rawTx(spending: [childTxid])
+        var record = SparkExitFixtures.record(phase: .running)
+        let checked = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", cpfp: ourChild, status: .confirmed(blockHeight: 10)),
+            SparkExitFixtures.tx("n2", cpfp: chained, dependsOn: ["n1"]),
+        ])
+        record.adopt(checked, at: Date(timeIntervalSince1970: 1_700_000_050))
+        chain.confirmedTxids = ["n1"]
+        chain.mempoolTxids = [childTxid]
+        sdk.checks = [CheckRecoverFundsResponse(recovery: checked, verdict: .valid)]
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.generation, 1)
+        XCTAssertEqual(chain.broadcasts.map(\.cpfpTxHex), [chained])
+    }
+
+    /// The safety net: a step whose parents confirmed and whose child keeps failing to pay for it rebuilds the exit
+    /// once, without counting towards the rejection alert. After that rebuild its failures are rejections again.
+    func testAStepWhoseFeeChainKeepsFailingRebuildsOnceThenSurfaces() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        let first = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 10)),
+            SparkExitFixtures.tx("n2", cpfp: "03c", dependsOn: ["n1"]),
+        ])
+        let second = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 10)),
+            SparkExitFixtures.tx("n2", cpfp: "03d", dependsOn: ["n1"]),
+        ])
+        record.adopt(first, at: Date(timeIntervalSince1970: 1_700_000_050))
+        chain.outcome = .rejected("min relay fee not met, 0 < 17")
+        sdk.checks = Array(repeating: CheckRecoverFundsResponse(recovery: first, verdict: .valid), count: 3)
+            + Array(repeating: CheckRecoverFundsResponse(recovery: second, verdict: .valid), count: 2)
+        sdk.builds = [second]
+
+        record = try await driver().tick(record)
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.broadcastLog.first?.feeChainFailures, 2)
+        XCTAssertEqual(record.broadcastLog.first?.rejections, 0)
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.generation, 2)
+        XCTAssertEqual(record.feeChainRebuildTxids, ["n2"])
+
+        record = try await driver().tick(record)
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.generation, 2)
+        XCTAssertEqual(record.surfacedRejection, "rejected: min relay fee not met, 0 < 17")
+    }
+
     /// qa-03 repro: an older state's refund took the leaf, so every rebuild reproduces the same refund, whose input
     /// is spent. After two such rebuilds the leaf is lost and the exit goes on with the rest.
     func testALeafAnOlderStateClaimedIsLostAfterTwoRebuildsThatReproduceItsRefund() async throws {
@@ -1359,6 +1457,17 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertNil(SparkExitMath.fundingState(record, utxos: []))
     }
 
+    /// qa-03: a short rebuild showed "₿ 68 more" for one tick before the ask's 294 floor applied.
+    func testTheNeededAmountIsNeverUnderTheDustLimit() {
+        var record = SparkExitFixtures.record(phase: .needsFunding(requiredSats: 20068))
+        record.funding = [.init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 0, valueSats: 20000)]
+
+        XCTAssertEqual(SparkExitMath.neededSats(record, state: nil), 294)
+        XCTAssertEqual(SparkExitMath.neededSats(record, state: .seen(txid: "x")), 294)
+        XCTAssertEqual(SparkExitMath.neededSats(record, state: SparkExitMath.fundingState(record, utxos: [])), 294)
+        XCTAssertEqual(SparkExitMath.neededSats(record, state: .ask(sats: 500)), 500)
+    }
+
     /// qa-03: 2,000 of 4,348 at the address showed no hint until the whole sum arrived.
     func testAPartialPaymentNamesWhatIsStillMissing() {
         XCTAssertNil(SparkExitMath.partialFundingSats(receivedSats: 0, requiredSats: 4348))
@@ -1621,6 +1730,25 @@ final class SparkExitBroadcasterTests: XCTestCase {
             SparkExitBroadcastClassifier.package(status: 400, body: Data(#"{"error":"submitpackage RPC error: {\"code\":-25}"}"#.utf8)),
             .inputsMissing(#"{"error":"submitpackage RPC error: {\"code\":-25}"}"#)
         )
+    }
+
+    func testKnowsATransactionOnlyWhileAHostHasIt() async throws {
+        let http = FakeHTTP()
+        let chain = EsploraSparkExitChain(hosts: [hostA, hostB], http: http)
+
+        http.responses = [("a.example/api/tx/c/hex", 404, "Transaction not found"), ("b.example/api/tx/c/hex", 404, "Transaction not found")]
+        let isUnknown = try await chain.isKnown(txid: "c")
+        http.responses = [("a.example/api/tx/c/hex", 404, "Transaction not found"), ("b.example/api/tx/c/hex", 200, "0300")]
+        let isKnown = try await chain.isKnown(txid: "c")
+        http.responses = [("a.example/api/tx/c/hex", 404, "Transaction not found")]
+        let isUnreachable = await (try? chain.isKnown(txid: "c")) == nil
+
+        XCTAssertFalse(isUnknown)
+        XCTAssertTrue(isKnown)
+        XCTAssertTrue(isUnreachable, "a host that could not answer is no proof it is gone")
+        XCTAssertTrue(SparkExitBroadcastClassifier.isUnpaid(.rejected("min relay fee not met, 0 < 17")))
+        XCTAssertFalse(SparkExitBroadcastClassifier.isUnpaid(.rejected("min relay fee not met, 100 < 170")))
+        XCTAssertFalse(SparkExitBroadcastClassifier.isUnpaid(.inputsMissing("min relay fee not met, 0 < 17")))
     }
 
     func testReadsTipAndFundingUtxos() async throws {

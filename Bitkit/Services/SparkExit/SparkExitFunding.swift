@@ -285,6 +285,15 @@ enum SparkExitMath {
     /// The least a P2WPKH funding output can hold: nodes refuse a payment below it.
     static let fundingDustSats: UInt64 = 294
 
+    /// What the exit says it still needs: the ask, or, while a payment is awaited or before the funding address was
+    /// read, the shortfall. Never under the dust limit.
+    static func neededSats(_ record: SparkExitRecord, state: SparkExitFundingState?) -> UInt64? {
+        if case let .ask(sats, _) = state {
+            return sats
+        }
+        return record.fundingShortfallSats.map { max($0, fundingDustSats) }
+    }
+
     /// What a partial payment leaves to send, at least the dust limit: nil before any new funding arrives and once
     /// it covers `requiredSats`.
     static func partialFundingSats(receivedSats: UInt64, requiredSats: UInt64) -> UInt64? {

@@ -165,6 +165,10 @@ final class SparkExitManager {
             tipHeight = try? await chain.tipHeight()
             await refreshFundingSeen(chain: chain, record: current)
             var updated = try await driver.tick(current)
+            // A tick that adopted the funding and came up short would otherwise keep showing that payment as seen.
+            if updated.phase != current.phase {
+                await refreshFundingSeen(chain: chain, record: updated)
+            }
             // The result may have been opened while this tick ran.
             if record?.isResultSeen == true, updated.isResultSeen != true {
                 updated.isResultSeen = true

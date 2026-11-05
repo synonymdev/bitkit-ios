@@ -50,6 +50,9 @@ struct SparkExitRecord: Codable, Equatable {
         /// Its input was spent by another transaction, the operators' version of the step: the keyless pass stops
         /// sending it and the next SDK check rebuilds.
         var isInputSpent: Bool?
+        /// Attempts in a row, with the step's parents confirmed, that its fee chain failed: its CPFP child did not
+        /// pay for it (`min relay fee not met, 0 < N`) or its inputs were missing. Reset by any other outcome.
+        var feeChainFailures: Int?
     }
 
     /// A leaf an older state of the wallet claimed on-chain first, which this exit cannot recover.
@@ -117,6 +120,9 @@ struct SparkExitRecord: Codable, Equatable {
     /// Per step txid, how many rebuilds in a row reproduced it after another transaction spent its input.
     var spentStepStrikes: [String: Int]?
     var lostLeaves: [LostLeaf]?
+    /// The steps whose repeated fee chain failures already rebuilt the exit once; from then on they count as
+    /// rejections.
+    var feeChainRebuildTxids: [String]?
     var leftBehindLeaves: [LeftBehindLeaf]?
     /// Set once the user opened the result of an exit that failed or lost leaves.
     var isResultSeen: Bool?

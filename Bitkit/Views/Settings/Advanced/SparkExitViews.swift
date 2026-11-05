@@ -480,17 +480,10 @@ struct SparkExitProgressView: View {
         case .needsFunding:
             t(
                 "lightning__spark_exit__needs_funding_text",
-                variables: ["amount": currency.primaryAmountText(sats: askSats ?? record?.fundingShortfallSats ?? 0)]
+                variables: ["amount": currency.primaryAmountText(sats: record.flatMap { SparkExitMath.neededSats($0, state: fundingState) } ?? 0)]
             )
         default: t("lightning__spark_exit__progress_text")
         }
-    }
-
-    private var askSats: UInt64? {
-        if case let .ask(sats, _) = fundingState {
-            return sats
-        }
-        return nil
     }
 
     var body: some View {

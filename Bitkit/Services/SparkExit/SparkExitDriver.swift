@@ -35,6 +35,8 @@ struct SparkExitDriver {
     /// Rebuilds in a row that reproduce a step whose input another transaction spent before its leaf counts as lost:
     /// an older state of the wallet claimed it, and every rebuild would send the same refund again.
     static let strikesToLoseLeaf = 2
+    /// Fee chain failures in a row of one step, its parents confirmed, that rebuild the exit once.
+    static let feeChainFailuresToRebuild = 3
 
     @discardableResult
     func tick(_ record: SparkExitRecord) async throws -> SparkExitRecord {
@@ -227,16 +229,62 @@ struct SparkExitDriver {
         record.recovery = StoredRecovery(checked.recovery)
         switch checked.verdict {
         case .valid:
+            // The SDK sees no divergence when another wallet's CPFP child confirmed a node our leaves share.
+            let dead = await deadCpfpChildren(checked.recovery, stored: stored)
+            if !dead.isEmpty {
+                Logger.warn("Spark exit fee chain lost a race (dead children \(dead)), rebuilding", context: "SparkExitDriver")
+                try await rebuild(&record, recovering: recovering)
+                return
+            }
             try await broadcastReady(&record)
+            let rebuilt = Set(record.feeChainRebuildTxids ?? [])
+            if let stuck = record.broadcastLog.first(where: {
+                $0.generation == record.generation && ($0.feeChainFailures ?? 0) >= Self.feeChainFailuresToRebuild && !rebuilt.contains($0.txid)
+            }) {
+                Logger.warn("Spark exit step \(stuck.txid) keeps failing its fee chain, rebuilding once", context: "SparkExitDriver")
+                record.feeChainRebuildTxids = (record.feeChainRebuildTxids ?? []) + [stuck.txid]
+                try await rebuild(&record, recovering: recovering)
+            }
         case .done:
             await finish(&record, phase: .done)
         case .redo:
             Logger.warn("Spark exit diverged on-chain, rebuilding generation \(record.generation + 1)", context: "SparkExitDriver")
-            record.isRebuilding = true
-            try save(record)
-            guard !Task.isCancelled, isRebuildDue(record) else { return }
-            try await build(&record, recovering: recovering)
+            try await rebuild(&record, recovering: recovering)
         }
+    }
+
+    /// Saved as rebuilding first, so nothing of the replaced generation is broadcast again, then rebuilt once due.
+    private func rebuild(_ record: inout SparkExitRecord, recovering: SparkExitRecovering) async throws {
+        record.isRebuilding = true
+        try save(record)
+        guard !Task.isCancelled, isRebuildDue(record) else { return }
+        try await build(&record, recovering: recovering)
+    }
+
+    /// Our CPFP children that a step still to confirm builds on, and that can never confirm: the node each pays for
+    /// is in a block, yet the child is neither in a block nor in the mempool. Another wallet's child won the race
+    /// for a node both exits share, so the change ours would leave never exists. A child the hosts could not be
+    /// asked about counts as alive.
+    private func deadCpfpChildren(_ recovery: RecoverFundsResponse, stored: RecoverFundsResponse) async -> [String] {
+        let confirmed = Set(recovery.transactions.filter(\.isConfirmed).map(\.txid))
+        var stepOfChild: [String: String] = [:]
+        for tx in stored.transactions {
+            if let child = tx.cpfpTxHex.flatMap(SparkExitTxid.txid(hex:)) {
+                stepOfChild[child] = tx.txid
+            }
+        }
+        var suspects = Set<String>()
+        for tx in stored.transactions where !confirmed.contains(tx.txid) {
+            guard let inputs = tx.cpfpTxHex.flatMap(SparkExitTxid.inputTxids(hex:)) else { continue }
+            suspects.formUnion(inputs.filter { stepOfChild[$0].map(confirmed.contains) == true })
+        }
+        var dead: [String] = []
+        for child in suspects.sorted() where !Task.isCancelled {
+            if await (try? chain.isKnown(txid: child)) == false {
+                dead.append(child)
+            }
+        }
+        return dead
     }
 
     /// Marks the next steps the chain host shows in a block as confirmed. The SDK asks the chain about a step only
@@ -435,18 +483,22 @@ struct SparkExitDriver {
         return !last.isAccepted || now().timeIntervalSince(last.lastAttemptAt) >= Self.rebroadcastInterval
     }
 
-    /// With every parent of the step confirmed, missing inputs mean another transaction spent one.
+    /// With every parent of the step confirmed, missing inputs mean another transaction spent one. A failed fee
+    /// chain is no rejection until it already rebuilt the exit once.
     private func broadcast(_ tx: RecoveryTransaction, into record: inout SparkExitRecord, hasConfirmedParents: Bool) async {
         let outcome = await chain.broadcast(tx)
         Logger.info("Spark exit broadcast \(tx.kind) \(tx.txid): \(outcome.summary)", context: "SparkExitDriver")
         let isAccepted = outcome == .accepted
-        let isInputSpent: Bool? = if hasConfirmedParents, case .inputsMissing = outcome {
+        let isInputsMissing = if case .inputsMissing = outcome {
             true
         } else {
-            nil
+            false
         }
+        let isInputSpent: Bool? = hasConfirmedParents && isInputsMissing ? true : nil
+        let isUnpaid = SparkExitBroadcastClassifier.isUnpaid(outcome)
+        let isFeeChainFailure = hasConfirmedParents && (isUnpaid || isInputsMissing)
         let isRejected = if case .rejected = outcome {
-            true
+            !(isFeeChainFailure && !(record.feeChainRebuildTxids ?? []).contains(tx.txid))
         } else {
             false
         }
@@ -457,6 +509,7 @@ struct SparkExitDriver {
             record.broadcastLog[i].lastOutcome = outcome.summary
             record.broadcastLog[i].isAccepted = isAccepted
             record.broadcastLog[i].isInputSpent = isInputSpent
+            record.broadcastLog[i].feeChainFailures = isFeeChainFailure ? (record.broadcastLog[i].feeChainFailures ?? 0) + 1 : nil
         } else {
             record.broadcastLog.append(.init(
                 generation: record.generation,
@@ -466,7 +519,8 @@ struct SparkExitDriver {
                 lastAttemptAt: now(),
                 lastOutcome: outcome.summary,
                 isAccepted: isAccepted,
-                isInputSpent: isInputSpent
+                isInputSpent: isInputSpent,
+                feeChainFailures: isFeeChainFailure ? 1 : nil
             ))
         }
     }
@@ -534,6 +588,14 @@ enum SparkExitTimelock {
 enum SparkExitTxid {
     static func cpfpChildTxids(_ recovery: RecoverFundsResponse) -> [String] {
         recovery.transactions.compactMap { $0.cpfpTxHex.flatMap(txid(hex:)) }
+    }
+
+    /// The txids a serialized transaction spends; nil when the hex does not decode.
+    static func inputTxids(hex: String) -> [String]? {
+        let bytes = hex.hexaBytes
+        guard hex.count == bytes.count * 2 else { return nil }
+        var reader = Reader(bytes: bytes)
+        return reader.inputs()?.inputs.map(\.txid)
     }
 
     /// Each input's BIP68 block lock with the txid it spends; nil when the hex does not decode. Version 1

@@ -145,6 +145,10 @@ private struct TimedSparkExitChain: SparkExitChain {
         try await base.txStatus(txid: txid)
     }
 
+    func isKnown(txid: String) async throws -> Bool {
+        try await base.isKnown(txid: txid)
+    }
+
     func broadcast(_ tx: RecoveryTransaction) async -> SparkExitBroadcastOutcome {
         await timings.time(.broadcast) { await base.broadcast(tx) }
     }
