@@ -119,9 +119,9 @@ Resumo das alterações para os utilizadores.
 Zusammenfassung der Änderungen für Endnutzer.
 ```
 
-Share this file for review. The English summary is also prepended to the draft GitHub release body.
+Share this file for review. Keep the approved English summary in the GitHub draft’s `Store Release Notes` section, replacing that section when it already exists and preserving the changelog.
 
-These translated notes are later pasted into App Store Connect when submitting for review (step 4).
+Apply the shared [store release-note checks](https://github.com/synonymdev/bitkit/blob/master/docs/store-release-notes.md) before generating/translating notes and again before submission. Record the guide revision, policy check date and language/sync results in `.ai/store-notes-check-{version}.md`. These translated notes are later pasted into App Store Connect when submitting for review (step 4).
 
 ---
 
@@ -208,6 +208,8 @@ Repeat this cycle for each round of fixes. Keep incrementing the build number ea
 ---
 
 ## 4. Submit for App Store Review
+
+Before submission or resubmission, complete the [shared store-note preflight](https://github.com/synonymdev/bitkit/blob/master/docs/store-release-notes.md): reopen and verify every saved locale against the approved notes, inspect other public listing metadata for platform references, synchronize the local/Drive/GitHub copies, and resolve pending content or policy questions. Record the actual readback and selected build/release policy; a generated draft alone does not complete this check.
 
 1. Go to [App Store Connect](https://appstoreconnect.apple.com/) -> **Apps** -> **Bitkit** -> **Distribution** tab
 2. Click **+** (top left) to create a new version (e.g. 2.0.7)
