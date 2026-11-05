@@ -12,4 +12,9 @@ final class SparkConfigTests: XCTestCase {
             XCTAssertEqual(config.apiKey, "test-key")
         }
     }
+
+    func testChainServiceIsBitkitElectrsOnMainnetOnly() {
+        XCTAssertEqual(Env.sparkChainServiceUrl(for: .bitcoin), "https://bitkit.to/electrs")
+        XCTAssertNil(Env.sparkChainServiceUrl(for: .regtest))
+    }
 }
