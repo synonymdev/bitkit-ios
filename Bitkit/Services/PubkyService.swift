@@ -1536,7 +1536,8 @@ actor PaykitSdkService {
             if priority == .background {
                 try await PaykitPaymentActivity.shared.waitUntilIdle()
             }
-            let exported: BackupExport? = try await withSdk(priority: priority) { sdk in
+            // Export reads local SDK storage only; deriving the Paykit key would fetch the App Registry.
+            let exported: BackupExport? = try await withSdk(priority: priority, refreshesPaykitKey: false) { sdk in
                 guard sdk === instance, try operationLock.walletGeneration() == generation else {
                     throw PubkyServiceError.identityChanged
                 }
@@ -1642,6 +1643,7 @@ actor PaykitSdkService {
     private func withSdk<T>(
         priority: PaykitSdkOperationLock.Priority = .ordered,
         deferDuringPayment: Bool = false,
+        refreshesPaykitKey: Bool = true,
         operationName: StaticString = #function,
         beforeOperation: () async throws -> Void = {},
         _ operation: (PaykitSdk) async throws -> T
@@ -1677,16 +1679,18 @@ actor PaykitSdkService {
                 try await beforeOperation()
                 do {
                     return try await withSdkErrorHandling {
-                        #if DEBUG
-                            let keyStarted = clock.now
-                        #endif
-                        try await refreshPaykitKey()
-                        #if DEBUG
-                            Logger.debug(
-                                "Prepared Paykit key trace=\(trace) duration=\(keyStarted.duration(to: clock.now))",
-                                context: "PaykitSdkService"
-                            )
-                        #endif
+                        if refreshesPaykitKey {
+                            #if DEBUG
+                                let keyStarted = clock.now
+                            #endif
+                            try await refreshPaykitKey()
+                            #if DEBUG
+                                Logger.debug(
+                                    "Prepared Paykit key trace=\(trace) duration=\(keyStarted.duration(to: clock.now))",
+                                    context: "PaykitSdkService"
+                                )
+                            #endif
+                        }
                         try await beforeOperation()
                         try operationLock.checkWipeOwnership()
                         return try await .some(operation(handle()))

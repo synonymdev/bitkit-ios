@@ -219,6 +219,38 @@ final class PaykitSdkClientConfigTests: XCTestCase {
     }
 
     @MainActor
+    func testBackupExportDoesNotFetchPaykitAppRegistry() async throws {
+        let secret = String(repeating: "23", count: 32)
+        let publicKey = try PubkyProfileManager.publicKeyFromSecretKey(secret)
+        let keys: [KeychainEntryType] = [.pubkySecretKey, .paykitKeyGeneration(publicKey: publicKey)]
+        let saved = try keys.map { try Keychain.load(key: $0) }
+        let savedReference = AdoptedPubkyReference.current
+        defer {
+            AdoptedPubkyReference.current = savedReference
+            for (key, value) in zip(keys, saved) {
+                if let value {
+                    try? Keychain.upsert(key: key, data: value)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
+            }
+        }
+        AdoptedPubkyReference.current = nil
+        for key in keys {
+            try Keychain.delete(key: key)
+        }
+        try Keychain.upsert(key: .pubkySecretKey, data: Data(secret.utf8))
+        let sdk = CacheActivationSdk(noPointer: .init())
+        sdk.registryError = PaykitError.Transport(code: "transport_error", context: "get_paykit_app_registry: fetch Paykit App Registry")
+        let service = PaykitSdkService(sdkFactory: { sdk }) { _, _ in CacheActivationBootstrap(noPointer: .init()) }
+
+        let snapshot = try await service.exportBackupSnapshot(priority: .interactive)
+
+        XCTAssertEqual(snapshot.state, "backup")
+        XCTAssertEqual(sdk.registryPublicKeys, [])
+    }
+
+    @MainActor
     func testSessionKeyCacheRefreshesAfterRemoteGenerationFailureWithoutReplayingOperations() async throws {
         let operations: [(PaykitSdkService) async throws -> Void] = [
             { _ = try await $0.contactRecords() },
@@ -850,6 +882,10 @@ private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
             throw registryError
         }
         return registry
+    }
+
+    override func exportBackupString() async throws -> String {
+        "backup"
     }
 
     override func initialize() async throws -> IdentityStatus {
