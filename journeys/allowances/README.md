@@ -67,7 +67,8 @@ killed right after handing the payment to the node never paid twice after relaun
 - Payments tab: `Tab-payments`, `PaymentRequestRequestPayment`,
   `PaymentRequestRow-<paymentRequestId>-one-time` whose subtitle ends with "· Auto-paid" for an
   automatic payment
-- Incoming request: `PaymentRequestsBell`, `PaymentRequestsSheet`
+- Incoming request: `PaymentRequestsBell`, `PaymentRequestsSheet`, or `PaymentRequestConfirm`
+  when the request opens straight on its confirm screen
 
 The payee's wallet accepts the payer's offer by itself once the offer has arrived, which can take a
 while between contacts that have never exchanged a private message, and posts "<payer> set up an
