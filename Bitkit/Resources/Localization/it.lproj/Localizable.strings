@@ -653,6 +653,14 @@
 "security__use_pin" = "Usa il codice PIN";
 "security__wiped_title" = "Dati del portafoglio eliminati";
 "security__wiped_message" = "Bitkit è stato ripristinato e tutti i dati del portafoglio sono stati eliminati.";
+"security__pin_unavailable" = "Bitkit non è riuscito a verificare il tuo PIN. Riprova.";
+"security__wipe_not_started" = "Non è stato possibile avviare il reset. Non è stato eliminato nulla.";
+"security__wipe_gate_title" = "Reset di Bitkit in corso";
+"security__wipe_gate_text" = "Bitkit sta eliminando i dati del wallet su questo dispositivo. Tieni l'app aperta finché non ha finito.";
+"security__wipe_gate_failed" = "Bitkit non è riuscito a completare l'eliminazione dei dati del wallet e riproverà. Puoi riprovare ora o esportare i log per il supporto.";
+"security__wipe_gate_step" = "Passaggio {step} di {total}";
+"security__wipe_gate_blocked_title" = "Bitkit è bloccato";
+"security__wipe_gate_blocked_text" = "Bitkit non riesce a verificare il suo stato di sicurezza. Riprova o esporta i log per il supporto.";
 "security__authorization__success" = "Successo";
 "pubky_auth__title" = "Autorizza";
 "pubky_auth__description_prefix" = "Un servizio richiede l'autorizzazione ad accedere e modificare i tuoi dati ";
@@ -1810,6 +1818,9 @@
 "usdt__deposit_refund_address_network" = "Indirizzo USDT su {network}";
 "subscriptions__allowances" = "Plafond";
 "subscriptions__allowances_empty_headline" = "Imposta\n<accent>i plafond</accent>";
+"subscriptions__allowances_paused_description" = "I dati dei tuoi budget sono più vecchi di quelli che questo wallet ha già usato. Le richieste chiederanno la tua approvazione finché non riprendi.";
+"subscriptions__allowances_paused_resume" = "Riprendi";
+"subscriptions__allowances_paused_title" = "Pagamenti automatici in pausa";
 "subscriptions__allowances_empty_description" = "Puoi impostare limiti di spesa per pagare automaticamente le richieste di pagamento dei contatti fidati.";
 "subscriptions__allowance_add" = "Aggiungi Plafond";
 "subscriptions__allowance_title" = "Plafond";

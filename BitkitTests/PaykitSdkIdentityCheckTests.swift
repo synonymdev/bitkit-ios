@@ -1031,6 +1031,78 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
             lastEventAt: "2026-10-20T12:00:00Z", invalidReason: nil
         )
     }
+
+    @MainActor
+    func testCleanupAWipeStoppedWaitingForNeitherRecreatesOldKeyStateNorReachesTheNextWallet() async throws {
+        let oldSecret = String(repeating: "71", count: 32)
+        let newSecret = String(repeating: "72", count: 32)
+        let oldPublicKey = try PubkyProfileManager.publicKeyFromSecretKey(oldSecret)
+        let newPublicKey = try PubkyProfileManager.publicKeyFromSecretKey(newSecret)
+        let oldGenerationKey = KeychainEntryType.paykitKeyGeneration(publicKey: oldPublicKey)
+        let keys: [KeychainEntryType] = [.pubkySecretKey, oldGenerationKey, .paykitKeyGeneration(publicKey: newPublicKey)]
+        let saved = try keys.map { try Keychain.load(key: $0) }
+        let savedReference = AdoptedPubkyReference.current
+        defer {
+            AdoptedPubkyReference.current = savedReference
+            for (key, value) in zip(keys, saved) {
+                if let value {
+                    try? Keychain.upsert(key: key, data: value)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
+            }
+        }
+        AdoptedPubkyReference.current = nil
+        for key in keys {
+            try Keychain.delete(key: key)
+        }
+        try Keychain.upsert(key: .pubkySecretKey, data: Data(oldSecret.utf8))
+
+        let registryEntered = expectation(description: "the old cleanup is preparing the Paykit key")
+        let cleanupEnded = expectation(description: "the abandoned cleanup returns")
+        let registryGate = AsyncGate()
+        defer { registryGate.open() }
+        let oldSdk = AbandonedCleanupSdk(noPointer: .init())
+        oldSdk.registryRead = {
+            registryEntered.fulfill()
+            // Like the UniFFI call, it ignores Swift cancellation
+            await registryGate.wait()
+        }
+        let replacementSdk = AbandonedCleanupSdk(noPointer: .init())
+        var creations = 0
+        let service = PaykitSdkService(sdkFactory: {
+            creations += 1
+            return creations == 1 ? oldSdk : replacementSdk
+        })
+
+        let wipe = Task {
+            try await service.withWalletWipe {
+                await AppReset.runRemoteCleanup(timeout: .milliseconds(100)) {
+                    _ = try? await service.syncPublicEndpoints([])
+                    cleanupEnded.fulfill()
+                }
+                // The wipe clears these once it has stopped waiting for the cleanup
+                try Keychain.delete(key: .pubkySecretKey)
+                try Keychain.delete(key: oldGenerationKey)
+            }
+        }
+        await fulfillment(of: [registryEntered], timeout: 2)
+        try await wipe.value
+        XCTAssertNil(try Keychain.load(key: oldGenerationKey))
+
+        // The next wallet's first operation creates its own SDK and identity before the old response arrives
+        try Keychain.upsert(key: .pubkySecretKey, data: Data(newSecret.utf8))
+        _ = try await service.contactRecords()
+        XCTAssertEqual(creations, 2)
+        XCTAssertEqual(replacementSdk.endpointSyncCalls, 0)
+
+        registryGate.open()
+        await fulfillment(of: [cleanupEnded], timeout: 2)
+
+        XCTAssertNil(try Keychain.load(key: oldGenerationKey), "Completed wipe must not recreate the old identity's keychain state")
+        XCTAssertEqual(oldSdk.endpointSyncCalls, 0)
+        XCTAssertEqual(replacementSdk.endpointSyncCalls, 0, "An old wallet cleanup must not clear the replacement SDK's endpoints")
+    }
 }
 
 private let identityA = "pubky8qd4tbz3hyafi7h7hoqwd5hm7tsaz1n7txcyojmd4kxf9xp7mgro"
@@ -1340,5 +1412,36 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
             publicContactMarkerStatus: .notPublished,
             publicContactPublishedAt: nil, publicContactRemovedAt: nil, publicContactLastError: nil
         )
+    }
+}
+
+private final class AbandonedCleanupSdk: PaykitSdk, @unchecked Sendable {
+    var registryRead: () async -> Void = {}
+    var endpointSyncCalls = 0
+
+    override func paykitAppRegistry(publicKey _: String) async throws -> PaykitAppRegistry? {
+        await registryRead()
+        return nil
+    }
+
+    override func contactRecords() async throws -> [ContactRecord] {
+        []
+    }
+
+    override func backupStateRevision() async throws -> String {
+        "unchanged"
+    }
+
+    override func stateRevision() throws -> String? {
+        nil
+    }
+
+    override func observedBackupStateRevision() throws -> ObservedBackupStateRevision? {
+        nil
+    }
+
+    override func syncPublicEndpointsWithReceivingDetails(receivingDetails _: [PublicReceivingDetail]) async throws -> EndpointSyncReport {
+        endpointSyncCalls += 1
+        return EndpointSyncReport(published: [], removed: [], failed: [])
     }
 }

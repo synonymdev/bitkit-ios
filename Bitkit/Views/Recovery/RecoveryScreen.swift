@@ -125,25 +125,8 @@ struct RecoveryScreen: View {
     // MARK: - Actions
 
     private func onExportLogs() {
-        Task {
-            guard let zipURL = LogService.shared.zipLogs() else {
-                app.toast(type: .error, title: "Error", description: "Failed to create log zip file")
-                return
-            }
-
-            // Present share sheet
-            await MainActor.run {
-                let activityViewController = UIActivityViewController(
-                    activityItems: [zipURL],
-                    applicationActivities: nil
-                )
-
-                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                   let window = windowScene.windows.first
-                {
-                    window.rootViewController?.present(activityViewController, animated: true)
-                }
-            }
+        if !LogService.shared.shareLogs() {
+            app.toast(type: .error, title: "Error", description: "Failed to create log zip file")
         }
     }
 
@@ -227,22 +210,7 @@ struct RecoveryScreen: View {
     }
 
     private func onWipeAppConfirmed() {
-        Task {
-            do {
-                try await AppReset.wipe(
-                    app: app,
-                    wallet: wallet,
-                    session: session
-                )
-            } catch {
-                app.toast(
-                    type: .error,
-                    title: "Wipe Failed",
-                    description: "Bitkit was unable to reset your wallet data. Please try again."
-                )
-            }
-        }
-
+        AppReset.begin(.recoveryReset, app: app)
         showWipeAlert = false
     }
 

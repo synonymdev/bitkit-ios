@@ -529,6 +529,14 @@
 "security__cp_changed_text" = "لقد غيرت رمز PIN بنجاح إلى مجموعة جديدة من 4 أرقام.";
 "security__wiped_title" = "تم حذف بيانات المحفظة";
 "security__wiped_message" = "تمت إعادة تعيين Bitkit وحذف جميع بيانات المحفظة.";
+"security__pin_unavailable" = "تعذر على Bitkit التحقق من رمز PIN الخاص بك. يرجى المحاولة مرة أخرى.";
+"security__wipe_not_started" = "تعذر بدء إعادة التعيين. لم يُحذف أي شيء.";
+"security__wipe_gate_title" = "جارٍ إعادة تعيين Bitkit";
+"security__wipe_gate_text" = "يحذف Bitkit بيانات المحفظة على هذا الجهاز. أبقِ التطبيق مفتوحًا حتى تنتهي العملية.";
+"security__wipe_gate_failed" = "تعذر على Bitkit إكمال حذف بيانات المحفظة وسيحاول مرة أخرى. يمكنك إعادة المحاولة الآن أو تصدير السجلات لفريق الدعم.";
+"security__wipe_gate_step" = "الخطوة {step} من {total}";
+"security__wipe_gate_blocked_title" = "Bitkit مقفل";
+"security__wipe_gate_blocked_text" = "لا يستطيع Bitkit التحقق من حالة الأمان الخاصة به. حاول مرة أخرى أو صدّر السجلات لفريق الدعم.";
 "pubky_auth__title" = "تفويض";
 "pubky_auth__description_prefix" = "تطلب خدمة إذنًا للوصول إلى بيانات ";
 "pubky_auth__description_suffix" = " الخاصة بك وتعديلها.";
@@ -1517,6 +1525,9 @@
 "wallet__activity_time" = "الوقت";
 "subscriptions__allowances" = "المخصصات";
 "subscriptions__allowances_empty_headline" = "أعدّ\n<accent>المخصصات</accent>";
+"subscriptions__allowances_paused_description" = "سجلات الميزانيات لديك أقدم من سجلات استخدمتها هذه المحفظة من قبل. ستطلب الطلبات موافقتك حتى تستأنف.";
+"subscriptions__allowances_paused_resume" = "استئناف";
+"subscriptions__allowances_paused_title" = "تم إيقاف الدفعات التلقائية مؤقتًا";
 "subscriptions__allowances_empty_description" = "يمكنك تعيين حدود إنفاق لتلبية طلبات الدفع من جهات الاتصال الموثوقة تلقائيًا.";
 "subscriptions__allowance_add" = "إضافة مخصص";
 "subscriptions__allowance_title" = "المخصص";
@@ -1568,3 +1579,5 @@
 "subscriptions__allowance_auto_paid" = "مدفوع تلقائيًا";
 
 "wallet__balance_updating" = "جارٍ تحديث الرصيد…";
+"other__error_keychain" = "مشكلة في الاتصال بالبيانات";
+"other__error_keychain_msg" = "تعذر تحميل المفتاح الأساسي من سلسلة المفاتيح.";

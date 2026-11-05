@@ -2,11 +2,8 @@ import SwiftUI
 
 struct PinCheckView: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
-    @EnvironmentObject private var wallet: WalletViewModel
-    @EnvironmentObject private var session: SessionManager
 
     let title: String
     let explanation: String
@@ -28,37 +25,22 @@ struct PinCheckView: View {
     }
 
     private func handlePinComplete(_ pin: String) {
-        if settings.pinCheck(pin: pin) {
-            // PIN is correct
+        let result = settings.verifyPin(pin)
+        if result == .correct {
             Haptics.notify(.success)
             dismiss()
             onPinVerified(pin)
-        } else {
-            // PIN is incorrect
-            handleIncorrectPin()
-        }
-    }
-
-    private func handleIncorrectPin() {
-        pinInput = ""
-        Haptics.notify(.error)
-
-        let pinAttemptOutcome = settings.pinAttemptOutcomeAfterFailure()
-        if case .exceededAttempts = pinAttemptOutcome {
-            Task {
-                await settings.wipeWalletAfterExceededPinAttempts(
-                    app: app,
-                    wallet: wallet,
-                    session: session,
-                    sheets: sheets,
-                    context: "PinCheckView"
-                )
-            }
             return
         }
 
-        errorMessage = pinAttemptOutcome.errorMessage ?? ""
-        errorIdentifier = pinAttemptOutcome.errorIdentifier
+        pinInput = ""
+        Haptics.notify(.error)
+
+        // A lockout raises the wipe gate in place of this screen.
+        guard result != .lockedOut else { return }
+
+        errorMessage = result.errorMessage ?? ""
+        errorIdentifier = result.errorIdentifier
     }
 
     var body: some View {
@@ -116,11 +98,8 @@ struct PinCheckView: View {
                 print("PIN verified!")
             }
         )
-        .environmentObject(AppViewModel())
         .environmentObject(SettingsViewModel.shared)
         .environmentObject(SheetViewModel())
-        .environmentObject(WalletViewModel())
-        .environmentObject(SessionManager())
     }
     .preferredColorScheme(.dark)
 }

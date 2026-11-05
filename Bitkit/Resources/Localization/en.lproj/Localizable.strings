@@ -584,6 +584,7 @@
 "security__pin_enter" = "Please enter your PIN code";
 "security__pin_last_attempt" = "Last attempt. Entering the wrong PIN again will reset your wallet.";
 "security__pin_attempts" = "{attemptsRemaining} attempts remaining. Forgot your PIN?";
+"security__pin_unavailable" = "Bitkit could not check your PIN. Please try again.";
 "security__pin_forgot_title" = "Forgot PIN?";
 "security__pin_forgot_text" = "Forgot your PIN? Reset and recover your Bitkit wallet with your recovery phrase. Set a new PIN after completing recovery.";
 "security__pin_forgot_reset" = "Reset (Requires Recovery Phrase)";
@@ -650,6 +651,13 @@
 "security__use_pin" = "Use PIN code";
 "security__wiped_title" = "Wallet Data Deleted";
 "security__wiped_message" = "Bitkit has been reset and all wallet data has been deleted.";
+"security__wipe_not_started" = "Reset could not start. Nothing was deleted.";
+"security__wipe_gate_title" = "Resetting Bitkit";
+"security__wipe_gate_text" = "Bitkit is deleting the wallet data on this device. Keep the app open until it finishes.";
+"security__wipe_gate_failed" = "Bitkit could not finish deleting the wallet data and will try again. You can retry now, or export the logs for support.";
+"security__wipe_gate_step" = "Step {step} of {total}";
+"security__wipe_gate_blocked_title" = "Bitkit Is Locked";
+"security__wipe_gate_blocked_text" = "Bitkit can't verify its security state. Try again, or export the logs for support.";
 "security__authorization__title" = "Authorization";
 "security__authorization__description" = "Make sure you trust this service before granting permission to manage your data.";
 "security__authorization__authorize" = "Authorize";
@@ -1714,6 +1722,9 @@
 "settings__adv__pp_onchain_short" = "On-chain";
 "subscriptions__allowances" = "Allowances";
 "subscriptions__allowances_empty_headline" = "Set up\n<accent>allowances</accent>";
+"subscriptions__allowances_paused_description" = "Your allowance records are older than ones this wallet has already used. Requests ask for your approval until you resume.";
+"subscriptions__allowances_paused_resume" = "Resume";
+"subscriptions__allowances_paused_title" = "Automatic payments paused";
 "subscriptions__allowances_empty_description" = "You can set spending limits to automatically fulfill payment requests from trusted peers.";
 "subscriptions__allowance_add" = "Add Allowance";
 "subscriptions__allowance_title" = "Allowance";

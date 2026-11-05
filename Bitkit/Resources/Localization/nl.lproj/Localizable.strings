@@ -659,6 +659,14 @@
 "security__use_pin" = "Pincode Gebruiken";
 "security__wiped_title" = "Wallet gegevens verwijderd";
 "security__wiped_message" = "Bitkit is gereset en alle wallet gegevens zijn verwijderd.";
+"security__pin_unavailable" = "Bitkit kon uw pincode niet controleren. Probeer het opnieuw.";
+"security__wipe_not_started" = "Resetten kon niet worden gestart. Er is niets verwijderd.";
+"security__wipe_gate_title" = "Bitkit wordt gereset";
+"security__wipe_gate_text" = "Bitkit verwijdert de walletgegevens op dit apparaat. Houd de app open tot dit is voltooid.";
+"security__wipe_gate_failed" = "Bitkit kon het verwijderen van de walletgegevens niet voltooien en probeert het opnieuw. U kunt het nu opnieuw proberen of de logboeken exporteren voor support.";
+"security__wipe_gate_step" = "Stap {step} van {total}";
+"security__wipe_gate_blocked_title" = "Bitkit is vergrendeld";
+"security__wipe_gate_blocked_text" = "Bitkit kan de beveiligingsstatus niet controleren. Probeer het opnieuw of exporteer de logboeken voor support.";
 "security__authorization__title" = "Autorisierung";
 "security__authorization__description" = "Vergewissern Sie sich, dass Sie diesem Dienst vertrauen, bevor Sie die Erlaubnis zur Verwaltung Ihrer Daten erteilen.";
 "security__authorization__authorize" = "Autorisieren Sie";
@@ -1845,6 +1853,9 @@
 "usdt__deposit_refund_address_network" = "USDT-adres op {network}";
 "subscriptions__allowances" = "Toelagen";
 "subscriptions__allowances_empty_headline" = "Stel\n<accent>toelagen</accent> in";
+"subscriptions__allowances_paused_description" = "Je toelagengegevens zijn ouder dan gegevens die deze wallet al heeft gebruikt. Verzoeken vragen om je goedkeuring tot je hervat.";
+"subscriptions__allowances_paused_resume" = "Hervatten";
+"subscriptions__allowances_paused_title" = "Automatische betalingen gepauzeerd";
 "subscriptions__allowances_empty_description" = "U kunt bestedingslimieten instellen om betaalverzoeken van vertrouwde contacten automatisch te voldoen.";
 "subscriptions__allowance_add" = "Toelage toevoegen";
 "subscriptions__allowance_title" = "Toelage";
