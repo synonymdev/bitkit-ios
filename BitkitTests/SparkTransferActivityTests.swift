@@ -10,8 +10,8 @@ final class SparkTransferActivityTests: XCTestCase {
         )
         let payments = [
             payment(id: "1", status: .completed, details: .deposit(txId: "claimed-deposit", vout: 0)),
-            payment(id: "2", status: .completed, details: .withdraw(txId: "withdrawal")),
-            payment(id: "3", status: .failed, details: .withdraw(txId: "failed-withdrawal")),
+            payment(id: "2", status: .completed, details: .withdraw(txId: "withdrawal", vout: 0, destinationAddress: "bcrt1qsavings")),
+            payment(id: "3", status: .failed, details: .withdraw(txId: "failed-withdrawal", vout: 0, destinationAddress: "bcrt1qsavings")),
             payment(id: "4", status: .completed, details: nil),
         ]
 
@@ -22,8 +22,13 @@ final class SparkTransferActivityTests: XCTestCase {
 
     func testListsWithdrawalsWithWhatSparkKept() {
         let payments = [
-            payment(id: "1", status: .completed, details: .withdraw(txId: "withdrawal"), fees: 1470),
-            payment(id: "2", status: .failed, details: .withdraw(txId: "failed-withdrawal"), fees: 1470),
+            payment(id: "1", status: .completed, details: .withdraw(txId: "withdrawal", vout: 0, destinationAddress: "bcrt1qsavings"), fees: 1470),
+            payment(
+                id: "2",
+                status: .failed,
+                details: .withdraw(txId: "failed-withdrawal", vout: 0, destinationAddress: "bcrt1qsavings"),
+                fees: 1470
+            ),
             payment(id: "3", status: .completed, details: .deposit(txId: "deposit", vout: 0)),
         ]
 
