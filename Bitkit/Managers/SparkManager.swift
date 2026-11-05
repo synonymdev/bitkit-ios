@@ -109,11 +109,13 @@ final class SparkManager: ChannelFreeLightningRail {
         let config = Self.sdkConfig(network: network, apiKey: Env.breezApiKey)
         let storageDir = Env.sparkStorage(walletIndex: walletIndex)
         try FileManager.default.createDirectory(at: storageDir, withIntermediateDirectories: true)
-        let connected = try await BreezSdkSpark.connect(request: ConnectRequest(
-            config: config,
-            seed: .mnemonic(mnemonic: mnemonic, passphrase: passphrase),
-            storageDir: storageDir.path
-        ))
+        // What `BreezSdkSpark.connect` builds, plus our own chain service where Env names one.
+        let builder = SdkBuilder(config: config, seed: .mnemonic(mnemonic: mnemonic, passphrase: passphrase))
+        await builder.withDefaultStorage(storageDir: storageDir.path)
+        if let chainServiceUrl = Env.sparkChainServiceUrl(for: Env.network) {
+            await builder.withRestChainService(url: chainServiceUrl, apiType: .esplora, credentials: nil)
+        }
+        let connected = try await builder.build()
         listenerId = await connected.addEventListener(listener: SparkEventListener { [weak self] event in
             await self?.onSdkEvent(event)
         })
