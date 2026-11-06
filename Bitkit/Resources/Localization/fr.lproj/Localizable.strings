@@ -1241,6 +1241,9 @@
 "wallet__send_sync_long_title" = "Problèmes de\n<accent>connexion</accent>";
 "wallet__send_sync_long_description" = "Il semble que vous soyez déconnecté. Veuillez vérifier votre connexion. Bitkit tentera de se reconnecter toutes les quelques secondes.";
 "wallet__send_to" = "Pour";
+"wallet__send_swap_route" = "Itinéraire";
+"wallet__swap_route_restored_text" = "Un paiement à un contact interrompu par la restauration est revenu sur ton épargne.";
+"wallet__swap_route_restored_title" = "Paiement renvoyé vers l'Épargne";
 "wallet__recipient_contact" = "Contact";
 "wallet__recipient_invoice" = "Coller la facture";
 "wallet__recipient_manual" = "Entrer manuellement";

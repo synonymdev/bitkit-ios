@@ -1243,6 +1243,9 @@
 "wallet__send_sync_long_title" = "<accent>Connection</accent>\nissues";
 "wallet__send_sync_long_description" = "It appears you’re disconnected. Please check your connection. Bitkit will try to reconnect every few seconds.";
 "wallet__send_to" = "To";
+"wallet__send_swap_route" = "Route";
+"wallet__swap_route_restored_text" = "A contact payment the restore interrupted came back to your savings.";
+"wallet__swap_route_restored_title" = "Payment returned to Savings";
 "wallet__recipient_contact" = "Contact";
 "wallet__recipient_invoice" = "Paste Invoice";
 "wallet__recipient_manual" = "Enter Manually";
