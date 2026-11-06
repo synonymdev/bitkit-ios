@@ -56,4 +56,6 @@ On iOS, open a saved contact's link while a stored identity's session restoratio
 
 `create-profile.xml` records the name-only saving interval and checks the saved name after reopening and relaunching. Use a fresh unfunded identity per run and record the exact app/SDK revisions and network. With controlled network fault injection, block direct UDP while keeping the configured HTTP relays and homeserver reachable; saving should still complete. Reject the required profile write separately and verify saving reports failure instead of navigating to Pay Contacts. Fault injection is a manual check beyond journey-runner capabilities.
 
+`edit-pubky-app-profile.xml` checks that Edit Profile presents the profile as the public pubky.app profile and that a name edit is saved and survives a relaunch. Use an identity whose pubky.app profile you can open on pubky.app; checking the edit there, and an edit made in pubky.app while Bitkit is open, are manual checks beyond journey-runner capabilities.
+
 On iOS, the restart check waits for the full profile (`ProfileViewName`). A matching `ProfileCachedName` during loading does not complete that check. Record an unfinished load separately from a loaded profile with a missing or incorrect name.

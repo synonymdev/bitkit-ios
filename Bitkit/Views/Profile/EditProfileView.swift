@@ -11,6 +11,8 @@ struct EditProfileView: View {
     @State private var bio: String = ""
     @State private var links: [ProfileLinkInput] = []
     @State private var tags: [String] = []
+    @State private var baseRevision: String?
+    @State private var loadedBio = ""
     @State private var isSaving = false
     @State private var isDeleting = false
     @State private var showDeleteConfirmation = false
@@ -32,6 +34,8 @@ struct EditProfileView: View {
                 publicKeyLabel: t("profile__create_pubky_display_label"),
                 bioPlaceholder: t("profile__create_bio_placeholder"),
                 isSaving: isSaving,
+                maxLinks: PubkyAppProfileLimits.maxLinks,
+                isNameValid: PubkyAppProfileLimits.isValidName,
                 footerNote: t("profile__edit_public_note"),
                 deleteLabel: copy.label,
                 deleteSectionCaption: copy.sectionCaption,
@@ -59,6 +63,16 @@ struct EditProfileView: View {
         .disabled(isDeleting)
         .task {
             loadProfileData()
+        }
+        .onChange(of: username) { _, value in
+            if let capped = PubkyAppProfileLimits.capped(value, to: PubkyAppProfileLimits.nameLength.upperBound) {
+                username = capped
+            }
+        }
+        .onChange(of: bio) { _, value in
+            // A longer bio stored before the limit is shown in full; only an edit is cut.
+            guard value != loadedBio, let capped = PubkyAppProfileLimits.capped(value, to: PubkyAppProfileLimits.bioMaxLength) else { return }
+            bio = capped
         }
         .alert(copy.title, isPresented: $showDeleteConfirmation) {
             Button(copy.confirm, role: .destructive) {
@@ -140,9 +154,11 @@ struct EditProfileView: View {
     private func loadProfileData() {
         guard let profile = pubkyProfile.profile else { return }
         username = profile.name
+        loadedBio = profile.bio
         bio = profile.bio
         links = profile.links.map { ProfileLinkInput(label: $0.label, url: $0.url) }
         tags = profile.tags
+        baseRevision = profile.revision
     }
 
     // MARK: - Delete Profile
@@ -216,7 +232,7 @@ struct EditProfileView: View {
     /// or the profile publishes, it stops quietly, with no toast and no navigation.
     private func saveProfile() async {
         let trimmedName = username.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty else { return }
+        guard PubkyAppProfileLimits.isValidName(trimmedName) else { return }
 
         isSaving = true
         defer { isSaving = false }
@@ -227,7 +243,8 @@ struct EditProfileView: View {
                 bio: bio.trimmingCharacters(in: .whitespacesAndNewlines),
                 links: links.map { PubkyProfileLink(label: $0.label, url: $0.url) },
                 tags: tags,
-                avatarImage: avatarImage
+                avatarImage: avatarImage,
+                baseRevision: baseRevision
             )
             guard isSaved else { return }
             app.toast(type: .success, title: t("profile__edit_saved"), accessibilityIdentifier: "ProfileUpdatedToast")
@@ -235,6 +252,14 @@ struct EditProfileView: View {
         } catch {
             Logger.error("Failed to save profile: \(error)", context: "EditProfileView")
             app.toast(type: .error, title: t("profile__edit_error_title"), description: error.localizedDescription)
+            if case PubkyAppProfileError.changedElsewhere = error {
+                await pubkyProfile.loadProfile()
+                avatarImage = nil
+                loadProfileData()
+            } else if case let PubkyAppProfileError.tagsNotSaved(revision) = error {
+                avatarImage = nil
+                baseRevision = revision
+            }
         }
     }
 }

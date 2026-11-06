@@ -1071,7 +1071,9 @@
 "profile__pubky_copied" = "pubky copiat al porta-retalls";
 "profile__edit_delete_section" = "ELIMINAR";
 "profile__edit_unlink_section" = "DESVINCULAR";
-"profile__edit_public_note" = "Tingues en compte que la informació del perfil es desa en fitxers públics.";
+"profile__edit_changed_error" = "El teu perfil ha canviat a pubky.app. Bitkit ha carregat la versió més recent, així que torna a fer la teva edició.";
+"profile__edit_public_note" = "Aquest és el teu perfil de pubky.app. És públic, i els canvis que hi facis aquí també es veuen a pubky.app.";
+"profile__edit_tags_error" = "Bitkit no ha pogut desar les teves etiquetes. Els altres canvis s'han desat, així que torna a provar amb les etiquetes.";
 "profile__delete_title" = "Eliminar el perfil?";
 "profile__delete_description" = "Eliminar el teu perfil l'esborra de Pubky. És possible que els contactes conservin la informació de perfil i de pagament que s'hi hagi compartit abans.";
 "profile__delete_confirm" = "Sí, elimina";

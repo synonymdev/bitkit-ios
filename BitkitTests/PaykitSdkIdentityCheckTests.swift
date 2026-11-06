@@ -907,7 +907,7 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
             localRole: .payee, state: .proposed, proposalStreamItemId: 1,
             proposalOutboundMessageId: nil, proposalOutboundStatus: nil,
             proposalEventId: "71300000-0000-4000-8000-000000000002",
-            proposalAppId: appId, payerAppId: nil, executionClaimAppId: nil,
+            proposalAppId: appId, proposalRecordedAt: nil, payerAppId: nil, executionClaimAppId: nil,
             terms: PaymentRequestTerms(
                 amount: PaymentRequestAmount(value: "0.001", asset: "btc"),
                 paymentReference: PaymentReference(text: "invoice-123"),
@@ -916,6 +916,7 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
                 metadata: PrivateJsonObject(text: "{}")
             ),
             acceptedEventId: nil, acceptedOutboundStatus: nil,
+            acceptanceRecordedAt: nil,
             rejectedEventId: nil, rejectedOutboundStatus: nil,
             canceledEventId: nil, canceledOutboundStatus: nil,
             conversionQuotes: [], paymentProofs: [], lastStreamItemId: 42,
@@ -1407,6 +1408,6 @@ private final class AbandonedCleanupSdk: PaykitSdk, @unchecked Sendable {
         updates _: [PrivatePaymentListReservationUpdateInput], clearUnlistedLinkedPeers _: Bool
     ) async throws -> PrivatePaymentListDeliveryReport {
         mutations.append("privateEndpoints")
-        return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+        return PrivatePaymentListDeliveryReport(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
     }
 }

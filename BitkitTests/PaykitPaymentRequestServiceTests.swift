@@ -10521,6 +10521,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             proposalOutboundStatus: proposalOutboundStatus,
             proposalEventId: "650e8400-e29b-41d4-a716-446655440000",
             proposalAppId: proposalAppId,
+            proposalRecordedAt: nil,
             payerAppId: nil,
             executionClaimAppId: nil,
             terms: PaymentRequestTerms(
@@ -10537,6 +10538,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             ),
             acceptedEventId: acceptedEventId,
             acceptedOutboundStatus: nil,
+            acceptanceRecordedAt: nil,
             rejectedEventId: rejectedEventId,
             rejectedOutboundStatus: nil,
             canceledEventId: canceledEventId,
