@@ -1220,16 +1220,21 @@ struct SendConfirmationView: View {
         return largest.walletId
     }
 
-    /// A failed preview of the Savings fallback wallet is insufficient funds only when the amount leaves less than the fee
-    /// reserve; any other failure, such as Electrum being unreachable, keeps Try again.
+    /// A failed preview of the Savings fallback wallet is insufficient funds when the compose reports it, or when the amount
+    /// leaves less than the fee reserve; any other failure, such as Electrum being unreachable, keeps Try again.
     static func isSavingsFallbackShortOfFee(
         fallbackWalletId: String?,
         walletId: String?,
+        previewErrorDetail: String?,
         amountSats: UInt64,
         balanceSats: UInt64,
         feeReserveSats: UInt64
     ) -> Bool {
         guard fallbackWalletId != nil, fallbackWalletId == walletId else { return false }
+        // The compose's coin selection names the shortfall, which can exceed the reserve when many inputs are spent.
+        if previewErrorDetail?.localizedCaseInsensitiveContains("insufficient funds") == true {
+            return true
+        }
         return balanceSats < feeReserveSats || amountSats > balanceSats - feeReserveSats
     }
 
@@ -2195,6 +2200,7 @@ struct SendConfirmationView: View {
                 if Self.isSavingsFallbackShortOfFee(
                     fallbackWalletId: savingsFallbackWalletId,
                     walletId: hwSend.walletId,
+                    previewErrorDetail: (error as? AppError)?.debugMessage,
                     amountSats: amountSats,
                     balanceSats: balanceSats,
                     feeReserveSats: HwFundingSigner.feeReserve(balanceSats: balanceSats, satsPerVByte: UInt64(feeRate))
