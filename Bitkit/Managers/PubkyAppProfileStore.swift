@@ -84,6 +84,8 @@ actor PubkyAppProfileStore {
     /// Saves `data` for `expectedIdentity`, or the signed-in identity. Throws `changedElsewhere` after reloading when
     /// pubky.app changed the profile since it was loaded.
     func save(_ data: PubkyProfileData, expectedIdentity: String?) async throws {
+        var data = data
+        data.bio = data.bio.replacingOccurrences(of: "\n", with: " ")
         let key = try await Self.identity(expectedIdentity)
         let base = bases[key]
         let expectedRevision: String? = if let base {
