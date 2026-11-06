@@ -470,6 +470,11 @@ struct SendSheet: View {
         }
     }
 
+    private var ownsSendState: Bool {
+        flow.ownedSendStateGeneration == app.sendStateGeneration ||
+            (app.sendStateOwnerID != nil && app.sendStateOwnerID == config.presentationID)
+    }
+
     private func cleanup() {
         // Content recreation keeps the presentation, its setup and its payment operation alive.
         guard isEmbedded || !isCurrentPresentation || config.preparation?.isSuspendedForAppLock == true,
@@ -505,8 +510,6 @@ struct SendSheet: View {
             return
         }
         // The reset's owner is available synchronously, even before SwiftUI delivers onChange.
-        let ownsSendState = flow.ownedSendStateGeneration == app.sendStateGeneration ||
-            (app.sendStateOwnerID != nil && app.sendStateOwnerID == config.presentationID)
         if let request = flow.incomingPaymentRequest ?? (ownsSendState ? app.contactPaymentContext?.incomingPaymentRequest : nil) {
             Task { await paykitPaymentRequestManager.finishPayment(request) }
         }
@@ -534,7 +537,10 @@ struct SendSheet: View {
             )
             hwSend.seedAvailable(walletId: walletId, availableSats: balance > reserve ? balance - reserve : 0)
         }
-        if let request = app.contactPaymentContext?.incomingPaymentRequest {
+        // Prepared requests bind after resolution. Embedded presentations bind on first setup.
+        let canUsePayment = config.preparation != nil || flow.ownedSendStateGeneration == nil || ownsSendState
+        let request = app.contactPaymentContext?.incomingPaymentRequest
+        if canUsePayment, let request {
             if !tagManager.consumePreservedTags(for: request.id) {
                 tagManager.clearSelectedTags()
             }
@@ -552,15 +558,17 @@ struct SendSheet: View {
             )
             wallet.sendAmountSats = payment?.amount.asset == .btc ? payment?.amount.atomic : nil
             flow.incomingPaymentRequest = request
-        } else {
+        } else if request == nil {
             tagManager.clearSelectedTags()
         }
         flow.hasValidatedAfterSync = false
         flow.syncTimedOut = false
-        if currentRoot == .options {
-            app.resetSendState(ownerID: config.presentationID)
+        if canUsePayment {
+            if currentRoot == .options, flow.ownedSendStateGeneration == nil {
+                app.resetSendState(ownerID: config.presentationID)
+            }
+            flow.ownedSendStateGeneration = app.sendStateGeneration
         }
-        flow.ownedSendStateGeneration = app.sendStateGeneration
         flow.setupTask?.cancel()
         flow.isSetupPending = true
         flow.setupTask = Task {
@@ -576,6 +584,7 @@ struct SendSheet: View {
                     if let attempt = try await OnchainSendAttemptService.shared.unresolvedAttempt(
                         walletId: OnchainSendAttemptService.walletId(index: LightningService.shared.currentWalletIndex)
                     ) {
+                        guard !Task.isCancelled, isCurrentPresentation else { return }
                         let context = OnchainSendPendingContext(attemptId: attempt.id, walletId: attempt.walletId, txid: attempt.txid)
                         if attempt.requestId != nil || attempt.orderId != nil || attempt.status != .accepted {
                             flow.hasValidatedAfterSync = true
@@ -584,7 +593,9 @@ struct SendSheet: View {
                         }
                         flow.isResumingAcceptedOrdinarySend = true
                         flow.hasValidatedAfterSync = true
-                        app.selectedWalletToPayFrom = .onchain
+                        if ownsSendState {
+                            app.selectedWalletToPayFrom = .onchain
+                        }
                         replaceRootRoute(with: Self.acceptedOrdinaryStartupRoute(attempt: attempt))
                         return
                     }

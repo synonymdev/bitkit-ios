@@ -36,6 +36,23 @@ final class SheetViewModelTests: XCTestCase {
         XCTAssertEqual(replacement.initialRoute, .lnurlPayConfirm)
     }
 
+    func testQueuedSendCannotReplaceANewerLnurlConfirmation() async throws {
+        let sheets = SheetViewModel()
+        sheets.showSheet(.scanner)
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        XCTAssertTrue(sheets.isReplacingSheet)
+        sheets.showSheet(.send, data: SendConfig(view: .lnurlPayConfirm))
+        let confirmation = try XCTUnwrap(sheets.sendSheetItem)
+        // Drain the queued replacement on the same main queue.
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.asyncAfter(deadline: .now() + SheetViewModel.replacementDelaySeconds) {
+                continuation.resume()
+            }
+        }
+        XCTAssertEqual(sheets.sendSheetItem?.id, confirmation.id)
+        XCTAssertEqual(sheets.sendSheetItem?.initialRoute, .lnurlPayConfirm)
+    }
+
     func testReceivedTransactionCanReplaceOnlyReceive() {
         let sheets = SheetViewModel()
         XCTAssertTrue(sheets.canPresentReceivedTx)
