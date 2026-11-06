@@ -11,6 +11,7 @@ struct EditProfileView: View {
     @State private var bio: String = ""
     @State private var links: [ProfileLinkInput] = []
     @State private var tags: [String] = []
+    @State private var baseRevision: String?
     @State private var isSaving = false
     @State private var isDeleting = false
     @State private var showDeleteConfirmation = false
@@ -154,6 +155,7 @@ struct EditProfileView: View {
         bio = profile.bio
         links = profile.links.map { ProfileLinkInput(label: $0.label, url: $0.url) }
         tags = profile.tags
+        baseRevision = profile.revision
     }
 
     // MARK: - Delete Profile
@@ -238,7 +240,8 @@ struct EditProfileView: View {
                 bio: bio.trimmingCharacters(in: .whitespacesAndNewlines),
                 links: links.map { PubkyProfileLink(label: $0.label, url: $0.url) },
                 tags: tags,
-                avatarImage: avatarImage
+                avatarImage: avatarImage,
+                baseRevision: baseRevision
             )
             guard isSaved else { return }
             app.toast(type: .success, title: t("profile__edit_saved"), accessibilityIdentifier: "ProfileUpdatedToast")

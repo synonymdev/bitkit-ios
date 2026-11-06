@@ -891,11 +891,20 @@ class PubkyProfileManager: ObservableObject {
         bio: String,
         links: [PubkyProfileLink],
         tags: [String] = [],
-        avatarImage: UIImage? = nil
+        avatarImage: UIImage? = nil,
+        baseRevision: String? = nil
     ) async throws -> Bool {
         guard let session = currentSession else { return false }
         _ = try activeSessionSecret()
-        return try await saveProfileEdit(name: name, bio: bio, links: links, tags: tags, avatarImage: avatarImage, session: session)
+        return try await saveProfileEdit(
+            name: name,
+            bio: bio,
+            links: links,
+            tags: tags,
+            avatarImage: avatarImage,
+            baseRevision: baseRevision ?? profile?.revision,
+            session: session
+        )
     }
 
     /// Starting the edit drops every profile read that started before it, ahead of the avatar upload, so a refresh that finds
@@ -911,6 +920,7 @@ class PubkyProfileManager: ObservableObject {
         links: [PubkyProfileLink],
         tags: [String],
         avatarImage: UIImage?,
+        baseRevision: String?,
         session: SignedInSession
     ) async throws -> Bool {
         if profileReadAwaitingSaves?.session != session {
@@ -925,6 +935,7 @@ class PubkyProfileManager: ObservableObject {
                 links: links,
                 tags: tags,
                 avatarImage: avatarImage,
+                baseRevision: baseRevision,
                 session: session
             )
             profileSavesInFlight -= 1
@@ -942,6 +953,7 @@ class PubkyProfileManager: ObservableObject {
         links: [PubkyProfileLink],
         tags: [String],
         avatarImage: UIImage?,
+        baseRevision: String?,
         session: SignedInSession
     ) async throws -> Bool {
         var newImageUrl: String?
@@ -960,7 +972,15 @@ class PubkyProfileManager: ObservableObject {
                 return false
             }
         }
-        return try await publishProfileEdit(name: name, bio: bio, links: links, tags: tags, newImageUrl: newImageUrl, session: session)
+        return try await publishProfileEdit(
+            name: name,
+            bio: bio,
+            links: links,
+            tags: tags,
+            newImageUrl: newImageUrl,
+            baseRevision: baseRevision,
+            session: session
+        )
     }
 
     /// A published profile ends any pending setup. The SDK publishes only while the session's identity is still signed in,
@@ -972,6 +992,7 @@ class PubkyProfileManager: ObservableObject {
         links: [PubkyProfileLink],
         tags: [String],
         newImageUrl: String?,
+        baseRevision: String?,
         session: SignedInSession
     ) async throws -> Bool {
         let resolvedImageUrl = Self.resolvedImageUrl(newImageUrl: newImageUrl, existingImageUrl: profile?.imageUrl)
@@ -983,6 +1004,7 @@ class PubkyProfileManager: ObservableObject {
                 imageUrl: resolvedImageUrl,
                 links: links,
                 tags: tags,
+                baseRevision: baseRevision,
                 expectedIdentity: session.publicKey
             )
         } catch PubkyServiceError.identityChanged {
@@ -997,7 +1019,7 @@ class PubkyProfileManager: ObservableObject {
             return false
         }
 
-        let updatedProfile = PubkyProfile(
+        var updatedProfile = PubkyProfile(
             publicKey: session.publicKey,
             name: name,
             bio: bio,
@@ -1006,6 +1028,7 @@ class PubkyProfileManager: ObservableObject {
             tags: tags,
             status: profile?.status
         )
+        updatedProfile.revision = await PubkyAppProfileStore.shared.lastSavedRevision(publicKey: session.publicKey)
         commitProfile(updatedProfile)
         setProfileSetupPending(false)
         return true
@@ -1080,15 +1103,17 @@ class PubkyProfileManager: ObservableObject {
         imageUrl: String?,
         links: [PubkyProfileLink],
         tags: [String] = [],
+        baseRevision: String? = nil,
         expectedIdentity: String? = nil
     ) async throws {
-        let profileData = PubkyProfileData(
+        var profileData = PubkyProfileData(
             name: name,
             bio: bio,
             image: imageUrl,
             links: links.map { PubkyProfileData.Link(label: $0.label, url: $0.url) },
             tags: tags
         )
+        profileData.baseRevision = baseRevision
 
         let publish = profilePublisher
         try await Task.detached {
@@ -1168,7 +1193,15 @@ class PubkyProfileManager: ObservableObject {
             avatarImage: UIImage? = nil
         ) async throws -> Bool {
             guard let session = currentSession else { return false }
-            return try await saveProfileEdit(name: name, bio: bio, links: links, tags: tags, avatarImage: avatarImage, session: session)
+            return try await saveProfileEdit(
+                name: name,
+                bio: bio,
+                links: links,
+                tags: tags,
+                avatarImage: avatarImage,
+                baseRevision: profile?.revision,
+                session: session
+            )
         }
 
         func clearAuthenticatedStateForTesting() {

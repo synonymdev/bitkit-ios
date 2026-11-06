@@ -9,6 +9,12 @@ struct PubkyProfileData: Codable, Equatable {
     var image: String?
     var links: [Link]
     var tags: [String]
+    /// The pubky.app revision an edit started from; never part of the published copy.
+    var baseRevision: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case name, bio, image, links, tags
+    }
 
     struct Link: Codable, Equatable {
         let label: String
@@ -115,9 +121,13 @@ struct PubkyProfile {
     let links: [PubkyProfileLink]
     let tags: [String]
     let status: String?
+    /// The pubky.app revision this profile was read or saved at, for a save to check against.
+    var revision: String?
 
     func withImageUrl(_ imageUrl: String?) -> PubkyProfile {
-        PubkyProfile(publicKey: publicKey, name: name, bio: bio, imageUrl: imageUrl, links: links, tags: tags, status: status)
+        var profile = PubkyProfile(publicKey: publicKey, name: name, bio: bio, imageUrl: imageUrl, links: links, tags: tags, status: status)
+        profile.revision = revision
+        return profile
     }
 
     var truncatedPublicKey: String {

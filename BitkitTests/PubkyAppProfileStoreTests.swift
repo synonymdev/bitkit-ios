@@ -51,4 +51,12 @@ final class PubkyAppProfileStoreTests: XCTestCase {
         XCTAssertEqual(update.image, base.imageUrl)
         XCTAssertEqual(update.links?.first?.title, "X")
     }
+
+    func testLinksWithoutSchemeBecomeFullUrls() {
+        XCTAssertEqual(PubkyAppProfileStore.linkUrl("example.com"), "https://example.com")
+        XCTAssertEqual(PubkyAppProfileStore.linkUrl("alice@example.com"), "mailto:alice@example.com")
+        XCTAssertEqual(PubkyAppProfileStore.linkUrl("+49 123 456"), "tel:+49123456")
+        XCTAssertEqual(PubkyAppProfileStore.linkUrl("https://x.com/alice"), "https://x.com/alice")
+        XCTAssertNil(PubkyAppProfileStore.linkUrl("  "))
+    }
 }

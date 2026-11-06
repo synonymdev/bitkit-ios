@@ -279,11 +279,15 @@ struct ProfileView: View {
                     name: profile.name,
                     bio: profile.bio,
                     links: profile.links,
-                    tags: tags
+                    tags: tags,
+                    baseRevision: profile.revision
                 )
             } catch {
                 Logger.error("Failed to update profile tags: \(error)", context: "ProfileView")
                 app.toast(type: .error, title: t("profile__edit_error_title"), description: error.localizedDescription)
+                if case PubkyAppProfileError.changedElsewhere = error {
+                    await pubkyProfile.loadProfile()
+                }
             }
         }
     }
