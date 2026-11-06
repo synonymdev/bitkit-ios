@@ -393,14 +393,21 @@ actor PubkyAppProfileStore {
         } else if isEmailAddress(value) {
             url = "mailto:\(value)"
         } else if isPhoneNumber(value) {
-            url = "tel:\(value.filter { !" -()".contains($0) })"
+            url = "tel:\(value.filter { !" -().".contains($0) })"
         } else if value.contains("."), !value.hasPrefix(".") {
             url = "https://\(value)"
         } else {
             return nil
         }
-        guard url.unicodeScalars.count <= linkUrlMaxLength, URL(string: url) != nil else { return nil }
+        guard url.unicodeScalars.count <= linkUrlMaxLength, let parsed = URL(string: url), hasValidHost(parsed) else { return nil }
         return url
+    }
+
+    /// Paykit rejects a host whose last label is all digits unless the host is an IPv4 address, as URL parsers do.
+    private static func hasValidHost(_ url: URL) -> Bool {
+        guard let host = url.host, let last = host.split(separator: ".").last, last.allSatisfy(\.isNumber) else { return true }
+        let octets = host.split(separator: ".", omittingEmptySubsequences: false)
+        return octets.count == 4 && octets.allSatisfy { !$0.isEmpty && $0.allSatisfy(\.isNumber) && (Int($0) ?? 256) <= 255 }
     }
 
     private static func isEmailAddress(_ value: String) -> Bool {
@@ -411,8 +418,9 @@ actor PubkyAppProfileStore {
     private static func isPhoneNumber(_ value: String) -> Bool {
         let digits = value.filter(\.isNumber).count
         return value.hasPrefix("+") || digits >= 7
-            ? value.allSatisfy { "+0123456789 -()".contains($0) } && digits >= 5 && !value.dropFirst().contains("+")
+            ? value.allSatisfy { "+0123456789 -().".contains($0) } && digits >= 5 && !value.dropFirst().contains("+")
             && value.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) == nil
+            && value.range(of: #"^\d{1,3}(\.\d{1,3}){3}$"#, options: .regularExpression) == nil
             : false
     }
 
