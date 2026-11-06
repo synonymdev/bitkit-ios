@@ -1083,7 +1083,8 @@
 "contacts__add_error_self" = "Nie możesz dodać własnego pubky jako kontaktu.";
 "contacts__add_retrieving" = "Pobieranie\ndanych kontaktu";
 "contacts__add_error" = "Nie udało się dodać kontaktu";
-"contacts__add_disclaimer" = "Pamiętaj, że Ty i {name} musicie dodać się nawzajem do kontaktów, aby płacić sobie prywatnie. W przeciwnym razie płatność będzie widoczna publicznie.";
+"contacts__add_disclaimer" = "Pamiętaj, że Ty i {name} musicie dodać się nawzajem do kontaktów, zanim będziecie mogli płacić sobie prywatnie. Jeśli zapłacisz bez zapisania kontaktu, płatność będzie widoczna publicznie.";
+"contacts__pay_private_link_pending" = "Bitkit wciąż konfiguruje prywatne połączenie z tym kontaktem. Upewnij się, że ta osoba również dodała Cię do kontaktów, lub poproś ją o wysłanie żądania płatności.";
 "contacts__import_nav_title" = "Import";
 "contacts__import_found_title" = "Znaleziono\n<accent>profil i kontakty</accent>";
 "contacts__import_found_description" = "Bitkit znalazł dane profilu i kontaktów powiązane z pubky <accent>{key}</accent>";

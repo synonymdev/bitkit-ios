@@ -31,6 +31,34 @@ extension ContactPaymentContext {
 // MARK: - Payment Resolution
 
 extension PrivatePaykitService {
+    struct ContactPaymentOperations {
+        var prepareContactPayment: (_ publicKey: String, _ afterVersion: UInt64?) async throws -> PreparedPrivateContactPayment = {
+            try await PaykitSdkService.shared.prepareAndResolvePrivateContactPayment(counterparty: $0, afterPrivatePaymentListVersion: $1)
+        }
+
+        var preparePaymentRequest: (_ publicKey: String, _ paymentRequestId: String, _ afterVersion: UInt64?) async throws
+            -> PreparedPrivateContactPayment = {
+                try await PaykitSdkService.shared.prepareAndResolvePrivatePaymentRequest(
+                    counterparty: $0,
+                    paymentRequestId: $1,
+                    afterPrivatePaymentListVersion: $2
+                )
+            }
+
+        var identityStatus: () async throws -> IdentityStatus? = { try await PaykitSdkService.shared.identityStatus(priority: .interactive) }
+        /// Read for a payment the user is waiting on, so it does not queue behind background SDK work.
+        var linkedPeers: () async throws -> [LinkedPeerRecord] = { try await PaykitSdkService.shared.linkedPeers(priority: .interactive) }
+        /// Succeeds when the contact publishes a verified Noise key authorization; a missing one throws `PaykitError.NotFound`.
+        var noiseKeyAuthorization: (_ publicKey: String) async throws -> Void = {
+            _ = try await PaykitSdkService.shared.paykitNoiseKeyAuthorization(publicKey: $0)
+        }
+
+        var isSavedContact: (_ publicKey: String) async throws -> Bool = { try await PaykitSdkService.shared.contactRecord(publicKey: $0) != nil }
+        var beginPublicPayment: (_ publicKey: String) async throws -> PublicPaykitPaymentLaunchResult = {
+            try await PublicPaykitService.beginPayment(to: $0)
+        }
+    }
+
     func contactPublicKey(forPrivateInvoicePaymentHash paymentHash: String) -> String? {
         guard !paymentHash.isEmpty, (try? profileAdmission.snapshot()) != nil else { return nil }
         return storedInvoiceContact(paymentHash: paymentHash)
@@ -50,9 +78,10 @@ extension PrivatePaykitService {
 
     func beginSavedContactPayment(to publicKey: String, wallet: WalletViewModel) async throws -> PublicPaykitPaymentLaunchResult {
         return try await profileAdmission.withOperation {
-            guard let normalizedKey = knownSavedContact(publicKey) else {
-                return try await PublicPaykitService.beginPayment(to: publicKey)
+            guard let savedContact = try await savedContact(publicKey) else {
+                return try await contactPaymentOperations.beginPublicPayment(publicKey)
             }
+            let normalizedKey = savedContact.publicKey
 
             try schedulePrePaymentPublication(for: normalizedKey) {
                 _ = await self.refreshSavedContactEndpointsReturningError(
@@ -61,6 +90,10 @@ extension PrivatePaykitService {
                     forceRefreshLightning: false,
                     requireImmediatePublication: false
                 )
+            }
+
+            guard try await hasPrivatePaymentPath(normalizedKey, identity: savedContact.identity) else {
+                return try await contactPaymentOperations.beginPublicPayment(normalizedKey)
             }
 
             var result = try await beginContactPayment(to: normalizedKey)
@@ -96,6 +129,51 @@ extension PrivatePaykitService {
         }
         admission.onRevocation(of: scope, id: id) { task.cancel() }
         return task
+    }
+
+    private func savedContact(_ publicKey: String) async throws -> (publicKey: String, identity: IdentityStatus)? {
+        guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else { return nil }
+        let identity = try await contactPaymentOperations.identityStatus().flatMap { $0.publicKey == nil ? nil : $0 }
+        if isKnownSavedContact(normalizedKey) {
+            guard let identity else { throw PubkyServiceError.sessionNotActive }
+            return (normalizedKey, identity)
+        }
+        guard let identity, try await contactPaymentOperations.isSavedContact(normalizedKey) else { return nil }
+        try profileAdmission.checkCurrent()
+        if !isDeletingProfile {
+            _ = rememberSavedContacts([normalizedKey], replacing: false)
+        }
+        return (normalizedKey, identity)
+    }
+
+    /// A contact has a private payment path once this wallet keeps any private payment state for it, the SDK keeps a link
+    /// record for it in any state, or it publishes a Noise key authorization. Only a contact without any of these, whose
+    /// authorization is definitely missing, is paid through public endpoints; any other lookup failure throws. A payer whose
+    /// identity can only pay publicly pays a contact publicly only without stored private state or a link record, and is
+    /// refused otherwise. A signed-out identity still takes the private path, since the SDK resolves cached private payment
+    /// details without a live session.
+    func hasPrivatePaymentPath(_ publicKey: String, identity: IdentityStatus) async throws -> Bool {
+        let hasStoredPrivateState = state.contacts[publicKey]?.hasCacheState == true
+        if identity.capability == .publicOnly {
+            guard !hasStoredPrivateState, try await !hasLinkRecord(publicKey) else { throw PubkyServiceError.sessionNotActive }
+            return false
+        }
+        if hasStoredPrivateState {
+            return true
+        }
+        if try await hasLinkRecord(publicKey) {
+            return true
+        }
+        do {
+            try await contactPaymentOperations.noiseKeyAuthorization(publicKey)
+            return true
+        } catch PaykitError.NotFound {
+            return false
+        }
+    }
+
+    private func hasLinkRecord(_ publicKey: String) async throws -> Bool {
+        try await contactPaymentOperations.linkedPeers().contains { PubkyPublicKeyFormat.matches($0.counterparty, publicKey) }
     }
 
     func beginPaymentRequest(_ request: PaykitPaymentRequest) async throws -> PublicPaykitPaymentLaunchResult {
@@ -159,26 +237,15 @@ extension PrivatePaykitService {
             let previousPaymentListVersion = consumedVersion.map(String.init) ?? "none"
             do {
                 let prepared: PreparedPrivateContactPayment = if let paymentRequest {
-                    try await PaykitSdkService.shared.prepareAndResolvePrivatePaymentRequest(
-                        counterparty: publicKey,
-                        paymentRequestId: paymentRequest.paymentRequestId,
-                        afterPrivatePaymentListVersion: consumedVersion
-                    )
+                    try await contactPaymentOperations.preparePaymentRequest(publicKey, paymentRequest.paymentRequestId, consumedVersion)
                 } else {
-                    try await PaykitSdkService.shared.prepareAndResolvePrivateContactPayment(
-                        counterparty: publicKey,
-                        afterPrivatePaymentListVersion: consumedVersion
-                    )
+                    try await contactPaymentOperations.prepareContactPayment(publicKey, consumedVersion)
                 }
                 let resolution = prepared.resolution
                 let linkState = try await currentLinkState(
                     publicKey: publicKey,
                     preparedState: prepared.linkReport?.state
                 )
-
-                if paymentRequest == nil, canUsePublicPayment(linkState: linkState, resolution: resolution) {
-                    return try await PublicPaykitService.beginPayment(to: publicKey)
-                }
 
                 if paymentRequest != nil,
                    Self.paymentRequestNeedsPrivateLinkRecovery(resolutionState: resolution.state, linkState: linkState)
@@ -203,10 +270,6 @@ extension PrivatePaykitService {
                     return result
                 }
 
-                if resolution.state == .recoveryPending {
-                    schedulePrivatePaymentRecovery(for: publicKey)
-                }
-
                 if resolution.status == .waitingForUpdatedPaymentList {
                     Logger.info(
                         "Waiting for a private Paykit payment list newer than \(previousPaymentListVersion) for \(PubkyPublicKeyFormat.redacted(publicKey)); public resolution is disabled for this request",
@@ -214,6 +277,13 @@ extension PrivatePaykitService {
                     )
                     schedulePrivatePaymentRecovery(for: publicKey)
                     return .waitingForUpdatedPaymentList
+                }
+
+                if paymentRequest == nil,
+                   Self.savedContactPaymentNeedsPrivateLinkRecovery(resolutionState: resolution.state, linkState: linkState)
+                {
+                    schedulePrivatePaymentRecovery(for: publicKey)
+                    return .privateLinkPending
                 }
 
                 return result
@@ -228,7 +298,7 @@ extension PrivatePaykitService {
                     context: "PrivatePaykit"
                 )
 
-                if paymentRequest != nil, PaykitResolutionFailureDiagnostics.isRecoveryRequired(error) {
+                if PaykitResolutionFailureDiagnostics.isRecoveryRequired(error) {
                     schedulePrivatePaymentRecovery(for: publicKey)
                     return .privateLinkPending
                 }
@@ -237,20 +307,20 @@ extension PrivatePaykitService {
                 do {
                     linkState = try await currentLinkState(publicKey: publicKey)
                 } catch {
-                    if paymentRequest != nil, PaykitResolutionFailureDiagnostics.isRecoveryRequired(error) {
+                    if PaykitResolutionFailureDiagnostics.isRecoveryRequired(error) {
                         schedulePrivatePaymentRecovery(for: publicKey)
                         return .privateLinkPending
                     }
                     throw error
                 }
-                if paymentRequest != nil, Self.paymentRequestNeedsPrivateLinkRecovery(linkState: linkState) {
-                    schedulePrivatePaymentRecovery(for: publicKey)
-                    return .privateLinkPending
-                }
-                guard paymentRequest == nil, canUsePublicPayment(linkState: linkState) else {
+                let needsLinkRecovery = paymentRequest == nil
+                    ? Self.savedContactPaymentNeedsPrivateLinkRecovery(linkState: linkState)
+                    : Self.paymentRequestNeedsPrivateLinkRecovery(linkState: linkState)
+                guard needsLinkRecovery else {
                     throw error
                 }
-                return try await PublicPaykitService.beginPayment(to: publicKey)
+                schedulePrivatePaymentRecovery(for: publicKey)
+                return .privateLinkPending
             }
         }
     }
@@ -483,26 +553,22 @@ extension PrivatePaykitService {
             return preparedState
         }
 
-        return try await PaykitSdkService.shared.linkedPeers().first {
+        return try await contactPaymentOperations.linkedPeers().first {
             PubkyPublicKeyFormat.matches($0.counterparty, publicKey)
         }?.state
     }
 
-    private func canUsePublicPayment(
-        linkState: LinkedPeerState?,
-        resolution: PrivateContactPaymentResolution? = nil
+    /// A saved contact with a private payment path is never paid through public endpoints, so a private link that is not
+    /// established yet, or that needs recovery, waits for that link instead.
+    static func savedContactPaymentNeedsPrivateLinkRecovery(
+        resolutionState: PrivatePaymentResolutionState? = nil,
+        linkState: LinkedPeerState?
     ) -> Bool {
-        if let resolution,
-           resolution.status == .waitingForUpdatedPaymentList || resolution.state != .noPrivateEndpoint
-        {
-            return false
-        }
-
         switch linkState {
-        case nil, .notLinked, .linking:
-            return true
-        case .linked, .recoveryRequired, .blocked, .unknown:
-            return false
+        case nil, .notLinked:
+            true
+        case .linking, .linked, .recoveryRequired, .blocked, .unknown:
+            paymentRequestNeedsPrivateLinkRecovery(resolutionState: resolutionState, linkState: linkState)
         }
     }
 
