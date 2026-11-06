@@ -17,6 +17,8 @@ struct ProfileEditFormView<Avatar: View>: View {
     var bioLabel: String = t("profile__create_bio_label")
     let bioPlaceholder: String
     let isSaving: Bool
+    /// Whether the name can be saved; contact edits accept any non-empty name.
+    var isNameValid: (String) -> Bool = { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     let footerNote: String?
     let deleteLabel: String?
     var deleteSectionCaption: String = t("profile__edit_delete_section")
@@ -294,7 +296,7 @@ struct ProfileEditFormView<Avatar: View>: View {
                 await onSave()
             }
             .accessibilityIdentifier("ProfileEditSave")
-            .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(!isNameValid(name))
         }
         .padding(.horizontal, 16)
         .padding(.top, 16)

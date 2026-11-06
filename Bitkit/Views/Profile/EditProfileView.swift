@@ -32,6 +32,7 @@ struct EditProfileView: View {
                 publicKeyLabel: t("profile__create_pubky_display_label"),
                 bioPlaceholder: t("profile__create_bio_placeholder"),
                 isSaving: isSaving,
+                isNameValid: PubkyAppProfileLimits.isValidName,
                 footerNote: t("profile__edit_public_note"),
                 deleteLabel: copy.label,
                 deleteSectionCaption: copy.sectionCaption,
@@ -59,6 +60,16 @@ struct EditProfileView: View {
         .disabled(isDeleting)
         .task {
             loadProfileData()
+        }
+        .onChange(of: username) { _, value in
+            if value.count > PubkyAppProfileLimits.nameLength.upperBound {
+                username = String(value.prefix(PubkyAppProfileLimits.nameLength.upperBound))
+            }
+        }
+        .onChange(of: bio) { _, value in
+            if value.count > PubkyAppProfileLimits.bioMaxLength {
+                bio = String(value.prefix(PubkyAppProfileLimits.bioMaxLength))
+            }
         }
         .alert(copy.title, isPresented: $showDeleteConfirmation) {
             Button(copy.confirm, role: .destructive) {
@@ -216,7 +227,7 @@ struct EditProfileView: View {
     /// or the profile publishes, it stops quietly, with no toast and no navigation.
     private func saveProfile() async {
         let trimmedName = username.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty else { return }
+        guard PubkyAppProfileLimits.isValidName(trimmedName) else { return }
 
         isSaving = true
         defer { isSaving = false }

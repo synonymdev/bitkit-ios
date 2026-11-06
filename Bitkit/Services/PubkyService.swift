@@ -380,6 +380,10 @@ enum PubkyService {
         )
     }
 
+    static func deletePubkyProfile(expectedRevision: String, expectedIdentity: String) async throws {
+        try await PaykitSdkService.shared.deletePubkyProfile(expectedRevision: expectedRevision, expectedIdentity: expectedIdentity)
+    }
+
     static func uploadPubkyAppAvatar(bytes: Data, contentType: String, expectedIdentity: String) async throws -> String {
         try await PaykitSdkService.shared.uploadPubkyAppAvatar(
             bytes: bytes,
@@ -874,6 +878,14 @@ actor PaykitSdkService {
         try await withStateRevisionTracking { sdk in
             try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
             return try await sdk.publishPubkyProfile(update: update, expectedRevision: expectedRevision)
+        }
+    }
+
+    /// Deletes the pubky.app profile only while `expectedIdentity` is signed in.
+    func deletePubkyProfile(expectedRevision: String, expectedIdentity: String) async throws {
+        try await withStateRevisionTracking { sdk in
+            try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
+            try await sdk.deletePubkyProfile(expectedRevision: expectedRevision)
         }
     }
 

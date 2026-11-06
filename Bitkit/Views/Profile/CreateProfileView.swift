@@ -37,6 +37,11 @@ struct CreateProfileView: View {
         .task {
             await loadInitialData()
         }
+        .onChange(of: username) { _, value in
+            if value.count > PubkyAppProfileLimits.nameLength.upperBound {
+                username = String(value.prefix(PubkyAppProfileLimits.nameLength.upperBound))
+            }
+        }
     }
 
     // MARK: - Form Content
@@ -64,7 +69,7 @@ struct CreateProfileView: View {
         ) {
             await saveProfile()
         }
-        .disabled(username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .disabled(!PubkyAppProfileLimits.isValidName(username))
         .accessibilityIdentifier("CreateProfileSave")
         .padding(.top, 16)
         .padding(.horizontal, 16)
@@ -187,7 +192,7 @@ struct CreateProfileView: View {
         }
 
         do {
-            let profile = try await PubkyProfileManager.resolveRemoteProfile(publicKey: publicKey)
+            let profile = try await PubkyAppProfileStore.shared.load(publicKey: publicKey)
             remoteLookupFailed = false
             return profile
         } catch PubkyServiceError.profileNotFound {
@@ -213,7 +218,7 @@ struct CreateProfileView: View {
         }
 
         let trimmedName = username.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty else { return }
+        guard PubkyAppProfileLimits.isValidName(trimmedName) else { return }
 
         isSaving = true
         defer { isSaving = false }

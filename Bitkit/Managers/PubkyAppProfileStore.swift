@@ -32,6 +32,14 @@ actor PubkyAppProfileStore {
         set { UserDefaults.standard.set(Array(newValue), forKey: pubkyAppProfileOwnersKey) }
     }
 
+    private static let pubkyAppAvatarPendingKey = "pubky_app_avatar_pending"
+
+    /// Identities whose Bitkit avatar is still to be moved to pubky.app, retried on each load.
+    private static var pubkyAppAvatarPending: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: pubkyAppAvatarPendingKey) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: pubkyAppAvatarPendingKey) }
+    }
+
     private struct Base {
         let profile: PubkyProfile
         let revision: String?
@@ -53,13 +61,17 @@ actor PubkyAppProfileStore {
             Logger.warn("Failed to read Bitkit profile copy: \(error)", context: "PubkyAppProfileStore")
             paykitData = nil
         }
-        var snapshot = try await PubkyService.fetchPubkyProfileWithRevision(publicKey: key)
+        let fetched = try await PubkyService.fetchPubkyProfileWithRevision(publicKey: key)
+        var snapshot = fetched
         let isSignedIn = await Self.isSignedIn(key)
         // Once a pubky.app profile was seen, one missing there was deleted there, so it is not moved back from Bitkit.
         let hadPubkyAppProfile = Self.pubkyAppProfileOwners.contains(key)
         if snapshot == nil, let paykitData, isSignedIn, !hadPubkyAppProfile {
             snapshot = await migrate(paykitData, publicKey: key)
+        } else if let current = snapshot, isSignedIn, Self.pubkyAppAvatarPending.contains(key), let uri = paykitData?.image {
+            snapshot = await moveAvatar(uri, onto: current, publicKey: key) ?? current
         }
+        let wrote = snapshot?.revision != fetched?.revision
         if snapshot != nil, !hadPubkyAppProfile {
             Self.pubkyAppProfileOwners.insert(key)
         }
@@ -71,11 +83,16 @@ actor PubkyAppProfileStore {
             }
             throw PubkyServiceError.profileNotFound
         }
-        let profile = Self.profile(publicKey: key, snapshot: snapshot, tags: paykitData?.tags ?? [])
-        if isLatest {
+        let avatarPending = Self.pubkyAppAvatarPending.contains(key)
+        var profile = Self.profile(publicKey: key, snapshot: snapshot, tags: paykitData?.tags ?? [])
+        if avatarPending, let uri = paykitData?.image {
+            profile = profile.withImageUrl(uri)
+        }
+        // A refresh keeps the revision an open edit started from, so the edit's save is checked against it.
+        if isLatest, bases[key] == nil || wrote {
             bases[key] = Base(profile: profile, revision: snapshot.revision)
         }
-        if isSignedIn, let paykitData, paykitData != PubkyProfileData.from(profile: profile) {
+        if isSignedIn, !avatarPending, let paykitData, paykitData != PubkyProfileData.from(profile: profile) {
             await publishCopy(profile, expectedIdentity: key)
         }
         return profile
@@ -101,6 +118,7 @@ actor PubkyAppProfileStore {
                 try await PubkyService.publishPubkyProfile(update, expectedRevision: expectedRevision, expectedIdentity: key)
             }
         } catch PaykitError.ConcurrentUpdate {
+            bases[key] = nil
             _ = try? await load(publicKey: key)
             throw PubkyAppProfileError.changedElsewhere
         }
@@ -141,8 +159,16 @@ actor PubkyAppProfileStore {
             return nil
         }
         guard let uri = data.image else { return snapshot }
+        return await moveAvatar(uri, onto: snapshot, publicKey: publicKey) ?? snapshot
+    }
+
+    private func moveAvatar(
+        _ uri: String,
+        onto snapshot: Paykit.PubkyProfileSnapshot,
+        publicKey: String
+    ) async -> Paykit.PubkyProfileSnapshot? {
         do {
-            return try await withPubkyAppScope {
+            let moved = try await withPubkyAppScope {
                 let bytes = try await PubkyService.fetchFile(uri: uri, maxBytes: Self.avatarMaxBytes)
                 let image = try await PubkyService.uploadPubkyAppAvatar(
                     bytes: bytes,
@@ -155,10 +181,23 @@ actor PubkyAppProfileStore {
                     expectedIdentity: publicKey
                 )
             }
+            Self.pubkyAppAvatarPending.remove(publicKey)
+            return moved
         } catch {
             Logger.warn("Failed to move avatar to pubky.app: \(error)", context: "PubkyAppProfileStore")
-            return snapshot
+            Self.pubkyAppAvatarPending.insert(publicKey)
+            return nil
         }
+    }
+
+    /// Deletes the identity's pubky.app profile, for a wallet-owned identity deleting its profile.
+    func deleteProfile(expectedIdentity: String) async throws {
+        let key = Self.normalized(expectedIdentity)
+        guard let revision = try await PubkyService.fetchPubkyProfileWithRevision(publicKey: key)?.revision else { return }
+        try await withPubkyAppScope {
+            try await PubkyService.deletePubkyProfile(expectedRevision: revision, expectedIdentity: key)
+        }
+        bases[key] = nil
     }
 
     private func publishCopy(_ profile: PubkyProfile, expectedIdentity: String) async {

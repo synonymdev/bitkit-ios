@@ -116,6 +116,10 @@ struct PubkyProfile {
     let tags: [String]
     let status: String?
 
+    func withImageUrl(_ imageUrl: String?) -> PubkyProfile {
+        PubkyProfile(publicKey: publicKey, name: name, bio: bio, imageUrl: imageUrl, links: links, tags: tags, status: status)
+    }
+
     var truncatedPublicKey: String {
         Self.truncate(publicKey)
     }
@@ -211,5 +215,17 @@ struct PubkyProfile {
     private static func normalizedPublicKey(_ key: String) -> String {
         let trimmedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
         return PubkyPublicKeyFormat.normalized(trimmedKey) ?? (trimmedKey.hasPrefix("pubky") ? trimmedKey : "pubky\(trimmedKey)")
+    }
+}
+
+// MARK: - pubky.app profile limits
+
+/// Limits pubky-app-specs sets on the pubky.app profile.
+enum PubkyAppProfileLimits {
+    static let nameLength = 3 ... 50
+    static let bioMaxLength = 160
+
+    static func isValidName(_ name: String) -> Bool {
+        nameLength.contains(name.trimmingCharacters(in: .whitespacesAndNewlines).count)
     }
 }
