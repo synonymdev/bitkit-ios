@@ -1,5 +1,6 @@
 @testable import Bitkit
 import BitkitCore
+import Combine
 import XCTest
 
 @MainActor
@@ -407,12 +408,64 @@ final class UsdtWalletManagerTests: XCTestCase {
         let failed = transfer("failed", status: .failed)
         let outgoing = transfer("sent", incoming: false)
         let empty = transfer("zero", amount: 0)
-        XCTAssertTrue(UsdtWalletManager.newIncomingTransfers(previous: nil, current: [old]).isEmpty)
+        func detect(_ previous: [UsdtTransfer]?, _ current: [UsdtTransfer], announced: Set<String> = []) -> [UsdtTransfer] {
+            UsdtWalletManager.newIncomingTransfers(previous: previous, current: current, since: 1000, announced: announced)
+        }
+        XCTAssertTrue(detect(nil, [old]).isEmpty)
         let current = [old, incoming, pending, failed, outgoing, empty]
-        XCTAssertEqual(UsdtWalletManager.newIncomingTransfers(previous: [old], current: current), [incoming])
-        XCTAssertTrue(UsdtWalletManager.newIncomingTransfers(previous: current, current: current).isEmpty)
+        XCTAssertEqual(detect([old], current), [incoming])
+        XCTAssertTrue(detect(current, current).isEmpty)
         let confirmed = transfer("pending")
-        XCTAssertEqual(UsdtWalletManager.newIncomingTransfers(previous: current, current: current + [confirmed]), [confirmed])
+        XCTAssertEqual(detect(current, current + [confirmed]), [confirmed])
+        XCTAssertTrue(detect(current, current + [confirmed], announced: [confirmed.id]).isEmpty)
+    }
+
+    func testReceiptsDuringFirstSyncCelebrateOnceWhileDiscoveredHistoryDoesNot() {
+        let restored = transfer("restored")
+        let discovered = transfer("discovered", timestamp: 999)
+        let received = transfer("received", timestamp: 1006)
+        let atBaseline = transfer("at baseline", timestamp: 1000)
+        let pending = transfer("pending", status: .pending, timestamp: 1010)
+        let outgoing = transfer("sent", incoming: false, timestamp: 1010)
+        let current = [received, atBaseline, pending, outgoing, restored, discovered]
+        XCTAssertEqual(
+            UsdtWalletManager.newIncomingTransfers(previous: nil, current: current, since: 1000, announced: []),
+            [received, atBaseline]
+        )
+        XCTAssertTrue(
+            UsdtWalletManager.newIncomingTransfers(
+                previous: nil, current: current, since: 1000, announced: [received.id, atBaseline.id]
+            ).isEmpty
+        )
+    }
+
+    func testRefreshAnnouncesAReceiptDuringTheFirstSyncOnceAndIgnoresDiscoveredHistory() async throws {
+        try XCTSkipUnless(Env.isUsdtEnabled)
+        var clock = Date(timeIntervalSince1970: 1_800_000_000)
+        let wallet = SyncingUsdtWallet(noPointer: .init())
+        wallet.transfers = [transfer("saved")]
+        wallet.syncResults = [false, false, true]
+        let manager = UsdtWalletManager(rpcUrl: "http://127.0.0.1:1", bundlerUrl: "http://127.0.0.1:1", now: { clock }, core: wallet,
+                                        loadCredentials: { throw UsdtError.InvalidCredentials })
+        var announced: [String] = []
+        let subscription = manager.receivedTxPublisher.sink { announced.append($0.id) }
+        defer { subscription.cancel() }
+
+        await manager.refresh(includeHistory: true)
+        XCTAssertTrue(announced.isEmpty)
+
+        let received = transfer("received", timestamp: 1_800_000_030)
+        wallet.transfers = [received, transfer("saved"), transfer("discovered", timestamp: 1_700_000_000)]
+        clock.addTimeInterval(20)
+        await manager.refresh(includeHistory: true)
+        XCTAssertFalse(manager.historyComplete)
+        XCTAssertEqual(announced, [received.id])
+
+        clock.addTimeInterval(20)
+        await manager.refresh(includeHistory: true)
+        XCTAssertTrue(manager.historyComplete)
+        XCTAssertEqual(announced, [received.id], "The completing sync must not announce the receipt again")
+        XCTAssertEqual(wallet.syncCalls, 3)
     }
 
     func testLinkedOrderStatusAndErrorSupersedeDepositStateTogether() {
@@ -559,7 +612,13 @@ final class UsdtWalletManagerTests: XCTestCase {
         XCTAssertNil(receipts.takeNext(canPresent: sheets.canPresentReceivedTx))
     }
 
-    private func transfer(_ id: String, incoming: Bool = true, status: UsdtTransferStatus = .confirmed, amount: UInt64 = 1_000_000) -> UsdtTransfer {
+    private func transfer(
+        _ id: String,
+        incoming: Bool = true,
+        status: UsdtTransferStatus = .confirmed,
+        amount: UInt64 = 1_000_000,
+        timestamp: UInt64 = 1
+    ) -> UsdtTransfer {
         UsdtTransfer(
             sender: nil,
             id: id,
@@ -574,7 +633,7 @@ final class UsdtWalletManagerTests: XCTestCase {
             fee: nil,
             isIncoming: incoming,
             status: status,
-            timestamp: 1
+            timestamp: timestamp
         )
     }
 
@@ -681,6 +740,29 @@ final class UsdtWalletManagerTests: XCTestCase {
 private final class UnavailableUsdtBackup: UsdtBackup {
     func persist(snapshot _: String) async throws {
         throw UsdtError.BackupUnavailable
+    }
+}
+
+private final class SyncingUsdtWallet: UsdtWallet, @unchecked Sendable {
+    var transfers: [UsdtTransfer] = []
+    var syncResults: [Bool] = []
+    var syncCalls = 0
+
+    override func history() throws -> [UsdtTransfer] {
+        transfers
+    }
+
+    override func balance() async throws -> UInt64 {
+        0
+    }
+
+    override func refreshTransfers() async throws -> [UsdtTransfer] {
+        transfers
+    }
+
+    override func syncHistory() async throws -> Bool {
+        defer { syncCalls += 1 }
+        return syncResults.indices.contains(syncCalls) ? syncResults[syncCalls] : true
     }
 }
 
