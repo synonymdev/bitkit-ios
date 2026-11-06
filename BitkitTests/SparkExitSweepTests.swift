@@ -1,7 +1,7 @@
 @testable import Bitkit
 import BreezSdkSpark
 import CryptoKit
-import secp256k1
+import libsecp256k1
 import XCTest
 
 final class SparkExitSweepTests: XCTestCase {
