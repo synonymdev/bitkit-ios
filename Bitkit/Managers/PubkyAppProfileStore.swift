@@ -25,6 +25,13 @@ actor PubkyAppProfileStore {
     private static let linkUrlMaxLength = 300
     private static let avatarMaxBytes: UInt64 = 5 * 1024 * 1024
 
+    private static let pubkyAppProfileOwnersKey = "pubky_app_profile_owners"
+
+    private static var pubkyAppProfileOwners: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: pubkyAppProfileOwnersKey) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: pubkyAppProfileOwnersKey) }
+    }
+
     private struct Base {
         let profile: PubkyProfile
         let revision: String?
@@ -48,8 +55,13 @@ actor PubkyAppProfileStore {
         }
         var snapshot = try await PubkyService.fetchPubkyProfileWithRevision(publicKey: key)
         let isSignedIn = await Self.isSignedIn(key)
-        if snapshot == nil, let paykitData, isSignedIn {
+        // Once a pubky.app profile was seen, one missing there was deleted there, so it is not moved back from Bitkit.
+        let hadPubkyAppProfile = Self.pubkyAppProfileOwners.contains(key)
+        if snapshot == nil, let paykitData, isSignedIn, !hadPubkyAppProfile {
             snapshot = await migrate(paykitData, publicKey: key)
+        }
+        if snapshot != nil, !hadPubkyAppProfile {
+            Self.pubkyAppProfileOwners.insert(key)
         }
         // A save that finished while this load ran holds a newer revision than this read.
         let isLatest = saveCount == savesBeforeLoad

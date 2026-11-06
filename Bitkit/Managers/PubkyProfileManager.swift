@@ -447,6 +447,14 @@ class PubkyProfileManager: ObservableObject {
         return try await avatarUploader(imageData, expectedIdentity)
     }
 
+    /// Upload a contact's avatar to Bitkit's own Paykit blob storage, which contact edits keep using. Returns the `pubky://`
+    /// URI, and writes nothing unless `expectedIdentity` is still signed in when it runs.
+    func uploadContactAvatar(image: UIImage, expectedIdentity: String) async throws -> String {
+        _ = try activeSessionSecret()
+        let imageData = try compressAvatar(image)
+        return try await PubkyService.uploadProfileAvatar(bytes: imageData, contentType: "image/jpeg", expectedIdentity: expectedIdentity)
+    }
+
     private func compressAvatar(_ image: UIImage, maxSize: CGFloat = 400) throws -> Data {
         // Resize to max dimensions
         let scale = min(maxSize / image.size.width, maxSize / image.size.height, 1.0)
