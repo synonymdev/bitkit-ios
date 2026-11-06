@@ -964,7 +964,8 @@
 "contacts__add_error_self" = "Não pode adicionar o seu próprio pubky como contacto.";
 "contacts__add_retrieving" = "A obter informações\ndo contacto";
 "contacts__add_error" = "Falha ao adicionar contacto";
-"contacts__add_disclaimer" = "Tenha em atenção que {name} e o utilizador têm de se adicionar mutuamente como contactos para fazer pagamentos privados. Caso contrário, o pagamento será visível publicamente.";
+"contacts__add_disclaimer" = "Tenha em atenção que {name} e o utilizador têm de se adicionar mutuamente como contactos antes de poderem fazer pagamentos privados. Se pagar sem guardar o contacto, o pagamento fica visível publicamente.";
+"contacts__pay_private_link_pending" = "O Bitkit ainda está a configurar uma ligação privada com este contacto. Confirme que esta pessoa também o adicionou como contacto ou peça-lhe que envie um pedido de pagamento.";
 "contacts__import_nav_title" = "Importar";
 "contacts__import_found_title" = "Encontrados\n<accent>perfil e contactos</accent>";
 "contacts__import_found_description" = "A Bitkit encontrou dados de perfil e contactos associados ao pubky <accent>{key}</accent>";
@@ -1593,6 +1594,7 @@
 "subscriptions__allowances" = "Pré-aprovações";
 "subscriptions__allowances_empty_headline" = "Configure\n<accent>pré-aprovações</accent>";
 "subscriptions__allowances_paused_description" = "Os registos das suas mesadas são mais antigos do que outros que esta carteira já usou. Os pedidos vão pedir a sua aprovação até retomar.";
+"subscriptions__allowances_paused_restore_description" = "Esta carteira foi restaurada a partir de um backup. Os pedidos vão pedir a sua aprovação até retomar.";
 "subscriptions__allowances_paused_resume" = "Retomar";
 "subscriptions__allowances_paused_title" = "Pagamentos automáticos em pausa";
 "subscriptions__allowances_empty_description" = "Pode definir limites de gastos para pagar automaticamente pedidos de pagamento de contactos de confiança.";

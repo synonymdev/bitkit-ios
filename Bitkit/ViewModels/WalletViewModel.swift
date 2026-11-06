@@ -325,15 +325,12 @@ class WalletViewModel: ObservableObject {
                         )
                     case let .paymentReceived(_, paymentHash, _, _):
                         self.invalidateReceiveInvoice()
-                        if self.isPaykitUIActive {
-                            self.rotatePublicPaykitInvoiceIfNeeded(paymentHash: paymentHash)
-                        }
+                        let rotatedPublicInvoice = self.isPaykitUIActive && self.rotatePublicPaykitInvoiceIfNeeded(paymentHash: paymentHash)
+                        let isSessionCurrent = self.publicPaykitPublicationAdmission()
                         Task {
-                            if self.isPaykitUIActive {
-                                await PrivatePaykitService.shared.handleReceivedPayment(paymentHash: paymentHash, wallet: self)
-                            }
-                            await self.refreshAndSyncState()
-                            try? await self.refreshBip21(reportsError: false)
+                            await self.refreshAfterPaymentReceived(
+                                paymentHash: paymentHash, rotatedPublicInvoice: rotatedPublicInvoice, isSessionCurrent: isSessionCurrent
+                            )
                         }
                     case .channelReady:
                         self.invalidateReceiveInvoice()
@@ -354,12 +351,7 @@ class WalletViewModel: ObservableObject {
                     case let .channelClosed(channelId, _, _, reason):
                         self.invalidateReceiveInvoice()
                         Task {
-                            await self.refreshAndSyncState()
-                            await self.handleChannelClosed(channelId: channelId, reason: reason)
-                            try? await self.refreshBip21(reportsError: false)
-                            if self.isPaykitUIActive {
-                                await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(wallet: self, reason: "channel-closed refresh")
-                            }
+                            await self.refreshAfterChannelClosed(channelId: channelId, reason: reason)
                         }
 
                     // MARK: Onchain Transaction Events
@@ -1734,15 +1726,29 @@ class WalletViewModel: ObservableObject {
         clearPublicPaykitBolt11()
     }
 
-    func rotatePublicPaykitInvoiceIfNeeded(paymentHash: String) {
+    @discardableResult
+    func rotatePublicPaykitInvoiceIfNeeded(paymentHash: String) -> Bool {
         guard !publicPaykitBolt11PaymentHash.isEmpty,
               publicPaykitBolt11PaymentHash == paymentHash
-        else { return }
+        else { return false }
 
         invalidatePublicPaykitInvoice()
         if sharesPublicPaykitEndpoints {
             PublicPaykitService.setCleanupPending(true)
         }
+        return true
+    }
+
+    func refreshAfterPaymentReceived(
+        paymentHash: String, rotatedPublicInvoice: Bool, isSessionCurrent: @escaping @MainActor () -> Bool
+    ) async {
+        if isPaykitUIActive {
+            await PrivatePaykitService.shared.handleReceivedPayment(paymentHash: paymentHash, wallet: self)
+        }
+        await refreshAndSyncState()
+        try? await refreshBip21(reportsError: false)
+        guard rotatedPublicInvoice else { return }
+        try? await syncReceivePublicPaykitEndpoints(isSessionCurrent: isSessionCurrent)
     }
 
     func refreshBip21(forceRefreshBolt11: Bool = false, syncPublicPaykit: Bool = true, reportsError: Bool = true) async throws {
@@ -1824,14 +1830,8 @@ class WalletViewModel: ObservableObject {
             receiveCommitID = UUID()
             isReceiveInvoiceUpdating = false
 
-            if syncPublicPaykit, isPaykitUIActive, sharesPublicPaykitEndpoints,
-               await !PrivatePaykitService.shared.isDeletingProfile
-            {
-                do {
-                    try await syncReceivePublicPaykitEndpoints(isSessionCurrent: isSessionCurrent)
-                } catch {
-                    Logger.warn("Failed to refresh public paykit endpoints after receive refresh: \(error)", context: "WalletViewModel")
-                }
+            if syncPublicPaykit, isSessionCurrent() {
+                PublicPaykitService.queueEndpointReconciliation()
             }
         } catch {
             guard receiveRefreshID == refreshID else {
@@ -1974,6 +1974,24 @@ class WalletViewModel: ObservableObject {
         return formatter.string(from: NSNumber(value: btcAmount)) ?? "0"
     }
 
+    /// An in-sheet scan can open Confirm directly, so amount and coin choices from an earlier recipient must not carry over.
+    func prepareFixedAmountOnchainSend(amountSats: UInt64) {
+        sendAmountSats = amountSats
+        isMaxAmountSend = false
+        selectedUtxos = nil
+        availableUtxos = []
+    }
+
+    /// Amount restores the scanned amount over an edited one; coins and a Max choice made for the edit no longer fit,
+    /// and a Confirm opened directly from the scan keeps them unless they are cleared here.
+    func restoreScannedSendAmount(_ amountSats: UInt64) {
+        if sendAmountSats != amountSats {
+            selectedUtxos = nil
+            isMaxAmountSend = false
+        }
+        sendAmountSats = amountSats
+    }
+
     func resetSendState(speed: TransactionSpeed) {
         sendAmountSats = nil
         selectedFeeRateSatsPerVByte = nil
@@ -1983,6 +2001,12 @@ class WalletViewModel: ObservableObject {
         selectedSpeed = speed
         isMaxAmountSend = false
         routingFeeEstimateSats = 0
+    }
+
+    func refreshAfterChannelClosed(channelId: LDKNode.ChannelId, reason: LDKNode.ClosureReason?) async {
+        await refreshAndSyncState()
+        await handleChannelClosed(channelId: channelId, reason: reason)
+        await refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "channel-closed refresh")
     }
 
     private func handleChannelClosed(channelId: LDKNode.ChannelId, reason: LDKNode.ClosureReason?) async {

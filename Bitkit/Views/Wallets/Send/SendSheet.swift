@@ -972,7 +972,45 @@ struct SendSheet: View {
 
         var hardwareSources: [(wallet: HwWallet, available: UInt64)] = []
         var hasUnavailableSource = savingsAvailable == nil
-        for hardwareWallet in hwWalletManager.wallets {
+        let hardwareWallets = hwWalletManager.wallets.sorted {
+            hwWalletManager.fundingBalance(walletId: $0.walletId) > hwWalletManager.fundingBalance(walletId: $1.walletId)
+        }
+        for hardwareWallet in hardwareWallets {
+            // Composing the exact payment both proves this wallet can pay and gives the confirmation
+            // its fee, so the confirmation does not compose the same payment a second time.
+            let balance = hwWalletManager.fundingBalance(walletId: hardwareWallet.walletId)
+            let fundingState = hwWalletManager.fundingStateFingerprint(walletId: hardwareWallet.walletId)
+            if balance >= amountSats {
+                do {
+                    let fee = try await hwWalletManager.estimateOfflineFundingMiningFee(
+                        walletId: hardwareWallet.walletId,
+                        address: invoice.address,
+                        sats: amountSats,
+                        satsPerVByte: UInt64(satsPerVByte)
+                    )
+                    guard isCurrentIncomingRequest(requestId) else { return false }
+                    hwSend.selectWallet(
+                        hardwareWallet.walletId,
+                        initialAvailableSats: balance > fee ? balance - fee : 0
+                    )
+                    hwSend.seedPreview(
+                        walletId: hardwareWallet.walletId,
+                        address: invoice.address,
+                        sats: amountSats,
+                        satsPerVByte: UInt64(satsPerVByte),
+                        fundingState: fundingState,
+                        feeSats: fee
+                    )
+                    return true
+                } catch is CancellationError {
+                    return false
+                } catch {
+                    // Usually the balance cannot also cover the fee. The max estimate below says how
+                    // much it can cover, for the insufficient-funds check.
+                    Logger.warn("Hardware wallet cannot compose the request: \(error)", context: "SendSheet")
+                }
+                guard isCurrentIncomingRequest(requestId) else { return false }
+            }
             do {
                 let available = try await hwWalletManager.maxSpendableFunding(
                     walletId: hardwareWallet.walletId,
