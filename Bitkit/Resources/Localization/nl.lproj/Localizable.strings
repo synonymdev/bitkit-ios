@@ -354,7 +354,6 @@
 "lightning__move_to_spark__failed_title" = "Verplaatsen\n<accent>mislukt</accent>";
 "lightning__move_to_spark__failed_unknown" = "Er is iets misgegaan bij het voorbereiden van de verplaatsing. Probeer het opnieuw.";
 "lightning__move_to_spark__fee" = "Routeringsvergoeding";
-"lightning__move_to_spark__in_flight_text" = "De betaling is onderweg en verschijnt in Spark zodra ze is afgerond. Sluit daarna de lege verbinding om de reserve terug te geven aan uw spaargeld.";
 "lightning__move_to_spark__intro_text" = "Blocktank sluit zijn Lightning-verbindingen. Verplaats uw saldo nu naar Spark: dit is de goedkoopste optie en het blijft op uw bestedingssaldo.";
 "lightning__move_to_spark__intro_title" = "Uw verbinding wordt\n<accent>gesloten</accent>";
 "lightning__move_to_spark__move_half" = "Stuur helft";

@@ -354,7 +354,6 @@
 "lightning__move_to_spark__failed_title" = "Não foi possível\n<accent>mover</accent>";
 "lightning__move_to_spark__failed_unknown" = "Algo correu mal ao preparar a movimentação. Tente novamente.";
 "lightning__move_to_spark__fee" = "Taxa de encaminhamento";
-"lightning__move_to_spark__in_flight_text" = "O pagamento está a caminho e aparece no Spark quando for liquidado. Depois, feche a conexão esvaziada para devolver a reserva à Poupança.";
 "lightning__move_to_spark__intro_text" = "O Blocktank está a fechar as suas conexões Lightning. Mova já o seu saldo para o Spark: é a opção com as taxas mais baixas e fica em Gastos.";
 "lightning__move_to_spark__intro_title" = "A sua conexão\n<accent>vai fechar</accent>";
 "lightning__move_to_spark__move_half" = "Mover Metade";

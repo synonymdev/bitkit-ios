@@ -356,7 +356,6 @@
 "lightning__move_to_spark__failed_title" = "Nie udało się\n<accent>przenieść</accent>";
 "lightning__move_to_spark__failed_unknown" = "Coś poszło nie tak podczas przygotowania przeniesienia. Spróbuj ponownie.";
 "lightning__move_to_spark__fee" = "Opłata za routing";
-"lightning__move_to_spark__in_flight_text" = "Płatność jest w drodze i pojawi się w Spark po rozliczeniu. Następnie zamknij opróżnione połączenie, aby zwrócić jego rezerwę do Oszczędności.";
 "lightning__move_to_spark__intro_text" = "Blocktank zamyka swoje połączenia Lightning. Przenieś teraz saldo do Spark: to opcja z najniższymi opłatami, a środki zostają w Wydatkach.";
 "lightning__move_to_spark__intro_title" = "Twoje połączenie\n<accent>się zamyka</accent>";
 "lightning__move_to_spark__move_half" = "Połowę";

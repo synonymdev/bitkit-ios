@@ -340,7 +340,6 @@
 "lightning__move_to_spark__failed_title" = "No s'ha pogut\n<accent>moure</accent>";
 "lightning__move_to_spark__failed_unknown" = "Alguna cosa ha anat malament en preparar el moviment. Torna-ho a provar.";
 "lightning__move_to_spark__fee" = "Tarifa d'enrutament";
-"lightning__move_to_spark__in_flight_text" = "El pagament està en camí i apareixerà a Spark quan s'hagi liquidat. Després tanca la connexió buida per tornar-ne la reserva als Estalvis.";
 "lightning__move_to_spark__intro_text" = "Blocktank està tancant les seves connexions Lightning. Mou ara el teu saldo a Spark: és l'opció amb menys tarifes i es manté a Despesa.";
 "lightning__move_to_spark__intro_title" = "La teva connexió\n<accent>es tanca</accent>";
 "lightning__move_to_spark__move_half" = "Moure meitat";

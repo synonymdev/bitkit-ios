@@ -350,7 +350,6 @@
 "lightning__move_to_spark__failed_title" = "Impossibile\n<accent>spostare</accent>";
 "lightning__move_to_spark__failed_unknown" = "Qualcosa è andato storto durante la preparazione dello spostamento. Riprova.";
 "lightning__move_to_spark__fee" = "Commissione di instradamento";
-"lightning__move_to_spark__in_flight_text" = "Il pagamento è in arrivo e compare su Spark una volta completato. Poi chiudi la connessione svuotata per restituire la sua riserva ai Risparmi.";
 "lightning__move_to_spark__intro_text" = "Blocktank sta chiudendo le sue connessioni Lightning. Sposta ora il tuo saldo su Spark: è l'opzione con le commissioni più basse e resta in Spesa.";
 "lightning__move_to_spark__intro_title" = "La tua connessione\n<accent>si sta chiudendo</accent>";
 "lightning__move_to_spark__move_half" = "Sposta Metà";

@@ -327,7 +327,6 @@
 "lightning__move_to_spark__failed_title" = "Η μεταφορά\n<accent>απέτυχε</accent>";
 "lightning__move_to_spark__failed_unknown" = "Κάτι πήγε στραβά κατά την προετοιμασία της μεταφοράς. Δοκιμάστε ξανά.";
 "lightning__move_to_spark__fee" = "Τέλος δρομολόγησης";
-"lightning__move_to_spark__in_flight_text" = "Η πληρωμή βρίσκεται σε εξέλιξη και θα εμφανιστεί στο Spark μόλις διακανονιστεί. Έπειτα κλείστε την άδεια σύνδεση για να επιστρέψει το απόθεμά της στις Αποταμιεύσεις.";
 "lightning__move_to_spark__intro_text" = "Το Blocktank κλείνει τις συνδέσεις Lightning του. Μεταφέρετε το υπόλοιπό σας στο Spark τώρα: είναι η επιλογή με τα χαμηλότερα τέλη και παραμένει στις Δαπάνες.";
 "lightning__move_to_spark__intro_title" = "Η σύνδεσή σας\n<accent>κλείνει</accent>";
 "lightning__move_to_spark__move_half" = "Το μισό";

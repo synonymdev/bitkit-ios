@@ -1,4 +1,5 @@
 @testable import Bitkit
+import LDKNode
 import XCTest
 
 final class MoveToSparkMathTests: XCTestCase {
@@ -17,8 +18,12 @@ final class MoveToSparkMathTests: XCTestCase {
         XCTAssertEqual(MoveToSparkMath.amountAfterFee(limitSats: 5, feeSats: 9000), 0)
     }
 
-    func testFeeCapCoversTheQuotedFeeAndItsMargin() {
-        XCTAssertEqual(MoveToSparkMath.feeCapMsat(feeSats: 30), 32000)
+    func testFeeCapIsTheQuotedFee() {
+        let feeSats = MoveToSparkMath.quotedFeeSats(estimateSats: 30)
+        XCTAssertEqual(feeSats, 32)
+        XCTAssertEqual(MoveToSparkMath.feeCapMsat(feeSats: feeSats), 32000)
+        // Amount and quoted fee together fit under the limit.
+        XCTAssertEqual(MoveToSparkMath.amountAfterFee(limitSats: 1_000_000, feeSats: 30) + feeSats, 1_000_000)
     }
 
     func testSmallerAmountHalvesUntilTheMinimum() {
@@ -29,5 +34,8 @@ final class MoveToSparkMathTests: XCTestCase {
     func testMoveIsOfferedOnlyWithAUsableSpark() {
         XCTAssertFalse(MoveToSparkMath.canMove(channels: [], isSparkUsable: true))
         XCTAssertFalse(MoveToSparkMath.canMove(channels: nil, isSparkUsable: false))
+        let channel = ChannelDetails.mock(outboundCapacityMsat: 50_000_000)
+        XCTAssertFalse(MoveToSparkMath.canMove(channels: [channel], isSparkUsable: false))
+        XCTAssertTrue(MoveToSparkMath.canMove(channels: [channel], isSparkUsable: true))
     }
 }

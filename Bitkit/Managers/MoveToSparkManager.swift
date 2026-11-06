@@ -39,9 +39,14 @@ enum MoveToSparkMath {
         return reserved.overflow || reserved.partialValue >= limitSats ? 0 : limitSats - reserved.partialValue
     }
 
-    /// The routing fee cap for the payment: the quoted fee and its margin, so it never pays more than shown.
+    /// The routing fee to show for an estimate: the estimate and its margin, which also covers the estimate's rounding.
+    static func quotedFeeSats(estimateSats: UInt64) -> UInt64 {
+        estimateSats + feeMarginSats
+    }
+
+    /// The routing fee cap for the payment: exactly the quoted fee, so it never pays more than shown.
     static func feeCapMsat(feeSats: UInt64) -> UInt64 {
-        (feeSats + feeMarginSats) * 1000
+        feeSats * 1000
     }
 
     /// The smaller amount to offer after one did not route: half of it, or nothing below the minimum.
@@ -70,11 +75,11 @@ enum MoveToSparkPayments {
     private static var paymentHashes = Set<String>()
 
     static func insert(_ paymentHash: String) {
-        paymentHashes.insert(paymentHash)
+        paymentHashes.insert(paymentHash.lowercased())
     }
 
     static func contains(_ paymentHash: String?) -> Bool {
-        paymentHash.map(paymentHashes.contains) ?? false
+        paymentHash.map { paymentHashes.contains($0.lowercased()) } ?? false
     }
 }
 
@@ -126,6 +131,7 @@ final class MoveToSparkManager {
     /// Quotes moving `targetSats`, or everything the channels can send.
     func quote(wallet: WalletViewModel, targetSats: UInt64? = nil) async {
         state = .quoting
+        await wallet.syncStateAsync()
         do {
             state = try await .confirm(makeQuote(channels: wallet.channels, targetSats: targetSats), isMoving: false)
         } catch {
@@ -145,7 +151,7 @@ final class MoveToSparkManager {
                 sats: quote.amountSats,
                 maxFeeMsat: MoveToSparkMath.feeCapMsat(feeSats: quote.feeSats)
             )
-            wallet.syncState()
+            await wallet.syncStateAsync()
             let openChannels = (wallet.channels ?? []).filter(\.isChannelReady)
             state = .done(
                 amountSats: quote.amountSats,
@@ -155,7 +161,9 @@ final class MoveToSparkManager {
             )
         } catch {
             Logger.error("Failed to move '\(quote.amountSats)' sats to Spark: \(error)", context: "MoveToSpark")
-            state = .tooLarge(amountSats: quote.amountSats, smallerSats: MoveToSparkMath.smallerAmount(quote.amountSats))
+            state = Self.isNoRoute(error)
+                ? .tooLarge(amountSats: quote.amountSats, smallerSats: MoveToSparkMath.smallerAmount(quote.amountSats))
+                : .failed(.unknown)
         }
     }
 
@@ -174,16 +182,17 @@ final class MoveToSparkManager {
         var fitting: MoveToSparkQuote?
         // The first amount leaves room for a guessed fee; once the real fee is known, the amount grows to fit it.
         for _ in 0 ..< Self.maxQuoteRounds where amountSats >= MoveToSparkMath.minMoveSats {
-            let feeSats: UInt64
+            let estimateSats: UInt64
             do {
-                feeSats = try await lightningService.estimateRoutingFees(bolt11: invoice, amountSats: amountSats, channelsOnly: true)
+                estimateSats = try await lightningService.estimateRoutingFees(bolt11: invoice, amountSats: amountSats, channelsOnly: true)
             } catch {
                 if let fitting {
                     return fitting
                 }
-                throw MoveToSparkError.tooLarge(amountSats: amountSats)
+                throw Self.isNoRoute(error) ? MoveToSparkError.tooLarge(amountSats: amountSats) : error
             }
-            let nextSats = min(wantedSats, MoveToSparkMath.amountAfterFee(limitSats: limitSats, feeSats: feeSats))
+            let feeSats = MoveToSparkMath.quotedFeeSats(estimateSats: estimateSats)
+            let nextSats = min(wantedSats, MoveToSparkMath.amountAfterFee(limitSats: limitSats, feeSats: estimateSats))
             if amountSats + feeSats <= limitSats {
                 let quote = MoveToSparkQuote(invoice: invoice, amountSats: amountSats, feeSats: feeSats)
                 fitting = quote
@@ -197,6 +206,18 @@ final class MoveToSparkManager {
             return fitting
         }
         throw MoveToSparkError.tooLarge(amountSats: amountSats)
+    }
+
+    /// Whether the payment failed for want of a route that carries the amount, so a smaller one may route.
+    private static func isNoRoute(_ error: Error) -> Bool {
+        let appError = error as? AppError
+        if case .RouteNotFound = (appError?.underlyingError ?? error) as? NodeError {
+            return true
+        }
+        switch appError?.paymentFailureReason {
+        case .routeNotFound, .retriesExhausted: return true
+        default: return false
+        }
     }
 
     private static func state(for error: Error) -> MoveToSparkState {

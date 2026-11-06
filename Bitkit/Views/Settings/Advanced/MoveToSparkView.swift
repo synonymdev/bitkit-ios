@@ -101,7 +101,9 @@ struct MoveToSparkView: View {
                     CustomButton(title: t("common__close")) {
                         // Closing returns to Lightning Connections through the channel's detail, as a close from there does.
                         navigation.navigateBack()
-                        navigation.navigate(.connections)
+                        if navigation.path.last != .connections {
+                            navigation.navigate(.connections)
+                        }
                         if let closeChannel {
                             navigation.navigate(.connectionDetail(channelId: closeChannel.channelIdString))
                             navigation.navigate(.closeConnection(channel: closeChannel))
