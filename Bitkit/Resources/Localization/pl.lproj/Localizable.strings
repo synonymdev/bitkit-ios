@@ -1083,7 +1083,8 @@
 "contacts__add_error_self" = "Nie możesz dodać własnego pubky jako kontaktu.";
 "contacts__add_retrieving" = "Pobieranie\ndanych kontaktu";
 "contacts__add_error" = "Nie udało się dodać kontaktu";
-"contacts__add_disclaimer" = "Pamiętaj, że Ty i {name} musicie dodać się nawzajem do kontaktów, aby płacić sobie prywatnie. W przeciwnym razie płatność będzie widoczna publicznie.";
+"contacts__add_disclaimer" = "Pamiętaj, że Ty i {name} musicie dodać się nawzajem do kontaktów, zanim będziecie mogli płacić sobie prywatnie. Jeśli zapłacisz bez zapisania kontaktu, płatność będzie widoczna publicznie.";
+"contacts__pay_private_link_pending" = "Bitkit wciąż konfiguruje prywatne połączenie z tym kontaktem. Upewnij się, że ta osoba również dodała Cię do kontaktów, lub poproś ją o wysłanie żądania płatności.";
 "contacts__import_nav_title" = "Import";
 "contacts__import_found_title" = "Znaleziono\n<accent>profil i kontakty</accent>";
 "contacts__import_found_description" = "Bitkit znalazł dane profilu i kontaktów powiązane z pubky <accent>{key}</accent>";
@@ -1858,6 +1859,7 @@
 "subscriptions__allowances" = "Przydziały";
 "subscriptions__allowances_empty_headline" = "Ustaw\n<accent>przydziały</accent>";
 "subscriptions__allowances_paused_description" = "Dane Twoich budżetów są starsze niż te, których ten portfel już użył. Prośby będą czekać na Twoją zgodę, dopóki nie wznowisz.";
+"subscriptions__allowances_paused_restore_description" = "Ten portfel został przywrócony z kopii zapasowej. Prośby będą czekać na Twoją zgodę, dopóki nie wznowisz.";
 "subscriptions__allowances_paused_resume" = "Wznów";
 "subscriptions__allowances_paused_title" = "Płatności automatyczne wstrzymane";
 "subscriptions__allowances_empty_description" = "Możesz ustawić limity wydatków, aby automatycznie realizować żądania płatności od zaufanych kontaktów.";

@@ -1225,6 +1225,21 @@ final class HwWalletManager: Sendable {
             .reduce(UInt64(0)) { $0.saturatingAdd($1.value.balanceSats) }
     }
 
+    /// Changes whenever the funding account's coins can have changed: any transaction added, replaced
+    /// or dropped, or a balance change. A compose result for the account stays valid only while this
+    /// is unchanged; the balance alone can return to the same total over different coins.
+    func fundingStateFingerprint(walletId: String, addressType: AddressScriptType = hwFundingDefaultAddressType) -> Int {
+        var hasher = Hasher()
+        let funding = watcherData
+            .filter { $0.value.walletId == walletId && self.addressType(fromWatcherId: $0.key) == addressType.stringValue }
+            .map(\.value)
+        hasher.combine(funding.reduce(UInt64(0)) { $0.saturatingAdd($1.balanceSats) })
+        for txId in funding.flatMap({ $0.transactionDetails.map(\.txId) }).sorted() {
+            hasher.combine(txId)
+        }
+        return hasher.finalize()
+    }
+
     private func fundingBalance(group: DeviceGroup, addressType: AddressScriptType) -> UInt64 {
         fundingBalance(walletId: group.walletId, addressType: addressType)
     }

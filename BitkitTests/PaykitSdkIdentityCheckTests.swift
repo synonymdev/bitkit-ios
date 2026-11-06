@@ -926,6 +926,30 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
 
     @MainActor
     func testCleanupAWipeStoppedWaitingForNeitherRecreatesOldKeyStateNorReachesTheNextWallet() async throws {
+        try await assertAbandonedCleanupCannotReachReplacementWallet(heldRead: .registry)
+    }
+
+    func testCleanupResumingFromBackupRevisionReadCannotReachTheNextWallet() async throws {
+        try await assertAbandonedCleanupCannotReachReplacementWallet(heldRead: .revision)
+    }
+
+    func testCleanupResumingFromCapabilityReadCannotReachTheNextWallet() async throws {
+        try await assertAbandonedCleanupCannotReachReplacementWallet(heldRead: .capability)
+    }
+
+    func testCleanupResumingFromPeerReadCannotRecoverTheNextWalletsLinks() async throws {
+        try await assertAbandonedCleanupCannotReachReplacementWallet(heldRead: .peers)
+    }
+
+    func testCleanupFinishingLinkRecoveryCannotStartAnotherMutation() async throws {
+        try await assertAbandonedCleanupCannotReachReplacementWallet(heldRead: .linkRecovery)
+    }
+
+    private enum CleanupRead {
+        case registry, revision, capability, peers, linkRecovery
+    }
+
+    private func assertAbandonedCleanupCannotReachReplacementWallet(heldRead: CleanupRead) async throws {
         let oldSecret = String(repeating: "71", count: 32)
         let newSecret = String(repeating: "72", count: 32)
         let oldPublicKey = try PubkyProfileManager.publicKeyFromSecretKey(oldSecret)
@@ -950,15 +974,24 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         }
         try Keychain.upsert(key: .pubkySecretKey, data: Data(oldSecret.utf8))
 
-        let registryEntered = expectation(description: "the old cleanup is preparing the Paykit key")
+        let readEntered = expectation(description: "the old cleanup is reading SDK state")
         let cleanupEnded = expectation(description: "the abandoned cleanup returns")
-        let registryGate = AsyncGate()
-        defer { registryGate.open() }
+        let readGate = AsyncGate()
+        defer { readGate.open() }
         let oldSdk = AbandonedCleanupSdk(noPointer: .init())
-        oldSdk.registryRead = {
-            registryEntered.fulfill()
+        let suspendRead = {
+            readEntered.fulfill()
             // Like the UniFFI call, it ignores Swift cancellation
-            await registryGate.wait()
+            await readGate.wait()
+        }
+        switch heldRead {
+        case .registry: oldSdk.registryRead = suspendRead
+        case .revision: oldSdk.revisionRead = suspendRead
+        case .capability: oldSdk.identityRead = suspendRead
+        case .peers: oldSdk.peerRead = suspendRead
+        case .linkRecovery:
+            oldSdk.recoveringPeers.append(identityA)
+            oldSdk.linkRecovery = suspendRead
         }
         let replacementSdk = AbandonedCleanupSdk(noPointer: .init())
         var creations = 0
@@ -970,7 +1003,14 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         let wipe = Task {
             try await service.withWalletWipe {
                 await AppReset.runRemoteCleanup(timeout: .milliseconds(100)) {
-                    _ = try? await service.syncPublicEndpoints([])
+                    switch heldRead {
+                    case .registry, .revision:
+                        _ = try? await service.syncPublicEndpoints([])
+                    case .capability:
+                        try? await service.syncPaykitApp(privatePaymentsEnabled: false)
+                    case .peers, .linkRecovery:
+                        _ = try? await service.clearPrivatePaymentLists(to: oldSdk.recoveringPeers, isSessionCurrent: { !Task.isCancelled })
+                    }
                     cleanupEnded.fulfill()
                 }
                 // The wipe clears these once it has stopped waiting for the cleanup
@@ -978,7 +1018,7 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
                 try Keychain.delete(key: oldGenerationKey)
             }
         }
-        await fulfillment(of: [registryEntered], timeout: 2)
+        await fulfillment(of: [readEntered], timeout: 2)
         try await wipe.value
         XCTAssertNil(try Keychain.load(key: oldGenerationKey))
 
@@ -986,14 +1026,15 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         try Keychain.upsert(key: .pubkySecretKey, data: Data(newSecret.utf8))
         _ = try await service.contactRecords()
         XCTAssertEqual(creations, 2)
-        XCTAssertEqual(replacementSdk.endpointSyncCalls, 0)
+        XCTAssertTrue(replacementSdk.mutations.isEmpty)
 
-        registryGate.open()
+        readGate.open()
         await fulfillment(of: [cleanupEnded], timeout: 2)
 
         XCTAssertNil(try Keychain.load(key: oldGenerationKey), "Completed wipe must not recreate the old identity's keychain state")
-        XCTAssertEqual(oldSdk.endpointSyncCalls, 0)
-        XCTAssertEqual(replacementSdk.endpointSyncCalls, 0, "An old wallet cleanup must not clear the replacement SDK's endpoints")
+        let alreadyStartedMutations = heldRead == .linkRecovery ? ["recoverLink"] : []
+        XCTAssertEqual(oldSdk.mutations, alreadyStartedMutations, "Abandoned cleanup must not start another mutation")
+        XCTAssertTrue(replacementSdk.mutations.isEmpty, "An old wallet cleanup must not mutate the replacement SDK")
     }
 }
 
@@ -1298,7 +1339,12 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
 
 private final class AbandonedCleanupSdk: PaykitSdk, @unchecked Sendable {
     var registryRead: () async -> Void = {}
-    var endpointSyncCalls = 0
+    var revisionRead: () async -> Void = {}
+    var identityRead: () async -> Void = {}
+    var peerRead: () async -> Void = {}
+    var linkRecovery: () async -> Void = {}
+    var mutations: [String] = []
+    var recoveringPeers = [contactKey]
 
     override func paykitAppRegistry(publicKey _: String) async throws -> PaykitAppRegistry? {
         await registryRead()
@@ -1310,7 +1356,8 @@ private final class AbandonedCleanupSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func backupStateRevision() async throws -> String {
-        "unchanged"
+        await revisionRead()
+        return "unchanged"
     }
 
     override func stateRevision() throws -> String? {
@@ -1322,7 +1369,44 @@ private final class AbandonedCleanupSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func syncPublicEndpointsWithReceivingDetails(receivingDetails _: [PublicReceivingDetail]) async throws -> EndpointSyncReport {
-        endpointSyncCalls += 1
+        mutations.append("publicEndpoints")
         return EndpointSyncReport(published: [], removed: [], failed: [])
+    }
+
+    override func identityStatus() async throws -> IdentityStatus? {
+        await identityRead()
+        return IdentityStatus(publicKey: nil, capability: .privateLinkCapable)
+    }
+
+    override func publishPaykitApp(displayName _: String, capabilities _: PaykitAppCapabilities) async throws -> PaykitAppRegistry {
+        mutations.append("publishApp")
+        return PaykitAppRegistry(keyGeneration: 1, noisePublicKey: nil, apps: [], defaultAppId: nil, defaultAppsByEndpoint: [:])
+    }
+
+    override func linkedPeers() async throws -> [LinkedPeerRecord] {
+        await peerRead()
+        return recoveringPeers.map {
+            LinkedPeerRecord(
+                counterparty: $0, state: .recoveryRequired,
+                lastSyncAt: nil, lastPrivateReceiveAt: nil, failureCount: 0,
+                localRecoveryAttemptId: nil, localRecoveryMarkerCreatedAt: nil, localRecoveryMarkerLastError: nil,
+                remoteRecoveryAttemptId: nil, remoteRecoveryMarkerObservedAt: nil
+            )
+        }
+    }
+
+    override func ensureLinkWithPeer(counterparty: String, maxAdvanceSteps _: UInt32) async throws -> LinkedPeerHandshakeReport {
+        mutations.append("recoverLink")
+        if mutations.count == 1 {
+            await linkRecovery()
+        }
+        return LinkedPeerHandshakeReport(counterparty: counterparty, state: .linking, generation: 1, handshakeRole: nil)
+    }
+
+    override func syncPrivatePaymentListsWithReservationsAndProcessOutbound(
+        updates _: [PrivatePaymentListReservationUpdateInput], clearUnlistedLinkedPeers _: Bool
+    ) async throws -> PrivatePaymentListDeliveryReport {
+        mutations.append("privateEndpoints")
+        return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
     }
 }

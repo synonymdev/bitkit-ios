@@ -60,8 +60,8 @@ final class PaykitAllowanceManager {
     private(set) var allowances: [PaykitAllowance] = []
     private(set) var localState = PaykitAllowanceLocalState()
     private(set) var isWorking = false
-    /// True while the allowance ledger is behind one this wallet has read, until `resumeAutomaticPayments()`.
-    private(set) var isAutomaticPaymentPaused = false
+    /// Why automatic payments are paused until `resumeAutomaticPayments()`, or nil while they run.
+    private(set) var automaticPaymentPause: AutomaticPaymentPause?
     private(set) var autoPaidRequestIds: Set<PaykitPaymentRequest.ID> = []
     /// Keyed by `PaykitAllowance.scopedId`, since another contact can reuse an allowance id.
     private(set) var autoPaidSatsByScopedId: [String: UInt64] = [:]
@@ -85,6 +85,17 @@ final class PaykitAllowanceManager {
     }
 
     @ObservationIgnored private var manualRequestIds: [PaykitPaymentRequest.ID: Int] = [:]
+
+    enum AutomaticPaymentPause: Equatable {
+        /// The allowance ledger is behind one this wallet has read.
+        case ledgerBehind
+        /// The wallet was restored from a backup and this wallet pays through an allowance.
+        case walletRestored
+    }
+
+    var isAutomaticPaymentPaused: Bool {
+        automaticPaymentPause != nil
+    }
 
     init(
         sdk: any PaykitAllowanceSdkHandling = PaykitSdkService.shared,
@@ -172,7 +183,7 @@ final class PaykitAllowanceManager {
         localState = PaykitAllowanceLocalState()
         autoPaidRequestIds = []
         autoPaidSatsByScopedId = [:]
-        isAutomaticPaymentPaused = false
+        automaticPaymentPause = nil
         manualRequestIds = [:]
         announcedOfferIds = []
     }
@@ -195,10 +206,17 @@ final class PaykitAllowanceManager {
             Logger.warn("Failed to list Paykit allowances: \(error)", context: "PaykitAllowance")
         }
         let state = await executor.localState(identity: identity)
-        let isPaused = await executor.isLedgerBehind(identity: identity)
+        let isLedgerBehind = await executor.isLedgerBehind(identity: identity)
+        let isPausedAfterRestore = await executor.isPausedAfterRestore()
         guard activation == refreshActivation else { return }
         localState = state
-        isAutomaticPaymentPaused = isPaused
+        automaticPaymentPause = if isLedgerBehind {
+            .ledgerBehind
+        } else if isPausedAfterRestore, allowances.contains(where: { $0.isAllower && [.proposed, .accepted].contains($0.lifecycleState) }) {
+            .walletRestored
+        } else {
+            nil
+        }
         guard let paid = await executor.succeededAutomaticPayments(identity: identity), activation == refreshActivation else { return }
         autoPaidRequestIds = Set(paid.map(\.requestId))
         autoPaidSatsByScopedId = paid.reduce(into: [:]) { totals, payment in
@@ -266,13 +284,24 @@ final class PaykitAllowanceManager {
         await refresh()
     }
 
-    func accept(_ entry: PaykitAllowanceEntry, showsProgress: Bool = true) async throws {
+    func accept(
+        _ entry: PaykitAllowanceEntry,
+        showsProgress: Bool = true,
+        canContinue: @MainActor @Sendable () -> Bool = { true }
+    ) async throws {
+        guard let identity else { throw PaykitAllowanceError.unavailable }
+        let acceptingActivation = activation
         try await respond(to: entry, showsProgress: showsProgress) { allowance in
             guard let proposalStreamItemId = allowance.proposalStreamItemId else { throw PaykitAllowanceError.unavailable }
             return try await self.sdk.acceptAllowance(
                 counterparty: allowance.counterparty,
                 allowanceId: allowance.allowanceId,
-                expectedProposalStreamItemId: proposalStreamItemId
+                expectedProposalStreamItemId: proposalStreamItemId,
+                admit: { @MainActor in
+                    guard self.identity == identity, self.activation == acceptingActivation, canContinue() else {
+                        throw PaykitAllowanceError.unavailable
+                    }
+                }
             )
         }
     }
@@ -283,12 +312,19 @@ final class PaykitAllowanceManager {
         }
     }
 
-    /// Resumes automatic payments from the ledger read now; see `PaykitAllowanceExecutor.acceptCurrentLedger(identity:)`.
+    /// Resumes automatic payments from the ledger read now, also after a wallet restore; see
+    /// `PaykitAllowanceExecutor.acceptCurrentLedger(identity:)`. A Resume of the restore pause first reads the ledger again:
+    /// one that has fallen behind since is not accepted, and the refresh shows its own notice instead.
     func resumeAutomaticPayments() async throws {
         isWorking = true
         defer { isWorking = false }
         guard let identity else { throw PaykitAllowanceError.unavailable }
+        if automaticPaymentPause == .walletRestored, try await executor.checkedIsLedgerBehind(identity: identity) {
+            await refresh()
+            return
+        }
         try await executor.acceptCurrentLedger(identity: identity)
+        try await executor.resumeAfterRestore()
         await executor.recover(identity: identity)
         await refresh()
     }
@@ -317,10 +353,11 @@ final class PaykitAllowanceManager {
     /// stop or a cancelled refresh cut short is returned by a later call, while this identity is active and `canAnnounce`
     /// holds: the offer is no longer answerable afterwards and nothing else would tell the user about it.
     func acceptOffersFromAllowers(
-        canContinue: @MainActor () -> Bool = { true },
+        canContinue: @MainActor @Sendable () -> Bool = { true },
         canAnnounce: @MainActor () -> Bool = { true }
     ) async -> [PaykitAllowanceEntry] {
         guard let identity, !isAcceptingOffers else { return [] }
+        let acceptingActivation = activation
         isAcceptingOffers = true
         defer { isAcceptingOffers = false }
 
@@ -340,7 +377,9 @@ final class PaykitAllowanceManager {
             }
             do {
                 // A background accept must not clear the progress flag of a proposal the user has in flight.
-                try await accept(offer, showsProgress: false)
+                try await accept(offer, showsProgress: false) {
+                    self.activation == acceptingActivation && canContinue()
+                }
             } catch {
                 Logger.warn("Failed to accept an allowance offer: \(error)", context: "PaykitAllowance")
             }
