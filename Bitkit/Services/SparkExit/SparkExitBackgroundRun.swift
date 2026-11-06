@@ -146,7 +146,7 @@ private struct TimedSparkExitRecovering: SparkExitRecovering {
     }
 }
 
-private struct TimedSparkExitChain: SparkExitChain {
+struct TimedSparkExitChain: SparkExitChain {
     let base: SparkExitChain
     let timings: SparkExitTimings
 
@@ -172,5 +172,10 @@ private struct TimedSparkExitChain: SparkExitChain {
 
     func fastestFeeRate() async throws -> UInt64 {
         try await base.fastestFeeRate()
+    }
+
+    /// Forwarded, or the protocol's default (every tier at the fastest rate) would price background sweeps.
+    func networkFees() async throws -> SparkExitNetworkFees {
+        try await base.networkFees()
     }
 }

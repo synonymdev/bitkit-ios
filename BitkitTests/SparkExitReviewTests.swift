@@ -374,4 +374,16 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(salvaged.fundingStrategy, SparkExitRecord.perNodeStrategy)
         XCTAssertEqual(salvaged.earlierReceivedSats, ["sweep-1": 40000])
     }
+
+    /// Background runs wrap the chain to time it: the wrapper forwards the economy tier, so their sweeps pay it.
+    func testTheTimedBackgroundChainForwardsTheNetworkFees() async throws {
+        chain.fastestFee = 9
+        chain.economyFee = 1
+        let timed = TimedSparkExitChain(base: chain, timings: SparkExitTimings())
+
+        let fees = try await timed.networkFees()
+
+        XCTAssertEqual(fees.economy, 1)
+        XCTAssertEqual(SparkExitMath.sweepFeeRate(economy: fees.economy, exitRate: 5), 1)
+    }
 }
