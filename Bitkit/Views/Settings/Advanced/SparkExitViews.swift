@@ -360,8 +360,13 @@ struct SparkExitLeftoverStatus: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             switch record.leftoverLine {
-            case let .sending(sats):
+            case let .sending(sats, txid):
                 BodySText(t("lightning__spark_exit__leftover_sending", variables: ["amount": currency.primaryAmountText(sats: sats)]))
+                if let txid {
+                    BodySText(t("lightning__spark_exit__leftover_txid", variables: ["txid": txid]))
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                }
             case let .swept(sats, txid):
                 BodySText(t("lightning__spark_exit__leftover_swept", variables: ["amount": currency.primaryAmountText(sats: sats)]))
                 BodySText(t("lightning__spark_exit__leftover_txid", variables: ["txid": txid]))

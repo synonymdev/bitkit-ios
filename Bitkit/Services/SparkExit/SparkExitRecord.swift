@@ -128,7 +128,9 @@ struct SparkExitRecord: Codable, Equatable {
 
     /// The one line the result shows about the leftover fee funding, with the total of every UTXO at the address.
     enum LeftoverLine: Equatable {
-        case sending(sats: UInt64)
+        /// Built, or accepted by a node (`txid` set) but not in a block yet.
+        case sending(sats: UInt64, txid: String?)
+        /// In a block: only now does the result say it reached savings.
         case swept(sats: UInt64, txid: String)
         /// Too small to send now, or refused for its fee: it waits for fees to drop.
         case waiting(sats: UInt64)
@@ -148,7 +150,10 @@ struct SparkExitRecord: Codable, Equatable {
             return sweep.isFeeRejection || rejection.isEmpty ? .waiting(sats: total) : .rejected(sats: total)
         }
         if let txid = sweep.txid {
-            return sweep.isAccepted ? .swept(sats: sweep.valueSats, txid: txid) : .sending(sats: sweep.valueSats)
+            if sweep.isConfirmed == true {
+                return .swept(sats: sweep.valueSats, txid: txid)
+            }
+            return .sending(sats: sweep.valueSats, txid: sweep.isAccepted ? txid : nil)
         }
         return sweep.isWaitingForFees ? .waiting(sats: total) : .kept(sats: total)
     }

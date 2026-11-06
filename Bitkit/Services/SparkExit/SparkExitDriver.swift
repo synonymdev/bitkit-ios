@@ -675,12 +675,20 @@ struct SparkExitDriver {
             if record.leftoverSweep?.sentAtHeight == nil {
                 record.leftoverSweep?.sentAtHeight = try? await chain.tipHeight()
             }
-        // Once accepted, a later refusal is a node that already has it or a conflict with it confirming.
         case let .rejected(reason) where !sweep.isAccepted:
             if SparkExitRecord.LeftoverSweep(rejection: reason).isFeeRejection {
                 await waitAfterFeeRefusal(&record, refusal: reason)
             } else {
                 record.leftoverSweep?.rejection = reason
+            }
+        // Once accepted, a later refusal is mostly a node that already has it or a conflict with it confirming. A fee
+        // refusal of one no host holds any more means it was evicted when the mempool's floor rose: it waits and is
+        // built again over the same coins at the rate the node asks for, replacing it (RBF).
+        case let .rejected(reason) where SparkExitRecord.LeftoverSweep(rejection: reason).isFeeRejection:
+            let isKnown = try? await chain.isKnown(txid: txid)
+            if isKnown == false {
+                Logger.warn("Spark exit leftover sweep \(txid) left the mempool unconfirmed", context: "SparkExitDriver")
+                await waitAfterFeeRefusal(&record, refusal: reason)
             }
         default: break
         }
@@ -692,10 +700,12 @@ struct SparkExitDriver {
         guard let sweep = record.leftoverSweep else { return }
         let tip = try? await chain.tipHeight()
         let rate = SparkExitMath.refusedSweepRate(refusal, paidRate: sweep.feeRateSatPerVbyte ?? record.feeRateSatPerVbyte)
+        // One a node accepted may still confirm: any of the replaced sweeps confirming ends the sweep.
+        let replaced = sweep.isAccepted ? (sweep.replacedTxids ?? []) + [sweep.txid].compactMap { $0 } : sweep.replacedTxids
         Logger.info("Spark exit leftover sweep refused for its fee (\(refusal)), tries again at \(rate) sat/vB", context: "SparkExitDriver")
         record.leftoverSweep = SparkExitRecord.LeftoverSweep(
             feeRateSatPerVbyte: sweep.feeRateSatPerVbyte,
-            replacedTxids: sweep.replacedTxids,
+            replacedTxids: replaced,
             waitingSince: sweep.waitingSince ?? tip ?? 0,
             checkedAtHeight: tip ?? 0,
             refusedFeeRate: rate,

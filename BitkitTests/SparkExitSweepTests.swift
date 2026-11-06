@@ -488,6 +488,56 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertEqual(record.leftoverSweep?.isAccepted, true)
     }
 
+    /// Run F (case 6): the fee-change sweep went out at 2 sat/vB and was accepted, then the relay floor rose to 3 and
+    /// evicted it. Its rebroadcast is refused "492 < 738": it waits, goes again at 3 from the next block (RBF), and the
+    /// result never says it reached savings before it confirms.
+    func testASweepEvictedFromTheMempoolIsRetriedAtTheNewFloor() async throws {
+        var record = endedRecord()
+        let utxos = (1 ... 3).map { SparkExitFixtures.utxo(String(repeating: "\($0)", count: 64), value: 600) }
+        record.leftover = utxos.map { SparkExitRecord.Leftover(txid: $0.txid, vout: 0, valueSats: 600) }
+        chain.utxosByAddress[key.address] = utxos
+        chain.economyFee = 2
+
+        record = try await driver().tick(record)
+        let first = try XCTUnwrap(record.leftoverSweep)
+        let firstTxid = try XCTUnwrap(first.txid)
+        XCTAssertEqual(first.feeRateSatPerVbyte, 2)
+        XCTAssertEqual(first.valueSats, 1800 - 492)
+        XCTAssertTrue(first.isAccepted)
+        XCTAssertEqual(record.leftoverLine, .sending(sats: 1308, txid: firstTxid), "accepted is not yet in savings")
+
+        // Still in the mempool: a fee refusal from another node changes nothing.
+        chain.mempoolTxids = [firstTxid]
+        chain.outcome = .rejected("min relay fee not met, 492 < 738")
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.leftoverSweep?.txid, firstTxid)
+
+        // Evicted: no host holds it, and the rebroadcast is refused for its fee.
+        chain.mempoolTxids = []
+        record = try await driver().tick(record)
+        let waiting = try XCTUnwrap(record.leftoverSweep)
+        XCTAssertTrue(waiting.isWaitingForFees)
+        XCTAssertEqual(waiting.refusedFeeRate, 3, "738 over the 492 paid at 2 sat/vB")
+        XCTAssertEqual(waiting.retryAtHeight, 1001)
+        XCTAssertEqual(waiting.replacedTxids, [firstTxid], "the evicted sweep confirming would still end it")
+        XCTAssertEqual(record.leftoverLine, .waiting(sats: 1800))
+
+        chain.tip = 1001
+        chain.outcome = .accepted
+        record = try await driver().tick(record)
+        let retried = try XCTUnwrap(record.leftoverSweep)
+        let retriedTxid = try XCTUnwrap(retried.txid)
+        XCTAssertNotEqual(retriedTxid, firstTxid)
+        XCTAssertEqual(retried.feeRateSatPerVbyte, 3)
+        XCTAssertEqual(retried.valueSats, 1800 - 738)
+        XCTAssertEqual(record.leftoverLine, .sending(sats: 1062, txid: retriedTxid))
+
+        chain.confirmedTxids = [retriedTxid]
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.leftoverLine, .swept(sats: 1062, txid: retriedTxid))
+        XCTAssertFalse(record.needsDriving)
+    }
+
     func testTheRefusedRateFollowsTheNodesMinimum() {
         XCTAssertEqual(SparkExitMath.refusedSweepRate("min relay fee not met, 450 < 674", paidRate: 1), 2)
         XCTAssertEqual(SparkExitMath.refusedSweepRate("mempool min fee not met, 900 < 2700", paidRate: 2), 6)
