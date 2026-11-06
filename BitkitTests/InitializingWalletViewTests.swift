@@ -4,6 +4,29 @@ import XCTest
 
 @MainActor
 final class InitializingWalletViewTests: XCTestCase {
+    func testNormalizingCompletedProgressInvokesCompletionOnce() async {
+        var completionCount = 0
+        let completion = expectation(description: "Wallet initialization completes once")
+        let window = UIWindow(frame: UIScreen.main.bounds)
+        window.rootViewController = UIHostingController(rootView: InitializingWalletView(
+            nodeLifecycleState: .constant(.running), initialPercentage: 98.75
+        ) {
+            completionCount += 1
+            if completionCount == 1 {
+                completion.fulfill()
+            }
+        })
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+
+        await fulfillment(of: [completion], timeout: 3)
+        try? await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(completionCount, 1)
+    }
+
     func testSlowRetryWaitsForRunningNodeBeforeCompleting() async {
         let state = InitializationTestState()
         var completionCount = 0
