@@ -1066,7 +1066,7 @@ class ContactsManager: ObservableObject {
             let discoveryResult: (contacts: [PubkyContact], failures: Int) = await withTaskGroup(of: Result<PubkyContact, Error>.self) { group in
                 for key in contactKeys {
                     let pk = ensurePubkyPrefix(key)
-                    guard !PubkyPublicKeyFormat.matches(pk, prefixedKey) else { continue }
+                    guard !PubkyPublicKeyFormat.matches(pk, prefixedKey), !PubkyModerationBot.matches(pk) else { continue }
                     group.addTask {
                         do {
                             let profile = try await resolveProfile(pk)

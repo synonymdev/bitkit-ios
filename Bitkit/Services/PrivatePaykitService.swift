@@ -104,13 +104,16 @@ actor PrivatePaykitService {
     var prePaymentPublicationKeys: Set<String> = []
     private let publicationLock = PrivatePaykitPublicationLock()
     let publicationOperations: EndpointPublicationOperations?
+    let contactPaymentOperations: ContactPaymentOperations
 
     init(
         publicationOperations: EndpointPublicationOperations? = nil,
-        messageRetryOperations: PrivateMessageRetryOperations = .init()
+        messageRetryOperations: PrivateMessageRetryOperations = .init(),
+        contactPaymentOperations: ContactPaymentOperations = .init()
     ) {
         self.publicationOperations = publicationOperations
         self.messageRetryOperations = messageRetryOperations
+        self.contactPaymentOperations = contactPaymentOperations
         state = UserDefaults.standard.data(forKey: Self.cacheStateKey)
             .flatMap { try? JSONDecoder().decode(PrivatePaykitState.self, from: $0) } ?? PrivatePaykitState(contacts: [:])
     }

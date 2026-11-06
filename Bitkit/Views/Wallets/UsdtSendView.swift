@@ -34,6 +34,8 @@ struct UsdtSendView: View {
     @State private var preparingMaximum = false
     @State private var editingRecipient = false
     @State private var editingAmount = false
+    /// The recipient whose scanned or linked request named the amount; the payee set it, so it cannot be edited.
+    @State private var fixedAmountRecipient: String?
     @State private var busy = false
     @State private var error: String?
     @State private var submissionError: SubmissionFailure?
@@ -81,6 +83,9 @@ struct UsdtSendView: View {
         _recipient = State(initialValue: initialRecipient)
         _amount = State(initialValue: (try? usdtParseAmount(value: initialAmount)) == 0 ? "" : initialAmount)
         _editingAmount = State(initialValue: !initialRecipient.isEmpty)
+        _fixedAmountRecipient = State(
+            initialValue: (try? usdtParseAmount(value: initialAmount)).map { $0 > 0 } == true ? initialRecipient : nil
+        )
     }
 
     private var paymentRequest: PaykitPaymentRequest? {
@@ -137,7 +142,7 @@ struct UsdtSendView: View {
             }
             return t(submissionFailed ? "wallet__send_error_tx_failed" : "usdt__submitted")
         }
-        if quote != nil {
+        if quote != nil || (editingAmount && isAmountFixed) {
             return t(paymentRequest == nil ? "wallet__send_review" : "wallet__payment_request")
         }
         return t(editingAmount ? "usdt__amount" : "usdt__send_title")
@@ -247,6 +252,8 @@ struct UsdtSendView: View {
                 submittedContent
             } else if let quote {
                 confirmation(quote)
+            } else if editingAmount, isAmountFixed {
+                fixedAmountPreparation
             } else if editingAmount {
                 amountContent
             } else if editingRecipient {
@@ -387,6 +394,44 @@ struct UsdtSendView: View {
         .onChange(of: recipient) { _, _ in error = nil }
     }
 
+    /// A fixed amount waits for its quote on the review, since Amount cannot change it.
+    private var fixedAmountPreparation: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            UsdtAmountHeader(amount: amount.isEmpty ? "0" : amount)
+                .accessibilityIdentifier("UsdtAmount")
+            Spacer(minLength: 0)
+            PaymentReviewIllustration(swipeProgress: 0, imageSize: 329)
+                .padding(.top, 16).frame(height: 256)
+            Spacer(minLength: 0)
+            if let error {
+                BodySText(error, textColor: .brandAccent).accessibilityIdentifier("UsdtError").padding(.bottom, 16)
+                CustomButton(title: t("common__try_again"), variant: .secondary, isDisabled: busy) {
+                    await quoteFixedAmount()
+                }
+                .accessibilityIdentifier("UsdtRetryQuote")
+                .padding(.bottom, 16)
+            }
+            SwipeButton(title: t("wallet__send_swipe"), accentColor: .usdtAccent, isDisabled: true, isLoading: busy) {}
+        }
+        .accessibilityIdentifier("UsdtConfirmLoading")
+    }
+
+    private func quoteFixedAmount() async {
+        guard !busy, quote == nil else { return }
+        busy = true
+        error = nil
+        defer { busy = false }
+        do {
+            quote = try await prepareQuote()
+            // A new review must ask again for warnings accepted on an earlier one.
+            showDetails = false
+            confirmedWarnings = []
+        } catch is CancellationError {
+        } catch {
+            self.error = UsdtWalletManager.message(for: error)
+        }
+    }
+
     private var amountContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             UsdtAmountHeader(amount: amount.isEmpty ? "0" : amount)
@@ -413,7 +458,7 @@ struct UsdtSendView: View {
             CustomDivider()
             NumberPad(
                 type: .decimal,
-                isDisabled: busy || embedded,
+                isDisabled: busy || embedded || isAmountFixed,
                 onDeleteLongPress: { amount = ""; maximumQuote = nil; isMaximumAmount = false; error = nil },
                 onPress: enterAmount
             )
@@ -463,9 +508,14 @@ struct UsdtSendView: View {
         HStack(spacing: 8) {
             NumberPadActionButton(text: "USDT", titleKerning: 1, titleLineHeight: 18, color: .usdtAccent, variant: .secondary, disabled: true) {}
             if !embedded {
-                NumberPadActionButton(text: t("common__max"), titleKerning: 1, titleLineHeight: 18, color: .usdtAccent, disabled: busy,
-                                      isLoading: preparingMaximum)
-                {
+                NumberPadActionButton(
+                    text: t("common__max"),
+                    titleKerning: 1,
+                    titleLineHeight: 18,
+                    color: .usdtAccent,
+                    disabled: busy || isAmountFixed,
+                    isLoading: preparingMaximum
+                ) {
                     Task { await useMaximum() }
                 }
                 .accessibilityIdentifier("UsdtMax")
@@ -492,7 +542,7 @@ struct UsdtSendView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         UsdtAmountHeader(amount: usdtFormatAmount(amount: quote.amount), displayAmount: usdtExactAmount(quote.amount))
                             .contentShape(Rectangle()).onTapGesture(perform: goBack)
-                            .allowsHitTesting(!busy && !embedded)
+                            .allowsHitTesting(!busy && !embedded && !isAmountFixed)
                         Spacer().frame(height: 24)
                         if showDetails {
                             quoteDetails(quote)
@@ -671,6 +721,11 @@ struct UsdtSendView: View {
             if request.chainId != nil {
                 destination = .arbitrum
             }
+            fixedAmountRecipient = Self.fixedAmountRecipient(
+                recipient: request.recipient,
+                requestedAmount: request.amount,
+                fixedRecipient: fixedAmountRecipient
+            )
             recipient = request.recipient
             if let requestedAmount = request.amount {
                 amount = requestedAmount == 0 ? "" : usdtFormatAmount(amount: requestedAmount)
@@ -681,6 +736,22 @@ struct UsdtSendView: View {
         recipientFocused = false
         editingAmount = true
         error = nil
+        if isAmountFixed {
+            Task { await quoteFixedAmount() }
+        }
+    }
+
+    private var isAmountFixed: Bool {
+        fixedAmountRecipient != nil
+    }
+
+    /// The recipient whose request fixes the amount. A positive requested amount fixes it for that recipient.
+    /// Continuing with the same recipient and no amount, as after Back from review, keeps it; any other recipient clears it.
+    static func fixedAmountRecipient(recipient: String, requestedAmount: UInt64?, fixedRecipient: String?) -> String? {
+        if let requestedAmount {
+            return requestedAmount > 0 ? recipient : nil
+        }
+        return fixedRecipient?.caseInsensitiveCompare(recipient) == .orderedSame ? fixedRecipient : nil
     }
 
     private func readImage(_ item: PhotosPickerItem?) async {
@@ -705,7 +776,14 @@ struct UsdtSendView: View {
         if let onBack, embedded || (hosted && quote == nil) {
             onBack(); return
         }
-        if quote != nil {
+        if quote != nil, isAmountFixed {
+            // Amount cannot change the fixed amount, so Back leaves it as well.
+            quote = nil
+            if let onBack, hosted {
+                onBack(); return
+            }
+            editingAmount = false; editingRecipient = true
+        } else if quote != nil {
             quote = nil
         } else if editingAmount {
             editingAmount = false; editingRecipient = true

@@ -1122,7 +1122,8 @@
 "contacts__add_error_self" = "No pots afegir el teu propi pubky com a contacte.";
 "contacts__add_retrieving" = "Obtenint la informació\ndel contacte";
 "contacts__add_error" = "No s'ha pogut afegir el contacte";
-"contacts__add_disclaimer" = "Tingues en compte que tu i {name} us heu d'afegir mútuament com a contactes per pagar-vos de forma privada. Altrament, el pagament serà visible públicament.";
+"contacts__add_disclaimer" = "Tingues en compte que tu i {name} us heu d'afegir mútuament com a contactes abans de poder pagar-vos de forma privada. Si pagues sense desar el contacte, el pagament és visible públicament.";
+"contacts__pay_private_link_pending" = "Bitkit encara està configurant una connexió privada amb aquest contacte. Assegura't que també t'ha afegit com a contacte o demana-li que t'enviï una sol·licitud de pagament.";
 "contacts__import_nav_title" = "Importar";
 "contacts__import_found_title" = "Perfil i contactes\n<accent>trobats</accent>";
 "contacts__import_found_description" = "Bitkit ha trobat dades de perfil i contactes vinculades al pubky <accent>{key}</accent>";
@@ -1855,6 +1856,7 @@
 "subscriptions__allowances" = "Assignacions";
 "subscriptions__allowances_empty_headline" = "Configura\n<accent>assignacions</accent>";
 "subscriptions__allowances_paused_description" = "Els teus registres d'assignacions són més antics que altres que aquest moneder ja ha fet servir. Les sol·licituds demanaran la teva aprovació fins que reprenguis.";
+"subscriptions__allowances_paused_restore_description" = "Aquest moneder s'ha restaurat a partir d'una còpia de seguretat. Les sol·licituds demanaran la teva aprovació fins que reprenguis.";
 "subscriptions__allowances_paused_resume" = "Reprèn";
 "subscriptions__allowances_paused_title" = "Pagaments automàtics en pausa";
 "subscriptions__allowances_empty_description" = "Pots establir límits de despesa per pagar automàticament les sol·licituds de pagament de contactes de confiança.";

@@ -19,7 +19,7 @@ jobs:
   test:
     if: github.event.pull_request.draft == false
     name: Run Tests
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 60
 
     steps:
@@ -29,7 +29,7 @@ jobs:
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16.4'
+          xcode-version: '26.6'
 
       - name: Install xcbeautify
         run: |
@@ -41,7 +41,7 @@ jobs:
       - name: Pre-start simulator
         run: |
           echo "⏱️  Starting simulator at $(date)"
-          xcrun simctl boot "iPhone 16" || true
+          xcrun simctl boot "iPhone 17" || true
           echo "✅ Simulator started at $(date)"
 
       - name: Run unit tests
@@ -49,7 +49,7 @@ jobs:
           echo "⏱️  Starting unit tests at $(date)"
           set -o pipefail && xcodebuild test \
             -scheme Bitkit \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' \
             -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
             -disablePackageRepositoryCache \
             -disableAutomaticPackageResolution \

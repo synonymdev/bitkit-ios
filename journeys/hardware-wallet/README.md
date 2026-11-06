@@ -53,7 +53,7 @@ Several journeys mutate pairing state. Run them in this order, or re-pair betwee
 2. `settings-hardware-wallets.xml`, `connect-flow.xml`, `suggestion-intro-sheet.xml` — each forgets
    and re-pairs the device, ending paired.
 3. `activity-blue-icons.xml`, `activity-detail-hw-tags.xml`, `transfer-to-spending*.xml`, `reconnect.xml`,
-   `send-onchain.xml`.
+   `send-onchain.xml`, `scan-onchain-amount-over-spendable.xml`.
 4. `passphrase-pairing.xml` → `passphrase-duplicate.xml` → `passphrase-transfer-to-spending.xml` →
    `passphrase-settings-remove.xml`.
 5. `detail-overview.xml` **last** — its final step forgets the device.

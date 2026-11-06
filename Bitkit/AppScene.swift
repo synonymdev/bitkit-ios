@@ -1157,9 +1157,6 @@ struct AppScene: View {
             try await wallet.start()
             guard !wipeCoordinator.isGateUp else { return }
             try await activity.syncLdkNodePayments()
-            if !PaykitFeatureFlags.isUIEnabled {
-                await retryPendingPaykitEndpointRemoval()
-            }
 
             // Open the swap updates stream so any pending LN -> onchain swaps resume
             // and auto-claim once their lockup confirms. Retries until the stream starts.
@@ -2278,9 +2275,17 @@ struct AppScene: View {
         }) {
             if PublicPaykitService.isCleanupPending, pubkyProfile.automaticPaykitSession == session {
                 do {
-                    try await PublicPaykitService.retryPendingEndpointReconciliation(
-                        wallet: wallet, isSessionCurrent: { pubkyProfile.automaticPaykitSession == session }
-                    )
+                    switch PublicPaykitService.pendingReconciliationMode() {
+                    case .publishEndpoints:
+                        try await wallet.syncReceivePublicPaykitEndpoints {
+                            !Task.isCancelled && pubkyProfile.automaticPaykitSession == session &&
+                                PublicPaykitService.pendingReconciliationMode() == .publishEndpoints
+                        }
+                    case .removePublishedState:
+                        try await PublicPaykitService.retryPendingEndpointReconciliation(
+                            wallet: wallet, isSessionCurrent: { pubkyProfile.automaticPaykitSession == session }
+                        )
+                    }
                 } catch {
                     Logger.warn("Failed to reconcile public Paykit state: \(error)", context: "AppScene")
                 }
