@@ -48,8 +48,12 @@ class TransferViewModel: ObservableObject {
     private let swapQuoteTimeout: TimeInterval = 15
     /// Prices Spark's withdrawal for the confirm screen; tests replace it.
     var priceSparkWithdrawal: @Sendable (String) async throws -> UInt64 = { try await SparkManager.shared.withdrawAllFeeSats(to: $0) }
-    /// How long the confirm screen waits for Spark's withdrawal fee before showing none.
-    var sparkFeeTimeout: TimeInterval = 15
+    var sparkBalanceSats: @MainActor () -> UInt64 = { SparkManager.shared.balanceSats }
+    /// Sends Spark's balance to the address, refusing above the shown fee; tests replace it.
+    var withdrawSpark: @MainActor (String, UInt64) async throws -> Void = { try await SparkManager.shared.withdrawAll(to: $0, maxFeeSats: $1) }
+    /// How long the confirm screen waits for Spark's withdrawal fee before offering to retry; a full-balance quote can
+    /// take minutes.
+    var sparkFeeTimeout: TimeInterval = 180
     private var sparkFeeTask: Task<Void, Never>?
     /// The Spark balance the fee was priced for, so it is priced once per balance.
     private var sparkFeeBalanceSats: UInt64?
@@ -299,6 +303,29 @@ class TransferViewModel: ObservableObject {
         }
     }
 
+    /// Whether the swipe may commit: a transfer that withdraws Spark waits until its fee is shown.
+    func isSparkWithdrawalPriced(withdrawsSpark: Bool) -> Bool {
+        !withdrawsSpark || sparkWithdrawFeeSats != nil
+    }
+
+    /// Prices the withdrawal again at swipe time. Throws `SparkWithdrawalFeeIncreased` after showing the higher fee, so
+    /// the user swipes again for it, and throws when it can't be priced.
+    func recheckSparkWithdrawFee() async throws {
+        guard let shownFeeSats = sparkWithdrawFeeSats, let address = sparkWithdrawAddress else {
+            throw AppError(message: "lightning__spending_confirm__error_quote", debugMessage: "Spark withdrawal not priced")
+        }
+        let price = priceSparkWithdrawal
+        guard let feeSats = await Self.withTimeout(seconds: sparkFeeTimeout, { try await price(address) }) else {
+            throw AppError(message: "lightning__spending_confirm__error_quote", debugMessage: "Spark withdrawal re-quote failed")
+        }
+        do {
+            try SparkManager.checkWithdrawalFee(feeSats, shownFeeSats: shownFeeSats)
+        } catch {
+            sparkWithdrawFeeSats = feeSats
+            throw error
+        }
+    }
+
     /// The result of `operation`, or nil when it throws or takes longer than `seconds`.
     private nonisolated static func withTimeout<T: Sendable>(
         seconds: TimeInterval,
@@ -356,8 +383,8 @@ class TransferViewModel: ObservableObject {
         do {
             try await withdrawSparkToSavings()
         } catch {
-            Logger.error("Failed to withdraw Spark to savings", context: error.localizedDescription)
-            sparkWithdrawError = error.localizedDescription
+            Logger.error("Failed to withdraw Spark to savings: \(error)", context: "TransferViewModel")
+            sparkWithdrawError = SparkErrorCopy.message(for: error, fallback: t("lightning__savings_spark_failed__text"))
         }
     }
 
@@ -365,14 +392,11 @@ class TransferViewModel: ObservableObject {
         sparkFeeTask?.cancel()
         sparkFeeTask = nil
         isPricingSparkWithdrawal = false
-        let spark = SparkManager.shared
-        guard spark.balanceSats > 0 else { return }
-        let address: String = if let sparkWithdrawAddress {
-            sparkWithdrawAddress
-        } else {
-            try await lightningService.newAddress()
+        guard sparkBalanceSats() > 0 else { return }
+        guard let shownFeeSats = sparkWithdrawFeeSats, let address = sparkWithdrawAddress else {
+            throw AppError(message: "lightning__spending_confirm__error_quote", debugMessage: "Spark withdrawal not priced")
         }
-        try await spark.withdrawAll(to: address)
+        try await withdrawSpark(address, shownFeeSats)
         sparkWithdrawAddress = nil
         sparkFeeBalanceSats = nil
         sparkWithdrawFeeSats = nil
