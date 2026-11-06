@@ -22,6 +22,7 @@ actor PubkyAppProfileStore {
     private static let bioMaxLength = 160
     private static let linksMaxCount = 5
     private static let linkTitleMaxLength = 100
+    private static let linkUrlMaxLength = 300
     private static let avatarMaxBytes: UInt64 = 5 * 1024 * 1024
 
     private struct Base {
@@ -30,10 +31,12 @@ actor PubkyAppProfileStore {
     }
 
     private var bases: [String: Base] = [:]
+    private var saveCount = 0
 
     /// Loads the profile. An identity that is signed in and has only a Bitkit profile moves it to pubky.app first.
     func load(publicKey: String) async throws -> PubkyProfile {
         let key = Self.normalized(publicKey)
+        let savesBeforeLoad = saveCount
         let paykitData: PubkyProfileData?
         do {
             paykitData = try await PubkyService.fetchPaykitProfile(publicKey: key).map {
@@ -48,12 +51,18 @@ actor PubkyAppProfileStore {
         if snapshot == nil, let paykitData, isSignedIn {
             snapshot = await migrate(paykitData, publicKey: key)
         }
+        // A save that finished while this load ran holds a newer revision than this read.
+        let isLatest = saveCount == savesBeforeLoad
         guard let snapshot else {
-            bases[key] = nil
+            if isLatest {
+                bases[key] = nil
+            }
             throw PubkyServiceError.profileNotFound
         }
         let profile = Self.profile(publicKey: key, snapshot: snapshot, tags: paykitData?.tags ?? [])
-        bases[key] = Base(profile: profile, revision: snapshot.revision)
+        if isLatest {
+            bases[key] = Base(profile: profile, revision: snapshot.revision)
+        }
         if isSignedIn, let paykitData, paykitData != PubkyProfileData.from(profile: profile) {
             await publishCopy(profile, expectedIdentity: key)
         }
@@ -82,6 +91,7 @@ actor PubkyAppProfileStore {
             throw PubkyAppProfileError.changedElsewhere
         }
         let profile = Self.profile(publicKey: key, snapshot: snapshot, tags: data.tags)
+        saveCount += 1
         bases[key] = Base(profile: profile, revision: snapshot.revision)
         await publishCopy(profile, expectedIdentity: key)
     }
@@ -95,41 +105,45 @@ actor PubkyAppProfileStore {
     }
 
     private func migrate(_ data: PubkyProfileData, publicKey: String) async -> Paykit.PubkyProfileSnapshot? {
-        var image: String?
-        if let uri = data.image {
-            do {
-                image = try await withPubkyAppScope {
-                    let bytes = try await PubkyService.fetchFile(uri: uri, maxBytes: Self.avatarMaxBytes)
-                    return try await PubkyService.uploadPubkyAppAvatar(
-                        bytes: bytes,
-                        contentType: Self.contentType(for: uri),
-                        expectedIdentity: publicKey
-                    )
-                }
-            } catch {
-                Logger.warn("Failed to move avatar to pubky.app: \(error)", context: "PubkyAppProfileStore")
-            }
-        }
         let links = data.links
             .map { (label: $0.label.trimmed, url: $0.url.trimmed) }
-            .filter { !$0.label.isEmpty && !$0.url.isEmpty }
+            .filter { !$0.label.isEmpty && $0.url.count <= Self.linkUrlMaxLength && URL(string: $0.url)?.scheme != nil }
             .prefix(Self.linksMaxCount)
             .map { Paykit.PubkyProfileLink(title: String($0.label.prefix(Self.linkTitleMaxLength)), url: $0.url) }
         let update = Paykit.PubkyProfileUpdate(
             name: String(data.name.trimmed.prefix(Self.nameMaxLength)),
             bio: String(data.bio.trimmed.prefix(Self.bioMaxLength)),
-            image: image,
+            image: nil,
             links: links
         )
+        let snapshot: Paykit.PubkyProfileSnapshot
         do {
-            let snapshot = try await withPubkyAppScope {
+            snapshot = try await withPubkyAppScope {
                 try await PubkyService.publishPubkyProfile(update, expectedRevision: nil, expectedIdentity: publicKey)
             }
             Logger.info("Moved Bitkit profile to pubky.app", context: "PubkyAppProfileStore")
-            return snapshot
         } catch {
             Logger.warn("Failed to move Bitkit profile to pubky.app: \(error)", context: "PubkyAppProfileStore")
             return nil
+        }
+        guard let uri = data.image else { return snapshot }
+        do {
+            return try await withPubkyAppScope {
+                let bytes = try await PubkyService.fetchFile(uri: uri, maxBytes: Self.avatarMaxBytes)
+                let image = try await PubkyService.uploadPubkyAppAvatar(
+                    bytes: bytes,
+                    contentType: Self.contentType(for: uri),
+                    expectedIdentity: publicKey
+                )
+                return try await PubkyService.publishPubkyProfile(
+                    Paykit.PubkyProfileUpdate(name: nil, bio: nil, image: image, links: nil),
+                    expectedRevision: snapshot.revision,
+                    expectedIdentity: publicKey
+                )
+            }
+        } catch {
+            Logger.warn("Failed to move avatar to pubky.app: \(error)", context: "PubkyAppProfileStore")
+            return snapshot
         }
     }
 
