@@ -5,6 +5,77 @@ import LDKNode
 
 // TODO: catch all errors and pass a readable error message to the UI
 
+/// A Lightning rail that needs no channels (Breez SDK on Spark). The main app sets it; the notification
+/// extension leaves it unset, so only LDK runs there.
+protocol ChannelFreeLightningRail: AnyObject {
+    @MainActor var isReady: Bool { get }
+    @MainActor var balanceSats: UInt64 { get }
+    func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String
+    /// Refuses before sending when the prepared fee is above `maxFeeSats`, and runs `beforeSubmission` right before the
+    /// payment goes out, as the node path does.
+    func send(bolt11: String, sats: UInt64?, maxFeeSats: UInt64?, beforeSubmission: @escaping () throws -> Void) async throws -> PaymentHash
+    func estimateRoutingFees(bolt11: String, amountSats: UInt64?) async throws -> UInt64
+    /// Throws when the rail could not list its payments, so a duplicate-payment check can tell that from none.
+    func lightningPayments() async throws -> [ChannelFreeRailPayment]
+}
+
+@MainActor
+extension ChannelFreeLightningRail {
+    /// The most the rail can send once its fee is paid, so a payment near the full balance isn't offered and then refused.
+    var sendableSats: UInt64 {
+        ChannelFreeRailFees.sendableSats(balanceSats: balanceSats)
+    }
+}
+
+enum ChannelFreeRailFees {
+    /// Spark keeps 0.25% of a Lightning send as its service fee, on top of routing.
+    static let serviceFeePpm: UInt64 = 2500
+
+    static func sendableSats(balanceSats: UInt64) -> UInt64 {
+        // The fee on the sent amount, rounded up, must fit beside it: amount + ceil(amount * ppm / 1e6) <= balance.
+        let scaled = balanceSats.multipliedFullWidth(by: 1_000_000)
+        let sendable = (1_000_000 + serviceFeePpm).dividingFullWidth((scaled.high, scaled.low)).quotient
+        let fee = sendable / 1_000_000 * serviceFeePpm + (sendable % 1_000_000 * serviceFeePpm + 999_999) / 1_000_000
+        return sendable + fee <= balanceSats || sendable == 0 ? sendable : sendable - 1
+    }
+}
+
+/// The channel-free rail refused a payment before anything left the wallet: the rail was not connected, could not
+/// prepare the payment, or its fee was over the caller's limit. A Paykit request or allowance can then end as failed.
+struct ChannelFreeRailSendRefused: LocalizedError {
+    let reason: String
+    var underlying: Error?
+
+    /// Always the user copy in `reason`; the underlying error is for logs.
+    var errorDescription: String? {
+        reason
+    }
+}
+
+/// A Lightning payment the channel-free rail sent or received, for checks that would otherwise read only LDK's payments.
+struct ChannelFreeRailPayment: Equatable {
+    let paymentHash: String
+    let direction: PaymentDirection
+    let status: PaymentStatus
+    let preimage: String?
+    var timestamp: UInt64 = 0
+    var feeSats: UInt64 = 0
+
+    /// The attempt that decides an outbound payment of `paymentHash`: a retried invoice is listed once per attempt,
+    /// so a pending or settled one wins over failed ones, then the newest.
+    static func latestOutboundAttempt(_ payments: [ChannelFreeRailPayment], paymentHash: String) -> ChannelFreeRailPayment? {
+        payments
+            .filter { $0.direction == .outbound && $0.paymentHash.caseInsensitiveCompare(paymentHash) == .orderedSame }
+            .max { ($0.status == .failed ? 0 : 1, $0.timestamp) < ($1.status == .failed ? 0 : 1, $1.timestamp) }
+    }
+}
+
+/// The rail a Lightning payment attempt went out on.
+enum LightningPaymentRail {
+    case ldk
+    case channelFree
+}
+
 /// The node lifecycle `WalletViewModel` drives, apart from the rest of `LightningService` so its ordering can be tested.
 protocol NodeLifecycleService: AnyObject {
     var hasNode: Bool { get }
@@ -46,7 +117,15 @@ class LightningService: NodeLifecycleService {
     @MainActor private var cachedPeers: [PeerDetails]?
     @MainActor private var cachedChannels: [ChannelDetails]?
 
+    /// Guards the event callback and the rail events waiting for it, which the node and the rail set from different threads.
+    private let eventCallbackLock = NSLock()
     private var storedEventCallback: ((Event) -> Void)?
+    /// Rail events that arrived before the node's event callback was set, delivered once it is.
+    private var pendingChannelFreeRailEvents: [Event] = []
+    /// The rail each payment hash's latest attempt went out on, so a stale failure from the other rail can't settle a
+    /// retry of the same invoice.
+    private var attemptRails: [String: LightningPaymentRail] = [:]
+    weak var channelFreeRail: ChannelFreeLightningRail?
     var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
     var onchainTransactionReceived: (@Sendable (String) async -> Void)?
     typealias OnchainActivityCompletion = @MainActor () async -> Void
@@ -266,10 +345,10 @@ class LightningService: NodeLifecycleService {
         }
 
         if let onEvent {
-            storedEventCallback = onEvent
+            setEventCallback(onEvent)
         }
 
-        listenForEvents(onEvent: storedEventCallback)
+        listenForEvents(onEvent: eventCallbackLock.withLock { storedEventCallback })
 
         Logger.debug("Starting node...")
         try await ServiceQueue.background(.ldk) {
@@ -323,7 +402,7 @@ class LightningService: NodeLifecycleService {
         self.node = nil
 
         if clearEventCallback {
-            storedEventCallback = nil
+            self.clearEventCallback()
         }
 
         await MainActor.run {
@@ -740,11 +819,29 @@ class LightningService: NodeLifecycleService {
         }
     }
 
-    func receive(amountSats: UInt64? = nil, description: String, expirySecs: UInt32 = 3600) async throws -> String {
-        try await receiveMsats(amountMsats: amountSats.map { $0 * 1000 }, description: description, expirySecs: expirySecs)
+    /// `isPaykitEndpoint` marks the amountless invoice published as a Paykit Lightning endpoint, which contacts pay any
+    /// amount: it goes to the channel-free rail unless the channels' inbound covers `paykitEndpointNodeInboundSats`.
+    func receive(amountSats: UInt64? = nil, description: String, expirySecs: UInt32 = 3600, isPaykitEndpoint: Bool = false) async throws -> String {
+        try await receiveMsats(
+            amountMsats: amountSats.map { $0 * 1000 },
+            description: description,
+            expirySecs: expirySecs,
+            isPaykitEndpoint: isPaykitEndpoint
+        )
     }
 
-    func receiveMsats(amountMsats: UInt64? = nil, description: String, expirySecs: UInt32 = 3600) async throws -> String {
+    func receiveMsats(
+        amountMsats: UInt64? = nil,
+        description: String,
+        expirySecs: UInt32 = 3600,
+        isPaykitEndpoint: Bool = false
+    ) async throws -> String {
+        if let rail = channelFreeRail,
+           await shouldReceiveWithRail(rail, amountSats: amountMsats.map { $0 / 1000 }, isPaykitEndpoint: isPaykitEndpoint)
+        {
+            let amountSats = amountMsats.map { $0 / 1000 }.flatMap { $0 > 0 ? $0 : nil }
+            return try await rail.receive(amountSats: amountSats, description: description, expirySecs: expirySecs)
+        }
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
@@ -771,12 +868,53 @@ class LightningService: NodeLifecycleService {
         return bolt11.description
     }
 
+    /// Receives on the channel-free rail when no ready channel has the inbound capacity for the amount.
+    @MainActor
+    private func shouldReceiveWithRail(_ rail: ChannelFreeLightningRail, amountSats: UInt64?, isPaykitEndpoint: Bool) -> Bool {
+        guard rail.isReady else { return false }
+        let readyChannels = (channels ?? []).filter(\.isChannelReady)
+        let inboundSats: UInt64? = readyChannels.isEmpty ? nil : readyChannels.map(\.inboundCapacityMsat).reduce(0, +) / 1000
+        return Self.receivesOnRail(amountSats: amountSats, readyInboundSats: inboundSats, isPaykitEndpoint: isPaykitEndpoint)
+    }
+
+    /// Below this channel inbound, a contact's amountless Paykit invoice goes to the channel-free rail, so a small
+    /// channel can't cap what contacts can pay.
+    static let paykitEndpointNodeInboundSats: UInt64 = 1_000_000
+
+    /// Whether a ready channel-free rail takes an invoice, given the ready channels' total inbound (nil without any).
+    /// An amount the channels can't receive goes to the rail; an amountless invoice does only when no channel can
+    /// receive at all, except a Paykit endpoint, which does below `paykitEndpointNodeInboundSats`.
+    static func receivesOnRail(amountSats: UInt64?, readyInboundSats: UInt64?, isPaykitEndpoint: Bool) -> Bool {
+        guard let inboundSats = readyInboundSats else { return true }
+        guard let amountSats, amountSats > 0 else {
+            return isPaykitEndpoint ? inboundSats < paykitEndpointNodeInboundSats : inboundSats == 0
+        }
+        return amountSats > inboundSats
+    }
+
+    /// Pays on the channel-free rail when no channel has the outbound capacity and the rail's balance covers the amount.
+    @MainActor
+    private func shouldPayWithRail(_ rail: ChannelFreeLightningRail, bolt11: String, sats: UInt64?) -> Bool {
+        guard rail.isReady else { return false }
+        let invoiceSats = (try? Bolt11Invoice.fromStr(invoiceStr: bolt11).amountMilliSatoshis()).flatMap { $0 }.map { $0 / 1000 }
+        guard let amountSats = sats ?? invoiceSats else { return false }
+        return !canSendWithChannels(amountSats: amountSats) && rail.sendableSats >= amountSats
+    }
+
     /// Checks if we have the correct outbound capacity to send the amount
     /// - Parameter amountSats: Amount to send in satoshis
     /// - Returns: True if we can send the amount
     /// Note: Uses cached channels for fast, non-blocking checks
     @MainActor
     func canSend(amountSats: UInt64) -> Bool {
+        if let rail = channelFreeRail, rail.isReady, rail.sendableSats >= amountSats, !canSendWithChannels(amountSats: amountSats) {
+            return true
+        }
+        return canSendWithChannels(amountSats: amountSats)
+    }
+
+    @MainActor
+    private func canSendWithChannels(amountSats: UInt64) -> Bool {
         guard let channels else {
             return false
         }
@@ -856,11 +994,38 @@ class LightningService: NodeLifecycleService {
         params: RouteParametersConfig? = nil,
         beforeSubmission: @escaping () throws -> Void = {}
     ) async throws -> PaymentHash {
+        if let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: sats) {
+            // Spark takes no route parameters, so a caller's routing fee cap is checked against its estimate instead.
+            if let maxFeeMsat = params?.maxTotalRoutingFeeMsat {
+                let feeSats: UInt64
+                do {
+                    feeSats = try await rail.estimateRoutingFees(bolt11: bolt11, amountSats: sats)
+                } catch {
+                    Logger.warn("Spark fee estimate failed: \(error)", context: "LightningService")
+                    throw error as? ChannelFreeRailSendRefused ?? ChannelFreeRailSendRefused(
+                        reason: t("wallet__payment_failed_description"),
+                        underlying: error
+                    )
+                }
+                guard feeSats * 1000 <= maxFeeMsat else {
+                    Logger.info("Spark routing fee of \(feeSats) sats exceeds the limit of \(maxFeeMsat / 1000) sats", context: "LightningService")
+                    throw ChannelFreeRailSendRefused(reason: t("wallet__max_possible_fee_rate"))
+                }
+            }
+            noteAttempt(on: .channelFree, bolt11: bolt11)
+            return try await rail.send(
+                bolt11: bolt11,
+                sats: sats,
+                maxFeeSats: params?.maxTotalRoutingFeeMsat.map { $0 / 1000 },
+                beforeSubmission: beforeSubmission
+            )
+        }
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
         Logger.info("Paying bolt11: \(bolt11)")
+        noteAttempt(on: .ldk, bolt11: bolt11)
 
         do {
             return try await Self.submitPayment(beforeSubmission: beforeSubmission) {
@@ -1376,6 +1541,71 @@ extension LightningService {
 // MARK: Events
 
 extension LightningService {
+    /// Delivers a channel-free rail's payment as an LDK event, so flows that wait on node events cover both rails.
+    /// Sets the callback node and rail events are delivered to, and delivers the rail events that arrived before it.
+    func setEventCallback(_ onEvent: @escaping (Event) -> Void) {
+        let pending = eventCallbackLock.withLock {
+            storedEventCallback = onEvent
+            defer { pendingChannelFreeRailEvents = [] }
+            return pendingChannelFreeRailEvents
+        }
+        pending.forEach(onEvent)
+    }
+
+    /// Drops the event callback and the rail events waiting for it.
+    func clearEventCallback() {
+        eventCallbackLock.withLock {
+            storedEventCallback = nil
+            pendingChannelFreeRailEvents = []
+        }
+    }
+
+    /// Spark runs before the node starts, so its events wait until the node's event callback is set rather than being lost.
+    func emitChannelFreeRailEvent(_ event: Event) {
+        if isStaleFailure(event, from: .channelFree) {
+            Logger.info("Ignored a Spark failure for a payment retried over a channel: \(event)", context: "LightningService")
+            return
+        }
+        let callback = eventCallbackLock.withLock {
+            if storedEventCallback == nil {
+                pendingChannelFreeRailEvents.append(event)
+            }
+            return storedEventCallback
+        }
+        callback?(event)
+    }
+
+    func noteAttempt(on rail: LightningPaymentRail, paymentHash: String) {
+        eventCallbackLock.withLock { attemptRails[paymentHash.lowercased()] = rail }
+    }
+
+    private func noteAttempt(on rail: LightningPaymentRail, bolt11: String) {
+        guard let hash = try? Bolt11Invoice.fromStr(invoiceStr: bolt11).paymentHash() else { return }
+        noteAttempt(on: rail, paymentHash: String(hash))
+    }
+
+    /// The rail the latest attempt to pay `paymentHash` went out on, nil when none went out since launch.
+    func attemptRail(paymentHash: String) -> LightningPaymentRail? {
+        eventCallbackLock.withLock { attemptRails[paymentHash.lowercased()] }
+    }
+
+    /// A failure `rail` reports for a payment whose latest attempt went out on the other rail: it ended an earlier
+    /// attempt, so it must not settle the retry.
+    func isStaleFailure(paymentHash: String, from rail: LightningPaymentRail) -> Bool {
+        guard let current = attemptRail(paymentHash: paymentHash) else { return false }
+        return current != rail
+    }
+
+    func isStaleFailure(_ event: Event, from rail: LightningPaymentRail) -> Bool {
+        guard case let .paymentFailed(paymentId, paymentHash, _) = event, let hash = paymentHash ?? paymentId else { return false }
+        return isStaleFailure(paymentHash: hash, from: rail)
+    }
+
+    /// The rail's Lightning payments, none without a rail; throws when the rail could not list them.
+    func channelFreeRailPayments() async throws -> [ChannelFreeRailPayment] {
+        try await channelFreeRail?.lightningPayments() ?? []
+    }
+
     func deliverEvent(_ event: Event, onEvent: ((Event) -> Void)?) async -> OnchainActivityCompletion? {
         let completion: OnchainActivityCompletion? = switch event {
         case .onchainTransactionReceived, .onchainTransactionConfirmed, .onchainTransactionReplaced,
@@ -1412,6 +1642,11 @@ extension LightningService {
 
                 if case .channelReady = event {
                     await refreshChannelCache()
+                }
+
+                if self.isStaleFailure(event, from: .ldk) {
+                    Logger.info("Ignored an LDK failure for a payment retried over Spark: \(event)", context: "LightningService")
+                    continue
                 }
 
                 let onchainActivityCompletion = await deliverEvent(event, onEvent: onEvent)
@@ -1773,6 +2008,9 @@ extension LightningService {
     }
 
     func estimateRoutingFees(bolt11: String, amountSats: UInt64? = nil) async throws -> UInt64 {
+        if let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: amountSats) {
+            return try await rail.estimateRoutingFees(bolt11: bolt11, amountSats: amountSats)
+        }
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }

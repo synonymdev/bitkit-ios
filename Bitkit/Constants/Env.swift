@@ -221,6 +221,15 @@ enum Env {
         }
     }
 
+    /// Esplora REST API Spark reads the chain from and broadcasts through, in place of the SDK's default
+    /// (mempool.space with blockstream as fallback on mainnet); nil keeps the default.
+    static func sparkChainServiceUrl(for network: LDKNode.Network) -> String? {
+        switch network {
+        case .bitcoin: "https://bitkit.to/electrs"
+        default: nil
+        }
+    }
+
     static var electrumServerUrl: String {
         if isE2E, e2eBackend == "local" {
             return "tcp://\(e2eLocalHost):60001"
@@ -270,6 +279,25 @@ enum Env {
         appStorageUrl
             .appendingPathComponent(networkName)
             .appendingPathComponent("wallet\(walletIndex)/ldk")
+    }
+
+    static func sparkStorage(walletIndex: Int) -> URL {
+        appStorageUrl
+            .appendingPathComponent(networkName)
+            .appendingPathComponent("wallet\(walletIndex)/spark")
+    }
+
+    /// A restored Spark exit data backup waiting to be imported once Spark connects; outside Spark's storage, which a
+    /// wipe removes.
+    static func sparkExitRestore(walletIndex: Int) -> URL {
+        appStorageUrl
+            .appendingPathComponent(networkName)
+            .appendingPathComponent("wallet\(walletIndex)/spark-exit-restore.json")
+    }
+
+    /// Breez SDK API key, set with the `BREEZ_API_KEY` build setting. Spark on mainnet needs it; its regtest does not.
+    static var breezApiKey: String? {
+        infoPlistValue("BREEZ_API_KEY")
     }
 
     static func bitkitCoreStorage(walletIndex: Int) -> URL {

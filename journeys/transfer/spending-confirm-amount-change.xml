@@ -1,0 +1,35 @@
+<journey name="spending confirm amount change">
+  <description>
+    Verifies that a transfer to spending never pays more than Spending Confirm shows. The screen prices
+    the network fee to the Spark deposit address when it opens, whenever the amount or the speed
+    changes, every minute while it stays open, and again at the swipe. A swipe whose fresh price costs
+    the same or less pays at once; one that costs more pays nothing: the screen shows the new amounts, a
+    "Fees changed" toast explains the increase, and the next swipe pays them.
+
+    This journey covers the cheaper path and the re-quote after an amount change. A larger UTXO confirms
+    while Spending Confirm is open, so the fee priced at the swipe spends one input, costs less and pays
+    at once. The higher-total path (the "Fees changed" toast) needs fee rates to rise between the quote
+    and the swipe, which is not a listed capability.
+
+    Precondition: a freshly onboarded Debug build on the staging regtest backend with Spark connected,
+    no spending balance and exactly two confirmed on-chain UTXOs of 150 000 sats each (two
+    ../bitkit-android/lsp deposits to the wallet's savings address, each followed by a mine). Start on
+    the wallet home screen.
+  </description>
+  <actions>
+    <action>Tap Receive (id "Receive"), tap the "Savings" receive tab if one is shown, tap "Show Details" (id "ShowDetails"), read the address from id "ReceiveOnchainAddress", then close the sheet to return to the home screen</action>
+    <action>Tap the Savings balance card (id "ActivitySavings"), then "Transfer To Spending" (id "TransferToSpending")</action>
+    <action>If the spending intro appears, tap "Get Started" (id "SpendingIntro-button")</action>
+    <action>Enter 100 000 on the number pad (ids "N1", "N0", "N0", "N0", "N0", "N0") and tap "Continue" (id "SpendingAmountContinue")</action>
+    <action>Verify the confirm screen is visible (id "SpendingConfirm"), wait until its network fee is shown, and note "To spending" and "Total"</action>
+    <action>Tap back (id "NavigationBack"), delete one digit (id "NRemove") and enter "N2", "N0" so the amount reads 200 000, then tap "Continue" (id "SpendingAmountContinue")</action>
+    <action>Verify "To spending" and "Total" now reflect 200 000 rather than the noted values, and wait until the network fee is shown</action>
+    <action>Note the amounts under "Network fees" and "Total"</action>
+    <action>Run in one command: ../bitkit-android/lsp POST /regtest/chain/deposit '{"address":"&lt;savings addr&gt;","amountSat":500000}' &amp;&amp; ../bitkit-android/lsp POST /regtest/chain/mine '{"count":1}'</action>
+    <action>Wait 30s for the wallet to sync the new UTXO</action>
+    <action>If the received sheet (id "ReceivedTransaction") is visible, tap its button (id "ReceivedTransactionButton")</action>
+    <action>Verify the confirm screen is visible; "Network fees" and "Total" may already show lower amounts than noted</action>
+    <action>Swipe the "Swipe To Transfer" handle (id "GRAB") fully to the right</action>
+    <action>Verify no "Fees changed" toast appears and the setting up screen (id "LightningSettingUp") opens within 30s</action>
+  </actions>
+</journey>

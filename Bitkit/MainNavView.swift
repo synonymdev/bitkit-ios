@@ -25,6 +25,7 @@ struct MainNavView: View {
     @Environment(\.scenePhase) var scenePhase
 
     @State private var usdtReceipts = UsdtReceiptQueue()
+    @State private var sparkTransfer = SparkTransferFlow()
     @State private var showClipboardAlert = false
     @State private var clipboardUri: String?
     @State private var didResumePendingPubkyProfileSetup = false
@@ -80,6 +81,7 @@ struct MainNavView: View {
         NavigationStack(path: $navigation.path) {
             navigationContent
         }
+        .environment(sparkTransfer)
         .onChange(of: pendingProfileSetupResumeState, initial: true) { _, resumeState in
             guard resumeState.shouldResume(didResume: &didResumePendingPubkyProfileSetup) else { return }
             navigation.navigate(.createProfile)
@@ -509,7 +511,17 @@ struct MainNavView: View {
                 case .scanner: ScannerScreen()
 
                 // Transfer
+                case .transferIntro: TransferIntroView()
                 case .fundingOptions: FundingOptions()
+                case .spendingIntro: SpendingIntroView()
+                case let .spendingIntroHw(walletId): SpendingIntroView(walletId: walletId)
+                case .spendingAmount: SpendingAmount()
+                case let .spendingAmountHw(walletId): SpendingAmountHw(walletId: walletId)
+                case let .spendingHwSign(walletId): SpendingHwSign(walletId: walletId)
+                case .spendingHwSigned: SpendingHwSigned()
+                case .spendingConfirm: SpendingConfirm()
+                case .transferLearnMore: TransferLearnMoreView()
+                case .settingUp: SettingUpView()
                 case let .fundManual(nodeUri): FundManualSetupView(initialNodeUri: nodeUri)
                 case let .fundManualAmount(lnPeer): FundManualAmountView(lnPeer: lnPeer)
                 case let .fundManualConfirm(lnPeer, amountSats): FundManualConfirmView(lnPeer: lnPeer, amountSats: amountSats)
@@ -692,6 +704,7 @@ struct MainNavView: View {
                 case .addressTypePreference: AddressTypePreferenceView()
                 case .connections: LightningConnectionsView()
                 case let .connectionDetail(channelId): LightningConnectionDetailView(channelId: channelId)
+                case .sparkConnectionDetail: SparkConnectionDetailView()
                 case let .closeConnection(channel: channel): CloseConnectionConfirmation(channel: channel)
                 case .node: NodeStateView()
                 case .electrumSettings: ElectrumSettingsScreen()

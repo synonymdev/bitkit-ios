@@ -591,7 +591,12 @@ private final class EndpointPublicationWallet: WalletViewModel {
         true
     }
 
-    override func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
+    override func createInvoice(
+        amountSats: UInt64? = nil,
+        note: String,
+        expirySecs: UInt32? = nil,
+        isPaykitEndpoint: Bool = false
+    ) async throws -> String {
         Self.invoice
     }
 }

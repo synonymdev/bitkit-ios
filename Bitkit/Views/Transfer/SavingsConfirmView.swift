@@ -10,28 +10,39 @@ struct SavingsConfirmView: View {
 
     @State private var hideSwipeButton = false
 
-    private var hasMultipleChannels: Bool {
-        guard let channels = wallet.channels else { return false }
-        return channels.filter(\.isChannelReady).count > 1
+    private var readyChannels: [ChannelDetails] {
+        wallet.channels?.filter(\.isChannelReady) ?? []
     }
 
-    private var hasSelectedChannels: Bool {
-        return !transfer.selectedChannelIds.isEmpty
+    private var sparkSats: UInt64 {
+        SparkManager.shared.balanceSats
+    }
+
+    /// Each ready channel and a Spark balance is a row of the Advanced list.
+    private var hasMultipleItems: Bool {
+        readyChannels.count + (sparkSats > 0 ? 1 : 0) > 1
+    }
+
+    private var hasSelectedItems: Bool {
+        transfer.selectedChannelIds != nil || !transfer.isSparkSelected
+    }
+
+    private var selection: SavingsSelection {
+        transfer.savingsSelection(readyChannelIds: readyChannels.map(\.channelId), sparkSats: sparkSats)
     }
 
     private var channels: [ChannelDetails] {
-        guard let channels = wallet.channels else { return [] }
-        let usableChannels = channels.filter(\.isChannelReady)
-
-        if transfer.selectedChannelIds.isEmpty {
-            return usableChannels
-        } else {
-            return usableChannels.filter { transfer.selectedChannelIds.contains($0.channelId) }
-        }
+        let ids = selection.channelIds
+        return readyChannels.filter { ids.contains($0.channelId) }
     }
 
     private var totalSats: UInt64 {
         channels.reduce(0) { $0 + $1.balanceOnCloseSats }
+    }
+
+    /// What the selected channels can send, so a swap never falls back to paying from Spark.
+    private var channelsSendableSats: UInt64 {
+        channels.filter(\.isUsable).reduce(0) { $0 + $1.nextOutboundHtlcLimitMsat } / 1000
     }
 
     private var swapState: SavingsSwapState {
@@ -39,7 +50,7 @@ struct SavingsConfirmView: View {
     }
 
     private var headlineSats: UInt64 {
-        swapState.quote?.amountSat ?? totalSats
+        (swapState.quote?.amountSat ?? totalSats) + (selection.withdrawsSpark ? sparkSats : 0)
     }
 
     var body: some View {
@@ -60,11 +71,24 @@ struct SavingsConfirmView: View {
                 quoteSection(quote)
             }
 
-            if hasMultipleChannels {
+            if selection.withdrawsSpark, transfer.sparkWithdrawFeeSats != nil || transfer.isPricingSparkWithdrawal {
+                FeeDisplayRow(
+                    label: t("lightning__savings_confirm__spark_fee"),
+                    amount: transfer.sparkWithdrawFeeSats ?? 0,
+                    isLoading: transfer.isPricingSparkWithdrawal
+                )
+                .padding(.top, swapState.quote == nil ? 24 : 16)
+                .accessibilityIdentifier("SavingsSparkFee")
+            } else if selection.withdrawsSpark {
+                sparkFeeError
+                    .padding(.top, swapState.quote == nil ? 24 : 16)
+            }
+
+            if hasMultipleItems {
                 HStack(spacing: 16) {
-                    if hasSelectedChannels {
+                    if hasSelectedItems {
                         CustomButton(title: t("lightning__savings_confirm__transfer_all"), size: .small) {
-                            transfer.setSelectedChannelIds([])
+                            transfer.selectAllForSavings()
                         }
                     } else {
                         CustomButton(title: t("common__advanced"), size: .small) {
@@ -94,17 +118,20 @@ struct SavingsConfirmView: View {
 
             Spacer()
 
-            if !hideSwipeButton {
+            if !hideSwipeButton, !selection.isEmpty {
                 SwipeButton(
                     title: t("lightning__transfer__swipe"),
                     accentColor: .brandAccent,
-                    isLoading: swapState.quote == nil && swapState.isLoading
+                    isLoading: (swapState.quote == nil && swapState.isLoading) || transfer.isPricingSparkWithdrawal
                 ) {
                     // The swipe always commits the transfer: it swaps when a quote is ready and
                     // otherwise falls back to the pre-swap behaviour of closing the channel, so it
                     // is never inert.
+                    if selection.withdrawsSpark {
+                        try await recheckSparkFee()
+                    }
                     do {
-                        transfer.onTransferToSavingsConfirm(channels: channels)
+                        transfer.onTransferToSavingsConfirm(channels: channels, withdrawsSpark: selection.withdrawsSpark)
 
                         try await Task.sleep(nanoseconds: 300_000_000)
 
@@ -118,12 +145,13 @@ struct SavingsConfirmView: View {
                         throw error
                     }
                 }
+                .disabled(!transfer.isSparkWithdrawalPriced(withdrawsSpark: selection.withdrawsSpark))
             }
 
             if swapState.quote != nil {
                 // Fallback: drain a whole channel on-chain by closing it instead of swapping.
                 CustomButton(title: t("lightning__savings_confirm__close_instead"), variant: .tertiary) {
-                    transfer.onTransferToSavingsConfirm(channels: channels, mode: .close)
+                    transfer.onTransferToSavingsConfirm(channels: channels, withdrawsSpark: selection.withdrawsSpark, mode: .close)
                     navigation.navigate(.savingsProgress)
                 }
                 .padding(.top, 12)
@@ -142,8 +170,45 @@ struct SavingsConfirmView: View {
             await wallet.syncStateAsync()
             await transfer.loadSavingsSwapQuote(
                 requestedSat: totalSats,
-                spendableSats: UInt64(max(0, wallet.maxSendLightningSats))
+                spendableSats: channelsSendableSats
             )
+        }
+        .onChange(of: selection.withdrawsSpark ? sparkSats : nil, initial: true) { _, balanceSats in
+            guard let balanceSats else { return }
+            transfer.loadSparkWithdrawFee(balanceSats: balanceSats, savingsAddress: wallet.onchainAddress)
+        }
+    }
+
+    /// Spark's withdrawal fee could not be priced; the swipe waits for it, so it can be retried here.
+    private var sparkFeeError: some View {
+        HStack(alignment: .center, spacing: 16) {
+            BodyMText(t("lightning__spending_confirm__error_quote"), textColor: .redAccent)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            CustomButton(title: t("common__retry"), size: .small) {
+                transfer.loadSparkWithdrawFee(balanceSats: sparkSats, savingsAddress: wallet.onchainAddress)
+            }
+            .fixedSize()
+            .accessibilityIdentifier("SavingsSparkFeeRetry")
+        }
+    }
+
+    /// Asks for another swipe when Spark's withdrawal fee rose since it was shown.
+    private func recheckSparkFee() async throws {
+        do {
+            try await transfer.recheckSparkWithdrawFee()
+        } catch let increase as SparkWithdrawalFeeIncreased {
+            app.toast(
+                type: .info,
+                title: t("lightning__spending_confirm__fees_changed_title"),
+                description: t(
+                    "lightning__spending_confirm__fees_changed_network",
+                    variables: ["amount": currency.primaryAmountText(sats: increase.feeSats - increase.shownFeeSats)]
+                )
+            )
+            throw SpendingFeesIncreasedError()
+        } catch {
+            app.toast(error)
+            throw error
         }
     }
 

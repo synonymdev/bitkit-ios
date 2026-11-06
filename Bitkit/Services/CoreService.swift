@@ -955,7 +955,24 @@ class ActivityService {
         }
     }
 
-    private func processLightningPayment(_ payment: PaymentDetails) async throws {
+    /// Records a Lightning payment the channel-free rail sent or received the way an LDK payment is recorded, so it keeps
+    /// its Paykit contact and seen state across syncs.
+    func recordChannelFreeRailPayment(_ payment: PaymentDetails) async throws {
+        try await ServiceQueue.background(.core) {
+            try await self.processLightningPayment(payment, rail: .channelFree)
+        }
+    }
+
+    /// Whether a Lightning activity keeps its status against an update: a settled payment stays settled, and a failure
+    /// from the rail that didn't carry the latest attempt is stale.
+    static func keepsLightningStatus(existing: BitkitCore.PaymentState, update: BitkitCore.PaymentState, isStaleRailFailure: Bool) -> Bool {
+        if existing == .succeeded, update != .succeeded {
+            return true
+        }
+        return update == .failed && existing != .failed && isStaleRailFailure
+    }
+
+    private func processLightningPayment(_ payment: PaymentDetails, rail: LightningPaymentRail = .ldk) async throws {
         guard case let .bolt11(_, preimage, _, description, bolt11) = payment.kind else { return }
 
         // Skip pending inbound payments - just means they created an invoice
@@ -973,6 +990,16 @@ class ActivityService {
         case .failed: .failed
         case .pending: .pending
         case .succeeded: .succeeded
+        }
+
+        if let existing = existingLightning,
+           Self.keepsLightningStatus(
+               existing: existing.status,
+               update: state,
+               isStaleRailFailure: LightningService.shared.isStaleFailure(paymentHash: payment.id, from: rail)
+           )
+        {
+            return
         }
 
         // Skip if existing activity has newer timestamp, unless payment status is changing
@@ -1453,6 +1480,24 @@ class ActivityService {
                 try updateActivity(activityId: existing.id, activity: .onchain(updated))
                 self.activitiesChangedSubject.send()
                 Logger.debug("Marked activity \(existing.id) as transfer for channel \(channelId)", context: "ActivityService")
+            }
+        } catch {
+            Logger.error("Failed to mark activity as transfer for \(txId): \(error)", context: "ActivityService")
+        }
+    }
+
+    /// Marks the on-chain activity for `txId` as a transfer between Savings and Spending that has no channel,
+    /// such as a Spark deposit or withdrawal. No-op until the activity exists or once it is marked.
+    func markOnchainActivityAsTransfer(txId: String) async {
+        do {
+            try await ServiceQueue.background(.core) {
+                guard let existing = try BitkitCore.getActivityByTxId(walletId: WalletScope.default, txId: txId),
+                      !existing.isTransfer
+                else { return }
+                var updated = existing
+                updated.isTransfer = true
+                try updateActivity(activityId: existing.id, activity: .onchain(updated))
+                self.activitiesChangedSubject.send()
             }
         } catch {
             Logger.error("Failed to mark activity as transfer for \(txId): \(error)", context: "ActivityService")

@@ -24,6 +24,7 @@ class WalletViewModel: ObservableObject {
     @Published private(set) var isReceiveInvoiceUpdating = false
     @Published private(set) var receiveInvoiceError: String?
     private var receiveRefreshID = UUID()
+    private var sparkReadiness = SparkReadinessTransition()
     private var receiveCommitID = UUID()
 
     var hasCoherentReceiveInvoice: Bool {
@@ -173,6 +174,19 @@ class WalletViewModel: ObservableObject {
         }
         lightningService.onchainTransactionReceived = { await onchainObservation($0, false) }
         lightningService.onchainTransactionConfirmed = { await onchainObservation($0, true) }
+        SparkManager.shared.onStateChanged = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                // Paykit may have published without a Lightning endpoint before Spark connected, so republish once
+                // it becomes ready; that refresh also updates the balance and the receive invoice.
+                if self.sparkReadiness.becameReady(SparkManager.shared.isReady) {
+                    await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "spark-ready refresh", forceRefreshLightning: true)
+                    return
+                }
+                await self.updateBalanceState()
+                try? await self.refreshBip21(reportsError: false)
+            }
+        }
         lightningService.onchainActivityWillPersist = { [weak self] in
             guard let self else { return nil }
             let isSessionCurrent = publicPaykitPublicationAdmission()
@@ -197,6 +211,12 @@ class WalletViewModel: ObservableObject {
 
     func addOnEvent(id: String, handler: @escaping (Event) -> Void) {
         eventHandlers[id] = handler
+    }
+
+    func notifyEventHandlers(_ event: Event) {
+        for handler in eventHandlers.values {
+            handler(event)
+        }
     }
 
     func removeOnEvent(id: String) {
@@ -261,6 +281,8 @@ class WalletViewModel: ObservableObject {
         }
 
         syncState()
+        // Spark needs no node, so it starts alongside it and keeps running while the node stops.
+        Task { await SparkManager.shared.start(walletIndex: walletIndex) }
         do {
             let electrumServerUrl = electrumConfigService.getCurrentServer().fullUrl
             let rgsServerUrl = rgsConfigService.getCurrentServerUrl()
@@ -284,10 +306,7 @@ class WalletViewModel: ObservableObject {
             }
             try await nodeLifecycle.start(onEvent: { event in
                 Task { @MainActor in
-                    // Notify all event handlers
-                    for handler in self.eventHandlers.values {
-                        handler(event)
-                    }
+                    self.notifyEventHandlers(event)
 
                     // Handle specific events for targeted UI updates
                     switch event {
@@ -638,9 +657,14 @@ class WalletViewModel: ObservableObject {
         }
     }
 
-    func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
+    func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil, isPaykitEndpoint: Bool = false) async throws -> String {
         let finalExpirySecs = expirySecs ?? 60 * 60 * 24
-        let invoice = try await lightningService.receive(amountSats: amountSats, description: note, expirySecs: finalExpirySecs)
+        let invoice = try await lightningService.receive(
+            amountSats: amountSats,
+            description: note,
+            expirySecs: finalExpirySecs,
+            isPaykitEndpoint: isPaykitEndpoint
+        )
         return invoice.lowercased()
     }
 
@@ -1163,11 +1187,31 @@ class WalletViewModel: ObservableObject {
                 }
 
                 syncState()
+                Task { [weak self] in
+                    await self?.finishWatchSendIfRailAlreadySettled(hash: hash, eventId: eventId)
+                }
             }
         } onCancel: {
             Task { @MainActor [weak self] in
                 self?.finishWatchSend(id: eventId, result: .failure(CancellationError()))
             }
+        }
+    }
+
+    /// A Spark-to-Spark payment settles inside the send call, so its completion event can fire before `watchSend`
+    /// starts listening; the rail's own payment list still has the outcome.
+    private func finishWatchSendIfRailAlreadySettled(hash: String, eventId: String) async {
+        // A retry over a channel settles from LDK; an earlier Spark attempt's outcome doesn't decide it.
+        guard lightningService.attemptRail(paymentHash: hash) != .ldk else { return }
+        let payments = await (try? lightningService.channelFreeRailPayments()) ?? []
+        let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: hash)
+        switch payment?.status {
+        case .succeeded:
+            finishWatchSend(id: eventId, result: .success(SettledLightningPayment(paymentHash: hash, feePaidSats: payment?.feeSats ?? 0)))
+        case .failed:
+            finishWatchSend(id: eventId, result: .failure(AppError(paymentFailureReason: nil)))
+        case .pending, nil:
+            break
         }
     }
 
@@ -1365,14 +1409,16 @@ class WalletViewModel: ObservableObject {
         do {
             try? await transferService.syncTransferStates()
             let state = try await balanceManager.deriveBalanceState()
+            let spark = SparkManager.shared
             balanceInTransferToSavings = Int(state.balanceInTransferToSavings)
-            balanceInTransferToSpending = Int(state.balanceInTransferToSpending)
+            balanceInTransferToSpending = Int(state.balanceInTransferToSpending + spark.pendingDepositSats)
 
             // Update display values with adjusted balances
             totalOnchainSats = Int(state.totalOnchainSats)
-            totalLightningSats = Int(state.totalLightningSats)
-            totalBalanceSats = Int(state.totalBalanceSats)
-            maxSendLightningSats = Int(state.maxSendLightningSats)
+            totalLightningSats = Int(state.totalLightningSats + spark.balanceSats)
+            totalBalanceSats = Int(state.totalBalanceSats + spark.balanceSats + spark.pendingDepositSats)
+            // A payment goes over one rail, so the larger of the two balances caps it.
+            maxSendLightningSats = Int(max(state.maxSendLightningSats, spark.sendableSats))
 
             // Update channel fundable balance (excludes Legacy UTXOs and accounts for funding tx fee)
             let (selectedType, monitoredTypes) = LightningService.addressTypeStateFromUserDefaults()
@@ -1428,13 +1474,18 @@ class WalletViewModel: ObservableObject {
         return channels?.contains(where: \.isUsable) ?? false
     }
 
+    /// Whether Lightning can be received, through a usable channel or Spark; Paykit publishes a Lightning endpoint only then.
+    var canReceiveLightning: Bool {
+        hasUsableChannels || SparkManager.shared.isReady
+    }
+
     var canCreateReceiveLightningInvoice: Bool {
         let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
         return canCreateReceiveLightningInvoice(amountSats: amountSats)
     }
 
     func canCreateReceiveLightningInvoice(amountSats: UInt64?) -> Bool {
-        ReceiveLiquidityDecision.canCreateLightningInvoice(
+        SparkManager.shared.isReady || ReceiveLiquidityDecision.canCreateLightningInvoice(
             hasReadyChannels: hasReadyChannels,
             inboundCapacitySats: totalReadyInboundLightningSats,
             invoiceAmountSats: amountSats
@@ -1507,7 +1558,7 @@ class WalletViewModel: ObservableObject {
             if attempt > 0 {
                 guard try await canCommitInvoice() else { continue }
             }
-            if includeLightning, hasUsableChannels {
+            if includeLightning, canReceiveLightning {
                 let hasReusableInvoice = await hasReusablePublicPaykitInvoice()
                 guard try await canCommitInvoice() else { continue }
                 let shouldRefreshBolt11 = forceRefreshBolt11 || !hasReusableInvoice
@@ -1604,7 +1655,7 @@ class WalletViewModel: ObservableObject {
 
         if sharesPublicPaykitEndpoints {
             do {
-                try await publishPublicPaykitEndpoints(refreshIfNeeded: hasUsableChannels, isSessionCurrent: isSessionCurrent)
+                try await publishPublicPaykitEndpoints(refreshIfNeeded: canReceiveLightning, isSessionCurrent: isSessionCurrent)
             } catch {
                 Logger.warn("Failed to refresh public Paykit endpoints after channel availability changed: \(error)", context: "WalletViewModel")
             }
@@ -1641,7 +1692,7 @@ class WalletViewModel: ObservableObject {
     }
 
     private func refreshPublicPaykitBolt11(canCommitInvoice: () async throws -> Bool) async throws -> Bool {
-        let invoice = try await createInvoice(amountSats: nil, note: "")
+        let invoice = try await createInvoice(amountSats: nil, note: "", isPaykitEndpoint: true)
         let decodedInvoice = try await decode(invoice: invoice)
         guard try await canCommitInvoice() else { return false }
         guard case let .lightning(lightningInvoice) = decodedInvoice else {
@@ -2035,6 +2086,8 @@ class WalletViewModel: ObservableObject {
             try await nodeLifecycle.wipeStorage(walletIndex: 0)
         }
 
+        try await SparkManager.shared.wipe(walletIndex: 0)
+
         probeOutcomes.removeAll()
 
         // Reset AppStorage display values
@@ -2054,5 +2107,15 @@ class WalletViewModel: ObservableObject {
         try setWalletExistsState()
 
         Logger.warn("Wallet wipe completed", context: "WalletViewModel")
+    }
+}
+
+/// Tells when Spark goes from not ready to ready, so work that ran without it (Paykit endpoints) runs once more.
+struct SparkReadinessTransition {
+    private var wasReady = false
+
+    mutating func becameReady(_ isReady: Bool) -> Bool {
+        defer { wasReady = isReady }
+        return isReady && !wasReady
     }
 }

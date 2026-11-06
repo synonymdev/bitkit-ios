@@ -1,12 +1,14 @@
 import SwiftUI
 
-enum SavingsProgressState {
+enum SavingsProgressState: Equatable {
     case inProgress
     /// Swap hold invoice is paid but the on-chain claim has not landed within the wait window.
     /// The claim auto-broadcasts once the lockup appears, so the transfer is committed and settling.
     case settling
     case success
     case failed
+    /// Spark's balance didn't move; `channelsMoved` when the selected channels still did.
+    case sparkFailed(channelsMoved: Bool)
 }
 
 struct SavingsProgressContentView: View {
@@ -23,7 +25,7 @@ struct SavingsProgressContentView: View {
         switch progressState {
         case .inProgress, .settling: return t("lightning__transfer__nav_title")
         case .failed: return t("lightning__savings_interrupted__nav_title")
-        case .success: return t("lightning__transfer__nav_title")
+        case .success, .sparkFailed: return t("lightning__transfer__nav_title")
         }
     }
 
@@ -33,6 +35,7 @@ struct SavingsProgressContentView: View {
         case .settling: return t("lightning__savings_settling__title")
         case .failed: return t("lightning__savings_interrupted__title")
         case .success: return t("lightning__transfer_success__title_savings")
+        case .sparkFailed: return t("lightning__savings_spark_failed__title")
         }
     }
 
@@ -42,6 +45,16 @@ struct SavingsProgressContentView: View {
         case .settling: return t("lightning__savings_settling__text")
         case .failed: return t("lightning__savings_interrupted__text")
         case .success: return t("lightning__transfer_success__text_savings")
+        case let .sparkFailed(channelsMoved):
+            return t(channelsMoved ? "lightning__savings_spark_failed__text_partial" : "lightning__savings_spark_failed__text")
+        }
+    }
+
+    private var imageIdentifier: String? {
+        switch progressState {
+        case .success: "TransferSuccess"
+        case .sparkFailed: "SavingsSparkFailed"
+        default: nil
         }
     }
 
@@ -98,13 +111,13 @@ struct SavingsProgressContentView: View {
                 }
 
             } else {
-                Image(progressState == .failed ? "exclamation-mark" : "check")
+                Image(progressState == .success ? "check" : "exclamation-mark")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 256, height: 256)
                     .padding()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .accessibilityIdentifierIfPresent(progressState == .success ? "TransferSuccess" : nil)
+                    .accessibilityIdentifierIfPresent(imageIdentifier)
             }
 
             Spacer()
@@ -115,7 +128,7 @@ struct SavingsProgressContentView: View {
             ) {
                 navigation.reset()
             }
-            .accessibilityIdentifierIfPresent(progressState == .success ? "TransferSuccess-button" : nil)
+            .accessibilityIdentifierIfPresent(imageIdentifier.map { "\($0)-button" })
         }
         .navigationBarHidden(true)
         .allowSwipeBack(false)
@@ -168,12 +181,12 @@ struct SavingsProgressView: View {
         case .success:
             await wallet.syncStateAsync()
             withAnimation {
-                progressState = .success
+                progressState = sparkFailedState(channelsMoved: true) ?? .success
             }
         case .pending:
             await wallet.syncStateAsync()
             withAnimation {
-                progressState = .settling
+                progressState = sparkFailedState(channelsMoved: true) ?? .settling
             }
         case let .failure(message):
             app.toast(
@@ -185,21 +198,48 @@ struct SavingsProgressView: View {
         }
     }
 
+    /// The Spark failure state, with its error as a toast, when the transfer's Spark withdrawal failed.
+    private func sparkFailedState(channelsMoved: Bool) -> SavingsProgressState? {
+        guard transfer.sparkWithdrawError != nil else { return nil }
+        toastSparkError()
+        return .sparkFailed(channelsMoved: channelsMoved)
+    }
+
+    private func toastSparkError() {
+        guard let message = transfer.sparkWithdrawError else { return }
+        app.toast(type: .error, title: t("lightning__savings_spark_failed__toast"), description: message)
+    }
+
     /// Legacy path: cooperatively close the selected channel(s), retrying on failure.
     private func runChannelClose() async {
         do {
-            try await Task.sleep(nanoseconds: 2_000_000_000)
+            if transfer.hasChannelsToClose {
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+            }
 
+            let hadChannels = transfer.hasChannelsToClose
             let channelsFailedToCoopClose = try await transfer.closeSelectedChannels()
+            let outcome = SavingsTransferOutcome.resolve(
+                sparkFailed: transfer.sparkWithdrawError != nil,
+                movedChannels: hadChannels,
+                channelsFailedToClose: !channelsFailedToCoopClose.isEmpty
+            )
 
-            if channelsFailedToCoopClose.isEmpty {
+            switch outcome {
+            case .success:
                 // Re-enable screen timeout when we're done
                 UIApplication.shared.isIdleTimerDisabled = false
 
                 withAnimation {
                     progressState = .success
                 }
-            } else {
+            case let .sparkFailed(channelsMoved):
+                UIApplication.shared.isIdleTimerDisabled = false
+                withAnimation {
+                    progressState = sparkFailedState(channelsMoved: channelsMoved) ?? .success
+                }
+            case .channelsInterrupted:
+                toastSparkError()
                 withAnimation {
                     progressState = .failed
                 }
@@ -233,6 +273,15 @@ struct SavingsProgressView: View {
 #Preview("Success") {
     NavigationStack {
         SavingsProgressContentView(progressState: .success)
+            .environmentObject(AppViewModel())
+            .environmentObject(TransferViewModel())
+    }
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Spark Failed") {
+    NavigationStack {
+        SavingsProgressContentView(progressState: .sparkFailed(channelsMoved: true))
             .environmentObject(AppViewModel())
             .environmentObject(TransferViewModel())
     }

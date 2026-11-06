@@ -310,6 +310,11 @@ class BackupService {
 
             Logger.debug("Start observing backup statuses and data store changes", context: "BackupService")
             await installBackupObservers(generation: observation.generation, foregroundGeneration: observation.foregroundGeneration)
+
+            // Spark's connect signal is missed when it connected before observing started.
+            if await SparkManager.shared.isConnected {
+                markBackupRequired(category: .sparkExit)
+            }
         }
     }
 
@@ -408,6 +413,11 @@ class BackupService {
                     try await writeWalletBackup()
                 } else {
                     try await persistWalletBackup()
+                }
+            } else if category == .sparkExit {
+                // Nothing to back up until Spark connects, which marks this category required again.
+                if let data = try await sparkExitBackupData() {
+                    try await uploadBackup(category.rawValue, data)
                 }
             } else {
                 if category == .metadata {
@@ -784,6 +794,11 @@ class BackupService {
                 Logger.debug("Restored \(payload.orders.count) orders, \(payload.cjitEntries.count) CJITs", context: "BackupService")
             }
 
+            try await performRestore(category: .sparkExit) { dataBytes in
+                let backup = try JSONDecoder().decode(SparkExitBackupV1.self, from: dataBytes)
+                try await SparkManager.shared.restoreExitBackup(backup, walletIndex: LightningService.shared.currentWalletIndex)
+            }
+
             // Always reset PIN settings after restore (PIN is never backed up for security)
             await SettingsViewModel.shared.resetPinSettings()
 
@@ -857,6 +872,13 @@ class BackupService {
             .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .widgets)
+            }
+            .store(in: cancellables)
+
+        SparkManager.exitStateChangedPublisher
+            .sink { [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .sparkExit)
             }
             .store(in: cancellables)
 
@@ -1366,7 +1388,25 @@ class BackupService {
                 code: -1,
                 userInfo: [NSLocalizedDescriptionKey: "LIGHTNING_CONNECTIONS backup is managed by ldk-node"]
             )
+
+        case .sparkExit:
+            guard let data = try await sparkExitBackupData() else {
+                throw NSError(
+                    domain: "BackupService",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: "SPARK_EXIT has nothing to back up while Spark is not connected"]
+                )
+            }
+            return data
         }
+    }
+
+    private func sparkExitBackupData() async throws -> Data? {
+        if let backupData {
+            return try await backupData(.sparkExit)
+        }
+        guard let backup = try await SparkManager.shared.exitBackup() else { return nil }
+        return try JSONEncoder().encode(backup)
     }
 
     /// Re-upload the envelopes whose Core-owned fields the restore had to migrate, so later restores

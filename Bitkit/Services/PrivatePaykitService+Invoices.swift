@@ -72,13 +72,15 @@ extension PrivatePaykitService {
         return decodedInvoice.paymentHash.hex
     }
 
-    func hasAttemptedOutboundBolt11Payment(paymentHash: String) async -> Bool {
-        await attemptedOutboundBolt11PaymentHashes().contains(paymentHash)
+    /// Whether this wallet already tried to pay `paymentHash`, or nil when Spark could not list its payments.
+    func hasAttemptedOutboundBolt11Payment(paymentHash: String) async -> Bool? {
+        guard let attempted = try? await attemptedOutboundBolt11PaymentHashes() else { return nil }
+        return attempted.contains(paymentHash)
     }
 
     @MainActor
     func walletHasUsableChannels(_ wallet: WalletViewModel) -> Bool {
-        wallet.hasUsableChannels
+        wallet.canReceiveLightning
     }
 
     @MainActor
@@ -112,7 +114,7 @@ extension PrivatePaykitService {
 
     @MainActor
     func createVariableInvoice(_ wallet: WalletViewModel) async throws -> String {
-        try await wallet.createInvoice(amountSats: nil, note: "")
+        try await wallet.createInvoice(amountSats: nil, note: "", isPaykitEndpoint: true)
     }
 
     func settledPrivateInvoicePaymentHashes() async -> [String] {
@@ -127,33 +129,36 @@ extension PrivatePaykitService {
     }
 
     func receivedSettledPaymentHashes() async -> Set<String> {
-        guard let payments = await LightningService.shared.listPayments() else { return [] }
+        let payments = await LightningService.shared.listPayments() ?? []
+        let ldkHashes = payments.compactMap { payment -> String? in
+            guard payment.direction == .inbound,
+                  payment.status == .succeeded,
+                  case .bolt11 = payment.kind
+            else { return nil }
 
-        return Set(
-            payments.compactMap { payment in
-                guard payment.direction == .inbound,
-                      payment.status == .succeeded,
-                      case .bolt11 = payment.kind
-                else { return nil }
-
-                return payment.id
-            }
-        )
+            return payment.id
+        }
+        let railHashes = await ((try? LightningService.shared.channelFreeRailPayments()) ?? [])
+            .filter { $0.direction == .inbound && $0.status == .succeeded }
+            .map(\.paymentHash)
+        return Set(ldkHashes + railHashes)
     }
 
-    func attemptedOutboundBolt11PaymentHashes() async -> Set<String> {
-        guard let payments = await LightningService.shared.listPayments() else { return [] }
+    /// Throws when Spark could not list its payments, so a payment it may have attempted isn't read as never tried.
+    func attemptedOutboundBolt11PaymentHashes() async throws -> Set<String> {
+        let payments = await LightningService.shared.listPayments() ?? []
+        let ldkHashes = payments.compactMap { payment -> String? in
+            guard payment.direction == .outbound,
+                  payment.status != .failed,
+                  case .bolt11 = payment.kind
+            else { return nil }
 
-        return Set(
-            payments.compactMap { payment in
-                guard payment.direction == .outbound,
-                      payment.status != .failed,
-                      case .bolt11 = payment.kind
-                else { return nil }
-
-                return payment.id
-            }
-        )
+            return payment.id
+        }
+        let railHashes = try await LightningService.shared.channelFreeRailPayments()
+            .filter { $0.direction == .outbound && $0.status != .failed }
+            .map(\.paymentHash)
+        return Set(ldkHashes + railHashes)
     }
 
     func localInvoice(for publicKey: String) -> StoredInvoice? {
