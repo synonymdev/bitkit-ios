@@ -68,6 +68,12 @@ struct ChannelFreeRailPayment: Equatable {
     }
 }
 
+/// The rail a Lightning payment attempt went out on.
+enum LightningPaymentRail {
+    case ldk
+    case channelFree
+}
+
 /// The node lifecycle `WalletViewModel` drives, apart from the rest of `LightningService` so its ordering can be tested.
 protocol NodeLifecycleService: AnyObject {
     var hasNode: Bool { get }
@@ -114,6 +120,9 @@ class LightningService: NodeLifecycleService {
     private var storedEventCallback: ((Event) -> Void)?
     /// Rail events that arrived before the node's event callback was set, delivered once it is.
     private var pendingChannelFreeRailEvents: [Event] = []
+    /// The rail each payment hash's latest attempt went out on, so a stale failure from the other rail can't settle a
+    /// retry of the same invoice.
+    private var attemptRails: [String: LightningPaymentRail] = [:]
     weak var channelFreeRail: ChannelFreeLightningRail?
     var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
     var onchainTransactionReceived: (@Sendable (String) async -> Void)?
@@ -391,10 +400,7 @@ class LightningService: NodeLifecycleService {
         self.node = nil
 
         if clearEventCallback {
-            eventCallbackLock.withLock {
-                storedEventCallback = nil
-                pendingChannelFreeRailEvents = []
-            }
+            self.clearEventCallback()
         }
 
         await MainActor.run {
@@ -981,6 +987,7 @@ class LightningService: NodeLifecycleService {
                 }
             }
             try beforeSubmission()
+            noteAttempt(on: .channelFree, bolt11: bolt11)
             return try await rail.send(bolt11: bolt11, sats: sats)
         }
         guard let node else {
@@ -988,6 +995,7 @@ class LightningService: NodeLifecycleService {
         }
 
         Logger.info("Paying bolt11: \(bolt11)")
+        noteAttempt(on: .ldk, bolt11: bolt11)
 
         do {
             return try await Self.submitPayment(beforeSubmission: beforeSubmission) {
@@ -1514,8 +1522,20 @@ extension LightningService {
         pending.forEach(onEvent)
     }
 
+    /// Drops the event callback and the rail events waiting for it.
+    func clearEventCallback() {
+        eventCallbackLock.withLock {
+            storedEventCallback = nil
+            pendingChannelFreeRailEvents = []
+        }
+    }
+
     /// Spark runs before the node starts, so its events wait until the node's event callback is set rather than being lost.
     func emitChannelFreeRailEvent(_ event: Event) {
+        if isStaleFailure(event, from: .channelFree) {
+            Logger.info("Ignored a Spark failure for a payment retried over a channel: \(event)", context: "LightningService")
+            return
+        }
         let callback = eventCallbackLock.withLock {
             if storedEventCallback == nil {
                 pendingChannelFreeRailEvents.append(event)
@@ -1523,6 +1543,32 @@ extension LightningService {
             return storedEventCallback
         }
         callback?(event)
+    }
+
+    func noteAttempt(on rail: LightningPaymentRail, paymentHash: String) {
+        eventCallbackLock.withLock { attemptRails[paymentHash.lowercased()] = rail }
+    }
+
+    private func noteAttempt(on rail: LightningPaymentRail, bolt11: String) {
+        guard let hash = try? Bolt11Invoice.fromStr(invoiceStr: bolt11).paymentHash() else { return }
+        noteAttempt(on: rail, paymentHash: String(hash))
+    }
+
+    /// The rail the latest attempt to pay `paymentHash` went out on, nil when none went out since launch.
+    func attemptRail(paymentHash: String) -> LightningPaymentRail? {
+        eventCallbackLock.withLock { attemptRails[paymentHash.lowercased()] }
+    }
+
+    /// A failure `rail` reports for a payment whose latest attempt went out on the other rail: it ended an earlier
+    /// attempt, so it must not settle the retry.
+    func isStaleFailure(paymentHash: String, from rail: LightningPaymentRail) -> Bool {
+        guard let current = attemptRail(paymentHash: paymentHash) else { return false }
+        return current != rail
+    }
+
+    func isStaleFailure(_ event: Event, from rail: LightningPaymentRail) -> Bool {
+        guard case let .paymentFailed(paymentId, paymentHash, _) = event, let hash = paymentHash ?? paymentId else { return false }
+        return isStaleFailure(paymentHash: hash, from: rail)
     }
 
     /// The rail's Lightning payments, none without a rail; throws when the rail could not list them.
@@ -1566,6 +1612,11 @@ extension LightningService {
 
                 if case .channelReady = event {
                     await refreshChannelCache()
+                }
+
+                if self.isStaleFailure(event, from: .ldk) {
+                    Logger.info("Ignored an LDK failure for a payment retried over Spark: \(event)", context: "LightningService")
+                    continue
                 }
 
                 let onchainActivityCompletion = await deliverEvent(event, onEvent: onEvent)

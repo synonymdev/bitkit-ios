@@ -959,11 +959,20 @@ class ActivityService {
     /// its Paykit contact and seen state across syncs.
     func recordChannelFreeRailPayment(_ payment: PaymentDetails) async throws {
         try await ServiceQueue.background(.core) {
-            try await self.processLightningPayment(payment)
+            try await self.processLightningPayment(payment, rail: .channelFree)
         }
     }
 
-    private func processLightningPayment(_ payment: PaymentDetails) async throws {
+    /// Whether a Lightning activity keeps its status against an update: a settled payment stays settled, and a failure
+    /// from the rail that didn't carry the latest attempt is stale.
+    static func keepsLightningStatus(existing: BitkitCore.PaymentState, update: BitkitCore.PaymentState, isStaleRailFailure: Bool) -> Bool {
+        if existing == .succeeded, update != .succeeded {
+            return true
+        }
+        return update == .failed && existing != .failed && isStaleRailFailure
+    }
+
+    private func processLightningPayment(_ payment: PaymentDetails, rail: LightningPaymentRail = .ldk) async throws {
         guard case let .bolt11(_, preimage, _, description, bolt11) = payment.kind else { return }
 
         // Skip pending inbound payments - just means they created an invoice
@@ -981,6 +990,16 @@ class ActivityService {
         case .failed: .failed
         case .pending: .pending
         case .succeeded: .succeeded
+        }
+
+        if let existing = existingLightning,
+           Self.keepsLightningStatus(
+               existing: existing.status,
+               update: state,
+               isStaleRailFailure: LightningService.shared.isStaleFailure(paymentHash: payment.id, from: rail)
+           )
+        {
+            return
         }
 
         // Skip if existing activity has newer timestamp, unless payment status is changing
