@@ -1,0 +1,1 @@
+Payment requests whose note or payment proof cannot fit one Paykit message now show a clear message before anything is sent or paid, signup links with a refused signup code or a failed connection explain what went wrong, and USDT received before a request was made no longer counts as paying it.

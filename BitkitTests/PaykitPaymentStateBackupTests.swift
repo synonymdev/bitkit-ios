@@ -1202,10 +1202,29 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         XCTAssertEqual(attempt.billingPeriod?.sdkValue.startsAt, "2026-10-01T00:00:00.125Z")
         XCTAssertEqual(receipt.amount.atomic, 50000)
         XCTAssertEqual(receipt.requestId, attempt.requestId)
+        XCTAssertEqual(receipt.beforeRequest, false)
+        XCTAssertTrue(receipt.satisfied)
         let encoded = try JSONEncoder().encode(PaykitUsdtStateBackup(attempts: [.init(attempt)], receipts: [.init(receipt)]))
         let restored = try JSONDecoder().decode(PaykitUsdtStateBackup.self, from: encoded)
         XCTAssertEqual(try restored.attempts.first?.restored(), attempt)
         XCTAssertEqual(try restored.receipts.first?.restored(), receipt)
+    }
+
+    @MainActor
+    func testUsdtReceiptPaidBeforeItsRequestStaysUnsatisfiedAcrossABackup() throws {
+        let requestId = PaykitPaymentRequest.ID(paymentRequestId: "request", counterparty: "pubky" + String(repeating: "y", count: 52))
+        let receipt = PaykitUsdtPaymentService.Receipt(wallet: "wallet", identity: identity, requestId: requestId,
+                                                       paymentId: "payment", proofEventId: "proof", verified: true,
+                                                       transferId: "transfer", amount: PaykitAmount(asset: .usdt, atomic: 50000),
+                                                       receivedAt: Date(timeIntervalSince1970: 1000), underpaid: false, afterExpiry: false,
+                                                       beforeRequest: true)
+        XCTAssertFalse(receipt.satisfied)
+
+        let encoded = try JSONEncoder().encode(PaykitUsdtStateBackup(attempts: [], receipts: [.init(receipt)]))
+        let restored = try XCTUnwrap(JSONDecoder().decode(PaykitUsdtStateBackup.self, from: encoded).receipts.first).restored()
+
+        XCTAssertEqual(restored, receipt)
+        XCTAssertFalse(restored.satisfied)
     }
 
     @MainActor

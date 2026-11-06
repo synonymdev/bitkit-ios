@@ -3174,6 +3174,76 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertFalse(manager.isCreatingRequest)
     }
 
+    func testProposalTooLargeForOneMessageAsksToShortenWhatTheUserWrote() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let publicKey = "pubky\(String(repeating: "y", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: publicKey, state: .linked)],
+            requestCapabilitiesByPublicKey: [publicKey: true]
+        )
+        let tooLarge: PaykitError = .Protocol(
+            code: "message_too_large",
+            context: "Private Application Message (1024 bytes) exceeds pubky-noise message size (1000 bytes)"
+        )
+        await sdk.setProposalError(tooLarge)
+        let manager = paymentRequestManager(sdk: sdk, clock: PaymentRequestTestClock(now))
+        await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
+        let target = try XCTUnwrap(manager.eligibleTargets.first)
+
+        do {
+            _ = try await manager.propose(
+                PaykitPaymentRequestDraft(amount: PaykitAmount(asset: .btc, atomic: 1), note: String(repeating: "💜", count: 256),
+                                          expiresAt: now.addingTimeInterval(60)),
+                to: target
+            )
+            XCTFail("A proposal that does not fit one message must not be created")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .noteTooLong)
+        }
+        do {
+            _ = try await manager.proposeSubscription(
+                PaykitSubscriptionDraft(amount: PaykitAmount(asset: .btc, atomic: 1000), name: "Support", description: "Monthly",
+                                        frequency: .month, expiresAt: now.addingTimeInterval(60), iconData: nil),
+                to: target
+            )
+            XCTFail("A subscription that does not fit one message must not be created")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .subscriptionTooLong)
+        }
+
+        let snapshot = await sdk.snapshot()
+        XCTAssertTrue(snapshot.proposedRequests.isEmpty)
+        XCTAssertTrue(manager.historyRequests.isEmpty)
+        XCTAssertTrue(manager.subscriptions.isEmpty)
+        XCTAssertFalse(manager.isCreatingRequest)
+    }
+
+    func testOtherProposalProtocolErrorsAreNotReportedAsTooLong() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let publicKey = "pubky\(String(repeating: "y", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: publicKey, state: .linked)],
+            requestCapabilitiesByPublicKey: [publicKey: true]
+        )
+        let refusal: PaykitError = .Protocol(code: "protocol_error", context: "Invalid terms")
+        await sdk.setProposalError(refusal)
+        let manager = paymentRequestManager(sdk: sdk, clock: PaymentRequestTestClock(now))
+        await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
+        let target = try XCTUnwrap(manager.eligibleTargets.first)
+
+        do {
+            _ = try await manager.propose(
+                PaykitPaymentRequestDraft(amount: PaykitAmount(asset: .btc, atomic: 1), note: "Coffee", expiresAt: now.addingTimeInterval(60)),
+                to: target
+            )
+            XCTFail("The SDK refusal must reach the caller")
+        } catch {
+            XCTAssertEqual(error as? PaykitError, refusal)
+        }
+    }
+
     func testCreatorPendingProposalCanBeDeletedButFixedEndProposalCannot() throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
         let openEnded = try XCTUnwrap(PaykitSubscription(record: paymentRequestRecord(
@@ -10456,6 +10526,60 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
     }
 
+    func testUsdtTransferMadeBeforeTheRequestWasRecordedDoesNotPayIt() async throws {
+        defer { try? Keychain.delete(key: .paykitUsdtPayments) }
+        let identity = "pubky1rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let contact = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let endpoint = PublicPaykitService.MethodId.usdtArbitrum.rawValue
+        let proof = UsdtPaymentProof(chainId: "42161", transactionHash: "transaction", receiptLogIndex: "0", signature: "signature")
+        let receivedProof = try PaymentProofRecord(
+            eventId: "750e8400-e29b-41d4-a716-446655440000", outboundMessageId: nil, outboundStatus: nil, streamItemId: 2,
+            paymentReference: PaymentReference(text: "invoice-123"), billingPeriod: nil, paymentAppId: "bitkit",
+            paymentEndpointIdentifier: endpoint, allowanceId: nil, conversionQuoteId: nil,
+            proof: PrivateJsonObject(text: String(decoding: JSONEncoder().encode(PaykitUsdtPaymentService.Proof(proof)), as: UTF8.self)),
+            recordedAt: "2027-01-15T08:01:00Z"
+        )
+        let transferredAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let tolerance = PaykitUsdtPaymentService.transferTimeTolerance
+        let cases: [(proposalRecordedAt: String?, isBeforeRequest: Bool)] = [
+            (timestamp(transferredAt.addingTimeInterval(tolerance + 60)), true),
+            (timestamp(transferredAt.addingTimeInterval(tolerance - 60)), false),
+            (timestamp(transferredAt.addingTimeInterval(-60)), false),
+            (nil, false),
+        ]
+        for testCase in cases {
+            try Keychain.delete(key: .paykitUsdtPayments)
+            var received = try paymentRequestRecord(id: "550e8400-e29b-41d4-a716-446655440002", counterparty: contact,
+                                                    state: .proofSubmitted, role: .payee, amount: "0.05", asset: "usdt",
+                                                    endpoints: [endpoint], paymentProofs: [receivedProof])
+            received.proposalRecordedAt = testCase.proposalRecordedAt
+            let service = PaykitUsdtPaymentService()
+            await service.reconcile(
+                context: { ("wallet", identity) },
+                storedTransfer: { id in self.usdtTransfer(id, status: .confirmed) },
+                paymentProof: { _, _ in nil },
+                submitProof: { _ in false },
+                paymentRequests: { [received] },
+                verifyPayment: { _, _ in
+                    UsdtVerifiedPayment(paymentId: "42161:transaction:0", transferId: "transaction:0", sender: contact,
+                                        recipient: "wallet", amount: 50000, timestamp: UInt64(transferredAt.timeIntervalSince1970))
+                }
+            )
+
+            let receipt = try XCTUnwrap(service.receipts.first, "\(testCase)")
+            XCTAssertEqual(receipt.beforeRequest, testCase.isBeforeRequest, "\(testCase)")
+            XCTAssertEqual(receipt.satisfied, !testCase.isBeforeRequest, "\(testCase)")
+            XCTAssertEqual(try service.satisfiedProofs(identity: identity).isEmpty, testCase.isBeforeRequest, "\(testCase)")
+            let request = try XCTUnwrap(PaykitPaymentRequest(historyRecord: received, now: transferredAt))
+            let status = PaymentRequestDisplay.status(for: request, isActionable: false, receipt: receipt)
+            XCTAssertEqual(
+                status.hasPrefix(t(testCase.isBeforeRequest ? "wallet__payment_request_before_request" : "wallet__payment_request_payment_verified")),
+                true,
+                "\(testCase): \(status)"
+            )
+        }
+    }
+
     func testUsdtProofCancellationStopsLaterAttemptsAndReceiptVerification() async throws {
         defer { try? Keychain.delete(key: .paykitUsdtPayments) }
         let identity = "pubky1rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
@@ -10675,6 +10799,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     private var failingCapabilityKeys: Set<String> = []
     private var capabilityLookupPriorities: [PaykitPublicReadPriority] = []
     private var proposalResult: PaymentRequestRecord?
+    private var proposalError: Error?
     private var uploadCount = 0
     private var shouldPauseNextUpload = false
     private var isUploadPaused = false
@@ -10950,6 +11075,9 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         guard PubkyPublicKeyFormat.matches(activeIdentity, expectedIdentity) else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
+        if let proposalError {
+            throw proposalError
+        }
         guard var result = proposalResult else {
             throw PaymentRequestSdkMockError.requestMissing
         }
@@ -11190,6 +11318,10 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
 
     func setProposalResult(_ record: PaymentRequestRecord) {
         proposalResult = record
+    }
+
+    func setProposalError(_ error: Error?) {
+        proposalError = error
     }
 
     func setProcessReports(_ reports: [OutboundPrivateCounterpartySendReport]) {

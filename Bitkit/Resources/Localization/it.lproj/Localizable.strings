@@ -697,6 +697,8 @@
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Crea una nuova identità Pubky su questo homeserver. Continua solo se ti fidi.";
 "pubky_auth__approval_failed" = "Autorizzazione Non Riuscita";
+"pubky_auth__identity_unavailable_desc" = "Controlla la connessione e riprova.";
+"profile__auth_error_signup_code_rejected" = "L'homeserver non ha accettato questo codice di registrazione. Riprova o usa un altro link di registrazione.";
 "wallet__onchain_abandon_transfer_note" = "I trasferimenti al saldo di spesa non sono più disponibili. Bitkit controlla prima la rete, poi rimanda le monete di questo trasferimento al tuo wallet, così il trasferimento originale non potrà mai essere confermato. Questo costa una commissione di rete.";
 "watch_only_accounts__active_section" = "Account attivi";
 "watch_only_accounts__copy_xpub" = "Copia xpub";
@@ -1423,6 +1425,7 @@
 "wallet__payment_received" = "Bitcoin ricevuti";
 "wallet__payment_request" = "Richiesta di pagamento";
 "wallet__payment_request_unavailable" = "La richiesta di pagamento non è più disponibile.";
+"wallet__payment_request_note_too_long" = "Accorcia la nota e riprova.";
 "wallet__payment_request_expired" = "La richiesta di pagamento è scaduta.";
 "wallet__payment_request_waiting_for_details" = "I dati di pagamento sono ancora in fase di recupero. Riprova a breve.";
 "wallet__payment_request_in_progress" = "La richiesta di pagamento è già in elaborazione.";
@@ -1759,6 +1762,7 @@
 "wallet__payment_request_payment_verified" = "Pagamento verificato";
 "wallet__payment_request_underpaid" = "Ricevuto · Insufficiente";
 "wallet__payment_request_after_expiry" = "Ricevuto · Dopo la scadenza";
+"wallet__payment_request_before_request" = "Ricevuto · Prima della richiesta";
 "pubky_auth__usdt_intro_description" = "Per guadagnare, devi condividere con Paykit il tuo indirizzo USDT. Può vedere l'attività di vendita, ma non può spendere fondi.";
 "pubky_auth__usdt_intro_optional" = "Puoi condividere con Paykit il tuo indirizzo USDT per ricevere i guadagni. Può vedere l'attività di vendita, ma non può spendere fondi.";
 "pubky_auth__usdt_unavailable" = "Il tuo indirizzo USDT non è disponibile. Riprova.";

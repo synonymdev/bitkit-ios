@@ -136,6 +136,33 @@ final class PaykitRequestPricingTests: XCTestCase {
         XCTAssertThrowsError(try PaykitUsdtPaymentService.validateProofSize(binding: oversized))
     }
 
+    @MainActor
+    func testUsdtProofSizeIsMeasuredExactlyWithTheLongestValidProof() throws {
+        let placeholder = try PaykitPaymentProofSize.placeholderProof(for: .usdt)
+        let proof = try JSONDecoder().decode(PaykitUsdtPaymentService.Proof.self, from: Data(placeholder.utf8))
+        XCTAssertEqual(proof.type, PaykitPaymentProofKind.usdt.rawValue)
+        XCTAssertEqual(proof.receiptLogIndex.count, 78)
+
+        var binding = UsdtPaymentProofBinding(payer: String(repeating: "y", count: 52), payee: String(repeating: "y", count: 52),
+                                              paymentAppId: "bitkit", paymentRequestId: UUID().uuidString.lowercased(),
+                                              paymentReference: "a", paymentEndpointIdentifier: "usdt-arbitrum-address",
+                                              periodStartsAt: "", periodEndsAt: "", conversionQuoteId: "")
+        let baseLength = try Paykit.paymentProofEventLen(
+            localAppId: "bitkit",
+            paymentReference: PaymentReference(text: "a"),
+            submission: PaymentProofSubmission(billingPeriod: nil, paymentAppId: "bitkit",
+                                               paymentEndpointIdentifier: "usdt-arbitrum-address", allowanceId: nil,
+                                               conversionQuoteId: nil, proof: PrivateJsonObject(text: placeholder))
+        )
+        let fillingBytes = PaykitSdkService.maximumMessageBytes - (Int(baseLength) - 1)
+        binding.paymentReference = String(repeating: "💜", count: fillingBytes / 4) + String(repeating: "a", count: fillingBytes % 4)
+        XCTAssertNoThrow(try PaykitUsdtPaymentService.validateProofSize(binding: binding))
+        binding.paymentReference += "a"
+        XCTAssertThrowsError(try PaykitUsdtPaymentService.validateProofSize(binding: binding)) {
+            XCTAssertEqual($0 as? PaykitPaymentRequestError, .requestUnavailable)
+        }
+    }
+
     func testRecurringPaymentsKeepTheirChosenQuoteAndInclusiveDeadline() throws {
         let period = PaykitBillingPeriod(startsAt: now, endsAt: now.addingTimeInterval(86400))
         let first = PaymentConversionQuoteRecord(eventId: "first", billingPeriod: period.sdkValue,
