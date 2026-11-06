@@ -10541,11 +10541,20 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
         let transferredAt = Date(timeIntervalSince1970: 1_800_000_000)
         let tolerance = PaykitUsdtPaymentService.transferTimeTolerance
+        // The SDK writes RFC 3339 with an offset and up to nine fraction digits.
+        func sdkTimestamp(_ date: Date) -> String {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime]
+            return formatter.string(from: date).replacingOccurrences(of: "Z", with: ".123456789+00:00")
+        }
         let cases: [(proposalRecordedAt: String?, isBeforeRequest: Bool)] = [
             (timestamp(transferredAt.addingTimeInterval(tolerance + 60)), true),
+            (sdkTimestamp(transferredAt.addingTimeInterval(tolerance + 60)), true),
             (timestamp(transferredAt.addingTimeInterval(tolerance - 60)), false),
+            (sdkTimestamp(transferredAt.addingTimeInterval(tolerance - 60)), false),
             (timestamp(transferredAt.addingTimeInterval(-60)), false),
             (nil, false),
+            ("not a time", false),
         ]
         for testCase in cases {
             try Keychain.delete(key: .paykitUsdtPayments)
@@ -10577,6 +10586,15 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 true,
                 "\(testCase): \(status)"
             )
+            if testCase.isBeforeRequest {
+                let alsoLate = PaykitUsdtPaymentService.Receipt(
+                    wallet: receipt.wallet, identity: receipt.identity, requestId: receipt.requestId, paymentId: receipt.paymentId,
+                    proofEventId: receipt.proofEventId, verified: true, transferId: receipt.transferId, amount: receipt.amount,
+                    receivedAt: receipt.receivedAt, underpaid: true, afterExpiry: true, beforeRequest: true
+                )
+                XCTAssertTrue(PaymentRequestDisplay.status(for: request, isActionable: false, receipt: alsoLate)
+                    .hasPrefix(t("wallet__payment_request_before_request")))
+            }
         }
     }
 

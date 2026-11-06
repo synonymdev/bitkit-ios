@@ -19,9 +19,6 @@ enum PaykitPaymentProofKind: String, Codable {
 /// Checks that the Payment Proof Event Message a payment would send fits one Paykit message, so a request whose proof
 /// could never be delivered is refused before anything is paid.
 enum PaykitPaymentProofSize {
-    /// The App ID Bitkit's SDK sends from, which the SDK writes as the message's outer `app_id`.
-    static let localAppId = "bitkit"
-
     /// The largest log index an ERC-20 receipt can carry, the 78-digit maximum of a uint256.
     static let longestUsdtLogIndex = "115792089237316195423570985008687907853269984665640564039457584007913129639935"
 
@@ -33,7 +30,7 @@ enum PaykitPaymentProofSize {
         case .usdt:
             [
                 "type": kind.rawValue,
-                "chain_id": "42161",
+                "chain_id": PaykitUsdt.chainId,
                 "transaction_hash": "0x" + String(repeating: "0", count: 64),
                 "receipt_log_index": longestUsdtLogIndex,
                 "signature": "0x" + String(repeating: "0", count: 130),
@@ -54,7 +51,7 @@ enum PaykitPaymentProofSize {
         let length: UInt32
         do {
             length = try Paykit.paymentProofEventLen(
-                localAppId: localAppId,
+                localAppId: PaykitSdkService.appId,
                 paymentReference: Paykit.PaymentReference(text: paymentReference),
                 submission: Paykit.PaymentProofSubmission(
                     billingPeriod: billingPeriod,

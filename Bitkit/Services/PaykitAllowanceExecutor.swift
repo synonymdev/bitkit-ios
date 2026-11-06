@@ -1061,7 +1061,7 @@ actor PaykitAllowanceExecutor {
                 kind: .lightning
             )
         } catch {
-            Logger.info("An incoming request's payment proof would not fit one message; it stays on the manual flow", context: "PaykitAllowance")
+            Logger.info("An incoming request's payment proof cannot be sent in one message; it stays on the manual flow", context: "PaykitAllowance")
             return .manual
         }
         // The SDK requires this app to hold the shared execution claim before it queues an automatic Acceptance.

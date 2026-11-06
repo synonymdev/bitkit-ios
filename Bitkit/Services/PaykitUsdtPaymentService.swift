@@ -68,7 +68,7 @@ final class PaykitUsdtPaymentService {
         }
     }
 
-    /// Arbitrum block timestamps may lag real time by up to a day, which also covers this device's clock skew.
+    /// Arbitrum's sequencer may set a block timestamp up to a day behind real time.
     static let transferTimeTolerance: TimeInterval = 24 * 60 * 60
 
     /// A transfer is checked against the time this wallet stored its proposal, not the payer's own times.

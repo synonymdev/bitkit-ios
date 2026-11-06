@@ -1585,6 +1585,26 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         }
     }
 
+    func testPreparationMeasuresTheAllowanceIdTheProofWillCarry() async throws {
+        let endpoint = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
+        let reference = try paymentReference(fillingProofOf: .lightning, endpoint: endpoint, extraBytes: 0)
+        let record = try paymentRequestRecord(endpoints: [endpoint], paymentReference: reference)
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let store = PaymentProofMemoryStore()
+        let service = paymentProofService(sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store)
+
+        do {
+            try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .lightning,
+                                      allowanceId: "30000000-0000-4000-8000-000000000000")
+            XCTFail("The Allowance ID makes this proof too long for one message")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
+
+        let prepared = await store.snapshot()
+        XCTAssertTrue(prepared.isEmpty)
+    }
+
     func testMismatchedLightningPreimageIsNotSubmitted() async throws {
         let record = try paymentRequestRecord()
         let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))

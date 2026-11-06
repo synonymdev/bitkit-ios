@@ -1225,6 +1225,13 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
 
         XCTAssertEqual(restored, receipt)
         XCTAssertFalse(restored.satisfied)
+
+        var stored = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(receipt)) as? [String: Any])
+        stored.removeValue(forKey: "beforeRequest")
+        let earlierReceipt = try JSONDecoder().decode(PaykitUsdtPaymentService.Receipt.self,
+                                                      from: JSONSerialization.data(withJSONObject: stored))
+        XCTAssertNil(earlierReceipt.beforeRequest)
+        XCTAssertTrue(earlierReceipt.satisfied, "A receipt saved before the flag existed keeps counting as paid")
     }
 
     @MainActor
