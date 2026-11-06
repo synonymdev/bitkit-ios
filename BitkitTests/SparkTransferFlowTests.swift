@@ -72,6 +72,18 @@ final class SparkTransferFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testListedDepositWhoseEarlyClaimKeepsWaitingIsNotUnseen() async {
+        let flow = pollingFlow(
+            offers: [choice(earlyFee: 900), choice(earlyFee: 900), choice(earlyFee: 900)],
+            claims: [.waiting, .waiting, .waiting],
+            pollAttempts: 3
+        )
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+        XCTAssertEqual(flow.claimState, .unavailable)
+    }
+
+    @MainActor
     func testDepositListedThenGoneWasAdded() async {
         let flow = pollingFlow(offers: [choice(earlyFee: 900), nil], claims: [.waiting])
         flow.onBroadcast(txid: "txid")
@@ -144,7 +156,7 @@ final class SparkTransferFlowTests: XCTestCase {
 
     /// A flow whose poll answers with `offers` in turn (nil once they run out) and whose claims answer with `claims`.
     @MainActor
-    private func pollingFlow(offers: [SparkClaimOffer.Kind?], claims: [SparkEarlyClaim] = []) -> SparkTransferFlow {
+    private func pollingFlow(offers: [SparkClaimOffer.Kind?], claims: [SparkEarlyClaim] = [], pollAttempts: Int? = nil) -> SparkTransferFlow {
         var offers = offers
         var claims = claims
         let operations = SparkClaimOperations(
@@ -156,7 +168,7 @@ final class SparkTransferFlowTests: XCTestCase {
             refresh: {},
             sleep: { _ in }
         )
-        return SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: offers.count + 1)
+        return SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: pollAttempts ?? offers.count + 1)
     }
 
     func testQuoteTiles() {

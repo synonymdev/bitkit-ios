@@ -344,6 +344,12 @@ final class SparkTransferFlow {
             await operations.sleep(Self.pollInterval)
         }
         guard !Task.isCancelled else { return }
+        // A deposit Spark listed whose early claim never came is waiting for its confirmations, not unseen.
+        guard offers[txid] == nil else {
+            Logger.info("No early claim for Spark deposit \(txid) within the polling window", context: "SparkTransferFlow")
+            setClaimState(.unavailable, for: txid)
+            return
+        }
         Logger.warn("Spark did not list deposit \(txid) in time", context: "SparkTransferFlow")
         setClaimState(.notSeen, for: txid)
     }
