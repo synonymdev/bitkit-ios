@@ -111,6 +111,26 @@ final class SparkManager: ChannelFreeLightningRail {
     /// Connects the Spark SDK alone for a background exit run, never the node: no refresh, no activity sync and no
     /// Lightning rail. Returns nil when it does not connect within `timeout`; the connect keeps going, and a later
     /// `start` picks it up.
+    /// `operation`'s result, or nil once `timeout` passes first. Returns at the timeout without waiting for `operation`,
+    /// which a task group would do; the operation carries on, unstructured, and its late result is dropped.
+    nonisolated static func firstOf<T: Sendable>(timeout: TimeInterval, _ operation: @escaping @Sendable () async -> T) async -> T? {
+        await withCheckedContinuation { continuation in
+            let resumed = SparkFirstResume()
+            Task {
+                let value = await operation()
+                if resumed.claim() {
+                    continuation.resume(returning: value)
+                }
+            }
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(max(0, timeout) * 1_000_000_000))
+                if resumed.claim() {
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
+    }
+
     func connectForExit(walletIndex: Int, timeout: TimeInterval) async -> SparkExitRecovering? {
         guard let network = Self.sparkNetwork else { return nil }
         if sdk == nil {
@@ -120,17 +140,8 @@ final class SparkManager: ChannelFreeLightningRail {
                 connectTask = Task { try await connect(walletIndex: walletIndex, network: network, generation: generation) }
             }
             let connecting = connectTask
-            // nil while still connecting at the timeout.
-            let didConnect: Bool? = await withTaskGroup(of: Bool?.self) { group in
-                group.addTask { await (try? connecting?.value) != nil }
-                group.addTask {
-                    try? await Task.sleep(nanoseconds: UInt64(max(0, timeout) * 1_000_000_000))
-                    return nil
-                }
-                let first = await group.next() ?? nil
-                group.cancelAll()
-                return first
-            }
+            // nil while still connecting at the timeout; the connect itself keeps running for `start`.
+            let didConnect: Bool? = await Self.firstOf(timeout: timeout) { await (try? connecting?.value) != nil }
             // A finished connect is forgotten, so a failed one is tried again; one still running is kept for `start`.
             if didConnect != nil {
                 connectTask = nil
@@ -1115,5 +1126,18 @@ private final class SparkEventListener: BreezSdkSpark.EventListener, @unchecked 
 
     func onEvent(event: SdkEvent) async {
         await handler(event)
+    }
+}
+
+/// Lets the first of two racing tasks resume a continuation, once.
+private final class SparkFirstResume: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isClaimed = false
+
+    func claim() -> Bool {
+        lock.withLock {
+            defer { isClaimed = true }
+            return !isClaimed
+        }
     }
 }

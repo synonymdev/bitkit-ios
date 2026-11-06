@@ -356,9 +356,15 @@ struct SparkExitLeftoverStatus: View {
         SparkExitFundingKey.path(index: record.fundingIndex, network: Env.bitkitCoreNetwork)
     }
 
-    /// One line with the total of every UTXO at the funding address, never one per UTXO.
+    /// One line with the total of every UTXO at the funding address, never one per UTXO, after what earlier sweeps sent.
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            ForEach(record.sweptLeftover ?? [], id: \.txid) { swept in
+                BodySText(t("lightning__spark_exit__leftover_swept", variables: ["amount": currency.primaryAmountText(sats: swept.valueSats)]))
+                BodySText(t("lightning__spark_exit__leftover_txid", variables: ["txid": swept.txid]))
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+            }
             switch record.leftoverLine {
             case let .sending(sats, txid):
                 BodySText(t("lightning__spark_exit__leftover_sending", variables: ["amount": currency.primaryAmountText(sats: sats)]))

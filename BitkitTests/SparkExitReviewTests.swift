@@ -266,4 +266,112 @@ final class SparkExitReviewTests: XCTestCase {
         let files = try FileManager.default.contentsOfDirectory(atPath: dir.path)
         XCTAssertTrue(files.contains { $0.contains("unreadable") }, "the original is kept aside")
     }
+
+    // MARK: Bot review threads
+
+    /// The background connect's timeout returns on time, without waiting for the connect it gives up on.
+    func testTheConnectTimeoutReturnsWithoutWaitingForTheConnect() async {
+        let started = Date()
+        let result: Bool? = await SparkManager.firstOf(timeout: 0.02) {
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            return true
+        }
+        XCTAssertNil(result)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 0.3)
+        let quick: Bool? = await SparkManager.firstOf(timeout: 5) { true }
+        XCTAssertEqual(quick, true)
+    }
+
+    /// A tick that built or published meanwhile leaves nothing cancel can act on: the reloaded record is revalidated.
+    func testCancelRevalidatesARecordATickBuiltMeanwhile() {
+        var record = SparkExitFixtures.record()
+        XCTAssertTrue(SparkExitManager.canCancel(record, fundingSeenSats: 0))
+        record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 20000)
+        record.adopt(SparkExitFixtures.recovery([SparkExitFixtures.tx("n1")]))
+        XCTAssertFalse(SparkExitManager.canCancel(record, fundingSeenSats: 0))
+    }
+
+    /// A sweep that confirms while it left outputs out (too small, or unconfirmed when built) keeps following them.
+    func testAConfirmedPartialSweepKeepsFollowingWhatItLeftOut() async throws {
+        var record = SparkExitFixtures.record(phase: .done)
+        record.leftover = [.init(txid: "c1", vout: 0, valueSats: 5000), .init(txid: "c2", vout: 0, valueSats: 300)]
+        record.leftoverSweep = .init(txid: "s1", txHex: "02", valueSats: 4700, isAccepted: true, feeRateSatPerVbyte: 2, sentAtHeight: 1000)
+        chain.confirmedTxids = ["s1"]
+        chain.utxosByAddress["bcrt1qfunding"] = [SparkExitFixtures.utxo("c2", value: 300)]
+
+        record = try await driver(withSdk: false).tick(record)
+
+        XCTAssertEqual(record.sweptLeftover, [.init(txid: "s1", valueSats: 4700)])
+        XCTAssertEqual(record.leftover, [.init(txid: "c2", vout: 0, valueSats: 300)])
+        XCTAssertEqual(record.leftoverSweep?.isWaitingForFees, true)
+        XCTAssertTrue(record.isLeftoverSweepPending)
+        XCTAssertEqual(record.leftoverLine, .waiting(sats: 300))
+    }
+
+    /// A first build holding only cooperative leaves the operators could not co-sign enters the bounded retry.
+    func testAFirstBuildOfOnlyFailedCooperativeLeavesWaitsForTheOperators() async throws {
+        let failure = CooperativeRecoveryFailure(leafId: "coop-1", outputTxid: "w", outputVout: 0, error: .operatorsUnavailable(message: "down"))
+        var prepared = SparkExitFixtures.prepared(funding: nil, leaves: [])
+        prepared.leaves = [RecoverFundsLeaf(leafId: "coop-1", valueSats: 5000, method: .cooperative)]
+        sdk.preparedResponse = prepared
+        sdk.builds = [SparkExitFixtures.recovery([], failed: [failure]), SparkExitFixtures.recovery([], failed: [failure])]
+        var record = SparkExitFixtures.record(phase: .awaitingFunding(requiredSats: 0))
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.phase, .running)
+        XCTAssertEqual(record.recovery?.response.failed.count, 1)
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.failedLeafRetrySince, 1000)
+        XCTAssertTrue(record.isWaitingForOperators)
+        XCTAssertTrue(sdk.checkedRecoveries.isEmpty, "nothing to check on-chain")
+
+        chain.tip = 1000 + SparkExitDriver.releaseBlocks
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.phase, .done)
+        XCTAssertEqual(record.isFailedLeavesReleased, true)
+    }
+
+    /// Pricing a higher fee leaves behind a leaf the SDK refuses at that rate, on a copy only, and prices the rest.
+    func testFeeBumpPricingDropsALeafTheSdkRefusesAtTheHigherRate() async throws {
+        var record = bumpedRecord()
+        record.phase = .running
+        record.exitStateSnapshot = nil
+        record = SparkExitRecord(
+            network: record.network, createdAt: record.createdAt, phase: .running, feeRateSatPerVbyte: 2,
+            destination: record.destination, leafIds: ["leaf-1", "small"], funding: record.funding,
+            transferId: record.transferId, expectedSats: record.expectedSats
+        )
+        sdk.prepareErrors = [SdkError.SparkError("Leaf small cannot be exited: its refund cannot pay its own fee")]
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n2b")])]
+
+        let shortfall = try await driver().feeBumpShortfall(record, rate: 12)
+
+        XCTAssertEqual(shortfall, 0)
+        XCTAssertEqual(sdk.prepareRequests.last?.selection, .specific(leafIds: ["leaf-1"]))
+        XCTAssertNil(record.leftBehindLeaves, "the live exit keeps its leaves")
+    }
+
+    /// Reminder ids are scoped per exit, so a later exit's `failed` is never taken for an earlier exit's.
+    func testReminderIdsAreScopedPerExit() {
+        let reminder = SparkExitReminder(id: "failed", fireAt: clock, isFailed: true)
+        let first = SparkExitFixtures.record()
+        let second = SparkExitRecord(
+            network: "regtest", createdAt: first.createdAt.addingTimeInterval(86400), phase: .done, feeRateSatPerVbyte: 2,
+            destination: "bcrt1qdestination", leafIds: ["leaf-2"], funding: first.funding, transferId: nil, expectedSats: 0
+        )
+        XCTAssertNotEqual(SparkExitManager.notificationId(reminder, record: first), SparkExitManager.notificationId(reminder, record: second))
+        XCTAssertTrue(SparkExitManager.notificationId(reminder, record: first).hasPrefix("spark-exit-"))
+    }
+
+    /// Salvage keeps the funding strategy and what earlier generations paid to savings.
+    func testSalvageKeepsTheFundingStrategyAndEarlierReceived() throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 20000)
+        record.fundingStrategy = SparkExitRecord.perNodeStrategy
+        record.earlierReceivedSats = ["sweep-1": 40000]
+        let salvaged = try XCTUnwrap(SparkExitRecordCoder.salvage(SparkExitRecordCoder.encode(record)))
+        XCTAssertEqual(salvaged.fundingStrategy, SparkExitRecord.perNodeStrategy)
+        XCTAssertEqual(salvaged.earlierReceivedSats, ["sweep-1": 40000])
+    }
 }

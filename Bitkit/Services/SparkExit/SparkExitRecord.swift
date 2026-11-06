@@ -79,6 +79,12 @@ struct SparkExitRecord: Codable, Equatable {
         var valueSats: UInt64
     }
 
+    /// A leftover sweep that confirmed: what it sent to savings.
+    struct SweptLeftover: Codable, Equatable {
+        let txid: String
+        let valueSats: UInt64
+    }
+
     struct Leftover: Codable, Equatable {
         let txid: String
         let vout: UInt32
@@ -187,6 +193,8 @@ struct SparkExitRecord: Codable, Equatable {
     var fundingPaymentMissingSince: UInt32?
     /// The user cancelled after funding reached the address: the exit ends and the funding goes back to savings.
     var isCancelled: Bool?
+    /// Leftover sweeps that confirmed before outputs they left out were followed again: what each sent to savings.
+    var sweptLeftover: [SweptLeftover]?
     /// What reaches savings: the exited value less the fees paid out of it.
     let expectedSats: UInt64
     var claimableAtHeight: UInt32?
@@ -637,6 +645,8 @@ enum SparkExitRecordCoder {
         record.lostLeaves = kept.lostLeaves
         record.leftBehindLeaves = kept.leftBehindLeaves
         record.exitStateSnapshot = kept.exitStateSnapshot
+        record.fundingStrategy = kept.fundingStrategy
+        record.earlierReceivedSats = kept.earlierReceivedSats
         // Change and fan-out outputs of earlier generations at the funding address stay the exit's own, not new funding.
         let chained = (kept.earlierCpfpTxids ?? []) + (kept.recovery.map { SparkExitTxid.chainedTxids($0.response) } ?? [])
         record.earlierCpfpTxids = chained.isEmpty ? nil : chained
@@ -660,10 +670,12 @@ enum SparkExitRecordCoder {
         let exitStateSnapshot: String?
         let earlierCpfpTxids: [String]?
         let recovery: StoredRecovery?
+        let fundingStrategy: String?
+        let earlierReceivedSats: [String: UInt64]?
 
         private enum CodingKeys: String, CodingKey {
             case network, createdAt, phase, feeRateSatPerVbyte, destination, leafIds, leafTotalSats, funding, transferId, expectedSats
-            case lostLeaves, leftBehindLeaves, exitStateSnapshot, earlierCpfpTxids, recovery
+            case lostLeaves, leftBehindLeaves, exitStateSnapshot, earlierCpfpTxids, recovery, fundingStrategy, earlierReceivedSats
         }
 
         init(from decoder: Decoder) throws {
@@ -683,6 +695,8 @@ enum SparkExitRecordCoder {
             exitStateSnapshot = try? c.decodeIfPresent(String.self, forKey: .exitStateSnapshot)
             earlierCpfpTxids = try? c.decodeIfPresent([String].self, forKey: .earlierCpfpTxids)
             recovery = try? c.decodeIfPresent(StoredRecovery.self, forKey: .recovery)
+            fundingStrategy = try? c.decodeIfPresent(String.self, forKey: .fundingStrategy)
+            earlierReceivedSats = try? c.decodeIfPresent([String: UInt64].self, forKey: .earlierReceivedSats)
         }
     }
 }

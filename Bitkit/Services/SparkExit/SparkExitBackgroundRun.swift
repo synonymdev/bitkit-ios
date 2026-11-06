@@ -60,8 +60,14 @@ struct SparkExitBackgroundRun {
         var recovering = connected
         if recovering == nil {
             let keylessStarted = now()
-            if let ticked = try? await makeDriver(chain, nil).tick(record) {
-                record = ticked
+            do {
+                record = try await makeDriver(chain, nil).tick(record)
+            } catch {
+                Logger.warn("Spark exit keyless pass failed: \(error)", context: "SparkExitBackgroundRun")
+                // The pass saved along the way: go on from the record on disk, never from the copy it started with.
+                if let stored = try? load() {
+                    record = stored
+                }
             }
             timings.add(.keyless, now().timeIntervalSince(keylessStarted))
 
@@ -79,6 +85,9 @@ struct SparkExitBackgroundRun {
                 record = try await makeDriver(chain, TimedSparkExitRecovering(base: recovering, timings: timings)).tick(record)
             } catch {
                 Logger.error("Spark exit background tick failed: \(error)", context: "SparkExitBackgroundRun")
+                if let stored = try? load() {
+                    record = stored
+                }
             }
         }
         outcome.record = record

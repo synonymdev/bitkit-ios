@@ -901,9 +901,10 @@ final class SparkExitDriverTests: XCTestCase {
 
         let record = try await driver().tick(SparkExitFixtures.record(phase: .awaitingFunding(requiredSats: 0)))
 
-        XCTAssertEqual(record.phase, .awaitingFunding(requiredSats: 0))
+        // Kept as the exit's recovery, so the next check puts the leaf through the bounded failed-leaf retry.
+        XCTAssertEqual(record.phase, .running)
         XCTAssertEqual(record.failedLeafCount, 1)
-        XCTAssertNil(record.recovery)
+        XCTAssertEqual(record.recovery?.response.failed.map(\.leafId), ["leaf-1"])
     }
 
     func testRebuildWithNothingLeftEndsTheExit() async throws {
@@ -1757,6 +1758,19 @@ final class SparkExitBackgroundRunTests: XCTestCase {
         record.adopt(recovery)
         try store.save(record)
         return recovery
+    }
+
+    /// A tick that saved progress and then threw (a Redo saves the rebuild flag, then the rebuild's prepare fails): the
+    /// run hands back the record on disk, never the copy it started with.
+    func testAFailedTickHandsBackTheRecordItSaved() async throws {
+        let recovery = try savedRunningExit([SparkExitFixtures.tx("n1", cpfp: "03c", status: .waitingForDependencies)])
+        sdk.checks = [CheckRecoverFundsResponse(recovery: recovery, verdict: .redo(reason: .onChainStateDiverged))]
+        sdk.prepareErrors = [SdkError.Generic("operators unreachable")]
+
+        let outcome = await backgroundRun().run()
+
+        XCTAssertEqual(outcome.record?.isRebuilding, true)
+        XCTAssertEqual(try store.load()?.isRebuilding, true)
     }
 
     func testColdStartSendsStoredStepsThenChecksWithTheSdkOnly() async throws {

@@ -211,8 +211,18 @@ final class SparkExitManager {
 
     /// Reads the funding address first: a payment that arrived since the last tick is never orphaned. With funding there
     /// the record stays, ends as cancelled and its leftover sweep returns the funding to savings.
+    /// Holds the same lock as the driver's ticks and the background run for the whole cancel, and decides on the record
+    /// as stored now: one a tick funded, built or published meanwhile is never cancelled.
     @discardableResult
     func cancel() async -> CancelOutcome {
+        while isTicking {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        isTicking = true
+        defer { isTicking = false }
+        if let stored = try? Self.loadRecord(store: store, lostLeafStore: lostLeafStore) {
+            record = stored
+        }
         guard canCancel, var record, let address = record.funding.first?.address else { return .keep }
         let utxos = try? await chain?.utxos(address: address)
         let outcome = Self.cancelOutcome(utxos: utxos)
@@ -221,9 +231,6 @@ final class SparkExitManager {
             Logger.warn("Spark exit not cancelled: its funding address could not be read", context: "SparkExitManager")
             return outcome
         case let .sweepFunding(leftover):
-            while isTicking {
-                try? await Task.sleep(nanoseconds: 100_000_000)
-            }
             record.phase = .failed(reason: SparkExitRecord.cancelledReason)
             record.isCancelled = true
             record.isResultSeen = true
@@ -240,6 +247,7 @@ final class SparkExitManager {
             }
             await reattachSpark()
             Logger.info("Cancelled the Spark exit after funding arrived; sweeping it back to savings", context: "SparkExitManager")
+            // After the lock is released by this function's return.
             Task { await tick() }
             return outcome
         case .forget:
@@ -772,7 +780,7 @@ final class SparkExitManager {
         var kept: [String: TimeInterval] = [:]
         var requests: [UNNotificationRequest] = []
         for reminder in planned {
-            let id = "\(Self.notificationPrefix)-\(reminder.id)"
+            let id = Self.notificationId(reminder, record: record)
             // A reminder that fired is not posted again. One still ahead keeps its earliest date, so runs that do not
             // publish its step never push it out.
             let rememberedAt = remembered[id].map(Date.init(timeIntervalSince1970:))
@@ -819,6 +827,12 @@ final class SparkExitManager {
             }
         }
         return result
+    }
+
+    /// A reminder's notification id, scoped to its exit (its creation time), so a later exit's `failed`, `lost-1` or
+    /// `1-rebuild` is never taken for one an earlier exit already fired.
+    nonisolated static func notificationId(_ reminder: SparkExitReminder, record: SparkExitRecord) -> String {
+        "\(notificationPrefix)-\(Int64(record.createdAt.timeIntervalSince1970 * 1000))-\(reminder.id)"
     }
 
     private nonisolated static func rememberedReminders() -> [String: TimeInterval] {

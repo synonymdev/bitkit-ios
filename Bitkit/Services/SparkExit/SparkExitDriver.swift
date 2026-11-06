@@ -253,9 +253,10 @@ struct SparkExitDriver {
             return
         }
         guard !built.transactions.isEmpty else {
-            // Cooperative leaves the operators could not co-sign now are tried again on the next tick.
+            // Only cooperative leaves the operators could not co-sign: kept as the exit's recovery, so the next check
+            // puts them through the bounded failed-leaf retry (about a week), with the operators-waiting line.
             if !built.failed.isEmpty {
-                record.failedLeafCount = built.failed.count
+                record.adopt(built, at: now())
                 return
             }
             await finish(&record, phase: .failed(reason: "Nothing to recover"))
@@ -404,6 +405,15 @@ struct SparkExitDriver {
             record.phase = .awaitingFunding(requiredSats: 0)
             return
         }
+        // Nothing to check on-chain: only cooperative leaves the operators have not co-signed yet.
+        if stored.transactions.isEmpty, !stored.failed.isEmpty {
+            let tip = try? await chain.tipHeight()
+            if try await retryFailedLeaves(&record, failed: stored.failed, recovering: recovering, tip: tip) {
+                return
+            }
+            await finish(&record, phase: .done)
+            return
+        }
         let checked = try await recovering.check(withConfirmations(stored))
         record.recovery = StoredRecovery(checked.recovery)
         record.noteProgressAfterRebuildFromChain(checked.recovery)
@@ -511,16 +521,24 @@ struct SparkExitDriver {
     /// nothing; a shortfall is sized like a rebuild's (`neededFunding`), the input fee of the payment to come included.
     func feeBumpShortfall(_ record: SparkExitRecord, rate: UInt64) async throws -> UInt64 {
         guard let recovering else { throw SparkExitFeeBumpError.notConnected }
+        // A copy at the new rate: a leaf the SDK refuses at that rate is left behind on the copy only, as a rebuild would.
         var record = record
+        record.feeRateSatPerVbyte = rate
         await useExitStateSnapshot(&record, recovering: recovering)
-        let prepared = try await recovering.prepare(record.prepareRequest(.specific(leafIds: record.exitLeafIds), feeRate: rate))
-        guard prepared.funding != nil, !prepared.leaves.isEmpty else { return 0 }
+        guard let prepared = try await prepare(&record, recovering: recovering), prepared.funding != nil, !prepared.leaves.isEmpty else { return 0 }
         do {
             _ = try await recovering.recover(
                 RecoverFundsRequest(prepared: prepared, fundingInputs: record.fundingInputs),
                 signer: makeSigner(record.fundingIndex)
             )
             return 0
+        } catch let SdkError.SparkError(message) where SparkExitMath.isUnexitableLeafError(message) {
+            // The build refused a leaf the prepare kept: priced again without it.
+            guard let leafId = SparkExitMath.unexitableLeafId(message), record.exitLeafIds.contains(leafId) else {
+                throw SdkError.SparkError(message)
+            }
+            leaveBehind([leafId], reason: message, in: &record)
+            return try await feeBumpShortfall(record, rate: rate)
         } catch let SdkError.InsufficientCpfpFunds(requiredSats, _) {
             var atRate = record
             atRate.feeRateSatPerVbyte = rate
@@ -660,6 +678,7 @@ struct SparkExitDriver {
         for txid in record.leftoverSweep?.replacedTxids ?? [] where record.leftoverSweep?.isConfirmed != true {
             if let status = try? await chain.txStatus(txid: txid), status.confirmed {
                 record.leftoverSweep?.isConfirmed = true
+                await followRemainingOutputs(&record)
                 return
             }
         }
@@ -724,6 +743,7 @@ struct SparkExitDriver {
         else { return }
         if sweep.isAccepted, let status = try? await chain.txStatus(txid: txid), status.confirmed {
             record.leftoverSweep?.isConfirmed = true
+            await followRemainingOutputs(&record)
             return
         }
         // Built but never accepted for `sweepRecheckBlocks`: its coins may have changed, so it is built again from what
@@ -801,6 +821,23 @@ struct SparkExitDriver {
         }
     }
 
+    /// After a sweep confirms, reads the funding address again: outputs the sweep left out (too small for their fee,
+    /// or unconfirmed when it was built) start a new wait of their own, so they are swept once worth it or kept with
+    /// their path after `sweepWaitBlocks`. What the confirmed sweeps sent is kept for the result.
+    private func followRemainingOutputs(_ record: inout SparkExitRecord) async {
+        guard let sweep = record.leftoverSweep, let txid = sweep.txid, let address = record.funding.first?.address,
+              let tip = try? await chain.tipHeight(), let listed = try? await chain.utxos(address: address)
+        else { return }
+        // A host behind the block can still list what the sweep spent.
+        let spent = Set((sweep.txHex.flatMap(SparkExitTxid.inputOutpoints(hex:)) ?? []).map { "\($0.txid):\($0.vout)" })
+        let utxos = listed.filter { !spent.contains("\($0.txid):\($0.vout)") }
+        guard !utxos.isEmpty else { return }
+        Logger.info("Spark exit sweep \(txid) left \(utxos.count) outputs at the funding address; following them", context: "SparkExitDriver")
+        record.sweptLeftover = (record.sweptLeftover ?? []) + [.init(txid: txid, valueSats: sweep.valueSats)]
+        record.leftover = utxos.map { SparkExitRecord.Leftover(txid: $0.txid, vout: $0.vout, valueSats: $0.value) }
+        record.leftoverSweep = SparkExitRecord.LeftoverSweep(waitingSince: tip, checkedAtHeight: tip)
+    }
+
     private func isAnyKnown(_ txids: [String]) async -> Bool {
         for txid in txids {
             let isKnown = try? await chain.isKnown(txid: txid)
@@ -863,6 +900,7 @@ struct SparkExitDriver {
             let since = waiting?.waitingSince ?? tip
             if tip.saturatingSub(since) < Self.sweepRecheckBlocks {
                 record.leftoverSweep = SparkExitRecord.LeftoverSweep(
+                    replacedTxids: waiting?.replacedTxids,
                     waitingSince: since,
                     checkedAtHeight: tip,
                     refusedFeeRate: waiting?.refusedFeeRate,
@@ -889,6 +927,7 @@ struct SparkExitDriver {
                 txHex: built.txHex,
                 valueSats: built.valueSats,
                 feeRateSatPerVbyte: rate,
+                replacedTxids: waiting?.replacedTxids,
                 waitingSince: waiting?.waitingSince,
                 builtAtHeight: tip
             )
@@ -897,6 +936,7 @@ struct SparkExitDriver {
             Logger.info("Spark exit waits for lower fees to send its fee change (\(rate) sat/vB)", context: "SparkExitDriver")
             record.leftoverSweep = SparkExitRecord.LeftoverSweep(
                 feeRateSatPerVbyte: rate,
+                replacedTxids: waiting?.replacedTxids,
                 waitingSince: since,
                 checkedAtHeight: tip,
                 refusedFeeRate: waiting?.refusedFeeRate
@@ -1121,6 +1161,14 @@ enum SparkExitTxid {
         cpfpChildTxids(recovery) + recovery.transactions.filter { $0.kind == .fanOut }.map(\.txid)
     }
 
+    /// The outpoints a serialized transaction spends; nil when the hex does not decode.
+    static func inputOutpoints(hex: String) -> [(txid: String, vout: UInt32)]? {
+        let bytes = hex.hexaBytes
+        guard hex.count == bytes.count * 2 else { return nil }
+        var reader = Reader(bytes: bytes)
+        return reader.inputs()?.inputs.map { ($0.txid, $0.vout) }
+    }
+
     /// The txids a serialized transaction spends; nil when the hex does not decode.
     static func inputTxids(hex: String) -> [String]? {
         let bytes = hex.hexaBytes
@@ -1191,19 +1239,19 @@ enum SparkExitTxid {
             return (Int(value), [first] + rest)
         }
 
-        mutating func inputs() -> (version: Int32, inputs: [(txid: String, sequence: UInt32)])? {
+        mutating func inputs() -> (version: Int32, inputs: [(txid: String, vout: UInt32, sequence: UInt32)])? {
             guard let versionBytes = take(4) else { return nil }
             let version = Int32(bitPattern: littleEndian(versionBytes))
             if bytes.count > 5, bytes[4] == 0, bytes[5] == 1 {
                 position += 2
             }
             guard let count = varInt() else { return nil }
-            var inputs: [(txid: String, sequence: UInt32)] = []
+            var inputs: [(txid: String, vout: UInt32, sequence: UInt32)] = []
             for _ in 0 ..< count.value {
-                guard let txid = take(32), take(4) != nil, let script = varInt(), take(script.value) != nil, let sequence = take(4) else {
+                guard let txid = take(32), let vout = take(4), let script = varInt(), take(script.value) != nil, let sequence = take(4) else {
                     return nil
                 }
-                inputs.append((Data(txid.reversed()).hex, littleEndian(sequence)))
+                inputs.append((Data(txid.reversed()).hex, littleEndian(vout), littleEndian(sequence)))
             }
             return (version, inputs)
         }
