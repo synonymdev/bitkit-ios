@@ -384,7 +384,12 @@ final class SparkManager: ChannelFreeLightningRail {
 
     /// Errors before `sendPayment` are `ChannelFreeRailSendRefused`, since nothing left the wallet; a failure inside it
     /// stays uncertain, as the payment may have been dispatched.
-    nonisolated func send(bolt11: String, sats: UInt64?) async throws -> PaymentHash {
+    nonisolated func send(
+        bolt11: String,
+        sats: UInt64?,
+        maxFeeSats: UInt64?,
+        beforeSubmission: @escaping () throws -> Void
+    ) async throws -> PaymentHash {
         let prepared: PrepareSendPaymentResponse
         let sdk: BreezSdk
         do {
@@ -408,6 +413,10 @@ final class SparkManager: ChannelFreeLightningRail {
             Logger.info("Spark balance can't cover \(amountSats) sats plus its quoted fee of \(feeSats) sats", context: "SparkManager")
             throw ChannelFreeRailSendRefused(reason: t("other__pay_insufficient_spending_description"))
         }
+        // The fee limit is checked on the quote that is sent, not only on the earlier estimate.
+        try Self.checkSendFee(feeSats, maxFeeSats: maxFeeSats)
+        // A deadline that passed while the quote was prepared stops the payment here, before anything leaves.
+        try beforeSubmission()
         let response: SendPaymentResponse
         do {
             response = try await sdk.sendPayment(request: SendPaymentRequest(
@@ -420,6 +429,12 @@ final class SparkManager: ChannelFreeLightningRail {
         }
         Logger.info("Sent Spark payment '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
         return invoiceDetails.paymentHash
+    }
+
+    nonisolated static func checkSendFee(_ feeSats: UInt64, maxFeeSats: UInt64?) throws {
+        guard let maxFeeSats, feeSats > maxFeeSats else { return }
+        Logger.info("Spark fee of \(feeSats) sats exceeds the limit of \(maxFeeSats) sats", context: "SparkManager")
+        throw ChannelFreeRailSendRefused(reason: t("wallet__max_possible_fee_rate"))
     }
 
     /// Whether the balance covers the amount and the fee `prepareSendPayment` quoted, the real sendable check behind
