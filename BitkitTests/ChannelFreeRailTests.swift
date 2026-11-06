@@ -263,6 +263,34 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(QuickPaySpendStore.ledgerMatch(record: record, rows: [ldkFailed, sparkPaid])?.status, .succeeded)
     }
 
+    func testAmountlessPaykitEndpointGoesToSparkBelowAMillionInbound() {
+        XCTAssertTrue(Bitkit.LightningService.receivesOnRail(amountSats: nil, readyInboundSats: 50000, isPaykitEndpoint: true))
+        XCTAssertTrue(Bitkit.LightningService.receivesOnRail(amountSats: nil, readyInboundSats: 999_999, isPaykitEndpoint: true))
+        XCTAssertFalse(Bitkit.LightningService.receivesOnRail(amountSats: nil, readyInboundSats: 1_000_000, isPaykitEndpoint: true))
+        XCTAssertTrue(Bitkit.LightningService.receivesOnRail(amountSats: nil, readyInboundSats: nil, isPaykitEndpoint: true))
+    }
+
+    func testPlainReceiveKeepsTheChannelWhileItHasInbound() {
+        XCTAssertFalse(Bitkit.LightningService.receivesOnRail(amountSats: nil, readyInboundSats: 50000, isPaykitEndpoint: false))
+        XCTAssertTrue(Bitkit.LightningService.receivesOnRail(amountSats: nil, readyInboundSats: 0, isPaykitEndpoint: false))
+        XCTAssertTrue(Bitkit.LightningService.receivesOnRail(amountSats: nil, readyInboundSats: nil, isPaykitEndpoint: false))
+        XCTAssertFalse(Bitkit.LightningService.receivesOnRail(amountSats: 40000, readyInboundSats: 50000, isPaykitEndpoint: false))
+        XCTAssertTrue(Bitkit.LightningService.receivesOnRail(amountSats: 60000, readyInboundSats: 50000, isPaykitEndpoint: true))
+    }
+
+    func testAllowanceAutoPayGoesOverSparkWhenTheNodeCantPay() throws {
+        let small = try PaykitAllowanceFixtures.paymentRequest(id: "550e8400-e29b-41d4-a716-446655440011", amount: "0.00001")
+        let large = try PaykitAllowanceFixtures.paymentRequest(id: "550e8400-e29b-41d4-a716-446655440012", amount: "0.001")
+
+        let nodeCanPay = PaykitAllowanceManager.payable([small, large], nodeCanPay: true, sparkSendableSats: nil)
+        let sparkOnly = PaykitAllowanceManager.payable([small, large], nodeCanPay: false, sparkSendableSats: 5000)
+        let neither = PaykitAllowanceManager.payable([small, large], nodeCanPay: false, sparkSendableSats: nil)
+
+        XCTAssertEqual(nodeCanPay.map(\.id), [small.id, large.id])
+        XCTAssertEqual(sparkOnly.map(\.id), [small.id], "Spark pays what it covers; the rest waits")
+        XCTAssertTrue(neither.isEmpty)
+    }
+
     func testSparkReadyTriggersOnceUntilItDropsAgain() {
         var transition = SparkReadinessTransition()
         XCTAssertFalse(transition.becameReady(false))

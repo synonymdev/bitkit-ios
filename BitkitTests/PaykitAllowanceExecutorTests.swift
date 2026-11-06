@@ -138,7 +138,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
             sdk: harness.sdk,
             executor: harness.executor,
             now: { PaykitAllowanceFixtures.now },
-            canPayNow: { true }
+            payableNow: { $0 }
         )
         await manager.activate(identity: Fixtures.identityKey)
         let request = try Fixtures.paymentRequest()
@@ -166,7 +166,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
             sdk: harness.sdk,
             executor: harness.executor,
             now: { PaykitAllowanceFixtures.now },
-            canPayNow: { true }
+            payableNow: { $0 }
         )
         await manager.activate(identity: Fixtures.identityKey)
         await harness.sdk.setBeforeAcceptance { await MainActor.run { manager.pause(identity: Fixtures.identityKey) } }
@@ -186,7 +186,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
             sdk: harness.sdk,
             executor: harness.executor,
             now: { PaykitAllowanceFixtures.now },
-            canPayNow: { ready }
+            payableNow: { ready ? $0 : [] }
         )
         await manager.activate(identity: Fixtures.identityKey)
         let request = try Fixtures.paymentRequest()
@@ -214,7 +214,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
             sdk: harness.sdk,
             executor: harness.executor,
             now: { PaykitAllowanceFixtures.now },
-            canPayNow: { true }
+            payableNow: { $0 }
         )
         await manager.activate(identity: Fixtures.identityKey)
         let covered = try Fixtures.paymentRequest()
@@ -240,7 +240,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
             sdk: harness.sdk,
             executor: harness.executor,
             now: { PaykitAllowanceFixtures.now },
-            canPayNow: { false }
+            payableNow: { _ in [] }
         )
         await manager.activate(identity: Fixtures.identityKey)
         let aboveLimit = try Fixtures.paymentRequest(amount: "0.0001")
@@ -295,7 +295,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
             sdk: harness.sdk,
             executor: harness.executor,
             now: { PaykitAllowanceFixtures.now },
-            canPayNow: { true }
+            payableNow: { $0 }
         )
         await manager.activate(identity: Fixtures.identityKey)
         let request = try Fixtures.paymentRequest()
@@ -512,7 +512,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
             sdk: harness.sdk,
             executor: harness.executor,
             now: { PaykitAllowanceFixtures.now },
-            canPayNow: { true }
+            payableNow: { $0 }
         )
         await manager.activate(identity: Fixtures.identityKey)
         let pauseWithoutPayerAllowance = manager.automaticPaymentPause
@@ -538,7 +538,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
             sdk: harness.sdk,
             executor: harness.executor,
             now: { PaykitAllowanceFixtures.now },
-            canPayNow: { true }
+            payableNow: { $0 }
         )
         await manager.activate(identity: Fixtures.identityKey)
         let pauseShown = manager.automaticPaymentPause
@@ -565,7 +565,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
             sdk: harness.sdk,
             executor: harness.executor,
             now: { PaykitAllowanceFixtures.now },
-            canPayNow: { true }
+            payableNow: { $0 }
         )
         await manager.activate(identity: Fixtures.identityKey)
         await harness.sdk.setAccountingError(AllowanceMockError.unsupported)
@@ -591,7 +591,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
             sdk: harness.sdk,
             executor: harness.executor,
             now: { PaykitAllowanceFixtures.now },
-            canPayNow: { true }
+            payableNow: { $0 }
         )
 
         await manager.activate(identity: Fixtures.identityKey)
@@ -2530,7 +2530,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
             allowedPaymentEndpointIdentifiers: nil
         )
         await harness.sdk.setRecords([Fixtures.record(state: .proposed, terms: uncapped, proposedByMe: false)])
-        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now }, canPayNow: { true })
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now }, payableNow: { $0 })
         await manager.activate(identity: Fixtures.identityKey)
 
         XCTAssertEqual(manager.entries, [])
@@ -2542,7 +2542,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     func testManagerLeavesARequestWithUnknownCreationTimeManual() async throws {
         let harness = AllowanceHarness()
         try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
-        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now }, canPayNow: { true })
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now }, payableNow: { $0 })
         await manager.activate(identity: Fixtures.identityKey)
         let request = try Fixtures.paymentRequest(createdAt: "not-a-timestamp")
         XCTAssertNil(request.createdAt)
