@@ -1120,7 +1120,8 @@
 "contacts__add_error_self" = "Non puoi aggiungere il tuo pubky come contatto.";
 "contacts__add_retrieving" = "Recupero informazioni\ndel contatto";
 "contacts__add_error" = "Impossibile aggiungere il contatto";
-"contacts__add_disclaimer" = "Tieni presente che tu e {name} dovete aggiungervi a vicenda come contatti per pagarvi in modo privato. Altrimenti, il pagamento sarà visibile pubblicamente.";
+"contacts__add_disclaimer" = "Tieni presente che tu e {name} dovete aggiungervi a vicenda come contatti prima di potervi pagare in modo privato. Se paghi senza salvare il contatto, il pagamento è visibile pubblicamente.";
+"contacts__pay_private_link_pending" = "Bitkit sta ancora configurando una connessione privata con questo contatto. Assicurati che anche questo contatto ti abbia aggiunto, oppure chiedi al contatto di inviarti una richiesta di pagamento.";
 "contacts__import_nav_title" = "Importa";
 "contacts__import_found_title" = "Trovati\n<accent>profilo e contatti</accent>";
 "contacts__import_found_description" = "Bitkit ha trovato dati di profilo e contatti collegati al pubky <accent>{key}</accent>";
@@ -1884,6 +1885,7 @@
 "subscriptions__allowances" = "Plafond";
 "subscriptions__allowances_empty_headline" = "Imposta\n<accent>i plafond</accent>";
 "subscriptions__allowances_paused_description" = "I dati dei tuoi budget sono più vecchi di quelli che questo wallet ha già usato. Le richieste chiederanno la tua approvazione finché non riprendi.";
+"subscriptions__allowances_paused_restore_description" = "Questo wallet è stato ripristinato da un backup. Le richieste chiederanno la tua approvazione finché non riprendi.";
 "subscriptions__allowances_paused_resume" = "Riprendi";
 "subscriptions__allowances_paused_title" = "Pagamenti automatici in pausa";
 "subscriptions__allowances_empty_description" = "Puoi impostare limiti di spesa per pagare automaticamente le richieste di pagamento dei contatti fidati.";

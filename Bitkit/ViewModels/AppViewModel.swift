@@ -455,8 +455,10 @@ class AppViewModel: ObservableObject {
         )
     }
 
+    /// A scanned amount below the on-chain minimum cannot be paid, and Amount does not open to change it.
     private func validateIncomingOnchainPaymentRequestAmount(_ amount: UInt64) -> Bool {
-        guard contactPaymentContext?.incomingPaymentRequest != nil, amount < Env.dustLimit else { return true }
+        let isPaymentRequest = contactPaymentContext?.incomingPaymentRequest != nil
+        guard amount < Env.dustLimit, isPaymentRequest || amount > 0 else { return true }
         didRejectScannedPayment = true
         toast(
             type: .error,
@@ -465,7 +467,7 @@ class AppViewModel: ObservableObject {
                 "wallet__lnurl_pay__error_min__description",
                 variables: ["amount": CurrencyFormatter.formatSats(UInt64(Env.dustLimit))]
             ),
-            accessibilityIdentifier: "PaymentRequestAmountTooLowToast"
+            accessibilityIdentifier: isPaymentRequest ? "PaymentRequestAmountTooLowToast" : "AmountTooLowToast"
         )
         return false
     }

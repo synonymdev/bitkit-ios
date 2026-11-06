@@ -1144,7 +1144,8 @@
 "contacts__add_error_self" = "U kunt uw eigen pubky niet als contact toevoegen.";
 "contacts__add_retrieving" = "Contactgegevens\nophalen";
 "contacts__add_error" = "Contact toevoegen mislukt";
-"contacts__add_disclaimer" = "Let op: u en {name} moeten elkaar als contact toevoegen om elkaar privé te kunnen betalen. Anders is de betaling openbaar zichtbaar.";
+"contacts__add_disclaimer" = "Let op: u en {name} moeten elkaar als contact toevoegen voordat u elkaar privé kunt betalen. Als u betaalt zonder het contact op te slaan, is de betaling openbaar zichtbaar.";
+"contacts__pay_private_link_pending" = "Bitkit zet nog een privéverbinding op met dit contact. Zorg dat dit contact jou ook heeft toegevoegd, of vraag het om je een betaalverzoek te sturen.";
 "contacts__import_nav_title" = "Importeren";
 "contacts__import_found_title" = "Gevonden:\n<accent>profiel & contacten</accent>";
 "contacts__import_found_description" = "Bitkit heeft profiel- en contactgegevens gevonden die gekoppeld zijn aan pubky <accent>{key}</accent>";
@@ -1919,6 +1920,7 @@
 "subscriptions__allowances" = "Toelagen";
 "subscriptions__allowances_empty_headline" = "Stel\n<accent>toelagen</accent> in";
 "subscriptions__allowances_paused_description" = "Je toelagengegevens zijn ouder dan gegevens die deze wallet al heeft gebruikt. Verzoeken vragen om je goedkeuring tot je hervat.";
+"subscriptions__allowances_paused_restore_description" = "Deze wallet is hersteld vanuit een backup. Verzoeken vragen om je goedkeuring tot je hervat.";
 "subscriptions__allowances_paused_resume" = "Hervatten";
 "subscriptions__allowances_paused_title" = "Automatische betalingen gepauzeerd";
 "subscriptions__allowances_empty_description" = "U kunt bestedingslimieten instellen om betaalverzoeken van vertrouwde contacten automatisch te voldoen.";

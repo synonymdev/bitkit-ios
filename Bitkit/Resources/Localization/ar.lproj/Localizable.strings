@@ -948,7 +948,8 @@
 "contacts__add_error_self" = "لا يمكنك إضافة pubky الخاص بك كجهة اتصال.";
 "contacts__add_retrieving" = "جارٍ جلب\nمعلومات جهة الاتصال";
 "contacts__add_error" = "فشلت إضافة جهة الاتصال";
-"contacts__add_disclaimer" = "يرجى ملاحظة أنه يجب عليك وعلى {name} إضافة بعضكما كجهتي اتصال للدفع لبعضكما بشكل خاص. وإلا ستكون الدفعة مرئية للعامة.";
+"contacts__add_disclaimer" = "يرجى ملاحظة أنه يجب عليك وعلى {name} إضافة بعضكما كجهتي اتصال قبل أن تتمكنا من الدفع لبعضكما بشكل خاص. إذا دفعت دون حفظ جهة الاتصال، تكون الدفعة مرئية للعامة.";
+"contacts__pay_private_link_pending" = "لا يزال Bitkit يُعدّ اتصالًا خاصًا مع جهة الاتصال هذه. تأكد من أنها أضافتك أيضًا كجهة اتصال، أو اطلب منها أن ترسل إليك طلب دفع.";
 "contacts__import_nav_title" = "استيراد";
 "contacts__import_found_title" = "تم العثور على\n<accent>ملف شخصي وجهات اتصال</accent>";
 "contacts__import_found_description" = "عثر Bitkit على بيانات ملف شخصي وجهات اتصال مرتبطة بـ pubky <accent>{key}</accent>";
@@ -1591,6 +1592,7 @@
 "subscriptions__allowances" = "المخصصات";
 "subscriptions__allowances_empty_headline" = "أعدّ\n<accent>المخصصات</accent>";
 "subscriptions__allowances_paused_description" = "سجلات الميزانيات لديك أقدم من سجلات استخدمتها هذه المحفظة من قبل. ستطلب الطلبات موافقتك حتى تستأنف.";
+"subscriptions__allowances_paused_restore_description" = "تمت استعادة هذه المحفظة من نسخة احتياطية. ستطلب الطلبات موافقتك حتى تستأنف.";
 "subscriptions__allowances_paused_resume" = "استئناف";
 "subscriptions__allowances_paused_title" = "تم إيقاف الدفعات التلقائية مؤقتًا";
 "subscriptions__allowances_empty_description" = "يمكنك تعيين حدود إنفاق لتلبية طلبات الدفع من جهات الاتصال الموثوقة تلقائيًا.";

@@ -208,21 +208,43 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 window.isHidden = true
                 window.rootViewController = nil
             }
-            try await waitUntil {
+            func waitForStage(_ stage: String, condition: @MainActor () async -> Bool) async throws {
+                do {
+                    try await waitUntil(condition: condition)
+                } catch {
+                    let diagnostics = """
+                    stage=\(stage), authorized=\(authorized)
+                    quoteCount=\(quoteCount), authorizationCount=\(authorizationCount), sendCount=\(sendCount)
+                    path=\(navigation.path), authorizationVisible=\(navigation.authorizationVisible)
+                    isSendPresented=\(manager.isSendPresented), resumedCancellation=\(resumedAuthorizationWasCancelled)
+                    windowKey=\(window.isKeyWindow), windowHidden=\(window.isHidden)
+                    rootAttached=\(window.rootViewController?.view.window === window)
+                    navigationControllers=\(initialPaymentNavigation(window)?.viewControllers.map { String(describing: type(of: $0)) } ?? [])
+                    """
+                    let attachment = XCTAttachment(string: diagnostics)
+                    attachment.name = "initial-usdt-authorization-\(authorized)-\(stage)"
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                    throw NSError(domain: "InitialUsdtAuthorizationNavigation", code: 1, userInfo: [
+                        NSLocalizedDescriptionKey: "\(stage) (authorized=\(authorized)) failed: \(error)",
+                    ])
+                }
+            }
+            try await waitForStage("authorization-visible") {
                 navigation.authorizationVisible && !manager.isSendPresented
             }
             XCTAssertEqual(quoteCount, 1)
             XCTAssertEqual(authorizationCount, 1)
             XCTAssertEqual(sendCount, 0)
             navigation.path.removeAll()
-            try await waitUntil { !navigation.authorizationVisible && manager.isSendPresented }
+            try await waitForStage("send-visible-after-return") { !navigation.authorizationVisible && manager.isSendPresented }
             let continuation = try XCTUnwrap(authorization)
             authorization = nil
             continuation.resume(returning: authorized)
-            try await waitUntil { !resumedAuthorizationWasCancelled.isEmpty }
+            try await waitForStage("authorization-resumed") { !resumedAuthorizationWasCancelled.isEmpty }
             XCTAssertEqual(resumedAuthorizationWasCancelled, [false])
             if authorized {
-                try await waitUntil { sendCount == 1 }
+                try await waitForStage("single-send") { sendCount == 1 }
             }
             let settings = SettingsViewModel.shared
             settings.usdtPreference = .disabled

@@ -701,14 +701,10 @@ class BackupService {
             try await performRestore(category: .wallet, retainedData: retainedWalletBackup) { dataBytes in
                 try walletRestoreGate.retain(dataBytes)
                 let payload = try JSONDecoder().decode(WalletBackupV1.self, from: dataBytes)
-                if let paymentState = payload.paykitPaymentState {
+                try await Self.restorePaykitPaymentState(from: payload) { paymentState, hasLedger in
                     // VssBackupClient's existing custom backup namespace is explicitly wallet index 0.
                     let backupWallet = try await PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet.backupNamespace(index: 0)
-                    try await PaykitPaymentProofService.shared.restoreBackup(
-                        paymentState,
-                        wallet: backupWallet,
-                        hasLedger: payload.paykitSdkBackupState != nil
-                    )
+                    try await PaykitPaymentProofService.shared.restoreBackup(paymentState, wallet: backupWallet, hasLedger: hasLedger)
                 }
                 try TransferStorage.shared.upsertList(payload.transfers)
                 await PrivatePaykitAddressReservationStore.shared.restoreBackup(
@@ -1460,6 +1456,19 @@ class BackupService {
             return
         }
         markRestoreComplete(category: category)
+    }
+
+    /// A backup can predate payments made since, so restoring a wallet payload pauses automatic payments before any Paykit
+    /// state comes back, also for a payload without payment state, until the user resumes them. The pause is kept per
+    /// device, so it applies even when no allowance this wallet pays through existed at the restore.
+    static func restorePaykitPaymentState(
+        from payload: WalletBackupV1,
+        allowanceStore: any PaykitAllowanceStoring = PaykitAllowanceKeychainStore(),
+        restore: (_ paymentState: PaykitPaymentStateBackup, _ hasLedger: Bool) async throws -> Void
+    ) async throws {
+        try allowanceStore.setPausedAfterRestore(true)
+        guard let paymentState = payload.paykitPaymentState else { return }
+        try await restore(paymentState, payload.paykitSdkBackupState != nil)
     }
 
     func markRestoreComplete(category: BackupCategory) {

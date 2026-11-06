@@ -17,7 +17,7 @@ on:
       simulator_os:
         description: "iOS Simulator OS version"
         required: false
-        default: "26.2"
+        default: "26.5"
 
 env:
   TERM: xterm-256color
@@ -49,7 +49,7 @@ jobs:
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "26.2"
+          xcode-version: "26.6"
 
       - name: Install xcbeautify
         run: |
