@@ -819,12 +819,26 @@ class LightningService: NodeLifecycleService {
         }
     }
 
-    func receive(amountSats: UInt64? = nil, description: String, expirySecs: UInt32 = 3600) async throws -> String {
-        try await receiveMsats(amountMsats: amountSats.map { $0 * 1000 }, description: description, expirySecs: expirySecs)
+    /// `isPaykitEndpoint` marks the amountless invoice published as a Paykit Lightning endpoint, which contacts pay any
+    /// amount: it goes to the channel-free rail unless the channels' inbound covers `paykitEndpointNodeInboundSats`.
+    func receive(amountSats: UInt64? = nil, description: String, expirySecs: UInt32 = 3600, isPaykitEndpoint: Bool = false) async throws -> String {
+        try await receiveMsats(
+            amountMsats: amountSats.map { $0 * 1000 },
+            description: description,
+            expirySecs: expirySecs,
+            isPaykitEndpoint: isPaykitEndpoint
+        )
     }
 
-    func receiveMsats(amountMsats: UInt64? = nil, description: String, expirySecs: UInt32 = 3600) async throws -> String {
-        if let rail = channelFreeRail, await shouldReceiveWithRail(rail, amountSats: amountMsats.map { $0 / 1000 }) {
+    func receiveMsats(
+        amountMsats: UInt64? = nil,
+        description: String,
+        expirySecs: UInt32 = 3600,
+        isPaykitEndpoint: Bool = false
+    ) async throws -> String {
+        if let rail = channelFreeRail,
+           await shouldReceiveWithRail(rail, amountSats: amountMsats.map { $0 / 1000 }, isPaykitEndpoint: isPaykitEndpoint)
+        {
             let amountSats = amountMsats.map { $0 / 1000 }.flatMap { $0 > 0 ? $0 : nil }
             return try await rail.receive(amountSats: amountSats, description: description, expirySecs: expirySecs)
         }
@@ -856,12 +870,25 @@ class LightningService: NodeLifecycleService {
 
     /// Receives on the channel-free rail when no ready channel has the inbound capacity for the amount.
     @MainActor
-    private func shouldReceiveWithRail(_ rail: ChannelFreeLightningRail, amountSats: UInt64?) -> Bool {
+    private func shouldReceiveWithRail(_ rail: ChannelFreeLightningRail, amountSats: UInt64?, isPaykitEndpoint: Bool) -> Bool {
         guard rail.isReady else { return false }
         let readyChannels = (channels ?? []).filter(\.isChannelReady)
-        guard !readyChannels.isEmpty else { return true }
-        let inboundSats = readyChannels.map(\.inboundCapacityMsat).reduce(0, +) / 1000
-        guard let amountSats, amountSats > 0 else { return inboundSats == 0 }
+        let inboundSats: UInt64? = readyChannels.isEmpty ? nil : readyChannels.map(\.inboundCapacityMsat).reduce(0, +) / 1000
+        return Self.receivesOnRail(amountSats: amountSats, readyInboundSats: inboundSats, isPaykitEndpoint: isPaykitEndpoint)
+    }
+
+    /// Below this channel inbound, a contact's amountless Paykit invoice goes to the channel-free rail, so a small
+    /// channel can't cap what contacts can pay.
+    static let paykitEndpointNodeInboundSats: UInt64 = 1_000_000
+
+    /// Whether a ready channel-free rail takes an invoice, given the ready channels' total inbound (nil without any).
+    /// An amount the channels can't receive goes to the rail; an amountless invoice does only when no channel can
+    /// receive at all, except a Paykit endpoint, which does below `paykitEndpointNodeInboundSats`.
+    static func receivesOnRail(amountSats: UInt64?, readyInboundSats: UInt64?, isPaykitEndpoint: Bool) -> Bool {
+        guard let inboundSats = readyInboundSats else { return true }
+        guard let amountSats, amountSats > 0 else {
+            return isPaykitEndpoint ? inboundSats < paykitEndpointNodeInboundSats : inboundSats == 0
+        }
         return amountSats > inboundSats
     }
 
