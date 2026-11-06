@@ -45,7 +45,7 @@ final class ChannelFreeRailTests: XCTestCase {
         XCTAssertEqual(preimage, "cc")
     }
 
-    func testPrivatePaykitSeesRailReceivesAndSends() async {
+    func testPrivatePaykitSeesRailReceivesAndSends() async throws {
         rail.payments = [
             Bitkit.ChannelFreeRailPayment(paymentHash: "in", direction: .inbound, status: .succeeded, preimage: nil),
             Bitkit.ChannelFreeRailPayment(paymentHash: "out", direction: .outbound, status: .pending, preimage: nil),
@@ -53,7 +53,7 @@ final class ChannelFreeRailTests: XCTestCase {
         ]
 
         let received = await PrivatePaykitService.shared.receivedSettledPaymentHashes()
-        let attempted = await PrivatePaykitService.shared.attemptedOutboundBolt11PaymentHashes()
+        let attempted = try await PrivatePaykitService.shared.attemptedOutboundBolt11PaymentHashes()
 
         XCTAssertTrue(received.contains("in"))
         XCTAssertEqual(attempted.intersection(["out", "failed"]), ["out"])
@@ -137,6 +137,46 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(Bitkit.ChannelFreeRailFees.sendableSats(balanceSats: 100_000), 99750)
     }
 
+    func testDuplicatePaymentCheckFailsClosedWhenTheRailCannotListItsPayments() async {
+        rail.listError = NSError(domain: "spark", code: 1)
+
+        let attempted = await PrivatePaykitService.shared.hasAttemptedOutboundBolt11Payment(paymentHash: "out")
+        let proof = await PaykitLightningPaymentProofLookup.railStatus(paymentHash: "out")
+
+        XCTAssertNil(attempted, "An unknown attempt must not read as never paid")
+        guard case .unavailable = proof else { return XCTFail("Expected an unavailable proof, got \(proof)") }
+    }
+
+    func testDuplicatePaymentCheckSeesARailAttempt() async {
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: "out", direction: .outbound, status: .pending, preimage: nil)]
+
+        let attempted = await PrivatePaykitService.shared.hasAttemptedOutboundBolt11Payment(paymentHash: "out")
+        let fresh = await PrivatePaykitService.shared.hasAttemptedOutboundBolt11Payment(paymentHash: "new")
+
+        XCTAssertEqual(attempted, true)
+        XCTAssertEqual(fresh, false)
+    }
+
+    func testRetriedInvoiceSettlesFromItsLiveAttempt() {
+        let failed = Bitkit.ChannelFreeRailPayment(paymentHash: "aa", direction: .outbound, status: .failed, preimage: nil, timestamp: 20)
+        let retry = Bitkit.ChannelFreeRailPayment(
+            paymentHash: "AA", direction: .outbound, status: .succeeded, preimage: "pp", timestamp: 10, feeSats: 3
+        )
+        let received = Bitkit.ChannelFreeRailPayment(paymentHash: "aa", direction: .inbound, status: .pending, preimage: nil, timestamp: 30)
+
+        let latest = Bitkit.ChannelFreeRailPayment.latestOutboundAttempt([failed, retry, received], paymentHash: "aa")
+
+        XCTAssertEqual(latest, retry)
+        XCTAssertEqual(Bitkit.ChannelFreeRailPayment.latestOutboundAttempt([failed], paymentHash: "aa"), failed)
+    }
+
+    func testSendableSatsDoesNotOverflowOnAHugeBalance() {
+        let sendable = Bitkit.ChannelFreeRailFees.sendableSats(balanceSats: UInt64.max)
+
+        XCTAssertLessThan(sendable, UInt64.max)
+        XCTAssertGreaterThan(sendable, UInt64.max / 2)
+    }
+
     func testSparkReadyTriggersOnceUntilItDropsAgain() {
         var transition = SparkReadinessTransition()
         XCTAssertFalse(transition.becameReady(false))
@@ -153,6 +193,7 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     var payments: [Bitkit.ChannelFreeRailPayment] = []
     var routingFeeSats: UInt64 = 0
     var estimateError: Error?
+    var listError: Error?
     var sentBolt11: String?
 
     func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String {
@@ -171,7 +212,10 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
         return routingFeeSats
     }
 
-    func lightningPayments() async -> [Bitkit.ChannelFreeRailPayment] {
-        payments
+    func lightningPayments() async throws -> [Bitkit.ChannelFreeRailPayment] {
+        if let listError {
+            throw listError
+        }
+        return payments
     }
 }
