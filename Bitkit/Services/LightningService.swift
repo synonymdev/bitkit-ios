@@ -13,7 +13,8 @@ protocol ChannelFreeLightningRail: AnyObject {
     func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String
     func send(bolt11: String, sats: UInt64?) async throws -> PaymentHash
     func estimateRoutingFees(bolt11: String, amountSats: UInt64?) async throws -> UInt64
-    func lightningPayments() async -> [ChannelFreeRailPayment]
+    /// Throws when the rail could not list its payments, so a duplicate-payment check can tell that from none.
+    func lightningPayments() async throws -> [ChannelFreeRailPayment]
 }
 
 @MainActor
@@ -30,8 +31,9 @@ enum ChannelFreeRailFees {
 
     static func sendableSats(balanceSats: UInt64) -> UInt64 {
         // The fee on the sent amount, rounded up, must fit beside it: amount + ceil(amount * ppm / 1e6) <= balance.
-        let sendable = balanceSats * 1_000_000 / (1_000_000 + serviceFeePpm)
-        let fee = (sendable * serviceFeePpm + 999_999) / 1_000_000
+        let scaled = balanceSats.multipliedFullWidth(by: 1_000_000)
+        let sendable = (1_000_000 + serviceFeePpm).dividingFullWidth((scaled.high, scaled.low)).quotient
+        let fee = sendable / 1_000_000 * serviceFeePpm + (sendable % 1_000_000 * serviceFeePpm + 999_999) / 1_000_000
         return sendable + fee <= balanceSats || sendable == 0 ? sendable : sendable - 1
     }
 }
@@ -42,8 +44,9 @@ struct ChannelFreeRailSendRefused: LocalizedError {
     let reason: String
     var underlying: Error?
 
+    /// Always the user copy in `reason`; the underlying error is for logs.
     var errorDescription: String? {
-        (underlying as? LocalizedError)?.errorDescription ?? reason
+        reason
     }
 }
 
@@ -53,6 +56,16 @@ struct ChannelFreeRailPayment: Equatable {
     let direction: PaymentDirection
     let status: PaymentStatus
     let preimage: String?
+    var timestamp: UInt64 = 0
+    var feeSats: UInt64 = 0
+
+    /// The attempt that decides an outbound payment of `paymentHash`: a retried invoice is listed once per attempt,
+    /// so a pending or settled one wins over failed ones, then the newest.
+    static func latestOutboundAttempt(_ payments: [ChannelFreeRailPayment], paymentHash: String) -> ChannelFreeRailPayment? {
+        payments
+            .filter { $0.direction == .outbound && $0.paymentHash.caseInsensitiveCompare(paymentHash) == .orderedSame }
+            .max { ($0.status == .failed ? 0 : 1, $0.timestamp) < ($1.status == .failed ? 0 : 1, $1.timestamp) }
+    }
 }
 
 /// The node lifecycle `WalletViewModel` drives, apart from the rest of `LightningService` so its ordering can be tested.
@@ -96,6 +109,8 @@ class LightningService: NodeLifecycleService {
     @MainActor private var cachedPeers: [PeerDetails]?
     @MainActor private var cachedChannels: [ChannelDetails]?
 
+    /// Guards the event callback and the rail events waiting for it, which the node and the rail set from different threads.
+    private let eventCallbackLock = NSLock()
     private var storedEventCallback: ((Event) -> Void)?
     /// Rail events that arrived before the node's event callback was set, delivered once it is.
     private var pendingChannelFreeRailEvents: [Event] = []
@@ -322,7 +337,7 @@ class LightningService: NodeLifecycleService {
             setEventCallback(onEvent)
         }
 
-        listenForEvents(onEvent: storedEventCallback)
+        listenForEvents(onEvent: eventCallbackLock.withLock { storedEventCallback })
 
         Logger.debug("Starting node...")
         try await ServiceQueue.background(.ldk) {
@@ -376,8 +391,10 @@ class LightningService: NodeLifecycleService {
         self.node = nil
 
         if clearEventCallback {
-            storedEventCallback = nil
-            pendingChannelFreeRailEvents = []
+            eventCallbackLock.withLock {
+                storedEventCallback = nil
+                pendingChannelFreeRailEvents = []
+            }
         }
 
         await MainActor.run {
@@ -949,12 +966,15 @@ class LightningService: NodeLifecycleService {
                 do {
                     feeSats = try await rail.estimateRoutingFees(bolt11: bolt11, amountSats: sats)
                 } catch {
-                    throw error as? ChannelFreeRailSendRefused ?? ChannelFreeRailSendRefused(reason: "Spark fee estimate failed", underlying: error)
+                    Logger.warn("Spark fee estimate failed: \(error)", context: "LightningService")
+                    throw error as? ChannelFreeRailSendRefused ?? ChannelFreeRailSendRefused(
+                        reason: t("wallet__payment_failed_description"),
+                        underlying: error
+                    )
                 }
                 guard feeSats * 1000 <= maxFeeMsat else {
-                    throw ChannelFreeRailSendRefused(
-                        reason: "Spark routing fee of \(feeSats) sats exceeds the limit of \(maxFeeMsat / 1000) sats"
-                    )
+                    Logger.info("Spark routing fee of \(feeSats) sats exceeds the limit of \(maxFeeMsat / 1000) sats", context: "LightningService")
+                    throw ChannelFreeRailSendRefused(reason: t("wallet__max_possible_fee_rate"))
                 }
             }
             try beforeSubmission()
@@ -1483,23 +1503,28 @@ extension LightningService {
     /// Delivers a channel-free rail's payment as an LDK event, so flows that wait on node events cover both rails.
     /// Sets the callback node and rail events are delivered to, and delivers the rail events that arrived before it.
     func setEventCallback(_ onEvent: @escaping (Event) -> Void) {
-        storedEventCallback = onEvent
-        let pending = pendingChannelFreeRailEvents
-        pendingChannelFreeRailEvents = []
+        let pending = eventCallbackLock.withLock {
+            storedEventCallback = onEvent
+            defer { pendingChannelFreeRailEvents = [] }
+            return pendingChannelFreeRailEvents
+        }
         pending.forEach(onEvent)
     }
 
     /// Spark runs before the node starts, so its events wait until the node's event callback is set rather than being lost.
     func emitChannelFreeRailEvent(_ event: Event) {
-        guard let storedEventCallback else {
-            pendingChannelFreeRailEvents.append(event)
-            return
+        let callback = eventCallbackLock.withLock {
+            if storedEventCallback == nil {
+                pendingChannelFreeRailEvents.append(event)
+            }
+            return storedEventCallback
         }
-        storedEventCallback(event)
+        callback?(event)
     }
 
-    func channelFreeRailPayments() async -> [ChannelFreeRailPayment] {
-        await channelFreeRail?.lightningPayments() ?? []
+    /// The rail's Lightning payments, none without a rail; throws when the rail could not list them.
+    func channelFreeRailPayments() async throws -> [ChannelFreeRailPayment] {
+        try await channelFreeRail?.lightningPayments() ?? []
     }
 
     func deliverEvent(_ event: Event, onEvent: ((Event) -> Void)?) async -> OnchainActivityCompletion? {

@@ -79,6 +79,9 @@ struct SavingsConfirmView: View {
                 )
                 .padding(.top, swapState.quote == nil ? 24 : 16)
                 .accessibilityIdentifier("SavingsSparkFee")
+            } else if selection.withdrawsSpark {
+                sparkFeeError
+                    .padding(.top, swapState.quote == nil ? 24 : 16)
             }
 
             if hasMultipleItems {
@@ -119,11 +122,14 @@ struct SavingsConfirmView: View {
                 SwipeButton(
                     title: t("lightning__transfer__swipe"),
                     accentColor: .brandAccent,
-                    isLoading: swapState.quote == nil && swapState.isLoading
+                    isLoading: (swapState.quote == nil && swapState.isLoading) || transfer.isPricingSparkWithdrawal
                 ) {
                     // The swipe always commits the transfer: it swaps when a quote is ready and
                     // otherwise falls back to the pre-swap behaviour of closing the channel, so it
                     // is never inert.
+                    if selection.withdrawsSpark {
+                        try await recheckSparkFee()
+                    }
                     do {
                         transfer.onTransferToSavingsConfirm(channels: channels, withdrawsSpark: selection.withdrawsSpark)
 
@@ -139,6 +145,7 @@ struct SavingsConfirmView: View {
                         throw error
                     }
                 }
+                .disabled(!transfer.isSparkWithdrawalPriced(withdrawsSpark: selection.withdrawsSpark))
             }
 
             if swapState.quote != nil {
@@ -169,6 +176,39 @@ struct SavingsConfirmView: View {
         .onChange(of: selection.withdrawsSpark ? sparkSats : nil, initial: true) { _, balanceSats in
             guard let balanceSats else { return }
             transfer.loadSparkWithdrawFee(balanceSats: balanceSats, savingsAddress: wallet.onchainAddress)
+        }
+    }
+
+    /// Spark's withdrawal fee could not be priced; the swipe waits for it, so it can be retried here.
+    private var sparkFeeError: some View {
+        HStack(alignment: .center, spacing: 16) {
+            BodyMText(t("lightning__spending_confirm__error_quote"), textColor: .redAccent)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            CustomButton(title: t("common__retry"), size: .small) {
+                transfer.loadSparkWithdrawFee(balanceSats: sparkSats, savingsAddress: wallet.onchainAddress)
+            }
+            .fixedSize()
+            .accessibilityIdentifier("SavingsSparkFeeRetry")
+        }
+    }
+
+    /// Asks for another swipe when Spark's withdrawal fee rose since it was shown.
+    private func recheckSparkFee() async throws {
+        do {
+            try await transfer.recheckSparkWithdrawFee()
+        } catch let increase as SparkWithdrawalFeeIncreased {
+            app.toast(
+                type: .info,
+                title: t("lightning__spending_confirm__fees_changed_title"),
+                description: t(
+                    "lightning__spending_confirm__fees_changed_network",
+                    variables: ["amount": currency.primaryAmountText(sats: increase.feeSats - increase.shownFeeSats)]
+                )
+            )
+            throw SpendingFeesIncreasedError()
+        } catch {
+            app.toast(error)
+            throw error
         }
     }
 

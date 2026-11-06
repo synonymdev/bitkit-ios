@@ -1193,12 +1193,11 @@ class WalletViewModel: ObservableObject {
     /// A Spark-to-Spark payment settles inside the send call, so its completion event can fire before `watchSend`
     /// starts listening; the rail's own payment list still has the outcome.
     private func finishWatchSendIfRailAlreadySettled(hash: String, eventId: String) async {
-        let payment = await lightningService.channelFreeRailPayments().first {
-            $0.direction == .outbound && $0.paymentHash.caseInsensitiveCompare(hash) == .orderedSame
-        }
+        let payments = await (try? lightningService.channelFreeRailPayments()) ?? []
+        let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: hash)
         switch payment?.status {
         case .succeeded:
-            finishWatchSend(id: eventId, result: .success(SettledLightningPayment(paymentHash: hash, feePaidSats: 0)))
+            finishWatchSend(id: eventId, result: .success(SettledLightningPayment(paymentHash: hash, feePaidSats: payment?.feeSats ?? 0)))
         case .failed:
             finishWatchSend(id: eventId, result: .failure(AppError(paymentFailureReason: nil)))
         case .pending, nil:
@@ -2081,7 +2080,7 @@ class WalletViewModel: ObservableObject {
             try await nodeLifecycle.wipeStorage(walletIndex: 0)
         }
 
-        await SparkManager.shared.wipe(walletIndex: 0)
+        try await SparkManager.shared.wipe(walletIndex: 0)
 
         probeOutcomes.removeAll()
 

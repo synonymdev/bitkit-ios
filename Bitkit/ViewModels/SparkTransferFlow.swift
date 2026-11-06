@@ -34,6 +34,12 @@ struct SparkTransferQuote: Equatable {
     var totalSats: UInt64 {
         depositSats.saturatingAdd(networkFeeSats)
     }
+
+    /// Whether the deposit stays claimable at the most Spark may charge to claim it, at either speed: the mature claim
+    /// runs at that hour's rate under the same cap, so a deposit at or below `instantMaxSats` could be left unclaimed.
+    var coversClaimFee: Bool {
+        depositSats > claimFees.instantMaxSats
+    }
 }
 
 /// Where a transfer to spending stands once its deposit is broadcast.

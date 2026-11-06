@@ -37,6 +37,10 @@ struct SpendingConfirm: View {
                     if let error = flow.quoteError {
                         quoteError(error)
                             .padding(.bottom, 16)
+                    } else if let quote = flow.quote, !quote.coversClaimFee {
+                        BodyMText(Self.belowClaimFeeMessage(quote), textColor: .redAccent)
+                            .padding(.bottom, 16)
+                            .accessibilityIdentifier("SpendingConfirmBelowMinimum")
                     }
 
                     SpendingSpeedPicker(quote: flow.quote, speed: Bindable(flow).speed)
@@ -86,7 +90,14 @@ struct SpendingConfirm: View {
 
     private var canConfirm: Bool {
         guard let quote = flow.quote, !isPaying, !flow.isQuoting else { return false }
-        return quote.networkFeeSats > 0 && quote.toSpendingSats(for: flow.speed) > 0
+        return quote.networkFeeSats > 0 && quote.coversClaimFee && quote.toSpendingSats(for: flow.speed) > 0
+    }
+
+    private static func belowClaimFeeMessage(_ quote: SparkTransferQuote) -> String {
+        t(
+            "lightning__spending_amount__error_min__description",
+            variables: ["amount": CurrencyFormatter.formatSats(quote.claimFees.instantMaxSats.saturatingAdd(1))]
+        )
     }
 
     private func quoteError(_ message: String) -> some View {
@@ -108,6 +119,14 @@ struct SpendingConfirm: View {
 
         guard let fresh = await flow.refreshQuote(wallet: wallet, feeEstimatesManager: feeEstimatesManager) else {
             throw AppError(message: t("lightning__spending_confirm__error_quote"), debugMessage: "Re-quote before sending failed")
+        }
+        guard fresh.coversClaimFee else {
+            app.toast(
+                type: .warning,
+                title: t("lightning__spending_amount__error_min__title"),
+                description: Self.belowClaimFeeMessage(fresh)
+            )
+            throw SpendingFeesIncreasedError()
         }
         let speed = flow.speed
         let shownCost = shown.networkFeeSats.saturatingAdd(shown.claimFeeSats(for: speed))
