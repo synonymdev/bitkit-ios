@@ -352,47 +352,40 @@ struct SparkExitLeftoverStatus: View {
     let record: SparkExitRecord
     let address: String
 
-    private var leftoverSats: UInt64 {
-        record.leftover.reduce(0) { $0 + $1.valueSats }
+    private var path: String {
+        SparkExitFundingKey.path(index: record.fundingIndex, network: Env.bitkitCoreNetwork)
     }
 
+    /// One line with the total of every UTXO at the funding address, never one per UTXO.
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let sweep = record.leftoverSweep, sweep.rejection == nil {
-                if let txid = sweep.txid {
-                    let key = sweep.isAccepted ? "lightning__spark_exit__leftover_swept" : "lightning__spark_exit__leftover_sending"
-                    BodySText(t(key, variables: ["amount": currency.primaryAmountText(sats: sweep.valueSats)]))
-                    if sweep.isAccepted {
-                        BodySText(t("lightning__spark_exit__leftover_txid", variables: ["txid": txid]))
-                            .lineLimit(2)
-                            .truncationMode(.middle)
-                    }
-                } else if sweep.isWaitingForFees {
-                    BodySText(t("lightning__spark_exit__leftover_waiting", variables: ["amount": currency.primaryAmountText(sats: leftoverSats)]))
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    BodySText(t("lightning__spark_exit__leftover_dust", variables: [
-                        "amount": currency.primaryAmountText(sats: leftoverSats),
-                        "address": address,
-                        "path": SparkExitFundingKey.path(index: record.fundingIndex, network: Env.bitkitCoreNetwork),
-                    ]))
+            switch record.leftoverLine {
+            case let .sending(sats):
+                BodySText(t("lightning__spark_exit__leftover_sending", variables: ["amount": currency.primaryAmountText(sats: sats)]))
+            case let .swept(sats, txid):
+                BodySText(t("lightning__spark_exit__leftover_swept", variables: ["amount": currency.primaryAmountText(sats: sats)]))
+                BodySText(t("lightning__spark_exit__leftover_txid", variables: ["txid": txid]))
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+            case let .waiting(sats):
+                BodySText(t("lightning__spark_exit__leftover_waiting", variables: ["amount": currency.primaryAmountText(sats: sats)]))
                     .fixedSize(horizontal: false, vertical: true)
-                }
-            } else if let sweep = record.leftoverSweep, !sweep.isFeeRejection {
-                // Refused for good: where the coins stay, and the path that spends them with the recovery phrase.
-                BodySText(t("lightning__spark_exit__leftover_rejected", variables: [
-                    "amount": currency.primaryAmountText(sats: leftoverSats),
-                    "address": address,
-                    "path": SparkExitFundingKey.path(index: record.fundingIndex, network: Env.bitkitCoreNetwork),
+            case let .kept(sats):
+                BodySText(t("lightning__spark_exit__leftover_dust", variables: [
+                    "amount": currency.primaryAmountText(sats: sats), "address": address, "path": path,
                 ]))
                 .fixedSize(horizontal: false, vertical: true)
-            } else {
-                ForEach(Array(record.leftover.enumerated()), id: \.offset) { _, leftover in
-                    BodySText(t(
-                        "lightning__spark_exit__leftover",
-                        variables: ["amount": currency.primaryAmountText(sats: leftover.valueSats), "address": address]
-                    ))
-                }
+            case let .rejected(sats):
+                // Refused for good: where the coins stay, and the path that spends them with the recovery phrase.
+                BodySText(t("lightning__spark_exit__leftover_rejected", variables: [
+                    "amount": currency.primaryAmountText(sats: sats), "address": address, "path": path,
+                ]))
+                .fixedSize(horizontal: false, vertical: true)
+            case let .stillAt(sats):
+                BodySText(t("lightning__spark_exit__leftover", variables: ["amount": currency.primaryAmountText(sats: sats), "address": address]))
+                    .fixedSize(horizontal: false, vertical: true)
+            case nil:
+                EmptyView()
             }
         }
         .accessibilityElement(children: .contain)

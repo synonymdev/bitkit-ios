@@ -202,26 +202,28 @@ final class SparkExitSweepTests: XCTestCase {
     }
 
     /// R7: a sweep refused for its fee is built again at the network's current rate; any other refusal is final.
-    func testASweepRefusedForItsFeeIsRebuiltAtTheCurrentRate() async throws {
+    func testASweepRefusedForItsFeeIsRebuiltAtTheRateTheNodeTakes() async throws {
         chain.utxosByAddress[key.address] = [SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 5035)]
         chain.outcome = .rejected("min relay fee not met, 300 < 330")
         chain.fastestFee = 5
 
         var record = try await driver().tick(endedRecord())
         let refused = try XCTUnwrap(record.leftoverSweep)
-        XCTAssertTrue(refused.isFeeRejection)
-        XCTAssertTrue(record.needsDriving, "a fee refusal is not final")
+        XCTAssertTrue(refused.isWaitingForFees, "a fee refusal is not final")
+        XCTAssertEqual(refused.refusedFeeRate, 3, "330 over the 300 paid at 2 sat/vB, and at least one more")
+        XCTAssertTrue(record.needsDriving)
 
         chain.outcome = .accepted
+        chain.tip = 1001
         record = try await driver().tick(record)
 
         let rebuilt = try XCTUnwrap(record.leftoverSweep)
-        XCTAssertNotEqual(rebuilt.txid, refused.txid)
-        XCTAssertEqual(rebuilt.feeRateSatPerVbyte, 5)
-        XCTAssertEqual(rebuilt.valueSats, 5035 - SparkExitLeftoverSweep.feeSats(inputs: 1, outputScriptLength: 22, feeRateSatPerVbyte: 5))
+        XCTAssertNotNil(rebuilt.txid)
+        XCTAssertEqual(rebuilt.feeRateSatPerVbyte, 3)
+        XCTAssertEqual(rebuilt.valueSats, 5035 - SparkExitLeftoverSweep.feeSats(inputs: 1, outputScriptLength: 22, feeRateSatPerVbyte: 3))
         XCTAssertTrue(rebuilt.isAccepted)
         XCTAssertNil(rebuilt.rejection)
-        XCTAssertEqual(rebuilt.sentAtHeight, 1000)
+        XCTAssertEqual(rebuilt.sentAtHeight, 1001)
     }
 
     /// R7: an accepted sweep still unconfirmed 144 blocks later is replaced (RBF) at a higher rate, at least one
@@ -420,6 +422,114 @@ final class SparkExitSweepTests: XCTestCase {
             .init(txid: XCTUnwrap(sweep.txid), txHex: XCTUnwrap(sweep.txHex), valueSats: sweep.valueSats),
             utxos: chain.utxosByAddress[key.address] ?? []
         )
+    }
+
+    /// Run E (case 6): six 294-sat change outputs, swept at 1 sat/vB, refused "min relay fee not met, 450 < 674". The
+    /// sweep is not given up: it waits for the next block, then goes again at the rate the refusal asks for.
+    func testAFeeChangeSweepRefusedForItsFeeIsRetriedAtTheRateTheNodeAsksFor() async throws {
+        var record = endedRecord()
+        record.leftover = (1 ... 6).map { SparkExitRecord.Leftover(txid: String(repeating: "\($0)", count: 64), vout: 0, valueSats: 294) }
+        chain.economyFee = 1
+        chain.utxosByAddress[key.address] = (1 ... 6).map { SparkExitFixtures.utxo(String(repeating: "\($0)", count: 64), value: 294) }
+        chain.outcome = .rejected("min relay fee not met, 450 < 674")
+
+        record = try await driver().tick(record)
+
+        let waiting = try XCTUnwrap(record.leftoverSweep)
+        XCTAssertNil(waiting.txid)
+        XCTAssertNil(waiting.rejection, "a fee refusal is never final")
+        XCTAssertTrue(waiting.isWaitingForFees)
+        XCTAssertEqual(waiting.refusedFeeRate, 2, "674 sats over the 450 vB paid at 1 sat/vB")
+        XCTAssertEqual(waiting.retryAtHeight, 1001)
+        XCTAssertTrue(record.needsDriving, "launch and background runs keep trying")
+        XCTAssertEqual(record.leftoverLine, .waiting(sats: 1764))
+        XCTAssertEqual(chain.broadcasts.count, 1)
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(chain.broadcasts.count, 1, "not again before the next block")
+
+        chain.tip = 1001
+        chain.outcome = .accepted
+        record = try await driver().tick(record)
+
+        let sweep = try XCTUnwrap(record.leftoverSweep)
+        XCTAssertEqual(sweep.feeRateSatPerVbyte, 2)
+        XCTAssertEqual(sweep.isAccepted, true)
+        XCTAssertEqual(sweep.valueSats, 1764 - 900)
+        XCTAssertEqual(sweep.waitingSince, 1000, "the 4-week bound still counts from the first wait")
+        try assertValidP2wpkhSpend(
+            .init(txid: XCTUnwrap(sweep.txid), txHex: XCTUnwrap(sweep.txHex), valueSats: sweep.valueSats),
+            utxos: chain.utxosByAddress[key.address] ?? []
+        )
+    }
+
+    /// A record from Run E's build, with the fee refusal stored as final, waits and retries on the next run too.
+    func testAStoredFeeRefusalWaitsAndRetries() async throws {
+        var record = endedRecord()
+        record.leftover = (1 ... 6).map { SparkExitRecord.Leftover(txid: String(repeating: "\($0)", count: 64), vout: 0, valueSats: 294) }
+        record.leftoverSweep = .init(
+            txid: "d770cd89",
+            txHex: "02",
+            valueSats: 1314,
+            rejection: "min relay fee not met, 450 < 674",
+            feeRateSatPerVbyte: 1
+        )
+        chain.utxosByAddress[key.address] = (1 ... 6).map { SparkExitFixtures.utxo(String(repeating: "\($0)", count: 64), value: 294) }
+        chain.economyFee = 1
+        XCTAssertEqual(record.leftoverLine, .waiting(sats: 1764), "one line with the total, never one per output")
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.leftoverSweep?.refusedFeeRate, 2)
+        XCTAssertTrue(chain.broadcasts.isEmpty)
+
+        chain.tip = 1001
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.leftoverSweep?.feeRateSatPerVbyte, 2)
+        XCTAssertEqual(record.leftoverSweep?.isAccepted, true)
+    }
+
+    func testTheRefusedRateFollowsTheNodesMinimum() {
+        XCTAssertEqual(SparkExitMath.refusedSweepRate("min relay fee not met, 450 < 674", paidRate: 1), 2)
+        XCTAssertEqual(SparkExitMath.refusedSweepRate("mempool min fee not met, 900 < 2700", paidRate: 2), 6)
+        XCTAssertEqual(SparkExitMath.refusedSweepRate("insufficient fee", paidRate: 3), 4, "no numbers: one sat/vB more")
+    }
+
+    /// The result names the leftover once, with its total, whatever state it is in.
+    func testTheLeftoverIsOneLineWithTheTotal() {
+        var record = endedRecord()
+        record.leftover = (1 ... 6).map { SparkExitRecord.Leftover(txid: "u\($0)", vout: 0, valueSats: 294) }
+        XCTAssertEqual(record.leftoverLine, .stillAt(sats: 1764))
+        record.leftoverSweep = .init(waitingSince: 1000, checkedAtHeight: 1000)
+        XCTAssertEqual(record.leftoverLine, .waiting(sats: 1764))
+        record.leftoverSweep?.isDustKept = true
+        XCTAssertEqual(record.leftoverLine, .kept(sats: 1764))
+        record.leftoverSweep = .init(txid: "t", txHex: "02", valueSats: 4000, rejection: "non-mandatory-script-verify-flag")
+        XCTAssertEqual(record.leftoverLine, .rejected(sats: 1764))
+    }
+
+    /// The local regtest mempool answers `{}`: every rate falls back, never failing the step.
+    func testFeeEstimatesFallBackToTheNextTargetThenTheRelayFloor() {
+        XCTAssertEqual(SparkExitFeeEstimates.rate([:], target: 1), 1)
+        XCTAssertEqual(SparkExitFeeEstimates.economy([:]), 1)
+        let sparse = ["2": 7.2, "6": 3.0, "144": 1.4]
+        XCTAssertEqual(SparkExitFeeEstimates.rate(sparse, target: 1), 8, "the next target up, rounded up")
+        XCTAssertEqual(SparkExitFeeEstimates.rate(sparse, target: 3), 3)
+        XCTAssertEqual(SparkExitFeeEstimates.rate(sparse, target: 1008), 2, "none longer: the longest there is")
+        XCTAssertEqual(SparkExitFeeEstimates.economy(sparse), 2)
+        XCTAssertEqual(SparkExitFeeEstimates.rate(["1": 0.2], target: 1), 1)
+    }
+
+    func testAnEmptyEstimateMapStillPricesEveryStep() async throws {
+        let http = SparkExitBroadcasterTests.FakeHTTP()
+        http.responses = [("a.example/api/fee-estimates", 200, "{}"), ("a.example/api/fee-estimates", 200, "{}")]
+        let chain = try EsploraSparkExitChain(hosts: [XCTUnwrap(URL(string: "https://a.example/api"))], http: http)
+
+        let fees = try await chain.networkFees()
+        let fastest = try await chain.fastestFeeRate()
+
+        XCTAssertEqual(fees, SparkExitNetworkFees(fastest: 1, halfHour: 1, economy: 1))
+        XCTAssertEqual(fastest, 1)
+        XCTAssertEqual(SparkExitFeeBumpOption.options(exitRate: 2, fees: fees).map(\.rate), [3], "a bump still offers a higher rate")
     }
 
     /// After about four weeks (4,032 blocks) the change stays at the funding address and the exit is let go.

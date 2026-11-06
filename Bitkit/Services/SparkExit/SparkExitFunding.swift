@@ -493,6 +493,17 @@ enum SparkExitMath {
         max(minRelayFeeRate, min(economy ?? exitRate, exitRate))
     }
 
+    /// The rate a sweep refused for its fee is built at next: what the node's minimum asks for (`min relay fee not
+    /// met, 450 < 674` is the fee paid and the least it takes, at `paidRate`), and at least one sat/vB more.
+    static func refusedSweepRate(_ refusal: String, paidRate: UInt64) -> UInt64 {
+        let bumped = max(paidRate, minRelayFeeRate - 1) + 1
+        guard let match = refusal.firstMatch(of: #/(?:min relay fee|mempool min fee) not met[^0-9]*(\d+)\s*<\s*(\d+)/#),
+              let paid = UInt64(match.1), let least = UInt64(match.2), paid > 0
+        else { return bumped }
+        let leastRate = (least * max(paidRate, 1) + paid - 1) / paid
+        return max(leastRate, bumped)
+    }
+
     /// The UTXOs worth sending at `rate`: each holds more than the fee of its own input.
     static func economicalUtxos(_ utxos: [EsploraUtxo], rate: UInt64) -> [EsploraUtxo] {
         utxos.filter { $0.value > inputVbytes * rate }

@@ -41,6 +41,30 @@ enum SparkExitBroadcastOutcome: Equatable {
     }
 }
 
+/// Reads esplora's `/fee-estimates` (target in blocks → sat/vB). A host may answer `{}` or skip targets, as the local
+/// regtest mempool does: a missing target falls back to the next one estimated, the nearest longer one first, and
+/// with none at all to the 1 sat/vB relay floor, so no step fails for want of an estimate.
+enum SparkExitFeeEstimates {
+    static func rate(_ estimates: [String: Double], target: Int) -> UInt64 {
+        let targets = parsed(estimates)
+        guard let value = (targets.first { $0.target >= target } ?? targets.last)?.rate else { return SparkExitMath.minRelayFeeRate }
+        return rounded(value)
+    }
+
+    /// The slowest tier: the longest target estimated (mempool's `economyFee` is its day-long rate).
+    static func economy(_ estimates: [String: Double]) -> UInt64 {
+        parsed(estimates).last.map { rounded($0.rate) } ?? SparkExitMath.minRelayFeeRate
+    }
+
+    private static func parsed(_ estimates: [String: Double]) -> [(target: Int, rate: Double)] {
+        estimates.compactMap { key, value in Int(key).map { (target: $0, rate: value) } }.sorted { $0.target < $1.target }
+    }
+
+    private static func rounded(_ rate: Double) -> UInt64 {
+        max(SparkExitMath.minRelayFeeRate, UInt64(max(0, rate).rounded(.up)))
+    }
+}
+
 /// The chain the Spark SDK reads, for what an exit does outside the SDK: broadcasting and the funding address.
 protocol SparkExitChain: Sendable {
     func tipHeight() async throws -> UInt32
@@ -140,19 +164,21 @@ struct EsploraSparkExitChain: SparkExitChain {
 
     /// esplora's `/fee-estimates`, whose target of one block is mempool's `fastestFee`.
     func fastestFeeRate() async throws -> UInt64 {
-        let estimates = try await JSONDecoder().decode([String: Double].self, from: get("/fee-estimates"))
-        guard let rate = estimates["1"] else { throw URLError(.cannotParseResponse) }
-        return max(1, UInt64(rate.rounded(.up)))
+        try await SparkExitFeeEstimates.rate(estimates(), target: 1)
+    }
+
+    private func estimates() async throws -> [String: Double] {
+        try await JSONDecoder().decode([String: Double].self, from: get("/fee-estimates"))
     }
 
     /// esplora's targets of one and three blocks, mempool's `fastestFee` and `halfHourFee`.
     func networkFees() async throws -> SparkExitNetworkFees {
-        let estimates = try await JSONDecoder().decode([String: Double].self, from: get("/fee-estimates"))
-        guard let fastest = estimates["1"] else { throw URLError(.cannotParseResponse) }
-        let rate = { (value: Double) in max(1, UInt64(value.rounded(.up))) }
-        // The slowest tier is the longest target the host estimates (mempool's `economyFee` is its day-long rate).
-        let slowest = estimates.compactMap { key, value in Int(key).map { ($0, value) } }.max { $0.0 < $1.0 }?.1 ?? fastest
-        return SparkExitNetworkFees(fastest: rate(fastest), halfHour: rate(estimates["3"] ?? fastest), economy: rate(slowest))
+        let estimates = try await estimates()
+        return SparkExitNetworkFees(
+            fastest: SparkExitFeeEstimates.rate(estimates, target: 1),
+            halfHour: SparkExitFeeEstimates.rate(estimates, target: 3),
+            economy: SparkExitFeeEstimates.economy(estimates)
+        )
     }
 
     /// `/tx/{txid}/hex` looks in the mempool and the chain alike; `/status` of an unknown transaction may answer

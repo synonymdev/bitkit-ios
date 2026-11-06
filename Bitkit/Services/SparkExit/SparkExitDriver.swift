@@ -594,19 +594,27 @@ struct SparkExitDriver {
                 return
             }
         }
-        if let sweep = record.leftoverSweep, let oldTxid = sweep.txid, sweep.isConfirmed != true, !Task.isCancelled,
-           let address = record.funding.first?.address
+        // A sweep refused for its fee, before this rule or on the last tick, waits for the next block and a rate the
+        // node takes.
+        if let sweep = record.leftoverSweep, let rejection = sweep.rejection, sweep.isFeeRejection, !sweep.isAccepted {
+            await waitAfterFeeRefusal(&record, refusal: rejection)
+            try save(record)
+        }
+        if let sweep = record.leftoverSweep, let oldTxid = sweep.txid, sweep.isConfirmed != true, sweep.rejection == nil,
+           !Task.isCancelled, let address = record.funding.first?.address
         {
             let oldRate = sweep.feeRateSatPerVbyte ?? record.feeRateSatPerVbyte
-            var isReplaceDue = sweep.isFeeRejection
-            if !isReplaceDue, sweep.isAccepted, let sentAt = sweep.sentAtHeight, let tip = try? await chain.tipHeight(),
+            var isReplaceDue = false
+            if sweep.isAccepted, let sentAt = sweep.sentAtHeight, let tip = try? await chain.tipHeight(),
                tip.saturatingSub(sentAt) >= Self.sweepReplaceBlocks
             {
                 // A node that dropped it answers not found: that is unconfirmed too.
                 isReplaceDue = await (try? chain.txStatus(txid: oldTxid))?.confirmed != true
             }
-            if isReplaceDue, let fastest = try? await chain.fastestFeeRate() {
-                let rate = max(fastest, oldRate + 1)
+            if isReplaceDue {
+                // A host with no fee estimates still gets a replacement one sat/vB over the old rate.
+                let fastest = try? await chain.fastestFeeRate()
+                let rate = max(fastest ?? 0, oldRate + 1)
                 let utxos = SparkExitMath.economicalUtxos(record.leftover.map {
                     EsploraUtxo(txid: $0.txid, vout: $0.vout, value: $0.valueSats, status: EsploraTxStatus(confirmed: true, blockHeight: nil))
                 }, rate: rate)
@@ -668,9 +676,31 @@ struct SparkExitDriver {
                 record.leftoverSweep?.sentAtHeight = try? await chain.tipHeight()
             }
         // Once accepted, a later refusal is a node that already has it or a conflict with it confirming.
-        case let .rejected(reason) where !sweep.isAccepted: record.leftoverSweep?.rejection = reason
+        case let .rejected(reason) where !sweep.isAccepted:
+            if SparkExitRecord.LeftoverSweep(rejection: reason).isFeeRejection {
+                await waitAfterFeeRefusal(&record, refusal: reason)
+            } else {
+                record.leftoverSweep?.rejection = reason
+            }
         default: break
         }
+    }
+
+    /// A sweep refused for its fee is not final: the leftover waits again, keeping when its wait began, and is built
+    /// again from the next block at the rate the refusal asks for (`refusedSweepRate`), or the economy rate if higher.
+    private func waitAfterFeeRefusal(_ record: inout SparkExitRecord, refusal: String) async {
+        guard let sweep = record.leftoverSweep else { return }
+        let tip = try? await chain.tipHeight()
+        let rate = SparkExitMath.refusedSweepRate(refusal, paidRate: sweep.feeRateSatPerVbyte ?? record.feeRateSatPerVbyte)
+        Logger.info("Spark exit leftover sweep refused for its fee (\(refusal)), tries again at \(rate) sat/vB", context: "SparkExitDriver")
+        record.leftoverSweep = SparkExitRecord.LeftoverSweep(
+            feeRateSatPerVbyte: sweep.feeRateSatPerVbyte,
+            replacedTxids: sweep.replacedTxids,
+            waitingSince: sweep.waitingSince ?? tip ?? 0,
+            checkedAtHeight: tip ?? 0,
+            refusedFeeRate: rate,
+            retryAtHeight: (tip ?? 0) + 1
+        )
     }
 
     /// Builds the leftover sweep at the network's economy rate (`sweepFeeRate`) from the UTXOs worth more than their
@@ -688,14 +718,16 @@ struct SparkExitDriver {
                 try save(record)
                 return
             }
-            guard tip.saturatingSub(waiting.checkedAtHeight ?? since) >= Self.sweepRecheckBlocks else { return }
+            let due = waiting.retryAtHeight ?? (waiting.checkedAtHeight ?? since).addingReportingOverflow(Self.sweepRecheckBlocks).partialValue
+            guard tip >= due else { return }
         }
         let utxos = try await chain.utxos(address: address)
         record.leftover = utxos.map { SparkExitRecord.Leftover(txid: $0.txid, vout: $0.vout, valueSats: $0.value) }
         let confirmed = utxos.filter(\.status.confirmed)
         guard !confirmed.isEmpty, confirmed.count == utxos.count else { return }
         let economy = try? await chain.networkFees().economy
-        let rate = SparkExitMath.sweepFeeRate(economy: economy, exitRate: record.feeRateSatPerVbyte)
+        // A rate a node refused stays refused: the least it asked for lifts the economy rate, past the exit's if need be.
+        let rate = max(SparkExitMath.sweepFeeRate(economy: economy, exitRate: record.feeRateSatPerVbyte), waiting?.refusedFeeRate ?? 0)
         let built = try await SparkExitLeftoverSweep.build(
             utxos: SparkExitMath.economicalUtxos(confirmed, rate: rate),
             fundingAddress: address,
@@ -704,11 +736,13 @@ struct SparkExitDriver {
             signer: makeSigner(record.fundingIndex)
         )
         if let built {
+            // The wait's start carries over, so a sweep refused again still ends at `sweepWaitBlocks`.
             record.leftoverSweep = SparkExitRecord.LeftoverSweep(
                 txid: built.txid,
                 txHex: built.txHex,
                 valueSats: built.valueSats,
-                feeRateSatPerVbyte: rate
+                feeRateSatPerVbyte: rate,
+                waitingSince: waiting?.waitingSince
             )
         } else {
             let since = waiting?.waitingSince ?? tip ?? 0
@@ -716,7 +750,8 @@ struct SparkExitDriver {
             record.leftoverSweep = SparkExitRecord.LeftoverSweep(
                 feeRateSatPerVbyte: rate,
                 waitingSince: since,
-                checkedAtHeight: tip ?? since
+                checkedAtHeight: tip ?? since,
+                refusedFeeRate: waiting?.refusedFeeRate
             )
         }
         try save(record)

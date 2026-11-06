@@ -110,16 +110,47 @@ struct SparkExitRecord: Codable, Equatable {
         var checkedAtHeight: UInt32?
         /// The wait ran out: what is left stays at the funding address, with the path that spends it.
         var isDustKept: Bool?
+        /// The least rate a node asked for when it refused the sweep for its fee: the next build pays at least this.
+        var refusedFeeRate: UInt64?
+        /// After a refusal, the sweep is built again from this block instead of after `sweepRecheckBlocks`.
+        var retryAtHeight: UInt32?
 
         /// Waiting for fees to drop before sending the fee change.
         var isWaitingForFees: Bool {
             txid == nil && waitingSince != nil && isDustKept != true
         }
 
-        /// A refusal for its fee is not final: the sweep is built again at the network's current rate.
+        /// A refusal for its fee is not final: the sweep waits and is built again at a rate the node takes.
         var isFeeRejection: Bool {
             rejection.map { $0.range(of: "fee", options: .caseInsensitive) != nil } ?? false
         }
+    }
+
+    /// The one line the result shows about the leftover fee funding, with the total of every UTXO at the address.
+    enum LeftoverLine: Equatable {
+        case sending(sats: UInt64)
+        case swept(sats: UInt64, txid: String)
+        /// Too small to send now, or refused for its fee: it waits for fees to drop.
+        case waiting(sats: UInt64)
+        /// The wait ran out: kept at the funding address, with the path that spends it.
+        case kept(sats: UInt64)
+        /// Refused for a reason other than its fee.
+        case rejected(sats: UInt64)
+        /// No sweep yet.
+        case stillAt(sats: UInt64)
+    }
+
+    var leftoverLine: LeftoverLine? {
+        guard !leftover.isEmpty else { return nil }
+        let total = leftover.reduce(0) { $0 + $1.valueSats }
+        guard let sweep = leftoverSweep else { return .stillAt(sats: total) }
+        if let rejection = sweep.rejection {
+            return sweep.isFeeRejection || rejection.isEmpty ? .waiting(sats: total) : .rejected(sats: total)
+        }
+        if let txid = sweep.txid {
+            return sweep.isAccepted ? .swept(sats: sweep.valueSats, txid: txid) : .sending(sats: sweep.valueSats)
+        }
+        return sweep.isWaitingForFees ? .waiting(sats: total) : .kept(sats: total)
     }
 
     var version: Int = Self.currentVersion
