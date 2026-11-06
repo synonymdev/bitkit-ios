@@ -1,44 +1,57 @@
 name: E2E Staging (iOS)
-
 on:
-  schedule:
-    - cron: "0 4 * * *"
   workflow_dispatch:
     inputs:
       e2e_branch:
-        description: "Branch of synonymdev/bitkit-e2e-tests to use (main | default-feature-branch | custom branch name)"
+        description: Branch of synonymdev/bitkit-e2e-tests to use (main | default-feature-branch | custom branch name)
         required: false
-        default: "default-feature-branch"
+        default: default-feature-branch
       post_to_slack:
-        description: "Post E2E staging summary to Slack (#bitkit-staging-nightly)"
+        description: Post E2E staging summary to Slack (#bitkit-staging-nightly)
         type: boolean
         default: false
         required: false
-
+  workflow_call:
+    inputs:
+      app_ref:
+        type: string
+        required: true
+      e2e_ref:
+        type: string
+        required: true
+      app_artifact:
+        type: string
+        default: ""
+      post_to_slack:
+        type: boolean
+        default: false
 env:
   TERM: xterm-256color
   FORCE_COLOR: 1
   GIT_LFS_SKIP_SMUDGE: "1"
-  SIMULATOR_NAME: "iPhone 17"
+  SIMULATOR_NAME: iPhone 17
   IOS_VERSION: "26.2"
-
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  group: e2e-staging-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
-
 jobs:
   build-staging:
-    runs-on: macos-latest
-
+    runs-on: ${{ inputs.app_artifact != '' && 'ubuntu-latest' || 'macos-latest' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
+        with:
+          ref: ${{ inputs.app_ref || github.sha }}
+        if: inputs.app_artifact == ''
+      - name: Record selected revision
+        id: app
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        if: inputs.app_artifact == ''
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.2"
-
+        if: inputs.app_artifact == ''
       - name: System Information
         run: |
           echo "=== System Information ==="
@@ -47,20 +60,20 @@ jobs:
           echo ""
           echo "Xcode Version:"
           xcodebuild -version
-
+        if: inputs.app_artifact == ''
       - name: Install xcbeautify
         run: |
           brew install xcbeautify
-
+        if: inputs.app_artifact == ''
       - name: Swift packages
         uses: ./.github/actions/swift-packages
-
+        if: inputs.app_artifact == ''
       - name: Pre-start simulator
         run: |
           echo "⏱️  Starting simulator at $(date)"
           xcrun simctl boot "${{ env.SIMULATOR_NAME }}" || true
           echo "✅ Simulator started at $(date)"
-
+        if: inputs.app_artifact == ''
       - name: Build iOS app (regtest)
         env:
           GITHUB_ACTOR: ${{ github.actor }}
@@ -90,72 +103,102 @@ jobs:
             SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG E2E_BUILD' \
             -allowProvisioningUpdates \
             build
-
+        if: inputs.app_artifact == ''
       - name: Prepare app for E2E tests (regtest)
         run: |
           mkdir -p e2e-app
           cp -r DerivedData/Build/Products/Debug-iphonesimulator/Bitkit.app e2e-app/bitkit.app
-
+        if: inputs.app_artifact == ''
+      - name: Record app build identity
+        env:
+          BUILD_PLATFORM: ios
+          BUILD_BACKEND: regtest
+        run: |-
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          Path('e2e-app/e2e-build.json').write_text(json.dumps({'appSha': subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(), 'platform': os.environ['BUILD_PLATFORM'], 'backend': os.environ['BUILD_BACKEND']}))
+          PY
+        if: inputs.app_artifact == ''
       - name: Upload iOS app (regtest)
         uses: actions/upload-artifact@v7
         with:
           name: bitkit-e2e-ios-staging_${{ github.run_number }}
           path: e2e-app/
-
+          retention-days: 7
+        if: inputs.app_artifact == ''
+      - name: Reuse the network app build
+        if: inputs.app_artifact != ''
+        env:
+          APP_ARTIFACT: ${{ inputs.app_artifact }}
+        run: echo "Using app artifact $APP_ARTIFACT"
+    timeout-minutes: 40
+    outputs:
+      appSha: ${{ inputs.app_ref || steps.app.outputs.sha }}
   e2e-branch:
     uses: synonymdev/bitkit-e2e-tests/.github/workflows/determine-e2e-branch.yml@main
     with:
       app_branch: ${{ github.head_ref || github.ref_name }}
-      e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
-
+      e2e_branch_input: ${{ inputs.e2e_branch || 'default-feature-branch' }}
   e2e-tests-staging:
     runs-on: macos-latest
-    timeout-minutes: 120
-    needs: [build-staging, e2e-branch]
-
+    # Up to three attempts, retrying failed cases, plus setup and artifact collection.
+    timeout-minutes: 285
+    needs:
+      - build-staging
+      - e2e-branch
     strategy:
       fail-fast: false
       matrix:
         shard:
-          - { name: multi_address, grep: "@multi_address_staging" }
-          - { name: pubky, grep: "@pubky_staging" }
-          - { name: transfer, grep: "@transfer_staging" }
-          - { name: ios_nightly_ui, grep: "@ios_nightly" }
-
+          - name: pubky-paykit
+            ids:
+              - paykit_1
+              - pubky_profile_1
+              - pubky_profile_2
+              - pubky_profile_3
+              - pubky_profile_4
+              - pubky_profile_5
     name: e2e-tests-staging - ${{ matrix.shard.name }}
-
     env:
       BACKEND: regtest
-
+      PLATFORM: ios
+      AUT_FILENAME: bitkit.app
+      E2E_APP_SHA: ${{ needs.build-staging.outputs.appSha }}
+      E2E_RUN_ID: ${{ format('{0}-{1}-staging-{2}', github.run_id, github.run_attempt, matrix.shard.name) }}
+      E2E_PLAN: artifacts/reporting/plan.json
+      E2E_BACKEND_REVISION: regtest-stag0
+      E2E_VARIANT: network-regtest
+      E2E_CASE_IDS: ${{ toJSON(matrix.shard.ids) }}
+      E2E_ATTEMPT_TIMEOUT_MINUTES: "90"
+      RECORD_VIDEO: "true"
+      SIMULATOR_NAME: iPhone 17
+      SIMULATOR_OS_VERSION: "26.2"
     steps:
-      - name: Resolve E2E tests ref
+      - name: Resolve standalone E2E ref
         id: e2e-ref
+        if: inputs.e2e_ref == ''
         uses: synonymdev/bitkit-e2e-tests/.github/actions/resolve-e2e-ref@main
         with:
           selected: ${{ needs.e2e-branch.outputs.branch }}
-          e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
-
+          e2e_branch_input: ${{ inputs.e2e_branch || 'default-feature-branch' }}
       - name: Clone E2E tests
         uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-e2e-tests
           path: bitkit-e2e-tests
-          ref: ${{ steps.e2e-ref.outputs.ref }}
-
+          ref: ${{ inputs.e2e_ref || steps.e2e-ref.outputs.ref }}
       - name: Download iOS app (regtest)
         uses: actions/download-artifact@v8
         with:
-          name: bitkit-e2e-ios-staging_${{ github.run_number }}
+          name: ${{ inputs.app_artifact || format('bitkit-e2e-ios-staging_{0}', github.run_number) }}
           path: bitkit-e2e-tests/aut
-
       - name: List iOS app directory contents
         run: ls -l bitkit-e2e-tests/aut
-
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
           node-version: 22
-
       - name: Cache npm cache
         uses: actions/cache@v6
         with:
@@ -163,17 +206,14 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
-
       - name: Install dependencies
         working-directory: bitkit-e2e-tests
         run: npm ci
-
       - name: Install ffmpeg
         run: |
           echo "Installing ffmpeg with Homebrew..."
           brew install ffmpeg
           echo "ffmpeg version: $(ffmpeg -version | head -1)"
-
       - name: Boot Simulator
         run: |
           echo "Erasing simulator..."
@@ -193,70 +233,53 @@ jobs:
 
           echo "Verifying simulator state..."
           xcrun simctl list devices booted
-
-      - name: Run E2E Tests 1 (${{ matrix.shard.name }})
-        continue-on-error: true
+      - name: Prepare exact run plan
+        working-directory: bitkit-e2e-tests
+        run: node --experimental-strip-types scripts/ci-run.ts prepare
+      - name: Run E2E Tests 1
         id: test1
-        working-directory: bitkit-e2e-tests
-        run: ./ci_run_ios.sh --mochaOpts.grep '${{ matrix.shard.grep }}'
-        env:
-          SIMULATOR_NAME: ${{ env.SIMULATOR_NAME }}
-          SIMULATOR_OS_VERSION: ${{ env.IOS_VERSION }}
-          RECORD_VIDEO: true
-          ATTEMPT: 1
-
-      - name: Run E2E Tests 2 (${{ matrix.shard.name }})
         continue-on-error: true
-        if: steps.test1.outcome != 'success'
+        working-directory: bitkit-e2e-tests
+        run: node --experimental-strip-types scripts/ci-run.ts attempt
+        env:
+          ATTEMPT: "1"
+          RECORD_VIDEO: "true"
+      - name: Run E2E Tests 2
         id: test2
+        continue-on-error: true
+        if: steps.test1.outcome == 'failure'
         working-directory: bitkit-e2e-tests
-        run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
+        run: node --experimental-strip-types scripts/ci-run.ts attempt
         env:
-          SIMULATOR_NAME: ${{ env.SIMULATOR_NAME }}
-          SIMULATOR_OS_VERSION: ${{ env.IOS_VERSION }}
-          RECORD_VIDEO: true
-          ATTEMPT: 2
-
-      - name: Reset iOS Simulator before attempt 3
-        if: steps.test1.outcome != 'success' && steps.test2.outcome != 'success'
-        run: |
-          echo "🔁 Resetting iOS simulator before attempt 3..."
-          xcrun simctl shutdown all || true
-          xcrun simctl erase "${{ env.SIMULATOR_NAME }}" || true
-          xcrun simctl boot "${{ env.SIMULATOR_NAME }}" || true
-          xcrun simctl bootstatus "${{ env.SIMULATOR_NAME }}" -b
-          open -a Simulator
-          sleep 15
-          xcrun simctl list devices booted
-
-      - name: Run E2E Tests 3 (${{ matrix.shard.name }})
-        if: steps.test1.outcome != 'success' && steps.test2.outcome != 'success'
+          ATTEMPT: "2"
+          RECORD_VIDEO: "true"
+      - name: Run E2E Tests 3
         id: test3
+        continue-on-error: true
+        if: steps.test1.outcome == 'failure' && steps.test2.outcome == 'failure'
         working-directory: bitkit-e2e-tests
-        run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
+        run: node --experimental-strip-types scripts/ci-run.ts attempt
         env:
-          SIMULATOR_NAME: ${{ env.SIMULATOR_NAME }}
-          SIMULATOR_OS_VERSION: ${{ env.IOS_VERSION }}
-          RECORD_VIDEO: true
-          ATTEMPT: 3
-
+          ATTEMPT: "3"
+          RECORD_VIDEO: "true"
+      - name: Report all attempts
+        if: always()
+        working-directory: bitkit-e2e-tests
+        run: node --experimental-strip-types scripts/ci-run.ts report
       - name: Upload E2E Artifacts (${{ matrix.shard.name }})
-        # Preserve failed-attempt evidence even when a retry passes.
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: e2e-artifacts-staging_${{ matrix.shard.name }}_${{ github.run_number }}
           path: bitkit-e2e-tests/artifacts/
           retention-days: 7
-
   slack-report:
-    if: >-
-      always() &&
-      (github.event_name == 'schedule' ||
-       (github.event_name == 'workflow_dispatch' && inputs.post_to_slack == true))
+    if: always() && inputs.post_to_slack == true
     runs-on: ubuntu-latest
-    needs: [build-staging, e2e-branch, e2e-tests-staging]
-
+    needs:
+      - build-staging
+      - e2e-branch
+      - e2e-tests-staging
     steps:
       - name: Resolve E2E tests ref
         id: e2e-ref
@@ -265,13 +288,12 @@ jobs:
         with:
           selected: ${{ needs.e2e-branch.outputs.branch }}
           e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
-
+        if: inputs.e2e_ref == ''
       - name: Checkout E2E tests
         uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-e2e-tests
-          ref: ${{ steps.e2e-ref.outputs.ref || 'main' }}
-
+          ref: ${{ inputs.e2e_ref || steps.e2e-ref.outputs.ref || 'main' }}
       - name: Post Slack summary
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_STAGING }}
@@ -284,3 +306,4 @@ jobs:
           RUN_ATTEMPT: ${{ github.run_attempt }}
           E2E_TESTS_REF: ${{ steps.e2e-ref.outputs.ref }}
         run: python3 scripts/slack_summary.py e2e-staging
+    timeout-minutes: 135

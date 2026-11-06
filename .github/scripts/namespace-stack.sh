@@ -26,7 +26,12 @@ up() {
   install_compose
 
   # The runner sets DOCKER_DEFAULT_PLATFORM=linux/arm64, so the instance must be arm64.
-  nsc create --bare --machine_type linux/arm64:8x16 --duration 4h --cidfile "$instance_file"
+  local duration="${NAMESPACE_STACK_DURATION:-4h}"
+  case "$duration" in
+    4h|5h|6h) ;;
+    *) echo "Unsupported Namespace stack lifetime: $duration" >&2; return 1 ;;
+  esac
+  nsc create --bare --machine_type linux/arm64:8x16 --duration "$duration" --cidfile "$instance_file"
 
   # `attach-context --background` times out before its socket appears; the foreground form works.
   nohup nsc docker attach-context --to "$(cat "$instance_file")" --name namespace-stack \
