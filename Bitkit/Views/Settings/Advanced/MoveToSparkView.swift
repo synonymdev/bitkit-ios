@@ -6,7 +6,7 @@ struct MoveToSparkView: View {
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var wallet: WalletViewModel
-    @State private var manager = MoveToSparkManager()
+    @State private var manager = MoveToSparkManager.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -30,7 +30,13 @@ struct MoveToSparkView: View {
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .task {
-            await manager.quote(wallet: wallet)
+            await manager.start(wallet: wallet)
+        }
+        .onDisappear {
+            // Unlocking rebuilds the screen with the route still in the path; only leaving it ends the move.
+            if !navigation.path.contains(.moveToSpark) {
+                manager.reset()
+            }
         }
     }
 

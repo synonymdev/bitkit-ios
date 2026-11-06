@@ -114,11 +114,16 @@ enum MoveToSparkState: Equatable {
 /// Blocktank is closing its channels, and this is the cheapest way to keep the balance in Spending.
 @Observable @MainActor
 final class MoveToSparkManager {
+    /// Shared so a move and its outcome outlive the screen, which is rebuilt when the app is unlocked.
+    static let shared = MoveToSparkManager()
+
     private static let invoiceDescription = "Move to Spark"
     private static let invoiceExpirySecs: UInt32 = 3600
     private static let maxQuoteRounds = 4
 
     private(set) var state: MoveToSparkState = .quoting
+    /// A move was started and its outcome is still the screen's, so showing the screen again keeps it.
+    private var keepsOutcome = false
 
     private let lightningService: LightningService
     private let spark: SparkManager
@@ -128,8 +133,21 @@ final class MoveToSparkManager {
         spark = .shared
     }
 
+    /// Opens the screen: quotes a new move, unless a move started earlier is still running or showing its outcome.
+    func start(wallet: WalletViewModel) async {
+        guard !keepsOutcome else { return }
+        await quote(wallet: wallet)
+    }
+
+    /// Forgets the last move once its screen is left.
+    func reset() {
+        keepsOutcome = false
+        state = .quoting
+    }
+
     /// Quotes moving `targetSats`, or everything the channels can send.
     func quote(wallet: WalletViewModel, targetSats: UInt64? = nil) async {
+        keepsOutcome = false
         state = .quoting
         await wallet.syncStateAsync()
         do {
@@ -142,6 +160,7 @@ final class MoveToSparkManager {
 
     func move(wallet: WalletViewModel) async {
         guard case let .confirm(quote, isMoving) = state, !isMoving else { return }
+        keepsOutcome = true
         state = .confirm(quote, isMoving: true)
         do {
             let paymentHash = try Bolt11Invoice.fromStr(invoiceStr: quote.invoice).paymentHash()
