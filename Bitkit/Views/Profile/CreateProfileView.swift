@@ -174,6 +174,9 @@ struct CreateProfileView: View {
                 username = remote.name
                 existingProfile = remote
                 isRestoring = true
+            } else {
+                existingProfile = nil
+                isRestoring = false
             }
         } catch is CancellationError {
             return

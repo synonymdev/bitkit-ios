@@ -82,4 +82,23 @@ final class PubkyAppProfileStoreTests: XCTestCase {
         XCTAssertFalse(PubkyAppProfileLimits.isValidName("é\u{301}"))
         XCTAssertTrue(PubkyAppProfileLimits.isValidName("e\u{301}e"))
     }
+
+    func testProfileWithoutBaseIsFittedToPubkyAppLimits() {
+        let links = (1 ... 6).map { PubkyProfileData.Link(label: "Site \($0)", url: "site\($0).com") }
+            + [.init(label: "City", url: "New York")]
+        let fitted = PubkyAppProfileStore.fitted(
+            PubkyProfileData(
+                name: "Alice",
+                bio: String(repeating: "b", count: 200),
+                image: nil,
+                links: [.init(label: "City", url: "New York")] + links,
+                tags: []
+            )
+        )
+
+        XCTAssertEqual(fitted.bio.unicodeScalars.count, 160)
+        XCTAssertEqual(fitted.links.count, 5)
+        XCTAssertEqual(fitted.links.first?.url, "https://site1.com")
+        XCTAssertFalse(fitted.links.contains { $0.label == "City" })
+    }
 }

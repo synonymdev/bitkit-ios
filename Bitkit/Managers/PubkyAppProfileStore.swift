@@ -119,6 +119,7 @@ actor PubkyAppProfileStore {
     func save(_ data: PubkyProfileData, expectedIdentity: String?) async throws {
         let data = Self.normalized(data)
         let key = try await Self.identity(expectedIdentity)
+        let copyUnread = tagsUnavailable.contains(key)
         var base: PubkyProfile?
         if let baseRevision = data.baseRevision {
             guard let known = profilesByRevision[key]?[baseRevision] else {
@@ -130,7 +131,7 @@ actor PubkyAppProfileStore {
             _ = try? await load(publicKey: key)
             throw PubkyAppProfileError.changedElsewhere
         }
-        var update = Self.update(from: data, base: base)
+        var update = Self.update(from: base == nil ? Self.fitted(data) : data, base: base)
         // A Bitkit avatar still on Paykit storage is moved by a later load rather than written to pubky.app as is.
         let paykitAvatar = data.image.flatMap { Self.isPaykitStorage($0) ? $0 : nil }
         if let image = update.image, Self.isPaykitStorage(image) {
@@ -146,15 +147,19 @@ actor PubkyAppProfileStore {
             throw PubkyAppProfileError.changedElsewhere
         }
         Self.pubkyAppProfileOwners.insert(key)
+        let previousTags = base?.tags ?? []
+        let stored = await storedCopy(for: key)
         if let paykitAvatar, snapshot.profile.image == nil {
             Self.pubkyAppAvatarPending.insert(key)
             pendingAvatarUris[key] = paykitAvatar
-        } else {
+        } else if snapshot.profile.image != nil || !(copyUnread && Self.pubkyAppAvatarPending.contains(key)) {
             Self.pubkyAppAvatarPending.remove(key)
             pendingAvatarUris[key] = nil
+        } else if let uri = stored?.image, Self.isPaykitStorage(uri) {
+            // The form could not show the avatar still to move, as the copy was unread; it stays pending.
+            pendingAvatarUris[key] = uri
         }
-        let previousTags = base?.tags ?? []
-        let tags = await tagsToKeep(data.tags, for: key)
+        let tags = stored.map { Self.tags(data.tags, keeping: $0.tags) }
         var profile = Self.profile(publicKey: key, snapshot: snapshot, tags: tags ?? previousTags)
         if Self.pubkyAppAvatarPending.contains(key), let uri = pendingAvatarUris[key] {
             profile = profile.withImageUrl(uri)
@@ -165,6 +170,7 @@ actor PubkyAppProfileStore {
         if tags != nil {
             do {
                 try await publishCopy(profile, expectedIdentity: key)
+                tagsUnavailable.remove(key)
             } catch {
                 copyError = error
             }
@@ -197,18 +203,21 @@ actor PubkyAppProfileStore {
         revisionOrder[key] = order
     }
 
-    /// When the last load could not read the Paykit copy, the form showed no tags, so the stored ones are kept; nil while
-    /// they still cannot be read.
-    private func tagsToKeep(_ tags: [String], for key: String) async -> [String]? {
-        guard tagsUnavailable.contains(key) else { return tags }
-        let stored: Paykit.PaykitProfileRecord?
+    /// What a save keeps from the Paykit copy after the last load could not read it, as the form then lacked its tags
+    /// and the avatar still to move: empty when that load read it, nil while it still cannot be read.
+    private func storedCopy(for key: String) async -> (tags: [String]?, image: String?)? {
+        guard tagsUnavailable.contains(key) else { return (nil, nil) }
         do {
-            stored = try await PubkyService.fetchPaykitProfile(publicKey: key)
+            let data = try await PubkyService.fetchPaykitProfile(publicKey: key).map { PubkyProfileData.from(paykitProfile: $0.profile) }
+            return (data?.tags ?? [], data?.image)
         } catch {
             return nil
         }
-        tagsUnavailable.remove(key)
-        let storedTags = stored.map { PubkyProfileData.from(paykitProfile: $0.profile).tags } ?? []
+    }
+
+    /// The form's tags, plus the stored ones it could not show after a failed copy read.
+    private static func tags(_ tags: [String], keeping storedTags: [String]?) -> [String] {
+        guard let storedTags else { return tags }
         return storedTags + tags.filter { !storedTags.contains($0) }
     }
 
@@ -220,19 +229,33 @@ actor PubkyAppProfileStore {
         }
     }
 
+    /// A Bitkit profile fitted to pubky.app's limits, for a profile written there without a base: text on one line and
+    /// cut to length, and only links pubky.app can hold, at most five.
+    static func fitted(_ data: PubkyProfileData) -> PubkyProfileData {
+        var data = data
+        data.name = prefix(singleLine(data.name), nameMaxLength)
+        data.bio = prefix(singleLine(data.bio), bioMaxLength)
+        data.links = Array(
+            data.links
+                .compactMap { link -> PubkyProfileData.Link? in
+                    let title = singleLine(link.label)
+                    guard !title.isEmpty, let url = linkUrl(link.url) else { return nil }
+                    return PubkyProfileData.Link(label: prefix(title, linkTitleMaxLength), url: url)
+                }
+                .prefix(linksMaxCount)
+        )
+        return data
+    }
+
     private func migrate(_ data: PubkyProfileData, publicKey: String) async -> Paykit.PubkyProfileSnapshot? {
-        let links = data.links
-            .compactMap { link -> Paykit.PubkyProfileLink? in
-                let title = Self.singleLine(link.label)
-                guard !title.isEmpty, let url = Self.linkUrl(link.url) else { return nil }
-                return Paykit.PubkyProfileLink(title: Self.prefix(title, Self.linkTitleMaxLength), url: url)
-            }
-            .prefix(Self.linksMaxCount)
+        let fitted = Self.fitted(data)
+        // An avatar already on pubky.app is kept as is; one on Paykit storage is moved below.
+        let keptImage = data.image.flatMap { Self.isPubkyAppFile($0) ? $0 : nil }
         let update = Paykit.PubkyProfileUpdate(
-            name: Self.prefix(Self.singleLine(data.name), Self.nameMaxLength),
-            bio: Self.prefix(Self.singleLine(data.bio), Self.bioMaxLength),
-            image: nil,
-            links: Array(links)
+            name: fitted.name,
+            bio: fitted.bio,
+            image: keptImage,
+            links: fitted.links.map { Paykit.PubkyProfileLink(title: $0.label, url: $0.url) }
         )
         let snapshot: Paykit.PubkyProfileSnapshot
         do {
@@ -395,6 +418,10 @@ actor PubkyAppProfileStore {
 
     private static func isPaykitStorage(_ uri: String) -> Bool {
         uri.contains("/pub/paykit/")
+    }
+
+    private static func isPubkyAppFile(_ uri: String) -> Bool {
+        uri.contains("/pub/pubky.app/files/") && uri.unicodeScalars.count <= linkUrlMaxLength
     }
 
     private static func identity(_ expectedIdentity: String?) async throws -> String {

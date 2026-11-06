@@ -763,7 +763,8 @@ class PubkyProfileManager: ObservableObject {
         }
         let imageUrl = Self.resolvedImageUrl(newImageUrl: avatarUri, existingImageUrl: existingImageUrl)
 
-        let savedProfile = try await writeProfile(
+        // A profile whose only miss is its tags is created all the same; its tags can be added from Profile.
+        let (savedProfile, tagsNotSavedAt) = try await writeProfile(
             name: name,
             bio: bio,
             imageUrl: imageUrl,
@@ -772,6 +773,9 @@ class PubkyProfileManager: ObservableObject {
             baseRevision: baseRevision,
             expectedIdentity: publicKey
         )
+        if tagsNotSavedAt != nil {
+            Logger.warn("Created the profile without its tags", context: "PubkyProfileManager")
+        }
         Self.notifyAppStateBackupChanged()
 
         let createdProfile = savedProfile ?? PubkyProfile(
@@ -914,7 +918,7 @@ class PubkyProfileManager: ObservableObject {
             links: links,
             tags: tags,
             avatarImage: avatarImage,
-            baseRevision: baseRevision ?? profile?.revision,
+            baseRevision: baseRevision,
             session: session
         )
     }
@@ -1010,8 +1014,9 @@ class PubkyProfileManager: ObservableObject {
         let resolvedImageUrl = Self.resolvedImageUrl(newImageUrl: newImageUrl, existingImageUrl: profile?.imageUrl)
 
         let savedProfile: PubkyProfile?
+        let tagsNotSavedAt: String?
         do {
-            savedProfile = try await writeProfile(
+            (savedProfile, tagsNotSavedAt) = try await writeProfile(
                 name: name,
                 bio: bio,
                 imageUrl: resolvedImageUrl,
@@ -1043,6 +1048,10 @@ class PubkyProfileManager: ObservableObject {
         )
         commitProfile(updatedProfile)
         setProfileSetupPending(false)
+        // The other fields are on pubky.app, so the screen shows them and a retry starts from their revision.
+        if let tagsNotSavedAt {
+            throw PubkyAppProfileError.tagsNotSaved(revision: tagsNotSavedAt)
+        }
         return true
     }
 
@@ -1117,7 +1126,7 @@ class PubkyProfileManager: ObservableObject {
         tags: [String] = [],
         baseRevision: String? = nil,
         expectedIdentity: String? = nil
-    ) async throws -> PubkyProfile? {
+    ) async throws -> (profile: PubkyProfile?, tagsNotSavedAt: String?) {
         var profileData = PubkyProfileData(
             name: name,
             bio: bio,
@@ -1135,15 +1144,10 @@ class PubkyProfileManager: ObservableObject {
                 try await publish(profileData, expectedIdentity)
             }.value
         } catch let PubkyAppProfileError.tagsNotSaved(revision) {
-            // The other fields are on pubky.app, so the screen shows them and a retry starts from their revision.
-            if let saved = await PubkyAppProfileStore.shared.savedProfile(saveId: saveId),
-               PubkyPublicKeyFormat.matches(saved.publicKey, currentSession?.publicKey)
-            {
-                commitProfile(saved)
-            }
-            throw PubkyAppProfileError.tagsNotSaved(revision: revision)
+            // The other fields are on pubky.app; the caller decides what that means for its flow.
+            return await (PubkyAppProfileStore.shared.savedProfile(saveId: saveId), revision)
         }
-        return await PubkyAppProfileStore.shared.savedProfile(saveId: saveId)
+        return await (PubkyAppProfileStore.shared.savedProfile(saveId: saveId), nil)
     }
 
     private func discardAbandonedSession() async {
