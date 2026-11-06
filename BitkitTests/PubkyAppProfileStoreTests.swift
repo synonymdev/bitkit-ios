@@ -68,6 +68,8 @@ final class PubkyAppProfileStoreTests: XCTestCase {
         XCTAssertEqual(PubkyAppProfileStore.linkUrl("555.123.4567"), "tel:5551234567")
         XCTAssertNil(PubkyAppProfileStore.linkUrl("v1.2.3"))
         XCTAssertNil(PubkyAppProfileStore.linkUrl("foo.123"))
+        XCTAssertEqual(PubkyAppProfileStore.linkUrl("tel://5551234567"), "tel://5551234567")
+        XCTAssertEqual(PubkyAppProfileStore.linkUrl("https://127.1"), "https://127.1")
         XCTAssertEqual(PubkyAppProfileStore.linkUrl("192.168.1.10"), "https://192.168.1.10")
         XCTAssertNil(PubkyAppProfileStore.linkUrl("New York"))
         XCTAssertEqual(PubkyAppProfileStore.linkUrl("medium.com/@alice"), "https://medium.com/@alice")

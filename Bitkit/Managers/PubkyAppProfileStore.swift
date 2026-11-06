@@ -403,11 +403,17 @@ actor PubkyAppProfileStore {
         return url
     }
 
-    /// Paykit rejects a host whose last label is all digits unless the host is an IPv4 address, as URL parsers do.
+    /// Paykit's URL parser reads a web URL's host that ends in an all-digit label as an IPv4 address (one to four
+    /// numbers, as in `127.1`) and rejects it when it is not one; other schemes keep such hosts as they are.
     private static func hasValidHost(_ url: URL) -> Bool {
-        guard let host = url.host, let last = host.split(separator: ".").last, last.allSatisfy(\.isNumber) else { return true }
-        let octets = host.split(separator: ".", omittingEmptySubsequences: false)
-        return octets.count == 4 && octets.allSatisfy { !$0.isEmpty && $0.allSatisfy(\.isNumber) && (Int($0) ?? 256) <= 255 }
+        guard ["http", "https", "ws", "wss", "ftp"].contains(url.scheme?.lowercased() ?? ""),
+              let host = url.host, let last = host.split(separator: ".").last, last.allSatisfy(\.isNumber)
+        else { return true }
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false).map { UInt64($0) }
+        guard (1 ... 4).contains(parts.count), parts.allSatisfy({ $0 != nil }) else { return false }
+        let numbers = parts.compactMap { $0 }
+        let lastLimit = (UInt64(1) << (8 * UInt64(5 - numbers.count))) - 1
+        return numbers.dropLast().allSatisfy { $0 <= 255 } && numbers[numbers.count - 1] <= lastLimit
     }
 
     private static func isEmailAddress(_ value: String) -> Bool {
