@@ -447,6 +447,8 @@ actor PaykitSdkService {
     static let shared = PaykitSdkService()
     /// Maximum plaintext size accepted by Paykit's pubky-noise transport.
     static let maximumMessageBytes = 1000
+    /// The Paykit App ID this SDK sends from.
+    static let appId = "bitkit"
     private static let walletBackupDataChangedSubject = PassthroughSubject<Void, Never>()
 
     nonisolated static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {
@@ -2065,7 +2067,7 @@ actor PaykitSdkService {
     }
 
     private nonisolated static func config() throws -> PaykitSdkConfig {
-        var config = try Paykit.defaultConfig(appId: "bitkit")
+        var config = try Paykit.defaultConfig(appId: appId)
         config.publicContactSharing = .privateOnly
         return config
     }

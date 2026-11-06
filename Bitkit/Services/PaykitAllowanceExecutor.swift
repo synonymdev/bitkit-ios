@@ -1050,6 +1050,20 @@ actor PaykitAllowanceExecutor {
 
         let endpointIdentifier = payment.endpoint.methodId.rawValue
         let paymentAppId = try payment.context.paymentAppId(for: endpointIdentifier)
+        do {
+            try PaykitPaymentProofSize.validate(
+                paymentReference: request.paymentReference,
+                paymentAppId: paymentAppId,
+                paymentEndpointIdentifier: endpointIdentifier,
+                billingPeriod: request.billingPeriod?.sdkValue,
+                allowanceId: candidate.allowanceId,
+                conversionQuoteId: try? request.payment(using: payment.endpoint.methodId, at: now()).quoteId,
+                kind: .lightning
+            )
+        } catch {
+            Logger.info("An incoming request's payment proof cannot be sent in one message; it stays on the manual flow", context: "PaykitAllowance")
+            return .manual
+        }
         // The SDK requires this app to hold the shared execution claim before it queues an automatic Acceptance.
         try await payer.claimForExecution(request)
         let recordedAcceptanceIntent = try await payer.recordAcceptanceIntent(request, identity: identity)

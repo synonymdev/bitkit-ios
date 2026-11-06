@@ -656,6 +656,8 @@
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Crea una nova identitat Pubky en aquest homeserver. Continua només si hi confies.";
 "pubky_auth__approval_failed" = "Ha fallat l'autorització";
+"pubky_auth__identity_unavailable_desc" = "Comprova la connexió i torna-ho a provar.";
+"profile__auth_error_signup_code_rejected" = "L'homeserver no ha acceptat aquest codi de registre. Torna-ho a provar o utilitza un altre enllaç de registre.";
 "wallet__onchain_abandon_transfer_note" = "Les transferències al saldo de despesa ja no estan disponibles. Bitkit primer comprova la xarxa i després retorna les monedes d'aquesta transferència a la teva cartera perquè la transferència original no es pugui confirmar mai. Això té una comissió de xarxa.";
 "watch_only_accounts__active_section" = "Comptes actius";
 "watch_only_accounts__copy_xpub" = "Copiar xpub";
@@ -1327,6 +1329,7 @@
 "wallet__payment_received" = "Rebut Bitcoin";
 "wallet__payment_request" = "Sol·licitud de pagament";
 "wallet__payment_request_unavailable" = "La sol·licitud de pagament ja no està disponible.";
+"wallet__payment_request_note_too_long" = "Escurça la nota i torna-ho a provar.";
 "wallet__payment_request_expired" = "La sol·licitud de pagament ha caducat.";
 "wallet__payment_request_waiting_for_details" = "Encara s'estan recuperant les dades de pagament. Torna-ho a provar d'aquí a poc.";
 "wallet__payment_request_in_progress" = "La sol·licitud de pagament ja s'està processant.";
@@ -1649,6 +1652,7 @@
 "wallet__payment_request_payment_verified" = "Pagament verificat";
 "wallet__payment_request_underpaid" = "Rebut · Pagament insuficient";
 "wallet__payment_request_after_expiry" = "Rebut · Després del venciment";
+"wallet__payment_request_before_request" = "Rebut · Abans de la sol·licitud";
 "pubky_auth__usdt_intro_description" = "Per guanyar, has de compartir amb Paykit la teva adreça USDT. Pot veure l'activitat de vendes, però no pot gastar fons.";
 "pubky_auth__usdt_intro_optional" = "Pots compartir amb Paykit la teva adreça USDT per rebre guanys. Pot veure l'activitat de vendes, però no pot gastar fons.";
 "pubky_auth__usdt_unavailable" = "La teva adreça USDT no està disponible. Torna-ho a provar.";

@@ -714,6 +714,8 @@
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Erstelle eine neue Pubky-Identität auf diesem Homeserver. Fahre nur fort, wenn du ihm vertraust.";
 "pubky_auth__approval_failed" = "Autorisierung fehlgeschlagen";
+"pubky_auth__identity_unavailable_desc" = "Überprüfe deine Verbindung und versuche es erneut.";
+"profile__auth_error_signup_code_rejected" = "Der Homeserver hat diesen Registrierungscode nicht akzeptiert. Versuche es erneut oder verwende einen anderen Registrierungslink.";
 "wallet__onchain_abandon_transfer_note" = "Überweisungen auf dein Ausgabenguthaben sind nicht mehr verfügbar. Bitkit prüft zuerst das Netzwerk und schickt die Coins dieser Überweisung dann zurück in deine Wallet, damit die ursprüngliche Überweisung nie bestätigt wird. Dafür fällt eine Netzwerkgebühr an.";
 "watch_only_accounts__active_section" = "Aktive Konten";
 "watch_only_accounts__copy_xpub" = "xpub kopieren";
@@ -1448,6 +1450,7 @@
 "wallet__payment_received" = "Bitcoin empfangen";
 "wallet__payment_request" = "Zahlungsanforderung";
 "wallet__payment_request_unavailable" = "Die Zahlungsanforderung ist nicht mehr verfügbar.";
+"wallet__payment_request_note_too_long" = "Kürze die Notiz und versuche es erneut.";
 "wallet__payment_request_expired" = "Die Zahlungsanforderung ist abgelaufen.";
 "wallet__payment_request_waiting_for_details" = "Die Zahlungsdetails werden noch wiederhergestellt. Versuche es in Kürze erneut.";
 "wallet__payment_request_in_progress" = "Die Zahlungsanforderung wird bereits bearbeitet.";
@@ -1786,6 +1789,7 @@
 "wallet__payment_request_payment_verified" = "Zahlung verifiziert";
 "wallet__payment_request_underpaid" = "Empfangen · Unterbezahlt";
 "wallet__payment_request_after_expiry" = "Empfangen · Nach Ablauf";
+"wallet__payment_request_before_request" = "Empfangen · Vor der Anforderung";
 "pubky_auth__usdt_intro_description" = "Um zu verdienen, musst du deine USDT-Adresse mit Paykit teilen. Paykit kann Verkaufsaktivitäten sehen, aber kein Guthaben ausgeben.";
 "pubky_auth__usdt_intro_optional" = "Du kannst deine USDT-Adresse mit Paykit teilen, um Einnahmen zu empfangen. Paykit kann Verkaufsaktivitäten sehen, aber kein Guthaben ausgeben.";
 "pubky_auth__usdt_unavailable" = "Deine USDT-Adresse ist nicht verfügbar. Bitte versuche es erneut.";
