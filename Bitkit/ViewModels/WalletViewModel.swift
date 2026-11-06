@@ -213,6 +213,12 @@ class WalletViewModel: ObservableObject {
         eventHandlers[id] = handler
     }
 
+    func notifyEventHandlers(_ event: Event) {
+        for handler in eventHandlers.values {
+            handler(event)
+        }
+    }
+
     func removeOnEvent(id: String) {
         eventHandlers.removeValue(forKey: id)
     }
@@ -300,10 +306,7 @@ class WalletViewModel: ObservableObject {
             }
             try await nodeLifecycle.start(onEvent: { event in
                 Task { @MainActor in
-                    // Notify all event handlers
-                    for handler in self.eventHandlers.values {
-                        handler(event)
-                    }
+                    self.notifyEventHandlers(event)
 
                     // Handle specific events for targeted UI updates
                     switch event {
@@ -1193,6 +1196,8 @@ class WalletViewModel: ObservableObject {
     /// A Spark-to-Spark payment settles inside the send call, so its completion event can fire before `watchSend`
     /// starts listening; the rail's own payment list still has the outcome.
     private func finishWatchSendIfRailAlreadySettled(hash: String, eventId: String) async {
+        // A retry over a channel settles from LDK; an earlier Spark attempt's outcome doesn't decide it.
+        guard lightningService.attemptRail(paymentHash: hash) != .ldk else { return }
         let payments = await (try? lightningService.channelFreeRailPayments()) ?? []
         let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: hash)
         switch payment?.status {

@@ -15,6 +15,7 @@ final class ChannelFreeRailTests: XCTestCase {
     }
 
     override func tearDown() {
+        Bitkit.LightningService.shared.clearEventCallback()
         Bitkit.LightningService.shared.channelFreeRail = previousRail
         rail = nil
         super.tearDown()
@@ -175,6 +176,56 @@ extension ChannelFreeRailTests {
 
         XCTAssertLessThan(sendable, UInt64.max)
         XCTAssertGreaterThan(sendable, UInt64.max / 2)
+    }
+
+    func testSparkFailureDoesNotEndAChannelRetryOfTheSameInvoice() async throws {
+        let hash = "a1a1"
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil)]
+        Bitkit.LightningService.shared.noteAttempt(on: .ldk, paymentHash: hash)
+        let wallet = WalletViewModel()
+        var failures = 0
+        wallet.addOnEvent(id: "failures") { event in
+            if case .paymentFailed = event {
+                failures += 1
+            }
+        }
+        Bitkit.LightningService.shared.setEventCallback { wallet.notifyEventHandlers($0) }
+
+        let wait = Task { try await wallet.waitForLightningPayment(hash: hash, timeoutSeconds: 5) }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        Bitkit.LightningService.shared.emitChannelFreeRailEvent(.paymentFailed(paymentId: hash, paymentHash: hash, reason: .unexpectedError))
+        wallet.notifyEventHandlers(.paymentSuccessful(paymentId: hash, paymentHash: hash, paymentPreimage: "pp", feePaidMsat: 2000))
+        let settled = try await wait.value
+
+        XCTAssertEqual(settled.paymentHash, hash)
+        XCTAssertEqual(failures, 0, "No failure may reach the send screen")
+        wallet.removeOnEvent(id: "failures")
+    }
+
+    func testChannelFailureDoesNotEndASparkRetryOfTheSameInvoice() async throws {
+        let hash = "b2b2"
+        Bitkit.LightningService.shared.noteAttempt(on: .channelFree, paymentHash: hash)
+        let wallet = WalletViewModel()
+        Bitkit.LightningService.shared.setEventCallback { wallet.notifyEventHandlers($0) }
+        let staleLdkFailure = LDKNode.Event.paymentFailed(paymentId: hash, paymentHash: hash, reason: .retriesExhausted)
+
+        XCTAssertTrue(Bitkit.LightningService.shared.isStaleFailure(staleLdkFailure, from: .ldk), "The node loop drops it")
+        let wait = Task { try await wallet.waitForLightningPayment(hash: hash, timeoutSeconds: 5) }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        Bitkit.LightningService.shared.emitChannelFreeRailEvent(
+            .paymentSuccessful(paymentId: hash, paymentHash: hash, paymentPreimage: "pp", feePaidMsat: 1000)
+        )
+        let settled = try await wait.value
+
+        XCTAssertEqual(settled.paymentHash, hash)
+    }
+
+    func testSettledActivityKeepsItsStatusAgainstAStaleFailure() {
+        XCTAssertTrue(ActivityService.keepsLightningStatus(existing: .succeeded, update: .failed, isStaleRailFailure: false))
+        XCTAssertTrue(ActivityService.keepsLightningStatus(existing: .pending, update: .failed, isStaleRailFailure: true))
+        XCTAssertFalse(ActivityService.keepsLightningStatus(existing: .pending, update: .failed, isStaleRailFailure: false))
+        XCTAssertFalse(ActivityService.keepsLightningStatus(existing: .failed, update: .succeeded, isStaleRailFailure: false))
+        XCTAssertFalse(ActivityService.keepsLightningStatus(existing: .pending, update: .succeeded, isStaleRailFailure: true))
     }
 
     func testSparkReadyTriggersOnceUntilItDropsAgain() {
