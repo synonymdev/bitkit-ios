@@ -1630,7 +1630,26 @@ class PubkyProfileManager: ObservableObject {
             try await validateRemoteRemovalOwner(live)
         }
         if !live.appAcknowledged {
-            try await removalServices.syncApp()
+            do {
+                try await removalServices.syncApp()
+            } catch {
+                let category = switch error {
+                case is CancellationError: "cancelled"
+                case PaykitError.ConcurrentUpdate: "concurrent update"
+                case PaykitError.Storage: "storage"
+                case PaykitError.Identity: "identity"
+                case PaykitError.Transport: "transport"
+                case PaykitError.NotFound: "not found"
+                case PaykitError.Protocol: "protocol"
+                case PaykitError.Policy: "policy"
+                case PaykitError.PaymentAdapter: "payment adapter"
+                case PaykitError.RecoveryRequired: "recovery required"
+                case PaykitError.SharedStateBusy: "shared state busy"
+                default: "other"
+                }
+                Logger.warn("Paykit app capability update failed during profile removal (\(category))", context: "PubkyProfileManager")
+                throw error
+            }
             live.appAcknowledged = true
             try await validateRemoteRemovalOwner(live)
         }

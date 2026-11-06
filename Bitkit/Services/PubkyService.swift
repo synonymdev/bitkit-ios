@@ -2131,9 +2131,10 @@ actor PaykitSdkService {
                 let result: T? = try await withLockedSdkOperation(priority: priority) {
                     #if DEBUG
                         let admitted = clock.now
+                        var outcome = "Failed"
                         defer {
                             Logger.debug(
-                                "Finished Paykit operation \(operationName) trace=\(trace) queue=\(started.duration(to: admitted)) work=\(admitted.duration(to: clock.now))",
+                                "\(outcome) Paykit operation \(operationName) trace=\(trace) queue=\(started.duration(to: admitted)) work=\(admitted.duration(to: clock.now))",
                                 context: "PaykitSdkService"
                             )
                         }
@@ -2143,11 +2144,16 @@ actor PaykitSdkService {
                             throw PubkyServiceError.identityChanged
                         }
                         // Release the SDK lock before waiting if payment started while this operation was queued.
-                        guard await !PaykitPaymentActivity.shared.isActive else { return nil }
+                        guard await !PaykitPaymentActivity.shared.isActive else {
+                            #if DEBUG
+                                outcome = "Deferred"
+                            #endif
+                            return nil
+                        }
                     }
                     try await beforeOperation()
                     do {
-                        return try await withSdkErrorHandling {
+                        let value: T? = try await withSdkErrorHandling {
                             #if DEBUG
                                 let keyStarted = clock.now
                             #endif
@@ -2162,7 +2168,14 @@ actor PaykitSdkService {
                             try operationLock.checkWipeOwnership()
                             return try await .some(operation(handle()))
                         }
+                        #if DEBUG
+                            outcome = "Completed"
+                        #endif
+                        return value
                     } catch OperationDeferral.paymentActive {
+                        #if DEBUG
+                            outcome = "Deferred"
+                        #endif
                         return nil
                     }
                 }
