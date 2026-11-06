@@ -933,6 +933,7 @@ enum PaykitAllowanceFixtures {
             proposalOutboundStatus: nil,
             proposalEventId: "650e8400-e29b-41d4-a716-446655440000",
             proposalAppId: "bitkit",
+            proposalRecordedAt: nil,
             payerAppId: nil,
             executionClaimAppId: nil,
             terms: Paykit.PaymentRequestTerms(
@@ -949,6 +950,7 @@ enum PaykitAllowanceFixtures {
             ),
             acceptedEventId: nil,
             acceptedOutboundStatus: nil,
+            acceptanceRecordedAt: nil,
             rejectedEventId: nil,
             rejectedOutboundStatus: nil,
             canceledEventId: nil,
