@@ -454,6 +454,9 @@
 "lightning__spark_exit__fee_bump_error" = "Could not price a higher fee. Try again.";
 "lightning__spark_exit__fee_bump_confirm" = "Use this fee";
 "lightning__spark_exit__leftover_waiting" = "{amount} of fee change will reach your savings when network fees drop.";
+"lightning__spark_exit__cancelled_title" = "Exit\n<accent>cancelled</accent>";
+"lightning__spark_exit__cancelled_text" = "You cancelled the exit. The fee funding that arrived goes back to savings.";
+"lightning__spark_exit__cancel_failed" = "Couldn't check the funding address. Try again.";
 "lightning__spark_learn__title" = "Transfer\n<accent>speed</accent>";
 "lightning__spark_learn__text" = "Instant pays the provider to add your transfer to your spending balance before it confirms, so it is ready in a few minutes.\n\nLater waits for 3 confirmations, about 30 minutes, and costs less.";
 "lightning__spark_learn__label" = "Spending balance after transfer";

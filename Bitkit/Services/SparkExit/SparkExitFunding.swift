@@ -288,16 +288,28 @@ enum SparkExitMath {
         let lost = record.lostLeaves ?? []
         var lostReminder = lost.isEmpty ? [] : [SparkExitReminder(id: "lost-\(lost.count)", fireAt: now, isLostLeaves: true)]
         // An exit stopped because every leaf was lost is told by the lost reminder alone.
-        if case .failed = record.phase, !record.isEveryLeafLost {
+        if case .failed = record.phase, !record.isEveryLeafLost, record.isCancelled != true {
             lostReminder.append(SparkExitReminder(id: "failed", fireAt: now, isFailed: true))
         }
-        if case let .needsFunding(requiredSats) = record.phase {
-            // A payment Bitkit already sent from savings, such as a higher fee's, needs no reminder to fund.
-            guard !record.isAwaitingOwnPayment else { return lostReminder }
-            return lostReminder + [SparkExitReminder(id: "funding-\(requiredSats)", fireAt: now, isFunding: true)]
+        // A payment Bitkit already sent from savings, such as a higher fee's, needs no reminder to fund until the exit
+        // forgets it (gone from every host, or not adopted in time).
+        if case let .awaitingFunding(requiredSats) = record.phase {
+            guard record.fundingShortfallSats != nil, !record.isAwaitingOwnPayment else { return lostReminder }
+            // Started but never funded: Spark stays detached until the user funds or cancels.
+            let fireAt = max(now, record.createdAt.addingTimeInterval(reminderSeconds(network: network)))
+            return lostReminder + [SparkExitReminder(id: "await-funding-\(requiredSats)", fireAt: fireAt, isFunding: true)]
         }
-        guard case .running = record.phase, let recovery = record.recovery?.response else { return lostReminder }
         var reminders = lostReminder
+        if case let .needsFunding(requiredSats) = record.phase {
+            if !record.isAwaitingOwnPayment {
+                reminders.append(SparkExitReminder(id: "funding-\(requiredSats)", fireAt: now, isFunding: true))
+            }
+            // The live generation keeps going while the top-up comes, and so do its step reminders.
+            guard record.isDrivingWhileFunding else { return reminders }
+        } else {
+            guard case .running = record.phase else { return lostReminder }
+        }
+        guard let recovery = record.recovery?.response else { return reminders }
         // Waiting for a leaf that may still move is the background runs' job, for up to a week.
         if record.isWaitingForLeaves || record.isWaitingForOperators {
             return reminders

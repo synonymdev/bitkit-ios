@@ -85,13 +85,18 @@ final class SparkExitManager {
         SparkExitLostLeafStore(walletIndex: walletIndex)
     }
 
-    /// Saves the record, and keeps the leaves it lost to an older state for every later exit of the wallet.
+    /// Saves the record, and keeps the leaves it lost to an older state for every later exit of the wallet. The lost-leaf
+    /// list is best effort: it never fails the save the driver relies on.
     private var saveRecord: (SparkExitRecord) throws -> Void {
         let store = store
         let lostLeafStore = lostLeafStore
         return {
             try store.save($0)
-            try lostLeafStore.add(lostIn: $0)
+            do {
+                try lostLeafStore.add(lostIn: $0)
+            } catch {
+                Logger.warn("Failed to keep the Spark exit's lost leaves: \(error)", context: "SparkExitManager")
+            }
         }
     }
 
@@ -140,7 +145,8 @@ final class SparkExitManager {
         } catch {
             guard let salvaged = SparkExitRecordCoder.salvage(data) else { throw error }
             Logger.warn("Rebuilding the Spark exit from the chain, its record could not be read: \(error)", context: "SparkExitManager")
-            try store.setAside()
+            // The original is copied aside first and the salvaged record then replaces it in one write.
+            try store.keepCopyAside()
             try store.save(salvaged)
             record = salvaged
         }
@@ -161,11 +167,33 @@ final class SparkExitManager {
     /// Stops an exit that has not built anything and whose funding address received nothing, so leaving it
     /// costs nothing: Spark comes back as it was.
     var canCancel: Bool {
-        guard let record, record.recovery == nil, record.fundedSats == 0, fundingSeenSats == 0 else { return false }
+        guard let record else { return false }
+        return Self.canCancel(record, fundingSeenSats: fundingSeenSats)
+    }
+
+    /// Nothing built, nothing paid from savings and nothing seen at the funding address.
+    nonisolated static func canCancel(_ record: SparkExitRecord, fundingSeenSats: UInt64) -> Bool {
+        guard record.recovery == nil, record.fundedSats == 0, fundingSeenSats == 0, record.fundingPaymentTxid == nil else { return false }
         if case .awaitingFunding = record.phase {
             return true
         }
         return false
+    }
+
+    enum CancelOutcome: Equatable {
+        /// Nothing reached the funding address: the exit is forgotten and Spark comes back.
+        case forget
+        /// Funding reached it after all: the exit ends and sends that funding back to savings.
+        case sweepFunding([SparkExitRecord.Leftover])
+        /// The address could not be read: nothing changes.
+        case keep
+    }
+
+    /// What cancelling does, given what the funding address holds now (nil when it could not be read).
+    nonisolated static func cancelOutcome(utxos: [EsploraUtxo]?) -> CancelOutcome {
+        guard let utxos else { return .keep }
+        guard !utxos.isEmpty else { return .forget }
+        return .sweepFunding(utxos.map { SparkExitRecord.Leftover(txid: $0.txid, vout: $0.vout, valueSats: $0.value) })
     }
 
     /// Notes that the user opened the result of an exit that failed or lost leaves, so Emergency exit starts a new
@@ -181,8 +209,42 @@ final class SparkExitManager {
         }
     }
 
-    func cancel() async {
-        guard canCancel, let record else { return }
+    /// Reads the funding address first: a payment that arrived since the last tick is never orphaned. With funding there
+    /// the record stays, ends as cancelled and its leftover sweep returns the funding to savings.
+    @discardableResult
+    func cancel() async -> CancelOutcome {
+        guard canCancel, var record, let address = record.funding.first?.address else { return .keep }
+        let utxos = try? await chain?.utxos(address: address)
+        let outcome = Self.cancelOutcome(utxos: utxos)
+        switch outcome {
+        case .keep:
+            Logger.warn("Spark exit not cancelled: its funding address could not be read", context: "SparkExitManager")
+            return outcome
+        case let .sweepFunding(leftover):
+            while isTicking {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            record.phase = .failed(reason: SparkExitRecord.cancelledReason)
+            record.isCancelled = true
+            record.isResultSeen = true
+            record.leftover = leftover
+            do {
+                try saveRecord(record)
+            } catch {
+                Logger.error("Failed to save the cancelled Spark exit: \(error)", context: "SparkExitManager")
+                return .keep
+            }
+            self.record = record
+            if let transferId = record.transferId {
+                try? await TransferService(lightningService: .shared).markSettled(id: transferId)
+            }
+            await reattachSpark()
+            Logger.info("Cancelled the Spark exit after funding arrived; sweeping it back to savings", context: "SparkExitManager")
+            Task { await tick() }
+            return outcome
+        case .forget:
+            break
+        }
         try? store.delete()
         self.record = nil
         Self.clearReminders()
@@ -191,6 +253,7 @@ final class SparkExitManager {
         }
         await reattachSpark()
         Logger.info("Cancelled the Spark exit before it was funded", context: "SparkExitManager")
+        return .forget
     }
 
     /// Ticks every minute while the app is active and an exit runs. Each step of an exit needs Bitkit to publish it.
@@ -239,7 +302,10 @@ final class SparkExitManager {
         } catch {
             lastError = error.localizedDescription
             Logger.error("Spark exit tick failed: \(error)", context: "SparkExitManager")
-            await scheduleReminders(current)
+            // The driver saved along the way: the next tick starts from what is on disk, never from the copy it began with.
+            let stored = (try? Self.loadRecord(store: store, lostLeafStore: lostLeafStore)) ?? current
+            record = stored
+            await scheduleReminders(stored)
         }
     }
 
@@ -387,6 +453,11 @@ final class SparkExitManager {
             try? await Task.sleep(nanoseconds: 100_000_000)
         }
         guard var record else { return }
+        // The exit may have ended while savings paid: the extra stays at the funding address for the leftover sweep.
+        guard record.phase == .running, !record.isRebuilding else {
+            Logger.warn("Spark exit ended while its higher fee was paid; the payment goes back with the leftover", context: "SparkExitManager")
+            return
+        }
         record.applyFeeBump(rate: option.rate, extraSats: extraSats, paymentTxid: txid)
         try saveRecord(record)
         self.record = record
@@ -731,7 +802,23 @@ final class SparkExitManager {
         for request in requests {
             try? await center.add(request)
         }
-        UserDefaults.standard.set(kept, forKey: Self.remindersKey)
+        UserDefaults.standard.set(Self.keepingFired(kept, remembered: remembered, now: now), forKey: Self.remindersKey)
+    }
+
+    /// How long a fired reminder stays remembered after it left the plan, so a plan that drops an id for one run (a
+    /// tip that could not be read, a phase that flickered) never posts it again.
+    nonisolated static let firedReminderMemory: TimeInterval = 30 * 24 * 60 * 60
+
+    /// `kept` plus every reminder that already fired within `firedReminderMemory`, whether or not it is planned now.
+    nonisolated static func keepingFired(_ kept: [String: TimeInterval], remembered: [String: TimeInterval], now: Date) -> [String: TimeInterval] {
+        var result = kept
+        for (id, firedAt) in remembered where result[id] == nil {
+            let age = now.timeIntervalSince1970 - firedAt
+            if age >= 0, age < firedReminderMemory {
+                result[id] = firedAt
+            }
+        }
+        return result
     }
 
     private nonisolated static func rememberedReminders() -> [String: TimeInterval] {

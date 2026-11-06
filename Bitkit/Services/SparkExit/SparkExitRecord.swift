@@ -114,6 +114,9 @@ struct SparkExitRecord: Codable, Equatable {
         var refusedFeeRate: UInt64?
         /// After a refusal, the sweep is built again from this block instead of after `sweepRecheckBlocks`.
         var retryAtHeight: UInt32?
+        /// The tip when this sweep was built, so one no node accepts is built again from fresh UTXOs after
+        /// `sweepRecheckBlocks`.
+        var builtAtHeight: UInt32?
 
         /// Waiting for fees to drop before sending the fee change.
         var isWaitingForFees: Bool {
@@ -177,6 +180,13 @@ struct SparkExitRecord: Codable, Equatable {
     var transferId: String?
     /// The fee funding payment Bitkit broadcast from savings, so the exit shows it as paid instead of asking again.
     var fundingPaymentTxid: String?
+    /// The tip when the exit first looked for that payment, and the tip since which no host knows it. A payment no
+    /// host knows for a block, or not adopted within `SparkExitDriver.ownPaymentTimeoutBlocks`, is forgotten, so the
+    /// exit asks and reminds again.
+    var fundingPaymentSeenAtHeight: UInt32?
+    var fundingPaymentMissingSince: UInt32?
+    /// The user cancelled after funding reached the address: the exit ends and the funding goes back to savings.
+    var isCancelled: Bool?
     /// What reaches savings: the exited value less the fees paid out of it.
     let expectedSats: UInt64
     var claimableAtHeight: UInt32?
@@ -252,6 +262,7 @@ struct SparkExitRecord: Codable, Equatable {
     }
 
     static let lostReason = "Claimed by an older state"
+    static let cancelledReason = "Cancelled"
 
     var isFailed: Bool {
         if case .failed = phase {
@@ -400,6 +411,8 @@ struct SparkExitRecord: Codable, Equatable {
     mutating func applyFeeBump(rate: UInt64, extraSats: UInt64, paymentTxid: String?) {
         feeRateSatPerVbyte = rate
         isRedoRebuild = nil
+        fundingPaymentSeenAtHeight = nil
+        fundingPaymentMissingSince = nil
         if extraSats > 0 {
             phase = .needsFunding(requiredSats: fundedSats + extraSats)
             fundingPaymentTxid = paymentTxid
@@ -438,6 +451,15 @@ struct SparkExitRecord: Codable, Equatable {
     var isAwaitingOwnPayment: Bool {
         guard let paid = fundingPaymentTxid, fundingShortfallSats != nil else { return false }
         return !funding.contains { $0.txid == paid }
+    }
+
+    /// A top-up is awaited for a generation that is still valid (a higher fee, not a diverged rebuild): its steps keep
+    /// being checked, sent and reminded.
+    var isDrivingWhileFunding: Bool {
+        if case .needsFunding = phase {
+            return recovery != nil && !isRebuilding
+        }
+        return false
     }
 
     /// Progress says the exit is underpriced: it runs at its rate, nothing rebuilds it and no higher fee is on its way.
@@ -494,6 +516,13 @@ struct SparkExitStore {
         } catch {
             throw Unavailable(underlying: error)
         }
+    }
+
+    /// Keeps a copy of the record beside it for support, leaving the record in place: a salvaged record then replaces it
+    /// in one atomic write, so a kill in between never leaves the exit without a record.
+    func keepCopyAside() throws {
+        let aside = url.deletingPathExtension().appendingPathExtension("unreadable-\(Int(Date().timeIntervalSince1970)).json")
+        try FileManager.default.copyItem(at: url, to: aside)
     }
 
     /// Moves an unreadable record out of the way, keeping it for support.
@@ -608,6 +637,9 @@ enum SparkExitRecordCoder {
         record.lostLeaves = kept.lostLeaves
         record.leftBehindLeaves = kept.leftBehindLeaves
         record.exitStateSnapshot = kept.exitStateSnapshot
+        // Change and fan-out outputs of earlier generations at the funding address stay the exit's own, not new funding.
+        let chained = (kept.earlierCpfpTxids ?? []) + (kept.recovery.map { SparkExitTxid.chainedTxids($0.response) } ?? [])
+        record.earlierCpfpTxids = chained.isEmpty ? nil : chained
         record.isRebuiltFromChain = true
         return record
     }
@@ -626,10 +658,12 @@ enum SparkExitRecordCoder {
         let lostLeaves: [SparkExitRecord.LostLeaf]?
         let leftBehindLeaves: [SparkExitRecord.LeftBehindLeaf]?
         let exitStateSnapshot: String?
+        let earlierCpfpTxids: [String]?
+        let recovery: StoredRecovery?
 
         private enum CodingKeys: String, CodingKey {
             case network, createdAt, phase, feeRateSatPerVbyte, destination, leafIds, leafTotalSats, funding, transferId, expectedSats
-            case lostLeaves, leftBehindLeaves, exitStateSnapshot
+            case lostLeaves, leftBehindLeaves, exitStateSnapshot, earlierCpfpTxids, recovery
         }
 
         init(from decoder: Decoder) throws {
@@ -647,6 +681,8 @@ enum SparkExitRecordCoder {
             lostLeaves = try? c.decodeIfPresent([SparkExitRecord.LostLeaf].self, forKey: .lostLeaves)
             leftBehindLeaves = try? c.decodeIfPresent([SparkExitRecord.LeftBehindLeaf].self, forKey: .leftBehindLeaves)
             exitStateSnapshot = try? c.decodeIfPresent(String.self, forKey: .exitStateSnapshot)
+            earlierCpfpTxids = try? c.decodeIfPresent([String].self, forKey: .earlierCpfpTxids)
+            recovery = try? c.decodeIfPresent(StoredRecovery.self, forKey: .recovery)
         }
     }
 }
@@ -659,7 +695,7 @@ enum SparkExitRecordMigration {
 
 // MARK: - RecoverFundsResponse in spark-sdk's serde shape
 
-/// `RecoverFundsResponse` as spark-sdk 0.27.2 serializes it with serde: snake_case fields and externally tagged
+/// `RecoverFundsResponse` as spark-sdk serializes it with serde (unchanged from 0.27.2 to 0.28.0): snake_case fields and externally tagged
 /// enums (`"Ready"`, `{"Confirmed":{"block_height":120}}`). A stored recovery is then readable by the Breez CLI's
 /// `check-recover-funds` and shared with Android as one format. The SDK's Swift types are not `Codable`.
 struct StoredRecovery: Codable, Equatable {

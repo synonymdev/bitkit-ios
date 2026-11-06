@@ -183,7 +183,7 @@ final class SparkExitFeeBumpTests: XCTestCase {
         XCTAssertEqual(record.feeRateSatPerVbyte, 10)
         XCTAssertEqual(sdk.prepareRequests.first?.feeRateSatPerVbyte, 10)
         XCTAssertEqual(sdk.recoverRequests.first?.fundingInputs.count, 2)
-        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n1b"])
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n1", "n1b"], "the live generation's ready step keeps going until the rebuild")
         XCTAssertNil(record.stallRebuilds)
         XCTAssertNil(record.isRedoRebuild)
     }
@@ -202,12 +202,12 @@ final class SparkExitFeeBumpTests: XCTestCase {
 
         XCTAssertTrue(record.isAwaitingOwnPayment)
         XCTAssertFalse(record.showsFeeLow(tip: 1000))
-        XCTAssertTrue(SparkExitMath.reminders(record, tip: 1000, now: clock, network: .regtest).isEmpty)
+        XCTAssertFalse(SparkExitMath.reminders(record, tip: 1000, now: clock, network: .regtest).contains { $0.isFunding })
 
         // Adopted, the payment no longer waits; a shortfall left after it reminds as before.
         record.funding.append(.init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "bump", vout: 0, valueSats: 5000))
         XCTAssertFalse(record.isAwaitingOwnPayment)
-        XCTAssertEqual(SparkExitMath.reminders(record, tip: 1000, now: clock, network: .regtest).map(\.isFunding), [true])
+        XCTAssertEqual(SparkExitMath.reminders(record, tip: 1000, now: clock, network: .regtest).filter(\.isFunding).count, 1)
     }
 
     /// The funding already covers the higher rate: the exit rebuilds at once and replaces what has not confirmed.

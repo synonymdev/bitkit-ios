@@ -127,8 +127,14 @@ final class FakeSparkExitChain: SparkExitChain, @unchecked Sendable {
     private(set) var broadcasts: [RecoveryTransaction] = []
     var onBroadcast: (() -> Void)?
 
+    /// The tip read fails, as on a host timeout.
+    var isTipUnreadable = false
+
     func tipHeight() async throws -> UInt32 {
-        tip
+        if isTipUnreadable {
+            throw URLError(.timedOut)
+        }
+        return tip
     }
 
     func utxos(address: String) async throws -> [EsploraUtxo] {
@@ -201,9 +207,10 @@ final class FakeSparkExitRecovering: SparkExitRecovering, @unchecked Sendable {
         return builds.removeFirst()
     }
 
+    /// Answers the queued checks in order, then `Valid` with the recovery unchanged.
     func check(_ recovery: RecoverFundsResponse) async throws -> CheckRecoverFundsResponse {
         checkedRecoveries.append(recovery)
-        return checks.removeFirst()
+        return checks.isEmpty ? CheckRecoverFundsResponse(recovery: recovery, verdict: .valid) : checks.removeFirst()
     }
 
     var exitState = "exit-state-1"

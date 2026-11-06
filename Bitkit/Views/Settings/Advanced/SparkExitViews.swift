@@ -457,6 +457,7 @@ struct SparkExitConfirmView: View {
 
 /// The running exit's steps and countdown, and its result once it ends.
 struct SparkExitProgressView: View {
+    @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var currency: CurrencyViewModel
 
@@ -478,6 +479,9 @@ struct SparkExitProgressView: View {
 
     /// Lost leaves are gone, so the text claims only what Spark still holds.
     private var failedText: String {
+        if record?.isCancelled == true {
+            return t("lightning__spark_exit__cancelled_text")
+        }
         let staysSats = record.flatMap { SparkExitMath.staysOnSparkSats(sparkBalanceSats: SparkManager.shared.balanceSats, record: $0) }
         return [
             t("lightning__spark_exit__failed_text"),
@@ -496,6 +500,7 @@ struct SparkExitProgressView: View {
     private var title: String {
         switch record?.phase {
         case .done: t("lightning__spark_exit__done_title")
+        case .failed where record?.isCancelled == true: t("lightning__spark_exit__cancelled_title")
         case .failed: t("lightning__spark_exit__failed_title")
         case .needsFunding where !isFundingOnItsWay: t("lightning__spark_exit__needs_funding_title")
         default: t("lightning__spark_exit__progress_title")
@@ -672,8 +677,10 @@ struct SparkExitProgressView: View {
 
             if exit.canCancel {
                 CustomButton(title: t("lightning__spark_exit__cancel"), variant: .secondary) {
-                    Task {
-                        await exit.cancel()
+                    // A funding address that cannot be read keeps the exit: a payment there is never orphaned.
+                    if await exit.cancel() == .keep {
+                        app.toast(type: .error, title: t("lightning__spark_exit__cancel_failed"), description: nil)
+                    } else {
                         navigation.reset()
                     }
                 }

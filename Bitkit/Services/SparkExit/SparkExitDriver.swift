@@ -61,6 +61,10 @@ struct SparkExitDriver {
     static let sweepRecheckBlocks: UInt32 = 144
     /// About four weeks: then the change too small to send stays at the funding address.
     static let sweepWaitBlocks: UInt32 = 4032
+    /// A savings payment Bitkit sent that no host knows for this many blocks, or that the exit did not adopt within
+    /// `ownPaymentTimeoutBlocks`, is forgotten: the exit asks for the funding, and reminds, again.
+    static let ownPaymentMissingBlocks: UInt32 = 1
+    static let ownPaymentTimeoutBlocks: UInt32 = 144
 
     @discardableResult
     func tick(_ record: SparkExitRecord) async throws -> SparkExitRecord {
@@ -72,12 +76,26 @@ struct SparkExitDriver {
             try save(record)
             return record
         case .awaitingFunding, .needsFunding:
-            guard let recovering, !Task.isCancelled else { return record }
-            // Nothing to fund when every leaf is recovered cooperatively.
-            if let shortfall = record.fundingShortfallSats {
-                guard try await adoptFunding(&record, requiredSats: shortfall) else { return record }
+            guard !Task.isCancelled else { return record }
+            let before = record
+            await noteOwnPayment(&record)
+            // A higher fee's top-up leaves the current generation valid: it keeps being checked and sent meanwhile.
+            if record.isDrivingWhileFunding {
+                if let recovering {
+                    try await driveWhileFunding(&record, recovering: recovering)
+                } else {
+                    try await broadcastWithoutSdk(&record)
+                }
             }
-            try await build(&record, recovering: recovering)
+            // Still waiting for funding (a generation that finished meanwhile is back to running).
+            if record.phase != .running {
+                guard let recovering else { return try saveIfChanged(record, from: before) }
+                // Nothing to fund when every leaf is recovered cooperatively.
+                if let shortfall = record.fundingShortfallSats {
+                    guard try await adoptFunding(&record, requiredSats: shortfall) else { return try saveIfChanged(record, from: before) }
+                }
+                try await build(&record, recovering: recovering)
+            }
         case .running where record.isRebuilding:
             // The diverged generation is never broadcast again; only a rebuild moves on from here.
             guard let recovering, !Task.isCancelled, isRebuildDue(record) else { return record }
@@ -102,7 +120,55 @@ struct SparkExitDriver {
         return record
     }
 
+    private func saveIfChanged(_ record: SparkExitRecord, from before: SparkExitRecord) throws -> SparkExitRecord {
+        if record != before {
+            try save(record)
+        }
+        return record
+    }
+
     // MARK: Funding
+
+    /// Forgets a savings payment the exit waits for once no host knows it for `ownPaymentMissingBlocks` (dropped or
+    /// replaced), or once it is older than `ownPaymentTimeoutBlocks` without being adopted, so the ask and the reminder
+    /// come back. Nothing changes without a tip.
+    private func noteOwnPayment(_ record: inout SparkExitRecord) async {
+        guard record.isAwaitingOwnPayment, let paid = record.fundingPaymentTxid, let tip = try? await chain.tipHeight() else { return }
+        let seenAt = record.fundingPaymentSeenAtHeight ?? tip
+        record.fundingPaymentSeenAtHeight = seenAt
+        switch try? await chain.isKnown(txid: paid) {
+        case true?: record.fundingPaymentMissingSince = nil
+        case false?: record.fundingPaymentMissingSince = record.fundingPaymentMissingSince ?? tip
+        case nil: break
+        }
+        let isMissing = record.fundingPaymentMissingSince.map { tip.saturatingSub($0) >= Self.ownPaymentMissingBlocks } ?? false
+        let isTooOld = tip.saturatingSub(seenAt) >= Self.ownPaymentTimeoutBlocks
+        guard isMissing || isTooOld else { return }
+        Logger.warn("Spark exit forgets its funding payment \(paid) (missing: \(isMissing), too old: \(isTooOld))", context: "SparkExitDriver")
+        record.fundingPaymentTxid = nil
+        record.fundingPaymentSeenAtHeight = nil
+        record.fundingPaymentMissingSince = nil
+    }
+
+    /// While a higher fee's top-up is awaited: the current generation is checked and its ready steps sent. A
+    /// generation that finished in the meantime runs on to Done; one that diverged waits for the top-up's rebuild.
+    private func driveWhileFunding(_ record: inout SparkExitRecord, recovering: SparkExitRecovering) async throws {
+        guard let stored = record.recovery?.response else { return }
+        let checked = try await recovering.check(withConfirmations(stored))
+        record.recovery = StoredRecovery(checked.recovery)
+        record.noteProgressAfterRebuildFromChain(checked.recovery)
+        switch checked.verdict {
+        case .valid:
+            let tip = try? await chain.tipHeight()
+            try await broadcastReady(&record, tip: tip)
+        case .done:
+            // Nothing is left to pay more for: back to running, whose next check finishes it (failed leaves included).
+            record.phase = .running
+            record.fundingPaymentTxid = nil
+        case .redo:
+            break
+        }
+    }
 
     /// Adds every confirmed new UTXO at the funding address as a funding input once together they cover
     /// `requiredSats`.
@@ -408,6 +474,7 @@ struct SparkExitDriver {
         record.failedLeafRetriedAt = tip
         try save(record)
         guard !Task.isCancelled else { return true }
+        await useExitStateSnapshot(&record, recovering: recovering)
         do {
             let prepared = try await recovering.prepare(record.prepareRequest(.specific(leafIds: failedIds)))
             noteFailedLeafValues(prepared, failedIds: failedIds, in: &record)
@@ -444,6 +511,8 @@ struct SparkExitDriver {
     /// nothing; a shortfall is sized like a rebuild's (`neededFunding`), the input fee of the payment to come included.
     func feeBumpShortfall(_ record: SparkExitRecord, rate: UInt64) async throws -> UInt64 {
         guard let recovering else { throw SparkExitFeeBumpError.notConnected }
+        var record = record
+        await useExitStateSnapshot(&record, recovering: recovering)
         let prepared = try await recovering.prepare(record.prepareRequest(.specific(leafIds: record.exitLeafIds), feeRate: rate))
         guard prepared.funding != nil, !prepared.leaves.isEmpty else { return 0 }
         do {
@@ -635,14 +704,13 @@ struct SparkExitDriver {
                         replacedTxids: sweep.isAccepted ? (sweep.replacedTxids ?? []) + [oldTxid] : sweep.replacedTxids
                     )
                     try save(record)
-                } else if !sweep.isAccepted {
+                } else if !sweep.isAccepted, let tip = try? await chain.tipHeight() {
                     // Too small to send at the new rate, and nothing of it is in the mempool: it waits for fees to drop.
-                    let tip = try? await chain.tipHeight()
                     record.leftoverSweep = SparkExitRecord.LeftoverSweep(
                         feeRateSatPerVbyte: rate,
                         replacedTxids: sweep.replacedTxids,
-                        waitingSince: tip ?? 0,
-                        checkedAtHeight: tip ?? 0
+                        waitingSince: sweep.waitingSince ?? tip,
+                        checkedAtHeight: tip
                     )
                     try save(record)
                 }
@@ -656,6 +724,22 @@ struct SparkExitDriver {
         else { return }
         if sweep.isAccepted, let status = try? await chain.txStatus(txid: txid), status.confirmed {
             record.leftoverSweep?.isConfirmed = true
+            return
+        }
+        // Built but never accepted for `sweepRecheckBlocks`: its coins may have changed, so it is built again from what
+        // the address holds now.
+        if !sweep.isAccepted, let builtAt = sweep.builtAtHeight, let tip = try? await chain.tipHeight(),
+           tip.saturatingSub(builtAt) >= Self.sweepRecheckBlocks
+        {
+            Logger.warn("Spark exit leftover sweep \(txid) never accepted, building it again", context: "SparkExitDriver")
+            record.leftoverSweep = SparkExitRecord.LeftoverSweep(
+                feeRateSatPerVbyte: sweep.feeRateSatPerVbyte,
+                replacedTxids: sweep.replacedTxids,
+                waitingSince: sweep.waitingSince ?? tip,
+                checkedAtHeight: tip,
+                refusedFeeRate: sweep.refusedFeeRate,
+                retryAtHeight: tip + 1
+            )
             return
         }
         let outcome = await chain.broadcast(RecoveryTransaction(
@@ -678,6 +762,17 @@ struct SparkExitDriver {
         case let .rejected(reason) where !sweep.isAccepted:
             if SparkExitRecord.LeftoverSweep(rejection: reason).isFeeRejection {
                 await waitAfterFeeRefusal(&record, refusal: reason)
+            } else if await isAnyKnown(sweep.replacedTxids ?? []) {
+                // A replacement refused for another reason while the sweep it replaces may still confirm: that one is
+                // followed (the replaced txids end the sweep once in a block), and a new build is tried later.
+                if let tip = try? await chain.tipHeight() {
+                    record.leftoverSweep = SparkExitRecord.LeftoverSweep(
+                        feeRateSatPerVbyte: sweep.feeRateSatPerVbyte,
+                        replacedTxids: sweep.replacedTxids,
+                        waitingSince: sweep.waitingSince ?? tip,
+                        checkedAtHeight: tip
+                    )
+                }
             } else {
                 record.leftoverSweep?.rejection = reason
             }
@@ -690,15 +785,42 @@ struct SparkExitDriver {
                 Logger.warn("Spark exit leftover sweep \(txid) left the mempool unconfirmed", context: "SparkExitDriver")
                 await waitAfterFeeRefusal(&record, refusal: reason)
             }
+        case .inputsMissing where !sweep.isAccepted:
+            // The coins it spends are gone or changed: built again from what the address holds, from the next block.
+            if let tip = try? await chain.tipHeight() {
+                record.leftoverSweep = SparkExitRecord.LeftoverSweep(
+                    feeRateSatPerVbyte: sweep.feeRateSatPerVbyte,
+                    replacedTxids: sweep.replacedTxids,
+                    waitingSince: sweep.waitingSince ?? tip,
+                    checkedAtHeight: tip,
+                    refusedFeeRate: sweep.refusedFeeRate,
+                    retryAtHeight: tip + 1
+                )
+            }
         default: break
         }
+    }
+
+    private func isAnyKnown(_ txids: [String]) async -> Bool {
+        for txid in txids {
+            let isKnown = try? await chain.isKnown(txid: txid)
+            if isKnown == true {
+                return true
+            }
+        }
+        return false
     }
 
     /// A sweep refused for its fee is not final: the leftover waits again, keeping when its wait began, and is built
     /// again from the next block at the rate the refusal asks for (`refusedSweepRate`), or the economy rate if higher.
     private func waitAfterFeeRefusal(_ record: inout SparkExitRecord, refusal: String) async {
-        guard let sweep = record.leftoverSweep else { return }
-        let tip = try? await chain.tipHeight()
+        // Without a tip no height is written: the refusal is kept, and the next tick turns it into the wait.
+        guard let sweep = record.leftoverSweep, let tip = try? await chain.tipHeight() else {
+            if record.leftoverSweep?.isAccepted == false {
+                record.leftoverSweep?.rejection = refusal
+            }
+            return
+        }
         let rate = SparkExitMath.refusedSweepRate(refusal, paidRate: sweep.feeRateSatPerVbyte ?? record.feeRateSatPerVbyte)
         // One a node accepted may still confirm: any of the replaced sweeps confirming ends the sweep.
         let replaced = sweep.isAccepted ? (sweep.replacedTxids ?? []) + [sweep.txid].compactMap { $0 } : sweep.replacedTxids
@@ -706,10 +828,10 @@ struct SparkExitDriver {
         record.leftoverSweep = SparkExitRecord.LeftoverSweep(
             feeRateSatPerVbyte: sweep.feeRateSatPerVbyte,
             replacedTxids: replaced,
-            waitingSince: sweep.waitingSince ?? tip ?? 0,
-            checkedAtHeight: tip ?? 0,
+            waitingSince: sweep.waitingSince ?? tip,
+            checkedAtHeight: tip,
             refusedFeeRate: rate,
-            retryAtHeight: (tip ?? 0) + 1
+            retryAtHeight: tip + 1
         )
     }
 
@@ -719,9 +841,9 @@ struct SparkExitDriver {
     private func sweepWhenEconomical(_ record: inout SparkExitRecord) async throws {
         guard let address = record.funding.first?.address else { return }
         let waiting = record.leftoverSweep
-        let tip = try? await chain.tipHeight()
+        // Every state below records a height: without the tip nothing changes this tick.
+        guard let tip = try? await chain.tipHeight() else { return }
         if let waiting, let since = waiting.waitingSince {
-            guard let tip else { return }
             if tip.saturatingSub(since) >= Self.sweepWaitBlocks {
                 Logger.info("Spark exit keeps its fee change at the funding address after waiting for fees", context: "SparkExitDriver")
                 record.leftoverSweep?.isDustKept = true
@@ -734,7 +856,22 @@ struct SparkExitDriver {
         let utxos = try await chain.utxos(address: address)
         record.leftover = utxos.map { SparkExitRecord.Leftover(txid: $0.txid, vout: $0.vout, valueSats: $0.value) }
         let confirmed = utxos.filter(\.status.confirmed)
-        guard !confirmed.isEmpty, confirmed.count == utxos.count else { return }
+        guard !confirmed.isEmpty else { return }
+        // An unconfirmed output (a stuck payment, say) holds the sweep back for one recheck at most; then the confirmed
+        // ones go and the rest waits for the next sweep.
+        if confirmed.count < utxos.count {
+            let since = waiting?.waitingSince ?? tip
+            if tip.saturatingSub(since) < Self.sweepRecheckBlocks {
+                record.leftoverSweep = SparkExitRecord.LeftoverSweep(
+                    waitingSince: since,
+                    checkedAtHeight: tip,
+                    refusedFeeRate: waiting?.refusedFeeRate,
+                    retryAtHeight: tip + 1
+                )
+                try save(record)
+                return
+            }
+        }
         let economy = try? await chain.networkFees().economy
         // A rate a node refused stays refused: the least it asked for lifts the economy rate, past the exit's if need be.
         let rate = max(SparkExitMath.sweepFeeRate(economy: economy, exitRate: record.feeRateSatPerVbyte), waiting?.refusedFeeRate ?? 0)
@@ -752,15 +889,16 @@ struct SparkExitDriver {
                 txHex: built.txHex,
                 valueSats: built.valueSats,
                 feeRateSatPerVbyte: rate,
-                waitingSince: waiting?.waitingSince
+                waitingSince: waiting?.waitingSince,
+                builtAtHeight: tip
             )
         } else {
-            let since = waiting?.waitingSince ?? tip ?? 0
+            let since = waiting?.waitingSince ?? tip
             Logger.info("Spark exit waits for lower fees to send its fee change (\(rate) sat/vB)", context: "SparkExitDriver")
             record.leftoverSweep = SparkExitRecord.LeftoverSweep(
                 feeRateSatPerVbyte: rate,
                 waitingSince: since,
-                checkedAtHeight: tip ?? since,
+                checkedAtHeight: tip,
                 refusedFeeRate: waiting?.refusedFeeRate
             )
         }
@@ -1032,7 +1170,7 @@ enum SparkExitTxid {
         var position = 0
 
         mutating func take(_ count: Int) -> [UInt8]? {
-            guard count >= 0, position + count <= bytes.count else { return nil }
+            guard count >= 0, count <= bytes.count - position else { return nil }
             defer { position += count }
             return Array(bytes[position ..< position + count])
         }
@@ -1047,8 +1185,10 @@ enum SparkExitTxid {
             }
             guard width > 0 else { return (Int(first), [first]) }
             guard let rest = take(width) else { return nil }
-            let value = rest.enumerated().reduce(0) { $0 | Int($1.element) << (8 * $1.offset) }
-            return (value, [first] + rest)
+            let value = rest.enumerated().reduce(UInt64(0)) { $0 | UInt64($1.element) << (8 * $1.offset) }
+            // A count no transaction can hold reads as malformed rather than trapping.
+            guard value <= UInt64(bytes.count) else { return nil }
+            return (Int(value), [first] + rest)
         }
 
         mutating func inputs() -> (version: Int32, inputs: [(txid: String, sequence: UInt32)])? {
