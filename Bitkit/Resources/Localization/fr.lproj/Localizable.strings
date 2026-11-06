@@ -1276,6 +1276,11 @@
 "wallet__send_quickpay__nav_title" = "QuickPay";
 "wallet__send_quickpay__title" = "Payer \n<accent>facture...</accent>";
 "wallet__send_pending_note" = "Ce paiement prend un peu plus de temps que prévu. Vous pouvez continuer à utiliser Bitkit.";
+"wallet__send_onchain_lightning_pending" = "Un paiement Lightning de cette facture peut encore aboutir. Pour éviter de la payer deux fois, Bitkit ne la paiera pas on-chain sauf si ce paiement échoue.";
+"wallet__send_onchain_lightning_paid" = "Un paiement Lightning de cette facture a déjà abouti, Bitkit ne la paiera donc pas à nouveau on-chain.";
+"wallet__send_onchain_lightning_unknown" = "Bitkit doit vérifier le paiement Lightning de cette facture avant de la payer on-chain. Réessayez une fois le portefeuille démarré, ou payez uniquement l'adresse.";
+"wallet__send_lightning_onchain_pending" = "Un paiement on-chain vers l'adresse de cette facture peut encore être confirmé. Pour éviter de la payer deux fois, Bitkit ne paiera pas la facture via Lightning.";
+"wallet__send_lightning_onchain_unreadable" = "Bitkit ne peut pas lire ses enregistrements de paiements on-chain et ne peut donc pas savoir si l'adresse de cette facture a déjà été payée. Réessayez plus tard ou payez une facture sans adresse.";
 "wallet__send_instant_failed" = "Échec du paiement instantané";
 "wallet__send_regular" = "Paiement standard";
 "wallet__send_error_slash_ln" = "Malheureusement, le contact ne peut pas être payé instantanément. Vous pouvez essayer un paiement On-Chain (plus cher, plus lent).";

@@ -60,9 +60,12 @@ struct PaykitRequestPricing: Hashable {
         let selector = parts.prefix(2).joined(separator: "-")
         let rate = rates.first(where: { $0.asset == selector }) ?? rates.first(where: { $0.asset == asset.rawValue })
         guard rate != nil || requested.asset == asset else { throw PaykitAmountError.rateUnavailable }
+        let amount = try requested.quoted(to: asset, multiplier: rate?.value ?? "1")
+        // A request's amount is unbounded, but no bitcoin payment can exceed the supply.
+        guard amount.asset != .btc || amount.atomic <= Env.maxBitcoinSats else { throw PaykitAmountError.invalidAmount }
         let quoteExpiry = selected.flatMap { PaykitPaymentRequest.parseDate($0.expiresAt) }
-        return try Payment(
-            amount: requested.quoted(to: asset, multiplier: rate?.value ?? "1"),
+        return Payment(
+            amount: amount,
             quoteId: selected?.eventId,
             validFrom: selected.flatMap { PaykitPaymentRequest.parseDate($0.validFrom) },
             expiresAt: [deadline, quoteExpiry].compactMap { $0 }.min()

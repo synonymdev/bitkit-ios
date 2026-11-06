@@ -104,6 +104,26 @@ final class PaykitRequestPricingTests: XCTestCase {
         }
     }
 
+    func testBitcoinPaymentsAboveTheBitcoinSupplyAreRejected() throws {
+        let pricing = PaykitRequestPricing(conversion: .fixed(rates: [
+            ConversionRate(asset: "btc", value: "0.00001"), ConversionRate(asset: "usdt", value: "1"),
+        ]))
+        let supply = try PaykitAmount(asset: .usd, value: "2100000000000")
+        XCTAssertEqual(try pricing.payment(requested: supply, endpoint: "btc-lightning-bolt11", period: nil, at: now).amount.atomic,
+                       Env.maxBitcoinSats)
+        // 1e16 USD at this rate is 1e19 sats, which still fits in a UInt64.
+        let oversized = try PaykitAmount(asset: .usd, value: "10000000000000000")
+        for endpoint in ["btc-bitcoin-p2wpkh", "btc-lightning-bolt11"] {
+            XCTAssertThrowsError(try pricing.payment(requested: oversized, endpoint: endpoint, period: nil, at: now)) {
+                XCTAssertEqual($0 as? PaykitAmountError, .invalidAmount, endpoint)
+            }
+        }
+        let bitcoin = try PaykitAmount(asset: .btc, value: "21000000.00000001")
+        XCTAssertThrowsError(try PaykitRequestPricing().payment(requested: bitcoin, endpoint: "btc-bitcoin-p2wpkh", period: nil, at: now)) {
+            XCTAssertEqual($0 as? PaykitAmountError, .invalidAmount)
+        }
+    }
+
     func testQuotedArithmeticRejectsOverflowAndRoundsOnlyOnce() throws {
         let requested = try PaykitAmount(asset: .btc, value: "0.00000001")
         XCTAssertEqual(try requested.quoted(to: .usdt, multiplier: "123456.789012345678").atomic, 1235)

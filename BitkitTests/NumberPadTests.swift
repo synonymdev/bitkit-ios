@@ -1,4 +1,5 @@
 @testable import Bitkit
+import SwiftUI
 import XCTest
 
 @MainActor
@@ -325,6 +326,30 @@ final class NumberPadTests: XCTestCase {
         viewModel.handleNumberPadInput("delete", currency: currency) // 123
         XCTAssertEqual(viewModel.amountSats, 123)
         XCTAssertNil(viewModel.errorKey)
+    }
+
+    func testTextFieldRendersAmountAboveIntMax() {
+        // The display must not trap on an amount Int cannot hold.
+        for primaryDisplay in [PrimaryDisplay.bitcoin, .fiat] {
+            let viewModel = AmountInputViewModel()
+            let currency = mockCurrency(primaryDisplay: primaryDisplay)
+            viewModel.updateFromSats(10_000_000_000_000_000_000, currency: currency)
+            let view = NumberPadTextField(viewModel: viewModel)
+                .environmentObject(currency)
+                .environmentObject(SettingsViewModel.shared)
+            let hostingController = UIHostingController(rootView: view)
+            let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+            window.rootViewController = hostingController
+            window.makeKeyAndVisible()
+            defer {
+                window.isHidden = true
+                window.rootViewController = nil
+            }
+
+            hostingController.view.layoutIfNeeded()
+
+            XCTAssertGreaterThan(hostingController.sizeThatFits(in: window.bounds.size).height, 0, "\(primaryDisplay)")
+        }
     }
 
     // MARK: - Leading Zero Tests

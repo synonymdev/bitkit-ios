@@ -45,6 +45,15 @@ final class SheetViewModelTests: XCTestCase {
         }
     }
 
+    func testOnlySendFlowSheetsShowSendState() {
+        let sheets = SheetViewModel()
+        XCTAssertFalse(sheets.isShowingSendState)
+        for id in SheetID.allCases {
+            sheets.activeSheetConfiguration = SheetConfiguration(id: id, data: nil)
+            XCTAssertEqual(sheets.isShowingSendState, [.send, .subscription, .lnurlWithdraw].contains(id), id.rawValue)
+        }
+    }
+
     func testLateDismissOfPreviousSheetKeepsNextSheetOpen() {
         let sheets = SheetViewModel()
 

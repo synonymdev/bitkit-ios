@@ -101,8 +101,7 @@ struct SendFeeCustom: View {
         }
 
         // Get the destination address and amount from the send flow
-        let address = app.scannedOnchainInvoice!.address
-        let amountSats = wallet.sendAmountSats!
+        guard let address = app.scannedOnchainInvoice?.address, let amountSats = wallet.sendAmountSats else { return }
 
         do {
             let fee = if let walletId = hwSend.walletId {

@@ -30,7 +30,7 @@ struct HwSendSignView: View {
 
             if let invoice = app.scannedOnchainInvoice {
                 MoneyStack(
-                    sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis),
+                    sats: Int(clamping: wallet.sendAmountSats ?? invoice.amountSatoshis),
                     showSymbol: true,
                     testIdPrefix: "HardwareSendSignAmount"
                 )

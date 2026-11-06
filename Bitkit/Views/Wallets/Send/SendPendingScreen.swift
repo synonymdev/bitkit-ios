@@ -349,6 +349,19 @@ struct SendPendingScreen: View {
         }
     }
 
+    /// A re-send of an address that came with a Lightning invoice is checked as Confirm checks it before paying it.
+    static func checkLightningPaymentBeforeRetry(
+        _ attempt: OnchainSendAttempt,
+        lightningPaymentStatus: (_ paymentHash: String) async -> LightningPaymentStatus
+    ) async throws {
+        if let refusal = await OnchainPaymentRefusal.check(
+            lightningPaymentHash: attempt.lightningPaymentHash,
+            lightningPaymentStatus: lightningPaymentStatus
+        ) {
+            throw refusal
+        }
+    }
+
     @MainActor
     private func retryOriginalPayment(feeRate: UInt32) async {
         guard !ordinarySendResolved, !retryingOnchain, let original = onchainAttempt, original.canRetrySamePayment else { return }
@@ -388,6 +401,7 @@ struct SendPendingScreen: View {
                     }
                 },
                 authorize: { attempt, _ in
+                    try await Self.checkLightningPaymentBeforeRetry(attempt, lightningPaymentStatus: app.lightningPaymentStatus)
                     if settings.requirePinForPayments && settings.pinEnabled {
                         if settings.useBiometrics && BiometricAuth.isAvailable {
                             isAuthenticatingRecovery = true
@@ -415,6 +429,9 @@ struct SendPendingScreen: View {
         } catch is CancellationError {
             // A positive original observation may have won while authentication awaited.
             try? await refreshOriginalOutcome(context: context)
+        } catch let refusal as OnchainPaymentRefusal {
+            try? await refreshOriginalOutcome(context: context)
+            app.showOnchainPaymentRefusal(refusal)
         } catch {
             try? await refreshOriginalOutcome(context: context)
             app.toast(error is NodeError ? OnchainSendAttemptError.retryUnavailable : error)

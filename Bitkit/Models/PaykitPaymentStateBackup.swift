@@ -10,6 +10,40 @@ struct PaykitPaymentStateBackup: Codable {
     var acceptedOneTimeRequests: [String: [RequestID]]? = nil
     /// Local allowance state by identity, so a restored wallet keeps its USD labels and can still verify open attempts.
     var allowances: PaykitAllowanceStateBackups? = nil
+    /// Lightning invoices whose address an on-chain send dispatched, shared with Android. Absent when there are none, and
+    /// merged before the active attempt on restore. Readers that predate this key restore without them.
+    var onchainPaidInvoices: [OnchainPaidInvoice]? = nil
+
+    /// The backup's paid invoices that can be read; a malformed one is dropped rather than failing the restore.
+    func restoredOnchainPaidInvoices() -> [HeldLightningInvoice] {
+        (onchainPaidInvoices ?? []).compactMap { invoice in
+            do {
+                return try invoice.restored()
+            } catch {
+                Logger.warn("Dropped a malformed paid invoice from the backup: \(error)", context: "PaykitPaymentStateBackup")
+                return nil
+            }
+        }
+    }
+
+    struct OnchainPaidInvoice: Codable {
+        let paymentHash: String
+        /// Seconds since 1970 as a decimal integer string, as integers are elsewhere in this record
+        let expiresAt: String
+
+        init(_ invoice: HeldLightningInvoice) {
+            paymentHash = invoice.paymentHash.lowercased()
+            expiresAt = String(invoice.expiresAt)
+        }
+
+        func restored() throws -> HeldLightningInvoice {
+            guard paymentHash.count == 64, paymentHash.allSatisfy({ "0123456789abcdef".contains($0) }) else {
+                throw invalidBackup("Invalid paid invoice hash")
+            }
+            guard let seconds = UInt64(expiresAt), String(seconds) == expiresAt else { throw invalidBackup("Invalid paid invoice expiry") }
+            return HeldLightningInvoice(paymentHash: paymentHash, expiresAt: seconds)
+        }
+    }
 
     struct RequestID: Codable {
         let paymentRequestId: String
@@ -223,6 +257,11 @@ struct PaykitPaymentStateBackup: Codable {
         let candidateFeeRates: [String: String]?
         /// Lets a release after a restore still outbid every candidate's absolute fee.
         let candidateMiningFees: [String: String]?
+        /// The hash of the Lightning invoice the address came with, which a re-send after a restore checks again. Readers that
+        /// predate this key restore the attempt without it.
+        let lightningPaymentHash: String?
+        /// When that invoice expires, as an integer string of seconds since 1970.
+        let lightningInvoiceExpiresAt: String?
         let followup: Followup?
         let transfer: Transfer?
 
@@ -260,6 +299,8 @@ struct PaykitPaymentStateBackup: Codable {
                 return owned.isEmpty ? nil : Dictionary(uniqueKeysWithValues: owned.map { ($0.key.lowercased(), String($0.value)) })
             }
             feeRateSatsPerVByte = String(attempt.recoveryContext?.satsPerVbyte ?? attempt.followupContext?.feeRate ?? 0)
+            lightningPaymentHash = attempt.lightningPaymentHash?.lowercased()
+            lightningInvoiceExpiresAt = attempt.lightningPaymentHash == nil ? nil : attempt.lightningInvoiceExpiresAt.map(String.init)
             guard attempt.followupContext?.createdAt.multipliedReportingOverflow(by: 1000).overflow != true else {
                 throw invalidBackup("Invalid local follow-up timestamp")
             }
@@ -325,6 +366,8 @@ struct PaykitPaymentStateBackup: Codable {
             if let original = candidateTxids.first, let originalRate = rates?[original], originalRate != rate {
                 throw invalidBackup("Conflicting original candidate fee rate")
             }
+            guard lightningPaymentHash.map(validTxid) != false else { throw invalidBackup("Invalid Lightning payment hash") }
+            let invoiceExpiresAt: UInt64? = try lightningPaymentHash == nil ? nil : lightningInvoiceExpiresAt.map { try number($0) }
             let restoredRequest = try requestId.map { value in
                 let date = try value.billingPeriodStartsAt.map { try parseTimestamp($0).date }
                 return PaykitPaymentRequest.ID(paymentRequestId: value.paymentRequestId, counterparty: value.counterparty,
@@ -369,7 +412,8 @@ struct PaykitPaymentStateBackup: Codable {
                                              recoveryContext: OnchainSendRecoveryContext(inputs: inputs ?? [], satsPerVbyte: rate,
                                                                                          paymentIdentity: payerIdentity,
                                                                                          candidateTxids: candidateTxids, candidateFeeRates: rates,
-                                                                                         candidateFeeSats: miningFees))
+                                                                                         candidateFeeSats: miningFees),
+                                             lightningPaymentHash: lightningPaymentHash, lightningInvoiceExpiresAt: invoiceExpiresAt)
             return (attempt, restoredProofs)
         }
 

@@ -293,6 +293,9 @@ merges, the two platforms share the journeys and that identifier. Android master
 then. The identifiers the journeys use that still differ on Android are in the Identifiers table
 above.
 
+`deeplinks/oversized-payment-amounts.xml` is iOS-only: Android keeps scanned amounts as unsigned
+longs end to end, so an amount above the bitcoin supply never trapped there.
+
 `paykit-quoted-usdt.xml` uses the iOS dot-decimal convention for USD and USDT, including
 in comma-decimal system regions, matching `usdt-number-format.xml`. Keep the region checks and
 exact-value, trailing-zero and six-decimal assertions; the locale does not change the separator.

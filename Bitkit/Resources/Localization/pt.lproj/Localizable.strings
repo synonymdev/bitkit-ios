@@ -1026,6 +1026,11 @@
 "wallet__send_quickpay__nav_title" = "QuickPay";
 "wallet__send_quickpay__title" = "Pagando \n<accent>invoice...</accent>";
 "wallet__send_pending_note" = "Este pagamento está a demorar um pouco mais do que o previsto. Pode continuar a usar a Bitkit.";
+"wallet__send_onchain_lightning_pending" = "Um pagamento Lightning desta fatura ainda pode ser concluído. Para evitar pagá-la duas vezes, a Bitkit não a pagará on-chain a menos que esse pagamento falhe.";
+"wallet__send_onchain_lightning_paid" = "Um pagamento Lightning desta fatura já foi concluído, por isso a Bitkit não a pagará novamente on-chain.";
+"wallet__send_onchain_lightning_unknown" = "A Bitkit tem de verificar o pagamento Lightning desta fatura antes de a pagar on-chain. Tente novamente quando a carteira tiver iniciado, ou pague apenas o endereço.";
+"wallet__send_lightning_onchain_pending" = "Um pagamento on-chain para o endereço desta fatura ainda pode ser confirmado. Para evitar pagá-la duas vezes, a Bitkit não pagará a fatura via Lightning.";
+"wallet__send_lightning_onchain_unreadable" = "A Bitkit não consegue ler os seus registos de pagamentos on-chain, por isso não sabe se o endereço desta fatura já foi pago. Tente mais tarde ou pague uma fatura sem endereço.";
 "wallet__send_instant_failed" = "Pagamento Falhou";
 "wallet__send_error_tx_failed" = "Falha na Transação";
 "wallet__send_details" = "Detalhes";
