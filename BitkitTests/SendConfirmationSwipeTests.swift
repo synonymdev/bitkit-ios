@@ -193,12 +193,25 @@ final class SendConfirmationSwipeTests: XCTestCase {
         XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 300_000, savingsBalanceSats: 209_714, balances: []))
     }
 
-    func testAFailedPreviewOfTheSavingsFallbackWalletIsInsufficientSavings() {
-        XCTAssertTrue(SendConfirmationView.isSavingsFallbackShortOfFee(fallbackWalletId: "trezor", walletId: "trezor"))
+    func testAFailedPreviewOfTheSavingsFallbackWalletIsInsufficientSavingsOnlyWhenTheFeeDoesNotFit() {
+        func isShort(fallback: String?, wallet: String?, amount: UInt64, balance: UInt64 = 100_000, reserve: UInt64 = 1200) -> Bool {
+            SendConfirmationView.isSavingsFallbackShortOfFee(
+                fallbackWalletId: fallback,
+                walletId: wallet,
+                amountSats: amount,
+                balanceSats: balance,
+                feeReserveSats: reserve
+            )
+        }
+        XCTAssertTrue(isShort(fallback: "trezor", wallet: "trezor", amount: 99970))
+        XCTAssertTrue(isShort(fallback: "trezor", wallet: "trezor", amount: 1000, balance: 1100))
+        // The fee fits, so the preview failed for another reason, such as Electrum being unreachable.
+        XCTAssertFalse(isShort(fallback: "trezor", wallet: "trezor", amount: 50000))
+        XCTAssertFalse(isShort(fallback: "trezor", wallet: "trezor", amount: 98800))
         // A source the user picked, or none, keeps the Try again handling.
-        XCTAssertFalse(SendConfirmationView.isSavingsFallbackShortOfFee(fallbackWalletId: nil, walletId: "trezor"))
-        XCTAssertFalse(SendConfirmationView.isSavingsFallbackShortOfFee(fallbackWalletId: "trezor", walletId: "jade"))
-        XCTAssertFalse(SendConfirmationView.isSavingsFallbackShortOfFee(fallbackWalletId: nil, walletId: nil))
+        XCTAssertFalse(isShort(fallback: nil, wallet: "trezor", amount: 99970))
+        XCTAssertFalse(isShort(fallback: "trezor", wallet: "jade", amount: 99970))
+        XCTAssertFalse(isShort(fallback: nil, wallet: nil, amount: 99970))
     }
 
     func testACoinSelectionFailureWithEnoughSavingsDoesNotMoveToAHardwareWallet() {

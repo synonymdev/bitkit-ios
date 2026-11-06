@@ -1217,9 +1217,17 @@ struct SendConfirmationView: View {
         return balances.first { $0.balanceSats >= amount }?.walletId
     }
 
-    /// The fallback wallet's balance covers the amount, so a failed preview means the fee does not fit: no source can pay.
-    static func isSavingsFallbackShortOfFee(fallbackWalletId: String?, walletId: String?) -> Bool {
-        fallbackWalletId != nil && fallbackWalletId == walletId
+    /// A failed preview of the Savings fallback wallet is insufficient funds only when the amount leaves less than the fee
+    /// reserve; any other failure, such as Electrum being unreachable, keeps Try again.
+    static func isSavingsFallbackShortOfFee(
+        fallbackWalletId: String?,
+        walletId: String?,
+        amountSats: UInt64,
+        balanceSats: UInt64,
+        feeReserveSats: UInt64
+    ) -> Bool {
+        guard fallbackWalletId != nil, fallbackWalletId == walletId else { return false }
+        return balanceSats < feeReserveSats || amountSats > balanceSats - feeReserveSats
     }
 
     /// Only the newest fee calculation can hold the swipe, so a calculation superseded by a funding switch never leaves it disabled.
@@ -2180,7 +2188,14 @@ struct SendConfirmationView: View {
             Logger.error("Failed to calculate actual fee: \(error)")
             transactionFee = 0
             if hwSend.isActive, app.contactPaymentContext == nil {
-                if Self.isSavingsFallbackShortOfFee(fallbackWalletId: savingsFallbackWalletId, walletId: hwSend.walletId) {
+                let balanceSats = hwSend.walletId.map { hwWalletManager.fundingBalance(walletId: $0) } ?? 0
+                if Self.isSavingsFallbackShortOfFee(
+                    fallbackWalletId: savingsFallbackWalletId,
+                    walletId: hwSend.walletId,
+                    amountSats: amountSats,
+                    balanceSats: balanceSats,
+                    feeReserveSats: HwFundingSigner.feeReserve(balanceSats: balanceSats, satsPerVByte: UInt64(feeRate))
+                ) {
                     savingsFallbackWalletId = nil
                     app.toast(
                         type: .error,
