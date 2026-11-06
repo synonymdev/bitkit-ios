@@ -90,4 +90,105 @@ final class CryptoTests: XCTestCase {
 
         XCTAssertEqual(String(data: value, encoding: .utf8), decryptedPayload)
     }
+
+    /// Expected values computed with an independent secp256k1 implementation (RFC 6979 nonces, low-S).
+    func testGetPublicKeyMatchesReferenceVector() throws {
+        let privateKey = "cc74b1a4fdcd35916c766d3318c5a93b7e33a36ebeff0463128bf284975c2680".hexaData
+        let publicKey = try Crypto.getPublicKey(privateKey: privateKey)
+        XCTAssertEqual(publicKey.hex, "02f7c231fe139475b8193194b42043ae546768167e5cf836f5a4063f5d448a127f")
+    }
+
+    func testSignMatchesReferenceVector() throws {
+        let privateKey = "cc74b1a4fdcd35916c766d3318c5a93b7e33a36ebeff0463128bf284975c2680".hexaData
+        let signature = try Crypto.sign(message: "hello bitkit", privateKey: privateKey)
+        XCTAssertEqual(
+            signature,
+            "204b84a4bfc77965c2ea561930829fca5a05610027d3591268e13f4e0cbb65aea2176f20bd78ca453a23214323ac1a6df88045f71b40f2e9dadab360743606a655"
+        )
+    }
+
+    func testGenerateKeyPairPublicKeyMatchesPrivateKey() throws {
+        let keyPair = try Crypto.generateKeyPair()
+        XCTAssertEqual(keyPair.privateKey.count, 32)
+        XCTAssertEqual(keyPair.publicKey.count, 33)
+        XCTAssertEqual(try Crypto.getPublicKey(privateKey: keyPair.privateKey), keyPair.publicKey)
+    }
+
+    // MARK: - Input validation (regression: sign/getPublicKey read past the end of short keys)
+
+    private static let validPrivateKey = "cc74b1a4fdcd35916c766d3318c5a93b7e33a36ebeff0463128bf284975c2680".hexaData
+    private static let validPublicKey = "031e9923e689a181a803486b7d8c0d4a5aad360edb70c8bb413a98458d91652213"
+    private static let curveOrder = "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141".hexaData
+
+    private func assertThrows(
+        _ expected: Crypto.CryptoError,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ body: () throws -> some Any
+    ) {
+        XCTAssertThrowsError(try body(), file: file, line: line) { error in
+            guard let error = error as? Crypto.CryptoError, error == expected else {
+                return XCTFail("Expected \(expected), got \(error)", file: file, line: line)
+            }
+        }
+    }
+
+    func testSignRejectsPrivateKeyOfWrongLength() {
+        for length in [0, 1, 31, 33, 64] {
+            assertThrows(.invalidPrivateKey) { try Crypto.sign(message: "hello", privateKey: Data(repeating: 1, count: length)) }
+        }
+    }
+
+    func testSignRejectsOutOfRangePrivateKey() {
+        assertThrows(.signingFailed) { try Crypto.sign(message: "hello", privateKey: Data(repeating: 0, count: 32)) }
+        assertThrows(.signingFailed) { try Crypto.sign(message: "hello", privateKey: Self.curveOrder) }
+    }
+
+    func testGetPublicKeyRejectsPrivateKeyOfWrongLength() {
+        for length in [0, 1, 31, 33, 64] {
+            assertThrows(.invalidPrivateKey) { try Crypto.getPublicKey(privateKey: Data(repeating: 1, count: length)) }
+        }
+    }
+
+    func testGetPublicKeyRejectsOutOfRangePrivateKey() {
+        assertThrows(.publicKeyCreationFailed) { try Crypto.getPublicKey(privateKey: Data(repeating: 0, count: 32)) }
+        assertThrows(.publicKeyCreationFailed) { try Crypto.getPublicKey(privateKey: Self.curveOrder) }
+    }
+
+    func testGenerateSharedSecretRejectsPrivateKeyOfWrongLength() {
+        for length in [0, 1, 31, 33, 64] {
+            assertThrows(.invalidPrivateKey) {
+                try Crypto.generateSharedSecret(privateKey: Data(repeating: 1, count: length), nodePubkey: Self.validPublicKey)
+            }
+        }
+    }
+
+    func testGenerateSharedSecretRejectsOutOfRangePrivateKey() {
+        assertThrows(.sharedSecretGenerationFailed) {
+            try Crypto.generateSharedSecret(privateKey: Data(repeating: 0, count: 32), nodePubkey: Self.validPublicKey)
+        }
+        assertThrows(.sharedSecretGenerationFailed) {
+            try Crypto.generateSharedSecret(privateKey: Self.curveOrder, nodePubkey: Self.validPublicKey)
+        }
+    }
+
+    func testGenerateSharedSecretRejectsInvalidPublicKeys() throws {
+        let compressedHex = try Crypto.getPublicKey(privateKey: Self.validPrivateKey).hex
+        let xCoordinate = String(compressedHex.dropFirst(2))
+        let offCurveX = String(repeating: "0", count: 63) + "5" // x = 5 has no y on secp256k1
+
+        let invalid = [
+            "",
+            String(Self.validPublicKey.dropLast(2)), // 32 bytes
+            Self.validPublicKey + "00", // 34 bytes
+            "04" + xCoordinate + xCoordinate, // 65 bytes: only compressed keys are accepted
+            "04" + xCoordinate, // uncompressed prefix on 33 bytes
+            "05" + xCoordinate, // unknown prefix
+            "02" + offCurveX,
+            "02" + String(repeating: "f", count: 64), // x >= field prime
+        ]
+        for pubkey in invalid {
+            assertThrows(.invalidPublicKey) { try Crypto.generateSharedSecret(privateKey: Self.validPrivateKey, nodePubkey: pubkey) }
+        }
+    }
 }
