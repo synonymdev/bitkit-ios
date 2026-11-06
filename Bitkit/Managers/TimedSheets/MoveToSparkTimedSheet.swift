@@ -10,7 +10,8 @@ struct MoveToSparkTimedSheet: TimedSheetItem {
 
     @MainActor
     func shouldShow() async -> Bool {
-        guard !app.hasSeenMoveToSparkIntro else { return false }
+        // E2E runs open new channels and do not expect the move offer covering Home; the journey covers the sheet.
+        guard !Env.isE2E, !app.hasSeenMoveToSparkIntro else { return false }
         let spark = SparkManager.shared
         return MoveToSparkMath.canMove(channels: wallet.channels, isSparkUsable: MoveToSparkMath.isSparkUsable(spark))
     }
