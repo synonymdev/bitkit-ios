@@ -153,11 +153,13 @@ final class HwRetainedSendServiceTests: XCTestCase {
         let service = HwRetainedSendService(store: MemoryRetainedSendStore())
         try await service.retain(send(serializedTx: "bb"))
 
-        try await service.restore(send(serializedTx: "aa"), replacing: "cc")
+        var outcome = try await service.restore(send(serializedTx: "aa"), replacing: "cc")
+        XCTAssertEqual(outcome, .leftCurrentRecord)
         var record = try await service.record(walletId: wallet)
         XCTAssertEqual(record?.serializedTx, "bb")
 
-        try await service.restore(send(serializedTx: "aa"), replacing: "bb")
+        outcome = try await service.restore(send(serializedTx: "aa"), replacing: "bb")
+        XCTAssertEqual(outcome, .wroteOldRecord)
         record = try await service.record(walletId: wallet)
         XCTAssertEqual(record?.serializedTx, "aa")
     }
@@ -169,8 +171,9 @@ final class HwRetainedSendServiceTests: XCTestCase {
         observed.observed = true
         try store.save(observed)
 
-        try await service.restore(send(serializedTx: "aa"), replacing: "bb")
+        let outcome = try await service.restore(send(serializedTx: "aa"), replacing: "bb")
 
+        XCTAssertEqual(outcome, .leftCurrentRecord)
         let record = try await service.record(walletId: wallet)
         XCTAssertEqual(record, observed)
     }

@@ -56,6 +56,12 @@ enum HwRetainOutcome: Equatable {
     case replacedCorruptEntry
 }
 
+/// What `restore` did to the wallet's entry. A failed read or write throws instead.
+enum HwRestoreOutcome: Equatable {
+    case wroteOldRecord
+    case leftCurrentRecord
+}
+
 protocol HwRetainedSendStoring: Sendable {
     func load(walletId: String) throws -> HwRetainedSend?
     func save(_ send: HwRetainedSend) throws
@@ -120,9 +126,13 @@ actor HwRetainedSendService {
 
     /// Puts back the record that `serializedTx` replaced, when those bytes never reached dispatch or settled as not sent.
     /// Bytes the watcher has seen did go out, so they stay as the record.
-    func restore(_ previous: HwRetainedSend, replacing serializedTx: String) throws {
-        guard let current = try store.load(walletId: previous.walletId), current.serializedTx == serializedTx, !current.observed else { return }
+    @discardableResult
+    func restore(_ previous: HwRetainedSend, replacing serializedTx: String) throws -> HwRestoreOutcome {
+        guard let current = try store.load(walletId: previous.walletId), current.serializedTx == serializedTx, !current.observed else {
+            return .leftCurrentRecord
+        }
         try store.save(previous)
+        return .wroteOldRecord
     }
 
     func record(walletId: String) throws -> HwRetainedSend? {

@@ -2153,10 +2153,14 @@ final class HwFundingSignerTests: XCTestCase {
         connecting.connectError = HwPassphraseError.required
         await assertPassphrasePromptedByConsentedSend(coordinator)
 
+        connecting.reconnectError = HwPassphraseError.mismatch
         await assertThrowsAsync {
-            try await coordinator.reconnectWithPassphrase("wrong", manager: HwWalletManager())
+            try await coordinator.reconnectWithPassphrase("wrong", manager: connecting)
+        } _: { error in
+            XCTAssertEqual(error as? HwPassphraseError, .mismatch)
         }
 
+        XCTAssertEqual(connecting.reconnectCalls.map(\.passphrase), ["wrong"])
         XCTAssertTrue(coordinator.isPassphraseRequired, "The prompt stays open for another try")
         connecting.connectError = nil
         try await assertSignsAnewWithConsent(coordinator, funding: funding, address: "bc1qtest")
@@ -2435,7 +2439,7 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(rebroadcastTx, newSignedTx)
     }
 
-    func testFailedReadAfterARestoreGetsNoConsent() async throws {
+    func testFailedReadAfterARestoreKeepsConsent() async throws {
         let funding = MockHwFunding()
         let store = ScriptedLoadRetainedSendStore()
         let service = HwRetainedSendService(store: store)
@@ -2451,15 +2455,48 @@ final class HwFundingSignerTests: XCTestCase {
         coordinator.consentToNewSignature(address: "bc1qother", sats: 42000)
         let payment = Task { try await self.send(coordinator, address: "bc1qother") }
         await waitUntil { funding.broadcastCalls == 2 }
-        // The send's own observed check and the restore read normally, and the check for the old record fails.
+        // The send's own observed check and the restore read normally, and the next read after settling fails.
         store.script([.read, .read, .fail])
         broadcast.open()
         await assertThrowsAsync { try await payment.value }
 
+        await assertThrowsAsync { _ = try await service.record(walletId: "jade:wallet") }
         let record = try await service.record(walletId: "jade:wallet")
         XCTAssertEqual(record, original)
-        let status = await coordinator.retainedSendStatus(address: "bc1qother", sats: 42000, hasIncomingRequest: false)
-        XCTAssertEqual(status, .blocking)
+        try await assertSignsAnewWithConsent(coordinator, funding: funding, address: "bc1qother")
+    }
+
+    func testRefusedRepeatOfAnObservedPaymentSignsAnewDespiteALaterFailedRead() async throws {
+        let funding = MockHwFunding()
+        let store = ScriptedLoadRetainedSendStore()
+        let service = HwRetainedSendService(store: store)
+        let coordinator = try await failThenObserve(funding: funding, service: service)
+        let original = try await service.record(walletId: "jade:wallet")
+        funding.signedTx = newSignedTx
+        funding.broadcastError = Failure.refused
+        let broadcast = AsyncGate()
+        funding.broadcastGate = broadcast
+
+        coordinator.consentToNewSignature(address: "bc1qtest", sats: 42000)
+        let payment = Task { try await self.send(coordinator) }
+        await waitUntil { funding.broadcastCalls == 2 }
+        store.script([.read, .read, .fail])
+        broadcast.open()
+        await assertThrowsAsync { try await payment.value }
+
+        let rebroadcastTx = await coordinator.retainedRebroadcastTx(address: "bc1qtest", sats: 42000, hasIncomingRequest: false)
+        XCTAssertNil(rebroadcastTx, "The old bytes are not offered as a Retry")
+
+        // This tap's read is the one that fails, so it stops before any device contact and sends nothing.
+        await assertThrowsAsync { try await self.send(coordinator) }
+        XCTAssertEqual(funding.signCalls, 2)
+        XCTAssertEqual(funding.broadcastTransactions, [observableTx.serializedTx, newSignedTx.serializedTx])
+        let record = try await service.record(walletId: "jade:wallet")
+        XCTAssertEqual(record, original)
+
+        try await assertSignsAnewWithConsent(coordinator, funding: funding, address: "bc1qtest")
+        XCTAssertEqual(funding.signCalls, 3)
+        XCTAssertEqual(funding.broadcastTransactions, [observableTx.serializedTx, newSignedTx.serializedTx, newSignedTx.serializedTx])
     }
 
     func testExpiryInTheBroadcastQueueKeepsConsentAndTheNextTapSignsAnew() async throws {

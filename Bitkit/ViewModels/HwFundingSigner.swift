@@ -706,6 +706,7 @@ final class HwSendCoordinator {
             }
 
             var retainOutcome = HwRetainOutcome.stored
+            var restoreOutcome: HwRestoreOutcome?
 
             func retainBeforeDispatch() async throws {
                 if paymentRequestId == nil {
@@ -732,7 +733,8 @@ final class HwSendCoordinator {
                 case .alreadyHeld:
                     return true
                 case let .replaced(previous):
-                    return await restoreRetainedSend(previous, replacing: signed)
+                    restoreOutcome = await restoreRetainedSend(previous, replacing: signed)
+                    return restoreOutcome != nil
                 case .replacedCorruptEntry:
                     // Nothing readable to put back, and deleting would lose the guard, so these bytes stay as the record.
                     return false
@@ -819,13 +821,9 @@ final class HwSendCoordinator {
                         } else {
                             await clearBeforeDispatch()
                         }
-                        let consentRegranted: Bool = if hadPriorBroadcastAttempt {
-                            false
-                        } else {
-                            await regrantConsentIfOldRecordIsBack(
-                                walletId: walletId, address: address, sats: sats, retainOutcome: retainOutcome, replacement: replacement
-                            )
-                        }
+                        let consentRegranted = regrantConsentIfOldRecordIsBack(
+                            walletId: walletId, address: address, sats: sats, restoreOutcome: restoreOutcome, replacement: replacement
+                        )
                         // Regranted consent signs anew, so no held bytes may stay to rebroadcast without a device prompt.
                         let retainsBroadcastAttempt = hadPriorBroadcastAttempt || (!cleared && !consentRegranted)
                         isBroadcastUnresolved = hadPriorBroadcastAttempt ? priorBroadcastWasUnresolved : !cleared && paymentRequestId != nil
@@ -969,21 +967,18 @@ final class HwSendCoordinator {
     }
 
     /// Gives back the consent a payment used, when its new bytes did not go out. Otherwise the old record would offer a Retry of the
-    /// old bytes, or block a different payment. Reads the record rather than trusting the restore, which does nothing over bytes the
-    /// watcher has seen and can fail. In both cases the new bytes stay the record, and a Retry refers to them.
+    /// old bytes, or block a different payment. Follows what the restore reported rather than a further read, which can fail and lose
+    /// the consent while the old record is back. A restore that failed or left bytes the watcher has seen keeps the new bytes as the
+    /// record, and a Retry refers to them.
     @discardableResult
     private func regrantConsentIfOldRecordIsBack(
         walletId: String,
         address: String,
         sats: UInt64,
-        retainOutcome: HwRetainOutcome,
+        restoreOutcome: HwRestoreOutcome?,
         replacement: HwRetainedSendReplacement
-    ) async -> Bool {
-        guard replacement == .consented, case let .replaced(previous) = retainOutcome,
-              let record = try? await retainedSends.record(walletId: walletId),
-              record.serializedTx == previous.serializedTx,
-              !isRetainedSendConsentEnded
-        else { return false }
+    ) -> Bool {
+        guard replacement == .consented, restoreOutcome == .wroteOldRecord, !isRetainedSendConsentEnded else { return false }
         retainedSendConsent = RetainedSendConsent(walletId: walletId, address: address, sats: sats)
         return true
     }
@@ -996,7 +991,7 @@ final class HwSendCoordinator {
 
     func reconnectWithPassphrase(
         _ passphrase: String,
-        manager: HwWalletManager
+        manager: HwTransferConnecting
     ) async throws {
         guard let walletId else { return }
         isVerifyingPassphrase = true
@@ -1124,13 +1119,13 @@ final class HwSendCoordinator {
                 return HwTransferError.broadcastUncertain
             }
         } else if refused {
-            await releaseOrRestoreRetainedSend(walletId: walletId, signed: signed, retainOutcome: retainOutcome)
-            await regrantConsentIfOldRecordIsBack(
-                walletId: walletId, address: address, sats: sats, retainOutcome: retainOutcome, replacement: replacement
+            let restoreOutcome = await releaseOrRestoreRetainedSend(walletId: walletId, signed: signed, retainOutcome: retainOutcome)
+            regrantConsentIfOldRecordIsBack(
+                walletId: walletId, address: address, sats: sats, restoreOutcome: restoreOutcome, replacement: replacement
             )
             pendingPayment = nil
         } else if failure.isDefiniteElectrumConnectFailure() {
-            if await releaseOrRestoreRetainedSend(walletId: walletId, signed: signed, retainOutcome: retainOutcome) {
+            if await releaseOrRestoreRetainedSend(walletId: walletId, signed: signed, retainOutcome: retainOutcome) != nil {
                 pendingPayment?.replacementOverRestoredRecord = replacement
             }
             pendingPayment?.hasBroadcastAttempted = false
@@ -1142,12 +1137,16 @@ final class HwSendCoordinator {
     }
 
     /// Ends a record whose bytes did not go out. If it replaced an older record, that payment's outcome is still unknown, so the
-    /// older record comes back rather than leaving nothing. Returns whether it did.
+    /// older record comes back rather than leaving nothing. Returns nil when no restore ran or it failed.
     @discardableResult
-    private func releaseOrRestoreRetainedSend(walletId: String, signed: HwFundingSignedTx, retainOutcome: HwRetainOutcome) async -> Bool {
+    private func releaseOrRestoreRetainedSend(
+        walletId: String,
+        signed: HwFundingSignedTx,
+        retainOutcome: HwRetainOutcome
+    ) async -> HwRestoreOutcome? {
         guard case let .replaced(previous) = retainOutcome else {
             await releaseRetainedSend(walletId: walletId)
-            return false
+            return nil
         }
         return await restoreRetainedSend(previous, replacing: signed)
     }
@@ -1165,13 +1164,12 @@ final class HwSendCoordinator {
     }
 
     /// A failed restore only leaves the new bytes as the record, so the next attempt rebroadcasts or warns rather than signing again.
-    private func restoreRetainedSend(_ previous: HwRetainedSend, replacing signed: HwFundingSignedTx) async -> Bool {
+    private func restoreRetainedSend(_ previous: HwRetainedSend, replacing signed: HwFundingSignedTx) async -> HwRestoreOutcome? {
         do {
-            try await retainedSends.restore(previous, replacing: signed.serializedTx)
-            return true
+            return try await retainedSends.restore(previous, replacing: signed.serializedTx)
         } catch {
             Logger.warn("Failed to restore retained hardware send: \(type(of: error))", context: "HwSendCoordinator")
-            return false
+            return nil
         }
     }
 
