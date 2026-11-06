@@ -295,7 +295,10 @@ struct ProfileView: View {
     private func refreshProfile() async {
         isRefreshing = true
         defer { isRefreshing = false }
-        guard pubkyProfile.profile == nil else { return }
+        guard pubkyProfile.profile == nil else {
+            await pubkyProfile.loadProfile()
+            return
+        }
         async let restoration: Void = pubkyProfile.restoreSessionIfNeeded()
         await pubkyProfile.loadProfile()
         await restoration

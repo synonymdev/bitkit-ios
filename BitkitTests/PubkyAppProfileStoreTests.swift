@@ -59,4 +59,27 @@ final class PubkyAppProfileStoreTests: XCTestCase {
         XCTAssertEqual(PubkyAppProfileStore.linkUrl("https://x.com/alice"), "https://x.com/alice")
         XCTAssertNil(PubkyAppProfileStore.linkUrl("  "))
     }
+
+    func testFreeTextIsNotMadeALink() {
+        XCTAssertNil(PubkyAppProfileStore.linkUrl("my site"))
+        XCTAssertNil(PubkyAppProfileStore.linkUrl("12345"))
+        XCTAssertNil(PubkyAppProfileStore.linkUrl("a@b"))
+        XCTAssertNil(PubkyAppProfileStore.linkUrl("2024-01-01"))
+        XCTAssertNil(PubkyAppProfileStore.linkUrl("New York"))
+        XCTAssertEqual(PubkyAppProfileStore.linkUrl("medium.com/@alice"), "https://medium.com/@alice")
+        XCTAssertEqual(PubkyAppProfileStore.linkUrl("example.com/a@b"), "https://example.com/a@b")
+        XCTAssertEqual(PubkyAppProfileStore.linkUrl("0123 456 789"), "tel:0123456789")
+    }
+
+    func testOnlyControlCharactersAreFlattened() {
+        XCTAssertEqual(PubkyAppProfileStore.singleLine("Builder\nMaker"), "Builder Maker")
+        XCTAssertEqual(PubkyAppProfileStore.singleLine("👩\u{200D}💻 می\u{200C}خواهم"), "👩\u{200D}💻 می\u{200C}خواهم")
+    }
+
+    func testCapsCountUnicodeScalars() {
+        XCTAssertNil(PubkyAppProfileLimits.capped("abc", to: 3))
+        XCTAssertEqual(PubkyAppProfileLimits.capped("👩\u{200D}💻x", to: 3), "👩\u{200D}💻")
+        XCTAssertFalse(PubkyAppProfileLimits.isValidName("é\u{301}"))
+        XCTAssertTrue(PubkyAppProfileLimits.isValidName("e\u{301}e"))
+    }
 }

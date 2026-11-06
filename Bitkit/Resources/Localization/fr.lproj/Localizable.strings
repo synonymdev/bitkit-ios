@@ -1189,6 +1189,7 @@
 "profile__edit_unlink_section" = "DISSOCIER";
 "profile__edit_changed_error" = "Ton profil a changé sur pubky.app. Bitkit a chargé la version la plus récente, refais donc ta modification.";
 "profile__edit_public_note" = "Voici ton profil pubky.app. Il est public, et les modifications que tu fais ici apparaissent aussi sur pubky.app.";
+"profile__edit_tags_error" = "Bitkit n'a pas pu enregistrer vos étiquettes. Vos autres modifications ont été enregistrées, réessayez pour les étiquettes.";
 "profile__delete_title" = "Supprimer le profil ?";
 "profile__delete_description" = "La suppression de votre profil le retire de Pubky. Vos contacts peuvent encore conserver les informations de profil et de paiement que vous leur avez partagées.";
 "profile__delete_confirm" = "Oui, supprimer";

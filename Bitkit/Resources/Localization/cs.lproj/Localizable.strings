@@ -1178,6 +1178,7 @@
 "profile__edit_unlink_section" = "ZRUŠIT PROPOJENÍ";
 "profile__edit_changed_error" = "Tvůj profil se v pubky.app změnil. Bitkit načetl nejnovější verzi, proveď proto úpravu znovu.";
 "profile__edit_public_note" = "Toto je tvůj profil na pubky.app. Je veřejný a změny, které zde provedeš, se zobrazí i na pubky.app.";
+"profile__edit_tags_error" = "Bitkit nemohl uložit vaše štítky. Ostatní změny byly uloženy, tak zkuste štítky znovu.";
 "profile__delete_title" = "Smazat profil?";
 "profile__delete_description" = "Smazáním profilu ho odstraníte z Pubky. Kontakty si mohou ponechat informace o profilu a platbách, které jste s nimi dříve sdíleli.";
 "profile__delete_confirm" = "Ano, smazat";

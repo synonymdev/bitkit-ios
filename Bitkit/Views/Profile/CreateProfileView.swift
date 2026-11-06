@@ -38,8 +38,8 @@ struct CreateProfileView: View {
             await loadInitialData()
         }
         .onChange(of: username) { _, value in
-            if value.count > PubkyAppProfileLimits.nameLength.upperBound {
-                username = String(value.prefix(PubkyAppProfileLimits.nameLength.upperBound))
+            if let capped = PubkyAppProfileLimits.capped(value, to: PubkyAppProfileLimits.nameLength.upperBound) {
+                username = capped
             }
         }
     }
@@ -230,11 +230,15 @@ struct CreateProfileView: View {
                 links: existingProfile?.links ?? [],
                 tags: existingProfile?.tags ?? [],
                 existingImageUrl: existingProfile?.imageUrl,
+                baseRevision: existingProfile?.revision,
                 avatarImage: avatarImage
             )
             navigation.navigate(.payContacts)
         } catch is CancellationError {
             return
+        } catch PubkyAppProfileError.changedElsewhere {
+            app.toast(type: .error, title: t("profile__create_error_title"), description: PubkyAppProfileError.changedElsewhere.localizedDescription)
+            await loadInitialData()
         } catch {
             Logger.error("Failed to save profile: \(error)", context: "CreateProfileView")
             app.toast(type: .error, title: t("profile__create_error_title"), description: error.localizedDescription)

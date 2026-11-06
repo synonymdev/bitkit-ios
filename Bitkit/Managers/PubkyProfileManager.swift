@@ -484,6 +484,7 @@ class PubkyProfileManager: ObservableObject {
         links: [PubkyProfileLink],
         tags: [String] = [],
         existingImageUrl: String? = nil,
+        baseRevision: String? = nil,
         avatarImage: UIImage? = nil,
         loadStoredSecretKey: () async throws -> String? = {
             await Task.detached { PubkyProfileManager.activeSecretKeyHex() }.value
@@ -499,6 +500,7 @@ class PubkyProfileManager: ObservableObject {
                 links: links,
                 tags: tags,
                 existingImageUrl: existingImageUrl,
+                baseRevision: baseRevision,
                 avatarImage: avatarImage
             )
             return
@@ -533,6 +535,7 @@ class PubkyProfileManager: ObservableObject {
                     links: links,
                     tags: tags,
                     existingImageUrl: existingImageUrl,
+                    baseRevision: baseRevision,
                     avatarImage: avatarImage
                 )
             },
@@ -751,6 +754,7 @@ class PubkyProfileManager: ObservableObject {
         links: [PubkyProfileLink],
         tags: [String],
         existingImageUrl: String?,
+        baseRevision: String?,
         avatarImage: UIImage?
     ) async throws {
         var avatarUri: String?
@@ -759,10 +763,18 @@ class PubkyProfileManager: ObservableObject {
         }
         let imageUrl = Self.resolvedImageUrl(newImageUrl: avatarUri, existingImageUrl: existingImageUrl)
 
-        try await writeProfile(name: name, bio: bio, imageUrl: imageUrl, links: links, tags: tags)
+        let savedProfile = try await writeProfile(
+            name: name,
+            bio: bio,
+            imageUrl: imageUrl,
+            links: links,
+            tags: tags,
+            baseRevision: baseRevision,
+            expectedIdentity: publicKey
+        )
         Self.notifyAppStateBackupChanged()
 
-        let createdProfile = PubkyProfile(
+        let createdProfile = savedProfile ?? PubkyProfile(
             publicKey: publicKey,
             name: name,
             bio: bio,
@@ -997,8 +1009,9 @@ class PubkyProfileManager: ObservableObject {
     ) async throws -> Bool {
         let resolvedImageUrl = Self.resolvedImageUrl(newImageUrl: newImageUrl, existingImageUrl: profile?.imageUrl)
 
+        let savedProfile: PubkyProfile?
         do {
-            try await writeProfile(
+            savedProfile = try await writeProfile(
                 name: name,
                 bio: bio,
                 imageUrl: resolvedImageUrl,
@@ -1019,7 +1032,7 @@ class PubkyProfileManager: ObservableObject {
             return false
         }
 
-        var updatedProfile = PubkyProfile(
+        let updatedProfile = savedProfile ?? PubkyProfile(
             publicKey: session.publicKey,
             name: name,
             bio: bio,
@@ -1028,7 +1041,6 @@ class PubkyProfileManager: ObservableObject {
             tags: tags,
             status: profile?.status
         )
-        updatedProfile.revision = await PubkyAppProfileStore.shared.lastSavedRevision(publicKey: session.publicKey)
         commitProfile(updatedProfile)
         setProfileSetupPending(false)
         return true
@@ -1105,7 +1117,7 @@ class PubkyProfileManager: ObservableObject {
         tags: [String] = [],
         baseRevision: String? = nil,
         expectedIdentity: String? = nil
-    ) async throws {
+    ) async throws -> PubkyProfile? {
         var profileData = PubkyProfileData(
             name: name,
             bio: bio,
@@ -1114,11 +1126,24 @@ class PubkyProfileManager: ObservableObject {
             tags: tags
         )
         profileData.baseRevision = baseRevision
+        let saveId = UUID()
+        profileData.saveId = saveId
 
         let publish = profilePublisher
-        try await Task.detached {
-            try await publish(profileData, expectedIdentity)
-        }.value
+        do {
+            try await Task.detached {
+                try await publish(profileData, expectedIdentity)
+            }.value
+        } catch let PubkyAppProfileError.tagsNotSaved(revision) {
+            // The other fields are on pubky.app, so the screen shows them and a retry starts from their revision.
+            if let saved = await PubkyAppProfileStore.shared.savedProfile(saveId: saveId),
+               PubkyPublicKeyFormat.matches(saved.publicKey, currentSession?.publicKey)
+            {
+                commitProfile(saved)
+            }
+            throw PubkyAppProfileError.tagsNotSaved(revision: revision)
+        }
+        return await PubkyAppProfileStore.shared.savedProfile(saveId: saveId)
     }
 
     private func discardAbandonedSession() async {
@@ -1233,6 +1258,15 @@ class PubkyProfileManager: ObservableObject {
                 readOnlyProfile = nil
                 cacheProfileMetadata(loadedProfile)
             }
+        } catch PubkyServiceError.profileNotFound {
+            // A profile deleted on pubky.app is set up again rather than left unreachable.
+            guard publicKey == pk, profileWriteGeneration == read.generation else { return }
+            Logger.info("Profile no longer exists, starting profile setup", context: "PubkyProfileManager")
+            profile = nil
+            if PubkyPublicKeyFormat.matches(cachedProfileOwner, pk) {
+                clearCachedProfileMetadata()
+            }
+            setProfileSetupPending(true)
         } catch {
             Logger.error("Failed to load profile: \(error)", context: "PubkyProfileManager")
         }

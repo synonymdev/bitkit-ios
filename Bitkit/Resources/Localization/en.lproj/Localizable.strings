@@ -1191,6 +1191,7 @@
 "profile__edit_unlink_section" = "UNLINK";
 "profile__edit_changed_error" = "Your profile changed in pubky.app. Bitkit loaded the latest version, so make your edit again.";
 "profile__edit_public_note" = "This is your pubky.app profile. It is public, and changes you make here also show on pubky.app.";
+"profile__edit_tags_error" = "Bitkit could not save your tags. Your other changes were saved, so try the tags again.";
 "profile__delete_title" = "Delete Profile?";
 "profile__delete_description" = "Deleting your profile removes it from Pubky. Contacts may still retain profile and payment information previously shared with them.";
 "profile__delete_confirm" = "Yes, Delete";

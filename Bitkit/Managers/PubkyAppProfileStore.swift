@@ -4,9 +4,14 @@ import Paykit
 enum PubkyAppProfileError: LocalizedError {
     /// The pubky.app profile changed since Bitkit loaded it, so the save was not applied.
     case changedElsewhere
+    /// The other fields were saved at `revision`, but the tag change was not.
+    case tagsNotSaved(revision: String)
 
     var errorDescription: String? {
-        t("profile__edit_changed_error")
+        switch self {
+        case .changedElsewhere: t("profile__edit_changed_error")
+        case .tagsNotSaved: t("profile__edit_tags_error")
+        }
     }
 }
 
@@ -43,15 +48,18 @@ actor PubkyAppProfileStore {
     /// The profile each recently seen revision held, so a save diffs against what its form was built from.
     private var profilesByRevision: [String: [String: PubkyProfile]] = [:]
     private var revisionOrder: [String: [String]] = [:]
-    private var lastSavedRevisions: [String: String] = [:]
+    private var savedProfiles: [UUID: PubkyProfile] = [:]
+    private var pendingAvatarUris: [String: String] = [:]
     private var tagsUnavailable: Set<String> = []
     private static let rememberedRevisions = 8
 
-    /// Loads the profile. An identity that is signed in and has only a Bitkit profile moves it to pubky.app first; while
-    /// that move cannot finish, the Bitkit profile is shown and the next save creates the pubky.app profile.
+    /// Loads the profile. An identity that is signed in and has only a Bitkit profile moves it to pubky.app first; until
+    /// that move happens (signed out, or it cannot finish) the Bitkit profile is shown and the next save creates the
+    /// pubky.app profile.
     func load(publicKey: String) async throws -> PubkyProfile {
         let key = Self.normalized(publicKey)
         let paykitData: PubkyProfileData?
+        var paykitReadError: Error?
         do {
             paykitData = try await PubkyService.fetchPaykitProfile(publicKey: key).map {
                 PubkyProfileData.from(paykitProfile: $0.profile)
@@ -60,6 +68,7 @@ actor PubkyAppProfileStore {
         } catch {
             Logger.warn("Failed to read Bitkit profile copy: \(error)", context: "PubkyAppProfileStore")
             paykitData = nil
+            paykitReadError = error
             tagsUnavailable.insert(key)
         }
         let fetched = try await PubkyService.fetchPubkyProfileWithRevision(publicKey: key)
@@ -67,15 +76,23 @@ actor PubkyAppProfileStore {
         let isSignedIn = await Self.isSignedIn(key)
         // Once a pubky.app profile was seen, one missing there was deleted there, so it is not moved back from Bitkit.
         let hadPubkyAppProfile = Self.pubkyAppProfileOwners.contains(key)
-        let migrating = snapshot == nil && isSignedIn && !hadPubkyAppProfile
-        if migrating, let paykitData {
+        if fetched == nil, isSignedIn, !hadPubkyAppProfile, let paykitData {
             snapshot = await migrate(paykitData, publicKey: key)
-        } else if let current = snapshot, isSignedIn, Self.pubkyAppAvatarPending.contains(key), let uri = paykitData?.image {
-            snapshot = await moveAvatar(uri, onto: current, publicKey: key) ?? current
+        } else if let current = fetched, isSignedIn, Self.pubkyAppAvatarPending.contains(key), let uri = paykitData?.image {
+            if current.profile.image == nil, Self.isPaykitStorage(uri) {
+                snapshot = await moveAvatar(uri, onto: current, publicKey: key) ?? current
+            } else {
+                // An avatar set on pubky.app meanwhile wins over the one still to move, and only a Bitkit avatar on Paykit
+                // storage is moved.
+                Self.pubkyAppAvatarPending.remove(key)
+            }
         }
         guard let snapshot else {
-            if migrating, let paykitData {
+            if !hadPubkyAppProfile, let paykitData {
                 return paykitData.toProfile(publicKey: key)
+            }
+            if let paykitReadError {
+                throw paykitReadError
             }
             throw PubkyServiceError.profileNotFound
         }
@@ -83,6 +100,7 @@ actor PubkyAppProfileStore {
             Self.pubkyAppProfileOwners.insert(key)
         }
         let avatarPending = Self.pubkyAppAvatarPending.contains(key)
+        pendingAvatarUris[key] = avatarPending ? paykitData?.image : nil
         var profile = Self.profile(publicKey: key, snapshot: snapshot, tags: paykitData?.tags ?? [])
         if avatarPending, let uri = paykitData?.image {
             profile = profile.withImageUrl(uri)
@@ -95,51 +113,78 @@ actor PubkyAppProfileStore {
     }
 
     /// Saves `data` for `expectedIdentity`, or the signed-in identity. A save carrying the revision its form was built
-    /// from writes only the fields that differ from that revision; without one it creates or replaces the profile.
-    /// Throws `changedElsewhere` after reloading when pubky.app changed the profile since that revision.
+    /// from writes only the fields that differ from that revision; one without a revision creates the profile, and is
+    /// refused when a pubky.app profile exists by then. Throws `changedElsewhere` after reloading when pubky.app changed
+    /// the profile since that revision.
     func save(_ data: PubkyProfileData, expectedIdentity: String?) async throws {
         let data = Self.normalized(data)
         let key = try await Self.identity(expectedIdentity)
         var base: PubkyProfile?
-        let expectedRevision: String?
         if let baseRevision = data.baseRevision {
             guard let known = profilesByRevision[key]?[baseRevision] else {
                 _ = try? await load(publicKey: key)
                 throw PubkyAppProfileError.changedElsewhere
             }
             base = known
-            expectedRevision = baseRevision
-        } else {
-            // Creating: an existing pubky.app profile keeps every field the form does not set.
-            expectedRevision = try await PubkyService.fetchPubkyProfileWithRevision(publicKey: key)?.revision
+        } else if try await PubkyService.fetchPubkyProfileWithRevision(publicKey: key) != nil {
+            _ = try? await load(publicKey: key)
+            throw PubkyAppProfileError.changedElsewhere
         }
-        let update = Self.update(from: data, base: base)
+        var update = Self.update(from: data, base: base)
+        // A Bitkit avatar still on Paykit storage is moved by a later load rather than written to pubky.app as is.
+        let paykitAvatar = data.image.flatMap { Self.isPaykitStorage($0) ? $0 : nil }
+        if let image = update.image, Self.isPaykitStorage(image) {
+            update.image = nil
+        }
         let snapshot: Paykit.PubkyProfileSnapshot
         do {
             snapshot = try await withPubkyAppScope {
-                try await PubkyService.publishPubkyProfile(update, expectedRevision: expectedRevision, expectedIdentity: key)
+                try await PubkyService.publishPubkyProfile(update, expectedRevision: data.baseRevision, expectedIdentity: key)
             }
         } catch PaykitError.ConcurrentUpdate {
             _ = try? await load(publicKey: key)
             throw PubkyAppProfileError.changedElsewhere
         }
         Self.pubkyAppProfileOwners.insert(key)
+        if let paykitAvatar, snapshot.profile.image == nil {
+            Self.pubkyAppAvatarPending.insert(key)
+            pendingAvatarUris[key] = paykitAvatar
+        } else {
+            Self.pubkyAppAvatarPending.remove(key)
+            pendingAvatarUris[key] = nil
+        }
+        let previousTags = base?.tags ?? []
         let tags = await tagsToKeep(data.tags, for: key)
-        let profile = Self.profile(publicKey: key, snapshot: snapshot, tags: tags)
-        remember(profile, for: key)
-        lastSavedRevisions[key] = snapshot.revision
-        // Tags live only in the Paykit copy, so a changed tag that it does not take is reported.
-        let tagsChanged = tags != (base?.tags ?? [])
-        do {
-            try await publishCopy(profile, expectedIdentity: key)
-        } catch where tagsChanged {
-            throw error
-        } catch {}
+        var profile = Self.profile(publicKey: key, snapshot: snapshot, tags: tags ?? previousTags)
+        if Self.pubkyAppAvatarPending.contains(key), let uri = pendingAvatarUris[key] {
+            profile = profile.withImageUrl(uri)
+        }
+        // Tags live only in the Paykit copy, so a tag change it does not take is reported, and the remembered base keeps
+        // the tags it last stored so a retry is reported again.
+        var copyError: Error?
+        if tags != nil {
+            do {
+                try await publishCopy(profile, expectedIdentity: key)
+            } catch {
+                copyError = error
+            }
+        }
+        let storedProfile = tags != nil && copyError == nil ? profile : profile.withTags(previousTags)
+        remember(storedProfile, for: key)
+        if let saveId = data.saveId {
+            savedProfiles[saveId] = storedProfile
+        }
+        if tags == nil || copyError != nil, data.tags != previousTags {
+            if let copyError {
+                Logger.warn("Saved the profile without its tag change: \(copyError)", context: "PubkyAppProfileStore")
+            }
+            throw PubkyAppProfileError.tagsNotSaved(revision: snapshot.revision)
+        }
     }
 
-    /// The revision the last successful save for `publicKey` produced.
-    func lastSavedRevision(publicKey: String) -> String? {
-        lastSavedRevisions[Self.normalized(publicKey)]
+    /// The profile a save stored, by the id its data carried; read once.
+    func savedProfile(saveId: UUID) -> PubkyProfile? {
+        savedProfiles.removeValue(forKey: saveId)
     }
 
     private func remember(_ profile: PubkyProfile, for key: String) {
@@ -152,11 +197,18 @@ actor PubkyAppProfileStore {
         revisionOrder[key] = order
     }
 
-    /// When the last load could not read the Paykit copy, the form showed no tags, so the stored ones are kept.
-    private func tagsToKeep(_ tags: [String], for key: String) async -> [String] {
-        guard tagsUnavailable.contains(key), let stored = try? await PubkyService.fetchPaykitProfile(publicKey: key) else { return tags }
+    /// When the last load could not read the Paykit copy, the form showed no tags, so the stored ones are kept; nil while
+    /// they still cannot be read.
+    private func tagsToKeep(_ tags: [String], for key: String) async -> [String]? {
+        guard tagsUnavailable.contains(key) else { return tags }
+        let stored: Paykit.PaykitProfileRecord?
+        do {
+            stored = try await PubkyService.fetchPaykitProfile(publicKey: key)
+        } catch {
+            return nil
+        }
         tagsUnavailable.remove(key)
-        let storedTags = PubkyProfileData.from(paykitProfile: stored.profile).tags
+        let storedTags = stored.map { PubkyProfileData.from(paykitProfile: $0.profile).tags } ?? []
         return storedTags + tags.filter { !storedTags.contains($0) }
     }
 
@@ -192,7 +244,7 @@ actor PubkyAppProfileStore {
             Logger.warn("Failed to move Bitkit profile to pubky.app: \(error)", context: "PubkyAppProfileStore")
             return nil
         }
-        guard let uri = data.image else { return snapshot }
+        guard let uri = data.image, Self.isPaykitStorage(uri) else { return snapshot }
         return await moveAvatar(uri, onto: snapshot, publicKey: publicKey) ?? snapshot
     }
 
@@ -297,8 +349,8 @@ actor PubkyAppProfileStore {
         return data
     }
 
-    private static func singleLine(_ text: String) -> String {
-        String(String.UnicodeScalarView(text.unicodeScalars.map { CharacterSet.controlCharacters.contains($0) ? " " : $0 }))
+    static func singleLine(_ text: String) -> String {
+        String(String.UnicodeScalarView(text.unicodeScalars.map { $0.properties.generalCategory == .control ? " " : $0 }))
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -308,20 +360,41 @@ actor PubkyAppProfileStore {
     }
 
     /// Bitkit accepted links without a scheme (a site, an email address, a phone number); pubky.app needs full URLs.
+    /// Free text that is none of these is not a link pubky.app can hold.
     static func linkUrl(_ value: String) -> String? {
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty else { return nil }
-        let url: String = if URL(string: value)?.scheme != nil {
-            value
-        } else if value.contains("@") {
-            "mailto:\(value)"
-        } else if value.allSatisfy({ "+0123456789 -()".contains($0) }) {
-            "tel:\(value.filter { !" -()".contains($0) })"
+        guard !value.isEmpty, !value.contains(where: \.isWhitespace) || isPhoneNumber(value) else { return nil }
+        let url: String
+        if URL(string: value)?.scheme != nil, !isPhoneNumber(value) {
+            url = value
+        } else if isEmailAddress(value) {
+            url = "mailto:\(value)"
+        } else if isPhoneNumber(value) {
+            url = "tel:\(value.filter { !" -()".contains($0) })"
+        } else if value.contains("."), !value.hasPrefix(".") {
+            url = "https://\(value)"
         } else {
-            "https://\(value)"
+            return nil
         }
         guard url.unicodeScalars.count <= linkUrlMaxLength, URL(string: url) != nil else { return nil }
         return url
+    }
+
+    private static func isEmailAddress(_ value: String) -> Bool {
+        let parts = value.split(separator: "@", omittingEmptySubsequences: false)
+        return parts.count == 2 && !parts[0].isEmpty && parts[1].contains(".") && !value.contains("/")
+    }
+
+    private static func isPhoneNumber(_ value: String) -> Bool {
+        let digits = value.filter(\.isNumber).count
+        return value.hasPrefix("+") || digits >= 7
+            ? value.allSatisfy { "+0123456789 -()".contains($0) } && digits >= 5 && !value.dropFirst().contains("+")
+            && value.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) == nil
+            : false
+    }
+
+    private static func isPaykitStorage(_ uri: String) -> Bool {
+        uri.contains("/pub/paykit/")
     }
 
     private static func identity(_ expectedIdentity: String?) async throws -> String {

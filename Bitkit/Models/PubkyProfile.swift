@@ -11,6 +11,8 @@ struct PubkyProfileData: Codable, Equatable {
     var tags: [String]
     /// The pubky.app revision an edit started from; never part of the published copy.
     var baseRevision: String?
+    /// Identifies the save, so its caller can read back the profile it stored; never part of the published copy.
+    var saveId: UUID?
 
     private enum CodingKeys: String, CodingKey {
         case name, bio, image, links, tags
@@ -199,7 +201,9 @@ struct PubkyProfile {
     }
 
     func withTags(_ tags: [String]) -> PubkyProfile {
-        PubkyProfile(publicKey: publicKey, name: name, bio: bio, imageUrl: imageUrl, links: links, tags: tags, status: status)
+        var profile = PubkyProfile(publicKey: publicKey, name: name, bio: bio, imageUrl: imageUrl, links: links, tags: tags, status: status)
+        profile.revision = revision
+        return profile
     }
 
     func withNameFallback(_ fallbackName: String?) -> PubkyProfile {
@@ -234,8 +238,16 @@ struct PubkyProfile {
 enum PubkyAppProfileLimits {
     static let nameLength = 3 ... 50
     static let bioMaxLength = 160
+    static let maxLinks = 5
 
+    /// pubky.app counts Unicode scalars, not characters.
     static func isValidName(_ name: String) -> Bool {
-        nameLength.contains(name.trimmingCharacters(in: .whitespacesAndNewlines).count)
+        nameLength.contains(name.trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.count)
+    }
+
+    /// `text` cut to `maxLength` Unicode scalars, or nil when it already fits.
+    static func capped(_ text: String, to maxLength: Int) -> String? {
+        guard text.unicodeScalars.count > maxLength else { return nil }
+        return String(String.UnicodeScalarView(text.unicodeScalars.prefix(maxLength)))
     }
 }
