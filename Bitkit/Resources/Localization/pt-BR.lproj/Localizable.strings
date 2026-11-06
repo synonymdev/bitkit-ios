@@ -1187,7 +1187,8 @@
 "profile__pubky_copied" = "pubky copiada para a área de transferência";
 "profile__edit_delete_section" = "EXCLUIR";
 "profile__edit_unlink_section" = "DESVINCULAR";
-"profile__edit_public_note" = "Observe que as informações do perfil são armazenadas em arquivos públicos.";
+"profile__edit_changed_error" = "Seu perfil mudou no pubky.app. O Bitkit carregou a versão mais recente, então faça sua alteração de novo.";
+"profile__edit_public_note" = "Este é o seu perfil do pubky.app. Ele é público, e as alterações que você faz aqui também aparecem no pubky.app.";
 "profile__delete_title" = "Excluir Perfil?";
 "profile__delete_description" = "Excluir seu perfil o remove do Pubky. Os contatos ainda podem manter informações de perfil e de pagamento compartilhadas anteriormente com eles.";
 "profile__delete_confirm" = "Sim, Excluir";

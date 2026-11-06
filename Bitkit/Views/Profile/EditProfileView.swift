@@ -235,6 +235,11 @@ struct EditProfileView: View {
         } catch {
             Logger.error("Failed to save profile: \(error)", context: "EditProfileView")
             app.toast(type: .error, title: t("profile__edit_error_title"), description: error.localizedDescription)
+            if case PubkyAppProfileError.changedElsewhere = error {
+                await pubkyProfile.loadProfile()
+                avatarImage = nil
+                loadProfileData()
+            }
         }
     }
 }

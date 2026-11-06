@@ -283,7 +283,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                         throw PaykitError.Transport(code: "offline", context: "Unavailable homeserver")
                     },
                     buildEndpoints: { _ in XCTFail("Failed links must not reserve addresses"); return [] },
-                    syncPaymentLists: { _ in .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: []) },
+                    syncPaymentLists: { _ in .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: []) },
                     linkedPeers: { [] }
                 )
             )
@@ -1049,7 +1049,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 }
                 syncedUpdates = updates
                 published.fulfill()
-                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
             }
         ))
 
@@ -1093,7 +1093,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 currentPublicKey: { "pubkylocal" },
                 ensureLink: { linked.append($0); return .linked },
                 buildEndpoints: { _ in [] },
-                syncPaymentLists: { _ in .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: []) }
+                syncPaymentLists: { _ in .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: []) }
             ))
             var sessionCurrent = true
             var prune: Task<Void, Never>?
@@ -1154,7 +1154,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
             buildEndpoints: { _ in XCTFail("Ended sessions must not build endpoints"); return [] },
             syncPaymentLists: { _ in
                 XCTFail("Ended sessions must not publish")
-                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
             }
         ))
 
@@ -1196,7 +1196,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
             buildEndpoints: { _ in [endpoint] },
             syncPaymentLists: { updates in
                 published += updates.map(\.counterparty)
-                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
             }
         ))
 
@@ -2200,7 +2200,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 currentPublicKey: { nil },
                 ensureLink: { _ in .notLinked },
                 buildEndpoints: { _ in [] },
-                syncPaymentLists: { _ in .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: []) }
+                syncPaymentLists: { _ in .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: []) }
             ),
             messageRetryOperations: .init(drain: { _ in
                 .init(ensureLink: { _ in }, pendingOutbound: { [] }, linkedPeers: { [] }, processPending: { _ in }, receive: { _ in })
@@ -2220,7 +2220,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
             buildEndpoints: { _ in [] },
             syncPaymentLists: { updates in
                 published += updates.map(\.counterparty)
-                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
             }
         ))
         _ = await service.rememberSavedContacts([publicKey], replacing: true)
@@ -2266,7 +2266,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                     publishing.fulfill()
                     for await _ in resume {}
                 }
-                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
             }
         ))
         let wallet = WalletViewModel()
@@ -2869,6 +2869,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                         withdrawals += 1
                         return .init(
                             queued: [], cleared: [.init(counterparty: key, outboundMessageId: 1, error: nil)],
+                            acknowledged: [],
                             failedToQueue: [], failedToDeliver: []
                         )
                     },
@@ -2920,12 +2921,14 @@ final class PrivatePaykitServiceTests: XCTestCase {
                     if shouldFail, failureStage == "queue" {
                         return PrivatePaymentListDeliveryReport(
                             queued: [], cleared: [],
+                            acknowledged: [],
                             failedToQueue: [PrivatePaymentListSyncChange(counterparty: publicKey, outboundMessageId: nil, error: nil)],
                             failedToDeliver: []
                         )
                     }
                     return PrivatePaymentListDeliveryReport(
                         queued: [], cleared: [.init(counterparty: publicKey, outboundMessageId: 1, error: nil)],
+                        acknowledged: [],
                         failedToQueue: [], failedToDeliver: []
                     )
                 },
@@ -2994,6 +2997,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 cleared.append(contentsOf: $0)
                 return PrivatePaymentListDeliveryReport(
                     queued: [], cleared: $0.map { .init(counterparty: $0, outboundMessageId: 1, error: nil) },
+                    acknowledged: [],
                     failedToQueue: [], failedToDeliver: []
                 )
             },
@@ -3056,6 +3060,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                         XCTAssertEqual(Set(keys), [failed, successful])
                         return .init(
                             queued: [], cleared: [.init(counterparty: successful, outboundMessageId: 1, error: nil)],
+                            acknowledged: [],
                             failedToQueue: failQueue ? [.init(counterparty: failed, outboundMessageId: nil, error: nil)] : [],
                             failedToDeliver: failQueue ? [] : [.init(
                                 counterparty: failed, outboundMessageId: 2, reservationId: nil,
@@ -3109,7 +3114,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 },
                 syncPaymentLists: { _ in
                     XCTFail("An unsupported contact should not receive a private list")
-                    return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                    return PrivatePaymentListDeliveryReport(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
                 }
             )
 
@@ -3151,6 +3156,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 return PrivatePaymentListDeliveryReport(
                     queued: [],
                     cleared: [],
+                    acknowledged: [],
                     failedToQueue: [],
                     failedToDeliver: []
                 )
@@ -3223,6 +3229,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 return PrivatePaymentListDeliveryReport(
                     queued: [],
                     cleared: [],
+                    acknowledged: [],
                     failedToQueue: [],
                     failedToDeliver: []
                 )
@@ -3277,7 +3284,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                     }
                     XCTAssertEqual(updates.map(\.counterparty), [key])
                     publications += 1
-                    return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                    return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
                 },
                 linkedPeers: { try await deferOnce("peers"); return [] },
                 canPublish: { try await deferOnce("availability"); return true }
@@ -3329,7 +3336,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
             syncPaymentLists: { updates in
                 XCTAssertEqual(updates.map(\.counterparty), [key])
                 publications += 1
-                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
             },
             canPublish: { canPublish }
         ))
@@ -3471,7 +3478,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                     deferred.fulfill()
                     throw PaykitPaymentRequestError.operationInProgress
                 }
-                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
             },
             canPublish: {
                 if isPaused {
@@ -3547,7 +3554,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                         deferred.fulfill()
                         throw PaykitPaymentRequestError.operationInProgress
                     }
-                    return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                    return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
                 },
                 canPublish: { isActive && sharingEnabled },
                 isApplicationActive: {
@@ -4066,7 +4073,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 XCTAssertFalse(Task.isCancelled)
                 XCTAssertEqual(updates.map(\.counterparty), [key])
                 published = true
-                return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                return PrivatePaymentListDeliveryReport(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
             }
         )
         _ = await service.syncLocalEndpointPublication(
@@ -4090,7 +4097,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                     throw PaykitError.Transport(code: "offline", context: "Unavailable homeserver")
                 },
                 buildEndpoints: { _ in XCTFail("No prepared link"); return [] },
-                syncPaymentLists: { _ in XCTFail("No prepared link"); return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: []) },
+                syncPaymentLists: { _ in XCTFail("No prepared link"); return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: []) },
                 linkedPeers: { reads += 1; return [] }
             )
             let task = Task {
@@ -4250,7 +4257,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
             buildEndpoints: { _ in [endpoint] },
             syncPaymentLists: { _ in
                 publications += 1
-                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
             }
         ))
         var contactState = PrivatePaykitService.ContactState()
@@ -4272,6 +4279,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 }
                 return .init(
                     queued: [], cleared: [.init(counterparty: publicKey, outboundMessageId: 1, error: nil)],
+                    acknowledged: [],
                     failedToQueue: [], failedToDeliver: []
                 )
             },
@@ -4353,7 +4361,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                     buildEndpoints: { _ in XCTFail("Cleanup invalidates preparation"); return [] },
                     syncPaymentLists: { _ in
                         XCTFail("Cleanup invalidates publication")
-                        return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                        return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
                     }
                 )
             )
@@ -4394,7 +4402,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 buildEndpoints: { _ in XCTFail("Removed contacts must not reserve addresses"); return [] },
                 syncPaymentLists: { _ in
                     XCTFail("Removed contacts must not receive publications")
-                    return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                    return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
                 }
             )
         )
@@ -4413,7 +4421,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 throw PaykitError.NotFound(code: "not_found", context: "No App Registry")
             },
             buildEndpoints: { _ in XCTFail("Unavailable contacts must not reserve addresses"); return [] },
-            syncPaymentLists: { _ in .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: []) }
+            syncPaymentLists: { _ in .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: []) }
         )
         for _ in 0 ..< 3 {
             _ = await service.syncLocalEndpointPublication(
@@ -4454,7 +4462,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                     throw PaykitError.Transport(code: "offline", context: "Unavailable homeserver")
                 },
                 buildEndpoints: { _ in XCTFail("Failed links must not reserve addresses"); return [] },
-                syncPaymentLists: { _ in .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: []) },
+                syncPaymentLists: { _ in .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: []) },
                 linkedPeers: peers
             )
             _ = await service.syncLocalEndpointPublication(
@@ -4491,7 +4499,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 throw PaykitError.NotFound(code: "not_found", context: "No App Registry")
             },
             buildEndpoints: { _ in XCTFail("Unavailable contacts must not reserve addresses"); return [] },
-            syncPaymentLists: { _ in .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: []) }
+            syncPaymentLists: { _ in .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: []) }
         )
         let removals: [(PrivatePaykitService) async -> Void] = [
             { await $0.clearContactState(publicKey: publicKey) },

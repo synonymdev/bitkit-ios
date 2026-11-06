@@ -160,12 +160,12 @@ class PubkyProfileManager: ObservableObject {
     }
 
     init(
-        remoteProfileResolver: @escaping RemoteProfileResolver = { try await PubkyProfileManager.resolveRemoteProfile(publicKey: $0) },
+        remoteProfileResolver: @escaping RemoteProfileResolver = { try await PubkyAppProfileStore.shared.load(publicKey: $0) },
         profilePublisher: @escaping ProfilePublisher = {
-            try await PubkyService.publishPaykitProfile($0.toPaykitProfile(), expectedIdentity: $1)
+            try await PubkyAppProfileStore.shared.save($0, expectedIdentity: $1)
         },
         avatarUploader: @escaping AvatarUploader = {
-            try await PubkyService.uploadProfileAvatar(bytes: $0, contentType: "image/jpeg", expectedIdentity: $1)
+            try await PubkyAppProfileStore.shared.uploadAvatar($0, expectedIdentity: $1)
         },
         profileDeleter: @escaping ProfileDeleter = {
             try await PubkyService.deletePaykitProfile(expectedIdentity: $0)

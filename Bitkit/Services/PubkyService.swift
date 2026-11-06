@@ -360,6 +360,34 @@ enum PubkyService {
         try await PaykitSdkService.shared.deletePaykitProfile(expectedIdentity: expectedIdentity)
     }
 
+    static func fetchPubkyProfileWithRevision(publicKey: String) async throws -> Paykit.PubkyProfileSnapshot? {
+        try await PaykitSdkService.shared.fetchPubkyProfileWithRevision(publicKey: publicKey)
+    }
+
+    static func fetchPaykitProfile(publicKey: String) async throws -> Paykit.PaykitProfileRecord? {
+        try await PaykitSdkService.shared.fetchPaykitProfile(publicKey: publicKey)
+    }
+
+    static func publishPubkyProfile(
+        _ update: Paykit.PubkyProfileUpdate,
+        expectedRevision: String?,
+        expectedIdentity: String
+    ) async throws -> Paykit.PubkyProfileSnapshot {
+        try await PaykitSdkService.shared.publishPubkyProfile(
+            update,
+            expectedRevision: expectedRevision,
+            expectedIdentity: expectedIdentity
+        )
+    }
+
+    static func uploadPubkyAppAvatar(bytes: Data, contentType: String, expectedIdentity: String) async throws -> String {
+        try await PaykitSdkService.shared.uploadPubkyAppAvatar(
+            bytes: bytes,
+            contentType: contentType,
+            expectedIdentity: expectedIdentity
+        )
+    }
+
     // MARK: - Contacts
 
     static func getContacts(publicKey: String) async throws -> [String] {
@@ -678,7 +706,7 @@ actor PaykitSdkService {
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
                 homeserverPublicKey: homeserverPublicKey,
                 signupCode: signupCode,
-                requiredCapabilities: Self.requiredCapabilities()
+                requiredCapabilities: Self.sessionCapabilities()
             )
             try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
             markWalletBackupDataChanged()
@@ -697,7 +725,7 @@ actor PaykitSdkService {
                 localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
                 homeserverPublicKey: homeserverPublicKey,
                 signupCode: signupCode,
-                requiredCapabilities: Self.requiredCapabilities()
+                requiredCapabilities: Self.sessionCapabilities()
             )
             return PubkyRegisteredIdentity(result: result, walletGeneration: generation)
         }
@@ -721,7 +749,7 @@ actor PaykitSdkService {
         let previousPublicKey = try await cachedIdentityPublicKey()
         let result = try await bootstrap().signIn(
             localSecretKey: Self.localSecretKey(fromHex: secretKeyHex),
-            requiredCapabilities: Self.requiredCapabilities()
+            requiredCapabilities: Self.sessionCapabilities()
         )
         try await activateBootstrapResult(result, previousPublicKey: previousPublicKey)
         markWalletBackupDataChanged()
@@ -826,6 +854,34 @@ actor PaykitSdkService {
             guard let publicKey = try await sdk.identityStatus()?.publicKey else { throw PubkyServiceError.sessionNotActive }
             guard let current = try await sdk.fetchPaykitProfile(publicKey: publicKey) else { return }
             try await sdk.deletePaykitProfile(expectedRevision: current.revision)
+        }
+    }
+
+    func fetchPubkyProfileWithRevision(publicKey: String) async throws -> Paykit.PubkyProfileSnapshot? {
+        try await withPublicRead { try await $0.fetchPubkyProfileWithRevision(publicKey: publicKey) }
+    }
+
+    func fetchPaykitProfile(publicKey: String) async throws -> Paykit.PaykitProfileRecord? {
+        try await withPublicRead { try await $0.fetchPaykitProfile(publicKey: publicKey) }
+    }
+
+    /// Writes only while `expectedIdentity` is signed in, checked in the same locked operation as the write.
+    func publishPubkyProfile(
+        _ update: Paykit.PubkyProfileUpdate,
+        expectedRevision: String?,
+        expectedIdentity: String
+    ) async throws -> Paykit.PubkyProfileSnapshot {
+        try await withStateRevisionTracking { sdk in
+            try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
+            return try await sdk.publishPubkyProfile(update: update, expectedRevision: expectedRevision)
+        }
+    }
+
+    /// Uploads a pubky.app avatar blob and file only while `expectedIdentity` is signed in, and returns the file URI.
+    func uploadPubkyAppAvatar(bytes: Data, contentType: String, expectedIdentity: String) async throws -> String {
+        try await withStateRevisionTracking { sdk in
+            try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
+            return try await sdk.uploadPubkyAppAvatar(bytes: bytes, contentType: contentType)
         }
     }
 
@@ -1623,8 +1679,14 @@ actor PaykitSdkService {
         secretKey.exportBytes().hex
     }
 
+    /// Scope a restored session must hold. Sessions from builds before pubky.app profile writes have only this.
     nonisolated static func requiredCapabilities() throws -> String {
         Paykit.paykitAuthorizerSessionCapabilities()
+    }
+
+    /// Scope for sessions Bitkit creates: Paykit plus the shared pubky.app profile and its avatar.
+    nonisolated static func sessionCapabilities() throws -> String {
+        try "\(requiredCapabilities()),\(Paykit.pubkyAppProfileSessionCapabilities())"
     }
 
     private func handle() throws -> PaykitSdk {

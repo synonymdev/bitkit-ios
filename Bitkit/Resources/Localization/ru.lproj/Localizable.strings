@@ -1172,7 +1172,8 @@
 "profile__pubky_copied" = "pubky скопирован в буфер обмена";
 "profile__edit_delete_section" = "УДАЛЕНИЕ";
 "profile__edit_unlink_section" = "ОТВЯЗКА";
-"profile__edit_public_note" = "Обратите внимание: данные профиля хранятся в публичных файлах.";
+"profile__edit_changed_error" = "Ваш профиль изменился в pubky.app. Bitkit загрузил последнюю версию, поэтому внесите изменение снова.";
+"profile__edit_public_note" = "Это ваш профиль pubky.app. Он публичный, и изменения, которые вы вносите здесь, также видны в pubky.app.";
 "profile__delete_title" = "Удалить Профиль?";
 "profile__delete_description" = "Удаление профиля удалит его из Pubky. У контактов могут остаться данные профиля и платёжные данные, которыми вы делились ранее.";
 "profile__delete_confirm" = "Да, Удалить";

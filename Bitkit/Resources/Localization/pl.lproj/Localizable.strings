@@ -1186,7 +1186,8 @@
 "profile__pubky_copied" = "pubky skopiowany do schowka";
 "profile__edit_delete_section" = "USUWANIE";
 "profile__edit_unlink_section" = "ODŁĄCZANIE";
-"profile__edit_public_note" = "Pamiętaj, że dane profilu są przechowywane w publicznych plikach.";
+"profile__edit_changed_error" = "Twój profil zmienił się w pubky.app. Bitkit wczytał najnowszą wersję, więc wprowadź zmianę ponownie.";
+"profile__edit_public_note" = "To jest Twój profil pubky.app. Jest publiczny, a zmiany wprowadzone tutaj pojawią się też w pubky.app.";
 "profile__delete_title" = "Usunąć profil?";
 "profile__delete_description" = "Usunięcie profilu usuwa go z Pubky. Kontakty mogą nadal przechowywać udostępnione im wcześniej dane profilu i płatności.";
 "profile__delete_confirm" = "Tak, usuń";

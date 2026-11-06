@@ -955,7 +955,8 @@
 "profile__pubky_copied" = "تم نسخ pubky إلى الحافظة";
 "profile__edit_delete_section" = "حذف";
 "profile__edit_unlink_section" = "إلغاء الربط";
-"profile__edit_public_note" = "يرجى ملاحظة أن معلومات الملف الشخصي مخزنة في ملفات عامة.";
+"profile__edit_changed_error" = "تغيّر ملفك الشخصي في pubky.app. حمّل Bitkit أحدث نسخة، لذا أعد إجراء تعديلك.";
+"profile__edit_public_note" = "هذا هو ملفك الشخصي على pubky.app. إنه عام، والتغييرات التي تجريها هنا تظهر أيضًا على pubky.app.";
 "profile__delete_title" = "حذف الملف الشخصي؟";
 "profile__delete_description" = "يؤدي حذف ملفك الشخصي إلى إزالته من Pubky. قد تحتفظ جهات الاتصال بمعلومات الملف الشخصي والدفع التي شاركتها معهم سابقًا.";
 "profile__delete_confirm" = "نعم، احذف";
