@@ -114,7 +114,7 @@ extension PrivatePaykitService {
 
     @MainActor
     func createVariableInvoice(_ wallet: WalletViewModel) async throws -> String {
-        try await wallet.createInvoice(amountSats: nil, note: "")
+        try await wallet.createInvoice(amountSats: nil, note: "", isPaykitEndpoint: true)
     }
 
     func settledPrivateInvoicePaymentHashes() async -> [String] {

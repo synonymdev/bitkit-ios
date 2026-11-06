@@ -657,9 +657,14 @@ class WalletViewModel: ObservableObject {
         }
     }
 
-    func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
+    func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil, isPaykitEndpoint: Bool = false) async throws -> String {
         let finalExpirySecs = expirySecs ?? 60 * 60 * 24
-        let invoice = try await lightningService.receive(amountSats: amountSats, description: note, expirySecs: finalExpirySecs)
+        let invoice = try await lightningService.receive(
+            amountSats: amountSats,
+            description: note,
+            expirySecs: finalExpirySecs,
+            isPaykitEndpoint: isPaykitEndpoint
+        )
         return invoice.lowercased()
     }
 
@@ -1691,7 +1696,7 @@ class WalletViewModel: ObservableObject {
     }
 
     private func refreshPublicPaykitBolt11(canCommitInvoice: () async throws -> Bool) async throws -> Bool {
-        let invoice = try await createInvoice(amountSats: nil, note: "")
+        let invoice = try await createInvoice(amountSats: nil, note: "", isPaykitEndpoint: true)
         let decodedInvoice = try await decode(invoice: invoice)
         guard try await canCommitInvoice() else { return false }
         guard case let .lightning(lightningInvoice) = decodedInvoice else {
