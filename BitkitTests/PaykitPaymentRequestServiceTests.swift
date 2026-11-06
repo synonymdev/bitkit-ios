@@ -12,6 +12,11 @@ import XCTest
 
 @MainActor
 final class PaykitPaymentRequestServiceTests: XCTestCase {
+    override func setUp() async throws {
+        try await super.setUp()
+        try Keychain.deleteAllRetainedHwSends()
+    }
+
     func testPreparationUsesAcceptedMethodsBeforeWalletSelection() throws {
         let usdt = PublicPaykitService.MethodId.usdtArbitrum.rawValue
         let bitcoin = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
@@ -30,7 +35,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                                                   endpoints: endpoints)
             let request = try PaykitPaymentRequest.parseIncoming(record: record, now: Date(), network: .regtest).get()
             let view = SendConfirmationView(
-                navigationPath: .constant([]), isSubmittingPayment: .constant(false), hwSend: HwSendCoordinator(),
+                navigationPath: .constant([]), isSubmittingPayment: .constant(false), hwSend: HwSendCoordinator(retainedSends: .inMemory()),
                 requestPinCheck: { false }, prepareIncomingPaymentRequest: {}, routingCacheResetAttempted: false,
                 preparingRequest: request, isAmountReviewRequired: .constant(false)
             )
@@ -5181,7 +5186,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let unknownCanceled = await unknownSdk.canceledPaymentRequestIds()
         XCTAssertTrue(unknownCanceled.isEmpty, "An alternate/stale dismissal must not cancel a durable unresolved payment")
         XCTAssertEqual(unknownDismissError as? PaykitPaymentRequestError, .operationInProgress)
-        let preview = HwSendCoordinator(walletId: proof.onchainWalletId)
+        let preview = HwSendCoordinator(walletId: proof.onchainWalletId, retainedSends: .inMemory())
         preview.seedAvailable(walletId: "jade:wallet", availableSats: 0, retainedFeeSats: 120)
         XCTAssertEqual(preview.walletId, proof.onchainWalletId)
         XCTAssertEqual(preview.availableSats, 0, "Spent balance stays zero; this is an original transaction route")

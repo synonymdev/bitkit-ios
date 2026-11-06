@@ -28,6 +28,7 @@ struct SendAmountView: View {
     @State private var amountConversion = PaykitAmountEntryConversion()
     @State private var conversionError: String?
     @State private var showingFundingSources = false
+    @State private var retainedRetrySats: UInt64?
 
     var amountSats: UInt64 {
         amountViewModel.amountSats
@@ -124,7 +125,21 @@ struct SendAmountView: View {
         {
             return false
         }
-        return amountSats >= minAmount && amountSats <= availableAmount
+        return amountSats >= minAmount && Self.isWithinSendableLimit(
+            amountSats: amountSats,
+            availableSats: availableAmount,
+            retainedRetrySats: retainedRetrySats
+        )
+    }
+
+    static func isWithinSendableLimit(amountSats: UInt64, availableSats: UInt64, retainedRetrySats: UInt64?) -> Bool {
+        amountSats <= availableSats || amountSats == retainedRetrySats
+    }
+
+    /// Without a cap when nothing is sendable, so the pad stays usable (Continue stays disabled instead).
+    static func amountInputCap(availableSats: UInt64, retainedRetrySats: UInt64?) -> UInt64? {
+        let cap = max(availableSats, retainedRetrySats ?? 0)
+        return cap > 0 ? cap : nil
     }
 
     /// Determines if the current amount is a max amount send
@@ -337,7 +352,11 @@ struct SendAmountView: View {
                 }
             }
         }
+        .task(id: [hwSend.walletId, app.scannedOnchainInvoice?.address]) {
+            await loadRetainedRetrySats()
+        }
         .onChange(of: availableAmount, initial: true) { updateInputCap() }
+        .onChange(of: retainedRetrySats) { updateInputCap() }
         .onChange(of: amountViewModel.maxExceededCount) { showMaxExceededToast() }
     }
 
@@ -374,8 +393,17 @@ struct SendAmountView: View {
             wallet.isMaxAmountSend = isMaxAmountSend
 
             if hwSend.isActive {
+                let hasIncomingRequest = app.contactPaymentContext?.incomingPaymentRequest != nil
+                let retainedSignedTx: HwFundingSignedTx? = if let address = app.scannedOnchainInvoice?.address {
+                    await hwSend.retainedSendStatus(address: address, sats: amountSats, hasIncomingRequest: hasIncomingRequest).retrySignedTx
+                } else {
+                    nil
+                }
                 guard let address = app.scannedOnchainInvoice?.address,
-                      let feeRate = wallet.selectedFeeRateSatsPerVByte
+                      let feeRate = SendConfirmationView.confirmationFeeRate(
+                          retained: retainedSignedTx,
+                          selected: wallet.selectedFeeRateSatsPerVByte
+                      )
                 else {
                     throw AppError(message: t("other__try_again"), debugMessage: "Missing hardware send address or fee rate")
                 }
@@ -383,7 +411,8 @@ struct SendAmountView: View {
                     manager: hwWalletManager,
                     address: address,
                     sats: amountSats,
-                    satsPerVByte: UInt64(feeRate)
+                    satsPerVByte: UInt64(feeRate),
+                    hasIncomingRequest: hasIncomingRequest
                 ) != nil else { return }
                 navigationPath.append(.confirm)
                 return
@@ -449,8 +478,20 @@ struct SendAmountView: View {
     }
 
     private func updateInputCap() {
-        // Don't cap when nothing is sendable, so the pad stays usable (Continue stays disabled instead).
-        amountViewModel.maxAmountOverride = availableAmount > 0 ? availableAmount : nil
+        amountViewModel.maxAmountOverride = Self.amountInputCap(availableSats: availableAmount, retainedRetrySats: retainedRetrySats)
+    }
+
+    private func loadRetainedRetrySats() async {
+        guard let address = app.scannedOnchainInvoice?.address else {
+            retainedRetrySats = nil
+            return
+        }
+        let sats = await hwSend.retainedRetrySats(
+            address: address,
+            hasIncomingRequest: app.contactPaymentContext?.incomingPaymentRequest != nil
+        )
+        guard !Task.isCancelled else { return }
+        retainedRetrySats = sats
     }
 
     private var fundingSourceMenu: some View {

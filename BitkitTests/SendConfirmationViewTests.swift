@@ -34,6 +34,68 @@ final class SendConfirmationViewTests: XCTestCase {
         XCTAssertFalse(SendConfirmationView.canEditConfirmationFee(retained: nil, isLoading: true))
     }
 
+    func testRetainedOrdinarySendLocksReviewToItsOriginalFee() {
+        let signed = HwFundingSignedTx(serializedTx: "original", miningFeeSats: 181, feeRate: 2.25, totalSpent: 42181)
+
+        XCTAssertEqual(SendConfirmationView.confirmationFeeRate(retained: signed, selected: 99), 3)
+        XCTAssertEqual(SendConfirmationView.confirmationFeeRate(retained: signed, selected: nil), 3)
+        XCTAssertFalse(SendConfirmationView.canEditConfirmationFee(retained: signed, isLoading: false))
+    }
+
+    func testConsentingFromALockedReviewShowsTheCurrentFeeBeforeSigning() {
+        let signed = HwFundingSignedTx(serializedTx: "original", miningFeeSats: 181, feeRate: 2.25, totalSpent: 42181)
+
+        XCTAssertTrue(SendConfirmationView.mustReviewCurrentFeeBeforeSigning(
+            reviewedRetainedTx: signed, rebroadcastTx: nil, consentedToNewSignature: true
+        ))
+        // The record stays until the new bytes are signed, and that must not keep the review on the old fee.
+        XCTAssertTrue(SendConfirmationView.mustReviewCurrentFeeBeforeSigning(
+            reviewedRetainedTx: signed, rebroadcastTx: signed, consentedToNewSignature: true
+        ))
+    }
+
+    func testConsentingFromAnUnlockedReviewGoesStraightToSigning() {
+        XCTAssertFalse(SendConfirmationView.mustReviewCurrentFeeBeforeSigning(
+            reviewedRetainedTx: nil, rebroadcastTx: nil, consentedToNewSignature: true
+        ))
+    }
+
+    func testLockedReviewSignsOnlyWhenItsBytesWouldBeRebroadcast() {
+        let signed = HwFundingSignedTx(serializedTx: "original", miningFeeSats: 181, feeRate: 2.25, totalSpent: 42181)
+        let other = HwFundingSignedTx(serializedTx: "other", miningFeeSats: 181, feeRate: 2.25, totalSpent: 42181)
+
+        XCTAssertFalse(SendConfirmationView.mustReviewCurrentFeeBeforeSigning(
+            reviewedRetainedTx: signed, rebroadcastTx: signed, consentedToNewSignature: false
+        ))
+        for rebroadcastTx in [nil, other] {
+            XCTAssertTrue(SendConfirmationView.mustReviewCurrentFeeBeforeSigning(
+                reviewedRetainedTx: signed, rebroadcastTx: rebroadcastTx, consentedToNewSignature: false
+            ))
+        }
+        XCTAssertFalse(SendConfirmationView.mustReviewCurrentFeeBeforeSigning(
+            reviewedRetainedTx: nil, rebroadcastTx: signed, consentedToNewSignature: false
+        ))
+    }
+
+    func testAmountScreenAcceptsOnlyTheRetainedAmountAboveTheCurrentMaximum() {
+        let available: UInt64 = 90000
+        let retained: UInt64 = 95000
+
+        XCTAssertTrue(SendAmountView.isWithinSendableLimit(amountSats: retained, availableSats: available, retainedRetrySats: retained))
+        XCTAssertTrue(SendAmountView.isWithinSendableLimit(amountSats: available, availableSats: available, retainedRetrySats: retained))
+        XCTAssertFalse(SendAmountView.isWithinSendableLimit(amountSats: retained - 1, availableSats: available, retainedRetrySats: retained))
+        XCTAssertFalse(SendAmountView.isWithinSendableLimit(amountSats: retained + 1, availableSats: available, retainedRetrySats: retained))
+        XCTAssertFalse(SendAmountView.isWithinSendableLimit(amountSats: retained, availableSats: available, retainedRetrySats: nil))
+    }
+
+    func testAmountInputCapLetsTheRetainedAmountBeTyped() {
+        XCTAssertEqual(SendAmountView.amountInputCap(availableSats: 90000, retainedRetrySats: 95000), 95000)
+        XCTAssertEqual(SendAmountView.amountInputCap(availableSats: 90000, retainedRetrySats: 42000), 90000)
+        XCTAssertEqual(SendAmountView.amountInputCap(availableSats: 90000, retainedRetrySats: nil), 90000)
+        XCTAssertEqual(SendAmountView.amountInputCap(availableSats: 0, retainedRetrySats: 95000), 95000)
+        XCTAssertNil(SendAmountView.amountInputCap(availableSats: 0, retainedRetrySats: nil))
+    }
+
     func testAutomaticPaymentRequiresManualConfirmationOnlyForHardwareFunding() {
         for isHardwarePayment in [false, true] {
             XCTAssertEqual(
