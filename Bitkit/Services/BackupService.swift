@@ -325,31 +325,44 @@ class BackupService {
     func requestStopObservingBackups() -> Task<Void, Never> {
         let request = nextObservationRequest()
         return Task {
-            let stopped = try? await ServiceQueue.background(.backup) { () -> (wasObserving: Bool, generation: UInt64)? in
-                guard self.stateQueue.sync(execute: { self.observationRequestGeneration == request }) else { return nil }
-                let wasObserving = self.isObserving
-                self.isObserving = false
-                let generation = self.stateQueue.sync {
+            typealias Observation = (wasObserving: Bool, observers: UInt64, foreground: UInt64)
+            let stopped = try? await ServiceQueue.background(.backup) { [self] () -> (
+                metadata: Task<BackupOutcome, Never>?,
+                observation: Observation?
+            ) in
+                let metadata = runningBackupTasks[.metadata]
+                guard stateQueue.sync(execute: { observationRequestGeneration == request }) else {
+                    return (metadata, nil)
+                }
+                let wasObserving = isObserving
+                isObserving = false
+                let generation = stateQueue.sync {
                     self.foregroundObservationGeneration &+= 1
                     self.observationGeneration &+= 1
-                    return self.observationGeneration
+                    return (wasObserving, self.observationGeneration, self.foregroundObservationGeneration)
                 }
 
-                self.backupJobs.values.forEach { $0.cancel() }
-                self.backupJobs.removeAll()
-                self.runningBackupTasks.values.forEach { $0.cancel() }
-                self.periodicCheckTask?.cancel()
-                self.periodicCheckTask = nil
-                return (wasObserving: wasObserving, generation: generation)
+                for (category, job) in backupJobs {
+                    job.cancel()
+                    clearScheduledBackupStatus(category: category)
+                }
+                backupJobs.removeAll()
+                runningBackupTasks.values.forEach { $0.cancel() }
+                periodicCheckTask?.cancel()
+                periodicCheckTask = nil
+                return (metadata, generation)
             }
 
-            let metadataTask = try? await ServiceQueue.background(.backup) { self.runningBackupTasks[.metadata] }
-            _ = await metadataTask?.value
+            _ = await stopped?.metadata?.value
+            if stopped?.metadata != nil, let observation = stopped?.observation {
+                // A new observer may have seen only the running status of the cancelled upload.
+                await resumeMetadataAfterWalletBackup(generation: observation.foreground)
+            }
             await walletBackupWriter.waitUntilIdle()
             await usdtBackupWriter.waitUntilIdle()
-            guard let stopped else { return }
-            await removeBackupObservers(generation: stopped.generation)
-            guard stopped.wasObserving else { return }
+            guard let observation = stopped?.observation else { return }
+            await removeBackupObservers(generation: observation.observers)
+            guard observation.wasObserving else { return }
             Logger.debug("Stopped observing backup statuses and data store changes", context: "BackupService")
         }
     }
@@ -366,8 +379,13 @@ class BackupService {
         await triggerBackup(category: category, isScheduled: false)
     }
 
-    private func triggerBackup(category: BackupCategory, isScheduled: Bool, waitForExisting: Bool = false) async -> BackupOutcome {
+    private func triggerBackup(category: BackupCategory, isScheduled: Bool, waitForExisting: Bool = false,
+                               generation: UInt64? = nil) async -> BackupOutcome
+    {
         let work = try? await ServiceQueue.background(.backup) { [self] () -> (task: Task<BackupOutcome, Never>, owned: Bool)? in
+            if let generation, stateQueue.sync(execute: { foregroundObservationGeneration != generation }) {
+                return nil
+            }
             if let existing = runningBackupTasks[category] {
                 return waitForExisting ? (existing, false) : nil
             }
@@ -416,7 +434,7 @@ class BackupService {
                 }
             } else {
                 if category == .metadata {
-                    try await prepareMetadataBackup()
+                    try await prepareMetadataBackup(generation: generation)
                 }
                 let data = try await getBackupDataBytes(category: category)
                 if category == .metadata {
@@ -476,11 +494,11 @@ class BackupService {
         return outcome
     }
 
-    private func prepareMetadataBackup() async throws {
+    private func prepareMetadataBackup(generation: UInt64) async throws {
         try Task.checkCancellation()
         guard !shouldSkipBackup(), !hasPendingWalletRestore() else { throw MetadataBackupError.deferred }
         if getBackupStatus(category: .wallet).isRequired {
-            let outcome = await triggerBackup(category: .wallet, isScheduled: true, waitForExisting: true)
+            let outcome = await triggerBackup(category: .wallet, isScheduled: true, waitForExisting: true, generation: generation)
             try Task.checkCancellation()
             if outcome == .temporarilyUnavailable {
                 throw MetadataBackupError.walletTemporarilyUnavailable
@@ -1025,23 +1043,35 @@ class BackupService {
 
     private func scheduleBackup(category: BackupCategory, initialOutcome: BackupOutcome = .failed, foregroundGeneration: UInt64? = nil) async {
         try? await ServiceQueue.background(.backup) { [self] in
-            if let foregroundGeneration {
-                guard isObserving, !shouldSkipBackup(category: category),
-                      stateQueue.sync(execute: { foregroundObservationGeneration == foregroundGeneration })
-                else { return }
-            }
-            guard backupJobs[category] == nil else { return }
-            updateBackupStatus(category: category) { status in
-                BackupItemStatus(
-                    synced: status.synced,
-                    required: status.required,
-                    running: true
-                )
-            }
             let generation = stateQueue.sync { self.foregroundObservationGeneration }
-            backupJobs[category] = Task {
-                await self.runScheduledBackup(category: category, initialOutcome: initialOutcome, generation: generation)
+            if let foregroundGeneration {
+                guard isObserving, !shouldSkipBackup(category: category), generation == foregroundGeneration else { return }
             }
+            enqueueBackup(category: category, initialOutcome: initialOutcome, generation: generation)
+        }
+    }
+
+    #if DEBUG
+        func scheduledBackupTask(for category: BackupCategory) async -> Task<Void, Never>? {
+            try? await ServiceQueue.background(.backup) { self.backupJobs[category] }
+        }
+    #endif
+
+    /// Must run on the backup queue so slot registration and retirement are serialized.
+    private func enqueueBackup(category: BackupCategory, initialOutcome: BackupOutcome, generation: UInt64) {
+        guard backupJobs[category] == nil else { return }
+        updateBackupStatus(category: category) { status in
+            BackupItemStatus(synced: status.synced, required: status.required, running: true)
+        }
+        backupJobs[category] = Task {
+            await self.runScheduledBackup(category: category, initialOutcome: initialOutcome, generation: generation)
+        }
+    }
+
+    private func clearScheduledBackupStatus(category: BackupCategory) {
+        guard runningBackupTasks[category] == nil else { return }
+        updateBackupStatus(category: category) { status in
+            BackupItemStatus(synced: status.synced, required: status.required, running: false)
         }
     }
 
@@ -1062,24 +1092,24 @@ class BackupService {
                 break
             }
             guard getBackupStatus(category: category).isRequired && !shouldSkipBackup(category: category) else { break }
-            outcome = await triggerBackup(category: category, isScheduled: true)
+            outcome = await triggerBackup(category: category, isScheduled: true, generation: generation)
             if !outcome.canRetryPendingBackup || !getBackupStatus(category: category).isRequired {
                 break
             }
         }
         await waitForScheduledBackupCompletion(category, outcome)
-        _ = try? await ServiceQueue.background(.backup) { self.backupJobs.removeValue(forKey: category) }
-        updateBackupStatus(category: category) { status in
-            BackupItemStatus(synced: status.synced, required: status.required, running: false)
+        let shouldRetry = outcome.canRetryPendingBackup && !Task.isCancelled
+        try? await ServiceQueue.background(.backup) { [self] in
+            guard stateQueue.sync(execute: { foregroundObservationGeneration == generation }) else { return }
+            backupJobs.removeValue(forKey: category)
+            clearScheduledBackupStatus(category: category)
+            if shouldRetry, getBackupStatus(category: category).isRequired, !shouldSkipBackup(category: category) {
+                enqueueBackup(category: category, initialOutcome: .failed, generation: generation)
+            }
         }
         // A wallet recovery may have arrived while this metadata job still occupied its slot.
         if category == .metadata, outcome == .walletDependencyFailed {
             await resumeMetadataAfterWalletBackup(generation: generation)
-        }
-        if outcome.canRetryPendingBackup, !Task.isCancelled,
-           getBackupStatus(category: category).isRequired, !shouldSkipBackup(category: category)
-        {
-            await scheduleBackup(category: category)
         }
     }
 
