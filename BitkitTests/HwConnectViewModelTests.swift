@@ -702,7 +702,10 @@ final class HwConnectViewModelTests: XCTestCase {
 
         connectService.cancelPendingConnection(to: jadeDevice)
 
-        await waitUntil { self.jadeLog.contains("service.disconnect.done") }
+        await waitUntil {
+            self.jadeLog.contains("service.disconnect.done") &&
+                self.jadeLog.contains("transport.disconnect:\(JadeFixtures.blePath)")
+        }
         XCTAssertTrue(jadeLog.contains("service.cancel"))
         XCTAssertTrue(jadeLog.contains("transport.disconnect:\(JadeFixtures.blePath)"))
     }
