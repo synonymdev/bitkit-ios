@@ -73,6 +73,7 @@ final class WipeCoordinatorTests: XCTestCase {
         await coordinator.waitForCurrentAttempt()
 
         XCTAssertEqual(executor.ranSteps, [.quiesce])
+        XCTAssertEqual(executor.localScopeEntries, 0)
         XCTAssertEqual(coordinator.progress, .failed(.stopNode))
         XCTAssertEqual(coordinator.gate, .wiping)
         XCTAssertEqual(store.intentReason, .userReset)
@@ -87,19 +88,44 @@ final class WipeCoordinatorTests: XCTestCase {
         XCTAssertEqual(executor.finishedReasons, [.userReset])
     }
 
-    func testKeychainWipeFailureStopsBeforeSettingsAndThePin() async {
-        let executor = RecordingWipeExecutor(device: device)
-        executor.failingSteps = [.wipeKeychain]
-        let coordinator = makeCoordinator(executor)
+    func testLocalWipeFailureKeepsTheGateAndRetriesUnderAFreshScope() async {
+        for failsEnteringScope in [true, false] {
+            resetFixtures()
+            let executor = RecordingWipeExecutor(device: device)
+            executor.failsEnteringLocalScope = failsEnteringScope
+            executor.failingSteps = failsEnteringScope ? [] : [.wipeKeychain]
+            let coordinator = makeCoordinator(executor)
 
-        try? coordinator.begin(.userReset)
-        await coordinator.waitForCurrentAttempt()
+            try? coordinator.begin(.userReset)
+            await coordinator.waitForCurrentAttempt()
 
-        XCTAssertFalse(executor.ranSteps.contains(.resetSettings))
-        XCTAssertFalse(executor.ranSteps.contains(.deletePin))
-        XCTAssertEqual(store.pin, "1234")
-        XCTAssertEqual(coordinator.gate, .wiping)
-        XCTAssertEqual(coordinator.progress, .failed(.wipeKeychain))
+            XCTAssertFalse(executor.ranSteps.contains(.resetSettings))
+            XCTAssertFalse(executor.ranSteps.contains(.deletePin))
+            XCTAssertEqual(store.pin, "1234")
+            XCTAssertNotNil(store.intent)
+            XCTAssertEqual(coordinator.gate, .wiping)
+            XCTAssertEqual(coordinator.progress, .failed(failsEnteringScope ? .resetLocalServices : .wipeKeychain))
+            XCTAssertEqual(executor.localScopeEntries, 1)
+            XCTAssertEqual(executor.localScopeExits, 1)
+            XCTAssertTrue(executor.finishedReasons.isEmpty)
+            if failsEnteringScope {
+                XCTAssertEqual(executor.ranSteps, [.quiesce, .stopNode, .removeRemoteEndpoints])
+            }
+
+            executor.failsEnteringLocalScope = false
+            executor.failingSteps = []
+            coordinator.retry()
+            await coordinator.waitForCurrentAttempt()
+
+            XCTAssertEqual(Array(executor.ranSteps.suffix(WipeStep.allCases.count)), WipeStep.allCases)
+            XCTAssertEqual(executor.localScopeEntries, 2)
+            XCTAssertEqual(executor.localScopeExits, 2)
+            XCTAssertEqual(executor.finishedReasons, [.userReset])
+            XCTAssertEqual(device.deletions, ["mnemonic", "settings", "pin", "intent"])
+            XCTAssertNil(store.intent)
+            XCTAssertNil(store.pin)
+            XCTAssertEqual(coordinator.gate, .none)
+        }
     }
 
     func testFailedStepIsRetriedAutomatically() async throws {

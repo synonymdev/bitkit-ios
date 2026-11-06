@@ -51,6 +51,7 @@ enum WipeStep: String, CaseIterable {
 protocol WipeStepExecutor {
     /// Runs `steps` with uploads, node starts and Paykit work shut out.
     func withWipeScope(_ steps: () async throws -> Void) async throws
+    func withLocalStateWipeScope(_ steps: () async throws -> Void) async throws
     /// Every step is idempotent: a resumed wipe runs all of them again.
     func run(_ step: WipeStep) async throws
     /// Resets the in-memory app once the intent is gone.
@@ -341,14 +342,24 @@ final class WipeCoordinator: ObservableObject {
         }
 
         var currentStep = WipeStep.quiesce
+        func runSteps(_ steps: ArraySlice<WipeStep>) async throws {
+            for step in steps {
+                currentStep = step
+                progress = .running(step)
+                recordLastStep(step)
+                Logger.info("Wipe step: \(step.rawValue)", context: "WipeCoordinator")
+                try await executor.run(step)
+            }
+        }
+
         do {
             try await executor.withWipeScope {
-                for step in WipeStep.allCases {
-                    currentStep = step
-                    progress = .running(step)
-                    recordLastStep(step)
-                    Logger.info("Wipe step: \(step.rawValue)", context: "WipeCoordinator")
-                    try await executor.run(step)
+                let prefix = WipeStep.allCases.prefix { $0 != .resetLocalServices }
+                try await runSteps(prefix)
+                currentStep = .resetLocalServices
+                progress = .running(currentStep)
+                try await executor.withLocalStateWipeScope {
+                    try await runSteps(WipeStep.allCases.dropFirst(prefix.count))
                 }
             }
         } catch {

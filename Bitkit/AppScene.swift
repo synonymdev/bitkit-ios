@@ -1263,7 +1263,7 @@ struct AppScene: View {
 
         widgets.loadSavedWidgets()
         widgets.objectWillChange.send()
-        await pubkyProfile.initialize()
+        pubkyProfile.scheduleInitializationAfterRestore()
         await startWallet(completingBackupRestore: true)
     }
 

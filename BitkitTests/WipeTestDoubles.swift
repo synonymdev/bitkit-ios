@@ -84,10 +84,13 @@ final class RecordingWipeExecutor: WipeStepExecutor {
 
     let device: FakeWipedDevice
     var failingSteps: Set<WipeStep> = []
+    var failsEnteringLocalScope = false
     /// Throws right after this step has done its work, as a process killed there would leave it.
     var killedAfter: WipeStep?
     private(set) var ranSteps: [WipeStep] = []
     private(set) var scopeEntries = 0
+    private(set) var localScopeEntries = 0
+    private(set) var localScopeExits = 0
     private(set) var finishedReasons: [WipeReason?] = []
     private(set) var intentReasonAtFirstStep: WipeReason?
 
@@ -97,6 +100,15 @@ final class RecordingWipeExecutor: WipeStepExecutor {
 
     func withWipeScope(_ steps: () async throws -> Void) async throws {
         scopeEntries += 1
+        try await steps()
+    }
+
+    func withLocalStateWipeScope(_ steps: () async throws -> Void) async throws {
+        localScopeEntries += 1
+        defer { localScopeExits += 1 }
+        if failsEnteringLocalScope {
+            throw StepFailure()
+        }
         try await steps()
     }
 

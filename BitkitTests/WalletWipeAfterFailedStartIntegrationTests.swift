@@ -19,6 +19,10 @@ private final class NodeWipeExecutor: WipeStepExecutor {
         try await steps()
     }
 
+    func withLocalStateWipeScope(_ steps: () async throws -> Void) async throws {
+        try await steps()
+    }
+
     func run(_ step: WipeStep) async throws {
         switch step {
         case .stopNode:

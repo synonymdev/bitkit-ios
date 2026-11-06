@@ -62,6 +62,10 @@ final class AppReset: WipeStepExecutor {
         }
     }
 
+    func withLocalStateWipeScope(_ steps: () async throws -> Void) async throws {
+        try await VssBackupClient.shared.withSuspendedClients(steps)
+    }
+
     func run(_ step: WipeStep) async throws {
         switch step {
         case .quiesce:
@@ -77,7 +81,6 @@ final class AppReset: WipeStepExecutor {
                 await PubkyProfileManager.removePrivatePaykitEndpointsForWipe(context: "AppReset.wipe")
             }
         case .resetLocalServices:
-            await VssBackupClient.shared.reset()
             VssStoreIdProvider.shared.clearCache()
             OnChainHwService.shared.stopAllWatchers()
             // Before the paired devices are wiped, so a reconnect still running cannot save one back.
