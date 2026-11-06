@@ -2619,6 +2619,30 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testContactOpenedForReadOnlyProfileRejectsDifferentRestoredIdentity() async throws {
+        try await withEmptyIdentityStorage {
+            let secret = String(repeating: "01", count: 32)
+            let original = try PubkyProfileManager.publicKeyFromSecretKey(secret)
+            let replacement = try PubkyProfileManager.publicKeyFromSecretKey(String(repeating: "02", count: 32))
+            try Keychain.upsert(key: .pubkySecretKey, data: Data(secret.utf8))
+            let saved = makeProfile(publicKey: original, name: "Original")
+            let manager = PubkyProfileManager(remoteProfileResolver: { _ in saved })
+            var earlyContact = ContactScreenSession(profile: manager)
+            await manager.initialize { .restorationDeferred }
+            await manager.loadProfile()
+            XCTAssertEqual(manager.publicKeyForDisplay, original)
+            XCTAssertNil(manager.currentSession)
+            earlyContact.restore(in: manager)
+            var contact = ContactScreenSession(profile: manager)
+
+            await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { .restored(publicKey: replacement) }
+            XCTAssertEqual(manager.currentSession?.publicKey, replacement)
+            XCTAssertNil(contact.current(in: manager))
+            XCTAssertNil(earlyContact.current(in: manager))
+        }
+    }
+
+    @MainActor
     func testFailedSignOutKeepsReadOnlyProfileDisplayed() async throws {
         try await withEmptyIdentityStorage {
             let secret = String(repeating: "01", count: 32)

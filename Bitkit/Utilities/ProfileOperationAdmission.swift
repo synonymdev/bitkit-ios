@@ -128,6 +128,17 @@ final class ProfileOperationAdmission: @unchecked Sendable {
         }
     }
 
+    /// A screen can remember its wallet during background restoration. This token never admits an operation.
+    func walletForPresentation() -> UUID? {
+        let wallet = lock.withLock { walletGeneration }
+        guard (try? store.requireNoPending()) != nil else { return nil }
+        return lock.withLock {
+            guard wallet == walletGeneration, localFailureID == nil,
+                  exclusive == nil || exclusive.flatMap({ entries[$0]?.backgroundInitialization }) == true else { return nil }
+            return wallet
+        }
+    }
+
     func snapshot() throws -> Generation {
         let live = lock.withLock { generation }
         let stored = try store.requireNoPending()

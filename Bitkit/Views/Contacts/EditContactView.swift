@@ -9,7 +9,7 @@ struct EditContactView: View {
 
     let publicKey: String
 
-    @State private var screenSession: PubkyProfileManager.SignedInSession?
+    @State private var screenSession: ContactScreenSession?
     @State private var form = ContactEditForm()
     @State private var isSaving = false
     @State private var showDeleteConfirmation = false
@@ -43,10 +43,8 @@ struct EditContactView: View {
         .bottomSafeAreaPadding()
         .background(Color.customBlack)
         .navigationBarHidden(true)
+        .contactScreenSession($screenSession, profile: pubkyProfile)
         .task {
-            if screenSession == nil {
-                screenSession = pubkyProfile.currentSession
-            }
             await loadContactData()
         }
         .alert(t("contacts__delete_title", variables: ["name": form.name]), isPresented: $showDeleteConfirmation) {
@@ -126,8 +124,8 @@ struct EditContactView: View {
     // MARK: - Delete
 
     private func prepareDelete() {
-        guard let session = screenSession, pubkyProfile.currentSession == session,
-              let generation = try? ProfileOperationAdmission.shared.snapshot() else { return }
+        guard let generation = try? ProfileOperationAdmission.shared.snapshot(),
+              let session = screenSession?.current(in: pubkyProfile, onSignedOut: app.showContactSignInRequired) else { return }
         deleteSession = session
         deleteGeneration = generation
         showDeleteConfirmation = true
@@ -135,12 +133,12 @@ struct EditContactView: View {
 
     private func deleteContact(session: PubkyProfileManager.SignedInSession, generation: ProfileOperationAdmission.Generation) async {
         let admission = ProfileOperationAdmission.shared
-        guard pubkyProfile.currentSession == session, (try? admission.validate(generation)) != nil,
-              let scope = try? admission.capture() else { return }
+        guard let scope = try? admission.capture() else { return }
         defer { admission.release(scope) }
+        guard screenSession?.owns(session, in: pubkyProfile) == true, (try? admission.validate(generation)) != nil else { return }
         do {
             try await admission.withScope(scope) { try await contactsManager.removeContact(publicKey: publicKey) }
-            guard pubkyProfile.currentSession == session, (try? admission.validate(scope)) != nil, !Task.isCancelled else { return }
+            guard screenSession?.owns(session, in: pubkyProfile) == true, (try? admission.validate(scope)) != nil, !Task.isCancelled else { return }
             app.toast(
                 type: .success,
                 title: t("contacts__delete_success"),
@@ -150,13 +148,13 @@ struct EditContactView: View {
                 navigation.returnToContactsAfterRemoving(publicKey: publicKey)
             }
         } catch let PubkyServiceError.activeSubscription(endsAt) {
-            guard pubkyProfile.currentSession == session, (try? admission.validate(scope)) != nil, !Task.isCancelled else { return }
+            guard screenSession?.owns(session, in: pubkyProfile) == true, (try? admission.validate(scope)) != nil, !Task.isCancelled else { return }
             let description = endsAt.map {
                 t("subscriptions__expires_date", variables: ["date": $0.formatted(date: .long, time: .omitted)])
             }
             app.toast(type: .error, title: t("contacts__delete_active_subscription"), description: description)
         } catch {
-            guard pubkyProfile.currentSession == session, (try? admission.validate(scope)) != nil, !Task.isCancelled else { return }
+            guard screenSession?.owns(session, in: pubkyProfile) == true, (try? admission.validate(scope)) != nil, !Task.isCancelled else { return }
             Logger.error("Failed to delete contact: \(error)", context: "EditContactView")
             app.toast(type: .error, title: t("contacts__delete_error"))
         }
@@ -169,11 +167,12 @@ struct EditContactView: View {
     /// and the contact save each write nothing once another identity is signed in.
     private func saveContact() async {
         let pubkyProfile = pubkyProfile
-        guard !form.trimmedName.isEmpty, let session = screenSession, pubkyProfile.currentSession == session else { return }
+        guard !form.trimmedName.isEmpty else { return }
 
         let admission = ProfileOperationAdmission.shared
         guard let scope = try? admission.capture() else { return }
         defer { admission.release(scope) }
+        guard let session = screenSession?.current(in: pubkyProfile, onSignedOut: app.showContactSignInRequired) else { return }
         isSaving = true
         defer { isSaving = false }
 
@@ -181,7 +180,7 @@ struct EditContactView: View {
             let savedProfile = try await admission.withScope(scope) { try await contactsManager.saveContactEdit(
                 publicKey: publicKey,
                 expectedIdentity: session.publicKey,
-                isSessionCurrent: { pubkyProfile.currentSession == session }
+                isSessionCurrent: { screenSession?.owns(session, in: pubkyProfile) == true }
             ) {
                 fillFormFromContact()
                 let uploadedImageUrl = if let avatarImage {
@@ -191,7 +190,8 @@ struct EditContactView: View {
                 }
                 return form.edit(imageUrl: uploadedImageUrl)
             } }
-            guard let savedProfile, pubkyProfile.currentSession == session, (try? admission.validate(scope)) != nil, !Task.isCancelled else { return }
+            guard let savedProfile, screenSession?.owns(session, in: pubkyProfile) == true, (try? admission.validate(scope)) != nil,
+                  !Task.isCancelled else { return }
             form.imageUrl = savedProfile.imageUrl
             app.toast(
                 type: .success,
@@ -200,7 +200,7 @@ struct EditContactView: View {
             )
             navigation.navigateBack()
         } catch {
-            guard pubkyProfile.currentSession == session, (try? admission.validate(scope)) != nil, !Task.isCancelled else { return }
+            guard screenSession?.owns(session, in: pubkyProfile) == true, (try? admission.validate(scope)) != nil, !Task.isCancelled else { return }
             Logger.error("Failed to save contact: \(error)", context: "EditContactView")
             app.toast(type: .error, title: t("contacts__edit_error"))
         }

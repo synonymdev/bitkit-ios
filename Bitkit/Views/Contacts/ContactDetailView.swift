@@ -17,7 +17,7 @@ struct ContactDetailView: View {
     let publicKey: String
     var showsDeleteAction = false
 
-    @State private var screenSession: PubkyProfileManager.SignedInSession?
+    @State private var screenSession: ContactScreenSession?
     @State private var profile: PubkyProfile?
     @State private var isLoading = true
     @State private var showAddTagSheet = false
@@ -44,10 +44,8 @@ struct ContactDetailView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.customBlack)
         .navigationBarHidden(true)
+        .contactScreenSession($screenSession, profile: pubkyProfile)
         .task {
-            if screenSession == nil {
-                screenSession = pubkyProfile.currentSession
-            }
             if let cached = contactsManager.contacts.first(where: { $0.publicKey == publicKey }) {
                 profile = cached.profile
                 hasResolvedContactFromContacts = true
@@ -163,6 +161,7 @@ struct ContactDetailView: View {
                 if showsDeleteAction {
                     prepareDelete()
                 } else {
+                    guard screenSession?.current(in: pubkyProfile, onSignedOut: app.showContactSignInRequired) != nil else { return }
                     navigation.navigate(.editContact(publicKey: publicKey))
                 }
             }
@@ -246,20 +245,23 @@ struct ContactDetailView: View {
     /// lookup of a profile the row is still waiting for. The save is dropped quietly once this Pubky session ends.
     private func updateTags(_ transform: @escaping ([String]) -> [String]) {
         let pubkyProfile = pubkyProfile
-        guard let current = profile, let session = screenSession, pubkyProfile.currentSession == session else { return }
+        guard let current = profile, let generation = try? ProfileOperationAdmission.shared.snapshot(),
+              let session = screenSession?.current(in: pubkyProfile, onSignedOut: app.showContactSignInRequired) else { return }
         profile = current.withTags(transform(current.tags))
         let change = contactsManager.updateContactTags(
             publicKey: publicKey,
             shownProfile: current,
             expectedIdentity: session.publicKey,
-            isSessionCurrent: { pubkyProfile.currentSession == session },
+            isSessionCurrent: {
+                screenSession?.owns(session, in: pubkyProfile) == true && (try? ProfileOperationAdmission.shared.validate(generation)) != nil
+            },
             transform: transform
         )
         Task {
             do {
                 try await change.value
             } catch {
-                guard pubkyProfile.currentSession == session, !Task.isCancelled else { return }
+                guard screenSession?.owns(session, in: pubkyProfile) == true, !Task.isCancelled else { return }
                 Logger.error("Failed to persist contact tags: \(error)", context: "ContactDetailView")
                 app.toast(type: .error, title: t("contacts__error_saving"))
             }
@@ -267,8 +269,8 @@ struct ContactDetailView: View {
     }
 
     private func prepareDelete() {
-        guard let session = screenSession, pubkyProfile.currentSession == session,
-              let generation = try? ProfileOperationAdmission.shared.snapshot() else { return }
+        guard let generation = try? ProfileOperationAdmission.shared.snapshot(),
+              let session = screenSession?.current(in: pubkyProfile, onSignedOut: app.showContactSignInRequired) else { return }
         deleteSession = session
         deleteGeneration = generation
         showDeleteConfirmation = true
@@ -276,12 +278,12 @@ struct ContactDetailView: View {
 
     private func deleteContact(session: PubkyProfileManager.SignedInSession, generation: ProfileOperationAdmission.Generation) async {
         let admission = ProfileOperationAdmission.shared
-        guard pubkyProfile.currentSession == session, (try? admission.validate(generation)) != nil,
-              let scope = try? admission.capture() else { return }
+        guard let scope = try? admission.capture() else { return }
         defer { admission.release(scope) }
+        guard screenSession?.owns(session, in: pubkyProfile) == true, (try? admission.validate(generation)) != nil else { return }
         do {
             try await admission.withScope(scope) { try await contactsManager.removeContact(publicKey: publicKey) }
-            guard pubkyProfile.currentSession == session, (try? admission.validate(scope)) != nil, !Task.isCancelled else { return }
+            guard screenSession?.owns(session, in: pubkyProfile) == true, (try? admission.validate(scope)) != nil, !Task.isCancelled else { return }
             app.toast(
                 type: .success,
                 title: t("contacts__delete_success"),
@@ -291,13 +293,13 @@ struct ContactDetailView: View {
                 navigation.returnToContactsAfterRemoving(publicKey: publicKey)
             }
         } catch let PubkyServiceError.activeSubscription(endsAt) {
-            guard pubkyProfile.currentSession == session, (try? admission.validate(scope)) != nil, !Task.isCancelled else { return }
+            guard screenSession?.owns(session, in: pubkyProfile) == true, (try? admission.validate(scope)) != nil, !Task.isCancelled else { return }
             let description = endsAt.map {
                 t("subscriptions__expires_date", variables: ["date": $0.formatted(date: .long, time: .omitted)])
             }
             app.toast(type: .error, title: t("contacts__delete_active_subscription"), description: description)
         } catch {
-            guard pubkyProfile.currentSession == session, (try? admission.validate(scope)) != nil, !Task.isCancelled else { return }
+            guard screenSession?.owns(session, in: pubkyProfile) == true, (try? admission.validate(scope)) != nil, !Task.isCancelled else { return }
             Logger.error("Failed to delete contact: \(error)", context: "ContactDetailView")
             app.toast(type: .error, title: t("contacts__delete_error"))
         }

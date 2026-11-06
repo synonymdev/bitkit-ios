@@ -454,6 +454,77 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
         XCTAssertFalse(manager.ownsRemovalPresentation(restoredOwner))
     }
 
+    func testSignedOutContactOffersFeedbackThenUsesTheRestoredSession() async throws {
+        let manager = makeManager()
+        manager.publicKey = nil
+        manager.authState = .idle
+        var screen = ContactScreenSession(profile: manager, admission: admission)
+        var prompts = 0
+        XCTAssertNil(screen.current(in: manager) { prompts += 1 })
+        XCTAssertEqual(prompts, 1)
+
+        await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { [owner] in .restored(publicKey: owner) }
+        let restored = try XCTUnwrap(screen.current(in: manager) { prompts += 1 })
+        XCTAssertEqual(restored, manager.currentSession)
+        XCTAssertEqual(restored.publicKey, owner)
+
+        manager.publicKey = "replacement"
+        screen.restore(in: manager)
+        XCTAssertNil(screen.current(in: manager) { prompts += 1 })
+        XCTAssertEqual(prompts, 1)
+    }
+
+    func testContactOpenedDuringStartupWaitsForRestorationButRejectsAnInteractiveTransition() throws {
+        let manager = makeManager()
+        manager.publicKey = nil
+        let startup = try admission.reserveSessionTransition(backgroundInitialization: true)
+        var screen = ContactScreenSession(profile: manager, admission: admission)
+        XCTAssertThrowsError(try admission.capture())
+        XCTAssertNil(screen.current(in: manager))
+        manager.publicKey = owner
+        admission.release(startup)
+        XCTAssertEqual(try XCTUnwrap(screen.current(in: manager)).publicKey, owner)
+
+        let change = try admission.reserveSessionTransition()
+        var openedDuringChange = ContactScreenSession(profile: manager, admission: admission)
+        admission.release(change)
+        XCTAssertNil(openedDuringChange.current(in: manager))
+    }
+
+    func testContactActionsAndIssuedConfirmationsStopAsSoonAsAWipeIsRequested() throws {
+        let manager = makeManager()
+        let coordinator = WipeCoordinator(store: FakePinLockoutStore(), makeExecutor: { nil }, retryDelays: [])
+        var screen = ContactScreenSession(profile: manager, admission: admission, wipe: coordinator)
+        let session = try XCTUnwrap(screen.current(in: manager))
+        try coordinator.begin(.userReset)
+        XCTAssertTrue(coordinator.isGateUp)
+        XCTAssertFalse(admission.isWalletWiping, "The queued executor has not taken admission yet")
+        XCTAssertFalse(screen.owns(session, in: manager))
+        XCTAssertNil(screen.current(in: manager))
+    }
+
+    func testContactScreenRejectsSameKeyAfterSessionReplacementAndWalletWipe() async throws {
+        let manager = makeManager()
+        var signedIn = ContactScreenSession(profile: manager, admission: admission)
+        manager.publicKey = nil
+        var waiting = ContactScreenSession(profile: manager, admission: admission)
+        try await PubkyProfileManager.restoreSessionBackupState(
+            nil, deleteKeychainValue: { _ in }, removeOwnSharedRecords: {}, forgetSessionAccess: {}
+        )
+        manager.publicKey = owner
+        XCTAssertNil(waiting.current(in: manager))
+        XCTAssertNil(signedIn.current(in: manager))
+
+        var beforeWipe = ContactScreenSession(profile: manager, admission: admission)
+        let wipe = try admission.reserve(kind: .walletWipe, id: UUID())
+        var duringWipe = ContactScreenSession(profile: manager, admission: admission)
+        XCTAssertNil(beforeWipe.current(in: manager))
+        admission.release(wipe)
+        XCTAssertNil(beforeWipe.current(in: manager))
+        XCTAssertNil(duringWipe.current(in: manager))
+        XCTAssertEqual(try XCTUnwrap(manager.currentSession).publicKey, owner)
+    }
+
     func testNoArgumentDeletionCannotRecaptureCurrentIdentity() async throws {
         let manager = makeManager()
         do { try await manager.deleteProfile(); XCTFail("A fresh confirmation is required") }
