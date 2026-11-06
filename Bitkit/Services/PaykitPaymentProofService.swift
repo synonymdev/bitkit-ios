@@ -195,15 +195,49 @@ protocol PaykitLightningPaymentProofLookingUp: Sendable {
 
 struct PaykitLightningPaymentProofLookup: PaykitLightningPaymentProofLookingUp {
     func status(paymentHash: String) async -> PaykitLightningPaymentProofStatus {
+        await Self.combined(
+            ldk: Self.ldkStatus(paymentHash: paymentHash),
+            rail: Self.railStatus(paymentHash: paymentHash),
+            latestAttempt: LightningService.shared.attemptRail(paymentHash: paymentHash)
+        )
+    }
+
+    /// One outcome from both rails, since an invoice retried on the other rail is listed by each. A settled payment is
+    /// settled whichever rail paid it; otherwise the rail that carried the latest attempt decides, and without one known
+    /// (after a restart) a pending attempt wins over a failed one.
+    static func combined(
+        ldk: PaykitLightningPaymentProofStatus,
+        rail: PaykitLightningPaymentProofStatus,
+        latestAttempt: LightningPaymentRail?
+    ) -> PaykitLightningPaymentProofStatus {
+        for status in [ldk, rail] {
+            if case .succeeded = status {
+                return status
+            }
+        }
+        let latest: PaykitLightningPaymentProofStatus? = switch latestAttempt {
+        case .ldk: ldk
+        case .channelFree: rail
+        case nil: nil
+        }
+        if let latest, latest != .unknown, latest != .unavailable {
+            return latest
+        }
+        // A rail that can't list its payments may hold a live retry, so it outranks the other rail's failure.
+        for wanted in [PaykitLightningPaymentProofStatus.pending, .unavailable, .failed] where ldk == wanted || rail == wanted {
+            return wanted
+        }
+        return .unknown
+    }
+
+    private static func ldkStatus(paymentHash: String) async -> PaykitLightningPaymentProofStatus {
         guard let payments = await LightningService.shared.listPayments() else {
-            let railStatus = await Self.railStatus(paymentHash: paymentHash)
-            guard case .unknown = railStatus else { return railStatus }
             return .unavailable
         }
         guard let payment = payments.first(where: {
             $0.id.caseInsensitiveCompare(paymentHash) == .orderedSame
         }), payment.direction == .outbound else {
-            return await Self.railStatus(paymentHash: paymentHash)
+            return .unknown
         }
 
         switch payment.status {

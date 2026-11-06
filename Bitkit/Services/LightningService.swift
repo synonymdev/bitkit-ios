@@ -11,7 +11,9 @@ protocol ChannelFreeLightningRail: AnyObject {
     @MainActor var isReady: Bool { get }
     @MainActor var balanceSats: UInt64 { get }
     func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String
-    func send(bolt11: String, sats: UInt64?) async throws -> PaymentHash
+    /// Refuses before sending when the prepared fee is above `maxFeeSats`, and runs `beforeSubmission` right before the
+    /// payment goes out, as the node path does.
+    func send(bolt11: String, sats: UInt64?, maxFeeSats: UInt64?, beforeSubmission: @escaping () throws -> Void) async throws -> PaymentHash
     func estimateRoutingFees(bolt11: String, amountSats: UInt64?) async throws -> UInt64
     /// Throws when the rail could not list its payments, so a duplicate-payment check can tell that from none.
     func lightningPayments() async throws -> [ChannelFreeRailPayment]
@@ -983,9 +985,13 @@ class LightningService: NodeLifecycleService {
                     throw ChannelFreeRailSendRefused(reason: t("wallet__max_possible_fee_rate"))
                 }
             }
-            try beforeSubmission()
             noteAttempt(on: .channelFree, bolt11: bolt11)
-            return try await rail.send(bolt11: bolt11, sats: sats)
+            return try await rail.send(
+                bolt11: bolt11,
+                sats: sats,
+                maxFeeSats: params?.maxTotalRoutingFeeMsat.map { $0 / 1000 },
+                beforeSubmission: beforeSubmission
+            )
         }
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)

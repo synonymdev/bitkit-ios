@@ -40,6 +40,14 @@ struct SparkTransferQuote: Equatable {
     var coversClaimFee: Bool {
         depositSats > claimFees.instantMaxSats
     }
+
+    /// The minimum transfer, for a quote that doesn't cover the claim fee.
+    var belowClaimFeeMessage: String {
+        t(
+            "lightning__spending_amount__error_min__description",
+            variables: ["amount": CurrencyFormatter.formatSats(claimFees.instantMaxSats.saturatingAdd(1))]
+        )
+    }
 }
 
 /// Where a transfer to spending stands once its deposit is broadcast.
@@ -137,9 +145,11 @@ final class SparkTransferFlow {
 
     private(set) var txid: String?
     var claimState: SparkClaimState = .looking
-    @ObservationIgnored private var offer: SparkClaimOffer?
-    @ObservationIgnored private var ceilingSats: UInt64 = 0
-    @ObservationIgnored private var watchTask: Task<Void, Never>?
+    /// Each broadcast deposit keeps its own claim: a later transfer neither stops an earlier one's early claim nor takes
+    /// its results, which only the current transfer's screen shows.
+    @ObservationIgnored private var offers: [String: SparkClaimOffer] = [:]
+    @ObservationIgnored private var ceilings: [String: UInt64] = [:]
+    @ObservationIgnored private var watchTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var quoteRequestId = 0
     @ObservationIgnored private let operations: SparkClaimOperations
     @ObservationIgnored private let pollAttempts: Int
@@ -252,11 +262,11 @@ final class SparkTransferFlow {
     /// Records the broadcast deposit and starts its claim for the chosen speed.
     func onBroadcast(txid: String) {
         self.txid = txid
-        ceilingSats = quote?.claimFees.instantMaxSats ?? 0
-        offer = nil
+        ceilings[txid] = quote?.claimFees.instantMaxSats ?? 0
+        offers[txid] = nil
         claimState = speed == .instant ? .looking : .later
-        watchTask?.cancel()
-        watchTask = nil
+        watchTasks[txid]?.cancel()
+        watchTasks[txid] = nil
         if speed == .instant {
             watch(txid: txid)
         }
@@ -265,28 +275,38 @@ final class SparkTransferFlow {
     /// Accepts the early claim at the repriced fee.
     func payRepriced() {
         guard case let .repriced(feeSats) = claimState, let txid else { return }
-        ceilingSats = feeSats
+        ceilings[txid] = feeSats
         claimState = .claiming
         watch(txid: txid)
     }
 
     /// Leaves the deposit to the claim after 3 confirmations.
     func waitForConfirmations() {
-        watchTask?.cancel()
-        watchTask = nil
+        if let txid {
+            watchTasks[txid]?.cancel()
+            watchTasks[txid] = nil
+        }
         claimState = .later
     }
 
-    /// Waits for the running claim to settle; for tests.
+    /// Waits for the current transfer's claim to settle; for tests.
     func waitForClaim() async {
-        await watchTask?.value
+        guard let txid else { return }
+        await watchTasks[txid]?.value
     }
 
     private func watch(txid: String) {
-        watchTask?.cancel()
-        watchTask = Task { [weak self] in
+        watchTasks[txid]?.cancel()
+        watchTasks[txid] = Task { [weak self] in
             await self?.pollDeposit(txid: txid)
+            self?.watchTasks[txid] = nil
         }
+    }
+
+    /// Shows a claim's progress only while its deposit is the transfer on screen.
+    private func setClaimState(_ state: SparkClaimState, for txid: String) {
+        guard !Task.isCancelled, self.txid == txid else { return }
+        claimState = state
     }
 
     private func pollDeposit(txid: String) async {
@@ -296,22 +316,24 @@ final class SparkTransferFlow {
             }
             do {
                 let found = try await operations.offer(txid)
-                if found == nil, offer != nil {
+                guard !Task.isCancelled else { return }
+                if found == nil, offers[txid] != nil {
                     // Listed before and no longer unclaimed: the early claim went through.
-                    claimState = .adding
+                    setClaimState(.adding, for: txid)
                     return
                 }
                 if let found {
-                    offer = found
-                    let next = SparkClaimDecision.onOffer(found.kind, speed: .instant, ceilingSats: ceilingSats)
+                    offers[txid] = found
+                    let next = SparkClaimDecision.onOffer(found.kind, speed: .instant, ceilingSats: ceilings[txid] ?? 0)
                     guard next == .claiming else {
-                        claimState = next
+                        setClaimState(next, for: txid)
                         return
                     }
-                    claimState = .claiming
+                    setClaimState(.claiming, for: txid)
                     let claim = try await operations.claimEarly(found)
+                    guard !Task.isCancelled else { return }
                     if let state = SparkClaimDecision.onClaim(claim) {
-                        claimState = state
+                        setClaimState(state, for: txid)
                         return
                     }
                 }
@@ -323,6 +345,6 @@ final class SparkTransferFlow {
         }
         guard !Task.isCancelled else { return }
         Logger.warn("Spark did not list deposit \(txid) in time", context: "SparkTransferFlow")
-        claimState = .notSeen
+        setClaimState(.notSeen, for: txid)
     }
 }

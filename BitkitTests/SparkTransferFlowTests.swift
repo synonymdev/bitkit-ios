@@ -108,6 +108,40 @@ final class SparkTransferFlowTests: XCTestCase {
         XCTAssertEqual(flow.claimState, .unavailable)
     }
 
+    @MainActor
+    func testANewTransferKeepsTheEarlierClaimAndItsResultOffScreen() async throws {
+        var claimed: [String] = []
+        var release: CheckedContinuation<Void, Never>?
+        let operations = SparkClaimOperations(
+            offer: { txid in SparkClaimOffer(txid: txid, vout: 0, kind: .choice(
+                earlyFeeSats: 900, earlyConfirmations: 0, standardFeeSats: 198, standardConfirmations: 3
+            )) },
+            claimEarly: { offer in
+                await withCheckedContinuation { release = $0 }
+                claimed.append(offer.txid)
+                return .claimed
+            },
+            refresh: {},
+            sleep: { _ in }
+        )
+        let flow = SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: 2)
+        flow.onBroadcast(txid: "first")
+        for _ in 0 ..< 100 where release == nil {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        flow.beginIfBroadcast()
+        flow.speed = .later
+        flow.onBroadcast(txid: "second")
+        release?.resume()
+        for _ in 0 ..< 100 where claimed.isEmpty {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        XCTAssertEqual(claimed, ["first"], "The earlier deposit's early claim went on")
+        XCTAssertEqual(flow.claimState, .later, "Its result stays off the new transfer's screen")
+    }
+
     /// A flow whose poll answers with `offers` in turn (nil once they run out) and whose claims answer with `claims`.
     @MainActor
     private func pollingFlow(offers: [SparkClaimOffer.Kind?], claims: [SparkEarlyClaim] = []) -> SparkTransferFlow {
