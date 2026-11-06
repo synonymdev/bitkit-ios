@@ -1,0 +1,147 @@
+import BitkitCore
+import Foundation
+
+/// A contact payment bitkit-core's Paykit router picks the way for: the contact's bitcoin endpoints, whether a Spark leg
+/// may reach its on-chain ones, and the leg once the router picked one.
+struct PaykitRouteUi: Equatable {
+    let endpoints: [PaykitEndpoint]
+    let offersSparkLeg: Bool
+    var serviceLeg: ServiceRouteLeg?
+
+    var deliveredSat: UInt64? {
+        serviceLeg?.deliveredSat
+    }
+
+    var totalFeeSat: UInt64? {
+        serviceLeg.map { $0.debitSat.saturatingSub($0.deliveredSat) }
+    }
+
+    var onchainEndpoints: [PaykitEndpoint] {
+        endpoints.filter(\.isOnchain)
+    }
+}
+
+extension PaykitEndpoint {
+    var isOnchain: Bool {
+        PublicPaykitService.MethodId(rawValue: methodId)?.onchainNetwork != nil
+    }
+
+    var isLnurl: Bool {
+        methodId == PublicPaykitService.MethodId.bitcoinLightningLnurl.rawValue
+    }
+}
+
+/// Routes every bitcoin contact payment through bitkit-core's Paykit router: Direct pays one of the contact's
+/// endpoints, Service pays through a service the wallet holds a balance on (a Spark withdrawal to the contact's on-chain
+/// address), None pays nothing.
+enum PaykitRouteService {
+    /// The source the payment is paid from, as picked on the amount screen.
+    enum Source {
+        case spending
+        case savings
+    }
+
+    /// Spark can carry a leg while it is ready and holds a sendable balance.
+    @MainActor
+    static var canRouteThroughSpark: Bool {
+        SparkManager.shared.isReady && SparkManager.shared.sendableSats > 0
+    }
+
+    /// The route for a contact payment, or nil without bitcoin endpoints. A Spark leg is offered only for a payment the
+    /// user starts (an incoming request's on-chain proof needs the node's send-attempt store) to a contact with an
+    /// on-chain endpoint, while Spark can route and the payment can't go directly over Lightning.
+    static func routeUi(
+        for context: ContactPaymentContext,
+        canRouteThroughSpark: Bool,
+        canPayDirectly: Bool
+    ) -> PaykitRouteUi? {
+        let endpoints = context.endpoints
+            .filter { $0.methodId != .usdtArbitrum }
+            .map { PaykitEndpoint(methodId: $0.methodId.rawValue, value: $0.value) }
+        guard !endpoints.isEmpty else { return nil }
+        let offersSparkLeg = canRouteThroughSpark && !canPayDirectly && context.incomingPaymentRequest == nil &&
+            endpoints.contains(where: \.isOnchain)
+        return PaykitRouteUi(endpoints: endpoints, offersSparkLeg: offersSparkLeg)
+    }
+
+    /// What the router is asked from `source`: Spending offers every endpoint, Savings only the on-chain ones.
+    static func request(
+        route: PaykitRouteUi,
+        amountSats: UInt64,
+        source: Source,
+        lightningSpendableSats: UInt64,
+        onchainSpendableSats: UInt64,
+        serviceLegs: [ServiceRouteLeg]
+    ) -> PaykitRouteRequest {
+        switch source {
+        case .spending:
+            PaykitRouteRequest(
+                amountSat: amountSats,
+                contactEndpoints: route.endpoints,
+                lightningSpendableSat: lightningSpendableSats,
+                onchainSpendableSat: 0,
+                serviceLegs: serviceLegs
+            )
+        case .savings:
+            PaykitRouteRequest(
+                amountSat: amountSats,
+                contactEndpoints: route.onchainEndpoints,
+                lightningSpendableSat: 0,
+                onchainSpendableSat: onchainSpendableSats,
+                serviceLegs: []
+            )
+        }
+    }
+
+    /// Asks the router how to pay `amountSats` from `source`, quoting a Spark leg to each on-chain endpoint first when
+    /// the route offers one.
+    static func route(
+        _ route: PaykitRouteUi,
+        amountSats: UInt64,
+        source: Source,
+        lightningSpendableSats: UInt64,
+        onchainSpendableSats: UInt64
+    ) async throws -> PaykitRoute {
+        let serviceLegs = source == .spending && route.offersSparkLeg
+            ? await sparkLegs(to: route.onchainEndpoints, amountSats: amountSats)
+            : []
+        return try paykitRoutePayment(
+            request: request(
+                route: route,
+                amountSats: amountSats,
+                source: source,
+                lightningSpendableSats: lightningSpendableSats,
+                onchainSpendableSats: onchainSpendableSats,
+                serviceLegs: serviceLegs
+            ),
+            network: Env.bitkitCoreNetwork
+        )
+    }
+
+    private static func sparkLegs(to endpoints: [PaykitEndpoint], amountSats: UInt64) async -> [ServiceRouteLeg] {
+        var legs: [ServiceRouteLeg] = []
+        for endpoint in endpoints {
+            do {
+                if let leg = try await SparkManager.shared.withdrawalRouteLeg(endpoint: endpoint, amountSats: amountSats) {
+                    legs.append(leg)
+                }
+            } catch {
+                Logger.warn("No Spark route to \(endpoint.methodId): \(error)", context: "PaykitRoute")
+            }
+        }
+        return legs
+    }
+
+    /// Whether a None route is a short balance rather than a contact Bitkit can't pay.
+    static func isBalanceShort(amountSats: UInt64, lightningSpendableSats: UInt64, onchainSpendableSats: UInt64) -> Bool {
+        amountSats > lightningSpendableSats.saturatingAdd(onchainSpendableSats)
+    }
+
+    /// Runs a service leg the router picked and returns the txid that pays the contact.
+    static func pay(_ leg: ServiceRouteLeg, contact: String?) async throws -> String {
+        guard leg.service == SparkManager.routeService else {
+            throw AppError(message: "wallet__payment_failed_description", debugMessage: "Unsupported route service \(leg.service)")
+        }
+        return try await SparkManager.shared.withdraw(to: leg.endpoint.value, amountSats: leg.deliveredSat, contact: contact)
+    }
+}

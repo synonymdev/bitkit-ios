@@ -1088,6 +1088,8 @@
 "wallet__send_sync_long_description" = "Φαίνεται ότι είστε αποσυνδεδεμένοι. Ελέγξτε τη σύνδεσή σας. Το Bitkit θα προσπαθεί να επανασυνδεθεί κάθε λίγα δευτερόλεπτα.";
 "wallet__send_to" = "Προς";
 "wallet__send_swap_route" = "Διαδρομή";
+"wallet__send_paykit_no_route__title" = "Can't pay this contact";
+"wallet__send_paykit_no_route__description" = "This contact has no payment method Bitkit can use right now.";
 "wallet__recipient_contact" = "Επαφή";
 "wallet__recipient_invoice" = "Επικόλληση Τιμολογίου";
 "wallet__recipient_manual" = "Χειροκίνητη Εισαγωγή";

@@ -51,6 +51,8 @@ final class SparkManager: ChannelFreeLightningRail {
     /// The refresh in flight; callers during it wait for it, and it reads once more for them.
     @ObservationIgnored private var refreshTask: Task<Void, Error>?
     @ObservationIgnored private var refreshAgain = false
+    /// A contact withdrawal is being sent, so its journal entry isn't settled from a list that can't show it yet.
+    @ObservationIgnored private var isWithdrawingToContact = false
 
     private init() {}
 
@@ -98,6 +100,7 @@ final class SparkManager: ChannelFreeLightningRail {
             LightningService.shared.channelFreeRail = self
             try await refresh()
             try await syncActivities()
+            await settleContactWithdrawal(allowClear: false)
         } catch {
             connectTask = nil
             Logger.error("Failed to start Spark wallet: \(error)", context: "SparkManager")
@@ -183,6 +186,8 @@ final class SparkManager: ChannelFreeLightningRail {
         sendsRecordedWithoutFee = []
         sentWithdrawalTxIds = []
         preparedWithdrawal = nil
+        Self.pendingContactWithdrawal = nil
+        Self.contactWithdrawalTxIds = []
         onStateChanged?()
         try Self.removeIfPresent(Env.sparkStorage(walletIndex: walletIndex))
         try Self.removeIfPresent(Env.sparkExitRestore(walletIndex: walletIndex))
@@ -435,7 +440,8 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// A Paykit route that withdraws exactly `amountSats` to the contact's on-chain `endpoint` at medium speed, with
-    /// Spark's fee on top, or nil while Spark cannot send it. bitkit-core weighs it against the Pubky Swaps providers.
+    /// Spark's fee on top, or nil while Spark cannot send it. bitkit-core's Paykit router weighs it against the contact's
+    /// other endpoints.
     func withdrawalRouteLeg(endpoint: PaykitEndpoint, amountSats: UInt64) async throws -> ServiceRouteLeg? {
         guard isReady, balanceSats >= amountSats else { return nil }
         let prepared = try await prepareSend(paymentRequest: endpoint.value, amountSats: amountSats)
@@ -454,19 +460,110 @@ final class SparkManager: ChannelFreeLightningRail {
         )
     }
 
-    /// Withdraws exactly `amountSats` to the on-chain `address` at medium speed and returns the withdrawal's txid.
-    func withdraw(to address: String, amountSats: UInt64) async throws -> String {
-        let prepared = try await prepareSend(paymentRequest: address, amountSats: amountSats)
-        let response = try await requireSdk().sendPayment(request: SendPaymentRequest(
-            prepareResponse: prepared,
-            options: .bitcoinAddress(confirmationSpeed: .medium)
-        ))
-        Logger.info("Sent Spark withdrawal '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
-        try await refresh()
-        if case let .withdraw(txId, _, _) = response.payment.details {
-            return txId
+    /// Withdraws exactly `amountSats` to a contact's on-chain `address` at medium speed and returns its txid. The
+    /// withdrawal is written to a journal before it is sent, so one interrupted mid-send settles from Spark's payment
+    /// list; a second one is refused while it is open. It is recorded as a sent on-chain activity for the contact.
+    func withdraw(to address: String, amountSats: UInt64, contact: String?) async throws -> String {
+        guard Self.pendingContactWithdrawal == nil else {
+            throw AppError(message: "wallet__payment_failed_description", debugMessage: "A Spark withdrawal to a contact is still settling")
         }
-        return response.payment.id
+        let prepared = try await prepareSend(paymentRequest: address, amountSats: amountSats)
+        let pending = SparkContactWithdrawal(
+            address: address,
+            amountSats: amountSats,
+            contact: contact,
+            startedAt: UInt64(Date().timeIntervalSince1970)
+        )
+        Self.pendingContactWithdrawal = pending
+        isWithdrawingToContact = true
+        defer { isWithdrawingToContact = false }
+        let response: SendPaymentResponse
+        do {
+            response = try await requireSdk().sendPayment(request: SendPaymentRequest(
+                prepareResponse: prepared,
+                options: .bitcoinAddress(confirmationSpeed: .medium)
+            ))
+        } catch {
+            Logger.warn("Spark withdrawal to a contact failed or its outcome is unknown: \(error)", context: "SparkManager")
+            Task {
+                _ = try? await requireSdk().syncWallet(request: SyncWalletRequest())
+                await settleContactWithdrawal(allowClear: true)
+            }
+            throw error
+        }
+        Logger.info("Sent Spark withdrawal '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
+        guard case let .withdraw(txId, _, _) = response.payment.details else {
+            await refreshState()
+            return response.payment.id
+        }
+        await recordContactWithdrawal(response.payment, txId: txId, pending: pending)
+        await refreshState()
+        return txId
+    }
+
+    /// Settles the open contact withdrawal from Spark's payments: a withdrawal of its amount sent since it started is
+    /// recorded; with `allowClear`, a synced list without one closes it as never sent.
+    func settleContactWithdrawal(allowClear: Bool) async {
+        guard let pending = Self.pendingContactWithdrawal, !isWithdrawingToContact,
+              let payments = try? await requireSdk().listPayments(request: ListPaymentsRequest(sortAscending: false)).payments
+        else { return }
+        if let payment = Self.matchingWithdrawal(pending, in: payments), case let .withdraw(txId, _, _) = payment.details {
+            await recordContactWithdrawal(payment, txId: txId, pending: pending)
+        } else if allowClear {
+            Logger.info("Closed a Spark contact withdrawal Spark never listed", context: "SparkManager")
+            Self.pendingContactWithdrawal = nil
+        }
+    }
+
+    nonisolated static func matchingWithdrawal(_ pending: SparkContactWithdrawal, in payments: [Payment]) -> Payment? {
+        payments.first { payment in
+            guard payment.paymentType == .send, case let .withdraw(_, _, destination) = payment.details else { return false }
+            return destination == pending.address && sats(payment.amount) == pending.amountSats &&
+                payment.timestamp + contactWithdrawalClockSkewSecs >= pending.startedAt
+        }
+    }
+
+    private nonisolated static let contactWithdrawalClockSkewSecs: UInt64 = 120
+
+    private func recordContactWithdrawal(_ payment: Payment, txId: String, pending: SparkContactWithdrawal) async {
+        Self.pendingContactWithdrawal = nil
+        guard payment.status != .failed else { return }
+        Self.contactWithdrawalTxIds.insert(txId)
+        _ = await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
+            txid: txId,
+            address: pending.address,
+            amount: pending.amountSats,
+            fee: Self.sats(payment.fees),
+            feeRate: 0,
+            contact: pending.contact,
+            feeIsExact: true
+        )
+        if payment.status == .completed {
+            await CoreService.shared.activity.markOnchainActivityAsConfirmed(txId: txId)
+        }
+    }
+
+    private nonisolated static let pendingContactWithdrawalKey = "sparkPendingContactWithdrawal"
+    private nonisolated static let contactWithdrawalTxIdsKey = "sparkContactWithdrawalTxIds"
+
+    nonisolated static var pendingContactWithdrawal: SparkContactWithdrawal? {
+        get {
+            UserDefaults.standard.data(forKey: pendingContactWithdrawalKey)
+                .flatMap { try? JSONDecoder().decode(SparkContactWithdrawal.self, from: $0) }
+        }
+        set {
+            if let newValue, let data = try? JSONEncoder().encode(newValue) {
+                UserDefaults.standard.set(data, forKey: pendingContactWithdrawalKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: pendingContactWithdrawalKey)
+            }
+        }
+    }
+
+    /// Withdrawals paid to contacts, which stay sent payments rather than transfers to Savings.
+    nonisolated static var contactWithdrawalTxIds: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: contactWithdrawalTxIdsKey) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: contactWithdrawalTxIdsKey) }
     }
 
     /// What a unilateral exit needs if the Spark operators stop cooperating; it can reach several MB.
@@ -623,8 +720,14 @@ final class SparkManager: ChannelFreeLightningRail {
         for payment in payments where sendsRecordedWithoutFee.contains(payment.id) && Self.sats(payment.fees) > 0 {
             await recordActivity(payment)
         }
-        for txId in Self.transferTxIds(unclaimed: unclaimed, payments: payments) {
+        let contactWithdrawals = Self.contactWithdrawalTxIds
+        for txId in Self.transferTxIds(unclaimed: unclaimed, payments: payments) where !contactWithdrawals.contains(txId) {
             await CoreService.shared.activity.markOnchainActivityAsTransfer(txId: txId)
+        }
+        for payment in payments where payment.status == .completed {
+            if case let .withdraw(txId, _, _) = payment.details, contactWithdrawals.contains(txId) {
+                await CoreService.shared.activity.markOnchainActivityAsConfirmed(txId: txId)
+            }
         }
     }
 
@@ -690,7 +793,10 @@ final class SparkManager: ChannelFreeLightningRail {
 
     private func onSdkEvent(_ event: SdkEvent) async {
         switch event {
-        case .synced, .newDeposits, .claimedDeposits:
+        case .synced:
+            await refreshState()
+            await settleContactWithdrawal(allowClear: true)
+        case .newDeposits, .claimedDeposits:
             await refreshState()
         case let .unclaimedDeposits(deposits):
             Logger.warn("Found '\(deposits.count)' unclaimed Spark deposits", context: "SparkManager")
@@ -925,6 +1031,14 @@ enum SparkErrorCopy {
             return fallback
         }
     }
+}
+
+/// A Spark withdrawal to a contact's on-chain address, journaled before it is sent.
+struct SparkContactWithdrawal: Codable, Equatable {
+    let address: String
+    let amountSats: UInt64
+    let contact: String?
+    let startedAt: UInt64
 }
 
 struct SparkWithdrawal: Identifiable, Equatable {

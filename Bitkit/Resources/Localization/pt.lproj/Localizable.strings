@@ -1061,6 +1061,8 @@
 "wallet__send_sync_long_description" = "Parece que está desligado. Verifique a sua ligação. A Bitkit vai tentar voltar a ligar a cada poucos segundos.";
 "wallet__send_to" = "Para";
 "wallet__send_swap_route" = "Rota";
+"wallet__send_paykit_no_route__title" = "Can't pay this contact";
+"wallet__send_paykit_no_route__description" = "This contact has no payment method Bitkit can use right now.";
 "wallet__recipient_contact" = "Contato";
 "wallet__recipient_invoice" = "Colar Invoice";
 "wallet__recipient_manual" = "Inserir Manualmente";

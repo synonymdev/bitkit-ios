@@ -1,3 +1,4 @@
+import BitkitCore
 import SwiftUI
 
 enum SendFundingSource: Equatable {
@@ -10,7 +11,6 @@ enum SendFundingSource: Equatable {
 struct SendAmountView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var app: AppViewModel
-    @EnvironmentObject private var contactsManager: ContactsManager
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var wallet: WalletViewModel
@@ -44,11 +44,9 @@ struct SendAmountView: View {
         {
             return [.usdt]
         }
-        if app.paykitSwapRoute != nil {
-            return [.spending]
-        }
         var sources: [SendFundingSource] = []
-        if app.scannedLightningInvoice != nil || app.lnurlPayData != nil {
+        // A Spark leg can carry an on-chain contact payment from Spending.
+        if app.scannedLightningInvoice != nil || app.lnurlPayData != nil || app.paykitRoute?.offersSparkLeg == true {
             sources.append(.spending)
         }
         if app.scannedOnchainInvoice != nil {
@@ -393,6 +391,20 @@ struct SendAmountView: View {
                 return
             }
 
+            if !app.paykitUsesUsdt, let context = app.contactPaymentContext,
+               let route = app.paykitRoute ?? PaykitRouteService.routeUi(for: context, canRouteThroughSpark: false, canPayDirectly: true)
+            {
+                switch await routePaykitPayment(route, request: context.incomingPaymentRequest) {
+                case .leg:
+                    navigationPath.append(.confirm)
+                    return
+                case .refused:
+                    return
+                case .direct:
+                    break
+                }
+            }
+
             // Lightning payment
             if app.selectedWalletToPayFrom == .lightning {
                 if UInt64(wallet.maxSendLightningSats) < amountSats {
@@ -401,12 +413,6 @@ struct SendAmountView: View {
                         title: "Insufficient Funds",
                         description: "You do not have enough funds in the selected wallet."
                     )
-                    return
-                }
-
-                if let route = app.paykitSwapRoute {
-                    guard await quoteSwapRoute(route) else { return }
-                    navigationPath.append(.confirm)
                     return
                 }
 
@@ -458,41 +464,91 @@ struct SendAmountView: View {
         }
     }
 
-    private func quoteSwapRoute(_ route: PaykitSwapRoute) async -> Bool {
+    private enum PaykitRouteOutcome {
+        case direct
+        case leg
+        case refused
+    }
+
+    /// Asks bitkit-core's router how to pay the contact from the selected source. Direct pays the endpoint it names, a
+    /// service leg opens Confirm with its route and fee, and none stays here with the app's copy.
+    private func routePaykitPayment(_ route: PaykitRouteUi, request: PaykitPaymentRequest?) async -> PaykitRouteOutcome {
+        let source: PaykitRouteService.Source = app.selectedWalletToPayFrom == .lightning ? .spending : .savings
+        let lightningSpendable = source == .spending ? UInt64(max(0, wallet.maxSendLightningSats)) : 0
+        let onchainSpendable = source == .savings ? maxSendableAmount ?? UInt64(max(0, wallet.spendableOnchainBalanceSats)) : 0
+        var unrouted = route
+        unrouted.serviceLeg = nil
         do {
-            let paykitRoute = try await PubkySwapsRouteService.quote(
+            let picked = try await PaykitRouteService.route(
+                route,
                 amountSats: amountSats,
-                endpoint: route.endpoint,
-                lightningSpendableSats: UInt64(wallet.maxSendLightningSats),
-                onchainSpendableSats: UInt64(wallet.spendableOnchainBalanceSats),
-                contacts: contactsManager.contacts.map(\.publicKey)
+                source: source,
+                lightningSpendableSats: lightningSpendable,
+                onchainSpendableSats: onchainSpendable
             )
-            switch paykitRoute {
-            case let .swap(quote):
-                var quoted = route
-                quoted.quote = quote
-                quoted.serviceLeg = nil
-                quoted.providerName = contactsManager.contacts
-                    .first { PubkyPublicKeyFormat.matches($0.publicKey, quote.providerPubky) }?.displayName
-                app.paykitSwapRoute = quoted
-                return true
-            case let .none(reason):
-                app.toast(type: .error, title: t("slashtags__error_pay_title"), description: reason)
+            switch picked {
+            case let .direct(endpoint):
+                app.paykitRoute = unrouted
+                guard await payDirectly(endpoint) else { return .refused }
+                if let request {
+                    app.paykitPaymentTerms = try request.payment(using: app.paykitPaymentMethod)
+                }
+                return .direct
             case let .service(leg):
-                var quoted = route
-                quoted.quote = nil
-                quoted.serviceLeg = leg
-                app.paykitSwapRoute = quoted
-                return true
-            case .direct:
-                app.paykitSwapRoute = nil
-                app.toast(type: .error, title: t("slashtags__error_pay_title"), description: t("common__error_body"))
+                var routed = route
+                routed.serviceLeg = leg
+                app.paykitRoute = routed
+                return .leg
+            case let .none(reason):
+                Logger.warn("Found no Paykit route: '\(reason)'", context: "SendAmountView")
+                app.paykitRoute = unrouted
+                showNoRouteToast(isBalanceShort: PaykitRouteService.isBalanceShort(
+                    amountSats: amountSats,
+                    lightningSpendableSats: lightningSpendable,
+                    onchainSpendableSats: onchainSpendable
+                ))
+                return .refused
             }
         } catch {
-            Logger.error("Failed to route Paykit payment through Pubky Swaps: \(error)", context: "SendAmountView")
-            app.toast(type: .error, title: t("slashtags__error_pay_title"), description: error.localizedDescription)
+            Logger.error("Failed to route Paykit payment: \(error)", context: "SendAmountView")
+            showNoRouteToast(isBalanceShort: false)
+            return .refused
         }
-        return false
+    }
+
+    /// Switches the send to the endpoint the router picked, when the scan opened another one.
+    private func payDirectly(_ endpoint: PaykitEndpoint) async -> Bool {
+        if endpoint.isOnchain {
+            app.selectedWalletToPayFrom = .onchain
+            if app.scannedOnchainInvoice?.address != endpoint.value {
+                app.scannedOnchainInvoice = OnChainInvoice(address: endpoint.value, amountSatoshis: 0, label: nil, message: nil, params: nil)
+            }
+            return true
+        }
+        app.selectedWalletToPayFrom = .lightning
+        if endpoint.isLnurl {
+            return app.lnurlPayData != nil || app.scannedLightningInvoice != nil
+        }
+        if app.scannedLightningInvoice?.bolt11.caseInsensitiveCompare(endpoint.value) == .orderedSame {
+            return true
+        }
+        guard case let .lightning(invoice) = try? await decode(invoice: endpoint.value) else {
+            Logger.warn("Failed to decode the Lightning endpoint the router picked", context: "SendAmountView")
+            showNoRouteToast(isBalanceShort: false)
+            return false
+        }
+        app.scannedLightningInvoice = invoice
+        app.lnurlPayData = nil
+        return true
+    }
+
+    private func showNoRouteToast(isBalanceShort: Bool) {
+        app.toast(
+            type: .error,
+            title: t(isBalanceShort ? "wallet__send_amount_exceeded__title" : "wallet__send_paykit_no_route__title"),
+            description: t(isBalanceShort ? "wallet__send_amount_exceeded__description" : "wallet__send_paykit_no_route__description"),
+            accessibilityIdentifier: isBalanceShort ? "PaykitRouteBalanceToast" : "PaykitRouteNoneToast"
+        )
     }
 
     private func updateInputCap() {

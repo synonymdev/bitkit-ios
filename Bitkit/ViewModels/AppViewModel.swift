@@ -167,7 +167,7 @@ class AppViewModel: ObservableObject {
     @Published var contactPaymentContext: ContactPaymentContext?
     private(set) var didRejectScannedPayment = false
     @Published var paykitUsesUsdt = false
-    @Published var paykitSwapRoute: PaykitSwapRoute?
+    @Published var paykitRoute: PaykitRouteUi?
     @Published var paykitReviewedAmount: PaykitAmount?
     @Published var paykitPaymentTerms: PaykitRequestPricing.Payment?
 
@@ -1038,15 +1038,20 @@ extension AppViewModel {
             // Fallback to on-chain if address is available
             guard !invoice.address.isEmpty, validateIncomingOnchainPaymentRequestAmount(requestedAmount ?? invoice.amountSatoshis) else { return }
 
-            if let context = contactPaymentContext, let route = PubkySwapsRouteService.route(
-                for: context,
-                address: invoice.address,
-                onchainBalanceSats: max(paymentState.spendableOnchainBalanceSats, alternativeOnchainBalanceSats),
-                lightningBalanceSats: paymentState.totalLightningBalanceSats
-            ) {
+            // An on-chain contact payment opens with Spending as a source while Spark can carry it there, whether or
+            // not Savings covers it; Spending is the default when Savings holds no more than dust.
+            if let context = contactPaymentContext, scope != .onchainPayments,
+               let route = PaykitRouteService.routeUi(
+                   for: context,
+                   canRouteThroughSpark: PaykitRouteService.canRouteThroughSpark,
+                   canPayDirectly: false
+               ), route.offersSparkLeg
+            {
                 handleScannedOnchainInvoice(invoice)
-                paykitSwapRoute = route
-                selectedWalletToPayFrom = .lightning
+                paykitRoute = route
+                if max(paymentState.spendableOnchainBalanceSats, alternativeOnchainBalanceSats) <= UInt64(Env.dustLimit) {
+                    selectedWalletToPayFrom = .lightning
+                }
                 return
             }
 
@@ -1395,7 +1400,7 @@ extension AppViewModel {
         sendStateOwnerID = ownerID
         sendStateGeneration = UUID()
         paykitUsesUsdt = false
-        paykitSwapRoute = nil
+        paykitRoute = nil
         paykitReviewedAmount = nil
         paykitPaymentTerms = nil
         scannedLightningInvoice = nil
