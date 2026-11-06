@@ -142,6 +142,24 @@ final class SparkPaymentSafetyTests: XCTestCase {
         )
     }
 
+    func testSentQuoteMustStayWithinTheFeeLimit() {
+        XCTAssertNoThrow(try SparkManager.checkSendFee(10, maxFeeSats: 10))
+        XCTAssertNoThrow(try SparkManager.checkSendFee(500, maxFeeSats: nil))
+        XCTAssertThrowsError(try SparkManager.checkSendFee(11, maxFeeSats: 10)) { error in
+            XCTAssertTrue(error is Bitkit.ChannelFreeRailSendRefused)
+        }
+    }
+
+    func testHardwareTransferBelowTheClaimFeeNamesTheMinimum() {
+        let quote = SparkTransferQuote(
+            address: "bcrt1q-spark", satsPerVbyte: 20, networkFeeSats: 300, depositSats: 1000,
+            claimFees: SparkClaimFees(instantMaxSats: 2178, laterSats: 1980)
+        )
+
+        XCTAssertFalse(quote.coversClaimFee)
+        XCTAssertTrue(quote.belowClaimFeeMessage.contains(CurrencyFormatter.formatSats(2179)))
+    }
+
     func testSendMustFitTheQuotedFee() {
         XCTAssertTrue(SparkManager.fitsBalance(amountSats: 9000, feeSats: 572, balanceSats: 9572))
         XCTAssertFalse(SparkManager.fitsBalance(amountSats: 9001, feeSats: 572, balanceSats: 9572))

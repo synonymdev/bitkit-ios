@@ -97,6 +97,7 @@ final class ChannelFreeRailTests: XCTestCase {
         )
         _ = try await Bitkit.LightningService.shared.send(bolt11: "lnbcrt1rail", sats: 100, params: roomy)
         XCTAssertEqual(rail.sentBolt11, "lnbcrt1rail")
+        XCTAssertEqual(rail.sentFeeLimitSats, 10, "The rail checks its sent quote against the limit too")
     }
 }
 
@@ -228,6 +229,40 @@ extension ChannelFreeRailTests {
         XCTAssertFalse(ActivityService.keepsLightningStatus(existing: .pending, update: .succeeded, isStaleRailFailure: true))
     }
 
+    func testRailRunsTheSubmissionCheckBeforeSending() async {
+        struct Expired: Error {}
+
+        do {
+            _ = try await Bitkit.LightningService.shared.send(bolt11: "lnbcrt1rail", sats: 100) { throw Expired() }
+            XCTFail("Expected the submission check to stop the payment")
+        } catch {
+            XCTAssertTrue(error is Expired)
+            XCTAssertNil(rail.sentBolt11)
+        }
+    }
+
+    func testProofSettlesFromTheRailOfTheLatestAttempt() {
+        typealias Lookup = PaykitLightningPaymentProofLookup
+        XCTAssertEqual(Lookup.combined(ldk: .failed, rail: .pending, latestAttempt: .channelFree), .pending)
+        XCTAssertEqual(Lookup.combined(ldk: .failed, rail: .succeeded(preimage: "pp"), latestAttempt: .channelFree), .succeeded(preimage: "pp"))
+        XCTAssertEqual(Lookup.combined(ldk: .failed, rail: .succeeded(preimage: "pp"), latestAttempt: nil), .succeeded(preimage: "pp"))
+        XCTAssertEqual(Lookup.combined(ldk: .pending, rail: .failed, latestAttempt: .ldk), .pending)
+        XCTAssertEqual(Lookup.combined(ldk: .failed, rail: .pending, latestAttempt: nil), .pending, "A retry may still be in flight")
+        XCTAssertEqual(Lookup.combined(ldk: .failed, rail: .unavailable, latestAttempt: nil), .unavailable, "Spark could hold a retry")
+        XCTAssertEqual(Lookup.combined(ldk: .failed, rail: .unknown, latestAttempt: nil), .failed)
+        XCTAssertEqual(Lookup.combined(ldk: .unknown, rail: .unknown, latestAttempt: nil), .unknown)
+    }
+
+    func testQuickPayPrefersTheLiveAttemptAcrossRails() {
+        let record = QuickPayLedgerRecord(amountCents: 100, dayKey: "2026-11-06", invoicePaymentHash: "cc", paymentId: "cc")
+        let ldkFailed = QuickPayReconcileRow(paymentId: "cc", invoicePaymentHash: "cc", isOutboundBolt11: true, status: .failed)
+        let sparkPaid = QuickPayReconcileRow(railPayment: Bitkit.ChannelFreeRailPayment(
+            paymentHash: "cc", direction: .outbound, status: .succeeded, preimage: nil
+        ))
+
+        XCTAssertEqual(QuickPaySpendStore.ledgerMatch(record: record, rows: [ldkFailed, sparkPaid])?.status, .succeeded)
+    }
+
     func testSparkReadyTriggersOnceUntilItDropsAgain() {
         var transition = SparkReadinessTransition()
         XCTAssertFalse(transition.becameReady(false))
@@ -246,12 +281,15 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     var estimateError: Error?
     var listError: Error?
     var sentBolt11: String?
+    var sentFeeLimitSats: UInt64?
 
     func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String {
         "lnbcrt1fake"
     }
 
-    func send(bolt11: String, sats: UInt64?) async throws -> PaymentHash {
+    func send(bolt11: String, sats: UInt64?, maxFeeSats: UInt64?, beforeSubmission: @escaping () throws -> Void) async throws -> PaymentHash {
+        try beforeSubmission()
+        sentFeeLimitSats = maxFeeSats
         sentBolt11 = bolt11
         return "ee"
     }

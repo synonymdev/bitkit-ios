@@ -439,7 +439,9 @@ final class QuickPaySpendStore: @unchecked Sendable {
         if matches.isEmpty {
             return nil
         }
-        if let paymentId = record.paymentId, let exact = matches.first(where: { $0.paymentId == paymentId }) {
+        // LDK and Spark each list an attempt under the same payment id when an invoice was retried on the other rail,
+        // so a settled or pending attempt wins over an earlier failed one.
+        if let paymentId = record.paymentId, let exact = matches.filter({ $0.paymentId == paymentId }).max(by: { $0.status.rank < $1.status.rank }) {
             return exact
         }
         return matches.max { lhs, rhs in

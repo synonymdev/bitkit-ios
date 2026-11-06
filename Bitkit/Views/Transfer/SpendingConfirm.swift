@@ -38,7 +38,7 @@ struct SpendingConfirm: View {
                         quoteError(error)
                             .padding(.bottom, 16)
                     } else if let quote = flow.quote, !quote.coversClaimFee {
-                        BodyMText(Self.belowClaimFeeMessage(quote), textColor: .redAccent)
+                        BodyMText(quote.belowClaimFeeMessage, textColor: .redAccent)
                             .padding(.bottom, 16)
                             .accessibilityIdentifier("SpendingConfirmBelowMinimum")
                     }
@@ -93,13 +93,6 @@ struct SpendingConfirm: View {
         return quote.networkFeeSats > 0 && quote.coversClaimFee && quote.toSpendingSats(for: flow.speed) > 0
     }
 
-    private static func belowClaimFeeMessage(_ quote: SparkTransferQuote) -> String {
-        t(
-            "lightning__spending_amount__error_min__description",
-            variables: ["amount": CurrencyFormatter.formatSats(quote.claimFees.instantMaxSats.saturatingAdd(1))]
-        )
-    }
-
     private func quoteError(_ message: String) -> some View {
         HStack(alignment: .center, spacing: 16) {
             BodyMText(message, textColor: .redAccent)
@@ -124,7 +117,7 @@ struct SpendingConfirm: View {
             app.toast(
                 type: .warning,
                 title: t("lightning__spending_amount__error_min__title"),
-                description: Self.belowClaimFeeMessage(fresh)
+                description: fresh.belowClaimFeeMessage
             )
             throw SpendingFeesIncreasedError()
         }
