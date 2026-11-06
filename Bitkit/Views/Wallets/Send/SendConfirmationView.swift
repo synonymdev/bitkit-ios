@@ -1206,15 +1206,18 @@ struct SendConfirmationView: View {
         isHardwarePayment && !isContactPayment && !afterFundingSwitch
     }
 
-    /// The first hardware wallet whose balance covers the amount, used only when Savings is short of it, so any
-    /// other coin-selection failure is reported instead. The wallet's fee preview decides whether it can pay.
+    /// The hardware wallet with the largest balance, when it covers the amount, used only when Savings is short of it, so
+    /// any other coin-selection failure is reported instead. The wallet's fee preview decides whether it can pay; a smaller
+    /// wallet cannot pay what the largest cannot.
     static func hardwareWalletCovering(
         amount: UInt64,
         savingsBalanceSats: UInt64,
         balances: [(walletId: String, balanceSats: UInt64)]
     ) -> String? {
-        guard savingsBalanceSats < amount else { return nil }
-        return balances.first { $0.balanceSats >= amount }?.walletId
+        guard savingsBalanceSats < amount, let largest = balances.max(by: { $0.balanceSats < $1.balanceSats }),
+              largest.balanceSats >= amount
+        else { return nil }
+        return largest.walletId
     }
 
     /// A failed preview of the Savings fallback wallet is insufficient funds only when the amount leaves less than the fee

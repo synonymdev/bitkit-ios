@@ -193,6 +193,15 @@ final class SendConfirmationSwipeTests: XCTestCase {
         XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 300_000, savingsBalanceSats: 209_714, balances: []))
     }
 
+    func testAFixedAmountSavingsCannotPayMovesToTheLargestHardwareWallet() {
+        // The first wallet also covers the amount, but has less room for the fee.
+        let balances: [(walletId: String, balanceSats: UInt64)] = [("smaller", 300_100), ("larger", 549_577)]
+        XCTAssertEqual(
+            SendConfirmationView.hardwareWalletCovering(amount: 300_000, savingsBalanceSats: 0, balances: balances),
+            "larger"
+        )
+    }
+
     func testAFailedPreviewOfTheSavingsFallbackWalletIsInsufficientSavingsOnlyWhenTheFeeDoesNotFit() {
         func isShort(fallback: String?, wallet: String?, amount: UInt64, balance: UInt64 = 100_000, reserve: UInt64 = 1200) -> Bool {
             SendConfirmationView.isSavingsFallbackShortOfFee(
