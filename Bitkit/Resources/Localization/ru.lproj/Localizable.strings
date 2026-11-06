@@ -1139,7 +1139,8 @@
 "contacts__add_error_self" = "Нельзя добавить свой собственный pubky в контакты.";
 "contacts__add_retrieving" = "Получение\nданных контакта";
 "contacts__add_error" = "Не удалось добавить контакт";
-"contacts__add_disclaimer" = "Обратите внимание: чтобы платить друг другу приватно, вы и {name} должны добавить друг друга в контакты. В противном случае платёж будет виден публично.";
+"contacts__add_disclaimer" = "Обратите внимание: чтобы платить друг другу приватно, вы и {name} должны сначала добавить друг друга в контакты. Если вы заплатите, не сохранив контакт, платёж будет виден публично.";
+"contacts__pay_private_link_pending" = "Bitkit всё ещё настраивает приватное соединение с этим контактом. Убедитесь, что этот контакт тоже добавил вас, или попросите его отправить вам запрос на оплату.";
 "contacts__import_nav_title" = "Импорт";
 "contacts__import_found_title" = "Найдены\n<accent>профиль и контакты</accent>";
 "contacts__import_found_description" = "Bitkit нашёл данные профиля и контактов, связанные с pubky <accent>{key}</accent>";
@@ -1904,6 +1905,7 @@
 "subscriptions__allowances" = "Лимиты автооплаты";
 "subscriptions__allowances_empty_headline" = "Настройте\n<accent>лимиты автооплаты</accent>";
 "subscriptions__allowances_paused_description" = "Данные ваших бюджетов старше тех, что этот кошелёк уже использовал. Запросы будут ждать вашего подтверждения, пока вы не возобновите платежи.";
+"subscriptions__allowances_paused_restore_description" = "Этот кошелёк был восстановлен из резервной копии. Запросы будут ждать вашего подтверждения, пока вы не возобновите платежи.";
 "subscriptions__allowances_paused_resume" = "Возобновить";
 "subscriptions__allowances_paused_title" = "Автоматические платежи приостановлены";
 "subscriptions__allowances_empty_description" = "Вы можете задать лимиты расходов, чтобы автоматически оплачивать запросы на оплату от доверенных контактов.";
