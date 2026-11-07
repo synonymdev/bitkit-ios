@@ -150,6 +150,22 @@ final class PaykitRouteTests: XCTestCase {
         XCTAssertNil(SparkManager.matchingWithdrawal(pending, in: [other, earlier]))
     }
 
+    func testSparkLegDebitsTheL1BroadcastFeeToo() {
+        let fee = SendOnchainSpeedFeeQuote(userFeeSat: 750, l1BroadcastFeeSat: 1440)
+
+        XCTAssertEqual(SparkManager.withdrawalDebitSats(amountSats: 2000, fee: fee), 4190, "Confirm and the fee check use 2,190, not 750")
+        XCTAssertThrowsError(try SparkManager.checkWithdrawalFee(2190, shownFeeSats: 750))
+    }
+
+    func testContactWithdrawalStaysASendNotATransfer() {
+        let toContact = Self.withdrawal(id: "contact", to: onchain.value, amountSats: 20000, timestamp: 1)
+        let toSavings = Self.withdrawal(id: "savings", to: "bcrt1qsavings", amountSats: 5000, timestamp: 1)
+
+        let transfers = SparkManager.savingsTransferTxIds(unclaimed: [], payments: [toContact, toSavings], contactWithdrawals: ["tx-contact"])
+
+        XCTAssertEqual(transfers, ["tx-savings"])
+    }
+
     private static func endpoint(_ methodId: PublicPaykitService.MethodId, _ value: String) -> PublicPaykitService.Endpoint {
         PublicPaykitService.Endpoint(methodId: methodId, value: value, min: nil, max: nil, rawPayload: value)
     }

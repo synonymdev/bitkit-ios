@@ -151,6 +151,7 @@ enum PaykitRouteService {
             amountSats: leg.deliveredSat,
             contact: contact,
             request: request,
+            maxFeeSats: leg.debitSat.saturatingSub(leg.deliveredSat),
             beforeSend: beforeSend
         )
     }

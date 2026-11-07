@@ -448,7 +448,7 @@ final class SparkManager: ChannelFreeLightningRail {
         guard case let .bitcoinAddress(_, feeQuote) = prepared.paymentMethod else {
             throw AppError(message: "Unexpected Spark payment method", debugMessage: "\(prepared.paymentMethod)")
         }
-        let debitSats = amountSats + feeQuote.speedMedium.userFeeSat
+        let debitSats = Self.withdrawalDebitSats(amountSats: amountSats, fee: feeQuote.speedMedium)
         guard !feeQuote.isEstimate, balanceSats >= debitSats else { return nil }
         return ServiceRouteLeg(
             service: Self.routeService,
@@ -458,6 +458,11 @@ final class SparkManager: ChannelFreeLightningRail {
             atomicity: Self.routeAtomicity,
             validUntilUnix: feeQuote.expiresAt
         )
+    }
+
+    /// What a withdrawal of `amountSats` takes from the balance: the amount, Spark's fee and the L1 broadcast fee.
+    nonisolated static func withdrawalDebitSats(amountSats: UInt64, fee: SendOnchainSpeedFeeQuote) -> UInt64 {
+        amountSats.saturatingAdd(fee.userFeeSat).saturatingAdd(fee.l1BroadcastFeeSat)
     }
 
     /// Withdraws exactly `amountSats` to a contact's on-chain `address` at medium speed and returns its txid. The
@@ -470,12 +475,20 @@ final class SparkManager: ChannelFreeLightningRail {
         amountSats: UInt64,
         contact: String?,
         request: SparkContactWithdrawal.PaykitRequest? = nil,
+        maxFeeSats: UInt64? = nil,
         beforeSend: () async throws -> Void = {}
     ) async throws -> String {
         guard Self.pendingContactWithdrawal == nil else {
             throw AppError(message: "wallet__payment_failed_description", debugMessage: "A Spark withdrawal to a contact is still settling")
         }
         let prepared = try await prepareSend(paymentRequest: address, amountSats: amountSats)
+        if let maxFeeSats, case let .bitcoinAddress(_, feeQuote) = prepared.paymentMethod {
+            // The fee Confirm showed caps the one sent, broadcast fee included.
+            try Self.checkWithdrawalFee(
+                Self.withdrawalDebitSats(amountSats: amountSats, fee: feeQuote.speedMedium) - amountSats,
+                shownFeeSats: maxFeeSats
+            )
+        }
         try await beforeSend()
         let pending = SparkContactWithdrawal(
             address: address,
@@ -746,7 +759,7 @@ final class SparkManager: ChannelFreeLightningRail {
             await recordActivity(payment)
         }
         let contactWithdrawals = Self.contactWithdrawalTxIds
-        for txId in Self.transferTxIds(unclaimed: unclaimed, payments: payments) where !contactWithdrawals.contains(txId) {
+        for txId in Self.savingsTransferTxIds(unclaimed: unclaimed, payments: payments, contactWithdrawals: contactWithdrawals) {
             await CoreService.shared.activity.markOnchainActivityAsTransfer(txId: txId)
         }
         for payment in payments where payment.status == .completed {
@@ -761,6 +774,11 @@ final class SparkManager: ChannelFreeLightningRail {
             guard payment.status != .failed, case let .withdraw(txId, _, _) = payment.details else { return nil }
             return SparkWithdrawal(txid: txId, amountSats: sats(payment.amount), feeSats: sats(payment.fees))
         }
+    }
+
+    /// The transfers between Savings and Spark, without the withdrawals that paid contacts, which stay sends to them.
+    nonisolated static func savingsTransferTxIds(unclaimed: [DepositInfo], payments: [Payment], contactWithdrawals: Set<String>) -> [String] {
+        transferTxIds(unclaimed: unclaimed, payments: payments).filter { !contactWithdrawals.contains($0) }
     }
 
     /// On-chain transactions that moved funds between Savings and Spark, so their activities show as transfers.
