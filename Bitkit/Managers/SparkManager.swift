@@ -356,7 +356,7 @@ final class SparkManager: ChannelFreeLightningRail {
         listenerId = nil
         refreshAgain = false
         isReady = false
-        SparkExitManager.shared.wipe()
+        await SparkExitManager.shared.wipe()
         balanceSats = 0
         pendingDepositSats = 0
         recoverableFundsSats = 0

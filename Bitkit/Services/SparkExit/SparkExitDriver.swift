@@ -11,8 +11,10 @@ protocol SparkExitRecovering: Sendable {
     func importExitState(_ exitState: String) async throws
 }
 
-enum SparkExitFeeBumpError: Error {
+enum SparkExitFeeBumpError: Error, Equatable {
     case notConnected
+    /// At this rate a leaf could no longer pay its own exit and would stay on Spark: the rate is not offered.
+    case leavesBehind(sats: UInt64)
 }
 
 /// Moves an exit one step forward each tick: builds it once its fee funding confirms, broadcasts what is ready,
@@ -108,6 +110,13 @@ struct SparkExitDriver {
                 try await check(&record, recovering: recovering)
             } else {
                 try await broadcastWithoutSdk(&record)
+                // Every step in a block, as the chain host shows: the exit ends without waiting for the SDK. Leaves the
+                // operators could not co-sign need the SDK's retry, so that exit waits for it.
+                if let recovery = record.recovery?.response, !recovery.transactions.isEmpty, recovery.failed.isEmpty,
+                   recovery.transactions.allSatisfy(\.isConfirmed)
+                {
+                    await finish(&record, phase: .done)
+                }
             }
         }
         // Without the tip the countdown keeps its last target rather than jump to another measure.
@@ -525,7 +534,18 @@ struct SparkExitDriver {
         var record = record
         record.feeRateSatPerVbyte = rate
         await useExitStateSnapshot(&record, recovering: recovering)
-        guard let prepared = try await prepare(&record, recovering: recovering), prepared.funding != nil, !prepared.leaves.isEmpty else { return 0 }
+        let leftBehindBefore = record.leftBehindSats
+        let leavesBefore = Set(record.exitLeafIds)
+        guard let prepared = try await prepare(&record, recovering: recovering) else {
+            throw SparkExitFeeBumpError.leavesBehind(sats: record.leftBehindSats.saturatingSub(leftBehindBefore))
+        }
+        // A rate at which a leaf can't pay its own exit would leave it on Spark: never offered.
+        if Set(record.exitLeafIds) != leavesBefore {
+            let values = Dictionary((record.recovery?.response.leaves ?? []).map { ($0.leafId, $0.valueSats) }, uniquingKeysWith: { a, _ in a })
+            let dropped = leavesBefore.subtracting(record.exitLeafIds).reduce(UInt64(0)) { $0 + (values[$1] ?? 0) }
+            throw SparkExitFeeBumpError.leavesBehind(sats: dropped)
+        }
+        guard prepared.funding != nil, !prepared.leaves.isEmpty else { return 0 }
         do {
             _ = try await recovering.recover(
                 RecoverFundsRequest(prepared: prepared, fundingInputs: record.fundingInputs),
@@ -533,12 +553,10 @@ struct SparkExitDriver {
             )
             return 0
         } catch let SdkError.SparkError(message) where SparkExitMath.isUnexitableLeafError(message) {
-            // The build refused a leaf the prepare kept: priced again without it.
-            guard let leafId = SparkExitMath.unexitableLeafId(message), record.exitLeafIds.contains(leafId) else {
-                throw SdkError.SparkError(message)
-            }
-            leaveBehind([leafId], reason: message, in: &record)
-            return try await feeBumpShortfall(record, rate: rate)
+            // The build refused a leaf at this rate: it would stay on Spark, so the rate is not offered.
+            let leafId = SparkExitMath.unexitableLeafId(message)
+            let value = (record.recovery?.response.leaves ?? []).first { $0.leafId == leafId }?.valueSats ?? 0
+            throw SparkExitFeeBumpError.leavesBehind(sats: value)
         } catch let SdkError.InsufficientCpfpFunds(requiredSats, _) {
             var atRate = record
             atRate.feeRateSatPerVbyte = rate

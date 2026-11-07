@@ -89,9 +89,20 @@ final class SparkExitManager {
     /// Saves the record, and keeps the leaves it lost to an older state for every later exit of the wallet. The lost-leaf
     /// list is best effort: it never fails the save the driver relies on.
     private var saveRecord: (SparkExitRecord) throws -> Void {
-        let store = store
-        let lostLeafStore = lostLeafStore
-        return {
+        Self.gatedSave(store: store, lostLeafStore: lostLeafStore, gate: writeGate)
+    }
+
+    /// Writes from ticks and background runs, closed for good once the wallet is wiped: a tick still running then can
+    /// never write the deleted exit back.
+    @ObservationIgnored private var writeGate = SparkExitWriteGate()
+
+    nonisolated static func gatedSave(
+        store: SparkExitStore,
+        lostLeafStore: SparkExitLostLeafStore,
+        gate: SparkExitWriteGate
+    ) -> (SparkExitRecord) throws -> Void {
+        {
+            guard gate.isOpen else { throw SparkExitWriteGate.Closed() }
             try store.save($0)
             do {
                 try lostLeafStore.add(lostIn: $0)
@@ -155,8 +166,14 @@ final class SparkExitManager {
         return record
     }
 
-    /// Forgets the exit of a wallet being wiped.
-    func wipe() {
+    /// Forgets the exit of a wallet being wiped: closes the writes of any tick still running, waits for it to stop, then
+    /// deletes the record, so the exit can't come back.
+    func wipe() async {
+        writeGate.close()
+        while isTicking {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        writeGate = SparkExitWriteGate()
         try? store.delete()
         try? lostLeafStore.delete()
         record = nil
@@ -438,16 +455,24 @@ final class SparkExitManager {
             save: { _ in }
         )
         var options = SparkExitFeeBumpOption.options(exitRate: record.feeRateSatPerVbyte, fees: networkFees)
+        var leavesBehind = false
         for i in options.indices {
             do {
                 options[i].extraSats = try await driver.feeBumpShortfall(record, rate: options[i].rate)
+            } catch let SparkExitFeeBumpError.leavesBehind(sats) {
+                leavesBehind = true
+                Logger.info(
+                    "Spark exit fee bump to \(options[i].rate) sat/vB would leave \(sats) sats on Spark; not offered",
+                    context: "SparkExitManager"
+                )
             } catch {
                 Logger.warn("Failed to price a Spark exit fee bump to \(options[i].rate) sat/vB: \(error)", context: "SparkExitManager")
             }
         }
         feeBumpOptions = options.filter { $0.extraSats != nil }
         if feeBumpOptions.isEmpty {
-            feeBumpError = t("lightning__spark_exit__fee_bump_error")
+            let key = leavesBehind ? "lightning__spark_exit__fee_bump_leaves_behind" : "lightning__spark_exit__fee_bump_error"
+            feeBumpError = t(key)
         }
     }
 
@@ -888,5 +913,21 @@ private final class SparkExitTaskCompletion: @unchecked Sendable {
             return self.task
         }
         task?.setTaskCompleted(success: success)
+    }
+}
+
+/// Lets the exit's writes through until a wipe closes it.
+final class SparkExitWriteGate: @unchecked Sendable {
+    struct Closed: Error {}
+
+    private let lock = NSLock()
+    private var closed = false
+
+    var isOpen: Bool {
+        lock.withLock { !closed }
+    }
+
+    func close() {
+        lock.withLock { closed = true }
     }
 }

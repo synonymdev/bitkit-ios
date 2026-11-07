@@ -332,11 +332,9 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(record.isFailedLeavesReleased, true)
     }
 
-    /// Pricing a higher fee leaves behind a leaf the SDK refuses at that rate, on a copy only, and prices the rest.
-    func testFeeBumpPricingDropsALeafTheSdkRefusesAtTheHigherRate() async throws {
+    /// A rate at which a leaf can no longer pay its own exit would leave it on Spark: it is not offered (Android review).
+    func testFeeBumpPricingRefusesARateThatLeavesALeafBehind() async throws {
         var record = bumpedRecord()
-        record.phase = .running
-        record.exitStateSnapshot = nil
         record = SparkExitRecord(
             network: record.network, createdAt: record.createdAt, phase: .running, feeRateSatPerVbyte: 2,
             destination: record.destination, leafIds: ["leaf-1", "small"], funding: record.funding,
@@ -345,11 +343,61 @@ final class SparkExitReviewTests: XCTestCase {
         sdk.prepareErrors = [SdkError.SparkError("Leaf small cannot be exited: its refund cannot pay its own fee")]
         sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n2b")])]
 
-        let shortfall = try await driver().feeBumpShortfall(record, rate: 12)
+        do {
+            _ = try await driver().feeBumpShortfall(record, rate: 12)
+            XCTFail("a rate that leaves a leaf behind is not priced")
+        } catch let SparkExitFeeBumpError.leavesBehind(sats) {
+            XCTAssertEqual(sats, 0, "the small leaf's value is unknown before the first build")
+        }
+        XCTAssertTrue(sdk.recoverRequests.isEmpty)
 
-        XCTAssertEqual(shortfall, 0)
-        XCTAssertEqual(sdk.prepareRequests.last?.selection, .specific(leafIds: ["leaf-1"]))
-        XCTAssertNil(record.leftBehindLeaves, "the live exit keeps its leaves")
+        // A build that refuses a leaf the prepare kept is not offered either.
+        sdk = FakeSparkExitRecovering()
+        sdk.recoverError = SdkError.SparkError("Leaf leaf-1 cannot be exited: its refund cannot pay its own fee")
+        do {
+            _ = try await driver().feeBumpShortfall(bumpedRecord(), rate: 12)
+            XCTFail("expected leavesBehind")
+        } catch let SparkExitFeeBumpError.leavesBehind(sats) {
+            XCTAssertEqual(sats, 100_000)
+        }
+    }
+
+    /// The keyless pass finding every step in a block ends the exit without waiting for the SDK (Android review).
+    func testAKeylessPassThatSeesEveryStepConfirmedEndsTheExit() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 20000)
+        record.adopt(SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 990)),
+            SparkExitFixtures.tx("s", kind: .sweep, dependsOn: ["n1"]),
+        ]))
+        chain.confirmedTxids = ["s"]
+        chain.utxosByAddress["bcrt1qfunding"] = []
+
+        record = try await driver(withSdk: false).tick(record)
+
+        XCTAssertEqual(record.phase, .done)
+        XCTAssertTrue(chain.broadcasts.isEmpty)
+    }
+
+    /// A wipe closes the exit's writes: a tick still running can't write the deleted record back (Android review).
+    func testAClosedWriteGateDropsTheSaveOfATickStillRunning() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = SparkExitStore(url: dir.appendingPathComponent("spark-exit.json"))
+        let gate = SparkExitWriteGate()
+        let save = SparkExitManager.gatedSave(
+            store: store,
+            lostLeafStore: SparkExitLostLeafStore(url: dir.appendingPathComponent("lost.json")),
+            gate: gate
+        )
+
+        try save(SparkExitFixtures.record())
+        XCTAssertNotNil(try store.load())
+        try store.delete()
+
+        gate.close()
+        XCTAssertThrowsError(try save(SparkExitFixtures.record()))
+        XCTAssertNil(try store.load())
     }
 
     /// Reminder ids are scoped per exit, so a later exit's `failed` is never taken for an earlier exit's.
