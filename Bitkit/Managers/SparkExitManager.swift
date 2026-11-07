@@ -2,6 +2,7 @@ import BackgroundTasks
 import BitkitCore
 import BreezSdkSpark
 import Foundation
+import LDKNode
 import Observation
 import UserNotifications
 
@@ -168,12 +169,20 @@ final class SparkExitManager {
     /// costs nothing: Spark comes back as it was.
     var canCancel: Bool {
         guard let record else { return false }
-        return Self.canCancel(record, fundingSeenSats: fundingSeenSats)
+        return Self.canCancel(record, fundingSeenSats: fundingSeenSats, unresolvedSendAddress: unresolvedSendAddress)
     }
 
-    /// Nothing built, nothing paid from savings and nothing seen at the funding address.
-    nonisolated static func canCancel(_ record: SparkExitRecord, fundingSeenSats: UInt64) -> Bool {
+    /// The address of an unresolved savings send, read on every tick and before a cancel.
+    private(set) var unresolvedSendAddress: String?
+
+    /// Nothing built, nothing paid from savings and nothing seen at the funding address, and no unresolved savings send
+    /// to that address: such a send can still be retried from Send, always to the same address, which a forgotten exit
+    /// would no longer watch.
+    nonisolated static func canCancel(_ record: SparkExitRecord, fundingSeenSats: UInt64, unresolvedSendAddress: String? = nil) -> Bool {
         guard record.recovery == nil, record.fundedSats == 0, fundingSeenSats == 0, record.fundingPaymentTxid == nil else { return false }
+        if let unresolvedSendAddress, record.funding.contains(where: { $0.address == unresolvedSendAddress }) {
+            return false
+        }
         if case .awaitingFunding = record.phase {
             return true
         }
@@ -223,6 +232,7 @@ final class SparkExitManager {
         if let stored = try? Self.loadRecord(store: store, lostLeafStore: lostLeafStore) {
             record = stored
         }
+        unresolvedSendAddress = await OnchainSendAttemptService.shared.unresolvedSendAddress()
         guard canCancel, var record, let address = record.funding.first?.address else { return .keep }
         let utxos = try? await chain?.utxos(address: address)
         let outcome = Self.cancelOutcome(utxos: utxos)
@@ -292,6 +302,7 @@ final class SparkExitManager {
         )
         do {
             tipHeight = try? await chain.tipHeight()
+            unresolvedSendAddress = await OnchainSendAttemptService.shared.unresolvedSendAddress()
             await refreshNetworkFees(chain: chain)
             await refreshFundingSeen(chain: chain, record: current)
             var updated = try await driver.tick(current)
@@ -615,15 +626,29 @@ final class SparkExitManager {
                 createdAt: UInt64(Date().timeIntervalSince1970)
             )
         )
-        guard case let .accepted(txid) = result else {
+        // An unknown outcome may still have gone out: it is kept as paid (pending), so the exit, and its address, stay
+        // until the payment lands or the own-payment expiry forgets it.
+        guard let txid = Self.fundingTxid(result) else {
             throw AppError(message: t("wallet__send_error_tx_failed"), debugMessage: "Spark exit funding outcome: \(result)")
         }
-        _ = try? await attempts.resumeAcceptedOrdinarySend(
-            walletId: OnchainSendAttemptService.walletId(index: lightning.currentWalletIndex),
-            observedTxid: txid
-        )
-        Logger.info("Funded the Spark exit with \(sats) sats in \(txid)", context: "SparkExitManager")
+        if case .accepted = result {
+            _ = try? await attempts.resumeAcceptedOrdinarySend(
+                walletId: OnchainSendAttemptService.walletId(index: lightning.currentWalletIndex),
+                observedTxid: txid
+            )
+            Logger.info("Funded the Spark exit with \(sats) sats in \(txid)", context: "SparkExitManager")
+        } else {
+            Logger.warn("Spark exit funding \(txid) has an unknown outcome; kept as pending", context: "SparkExitManager")
+        }
         return txid
+    }
+
+    /// The funding payment's txid to keep as paid: accepted, or unknown (it may still have gone out). A refused one is none.
+    nonisolated static func fundingTxid(_ result: OnchainSendResult) -> String? {
+        switch result {
+        case let .accepted(txid), let .unknown(txid): txid
+        case .rejected: nil
+        }
     }
 
     // MARK: Keys

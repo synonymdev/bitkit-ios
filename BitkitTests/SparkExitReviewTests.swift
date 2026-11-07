@@ -386,4 +386,41 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(fees.economy, 1)
         XCTAssertEqual(SparkExitMath.sweepFeeRate(economy: fees.economy, exitRate: 5), 1)
     }
+
+    // MARK: Unknown funding broadcast (review thread r4498875767)
+
+    /// A savings broadcast with an unknown outcome is kept as paid (pending): it may still have gone out.
+    func testAnUnknownFundingBroadcastIsKeptAsPaid() {
+        XCTAssertEqual(SparkExitManager.fundingTxid(.unknown(txid: "unk")), "unk")
+        XCTAssertEqual(SparkExitManager.fundingTxid(.accepted(txid: "ok")), "ok")
+        XCTAssertNil(SparkExitManager.fundingTxid(.rejected(txid: "no", reason: "insufficient funds")))
+    }
+
+    /// With that payment pending, or any unresolved savings send to the exit's address, cancel is off: the record stays.
+    func testAPendingFundingSendKeepsTheExit() {
+        var record = SparkExitFixtures.record()
+        XCTAssertFalse(SparkExitManager.canCancel(record, fundingSeenSats: 0, unresolvedSendAddress: "bcrt1qfunding"))
+        XCTAssertTrue(SparkExitManager.canCancel(record, fundingSeenSats: 0, unresolvedSendAddress: "bcrt1qelsewhere"))
+        record.fundingPaymentTxid = "unk"
+        XCTAssertFalse(SparkExitManager.canCancel(record, fundingSeenSats: 0))
+        XCTAssertTrue(record.isAwaitingOwnPayment)
+    }
+
+    /// The unknown payment confirming late is adopted like any funding, and the exit builds.
+    func testALateConfirmationOfAnUnknownFundingSendIsAdopted() async throws {
+        var record = SparkExitFixtures.record()
+        record.fundingPaymentTxid = "unk"
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1")])]
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(SparkExitMath.fundingState(record, utxos: []), .paid(txid: "unk"))
+        XCTAssertNil(record.recovery)
+
+        chain.utxosByAddress["bcrt1qfunding"] = [SparkExitFixtures.utxo("unk", value: 20000)]
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.phase, .running)
+        XCTAssertEqual(record.funding.first?.txid, "unk")
+        XCTAssertNotNil(record.recovery)
+    }
 }
