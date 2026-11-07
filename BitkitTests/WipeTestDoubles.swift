@@ -89,6 +89,7 @@ final class RecordingWipeExecutor: WipeStepExecutor {
     var killedAfter: WipeStep?
     private(set) var ranSteps: [WipeStep] = []
     private(set) var scopeEntries = 0
+    private(set) var remoteCleanupPermissions: [Bool] = []
     private(set) var localScopeEntries = 0
     private(set) var localScopeExits = 0
     private(set) var finishedReasons: [WipeReason?] = []
@@ -98,8 +99,9 @@ final class RecordingWipeExecutor: WipeStepExecutor {
         self.device = device
     }
 
-    func withWipeScope(_ steps: () async throws -> Void) async throws {
+    func withWipeScope(permitsRemoteCleanup: Bool, _ steps: () async throws -> Void) async throws {
         scopeEntries += 1
+        remoteCleanupPermissions.append(permitsRemoteCleanup)
         try await steps()
     }
 

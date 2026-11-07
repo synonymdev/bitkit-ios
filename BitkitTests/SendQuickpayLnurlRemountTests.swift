@@ -185,9 +185,10 @@ final class SendQuickpayLnurlRemountTests: XCTestCase {
         let scan = Task { await scanner.handleScan("lnurl1latehomescan", context: .main) }
         await fulfillment(of: [started], timeout: 2)
         // User dismisses the scanner and taps Send while the LNURL pay params are still being fetched.
+        let scanGeneration = app.sendStateGeneration
         sheets.showSheet(.send, data: SendConfig(view: .options))
-        try await Task.sleep(for: .seconds(1))
         let manualSend = try XCTUnwrap(sheets.activeSheetConfiguration?.presentationID)
+        XCTAssertNotEqual(app.sendStateGeneration, scanGeneration, "Requesting Send must supersede the decode before the sheet mounts")
         try XCTUnwrap(continuation).resume(returning: .lnurlPay(data: lnurl(callback: "https://example.com/callback")))
         await scan.value
         try await Task.sleep(for: .seconds(3))

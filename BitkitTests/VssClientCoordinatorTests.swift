@@ -317,8 +317,8 @@ final class VssClientCoordinatorTests: XCTestCase {
             self.clients = clients
         }
 
-        func withWipeScope(_ steps: () async throws -> Void) async throws {
-            try await recording.withWipeScope(steps)
+        func withWipeScope(permitsRemoteCleanup: Bool, _ steps: () async throws -> Void) async throws {
+            try await recording.withWipeScope(permitsRemoteCleanup: permitsRemoteCleanup, steps)
         }
 
         func withLocalStateWipeScope(_ steps: () async throws -> Void) async throws {

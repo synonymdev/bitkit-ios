@@ -39,6 +39,8 @@ final class WipeCoordinatorTests: XCTestCase {
             let launchesNormally = await relaunched.prepareForLaunch()
 
             XCTAssertFalse(launchesNormally, "\(killedStep)")
+            XCTAssertEqual(firstRun.remoteCleanupPermissions, [true])
+            XCTAssertEqual(relaunch.remoteCleanupPermissions, [false])
             XCTAssertEqual(relaunch.ranSteps, WipeStep.allCases, "A resumed wipe runs every step again: \(killedStep)")
             XCTAssertNil(store.intent, "\(killedStep)")
             XCTAssertNil(store.pin, "\(killedStep)")
@@ -86,6 +88,7 @@ final class WipeCoordinatorTests: XCTestCase {
         XCTAssertNil(store.intent)
         XCTAssertEqual(coordinator.gate, .none)
         XCTAssertEqual(executor.finishedReasons, [.userReset])
+        XCTAssertEqual(executor.remoteCleanupPermissions, [true, false])
     }
 
     func testLocalWipeFailureKeepsTheGateAndRetriesUnderAFreshScope() async {

@@ -12,7 +12,7 @@ actor PrivatePaykitAddressReservationStore {
         walletBackupDataChangedSubject.eraseToAnyPublisher()
     }
 
-    private static let defaultsKey = "privatePaykitAddressReservations"
+    static let defaultsKey = "privatePaykitAddressReservations"
     private static let schemaVersion = 1
     static let legacyPublicAddressesKey = "publicPaykitLegacyAddresses"
 
@@ -34,6 +34,7 @@ actor PrivatePaykitAddressReservationStore {
     private let operations: AddressOperations
     private nonisolated let publicAssignmentRevision = OSAllocatedUnfairLock(initialState: UUID())
     private(set) var attributionRevision: UInt64 = 0
+    private var storedLedgerWasUnreadable = false
     private var ledger: Ledger {
         didSet {
             attributionRevision &+= 1
@@ -68,11 +69,12 @@ actor PrivatePaykitAddressReservationStore {
         self.operations = operations
 
         if let data = defaults.data(forKey: Self.defaultsKey),
-           let decoded = Self.decodeStoredLedger(data)
+           let decoded = Self.decodeStoredLedger(data), decoded.version == Self.schemaVersion
         {
             ledger = decoded
         } else {
             ledger = .empty
+            storedLedgerWasUnreadable = defaults.object(forKey: Self.defaultsKey) != nil
         }
     }
 
@@ -93,6 +95,7 @@ actor PrivatePaykitAddressReservationStore {
     }
 
     func restoreBackup(_ highestReservedReceiveIndexByAddressType: [String: UInt32]?, legacyPublicAddresses: [String]? = nil) {
+        storedLedgerWasUnreadable = false
         let legacyAddresses = Set(legacyPublicAddressesSnapshot() ?? []).union(legacyPublicAddresses ?? [])
         defaults.set(legacyAddresses.sorted(), forKey: Self.legacyPublicAddressesKey)
         var ceilings = self.highestReservedReceiveIndexByAddressType()
@@ -126,8 +129,34 @@ actor PrivatePaykitAddressReservationStore {
     }
 
     func contactPublicKeyForAttribution(forReservedAddress address: String) async throws -> String? {
+        return try await ProfileOperationAdmission.shared.withOperation(access: .local) {
+            try await contactPublicKey(for: address, assignments: contactAssignmentsForAttribution())
+        }
+    }
+
+    func contactsForReceipt(
+        _ contacts: PaykitReceivedPaymentContacts,
+        outputAddresses: [String],
+        expectedRevision: UInt64
+    ) async throws -> PaykitReceivedPaymentContacts {
+        try ProfileOperationAdmission.shared.checkReceiptAttribution()
+        guard attributionRevision == expectedRevision else { throw ProfileRemovalStore.StoreError.changed }
+        // Keep all outputs on the same snapshot, including when profile cleanup runs during derivation.
+        let assignments = contactAssignmentsForAttribution()
+        // Pending cleanup may have erased a reservation that conflicts with a retained request.
+        if !contacts.isEmpty, assignments.isEmpty {
+            _ = try ProfileOperationAdmission.shared.snapshot()
+        }
+        let result = try await contacts.includingReservations(for: outputAddresses) { address in
+            try await self.contactPublicKey(for: address, assignments: assignments)
+        }
+        try ProfileOperationAdmission.shared.checkReceiptAttribution()
+        return result
+    }
+
+    private func contactPublicKey(for address: String, assignments: [(publicKey: String, assignment: StoredAssignment)]) async throws -> String? {
         guard !address.isEmpty else { return nil }
-        for (publicKey, assignment) in contactAssignmentsForAttribution() {
+        for (publicKey, assignment) in assignments {
             guard let addressType = LDKNode.AddressType.from(string: assignment.addressType),
                   addressType.matchesAddressFormat(address, network: Env.network)
             else { continue }
@@ -155,28 +184,30 @@ actor PrivatePaykitAddressReservationStore {
     }
 
     func currentOrRotatedAddress(for publicKey: String) async throws -> String {
-        let assignmentKey = try Self.normalizedPublicKey(publicKey)
-        if let existing = try await reservedAddressDetails(forAssignmentKey: assignmentKey) {
-            guard isAddressTypeMonitored(existing.addressType) else {
-                clearCurrentContactAssignment(assignmentKey: assignmentKey)
-                return try await allocateAddress(forAssignmentKey: assignmentKey)
-            }
-
-            do {
-                let isUsed = try await operations.isUsed(existing.address)
-                if !isUsed {
-                    return existing.address
+        return try await ProfileOperationAdmission.shared.withOperation {
+            let assignmentKey = try Self.normalizedPublicKey(publicKey)
+            if let existing = try await reservedAddressDetails(forAssignmentKey: assignmentKey) {
+                guard isAddressTypeMonitored(existing.addressType) else {
+                    clearCurrentContactAssignment(assignmentKey: assignmentKey)
+                    return try await allocateAddress(forAssignmentKey: assignmentKey)
                 }
-            } catch {
-                Logger.warn(
-                    "Unable to verify private Paykit address usage; skipping private address publication: \(error)",
-                    context: "PrivatePaykit"
-                )
-                throw error
-            }
-        }
 
-        return try await allocateAddress(forAssignmentKey: assignmentKey)
+                do {
+                    let isUsed = try await operations.isUsed(existing.address)
+                    if !isUsed {
+                        return existing.address
+                    }
+                } catch {
+                    Logger.warn(
+                        "Unable to verify private Paykit address usage; skipping private address publication: \(error)",
+                        context: "PrivatePaykit"
+                    )
+                    throw error
+                }
+            }
+
+            return try await allocateAddress(forAssignmentKey: assignmentKey)
+        }
     }
 
     func currentOrRotatedPublicAddress(for publicKey: String) async throws -> String {
@@ -184,41 +215,46 @@ actor PrivatePaykitAddressReservationStore {
     }
 
     func currentOrRotatedPublicAddressSnapshot(for publicKey: String) async throws -> PublicAddressSnapshot {
-        let key = try Self.normalizedPublicKey(publicKey)
-        let revision = publicAssignmentRevision.withLock { $0 }
-        if let assignment = ledger.publicAssignments?[key],
-           let addressType = LDKNode.AddressType.from(string: assignment.addressType),
-           isAddressTypeMonitored(addressType)
-        {
-            let address = try await address(for: addressType, receiveIndex: assignment.receiveIndex)
-            if try await !operations.isUsed(address) {
-                return PublicAddressSnapshot(address: address, publicKey: key, revision: revision, revisionState: publicAssignmentRevision)
+        try await ProfileOperationAdmission.shared.withOperation {
+            let key = try Self.normalizedPublicKey(publicKey)
+            let revision = publicAssignmentRevision.withLock { $0 }
+            if let assignment = ledger.publicAssignments?[key],
+               let addressType = LDKNode.AddressType.from(string: assignment.addressType),
+               isAddressTypeMonitored(addressType)
+            {
+                let address = try await address(for: addressType, receiveIndex: assignment.receiveIndex)
+                if try await !operations.isUsed(address) {
+                    return PublicAddressSnapshot(address: address, publicKey: key, revision: revision, revisionState: publicAssignmentRevision)
+                }
             }
-        }
 
-        let addressType = LDKNode.AddressType.fromStorage(defaults.string(forKey: "selectedAddressType"))
-        let receiveAddress = reusableOnchainAddress
-        try await prepareReusableReceive(addressType: addressType)
-        var info = try await nextAvailableAddressInfo(addressType: addressType)
-        if info.address == receiveAddress || info.address == reusableOnchainAddress {
-            try await reconcileAddressTypeWithLdk(addressType, highestReserved: info.index)
-            let previousIndex = info.index
-            info = try await nextAvailableAddressInfo(addressType: addressType)
-            guard info.index > previousIndex, info.address != receiveAddress, info.address != reusableOnchainAddress else {
-                throw AppError(message: "Unable to reserve public payment address", debugMessage: nil)
+            let addressType = LDKNode.AddressType.fromStorage(defaults.string(forKey: "selectedAddressType"))
+            let receiveAddress = reusableOnchainAddress
+            try await prepareReusableReceive(addressType: addressType)
+            var info = try await nextAvailableAddressInfo(addressType: addressType)
+            if info.address == receiveAddress || info.address == reusableOnchainAddress {
+                try await reconcileAddressTypeWithLdk(addressType, highestReserved: info.index)
+                let previousIndex = info.index
+                info = try await nextAvailableAddressInfo(addressType: addressType)
+                guard info.index > previousIndex, info.address != receiveAddress, info.address != reusableOnchainAddress else {
+                    throw AppError(message: "Unable to reserve public payment address", debugMessage: nil)
+                }
             }
+            reserve(info.index, addressType: addressType)
+            // Keep a revealed index excluded even when removal revoked its publication owner.
+            persist()
+            markWalletBackupDataChanged()
+            try ProfileOperationAdmission.shared.checkCurrent()
+            var assignments = ledger.publicAssignments ?? [:]
+            assignments[key] = StoredAssignment(addressType: addressType.stringValue, receiveIndex: info.index)
+            ledger.publicAssignments = assignments
+            persist()
+            markWalletBackupDataChanged()
+            return PublicAddressSnapshot(
+                address: info.address, publicKey: key,
+                revision: publicAssignmentRevision.withLock { $0 }, revisionState: publicAssignmentRevision
+            )
         }
-        try Task.checkCancellation()
-        reserve(info.index, addressType: addressType)
-        var assignments = ledger.publicAssignments ?? [:]
-        assignments[key] = StoredAssignment(addressType: addressType.stringValue, receiveIndex: info.index)
-        ledger.publicAssignments = assignments
-        persist()
-        markWalletBackupDataChanged()
-        return PublicAddressSnapshot(
-            address: info.address, publicKey: key,
-            revision: publicAssignmentRevision.withLock { $0 }, revisionState: publicAssignmentRevision
-        )
     }
 
     func needsPublicAddressRotation(for publicKey: String) async throws -> Bool {
@@ -381,10 +417,15 @@ actor PrivatePaykitAddressReservationStore {
     // MARK: - Cleanup
 
     func clear() {
+        storedLedgerWasUnreadable = false
         defaults.removeObject(forKey: Self.legacyPublicAddressesKey)
         ledger = .empty
         defaults.removeObject(forKey: Self.defaultsKey)
         markWalletBackupDataChanged()
+    }
+
+    func validateWipedState() throws {
+        guard ledger == .empty, defaults.object(forKey: Self.defaultsKey) == nil else { throw ProfileRemovalStore.StoreError.changed }
     }
 
     func clearContactAssignments() {
@@ -392,6 +433,35 @@ actor PrivatePaykitAddressReservationStore {
         ledger.contactAssignments = [:]
         ledger.contactAssignmentHistory = [:]
         persist()
+    }
+
+    @discardableResult
+    func clearContactAssignmentsForRemoval() throws -> Data {
+        guard !storedLedgerWasUnreadable else { throw ProfileRemovalStore.StoreError.unavailable }
+        if let stored = defaults.object(forKey: Self.defaultsKey) {
+            guard let data = stored as? Data, let decoded = Self.decodeStoredLedger(data), decoded == ledger else {
+                throw ProfileRemovalStore.StoreError.unavailable
+            }
+        } else if ledger != .empty {
+            throw ProfileRemovalStore.StoreError.unavailable
+        }
+        var cleared = ledger
+        cleared.contactAssignments = [:]
+        cleared.contactAssignmentHistory = [:]
+        let encoded = try JSONEncoder().encode(cleared)
+        defaults.set(encoded, forKey: Self.defaultsKey)
+        ledger = cleared
+        markWalletBackupDataChanged()
+        return encoded
+    }
+
+    func validateRemovalState(_ encoded: Data) throws {
+        #if DEBUG
+            try ProfileRemovalTestFault.check("reservations:acknowledge")
+        #endif
+        guard Self.decodeStoredLedger(encoded) == ledger, defaults.data(forKey: Self.defaultsKey) == encoded else {
+            throw ProfileRemovalStore.StoreError.changed
+        }
     }
 
     func clearContactAssignment(publicKey: String) {
@@ -442,6 +512,10 @@ actor PrivatePaykitAddressReservationStore {
 
         reserve(addressInfo.index, addressType: addressType)
 
+        // Keep the already-revealed index excluded even if profile ownership ended during LDK allocation.
+        persist()
+        markWalletBackupDataChanged()
+        try ProfileOperationAdmission.shared.checkCurrent()
         let assignment = StoredAssignment(
             addressType: addressTypeKey,
             receiveIndex: addressInfo.index
@@ -564,7 +638,7 @@ actor PrivatePaykitAddressReservationStore {
 
     // MARK: - Models
 
-    private struct Ledger: Codable {
+    private struct Ledger: Codable, Equatable {
         static let empty = Ledger(
             version: PrivatePaykitAddressReservationStore.schemaVersion,
             reservedReceiveIndexesByAddressType: [:],

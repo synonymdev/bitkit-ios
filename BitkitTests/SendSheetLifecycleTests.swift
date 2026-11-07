@@ -60,34 +60,75 @@ final class SendSheetLifecycleTests: XCTestCase {
     }
 
     func testExternalLnurlHandoffDoesNotTransferOwnershipToOpenSend() async throws {
-        let (app, sheets, _, window, _) = makeHost()
+        try await checkExternalLnurlHandoff(duringStartup: false)
+    }
+
+    func testExternalLnurlHandoffDuringSendStartupPreservesPaymentTarget() async throws {
+        try await checkExternalLnurlHandoff(duringStartup: true)
+    }
+
+    func testExternalLnurlHandoffDuringConfirmationStartupPreservesPaymentTarget() async throws {
+        try await checkExternalLnurlHandoff(duringStartup: true, originalRoute: .lnurlPayConfirm)
+    }
+
+    private func checkExternalLnurlHandoff(duringStartup: Bool, originalRoute: SendRoute = .options) async throws {
+        var decoder: CheckedContinuation<BitkitCore.Scanner, Error>?
+        let operations = ScanPaymentOperations(
+            state: {
+                ScanPaymentState(isNodeRunning: true, spendableOnchainBalanceSats: 0, totalLightningBalanceSats: 1_000_000,
+                                 hasChannels: true, hasUsableChannels: true)
+            },
+            canSendLightning: { _ in true },
+            decodeInvoice: { _ in try await withCheckedThrowingContinuation { decoder = $0 } }
+        )
+        let tags = TagManager()
+        let (app, sheets, mount, window, wallet) = makeHost(scanPaymentOperations: operations, tags: tags)
+        tags.addTagToSelection("previous payment")
         defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
         SettingsViewModel.shared.enableQuickpay = false
-        sheets.showSheet(.send, data: SendConfig(view: .options))
-        try await Task.sleep(for: .seconds(1))
+        mount.isSendMounted = !duringStartup
+        if originalRoute == .lnurlPayConfirm {
+            app.lnurlPayData = makeLnurlData()
+            app.selectedWalletToPayFrom = .lightning
+        }
+        wallet.sendAmountSats = 123
+        sheets.showSheet(.send, data: SendConfig(view: originalRoute))
         let previousID = try XCTUnwrap(sheets.activeSheetConfiguration?.presentationID)
         let previousFlow = try XCTUnwrap(sheets.sendSheetItem?.state)
+        if duringStartup {
+            XCTAssertFalse(previousFlow.didStartSetup)
+        } else {
+            await eventually("the open Send owns its state") {
+                previousFlow.didStartSetup && previousFlow.ownedSendStateGeneration == app.sendStateGeneration
+            }
+        }
         let previousGeneration = app.sendStateGeneration
 
-        // External handleScannedData resets before awaiting decode while the old Send is still current.
-        app.resetSendState()
-        try await Task.sleep(for: .milliseconds(500))
-        XCTAssertEqual(previousFlow.ownedSendStateGeneration, previousGeneration,
-                       "An unrelated scan must not transfer its state to the open Send")
-        app.lnurlPayData = makeLnurlData()
-        app.selectedWalletToPayFrom = .lightning
-        PaymentNavigationHelper.openPaymentSheet(
-            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
-            settings: SettingsViewModel.shared, sheetViewModel: sheets
-        )
-        try await Task.sleep(for: .seconds(1))
+        let scanner = ScannerManager {}
+        scanner.configure(app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+                          settings: SettingsViewModel.shared, sheets: sheets)
+        let scan = Task { await scanner.handleScan("lnurl1externalhandoff", context: .main) }
+        await eventually("the external decode starts") { decoder != nil }
+        let pendingDecode = try XCTUnwrap(decoder)
+        let scanGeneration = app.sendStateGeneration
+        XCTAssertNotEqual(scanGeneration, previousGeneration)
+        mount.isSendMounted = true
+        await eventually("the original Send runs setup") { previousFlow.didStartSetup }
+        XCTAssertNil(wallet.sendAmountSats, "The original Send must initialize its wallet UI while the external decode is pending")
+        XCTAssertTrue(tags.selectedTags.isEmpty, "Old tags must not carry over to the next payment")
+        XCTAssertEqual(app.sendStateGeneration, scanGeneration, "Late setup must preserve the in-flight scan")
+        XCTAssertNotEqual(previousFlow.ownedSendStateGeneration, scanGeneration)
+        pendingDecode.resume(returning: .lnurlPay(data: makeLnurlData()))
+        await scan.value
+
+        await eventually("the replacement presents its LNURL confirmation") {
+            sheets.sendSheetItem?.initialRoute == .lnurlPayConfirm && sheets.sendSheetItem?.state.didStartSetup == true
+        }
         XCTAssertNotEqual(sheets.activeSheetConfiguration?.presentationID, previousID)
         XCTAssertEqual(sheets.sendSheetItem?.initialRoute, .lnurlPayConfirm)
-        XCTAssertEqual(app.lnurlPayData?.minSendable, 222_222,
-                       "Retiring Send must not clear the external replacement target")
+        XCTAssertEqual(app.lnurlPayData?.minSendable, 222_222, "Retiring Send must preserve the external target")
         sheets.hideSheet(reason: "Close external replacement")
-        try await Task.sleep(for: .milliseconds(500))
-        XCTAssertNil(app.lnurlPayData, "The replacement must still clean up its own state")
+        XCTAssertNil(app.lnurlPayData, "The replacement must clean up its own state")
     }
 
     func testImmediateOwnedResetDismissalReleasesContactContext() async throws {
@@ -135,7 +176,7 @@ final class SendSheetLifecycleTests: XCTestCase {
             counterparty: "pubkypayee", paymentRequestId: UUID().uuidString,
             localRole: .payer, state: .proposed, proposalStreamItemId: 1,
             proposalOutboundMessageId: nil, proposalOutboundStatus: nil,
-            proposalEventId: UUID().uuidString, proposalAppId: "bitkit",
+            proposalEventId: UUID().uuidString, proposalAppId: "bitkit", proposalRecordedAt: nil,
             payerAppId: nil, executionClaimAppId: nil,
             terms: PaymentRequestTerms(
                 amount: PaymentRequestAmount(value: "0.00001", asset: "btc"),
@@ -145,7 +186,7 @@ final class SendSheetLifecycleTests: XCTestCase {
                 paymentEndpoints: nil, requiredAppId: "bitkit", conversion: nil, paymentDeadline: nil,
                 metadata: PrivateJsonObject(text: "{}")
             ),
-            acceptedEventId: nil, acceptedOutboundStatus: nil, rejectedEventId: nil, rejectedOutboundStatus: nil,
+            acceptedEventId: nil, acceptedOutboundStatus: nil, acceptanceRecordedAt: nil, rejectedEventId: nil, rejectedOutboundStatus: nil,
             canceledEventId: nil, canceledOutboundStatus: nil, conversionQuotes: [], paymentProofs: [],
             lastStreamItemId: 1, lastOutboundMessageId: nil, lastOutboundStatus: nil,
             lastEventAt: nil, invalidReason: nil
@@ -406,7 +447,10 @@ final class SendSheetLifecycleTests: XCTestCase {
 
     private func makeHost(isEmbedded: Bool = false,
                           lnurlPayData: LnurlPayData? = nil,
-                          scenePhase: ScenePhase? = nil) -> (AppViewModel, SheetViewModel, ScanPromptState, UIWindow, WalletViewModel)
+                          scenePhase: ScenePhase? = nil,
+                          scanPaymentOperations: ScanPaymentOperations? = nil,
+                          tags: TagManager? = nil)
+        -> (AppViewModel, SheetViewModel, ScanPromptState, UIWindow, WalletViewModel)
     {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
@@ -415,7 +459,8 @@ final class SendSheetLifecycleTests: XCTestCase {
         addTeardownBlock { @MainActor in camera.hasPermission = hadCameraPermission }
         // Keep hosted navigation tests from requesting system camera permission.
         camera.hasPermission = true
-        let app = AppViewModel()
+        let sheets = SheetViewModel()
+        let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel(), scanPaymentOperations: scanPaymentOperations)
         if let lnurlPayData {
             app.lnurlPayData = lnurlPayData
             app.selectedWalletToPayFrom = .lightning
@@ -424,7 +469,6 @@ final class SendSheetLifecycleTests: XCTestCase {
         wallet.channelCount = 0
         wallet.channels = []
         wallet.nodeLifecycleState = .running
-        let sheets = SheetViewModel()
         if isEmbedded {
             sheets.showSheet(.subscription)
         }
@@ -443,7 +487,7 @@ final class SendSheetLifecycleTests: XCTestCase {
             .environmentObject(wallet)
             .environmentObject(NetworkMonitor())
             .environmentObject(SettingsViewModel.shared)
-            .environmentObject(TagManager())
+            .environmentObject(tags ?? TagManager())
             .environmentObject(PubkyProfileManager())
             .environmentObject(ActivityListViewModel())
             .environmentObject(ContactsManager())

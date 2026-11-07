@@ -161,6 +161,9 @@ class Keychain {
     }
 
     class func delete(key: KeychainEntryType) throws {
+        #if DEBUG
+            try ProfileRemovalTestFault.check("\(key.storageKey):delete")
+        #endif
         let query = [
             kSecClass as String: kSecClassGenericPassword as String,
             kSecAttrAccount as String: account(for: key),
@@ -256,39 +259,44 @@ class Keychain {
         return nil
     }
 
-    /// Throws rather than returning an empty list when the keychain cannot be read (before first unlock, for one), so a
-    /// wipe never mistakes an unreadable keychain for an empty one.
-    private class func storedAccounts() throws -> [String] {
+    class func getAllKeyChainStorageKeys(
+        copyMatching: (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus = SecItemCopyMatching
+    ) throws -> [String] {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecReturnAttributes as String: kCFBooleanTrue!,
             kSecMatchLimit as String: kSecMatchLimitAll,
             kSecAttrAccessGroup as String: Env.keychainGroup,
         ]
-
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
+        var result: CFTypeRef?
+        let status = copyMatching(query as CFDictionary, &result)
         if status == errSecItemNotFound {
             return []
         }
-
-        guard status == noErr, let items = result as? [[String: Any]] else {
-            Logger.error("Failed to list keychain entries. \(status.description)", context: "Keychain")
+        guard status == errSecSuccess, let items = result as? [[String: Any]] else {
+            Logger.error("Failed to enumerate keychain accounts: \(status)", context: "Keychain")
             throw KeychainError.failedToLoad
         }
-
-        return items.compactMap { $0[kSecAttrAccount as String] as? String }
+        return try items.map { item in
+            guard let account = item[kSecAttrAccount as String] as? String else {
+                throw KeychainError.failedToLoad
+            }
+            return account
+        }
     }
 
     /// Deletes every entry in the access group except `retained`. One that cannot be deleted does not stop the others of its
     /// stage: it throws once all of them have been tried.
-    class func wipeEntireKeychain(retaining retained: [KeychainEntryType] = []) throws {
+    class func wipeEntireKeychain(
+        retaining retained: [KeychainEntryType] = [],
+        copyMatching: (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus = SecItemCopyMatching,
+        delete: (CFDictionary) -> OSStatus = SecItemDelete
+    ) throws {
         try wipe(
-            accounts: storedAccounts(),
+            accounts: getAllKeyChainStorageKeys(copyMatching: copyMatching),
             retaining: Set(retained.map(account(for:))),
-            delete: deleteItem(account:),
-            remainingAccounts: storedAccounts
+            delete: { delete(itemQuery(account: $0)) },
+            remainingAccounts: { try getAllKeyChainStorageKeys(copyMatching: copyMatching) }
         )
     }
 
@@ -333,12 +341,54 @@ class Keychain {
         return key.hasPrefix("bip39_mnemonic_") || key.hasPrefix("bip39_passphrase_")
     }
 
-    private class func deleteItem(account: String) -> OSStatus {
+    private class func itemQuery(account: String) -> CFDictionary {
         let query = [
             kSecClass as String: kSecClassGenericPassword as String,
             kSecAttrAccount as String: account,
             kSecAttrAccessGroup as String: Env.keychainGroup,
         ] as [String: Any]
-        return SecItemDelete(query as CFDictionary)
+        return query as CFDictionary
     }
 }
+
+#if DEBUG
+    /// Opt-in failures at real local teardown boundaries on a disposable regtest simulator.
+    enum ProfileRemovalTestFault {
+        static let allowed: Set<String> = [
+            "paykit_session:delete", "pubky_secret_key:delete",
+            "shared-own:enumerate", "shared-own:delete",
+            "preferences:flush", "reservations:acknowledge", "marker:persist", "marker:complete",
+        ]
+
+        private static func selected() -> String? {
+            #if targetEnvironment(simulator)
+                guard Env.isE2E, Env.network == .regtest, !Env.isUnitTest,
+                      ProcessInfo.processInfo.arguments.contains("-E2E_PROFILE_REMOVAL_FAULTS") else { return nil }
+                let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                    .appendingPathComponent("profile-removal-test-fault")
+                guard let file = try? FileHandle(forReadingFrom: url) else { return nil }
+                defer { try? file.close() }
+                guard let data = try? file.read(upToCount: 129), data.count <= 128,
+                      let value = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      allowed.contains(value) else { return nil }
+                return value
+            #else
+                return nil
+            #endif
+        }
+
+        static func check(_ point: String) throws {
+            try check(point, selected: selected())
+        }
+
+        static func check(_ point: String, selected: String?) throws {
+            guard allowed.contains(point), selected == point else { return }
+            Logger.warn("Injected local profile cleanup failure: \(point)", context: "ProfileRemovalTestFault")
+            throw NSError(
+                domain: "ProfileRemovalTestFault",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Local profile cleanup storage unavailable (\(point))"]
+            )
+        }
+    }
+#endif
