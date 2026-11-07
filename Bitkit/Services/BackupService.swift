@@ -131,6 +131,7 @@ class BackupService {
 
     private let defaults: UserDefaults
     private let backupData: ((BackupCategory) async throws -> Data)?
+    private let isSparkExitActive: () async -> Bool
     private let uploadBackup: (String, Data) async throws -> Void
     private let waitForBackupDelay: () async throws -> Void
     private let waitForTemporaryFailureDelay: (UInt64) async throws -> Void
@@ -160,6 +161,7 @@ class BackupService {
     init(
         defaults: UserDefaults = .standard,
         backupData: ((BackupCategory) async throws -> Data)? = nil,
+        isSparkExitActive: @escaping () async -> Bool = { @MainActor in SparkExitManager.shared.isExiting },
         usdtRecoveryBackup: UsdtRecoveryBackupStore = UsdtRecoveryBackupStore(),
         uploadBackup: @escaping (String, Data) async throws -> Void = { key, data in
             _ = try await VssBackupClient.shared.putObject(key: key, data: data)
@@ -175,6 +177,7 @@ class BackupService {
         }
     ) {
         self.defaults = defaults
+        self.isSparkExitActive = isSparkExitActive
         self.backupData = backupData
         self.usdtRecoveryBackup = usdtRecoveryBackup
         self.uploadBackup = uploadBackup
@@ -1401,7 +1404,12 @@ class BackupService {
         }
     }
 
+    /// Nothing while an exit runs: the operators may stop reporting a leaf once it is being exited, so a fresh export
+    /// could drop the very leaf a restored wallet needs. The backup from before the exit stays.
     private func sparkExitBackupData() async throws -> Data? {
+        if await isSparkExitActive() {
+            return nil
+        }
         if let backupData {
             return try await backupData(.sparkExit)
         }
