@@ -164,6 +164,23 @@ final class PaykitRouteTests: XCTestCase {
         XCTAssertEqual(SparkManager.matchingWithdrawal(pending, in: [earlier, sent])?.id, "sent")
     }
 
+    func testUnlistedWithdrawalIsDroppedOnlyAfterTheExpiry() {
+        var pending = SparkContactWithdrawal(address: onchain.value, amountSats: 20000, contact: "contact", startedAt: 1000)
+        let expiry = SparkManager.contactWithdrawalExpirySecs
+
+        XCTAssertFalse(
+            SparkManager.canCloseUnlisted(pending, now: 1001),
+            "A sync right after the send may not list the withdrawal yet"
+        )
+        XCTAssertTrue(SparkManager.canCloseUnlisted(pending, now: 1000 + expiry))
+
+        pending.paymentId = "sent"
+        XCTAssertFalse(
+            SparkManager.canCloseUnlisted(pending, now: 1000 + expiry * 10),
+            "A withdrawal Spark returned went out and is never dropped as unsent"
+        )
+    }
+
     func testJournalStaysOpenUntilEveryLocalRecordIsSaved() async {
         let saved = await SparkManager.recordWithdrawalLocally(saveProof: { true }, saveActivity: { true }, saveTags: { true })
         XCTAssertTrue(saved)

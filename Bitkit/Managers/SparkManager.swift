@@ -524,7 +524,8 @@ final class SparkManager: ChannelFreeLightningRail {
         } catch {
             Logger.warn("Spark withdrawal to a contact failed or its outcome is unknown: \(error)", context: "SparkManager")
             Task {
-                _ = try? await requireSdk().syncWallet(request: SyncWalletRequest())
+                // Only a sync that succeeded now can tell whether this withdrawal went out.
+                guard await (try? requireSdk().syncWallet(request: SyncWalletRequest())) != nil else { return }
                 await settleContactWithdrawal(allowClear: true)
             }
             throw error
@@ -542,21 +543,30 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// Settles the open contact withdrawal from Spark's payments: its own payment, once Spark returned it, or else a
-    /// withdrawal to its address and amount that wasn't listed before it started. With `allowClear`, a synced list
-    /// without one closes it as never sent and releases the request's proof.
-    func settleContactWithdrawal(allowClear: Bool) async {
+    /// withdrawal to its address and amount that wasn't listed before it started. With `allowClear` (after a sync that
+    /// succeeded), a list without one closes it as never sent and releases the request's proof, but only once the
+    /// attempt is past `contactWithdrawalExpirySecs`, so a withdrawal Spark hasn't listed yet is never dropped. One still
+    /// in flight in this process is never settled.
+    func settleContactWithdrawal(allowClear: Bool, now: UInt64 = UInt64(Date().timeIntervalSince1970)) async {
         guard let pending = Self.pendingContactWithdrawal, !isWithdrawingToContact,
               let payments = try? await requireSdk().listPayments(request: ListPaymentsRequest(sortAscending: false)).payments
         else { return }
         if let payment = Self.matchingWithdrawal(pending, in: payments), case let .withdraw(txId, _, _) = payment.details {
             await recordContactWithdrawal(payment, txId: txId, pending: pending)
-        } else if allowClear, pending.paymentId == nil {
+        } else if allowClear, Self.canCloseUnlisted(pending, now: now) {
             Logger.info("Closed a Spark contact withdrawal Spark never listed", context: "SparkManager")
             Self.pendingContactWithdrawal = nil
             if let request = pending.request {
                 await PaykitPaymentProofService.shared.failSparkOnchainPayment(requestId: request.id, identity: request.identity)
             }
         }
+    }
+
+    nonisolated static let contactWithdrawalExpirySecs: UInt64 = 600
+
+    /// An attempt Spark never returned nor listed is taken as unsent only after the expiry.
+    nonisolated static func canCloseUnlisted(_ pending: SparkContactWithdrawal, now: UInt64) -> Bool {
+        pending.paymentId == nil && now >= pending.startedAt + contactWithdrawalExpirySecs
     }
 
     nonisolated static func matchingWithdrawal(_ pending: SparkContactWithdrawal, in payments: [Payment]) -> Payment? {
