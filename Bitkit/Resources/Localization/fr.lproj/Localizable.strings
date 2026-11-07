@@ -1306,6 +1306,9 @@
 "wallet__send_sync_long_title" = "Problèmes de\n<accent>connexion</accent>";
 "wallet__send_sync_long_description" = "Il semble que vous soyez déconnecté. Veuillez vérifier votre connexion. Bitkit tentera de se reconnecter toutes les quelques secondes.";
 "wallet__send_to" = "Pour";
+"wallet__send_swap_route" = "Itinéraire";
+"wallet__send_paykit_no_route__title" = "Impossible de payer ce contact";
+"wallet__send_paykit_no_route__description" = "Ce contact n’a actuellement aucun moyen de paiement que Bitkit peut utiliser.";
 "wallet__recipient_contact" = "Contact";
 "wallet__recipient_invoice" = "Coller la facture";
 "wallet__recipient_manual" = "Entrer manuellement";

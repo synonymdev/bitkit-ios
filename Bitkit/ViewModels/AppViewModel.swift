@@ -167,6 +167,7 @@ class AppViewModel: ObservableObject {
     @Published var contactPaymentContext: ContactPaymentContext?
     private(set) var didRejectScannedPayment = false
     @Published var paykitUsesUsdt = false
+    @Published var paykitRoute: PaykitRouteUi?
     @Published var paykitReviewedAmount: PaykitAmount?
     @Published var paykitPaymentTerms: PaykitRequestPricing.Payment?
 
@@ -823,6 +824,22 @@ extension AppViewModel {
                 isUsdtEnabled: SettingsViewModel.shared.isUsdtEnabled
             ) || context.incomingPaymentRequest.map { PaykitUsdtPaymentService.shared.hasBinding(for: $0.id) } == true
             selectedWalletToPayFrom = canUseLightning || (hasLightning && scannedOnchainInvoice == nil) ? .lightning : .onchain
+            // A Spark leg can pay the on-chain endpoint from Spending here too, when Lightning can't pay directly.
+            if !canUseLightning, scannedOnchainInvoice != nil,
+               let route = PaykitRouteService.routeUi(
+                   for: context,
+                   canRouteThroughSpark: PaykitRouteService.canRouteThroughSpark,
+                   canPayDirectly: false
+               ), route.offersSparkLeg
+            {
+                paykitRoute = route
+                // A request keeps its source here; its Confirm asks the router.
+                if !hasLightning, context.incomingPaymentRequest == nil,
+                   max(state.spendableOnchainBalanceSats, alternativeOnchainBalanceSats) <= UInt64(Env.dustLimit)
+                {
+                    selectedWalletToPayFrom = .lightning
+                }
+            }
             let canSelectUsdt = SettingsViewModel.shared.isUsdtEnabled && context.endpoints.contains { $0.methodId == .usdtArbitrum }
             if !paykitUsesUsdt, !canSelectUsdt, let request = context.incomingPaymentRequest {
                 do {
@@ -1036,6 +1053,23 @@ extension AppViewModel {
 
             // Fallback to on-chain if address is available
             guard !invoice.address.isEmpty, validateIncomingOnchainPaymentRequestAmount(requestedAmount ?? invoice.amountSatoshis) else { return }
+
+            // An on-chain contact payment opens with Spending as a source while Spark can carry it there, whether or
+            // not Savings covers it; Spending is the default when Savings holds no more than dust.
+            if let context = contactPaymentContext, scope != .onchainPayments,
+               let route = PaykitRouteService.routeUi(
+                   for: context,
+                   canRouteThroughSpark: PaykitRouteService.canRouteThroughSpark,
+                   canPayDirectly: false
+               ), route.offersSparkLeg
+            {
+                handleScannedOnchainInvoice(invoice)
+                paykitRoute = route
+                if max(paymentState.spendableOnchainBalanceSats, alternativeOnchainBalanceSats) <= UInt64(Env.dustLimit) {
+                    selectedWalletToPayFrom = .lightning
+                }
+                return
+            }
 
             // If node is running, validate balance immediately
             if paymentState.isNodeRunning {
@@ -1382,6 +1416,7 @@ extension AppViewModel {
         sendStateOwnerID = ownerID
         sendStateGeneration = UUID()
         paykitUsesUsdt = false
+        paykitRoute = nil
         paykitReviewedAmount = nil
         paykitPaymentTerms = nil
         scannedLightningInvoice = nil

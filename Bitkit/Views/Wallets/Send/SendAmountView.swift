@@ -1,3 +1,4 @@
+import BitkitCore
 import SwiftUI
 
 enum SendFundingSource: Equatable {
@@ -44,7 +45,8 @@ struct SendAmountView: View {
             return [.usdt]
         }
         var sources: [SendFundingSource] = []
-        if app.scannedLightningInvoice != nil || app.lnurlPayData != nil {
+        // A Spark leg can carry an on-chain contact payment from Spending.
+        if app.scannedLightningInvoice != nil || app.lnurlPayData != nil || app.paykitRoute?.offersSparkLeg == true {
             sources.append(.spending)
         }
         if app.scannedOnchainInvoice != nil {
@@ -389,6 +391,20 @@ struct SendAmountView: View {
                 return
             }
 
+            if !app.paykitUsesUsdt, let context = app.contactPaymentContext,
+               let route = app.paykitRoute ?? PaykitRouteService.routeUi(for: context, canRouteThroughSpark: false, canPayDirectly: true)
+            {
+                switch await routePaykitPayment(route, request: context.incomingPaymentRequest) {
+                case .leg:
+                    navigationPath.append(.confirm)
+                    return
+                case .refused:
+                    return
+                case .direct:
+                    break
+                }
+            }
+
             // Lightning payment
             if app.selectedWalletToPayFrom == .lightning {
                 if UInt64(wallet.maxSendLightningSats) < amountSats {
@@ -446,6 +462,18 @@ struct SendAmountView: View {
             Logger.error(error, context: "Failed to set fee rate or send amount")
             app.toast(type: .error, title: "Send Error", description: error.localizedDescription)
         }
+    }
+
+    private func routePaykitPayment(_ route: PaykitRouteUi, request: PaykitPaymentRequest?) async -> PaykitRouteOutcome {
+        let source: PaykitRouteService.Source = app.selectedWalletToPayFrom == .lightning ? .spending : .savings
+        return await app.routeContactPayment(
+            route,
+            amountSats: amountSats,
+            source: source,
+            lightningSpendableSats: source == .spending ? UInt64(max(0, wallet.maxSendLightningSats)) : 0,
+            onchainSpendableSats: source == .savings ? maxSendableAmount ?? UInt64(max(0, wallet.spendableOnchainBalanceSats)) : 0,
+            request: request
+        )
     }
 
     private func updateInputCap() {
