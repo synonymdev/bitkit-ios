@@ -113,7 +113,7 @@ final class PaykitRouteTests: XCTestCase {
 
     // MARK: - Spark leg offer
 
-    func testSparkLegIsOfferedOnlyForAnOnchainContactPaymentTheUserStarts() {
+    func testSparkLegIsOfferedForAnOnchainContactLightningCantPay() {
         let onchainOnly = ContactPaymentContext(
             publicKey: "contact",
             privatePaymentContext: nil,

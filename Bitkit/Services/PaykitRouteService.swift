@@ -47,9 +47,9 @@ enum PaykitRouteService {
         SparkManager.shared.isReady && SparkManager.shared.sendableSats > 0
     }
 
-    /// The route for a contact payment, or nil without bitcoin endpoints. A Spark leg is offered only for a payment the
-    /// user starts (an incoming request's on-chain proof needs the node's send-attempt store) to a contact with an
-    /// on-chain endpoint, while Spark can route and the payment can't go directly over Lightning.
+    /// The route for a contact payment, or nil without bitcoin endpoints. A Spark leg is offered to a contact with an
+    /// on-chain endpoint while Spark can route and the payment can't go directly over Lightning; a request it pays gets
+    /// its on-chain proof from the withdrawal's txid.
     static func routeUi(
         for context: ContactPaymentContext,
         canRouteThroughSpark: Bool,
@@ -59,8 +59,7 @@ enum PaykitRouteService {
             .filter { $0.methodId != .usdtArbitrum }
             .map { PaykitEndpoint(methodId: $0.methodId.rawValue, value: $0.value) }
         guard !endpoints.isEmpty else { return nil }
-        let offersSparkLeg = canRouteThroughSpark && !canPayDirectly && context.incomingPaymentRequest == nil &&
-            endpoints.contains(where: \.isOnchain)
+        let offersSparkLeg = canRouteThroughSpark && !canPayDirectly && endpoints.contains(where: \.isOnchain)
         return PaykitRouteUi(endpoints: endpoints, offersSparkLeg: offersSparkLeg)
     }
 
@@ -138,10 +137,121 @@ enum PaykitRouteService {
     }
 
     /// Runs a service leg the router picked and returns the txid that pays the contact.
-    static func pay(_ leg: ServiceRouteLeg, contact: String?) async throws -> String {
+    static func pay(
+        _ leg: ServiceRouteLeg,
+        contact: String?,
+        request: SparkContactWithdrawal.PaykitRequest? = nil,
+        beforeSend: () async throws -> Void = {}
+    ) async throws -> String {
         guard leg.service == SparkManager.routeService else {
             throw AppError(message: "wallet__payment_failed_description", debugMessage: "Unsupported route service \(leg.service)")
         }
-        return try await SparkManager.shared.withdraw(to: leg.endpoint.value, amountSats: leg.deliveredSat, contact: contact)
+        return try await SparkManager.shared.withdraw(
+            to: leg.endpoint.value,
+            amountSats: leg.deliveredSat,
+            contact: contact,
+            request: request,
+            beforeSend: beforeSend
+        )
+    }
+}
+
+/// What asking the router did to a contact payment.
+enum PaykitRouteOutcome: Equatable {
+    /// The send pays the endpoint the router picked.
+    case direct
+    /// The send pays through the service leg in `AppViewModel.paykitRoute`.
+    case leg
+    /// No route pays the contact; the app's copy says why.
+    case refused
+}
+
+@MainActor
+extension AppViewModel {
+    /// Asks bitkit-core's router how to pay the contact from `source`. Direct switches the send to the endpoint it
+    /// names, a service leg is kept in `paykitRoute` for Confirm, and none shows the app's copy, its reason going to the
+    /// log only.
+    func routeContactPayment(
+        _ route: PaykitRouteUi,
+        amountSats: UInt64,
+        source: PaykitRouteService.Source,
+        lightningSpendableSats: UInt64,
+        onchainSpendableSats: UInt64,
+        request: PaykitPaymentRequest?
+    ) async -> PaykitRouteOutcome {
+        var unrouted = route
+        unrouted.serviceLeg = nil
+        do {
+            let picked = try await PaykitRouteService.route(
+                route,
+                amountSats: amountSats,
+                source: source,
+                lightningSpendableSats: lightningSpendableSats,
+                onchainSpendableSats: onchainSpendableSats
+            )
+            switch picked {
+            case let .direct(endpoint):
+                paykitRoute = unrouted
+                guard await payDirectly(endpoint) else { return .refused }
+                if let request {
+                    paykitPaymentTerms = try request.payment(using: paykitPaymentMethod)
+                }
+                return .direct
+            case let .service(leg):
+                var routed = route
+                routed.serviceLeg = leg
+                paykitRoute = routed
+                selectedWalletToPayFrom = .lightning
+                return .leg
+            case let .none(reason):
+                Logger.warn("Found no Paykit route: '\(reason)'", context: "PaykitRoute")
+                paykitRoute = unrouted
+                showNoPaykitRouteToast(isBalanceShort: PaykitRouteService.isBalanceShort(
+                    amountSats: amountSats,
+                    lightningSpendableSats: lightningSpendableSats,
+                    onchainSpendableSats: onchainSpendableSats
+                ))
+                return .refused
+            }
+        } catch {
+            Logger.error("Failed to route Paykit payment: \(error)", context: "PaykitRoute")
+            showNoPaykitRouteToast(isBalanceShort: false)
+            return .refused
+        }
+    }
+
+    /// Switches the send to the endpoint the router picked, when the scan opened another one.
+    private func payDirectly(_ endpoint: PaykitEndpoint) async -> Bool {
+        if endpoint.isOnchain {
+            selectedWalletToPayFrom = .onchain
+            if scannedOnchainInvoice?.address != endpoint.value {
+                scannedOnchainInvoice = OnChainInvoice(address: endpoint.value, amountSatoshis: 0, label: nil, message: nil, params: nil)
+            }
+            return true
+        }
+        selectedWalletToPayFrom = .lightning
+        if endpoint.isLnurl {
+            return lnurlPayData != nil || scannedLightningInvoice != nil
+        }
+        if scannedLightningInvoice?.bolt11.caseInsensitiveCompare(endpoint.value) == .orderedSame {
+            return true
+        }
+        guard case let .lightning(invoice) = try? await decode(invoice: endpoint.value) else {
+            Logger.warn("Failed to decode the Lightning endpoint the router picked", context: "PaykitRoute")
+            showNoPaykitRouteToast(isBalanceShort: false)
+            return false
+        }
+        scannedLightningInvoice = invoice
+        lnurlPayData = nil
+        return true
+    }
+
+    func showNoPaykitRouteToast(isBalanceShort: Bool) {
+        toast(
+            type: .error,
+            title: t(isBalanceShort ? "wallet__send_amount_exceeded__title" : "wallet__send_paykit_no_route__title"),
+            description: t(isBalanceShort ? "wallet__send_amount_exceeded__description" : "wallet__send_paykit_no_route__description"),
+            accessibilityIdentifier: isBalanceShort ? "PaykitRouteBalanceToast" : "PaykitRouteNoneToast"
+        )
     }
 }

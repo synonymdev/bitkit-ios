@@ -1329,6 +1329,42 @@ actor PaykitPaymentProofService {
         return true
     }
 
+    /// Completes the on-chain proof of a request Spark paid by withdrawing to the payee's address. Spark's withdrawal
+    /// isn't one of the node's send attempts, so its txid is the proof as soon as Spark returns it.
+    func completeSparkOnchainPayment(requestId: PaykitPaymentRequest.ID, identity: String, txid: String) async -> Bool {
+        guard Self.isHex(txid, byteCount: 32) else { return false }
+        do {
+            let completed: PendingPaykitPaymentProof? = try await mutationLock.withLock {
+                var proofs = try await loadProofs()
+                guard let index = proofs.lastIndex(where: {
+                    PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId && $0.kind == .onchain &&
+                        $0.paymentStarted && $0.onchainWalletId == nil &&
+                        ($0.paymentIdentifier == nil || $0.paymentIdentifier?.caseInsensitiveCompare(txid) == .orderedSame)
+                }) else { return nil }
+                proofs[index].paymentIdentifier = txid.lowercased()
+                proofs[index].proofData = txid.lowercased()
+                proofs[index].onchainAcceptanceVerified = true
+                proofs[index].onchainLocalFollowupComplete = true
+                try await persist(proofs)
+                return proofs[index]
+            }
+            guard let completed else { return false }
+            submitInBackground(completed, priority: .interactive)
+            return true
+        } catch {
+            logWarning("Failed to retain a Spark on-chain proof for retry: \(error)")
+            return false
+        }
+    }
+
+    /// Drops the started on-chain proof of a request whose Spark withdrawal never went out.
+    func failSparkOnchainPayment(requestId: PaykitPaymentRequest.ID, identity: String) async {
+        await removeProofs {
+            PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId && $0.kind == .onchain &&
+                $0.paymentStarted && $0.onchainWalletId == nil && $0.paymentIdentifier == nil && $0.proofData == nil
+        }
+    }
+
     @discardableResult
     func failOnchainPayment(_ request: PaykitPaymentRequest, paymentIdentity: String? = nil) async -> Bool {
         let liveIdentity = paymentIdentity == nil ? try? await currentIdentity() : nil

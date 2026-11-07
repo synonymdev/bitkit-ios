@@ -28,6 +28,7 @@ struct SendConfirmationView: View {
     var isSetupPending = false
 
     @State private var showDetails = false
+    @State private var routedIncomingRequestId: PaykitPaymentRequest.ID?
     @State private var hasShownAmountReview = false
     @State private var showingBiometricError = false
     @State private var biometricErrorMessage = ""
@@ -464,6 +465,7 @@ struct SendConfirmationView: View {
                 }
                 guard preparingRequest == nil, !isRequestSetupPending, !returnToAmountReviewIfNeeded() else { return }
                 ensureSendAmountFromScannedInvoicesIfNeeded()
+                await routeIncomingRequestIfNeeded()
                 if app.contactPaymentContext?.isInitialSubscriptionPayment == true, !shouldAutomaticallyPay {
                     showManualConfirmation(reason: "not automatic when opened")
                 }
@@ -1363,11 +1365,77 @@ struct SendConfirmationView: View {
         return note
     }
 
+    /// A request's Confirm opens with fixed terms and no amount screen, so the router is asked here: Direct switches the
+    /// send to the endpoint it picks, and a Spark leg pays an on-chain request from Spending.
+    private func routeIncomingRequestIfNeeded() async {
+        guard let context = app.contactPaymentContext, let request = context.incomingPaymentRequest,
+              !app.paykitUsesUsdt, !hwSend.isActive, routedIncomingRequestId != request.id,
+              let route = app.paykitRoute ?? PaykitRouteService.routeUi(for: context, canRouteThroughSpark: false, canPayDirectly: true)
+        else { return }
+        let amount = app.paykitPaymentTerms?.amount ?? request.amount
+        guard amount.asset == .btc, amount.atomic > 0 else { return }
+        routedIncomingRequestId = request.id
+        let source: PaykitRouteService.Source = app.selectedWalletToPayFrom == .lightning ? .spending : .savings
+        _ = await app.routeContactPayment(
+            route,
+            amountSats: amount.atomic,
+            source: source,
+            lightningSpendableSats: source == .spending ? UInt64(max(0, wallet.maxSendLightningSats)) : 0,
+            onchainSpendableSats: source == .savings ? UInt64(max(0, wallet.spendableOnchainBalanceSats)) : 0,
+            request: request
+        )
+    }
+
+    /// Withdraws from Spark to the contact's on-chain address. A request it pays gets an on-chain proof with the
+    /// withdrawal's txid; the proof is started before the send, and Spark's journal settles it if the app stops mid-send.
     private func performServiceRoutedPayment(_ leg: ServiceRouteLeg) async {
+        let paymentActivity = PaykitPaymentActivity.shared.begin()
+        defer { PaykitPaymentActivity.shared.end(paymentActivity) }
         isSubmittingPayment = true
         defer { isSubmittingPayment = false }
+        let context = app.contactPaymentContext
+        let request = context?.incomingPaymentRequest
+        var proofRequest: SparkContactWithdrawal.PaykitRequest?
         do {
-            let txid = try await PaykitRouteService.pay(leg, contact: app.contactPaymentContext?.publicKey)
+            if let request {
+                guard let privateContext = context?.privatePaymentContext else { throw PaykitPaymentRequestError.requestUnavailable }
+                try await PaykitPaymentProofService.shared.prepare(
+                    request: request,
+                    paymentAppId: privateContext.paymentAppId(for: leg.endpoint.methodId),
+                    paymentEndpointIdentifier: leg.endpoint.methodId,
+                    kind: .onchain,
+                    paymentTerms: app.paykitPaymentTerms
+                )
+                let identity = try await PaykitPaymentProofService.shared.onchainPaymentIdentity(requestId: request.id)
+                do {
+                    try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(
+                        request,
+                        address: leg.endpoint.value,
+                        paymentIdentity: identity
+                    )
+                } catch {
+                    await PaykitPaymentProofService.shared.cancelPreparation(request)
+                    throw error
+                }
+                proofRequest = SparkContactWithdrawal.PaykitRequest(id: request.id, identity: identity)
+            }
+            let txid: String
+            do {
+                txid = try await PaykitRouteService.pay(leg, contact: context?.publicKey, request: proofRequest) {
+                    if let request {
+                        try await paykitPaymentRequestManager.ensurePaymentAllowed(request)
+                    }
+                }
+            } catch {
+                // Refused before Spark's send: nothing left, so the started proof goes. After it, the journal settles it.
+                let refusedBeforeSend = SparkManager.pendingContactWithdrawal == nil
+                if let proofRequest, refusedBeforeSend {
+                    await PaykitPaymentProofService.shared.failSparkOnchainPayment(requestId: proofRequest.id, identity: proofRequest.identity)
+                }
+                await context?.resolvePrivatePaymentListConsumption(refusedBeforeSend ? .definitePreBroadcastFailure : .uncertain)
+                throw error
+            }
+            await context?.resolvePrivatePaymentListConsumption(.succeeded)
             Logger.info("Paid Paykit contact through \(leg.service) in \(txid)", context: "SendConfirmation")
             navigationPath.append(.success(paymentId: txid))
         } catch {
