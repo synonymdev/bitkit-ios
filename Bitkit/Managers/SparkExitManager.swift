@@ -192,6 +192,12 @@ final class SparkExitManager {
     /// The address of an unresolved savings send, read on every tick and before a cancel.
     private(set) var unresolvedSendAddress: String?
 
+    /// What the exit still brings to savings, for its own transfer's in-transfer amount; nil without one.
+    var inTransfer: (transferId: String, sats: UInt64)? {
+        guard let record, let transferId = record.transferId else { return nil }
+        return (transferId, SparkExitMath.inTransferSats(record, fundingSeenSats: fundingSeenSats))
+    }
+
     /// Nothing built, nothing paid from savings and nothing seen at the funding address, and no unresolved savings send
     /// to that address: such a send can still be retried from Send, always to the same address, which a forgotten exit
     /// would no longer watch.
@@ -594,33 +600,46 @@ final class SparkExitManager {
         SparkManager.shared.detachForExit()
         // Reconnecting cuts an optimization short, which would leave its counter-swap unclaimed for a while.
         await SparkManager.shared.waitForOptimization()
+        // The rest runs under the ticks' lock, on this exit as stored: one cancelled during the wait above is never
+        // reconnected for or paid to.
+        while isTicking {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        isTicking = true
+        defer { isTicking = false }
+        let stored = try? Self.loadRecord(store: store, lostLeafStore: lostLeafStore)
+        guard var started = Self.startedExit(stored: stored, createdAt: record.createdAt) else {
+            Logger.info("Spark exit was cancelled before it started; nothing paid", context: "SparkExitManager")
+            throw SparkExitStartCancelled()
+        }
         await SparkManager.shared.reconnectForExit()
         Logger.info("Started Spark exit of \(quote.exitSats) sats over \(quote.leafIds.count) leaves", context: "SparkExitManager")
 
         if fundFromSavings, quote.fundingSats > 0 {
             let txid = try await payFunding(address: key.address, sats: quote.fundingSats, satsPerVbyte: savingsFeeRate, feeSats: savingsFeeSats)
-            await notePaidFunding(txid: txid)
+            // Saved before the lock is released, so a cancel after the payment finds it and refuses.
+            started.fundingPaymentTxid = txid
+            do {
+                try store.save(started)
+            } catch {
+                Logger.error("Failed to save the Spark exit funding payment: \(error)", context: "SparkExitManager")
+            }
+            self.record = started
+            fundingState = SparkExitMath.fundingState(started, utxos: nil)
         }
         Task { await tick() }
     }
 
-    /// Keeps the savings payment in the record, so the exit waits for it instead of asking for the funding again.
-    /// Written between ticks, so a tick in flight never saves over it.
-    private func notePaidFunding(txid: String) async {
-        while isTicking {
-            try? await Task.sleep(nanoseconds: 100_000_000)
-        }
-        guard var record else { return }
-        record.fundingPaymentTxid = txid
-        do {
-            try store.save(record)
-        } catch {
-            Logger.error("Failed to save the Spark exit funding payment: \(error)", context: "SparkExitManager")
-        }
-        self.record = record
-        fundingState = SparkExitMath.fundingState(record, utxos: nil)
+    /// The exit a start began, still stored and active (not cancelled meanwhile); nil otherwise. The store keeps
+    /// dates to the millisecond.
+    nonisolated static func startedExit(stored: SparkExitRecord?, createdAt: Date) -> SparkExitRecord? {
+        guard let stored, stored.isActive else { return nil }
+        let millis = { (date: Date) in (date.timeIntervalSince1970 * 1000).rounded() }
+        return millis(stored.createdAt) == millis(createdAt) ? stored : nil
     }
 
+    /// Keeps the savings payment in the record, so the exit waits for it instead of asking for the funding again.
+    /// Written between ticks, so a tick in flight never saves over it.
     /// The funding key index of the next exit: one no exit of this wallet used, from the counter the last start
     /// left and the stored record, so leftover of an earlier exit never mixes into a new one.
     private func nextFundingIndex() -> UInt32 {
@@ -915,6 +934,9 @@ private final class SparkExitTaskCompletion: @unchecked Sendable {
         task?.setTaskCompleted(success: success)
     }
 }
+
+/// A start whose exit was cancelled while it waited: nothing was paid and Spark was not taken off Lightning.
+struct SparkExitStartCancelled: Error {}
 
 /// Lets the exit's writes through until a wipe closes it.
 final class SparkExitWriteGate: @unchecked Sendable {

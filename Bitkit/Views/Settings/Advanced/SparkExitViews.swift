@@ -439,6 +439,9 @@ struct SparkExitConfirmView: View {
                 do {
                     try await exit.start()
                     navigation.navigate(.sparkExitProgress)
+                } catch let error as SparkExitStartCancelled {
+                    // Cancelled while the start waited: nothing was paid, nothing to say. Rethrown so the swipe resets.
+                    throw error
                 } catch {
                     app.toast(error)
                     // The exit started but paying its fee funding failed: the progress screen shows where to fund it.

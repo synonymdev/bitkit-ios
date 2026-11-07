@@ -700,6 +700,87 @@ final class SparkExitSweepTests: XCTestCase {
     private func le64(_ value: UInt64) -> [UInt8] {
         withUnsafeBytes(of: value.littleEndian) { [UInt8]($0) }
     }
+
+    // MARK: Home balances
+
+    /// The exit's own transfer counts what is still to come: a planned sweep counts only once it confirmed.
+    func testInTransferCountsOnlyWhatConfirmedToSavings() throws {
+        let script = try SparkExitAddress.scriptPubKey(destination)
+        // Pays 50,000 sats to savings, little-endian.
+        let hex = "02000000" + "01" + String(repeating: "11", count: 32) + "00000000" + "00" + "ffffffff"
+            + "01" + "50c3000000000000" + String(format: "%02x", script.count) + script.hex + "00000000"
+        func sweep(_ status: ExitTransactionStatus) -> RecoveryTransaction {
+            RecoveryTransaction(kind: .sweep, nodeId: nil, txid: "sweep", txHex: hex, cpfpTxHex: nil, csvTimelockBlocks: nil,
+                                dependsOn: [], status: status)
+        }
+        var record = endedRecord(phase: .running)
+        record.recovery = StoredRecovery(SparkExitFixtures.recovery([sweep(.waitingForTimelock(spendableAtHeight: 900))]))
+        XCTAssertEqual(SparkExitMath.inTransferSats(record, fundingSeenSats: 0), 90000)
+
+        record.recovery = StoredRecovery(SparkExitFixtures.recovery([sweep(.confirmed(blockHeight: 50))]))
+        XCTAssertEqual(SparkExitMath.inTransferSats(record, fundingSeenSats: 0), 40000)
+        record.earlierReceivedSats = ["coop": 30000]
+        XCTAssertEqual(SparkExitMath.inTransferSats(record, fundingSeenSats: 0), 10000)
+    }
+
+    /// The first fee funding nobody paid yet is not in transfer; once paid, or once the exit pays it, it is.
+    func testInTransferLeavesOutUnpaidFirstFunding() {
+        var record = endedRecord(phase: .awaitingFunding(requiredSats: 20000))
+        record.funding = [.init(index: 0, address: key.address, pubkey: key.pubkey)]
+        XCTAssertEqual(SparkExitMath.inTransferSats(record, fundingSeenSats: 0), 70000)
+        XCTAssertEqual(SparkExitMath.inTransferSats(record, fundingSeenSats: 5000), 75000)
+        XCTAssertEqual(SparkExitMath.inTransferSats(record, fundingSeenSats: 20000), 90000)
+
+        record.fundingPaymentTxid = "paid"
+        XCTAssertEqual(SparkExitMath.inTransferSats(record, fundingSeenSats: 0), 90000)
+        record.fundingPaymentTxid = nil
+        record.phase = .running
+        XCTAssertEqual(SparkExitMath.inTransferSats(record, fundingSeenSats: 0), 90000)
+    }
+
+    /// Only the running exit's own transfer swaps its amount; any other exit transfer keeps it.
+    func testOnlyTheExitsOwnTransferCountsItsInTransferAmount() {
+        let own = Bitkit.Transfer(id: "own", type: .sparkExit, amountSats: 90000, createdAt: 0)
+        let other = Bitkit.Transfer(id: "other", type: .sparkExit, amountSats: 12000, createdAt: 0)
+
+        XCTAssertEqual(BalanceManager.sparkExitInTransferSats(own, exitInTransfer: ("own", 40000)), 40000)
+        XCTAssertEqual(BalanceManager.sparkExitInTransferSats(other, exitInTransfer: ("own", 40000)), 12000)
+        XCTAssertEqual(BalanceManager.sparkExitInTransferSats(own, exitInTransfer: nil), 90000)
+    }
+
+    /// While an exit runs, Spending keeps what Spark holds beyond the exit's leaves.
+    func testSpendingKeepsSparkValueOutsideTheExit() {
+        XCTAssertEqual(WalletViewModel.spendingSparkSats(isExiting: false, balanceSats: 50000, outsideExitSats: nil), 50000)
+        XCTAssertEqual(WalletViewModel.spendingSparkSats(isExiting: true, balanceSats: 50000, outsideExitSats: 32768), 32768)
+        XCTAssertEqual(WalletViewModel.spendingSparkSats(isExiting: true, balanceSats: 50000, outsideExitSats: nil), 0)
+    }
+
+    /// A start goes on only with its own exit still stored and active: one cancelled while it waited stops it.
+    func testStartGoesOnOnlyWithItsExitStillRunning() throws {
+        let createdAt = Date(timeIntervalSince1970: 1_700_000_000.123_456)
+        let record = SparkExitRecord(
+            network: "regtest",
+            createdAt: createdAt,
+            phase: .awaitingFunding(requiredSats: 20000),
+            feeRateSatPerVbyte: 2,
+            destination: destination,
+            leafIds: ["leaf-1"],
+            funding: [.init(index: 0, address: key.address, pubkey: key.pubkey)],
+            expectedSats: 90000
+        )
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("spark-exit-start-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = SparkExitStore(url: url)
+        try store.save(record)
+        let stored = try XCTUnwrap(store.load())
+
+        XCTAssertNotNil(SparkExitManager.startedExit(stored: stored, createdAt: createdAt))
+        XCTAssertNil(SparkExitManager.startedExit(stored: nil, createdAt: createdAt))
+        XCTAssertNil(SparkExitManager.startedExit(stored: stored, createdAt: createdAt.addingTimeInterval(1)))
+        var cancelled = stored
+        cancelled.phase = .done
+        XCTAssertNil(SparkExitManager.startedExit(stored: cancelled, createdAt: createdAt))
+    }
 }
 
 private extension Data {

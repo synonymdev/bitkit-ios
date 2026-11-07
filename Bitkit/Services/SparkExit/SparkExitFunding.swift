@@ -576,6 +576,23 @@ enum SparkExitMath {
         return String(match.1)
     }
 
+    /// What the exit still brings to savings: what it expects, less what already reached savings, less the first fee
+    /// funding nobody paid yet (the expected amount counts it as coming back). Only confirmed steps count as reached:
+    /// the sweep is in the plan from its first build.
+    static func inTransferSats(_ record: SparkExitRecord, fundingSeenSats: UInt64) -> UInt64 {
+        let confirmed = (record.recovery?.response.transactions ?? []).filter {
+            guard case .confirmed = $0.status else { return false }
+            return true
+        }
+        let current = paidToDestination(confirmed, destination: record.destination)
+        let received = (record.earlierReceivedSats ?? [:]).merging(current) { $1 }.values.reduce(0, +)
+        var unpaid: UInt64 = 0
+        if case let .awaitingFunding(requiredSats) = record.phase, record.fundingPaymentTxid == nil {
+            unpaid = requiredSats.saturatingSub(max(record.fundedSats, fundingSeenSats))
+        }
+        return record.expectedSats.saturatingSub(received).saturatingSub(unpaid)
+    }
+
     /// What the Spark balance holds beyond the exit's leaves: value that reached Spark after the quote, such as a
     /// counter-swap claimed late, which this exit leaves on Spark. Nil when nothing is beyond them.
     static func outsideExitSats(sparkBalanceSats: UInt64, record: SparkExitRecord) -> UInt64? {

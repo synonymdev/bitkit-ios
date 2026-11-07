@@ -1402,18 +1402,31 @@ class WalletViewModel: ObservableObject {
         }
     }
 
+    /// Spark's part of Spending: its balance, or while an exit runs only what it holds beyond the exit's leaves.
+    nonisolated static func spendingSparkSats(isExiting: Bool, balanceSats: UInt64, outsideExitSats: UInt64?) -> UInt64 {
+        isExiting ? (outsideExitSats ?? 0) : balanceSats
+    }
+
     func updateBalanceState() async {
         // Ensure we have fresh data from LDK before computing balance
         await lightningService.refreshCache()
 
         do {
             try? await transferService.syncTransferStates()
-            let state = try await balanceManager.deriveBalanceState()
+            let state = try await balanceManager.deriveBalanceState(exitInTransfer: SparkExitManager.shared.inTransfer)
             let spark = SparkManager.shared
             balanceInTransferToSavings = Int(state.balanceInTransferToSavings)
             balanceInTransferToSpending = Int(state.balanceInTransferToSpending + spark.pendingDepositSats)
-            // During an emergency exit the Spark balance is on its way to savings and counted there instead.
-            let sparkBalanceSats = spark.isExiting ? 0 : spark.balanceSats
+            // During an emergency exit the exit's leaves are on their way to savings and counted there instead; what
+            // Spark holds beyond them stays in Spending.
+            let outsideExitSats = SparkExitManager.shared.record.flatMap {
+                SparkExitMath.outsideExitSats(sparkBalanceSats: spark.balanceSats, record: $0)
+            }
+            let sparkBalanceSats = Self.spendingSparkSats(
+                isExiting: spark.isExiting,
+                balanceSats: spark.balanceSats,
+                outsideExitSats: outsideExitSats
+            )
 
             // Update display values with adjusted balances
             totalOnchainSats = Int(state.totalOnchainSats)
