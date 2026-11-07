@@ -1207,8 +1207,8 @@
 "wallet__send_sync_long_description" = "Parece que está desconectado. Compruebe su conexión. Bitkit intentará reconectarse cada pocos segundos.";
 "wallet__send_to" = "Para";
 "wallet__send_swap_route" = "Ruta";
-"wallet__send_paykit_no_route__title" = "Can't pay this contact";
-"wallet__send_paykit_no_route__description" = "This contact has no payment method Bitkit can use right now.";
+"wallet__send_paykit_no_route__title" = "No se puede pagar a este contacto";
+"wallet__send_paykit_no_route__description" = "Este contacto no tiene ningún método de pago que Bitkit pueda usar ahora mismo.";
 "wallet__recipient_contact" = "Contactar";
 "wallet__recipient_invoice" = "Pegar factura";
 "wallet__recipient_manual" = "Introducir manualmente";

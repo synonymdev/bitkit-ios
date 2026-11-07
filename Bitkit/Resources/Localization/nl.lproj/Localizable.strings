@@ -1302,8 +1302,8 @@
 "wallet__send_sync_long_description" = "Het lijkt erop dat u niet verbonden bent. Controleer uw verbinding. Bitkit probeert om de paar seconden opnieuw verbinding te maken.";
 "wallet__send_to" = "Naar";
 "wallet__send_swap_route" = "Route";
-"wallet__send_paykit_no_route__title" = "Can't pay this contact";
-"wallet__send_paykit_no_route__description" = "This contact has no payment method Bitkit can use right now.";
+"wallet__send_paykit_no_route__title" = "Kan dit contact niet betalen";
+"wallet__send_paykit_no_route__description" = "Dit contact heeft op dit moment geen betaalmethode die Bitkit kan gebruiken.";
 "wallet__recipient_contact" = "Contact";
 "wallet__recipient_invoice" = "Factuur Plakken";
 "wallet__recipient_manual" = "Handmatig Invoeren";
