@@ -475,34 +475,49 @@ final class SparkManager: ChannelFreeLightningRail {
         amountSats: UInt64,
         contact: String?,
         request: SparkContactWithdrawal.PaykitRequest? = nil,
+        tags: [String] = [],
         maxFeeSats: UInt64? = nil,
         beforeSend: () async throws -> Void = {}
     ) async throws -> String {
-        guard Self.pendingContactWithdrawal == nil else {
-            throw AppError(message: "wallet__payment_failed_description", debugMessage: "A Spark withdrawal to a contact is still settling")
+        // Everything before the journal is written sends nothing, so a refusal here says so to the caller.
+        let sdk: BreezSdk
+        let prepared: PrepareSendPaymentResponse
+        let earlierPayments: [Payment]
+        do {
+            guard Self.pendingContactWithdrawal == nil else {
+                throw AppError(message: "wallet__payment_failed_description", debugMessage: "A Spark withdrawal to a contact is still settling")
+            }
+            sdk = try await requireSdk()
+            prepared = try await prepareSend(paymentRequest: address, amountSats: amountSats)
+            if let maxFeeSats, case let .bitcoinAddress(_, feeQuote) = prepared.paymentMethod {
+                // The fee Confirm showed caps the one sent, broadcast fee included.
+                try Self.checkWithdrawalFee(
+                    Self.withdrawalDebitSats(amountSats: amountSats, fee: feeQuote.speedMedium) - amountSats,
+                    shownFeeSats: maxFeeSats
+                )
+            }
+            // Withdrawals Spark already lists for this address and amount belong to earlier attempts, so recovery never
+            // takes one of them for this attempt.
+            earlierPayments = try await sdk.listPayments(request: ListPaymentsRequest(sortAscending: false)).payments
+            try await beforeSend()
+        } catch {
+            throw SparkWithdrawalNotSent(underlying: error)
         }
-        let prepared = try await prepareSend(paymentRequest: address, amountSats: amountSats)
-        if let maxFeeSats, case let .bitcoinAddress(_, feeQuote) = prepared.paymentMethod {
-            // The fee Confirm showed caps the one sent, broadcast fee included.
-            try Self.checkWithdrawalFee(
-                Self.withdrawalDebitSats(amountSats: amountSats, fee: feeQuote.speedMedium) - amountSats,
-                shownFeeSats: maxFeeSats
-            )
-        }
-        try await beforeSend()
-        let pending = SparkContactWithdrawal(
+        var pending = SparkContactWithdrawal(
             address: address,
             amountSats: amountSats,
             contact: contact,
             startedAt: UInt64(Date().timeIntervalSince1970),
-            request: request
+            request: request,
+            tags: tags,
+            earlierPaymentIds: Self.withdrawalIds(to: address, amountSats: amountSats, in: earlierPayments)
         )
         Self.pendingContactWithdrawal = pending
         isWithdrawingToContact = true
         defer { isWithdrawingToContact = false }
         let response: SendPaymentResponse
         do {
-            response = try await requireSdk().sendPayment(request: SendPaymentRequest(
+            response = try await sdk.sendPayment(request: SendPaymentRequest(
                 prepareResponse: prepared,
                 options: .bitcoinAddress(confirmationSpeed: .medium)
             ))
@@ -515,6 +530,8 @@ final class SparkManager: ChannelFreeLightningRail {
             throw error
         }
         Logger.info("Sent Spark withdrawal '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
+        pending.paymentId = response.payment.id
+        Self.pendingContactWithdrawal = pending
         guard case let .withdraw(txId, _, _) = response.payment.details else {
             await refreshState()
             return response.payment.id
@@ -524,15 +541,16 @@ final class SparkManager: ChannelFreeLightningRail {
         return txId
     }
 
-    /// Settles the open contact withdrawal from Spark's payments: a withdrawal of its amount sent since it started is
-    /// recorded; with `allowClear`, a synced list without one closes it as never sent.
+    /// Settles the open contact withdrawal from Spark's payments: its own payment, once Spark returned it, or else a
+    /// withdrawal to its address and amount that wasn't listed before it started. With `allowClear`, a synced list
+    /// without one closes it as never sent and releases the request's proof.
     func settleContactWithdrawal(allowClear: Bool) async {
         guard let pending = Self.pendingContactWithdrawal, !isWithdrawingToContact,
               let payments = try? await requireSdk().listPayments(request: ListPaymentsRequest(sortAscending: false)).payments
         else { return }
         if let payment = Self.matchingWithdrawal(pending, in: payments), case let .withdraw(txId, _, _) = payment.details {
             await recordContactWithdrawal(payment, txId: txId, pending: pending)
-        } else if allowClear {
+        } else if allowClear, pending.paymentId == nil {
             Logger.info("Closed a Spark contact withdrawal Spark never listed", context: "SparkManager")
             Self.pendingContactWithdrawal = nil
             if let request = pending.request {
@@ -542,43 +560,80 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     nonisolated static func matchingWithdrawal(_ pending: SparkContactWithdrawal, in payments: [Payment]) -> Payment? {
-        payments.first { payment in
-            guard payment.paymentType == .send, case let .withdraw(_, _, destination) = payment.details else { return false }
-            return destination == pending.address && sats(payment.amount) == pending.amountSats &&
-                payment.timestamp + contactWithdrawalClockSkewSecs >= pending.startedAt
+        if let paymentId = pending.paymentId {
+            return payments.first { $0.id == paymentId }
+        }
+        let earlier = Set(pending.earlierPaymentIds ?? [])
+        return payments.first { payment in
+            !earlier.contains(payment.id) && withdrawalIds(to: pending.address, amountSats: pending.amountSats, in: [payment]) == [payment.id]
         }
     }
 
-    private nonisolated static let contactWithdrawalClockSkewSecs: UInt64 = 120
+    nonisolated static func withdrawalIds(to address: String, amountSats: UInt64, in payments: [Payment]) -> [String] {
+        payments.compactMap { payment in
+            guard payment.paymentType == .send, case let .withdraw(_, _, destination) = payment.details,
+                  destination == address, sats(payment.amount) == amountSats
+            else { return nil }
+            return payment.id
+        }
+    }
 
+    /// Writes the withdrawal's sent activity, tags and request proof, and closes the journal only once all of them are
+    /// saved, so a failed or interrupted write is retried from the journal.
     private func recordContactWithdrawal(_ payment: Payment, txId: String, pending: SparkContactWithdrawal) async {
-        Self.pendingContactWithdrawal = nil
         guard payment.status != .failed else {
+            Self.pendingContactWithdrawal = nil
             if let request = pending.request {
                 await PaykitPaymentProofService.shared.failSparkOnchainPayment(requestId: request.id, identity: request.identity)
             }
             return
         }
-        if let request = pending.request {
-            _ = await PaykitPaymentProofService.shared.completeSparkOnchainPayment(
-                requestId: request.id,
-                identity: request.identity,
-                txid: txId
-            )
-        }
         Self.contactWithdrawalTxIds.insert(txId)
-        _ = await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
-            txid: txId,
-            address: pending.address,
-            amount: pending.amountSats,
-            fee: Self.sats(payment.fees),
-            feeRate: 0,
-            contact: pending.contact,
-            feeIsExact: true
+        let isDurable = await Self.recordWithdrawalLocally(
+            saveProof: {
+                guard let request = pending.request else { return true }
+                return await PaykitPaymentProofService.shared.completeSparkOnchainPayment(
+                    requestId: request.id,
+                    identity: request.identity,
+                    txid: txId
+                )
+            },
+            saveActivity: {
+                await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
+                    txid: txId,
+                    address: pending.address,
+                    amount: pending.amountSats,
+                    fee: Self.sats(payment.fees),
+                    feeRate: 0,
+                    contact: pending.contact,
+                    feeIsExact: true
+                )
+            },
+            saveTags: {
+                guard let tags = pending.tags, !tags.isEmpty else { return true }
+                return await (try? CoreService.shared.activity.appendTags(toActivity: txId, tags)) != nil
+            }
         )
         if payment.status == .completed {
             await CoreService.shared.activity.markOnchainActivityAsConfirmed(txId: txId)
         }
+        if isDurable {
+            Self.pendingContactWithdrawal = nil
+        } else {
+            Logger.warn("Kept the Spark contact withdrawal journal: its local records are not all saved yet", context: "SparkManager")
+        }
+    }
+
+    /// Saves the proof, then the activity, then its tags; true only when every write succeeded.
+    static func recordWithdrawalLocally(
+        saveProof: () async -> Bool,
+        saveActivity: () async -> Bool,
+        saveTags: () async -> Bool
+    ) async -> Bool {
+        let proofSaved = await saveProof()
+        let activitySaved = await saveActivity()
+        let tagsSaved = activitySaved ? await saveTags() : false
+        return proofSaved && activitySaved && tagsSaved
     }
 
     private nonisolated static let pendingContactWithdrawalKey = "sparkPendingContactWithdrawal"
@@ -1077,6 +1132,11 @@ enum SparkErrorCopy {
 }
 
 /// A Spark withdrawal to a contact's on-chain address, journaled before it is sent.
+/// A contact withdrawal refused before its journal was written: nothing was sent.
+struct SparkWithdrawalNotSent: Error {
+    let underlying: Error
+}
+
 struct SparkContactWithdrawal: Codable, Equatable {
     /// The Paykit request a withdrawal pays, and the identity its proof belongs to.
     struct PaykitRequest: Codable, Equatable {
@@ -1089,6 +1149,12 @@ struct SparkContactWithdrawal: Codable, Equatable {
     let contact: String?
     let startedAt: UInt64
     var request: PaykitRequest?
+    /// Tags picked on Confirm, saved on the sent activity.
+    var tags: [String]?
+    /// Withdrawals to the same address and amount Spark listed before this attempt; recovery skips them.
+    var earlierPaymentIds: [String]?
+    /// This attempt's Spark payment, once Spark returned it.
+    var paymentId: String?
 }
 
 struct SparkWithdrawal: Identifiable, Equatable {

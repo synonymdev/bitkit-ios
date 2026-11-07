@@ -1900,6 +1900,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         await fulfillment(of: [proofRemoved], timeout: 1)
 
         XCTAssertTrue(completed, "Spark's withdrawal is no node send attempt, yet its txid completes the proof")
+        let retried = await service.completeSparkOnchainPayment(requestId: request.id, identity: identity, txid: txid)
+        XCTAssertTrue(retried, "A journal retry after the proof was saved must not keep the withdrawal open forever")
         let lastSubmission = await sdk.lastSubmission()
         let submission = try XCTUnwrap(lastSubmission)
         XCTAssertEqual(submission.paymentEndpointIdentifier, endpoint)

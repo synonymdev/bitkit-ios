@@ -137,10 +137,51 @@ enum PaykitRouteService {
     }
 
     /// Runs a service leg the router picked and returns the txid that pays the contact.
+    /// Whether a failed leg send releases this call's started proof: only when Spark refused it before sending, and no
+    /// open journal of the same request (an earlier attempt that may have paid) still owns that proof. Another
+    /// request's open journal never decides it.
+    static func legFailureReleasesProof(
+        _ error: Error,
+        openJournalRequest: SparkContactWithdrawal.PaykitRequest?,
+        proofRequest: SparkContactWithdrawal.PaykitRequest
+    ) -> Bool {
+        error is SparkWithdrawalNotSent && openJournalRequest != proofRequest
+    }
+
+    /// Starts the on-chain proof of a request a Spark leg pays, in a direct send's order: the proof is prepared, then the
+    /// request (its checks and private list consumption), then the proof is marked started. Any failure releases the
+    /// private payment list as unsent, and one after the proof was prepared cancels it, so the request can be paid again.
+    static func startLegRequestProof(
+        prepareProof: () async throws -> Void,
+        prepareRequest: () async throws -> Void,
+        paymentIdentity: () async throws -> String,
+        markStarted: (String) async throws -> Void,
+        cancelProof: () async -> Void,
+        releasePaymentList: () async -> Void
+    ) async throws -> String {
+        do {
+            try await prepareProof()
+        } catch {
+            await releasePaymentList()
+            throw error
+        }
+        do {
+            try await prepareRequest()
+            let identity = try await paymentIdentity()
+            try await markStarted(identity)
+            return identity
+        } catch {
+            await cancelProof()
+            await releasePaymentList()
+            throw error
+        }
+    }
+
     static func pay(
         _ leg: ServiceRouteLeg,
         contact: String?,
         request: SparkContactWithdrawal.PaykitRequest? = nil,
+        tags: [String] = [],
         beforeSend: () async throws -> Void = {}
     ) async throws -> String {
         guard leg.service == SparkManager.routeService else {
@@ -151,6 +192,7 @@ enum PaykitRouteService {
             amountSats: leg.deliveredSat,
             contact: contact,
             request: request,
+            tags: tags,
             maxFeeSats: leg.debitSat.saturatingSub(leg.deliveredSat),
             beforeSend: beforeSend
         )

@@ -1348,8 +1348,10 @@ actor PaykitPaymentProofService {
                 try await persist(proofs)
                 return proofs[index]
             }
-            guard let completed else { return false }
-            submitInBackground(completed, priority: .interactive)
+            // No started proof left means an earlier pass already saved it, or the request no longer waits on one.
+            if let completed {
+                submitInBackground(completed, priority: .interactive)
+            }
             return true
         } catch {
             logWarning("Failed to retain a Spark on-chain proof for retry: \(error)")

@@ -824,6 +824,22 @@ extension AppViewModel {
                 isUsdtEnabled: SettingsViewModel.shared.isUsdtEnabled
             ) || context.incomingPaymentRequest.map { PaykitUsdtPaymentService.shared.hasBinding(for: $0.id) } == true
             selectedWalletToPayFrom = canUseLightning || (hasLightning && scannedOnchainInvoice == nil) ? .lightning : .onchain
+            // A Spark leg can pay the on-chain endpoint from Spending here too, when Lightning can't pay directly.
+            if !canUseLightning, scannedOnchainInvoice != nil,
+               let route = PaykitRouteService.routeUi(
+                   for: context,
+                   canRouteThroughSpark: PaykitRouteService.canRouteThroughSpark,
+                   canPayDirectly: false
+               ), route.offersSparkLeg
+            {
+                paykitRoute = route
+                // A request keeps its source here; its Confirm asks the router.
+                if !hasLightning, context.incomingPaymentRequest == nil,
+                   max(state.spendableOnchainBalanceSats, alternativeOnchainBalanceSats) <= UInt64(Env.dustLimit)
+                {
+                    selectedWalletToPayFrom = .lightning
+                }
+            }
             let canSelectUsdt = SettingsViewModel.shared.isUsdtEnabled && context.endpoints.contains { $0.methodId == .usdtArbitrum }
             if !paykitUsesUsdt, !canSelectUsdt, let request = context.incomingPaymentRequest {
                 do {

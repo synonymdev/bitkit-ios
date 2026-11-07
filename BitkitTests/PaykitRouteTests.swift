@@ -140,14 +140,156 @@ final class PaykitRouteTests: XCTestCase {
 
     // MARK: - Contact withdrawal journal
 
-    func testJournaledWithdrawalSettlesFromTheMatchingSparkPayment() {
-        let pending = SparkContactWithdrawal(address: onchain.value, amountSats: 20000, contact: "contact", startedAt: 1000)
+    func testJournaledWithdrawalMatchesOnlyItsOwnAttempt() {
         let other = Self.withdrawal(id: "other", to: "bcrt1qother", amountSats: 20000, timestamp: 1001)
-        let earlier = Self.withdrawal(id: "earlier", to: onchain.value, amountSats: 20000, timestamp: 100)
+        let earlier = Self.withdrawal(id: "earlier", to: onchain.value, amountSats: 20000, timestamp: 2000)
         let sent = Self.withdrawal(id: "sent", to: onchain.value, amountSats: 20000, timestamp: 1001)
+        var pending = SparkContactWithdrawal(
+            address: onchain.value,
+            amountSats: 20000,
+            contact: "contact",
+            startedAt: 1000,
+            earlierPaymentIds: SparkManager.withdrawalIds(to: onchain.value, amountSats: 20000, in: [other, earlier])
+        )
 
+        XCTAssertEqual(pending.earlierPaymentIds, ["earlier"])
         XCTAssertEqual(SparkManager.matchingWithdrawal(pending, in: [other, earlier, sent])?.id, "sent")
-        XCTAssertNil(SparkManager.matchingWithdrawal(pending, in: [other, earlier]))
+        XCTAssertNil(
+            SparkManager.matchingWithdrawal(pending, in: [other, earlier]),
+            "An earlier withdrawal to the same address is never this attempt"
+        )
+
+        pending.paymentId = "sent"
+        XCTAssertNil(SparkManager.matchingWithdrawal(pending, in: [other, earlier]), "Once Spark returned the attempt, only that payment settles it")
+        XCTAssertEqual(SparkManager.matchingWithdrawal(pending, in: [earlier, sent])?.id, "sent")
+    }
+
+    func testJournalStaysOpenUntilEveryLocalRecordIsSaved() async {
+        let saved = await SparkManager.recordWithdrawalLocally(saveProof: { true }, saveActivity: { true }, saveTags: { true })
+        XCTAssertTrue(saved)
+
+        var tagsTried = false
+        let activityFailed = await SparkManager.recordWithdrawalLocally(
+            saveProof: { true },
+            saveActivity: { false },
+            saveTags: { tagsTried = true; return true }
+        )
+        XCTAssertFalse(activityFailed, "A failed activity write keeps the journal for a retry")
+        XCTAssertFalse(tagsTried, "Tags wait for the activity they belong to")
+
+        var activityTried = false
+        let proofFailed = await SparkManager.recordWithdrawalLocally(
+            saveProof: { false },
+            saveActivity: { activityTried = true; return true },
+            saveTags: { true }
+        )
+        XCTAssertFalse(proofFailed, "A proof that wasn't saved keeps the journal for a retry")
+        XCTAssertTrue(activityTried, "The activity is still written when the proof save fails")
+
+        let tagsFailed = await SparkManager.recordWithdrawalLocally(saveProof: { true }, saveActivity: { true }, saveTags: { false })
+        XCTAssertFalse(tagsFailed)
+    }
+
+    func testLegPreparesTheRequestBeforeItsProofIsStarted() async throws {
+        var steps: [String] = []
+        let identity = try await PaykitRouteService.startLegRequestProof(
+            prepareProof: { steps.append("proof") },
+            prepareRequest: { steps.append("request") },
+            paymentIdentity: { steps.append("identity"); return "payer" },
+            markStarted: { steps.append("started \($0)") },
+            cancelProof: { steps.append("cancel") },
+            releasePaymentList: { steps.append("release") }
+        )
+
+        XCTAssertEqual(identity, "payer")
+        XCTAssertEqual(steps, ["proof", "request", "identity", "started payer"], "The request is approved before Spark's payment check")
+    }
+
+    func testLegThatFailsBeforeSendingFreesTheRequest() async {
+        struct Refused: Error {}
+        for failing in ["proof", "request", "started"] {
+            var steps: [String] = []
+            do {
+                _ = try await PaykitRouteService.startLegRequestProof(
+                    prepareProof: {
+                        if failing == "proof" {
+                            throw Refused()
+                        }
+                    },
+                    prepareRequest: {
+                        if failing == "request" {
+                            throw Refused()
+                        }
+                    },
+                    paymentIdentity: { "payer" },
+                    markStarted: {
+                        _ in if failing == "started" {
+                            throw Refused()
+                        }
+                    },
+                    cancelProof: { steps.append("cancel") },
+                    releasePaymentList: { steps.append("release") }
+                )
+                XCTFail("\(failing) must fail the leg")
+            } catch {}
+
+            XCTAssertEqual(steps, failing == "proof" ? ["release"] : ["cancel", "release"], failing)
+        }
+    }
+
+    func testSourceSwitchOnConfirmReroutesOnlyWhenTheLegNoLongerFits() throws {
+        let context = ContactPaymentContext(
+            publicKey: "contact",
+            privatePaymentContext: nil,
+            endpoints: [Self.endpoint(.regtestOnchainP2wpkh, onchain.value)]
+        )
+        let offered = try XCTUnwrap(PaykitRouteService.routeUi(for: context, canRouteThroughSpark: true, canPayDirectly: false))
+        var routed = offered
+        routed.serviceLeg = sparkLeg(amountSats: 20000, feeSats: 2190)
+
+        XCTAssertTrue(SendConfirmationView.sourceSwitchNeedsReroute(route: routed, walletType: .onchain, hasLightningPayment: false))
+        XCTAssertFalse(SendConfirmationView.sourceSwitchNeedsReroute(route: routed, walletType: .lightning, hasLightningPayment: false))
+        XCTAssertTrue(SendConfirmationView.sourceSwitchNeedsReroute(route: offered, walletType: .lightning, hasLightningPayment: false))
+        XCTAssertFalse(SendConfirmationView.sourceSwitchNeedsReroute(route: offered, walletType: .lightning, hasLightningPayment: true))
+        XCTAssertFalse(SendConfirmationView.sourceSwitchNeedsReroute(route: offered, walletType: .onchain, hasLightningPayment: false))
+        XCTAssertFalse(SendConfirmationView.sourceSwitchNeedsReroute(route: nil, walletType: .onchain, hasLightningPayment: false))
+    }
+
+    func testOnchainRequestStartsOnSpendingWhenSavingsCantCoverIt() {
+        // Savings 5,000 can't cover a 20,000 request, so Spending (Spark 50,000) pays it through the leg.
+        XCTAssertTrue(SendConfirmationView.requestStartsOnSpending(savingsSendableSats: 5000, amountSats: 20000, offersSparkLeg: true))
+        XCTAssertFalse(SendConfirmationView.requestStartsOnSpending(savingsSendableSats: 48000, amountSats: 20000, offersSparkLeg: true))
+        XCTAssertFalse(
+            SendConfirmationView.requestStartsOnSpending(savingsSendableSats: 5000, amountSats: 20000, offersSparkLeg: false),
+            "Without a Spark leg the request stays on Savings"
+        )
+    }
+
+    func testRefusalWhileAnOlderJournalIsOpenReleasesThisCallsProof() {
+        struct Refused: Error {}
+        let older = SparkContactWithdrawal.PaykitRequest(
+            id: PaykitPaymentRequest.ID(paymentRequestId: "older", counterparty: "payee"),
+            identity: "payer"
+        )
+        let this = SparkContactWithdrawal.PaykitRequest(
+            id: PaykitPaymentRequest.ID(paymentRequestId: "this", counterparty: "payee"),
+            identity: "payer"
+        )
+        let notSent = SparkWithdrawalNotSent(underlying: Refused())
+
+        XCTAssertTrue(
+            PaykitRouteService.legFailureReleasesProof(notSent, openJournalRequest: older, proofRequest: this),
+            "An older journal still open must not keep a refused send's proof started"
+        )
+        XCTAssertTrue(PaykitRouteService.legFailureReleasesProof(notSent, openJournalRequest: nil, proofRequest: this))
+        XCTAssertFalse(
+            PaykitRouteService.legFailureReleasesProof(notSent, openJournalRequest: this, proofRequest: this),
+            "An earlier attempt of the same request still owns its proof"
+        )
+        XCTAssertFalse(
+            PaykitRouteService.legFailureReleasesProof(Refused(), openJournalRequest: this, proofRequest: this),
+            "A failure once Spark's send started is settled by the journal"
+        )
     }
 
     func testSparkLegDebitsTheL1BroadcastFeeToo() {
