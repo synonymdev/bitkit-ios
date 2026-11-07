@@ -701,6 +701,87 @@ final class SparkExitSweepTests: XCTestCase {
         withUnsafeBytes(of: value.littleEndian) { [UInt8]($0) }
     }
 
+    // MARK: Ended with a savings payment on its way
+
+    private func endedWithPayment(_ paid: String) -> SparkExitRecord {
+        var record = endedRecord()
+        record.leftover = []
+        record.leftoverSweep = nil
+        record.fundingPaymentTxid = paid
+        return record
+    }
+
+    /// An exit that ended before its savings payment arrived keeps being driven; once it lands it is swept back.
+    func testEndedExitSweepsASavingsPaymentThatArrivesLater() async throws {
+        let paid = String(repeating: "d", count: 64)
+        chain.mempoolTxids = [paid]
+        var record = endedWithPayment(paid)
+        XCTAssertTrue(record.needsDriving)
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.fundingPaymentTxid, paid)
+        XCTAssertTrue(record.needsDriving)
+        XCTAssertNil(record.leftoverSweep)
+
+        chain.utxosByAddress[key.address] = [SparkExitFixtures.utxo(paid, value: 20000)]
+        record = try await driver().tick(record)
+        XCTAssertNil(record.fundingPaymentTxid)
+        XCTAssertEqual(record.leftover.map(\.txid), [paid])
+        XCTAssertNotNil(record.leftoverSweep?.txid)
+        XCTAssertTrue(record.needsDriving)
+    }
+
+    /// A payment no host sees is forgotten by the own-payment expiry, and the ended exit stops being driven.
+    func testEndedExitForgetsASavingsPaymentNoHostSees() async throws {
+        var record = endedWithPayment(String(repeating: "d", count: 64))
+
+        record = try await driver().tick(record)
+        XCTAssertNotNil(record.fundingPaymentTxid)
+        chain.tip = 1001
+        record = try await driver().tick(record)
+        XCTAssertNil(record.fundingPaymentTxid)
+        XCTAssertFalse(record.needsDriving)
+    }
+
+    /// A payment already in the leftover needs no following.
+    func testEndedPaymentAlreadyInTheLeftoverIsNotFollowed() {
+        var record = endedRecord()
+        record.fundingPaymentTxid = record.leftover[0].txid
+        XCTAssertFalse(record.isEndedPaymentPending)
+    }
+
+    /// With a sweep in flight the payment waits for it; once it confirms, the sweep is kept and the payment swept.
+    func testEndedPaymentWaitsForTheSweepInFlight() async throws {
+        let paid = String(repeating: "d", count: 64)
+        var record = endedRecord()
+        record.leftoverSweep = .init(txid: "s", txHex: "02", valueSats: 4800, isAccepted: true, feeRateSatPerVbyte: 2, sentAtHeight: 1000)
+        record.fundingPaymentTxid = paid
+        chain.mempoolTxids = [paid, "s"]
+        chain.utxosByAddress[key.address] = [SparkExitFixtures.utxo(paid, value: 20000)]
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.fundingPaymentTxid, paid)
+        XCTAssertEqual(record.leftoverSweep?.txid, "s")
+
+        chain.confirmedTxids = ["s"]
+        record = try await driver().tick(record)
+        XCTAssertNil(record.fundingPaymentTxid)
+        XCTAssertEqual(record.sweptLeftover?.map(\.txid), ["s"])
+        XCTAssertEqual(record.leftover.map(\.txid), [paid])
+        XCTAssertNotEqual(record.leftoverSweep?.txid, "s")
+    }
+
+    /// The exit's sweeps whose activity is marked as a transfer: the recovery's, else the one that landed before a
+    /// retry, and those of replaced generations.
+    func testSweepTxidsIncludeTheLandedSweep() {
+        var record = endedRecord()
+        record.landedSweepTxid = "landed"
+        record.earlierReceivedSats = ["coop": 1000]
+        XCTAssertEqual(SparkExitMath.sweepTxids(record), ["landed", "coop"])
+        record.recovery = StoredRecovery(SparkExitFixtures.recovery([SparkExitFixtures.tx("sweep", kind: .sweep)]))
+        XCTAssertEqual(SparkExitMath.sweepTxids(record), ["sweep", "coop"])
+    }
+
     // MARK: Home balances
 
     /// The exit's own transfer counts what is still to come: a planned sweep counts only once it confirmed.

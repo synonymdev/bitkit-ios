@@ -798,7 +798,7 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(record.fundingShortfallSats, 186)
         XCTAssertEqual(SparkExitMath.fundingState(record, utxos: chain.utxosByAddress["bcrt1qfunding"]), .ask(sats: 294, receivedSats: 0))
 
-        chain.utxosByAddress["bcrt1qfunding", default: []] += [SparkExitFixtures.utxo("t1", value: 200), SparkExitFixtures.utxo("t2", value: 100)]
+        chain.utxosByAddress["bcrt1qfunding", default: []] += [SparkExitFixtures.utxo("t1", value: 150), SparkExitFixtures.utxo("t2", value: 150)]
         record = try await driver().tick(record)
         XCTAssertEqual(record.phase, .needsFunding(requiredSats: 9221), "300 is short of 186 plus a second input's 136")
 
@@ -807,8 +807,10 @@ final class SparkExitDriverTests: XCTestCase {
         sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1")])]
         record = try await driver().tick(record)
 
+        // The fewest coins that cover: t3 alone; t1 and t2 stay for the leftover sweep.
         XCTAssertEqual(record.phase, .running)
-        XCTAssertEqual(sdk.recoverRequests.last?.fundingInputs.count, 4)
+        XCTAssertEqual(sdk.recoverRequests.last?.fundingInputs.count, 2)
+        XCTAssertEqual(record.funding.compactMap(\.txid), ["u0", "t3"])
     }
 
     /// After a Redo the first inputs are partly spent: what they hold now is the CPFP change at the address.
@@ -2094,20 +2096,37 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.orphanedTransferIds(transfers, record: nil), ["transfer-1", "orphan"])
     }
 
-    func testFundingTopUpTakesEveryConfirmedPaymentOnceTogetherTheyCover() {
+    func testFundingTopUpTakesTheFewestConfirmedPaymentsThatCover() {
         let utxos = [
             SparkExitFixtures.utxo("a", value: 999),
             SparkExitFixtures.utxo("pending", value: 50000, confirmed: false),
             SparkExitFixtures.utxo("b", value: 1000),
         ]
 
-        XCTAssertEqual(SparkExitMath.fundingTopUp(utxos, requiredSats: 1999)?.map(\.txid), ["a", "b"])
+        XCTAssertEqual(SparkExitMath.fundingTopUp(utxos, requiredSats: 1999)?.map(\.txid), ["b", "a"])
+        XCTAssertEqual(SparkExitMath.fundingTopUp(utxos, requiredSats: 1000)?.map(\.txid), ["b"])
         XCTAssertNil(SparkExitMath.fundingTopUp(utxos, requiredSats: 2000))
         XCTAssertNil(SparkExitMath.fundingTopUp([], requiredSats: 0))
         // Each payment beyond the first is one more input to pay for: 68 vB at the exit's rate.
         XCTAssertNil(SparkExitMath.fundingTopUp(utxos, requiredSats: 1999, inputFeeSats: 136))
-        XCTAssertEqual(SparkExitMath.fundingTopUp(utxos, requiredSats: 1863, inputFeeSats: 136)?.map(\.txid), ["a", "b"])
+        XCTAssertEqual(SparkExitMath.fundingTopUp(utxos, requiredSats: 1863, inputFeeSats: 136)?.map(\.txid), ["b", "a"])
         XCTAssertEqual(SparkExitMath.inputFeeSats(SparkExitFixtures.record()), 136)
+    }
+
+    /// Largest first, and never a coin worth no more than its own input fee: that one stays for the leftover sweep.
+    func testFundingTopUpLeavesUneconomicalCoins() {
+        let utxos = [
+            SparkExitFixtures.utxo("dust", value: 136),
+            SparkExitFixtures.utxo("small", value: 500),
+            SparkExitFixtures.utxo("big", value: 3000),
+            SparkExitFixtures.utxo("mid", value: 1500),
+        ]
+
+        XCTAssertEqual(SparkExitMath.fundingTopUp(utxos, requiredSats: 2500, inputFeeSats: 136)?.map(\.txid), ["big"])
+        XCTAssertEqual(SparkExitMath.fundingTopUp(utxos, requiredSats: 4300, inputFeeSats: 136)?.map(\.txid), ["big", "mid"])
+        XCTAssertEqual(SparkExitMath.fundingTopUp(utxos, requiredSats: 4700, inputFeeSats: 136)?.map(\.txid), ["big", "mid", "small"])
+        // A coin worth only its input fee never counts.
+        XCTAssertNil(SparkExitMath.fundingTopUp([utxos[0]], requiredSats: 1, inputFeeSats: 136))
     }
 
     func testShowsTheSparkBalanceBeyondTheExitsLeaves() {

@@ -326,9 +326,17 @@ struct SparkExitRecord: Codable, Equatable {
         funding.first?.index ?? 0
     }
 
-    /// Whether the driver still has work: the exit runs, or its leftover fee funding is on its way to savings.
+    /// Whether the driver still has work: the exit runs, its leftover fee funding is on its way to savings, or a
+    /// savings payment to the funding address is still to arrive and join that leftover.
     var needsDriving: Bool {
-        isActive || isLeftoverSweepPending
+        isActive || isLeftoverSweepPending || isEndedPaymentPending
+    }
+
+    /// The exit ended while a savings payment Bitkit sent to its funding address had not arrived: it is followed
+    /// until it lands (and joins the leftover) or the own-payment expiry forgets it.
+    var isEndedPaymentPending: Bool {
+        guard !isActive, let paid = fundingPaymentTxid else { return false }
+        return !funding.contains { $0.txid == paid } && !leftover.contains { $0.txid == paid }
     }
 
     var fundingInputs: [CpfpInput] {

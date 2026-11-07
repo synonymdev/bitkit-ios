@@ -366,19 +366,17 @@ final class SparkExitManager {
     /// or once the exit ended, so its amount is never counted both as in transfer and in the on-chain balance. Runs on
     /// every tick and launch until it holds. A sweep of a generation the failed-leaf retry replaced is looked for too.
     private func settleIfFinished(_ record: SparkExitRecord) async {
-        guard let transferId = record.transferId,
-              let transfer = try? TransferStorage.shared.getById(transferId), !transfer.isSettled
-        else { return }
+        guard let transferId = record.transferId, let transfer = try? TransferStorage.shared.getById(transferId) else { return }
         let activity = CoreService.shared.activity
         var isFinished = !record.isActive || record.isRetryingFailedLeaves
-        let sweeps = (record.recovery?.response.transactions ?? []).filter { $0.kind == .sweep }.map(\.txid)
-            + (record.earlierReceivedSats ?? [:]).keys.sorted()
-        for txid in sweeps {
+        // The sweep's activity is marked as a transfer even after the transfer settled: it may reach the activity
+        // list only later.
+        for txid in SparkExitMath.sweepTxids(record) {
             guard await activity.hasOnchainActivityForTxid(txid: txid) else { continue }
             await activity.markOnchainActivityAsTransfer(txId: txid)
             isFinished = true
         }
-        guard isFinished else { return }
+        guard isFinished, !transfer.isSettled else { return }
         try? await TransferService(lightningService: .shared).markSettled(id: transferId)
     }
 

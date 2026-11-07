@@ -73,10 +73,15 @@ struct SparkExitDriver {
         var record = record
         switch record.phase {
         case .done, .failed:
-            guard record.isLeftoverSweepPending, !Task.isCancelled else { return record }
-            try await sweepLeftover(&record)
-            try save(record)
-            return record
+            guard record.needsDriving, !Task.isCancelled else { return record }
+            let before = record
+            await followEndedPayment(&record)
+            if record.isLeftoverSweepPending {
+                try await sweepLeftover(&record)
+                try save(record)
+                return record
+            }
+            return try saveIfChanged(record, from: before)
         case .awaitingFunding, .needsFunding:
             guard !Task.isCancelled else { return record }
             let before = record
@@ -142,7 +147,9 @@ struct SparkExitDriver {
     /// replaced), or once it is older than `ownPaymentTimeoutBlocks` without being adopted, so the ask and the reminder
     /// come back. Nothing changes without a tip.
     private func noteOwnPayment(_ record: inout SparkExitRecord) async {
-        guard record.isAwaitingOwnPayment, let paid = record.fundingPaymentTxid, let tip = try? await chain.tipHeight() else { return }
+        guard record.isAwaitingOwnPayment || record.isEndedPaymentPending, let paid = record.fundingPaymentTxid,
+              let tip = try? await chain.tipHeight()
+        else { return }
         let seenAt = record.fundingPaymentSeenAtHeight ?? tip
         record.fundingPaymentSeenAtHeight = seenAt
         switch try? await chain.isKnown(txid: paid) {
@@ -154,6 +161,54 @@ struct SparkExitDriver {
         let isTooOld = tip.saturatingSub(seenAt) >= Self.ownPaymentTimeoutBlocks
         guard isMissing || isTooOld else { return }
         Logger.warn("Spark exit forgets its funding payment \(paid) (missing: \(isMissing), too old: \(isTooOld))", context: "SparkExitDriver")
+        record.fundingPaymentTxid = nil
+        record.fundingPaymentSeenAtHeight = nil
+        record.fundingPaymentMissingSince = nil
+    }
+
+    /// An ended exit's savings payment that had not arrived: once at the funding address it joins the leftover and is
+    /// swept with it, after any sweep in flight settles (a confirmed one is kept in `sweptLeftover`). One no host
+    /// sees is forgotten by the own-payment expiry.
+    private func followEndedPayment(_ record: inout SparkExitRecord) async {
+        guard !record.isActive, let paid = record.fundingPaymentTxid else { return }
+        guard record.isEndedPaymentPending else {
+            // Already in the leftover (or adopted as funding): nothing more to follow.
+            record.fundingPaymentTxid = nil
+            record.fundingPaymentSeenAtHeight = nil
+            record.fundingPaymentMissingSince = nil
+            return
+        }
+        guard let address = record.funding.first?.address, let tip = try? await chain.tipHeight(),
+              let listed = try? await chain.utxos(address: address)
+        else { return }
+        guard listed.contains(where: { $0.txid == paid }) else {
+            await noteOwnPayment(&record)
+            return
+        }
+        let sweep = record.leftoverSweep
+        var isSweepConfirmed = sweep?.isConfirmed == true
+        if let txid = sweep?.txid, !isSweepConfirmed, sweep?.rejection == nil {
+            // In flight: its coins are settled first, so the payment is never mixed into a sweep that may replace it.
+            guard let status = try? await chain.txStatus(txid: txid), status.confirmed else { return }
+            isSweepConfirmed = true
+        } else if sweep?.txid == nil, await isAnyKnown(sweep?.replacedTxids ?? []) {
+            return
+        }
+        if isSweepConfirmed, let sweep, let txid = sweep.txid {
+            if !(record.sweptLeftover ?? []).contains(where: { $0.txid == txid }) {
+                record.sweptLeftover = (record.sweptLeftover ?? []) + [.init(txid: txid, valueSats: sweep.valueSats)]
+            }
+            // A host behind the block can still list what the sweep spent.
+            let spent = Set((sweep.txHex.flatMap(SparkExitTxid.inputOutpoints(hex:)) ?? []).map { "\($0.txid):\($0.vout)" })
+            record.leftover = listed.filter { !spent.contains("\($0.txid):\($0.vout)") }
+                .map { SparkExitRecord.Leftover(txid: $0.txid, vout: $0.vout, valueSats: $0.value) }
+        } else {
+            let known = Set(record.leftover.map { "\($0.txid):\($0.vout)" })
+            record.leftover += listed.filter { $0.txid == paid && !known.contains("\($0.txid):\($0.vout)") }
+                .map { SparkExitRecord.Leftover(txid: $0.txid, vout: $0.vout, valueSats: $0.value) }
+        }
+        Logger.info("Spark exit funding payment \(paid) arrived after the exit ended; sweeping it back", context: "SparkExitDriver")
+        record.leftoverSweep = SparkExitRecord.LeftoverSweep(waitingSince: tip, checkedAtHeight: tip, retryAtHeight: tip)
         record.fundingPaymentTxid = nil
         record.fundingPaymentSeenAtHeight = nil
         record.fundingPaymentMissingSince = nil
@@ -172,8 +227,8 @@ struct SparkExitDriver {
             try await broadcastReady(&record, tip: tip)
         case .done:
             // Nothing is left to pay more for: back to running, whose next check finishes it (failed leaves included).
+            // A payment still on its way is followed after the end and swept back with the leftover.
             record.phase = .running
-            record.fundingPaymentTxid = nil
         case .redo:
             break
         }

@@ -372,6 +372,17 @@ enum SparkExitMath {
         return (sats, transactions.first { $0.kind == .sweep }?.txid ?? record.landedSweepTxid)
     }
 
+    /// The exit's sweeps to savings: the recovery's, else the one that landed before a retry replaced it, and those of
+    /// generations a Redo replaced.
+    static func sweepTxids(_ record: SparkExitRecord) -> [String] {
+        let current = (record.recovery?.response.transactions ?? []).filter { $0.kind == .sweep }.map(\.txid)
+        var txids = current.isEmpty ? [record.landedSweepTxid].compactMap { $0 } : current
+        for txid in (record.earlierReceivedSats ?? [:]).keys.sorted() where !txids.contains(txid) {
+            txids.append(txid)
+        }
+        return txids
+    }
+
     /// What each sweep or cooperative recovery among `transactions` pays to `destination`, by txid.
     static func paidToDestination(_ transactions: [RecoveryTransaction], destination: String) -> [String: UInt64] {
         guard let script = try? SparkExitAddress.scriptPubKey(destination) else { return [:] }
@@ -425,10 +436,18 @@ enum SparkExitMath {
     /// given, so several small payments fund the exit as well as one. `requiredSats` assumes one payment; each
     /// further one adds its own input fee, `inputFeeSats`.
     static func fundingTopUp(_ newFunding: [EsploraUtxo], requiredSats: UInt64, inputFeeSats: UInt64 = 0) -> [EsploraUtxo]? {
-        let confirmed = newFunding.filter(\.status.confirmed)
-        let total = confirmed.reduce(0) { $0 + $1.value }
-        let needed = requiredSats + inputFeeSats * UInt64(max(0, confirmed.count - 1))
-        return !confirmed.isEmpty && total >= needed ? confirmed : nil
+        // Fewest coins, largest first; one worth no more than its own input fee stays for the leftover sweep.
+        let coins = newFunding.filter { $0.status.confirmed && $0.value > inputFeeSats }.sorted { $0.value > $1.value }
+        var taken: [EsploraUtxo] = []
+        var total: UInt64 = 0
+        for coin in coins {
+            taken.append(coin)
+            total += coin.value
+            if total >= requiredSats + inputFeeSats * UInt64(taken.count - 1) {
+                return taken
+            }
+        }
+        return nil
     }
 
     /// A signed P2WPKH input: each payment to the funding address is one more input for the build to pay for.
