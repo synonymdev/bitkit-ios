@@ -104,6 +104,7 @@ enum Route: Hashable {
     case connections
     case connectionDetail(channelId: String)
     case sparkConnectionDetail
+    case moveToSpark
     case closeConnection(channel: ChannelDetails)
     case node
     case electrumSettings

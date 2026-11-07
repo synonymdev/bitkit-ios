@@ -988,13 +988,16 @@ class LightningService: NodeLifecycleService {
         }
     }
 
+    /// `channelsOnly` pays from the channels and never falls back to the channel-free rail, as moving a channel
+    /// balance to Spark needs.
     func send(
         bolt11: String,
         sats: UInt64? = nil,
         params: RouteParametersConfig? = nil,
+        channelsOnly: Bool = false,
         beforeSubmission: @escaping () throws -> Void = {}
     ) async throws -> PaymentHash {
-        if let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: sats) {
+        if !channelsOnly, let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: sats) {
             // Spark takes no route parameters, so a caller's routing fee cap is checked against its estimate instead.
             if let maxFeeMsat = params?.maxTotalRoutingFeeMsat {
                 let feeSats: UInt64
@@ -2007,8 +2010,8 @@ extension LightningService {
         }
     }
 
-    func estimateRoutingFees(bolt11: String, amountSats: UInt64? = nil) async throws -> UInt64 {
-        if let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: amountSats) {
+    func estimateRoutingFees(bolt11: String, amountSats: UInt64? = nil, channelsOnly: Bool = false) async throws -> UInt64 {
+        if !channelsOnly, let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: amountSats) {
             return try await rail.estimateRoutingFees(bolt11: bolt11, amountSats: amountSats)
         }
         guard let node else {

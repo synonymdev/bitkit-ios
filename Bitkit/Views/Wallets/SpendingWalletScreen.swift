@@ -7,6 +7,10 @@ struct SpendingWalletScreen: View {
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
+    private var canMoveToSpark: Bool {
+        MoveToSparkMath.canMove(channels: wallet.channels, isSparkUsable: MoveToSparkMath.isSparkUsable(SparkManager.shared))
+    }
+
     private var shouldShowOnboarding: Bool {
         let hasLightningActivities = activity.lightningActivities?.isEmpty == false
         return wallet.totalLightningSats == 0 && !hasLightningActivities
@@ -41,6 +45,14 @@ struct SpendingWalletScreen: View {
                     }
 
                     if !shouldShowOnboarding {
+                        if canMoveToSpark {
+                            CustomButton(title: t("lightning__move_to_spark__nav_title")) {
+                                navigation.navigate(.moveToSpark)
+                            }
+                            .accessibilityIdentifier("MoveToSpark")
+                            .padding(.top, 28)
+                        }
+
                         if wallet.channels?.isEmpty == false || SparkManager.shared.balanceSats > 0 {
                             transferButton
                                 .transition(.move(edge: .leading).combined(with: .opacity))

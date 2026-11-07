@@ -1156,6 +1156,19 @@ class WalletViewModel: ObservableObject {
         return try await watchSend(hash: String(hash))
     }
 
+    /// Pays from the channels only, with the routing fee capped at `maxFeeMsat`, and waits for the payment to settle.
+    func sendOverChannels(bolt11: String, sats: UInt64, maxFeeMsat: UInt64) async throws -> SettledLightningPayment {
+        // LDK's default route parameters, with the routing fee capped.
+        let params = RouteParametersConfig(
+            maxTotalRoutingFeeMsat: maxFeeMsat,
+            maxTotalCltvExpiryDelta: 1008,
+            maxPathCount: 10,
+            maxChannelSaturationPowerOfHalf: 2
+        )
+        let hash = try await lightningService.send(bolt11: bolt11, sats: sats, params: params, channelsOnly: true)
+        return try await watchSend(hash: String(hash))
+    }
+
     /// Observes task cancellation so `waitForLightningPayment`'s task group can unwind after its
     /// timeout instead of awaiting a continuation that only an LDK event would resume.
     private func watchSend(hash: String) async throws -> SettledLightningPayment {
