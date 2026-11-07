@@ -1312,6 +1312,7 @@ final class BackupServiceTests: XCTestCase {
                 BackupCategory.wallet.rawValue: pending,
                 BackupCategory.metadata.rawValue: pending,
             ]), forKey: "backupStatuses")
+            let walletFailed = expectation(description: "Scheduled wallet attempt failed")
             let held = expectation(description: "Failed metadata job still occupies its slot")
             let completed = expectation(description: "Pending metadata resumes only in its active generation")
             completed.isInverted = stopBeforeRetirement
@@ -1323,6 +1324,9 @@ final class BackupServiceTests: XCTestCase {
                 uploadBackup: { try await remote.upload(key: $0, data: $1) },
                 waitForBackupDelay: { await Task.yield() },
                 waitForScheduledBackupCompletion: { category, outcome in
+                    if category == .wallet, outcome == .failed {
+                        walletFailed.fulfill()
+                    }
                     if category == .metadata, outcome == .walletDependencyFailed {
                         held.fulfill()
                         for await _ in retirement {}
@@ -1335,7 +1339,7 @@ final class BackupServiceTests: XCTestCase {
             defer { subscription.cancel() }
 
             await service.startObservingBackups()?.value
-            await fulfillment(of: [held], timeout: 2)
+            await fulfillment(of: [held, walletFailed], timeout: 2)
             XCTAssertEqual(service.getBackupStatus(category: .metadata).required, pending.required)
             let retainedMetadata = await remote.metadata
             XCTAssertEqual(retainedMetadata, LegacyMetadataBackupServer.legacyMetadata)
