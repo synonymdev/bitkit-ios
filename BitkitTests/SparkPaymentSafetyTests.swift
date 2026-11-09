@@ -182,6 +182,25 @@ final class SparkPaymentSafetyTests: XCTestCase {
         }
     }
 
+    func testAFreshQuoteThatRaisesTheTotalNeedsAnotherSwipe() {
+        func quote(networkFee: UInt64, instantClaimFee: UInt64) -> SparkTransferQuote {
+            SparkTransferQuote(
+                address: "bcrt1q-spark", satsPerVbyte: 2, networkFeeSats: networkFee, depositSats: 100_000,
+                claimFees: SparkClaimFees(instantMaxSats: instantClaimFee, laterSats: 198)
+            )
+        }
+        let approved = quote(networkFee: 200, instantClaimFee: 1190)
+
+        // A lower claim fee doesn't offset the higher network fee that leaves savings.
+        XCTAssertEqual(quote(networkFee: 400, instantClaimFee: 893).increase(over: approved, speed: .instant), 200)
+        // A higher claim fee leaves less for spending.
+        XCTAssertEqual(quote(networkFee: 200, instantClaimFee: 1290).increase(over: approved, speed: .instant), 100)
+        // A lower network fee doesn't offset a higher claim fee that leaves less for spending.
+        XCTAssertEqual(quote(networkFee: 150, instantClaimFee: 1240).increase(over: approved, speed: .instant), 50)
+        XCTAssertEqual(quote(networkFee: 150, instantClaimFee: 1190).increase(over: approved, speed: .instant), 0)
+        XCTAssertEqual(approved.increase(over: approved, speed: .instant), 0)
+    }
+
     func testHardwareTransferBelowTheClaimFeeNamesTheMinimum() {
         let quote = SparkTransferQuote(
             address: "bcrt1q-spark", satsPerVbyte: 20, networkFeeSats: 300, depositSats: 1000,

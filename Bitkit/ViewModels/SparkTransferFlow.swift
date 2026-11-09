@@ -35,6 +35,16 @@ struct SparkTransferQuote: Equatable {
         depositSats.saturatingAdd(networkFeeSats)
     }
 
+    /// How much more this fresh quote asks than the approved one at `speed`, 0 when it asks no more, so a rise needs
+    /// another swipe: the larger of the rise in the Total leaving savings and the fall in what reaches spending. A lower
+    /// fee on one side doesn't offset a higher one on the other.
+    func increase(over approved: SparkTransferQuote, speed: SparkTransferSpeed) -> UInt64 {
+        max(
+            totalSats.saturatingSub(approved.totalSats),
+            approved.toSpendingSats(for: speed).saturatingSub(toSpendingSats(for: speed))
+        )
+    }
+
     /// Whether the deposit stays claimable at the most Spark may charge to claim it, at either speed: the mature claim
     /// runs at that hour's rate under the same cap, so a deposit at or below `instantMaxSats` could be left unclaimed.
     var coversClaimFee: Bool {
