@@ -496,9 +496,21 @@ struct SparkExitRecord: Codable, Equatable {
     /// being checked, sent and reminded.
     var isDrivingWhileFunding: Bool {
         if case .needsFunding = phase {
-            return recovery != nil && !isRebuilding
+            return recovery != nil && !isRebuilding && !isFundingWaitingLeaves
         }
         return false
+    }
+
+    /// Fee funding asked for `waitingLeafIds` once every step of the recovery confirmed: only those leaves are built
+    /// when it arrives.
+    var isFundingWaitingLeaves: Bool {
+        guard case .needsFunding = phase, !(waitingLeafIds ?? []).isEmpty, let recovery else { return false }
+        return recovery.response.transactions.allSatisfy {
+            if case .confirmed = $0.status {
+                return true
+            }
+            return false
+        }
     }
 
     /// Progress says the exit is underpriced: it runs at its rate, nothing rebuilds it and no higher fee is on its way.

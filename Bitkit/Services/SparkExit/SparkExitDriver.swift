@@ -104,7 +104,16 @@ struct SparkExitDriver {
                         return try saveIfChanged(record, from: before)
                     }
                 }
-                try await build(&record, recovering: recovering)
+                if record.isFundingWaitingLeaves {
+                    // Funding for leaves a partial build skipped: only they are built, now that it arrived.
+                    record.phase = .running
+                    let tip = try? await chain.tipHeight()
+                    if try await !retryWaitingLeaves(&record, recovering: recovering, tip: tip, isFunded: true) {
+                        await finish(&record, phase: .done)
+                    }
+                } else {
+                    try await build(&record, recovering: recovering)
+                }
             }
         case .running where record.isRebuilding:
             // The diverged generation is never broadcast again; only a rebuild moves on from here.
@@ -329,12 +338,7 @@ struct SparkExitDriver {
             record.lastBuildAt = nil
             return
         } catch let SdkError.InsufficientCpfpFunds(requiredSats, _) {
-            // The SDK names the total all inputs must hold, not what is missing.
-            var utxos: [EsploraUtxo]?
-            if let address = record.funding.first?.address {
-                utxos = try? await chain.utxos(address: address)
-            }
-            record.phase = .needsFunding(requiredSats: SparkExitMath.neededFunding(requiredSats: requiredSats, record: record, utxos: utxos))
+            await askForFunding(&record, requiredSats: requiredSats)
             return
         }
         guard !built.transactions.isEmpty else {
@@ -596,10 +600,25 @@ struct SparkExitDriver {
         return true
     }
 
+    /// The SDK names the total all inputs must hold, not what is missing.
+    private func askForFunding(_ record: inout SparkExitRecord, requiredSats: UInt64) async {
+        var utxos: [EsploraUtxo]?
+        if let address = record.funding.first?.address {
+            utxos = try? await chain.utxos(address: address)
+        }
+        record.phase = .needsFunding(requiredSats: SparkExitMath.neededFunding(requiredSats: requiredSats, record: record, utxos: utxos))
+    }
+
     /// Leaves a build skipped while they may still move (`waitingLeafIds`), prepared again on their own once the rest of
     /// the exit is done: at once, then at Glow's doubling gaps (`isRetryDue`), until they build or about a week passed
-    /// (`releaseBlocks`). True while the exit keeps waiting for them, false once it can end.
-    private func retryWaitingLeaves(_ record: inout SparkExitRecord, recovering: SparkExitRecovering, tip: UInt32?) async throws -> Bool {
+    /// (`releaseBlocks`). One that needs more fee funding asks for it and is built as soon as it arrives (`isFunded`).
+    /// True while the exit keeps waiting for them, false once it can end.
+    private func retryWaitingLeaves(
+        _ record: inout SparkExitRecord,
+        recovering: SparkExitRecovering,
+        tip: UInt32?,
+        isFunded: Bool = false
+    ) async throws -> Bool {
         let ids = (record.waitingLeafIds ?? []).filter(record.exitLeafIds.contains)
         guard !ids.isEmpty else {
             record.waitingLeafIds = nil
@@ -612,7 +631,7 @@ struct SparkExitDriver {
             letGoOfWaitingLeaves(&record)
             return false
         }
-        if record.retrySince != nil, !Self.isRetryDue(since: since, retriedAt: record.retriedAt ?? since, tip: tip) {
+        if !isFunded, record.retrySince != nil, !Self.isRetryDue(since: since, retriedAt: record.retriedAt ?? since, tip: tip) {
             return true
         }
         record.retrySince = since
@@ -644,6 +663,8 @@ struct SparkExitDriver {
             record.retriedAt = nil
             try save(record)
             try await broadcastReady(&record, tip: tip)
+        } catch let SdkError.InsufficientCpfpFunds(requiredSats, _) {
+            await askForFunding(&record, requiredSats: requiredSats)
         } catch {
             Logger.warn("Spark exit could not recover the leaves it skipped yet: \(error)", context: "SparkExitDriver")
         }

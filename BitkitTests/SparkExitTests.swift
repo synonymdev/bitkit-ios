@@ -1612,6 +1612,35 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(record.phase, .done)
     }
 
+    /// A skipped leaf whose retry needs more fee funding asks for it, and is built on its own once it arrives.
+    func testASkippedLeafWhoseRetryNeedsMoreFeesAsksForThem() async throws {
+        var record = rebuildingRecord()
+        record.leafIds = ["leaf-1", "leaf-2"]
+        var prepared = SparkExitFixtures.prepared(leaves: ["leaf-1"])
+        prepared.skipped = [SkippedLeaf(leafId: "leaf-2", valueSats: 50000, reason: .unverified)]
+        sdk.preparedResponse = prepared
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1")])]
+        record = try await driver().tick(record)
+
+        let landed = SparkExitFixtures.recovery([SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 990))])
+        sdk.checks = Array(repeating: CheckRecoverFundsResponse(recovery: landed, verdict: .done), count: 2)
+        sdk.preparedResponse = SparkExitFixtures.prepared(leaves: ["leaf-2"])
+        sdk.recoverError = SdkError.InsufficientCpfpFunds(requiredSats: 3000, docsUrl: "")
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.phase, .needsFunding(requiredSats: 3136))
+        XCTAssertEqual(record.waitingLeafIds, ["leaf-2"])
+
+        sdk.recoverError = nil
+        chain.utxosByAddress["bcrt1qfunding"] = [SparkExitFixtures.utxo("f9", value: 3136)]
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n2")])]
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.phase, .running)
+        guard case let .specific(leafIds) = sdk.prepareRequests.last?.selection else { return XCTFail("Expected a specific selection") }
+        XCTAssertEqual(leafIds, ["leaf-2"])
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n1", "n2"])
+    }
+
     /// A skipped leaf still unverified after about a week is let go, and the exit ends.
     func testAPartialBuildLetsTheSkippedLeafGoAfterAWeek() async throws {
         var record = rebuildingRecord()
