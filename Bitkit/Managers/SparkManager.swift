@@ -60,6 +60,9 @@ final class SparkManager: ChannelFreeLightningRail {
     private static let optimizationWaitSeconds: TimeInterval = 120
     /// Bumped by `wipe`, so a connect that started before it disconnects instead of keeping the wiped wallet.
     @ObservationIgnored private var connectGeneration = 0
+    /// Set for the whole wipe: no connect, start or exit reconnect is admitted, so nothing brings the wiped wallet's
+    /// Spark identity back while its mnemonic still exists.
+    @ObservationIgnored private var isWiping = false
     /// The refresh in flight; callers during it wait for it, and it reads once more for them.
     @ObservationIgnored private var refreshTask: Task<Void, Error>?
     @ObservationIgnored private var refreshAgain = false
@@ -92,7 +95,7 @@ final class SparkManager: ChannelFreeLightningRail {
     /// Connects Spark again so its leaf optimization follows whether an exit runs: off when one starts, back on
     /// once it ends.
     func reconnectForExit() async {
-        guard let network = Self.sparkNetwork else { return }
+        guard let network = Self.sparkNetwork, !isWiping else { return }
         noteOptimizationCutShort()
         if let sdk {
             if let listenerId {
@@ -265,7 +268,7 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     func start(walletIndex: Int) async {
-        guard let network = Self.sparkNetwork else { return }
+        guard let network = Self.sparkNetwork, !isWiping else { return }
         self.walletIndex = walletIndex
         SparkExitManager.shared.load(walletIndex: walletIndex)
         do {
@@ -309,6 +312,7 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     private func connect(walletIndex: Int, network: BreezSdkSpark.Network, generation: Int) async throws {
+        guard !isWiping else { throw CancellationError() }
         guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
             throw CustomServiceError.mnemonicNotFound
         }
@@ -323,7 +327,7 @@ final class SparkManager: ChannelFreeLightningRail {
             await builder.withRestChainService(url: chainServiceUrl, apiType: .esplora, credentials: nil)
         }
         let connected = try await builder.build()
-        guard generation == connectGeneration else {
+        guard generation == connectGeneration, !isWiping else {
             try? await connected.disconnect()
             throw CancellationError()
         }
@@ -359,7 +363,37 @@ final class SparkManager: ChannelFreeLightningRail {
     /// Disconnects and deletes this wallet's Spark data. A connect still running is waited for first, so it can't
     /// keep the wiped wallet; throws when the data could not be deleted, so the wipe is retried.
     func wipe(walletIndex: Int) async throws {
-        connectGeneration += 1
+        defer { isWiping = false }
+        var disconnectError: Error?
+        try await Self.wipeInOrder(
+            closeAdmission: {
+                isWiping = true
+                connectGeneration += 1
+            },
+            drainExitWork: { await SparkExitManager.shared.wipe() },
+            disconnect: { disconnectError = await disconnectForWipe() },
+            deleteData: { try deleteWipedData(walletIndex: walletIndex) }
+        )
+        if let disconnectError {
+            throw disconnectError
+        }
+    }
+
+    /// The wipe's steps, in the order that keeps the wiped wallet's identity from coming back.
+    static func wipeInOrder(
+        closeAdmission: () -> Void,
+        drainExitWork: () async -> Void,
+        disconnect: () async -> Void,
+        deleteData: () throws -> Void
+    ) async throws {
+        closeAdmission()
+        // An exit tick finishing now may reconnect; with admission closed it can't, and it is done before the SDK goes.
+        await drainExitWork()
+        await disconnect()
+        try deleteData()
+    }
+
+    private func disconnectForWipe() async -> Error? {
         if let connectTask {
             _ = try? await connectTask.value
         }
@@ -390,7 +424,10 @@ final class SparkManager: ChannelFreeLightningRail {
         refreshAgain = false
         activitiesSynced = false
         isReady = false
-        await SparkExitManager.shared.wipe()
+        return disconnectError
+    }
+
+    private func deleteWipedData(walletIndex: Int) throws {
         balanceSats = 0
         pendingDepositSats = 0
         recoverableFundsSats = 0
@@ -403,9 +440,6 @@ final class SparkManager: ChannelFreeLightningRail {
         onStateChanged?()
         try Self.removeIfPresent(Env.sparkStorage(walletIndex: walletIndex))
         try Self.removeIfPresent(Env.sparkExitRestore(walletIndex: walletIndex))
-        if let disconnectError {
-            throw disconnectError
-        }
     }
 
     nonisolated static func removeIfPresent(_ url: URL) throws {

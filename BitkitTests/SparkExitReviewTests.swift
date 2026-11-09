@@ -710,6 +710,20 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(contexts.count, 1)
     }
 
+    /// A wipe closes Spark's connects first, then lets exit work (a tick that may reconnect) finish, and only then
+    /// disconnects and deletes: nothing can reconnect the wiped wallet after its SDK is cleared.
+    @MainActor
+    func testAWipeClosesConnectsAndDrainsExitWorkBeforeItDisconnects() async throws {
+        var steps: [String] = []
+        try await SparkManager.wipeInOrder(
+            closeAdmission: { steps.append("close") },
+            drainExitWork: { steps.append("drain") },
+            disconnect: { steps.append("disconnect") },
+            deleteData: { steps.append("delete") }
+        )
+        XCTAssertEqual(steps, ["close", "drain", "disconnect", "delete"])
+    }
+
     /// Fee rates that cannot be read fail the savings price, so Pay from savings shows its error instead of loading.
     func testSavingsFeeFailsWithoutFeeRates() async {
         let rates = FeeRates(fast: 9, mid: 6, slow: 1)
