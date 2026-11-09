@@ -471,4 +471,36 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(record.funding.first?.txid, "unk")
         XCTAssertNotNil(record.recovery)
     }
+
+    // MARK: Wipe (review thread 4511769434)
+
+    /// A quote taken before a wipe names the wiped wallet's address: the next wallet's exit must never pay to it.
+    @MainActor
+    func testAWipeForgetsTheQuotesDestinationAndFunding() async {
+        let exit = SparkExitManager(walletIndex: 9999)
+        exit.useQuote(
+            SparkExitQuote(prepared: SparkExitFixtures.prepared()),
+            destination: "bcrt1qwalleta",
+            feeRate: 4,
+            fundingIndex: 3,
+            fundingAddress: "bcrt1qfundinga"
+        )
+        exit.noteFundingSeen([SparkExitFixtures.utxo("seen", value: 5000)])
+        exit.fundFromSavings = true
+        exit.savingsFeeRate = 7
+        exit.savingsFeeSats = 300
+
+        await exit.wipe()
+
+        XCTAssertNil(exit.quote)
+        XCTAssertNil(exit.pendingDestination)
+        XCTAssertNil(exit.quoteFeeRate)
+        XCTAssertNil(exit.pendingFundingIndex)
+        XCTAssertNil(exit.fundingAddress)
+        XCTAssertFalse(exit.fundFromSavings)
+        XCTAssertEqual(exit.savingsFeeRate, 0)
+        XCTAssertEqual(exit.savingsFeeSats, 0)
+        XCTAssertEqual(exit.fundingSeenSats, 0)
+        XCTAssertEqual(exit.fundingSeenCount, 0)
+    }
 }

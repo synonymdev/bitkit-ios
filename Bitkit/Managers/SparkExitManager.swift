@@ -53,11 +53,14 @@ final class SparkExitManager {
     @ObservationIgnored var savingsFeeSats: UInt64 = 0
     @ObservationIgnored private var walletIndex = 0
     @ObservationIgnored private var isTicking = false
-    @ObservationIgnored private var pendingDestination: String?
+    @ObservationIgnored private(set) var pendingDestination: String?
     @ObservationIgnored private var pendingFeeRate: UInt64?
-    @ObservationIgnored private var pendingFundingIndex: UInt32?
+    @ObservationIgnored private(set) var pendingFundingIndex: UInt32?
 
-    private init() {}
+    /// The app uses `shared`; tests make their own, on a wallet index no wallet uses.
+    init(walletIndex: Int = 0) {
+        self.walletIndex = walletIndex
+    }
 
     /// The fee rate of the quote on screen.
     var quoteFeeRate: UInt64? {
@@ -178,7 +181,16 @@ final class SparkExitManager {
         try? lostLeafStore.delete()
         record = nil
         quote = nil
+        // The quote's destination and funding belong to the wiped wallet: the next wallet's exit never pays to them.
+        pendingDestination = nil
+        pendingFeeRate = nil
         pendingFundingIndex = nil
+        fundingAddress = nil
+        fundFromSavings = false
+        savingsFeeRate = 0
+        savingsFeeSats = 0
+        fundingSeenSats = 0
+        fundingSeenCount = 0
         Self.clearReminders()
     }
 
@@ -539,11 +551,8 @@ final class SparkExitManager {
                 lostLeafIds: (try? lostLeafStore.load()) ?? []
             )
             let fundingIndex = pendingFundingIndex ?? nextFundingIndex()
-            pendingDestination = destination
-            pendingFeeRate = feeRate
-            pendingFundingIndex = fundingIndex
-            quote = newQuote
-            fundingAddress = try Self.fundingKey(walletIndex: walletIndex, index: fundingIndex).address
+            let fundingAddress = try Self.fundingKey(walletIndex: walletIndex, index: fundingIndex).address
+            useQuote(newQuote, destination: destination, feeRate: feeRate, fundingIndex: fundingIndex, fundingAddress: fundingAddress)
         } catch {
             Logger.error("Failed to quote the Spark exit: \(error)", context: "SparkExitManager")
             quote = nil
@@ -551,16 +560,30 @@ final class SparkExitManager {
         }
     }
 
+    /// The quote the funding and confirm screens show, and `start()` starts from.
+    func useQuote(_ quote: SparkExitQuote, destination: String, feeRate: UInt64, fundingIndex: UInt32, fundingAddress: String) {
+        pendingDestination = destination
+        pendingFeeRate = feeRate
+        pendingFundingIndex = fundingIndex
+        self.quote = quote
+        self.fundingAddress = fundingAddress
+    }
+
     /// Watches the funding address while the user funds it from another wallet.
     func watchFundingAddress() async {
         guard let chain, let fundingAddress else { return }
         while !Task.isCancelled {
             if let utxos = try? await chain.utxos(address: fundingAddress) {
-                fundingSeenSats = utxos.reduce(0) { $0 + $1.value }
-                fundingSeenCount = utxos.count
+                noteFundingSeen(utxos)
             }
             try? await Task.sleep(nanoseconds: 15 * 1_000_000_000)
         }
+    }
+
+    /// What reached the funding address before the exit starts.
+    func noteFundingSeen(_ utxos: [EsploraUtxo]) {
+        fundingSeenSats = utxos.reduce(0) { $0 + $1.value }
+        fundingSeenCount = utxos.count
     }
 
     // MARK: Start
