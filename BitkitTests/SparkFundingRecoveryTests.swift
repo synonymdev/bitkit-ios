@@ -41,6 +41,7 @@ final class SparkFundingRecoveryTests: XCTestCase {
         XCTAssertEqual(handedOff, 0)
     }
 
+    @MainActor
     func testSpendingConfirmLeavesOnceItsFundingResolvesOnItsOwn() async throws {
         let spark = try await resolvedSend(isSparkFunding: true, txid: String(repeating: "7c", count: 32))
         let ordinary = try await resolvedSend(isSparkFunding: false, txid: String(repeating: "8d", count: 32))
