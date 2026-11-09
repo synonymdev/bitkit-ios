@@ -115,7 +115,7 @@ struct SpendingWalletScreen: View {
                 .frame(width: 16, height: 16)
                 .foregroundColor(.white80)
         ) {
-            if !SparkManager.shared.isReady {
+            if !SparkManager.shared.canFundFromChain {
                 sheets.showSheet(.transferUnavailable)
             } else if app.hasSeenTransferToSpendingIntro {
                 navigation.navigate(.spendingAmount)

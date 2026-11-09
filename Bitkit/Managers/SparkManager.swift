@@ -72,6 +72,17 @@ final class SparkManager: ChannelFreeLightningRail {
         Self.sparkNetwork != nil
     }
 
+    /// Whether savings or a hardware wallet can fund Spark: its deposit goes out on Bitkit's chain, which Spark must read.
+    var canFundFromChain: Bool {
+        isReady && Self.readsBitkitChain(network: Env.network, chainServiceUrl: Env.sparkChainServiceUrl(for: Env.network))
+    }
+
+    /// On mainnet both read Bitcoin; Spark's default regtest is its own chain, so a regtest deposit reaches Spark only
+    /// when Spark reads Bitkit's chain through `chainServiceUrl`.
+    nonisolated static func readsBitkitChain(network: LDKNode.Network, chainServiceUrl: String?) -> Bool {
+        network == .bitcoin || chainServiceUrl != nil
+    }
+
     var isConnected: Bool {
         sdk != nil
     }
