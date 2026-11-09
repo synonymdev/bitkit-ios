@@ -46,7 +46,9 @@ struct FundingOptions: View {
             VStack(spacing: 8) {
                 if canFundWithSpark {
                     RectangleButton(icon: "transfer", title: t("lightning__funding__button1"), testID: "FundTransfer") {
-                        if wallet.totalOnchainSats == 0 {
+                        if !SparkManager.shared.canFundFromChain {
+                            sheets.showSheet(.transferUnavailable)
+                        } else if wallet.totalOnchainSats == 0 {
                             showNoFundsAlert = true
                         } else if app.hasSeenTransferToSpendingIntro {
                             navigation.navigate(.spendingAmount)
@@ -74,7 +76,8 @@ struct FundingOptions: View {
                 RectangleButton(
                     icon: "device-tablet-speaker",
                     title: t("lightning__funding__button_hw"),
-                    isDisabled: !canFundWithSpark,
+                    // A hardware wallet's deposit goes out on Bitkit's chain, which Spark must read.
+                    isDisabled: !SparkManager.shared.canFundFromChain,
                     testID: "FundHardware"
                 ) {
                     fundWithHardware()
