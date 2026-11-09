@@ -542,10 +542,22 @@ final class SparkExitManager {
     /// accepted and unconfirmed for more than `unconfirmedBlocksToSurface` blocks), or the network's next-block rate
     /// is above its own. Not while it rebuilds or waits for funding, and not once only leaves the operators hold are left.
     var canPayHigherFee: Bool {
-        guard let record, record.phase == .running, !record.isRebuilding, record.recovery != nil, !record.isRetryingFailedLeaves else {
-            return false
+        guard let record else { return false }
+        return Self.canPayHigherFee(record, tip: tipHeight, isNetworkAboveExitRate: isNetworkAboveExitRate)
+    }
+
+    /// A recovery of the exit's own still has a step to confirm: a failed-leaf retry that built one counts too, its
+    /// timing kept for the leaves still outstanding. One waiting only on the operators has nothing to speed up.
+    nonisolated static func canPayHigherFee(_ record: SparkExitRecord, tip: UInt32?, isNetworkAboveExitRate: Bool) -> Bool {
+        guard record.phase == .running, !record.isRebuilding, let recovery = record.recovery?.response else { return false }
+        let hasStepToConfirm = recovery.transactions.contains {
+            if case .confirmed = $0.status {
+                return false
+            }
+            return true
         }
-        return record.underpricedStep(tip: tipHeight) != nil || isNetworkAboveExitRate
+        guard !record.isRetryingFailedLeaves || hasStepToConfirm else { return false }
+        return record.underpricedStep(tip: tip) != nil || isNetworkAboveExitRate
     }
 
     /// The network's next-block rate is above the exit's.

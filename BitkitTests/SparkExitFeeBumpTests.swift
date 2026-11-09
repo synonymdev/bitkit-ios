@@ -322,6 +322,21 @@ final class SparkExitFeeBumpTests: XCTestCase {
         XCTAssertEqual(sdk.prepareRequests.last?.selection, .specific(leafIds: ["coop-2"]))
     }
 
+    /// A failed-leaf retry that built a recovery of its own can be sped up like any live recovery; its timing stays.
+    func testAFailedLeafRetryThatBuiltCanPayAHigherFee() async throws {
+        var record = doneWithFailedLeaf()
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("c1", kind: .cooperative)])]
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.generation, 2)
+        XCTAssertNotNil(record.failedLeafRetrySince)
+
+        XCTAssertTrue(SparkExitManager.canPayHigherFee(record, tip: 1000, isNetworkAboveExitRate: true))
+        var waiting = doneWithFailedLeaf()
+        waiting.failedLeafRetrySince = 1000
+        waiting.recovery = StoredRecovery(SparkExitFixtures.recovery([], failed: [failure]))
+        XCTAssertFalse(SparkExitManager.canPayHigherFee(waiting, tip: 1000, isNetworkAboveExitRate: true), "nothing of its own is left to speed up")
+    }
+
     /// After about a week (1,008 blocks) the exit lets the leaf go and ends, saying what is left.
     func testAFailedLeafIsReleasedAfterAWeek() async throws {
         var record = doneWithFailedLeaf()
