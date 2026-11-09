@@ -732,6 +732,14 @@ struct SparkExitDriver {
             let dropped = leavesBefore.subtracting(record.exitLeafIds).reduce(UInt64(0)) { $0 + (values[$1] ?? 0) }
             throw SparkExitFeeBumpError.leavesBehind(sats: dropped)
         }
+        // A prepare that succeeds can still skip an exiting leaf whose exit costs more than it holds at this rate.
+        let unpaid = prepared.skipped.filter {
+            guard case .feeExceedsValue = $0.reason else { return false }
+            return record.exitLeafIds.contains($0.leafId)
+        }
+        if !unpaid.isEmpty {
+            throw SparkExitFeeBumpError.leavesBehind(sats: unpaid.reduce(0) { $0 + $1.valueSats })
+        }
         guard prepared.funding != nil, !prepared.leaves.isEmpty else { return 0 }
         do {
             _ = try await recovering.recover(

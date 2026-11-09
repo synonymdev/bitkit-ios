@@ -153,6 +153,22 @@ final class SparkExitFeeBumpTests: XCTestCase {
         XCTAssertTrue(chain.broadcasts.isEmpty, "pricing broadcasts nothing")
     }
 
+    /// A rate at which the prepare succeeds but skips an exiting leaf for costing more than it holds is never offered.
+    func testFeeBumpRefusesARateAtWhichThePrepareSkipsAnExitingLeafForItsFee() async throws {
+        var record = runningRecord()
+        record.leafIds = ["leaf-1", "leaf-2"]
+        var prepared = SparkExitFixtures.prepared(funding: nil)
+        prepared.skipped = [SkippedLeaf(leafId: "leaf-2", valueSats: 2000, reason: .feeExceedsValue)]
+        sdk.preparedResponse = prepared
+
+        do {
+            _ = try await driver().feeBumpShortfall(record, rate: 10)
+            XCTFail("leaf-2 would stay on Spark at this rate")
+        } catch let error as SparkExitFeeBumpError {
+            XCTAssertEqual(error, .leavesBehind(sats: 2000))
+        }
+    }
+
     /// Short at the higher rate: what the inputs lack, plus the input fee of the payment to come at the new rate
     /// (68 vB at 10 sat/vB).
     func testFeeBumpShortfallIsWhatTheInputsLackPlusTheNextInput() async throws {
