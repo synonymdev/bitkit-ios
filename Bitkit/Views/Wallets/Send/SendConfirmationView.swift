@@ -1460,6 +1460,24 @@ struct SendConfirmationView: View {
         offersSparkLeg && savingsSendableSats < amountSats
     }
 
+    /// Where a failed leg goes: a leg Spark refused before sending paid nothing, so its failure offers Try Again; any
+    /// other failure may have sent it, so it stays pending until Spark's journal settles it.
+    static func serviceLegFailureRoute(
+        _ error: Error,
+        requestId: PaykitPaymentRequest.ID?,
+        routingCacheResetAttempted: Bool
+    ) -> SendRoute {
+        guard let refusal = error as? SparkWithdrawalNotSent else {
+            return .pending(paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: requestId)
+        }
+        return .failure(SendFailureContext(
+            error: refusal.underlying,
+            retryRoute: .confirm,
+            routingCacheResetAttempted: routingCacheResetAttempted,
+            paymentRequest: nil
+        ))
+    }
+
     /// Withdraws from Spark to the contact's on-chain address. A request it pays gets an on-chain proof with the
     /// withdrawal's txid; the proof is started before the send, and Spark's journal settles it if the app stops mid-send.
     private func performServiceRoutedPayment(_ leg: ServiceRouteLeg) async {
@@ -1543,7 +1561,13 @@ struct SendConfirmationView: View {
                     await PaykitPaymentProofService.shared.failSparkOnchainPayment(requestId: proofRequest.id, identity: proofRequest.identity)
                 }
                 await context?.resolvePrivatePaymentListConsumption(refusedBeforeSend ? .definitePreBroadcastFailure : .uncertain)
-                throw (error as? SparkWithdrawalNotSent)?.underlying ?? error
+                Logger.error("Service route payment failed: \(error)", context: "SendConfirmation")
+                navigationPath.append(Self.serviceLegFailureRoute(
+                    error,
+                    requestId: request?.id,
+                    routingCacheResetAttempted: routingCacheResetAttempted
+                ))
+                return
             }
             await context?.resolvePrivatePaymentListConsumption(.succeeded)
             Logger.info("Paid Paykit contact through \(leg.service) in \(txid)", context: "SendConfirmation")
