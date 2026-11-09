@@ -299,6 +299,22 @@ extension ChannelFreeRailTests {
         XCTAssertTrue(payments.isEmpty)
     }
 
+    func testAFixedWithdrawalWithAPartOfASatKeepsItsExactAmount() {
+        typealias Route = Bitkit.LightningService.ReceiveRoute
+        // A fixed LNURL withdrawal of 222 538 msat: channels that can take it get the exact amount; Spark can't, so
+        // without such a channel it is refused rather than invoicing 222 000 msat, below the endpoint's minimum.
+        XCTAssertEqual(Bitkit.LightningService.receiveRoute(amountMsats: 222_538, railTakes: false), Route.node)
+        XCTAssertEqual(Bitkit.LightningService.receiveRoute(amountMsats: 222_538, railTakes: true), Route.refused)
+        XCTAssertEqual(Bitkit.LightningService.receiveRoute(amountMsats: 222_000, railTakes: true), Route.rail(amountSats: 222))
+    }
+
+    func testAnAmountUnderASatIsNeverInvoicedAsAmountless() {
+        typealias Route = Bitkit.LightningService.ReceiveRoute
+        XCTAssertEqual(Bitkit.LightningService.receiveRoute(amountMsats: 500, railTakes: true), Route.refused)
+        XCTAssertEqual(Bitkit.LightningService.receiveRoute(amountMsats: 500, railTakes: false), Route.node)
+        XCTAssertEqual(Bitkit.LightningService.receiveRoute(amountMsats: nil, railTakes: true), Route.rail(amountSats: nil))
+    }
+
     private func sendOverSpark() async throws {
         rail.balanceSats = 100_000
         _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
