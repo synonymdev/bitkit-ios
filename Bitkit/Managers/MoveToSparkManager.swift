@@ -132,6 +132,8 @@ final class MoveToSparkManager {
     /// Counts quotes, moves and resets; a quote writes its result only while it is still the latest.
     private var generation = 0
     private var isQuoting = false
+    /// A swiped payment that has not settled yet; leaving the screen keeps it, so it is never quoted over.
+    private var isMoveInFlight = false
 
     private let lightningService: LightningService
     private let spark: SparkManager
@@ -148,8 +150,9 @@ final class MoveToSparkManager {
         await quote(wallet: wallet)
     }
 
-    /// Forgets the last move once its screen is left.
+    /// Forgets the last move once its screen is left, unless its payment is still in flight.
     func reset() {
+        guard !isMoveInFlight else { return }
         generation += 1
         isQuoting = false
         keepsOutcome = false
@@ -180,6 +183,8 @@ final class MoveToSparkManager {
         guard case let .confirm(quote, isMoving) = state, !isMoving else { return }
         generation += 1
         keepsOutcome = true
+        isMoveInFlight = true
+        defer { isMoveInFlight = false }
         state = .confirm(quote, isMoving: true)
         do {
             let paymentHash = try Bolt11Invoice.fromStr(invoiceStr: quote.invoice).paymentHash()
