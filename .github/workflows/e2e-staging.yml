@@ -126,6 +126,7 @@ jobs:
 
     env:
       BACKEND: regtest
+      BLOCKTANK_REGTEST_AUTH: ${{ secrets.BLOCKTANK_REGTEST_AUTH }}
 
     steps:
       - name: Resolve E2E tests ref
