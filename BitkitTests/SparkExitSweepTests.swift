@@ -760,6 +760,40 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertTrue(record.needsDriving)
     }
 
+    /// A fee bump's savings payment that went out after the exit ended (pwltr's Android finding on c554a0185): its txid
+    /// is kept as pending, so the exit is driven until the payment reaches the funding address and is swept back, even
+    /// after the leftover sweep confirmed.
+    func testAFeeBumpPaymentSentAfterTheExitEndedIsFollowedUntilItArrives() async throws {
+        let late = String(repeating: "e", count: 64)
+        var record = endedRecord()
+        record.leftover = [.init(txid: String(repeating: "1", count: 64), vout: 0, valueSats: 600)]
+        record.leftoverSweep = .init(txid: "swept", txHex: "02", valueSats: 400, isAccepted: true, isConfirmed: true)
+        XCTAssertFalse(record.needsDriving, "the leftover sweep confirmed")
+
+        record = try XCTUnwrap(SparkExitManager.followingLatePayment(record, txid: late))
+        XCTAssertTrue(record.needsDriving)
+        chain.mempoolTxids = [late]
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.fundingPaymentTxid, late, "still on its way")
+        XCTAssertTrue(record.needsDriving)
+
+        chain.confirmedTxids = ["swept"]
+        chain.utxosByAddress[key.address] = [SparkExitFixtures.utxo(late, value: 5000)]
+        record = try await driver().tick(record)
+        XCTAssertNil(record.fundingPaymentTxid)
+        XCTAssertTrue(record.leftover.contains { $0.txid == late })
+        XCTAssertTrue(record.isLeftoverSweepPending, "swept back to savings")
+    }
+
+    func testOnlyAnEndedExitFollowsALateFeeBumpPayment() {
+        XCTAssertNil(SparkExitManager.followingLatePayment(SparkExitFixtures.record(phase: .running), txid: "late"), "funding adopts it")
+        XCTAssertNil(SparkExitManager.followingLatePayment(endedRecord(), txid: nil))
+        var following = endedRecord()
+        following.leftover = []
+        following.fundingPaymentTxid = "earlier"
+        XCTAssertNil(SparkExitManager.followingLatePayment(following, txid: "late"), "an earlier payment is still followed")
+    }
+
     /// A payment no host sees is forgotten by the own-payment expiry, and the ended exit stops being driven.
     func testEndedExitForgetsASavingsPaymentNoHostSees() async throws {
         var record = endedWithPayment(String(repeating: "d", count: 64))

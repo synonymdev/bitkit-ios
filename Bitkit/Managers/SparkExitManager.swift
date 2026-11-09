@@ -499,6 +499,18 @@ final class SparkExitManager {
         }
     }
 
+    /// An ended exit keeps a savings payment that went out after it ended as pending, so the exit is driven until the
+    /// payment reaches the funding address and joins the leftover sweep (`followEndedPayment`). Nil while the exit is
+    /// active (its funding adopts the payment), without a txid, or while an earlier payment is still followed.
+    nonisolated static func followingLatePayment(_ record: SparkExitRecord, txid: String?) -> SparkExitRecord? {
+        guard !record.isActive, let txid, !record.isEndedPaymentPending else { return nil }
+        var record = record
+        record.fundingPaymentTxid = txid
+        record.fundingPaymentSeenAtHeight = nil
+        record.fundingPaymentMissingSince = nil
+        return record
+    }
+
     /// Notes what savings pays in fees to send the extra funding of `rate`.
     func setFeeBumpPaymentFee(rate: UInt64, sats: UInt64) {
         guard let i = feeBumpOptions.firstIndex(where: { $0.rate == rate }) else { return }
@@ -523,6 +535,11 @@ final class SparkExitManager {
         // The exit may have ended while savings paid: the extra stays at the funding address for the leftover sweep.
         guard record.phase == .running, !record.isRebuilding else {
             Logger.warn("Spark exit ended while its higher fee was paid; the payment goes back with the leftover", context: "SparkExitManager")
+            if let followed = Self.followingLatePayment(record, txid: txid) {
+                try saveRecord(followed)
+                self.record = followed
+                Task { await tick() }
+            }
             return
         }
         record.applyFeeBump(rate: option.rate, extraSats: extraSats, paymentTxid: txid)
