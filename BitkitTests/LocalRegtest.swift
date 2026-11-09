@@ -23,10 +23,10 @@ enum LocalRegtest {
     }
 
     private static func call<T: Decodable>(_ method: String, _ params: [Any] = []) async throws -> T {
-        guard Env.isE2E else {
+        guard Env.electrumServerUrl.hasPrefix("tcp://") else {
             throw RpcError(
                 description: "LocalRegtest funds the local bitcoind, but the node syncs from \(Env.electrumServerUrl). "
-                    + "Run the tests with TEST_RUNNER_E2E=true so it uses the local electrs."
+                    + "Run the tests with TEST_RUNNER_E2E=true and E2E_BACKEND unset or local so it uses the local electrs."
             )
         }
 
