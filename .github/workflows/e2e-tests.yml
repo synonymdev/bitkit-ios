@@ -287,7 +287,7 @@ jobs:
         with:
           repository: synonymdev/bitkit-e2e-tests
           path: bitkit-e2e-tests
-          ref: ${{ steps.e2e-ref.outputs.ref }}
+          ref: fa6ff5ce606528c1af8b48bb8a8f86042f146790
 
       - name: Download iOS app
         uses: actions/download-artifact@v8
