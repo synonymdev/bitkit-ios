@@ -44,6 +44,7 @@ final class UsdtWalletManager {
     /// Before the first complete history sync, a confirmed receipt counts as new only if its block time is after this
     /// point (first refresh, restore or wipe). Older entries are history the sync is still discovering.
     private var receiptsSince: UInt64?
+    /// Starts with the receipts saved before launch, which were already celebrated.
     private var announcedReceiptIds: Set<String> = []
     private var receiptEpoch = 0
     private(set) var refreshing = false
@@ -180,12 +181,13 @@ final class UsdtWalletManager {
         defer { refreshing = false; nextRefresh = max(rateLimitedUntil, now().addingTimeInterval(refreshDelay)); finishOperation() }
         do {
             let wallet = try await wallet()
-            if receiptsSince == nil {
-                receiptsSince = Self.receiptBaseline(now())
-            }
             let previousTransfers = historyComplete ? transfers : nil
             let epoch = receiptEpoch
             transfers = try await ServiceQueue.background(.core, wrapErrors: false) { try wallet.history() }
+            if receiptsSince == nil {
+                receiptsSince = Self.receiptBaseline(now())
+                announcedReceiptIds.formUnion(Self.receiptIds(transfers))
+            }
             var settlementError: Error?
             do {
                 balance = try await wallet.balance()
@@ -237,11 +239,15 @@ final class UsdtWalletManager {
         since: UInt64,
         announced: Set<String>
     ) -> [UsdtTransfer] {
-        let knownIds = Set((previous ?? []).filter { $0.isIncoming && $0.status == .confirmed }.map(\.id)).union(announced)
+        let knownIds = receiptIds(previous ?? []).union(announced)
         return current.filter {
             $0.isIncoming && $0.status == .confirmed && $0.amount > 0 && !knownIds.contains($0.id) &&
                 (previous != nil || $0.timestamp >= since)
         }
+    }
+
+    private static func receiptIds(_ transfers: [UsdtTransfer]) -> Set<String> {
+        Set(transfers.filter { $0.isIncoming && $0.status == .confirmed }.map(\.id))
     }
 
     /// Allows for block timestamps that trail the device clock.

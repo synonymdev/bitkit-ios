@@ -468,6 +468,39 @@ final class UsdtWalletManagerTests: XCTestCase {
         XCTAssertEqual(wallet.syncCalls, 3)
     }
 
+    func testReceiptCelebratedBeforeARelaunchDoesNotCelebrateAgain() async throws {
+        try XCTSkipUnless(Env.isUsdtEnabled)
+        var clock = Date(timeIntervalSince1970: 1_800_000_000)
+        let wallet = SyncingUsdtWallet(noPointer: .init())
+        wallet.syncResults = [false, false, false, false]
+        let manager = UsdtWalletManager(rpcUrl: "http://127.0.0.1:1", bundlerUrl: "http://127.0.0.1:1", now: { clock }, core: wallet,
+                                        loadCredentials: { throw UsdtError.InvalidCredentials })
+        var announced: [String] = []
+        let subscription = manager.receivedTxPublisher.sink { announced.append($0.id) }
+        defer { subscription.cancel() }
+        await manager.refresh(includeHistory: true)
+        let received = transfer("received", timestamp: 1_800_000_002)
+        wallet.transfers = [received]
+        clock.addTimeInterval(20)
+        await manager.refresh(includeHistory: true)
+        XCTAssertEqual(announced, [received.id])
+
+        clock.addTimeInterval(10)
+        let relaunched = UsdtWalletManager(rpcUrl: "http://127.0.0.1:1", bundlerUrl: "http://127.0.0.1:1", now: { clock }, core: wallet,
+                                           loadCredentials: { throw UsdtError.InvalidCredentials })
+        var relaunchAnnounced: [String] = []
+        let relaunchSubscription = relaunched.receivedTxPublisher.sink { relaunchAnnounced.append($0.id) }
+        defer { relaunchSubscription.cancel() }
+        await relaunched.refresh(includeHistory: true)
+        XCTAssertTrue(relaunchAnnounced.isEmpty, "A receipt saved before the relaunch must not celebrate again")
+
+        let next = transfer("next", timestamp: 1_800_000_032)
+        wallet.transfers = [next, received]
+        clock.addTimeInterval(20)
+        await relaunched.refresh(includeHistory: true)
+        XCTAssertEqual(relaunchAnnounced, [next.id])
+    }
+
     func testLinkedOrderStatusAndErrorSupersedeDepositStateTogether() {
         let deposit = UsdtDeposit(id: "deposit", network: "solana", asset: "USDT", amount: 100, sourceTx: "tx", status: "held",
                                   code: "standing_route_unavailable", refundTx: nil)
