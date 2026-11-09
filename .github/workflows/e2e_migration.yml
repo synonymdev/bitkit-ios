@@ -191,6 +191,7 @@ jobs:
     name: ios RN - ${{ matrix.scenario.version }} - ${{ matrix.scenario.name }}
     env:
       BACKEND: regtest
+      BLOCKTANK_REGTEST_AUTH: ${{ secrets.BLOCKTANK_REGTEST_AUTH }}
       MIGRATION_EXTENDED: ${{ inputs.extended_rn || false }}
 
     steps:
@@ -367,6 +368,7 @@ jobs:
     name: ios native - ${{ matrix.scenario.version }} - ${{ matrix.scenario.name }}
     env:
       BACKEND: regtest
+      BLOCKTANK_REGTEST_AUTH: ${{ secrets.BLOCKTANK_REGTEST_AUTH }}
       MIGRATION_EXTENDED: ${{ inputs.extended_rn || false }}
 
     steps:
