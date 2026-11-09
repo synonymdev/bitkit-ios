@@ -674,17 +674,23 @@ final class SparkExitManager {
                destination: destination,
                lostLeafIds: (try? lostLeafStore.load()) ?? []
            ),
-           var requoted = Self.requoted(started, fresh: fresh)
+           let requoted = Self.requoted(started, fresh: fresh)
         {
             let transfers = TransferService(lightningService: .shared)
-            requoted.transferId = try await transfers.createTransfer(type: .sparkExit, amountSats: fresh.incomingSats)
-            try store.save(requoted)
-            if let replaced = started.transferId {
-                try? await transfers.markSettled(id: replaced)
+            let store = store
+            let written = await Self.writeRequote(
+                requoted,
+                replacing: started,
+                incomingSats: fresh.incomingSats,
+                createTransfer: { try await transfers.createTransfer(type: .sparkExit, amountSats: $0) },
+                save: { try store.save($0) },
+                markSettled: { try? await transfers.markSettled(id: $0) }
+            )
+            if let written {
+                started = written
+                self.record = written
+                exitQuote = fresh
             }
-            started = requoted
-            self.record = requoted
-            exitQuote = fresh
         }
         await SparkManager.shared.reconnectForExit()
         Logger.info("Started Spark exit of \(exitQuote.exitSats) sats over \(exitQuote.leafIds.count) leaves", context: "SparkExitManager")
@@ -735,6 +741,39 @@ final class SparkExitManager {
         record.expectedSats = fresh.incomingSats
         record.skippedLeafCount = fresh.prepared.skipped.count
         return record
+    }
+
+    /// The started exit moved onto the fresh quote: a transfer for its amount, saved, and the confirmed quote's transfer
+    /// settled. Nil when that write fails, with a transfer made for it settled again: the start goes on with the
+    /// confirmed quote, as after a failed requote, so it still reconnects, pays and ticks.
+    nonisolated static func writeRequote(
+        _ requoted: SparkExitRecord,
+        replacing started: SparkExitRecord,
+        incomingSats: UInt64,
+        createTransfer: (UInt64) async throws -> String,
+        save: (SparkExitRecord) throws -> Void,
+        markSettled: (String) async -> Void
+    ) async -> SparkExitRecord? {
+        var requoted = requoted
+        do {
+            requoted.transferId = try await createTransfer(incomingSats)
+        } catch {
+            Logger.warn("Failed to create the requoted Spark exit transfer, going on with the confirmed quote: \(error)", context: "SparkExitManager")
+            return nil
+        }
+        do {
+            try save(requoted)
+        } catch {
+            Logger.warn("Failed to save the requoted Spark exit, going on with the confirmed quote: \(error)", context: "SparkExitManager")
+            if let created = requoted.transferId {
+                await markSettled(created)
+            }
+            return nil
+        }
+        if let replaced = started.transferId {
+            await markSettled(replaced)
+        }
+        return requoted
     }
 
     /// Savings pays at most the funding the user confirmed: a higher fresh amount goes through the shortfall flow on

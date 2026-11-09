@@ -591,6 +591,49 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertNil(failed)
     }
 
+    /// A requote whose write fails leaves the start going on with the confirmed quote, its transfer kept and no new
+    /// one left counted.
+    func testAFailedRequoteWriteGoesOnWithTheConfirmedQuote() async throws {
+        struct WriteFailed: Error {}
+        let started = SparkExitFixtures.record()
+        let fresh = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 25000, leaves: ["leaf-2"]))
+        let requoted = try XCTUnwrap(SparkExitManager.requoted(started, fresh: fresh))
+        var settled: [String] = []
+
+        let noTransfer = await SparkExitManager.writeRequote(
+            requoted,
+            replacing: started,
+            incomingSats: fresh.incomingSats,
+            createTransfer: { _ in throw WriteFailed() },
+            save: { _ in },
+            markSettled: { settled.append($0) }
+        )
+        XCTAssertNil(noTransfer)
+
+        let notSaved = await SparkExitManager.writeRequote(
+            requoted,
+            replacing: started,
+            incomingSats: fresh.incomingSats,
+            createTransfer: { _ in "transfer-2" },
+            save: { _ in throw WriteFailed() },
+            markSettled: { settled.append($0) }
+        )
+        XCTAssertNil(notSaved)
+        XCTAssertEqual(settled, ["transfer-2"], "the confirmed quote's transfer stays; the unsaved one is settled")
+
+        let written = await SparkExitManager.writeRequote(
+            requoted,
+            replacing: started,
+            incomingSats: fresh.incomingSats,
+            createTransfer: { _ in "transfer-3" },
+            save: { _ in },
+            markSettled: { settled.append($0) }
+        )
+        XCTAssertEqual(written?.transferId, "transfer-3")
+        XCTAssertEqual(written?.leafIds, ["leaf-2"])
+        XCTAssertEqual(settled, ["transfer-2", "transfer-1"])
+    }
+
     /// Savings never pays more than the funding the user confirmed; the rest is asked for on Progress once the payment
     /// confirms.
     func testSavingsPaysAtMostTheConfirmedFundingAndProgressAsksForTheRest() throws {
