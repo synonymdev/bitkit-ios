@@ -1576,6 +1576,63 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertTrue(record.isWaitingForLeaves)
     }
 
+    /// R3 with a leaf that builds: one skipped while it may still move is kept, and tried again before the exit ends.
+    func testAPartialBuildRetriesTheSkippedLeafBeforeTheExitEnds() async throws {
+        var record = rebuildingRecord()
+        record.leafIds = ["leaf-1", "leaf-2"]
+        var prepared = SparkExitFixtures.prepared(leaves: ["leaf-1"])
+        prepared.skipped = [SkippedLeaf(leafId: "leaf-2", valueSats: 50000, reason: .unverified)]
+        sdk.preparedResponse = prepared
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1")])]
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.generation, 2)
+
+        let landed = SparkExitFixtures.recovery([SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 990))])
+        sdk.checks = Array(repeating: CheckRecoverFundsResponse(recovery: landed, verdict: .done), count: 3)
+        sdk.preparedResponse.leaves = []
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.phase, .running, "leaf-2 may still move")
+        XCTAssertTrue(record.isWaitingForLeaves)
+        XCTAssertFalse(SparkExitManager.isTransferFinished(record, isSweepSeen: true), "leaf-2 is still in transfer")
+        guard case let .specific(leafIds) = sdk.prepareRequests.last?.selection else { return XCTFail("Expected a specific selection") }
+        XCTAssertEqual(leafIds, ["leaf-2"])
+
+        record = try await driver(withSdk: false).tick(record)
+        XCTAssertEqual(record.phase, .running, "the exit waits for the SDK to retry leaf-2")
+
+        chain.tip = 1006
+        sdk.preparedResponse = SparkExitFixtures.prepared(leaves: ["leaf-2"])
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n2")])]
+        record = try await driver().tick(record)
+        XCTAssertNil(record.retrySince)
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n1", "n2"])
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.phase, .done)
+    }
+
+    /// A skipped leaf still unverified after about a week is let go, and the exit ends.
+    func testAPartialBuildLetsTheSkippedLeafGoAfterAWeek() async throws {
+        var record = rebuildingRecord()
+        record.leafIds = ["leaf-1", "leaf-2"]
+        var prepared = SparkExitFixtures.prepared(leaves: ["leaf-1"])
+        prepared.skipped = [SkippedLeaf(leafId: "leaf-2", valueSats: 50000, reason: .fundsNotFound)]
+        sdk.preparedResponse = prepared
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1")])]
+        record = try await driver().tick(record)
+
+        let landed = SparkExitFixtures.recovery([SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 990))])
+        sdk.checks = Array(repeating: CheckRecoverFundsResponse(recovery: landed, verdict: .done), count: 2)
+        sdk.preparedResponse.leaves = []
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.phase, .running)
+
+        chain.tip = 1000 + SparkExitDriver.releaseBlocks
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.phase, .done)
+        XCTAssertNil(record.retrySince)
+    }
+
     func testIsRetryDueDoublesUpToADay() {
         XCTAssertFalse(SparkExitDriver.isRetryDue(since: 100, retriedAt: 100, tip: 105))
         XCTAssertTrue(SparkExitDriver.isRetryDue(since: 100, retriedAt: 100, tip: 106))

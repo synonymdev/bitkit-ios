@@ -240,6 +240,9 @@ struct SparkExitRecord: Codable, Equatable {
     /// The tip at which a build first found nothing to build while a leaf may still move, and of its last try.
     var retrySince: UInt32?
     var retriedAt: UInt32?
+    /// The exit's leaves a build skipped while they may still move, with the rest built: tried again on their own
+    /// before the exit ends, at the same gaps, and let go about a week later.
+    var waitingLeafIds: [String]?
     /// The SDK's exit data from just before the first build, imported again before every rebuild.
     var exitStateSnapshot: String?
     /// The stored record could not be read, so the exit is rebuilt from the chain with the funding it kept. Kept,
@@ -418,10 +421,10 @@ struct SparkExitRecord: Codable, Equatable {
         isActive && failedLeafRetrySince != nil
     }
 
-    /// Cooperative leaves the operators could not co-sign are still on their way to savings: the running recovery lists
-    /// them, or their retry runs.
-    var hasFailedLeavesOutstanding: Bool {
-        isRetryingFailedLeaves || (isActive && !(recovery?.response.failed.isEmpty ?? true))
+    /// Leaves are still on their way to savings outside the running recovery's steps: cooperative ones the operators
+    /// could not co-sign (the recovery lists them, or their retry runs), or ones a build skipped while they may move.
+    var hasLeavesOutstanding: Bool {
+        isRetryingFailedLeaves || (isActive && (!(recovery?.response.failed.isEmpty ?? true) || !(waitingLeafIds ?? []).isEmpty))
     }
 
     /// Waiting for the operators to co-sign leaves they moved on-chain: nothing of the exit's own is left to send.

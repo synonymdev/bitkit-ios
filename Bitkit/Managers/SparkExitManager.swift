@@ -399,11 +399,11 @@ final class SparkExitManager {
         try? await TransferService(lightningService: .shared).markSettled(id: transferId)
     }
 
-    /// The exit's transfer ends once the exit ended, or once its sweep reached savings and no failed cooperative leaf is
-    /// outstanding, before or during its retry: the value those leaves hold stays in transfer, less what already
-    /// reached savings (`inTransferSats`).
+    /// The exit's transfer ends once the exit ended, or once its sweep reached savings and no leaf is outstanding (a
+    /// failed cooperative one before or during its retry, or one a build skipped): the value those leaves hold stays in
+    /// transfer, less what already reached savings (`inTransferSats`).
     nonisolated static func isTransferFinished(_ record: SparkExitRecord, isSweepSeen: Bool) -> Bool {
-        !record.isActive || (isSweepSeen && !record.hasFailedLeavesOutstanding)
+        !record.isActive || (isSweepSeen && !record.hasLeavesOutstanding)
     }
 
     /// Settles exit transfers no running exit owns, so their amount never stays in transfer to savings for good.

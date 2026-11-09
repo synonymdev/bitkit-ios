@@ -121,7 +121,7 @@ struct SparkExitDriver {
                 // Every step in a block, as the chain host shows: the exit ends without waiting for the SDK. Leaves the
                 // operators could not co-sign need the SDK's retry, so that exit waits for it.
                 if let recovery = record.recovery?.response, !recovery.transactions.isEmpty, recovery.failed.isEmpty,
-                   recovery.transactions.allSatisfy(\.isConfirmed)
+                   record.waitingLeafIds == nil, recovery.transactions.allSatisfy(\.isConfirmed)
                 {
                     await finish(&record, phase: .done)
                 }
@@ -307,6 +307,11 @@ struct SparkExitDriver {
             await finish(&record, phase: isRecovered ? .done : .failed(reason: "Nothing left to recover"))
             return
         }
+        // A leaf that may still move is kept apart and tried again before the exit ends.
+        let isWaitReleased = record.retrySince.flatMap { since in tip.map { $0.saturatingSub(since) >= Self.releaseBlocks } } == true
+        let waitingLeafIds: [String] = isWaitReleased ? [] : prepared.skipped
+            .filter { isProvisional($0, prepared: prepared, record: record, tip: tip) }
+            .map(\.leafId)
         record.retrySince = nil
         record.retriedAt = nil
         let built: RecoverFundsResponse
@@ -361,6 +366,7 @@ struct SparkExitDriver {
             return
         }
         record.adopt(built, at: now())
+        record.waitingLeafIds = waitingLeafIds.isEmpty ? nil : waitingLeafIds
         record.spentStepStrikes = strikes.isEmpty ? nil : strikes
         // Saved before any of it is broadcast, so a crash never leaves broadcast transactions without their record.
         try save(record)
@@ -491,6 +497,9 @@ struct SparkExitDriver {
             if try await retryFailedLeaves(&record, failed: stored.failed, recovering: recovering, tip: tip) {
                 return
             }
+            if try await retryWaitingLeaves(&record, recovering: recovering, tip: tip) {
+                return
+            }
             await finish(&record, phase: .done)
             return
         }
@@ -528,6 +537,9 @@ struct SparkExitDriver {
             }
         case .done:
             if try await retryFailedLeaves(&record, failed: checked.recovery.failed, recovering: recovering, tip: tip) {
+                return
+            }
+            if try await retryWaitingLeaves(&record, recovering: recovering, tip: tip) {
                 return
             }
             await finish(&record, phase: .done)
@@ -582,6 +594,67 @@ struct SparkExitDriver {
             Logger.warn("Spark exit could not recover the leaves the operators moved on-chain yet: \(error)", context: "SparkExitDriver")
         }
         return true
+    }
+
+    /// Leaves a build skipped while they may still move (`waitingLeafIds`), prepared again on their own once the rest of
+    /// the exit is done: at once, then at Glow's doubling gaps (`isRetryDue`), until they build or about a week passed
+    /// (`releaseBlocks`). True while the exit keeps waiting for them, false once it can end.
+    private func retryWaitingLeaves(_ record: inout SparkExitRecord, recovering: SparkExitRecovering, tip: UInt32?) async throws -> Bool {
+        let ids = (record.waitingLeafIds ?? []).filter(record.exitLeafIds.contains)
+        guard !ids.isEmpty else {
+            record.waitingLeafIds = nil
+            return false
+        }
+        guard let tip else { return true }
+        let since = record.retrySince ?? tip
+        if tip.saturatingSub(since) >= Self.releaseBlocks {
+            Logger.warn("Spark exit lets go of the skipped leaves it waited about a week for: \(ids)", context: "SparkExitDriver")
+            letGoOfWaitingLeaves(&record)
+            return false
+        }
+        if record.retrySince != nil, !Self.isRetryDue(since: since, retriedAt: record.retriedAt ?? since, tip: tip) {
+            return true
+        }
+        record.retrySince = since
+        record.retriedAt = tip
+        try save(record)
+        guard !Task.isCancelled else { return true }
+        await useExitStateSnapshot(&record, recovering: recovering)
+        do {
+            let prepared = try await recovering.prepare(record.prepareRequest(.specific(leafIds: ids)))
+            noteStoppedLeaves(prepared, tip: tip, in: &record)
+            let still = prepared.skipped.filter { isProvisional($0, prepared: prepared, record: record, tip: tip) }.map(\.leafId)
+            guard !prepared.leaves.isEmpty else {
+                guard !still.isEmpty else {
+                    letGoOfWaitingLeaves(&record)
+                    return false
+                }
+                record.waitingLeafIds = still
+                return true
+            }
+            let built = try await recovering.recover(
+                RecoverFundsRequest(prepared: prepared, fundingInputs: prepared.funding == nil ? [] : record.fundingInputs),
+                signer: prepared.funding == nil ? nil : makeSigner(record.fundingIndex)
+            )
+            guard !built.transactions.isEmpty else { return true }
+            Logger.info("Spark exit recovers \(built.leaves.count) leaves it skipped while they could still move", context: "SparkExitDriver")
+            record.adopt(built, at: now())
+            record.waitingLeafIds = still.isEmpty ? nil : still
+            record.retrySince = nil
+            record.retriedAt = nil
+            try save(record)
+            try await broadcastReady(&record, tip: tip)
+        } catch {
+            Logger.warn("Spark exit could not recover the leaves it skipped yet: \(error)", context: "SparkExitDriver")
+        }
+        return true
+    }
+
+    private func letGoOfWaitingLeaves(_ record: inout SparkExitRecord) {
+        record.skippedLeafCount = max(record.skippedLeafCount, record.waitingLeafIds?.count ?? 0)
+        record.waitingLeafIds = nil
+        record.retrySince = nil
+        record.retriedAt = nil
     }
 
     /// Keeps the value of each failed leaf from what the SDK reports for it, listed or skipped.
