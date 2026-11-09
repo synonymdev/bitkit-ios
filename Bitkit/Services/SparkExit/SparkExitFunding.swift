@@ -295,8 +295,10 @@ enum SparkExitMath {
         // forgets it (gone from every host, or not adopted in time).
         if case let .awaitingFunding(requiredSats) = record.phase {
             guard record.fundingShortfallSats != nil, !record.isAwaitingOwnPayment else { return lostReminder }
-            // Started but never funded: Spark stays detached until the user funds or cancels.
-            let fireAt = max(now, record.createdAt.addingTimeInterval(reminderSeconds(network: network)))
+            // Started but never funded: Spark stays detached until the user funds or cancels. A savings payment that
+            // confirmed short is reminded about at once.
+            let remindAt = record.isFundingPaymentShort == true ? now : record.createdAt.addingTimeInterval(reminderSeconds(network: network))
+            let fireAt = max(now, remindAt)
             return lostReminder + [SparkExitReminder(id: "await-funding-\(requiredSats)", fireAt: fireAt, isFunding: true)]
         }
         var reminders = lostReminder

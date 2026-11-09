@@ -136,6 +136,28 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertNil(record.fundingPaymentTxid)
     }
 
+    /// A savings payment that confirms short of a higher re-quoted funding is no longer waited for: the rest is asked
+    /// for, and reminded about at once.
+    func testASavingsPaymentConfirmedShortRemindsForTheRestAtOnce() async throws {
+        var record = SparkExitFixtures.record(phase: .awaitingFunding(requiredSats: 35000))
+        record.fundingPaymentTxid = "paid"
+        chain.mempoolTxids = ["paid"]
+        chain.utxosByAddress["bcrt1qfunding"] = [SparkExitFixtures.utxo("paid", value: 20000, confirmed: false)]
+
+        record = try await driver().tick(record)
+        XCTAssertTrue(record.isAwaitingOwnPayment, "still confirming")
+        XCTAssertTrue(SparkExitMath.reminders(record, tip: 1000, now: record.createdAt, network: .regtest).isEmpty)
+
+        chain.confirmedTxids = ["paid"]
+        chain.utxosByAddress["bcrt1qfunding"] = [SparkExitFixtures.utxo("paid", value: 20000)]
+        record = try await driver().tick(record)
+
+        XCTAssertFalse(record.isAwaitingOwnPayment)
+        let reminders = SparkExitMath.reminders(record, tip: 1000, now: record.createdAt, network: .regtest)
+        XCTAssertEqual(reminders.map(\.isFunding), [true])
+        XCTAssertEqual(reminders.first?.fireAt, record.createdAt, "at once, not 4 hours after the start")
+    }
+
     /// A short rebuild after a Redo stays parked: its generation diverged and is never sent again.
     func testADivergedRebuildsTopUpSendsNothing() async throws {
         var record = bumpedRecord()

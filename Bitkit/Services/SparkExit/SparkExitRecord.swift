@@ -194,6 +194,8 @@ struct SparkExitRecord: Codable, Equatable {
     /// exit asks and reminds again.
     var fundingPaymentSeenAtHeight: UInt32?
     var fundingPaymentMissingSince: UInt32?
+    /// That payment confirmed short of the funding: the funding reminder for the rest fires at once.
+    var isFundingPaymentShort: Bool?
     /// The user cancelled after funding reached the address: the exit ends and the funding goes back to savings.
     var isCancelled: Bool?
     /// Leftover sweeps that confirmed before outputs they left out were followed again: what each sent to savings.

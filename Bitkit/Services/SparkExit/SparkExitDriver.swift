@@ -99,7 +99,10 @@ struct SparkExitDriver {
                 guard let recovering else { return try saveIfChanged(record, from: before) }
                 // Nothing to fund when every leaf is recovered cooperatively.
                 if let shortfall = record.fundingShortfallSats {
-                    guard try await adoptFunding(&record, requiredSats: shortfall) else { return try saveIfChanged(record, from: before) }
+                    guard try await adoptFunding(&record, requiredSats: shortfall) else {
+                        await countShortOwnPayment(&record)
+                        return try saveIfChanged(record, from: before)
+                    }
                 }
                 try await build(&record, recovering: recovering)
             }
@@ -164,6 +167,19 @@ struct SparkExitDriver {
         record.fundingPaymentTxid = nil
         record.fundingPaymentSeenAtHeight = nil
         record.fundingPaymentMissingSince = nil
+    }
+
+    /// A savings payment that confirmed at the funding address without covering the funding is no longer waited for: it
+    /// counts as funding seen there, and the rest is asked for and reminded about at once.
+    private func countShortOwnPayment(_ record: inout SparkExitRecord) async {
+        guard record.isAwaitingOwnPayment, let paid = record.fundingPaymentTxid, let address = record.funding.first?.address,
+              let utxos = try? await chain.utxos(address: address), utxos.contains(where: { $0.txid == paid && $0.status.confirmed })
+        else { return }
+        Logger.info("Spark exit savings payment \(paid) confirmed short, asking for the rest", context: "SparkExitDriver")
+        record.fundingPaymentTxid = nil
+        record.fundingPaymentSeenAtHeight = nil
+        record.fundingPaymentMissingSince = nil
+        record.isFundingPaymentShort = true
     }
 
     /// An ended exit's savings payment that had not arrived: once at the funding address it joins the leftover and is
