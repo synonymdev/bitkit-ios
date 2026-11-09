@@ -262,12 +262,34 @@ final class PaykitRouteTests: XCTestCase {
         XCTAssertEqual(events, ["begin", "authorize", "finish attempt failed -"], "A send Spark refused paid nothing")
 
         events = []
+        _ = await pay { beforeSend in
+            try await beforeSend()
+            throw SparkWithdrawalNotSent(underlying: Refused())
+        }
+        XCTAssertEqual(
+            events,
+            ["begin", "authorize", "sending attempt", "finish attempt failed -"],
+            "A withdrawal Spark returned as failed paid nothing either"
+        )
+
+        events = []
         _ = await pay { beforeSend in try await beforeSend(); throw Lost() }
         XCTAssertEqual(
             events,
             ["begin", "authorize", "sending attempt", "finish attempt unknown -"],
             "A send that may have gone out stays unknown until recovery settles it"
         )
+    }
+
+    func testAWithdrawalSparkReturnsAsFailedEndsAsARefusal() throws {
+        let sent = Self.withdrawal(id: "sent", to: onchain.value, amountSats: 20000, timestamp: 1001)
+        XCTAssertEqual(try SparkManager.sentWithdrawalId(sent), "tx-sent")
+
+        var failed = sent
+        failed.status = .failed
+        XCTAssertThrowsError(try SparkManager.sentWithdrawalId(failed), "A failed withdrawal paid nothing, so it never shows success") {
+            XCTAssertTrue($0 is SparkWithdrawalNotSent, "A refusal releases the request's proof, private list and allowance attempt")
+        }
     }
 
     func testLegPreparesTheRequestBeforeItsProofIsStarted() async throws {
