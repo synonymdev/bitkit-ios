@@ -1,5 +1,6 @@
 import BitkitCore
 import Foundation
+import Paykit
 
 /// A contact payment bitkit-core's Paykit router picks the way for: the contact's bitcoin endpoints, whether a Spark leg
 /// may reach its on-chain ones, and the leg once the router picked one.
@@ -173,6 +174,37 @@ enum PaykitRouteService {
         } catch {
             await cancelProof()
             await releasePaymentList()
+            throw error
+        }
+    }
+
+    /// Pays a leg as a manual payment the allowance ledger counts, as a direct send is: the attempt is reserved right
+    /// before Spark's send, marked sending once the request is authorized, and closed with the send's outcome:
+    /// succeeded with its txid, failed when Spark refused it before sending, and unknown otherwise.
+    static func payReportingAllowance(
+        beginAllowance: @escaping () async throws -> String?,
+        authorize: @escaping () async throws -> Void,
+        markSending: @escaping (String) async -> Void,
+        finishAllowance: (String, Paykit.PaymentOutcome, String?) async -> Void,
+        pay: (_ beforeSend: () async throws -> Void) async throws -> String
+    ) async throws -> String {
+        var attemptId: String?
+        do {
+            let txid = try await pay {
+                attemptId = try await beginAllowance()
+                try await authorize()
+                if let attemptId {
+                    await markSending(attemptId)
+                }
+            }
+            if let attemptId {
+                await finishAllowance(attemptId, .succeeded, txid)
+            }
+            return txid
+        } catch {
+            if let attemptId {
+                await finishAllowance(attemptId, error is SparkWithdrawalNotSent ? .failed : .unknown, nil)
+            }
             throw error
         }
     }

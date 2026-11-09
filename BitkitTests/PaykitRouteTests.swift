@@ -1,6 +1,7 @@
 @testable import Bitkit
 import BitkitCore
 import BreezSdkSpark
+import Paykit
 import XCTest
 
 final class PaykitRouteTests: XCTestCase {
@@ -223,6 +224,43 @@ final class PaykitRouteTests: XCTestCase {
         await SparkManager.closeUnsentWithdrawal(pending) { released = $0; return true }
         XCTAssertEqual(released, request)
         XCTAssertNil(SparkManager.pendingContactWithdrawal)
+    }
+
+    func testLegReportsItsAllowanceAttemptWithTheSendsOutcome() async {
+        struct Refused: Error {}
+        struct Lost: Error {}
+        var events: [String] = []
+        func pay(
+            authorize: @escaping () async throws -> Void = {},
+            send: @escaping (() async throws -> Void) async throws -> String
+        ) async -> String? {
+            try? await PaykitRouteService.payReportingAllowance(
+                beginAllowance: { events.append("begin"); return "attempt" },
+                authorize: { events.append("authorize"); try await authorize() },
+                markSending: { events.append("sending \($0)") },
+                finishAllowance: { events.append("finish \($0) \($1) \($2 ?? "-")") },
+                pay: send
+            )
+        }
+
+        let txid = await pay { beforeSend in try await beforeSend(); return "txid" }
+        XCTAssertEqual(txid, "txid")
+        XCTAssertEqual(events, ["begin", "authorize", "sending attempt", "finish attempt succeeded txid"])
+
+        events = []
+        _ = await pay(authorize: { throw Refused() }) { beforeSend in
+            do { try await beforeSend() } catch { throw SparkWithdrawalNotSent(underlying: error) }
+            return "txid"
+        }
+        XCTAssertEqual(events, ["begin", "authorize", "finish attempt failed -"], "A send Spark refused paid nothing")
+
+        events = []
+        _ = await pay { beforeSend in try await beforeSend(); throw Lost() }
+        XCTAssertEqual(
+            events,
+            ["begin", "authorize", "sending attempt", "finish attempt unknown -"],
+            "A send that may have gone out stays unknown until recovery settles it"
+        )
     }
 
     func testLegPreparesTheRequestBeforeItsProofIsStarted() async throws {

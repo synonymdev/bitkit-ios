@@ -1506,15 +1506,31 @@ struct SendConfirmationView: View {
             }
             let txid: String
             do {
-                txid = try await PaykitRouteService.pay(
-                    leg,
-                    contact: context?.publicKey,
-                    request: proofRequest,
-                    tags: tagManager.selectedTagsArray
-                ) {
-                    if let request {
-                        try await paykitPaymentRequestManager.ensurePaymentAllowed(request)
+                txid = try await PaykitRouteService.payReportingAllowance(
+                    beginAllowance: {
+                        guard let request else { return nil }
+                        return try await PaykitAllowanceExecutor.shared.beginManualPayment(
+                            request,
+                            paymentEndpointIdentifier: leg.endpoint.methodId
+                        )
+                    },
+                    authorize: {
+                        if let request {
+                            try await paykitPaymentRequestManager.ensurePaymentAllowed(request)
+                        }
+                    },
+                    markSending: { await PaykitAllowanceExecutor.shared.manualOnchainPaymentSending(attemptId: $0) },
+                    finishAllowance: {
+                        await PaykitAllowanceExecutor.shared.finishManualPayment(attemptId: $0, outcome: $1, transactionId: $2)
                     }
+                ) { beforeSend in
+                    try await PaykitRouteService.pay(
+                        leg,
+                        contact: context?.publicKey,
+                        request: proofRequest,
+                        tags: tagManager.selectedTagsArray,
+                        beforeSend: beforeSend
+                    )
                 }
             } catch {
                 // Refused before Spark's send: nothing left, so this call's started proof goes. After it, the journal settles it.
