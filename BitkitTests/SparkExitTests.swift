@@ -1682,6 +1682,28 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(record.waitingLeafIds, ["leaf-2"])
     }
 
+    /// A waiting leaf let go after a week adds to the leaves that stayed on Spark, the quote's skips included.
+    func testAWaitingLeafLetGoAddsToTheLeavesThatStayedOnSpark() async throws {
+        var record = rebuildingRecord()
+        record.leafIds = ["leaf-1", "leaf-2"]
+        record.skippedLeafCount = 13
+        var prepared = SparkExitFixtures.prepared(leaves: ["leaf-1"])
+        prepared.skipped = [SkippedLeaf(leafId: "leaf-2", valueSats: 50000, reason: .fundsNotFound)]
+        sdk.preparedResponse = prepared
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1")])]
+        record = try await driver().tick(record)
+
+        let landed = SparkExitFixtures.recovery([SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 990))])
+        sdk.checks = Array(repeating: CheckRecoverFundsResponse(recovery: landed, verdict: .done), count: 2)
+        sdk.preparedResponse.leaves = []
+        record = try await driver().tick(record)
+        chain.tip = 1000 + SparkExitDriver.releaseBlocks
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.phase, .done)
+        XCTAssertEqual(record.skippedLeafCount, 14)
+    }
+
     /// A skipped leaf still unverified after about a week is let go, and the exit ends.
     func testAPartialBuildLetsTheSkippedLeafGoAfterAWeek() async throws {
         var record = rebuildingRecord()

@@ -688,7 +688,8 @@ struct SparkExitDriver {
     }
 
     private func letGoOfWaitingLeaves(_ record: inout SparkExitRecord) {
-        record.skippedLeafCount = max(record.skippedLeafCount, record.waitingLeafIds?.count ?? 0)
+        // The quote's skips never were exit leaves: the leaves let go here add to them.
+        record.skippedLeafCount += record.waitingLeafIds?.count ?? 0
         record.waitingLeafIds = nil
         record.retrySince = nil
         record.retriedAt = nil
