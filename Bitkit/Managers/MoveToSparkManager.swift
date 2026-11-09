@@ -199,7 +199,7 @@ final class MoveToSparkManager {
             )
         } catch {
             Logger.error("Failed to move '\(quote.amountSats)' sats to Spark: \(error)", context: "MoveToSpark")
-            state = Self.isNoRoute(error)
+            state = Self.isNoRoute(error) || Self.isSendWithoutRoute(error, invoice: quote.invoice)
                 ? .tooLarge(amountSats: quote.amountSats, smallerSats: MoveToSparkMath.smallerAmount(quote.amountSats))
                 : .failed(.unknown)
         }
@@ -258,6 +258,12 @@ final class MoveToSparkManager {
         case .routeNotFound, .retriesExhausted: return true
         default: return false
         }
+    }
+
+    /// LDK reports a route lost since the quote, before any payment exists, as a sending failure on a live invoice.
+    private static func isSendWithoutRoute(_ error: Error, invoice: String) -> Bool {
+        guard case .PaymentSendingFailed = ((error as? AppError)?.underlyingError ?? error) as? NodeError else { return false }
+        return (try? Bolt11Invoice.fromStr(invoiceStr: invoice).isExpired()) == false
     }
 
     private static func state(for error: Error) -> MoveToSparkState {
