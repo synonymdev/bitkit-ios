@@ -282,6 +282,17 @@ final class SparkTransferFlow {
         }
     }
 
+    /// Ends the transfer on screen once Spark lists its deposit as claimed, whatever the speed, so Later or Wait
+    /// doesn't stay in progress after the deposit reached spending.
+    func noteSettled(_ deposits: [SparkDeposit]) {
+        guard let txid, !claimState.isDone,
+              deposits.contains(where: { $0.isClaimed && $0.txid.caseInsensitiveCompare(txid) == .orderedSame })
+        else { return }
+        watchTasks[txid]?.cancel()
+        watchTasks[txid] = nil
+        claimState = .adding
+    }
+
     /// Accepts the early claim at the repriced fee.
     func payRepriced() {
         guard case let .repriced(feeSats) = claimState, let txid else { return }

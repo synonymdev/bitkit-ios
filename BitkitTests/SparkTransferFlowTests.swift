@@ -154,6 +154,19 @@ final class SparkTransferFlowTests: XCTestCase {
         XCTAssertEqual(flow.claimState, .later, "Its result stays off the new transfer's screen")
     }
 
+    @MainActor
+    func testALaterTransferEndsOnceSparkClaimsItsDeposit() {
+        let flow = SparkTransferFlow(amountSats: 100_000, speed: .later, quote: quote)
+        flow.onBroadcast(txid: "txid")
+
+        flow.noteSettled([SparkDeposit(txid: "txid", amountSats: 100_000, isClaimed: false)])
+        XCTAssertEqual(flow.claimState, .later)
+        flow.noteSettled([SparkDeposit(txid: "other", amountSats: 100_000, isClaimed: true)])
+        XCTAssertEqual(flow.claimState, .later)
+        flow.noteSettled([SparkDeposit(txid: "txid", amountSats: 100_000, isClaimed: true)])
+        XCTAssertEqual(flow.claimState, .adding, "Later stayed in progress after the deposit reached spending")
+    }
+
     /// A flow whose poll answers with `offers` in turn (nil once they run out) and whose claims answer with `claims`.
     @MainActor
     private func pollingFlow(offers: [SparkClaimOffer.Kind?], claims: [SparkEarlyClaim] = [], pollAttempts: Int? = nil) -> SparkTransferFlow {
