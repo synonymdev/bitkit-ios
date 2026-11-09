@@ -62,6 +62,14 @@ final class SparkManager: ChannelFreeLightningRail {
         sdk != nil
     }
 
+    /// Counts connects in this process, nil while disconnected, so a backup can tell a new connection from observing
+    /// that restarted while Spark stayed connected.
+    var connectionId: Int? {
+        sdk == nil ? nil : connectionCount
+    }
+
+    @ObservationIgnored private var connectionCount = 0
+
     /// Spark's regtest has no Lightning network, so there a Lightning invoice from another Spark wallet is paid as a
     /// Spark transfer, which lets two dev builds pay each other's invoices.
     nonisolated static var prefersSpark: Bool {
@@ -144,6 +152,7 @@ final class SparkManager: ChannelFreeLightningRail {
             await self?.onSdkEvent(event)
         })
         sdk = connected
+        connectionCount += 1
         Logger.info("Connected Spark wallet on '\(network)'", context: "SparkManager")
         await importRestoredExitState(walletIndex: walletIndex)
         Self.exitStateChanged.send()
