@@ -503,4 +503,59 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(exit.fundingSeenSats, 0)
         XCTAssertEqual(exit.fundingSeenCount, 0)
     }
+
+    // MARK: Requote at the start (review 1ac10966a, Android 64004d7)
+
+    /// An optimization swapped the leaves while the start waited: the exit is quoted again over the leaves Spark holds now.
+    func testAStartQuotesAgainWhenTheLeavesChanged() async throws {
+        let confirmed = SparkExitQuote(prepared: SparkExitFixtures.prepared())
+        sdk.preparedResponse = SparkExitFixtures.prepared(funding: 35000, leaves: ["leaf-2", "leaf-3"])
+
+        let requote = await SparkExitManager.requote(sdk, confirmed: confirmed, feeRate: 2, destination: "bcrt1qdestination", lostLeafIds: [])
+        let fresh = try XCTUnwrap(requote)
+        let record = try XCTUnwrap(SparkExitManager.requoted(SparkExitFixtures.record(), fresh: fresh))
+
+        XCTAssertEqual(record.leafIds, ["leaf-2", "leaf-3"])
+        XCTAssertEqual(record.phase, .awaitingFunding(requiredSats: 35000))
+        XCTAssertEqual(record.expectedSats, fresh.incomingSats)
+        XCTAssertEqual(record.leafTotalSats, 200_000)
+        XCTAssertEqual(sdk.prepareRequests.last?.destination, "bcrt1qdestination")
+    }
+
+    /// The same leaves in another order, no leaf left, or a quote that fails: the exit goes on with the confirmed quote.
+    func testAStartKeepsTheConfirmedQuoteWhenTheLeavesDidNotChange() async {
+        let confirmed = SparkExitQuote(prepared: SparkExitFixtures.prepared(leaves: ["leaf-1", "leaf-2"]))
+        func requote() async -> SparkExitQuote? {
+            await SparkExitManager.requote(sdk, confirmed: confirmed, feeRate: 2, destination: "bcrt1qdestination", lostLeafIds: [])
+        }
+
+        sdk.preparedResponse = SparkExitFixtures.prepared(leaves: ["leaf-2", "leaf-1"])
+        let reordered = await requote()
+        XCTAssertNil(reordered)
+        sdk.preparedResponse = SparkExitFixtures.prepared(leaves: [])
+        let empty = await requote()
+        XCTAssertNil(empty)
+        sdk.prepareErrors = [URLError(.timedOut)]
+        let failed = await requote()
+        XCTAssertNil(failed)
+    }
+
+    /// Savings never pays more than the funding the user confirmed; the rest is asked for on Progress once the payment
+    /// confirms.
+    func testSavingsPaysAtMostTheConfirmedFundingAndProgressAsksForTheRest() throws {
+        let confirmed = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 20000))
+        let higher = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 35000, leaves: ["leaf-1", "leaf-2"]))
+        let lower = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 15000, leaves: ["leaf-2"]))
+        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: confirmed, fresh: higher), 20000)
+        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: confirmed, fresh: lower), 15000)
+
+        var record = try XCTUnwrap(SparkExitManager.requoted(SparkExitFixtures.record(), fresh: higher))
+        record.fundingPaymentTxid = "paid"
+        let paid = [SparkExitFixtures.utxo("paid", value: 20000)]
+        guard case let .ask(sats, receivedSats) = SparkExitMath.fundingState(record, utxos: paid) else {
+            return XCTFail("the shortfall is asked for")
+        }
+        XCTAssertEqual(receivedSats, 20000)
+        XCTAssertGreaterThanOrEqual(sats, 15000)
+    }
 }

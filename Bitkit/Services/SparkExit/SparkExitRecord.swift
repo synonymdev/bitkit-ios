@@ -174,7 +174,7 @@ struct SparkExitRecord: Codable, Equatable {
     var feeRateSatPerVbyte: UInt64
     let destination: String
     /// The leaves of the quote the user confirmed; every rebuild selects exactly these.
-    let leafIds: [String]
+    var leafIds: [String]
     /// What the quote's leaves hold together, for telling how much of the Spark balance is outside the exit.
     var leafTotalSats: UInt64?
     var funding: [Funding]
@@ -196,7 +196,7 @@ struct SparkExitRecord: Codable, Equatable {
     /// Leftover sweeps that confirmed before outputs they left out were followed again: what each sent to savings.
     var sweptLeftover: [SweptLeftover]?
     /// What reaches savings: the exited value less the fees paid out of it.
-    let expectedSats: UInt64
+    var expectedSats: UInt64
     var claimableAtHeight: UInt32?
     var leftover: [Leftover] = []
     var leftoverSweep: LeftoverSweep?

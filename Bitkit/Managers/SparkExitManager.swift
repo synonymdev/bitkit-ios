@@ -633,11 +633,34 @@ final class SparkExitManager {
             Logger.info("Spark exit was cancelled before it started; nothing paid", context: "SparkExitManager")
             throw SparkExitStartCancelled()
         }
+        // An optimization since the quote swapped leaves: the exit is quoted again over the leaves Spark holds now.
+        var exitQuote = quote
+        if let recovering = SparkManager.shared.exitRecovering,
+           let fresh = await Self.requote(
+               recovering,
+               confirmed: quote,
+               feeRate: feeRate,
+               destination: destination,
+               lostLeafIds: (try? lostLeafStore.load()) ?? []
+           ),
+           var requoted = Self.requoted(started, fresh: fresh)
+        {
+            let transfers = TransferService(lightningService: .shared)
+            requoted.transferId = try await transfers.createTransfer(type: .sparkExit, amountSats: fresh.incomingSats)
+            try store.save(requoted)
+            if let replaced = started.transferId {
+                try? await transfers.markSettled(id: replaced)
+            }
+            started = requoted
+            self.record = requoted
+            exitQuote = fresh
+        }
         await SparkManager.shared.reconnectForExit()
-        Logger.info("Started Spark exit of \(quote.exitSats) sats over \(quote.leafIds.count) leaves", context: "SparkExitManager")
+        Logger.info("Started Spark exit of \(exitQuote.exitSats) sats over \(exitQuote.leafIds.count) leaves", context: "SparkExitManager")
 
-        if fundFromSavings, quote.fundingSats > 0 {
-            let txid = try await payFunding(address: key.address, sats: quote.fundingSats, satsPerVbyte: savingsFeeRate, feeSats: savingsFeeSats)
+        let savingsSats = Self.savingsFundingSats(confirmed: quote, fresh: exitQuote)
+        if fundFromSavings, savingsSats > 0 {
+            let txid = try await payFunding(address: key.address, sats: savingsSats, satsPerVbyte: savingsFeeRate, feeSats: savingsFeeSats)
             // Saved before the lock is released, so a cancel after the payment finds it and refuses.
             started.fundingPaymentTxid = txid
             do {
@@ -649,6 +672,44 @@ final class SparkExitManager {
             fundingState = SparkExitMath.fundingState(started, utxos: nil)
         }
         Task { await tick() }
+    }
+
+    /// The exit quoted again at its start, when the leaves Spark holds changed since the confirmed quote; nil when they
+    /// did not, when none is left, or when the quote fails (the exit then goes on with the confirmed one).
+    nonisolated static func requote(
+        _ recovering: SparkExitRecovering,
+        confirmed: SparkExitQuote,
+        feeRate: UInt64,
+        destination: String,
+        lostLeafIds: Set<String>
+    ) async -> SparkExitQuote? {
+        do {
+            let fresh = try await SparkExitQuote.prepare(recovering, feeRateSatPerVbyte: feeRate, destination: destination, lostLeafIds: lostLeafIds)
+            guard !fresh.leafIds.isEmpty, Set(fresh.leafIds) != Set(confirmed.leafIds) else { return nil }
+            Logger.warn("Quoting the Spark exit again: its leaves changed since the quote", context: "SparkExitManager")
+            return fresh
+        } catch {
+            Logger.warn("Failed to quote the Spark exit again at its start: \(error)", context: "SparkExitManager")
+            return nil
+        }
+    }
+
+    /// The started exit over the fresh quote's leaves, amount and funding.
+    nonisolated static func requoted(_ record: SparkExitRecord, fresh: SparkExitQuote) -> SparkExitRecord? {
+        guard case .awaitingFunding = record.phase else { return nil }
+        var record = record
+        record.phase = .awaitingFunding(requiredSats: fresh.fundingSats)
+        record.leafIds = fresh.leafIds
+        record.leafTotalSats = fresh.leafTotalSats
+        record.expectedSats = fresh.incomingSats
+        record.skippedLeafCount = fresh.prepared.skipped.count
+        return record
+    }
+
+    /// Savings pays at most the funding the user confirmed: a higher fresh amount goes through the shortfall flow on
+    /// Progress, which asks for the rest.
+    nonisolated static func savingsFundingSats(confirmed: SparkExitQuote, fresh: SparkExitQuote) -> UInt64 {
+        min(confirmed.fundingSats, fresh.fundingSats)
     }
 
     /// The exit a start began, still stored and active (not cancelled meanwhile); nil otherwise. The store keeps
