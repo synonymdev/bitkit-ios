@@ -324,6 +324,17 @@ final class PaykitRouteTests: XCTestCase {
         XCTAssertNil(SendPendingScreen.sparkWithdrawalRoute(for: unsent, attempt: other), "Another withdrawal's close leaves the screen")
     }
 
+    @MainActor
+    func testAPendingSparkSendNeverAdoptsTheNodesOnchainAttempt() {
+        let attempt = SparkWithdrawalAttempt(address: onchain.value, amountSats: 20000, requestId: nil)
+
+        XCTAssertFalse(
+            SendPendingScreen.readsNodeOnchainAttempts(sparkWithdrawal: attempt),
+            "A Spark withdrawal never creates a node on-chain attempt, so an unrelated one must not show as this send"
+        )
+        XCTAssertTrue(SendPendingScreen.readsNodeOnchainAttempts(sparkWithdrawal: nil))
+    }
+
     func testLegPreparesTheRequestBeforeItsProofIsStarted() async throws {
         var steps: [String] = []
         let identity = try await PaykitRouteService.startLegRequestProof(
