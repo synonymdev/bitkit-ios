@@ -243,6 +243,39 @@ extension ChannelFreeRailTests {
         await assertReachesTheNode()
     }
 
+    func testASendSparkReportedFailedIsNotHeldFromTheNodeWhileSparkCannotList() async throws {
+        try await sendOverSpark()
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        Bitkit.LightningService.shared.emitChannelFreeRailEvent(.paymentFailed(paymentId: hash, paymentHash: hash, reason: nil))
+        rail.listError = NSError(domain: "spark", code: 1)
+        rail.balanceSats = 0
+
+        await assertReachesTheNode()
+    }
+
+    func testASendSparkListedAsFailedIsNotHeldOnceSparkCannotList() async throws {
+        try await sendOverSpark()
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil)]
+        rail.balanceSats = 0
+        await assertReachesTheNode()
+
+        rail.listError = NSError(domain: "spark", code: 1)
+
+        await assertReachesTheNode()
+    }
+
+    func testASendSparkRefusedBeforeDispatchIsNotHeldWhileSparkCannotList() async {
+        rail.balanceSats = 100_000
+        rail.refusal = Bitkit.ChannelFreeRailSendRefused(reason: "refused")
+        _ = try? await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+        rail.refusal = nil
+        rail.listError = NSError(domain: "spark", code: 1)
+        rail.balanceSats = 0
+
+        await assertReachesTheNode()
+    }
+
     private func sendOverSpark() async throws {
         rail.balanceSats = 100_000
         _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
@@ -464,12 +497,16 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     var sentBolt11: String?
     var sentFeeLimitSats: UInt64?
     var sendGate: (() async -> Void)?
+    var refusal: Bitkit.ChannelFreeRailSendRefused?
 
     func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String {
         "lnbcrt1fake"
     }
 
     func send(bolt11: String, sats: UInt64?, maxFeeSats: UInt64?, beforeSubmission: @escaping () throws -> Void) async throws -> PaymentHash {
+        if let refusal {
+            throw refusal
+        }
         try beforeSubmission()
         await sendGate?()
         sentFeeLimitSats = maxFeeSats

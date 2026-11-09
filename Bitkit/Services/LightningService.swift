@@ -1034,7 +1034,10 @@ class LightningService: NodeLifecycleService {
                 sats: sats,
                 maxFeeSats: params?.maxTotalRoutingFeeMsat.map { $0 / 1000 }
                     ?? Self.paymentAmountSats(bolt11: bolt11, sats: sats).map(Self.defaultMaxFeeSats),
-                beforeSubmission: beforeSubmission
+                beforeSubmission: { [weak self] in
+                    try beforeSubmission()
+                    self?.recordRailAttempt(paymentHash: paymentHash)
+                }
             )
         }
         if let paid = try await settledEarlierAttempt(paymentHash: paymentHash, on: [.channelFree]) {
@@ -1077,11 +1080,24 @@ class LightningService: NodeLifecycleService {
     private static let railAttemptsKey = "channelFreeRailAttemptedPaymentHashes"
     private static let railAttemptsLimit = 500
 
-    private func recordRailAttempt(paymentHash: String) {
-        var hashes = railAttemptsStore.stringArray(forKey: Self.railAttemptsKey) ?? []
-        guard !hashes.contains(paymentHash) else { return }
-        hashes.append(paymentHash)
-        railAttemptsStore.set(Array(hashes.suffix(Self.railAttemptsLimit)), forKey: Self.railAttemptsKey)
+    private func recordRailAttempt(paymentHash: String?) {
+        guard let paymentHash = paymentHash?.lowercased() else { return }
+        eventCallbackLock.withLock {
+            var hashes = railAttemptsStore.stringArray(forKey: Self.railAttemptsKey) ?? []
+            guard !hashes.contains(paymentHash) else { return }
+            hashes.append(paymentHash)
+            railAttemptsStore.set(Array(hashes.suffix(Self.railAttemptsLimit)), forKey: Self.railAttemptsKey)
+        }
+    }
+
+    /// Called once the rail reports the attempt failed or lists none, so a channel retry isn't held while it can't list.
+    private func forgetRailAttempt(paymentHash: String) {
+        let hash = paymentHash.lowercased()
+        eventCallbackLock.withLock {
+            guard var hashes = railAttemptsStore.stringArray(forKey: Self.railAttemptsKey), hashes.contains(hash) else { return }
+            hashes.removeAll { $0 == hash }
+            railAttemptsStore.set(hashes, forKey: Self.railAttemptsKey)
+        }
     }
 
     private func hasRailAttempt(paymentHash: String) -> Bool {
@@ -1108,8 +1124,12 @@ class LightningService: NodeLifecycleService {
         }
         if rails.contains(.channelFree) {
             if let payments = await readableRailPayments() {
-                if let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: paymentHash) {
+                let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: paymentHash)
+                if let payment {
                     statuses.append(payment.status)
+                }
+                if payment == nil || payment?.status == .failed, !isRailSendInFlight(paymentHash: paymentHash) {
+                    forgetRailAttempt(paymentHash: paymentHash)
                 }
             } else if hasRailAttempt(paymentHash: paymentHash) {
                 Logger.warn("Refused paying '\(paymentHash)', Spark can't list the earlier attempt now", context: "LightningService")
@@ -1141,11 +1161,7 @@ class LightningService: NodeLifecycleService {
 
     private func beginRailSend(paymentHash: String?) -> Bool {
         guard let paymentHash else { return true }
-        return eventCallbackLock.withLock {
-            let hash = paymentHash.lowercased()
-            recordRailAttempt(paymentHash: hash)
-            return railSendsInFlight.insert(hash).inserted
-        }
+        return eventCallbackLock.withLock { railSendsInFlight.insert(paymentHash.lowercased()).inserted }
     }
 
     private func endRailSend(paymentHash: String?) {
@@ -1675,6 +1691,9 @@ extension LightningService {
 
     /// Spark runs before the node starts, so its events wait until the node's event callback is set rather than being lost.
     func emitChannelFreeRailEvent(_ event: Event) {
+        if case let .paymentFailed(_, paymentHash?, _) = event {
+            forgetRailAttempt(paymentHash: paymentHash)
+        }
         if isStaleFailure(event, from: .channelFree) {
             Logger.info("Ignored a Spark failure for a payment retried over a channel: \(event)", context: "LightningService")
             return
