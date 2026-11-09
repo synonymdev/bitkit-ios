@@ -335,7 +335,7 @@ struct SparkExitWaitingPayment: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            BodySText(text, textColor: .greenAccent)
+            BodySText(text)
             BodySText(t("lightning__spark_exit__funding_txid", variables: ["txid": txid]))
                 .lineLimit(2)
                 .truncationMode(.middle)
@@ -878,7 +878,7 @@ struct SparkExitBackgroundNotes: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(notes, id: \.self) { note in
-                BodySText(note, textColor: .yellowAccent)
+                BodySText(note)
             }
         }
         .accessibilityElement(children: .contain)
