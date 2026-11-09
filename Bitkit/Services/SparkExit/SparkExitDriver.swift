@@ -747,6 +747,10 @@ struct SparkExitDriver {
     /// accepted but unconfirmed for `sweepReplaceBlocks`, is built again over the same coins at the network's current
     /// rate, which replaces it (RBF).
     private func sweepLeftover(_ record: inout SparkExitRecord) async throws {
+        if record.leftoverSweep?.isRemainingUnread == true {
+            await followRemainingOutputs(&record)
+            return
+        }
         // A sweep it replaced may confirm instead: that ends the sweep as well.
         for txid in record.leftoverSweep?.replacedTxids ?? [] where record.leftoverSweep?.isConfirmed != true {
             if let status = try? await chain.txStatus(txid: txid), status.confirmed {
@@ -896,11 +900,15 @@ struct SparkExitDriver {
 
     /// After a sweep confirms, reads the funding address again: outputs the sweep left out (too small for their fee,
     /// or unconfirmed when it was built) start a new wait of their own, so they are swept once worth it or kept with
-    /// their path after `sweepWaitBlocks`. What the confirmed sweeps sent is kept for the result.
+    /// their path after `sweepWaitBlocks`. What the confirmed sweeps sent is kept for the result. While the tip or the
+    /// address cannot be read the sweep stays pending, and a later tick reads them again.
     private func followRemainingOutputs(_ record: inout SparkExitRecord) async {
-        guard let sweep = record.leftoverSweep, let txid = sweep.txid, let address = record.funding.first?.address,
-              let tip = try? await chain.tipHeight(), let listed = try? await chain.utxos(address: address)
-        else { return }
+        guard let sweep = record.leftoverSweep, let txid = sweep.txid, let address = record.funding.first?.address else { return }
+        guard let tip = try? await chain.tipHeight(), let listed = try? await chain.utxos(address: address) else {
+            record.leftoverSweep?.isRemainingUnread = true
+            return
+        }
+        record.leftoverSweep?.isRemainingUnread = nil
         // A host behind the block can still list what the sweep spent.
         let spent = Set((sweep.txHex.flatMap(SparkExitTxid.inputOutpoints(hex:)) ?? []).map { "\($0.txid):\($0.vout)" })
         let utxos = listed.filter { !spent.contains("\($0.txid):\($0.vout)") }

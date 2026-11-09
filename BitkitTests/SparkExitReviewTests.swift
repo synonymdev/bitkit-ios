@@ -308,6 +308,35 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(record.leftoverLine, .waiting(sats: 300))
     }
 
+    /// A partial sweep that confirms while the funding address cannot be read stays driven, and follows what it left
+    /// out once the address reads again.
+    func testAConfirmedPartialSweepStaysDrivenUntilTheAddressReads() async throws {
+        var record = SparkExitFixtures.record(phase: .done)
+        record.leftover = [.init(txid: "c1", vout: 0, valueSats: 5000), .init(txid: "c2", vout: 0, valueSats: 300)]
+        record.leftoverSweep = .init(txid: "s1", txHex: "02", valueSats: 4700, isAccepted: true, feeRateSatPerVbyte: 2, sentAtHeight: 1000)
+        chain.confirmedTxids = ["s1"]
+        chain.utxosByAddress["bcrt1qfunding"] = [SparkExitFixtures.utxo("c2", value: 300)]
+
+        chain.isTipUnreadable = true
+        record = try await driver(withSdk: false).tick(record)
+        XCTAssertTrue(record.needsDriving, "the tip could not be read")
+
+        chain.isTipUnreadable = false
+        chain.isUtxosUnreadable = true
+        record = try await driver(withSdk: false).tick(record)
+        XCTAssertTrue(record.needsDriving, "the funding address could not be read")
+        XCTAssertNil(record.sweptLeftover)
+        record = try JSONDecoder().decode(SparkExitRecord.self, from: JSONEncoder().encode(record))
+        XCTAssertTrue(record.needsDriving, "after a restart")
+
+        chain.isUtxosUnreadable = false
+        record = try await driver(withSdk: false).tick(record)
+        XCTAssertEqual(record.sweptLeftover, [.init(txid: "s1", valueSats: 4700)])
+        XCTAssertEqual(record.leftover, [.init(txid: "c2", vout: 0, valueSats: 300)])
+        XCTAssertEqual(record.leftoverSweep?.isWaitingForFees, true)
+        XCTAssertTrue(record.needsDriving)
+    }
+
     /// A first build holding only cooperative leaves the operators could not co-sign enters the bounded retry.
     func testAFirstBuildOfOnlyFailedCooperativeLeavesWaitsForTheOperators() async throws {
         let failure = CooperativeRecoveryFailure(leafId: "coop-1", outputTxid: "w", outputVout: 0, error: .operatorsUnavailable(message: "down"))

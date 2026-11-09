@@ -103,6 +103,9 @@ struct SparkExitRecord: Codable, Equatable {
         var rejection: String?
         /// Set once the chain host shows the accepted sweep in a block.
         var isConfirmed: Bool?
+        /// Confirmed while the tip or the funding address could not be read: what the sweep left out is read on a
+        /// later tick, and the sweep stays pending until then.
+        var isRemainingUnread: Bool?
         /// The rate it was built at; nil for the exit's own rate.
         var feeRateSatPerVbyte: UInt64?
         /// The tip when a node first accepted it, so one that does not confirm is replaced at a higher rate.
@@ -258,12 +261,12 @@ struct SparkExitRecord: Codable, Equatable {
         }
     }
 
-    /// An ended exit whose leftover fee funding still has to reach savings: not swept yet, or sent but not
-    /// confirmed.
+    /// An ended exit whose leftover fee funding still has to reach savings: not swept yet, sent but not confirmed, or
+    /// confirmed before what it left out was read.
     var isLeftoverSweepPending: Bool {
         guard !isActive, !leftover.isEmpty else { return false }
         guard let leftoverSweep else { return true }
-        if leftoverSweep.isWaitingForFees {
+        if leftoverSweep.isWaitingForFees || leftoverSweep.isRemainingUnread == true {
             return true
         }
         return leftoverSweep.txid != nil && (leftoverSweep.rejection == nil || leftoverSweep.isFeeRejection) && leftoverSweep.isConfirmed != true
