@@ -217,7 +217,19 @@ final class SparkPaymentSafetyTests: XCTestCase {
         XCTAssertFalse(SparkManager.fitsBalance(amountSats: UInt64.max, feeSats: 1, balanceSats: UInt64.max))
     }
 
-    private func lightningPayment(type: PaymentType, status: BreezSdkSpark.PaymentStatus) -> Payment {
+    func testASendSparkFailedWhileTheAppWasClosedIsReleasedAtTheNextSync() {
+        let payments = [
+            lightningPayment(type: .send, status: .failed, hash: "failed"),
+            lightningPayment(type: .send, status: .failed, hash: "retried"),
+            lightningPayment(type: .send, status: .pending, hash: "retried"),
+            lightningPayment(type: .receive, status: .failed, hash: "received"),
+            lightningPayment(type: .send, status: .completed, hash: "paid"),
+        ]
+
+        XCTAssertEqual(SparkManager.failedSendHashes(payments), ["failed"])
+    }
+
+    private func lightningPayment(type: PaymentType, status: BreezSdkSpark.PaymentStatus, hash: String = "hash") -> Payment {
         Payment(
             id: "id",
             paymentType: type,
@@ -230,7 +242,7 @@ final class SparkPaymentSafetyTests: XCTestCase {
                 description: nil,
                 invoice: "lnbcrt1",
                 destinationPubkey: "pubkey",
-                htlcDetails: SparkHtlcDetails(paymentHash: "hash", preimage: "preimage", expiryTime: 0, status: .preimageShared),
+                htlcDetails: SparkHtlcDetails(paymentHash: hash, preimage: "preimage", expiryTime: 0, status: .preimageShared),
                 lnurlPayInfo: nil,
                 lnurlWithdrawInfo: nil,
                 lnurlReceiveMetadata: nil,

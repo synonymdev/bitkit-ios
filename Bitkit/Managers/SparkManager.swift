@@ -674,10 +674,29 @@ final class SparkManager: ChannelFreeLightningRail {
         return result
     }
 
+    /// Payment hashes whose every Lightning send failed, so a hold on a channel retry can be released.
+    nonisolated static func failedSendHashes(_ payments: [Payment]) -> [String] {
+        var failed: [String] = []
+        var live: Set<String> = []
+        for payment in payments where payment.paymentType == .send {
+            guard case let .lightning(_, _, _, htlcDetails, _, _, _, _) = payment.details else { continue }
+            if payment.status == .failed {
+                failed.append(htlcDetails.paymentHash)
+            } else {
+                live.insert(htlcDetails.paymentHash)
+            }
+        }
+        return failed.filter { !live.contains($0) }
+    }
+
     private func syncActivities() async throws {
         let payments = try await requireSdk().listPayments(request: ListPaymentsRequest()).payments
         for payment in payments {
             await recordActivity(payment)
+        }
+        // A send that failed while the app was closed released no hold on a channel retry.
+        for paymentHash in Self.failedSendHashes(payments) {
+            LightningService.shared.releaseRailAttempt(paymentHash: paymentHash)
         }
     }
 
