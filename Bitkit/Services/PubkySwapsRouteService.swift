@@ -50,9 +50,9 @@ enum PubkySwapsRouteService {
                 contactEndpoints: [endpoint],
                 lightningSpendableSat: lightningSpendableSats,
                 onchainSpendableSat: onchainSpendableSats,
+                serviceLegs: serviceLegs,
                 providers: candidates,
-                feeRateSatVb: claimFeeRateSatVb,
-                serviceLegs: serviceLegs
+                feeRateSatVb: claimFeeRateSatVb
             ),
             network: Env.bitkitCoreNetwork,
             mnemonic: mnemonic,
