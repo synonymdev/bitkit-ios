@@ -55,4 +55,14 @@ final class SparkFundingRecoveryTests: XCTestCase {
         XCTAssertFalse(SparkFundingRecovery.pendingScreenGoesHome(confirmScreenOpen: true), "Spending Confirm follows it at the chosen speed")
         XCTAssertTrue(SparkFundingRecovery.pendingScreenGoesHome(confirmScreenOpen: false))
     }
+
+    func testSettingUpShowsLaterWheneverTheTextSaysItWaitsForConfirmations() {
+        for state in [SparkClaimState.later, .unavailable, .notSeen] {
+            XCTAssertTrue(SettingUpView.showsLater(speed: .instant, state: state), "\(state)")
+        }
+        for state in [SparkClaimState.looking, .claiming, .adding, .repriced(feeSats: 1)] {
+            XCTAssertFalse(SettingUpView.showsLater(speed: .instant, state: state), "\(state)")
+        }
+        XCTAssertTrue(SettingUpView.showsLater(speed: .later, state: .looking))
+    }
 }
