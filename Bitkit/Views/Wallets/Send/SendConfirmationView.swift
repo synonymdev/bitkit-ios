@@ -1047,6 +1047,12 @@ struct SendConfirmationView: View {
         }
     }
 
+    /// A swap route pays its quote's debit from spending, though the scanned invoice is on-chain, so the amount
+    /// warnings read the debit, or the entered amount before a quote.
+    static func swapRouteWarningAmountSats(_ route: PaykitSwapRoute, sendAmountSats: UInt64?) -> UInt64 {
+        route.quote?.debitSat ?? sendAmountSats ?? 0
+    }
+
     /// The wallet switch chooses coins separately from send setup, so the automatic start waits for both.
     static func canStartAutomaticPayment(
         shouldAutomaticallyPay: Bool,
@@ -1849,7 +1855,9 @@ struct SendConfirmationView: View {
     private func validatePayment() async -> [WarningType] {
         var warnings: [WarningType] = []
 
-        let amount: UInt64 = if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
+        let amount: UInt64 = if let route = app.paykitSwapRoute {
+            Self.swapRouteWarningAmountSats(route, sendAmountSats: wallet.sendAmountSats)
+        } else if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
             wallet.sendAmountSats ?? invoice.amountSatoshis
         } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
             wallet.sendAmountSats ?? invoice.amountSatoshis

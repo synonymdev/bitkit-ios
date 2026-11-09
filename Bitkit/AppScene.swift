@@ -1273,8 +1273,10 @@ struct AppScene: View {
     /// swap still on record keeps its destination and is finished silently.
     private func restorePubkySwaps() {
         guard PubkySwapsRouteService.isEnabled else { return }
-        let contacts = contactsManager.contacts.map(\.publicKey)
         Task {
+            // Contacts load in the Paykit session's own task, and a saved provider among them recovers its swaps.
+            await contactsManager.waitUntilLoaded(timeout: .seconds(15))
+            let contacts = contactsManager.contacts.map(\.publicKey)
             let swaps: (restored: [String], known: [String])
             do {
                 swaps = try await PubkySwapsRouteService.restoreSwaps(contacts: contacts)

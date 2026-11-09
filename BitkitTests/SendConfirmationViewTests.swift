@@ -1,4 +1,5 @@
 @testable import Bitkit
+import BitkitCore
 import LDKNode
 import XCTest
 
@@ -188,5 +189,18 @@ final class SendConfirmationViewTests: XCTestCase {
             ),
             .uncertain
         )
+    }
+
+    func testSwapRouteWarningsReadTheQuoteDebitPaidFromSpending() {
+        let endpoint = PaykitEndpoint(methodId: "bitcoin", value: "bcrt1qcontact")
+        var route = PaykitSwapRoute(endpoint: endpoint)
+        XCTAssertEqual(SendConfirmationView.swapRouteWarningAmountSats(route, sendAmountSats: 50000), 50000)
+        XCTAssertEqual(SendConfirmationView.swapRouteWarningAmountSats(route, sendAmountSats: nil), 0)
+        route.quote = PubkySwapRouteQuote(
+            providerPubky: "provider", quoteId: "quote", endpoint: endpoint, deliveredSat: 50000, lockSat: 50300, debitSat: 51200,
+            serviceFeeSat: 500, providerOnchainFeeSat: 400, claimFeeSat: 300, totalFeeSat: 1200, atomicity: "hold_invoice",
+            validUntilUnix: 0, providersQuoted: 1
+        )
+        XCTAssertEqual(SendConfirmationView.swapRouteWarningAmountSats(route, sendAmountSats: 50000), 51200)
     }
 }
