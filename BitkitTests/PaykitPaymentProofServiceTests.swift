@@ -1926,6 +1926,58 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertTrue(remaining.isEmpty)
     }
 
+    func testAnUnsentSparkWithdrawalGivesBackItsPrivateListAfterARelaunch() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+        let privatePaykit = PrivatePaykitService()
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        let store = PaymentProofMemoryStore()
+        let service = paymentProofService(sdk: sdk, store: store)
+        try await privatePaykit.consumePrivatePaymentList(publicKey: request.counterparty, context: listContext(version: 6), attemptId: UUID())
+        try await privatePaykit.consumePrivatePaymentList(publicKey: request.counterparty, context: listContext(version: 7), attemptId: UUID())
+
+        try await service.prepare(request: request, paymentAppId: "paykit-server", paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.markOnchainPaymentStarted(
+            request, address: onchainAddress, privatePaymentListVersion: 7, previousPrivatePaymentListVersion: 6
+        )
+        // Spark's journal closes the withdrawal as never sent after the app restarted.
+        let relaunched = paymentProofService(sdk: sdk, store: store)
+        await relaunched.failSparkOnchainPayment(requestId: request.id, identity: identity, privatePaykitService: privatePaykit)
+
+        let remaining = await store.snapshot()
+        XCTAssertTrue(remaining.isEmpty)
+        let released = await privatePaykit.consumedPaymentListVersion(publicKey: request.counterparty)
+        XCTAssertEqual(released, 6)
+        try await privatePaykit.consumePrivatePaymentList(publicKey: request.counterparty, context: listContext(version: 7), attemptId: UUID())
+    }
+
+    func testAnUnsentSparkWithdrawalLeavesAListAnotherPaymentConsumedSince() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+        let privatePaykit = PrivatePaykitService()
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let store = PaymentProofMemoryStore()
+        let service = paymentProofService(sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store)
+        try await privatePaykit.consumePrivatePaymentList(publicKey: request.counterparty, context: listContext(version: 7), attemptId: UUID())
+
+        try await service.prepare(request: request, paymentAppId: "paykit-server", paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.markOnchainPaymentStarted(
+            request, address: onchainAddress, privatePaymentListVersion: 7, previousPrivatePaymentListVersion: nil
+        )
+        try await privatePaykit.consumePrivatePaymentList(publicKey: request.counterparty, context: listContext(version: 8), attemptId: UUID())
+        await service.failSparkOnchainPayment(requestId: request.id, identity: identity, privatePaykitService: privatePaykit)
+
+        let remaining = await store.snapshot()
+        XCTAssertTrue(remaining.isEmpty)
+        let consumed = await privatePaykit.consumedPaymentListVersion(publicKey: request.counterparty)
+        XCTAssertEqual(consumed, 8)
+    }
+
     func testOnchainCompletionDoesNotWaitForProofDelivery() async throws {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
         let record = try paymentRequestRecord(endpoints: [endpoint])
@@ -3440,6 +3492,10 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let end = calendar.dateComponents([.year, .month], from: calendar.date(byAdding: .month, value: 1, to: calendar.date(from: start)!)!)
         let format = { (month: DateComponents) in String(format: "%04d-%02d-01T00:00:00.123456789Z", month.year!, month.month!) }
         return (format(start), format(end))
+    }
+
+    private func listContext(version: UInt64) -> PrivatePaykitPaymentContext {
+        PrivatePaykitPaymentContext(paymentAppsByEndpoint: [:], paymentListVersion: version)
     }
 
     private func paymentProofService(

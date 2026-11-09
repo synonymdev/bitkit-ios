@@ -1359,11 +1359,41 @@ actor PaykitPaymentProofService {
         }
     }
 
-    /// Drops the started on-chain proof of a request whose Spark withdrawal never went out.
-    func failSparkOnchainPayment(requestId: PaykitPaymentRequest.ID, identity: String) async {
-        await removeProofs {
-            PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId && $0.kind == .onchain &&
-                $0.paymentStarted && $0.onchainWalletId == nil && $0.paymentIdentifier == nil && $0.proofData == nil
+    /// Drops the started on-chain proof of a request whose Spark withdrawal never went out, giving back the private list
+    /// version it consumed when the contact's list is still at exactly that version.
+    func failSparkOnchainPayment(
+        requestId: PaykitPaymentRequest.ID,
+        identity: String,
+        privatePaykitService: PrivatePaykitService = .shared
+    ) async {
+        do {
+            try await mutationLock.withLock {
+                let proofs = try await loadProofs()
+                let unsent = proofs.filter {
+                    PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId && $0.kind == .onchain &&
+                        $0.paymentStarted && $0.onchainWalletId == nil && $0.paymentIdentifier == nil && $0.proofData == nil
+                }
+                guard !unsent.isEmpty else { return }
+                for proof in unsent {
+                    guard let version = proof.privatePaymentListVersion else { continue }
+                    try await privatePaykitService.releaseUnsentPaymentListVersion(
+                        publicKey: proof.requestId.counterparty,
+                        version: version,
+                        previousVersion: proof.previousPrivatePaymentListVersion
+                    )
+                }
+                do {
+                    try await persist(proofs.filter { !unsent.contains($0) })
+                } catch {
+                    for proof in unsent {
+                        guard let version = proof.privatePaymentListVersion else { continue }
+                        try await privatePaykitService.retainOriginalPaymentListVersion(publicKey: proof.requestId.counterparty, version: version)
+                    }
+                    throw error
+                }
+            }
+        } catch {
+            logWarning("Failed to clear an unsent Spark on-chain proof: \(error)")
         }
     }
 

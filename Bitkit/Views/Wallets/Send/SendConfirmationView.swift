@@ -1486,10 +1486,17 @@ struct SendConfirmationView: View {
                     prepareRequest: { try await prepareIncomingPaymentRequest() },
                     paymentIdentity: { try await PaykitPaymentProofService.shared.onchainPaymentIdentity(requestId: request.id) },
                     markStarted: { identity in
+                        // The proof keeps the list version this send consumed, so dropping it as unsent gives the list back.
+                        let previousVersion = await PrivatePaykitService.shared.consumedPaymentListVersion(
+                            publicKey: request.counterparty,
+                            attemptId: context?.id
+                        )
                         try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(
                             request,
                             address: leg.endpoint.value,
-                            paymentIdentity: identity
+                            paymentIdentity: identity,
+                            privatePaymentListVersion: privateContext.paymentListVersion,
+                            previousPrivatePaymentListVersion: previousVersion
                         )
                     },
                     cancelProof: { await PaykitPaymentProofService.shared.cancelPreparation(request) },
