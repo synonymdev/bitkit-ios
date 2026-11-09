@@ -168,6 +168,30 @@ extension ChannelFreeRailTests {
         XCTAssertNotNil(rail.sentFeeLimitSats, "A user send over Spark went out with no fee limit")
     }
 
+    func testASparkSendStillInFlightIsNotSentAgainThroughTheNode() async throws {
+        var release: CheckedContinuation<Void, Never>?
+        rail.sendGate = { await withCheckedContinuation { release = $0 } }
+        rail.balanceSats = 100_000
+        let first = Task { try await Bitkit.LightningService.shared.send(bolt11: Self.invoice) }
+        var waited = 0
+        while release == nil, waited < 500 {
+            try await Task.sleep(nanoseconds: 10_000_000)
+            waited += 1
+        }
+        XCTAssertNotNil(release, "The Spark send never started")
+        // Spark lists the send only once it returns; the retry falls to the node meanwhile.
+        rail.balanceSats = 0
+
+        do {
+            _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+            XCTFail("Expected the Spark send in flight to refuse the retry")
+        } catch {
+            XCTAssertTrue(PrivatePaykitService.isDuplicatePaymentError(error), "\(error)")
+        }
+        release?.resume()
+        _ = try await first.value
+    }
+
     func testCanSendLeavesRoomForTheSparkFee() {
         rail.balanceSats = 100_000
         let sendable = Bitkit.ChannelFreeRailFees.sendableSats(balanceSats: 100_000)
@@ -360,6 +384,7 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     var listError: Error?
     var sentBolt11: String?
     var sentFeeLimitSats: UInt64?
+    var sendGate: (() async -> Void)?
 
     func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String {
         "lnbcrt1fake"
@@ -367,6 +392,7 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
 
     func send(bolt11: String, sats: UInt64?, maxFeeSats: UInt64?, beforeSubmission: @escaping () throws -> Void) async throws -> PaymentHash {
         try beforeSubmission()
+        await sendGate?()
         sentFeeLimitSats = maxFeeSats
         sentBolt11 = bolt11
         return "ee"

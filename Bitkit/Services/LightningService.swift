@@ -125,6 +125,8 @@ class LightningService: NodeLifecycleService {
     /// The rail each payment hash's latest attempt went out on, so a stale failure from the other rail can't settle a
     /// retry of the same invoice.
     private var attemptRails: [String: LightningPaymentRail] = [:]
+    /// Payment hashes inside a rail send, which Spark lists only once it returns.
+    private var railSendsInFlight: Set<String> = []
     weak var channelFreeRail: ChannelFreeLightningRail?
     var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
     var onchainTransactionReceived: (@Sendable (String) async -> Void)?
@@ -1007,6 +1009,8 @@ class LightningService: NodeLifecycleService {
             if let paid = try await settledEarlierAttempt(paymentHash: paymentHash, on: [.ldk, .channelFree]) {
                 return paid
             }
+            guard beginRailSend(paymentHash: paymentHash) else { throw Self.pendingDuplicate(paymentHash: paymentHash) }
+            defer { endRailSend(paymentHash: paymentHash) }
             // Spark takes no route parameters, so a caller's routing fee cap is checked against its estimate instead.
             if let maxFeeMsat = params?.maxTotalRoutingFeeMsat {
                 let feeSats: UInt64
@@ -1068,7 +1072,7 @@ class LightningService: NodeLifecycleService {
     /// lets the payment go.
     private func settledEarlierAttempt(paymentHash: String?, on rails: [LightningPaymentRail]) async throws -> PaymentHash? {
         guard let paymentHash else { return nil }
-        var statuses: [PaymentStatus] = []
+        var statuses: [PaymentStatus] = rails.contains(.channelFree) && isRailSendInFlight(paymentHash: paymentHash) ? [.pending] : []
         if rails.contains(.ldk), let payment = await nodePayments()?.first(where: {
             $0.direction == .outbound && $0.id.caseInsensitiveCompare(paymentHash) == .orderedSame
         }) {
@@ -1085,9 +1089,27 @@ class LightningService: NodeLifecycleService {
         }
         if statuses.contains(.pending) {
             Logger.info("Refused paying '\(paymentHash)', an earlier attempt is still pending", context: "LightningService")
-            throw NodeError.DuplicatePayment(message: "An earlier attempt to pay '\(paymentHash)' is still pending")
+            throw Self.pendingDuplicate(paymentHash: paymentHash)
         }
         return nil
+    }
+
+    private static func pendingDuplicate(paymentHash: String?) -> NodeError {
+        .DuplicatePayment(message: "An earlier attempt to pay '\(paymentHash ?? "")' is still pending")
+    }
+
+    private func beginRailSend(paymentHash: String?) -> Bool {
+        guard let paymentHash else { return true }
+        return eventCallbackLock.withLock { railSendsInFlight.insert(paymentHash.lowercased()).inserted }
+    }
+
+    private func endRailSend(paymentHash: String?) {
+        guard let paymentHash else { return }
+        _ = eventCallbackLock.withLock { railSendsInFlight.remove(paymentHash.lowercased()) }
+    }
+
+    private func isRailSendInFlight(paymentHash: String) -> Bool {
+        eventCallbackLock.withLock { railSendsInFlight.contains(paymentHash.lowercased()) }
     }
 
     static func submitPayment<Result>(
