@@ -42,6 +42,9 @@ enum ChannelFreeRailFees {
 
 /// The channel-free rail refused a payment before anything left the wallet: the rail was not connected, could not
 /// prepare the payment, or its fee was over the caller's limit. A Paykit request or allowance can then end as failed.
+/// The rail runs here but isn't connected, so its payments are unknown rather than none.
+struct ChannelFreeRailUnavailable: Error {}
+
 struct ChannelFreeRailSendRefused: LocalizedError {
     let reason: String
     var underlying: Error?
@@ -1149,10 +1152,7 @@ class LightningService: NodeLifecycleService {
 
     /// Nil while the rail's payments can't be read: listing them failed, or the rail runs here but isn't connected.
     private func readableRailPayments() async -> [ChannelFreeRailPayment]? {
-        if let rail = channelFreeRail {
-            return try? await rail.lightningPayments()
-        }
-        return await channelFreeRailSupported() ? nil : []
+        try? await channelFreeRailPayments()
     }
 
     private static func pendingDuplicate(paymentHash: String?) -> NodeError {
@@ -1733,9 +1733,16 @@ extension LightningService {
         return isStaleFailure(paymentHash: hash, from: rail)
     }
 
-    /// The rail's Lightning payments, none without a rail; throws when the rail could not list them.
+    /// The rail's Lightning payments, none where the rail doesn't run; throws when the rail could not list them, or runs
+    /// here but isn't connected, so a payment it may hold is never read as one it never made.
     func channelFreeRailPayments() async throws -> [ChannelFreeRailPayment] {
-        try await channelFreeRail?.lightningPayments() ?? []
+        if let rail = channelFreeRail {
+            return try await rail.lightningPayments()
+        }
+        if await channelFreeRailSupported() {
+            throw ChannelFreeRailUnavailable()
+        }
+        return []
     }
 
     func deliverEvent(_ event: Event, onEvent: ((Event) -> Void)?) async -> OnchainActivityCompletion? {

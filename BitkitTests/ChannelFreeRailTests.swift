@@ -276,6 +276,29 @@ extension ChannelFreeRailTests {
         await assertReachesTheNode()
     }
 
+    func testSparkHistoryReadsAsUnavailableWhileSparkIsDisconnected() async {
+        Bitkit.LightningService.shared.channelFreeRail = nil
+
+        do {
+            _ = try await Bitkit.LightningService.shared.channelFreeRailPayments()
+            XCTFail("A disconnected Spark must not read as holding no payments")
+        } catch {}
+        let proof = await PaykitLightningPaymentProofLookup.railStatus(paymentHash: "out")
+        guard case .unavailable = proof else { return XCTFail("Expected an unavailable proof, got \(proof)") }
+        // After a restart an older failed channel attempt must not settle a Spark retry Spark can't list yet.
+        XCTAssertEqual(PaykitLightningPaymentProofLookup.combined(ldk: .failed, rail: proof, latestAttempt: nil), .unavailable)
+    }
+
+    func testSparkHistoryReadsAsEmptyWhereSparkDoesNotRun() async throws {
+        let service = Bitkit.LightningService.shared
+        service.channelFreeRail = nil
+        service.channelFreeRailSupported = { false }
+
+        let payments = try await service.channelFreeRailPayments()
+
+        XCTAssertTrue(payments.isEmpty)
+    }
+
     private func sendOverSpark() async throws {
         rail.balanceSats = 100_000
         _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
