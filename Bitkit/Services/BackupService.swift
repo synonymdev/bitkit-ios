@@ -130,6 +130,10 @@ class BackupService {
     private var foregroundObservationGeneration: UInt64 = 0
 
     private let defaults: UserDefaults
+    private let fetchBackup: (String) async throws -> Data?
+    /// Set while the Spark exit data restore hasn't succeeded or found no older backup, kept across launches, so a fresh
+    /// export never replaces the remote backup it couldn't read yet.
+    private static let sparkExitRestorePendingKey = "sparkExitRestorePending"
     private let backupData: ((BackupCategory) async throws -> Data)?
     private let uploadBackup: (String, Data) async throws -> Void
     private let waitForBackupDelay: () async throws -> Void
@@ -173,9 +177,13 @@ class BackupService {
         },
         waitForForegroundRecoveryTimeout: @escaping () async throws -> Void = {
             try await Task.sleep(for: .seconds(BackupService.backupFailureCheckInterval))
+        },
+        fetchBackup: @escaping (String) async throws -> Data? = { key in
+            try await VssBackupClient.shared.getObject(key: key)?.value
         }
     ) {
         self.defaults = defaults
+        self.fetchBackup = fetchBackup
         self.backupData = backupData
         self.usdtRecoveryBackup = usdtRecoveryBackup
         self.uploadBackup = uploadBackup
@@ -312,10 +320,10 @@ class BackupService {
             Logger.debug("Start observing backup statuses and data store changes", context: "BackupService")
             await installBackupObservers(generation: observation.generation, foregroundGeneration: observation.foregroundGeneration)
 
-            // Spark's connect signal is missed when it connected before observing started. Spark stays connected while
-            // the node stops, so observing restarts on each foreground: mark it once per connection.
-            let connection = await SparkManager.shared.connectionId
-            if stateQueue.sync(execute: { sparkExitMark.claim(connection: connection) }) {
+            // Spark's exit data signals are missed while observing is stopped, as it is while the node stops and Spark
+            // stays connected: mark it when the exit data changed since it was last marked, not on every restart.
+            let version = await SparkManager.shared.exitStateVersion
+            if stateQueue.sync(execute: { sparkExitMark.claim(version: version) }) {
                 markBackupRequired(category: .sparkExit)
             }
         }
@@ -418,6 +426,11 @@ class BackupService {
                     try await persistWalletBackup()
                 }
             } else if category == .sparkExit {
+                // A restore that couldn't read the remote backup is tried again first, and blocks replacing it until then.
+                if defaults.bool(forKey: Self.sparkExitRestorePendingKey) {
+                    await restoreSparkExit()
+                }
+                guard !defaults.bool(forKey: Self.sparkExitRestorePendingKey) else { throw SparkExitBackupError.restorePending }
                 // Nothing to back up until Spark connects, which marks this category required again.
                 if let data = try await sparkExitBackupData() {
                     try await uploadBackup(category.rawValue, data)
@@ -461,6 +474,9 @@ class BackupService {
             if case MetadataBackupError.deferred = error {
                 outcome = .busy
                 Logger.debug("Metadata backup deferred until wallet restoration and backup complete", context: "BackupService")
+            } else if error is SparkExitBackupError {
+                outcome = .busy
+                Logger.warn("Spark exit backup deferred until its restore reads the remote backup", context: "BackupService")
             } else if error is WalletBackupSnapshotError {
                 outcome = .snapshotChanged
                 Logger.warn("Wallet backup deferred after three changing snapshots", context: "BackupService")
@@ -797,10 +813,8 @@ class BackupService {
                 Logger.debug("Restored \(payload.orders.count) orders, \(payload.cjitEntries.count) CJITs", context: "BackupService")
             }
 
-            try await performRestore(category: .sparkExit) { dataBytes in
-                let backup = try JSONDecoder().decode(SparkExitBackupV1.self, from: dataBytes)
-                try await SparkManager.shared.restoreExitBackup(backup, walletIndex: LightningService.shared.currentWalletIndex)
-            }
+            await restoreSparkExit()
+            markRestoreComplete(category: .sparkExit)
 
             // Always reset PIN settings after restore (PIN is never backed up for security)
             await SettingsViewModel.shared.resetPinSettings()
@@ -883,8 +897,8 @@ class BackupService {
                 guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .sparkExit)
                 Task { @MainActor in
-                    let connection = SparkManager.shared.connectionId
-                    _ = self.stateQueue.sync { self.sparkExitMark.claim(connection: connection) }
+                    let version = SparkManager.shared.exitStateVersion
+                    _ = self.stateQueue.sync { self.sparkExitMark.claim(version: version) }
                 }
             }
             .store(in: cancellables)
@@ -1408,6 +1422,24 @@ class BackupService {
         }
     }
 
+    /// Restores the Spark exit data backup. Until that succeeds, or the backup is found absent (not just unreadable), the
+    /// restore stays pending and the next backup attempt tries it again before uploading.
+    func restoreSparkExit() async {
+        defaults.set(true, forKey: Self.sparkExitRestorePendingKey)
+        do {
+            if let data = try await fetchBackup(BackupCategory.sparkExit.rawValue) {
+                let backup = try JSONDecoder().decode(SparkExitBackupV1.self, from: data)
+                try await SparkManager.shared.restoreExitBackup(backup, walletIndex: LightningService.shared.currentWalletIndex)
+                Logger.info("Restore success for: '\(BackupCategory.sparkExit.rawValue)'", context: "BackupService")
+            } else {
+                Logger.warn("Restore null for: '\(BackupCategory.sparkExit.rawValue)'", context: "BackupService")
+            }
+            defaults.removeObject(forKey: Self.sparkExitRestorePendingKey)
+        } catch {
+            Logger.warn("Restore error for: '\(BackupCategory.sparkExit.rawValue)': \(error)", context: "BackupService")
+        }
+    }
+
     private func sparkExitBackupData() async throws -> Data? {
         if let backupData {
             return try await backupData(.sparkExit)
@@ -1646,15 +1678,20 @@ struct BackupFailureNotificationGate {
     }
 }
 
-/// Which Spark connection the exit data backup was last marked for, so observing restarting on a foreground doesn't
-/// mark it again while Spark stayed connected.
-struct SparkExitBackupMark {
-    private var markedConnection: Int?
+enum SparkExitBackupError: Error {
+    /// The restore couldn't read the remote backup yet, so a fresh export must not replace it.
+    case restorePending
+}
 
-    /// True when `connection` is a Spark connection not marked yet, and records it.
-    mutating func claim(connection: Int?) -> Bool {
-        guard let connection, connection != markedConnection else { return false }
-        markedConnection = connection
+/// Which Spark exit data generation the backup was last marked for, so observing restarting on a foreground marks it
+/// only when the exit data changed meanwhile.
+struct SparkExitBackupMark {
+    private var markedVersion: Int?
+
+    /// True when `version` is an exit data generation not marked yet, and records it; nil while Spark is disconnected.
+    mutating func claim(version: Int?) -> Bool {
+        guard let version, version != markedVersion else { return false }
+        markedVersion = version
         return true
     }
 }

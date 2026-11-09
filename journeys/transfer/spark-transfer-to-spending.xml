@@ -10,8 +10,10 @@
     the swipe depends on the deposit Spark sees and the provider's quote; the setting-up states are covered by the
     previews and unit tests, so this journey stops before the swipe.
 
-    Precondition: dev build with Spark connected on its regtest (no key needed), a freshly onboarded wallet with a
-    positive on-chain Savings balance and no channels. Start on the wallet home screen.
+    Precondition: a build whose Spark reads Bitkit's chain (mainnet with a Breez key, or a regtest build launched with
+    SPARK_CHAIN_SERVICE_URL set to the regtest's Esplora URL; Spark's default regtest is its own chain, so without it
+    the Savings transfer shows the Transfer Unavailable sheet), a freshly onboarded wallet with a positive on-chain Savings balance and no
+    channels. Start on the wallet home screen.
   </description>
   <actions>
     <action>Tap the Savings balance card (testTag "ActivitySavings"), tap "Transfer To Spending" (testTag "TransferToSpending") and verify the spending intro (testTag "SpendingIntro") opens, not the Transfer Unavailable sheet</action>

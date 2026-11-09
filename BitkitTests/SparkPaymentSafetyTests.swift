@@ -217,6 +217,12 @@ final class SparkPaymentSafetyTests: XCTestCase {
         XCTAssertFalse(SparkManager.fitsBalance(amountSats: UInt64.max, feeSats: 1, balanceSats: UInt64.max))
     }
 
+    func testChainFundingNeedsSparkToReadBitkitsChain() {
+        XCTAssertTrue(SparkManager.readsBitkitChain(network: .bitcoin, chainServiceUrl: nil))
+        XCTAssertFalse(SparkManager.readsBitkitChain(network: .regtest, chainServiceUrl: nil), "Spark's regtest never sees the deposit")
+        XCTAssertTrue(SparkManager.readsBitkitChain(network: .regtest, chainServiceUrl: "http://127.0.0.1:3002"))
+    }
+
     func testASendSparkFailedWhileTheAppWasClosedIsReleasedAtTheNextSync() {
         let payments = [
             lightningPayment(type: .send, status: .failed, hash: "failed"),

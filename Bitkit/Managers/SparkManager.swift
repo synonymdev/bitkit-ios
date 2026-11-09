@@ -17,6 +17,20 @@ final class SparkManager: ChannelFreeLightningRail {
     nonisolated static let routeService = "spark"
     private nonisolated static let routeAtomicity = "trusted"
     private nonisolated(unsafe) static let exitStateChanged = PassthroughSubject<Void, Never>()
+    private nonisolated static let exitStateLock = NSLock()
+    private nonisolated(unsafe) static var exitStateGenerationValue = 0
+
+    /// Bumped on every connect and exit data change, kept outside the backup observers, which stop while the node does,
+    /// so a change they missed is still backed up once they start again.
+    nonisolated static var exitStateGeneration: Int {
+        exitStateLock.withLock { exitStateGenerationValue }
+    }
+
+    nonisolated static func notifyExitStateChanged() {
+        exitStateLock.withLock { exitStateGenerationValue += 1 }
+        exitStateChanged.send()
+    }
+
     private nonisolated(unsafe) static let contactWithdrawalResolutionSubject = PassthroughSubject<SparkContactWithdrawalResolution, Never>()
     /// How each contact withdrawal's journal closes, which a pending send screen waits on.
     static var contactWithdrawalResolutionPublisher: AnyPublisher<SparkContactWithdrawalResolution, Never> {
@@ -25,6 +39,7 @@ final class SparkManager: ChannelFreeLightningRail {
 
     /// The latest journal close in this process, for a pending screen that opens after it; a new journal clears it.
     private(set) static var lastContactWithdrawalResolution: SparkContactWithdrawalResolution?
+
     /// Fires once Spark connects and whenever its unilateral exit data changes, so the exit data backup is redone.
     nonisolated static var exitStateChangedPublisher: AnyPublisher<Void, Never> {
         exitStateChanged.eraseToAnyPublisher()
@@ -70,17 +85,26 @@ final class SparkManager: ChannelFreeLightningRail {
         Self.sparkNetwork != nil
     }
 
+    /// Whether savings or a hardware wallet can fund Spark: its deposit goes out on Bitkit's chain, which Spark must read.
+    var canFundFromChain: Bool {
+        isReady && Self.readsBitkitChain(network: Env.network, chainServiceUrl: Env.sparkChainServiceUrl(for: Env.network))
+    }
+
+    /// On mainnet both read Bitcoin; Spark's default regtest is its own chain, so a regtest deposit reaches Spark only
+    /// when Spark reads Bitkit's chain through `chainServiceUrl`.
+    nonisolated static func readsBitkitChain(network: LDKNode.Network, chainServiceUrl: String?) -> Bool {
+        network == .bitcoin || chainServiceUrl != nil
+    }
+
     var isConnected: Bool {
         sdk != nil
     }
 
-    /// Counts connects in this process, nil while disconnected, so a backup can tell a new connection from observing
+    /// The exit data's generation while connected, nil while disconnected, so a backup can tell a change from observing
     /// that restarted while Spark stayed connected.
-    var connectionId: Int? {
-        sdk == nil ? nil : connectionCount
+    var exitStateVersion: Int? {
+        sdk == nil ? nil : Self.exitStateGeneration
     }
-
-    @ObservationIgnored private var connectionCount = 0
 
     /// Spark's regtest has no Lightning network, so there a Lightning invoice from another Spark wallet is paid as a
     /// Spark transfer, which lets two dev builds pay each other's invoices.
@@ -165,10 +189,9 @@ final class SparkManager: ChannelFreeLightningRail {
             await self?.onSdkEvent(event)
         })
         sdk = connected
-        connectionCount += 1
         Logger.info("Connected Spark wallet on '\(network)'", context: "SparkManager")
         await importRestoredExitState(walletIndex: walletIndex)
-        Self.exitStateChanged.send()
+        Self.notifyExitStateChanged()
     }
 
     /// The SDK config Bitkit connects with.
@@ -1065,7 +1088,7 @@ final class SparkManager: ChannelFreeLightningRail {
         case let .paymentPending(payment):
             await recordActivity(payment)
         case .unilateralExitStateChanged:
-            Self.exitStateChanged.send()
+            Self.notifyExitStateChanged()
         default:
             break
         }
