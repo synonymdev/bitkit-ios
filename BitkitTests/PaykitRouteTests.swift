@@ -351,6 +351,35 @@ final class PaykitRouteTests: XCTestCase {
     }
 
     @MainActor
+    func testARouteThatReturnsAfterItsPaymentChangedNeverLandsOnTheNextOne() async {
+        snapshotAppDefaultsDomain()
+        let app = AppViewModel()
+        let contactA = ContactPaymentContext(publicKey: "contacta", privatePaymentContext: nil, endpoints: [])
+        let contactB = ContactPaymentContext(publicKey: "contactb", privatePaymentContext: nil, endpoints: [])
+        let routeA = PaykitRouteUi(endpoints: [onchain], offersSparkLeg: true)
+        let routeB = PaykitRouteUi(endpoints: [lightning], offersSparkLeg: false)
+        app.contactPaymentContext = contactA
+        app.paykitRoute = routeA
+
+        let outcome = await app.routeContactPayment(
+            routeA,
+            amountSats: 20000,
+            source: .spending,
+            lightningSpendableSats: 50000,
+            onchainSpendableSats: 0,
+            request: nil
+        ) { _, _, _, _, _ in
+            // Contact A's sheet is dismissed and contact B's opens while Spark quotes A's leg.
+            app.contactPaymentContext = contactB
+            app.paykitRoute = routeB
+            return .service(leg: self.sparkLeg(amountSats: 20000, feeSats: 300))
+        }
+
+        XCTAssertEqual(outcome, .stale)
+        XCTAssertEqual(app.paykitRoute, routeB, "contact A's leg must never pay contact B")
+    }
+
+    @MainActor
     func testAPendingSparkSendNeverAdoptsTheNodesOnchainAttempt() {
         let attempt = SparkWithdrawalAttempt(address: onchain.value, amountSats: 20000, requestId: nil)
 

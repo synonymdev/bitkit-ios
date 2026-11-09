@@ -1446,6 +1446,9 @@ struct SendConfirmationView: View {
         if outcome == .refused {
             return walletType
         }
+        if outcome == .stale {
+            return previous
+        }
         return previous == walletType ? nil : previous
     }
 

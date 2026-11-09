@@ -398,7 +398,7 @@ struct SendAmountView: View {
                 case .leg:
                     navigationPath.append(.confirm)
                     return
-                case .refused:
+                case .refused, .stale:
                     return
                 case .direct:
                     break

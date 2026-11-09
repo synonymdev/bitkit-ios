@@ -237,6 +237,8 @@ enum PaykitRouteOutcome: Equatable {
     case leg
     /// No route pays the contact; the app's copy says why.
     case refused
+    /// The payment changed while the router answered, so its answer was dropped.
+    case stale
 }
 
 @MainActor
@@ -250,18 +252,18 @@ extension AppViewModel {
         source: PaykitRouteService.Source,
         lightningSpendableSats: UInt64,
         onchainSpendableSats: UInt64,
-        request: PaykitPaymentRequest?
+        request: PaykitPaymentRequest?,
+        router: (PaykitRouteUi, UInt64, PaykitRouteService.Source, UInt64, UInt64) async throws -> PaykitRoute = PaykitRouteService.route
     ) async -> PaykitRouteOutcome {
         var unrouted = route
         unrouted.serviceLeg = nil
+        let contactId = contactPaymentContext?.id
         do {
-            let picked = try await PaykitRouteService.route(
-                route,
-                amountSats: amountSats,
-                source: source,
-                lightningSpendableSats: lightningSpendableSats,
-                onchainSpendableSats: onchainSpendableSats
-            )
+            let picked = try await router(route, amountSats, source, lightningSpendableSats, onchainSpendableSats)
+            // A dismissed or replaced payment's route must never land on the one that followed it.
+            guard contactPaymentContext?.id == contactId, paykitRoute.map({ $0.endpoints == route.endpoints }) ?? true else {
+                return .stale
+            }
             switch picked {
             case let .direct(endpoint):
                 paykitRoute = unrouted
@@ -288,6 +290,7 @@ extension AppViewModel {
             }
         } catch {
             Logger.error("Failed to route Paykit payment: \(error)", context: "PaykitRoute")
+            guard contactPaymentContext?.id == contactId else { return .stale }
             showNoPaykitRouteToast(isBalanceShort: false)
             return .refused
         }
