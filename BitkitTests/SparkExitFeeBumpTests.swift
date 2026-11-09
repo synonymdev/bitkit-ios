@@ -285,6 +285,43 @@ final class SparkExitFeeBumpTests: XCTestCase {
         XCTAssertNil(record.isFailedLeavesReleased)
     }
 
+    /// A retry of failed leaves that builds one and skips another while it may still move keeps the skipped one,
+    /// and tries it again once the built one landed.
+    func testAFailedLeafRetryKeepsALeafItSkipped() async throws {
+        let other = CooperativeRecoveryFailure(
+            leafId: "coop-2",
+            outputTxid: "watchtower",
+            outputVout: 1,
+            error: .operatorsUnavailable(message: "down")
+        )
+        var record = SparkExitFixtures.record(phase: .running)
+        record.leafIds = ["coop-1", "coop-2"]
+        record.adopt(SparkExitFixtures.recovery([SparkExitFixtures.tx("s", kind: .sweep)], failed: [failure, other]))
+        let done = SparkExitFixtures.recovery(
+            [SparkExitFixtures.tx("s", kind: .sweep, status: .confirmed(blockHeight: 990))],
+            failed: [failure, other]
+        )
+        sdk.checks = [CheckRecoverFundsResponse(recovery: done, verdict: .done)]
+        var prepared = SparkExitFixtures.prepared(funding: nil, leaves: [])
+        prepared.leaves = [RecoverFundsLeaf(leafId: "coop-1", valueSats: 5000, method: .cooperative)]
+        prepared.skipped = [SkippedLeaf(leafId: "coop-2", valueSats: 4000, reason: .unverified)]
+        sdk.preparedResponse = prepared
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("c1", kind: .cooperative)])]
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.waitingLeafIds, ["coop-2"])
+
+        let landed = SparkExitFixtures.recovery([SparkExitFixtures.tx("c1", kind: .cooperative, status: .confirmed(blockHeight: 1001))])
+        sdk.checks = [CheckRecoverFundsResponse(recovery: landed, verdict: .done)]
+        prepared.leaves = []
+        sdk.preparedResponse = prepared
+        chain.tip = 1001
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.phase, .running, "coop-2 may still move")
+        XCTAssertEqual(sdk.prepareRequests.last?.selection, .specific(leafIds: ["coop-2"]))
+    }
+
     /// After about a week (1,008 blocks) the exit lets the leaf go and ends, saying what is left.
     func testAFailedLeafIsReleasedAfterAWeek() async throws {
         var record = doneWithFailedLeaf()

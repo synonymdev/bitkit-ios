@@ -356,6 +356,7 @@ struct SparkExitDriver {
             // puts them through the bounded failed-leaf retry (about a week), with the operators-waiting line.
             if !built.failed.isEmpty {
                 record.adopt(built, at: now())
+                record.waitingLeafIds = waitingLeafIds.isEmpty ? nil : waitingLeafIds
                 return
             }
             await finish(&record, phase: .failed(reason: "Nothing to recover"))
@@ -595,6 +596,9 @@ struct SparkExitDriver {
             let prepared = try await recovering.prepare(record.prepareRequest(.specific(leafIds: failedIds)))
             noteFailedLeafValues(prepared, failedIds: failedIds, in: &record)
             guard !prepared.leaves.isEmpty else { return true }
+            // A failed leaf skipped while it may still move is kept and tried again on its own.
+            noteStoppedLeaves(prepared, tip: tip, in: &record)
+            let skipped = prepared.skipped.filter { isProvisional($0, prepared: prepared, record: record, tip: tip) }.map(\.leafId)
             let built = try await recovering.recover(
                 RecoverFundsRequest(prepared: prepared, fundingInputs: prepared.funding == nil ? [] : record.fundingInputs),
                 signer: prepared.funding == nil ? nil : makeSigner(record.fundingIndex)
@@ -602,6 +606,8 @@ struct SparkExitDriver {
             guard !built.transactions.isEmpty else { return true }
             Logger.info("Spark exit recovers \(built.leaves.count) leaves the operators moved on-chain", context: "SparkExitDriver")
             record.adopt(built, at: now())
+            let waiting = Array(Set((record.waitingLeafIds ?? []) + skipped)).sorted()
+            record.waitingLeafIds = waiting.isEmpty ? nil : waiting
             try save(record)
             try await broadcastReady(&record, tip: tip)
         } catch {

@@ -1667,6 +1667,21 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertNil(record.waitingLeafIds)
     }
 
+    /// A partial build whose only built leaf fails cooperatively still keeps the leaf it skipped.
+    func testAPartialBuildOfOnlyFailedLeavesKeepsTheSkippedLeaf() async throws {
+        var record = rebuildingRecord()
+        record.leafIds = ["leaf-1", "leaf-2"]
+        var prepared = SparkExitFixtures.prepared(funding: nil, leaves: ["leaf-1"])
+        prepared.skipped = [SkippedLeaf(leafId: "leaf-2", valueSats: 50000, reason: .unverified)]
+        sdk.preparedResponse = prepared
+        let failure = CooperativeRecoveryFailure(leafId: "leaf-1", outputTxid: "o", outputVout: 0, error: .operatorsUnavailable(message: "down"))
+        sdk.builds = [SparkExitFixtures.recovery([], failed: [failure])]
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.waitingLeafIds, ["leaf-2"])
+    }
+
     /// A skipped leaf still unverified after about a week is let go, and the exit ends.
     func testAPartialBuildLetsTheSkippedLeafGoAfterAWeek() async throws {
         var record = rebuildingRecord()
