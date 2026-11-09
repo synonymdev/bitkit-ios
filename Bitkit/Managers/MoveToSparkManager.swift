@@ -188,7 +188,14 @@ final class MoveToSparkManager {
         let moveGeneration = generation
         keepsOutcome = true
         isMoveInFlight = true
-        defer { isMoveInFlight = false }
+        // A payment still unsettled after the wait keeps the move until its late outcome, so leaving and reopening the
+        // screen shows it again instead of a new quote.
+        var isSettled = true
+        defer {
+            if isSettled {
+                isMoveInFlight = false
+            }
+        }
         state = .confirm(quote, isMoving: true)
         do {
             let paymentHash = try Bolt11Invoice.fromStr(invoiceStr: quote.invoice).paymentHash()
@@ -210,6 +217,7 @@ final class MoveToSparkManager {
                     }
                 }
             ) else {
+                isSettled = false
                 state = .inFlight(amountSats: quote.amountSats)
                 return
             }
@@ -286,6 +294,11 @@ final class MoveToSparkManager {
     /// A move that was still in flight paid after the wait: the screen, if it still shows that same move, shows it moved.
     private func lateSuccess(amountSats: UInt64, feeSats: UInt64, moveGeneration: Int, wallet: WalletViewModel) async {
         Logger.info("Move to Spark of '\(amountSats)' sats succeeded after the wait", context: "MoveToSpark")
+        defer {
+            if generation == moveGeneration {
+                isMoveInFlight = false
+            }
+        }
         guard Self.showsInFlightMove(state, generation: generation, moveGeneration: moveGeneration) else { return }
         await wallet.syncStateAsync()
         guard Self.showsInFlightMove(state, generation: generation, moveGeneration: moveGeneration) else { return }
@@ -296,6 +309,9 @@ final class MoveToSparkManager {
     /// shows that same move, says it could not move, and a toast tells the user wherever they are.
     private func lateFailure(amountSats: UInt64, moveGeneration: Int) {
         Logger.warn("Move to Spark of '\(amountSats)' sats failed after the wait", context: "MoveToSpark")
+        if generation == moveGeneration {
+            isMoveInFlight = false
+        }
         if Self.showsInFlightMove(state, generation: generation, moveGeneration: moveGeneration) {
             state = .failed(.unknown)
         }
