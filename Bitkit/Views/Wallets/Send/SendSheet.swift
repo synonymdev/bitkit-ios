@@ -69,6 +69,7 @@ enum SendRoute: Hashable {
         paykitPaymentRequestId: PaykitPaymentRequest.ID? = nil
     )
     case onchainPending(OnchainSendPendingContext)
+    case sparkWithdrawalPending(SparkWithdrawalAttempt)
     case onchainOperationPending(OnchainSendPendingContext, requestId: PaykitPaymentRequest.ID?)
     case hardwarePending(requestId: PaykitPaymentRequest.ID, walletId: String, transactionId: String, paymentIdentity: String?)
     case success(paymentId: String, walletId: String = WalletScope.default)
@@ -1169,6 +1170,12 @@ struct SendSheet: View {
                 paymentRequest: paymentRequest,
                 paykitPaymentRequestId: paykitPaymentRequestId,
                 routingCacheResetAttempted: flow.routingCacheResetAttempted,
+                navigationPath: $flow.navigationPath
+            )
+        case let .sparkWithdrawalPending(attempt):
+            SendPendingScreen(
+                paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: attempt.requestId,
+                routingCacheResetAttempted: flow.routingCacheResetAttempted, sparkWithdrawal: attempt,
                 navigationPath: $flow.navigationPath
             )
         case let .onchainPending(context):

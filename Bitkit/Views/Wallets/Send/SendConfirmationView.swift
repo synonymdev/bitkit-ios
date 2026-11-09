@@ -1464,11 +1464,11 @@ struct SendConfirmationView: View {
     /// other failure may have sent it, so it stays pending until Spark's journal settles it.
     static func serviceLegFailureRoute(
         _ error: Error,
-        requestId: PaykitPaymentRequest.ID?,
+        attempt: SparkWithdrawalAttempt,
         routingCacheResetAttempted: Bool
     ) -> SendRoute {
         guard let refusal = error as? SparkWithdrawalNotSent else {
-            return .pending(paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: requestId)
+            return .sparkWithdrawalPending(attempt)
         }
         return .failure(SendFailureContext(
             error: refusal.underlying,
@@ -1564,7 +1564,7 @@ struct SendConfirmationView: View {
                 Logger.error("Service route payment failed: \(error)", context: "SendConfirmation")
                 navigationPath.append(Self.serviceLegFailureRoute(
                     error,
-                    requestId: request?.id,
+                    attempt: SparkWithdrawalAttempt(address: leg.endpoint.value, amountSats: leg.deliveredSat, requestId: request?.id),
                     routingCacheResetAttempted: routingCacheResetAttempted
                 ))
                 return

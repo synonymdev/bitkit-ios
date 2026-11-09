@@ -292,6 +292,38 @@ final class PaykitRouteTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testAClosedJournalTellsThePendingScreenHowItsWithdrawalEnded() async {
+        snapshotAppDefaultsDomain()
+        let request = SparkContactWithdrawal.PaykitRequest(
+            id: PaykitPaymentRequest.ID(paymentRequestId: "request", counterparty: "payee"),
+            identity: "payer"
+        )
+        let pending = SparkContactWithdrawal(address: onchain.value, amountSats: 20000, contact: "contact", startedAt: 1000, request: request)
+        SparkManager.pendingContactWithdrawal = pending
+        var resolutions: [SparkContactWithdrawalResolution] = []
+        let subscription = SparkManager.contactWithdrawalResolutionPublisher.sink { resolutions.append($0) }
+        defer { subscription.cancel() }
+
+        await SparkManager.closeUnsentWithdrawal(pending, releaseProof: { _ in true }, failAllowance: { _ in })
+
+        let unsent = SparkContactWithdrawalResolution(attempt: pending.attempt, txId: nil)
+        XCTAssertEqual(resolutions, [unsent])
+        XCTAssertEqual(SparkManager.lastContactWithdrawalResolution, unsent, "A screen that opens later still learns it")
+        guard case .failure = SendPendingScreen.sparkWithdrawalRoute(for: unsent, attempt: pending.attempt) else {
+            return XCTFail("A withdrawal that never went out can be tried again")
+        }
+        XCTAssertEqual(
+            SendPendingScreen.sparkWithdrawalRoute(
+                for: SparkContactWithdrawalResolution(attempt: pending.attempt, txId: "txid"),
+                attempt: pending.attempt
+            ),
+            .success(paymentId: "txid")
+        )
+        let other = SparkWithdrawalAttempt(address: onchain.value, amountSats: 30000, requestId: request.id)
+        XCTAssertNil(SendPendingScreen.sparkWithdrawalRoute(for: unsent, attempt: other), "Another withdrawal's close leaves the screen")
+    }
+
     func testLegPreparesTheRequestBeforeItsProofIsStarted() async throws {
         var steps: [String] = []
         let identity = try await PaykitRouteService.startLegRequestProof(

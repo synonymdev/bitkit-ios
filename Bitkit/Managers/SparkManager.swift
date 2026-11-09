@@ -17,6 +17,14 @@ final class SparkManager: ChannelFreeLightningRail {
     nonisolated static let routeService = "spark"
     private nonisolated static let routeAtomicity = "trusted"
     private nonisolated(unsafe) static let exitStateChanged = PassthroughSubject<Void, Never>()
+    private nonisolated(unsafe) static let contactWithdrawalResolutionSubject = PassthroughSubject<SparkContactWithdrawalResolution, Never>()
+    /// How each contact withdrawal's journal closes, which a pending send screen waits on.
+    static var contactWithdrawalResolutionPublisher: AnyPublisher<SparkContactWithdrawalResolution, Never> {
+        contactWithdrawalResolutionSubject.eraseToAnyPublisher()
+    }
+
+    /// The latest journal close in this process, for a pending screen that opens after it; a new journal clears it.
+    private(set) static var lastContactWithdrawalResolution: SparkContactWithdrawalResolution?
     /// Fires once Spark connects and whenever its unilateral exit data changes, so the exit data backup is redone.
     nonisolated static var exitStateChangedPublisher: AnyPublisher<Void, Never> {
         exitStateChanged.eraseToAnyPublisher()
@@ -533,6 +541,7 @@ final class SparkManager: ChannelFreeLightningRail {
             earlierPaymentIds: Self.withdrawalIds(to: address, amountSats: amountSats, in: earlierPayments)
         )
         Self.pendingContactWithdrawal = pending
+        Self.lastContactWithdrawalResolution = nil
         isWithdrawingToContact = true
         defer { isWithdrawingToContact = false }
         let response: SendPaymentResponse
@@ -658,6 +667,7 @@ final class SparkManager: ChannelFreeLightningRail {
                 await PaykitAllowanceExecutor.shared.settleManualPayment(requestId: request.id, outcome: .succeeded, transactionId: txId)
             }
             Self.pendingContactWithdrawal = nil
+            Self.resolveContactWithdrawal(pending, txId: txId)
         } else {
             Logger.warn("Kept the Spark contact withdrawal journal: its local records are not all saved yet", context: "SparkManager")
         }
@@ -679,6 +689,13 @@ final class SparkManager: ChannelFreeLightningRail {
             await failAllowance(request)
         }
         pendingContactWithdrawal = nil
+        resolveContactWithdrawal(pending, txId: nil)
+    }
+
+    static func resolveContactWithdrawal(_ pending: SparkContactWithdrawal, txId: String?) {
+        let resolution = SparkContactWithdrawalResolution(attempt: pending.attempt, txId: txId)
+        lastContactWithdrawalResolution = resolution
+        contactWithdrawalResolutionSubject.send(resolution)
     }
 
     private static func releaseUnsentProof(_ request: SparkContactWithdrawal.PaykitRequest) async -> Bool {
@@ -1223,6 +1240,25 @@ struct SparkContactWithdrawal: Codable, Equatable {
     var earlierPaymentIds: [String]?
     /// This attempt's Spark payment, once Spark returned it.
     var paymentId: String?
+}
+
+/// One contact withdrawal, which a pending send screen follows until its journal closes.
+struct SparkWithdrawalAttempt: Hashable {
+    let address: String
+    let amountSats: UInt64
+    let requestId: PaykitPaymentRequest.ID?
+}
+
+/// How a contact withdrawal's journal closed: sent with its txid, or never sent when `txId` is nil.
+struct SparkContactWithdrawalResolution: Equatable {
+    let attempt: SparkWithdrawalAttempt
+    let txId: String?
+}
+
+extension SparkContactWithdrawal {
+    var attempt: SparkWithdrawalAttempt {
+        SparkWithdrawalAttempt(address: address, amountSats: amountSats, requestId: request?.id)
+    }
 }
 
 struct SparkWithdrawal: Identifiable, Equatable {

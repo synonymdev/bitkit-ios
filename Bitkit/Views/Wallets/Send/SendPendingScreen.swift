@@ -38,6 +38,8 @@ struct SendPendingScreen: View {
     var hardwareWalletId: String?
     var hardwareTransactionId: String?
     var hardwarePaymentIdentity: String?
+    /// The Spark withdrawal this screen waits on, whose journal settles it.
+    var sparkWithdrawal: SparkWithdrawalAttempt?
     var proofService: PaykitPaymentProofService = .shared
     var requestPinCheck: () async -> Bool = { false }
     @Binding var navigationPath: [SendRoute]
@@ -347,6 +349,37 @@ struct SendPendingScreen: View {
         .onReceive(PaykitPaymentProofService.onchainPaymentResolutionPublisher.receive(on: DispatchQueue.main)) { resolution in
             applyOnchainPaymentResolution(resolution)
         }
+        .onReceive(SparkManager.contactWithdrawalResolutionPublisher.receive(on: DispatchQueue.main)) { resolution in
+            applySparkWithdrawalResolution(resolution)
+        }
+        .task {
+            // The journal may have closed before this screen subscribed.
+            guard let attempt = sparkWithdrawal, SparkManager.pendingContactWithdrawal?.attempt != attempt,
+                  let resolution = SparkManager.lastContactWithdrawalResolution
+            else { return }
+            applySparkWithdrawalResolution(resolution)
+        }
+    }
+
+    private func applySparkWithdrawalResolution(_ resolution: SparkContactWithdrawalResolution) {
+        guard !ordinarySendResolved, let attempt = sparkWithdrawal,
+              let route = Self.sparkWithdrawalRoute(for: resolution, attempt: attempt)
+        else { return }
+        ordinarySendResolved = true
+        navigationPath.append(route)
+    }
+
+    /// Where the journal's close takes the screen waiting on `attempt`: a success once Spark sent it, a failure that can
+    /// be tried again once it never did, and nowhere for another withdrawal.
+    static func sparkWithdrawalRoute(for resolution: SparkContactWithdrawalResolution, attempt: SparkWithdrawalAttempt) -> SendRoute? {
+        guard resolution.attempt == attempt else { return nil }
+        if let txId = resolution.txId {
+            return .success(paymentId: txId)
+        }
+        return .failure(SendFailureContext(
+            error: AppError(message: "wallet__payment_failed_description", debugMessage: "Spark never sent the contact withdrawal"),
+            retryRoute: .confirm
+        ))
     }
 
     @MainActor

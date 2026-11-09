@@ -193,18 +193,22 @@ final class SendConfirmationViewTests: XCTestCase {
     func testASparkLegThatMayHaveSentStaysPendingInsteadOfOfferingTryAgain() {
         struct Refused: Error {}
         struct Lost: Error {}
-        let requestId = PaykitPaymentRequest.ID(paymentRequestId: "request", counterparty: "payee")
+        let attempt = SparkWithdrawalAttempt(
+            address: "bcrt1qcontact",
+            amountSats: 20000,
+            requestId: PaykitPaymentRequest.ID(paymentRequestId: "request", counterparty: "payee")
+        )
 
-        let unresolved = SendConfirmationView.serviceLegFailureRoute(Lost(), requestId: requestId, routingCacheResetAttempted: false)
+        let unresolved = SendConfirmationView.serviceLegFailureRoute(Lost(), attempt: attempt, routingCacheResetAttempted: false)
         XCTAssertEqual(
             unresolved,
-            .pending(paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: requestId),
-            "Spark may have sent it, so the request stays pending until the journal settles"
+            .sparkWithdrawalPending(attempt),
+            "Spark may have sent it, so the screen follows its journal until it settles"
         )
 
         let refused = SendConfirmationView.serviceLegFailureRoute(
             SparkWithdrawalNotSent(underlying: Refused()),
-            requestId: requestId,
+            attempt: attempt,
             routingCacheResetAttempted: false
         )
         guard case .failure = refused else { return XCTFail("A leg Spark refused before sending can be tried again") }
