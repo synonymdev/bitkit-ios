@@ -149,10 +149,10 @@ class RNBackupClient {
 
         for label in labels {
             guard let data = try? await retrieve(label: label, fileGroup: "bitkit"), let backup = try? JSONDecoder().decode(
-                BackupWithMetadata.self,
-                from: data
-            ),
-                let timestamp = backup.metadata?.timestamp
+                      BackupWithMetadata.self,
+                      from: data
+                  ),
+                  let timestamp = backup.metadata?.timestamp
             else { continue }
 
             let ts = UInt64(timestamp / 1000) // Convert ms to seconds

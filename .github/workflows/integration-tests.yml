@@ -178,6 +178,9 @@ jobs:
           #
           # The live regtest suites are flaky on CI runners, so a failed test is retried once on
           # its own instead of rebuilding and rerunning the whole suite.
+          #
+          # A test that runs past 10 minutes fails instead of stalling the step. Most tests take
+          # under 2 minutes; the first one can take about 5 while staging VSS is slow.
           set -o pipefail && TEST_RUNNER_BITKIT_DESTRUCTIVE_TESTS=1 TEST_RUNNER_E2E=true xcodebuild test-without-building \
             -scheme Bitkit \
             -destination "$DESTINATION" \
@@ -191,6 +194,9 @@ jobs:
             -parallel-testing-enabled NO \
             -retry-tests-on-failure \
             -test-iterations 2 \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 600 \
+            -maximum-test-execution-time-allowance 600 \
             -only-testing:BitkitTests/UtxoSelectionTests \
             -only-testing:BitkitTests/AddressTypeIntegrationTests \
             -only-testing:BitkitTests/RNMigrationCleanupTests \
