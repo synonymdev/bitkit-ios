@@ -400,9 +400,10 @@ final class SparkExitManager {
     }
 
     /// The exit's transfer ends once the exit ended, or once its sweep reached savings and no failed cooperative leaf is
-    /// still retried: the value those leaves hold stays in transfer, less what already reached savings (`inTransferSats`).
+    /// outstanding, before or during its retry: the value those leaves hold stays in transfer, less what already
+    /// reached savings (`inTransferSats`).
     nonisolated static func isTransferFinished(_ record: SparkExitRecord, isSweepSeen: Bool) -> Bool {
-        !record.isActive || (isSweepSeen && !record.isRetryingFailedLeaves)
+        !record.isActive || (isSweepSeen && !record.hasFailedLeavesOutstanding)
     }
 
     /// Settles exit transfers no running exit owns, so their amount never stays in transfer to savings for good.

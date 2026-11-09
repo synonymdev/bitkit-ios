@@ -636,4 +636,17 @@ final class SparkExitReviewTests: XCTestCase {
         record.phase = .done
         XCTAssertTrue(SparkExitManager.isTransferFinished(record, isSweepSeen: false), "the exit ended")
     }
+
+    /// A sweep seen before the failed-leaf retry starts never ends the transfer: the running recovery already lists
+    /// cooperative leaves the operators could not co-sign, and their value stays in transfer.
+    func testTheTransferStaysWhileTheRecoveryListsFailedLeavesBeforeTheirRetry() {
+        var record = SparkExitFixtures.record(phase: .running)
+        let failure = CooperativeRecoveryFailure(leafId: "coop-1", outputTxid: "w", outputVout: 0, error: .operatorsUnavailable(message: "down"))
+        record.adopt(SparkExitFixtures.recovery([SparkExitFixtures.tx("n1")], failed: [failure]))
+        XCTAssertNil(record.failedLeafRetrySince)
+        XCTAssertFalse(SparkExitManager.isTransferFinished(record, isSweepSeen: true))
+
+        record.adopt(SparkExitFixtures.recovery([SparkExitFixtures.tx("n1")]))
+        XCTAssertTrue(SparkExitManager.isTransferFinished(record, isSweepSeen: true), "every leaf is on its way to savings")
+    }
 }

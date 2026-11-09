@@ -416,6 +416,12 @@ struct SparkExitRecord: Codable, Equatable {
         isActive && failedLeafRetrySince != nil
     }
 
+    /// Cooperative leaves the operators could not co-sign are still on their way to savings: the running recovery lists
+    /// them, or their retry runs.
+    var hasFailedLeavesOutstanding: Bool {
+        isRetryingFailedLeaves || (isActive && !(recovery?.response.failed.isEmpty ?? true))
+    }
+
     /// Waiting for the operators to co-sign leaves they moved on-chain: nothing of the exit's own is left to send.
     var isWaitingForOperators: Bool {
         isRetryingFailedLeaves && !(recovery?.response.failed.isEmpty ?? true)
