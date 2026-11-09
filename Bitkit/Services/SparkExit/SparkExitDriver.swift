@@ -843,6 +843,12 @@ struct SparkExitDriver {
         // A sweep it replaced may confirm instead: that ends the sweep as well.
         for txid in record.leftoverSweep?.replacedTxids ?? [] where record.leftoverSweep?.isConfirmed != true {
             if let status = try? await chain.txStatus(txid: txid), status.confirmed {
+                // Its own amount and inputs are what reached savings, not the replacement's.
+                if let landed = record.acceptedSweeps?.first(where: { $0.txid == txid }) {
+                    record.leftoverSweep?.txid = landed.txid
+                    record.leftoverSweep?.txHex = landed.txHex
+                    record.leftoverSweep?.valueSats = landed.valueSats
+                }
                 record.leftoverSweep?.isConfirmed = true
                 await followRemainingOutputs(&record)
                 return
@@ -942,6 +948,9 @@ struct SparkExitDriver {
         switch outcome {
         case .accepted:
             record.leftoverSweep?.isAccepted = true
+            if !(record.acceptedSweeps ?? []).contains(where: { $0.txid == txid }) {
+                record.acceptedSweeps = (record.acceptedSweeps ?? []) + [.init(txid: txid, txHex: hex, valueSats: sweep.valueSats)]
+            }
             if record.leftoverSweep?.sentAtHeight == nil {
                 record.leftoverSweep?.sentAtHeight = try? await chain.tipHeight()
             }

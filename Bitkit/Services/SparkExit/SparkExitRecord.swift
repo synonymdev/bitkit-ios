@@ -85,6 +85,12 @@ struct SparkExitRecord: Codable, Equatable {
         let valueSats: UInt64
     }
 
+    struct AcceptedSweep: Codable, Equatable {
+        let txid: String
+        let txHex: String
+        let valueSats: UInt64
+    }
+
     struct Leftover: Codable, Equatable {
         let txid: String
         let vout: UInt32
@@ -200,6 +206,9 @@ struct SparkExitRecord: Codable, Equatable {
     var isCancelled: Bool?
     /// Leftover sweeps that confirmed before outputs they left out were followed again: what each sent to savings.
     var sweptLeftover: [SweptLeftover]?
+    /// Every leftover sweep a node accepted, so the one that confirms is shown and followed with its own amount and
+    /// inputs even after a replacement took its place.
+    var acceptedSweeps: [AcceptedSweep]?
     /// What reaches savings: the exited value less the fees paid out of it.
     var expectedSats: UInt64
     var claimableAtHeight: UInt32?

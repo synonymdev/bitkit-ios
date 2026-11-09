@@ -286,6 +286,30 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertTrue(accepted.needsDriving)
     }
 
+    /// The replaced sweep that confirms is the one shown and followed: its txid, amount and inputs, not the replacement's.
+    func testAReplacedSweepThatConfirmsIsTheOneRecorded() async throws {
+        let utxo = SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 5035)
+        chain.utxosByAddress[key.address] = [utxo]
+        chain.fastestFee = 1
+        var record = try await driver().tick(endedRecord())
+        let first = try XCTUnwrap(record.leftoverSweep)
+        chain.tip = 1144
+        record = try await driver().tick(record)
+        let replacement = try XCTUnwrap(record.leftoverSweep)
+        XCTAssertLessThan(replacement.valueSats, first.valueSats)
+
+        // The first confirms, with a later payment still at the address: that one is followed on its own.
+        let late = SparkExitFixtures.utxo(String(repeating: "b", count: 64), value: 7000)
+        chain.utxosByAddress[key.address] = [utxo, late]
+        chain.confirmedTxids = try [XCTUnwrap(first.txid)]
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.sweptLeftover, try [.init(txid: XCTUnwrap(first.txid), valueSats: first.valueSats)])
+        XCTAssertEqual(record.leftover.map(\.txid), [late.txid])
+        let decoded = try SparkExitRecordCoder.decode(SparkExitRecordCoder.encode(record))
+        XCTAssertEqual(decoded, record)
+    }
+
     /// R11: the Done screen reads what the sweep paid to savings, and its txid.
     func testDoneShowsWhatReachedSavingsAndTheSweepTxid() throws {
         let script = try SparkExitAddress.scriptPubKey(destination)
