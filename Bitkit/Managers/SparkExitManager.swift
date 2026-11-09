@@ -39,9 +39,19 @@ final class SparkExitManager {
     private(set) var isPricingFeeBump = false
     private(set) var feeBumpError: String?
     /// What the running exit shows about its fee funding while it lacks some.
-    private(set) var fundingState: SparkExitFundingState?
+    var fundingState: SparkExitFundingState? {
+        Self.isFundingOfExit(fundingExitCreatedAt, record: record) ? storedFundingState : nil
+    }
+
     /// The full funding the Progress top-up asks for, every extra payment's input fee included.
-    private(set) var fundingAskTotal: UInt64?
+    var fundingAskTotal: UInt64? {
+        Self.isFundingOfExit(fundingExitCreatedAt, record: record) ? storedFundingAskTotal : nil
+    }
+
+    private var storedFundingState: SparkExitFundingState?
+    private var storedFundingAskTotal: UInt64?
+    /// The exit `fundingState` and `fundingAskTotal` were read for.
+    private var fundingExitCreatedAt: Date?
     private(set) var fundingAddress: String?
     private(set) var lastError: String?
     /// Set when the user tapped an exit notification, until the app shows the exit.
@@ -432,15 +442,26 @@ final class SparkExitManager {
         guard let address = record.funding.first?.address else { return }
         fundingAddress = address
         guard record.fundingShortfallSats != nil else {
-            fundingState = nil
+            setFunding(nil, for: record)
             return
         }
         let utxos = try? await chain.utxos(address: address)
         if let utxos {
             fundingSeenSats = SparkExitMath.newFunding(utxos, record: record).reduce(0) { $0 + $1.value }
         }
-        fundingState = SparkExitMath.fundingState(record, utxos: utxos)
-        fundingAskTotal = SparkExitMath.fundingAskTotal(record, utxos: utxos)
+        setFunding(SparkExitMath.fundingState(record, utxos: utxos), askTotal: SparkExitMath.fundingAskTotal(record, utxos: utxos), for: record)
+    }
+
+    private func setFunding(_ state: SparkExitFundingState?, askTotal: UInt64? = nil, for record: SparkExitRecord) {
+        storedFundingState = state
+        storedFundingAskTotal = askTotal
+        fundingExitCreatedAt = record.createdAt
+    }
+
+    /// Whether funding read for the exit created at `createdAt` belongs to `record`: a cancelled exit's savings
+    /// payment or funding ask never shows for the next one.
+    nonisolated static func isFundingOfExit(_ createdAt: Date?, record: SparkExitRecord?) -> Bool {
+        createdAt != nil && createdAt == record?.createdAt
     }
 
     private func refreshNetworkFees(chain: SparkExitChain) async {
@@ -555,7 +576,7 @@ final class SparkExitManager {
         record.applyFeeBump(rate: option.rate, extraSats: extraSats, paymentTxid: txid)
         try saveRecord(record)
         self.record = record
-        fundingState = SparkExitMath.fundingState(record, utxos: nil)
+        setFunding(SparkExitMath.fundingState(record, utxos: nil), askTotal: storedFundingAskTotal, for: record)
         Logger.info("Spark exit moves to \(option.rate) sat/vB with \(extraSats) sats more funding", context: "SparkExitManager")
         Task { await tick() }
     }
@@ -711,7 +732,7 @@ final class SparkExitManager {
                 Logger.error("Failed to save the Spark exit funding payment: \(error)", context: "SparkExitManager")
             }
             self.record = started
-            fundingState = SparkExitMath.fundingState(started, utxos: nil)
+            setFunding(SparkExitMath.fundingState(started, utxos: nil), for: started)
         }
         Task { await tick() }
     }

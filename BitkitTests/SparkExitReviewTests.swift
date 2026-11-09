@@ -644,6 +644,25 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertTrue(SparkExitManager.canDrive(record, startingCreatedAt: record.createdAt.addingTimeInterval(-60)))
     }
 
+    /// Funding read for a cancelled exit, such as its savings payment, never shows for the next one.
+    func testACancelledExitsFundingNeverShowsForTheNextExit() {
+        let cancelled = SparkExitFixtures.record()
+        var next = SparkExitFixtures.record()
+        next = SparkExitRecord(
+            network: next.network,
+            createdAt: cancelled.createdAt.addingTimeInterval(60),
+            phase: next.phase,
+            feeRateSatPerVbyte: next.feeRateSatPerVbyte,
+            destination: next.destination,
+            leafIds: next.leafIds,
+            funding: next.funding,
+            expectedSats: next.expectedSats
+        )
+        XCTAssertTrue(SparkExitManager.isFundingOfExit(cancelled.createdAt, record: cancelled))
+        XCTAssertFalse(SparkExitManager.isFundingOfExit(cancelled.createdAt, record: next))
+        XCTAssertFalse(SparkExitManager.isFundingOfExit(nil, record: next))
+    }
+
     /// Fee rates that cannot be read fail the savings price, so Pay from savings shows its error instead of loading.
     func testSavingsFeeFailsWithoutFeeRates() async {
         let rates = FeeRates(fast: 9, mid: 6, slow: 1)
