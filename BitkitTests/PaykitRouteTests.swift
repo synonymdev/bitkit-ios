@@ -217,12 +217,19 @@ final class PaykitRouteTests: XCTestCase {
         let pending = SparkContactWithdrawal(address: onchain.value, amountSats: 20000, contact: "contact", startedAt: 1000, request: request)
         SparkManager.pendingContactWithdrawal = pending
 
-        await SparkManager.closeUnsentWithdrawal(pending) { _ in false }
+        var failedAllowances: [SparkContactWithdrawal.PaykitRequest] = []
+        await SparkManager.closeUnsentWithdrawal(pending, releaseProof: { _ in false }, failAllowance: { failedAllowances.append($0) })
         XCTAssertEqual(SparkManager.pendingContactWithdrawal, pending, "A proof that wasn't released keeps the journal, so the next sync retries it")
+        XCTAssertEqual(failedAllowances, [], "The attempt stays unknown while the journal is still open")
 
         var released: SparkContactWithdrawal.PaykitRequest?
-        await SparkManager.closeUnsentWithdrawal(pending) { released = $0; return true }
+        await SparkManager.closeUnsentWithdrawal(
+            pending,
+            releaseProof: { released = $0; return true },
+            failAllowance: { failedAllowances.append($0) }
+        )
         XCTAssertEqual(released, request)
+        XCTAssertEqual(failedAllowances, [request], "An unsent withdrawal fails its allowance attempt, so the ledger lets the request be paid again")
         XCTAssertNil(SparkManager.pendingContactWithdrawal)
     }
 

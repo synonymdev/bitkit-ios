@@ -1373,6 +1373,17 @@ actor PaykitAllowanceExecutor {
         }
     }
 
+    /// Settles the manual attempt still open for a request once its outcome is learned later, as a Spark withdrawal's
+    /// journal learns it, so an unsent send no longer blocks the request on the ledger.
+    func settleManualPayment(requestId: PaykitPaymentRequest.ID, outcome: Paykit.PaymentOutcome, transactionId: String? = nil) async {
+        guard let identity = activeIdentity,
+              let entry = localState(identity: identity).journal.last(where: {
+                  !$0.isAutomatic && $0.requestId == requestId && !$0.stage.isTerminal
+              })
+        else { return }
+        await finishManualPayment(attemptId: entry.attemptId, outcome: outcome, transactionId: transactionId)
+    }
+
     // MARK: Helpers
 
     private func checks(_ request: PaykitPaymentRequest, endpointIdentifier: String, trustedTime: String) throws -> Paykit.PaymentExecutionChecks {
