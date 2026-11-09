@@ -1214,6 +1214,13 @@ class WalletViewModel: ObservableObject {
     /// A Spark-to-Spark payment settles inside the send call, so its completion event can fire before `watchSend`
     /// starts listening; the rail's own payment list still has the outcome.
     private func finishWatchSendIfRailAlreadySettled(hash: String, eventId: String) async {
+        // A send skipped because the node already paid the invoice gets no new event.
+        if let paid = await lightningService.nodePayments()?.first(where: {
+            $0.direction == .outbound && $0.status == .succeeded && $0.id.caseInsensitiveCompare(hash) == .orderedSame
+        }) {
+            finishWatchSend(id: eventId, result: .success(SettledLightningPayment(paymentHash: hash, feePaidSats: (paid.feePaidMsat ?? 0) / 1000)))
+            return
+        }
         // A retry over a channel settles from LDK; an earlier Spark attempt's outcome doesn't decide it.
         guard lightningService.attemptRail(paymentHash: hash) != .ldk else { return }
         let payments = await (try? lightningService.channelFreeRailPayments()) ?? []

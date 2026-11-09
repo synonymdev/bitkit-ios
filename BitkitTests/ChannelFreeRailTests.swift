@@ -4,6 +4,10 @@ import XCTest
 
 @MainActor
 final class ChannelFreeRailTests: XCTestCase {
+    /// A 20 000 sat regtest invoice, so a payment can be looked up by its hash.
+    static let invoice =
+        "lnbcrt200n1p5hn4c8dqqnp4qwrgh4a03djj2sl34465uwnxhva0gtpjm4u8kvzgc5jergrkm9syypp55lwcgfpkdwuknmekjgted72n0ddl5qtaha7knk7c9n7yrjr4auassp5jgqw0a9w33e2ta4j7gyjrvsvu0lv844w895305nd8spnknq3f2hq9qyysgqcqzp2xqyz5vqrzjq29gjy9sqjrrp48tz7hj2e5vm4l2dukc4csf2mn6qm32u3hted5leapyqqqqqqqtcsqqqqlgqqqqqqgq2qd2gk64eg2kfxtdaryrlh98hvu97jdaxz2ma7aeyuy2uy9vkn9x5qft47p9taju297xnrehva20xcfml7wacuv737xv3xjjzyrtplcxqpfpu9dt"
+
     private var rail: FakeRail!
     private var previousRail: Bitkit.ChannelFreeLightningRail?
 
@@ -116,6 +120,76 @@ extension ChannelFreeRailTests {
             XCTAssertTrue(error is Bitkit.ChannelFreeRailSendRefused)
             XCTAssertNil(rail.sentBolt11)
         }
+    }
+
+    func testAnInvoiceTheNodeIsStillPayingIsNotSentAgainThroughSpark() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let inFlight = LDKNode.PaymentDetails(
+            id: hash, kind: .bolt11(hash: hash, preimage: nil, secret: nil, description: nil, bolt11: Self.invoice),
+            amountMsat: 20_000_000, feePaidMsat: nil, direction: .outbound, status: .pending, latestUpdateTimestamp: 0
+        )
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        service.nodePayments = { [inFlight] }
+        defer { service.nodePayments = nodePayments }
+        // The HTLC in flight leaves the channel too little outbound, so the retry falls to Spark.
+        rail.balanceSats = 100_000
+
+        do {
+            _ = try await service.send(bolt11: Self.invoice)
+            XCTFail("Expected the pending node payment to refuse the retry")
+        } catch {
+            XCTAssertTrue(PrivatePaykitService.isDuplicatePaymentError(error), "\(error)")
+        }
+        XCTAssertNil(rail.sentBolt11)
+    }
+
+    func testAnInvoiceSparkIsStillPayingIsNotSentAgainThroughTheNode() async {
+        let hash = try? String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash ?? "", direction: .outbound, status: .pending, preimage: nil)]
+        // Spark can't cover the retry, so it goes to the node.
+        rail.balanceSats = 0
+
+        do {
+            _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+            XCTFail("Expected the pending Spark payment to refuse the retry")
+        } catch {
+            XCTAssertTrue(PrivatePaykitService.isDuplicatePaymentError(error), "\(error)")
+        }
+        XCTAssertNil(rail.sentBolt11)
+    }
+
+    func testUserSendOverTheRailHasAFeeLimit() async throws {
+        // WalletViewModel.send and sendWithTimeout pass no route parameters, so LDK applies its default
+        // limit (1% + 50 sats); the rail must not be left without one.
+        _ = try await Bitkit.LightningService.shared.send(bolt11: "lnbcrt1rail", sats: 1000)
+
+        XCTAssertEqual(rail.sentBolt11, "lnbcrt1rail")
+        XCTAssertNotNil(rail.sentFeeLimitSats, "A user send over Spark went out with no fee limit")
+    }
+
+    func testASparkSendStillInFlightIsNotSentAgainThroughTheNode() async throws {
+        var release: CheckedContinuation<Void, Never>?
+        rail.sendGate = { await withCheckedContinuation { release = $0 } }
+        rail.balanceSats = 100_000
+        let first = Task { try await Bitkit.LightningService.shared.send(bolt11: Self.invoice) }
+        var waited = 0
+        while release == nil, waited < 500 {
+            try await Task.sleep(nanoseconds: 10_000_000)
+            waited += 1
+        }
+        XCTAssertNotNil(release, "The Spark send never started")
+        // Spark lists the send only once it returns; the retry falls to the node meanwhile.
+        rail.balanceSats = 0
+
+        do {
+            _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+            XCTFail("Expected the Spark send in flight to refuse the retry")
+        } catch {
+            XCTAssertTrue(PrivatePaykitService.isDuplicatePaymentError(error), "\(error)")
+        }
+        release?.resume()
+        _ = try await first.value
     }
 
     func testCanSendLeavesRoomForTheSparkFee() {
@@ -310,6 +384,7 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     var listError: Error?
     var sentBolt11: String?
     var sentFeeLimitSats: UInt64?
+    var sendGate: (() async -> Void)?
 
     func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String {
         "lnbcrt1fake"
@@ -317,6 +392,7 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
 
     func send(bolt11: String, sats: UInt64?, maxFeeSats: UInt64?, beforeSubmission: @escaping () throws -> Void) async throws -> PaymentHash {
         try beforeSubmission()
+        await sendGate?()
         sentFeeLimitSats = maxFeeSats
         sentBolt11 = bolt11
         return "ee"

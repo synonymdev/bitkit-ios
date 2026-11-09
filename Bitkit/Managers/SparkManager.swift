@@ -49,6 +49,8 @@ final class SparkManager: ChannelFreeLightningRail {
     /// The refresh in flight; callers during it wait for it, and it reads once more for them.
     @ObservationIgnored private var refreshTask: Task<Void, Error>?
     @ObservationIgnored private var refreshAgain = false
+    /// Set once a full activity sync succeeded in this process; `wipe` clears it.
+    @ObservationIgnored private var activitiesSynced = false
 
     private init() {}
 
@@ -94,12 +96,29 @@ final class SparkManager: ChannelFreeLightningRail {
             // Registered before the first refresh marks Spark ready, so Lightning calls never see it ready while they
             // still go to LDK, even when that refresh or the activity sync fails.
             LightningService.shared.channelFreeRail = self
-            try await refresh()
-            try await syncActivities()
+            activitiesSynced = try await Self.startConnected(
+                activitiesSynced: activitiesSynced,
+                refresh: { try await refresh() },
+                syncActivities: { try await syncActivities() }
+            )
         } catch {
             connectTask = nil
             Logger.error("Failed to start Spark wallet: \(error)", context: "SparkManager")
         }
+    }
+
+    /// A start reads the balance every time, but rewrites every Spark activity only until that has succeeded once, so
+    /// each foreground doesn't redo it; a start whose refresh failed leaves the sync to the next one. Returns whether
+    /// the activities are synced.
+    static func startConnected(
+        activitiesSynced: Bool,
+        refresh: () async throws -> Void,
+        syncActivities: () async throws -> Void
+    ) async throws -> Bool {
+        try await refresh()
+        guard !activitiesSynced else { return true }
+        try await syncActivities()
+        return true
     }
 
     private func connect(walletIndex: Int, network: BreezSdkSpark.Network, generation: Int) async throws {
@@ -172,6 +191,7 @@ final class SparkManager: ChannelFreeLightningRail {
         sdk = nil
         listenerId = nil
         refreshAgain = false
+        activitiesSynced = false
         isReady = false
         balanceSats = 0
         pendingDepositSats = 0

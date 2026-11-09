@@ -125,6 +125,8 @@ class LightningService: NodeLifecycleService {
     /// The rail each payment hash's latest attempt went out on, so a stale failure from the other rail can't settle a
     /// retry of the same invoice.
     private var attemptRails: [String: LightningPaymentRail] = [:]
+    /// Payment hashes inside a rail send, which Spark lists only once it returns.
+    private var railSendsInFlight: Set<String> = []
     weak var channelFreeRail: ChannelFreeLightningRail?
     var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
     var onchainTransactionReceived: (@Sendable (String) async -> Void)?
@@ -895,10 +897,17 @@ class LightningService: NodeLifecycleService {
     /// Pays on the channel-free rail when no channel has the outbound capacity and the rail's balance covers the amount.
     @MainActor
     private func shouldPayWithRail(_ rail: ChannelFreeLightningRail, bolt11: String, sats: UInt64?) -> Bool {
-        guard rail.isReady else { return false }
-        let invoiceSats = (try? Bolt11Invoice.fromStr(invoiceStr: bolt11).amountMilliSatoshis()).flatMap { $0 }.map { $0 / 1000 }
-        guard let amountSats = sats ?? invoiceSats else { return false }
+        guard rail.isReady, let amountSats = Self.paymentAmountSats(bolt11: bolt11, sats: sats) else { return false }
         return !canSendWithChannels(amountSats: amountSats) && rail.sendableSats >= amountSats
+    }
+
+    private static func paymentAmountSats(bolt11: String, sats: UInt64?) -> UInt64? {
+        sats ?? (try? Bolt11Invoice.fromStr(invoiceStr: bolt11).amountMilliSatoshis()).flatMap { $0 }.map { $0 / 1000 }
+    }
+
+    /// LDK's routing fee limit when a caller sets none, 1% + 50 sats, so a send over the rail is capped the same way.
+    private static func defaultMaxFeeSats(amountSats: UInt64) -> UInt64 {
+        amountSats / 100 + 50
     }
 
     /// Checks if we have the correct outbound capacity to send the amount
@@ -997,7 +1006,14 @@ class LightningService: NodeLifecycleService {
         channelsOnly: Bool = false,
         beforeSubmission: @escaping () throws -> Void = {}
     ) async throws -> PaymentHash {
+        let paymentHash = (try? Bolt11Invoice.fromStr(invoiceStr: bolt11).paymentHash()).map { String($0) }
         if !channelsOnly, let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: sats) {
+            // LDK refuses its own repeats; Spark doesn't, so a Spark send checks both rails.
+            if let paid = try await settledEarlierAttempt(paymentHash: paymentHash, on: [.ldk, .channelFree]) {
+                return paid
+            }
+            guard beginRailSend(paymentHash: paymentHash) else { throw Self.pendingDuplicate(paymentHash: paymentHash) }
+            defer { endRailSend(paymentHash: paymentHash) }
             // Spark takes no route parameters, so a caller's routing fee cap is checked against its estimate instead.
             if let maxFeeMsat = params?.maxTotalRoutingFeeMsat {
                 let feeSats: UInt64
@@ -1019,9 +1035,13 @@ class LightningService: NodeLifecycleService {
             return try await rail.send(
                 bolt11: bolt11,
                 sats: sats,
-                maxFeeSats: params?.maxTotalRoutingFeeMsat.map { $0 / 1000 },
+                maxFeeSats: params?.maxTotalRoutingFeeMsat.map { $0 / 1000 }
+                    ?? Self.paymentAmountSats(bolt11: bolt11, sats: sats).map(Self.defaultMaxFeeSats),
                 beforeSubmission: beforeSubmission
             )
+        }
+        if let paid = try await settledEarlierAttempt(paymentHash: paymentHash, on: [.channelFree]) {
+            return paid
         }
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
@@ -1045,6 +1065,54 @@ class LightningService: NodeLifecycleService {
             dumpNetworkGraphInfo(bolt11: bolt11)
             throw error
         }
+    }
+
+    /// The node's payment list; tests replace it, as they run without a node.
+    lazy var nodePayments: () async -> [PaymentDetails]? = { [unowned self] in await listPayments() }
+
+    /// An invoice must never go out on both rails: an earlier attempt still pending on `rails` refuses the payment as a
+    /// duplicate, as LDK does its own, and a settled one returns its hash as paid. A failed, unknown or unlistable one
+    /// lets the payment go.
+    private func settledEarlierAttempt(paymentHash: String?, on rails: [LightningPaymentRail]) async throws -> PaymentHash? {
+        guard let paymentHash else { return nil }
+        var statuses: [PaymentStatus] = rails.contains(.channelFree) && isRailSendInFlight(paymentHash: paymentHash) ? [.pending] : []
+        if rails.contains(.ldk), let payment = await nodePayments()?.first(where: {
+            $0.direction == .outbound && $0.id.caseInsensitiveCompare(paymentHash) == .orderedSame
+        }) {
+            statuses.append(payment.status)
+        }
+        if rails.contains(.channelFree), let payments = try? await channelFreeRailPayments(),
+           let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: paymentHash)
+        {
+            statuses.append(payment.status)
+        }
+        if statuses.contains(.succeeded) {
+            Logger.info("Skipped paying '\(paymentHash)', an earlier attempt already paid it", context: "LightningService")
+            return paymentHash
+        }
+        if statuses.contains(.pending) {
+            Logger.info("Refused paying '\(paymentHash)', an earlier attempt is still pending", context: "LightningService")
+            throw Self.pendingDuplicate(paymentHash: paymentHash)
+        }
+        return nil
+    }
+
+    private static func pendingDuplicate(paymentHash: String?) -> NodeError {
+        .DuplicatePayment(message: "An earlier attempt to pay '\(paymentHash ?? "")' is still pending")
+    }
+
+    private func beginRailSend(paymentHash: String?) -> Bool {
+        guard let paymentHash else { return true }
+        return eventCallbackLock.withLock { railSendsInFlight.insert(paymentHash.lowercased()).inserted }
+    }
+
+    private func endRailSend(paymentHash: String?) {
+        guard let paymentHash else { return }
+        _ = eventCallbackLock.withLock { railSendsInFlight.remove(paymentHash.lowercased()) }
+    }
+
+    private func isRailSendInFlight(paymentHash: String) -> Bool {
+        eventCallbackLock.withLock { railSendsInFlight.contains(paymentHash.lowercased()) }
     }
 
     static func submitPayment<Result>(
