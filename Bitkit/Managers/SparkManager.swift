@@ -176,6 +176,7 @@ final class SparkManager: ChannelFreeLightningRail {
         if LightningService.shared.channelFreeRail === self {
             LightningService.shared.channelFreeRail = nil
         }
+        LightningService.shared.forgetRailAttempts()
         var disconnectError: Error?
         if let sdk {
             if let listenerId {

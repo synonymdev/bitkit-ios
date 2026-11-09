@@ -1067,9 +1067,37 @@ class LightningService: NodeLifecycleService {
     /// The node's payment list; tests replace it, as they run without a node.
     lazy var nodePayments: () async -> [PaymentDetails]? = { [unowned self] in await listPayments() }
 
+    /// Whether this build runs the channel-free rail, so a rail that isn't connected may still hold payments; the app
+    /// sets it, as extensions build this service without the rail.
+    var channelFreeRailSupported: () async -> Bool = { false }
+
+    /// Payment hashes sent over the rail, kept across launches: while the rail can't list its payments, only these may
+    /// have an attempt there that a node payment would repeat.
+    var railAttemptsStore: UserDefaults = .standard
+    private static let railAttemptsKey = "channelFreeRailAttemptedPaymentHashes"
+    private static let railAttemptsLimit = 500
+
+    private func recordRailAttempt(paymentHash: String) {
+        var hashes = railAttemptsStore.stringArray(forKey: Self.railAttemptsKey) ?? []
+        guard !hashes.contains(paymentHash) else { return }
+        hashes.append(paymentHash)
+        railAttemptsStore.set(Array(hashes.suffix(Self.railAttemptsLimit)), forKey: Self.railAttemptsKey)
+    }
+
+    private func hasRailAttempt(paymentHash: String) -> Bool {
+        eventCallbackLock.withLock {
+            railAttemptsStore.stringArray(forKey: Self.railAttemptsKey)?.contains(paymentHash.lowercased()) ?? false
+        }
+    }
+
+    /// Called when the rail's wallet is wiped, as its payments go with it.
+    func forgetRailAttempts() {
+        eventCallbackLock.withLock { railAttemptsStore.removeObject(forKey: Self.railAttemptsKey) }
+    }
+
     /// An invoice must never go out on both rails: an earlier attempt still pending on `rails` refuses the payment as a
-    /// duplicate, as LDK does its own, and a settled one returns its hash as paid. A failed, unknown or unlistable one
-    /// lets the payment go.
+    /// duplicate, as LDK does its own, and a settled one returns its hash as paid. A failed or unknown one lets the
+    /// payment go. While the rail can't list its payments, an invoice it was sent over is refused as pending too.
     private func settledEarlierAttempt(paymentHash: String?, on rails: [LightningPaymentRail]) async throws -> PaymentHash? {
         guard let paymentHash else { return nil }
         var statuses: [PaymentStatus] = rails.contains(.channelFree) && isRailSendInFlight(paymentHash: paymentHash) ? [.pending] : []
@@ -1078,10 +1106,15 @@ class LightningService: NodeLifecycleService {
         }) {
             statuses.append(payment.status)
         }
-        if rails.contains(.channelFree), let payments = try? await channelFreeRailPayments(),
-           let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: paymentHash)
-        {
-            statuses.append(payment.status)
+        if rails.contains(.channelFree) {
+            if let payments = await readableRailPayments() {
+                if let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: paymentHash) {
+                    statuses.append(payment.status)
+                }
+            } else if hasRailAttempt(paymentHash: paymentHash) {
+                Logger.warn("Refused paying '\(paymentHash)', Spark can't list the earlier attempt now", context: "LightningService")
+                throw Self.pendingDuplicate(paymentHash: paymentHash)
+            }
         }
         if statuses.contains(.succeeded) {
             Logger.info("Skipped paying '\(paymentHash)', an earlier attempt already paid it", context: "LightningService")
@@ -1094,13 +1127,25 @@ class LightningService: NodeLifecycleService {
         return nil
     }
 
+    /// Nil while the rail's payments can't be read: listing them failed, or the rail runs here but isn't connected.
+    private func readableRailPayments() async -> [ChannelFreeRailPayment]? {
+        if let rail = channelFreeRail {
+            return try? await rail.lightningPayments()
+        }
+        return await channelFreeRailSupported() ? nil : []
+    }
+
     private static func pendingDuplicate(paymentHash: String?) -> NodeError {
         .DuplicatePayment(message: "An earlier attempt to pay '\(paymentHash ?? "")' is still pending")
     }
 
     private func beginRailSend(paymentHash: String?) -> Bool {
         guard let paymentHash else { return true }
-        return eventCallbackLock.withLock { railSendsInFlight.insert(paymentHash.lowercased()).inserted }
+        return eventCallbackLock.withLock {
+            let hash = paymentHash.lowercased()
+            recordRailAttempt(paymentHash: hash)
+            return railSendsInFlight.insert(hash).inserted
+        }
     }
 
     private func endRailSend(paymentHash: String?) {

@@ -174,6 +174,7 @@ class WalletViewModel: ObservableObject {
         }
         lightningService.onchainTransactionReceived = { await onchainObservation($0, false) }
         lightningService.onchainTransactionConfirmed = { await onchainObservation($0, true) }
+        lightningService.channelFreeRailSupported = { await MainActor.run { SparkManager.shared.isSupported } }
         SparkManager.shared.onStateChanged = { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
