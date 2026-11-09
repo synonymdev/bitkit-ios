@@ -19,6 +19,7 @@ struct AppStatusView: View {
                     bitcoinNodeStatusRow
                     nodeStatusRow
                     channelsStatusRow
+                    sparkStatusRow
                     backupStatusRow
                 }
             }
@@ -122,7 +123,8 @@ struct AppStatusView: View {
 
     private var channelsStatusRow: some View {
         let status = AppStatusHelper.channelsStatus(from: wallet, network: network)
-        let description = t("settings__status__lightning_connection__\(status.rawValue)")
+        let isViaSpark = AppStatusHelper.isLightningViaSpark(from: wallet, network: network)
+        let description = t("settings__status__lightning_connection__\(isViaSpark ? "spark" : status.rawValue)")
 
         return StatusRow(
             imageName: "status-lightning",
@@ -134,6 +136,22 @@ struct AppStatusView: View {
             }
         )
         .accessibilityIdentifier("Status-lightning_connection")
+    }
+
+    @ViewBuilder
+    private var sparkStatusRow: some View {
+        if let status = AppStatusHelper.sparkStatus(network: network) {
+            StatusRow(
+                imageName: "asterisk",
+                title: t("settings__status__spark__title"),
+                description: t("settings__status__spark__\(status.rawValue)"),
+                status: status,
+                onTap: {
+                    navigation.navigate(.sparkConnectionDetail)
+                }
+            )
+            .accessibilityIdentifier("Status-spark")
+        }
     }
 
     private var backupStatusRow: some View {
