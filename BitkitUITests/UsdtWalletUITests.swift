@@ -17,6 +17,7 @@ final class UsdtWalletUITests: XCTestCase {
     func testUnknownBalanceAndManualEntryUseConsistentAmountsInCommaRegion() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
+        app.launchArguments += ["-appUpdateIgnoreTimestamp", String(Date().timeIntervalSince1970)]
         app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "de_DE"]
         app.launchEnvironment["USDT_RPC_URL"] = "http://127.0.0.1:1"
         app.launchEnvironment["USDT_BUNDLER_URL"] = "http://127.0.0.1:1"
@@ -219,6 +220,7 @@ final class UsdtWalletUITests: XCTestCase {
     func testReceiveAndInvalidPaymentStaySeparateFromBitcoin() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
+        app.launchArguments += ["-appUpdateIgnoreTimestamp", String(Date().timeIntervalSince1970)]
         app.resetAuthorizationStatus(for: .camera)
         app.launchEnvironment["USDT_RPC_URL"] = rpcURL
         app.launchEnvironment["USDT_BUNDLER_URL"] = bundlerURL
