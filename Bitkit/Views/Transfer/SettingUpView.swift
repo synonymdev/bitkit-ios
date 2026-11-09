@@ -125,6 +125,10 @@ struct SettingUpView: View {
         .allowSwipeBack(false)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
+        // Later and Wait run no claim of their own, so the deposit Spark claims at maturity ends the transfer.
+        .onChange(of: SparkManager.shared.deposits, initial: true) { _, deposits in
+            flow.noteSettled(deposits)
+        }
     }
 
     private func repricedButtons(feeSats: UInt64) -> some View {

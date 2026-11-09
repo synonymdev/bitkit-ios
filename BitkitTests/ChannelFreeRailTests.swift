@@ -371,6 +371,28 @@ extension ChannelFreeRailTests {
         await assertRefusedAsDuplicate()
     }
 
+    func testASparkFailureReportedWhileItsSendIsInFlightStillReleasesTheHold() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        var release: CheckedContinuation<Void, Never>?
+        rail.sendGate = { await withCheckedContinuation { release = $0 } }
+        rail.balanceSats = 100_000
+        let send = Task { try await Bitkit.LightningService.shared.send(bolt11: Self.invoice) }
+        var waited = 0
+        while release == nil, waited < 500 {
+            try await Task.sleep(nanoseconds: 10_000_000)
+            waited += 1
+        }
+        XCTAssertNotNil(release, "The Spark send never started")
+
+        Bitkit.LightningService.shared.emitChannelFreeRailEvent(.paymentFailed(paymentId: hash, paymentHash: hash, reason: nil))
+        release?.resume()
+        _ = try await send.value
+        rail.listError = NSError(domain: "spark", code: 1)
+        rail.balanceSats = 0
+
+        await assertReachesTheNode()
+    }
+
     private func sendOverSpark() async throws {
         rail.balanceSats = 100_000
         _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
