@@ -76,6 +76,19 @@ final class ChannelFreeRailTests: XCTestCase {
         XCTAssertEqual(attempted.intersection(["out", "failed"]), ["out"])
     }
 
+    func testAContactListInvoicePaidOnSparkReadsAsSettled() async {
+        // The private payment list's invoice was created on Spark, so only Spark's list shows it paid.
+        let hash = String(repeating: "ab", count: 32)
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .inbound, status: .pending, preimage: nil)]
+        let pending = await PrivatePaykitService.shared.isReceivedInvoiceSettled(paymentHash: hash)
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .inbound, status: .succeeded, preimage: nil)]
+
+        let paid = await PrivatePaykitService.shared.isReceivedInvoiceSettled(paymentHash: hash)
+
+        XCTAssertFalse(pending)
+        XCTAssertTrue(paid, "A paid Spark invoice would leave the private list unrotated")
+    }
+
     func testLightningWaitFinishesWhenTheRailSettledBeforeWatching() async throws {
         rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: "ff", direction: .outbound, status: .succeeded, preimage: nil)]
 
