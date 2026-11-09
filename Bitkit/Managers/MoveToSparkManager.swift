@@ -197,19 +197,24 @@ final class MoveToSparkManager {
                 bolt11: quote.invoice,
                 sats: quote.amountSats,
                 maxFeeMsat: MoveToSparkMath.feeCapMsat(feeSats: quote.feeSats),
-                onLateFailure: { [weak self] in self?.lateFailure(amountSats: quote.amountSats, moveGeneration: moveGeneration) }
+                onLateFailure: { [weak self] in self?.lateFailure(amountSats: quote.amountSats, moveGeneration: moveGeneration) },
+                onLateSuccess: { [weak self, weak wallet] settled in
+                    guard let self, let wallet else { return }
+                    Task {
+                        await self.lateSuccess(
+                            amountSats: quote.amountSats,
+                            feeSats: settled.feePaidSats,
+                            moveGeneration: moveGeneration,
+                            wallet: wallet
+                        )
+                    }
+                }
             ) else {
                 state = .inFlight(amountSats: quote.amountSats)
                 return
             }
             await wallet.syncStateAsync()
-            let openChannels = (wallet.channels ?? []).filter(\.isChannelReady)
-            state = .done(
-                amountSats: quote.amountSats,
-                feeSats: settled.feePaidSats,
-                closeChannel: openChannels.count == 1 ? openChannels.first : nil,
-                hasRest: MoveToSparkMath.hasMovableBalance(limitSats: MoveToSparkMath.movableSats(channels: wallet.channels))
-            )
+            state = Self.doneState(amountSats: quote.amountSats, feeSats: settled.feePaidSats, channels: wallet.channels)
         } catch {
             Logger.error("Failed to move '\(quote.amountSats)' sats to Spark: \(error)", context: "MoveToSpark")
             state = Self.isNoRoute(error) || Self.isSendWithoutRoute(error, invoice: quote.invoice)
@@ -261,12 +266,37 @@ final class MoveToSparkManager {
         throw MoveToSparkError.tooLarge(amountSats: amountSats)
     }
 
+    /// The outcome of a move that paid `feeSats`: Close when one channel is left, Move The Rest when it can still send.
+    nonisolated static func doneState(amountSats: UInt64, feeSats: UInt64, channels: [ChannelDetails]?) -> MoveToSparkState {
+        let openChannels = (channels ?? []).filter(\.isChannelReady)
+        return .done(
+            amountSats: amountSats,
+            feeSats: feeSats,
+            closeChannel: openChannels.count == 1 ? openChannels.first : nil,
+            hasRest: MoveToSparkMath.hasMovableBalance(limitSats: MoveToSparkMath.movableSats(channels: channels))
+        )
+    }
+
+    /// Whether the screen still shows the in-flight move of `moveGeneration`: a later move counts a new generation.
+    nonisolated static func showsInFlightMove(_ state: MoveToSparkState, generation: Int, moveGeneration: Int) -> Bool {
+        guard generation == moveGeneration, case .inFlight = state else { return false }
+        return true
+    }
+
+    /// A move that was still in flight paid after the wait: the screen, if it still shows that same move, shows it moved.
+    private func lateSuccess(amountSats: UInt64, feeSats: UInt64, moveGeneration: Int, wallet: WalletViewModel) async {
+        Logger.info("Move to Spark of '\(amountSats)' sats succeeded after the wait", context: "MoveToSpark")
+        guard Self.showsInFlightMove(state, generation: generation, moveGeneration: moveGeneration) else { return }
+        await wallet.syncStateAsync()
+        guard Self.showsInFlightMove(state, generation: generation, moveGeneration: moveGeneration) else { return }
+        state = Self.doneState(amountSats: amountSats, feeSats: feeSats, channels: wallet.channels)
+    }
+
     /// A move that was still in flight failed after the wait: its amount stays in the channel, so the screen, if it still
     /// shows that same move, says it could not move, and a toast tells the user wherever they are.
     private func lateFailure(amountSats: UInt64, moveGeneration: Int) {
         Logger.warn("Move to Spark of '\(amountSats)' sats failed after the wait", context: "MoveToSpark")
-        // Only the move that owns the screen may change it: a later move counts a new generation.
-        if generation == moveGeneration, case .inFlight = state {
+        if Self.showsInFlightMove(state, generation: generation, moveGeneration: moveGeneration) {
             state = .failed(.unknown)
         }
         guard !ToastWindowManager.areToastsDisabled() else { return }

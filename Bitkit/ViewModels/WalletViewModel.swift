@@ -1169,13 +1169,14 @@ class WalletViewModel: ObservableObject {
     /// Pays `bolt11` from the channels only and waits up to `timeout` for its outcome; `nil` means it is still in flight.
     /// It listens before sending, so an outcome LDK reports before the send returns is not missed, and it matches a
     /// failure by payment id as well as by hash, since LDK can report one without its hash. After a timeout it keeps
-    /// listening, and a failure that arrives later calls `onLateFailure`.
+    /// listening: a failure that arrives later calls `onLateFailure`, and a success `onLateSuccess`.
     func sendOverChannels(
         bolt11: String,
         sats: UInt64,
         maxFeeMsat: UInt64,
         timeout: Duration = .seconds(120),
-        onLateFailure: @escaping @MainActor () -> Void = {}
+        onLateFailure: @escaping @MainActor () -> Void = {},
+        onLateSuccess: @escaping @MainActor (SettledLightningPayment) -> Void = { _ in }
     ) async throws -> SettledLightningPayment? {
         // LDK's default route parameters, with the routing fee capped.
         let params = RouteParametersConfig(
@@ -1213,8 +1214,10 @@ class WalletViewModel: ObservableObject {
                         continue
                     }
                     if isAnswered {
-                        if case .failure = outcome {
-                            onLateFailure()
+                        switch outcome {
+                        case let .success(settled?): onLateSuccess(settled)
+                        case .success: break
+                        case .failure: onLateFailure()
                         }
                     } else {
                         isAnswered = true
