@@ -1373,6 +1373,7 @@ actor PaykitPaymentProofService {
     func failSparkOnchainPayment(
         requestId: PaykitPaymentRequest.ID,
         identity: String,
+        unstartedPaymentList: SparkContactWithdrawal.PaymentList? = nil,
         privatePaykitService: PrivatePaykitService = .shared
     ) async -> SparkProofRelease {
         do {
@@ -1383,7 +1384,17 @@ actor PaykitPaymentProofService {
                         $0.paymentStarted && $0.onchainWalletId == nil && $0.sparkWithdrawal == true &&
                         $0.paymentIdentifier == nil && $0.proofData == nil
                 }
-                guard !unsent.isEmpty else { return .nothingStarted }
+                guard !unsent.isEmpty else {
+                    // A kill before the proof started leaves the list the request consumed only in the journal.
+                    if let list = unstartedPaymentList {
+                        try await privatePaykitService.releaseUnsentPaymentListVersion(
+                            publicKey: requestId.counterparty,
+                            version: list.version,
+                            previousVersion: list.previousVersion
+                        )
+                    }
+                    return .nothingStarted
+                }
                 for proof in unsent {
                     guard let version = proof.privatePaymentListVersion else { continue }
                     try await privatePaykitService.releaseUnsentPaymentListVersion(

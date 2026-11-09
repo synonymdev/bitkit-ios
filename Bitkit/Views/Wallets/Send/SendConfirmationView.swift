@@ -1510,14 +1510,21 @@ struct SendConfirmationView: View {
                     cancelProof: { await PaykitPaymentProofService.shared.cancelPreparation(request) },
                     releasePaymentList: { await context?.resolvePrivatePaymentListConsumption(.definitePreBroadcastFailure) }
                 )
-                proofRequest = SparkContactWithdrawal.PaykitRequest(id: request.id, identity: identity)
+                // The proof and the journal keep the list version this send consumed, so dropping the withdrawal as
+                // unsent gives the list back, also after a kill before the proof started.
+                let previousVersion = await PrivatePaykitService.shared.consumedPaymentListVersion(
+                    publicKey: request.counterparty,
+                    attemptId: context?.id
+                )
+                proofRequest = SparkContactWithdrawal.PaykitRequest(
+                    id: request.id,
+                    identity: identity,
+                    paymentList: privateContext.paymentListVersion.map {
+                        SparkContactWithdrawal.PaymentList(version: $0, previousVersion: previousVersion)
+                    }
+                )
                 // Spark's withdrawal runs this once its journal is written, so recovery owns the started proof.
                 markProofStarted = {
-                    // The proof keeps the list version this send consumed, so dropping it as unsent gives the list back.
-                    let previousVersion = await PrivatePaykitService.shared.consumedPaymentListVersion(
-                        publicKey: request.counterparty,
-                        attemptId: context?.id
-                    )
                     try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(
                         request,
                         address: leg.endpoint.value,

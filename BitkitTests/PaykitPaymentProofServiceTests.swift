@@ -1991,6 +1991,34 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         try await privatePaykit.consumePrivatePaymentList(publicKey: request.counterparty, context: listContext(version: 7), attemptId: UUID())
     }
 
+    func testAKillBeforeTheSparkProofStartsGivesBackTheListAfterARelaunch() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+        let privatePaykit = PrivatePaykitService()
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        let store = PaymentProofMemoryStore()
+        let service = paymentProofService(sdk: sdk, store: store)
+        try await privatePaykit.consumePrivatePaymentList(publicKey: request.counterparty, context: listContext(version: 6), attemptId: UUID())
+        try await privatePaykit.consumePrivatePaymentList(publicKey: request.counterparty, context: listContext(version: 7), attemptId: UUID())
+        try await service.prepare(request: request, paymentAppId: "paykit-server", paymentEndpointIdentifier: endpoint, kind: .onchain)
+
+        // Killed after the journal was written, before the proof was marked started: only the journal knows the list.
+        let relaunched = paymentProofService(sdk: sdk, store: store)
+        let release = await relaunched.failSparkOnchainPayment(
+            requestId: request.id,
+            identity: identity,
+            unstartedPaymentList: SparkContactWithdrawal.PaymentList(version: 7, previousVersion: 6),
+            privatePaykitService: privatePaykit
+        )
+
+        XCTAssertEqual(release, .nothingStarted)
+        let released = await privatePaykit.consumedPaymentListVersion(publicKey: request.counterparty)
+        XCTAssertEqual(released, 6, "The unsent request can be paid from its private list again")
+    }
+
     func testAnUnsentSparkWithdrawalLeavesAListAnotherPaymentConsumedSince() async throws {
         snapshotAppDefaultsDomain()
         UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)

@@ -739,7 +739,11 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     private static func releaseUnsentProof(_ request: SparkContactWithdrawal.PaykitRequest) async -> SparkProofRelease {
-        await PaykitPaymentProofService.shared.failSparkOnchainPayment(requestId: request.id, identity: request.identity)
+        await PaykitPaymentProofService.shared.failSparkOnchainPayment(
+            requestId: request.id,
+            identity: request.identity,
+            unstartedPaymentList: request.paymentList
+        )
     }
 
     private static func failAllowance(_ request: SparkContactWithdrawal.PaykitRequest) async {
@@ -1288,6 +1292,14 @@ struct SparkContactWithdrawal: Codable, Equatable {
     struct PaykitRequest: Codable, Equatable {
         let id: PaykitPaymentRequest.ID
         let identity: String
+        /// The contact's private list the request consumed, given back when the withdrawal never started its proof.
+        var paymentList: PaymentList?
+    }
+
+    /// A private payment list version a send consumed, and the one before it.
+    struct PaymentList: Codable, Equatable {
+        let version: UInt64
+        let previousVersion: UInt64?
     }
 
     let address: String
