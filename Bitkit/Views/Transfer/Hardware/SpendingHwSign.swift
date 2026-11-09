@@ -200,16 +200,14 @@ struct SpendingHwSign: View {
             )
             return nil
         }
-        let speed = flow.speed
-        let shownCost = shown.networkFeeSats.saturatingAdd(shown.claimFeeSats(for: speed))
-        let freshCost = fresh.networkFeeSats.saturatingAdd(fresh.claimFeeSats(for: speed))
-        guard freshCost <= shownCost else {
+        let increase = fresh.increase(over: shown, speed: flow.speed)
+        guard increase == 0 else {
             app.toast(
                 type: .info,
                 title: t("lightning__spending_confirm__fees_changed_title"),
                 description: t(
                     "lightning__spending_confirm__fees_changed_network",
-                    variables: ["amount": currency.primaryAmountText(sats: freshCost - shownCost)]
+                    variables: ["amount": currency.primaryAmountText(sats: increase)]
                 )
             )
             return nil

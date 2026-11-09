@@ -78,25 +78,7 @@ struct FeeItem: View {
                         Spacer()
 
                         if amount > 0 {
-                            VStack(alignment: .trailing, spacing: 0) {
-                                MoneyText(
-                                    sats: Int(amount),
-                                    unitType: .primary,
-                                    size: .bodyMSB,
-                                    symbol: true,
-                                    prefix: amountPrefix,
-                                    color: isDisabled ? .gray3 : .textPrimary
-                                )
-
-                                MoneyText(
-                                    sats: Int(amount),
-                                    unitType: .secondary,
-                                    size: .bodySSB,
-                                    symbol: true,
-                                    prefix: amountPrefix,
-                                    color: isDisabled ? .gray3 : .textSecondary
-                                )
-                            }
+                            FeeItemAmount(amount: amount, prefix: amountPrefix, isDisabled: isDisabled)
                         }
                     }
                 }
@@ -110,5 +92,35 @@ struct FeeItem: View {
             .disabled(isDisabled)
             .buttonStyle(PlainButtonStyle())
         }
+    }
+}
+
+/// The fee in both units, kept whole beside a long subtitle.
+struct FeeItemAmount: View {
+    let amount: UInt64
+    var prefix: String?
+    var isDisabled = false
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 0) {
+            MoneyText(
+                sats: Int(amount),
+                unitType: .primary,
+                size: .bodyMSB,
+                symbol: true,
+                prefix: prefix,
+                color: isDisabled ? .gray3 : .textPrimary
+            )
+
+            MoneyText(
+                sats: Int(amount),
+                unitType: .secondary,
+                size: .bodySSB,
+                symbol: true,
+                prefix: prefix,
+                color: isDisabled ? .gray3 : .textSecondary
+            )
+        }
+        .fixedSize()
     }
 }

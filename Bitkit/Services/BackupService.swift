@@ -141,6 +141,7 @@ class BackupService {
 
     private let statusUpdateQueue = DispatchQueue(label: "backup-service-status-update", qos: .userInitiated)
     private let stateQueue = DispatchQueue(label: "backup-service-state", qos: .userInitiated)
+    private var sparkExitMark = SparkExitBackupMark()
     private let backupStatusesSubject = PassthroughSubject<[BackupCategory: BackupItemStatus], Never>()
 
     private let backupFailureSubject = PassthroughSubject<Int, Never>()
@@ -314,8 +315,10 @@ class BackupService {
             Logger.debug("Start observing backup statuses and data store changes", context: "BackupService")
             await installBackupObservers(generation: observation.generation, foregroundGeneration: observation.foregroundGeneration)
 
-            // Spark's connect signal is missed when it connected before observing started.
-            if await SparkManager.shared.isConnected {
+            // Spark's connect signal is missed when it connected before observing started. Spark stays connected while
+            // the node stops, so observing restarts on each foreground: mark it once per connection.
+            let connection = await SparkManager.shared.connectionId
+            if stateQueue.sync(execute: { sparkExitMark.claim(connection: connection) }) {
                 markBackupRequired(category: .sparkExit)
             }
         }
@@ -882,6 +885,10 @@ class BackupService {
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .sparkExit)
+                Task { @MainActor in
+                    let connection = SparkManager.shared.connectionId
+                    _ = self.stateQueue.sync { self.sparkExitMark.claim(connection: connection) }
+                }
             }
             .store(in: cancellables)
 
@@ -1643,6 +1650,19 @@ struct BackupFailureNotificationGate {
         }
 
         lastNotificationTime = currentTime
+        return true
+    }
+}
+
+/// Which Spark connection the exit data backup was last marked for, so observing restarting on a foreground doesn't
+/// mark it again while Spark stayed connected.
+struct SparkExitBackupMark {
+    private var markedConnection: Int?
+
+    /// True when `connection` is a Spark connection not marked yet, and records it.
+    mutating func claim(connection: Int?) -> Bool {
+        guard let connection, connection != markedConnection else { return false }
+        markedConnection = connection
         return true
     }
 }

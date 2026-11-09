@@ -10,17 +10,29 @@ final class ChannelFreeRailTests: XCTestCase {
 
     private var rail: FakeRail!
     private var previousRail: Bitkit.ChannelFreeLightningRail?
+    private var previousAttemptsStore: UserDefaults!
+    private var previousRailSupported: (() async -> Bool)!
 
     override func setUp() {
         super.setUp()
         rail = FakeRail()
-        previousRail = Bitkit.LightningService.shared.channelFreeRail
-        Bitkit.LightningService.shared.channelFreeRail = rail
+        let service = Bitkit.LightningService.shared
+        previousRail = service.channelFreeRail
+        service.channelFreeRail = rail
+        previousAttemptsStore = service.railAttemptsStore
+        service.railAttemptsStore = UserDefaults(suiteName: "ChannelFreeRailTests")!
+        service.forgetRailAttempts()
+        previousRailSupported = service.channelFreeRailSupported
+        service.channelFreeRailSupported = { true }
     }
 
     override func tearDown() {
-        Bitkit.LightningService.shared.clearEventCallback()
-        Bitkit.LightningService.shared.channelFreeRail = previousRail
+        let service = Bitkit.LightningService.shared
+        service.forgetRailAttempts()
+        service.railAttemptsStore = previousAttemptsStore
+        service.channelFreeRailSupported = previousRailSupported
+        service.clearEventCallback()
+        service.channelFreeRail = previousRail
         rail = nil
         super.tearDown()
     }
@@ -209,6 +221,129 @@ extension ChannelFreeRailTests {
         }
         release?.resume()
         _ = try await first.value
+    }
+
+    func testAnInvoiceSparkTriedIsNotSentThroughTheNodeWhileSparkCannotListPayments() async throws {
+        try await sendOverSpark()
+        rail.listError = NSError(domain: "spark", code: 1)
+        rail.balanceSats = 0
+
+        await assertRefusedAsDuplicate()
+    }
+
+    func testAnInvoiceSparkTriedIsNotSentThroughTheNodeWhileSparkIsNotConnected() async throws {
+        try await sendOverSpark()
+        Bitkit.LightningService.shared.channelFreeRail = nil
+
+        await assertRefusedAsDuplicate()
+    }
+
+    func testAnInvoiceSparkTriedGoesToTheNodeOnceSparkListsNoLiveAttempt() async throws {
+        try await sendOverSpark()
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil)]
+        rail.balanceSats = 0
+
+        await assertReachesTheNode()
+    }
+
+    func testAnInvoiceSparkNeverTriedGoesToTheNodeWhileSparkCannotListPayments() async {
+        rail.listError = NSError(domain: "spark", code: 1)
+        rail.balanceSats = 0
+
+        await assertReachesTheNode()
+    }
+
+    func testAnInvoiceGoesToTheNodeWhenSparkIsUnsupported() async {
+        let service = Bitkit.LightningService.shared
+        service.channelFreeRail = nil
+        service.channelFreeRailSupported = { false }
+
+        await assertReachesTheNode()
+    }
+
+    func testASendSparkReportedFailedIsNotHeldFromTheNodeWhileSparkCannotList() async throws {
+        try await sendOverSpark()
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        Bitkit.LightningService.shared.emitChannelFreeRailEvent(.paymentFailed(paymentId: hash, paymentHash: hash, reason: nil))
+        rail.listError = NSError(domain: "spark", code: 1)
+        rail.balanceSats = 0
+
+        await assertReachesTheNode()
+    }
+
+    func testASendSparkListedAsFailedIsNotHeldOnceSparkCannotList() async throws {
+        try await sendOverSpark()
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil)]
+        rail.balanceSats = 0
+        await assertReachesTheNode()
+
+        rail.listError = NSError(domain: "spark", code: 1)
+
+        await assertReachesTheNode()
+    }
+
+    func testASendSparkRefusedBeforeDispatchIsNotHeldWhileSparkCannotList() async {
+        rail.balanceSats = 100_000
+        rail.refusal = Bitkit.ChannelFreeRailSendRefused(reason: "refused")
+        _ = try? await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+        rail.refusal = nil
+        rail.listError = NSError(domain: "spark", code: 1)
+        rail.balanceSats = 0
+
+        await assertReachesTheNode()
+    }
+
+    func testSparkHistoryReadsAsUnavailableWhileSparkIsDisconnected() async {
+        Bitkit.LightningService.shared.channelFreeRail = nil
+
+        do {
+            _ = try await Bitkit.LightningService.shared.channelFreeRailPayments()
+            XCTFail("A disconnected Spark must not read as holding no payments")
+        } catch {}
+        let proof = await PaykitLightningPaymentProofLookup.railStatus(paymentHash: "out")
+        guard case .unavailable = proof else { return XCTFail("Expected an unavailable proof, got \(proof)") }
+        // After a restart an older failed channel attempt must not settle a Spark retry Spark can't list yet.
+        XCTAssertEqual(PaykitLightningPaymentProofLookup.combined(ldk: .failed, rail: proof, latestAttempt: nil), .unavailable)
+    }
+
+    func testSparkHistoryReadsAsEmptyWhereSparkDoesNotRun() async throws {
+        let service = Bitkit.LightningService.shared
+        service.channelFreeRail = nil
+        service.channelFreeRailSupported = { false }
+
+        let payments = try await service.channelFreeRailPayments()
+
+        XCTAssertTrue(payments.isEmpty)
+    }
+
+    private func sendOverSpark() async throws {
+        rail.balanceSats = 100_000
+        _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+        XCTAssertEqual(rail.sentBolt11, Self.invoice)
+        rail.sentBolt11 = nil
+    }
+
+    private func assertRefusedAsDuplicate(file: StaticString = #filePath, line: UInt = #line) async {
+        do {
+            _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+            XCTFail("Expected the send to be refused as a duplicate", file: file, line: line)
+        } catch {
+            XCTAssertTrue(PrivatePaykitService.isDuplicatePaymentError(error), "\(error)", file: file, line: line)
+        }
+        XCTAssertNil(rail.sentBolt11, file: file, line: line)
+    }
+
+    /// Tests run without a node, so a payment that gets past the duplicate check fails as no node set up.
+    private func assertReachesTheNode(file: StaticString = #filePath, line: UInt = #line) async {
+        do {
+            _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+            XCTFail("Expected the send to reach the missing node", file: file, line: line)
+        } catch {
+            XCTAssertFalse(PrivatePaykitService.isDuplicatePaymentError(error), "\(error)", file: file, line: line)
+            XCTAssertTrue("\(error)".contains("nodeNotSetup"), "\(error)", file: file, line: line)
+        }
     }
 
     func testCanSendLeavesRoomForTheSparkFee() {
@@ -404,12 +539,16 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     var sentBolt11: String?
     var sentFeeLimitSats: UInt64?
     var sendGate: (() async -> Void)?
+    var refusal: Bitkit.ChannelFreeRailSendRefused?
 
     func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String {
         "lnbcrt1fake"
     }
 
     func send(bolt11: String, sats: UInt64?, maxFeeSats: UInt64?, beforeSubmission: @escaping () throws -> Void) async throws -> PaymentHash {
+        if let refusal {
+            throw refusal
+        }
         try beforeSubmission()
         await sendGate?()
         sentFeeLimitSats = maxFeeSats
