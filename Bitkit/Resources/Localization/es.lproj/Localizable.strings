@@ -416,6 +416,7 @@
 "other__buy_text" = "¿No tiene Bitcoin o necesita más?";
 "other__buy_button" = "Elegir Exchange";
 "other__error_keychain" = "Problema de Datos de Conexión";
+"other__error_keychain_msg" = "No se ha podido cargar la clave principal del llavero.";
 "other__connection_restored_title" = "Conexión Electrum Restaurada";
 "other__connection_restored_message" = "Reconectado con éxito a Electrum.";
 "other__connection_issue" = "Problemas de Conectividad de Internet";
@@ -619,6 +620,14 @@
 "security__use_pin" = "Utilizar código PIN";
 "security__wiped_title" = "Datos de Monedero Borrados";
 "security__wiped_message" = "Bitkit ha sido restaurado y todos los datos de monedero han sido borrados.";
+"security__pin_unavailable" = "Bitkit no pudo comprobar su PIN. Inténtelo de nuevo.";
+"security__wipe_not_started" = "No se pudo iniciar el restablecimiento. No se eliminó nada.";
+"security__wipe_gate_title" = "Restableciendo Bitkit";
+"security__wipe_gate_text" = "Bitkit está eliminando los datos del monedero de este dispositivo. Mantenga la aplicación abierta hasta que termine.";
+"security__wipe_gate_failed" = "Bitkit no pudo terminar de eliminar los datos del monedero y lo intentará de nuevo. Puede reintentarlo ahora o exportar los registros para el soporte.";
+"security__wipe_gate_step" = "Paso {step} de {total}";
+"security__wipe_gate_blocked_title" = "Bitkit está bloqueado";
+"security__wipe_gate_blocked_text" = "Bitkit no puede verificar su estado de seguridad. Inténtelo de nuevo o exporte los registros para el soporte.";
 "security__authorization__success" = "Éxito";
 "pubky_auth__title" = "Autorizar";
 "pubky_auth__description_prefix" = "Un servicio solicita permiso para acceder y editar sus datos de ";
@@ -989,7 +998,8 @@
 "contacts__add_error_self" = "No puede añadir su propio pubky como contacto.";
 "contacts__add_retrieving" = "Obteniendo\ninformación del contacto";
 "contacts__add_error" = "No se pudo añadir el contacto";
-"contacts__add_disclaimer" = "Tenga en cuenta que usted y {name} deben añadirse mutuamente como contactos para pagarse de forma privada. De lo contrario, el pago será visible públicamente.";
+"contacts__add_disclaimer" = "Tenga en cuenta que usted y {name} deben añadirse mutuamente como contactos antes de poder pagarse de forma privada. Si paga sin guardar el contacto, el pago será visible públicamente.";
+"contacts__pay_private_link_pending" = "Bitkit todavía está configurando una conexión privada con este contacto. Asegúrese de que también le haya añadido como contacto o pídale que le envíe una solicitud de pago.";
 "contacts__import_nav_title" = "Importar";
 "contacts__import_found_title" = "Encontrados\n<accent>perfil y contactos</accent>";
 "contacts__import_found_description" = "Bitkit encontró datos de perfil y contactos vinculados al pubky <accent>{key}</accent>";
@@ -1720,6 +1730,10 @@
 "wallet__send_error_support" = "Contactar con el servicio de asistencia";
 "subscriptions__allowances" = "Asignaciones";
 "subscriptions__allowances_empty_headline" = "Configure\n<accent>asignaciones</accent>";
+"subscriptions__allowances_paused_description" = "Tus registros de asignaciones son más antiguos que otros que este monedero ya ha usado. Las solicitudes pedirán tu aprobación hasta que reanudes.";
+"subscriptions__allowances_paused_restore_description" = "Este monedero se ha restaurado desde una copia de seguridad. Las solicitudes pedirán tu aprobación hasta que reanudes.";
+"subscriptions__allowances_paused_resume" = "Reanudar";
+"subscriptions__allowances_paused_title" = "Pagos automáticos en pausa";
 "subscriptions__allowances_empty_description" = "Puede establecer límites de gasto para pagar automáticamente las solicitudes de pago de contactos de confianza.";
 "subscriptions__allowance_add" = "Añadir asignación";
 "subscriptions__allowance_title" = "Asignación";

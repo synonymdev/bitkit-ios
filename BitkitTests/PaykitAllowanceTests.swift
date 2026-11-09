@@ -42,7 +42,16 @@ final class PaykitAllowanceTests: XCTestCase {
             presentedProposalIds: ["presented"],
             unannouncedOfferIds: ["unannounced"],
             notifiedRequestIds: ["notified"],
-            lastTrustedTime: Fixtures.now
+            lastTrustedTime: Fixtures.now,
+            ledgerRevisionFloor: 12,
+            automaticSpends: [.init(
+                attemptId: "attempt-1",
+                counterparty: Fixtures.counterpartyKey,
+                allowanceId: Fixtures.walletAllowanceId,
+                amountSats: 1000,
+                admittedAt: Fixtures.now
+            )],
+            endedAllowanceIds: ["\(Fixtures.counterpartyKey)/ended"]
         )
 
         let data = try JSONEncoder().encode(PaykitAllowanceStateBackup(state))
@@ -59,6 +68,11 @@ final class PaykitAllowanceTests: XCTestCase {
         XCTAssertEqual(json["lastTrustedTime"] as? String, "2026-09-24T12:00:00.000Z")
         XCTAssertTrue(entry["onchainAddress"] is NSNull, "Android requires every key, so an absent value is written as null")
         XCTAssertTrue(entry["transactionId"] is NSNull)
+        XCTAssertEqual(json["ledgerRevisionFloor"] as? Int, 12)
+        let spend = try XCTUnwrap((json["automaticSpends"] as? [[String: Any]])?.first)
+        XCTAssertEqual(spend["admittedAt"] as? String, "2026-09-24T12:00:00.000Z")
+        XCTAssertEqual(spend["amountSats"] as? Int, 1000)
+        XCTAssertEqual(json["endedAllowanceIds"] as? [String], ["\(Fixtures.counterpartyKey)/ended"])
 
         let restored = try JSONDecoder().decode(PaykitAllowanceStateBackup.self, from: data).restored()
         XCTAssertEqual(restored, state)
@@ -88,6 +102,102 @@ final class PaykitAllowanceTests: XCTestCase {
             XCTAssertTrue(entry[key] is NSNull, "\(key) is written as null for Android")
         }
         XCTAssertTrue(json["lastTrustedTime"] is NSNull)
+    }
+
+    func testStateSavedBeforeTheAutomaticPaymentChecksStillDecodes() throws {
+        let earlier = PaykitAllowanceLocalState(
+            groups: [.init(
+                id: "group-1",
+                counterparty: Fixtures.counterpartyKey,
+                limits: Fixtures.limits,
+                allowanceIds: [Fixtures.walletAllowanceId],
+                createdAt: Fixtures.now
+            )],
+            journal: [.init(
+                attemptId: "attempt-1",
+                isAutomatic: true,
+                requestId: PaykitPaymentRequest.ID(paymentRequestId: "req-1", counterparty: Fixtures.counterpartyKey),
+                allowanceId: Fixtures.walletAllowanceId,
+                amountSats: 1000,
+                paymentEndpointIdentifier: Fixtures.lightningIdentifier,
+                paymentHash: "hash-1",
+                stage: .sending,
+                createdAt: Fixtures.now,
+                paymentListVersion: 4,
+                previousPaymentListVersion: 3
+            )],
+            presentedProposalIds: ["presented"],
+            unannouncedOfferIds: ["contact/offer"],
+            notifiedRequestIds: ["notified"],
+            lastTrustedTime: Fixtures.now
+        )
+        var current = try JSONSerialization.jsonObject(with: JSONEncoder().encode(earlier)) as? [String: Any] ?? [:]
+        for key in ["ledgerRevisionFloor", "automaticSpends", "endedAllowanceIds"] {
+            current.removeValue(forKey: key)
+        }
+        let previous = try JSONSerialization.data(withJSONObject: current)
+
+        let state = try JSONDecoder().decode(PaykitAllowanceLocalState.self, from: previous)
+        let reloaded = try JSONDecoder().decode(PaykitAllowanceLocalState.self, from: JSONEncoder().encode(state))
+
+        XCTAssertEqual(state, earlier)
+        XCTAssertEqual(reloaded, earlier)
+    }
+
+    func testABackupWrittenBeforeTheAutomaticPaymentChecksStillRestores() throws {
+        let state = PaykitAllowanceLocalState(notifiedRequestIds: ["notified"], ledgerRevisionFloor: 3, endedAllowanceIds: ["contact/a"])
+        var current = try JSONSerialization.jsonObject(with: JSONEncoder().encode(PaykitAllowanceStateBackup(state))) as? [String: Any] ?? [:]
+        for key in ["ledgerRevisionFloor", "automaticSpends", "endedAllowanceIds"] {
+            current.removeValue(forKey: key)
+        }
+        let previous = try JSONSerialization.data(withJSONObject: current)
+
+        let restored = try JSONDecoder().decode(PaykitAllowanceStateBackup.self, from: previous).restored()
+
+        XCTAssertEqual(restored.notifiedRequestIds, ["notified"])
+        XCTAssertNil(restored.ledgerRevisionFloor)
+        XCTAssertTrue(restored.endedAllowanceIds.isEmpty)
+    }
+
+    func testARestoreWithoutTheLedgerDropsTheLedgerFloor() throws {
+        try? Keychain.delete(key: .paykitAllowanceState)
+        defer { try? Keychain.delete(key: .paykitAllowanceState) }
+        let store = PaykitAllowanceKeychainStore()
+        let backup = PaykitAllowanceStateBackups([
+            Fixtures.identityKey: PaykitAllowanceStateBackup(
+                PaykitAllowanceLocalState(ledgerRevisionFloor: 5, endedAllowanceIds: ["contact/ended"])
+            ),
+        ])
+
+        store.restoreBackup(backup, keepsLedgerFloors: false)
+        let withoutLedger = try store.load(identity: Fixtures.identityKey)
+        store.restoreBackup(backup)
+        let withLedger = try store.load(identity: Fixtures.identityKey)
+
+        XCTAssertNil(withoutLedger.ledgerRevisionFloor)
+        XCTAssertEqual(withoutLedger.endedAllowanceIds, ["contact/ended"])
+        XCTAssertEqual(withLedger.ledgerRevisionFloor, 5)
+    }
+
+    func testRestoreNeverLowersTheAutomaticPaymentChecksAlreadyStored() {
+        let spend = PaykitAllowanceLocalState.AutomaticSpend(
+            attemptId: "attempt-1", counterparty: "contact", allowanceId: "allowance-1", amountSats: 1000, admittedAt: Fixtures.now
+        )
+        let restoredSpend = PaykitAllowanceLocalState.AutomaticSpend(
+            attemptId: "attempt-2", counterparty: "contact", allowanceId: "allowance-1", amountSats: 1000, admittedAt: Fixtures.now
+        )
+        let stored = PaykitAllowanceLocalState(ledgerRevisionFloor: 9, automaticSpends: [spend], endedAllowanceIds: ["contact/allowance-1"])
+        let restored = PaykitAllowanceLocalState(
+            ledgerRevisionFloor: 4,
+            automaticSpends: [restoredSpend, spend],
+            endedAllowanceIds: ["contact/allowance-2"]
+        )
+
+        let merged = restored.withChecks(from: stored)
+
+        XCTAssertEqual(merged.ledgerRevisionFloor, 9)
+        XCTAssertEqual(merged.automaticSpends, [restoredSpend, spend])
+        XCTAssertEqual(merged.endedAllowanceIds, ["contact/allowance-1", "contact/allowance-2"])
     }
 
     func testAnUnreadableAllowanceStateLeavesTheRestOfTheBackupReadable() throws {
@@ -168,6 +278,47 @@ final class PaykitAllowanceTests: XCTestCase {
         XCTAssertNil(PaykitAllowance(record: Fixtures.record(localRole: nil, terms: terms)))
         XCTAssertNil(PaykitAllowance(record: Fixtures.record(localRole: .unknown, terms: terms)))
         XCTAssertNil(PaykitAllowance(record: Fixtures.record(terms: nil)))
+    }
+
+    func testRecordFlagsLimitsBitkitDoesNotCheckItself() throws {
+        func hasUncheckedLimits(_ terms: Paykit.AllowanceTerms, localRole: Paykit.AllowanceLocalRole = .allower) throws -> Bool {
+            try XCTUnwrap(PaykitAllowance(record: Fixtures.record(localRole: localRole, terms: terms))).hasUncheckedLimits
+        }
+
+        XCTAssertFalse(try hasUncheckedLimits(Fixtures.standardTerms()), "Bitkit's own terms pay automatically")
+        XCTAssertFalse(try hasUncheckedLimits(Fixtures.customTerms()))
+        XCTAssertTrue(try hasUncheckedLimits(Fixtures.customTerms(lifetimeAmountLimit: "0.001")))
+        XCTAssertTrue(try hasUncheckedLimits(Fixtures.customTerms(monthlyPaymentCountLimit: 3)))
+        XCTAssertTrue(try hasUncheckedLimits(Fixtures.customTerms(otherPeriodLimits: [Fixtures.weeklyLimit()])))
+        let secondMonthly = try Paykit.AllowancePeriodLimit(
+            amountLimit: "0.0001",
+            paymentCountLimit: nil,
+            period: Paykit.AllowancePeriod(kind: "anchored", every: 1, unit: "month", anchor: "2026-09-15T00:00:00Z")
+        )
+        XCTAssertTrue(try hasUncheckedLimits(Fixtures.customTerms(otherPeriodLimits: [secondMonthly])))
+        XCTAssertTrue(try hasUncheckedLimits(Fixtures.customTerms(lifetimeAmountLimit: "0.001"), localRole: .allowee))
+    }
+
+    func testTheWalletRestorePauseStaysUntilItIsCleared() throws {
+        try? Keychain.delete(key: .paykitAllowancesPausedAfterRestore)
+        try? Keychain.delete(key: .paykitAllowanceState)
+        defer {
+            try? Keychain.delete(key: .paykitAllowancesPausedAfterRestore)
+            try? Keychain.delete(key: .paykitAllowanceState)
+        }
+        let notPaused = try PaykitAllowanceKeychainStore().isPausedAfterRestore()
+
+        try PaykitAllowanceKeychainStore().setPausedAfterRestore(true)
+        PaykitAllowanceKeychainStore().restoreBackup(PaykitAllowanceStateBackups([
+            Fixtures.identityKey: PaykitAllowanceStateBackup(PaykitAllowanceLocalState(ledgerRevisionFloor: 5)),
+        ]))
+        let pausedAfterReload = try PaykitAllowanceKeychainStore().isPausedAfterRestore()
+        try PaykitAllowanceKeychainStore().setPausedAfterRestore(false)
+        let resumed = try PaykitAllowanceKeychainStore().isPausedAfterRestore()
+
+        XCTAssertFalse(notPaused)
+        XCTAssertTrue(pausedAfterReload)
+        XCTAssertFalse(resumed)
     }
 
     func testStatusMapsEveryLifecycleState() throws {
@@ -265,6 +416,7 @@ final class PaykitAllowanceTests: XCTestCase {
         let beforeMarchAnchor = PaykitAllowanceTime.monthlyWindow(anchor: marchAnchor, containing: Fixtures.utc("2026-01-15T00:00:00Z"))
         let allowance = Fixtures.allowance(monthlyAnchor: anchor)
         let lateMarchAttempt = PaykitAllowanceCapacity.Attempt(
+            attemptId: "late-march",
             counterparty: Fixtures.counterpartyKey,
             allowanceId: allowance.allowanceId,
             amountSats: 50000,
@@ -402,6 +554,48 @@ final class PaykitAllowanceTests: XCTestCase {
         ))
     }
 
+    func testCapacityCountsTheLedgersAndThisWalletsOwnPaymentsTogether() {
+        let ledger = [Fixtures.capacityAttempt(sats: 25000, at: "2026-09-05T10:00:00Z", attemptId: "a")]
+        let local = [Fixtures.capacityAttempt(sats: 21000, at: "2026-09-12T10:00:00Z", attemptId: "b")]
+
+        XCTAssertTrue(PaykitAllowanceCapacity.fits(
+            amountSats: 4000,
+            allowance: Fixtures.allowance(),
+            attempts: ledger,
+            now: Fixtures.now,
+            localAttempts: local
+        ))
+        XCTAssertFalse(PaykitAllowanceCapacity.fits(
+            amountSats: 4001,
+            allowance: Fixtures.allowance(),
+            attempts: ledger,
+            now: Fixtures.now,
+            localAttempts: local
+        ))
+    }
+
+    func testCapacityCountsAPaymentBothSidesHoldOnce() {
+        let ledger = [Fixtures.capacityAttempt(sats: 45000, at: "2026-09-05T10:00:00Z", attemptId: "a")]
+        let local = [Fixtures.capacityAttempt(sats: 45000, at: "2026-09-05T10:00:00Z", attemptId: "a")]
+
+        XCTAssertTrue(PaykitAllowanceCapacity.fits(
+            amountSats: 5000,
+            allowance: Fixtures.allowance(),
+            attempts: ledger,
+            now: Fixtures.now,
+            localAttempts: local
+        ))
+    }
+
+    func testASaveNeverReplacesStateThisBuildCannotRead() throws {
+        let unreadable = Data(#"{"other":{"journal":[{"stage":"from-a-newer-build"}]}}"#.utf8)
+        try Keychain.upsert(key: .paykitAllowanceState, data: unreadable)
+        defer { try? Keychain.delete(key: .paykitAllowanceState) }
+
+        XCTAssertThrowsError(try PaykitAllowanceKeychainStore().save(PaykitAllowanceLocalState(), identity: Fixtures.identityKey))
+        XCTAssertEqual(try Keychain.load(key: .paykitAllowanceState), unreadable)
+    }
+
     func testAttemptsFromHistoryKeepAutomaticAllowanceAttempts() throws {
         let history = try Paykit.AllowanceAccountingHistory(
             associations: [],
@@ -423,6 +617,7 @@ final class PaykitAllowanceTests: XCTestCase {
 
         XCTAssertEqual(attempts, [
             PaykitAllowanceCapacity.Attempt(
+                attemptId: "failed",
                 counterparty: Fixtures.counterpartyKey,
                 allowanceId: Fixtures.walletAllowanceId,
                 amountSats: 10000,
@@ -430,6 +625,7 @@ final class PaykitAllowanceTests: XCTestCase {
                 isLive: false
             ),
             PaykitAllowanceCapacity.Attempt(
+                attemptId: "paid",
                 counterparty: Fixtures.counterpartyKey,
                 allowanceId: Fixtures.walletAllowanceId,
                 amountSats: 10000,
@@ -437,6 +633,7 @@ final class PaykitAllowanceTests: XCTestCase {
                 isLive: true
             ),
             PaykitAllowanceCapacity.Attempt(
+                attemptId: "open",
                 counterparty: Fixtures.counterpartyKey,
                 allowanceId: Fixtures.walletAllowanceId,
                 amountSats: 2000,
@@ -519,18 +716,24 @@ enum PaykitAllowanceFixtures {
         try limits.terms(monthAnchor: septemberAnchor, allowedPaymentEndpointIdentifiers: [lightningIdentifier])
     }
 
-    static func customTerms(activeFrom: Date? = nil, expiresAt: Date? = nil) throws -> Paykit.AllowanceTerms {
+    static func customTerms(
+        activeFrom: Date? = nil,
+        expiresAt: Date? = nil,
+        monthlyPaymentCountLimit: UInt64? = nil,
+        otherPeriodLimits: [Paykit.AllowancePeriodLimit] = [],
+        lifetimeAmountLimit: String? = nil
+    ) throws -> Paykit.AllowanceTerms {
         try Paykit.AllowanceTerms(
             asset: PaykitIssuerInterop.bitcoinAsset,
             perPaymentAmount: Paykit.AllowanceAmountRange(minimum: "0", maximum: "0.00005"),
             periodLimits: [
                 Paykit.AllowancePeriodLimit(
                     amountLimit: "0.0005",
-                    paymentCountLimit: nil,
+                    paymentCountLimit: monthlyPaymentCountLimit,
                     period: Paykit.AllowancePeriod(kind: "anchored", every: 1, unit: "month", anchor: "2026-09-01T00:00:00Z")
                 ),
-            ],
-            lifetimeAmountLimit: nil,
+            ] + otherPeriodLimits,
+            lifetimeAmountLimit: lifetimeAmountLimit,
             activeFrom: activeFrom.map(PaykitAllowanceTime.format),
             expiresAt: expiresAt.map(PaykitAllowanceTime.format),
             allowedPaymentEndpointIdentifiers: [lightningIdentifier]
@@ -605,7 +808,8 @@ enum PaykitAllowanceFixtures {
         monthlyLimitSats: UInt64? = 50000,
         monthlyAnchor: Date? = septemberAnchor,
         expiresAt: Date? = nil,
-        isProposedByMe: Bool? = nil
+        isProposedByMe: Bool? = nil,
+        hasUncheckedLimits: Bool = false
     ) -> PaykitAllowance {
         PaykitAllowance(
             id: PaykitAllowance.ID(counterparty: counterparty, allowanceId: allowanceId),
@@ -616,7 +820,16 @@ enum PaykitAllowanceFixtures {
             monthlyLimitSats: monthlyLimitSats,
             monthlyAnchor: monthlyAnchor,
             expiresAt: expiresAt,
-            allowedPaymentEndpointIdentifiers: [lightningIdentifier]
+            allowedPaymentEndpointIdentifiers: [lightningIdentifier],
+            hasUncheckedLimits: hasUncheckedLimits
+        )
+    }
+
+    static func weeklyLimit() throws -> Paykit.AllowancePeriodLimit {
+        try Paykit.AllowancePeriodLimit(
+            amountLimit: "0.0001",
+            paymentCountLimit: nil,
+            period: Paykit.AllowancePeriod(kind: "anchored", every: 1, unit: "week", anchor: "2026-09-01T00:00:00Z")
         )
     }
 
@@ -625,10 +838,16 @@ enum PaykitAllowanceFixtures {
         counterparty: String = counterpartyKey,
         sats: UInt64,
         at timestamp: String,
-        isLive: Bool = true
+        isLive: Bool = true,
+        attemptId: String = UUID().uuidString
     ) -> PaykitAllowanceCapacity.Attempt {
         PaykitAllowanceCapacity.Attempt(
-            counterparty: counterparty, allowanceId: allowanceId, amountSats: sats, admittedAt: utc(timestamp), isLive: isLive
+            attemptId: attemptId,
+            counterparty: counterparty,
+            allowanceId: allowanceId,
+            amountSats: sats,
+            admittedAt: utc(timestamp),
+            isLive: isLive
         )
     }
 

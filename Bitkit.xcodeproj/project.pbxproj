@@ -22,9 +22,12 @@
 		968FE1402DFB016B0053CD7F /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 968FE13F2DFB016B0053CD7F /* LDKNode */; };
 		96DEA03A2DE8BBA1009932BF /* BitkitCore in Frameworks */ = {isa = PBXBuildFile; productRef = 96DEA0392DE8BBA1009932BF /* BitkitCore */; };
 		96DEA03C2DE8BBAB009932BF /* BitkitCore in Frameworks */ = {isa = PBXBuildFile; productRef = 96DEA03B2DE8BBAB009932BF /* BitkitCore */; };
-		96E493A42C942FD1000E8BC2 /* secp256k1 in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493A32C942FD1000E8BC2 /* secp256k1 */; };
-		96E493A62C94317D000E8BC2 /* secp256k1 in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493A52C94317D000E8BC2 /* secp256k1 */; };
-		96E493A82C943184000E8BC2 /* secp256k1 in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493A72C943184000E8BC2 /* secp256k1 */; };
+		96E493A42C942FD1000E8BC2 /* P256K in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493A32C942FD1000E8BC2 /* P256K */; };
+		96E493B22C942FD1000E8BC2 /* libsecp256k1 in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493B12C942FD1000E8BC2 /* libsecp256k1 */; };
+		96E493A62C94317D000E8BC2 /* P256K in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493A52C94317D000E8BC2 /* P256K */; };
+		96E493B42C94317D000E8BC2 /* libsecp256k1 in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493B32C94317D000E8BC2 /* libsecp256k1 */; };
+		96E493A82C943184000E8BC2 /* P256K in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493A72C943184000E8BC2 /* P256K */; };
+		96E493B62C943184000E8BC2 /* libsecp256k1 in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493B52C943184000E8BC2 /* libsecp256k1 */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -252,7 +255,8 @@
 				3D7626104C9C4A53B1E4A001 /* CoreBluetooth.framework in Frameworks */,
 				968FE1402DFB016B0053CD7F /* LDKNode in Frameworks */,
 				96DEA03C2DE8BBAB009932BF /* BitkitCore in Frameworks */,
-				96E493A82C943184000E8BC2 /* secp256k1 in Frameworks */,
+				96E493A82C943184000E8BC2 /* P256K in Frameworks */,
+				96E493B62C943184000E8BC2 /* libsecp256k1 in Frameworks */,
 				18D65E022EB964BD00252335 /* VssRustClientFfi in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -265,7 +269,8 @@
 				3D76260F4C9C4A53B1E4A001 /* CoreBluetooth.framework in Frameworks */,
 				968FDF162DFAFE230053CD7F /* LDKNode in Frameworks */,
 				18D65E002EB964B500252335 /* VssRustClientFfi in Frameworks */,
-				96E493A42C942FD1000E8BC2 /* secp256k1 in Frameworks */,
+				96E493A42C942FD1000E8BC2 /* P256K in Frameworks */,
+				96E493B22C942FD1000E8BC2 /* libsecp256k1 in Frameworks */,
 				96DEA03A2DE8BBA1009932BF /* BitkitCore in Frameworks */,
 				4AAB08CA2E1FE77600BA63DF /* Lottie in Frameworks */,
 			);
@@ -275,7 +280,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				96E493A62C94317D000E8BC2 /* secp256k1 in Frameworks */,
+				96E493A62C94317D000E8BC2 /* P256K in Frameworks */,
+				96E493B42C94317D000E8BC2 /* libsecp256k1 in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -365,7 +371,8 @@
 			);
 			name = BitkitNotification;
 			packageProductDependencies = (
-				96E493A72C943184000E8BC2 /* secp256k1 */,
+				96E493A72C943184000E8BC2 /* P256K */,
+				96E493B52C943184000E8BC2 /* libsecp256k1 */,
 				96DEA03B2DE8BBAB009932BF /* BitkitCore */,
 				968FE13F2DFB016B0053CD7F /* LDKNode */,
 				18D65E012EB964BD00252335 /* VssRustClientFfi */,
@@ -397,7 +404,8 @@
 			name = Bitkit;
 			packageProductDependencies = (
 				9613018B2C5022D700878183 /* LDKNode */,
-				96E493A32C942FD1000E8BC2 /* secp256k1 */,
+				96E493A32C942FD1000E8BC2 /* P256K */,
+				96E493B12C942FD1000E8BC2 /* libsecp256k1 */,
 				96DEA0392DE8BBA1009932BF /* BitkitCore */,
 				4AAB08C92E1FE77600BA63DF /* Lottie */,
 				18D65DFF2EB964B500252335 /* VssRustClientFfi */,
@@ -425,7 +433,8 @@
 			);
 			name = BitkitTests;
 			packageProductDependencies = (
-				96E493A52C94317D000E8BC2 /* secp256k1 */,
+				96E493A52C94317D000E8BC2 /* P256K */,
+				96E493B32C94317D000E8BC2 /* libsecp256k1 */,
 			);
 			productName = BitkitTests;
 			productReference = 96FE1F722C2DE6AC006D0C8B /* BitkitTests.xctest */;
@@ -698,7 +707,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = BitkitWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202;
+				CURRENT_PROJECT_VERSION = 203;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitWidget/Info.plist;
@@ -710,7 +719,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.0.1;
+				MARKETING_VERSION = 3.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -731,7 +740,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = BitkitWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202;
+				CURRENT_PROJECT_VERSION = 203;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitWidget/Info.plist;
@@ -743,7 +752,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.0.1;
+				MARKETING_VERSION = 3.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -763,7 +772,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = BitkitNotification/BitkitNotification.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202;
+				CURRENT_PROJECT_VERSION = 203;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitNotification/Info.plist;
@@ -775,7 +784,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.0.1;
+				MARKETING_VERSION = 3.1.0;
 				OTHER_LDFLAGS = (
 					"-framework",
 					CoreBluetooth,
@@ -796,7 +805,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = BitkitNotification/BitkitNotification.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202;
+				CURRENT_PROJECT_VERSION = 203;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitNotification/Info.plist;
@@ -808,7 +817,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.0.1;
+				MARKETING_VERSION = 3.1.0;
 				OTHER_LDFLAGS = (
 					"-framework",
 					CoreBluetooth,
@@ -949,7 +958,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Bitkit/Bitkit.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202;
+				CURRENT_PROJECT_VERSION = 203;
 				DEVELOPMENT_ASSET_PATHS = "\"Bitkit/Preview Content\"";
 				DEVELOPMENT_TEAM = KYH47R284B;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -976,7 +985,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 3.0.1;
+				MARKETING_VERSION = 3.1.0;
 				OTHER_LDFLAGS = (
 					"-framework",
 					CoreBluetooth,
@@ -1002,7 +1011,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Bitkit/Bitkit.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202;
+				CURRENT_PROJECT_VERSION = 203;
 				DEVELOPMENT_ASSET_PATHS = "\"Bitkit/Preview Content\"";
 				DEVELOPMENT_TEAM = KYH47R284B;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1029,7 +1038,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 3.0.1;
+				MARKETING_VERSION = 3.1.0;
 				OTHER_LDFLAGS = (
 					"-framework",
 					CoreBluetooth,
@@ -1240,7 +1249,7 @@
 			repositoryURL = "https://github.com/21-DOT-DEV/swift-secp256k1";
 			requirement = {
 				kind = exactVersion;
-				version = 0.17.0;
+				version = 0.24.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -1286,20 +1295,35 @@
 			package = 96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */;
 			productName = BitkitCore;
 		};
-		96E493A32C942FD1000E8BC2 /* secp256k1 */ = {
+		96E493A32C942FD1000E8BC2 /* P256K */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 96E493A22C942FD1000E8BC2 /* XCRemoteSwiftPackageReference "swift-secp256k1" */;
-			productName = secp256k1;
+			productName = P256K;
 		};
-		96E493A52C94317D000E8BC2 /* secp256k1 */ = {
+		96E493B12C942FD1000E8BC2 /* libsecp256k1 */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 96E493A22C942FD1000E8BC2 /* XCRemoteSwiftPackageReference "swift-secp256k1" */;
-			productName = secp256k1;
+			productName = libsecp256k1;
 		};
-		96E493A72C943184000E8BC2 /* secp256k1 */ = {
+		96E493A52C94317D000E8BC2 /* P256K */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 96E493A22C942FD1000E8BC2 /* XCRemoteSwiftPackageReference "swift-secp256k1" */;
-			productName = secp256k1;
+			productName = P256K;
+		};
+		96E493B32C94317D000E8BC2 /* libsecp256k1 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96E493A22C942FD1000E8BC2 /* XCRemoteSwiftPackageReference "swift-secp256k1" */;
+			productName = libsecp256k1;
+		};
+		96E493A72C943184000E8BC2 /* P256K */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96E493A22C942FD1000E8BC2 /* XCRemoteSwiftPackageReference "swift-secp256k1" */;
+			productName = P256K;
+		};
+		96E493B52C943184000E8BC2 /* libsecp256k1 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96E493A22C942FD1000E8BC2 /* XCRemoteSwiftPackageReference "swift-secp256k1" */;
+			productName = libsecp256k1;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

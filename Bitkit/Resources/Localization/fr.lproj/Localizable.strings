@@ -662,6 +662,14 @@
 "security__use_pin" = "Utiliser le code PIN";
 "security__wiped_title" = "Données du wallet supprimées";
 "security__wiped_message" = "Bitkit a été réinitialisé et toutes les données du walet ont été supprimées.";
+"security__pin_unavailable" = "Bitkit n'a pas pu vérifier votre code PIN. Veuillez réessayer.";
+"security__wipe_not_started" = "La réinitialisation n'a pas pu démarrer. Rien n'a été supprimé.";
+"security__wipe_gate_title" = "Réinitialisation de Bitkit";
+"security__wipe_gate_text" = "Bitkit supprime les données du portefeuille sur cet appareil. Gardez l'application ouverte jusqu'à la fin.";
+"security__wipe_gate_failed" = "Bitkit n'a pas pu terminer la suppression des données du portefeuille et va réessayer. Vous pouvez réessayer maintenant ou exporter les logs pour le support.";
+"security__wipe_gate_step" = "Étape {step} sur {total}";
+"security__wipe_gate_blocked_title" = "Bitkit est verrouillé";
+"security__wipe_gate_blocked_text" = "Bitkit ne peut pas vérifier son état de sécurité. Réessayez ou exportez les logs pour le support.";
 "security__authorization__title" = "Autorisation";
 "security__authorization__description" = "Assurez-vous de faire confiance à ce service avant de lui accorder l\'autorisation de gérer vos données.";
 "security__authorization__authorize" = "Autoriser";
@@ -1076,7 +1084,8 @@
 "contacts__add_error_self" = "Vous ne pouvez pas ajouter votre propre pubky comme contact.";
 "contacts__add_retrieving" = "Récupération des\ninfos du contact";
 "contacts__add_error" = "Échec de l'ajout du contact";
-"contacts__add_disclaimer" = "Veuillez noter que vous et {name} devez vous ajouter mutuellement comme contacts pour vous payer en privé. Sinon, le paiement sera visible publiquement.";
+"contacts__add_disclaimer" = "Veuillez noter que vous et {name} devez vous ajouter mutuellement comme contacts avant de pouvoir vous payer en privé. Si vous payez sans enregistrer le contact, le paiement est visible publiquement.";
+"contacts__pay_private_link_pending" = "Bitkit établit encore une connexion privée avec ce contact. Assurez-vous qu'il vous a lui aussi ajouté comme contact, ou demandez-lui de vous envoyer une demande de paiement.";
 "contacts__import_nav_title" = "Importer";
 "contacts__import_found_title" = "Profil et contacts\n<accent>trouvés</accent>";
 "contacts__import_found_description" = "Bitkit a trouvé des données de profil et de contacts liées au pubky <accent>{key}</accent>";
@@ -1850,6 +1859,10 @@
 "usdt__deposit_refund_address_network" = "Adresse USDT sur {network}";
 "subscriptions__allowances" = "Allocations";
 "subscriptions__allowances_empty_headline" = "Configurez\n<accent>des allocations</accent>";
+"subscriptions__allowances_paused_description" = "Vos données d'allocations sont plus anciennes que celles que ce portefeuille a déjà utilisées. Les demandes attendront votre accord jusqu'à la reprise.";
+"subscriptions__allowances_paused_restore_description" = "Ce portefeuille a été restauré à partir d'une sauvegarde. Les demandes attendront votre accord jusqu'à la reprise.";
+"subscriptions__allowances_paused_resume" = "Reprendre";
+"subscriptions__allowances_paused_title" = "Paiements automatiques en pause";
 "subscriptions__allowances_empty_description" = "Vous pouvez définir des limites de dépenses pour régler automatiquement les demandes de paiement de contacts de confiance.";
 "subscriptions__allowance_add" = "Ajouter une allocation";
 "subscriptions__allowance_title" = "Allocation";

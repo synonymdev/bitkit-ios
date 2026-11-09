@@ -89,6 +89,17 @@ struct PaykitAllowanceStateBackup: Codable {
     let unannouncedOfferIds: Set<String>
     let notifiedRequestIds: Set<String>
     let lastTrustedTime: String?
+    let ledgerRevisionFloor: UInt64?
+    let automaticSpends: [AutomaticSpend]?
+    let endedAllowanceIds: Set<String>?
+
+    struct AutomaticSpend: Codable {
+        let attemptId: String
+        let counterparty: String
+        let allowanceId: String
+        let amountSats: UInt64
+        let admittedAt: String
+    }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
@@ -98,6 +109,9 @@ struct PaykitAllowanceStateBackup: Codable {
         try container.encode(unannouncedOfferIds, forKey: .unannouncedOfferIds)
         try container.encode(notifiedRequestIds, forKey: .notifiedRequestIds)
         try container.encode(lastTrustedTime, forKey: .lastTrustedTime)
+        try container.encode(ledgerRevisionFloor, forKey: .ledgerRevisionFloor)
+        try container.encode(automaticSpends ?? [], forKey: .automaticSpends)
+        try container.encode(endedAllowanceIds ?? [], forKey: .endedAllowanceIds)
     }
 
     init(_ state: PaykitAllowanceLocalState) {
@@ -136,6 +150,17 @@ struct PaykitAllowanceStateBackup: Codable {
         unannouncedOfferIds = state.unannouncedOfferIds
         notifiedRequestIds = state.notifiedRequestIds
         lastTrustedTime = state.lastTrustedTime.map(PaykitAllowanceTime.format)
+        ledgerRevisionFloor = state.ledgerRevisionFloor
+        automaticSpends = state.automaticSpends.map {
+            AutomaticSpend(
+                attemptId: $0.attemptId,
+                counterparty: $0.counterparty,
+                allowanceId: $0.allowanceId,
+                amountSats: $0.amountSats,
+                admittedAt: PaykitAllowanceTime.format($0.admittedAt)
+            )
+        }
+        endedAllowanceIds = state.endedAllowanceIds
     }
 
     func restored() throws -> PaykitAllowanceLocalState {
@@ -177,7 +202,18 @@ struct PaykitAllowanceStateBackup: Codable {
             presentedProposalIds: presentedProposalIds,
             unannouncedOfferIds: unannouncedOfferIds,
             notifiedRequestIds: notifiedRequestIds,
-            lastTrustedTime: lastTrustedTime.map(Self.date)
+            lastTrustedTime: lastTrustedTime.map(Self.date),
+            ledgerRevisionFloor: ledgerRevisionFloor,
+            automaticSpends: (automaticSpends ?? []).map {
+                try PaykitAllowanceLocalState.AutomaticSpend(
+                    attemptId: $0.attemptId,
+                    counterparty: $0.counterparty,
+                    allowanceId: $0.allowanceId,
+                    amountSats: $0.amountSats,
+                    admittedAt: Self.date($0.admittedAt)
+                )
+            },
+            endedAllowanceIds: endedAllowanceIds ?? []
         )
     }
 

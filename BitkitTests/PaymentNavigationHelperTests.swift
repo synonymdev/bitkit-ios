@@ -349,6 +349,49 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertEqual(contactPaymentRoute(for: app), .usdt(recipient: usdt.value, amount: "1.00"))
     }
 
+    func testRequestSourceSwitchPreservesAmountBackRouteAcrossAssets() throws {
+        let address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"
+        let method = PublicPaykitService.onchainMethodId(for: address)
+        let usdt = try PaykitUsdt.endpoint(address: "0x1111111111111111111111111111111111111111")
+        let request = try incomingPaymentRequest(
+            endpointIdentifier: method.rawValue, additionalEndpointIdentifiers: [usdt.methodId.rawValue],
+            amount: PaymentRequestAmount(value: "2.50", asset: "usd"),
+            conversion: .fixed(rates: [ConversionRate(asset: "btc", value: "0.00001"), ConversionRate(asset: "usdt", value: "1")])
+        )
+        let app = AppViewModel()
+        let wallet = WalletViewModel()
+        let hwSend = HwSendCoordinator()
+        app.scannedOnchainInvoice = OnChainInvoice(address: address, amountSatoshis: 0, label: nil, message: nil, params: nil)
+        app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request, endpoints: [
+            .init(methodId: method, value: address, min: nil, max: nil, rawPayload: ""), usdt,
+        ])
+        for amountIsRoot in [true, false] {
+            let flow = SendPresentationState(initialRoute: .confirm)
+            flow.rootOverride = amountIsRoot ? .amount : nil
+            flow.navigationPath = [.utxoSelection, .confirm]
+            flow.isSetupPending = false
+
+            flow.selectRequestFundingSource(.usdt, app: app, wallet: wallet, hwSend: hwSend)
+            let usdtRoute = SendRoute.usdt(recipient: usdt.value, amount: "2.50")
+            XCTAssertEqual(flow.navigationPath, amountIsRoot ? [usdtRoute] : [])
+            XCTAssertEqual(flow.rootOverride ?? flow.rootRoute, amountIsRoot ? .amount : usdtRoute)
+            XCTAssertEqual(app.paykitReviewedAmount?.asset, .usdt)
+            XCTAssertNil(wallet.sendAmountSats)
+
+            flow.selectRequestFundingSource(.savings, app: app, wallet: wallet, hwSend: hwSend)
+            XCTAssertEqual(flow.navigationPath, amountIsRoot ? [.confirm] : [])
+            XCTAssertEqual(flow.rootOverride ?? flow.rootRoute, amountIsRoot ? .amount : .confirm)
+            XCTAssertEqual(app.paykitReviewedAmount, try request.payment(using: method).amount)
+            XCTAssertEqual(wallet.sendAmountSats, app.paykitReviewedAmount?.atomic)
+            XCTAssertNil(wallet.selectedUtxos, "Returning to Savings must prepare coins for the newly bound amount")
+            if amountIsRoot {
+                flow.navigationPath.removeLast()
+                XCTAssertTrue(flow.navigationPath.isEmpty)
+                XCTAssertEqual(flow.rootOverride, .amount)
+            }
+        }
+    }
+
     func testExpiredDollarRequestOpensRateReview() async throws {
         settings.usdtPreference = .disabled
         let address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"
@@ -390,6 +433,64 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertThrowsError(try request.payment(using: method)) { error in
             XCTAssertEqual(error as? PaykitAmountError, .rateUnavailable)
         }
+    }
+
+    func testOnchainInvoiceWithAmountOpensConfirm() {
+        let app = appWithOnchainInvoice(amountSatoshis: 10000)
+
+        XCTAssertEqual(sendRoute(for: app), .confirm)
+        XCTAssertEqual(paymentSheetRoute(for: app), .confirm)
+    }
+
+    func testOnchainInvoiceWithoutAmountOpensAmount() {
+        let app = appWithOnchainInvoice(amountSatoshis: 0)
+
+        XCTAssertEqual(sendRoute(for: app), .amount)
+        XCTAssertEqual(paymentSheetRoute(for: app), .amount)
+    }
+
+    func testScannedOnchainAmountBelowMinimumIsRejected() async throws {
+        let app = AppViewModel()
+        try await app.handleScannedData("bitcoin:bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x?amount=0.000005")
+        XCTAssertTrue(app.didRejectScannedPayment)
+    }
+
+    func testOnchainInvoiceBelowMinimumOpensAmount() {
+        let app = appWithOnchainInvoice(amountSatoshis: UInt64(Env.dustLimit) - 1)
+
+        XCTAssertEqual(sendRoute(for: app), .amount)
+        XCTAssertEqual(paymentSheetRoute(for: app), .amount)
+    }
+
+    func testOnchainInvoiceAtMinimumOpensConfirm() {
+        let app = appWithOnchainInvoice(amountSatoshis: UInt64(Env.dustLimit))
+
+        XCTAssertEqual(sendRoute(for: app), .confirm)
+    }
+
+    func testOnchainInvoiceWithAmountSkipsQuickpay() {
+        let app = appWithOnchainInvoice(amountSatoshis: 1000)
+
+        XCTAssertEqual(sendRoute(for: app), .confirm)
+    }
+
+    func testContactOnchainInvoiceWithAmountKeepsAmount() {
+        let app = appWithOnchainInvoice(amountSatoshis: 10000)
+        app.contactPaymentContext = ContactPaymentContext(publicKey: "pubkycontact", endpoints: [])
+
+        XCTAssertEqual(contactPaymentRoute(for: app), .amount)
+    }
+
+    func testIncomingRequestWithOnchainAmountOpensConfirm() throws {
+        let app = appWithOnchainInvoice(amountSatoshis: 1000)
+        app.contactPaymentContext = try ContactPaymentContext(
+            publicKey: "pubkycontact",
+            incomingPaymentRequest: incomingPaymentRequest(
+                endpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+            )
+        )
+
+        XCTAssertEqual(contactPaymentRoute(for: app), .confirm)
     }
 
     func testContactWithUsdtLocksOnlyFixedLightningFunding() {
@@ -453,6 +554,30 @@ final class PaymentNavigationHelperTests: XCTestCase {
             settings: settings,
             spendStore: spendStore
         )
+    }
+
+    private func paymentSheetRoute(for app: AppViewModel) -> SendRoute? {
+        let sheets = SheetViewModel()
+        PaymentNavigationHelper.openPaymentSheet(
+            app: app,
+            currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: settings,
+            sheetViewModel: sheets,
+            spendStore: spendStore
+        )
+        return (sheets.activeSheetConfiguration?.data as? SendConfig)?.initialRoute
+    }
+
+    private func appWithOnchainInvoice(amountSatoshis: UInt64) -> AppViewModel {
+        let app = AppViewModel()
+        app.scannedOnchainInvoice = OnChainInvoice(
+            address: "bcrt1qexample",
+            amountSatoshis: amountSatoshis,
+            label: nil,
+            message: nil,
+            params: nil
+        )
+        return app
     }
 
     private var appWithEligibleInvoice: AppViewModel {
