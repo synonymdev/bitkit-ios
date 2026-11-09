@@ -1961,3 +1961,4 @@
 "subscriptions__allowance_auto_paid" = "Pagato automaticamente";
 
 "wallet__balance_updating" = "Aggiornamento del saldo…";
+"lightning__move_to_spark__in_flight_text" = "Il pagamento è in arrivo e compare su Spark una volta completato. Poi chiudi la connessione svuotata per restituire la sua riserva ai Risparmi.";

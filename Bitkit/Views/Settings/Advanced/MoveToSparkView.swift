@@ -20,6 +20,8 @@ struct MoveToSparkView: View {
                 confirm(quote: quote, isMoving: isMoving)
             case let .done(amountSats, feeSats, closeChannel, hasRest):
                 done(amountSats: amountSats, feeSats: feeSats, closeChannel: closeChannel, hasRest: hasRest)
+            case let .inFlight(amountSats):
+                inFlight(amountSats: amountSats)
             case let .tooLarge(amountSats, smallerSats):
                 tooLarge(amountSats: amountSats, smallerSats: smallerSats)
             case let .failed(failure):
@@ -118,6 +120,21 @@ struct MoveToSparkView: View {
                     .accessibilityIdentifier("MoveToSparkClose")
                 }
             }
+        }
+    }
+
+    /// While the payment is in flight its amount may still return to the channel, so closing is not offered yet.
+    private func inFlight(amountSats: UInt64) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header(title: t("lightning__move_to_spark__done_title"), text: t("lightning__move_to_spark__in_flight_text"))
+                .padding(.bottom, 32)
+            MoveToSparkAmountRow(label: t("lightning__move_to_spark__amount"), sats: amountSats)
+                .accessibilityIdentifier("MoveToSparkMoved")
+            illustration("check")
+            CustomButton(title: t("common__ok")) {
+                navigation.navigateBack()
+            }
+            .accessibilityIdentifier("MoveToSparkInFlightOk")
         }
     }
 

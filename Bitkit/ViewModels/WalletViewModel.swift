@@ -1157,7 +1157,15 @@ class WalletViewModel: ObservableObject {
     }
 
     /// Pays from the channels only, with the routing fee capped at `maxFeeMsat`, and waits for the payment to settle.
-    func sendOverChannels(bolt11: String, sats: UInt64, maxFeeMsat: UInt64) async throws -> SettledLightningPayment {
+    /// Pays `bolt11` from the channels only and waits up to `timeout` for its outcome; `nil` means it is still in flight.
+    /// It listens before sending, so an outcome LDK reports before the send returns is not missed, and it matches a
+    /// failure by payment id as well as by hash, since LDK can report one without its hash.
+    func sendOverChannels(
+        bolt11: String,
+        sats: UInt64,
+        maxFeeMsat: UInt64,
+        timeout: Duration = .seconds(120)
+    ) async throws -> SettledLightningPayment? {
         // LDK's default route parameters, with the routing fee capped.
         let params = RouteParametersConfig(
             maxTotalRoutingFeeMsat: maxFeeMsat,
@@ -1165,8 +1173,36 @@ class WalletViewModel: ObservableObject {
             maxPathCount: 10,
             maxChannelSaturationPowerOfHalf: 2
         )
-        let hash = try await lightningService.send(bolt11: bolt11, sats: sats, params: params, channelsOnly: true)
-        return try await watchSend(hash: String(hash))
+        let listenerId = "move-to-spark-\(UUID().uuidString)"
+        let (events, sink) = AsyncStream<Event>.makeStream(bufferingPolicy: .unbounded)
+        addOnEvent(id: listenerId) { sink.yield($0) }
+        defer {
+            removeOnEvent(id: listenerId)
+            sink.finish()
+        }
+        let id = try await String(lightningService.send(bolt11: bolt11, sats: sats, params: params, channelsOnly: true))
+        return try await withThrowingTaskGroup(of: SettledLightningPayment?.self) { group in
+            group.addTask {
+                for await event in events {
+                    switch event {
+                    case let .paymentSuccessful(_, paymentHash, _, feePaidMsat) where paymentHash == id:
+                        return SettledLightningPayment(paymentHash: paymentHash, feePaidSats: (feePaidMsat ?? 0) / 1000)
+                    case let .paymentFailed(paymentId, paymentHash, reason) where paymentHash == id || paymentId == id:
+                        throw AppError(paymentFailureReason: reason)
+                    default:
+                        continue
+                    }
+                }
+                return nil
+            }
+            group.addTask {
+                try await Task.sleep(for: timeout)
+                return nil
+            }
+            let outcome = try await group.next() ?? nil
+            group.cancelAll()
+            return outcome
+        }
     }
 
     /// Observes task cancellation so `waitForLightningPayment`'s task group can unwind after its

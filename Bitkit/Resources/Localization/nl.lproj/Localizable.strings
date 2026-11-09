@@ -1996,3 +1996,4 @@
 "subscriptions__allowance_auto_paid" = "Automatisch betaald";
 
 "wallet__balance_updating" = "Saldo bijwerken…";
+"lightning__move_to_spark__in_flight_text" = "De betaling is onderweg en verschijnt in Spark zodra ze is afgerond. Sluit daarna de lege verbinding om de reserve terug te geven aan uw spaargeld.";

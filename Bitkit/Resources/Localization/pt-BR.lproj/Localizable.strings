@@ -2002,3 +2002,4 @@
 "subscriptions__allowance_auto_paid" = "Pago automaticamente";
 
 "wallet__balance_updating" = "Atualizando saldo…";
+"lightning__move_to_spark__in_flight_text" = "O pagamento está a caminho e aparece no Spark assim que for liquidado. Depois, feche a conexão esvaziada para devolver a reserva à Poupança.";

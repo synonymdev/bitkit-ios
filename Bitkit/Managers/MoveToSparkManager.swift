@@ -99,6 +99,8 @@ enum MoveToSparkState: Equatable {
     case confirm(MoveToSparkQuote, isMoving: Bool)
     /// `hasRest`: the channels can still send enough to move again, as after a smaller amount.
     case done(amountSats: UInt64, feeSats: UInt64, closeChannel: ChannelDetails?, hasRest: Bool)
+    /// The payment had no outcome within the wait; it may still settle or return to the channel.
+    case inFlight(amountSats: UInt64)
     /// `amountSats` did not route in one payment; `smallerSats` is the next amount to try, if any is left.
     case tooLarge(amountSats: UInt64, smallerSats: UInt64?)
     case failed(MoveToSparkFailure)
@@ -108,6 +110,7 @@ enum MoveToSparkState: Equatable {
         case (.quoting, .quoting): true
         case let (.confirm(a, am), .confirm(b, bm)): a == b && am == bm
         case let (.done(a, af, ac, ar), .done(b, bf, bc, br)): a == b && af == bf && ac?.channelId == bc?.channelId && ar == br
+        case let (.inFlight(a), .inFlight(b)): a == b
         case let (.tooLarge(a, asm), .tooLarge(b, bsm)): a == b && asm == bsm
         case let (.failed(a), .failed(b)): a == b
         default: false
@@ -189,11 +192,14 @@ final class MoveToSparkManager {
         do {
             let paymentHash = try Bolt11Invoice.fromStr(invoiceStr: quote.invoice).paymentHash()
             MoveToSparkPayments.insert(String(describing: paymentHash))
-            let settled = try await wallet.sendOverChannels(
+            guard let settled = try await wallet.sendOverChannels(
                 bolt11: quote.invoice,
                 sats: quote.amountSats,
                 maxFeeMsat: MoveToSparkMath.feeCapMsat(feeSats: quote.feeSats)
-            )
+            ) else {
+                state = .inFlight(amountSats: quote.amountSats)
+                return
+            }
             await wallet.syncStateAsync()
             let openChannels = (wallet.channels ?? []).filter(\.isChannelReady)
             state = .done(

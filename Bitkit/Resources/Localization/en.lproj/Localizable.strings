@@ -2080,3 +2080,4 @@
 "usdt__receive_copied" = "Address copied to clipboard.\nMake sure USDT is only sent on the selected network.";
 
 "wallet__balance_updating" = "Updating balance…";
+"lightning__move_to_spark__in_flight_text" = "The payment is on its way and shows in Spark once it settles. Then close the emptied connection to return its reserve to Savings.";

@@ -1854,3 +1854,4 @@
 "wallet__balance_updating" = "S’està actualitzant el saldo…";
 "other__error_keychain" = "Problema de connexió de dades";
 "other__error_keychain_msg" = "No s'ha pogut carregar la clau principal del clauer.";
+"lightning__move_to_spark__in_flight_text" = "El pagament està en camí i apareixerà a Spark quan s'hagi liquidat. Després tanca la connexió buida per tornar-ne la reserva als Estalvis.";

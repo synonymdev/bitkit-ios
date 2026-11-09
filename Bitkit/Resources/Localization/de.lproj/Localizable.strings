@@ -1988,3 +1988,4 @@
 "subscriptions__allowance_auto_paid" = "Automatisch bezahlt";
 
 "wallet__balance_updating" = "Kontostand wird aktualisiert…";
+"lightning__move_to_spark__in_flight_text" = "Die Zahlung ist unterwegs und erscheint in Spark, sobald sie abgeschlossen ist. Schließen Sie dann die geleerte Verbindung, um deren Reserve an das Sparkonto zurückzugeben.";
