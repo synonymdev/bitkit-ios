@@ -40,10 +40,14 @@ struct SettingUpView: View {
 
     /// The speed the user chose, or Later once they chose to wait.
     var speedText: String {
-        let isLater = flow.speed == .later || state == .later
-        return t("lightning__setting_up_speed", variables: [
-            "speed": isLater ? t("lightning__spending_confirm__later") : t("fee__instant__title"),
+        t("lightning__setting_up_speed", variables: [
+            "speed": Self.showsLater(speed: flow.speed, state: state) ? t("lightning__spending_confirm__later") : t("fee__instant__title"),
         ])
+    }
+
+    /// Later too whenever the text says the deposit waits for confirmations.
+    static func showsLater(speed: SparkTransferSpeed, state: SparkClaimState) -> Bool {
+        speed == .later || state == .later || state == .unavailable || state == .notSeen
     }
 
     var buttonTitle: String {
