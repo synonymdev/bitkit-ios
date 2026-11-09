@@ -1991,4 +1991,5 @@
 "subscriptions__allowance_auto_paid" = "Zaplaceno automaticky";
 
 "wallet__balance_updating" = "Aktualizace zůstatku…";
-"lightning__move_to_spark__in_flight_text" = "Platba je na cestě a ve Spark se zobrazí po vypořádání. Poté uzavřete vyprázdněné spojení, aby se jeho rezerva vrátila do Úspor.";
+"lightning__move_to_spark__in_flight_text" = "Platba je na cestě a ve Sparku se zobrazí po vypořádání. Pokud selže, částka zůstane ve vašem připojení.";
+"lightning__move_to_spark__in_flight_title" = "Přesouvání do\n<accent>Spark</accent>";

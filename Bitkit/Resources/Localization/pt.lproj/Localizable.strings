@@ -1650,4 +1650,5 @@
 "wallet__balance_updating" = "A atualizar o saldo…";
 "other__error_keychain" = "Problema de Ligação de Dados";
 "other__error_keychain_msg" = "Não foi possível carregar a chave principal do porta-chaves.";
-"lightning__move_to_spark__in_flight_text" = "O pagamento está a caminho e aparece no Spark quando for liquidado. Depois, feche a conexão esvaziada para devolver a reserva à Poupança.";
+"lightning__move_to_spark__in_flight_text" = "O pagamento está a caminho e aparecerá no Spark quando for liquidado. Se falhar, o valor fica na sua conexão.";
+"lightning__move_to_spark__in_flight_title" = "Movendo para o\n<accent>Spark</accent>";

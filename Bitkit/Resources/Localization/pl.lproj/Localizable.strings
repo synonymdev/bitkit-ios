@@ -2001,4 +2001,5 @@
 "subscriptions__allowance_auto_paid" = "Opłacono automatycznie";
 
 "wallet__balance_updating" = "Aktualizowanie salda…";
-"lightning__move_to_spark__in_flight_text" = "Płatność jest w drodze i pojawi się w Spark po rozliczeniu. Następnie zamknij opróżnione połączenie, aby zwrócić jego rezerwę do Oszczędności.";
+"lightning__move_to_spark__in_flight_text" = "Płatność jest w drodze i pojawi się w Spark po rozliczeniu. Jeśli się nie powiedzie, kwota pozostanie w Twoim połączeniu.";
+"lightning__move_to_spark__in_flight_title" = "Przenoszenie do\n<accent>Spark</accent>";

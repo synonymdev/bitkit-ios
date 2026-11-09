@@ -195,7 +195,8 @@ final class MoveToSparkManager {
             guard let settled = try await wallet.sendOverChannels(
                 bolt11: quote.invoice,
                 sats: quote.amountSats,
-                maxFeeMsat: MoveToSparkMath.feeCapMsat(feeSats: quote.feeSats)
+                maxFeeMsat: MoveToSparkMath.feeCapMsat(feeSats: quote.feeSats),
+                onLateFailure: { [weak self] in self?.lateFailure(amountSats: quote.amountSats) }
             ) else {
                 state = .inFlight(amountSats: quote.amountSats)
                 return
@@ -257,6 +258,23 @@ final class MoveToSparkManager {
             return fitting
         }
         throw MoveToSparkError.tooLarge(amountSats: amountSats)
+    }
+
+    /// A move that was still in flight failed after the wait: its amount stays in the channel, so the screen, if it still
+    /// shows that move, says it could not move, and a toast tells the user wherever they are.
+    private func lateFailure(amountSats: UInt64) {
+        Logger.warn("Move to Spark of '\(amountSats)' sats failed after the wait", context: "MoveToSpark")
+        if state == .inFlight(amountSats: amountSats) {
+            state = .failed(.unknown)
+        }
+        guard !ToastWindowManager.areToastsDisabled() else { return }
+        Haptics.notify(.error)
+        ToastWindowManager.shared.showToast(Toast(
+            type: .error,
+            title: t("wallet__toast_payment_failed_title"),
+            description: t("wallet__payment_failed_description"),
+            accessibilityIdentifier: "PaymentFailedToast"
+        ))
     }
 
     /// Whether the payment failed for want of a route that carries the amount, so a smaller one may route.

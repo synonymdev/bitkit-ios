@@ -1670,4 +1670,5 @@
 "wallet__balance_updating" = "جارٍ تحديث الرصيد…";
 "other__error_keychain" = "مشكلة في الاتصال بالبيانات";
 "other__error_keychain_msg" = "تعذر تحميل المفتاح الأساسي من سلسلة المفاتيح.";
-"lightning__move_to_spark__in_flight_text" = "الدفعة في طريقها وستظهر في Spark بمجرد إتمامها. ثم أغلق الاتصال الفارغ لإعادة احتياطيه إلى المدخرات.";
+"lightning__move_to_spark__in_flight_text" = "الدفعة في طريقها وستظهر في Spark عند اكتمالها. إذا فشلت، يبقى المبلغ في اتصالك.";
+"lightning__move_to_spark__in_flight_title" = "جارٍ النقل إلى\n<accent>Spark</accent>";

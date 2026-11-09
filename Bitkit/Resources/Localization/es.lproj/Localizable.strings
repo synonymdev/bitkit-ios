@@ -1873,4 +1873,5 @@
 "subscriptions__allowance_auto_paid" = "Pagado automáticamente";
 
 "wallet__balance_updating" = "Actualizando saldo…";
-"lightning__move_to_spark__in_flight_text" = "El pago está en camino y aparecerá en Spark cuando se complete. Luego termine la conexión vacía para devolver su reserva a Ahorro.";
+"lightning__move_to_spark__in_flight_text" = "El pago está en camino y aparecerá en Spark cuando se liquide. Si falla, el importe se queda en tu conexión.";
+"lightning__move_to_spark__in_flight_title" = "Moviendo a\n<accent>Spark</accent>";

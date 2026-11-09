@@ -1159,12 +1159,14 @@ class WalletViewModel: ObservableObject {
     /// Pays from the channels only, with the routing fee capped at `maxFeeMsat`, and waits for the payment to settle.
     /// Pays `bolt11` from the channels only and waits up to `timeout` for its outcome; `nil` means it is still in flight.
     /// It listens before sending, so an outcome LDK reports before the send returns is not missed, and it matches a
-    /// failure by payment id as well as by hash, since LDK can report one without its hash.
+    /// failure by payment id as well as by hash, since LDK can report one without its hash. After a timeout it keeps
+    /// listening, and a failure that arrives later calls `onLateFailure`.
     func sendOverChannels(
         bolt11: String,
         sats: UInt64,
         maxFeeMsat: UInt64,
-        timeout: Duration = .seconds(120)
+        timeout: Duration = .seconds(120),
+        onLateFailure: @escaping @MainActor () -> Void = {}
     ) async throws -> SettledLightningPayment? {
         // LDK's default route parameters, with the routing fee capped.
         let params = RouteParametersConfig(
@@ -1176,32 +1178,48 @@ class WalletViewModel: ObservableObject {
         let listenerId = "move-to-spark-\(UUID().uuidString)"
         let (events, sink) = AsyncStream<Event>.makeStream(bufferingPolicy: .unbounded)
         addOnEvent(id: listenerId) { sink.yield($0) }
-        defer {
+        let id: String
+        do {
+            id = try await String(lightningService.send(bolt11: bolt11, sats: sats, params: params, channelsOnly: true))
+        } catch {
             removeOnEvent(id: listenerId)
             sink.finish()
+            throw error
         }
-        let id = try await String(lightningService.send(bolt11: bolt11, sats: sats, params: params, channelsOnly: true))
-        return try await withThrowingTaskGroup(of: SettledLightningPayment?.self) { group in
-            group.addTask {
+        return try await withCheckedThrowingContinuation { continuation in
+            var isAnswered = false
+            Task { @MainActor [weak self] in
+                defer {
+                    self?.removeOnEvent(id: listenerId)
+                    sink.finish()
+                }
                 for await event in events {
+                    let outcome: Result<SettledLightningPayment?, Error>
                     switch event {
                     case let .paymentSuccessful(_, paymentHash, _, feePaidMsat) where paymentHash == id:
-                        return SettledLightningPayment(paymentHash: paymentHash, feePaidSats: (feePaidMsat ?? 0) / 1000)
+                        outcome = .success(SettledLightningPayment(paymentHash: paymentHash, feePaidSats: (feePaidMsat ?? 0) / 1000))
                     case let .paymentFailed(paymentId, paymentHash, reason) where paymentHash == id || paymentId == id:
-                        throw AppError(paymentFailureReason: reason)
+                        outcome = .failure(AppError(paymentFailureReason: reason))
                     default:
                         continue
                     }
+                    if isAnswered {
+                        if case .failure = outcome {
+                            onLateFailure()
+                        }
+                    } else {
+                        isAnswered = true
+                        continuation.resume(with: outcome)
+                    }
+                    return
                 }
-                return nil
             }
-            group.addTask {
-                try await Task.sleep(for: timeout)
-                return nil
+            Task { @MainActor in
+                try? await Task.sleep(for: timeout)
+                guard !isAnswered else { return }
+                isAnswered = true
+                continuation.resume(returning: nil)
             }
-            let outcome = try await group.next() ?? nil
-            group.cancelAll()
-            return outcome
         }
     }
 
