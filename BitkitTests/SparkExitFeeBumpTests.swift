@@ -169,6 +169,21 @@ final class SparkExitFeeBumpTests: XCTestCase {
         }
     }
 
+    /// A failed-leaf retry with steps of its own still to confirm keeps their reminders: it is not waiting only on the
+    /// operators.
+    func testAFailedLeafRetryWithStepsToConfirmIsNotWaitingOnlyOnTheOperators() {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.adopt(SparkExitFixtures.recovery([SparkExitFixtures.tx("c1", kind: .cooperative)], failed: [failure]))
+        record.failedLeafRetrySince = 1000
+        XCTAssertFalse(record.isWaitingForOperators, "c1 still has to confirm")
+
+        record.recovery = StoredRecovery(SparkExitFixtures.recovery(
+            [SparkExitFixtures.tx("c1", kind: .cooperative, status: .confirmed(blockHeight: 1001))],
+            failed: [failure]
+        ))
+        XCTAssertTrue(record.isWaitingForOperators)
+    }
+
     /// Short at the higher rate: what the inputs lack, plus the input fee of the payment to come at the new rate
     /// (68 vB at 10 sat/vB).
     func testFeeBumpShortfallIsWhatTheInputsLackPlusTheNextInput() async throws {

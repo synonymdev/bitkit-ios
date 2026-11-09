@@ -436,9 +436,16 @@ struct SparkExitRecord: Codable, Equatable {
         isRetryingFailedLeaves || (isActive && (!(recovery?.response.failed.isEmpty ?? true) || !(waitingLeafIds ?? []).isEmpty))
     }
 
-    /// Waiting for the operators to co-sign leaves they moved on-chain: nothing of the exit's own is left to send.
+    /// Waiting for the operators to co-sign leaves they moved on-chain: nothing of the exit's own is left to send or
+    /// confirm, so a retry whose steps still confirm keeps their reminders.
     var isWaitingForOperators: Bool {
-        isRetryingFailedLeaves && !(recovery?.response.failed.isEmpty ?? true)
+        guard isRetryingFailedLeaves, let recovery = recovery?.response, !recovery.failed.isEmpty else { return false }
+        return recovery.transactions.allSatisfy {
+            if case .confirmed = $0.status {
+                return true
+            }
+            return false
+        }
     }
 
     var failedLeavesSats: UInt64 {
