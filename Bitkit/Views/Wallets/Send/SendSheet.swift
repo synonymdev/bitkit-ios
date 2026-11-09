@@ -768,7 +768,7 @@ struct SendSheet: View {
             return .failed
         }
 
-        if let lnurlPayData = app.lnurlPayData, let requestedAmount {
+        if let lnurlPayData = app.lnurlPayData, app.paykitRoute?.serviceLeg == nil, let requestedAmount {
             let minimumAmount = max(1, lnurlPayData.minSendableSat)
             guard requestedAmount >= minimumAmount else {
                 showPaymentSetupFailure(

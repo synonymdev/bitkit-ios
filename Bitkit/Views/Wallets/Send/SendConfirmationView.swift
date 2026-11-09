@@ -2182,7 +2182,8 @@ struct SendConfirmationView: View {
         }
         guard request.pricing.conversion != nil else { return false }
         let terms = try? request.payment(using: app.paykitPaymentMethod, quoteId: app.paykitPaymentTerms?.quoteId)
-        let minimumAmount = app.selectedWalletToPayFrom == .lightning ? (app.lnurlPayData?.minSendableSat ?? 1) : UInt64(Env.dustLimit)
+        let paysLightning = app.selectedWalletToPayFrom == .lightning && app.paykitRoute?.serviceLeg == nil
+        let minimumAmount = paysLightning ? (app.lnurlPayData?.minSendableSat ?? 1) : UInt64(Env.dustLimit)
         let meetsMinimum = terms.map { $0.amount.atomic >= minimumAmount } == true
         if rebindMethod, !app.paykitUsesUsdt, !isSubmittingPayment,
            let previous = app.paykitPaymentTerms, previous.amount.asset == .btc, app.paykitReviewedAmount == previous.amount,

@@ -764,6 +764,10 @@ extension AppViewModel {
     /// endpoint, so it takes that endpoint's price, the one the leg and its proof pay.
     func paykitBitcoinMethod(for wallet: WalletType) -> PublicPaykitService.MethodId {
         if wallet == .lightning {
+            // A routed Spark leg pays its on-chain endpoint, whatever Lightning endpoint the contact also has.
+            if let leg = paykitRoute?.serviceLeg, let method = PublicPaykitService.MethodId(rawValue: leg.endpoint.methodId) {
+                return method
+            }
             if lnurlPayData != nil {
                 return .bitcoinLightningLnurl
             }
