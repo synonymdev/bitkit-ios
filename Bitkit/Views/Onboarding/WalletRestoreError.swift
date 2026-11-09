@@ -4,6 +4,7 @@ struct WalletRestoreError: View {
     var title = t("onboarding__restore_failed_header")
     var message = t("onboarding__restore_failed_text")
     let onRetry: () async -> Void
+    var onConnectionSettings: (() -> Void)?
     var onExportLogs: (() -> Void)?
 
     var body: some View {
@@ -25,6 +26,12 @@ struct WalletRestoreError: View {
                 .frame(maxWidth: .infinity, alignment: .center)
 
             Spacer()
+
+            if let onConnectionSettings {
+                CustomButton(title: t("onboarding__connection_settings"), variant: .secondary, action: onConnectionSettings)
+                    .accessibilityIdentifier("ConnectionRecoveryButton")
+                    .padding(.bottom, 16)
+            }
 
             CustomButton(title: t("common__try_again")) {
                 Haptics.play(.light)

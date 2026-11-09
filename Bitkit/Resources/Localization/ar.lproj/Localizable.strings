@@ -1578,6 +1578,8 @@
 "subscriptions__allowance_limit_description" = "طلب بقيمة {amount} من {name} يتجاوز مخصصك. راجعه للدفع.";
 "subscriptions__allowance_auto_paid" = "مدفوع تلقائيًا";
 
+"onboarding__connection_settings" = "إعدادات الاتصال";
+"onboarding__connection_saved" = "تم الحفظ. أعد المحاولة لمتابعة الاستعادة.";
 "wallet__balance_updating" = "جارٍ تحديث الرصيد…";
 "other__error_keychain" = "مشكلة في الاتصال بالبيانات";
 "other__error_keychain_msg" = "تعذر تحميل المفتاح الأساسي من سلسلة المفاتيح.";

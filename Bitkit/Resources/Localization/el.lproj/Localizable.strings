@@ -1633,6 +1633,8 @@
 "subscriptions__allowance_limit_description" = "Ένα αίτημα {amount} από {name} υπερβαίνει την προέγκρισή σου. Έλεγξέ το για να πληρώσεις.";
 "subscriptions__allowance_auto_paid" = "Πληρώθηκε αυτόματα";
 
+"onboarding__connection_settings" = "Ρυθμίσεις σύνδεσης";
+"onboarding__connection_saved" = "Αποθηκεύτηκε. Δοκιμάστε ξανά για να συνεχίσετε την επαναφορά.";
 "wallet__balance_updating" = "Ενημέρωση υπολοίπου…";
 "other__error_keychain" = "Πρόβλημα Σύνδεσης Δεδομένων";
 "other__error_keychain_msg" = "Δεν ήταν δυνατή η φόρτωση του κύριου κλειδιού από την κλειδοθήκη.";
