@@ -167,6 +167,8 @@ jobs:
   prepare-wallets:
     needs: [e2e-branch, resolve-e2e-ref, migration-plan]
     uses: synonymdev/bitkit-e2e-tests/.github/workflows/migration-wallet-setup.yml@main
+    secrets:
+      BLOCKTANK_REGTEST_AUTH: ${{ secrets.BLOCKTANK_REGTEST_AUTH }}
     strategy:
       fail-fast: false
       matrix:
@@ -191,6 +193,7 @@ jobs:
     name: ios RN - ${{ matrix.scenario.version }} - ${{ matrix.scenario.name }}
     env:
       BACKEND: regtest
+      BLOCKTANK_REGTEST_AUTH: ${{ secrets.BLOCKTANK_REGTEST_AUTH }}
       MIGRATION_EXTENDED: ${{ inputs.extended_rn || false }}
 
     steps:
@@ -367,6 +370,7 @@ jobs:
     name: ios native - ${{ matrix.scenario.version }} - ${{ matrix.scenario.name }}
     env:
       BACKEND: regtest
+      BLOCKTANK_REGTEST_AUTH: ${{ secrets.BLOCKTANK_REGTEST_AUTH }}
       MIGRATION_EXTENDED: ${{ inputs.extended_rn || false }}
 
     steps:
