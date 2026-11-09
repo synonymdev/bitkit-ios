@@ -69,7 +69,7 @@ enum PubkySwapsRouteService {
         let payoutAddress = try await LightningService.shared.newAddress()
         let report = try await pubkySwapsRestore(
             providers: contacts + Env.pubkySwapsProviders,
-            sentPayments: await sentPayments(),
+            sentPayments: try await sentPayments(),
             electrumUrl: Env.electrumServerUrl,
             payoutAddress: payoutAddress,
             feeRateSatVb: claimFeeRateSatVb,
@@ -84,8 +84,12 @@ enum PubkySwapsRouteService {
     }
 
     /// The Lightning payments this node sent, pending or settled, by hash and the amount paid to the payee.
-    private static func sentPayments() async -> [PubkySwapSentPayment] {
-        (await LightningService.shared.listPayments() ?? []).compactMap { payment in
+    private static func sentPayments() async throws -> [PubkySwapSentPayment] {
+        // Without the node's payments no listed swap can be checked, so restore nothing rather than nothing silently.
+        guard let payments = await LightningService.shared.listPayments() else {
+            throw AppError(message: "Lightning node not running", debugMessage: "listPayments returned nil")
+        }
+        return payments.compactMap { payment in
             guard payment.direction == .outbound, payment.status != .failed,
                   case let .bolt11(hash, _, _, _, _) = payment.kind,
                   let amountMsat = payment.amountMsat
