@@ -193,9 +193,10 @@ final class SparkManager: ChannelFreeLightningRail {
     nonisolated static func sdkConfig(network: BreezSdkSpark.Network, apiKey: String?) -> BreezSdkSpark.Config {
         var config = defaultConfig(network: network)
         config.apiKey = apiKey
-        // No Breez data sync server and no Lightning address server: Bitkit uses neither.
+        // No Breez data sync server, no Lightning address server and no third-party input lookups: Bitkit uses none.
         config.realTimeSyncServerUrl = nil
         config.lnurlDomain = nil
+        config.useDefaultExternalInputParsers = false
         // Lowering it below the spread keeps the deposit from being claimed early, and does not hold back its claim at
         // maturity. An early claim is made only when the user chose Instant (`claimEarly`).
         config.maxDepositClaimFee = MaxFee(
