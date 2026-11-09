@@ -575,10 +575,7 @@ final class SparkManager: ChannelFreeLightningRail {
             await recordContactWithdrawal(payment, txId: txId, pending: pending)
         } else if allowClear, Self.canCloseUnlisted(pending, now: now) {
             Logger.info("Closed a Spark contact withdrawal Spark never listed", context: "SparkManager")
-            Self.pendingContactWithdrawal = nil
-            if let request = pending.request {
-                await PaykitPaymentProofService.shared.failSparkOnchainPayment(requestId: request.id, identity: request.identity)
-            }
+            await Self.closeUnsentWithdrawal(pending, releaseProof: Self.releaseUnsentProof)
         }
     }
 
@@ -612,10 +609,7 @@ final class SparkManager: ChannelFreeLightningRail {
     /// saved, so a failed or interrupted write is retried from the journal.
     private func recordContactWithdrawal(_ payment: Payment, txId: String, pending: SparkContactWithdrawal) async {
         guard payment.status != .failed else {
-            Self.pendingContactWithdrawal = nil
-            if let request = pending.request {
-                await PaykitPaymentProofService.shared.failSparkOnchainPayment(requestId: request.id, identity: request.identity)
-            }
+            await Self.closeUnsentWithdrawal(pending, releaseProof: Self.releaseUnsentProof)
             return
         }
         Self.contactWithdrawalTxIds.insert(txId)
@@ -652,6 +646,23 @@ final class SparkManager: ChannelFreeLightningRail {
         } else {
             Logger.warn("Kept the Spark contact withdrawal journal: its local records are not all saved yet", context: "SparkManager")
         }
+    }
+
+    /// Closes the journal of a withdrawal that never went out, but only once its request's started proof is released:
+    /// a proof left behind would block the request, so the journal stays for the next sync to retry.
+    static func closeUnsentWithdrawal(
+        _ pending: SparkContactWithdrawal,
+        releaseProof: (SparkContactWithdrawal.PaykitRequest) async -> Bool
+    ) async {
+        if let request = pending.request, await !releaseProof(request) {
+            Logger.warn("Kept the Spark contact withdrawal journal: its unsent proof is not released yet", context: "SparkManager")
+            return
+        }
+        pendingContactWithdrawal = nil
+    }
+
+    private static func releaseUnsentProof(_ request: SparkContactWithdrawal.PaykitRequest) async -> Bool {
+        await PaykitPaymentProofService.shared.failSparkOnchainPayment(requestId: request.id, identity: request.identity)
     }
 
     /// Saves the proof, then the activity, then its tags; true only when every write succeeded.

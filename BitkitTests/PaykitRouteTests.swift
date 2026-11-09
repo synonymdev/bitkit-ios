@@ -207,6 +207,24 @@ final class PaykitRouteTests: XCTestCase {
         XCTAssertFalse(tagsFailed)
     }
 
+    func testUnsentWithdrawalKeepsItsJournalUntilTheProofIsReleased() async {
+        snapshotAppDefaultsDomain()
+        let request = SparkContactWithdrawal.PaykitRequest(
+            id: PaykitPaymentRequest.ID(paymentRequestId: "request", counterparty: "payee"),
+            identity: "payer"
+        )
+        let pending = SparkContactWithdrawal(address: onchain.value, amountSats: 20000, contact: "contact", startedAt: 1000, request: request)
+        SparkManager.pendingContactWithdrawal = pending
+
+        await SparkManager.closeUnsentWithdrawal(pending) { _ in false }
+        XCTAssertEqual(SparkManager.pendingContactWithdrawal, pending, "A proof that wasn't released keeps the journal, so the next sync retries it")
+
+        var released: SparkContactWithdrawal.PaykitRequest?
+        await SparkManager.closeUnsentWithdrawal(pending) { released = $0; return true }
+        XCTAssertEqual(released, request)
+        XCTAssertNil(SparkManager.pendingContactWithdrawal)
+    }
+
     func testLegPreparesTheRequestBeforeItsProofIsStarted() async throws {
         var steps: [String] = []
         let identity = try await PaykitRouteService.startLegRequestProof(

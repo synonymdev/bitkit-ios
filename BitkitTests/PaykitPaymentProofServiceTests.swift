@@ -1926,6 +1926,27 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertTrue(remaining.isEmpty)
     }
 
+    func testAnUnsentSparkWithdrawalProofThatCantBeDroppedSaysSo() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let store = PaymentProofMemoryStore()
+        let service = paymentProofService(sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store)
+
+        try await service.prepare(request: request, paymentAppId: "paykit-server", paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.markOnchainPaymentStarted(request, address: onchainAddress)
+        await store.failNextSave()
+        let failed = await service.failSparkOnchainPayment(requestId: request.id, identity: identity)
+
+        XCTAssertFalse(failed, "The journal stays open only when the caller learns the proof is still there")
+        let remaining = await store.snapshot()
+        XCTAssertEqual(remaining.count, 1)
+        let retried = await service.failSparkOnchainPayment(requestId: request.id, identity: identity)
+        XCTAssertTrue(retried)
+        let afterRetry = await store.snapshot()
+        XCTAssertTrue(afterRetry.isEmpty)
+    }
+
     func testAnUnsentSparkWithdrawalGivesBackItsPrivateListAfterARelaunch() async throws {
         snapshotAppDefaultsDomain()
         UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)

@@ -1360,12 +1360,14 @@ actor PaykitPaymentProofService {
     }
 
     /// Drops the started on-chain proof of a request whose Spark withdrawal never went out, giving back the private list
-    /// version it consumed when the contact's list is still at exactly that version.
+    /// version it consumed when the contact's list is still at exactly that version. False when the proof could not be
+    /// dropped, so the withdrawal's journal stays open for a retry.
+    @discardableResult
     func failSparkOnchainPayment(
         requestId: PaykitPaymentRequest.ID,
         identity: String,
         privatePaykitService: PrivatePaykitService = .shared
-    ) async {
+    ) async -> Bool {
         do {
             try await mutationLock.withLock {
                 let proofs = try await loadProofs()
@@ -1392,8 +1394,10 @@ actor PaykitPaymentProofService {
                     throw error
                 }
             }
+            return true
         } catch {
             logWarning("Failed to clear an unsent Spark on-chain proof: \(error)")
+            return false
         }
     }
 
