@@ -159,6 +159,7 @@ final class SparkTransferFlow {
     /// its results, which only the current transfer's screen shows.
     @ObservationIgnored private var offers: [String: SparkClaimOffer] = [:]
     @ObservationIgnored private var ceilings: [String: UInt64] = [:]
+    @ObservationIgnored private var approved: (ceilingSats: UInt64, speed: SparkTransferSpeed)?
     @ObservationIgnored private var watchTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var quoteRequestId = 0
     @ObservationIgnored private let operations: SparkClaimOperations
@@ -270,9 +271,9 @@ final class SparkTransferFlow {
     // MARK: Claim
 
     /// Records the broadcast deposit and starts its claim for the chosen speed.
-    func onBroadcast(txid: String) {
+    func onBroadcast(txid: String, ceilingSats: UInt64? = nil) {
         self.txid = txid
-        ceilings[txid] = quote?.claimFees.instantMaxSats ?? 0
+        ceilings[txid] = ceilingSats ?? quote?.claimFees.instantMaxSats ?? 0
         offers[txid] = nil
         claimState = speed == .instant ? .looking : .later
         watchTasks[txid]?.cancel()
@@ -280,6 +281,31 @@ final class SparkTransferFlow {
         if speed == .instant {
             watch(txid: txid)
         }
+    }
+
+    /// Records the early-claim ceiling and speed the user swiped, as the confirm screen keeps requoting while a payment
+    /// whose outcome is unknown waits on the pending screen.
+    func approveSwipe() {
+        approved = (ceilingSats: quote?.claimFees.instantMaxSats ?? 0, speed: speed)
+    }
+
+    /// Starts the claim of a funding whose outcome was unknown at the swipe, at the ceiling and speed then approved; with
+    /// nothing approved, an early claim asks first.
+    func onRecoveredBroadcast(txid: String) {
+        let approved = approved ?? (ceilingSats: 0, speed: speed)
+        speed = approved.speed
+        onBroadcast(txid: txid, ceilingSats: approved.ceilingSats)
+    }
+
+    /// Ends the transfer on screen once Spark lists its deposit as claimed, whatever the speed, so Later or Wait
+    /// doesn't stay in progress after the deposit reached spending.
+    func noteSettled(_ deposits: [SparkDeposit]) {
+        guard let txid, !claimState.isDone,
+              deposits.contains(where: { $0.isClaimed && $0.txid.caseInsensitiveCompare(txid) == .orderedSame })
+        else { return }
+        watchTasks[txid]?.cancel()
+        watchTasks[txid] = nil
+        claimState = .adding
     }
 
     /// Accepts the early claim at the repriced fee.

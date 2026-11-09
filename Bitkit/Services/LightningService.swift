@@ -1121,11 +1121,12 @@ class LightningService: NodeLifecycleService {
     }
 
     /// Called once the rail reports the attempt failed or lists none, so a channel retry isn't held while it can't list.
-    /// Skipped while a rail send of the invoice is in flight, as that retry holds it again.
-    func releaseRailAttempt(paymentHash: String) {
+    /// With `unlessInFlight`, skipped while a rail send of the invoice is in flight, as that retry holds it again.
+    func releaseRailAttempt(paymentHash: String, unlessInFlight: Bool = true) {
         let hash = paymentHash.lowercased()
         eventCallbackLock.withLock {
-            guard !railSendsInFlight.contains(hash), var hashes = railAttemptsStore.stringArray(forKey: Self.railAttemptsKey),
+            guard !unlessInFlight || !railSendsInFlight.contains(hash),
+                  var hashes = railAttemptsStore.stringArray(forKey: Self.railAttemptsKey),
                   hashes.contains(hash)
             else { return }
             hashes.removeAll { $0 == hash }
@@ -1722,7 +1723,8 @@ extension LightningService {
     /// Spark runs before the node starts, so its events wait until the node's event callback is set rather than being lost.
     func emitChannelFreeRailEvent(_ event: Event) {
         if case let .paymentFailed(_, paymentHash?, _) = event {
-            releaseRailAttempt(paymentHash: paymentHash)
+            // The failure of the send itself, which may arrive while its send call is still returning.
+            releaseRailAttempt(paymentHash: paymentHash, unlessInFlight: false)
         }
         if isStaleFailure(event, from: .channelFree) {
             Logger.info("Ignored a Spark failure for a payment retried over a channel: \(event)", context: "LightningService")

@@ -14,7 +14,7 @@ concurrency:
 env:
   GIT_LFS_SKIP_SMUDGE: "1"
   # Keep in step with `--minversion` in .swiftformat.
-  SWIFTFORMAT_VERSION: "0.64.0"
+  SWIFTFORMAT_VERSION: "0.64.6"
 
 jobs:
   swiftformat:

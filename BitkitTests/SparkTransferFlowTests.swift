@@ -154,6 +154,40 @@ final class SparkTransferFlowTests: XCTestCase {
         XCTAssertEqual(flow.claimState, .later, "Its result stays off the new transfer's screen")
     }
 
+    @MainActor
+    func testALaterTransferEndsOnceSparkClaimsItsDeposit() {
+        let flow = SparkTransferFlow(amountSats: 100_000, speed: .later, quote: quote)
+        flow.onBroadcast(txid: "txid")
+
+        flow.noteSettled([SparkDeposit(txid: "txid", amountSats: 100_000, isClaimed: false)])
+        XCTAssertEqual(flow.claimState, .later)
+        flow.noteSettled([SparkDeposit(txid: "other", amountSats: 100_000, isClaimed: true)])
+        XCTAssertEqual(flow.claimState, .later)
+        flow.noteSettled([SparkDeposit(txid: "txid", amountSats: 100_000, isClaimed: true)])
+        XCTAssertEqual(flow.claimState, .adding, "Later stayed in progress after the deposit reached spending")
+    }
+
+    @MainActor
+    func testARecoveredFundingClaimsEarlyOnlyUpToTheSwipedCeiling() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
+        flow.quote = quote(instantMax: 337)
+        flow.approveSwipe()
+        // The confirm screen requoted under the pending sheet while fee rates rose.
+        flow.quote = quote(instantMax: 3010)
+
+        flow.onRecoveredBroadcast(txid: "txid")
+        await flow.waitForClaim()
+
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 800), "Paid an early claim fee the user never approved")
+    }
+
+    private func quote(instantMax: UInt64) -> SparkTransferQuote {
+        SparkTransferQuote(
+            address: "bcrt1qtest", satsPerVbyte: 6, networkFeeSats: 577, depositSats: 100_000,
+            claimFees: SparkClaimFees(instantMaxSats: instantMax, laterSats: 198)
+        )
+    }
+
     /// A flow whose poll answers with `offers` in turn (nil once they run out) and whose claims answer with `claims`.
     @MainActor
     private func pollingFlow(offers: [SparkClaimOffer.Kind?], claims: [SparkEarlyClaim] = [], pollAttempts: Int? = nil) -> SparkTransferFlow {
