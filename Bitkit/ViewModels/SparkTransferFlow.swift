@@ -35,6 +35,16 @@ struct SparkTransferQuote: Equatable {
         depositSats.saturatingAdd(networkFeeSats)
     }
 
+    /// How much more this fresh quote asks than the approved one at `speed`, 0 when it asks no more, so a rise needs
+    /// another swipe: the larger of the rise in the Total leaving savings and the fall in what reaches spending. A lower
+    /// fee on one side doesn't offset a higher one on the other.
+    func increase(over approved: SparkTransferQuote, speed: SparkTransferSpeed) -> UInt64 {
+        max(
+            totalSats.saturatingSub(approved.totalSats),
+            approved.toSpendingSats(for: speed).saturatingSub(toSpendingSats(for: speed))
+        )
+    }
+
     /// Whether the deposit stays claimable at the most Spark may charge to claim it, at either speed: the mature claim
     /// runs at that hour's rate under the same cap, so a deposit at or below `instantMaxSats` could be left unclaimed.
     var coversClaimFee: Bool {
@@ -352,5 +362,34 @@ final class SparkTransferFlow {
         }
         Logger.warn("Spark did not list deposit \(txid) in time", context: "SparkTransferFlow")
         setClaimState(.notSeen, for: txid)
+    }
+}
+
+/// A transfer to the Spark deposit address whose outcome was unknown, resolved later from the Send sheet's pending screen.
+enum SparkFundingRecovery {
+    /// Set while Spending Confirm is open: it then owns a recovered funding, at the speed the user chose.
+    @MainActor static var confirmScreenOpen = false
+
+    /// The Send sheet's pending screen goes home only when no open Spending Confirm owns the recovered funding, so one
+    /// path decides the claim speed and where the user lands.
+    static func pendingScreenGoesHome(confirmScreenOpen: Bool) -> Bool {
+        !confirmScreenOpen
+    }
+
+    /// Lists the deposit as a transfer and tells Spark about it, so it shows as pending and is claimed.
+    static func handOff(txid: String, amountSats: UInt64) async {
+        await CoreService.shared.activity.markOnchainActivityAsTransfer(txId: txid)
+        await SparkManager.shared.onDepositBroadcast(txid: txid, amountSats: amountSats)
+    }
+
+    /// Hands a recovered Spark funding to Spark and returns true, so the caller leaves the funding flow whose confirm
+    /// screen would offer the sent transfer again; false for any other resolution.
+    static func follow(
+        _ resolution: OnchainSendLocalResolution,
+        handOff: (String, UInt64) async -> Void = { await handOff(txid: $0, amountSats: $1) }
+    ) async -> Bool {
+        guard resolution.isSparkFunding else { return false }
+        await handOff(resolution.txid, resolution.amountSats)
+        return true
     }
 }

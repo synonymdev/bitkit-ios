@@ -62,6 +62,14 @@ final class SparkManager: ChannelFreeLightningRail {
         sdk != nil
     }
 
+    /// Counts connects in this process, nil while disconnected, so a backup can tell a new connection from observing
+    /// that restarted while Spark stayed connected.
+    var connectionId: Int? {
+        sdk == nil ? nil : connectionCount
+    }
+
+    @ObservationIgnored private var connectionCount = 0
+
     /// Spark's regtest has no Lightning network, so there a Lightning invoice from another Spark wallet is paid as a
     /// Spark transfer, which lets two dev builds pay each other's invoices.
     nonisolated static var prefersSpark: Bool {
@@ -144,6 +152,7 @@ final class SparkManager: ChannelFreeLightningRail {
             await self?.onSdkEvent(event)
         })
         sdk = connected
+        connectionCount += 1
         Logger.info("Connected Spark wallet on '\(network)'", context: "SparkManager")
         await importRestoredExitState(walletIndex: walletIndex)
         Self.exitStateChanged.send()
@@ -176,6 +185,7 @@ final class SparkManager: ChannelFreeLightningRail {
         if LightningService.shared.channelFreeRail === self {
             LightningService.shared.channelFreeRail = nil
         }
+        LightningService.shared.forgetRailAttempts()
         var disconnectError: Error?
         if let sdk {
             if let listenerId {
@@ -664,10 +674,31 @@ final class SparkManager: ChannelFreeLightningRail {
         return result
     }
 
+    /// Payment hashes whose every Lightning send failed, so a hold on a channel retry can be released.
+    nonisolated static func failedSendHashes(_ payments: [Payment]) -> [String] {
+        var failed: [String] = []
+        var live: Set<String> = []
+        for payment in payments where payment.paymentType == .send {
+            guard case let .lightning(_, _, _, htlcDetails, _, _, _, _) = payment.details else { continue }
+            if payment.status == .failed {
+                failed.append(htlcDetails.paymentHash)
+            } else {
+                live.insert(htlcDetails.paymentHash)
+            }
+        }
+        return failed.filter { !live.contains($0) }
+    }
+
     private func syncActivities() async throws {
         let payments = try await requireSdk().listPayments(request: ListPaymentsRequest()).payments
         for payment in payments {
             await recordActivity(payment)
+        }
+        // A send that failed while the app was closed released no hold on a channel retry. Spark's list is read again,
+        // so a retry the user started while the activities were recorded keeps its hold.
+        guard let latest = try? await requireSdk().listPayments(request: ListPaymentsRequest()).payments else { return }
+        for paymentHash in Self.failedSendHashes(latest) {
+            LightningService.shared.releaseRailAttempt(paymentHash: paymentHash)
         }
     }
 

@@ -422,14 +422,14 @@ class TransferViewModel: ObservableObject {
                 tags: [],
                 contact: nil,
                 createdAt: UInt64(Date().timeIntervalSince1970)
-            )
+            ),
+            isSparkFunding: true
         )
         guard case let .accepted(txid) = result else {
             throw AppError(message: t("wallet__send_error_tx_failed"), debugMessage: "Spark funding outcome: \(result)")
         }
         _ = try? await attempts.resumeAcceptedOrdinarySend(walletId: walletId, observedTxid: txid)
-        await CoreService.shared.activity.markOnchainActivityAsTransfer(txId: txid)
-        SparkManager.shared.onDepositBroadcast(txid: txid, amountSats: amountSats)
+        await SparkFundingRecovery.handOff(txid: txid, amountSats: amountSats)
         Logger.info("Funded Spark wallet with \(amountSats) sats in \(txid)", context: "TransferViewModel")
         await onBalanceRefresh?()
         return txid
@@ -727,7 +727,8 @@ class TransferViewModel: ObservableObject {
             // Pay the hold invoice. `send` returns a payment id as soon as the HTLC is dispatched;
             // a hold invoice never settles until Boltz claims on-chain, so this does not block on
             // the claim. A failure to dispatch the payment throws and is surfaced immediately.
-            let paymentId = try await lightningService.send(bolt11: swap.invoice)
+            // Quoted against the channels; a deselected Spark balance must never pay it if the channels can't.
+            let paymentId = try await lightningService.send(bolt11: swap.invoice, channelsOnly: true)
 
             let result = await awaitSwapOutcome(
                 swapId: swap.id,

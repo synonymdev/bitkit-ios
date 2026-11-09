@@ -6,10 +6,12 @@
     the same or less pays at once; one that costs more pays nothing: the screen shows the new amounts, a
     "Fees changed" toast explains the increase, and the next swipe pays them.
 
-    This journey covers the cheaper path and the re-quote after an amount change. A larger UTXO confirms
-    while Spending Confirm is open, so the fee priced at the swipe spends one input, costs less and pays
-    at once. The higher-total path (the "Fees changed" toast) needs fee rates to rise between the quote
-    and the swipe, which is not a listed capability.
+    This journey covers the no-higher path and the re-quote after an amount change. A larger UTXO confirms
+    while Spending Confirm is open, so the transfer is priced at the swipe against a changed wallet. Coin
+    selection may keep two inputs (150 000 + 150 000, or 150 000 + 500 000) at the same fee, or spend the
+    new UTXO alone at a lower fee; either way the fresh price costs no more than the one shown, so the
+    swipe pays at once. The higher-total path (the "Fees changed" toast) needs fee rates to rise between
+    the quote and the swipe, which is not a listed capability.
 
     Precondition: a freshly onboarded Debug build on the staging regtest backend with Spark connected,
     no spending balance and exactly two confirmed on-chain UTXOs of 150 000 sats each (two

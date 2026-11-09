@@ -77,6 +77,15 @@ struct SpendingConfirm: View {
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .offlineOverlay(title: t("lightning__transfer__nav_title"))
+        .onAppear { SparkFundingRecovery.confirmScreenOpen = true }
+        .onDisappear { SparkFundingRecovery.confirmScreenOpen = false }
+        .onReceive(OnchainSendAttemptService.localResolutionPublisher.receive(on: DispatchQueue.main)) { resolution in
+            guard Self.followsRecovered(resolution, isPaying: isPaying), !hideSwipeButton else { return }
+            // This screen owns the recovered funding: follow it at the chosen speed, as a swipe would have.
+            flow.onBroadcast(txid: resolution.txid)
+            hideSwipeButton = true
+            navigation.navigate(.settingUp)
+        }
         .task(id: QuoteInputs(amountSats: flow.amountSats, isMaxAmount: flow.isMaxAmount, speed: flow.speed)) {
             guard !SparkTransferFlow.isRunningInPreview else { return }
             while !Task.isCancelled {
@@ -121,16 +130,14 @@ struct SpendingConfirm: View {
             )
             throw SpendingFeesIncreasedError()
         }
-        let speed = flow.speed
-        let shownCost = shown.networkFeeSats.saturatingAdd(shown.claimFeeSats(for: speed))
-        let freshCost = fresh.networkFeeSats.saturatingAdd(fresh.claimFeeSats(for: speed))
-        if freshCost > shownCost {
+        let increase = fresh.increase(over: shown, speed: flow.speed)
+        if increase > 0 {
             app.toast(
                 type: .info,
                 title: t("lightning__spending_confirm__fees_changed_title"),
                 description: t(
                     "lightning__spending_confirm__fees_changed_network",
-                    variables: ["amount": currency.primaryAmountText(sats: freshCost - shownCost)]
+                    variables: ["amount": currency.primaryAmountText(sats: increase)]
                 )
             )
             throw SpendingFeesIncreasedError()
@@ -159,6 +166,14 @@ struct SpendingConfirm: View {
             )
             throw error
         }
+    }
+}
+
+extension SpendingConfirm {
+    /// A Spark funding that resolved on its own while this screen stayed open, after an unknown outcome the user left
+    /// pending, would let the swipe send the transfer again; the swipe's own funding resolves while it is paying.
+    static func followsRecovered(_ resolution: OnchainSendLocalResolution, isPaying: Bool) -> Bool {
+        resolution.isSparkFunding && !isPaying
     }
 }
 

@@ -616,6 +616,13 @@ struct SendPendingScreen: View {
         foundActivity = .onchain(resolution.activity)
         onchainAttempt?.status = .accepted
         onchainAttempt?.localFollowupComplete = true
+        if resolution.isSparkFunding {
+            sheets.hideSheet(reason: "Recovered Spark funding")
+            // An open Spending Confirm follows it at the chosen speed; otherwise leave the funding flow for home.
+            if SparkFundingRecovery.pendingScreenGoesHome(confirmScreenOpen: SparkFundingRecovery.confirmScreenOpen) {
+                navigation.reset()
+            }
+        }
     }
 
     static func matchesLocalResolution(_ resolution: OnchainSendLocalResolution, attempt: OnchainSendAttempt?,

@@ -5,12 +5,27 @@ struct FundingOptions: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
+    @Environment(HwWalletManager.self) private var hwWalletManager
 
     @State private var showNoFundsAlert = false
 
     /// Spark keeps Spending fundable from savings or another wallet without a channel.
     private var canFundWithSpark: Bool {
         SparkManager.shared.isReady
+    }
+
+    /// Where the hardware-wallet option starts Transfer to Spending, from a funded wallet first; nil when none is paired.
+    static func hardwareFundingRoute(wallets: [HwWallet], hasSeenIntro: Bool) -> Route? {
+        guard let wallet = wallets.first(where: { $0.balanceSats > 0 }) ?? wallets.first else { return nil }
+        return hasSeenIntro ? .spendingAmountHw(walletId: wallet.id) : .spendingIntroHw(walletId: wallet.id)
+    }
+
+    private func fundWithHardware() {
+        if let route = Self.hardwareFundingRoute(wallets: hwWalletManager.wallets, hasSeenIntro: app.hasSeenTransferToSpendingIntro) {
+            navigation.navigate(route)
+        } else {
+            sheets.showSheet(.hardwareConnect)
+        }
     }
 
     var body: some View {
@@ -56,13 +71,15 @@ struct FundingOptions: View {
                 if !canFundWithSpark {
                     RectangleButton(icon: "transfer", title: t("lightning__funding__button1"), isDisabled: true, testID: "FundTransfer") {}
                 }
+                RectangleButton(
+                    icon: "device-tablet-speaker",
+                    title: t("lightning__funding__button_hw"),
+                    isDisabled: !canFundWithSpark,
+                    testID: "FundHardware"
+                ) {
+                    fundWithHardware()
+                }
                 if !canFundWithSpark {
-                    RectangleButton(
-                        icon: "device-tablet-speaker",
-                        title: t("lightning__funding__button_hw"),
-                        isDisabled: true,
-                        testID: "FundHardware"
-                    ) {}
                     RectangleButton(icon: "qr", title: t("lightning__funding__button2"), isDisabled: true, testID: "FundReceive") {}
                 }
             }

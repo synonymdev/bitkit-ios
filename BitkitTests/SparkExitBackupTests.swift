@@ -48,4 +48,13 @@ final class SparkExitBackupTests: XCTestCase {
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: Env.sparkExitRestore(walletIndex: walletIndex).path))
     }
+
+    func testObservingRestartedOnAForegroundDoesNotMarkTheSameConnectionAgain() {
+        var mark = SparkExitBackupMark()
+
+        XCTAssertFalse(mark.claim(connection: nil), "Nothing to back up while Spark is disconnected")
+        XCTAssertTrue(mark.claim(connection: 1))
+        XCTAssertFalse(mark.claim(connection: 1), "Spark stayed connected while observing restarted")
+        XCTAssertTrue(mark.claim(connection: 2), "A new connection is backed up again")
+    }
 }

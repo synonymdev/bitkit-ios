@@ -42,6 +42,9 @@ enum ChannelFreeRailFees {
 
 /// The channel-free rail refused a payment before anything left the wallet: the rail was not connected, could not
 /// prepare the payment, or its fee was over the caller's limit. A Paykit request or allowance can then end as failed.
+/// The rail runs here but isn't connected, so its payments are unknown rather than none.
+struct ChannelFreeRailUnavailable: Error {}
+
 struct ChannelFreeRailSendRefused: LocalizedError {
     let reason: String
     var underlying: Error?
@@ -838,11 +841,20 @@ class LightningService: NodeLifecycleService {
         expirySecs: UInt32 = 3600,
         isPaykitEndpoint: Bool = false
     ) async throws -> String {
-        if let rail = channelFreeRail,
-           await shouldReceiveWithRail(rail, amountSats: amountMsats.map { $0 / 1000 }, isPaykitEndpoint: isPaykitEndpoint)
-        {
-            let amountSats = amountMsats.map { $0 / 1000 }.flatMap { $0 > 0 ? $0 : nil }
-            return try await rail.receive(amountSats: amountSats, description: description, expirySecs: expirySecs)
+        if let rail = channelFreeRail {
+            // Judged on the amount rounded up, so channels that can't take the last part of a sat don't get it.
+            let railTakes = await shouldReceiveWithRail(rail, amountSats: amountMsats.map { ($0 + 999) / 1000 }, isPaykitEndpoint: isPaykitEndpoint)
+            switch Self.receiveRoute(amountMsats: amountMsats, railTakes: railTakes) {
+            case let .rail(amountSats):
+                return try await rail.receive(amountSats: amountSats, description: description, expirySecs: expirySecs)
+            case .refused:
+                throw AppError(
+                    message: t("other__lnurl_withdr_error_no_capacity"),
+                    debugMessage: "Spark invoices are whole sats, and no channel can receive \(amountMsats ?? 0) msat"
+                )
+            case .node:
+                break
+            }
         }
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
@@ -868,6 +880,22 @@ class LightningService: NodeLifecycleService {
         }
 
         return bolt11.description
+    }
+
+    enum ReceiveRoute: Equatable {
+        case rail(amountSats: UInt64?)
+        case node
+        /// Neither rail can receive the exact amount.
+        case refused
+    }
+
+    /// Where an invoice for `amountMsats` is made, given whether the channel-free rail takes it. The rail's invoices
+    /// are whole sats, so an amount with a part of a sat goes to the channels, or is refused when they can't take it,
+    /// rather than invoicing less than asked.
+    static func receiveRoute(amountMsats: UInt64?, railTakes: Bool) -> ReceiveRoute {
+        guard railTakes else { return .node }
+        guard let amountMsats, amountMsats > 0 else { return .rail(amountSats: nil) }
+        return amountMsats % 1000 == 0 ? .rail(amountSats: amountMsats / 1000) : .refused
     }
 
     /// Receives on the channel-free rail when no ready channel has the inbound capacity for the amount.
@@ -997,8 +1025,7 @@ class LightningService: NodeLifecycleService {
         }
     }
 
-    /// `channelsOnly` pays from the channels and never falls back to the channel-free rail, as moving a channel
-    /// balance to Spark needs.
+    /// `channelsOnly` keeps a payment quoted against the channels on them, never falling back to the channel-free rail.
     func send(
         bolt11: String,
         sats: UInt64? = nil,
@@ -1037,7 +1064,10 @@ class LightningService: NodeLifecycleService {
                 sats: sats,
                 maxFeeSats: params?.maxTotalRoutingFeeMsat.map { $0 / 1000 }
                     ?? Self.paymentAmountSats(bolt11: bolt11, sats: sats).map(Self.defaultMaxFeeSats),
-                beforeSubmission: beforeSubmission
+                beforeSubmission: { [weak self] in
+                    try beforeSubmission()
+                    self?.recordRailAttempt(paymentHash: paymentHash)
+                }
             )
         }
         if let paid = try await settledEarlierAttempt(paymentHash: paymentHash, on: [.channelFree]) {
@@ -1070,9 +1100,51 @@ class LightningService: NodeLifecycleService {
     /// The node's payment list; tests replace it, as they run without a node.
     lazy var nodePayments: () async -> [PaymentDetails]? = { [unowned self] in await listPayments() }
 
+    /// Whether this build runs the channel-free rail, so a rail that isn't connected may still hold payments; the app
+    /// sets it, as extensions build this service without the rail.
+    var channelFreeRailSupported: () async -> Bool = { false }
+
+    /// Payment hashes sent over the rail, kept across launches: while the rail can't list its payments, only these may
+    /// have an attempt there that a node payment would repeat.
+    var railAttemptsStore: UserDefaults = .standard
+    private static let railAttemptsKey = "channelFreeRailAttemptedPaymentHashes"
+    private static let railAttemptsLimit = 500
+
+    private func recordRailAttempt(paymentHash: String?) {
+        guard let paymentHash = paymentHash?.lowercased() else { return }
+        eventCallbackLock.withLock {
+            var hashes = railAttemptsStore.stringArray(forKey: Self.railAttemptsKey) ?? []
+            guard !hashes.contains(paymentHash) else { return }
+            hashes.append(paymentHash)
+            railAttemptsStore.set(Array(hashes.suffix(Self.railAttemptsLimit)), forKey: Self.railAttemptsKey)
+        }
+    }
+
+    /// Called once the rail reports the attempt failed or lists none, so a channel retry isn't held while it can't list.
+    /// Skipped while a rail send of the invoice is in flight, as that retry holds it again.
+    func releaseRailAttempt(paymentHash: String) {
+        let hash = paymentHash.lowercased()
+        eventCallbackLock.withLock {
+            guard !railSendsInFlight.contains(hash), var hashes = railAttemptsStore.stringArray(forKey: Self.railAttemptsKey), hashes.contains(hash) else { return }
+            hashes.removeAll { $0 == hash }
+            railAttemptsStore.set(hashes, forKey: Self.railAttemptsKey)
+        }
+    }
+
+    private func hasRailAttempt(paymentHash: String) -> Bool {
+        eventCallbackLock.withLock {
+            railAttemptsStore.stringArray(forKey: Self.railAttemptsKey)?.contains(paymentHash.lowercased()) ?? false
+        }
+    }
+
+    /// Called when the rail's wallet is wiped, as its payments go with it.
+    func forgetRailAttempts() {
+        eventCallbackLock.withLock { railAttemptsStore.removeObject(forKey: Self.railAttemptsKey) }
+    }
+
     /// An invoice must never go out on both rails: an earlier attempt still pending on `rails` refuses the payment as a
-    /// duplicate, as LDK does its own, and a settled one returns its hash as paid. A failed, unknown or unlistable one
-    /// lets the payment go.
+    /// duplicate, as LDK does its own, and a settled one returns its hash as paid. A failed or unknown one lets the
+    /// payment go. While the rail can't list its payments, an invoice it was sent over is refused as pending too.
     private func settledEarlierAttempt(paymentHash: String?, on rails: [LightningPaymentRail]) async throws -> PaymentHash? {
         guard let paymentHash else { return nil }
         var statuses: [PaymentStatus] = rails.contains(.channelFree) && isRailSendInFlight(paymentHash: paymentHash) ? [.pending] : []
@@ -1081,10 +1153,19 @@ class LightningService: NodeLifecycleService {
         }) {
             statuses.append(payment.status)
         }
-        if rails.contains(.channelFree), let payments = try? await channelFreeRailPayments(),
-           let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: paymentHash)
-        {
-            statuses.append(payment.status)
+        if rails.contains(.channelFree) {
+            if let payments = await readableRailPayments() {
+                let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: paymentHash)
+                if let payment {
+                    statuses.append(payment.status)
+                }
+                if payment == nil || payment?.status == .failed, !isRailSendInFlight(paymentHash: paymentHash) {
+                    releaseRailAttempt(paymentHash: paymentHash)
+                }
+            } else if hasRailAttempt(paymentHash: paymentHash) {
+                Logger.warn("Refused paying '\(paymentHash)', Spark can't list the earlier attempt now", context: "LightningService")
+                throw Self.pendingDuplicate(paymentHash: paymentHash)
+            }
         }
         if statuses.contains(.succeeded) {
             Logger.info("Skipped paying '\(paymentHash)', an earlier attempt already paid it", context: "LightningService")
@@ -1095,6 +1176,11 @@ class LightningService: NodeLifecycleService {
             throw Self.pendingDuplicate(paymentHash: paymentHash)
         }
         return nil
+    }
+
+    /// Nil while the rail's payments can't be read: listing them failed, or the rail runs here but isn't connected.
+    private func readableRailPayments() async -> [ChannelFreeRailPayment]? {
+        try? await channelFreeRailPayments()
     }
 
     private static func pendingDuplicate(paymentHash: String?) -> NodeError {
@@ -1633,6 +1719,9 @@ extension LightningService {
 
     /// Spark runs before the node starts, so its events wait until the node's event callback is set rather than being lost.
     func emitChannelFreeRailEvent(_ event: Event) {
+        if case let .paymentFailed(_, paymentHash?, _) = event {
+            releaseRailAttempt(paymentHash: paymentHash)
+        }
         if isStaleFailure(event, from: .channelFree) {
             Logger.info("Ignored a Spark failure for a payment retried over a channel: \(event)", context: "LightningService")
             return
@@ -1672,9 +1761,16 @@ extension LightningService {
         return isStaleFailure(paymentHash: hash, from: rail)
     }
 
-    /// The rail's Lightning payments, none without a rail; throws when the rail could not list them.
+    /// The rail's Lightning payments, none where the rail doesn't run; throws when the rail could not list them, or runs
+    /// here but isn't connected, so a payment it may hold is never read as one it never made.
     func channelFreeRailPayments() async throws -> [ChannelFreeRailPayment] {
-        try await channelFreeRail?.lightningPayments() ?? []
+        if let rail = channelFreeRail {
+            return try await rail.lightningPayments()
+        }
+        if await channelFreeRailSupported() {
+            throw ChannelFreeRailUnavailable()
+        }
+        return []
     }
 
     func deliverEvent(_ event: Event, onEvent: ((Event) -> Void)?) async -> OnchainActivityCompletion? {
