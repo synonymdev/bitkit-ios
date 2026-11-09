@@ -1,3 +1,4 @@
+import BitkitCore
 import BreezSdkSpark
 import SwiftUI
 
@@ -264,18 +265,52 @@ struct SparkExitFundingView: View {
     }
 
     private func estimateSavingsFee() async {
-        guard let address = exit.fundingAddress, fundingSats > 0,
-              let feeRates = await feeEstimatesManager.getEstimates(refresh: true)
-        else { return }
+        let wallet = wallet
+        let feeEstimatesManager = feeEstimatesManager
+        let priced = await Self.priceSavingsFee(
+            address: exit.fundingAddress,
+            fundingSats: fundingSats,
+            estimates: { await feeEstimatesManager.getEstimates(refresh: true) },
+            calculate: { try await wallet.calculateTotalFee(address: $0, amountSats: $1, satsPerVByte: $2) }
+        )
+        switch priced {
+        case .unavailable:
+            break
+        case .failed:
+            hasSavingsFeeFailed = true
+        case let .priced(rate, feeSats):
+            exit.savingsFeeRate = rate
+            exit.savingsFeeSats = feeSats
+            savingsFeeSats = feeSats
+        }
+    }
+
+    enum SavingsFee: Equatable {
+        /// Nothing to price: no funding address or amount yet.
+        case unavailable
+        case failed
+        case priced(rate: UInt32, feeSats: UInt64)
+    }
+
+    /// What savings pays to send the fee funding at the fast rate.
+    nonisolated static func priceSavingsFee(
+        address: String?,
+        fundingSats: UInt64,
+        estimates: () async -> FeeRates?,
+        calculate: (String, UInt64, UInt32) async throws -> UInt64
+    ) async -> SavingsFee {
+        guard let address, fundingSats > 0 else { return .unavailable }
+        // Without rates there is no fee to confirm: Pay from savings shows its error rather than loading for good.
+        guard let feeRates = await estimates() else {
+            Logger.warn("Failed to read fee rates for the Spark exit funding from savings", context: "SparkExitFundingView")
+            return .failed
+        }
         let rate = TransactionSpeed.fast.getFeeRate(from: feeRates)
         do {
-            let fee = try await wallet.calculateTotalFee(address: address, amountSats: fundingSats, satsPerVByte: rate)
-            exit.savingsFeeRate = rate
-            exit.savingsFeeSats = fee
-            savingsFeeSats = fee
+            return try await .priced(rate: rate, feeSats: calculate(address, fundingSats, rate))
         } catch {
             Logger.warn("Failed to price the Spark exit funding from savings: \(error)", context: "SparkExitFundingView")
-            hasSavingsFeeFailed = true
+            return .failed
         }
     }
 }

@@ -1,4 +1,5 @@
 @testable import Bitkit
+import BitkitCore
 import BreezSdkSpark
 import XCTest
 
@@ -632,6 +633,30 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(written?.transferId, "transfer-3")
         XCTAssertEqual(written?.leafIds, ["leaf-2"])
         XCTAssertEqual(settled, ["transfer-2", "transfer-1"])
+    }
+
+    /// Fee rates that cannot be read fail the savings price, so Pay from savings shows its error instead of loading.
+    func testSavingsFeeFailsWithoutFeeRates() async {
+        let rates = FeeRates(fast: 9, mid: 6, slow: 1)
+        func price(address: String? = "bcrt1qfunding", fundingSats: UInt64 = 20000, rates: FeeRates?) async
+            -> SparkExitFundingView.SavingsFee
+        {
+            await SparkExitFundingView.priceSavingsFee(
+                address: address,
+                fundingSats: fundingSats,
+                estimates: { rates },
+                calculate: { _, _, _ in 300 }
+            )
+        }
+
+        let noRates = await price(rates: nil)
+        XCTAssertEqual(noRates, .failed)
+        let noAddress = await price(address: nil, rates: rates)
+        XCTAssertEqual(noAddress, .unavailable)
+        let noFunding = await price(fundingSats: 0, rates: rates)
+        XCTAssertEqual(noFunding, .unavailable)
+        let priced = await price(rates: rates)
+        XCTAssertEqual(priced, .priced(rate: TransactionSpeed.fast.getFeeRate(from: rates), feeSats: 300))
     }
 
     /// Savings never pays more than the funding the user confirmed; the rest is asked for on Progress once the payment
