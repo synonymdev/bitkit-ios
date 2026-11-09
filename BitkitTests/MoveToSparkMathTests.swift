@@ -31,6 +31,11 @@ final class MoveToSparkMathTests: XCTestCase {
         XCTAssertNil(MoveToSparkMath.smallerAmount(MoveToSparkMath.minMoveSats))
     }
 
+    func testMoveIsOfferedOnlyWhenTheMinimumFitsBesideTheFeeReserve() {
+        XCTAssertFalse(MoveToSparkMath.hasMovableBalance(limitSats: 1011))
+        XCTAssertTrue(MoveToSparkMath.hasMovableBalance(limitSats: 1012))
+    }
+
     func testMoveIsOfferedOnlyWithAUsableSpark() {
         XCTAssertFalse(MoveToSparkMath.canMove(channels: [], isSparkUsable: true))
         XCTAssertFalse(MoveToSparkMath.canMove(channels: nil, isSparkUsable: false))

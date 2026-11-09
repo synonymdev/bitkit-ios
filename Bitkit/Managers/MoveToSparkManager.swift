@@ -24,7 +24,12 @@ enum MoveToSparkMath {
 
     /// Whether the channels hold a balance worth moving to a usable Spark wallet.
     static func canMove(channels: [ChannelDetails]?, isSparkUsable: Bool) -> Bool {
-        isSparkUsable && movableSats(channels: channels) >= minMoveSats
+        isSparkUsable && hasMovableBalance(limitSats: movableSats(channels: channels))
+    }
+
+    /// Whether `limitSats` still leaves at least `minMoveSats` to quote once the first fee guess is reserved.
+    static func hasMovableBalance(limitSats: UInt64) -> Bool {
+        firstCandidate(wantedSats: limitSats, limitSats: limitSats) >= minMoveSats
     }
 
     /// The first amount to quote: `wantedSats` when it leaves room for fees, else the limit less a guessed fee.
@@ -190,7 +195,7 @@ final class MoveToSparkManager {
                 amountSats: quote.amountSats,
                 feeSats: settled.feePaidSats,
                 closeChannel: openChannels.count == 1 ? openChannels.first : nil,
-                hasRest: MoveToSparkMath.movableSats(channels: wallet.channels) >= MoveToSparkMath.minMoveSats
+                hasRest: MoveToSparkMath.hasMovableBalance(limitSats: MoveToSparkMath.movableSats(channels: wallet.channels))
             )
         } catch {
             Logger.error("Failed to move '\(quote.amountSats)' sats to Spark: \(error)", context: "MoveToSpark")
@@ -203,7 +208,9 @@ final class MoveToSparkManager {
     func makeQuote(channels: [ChannelDetails]?, targetSats: UInt64?) async throws -> MoveToSparkQuote {
         let limitSats = MoveToSparkMath.movableSats(channels: channels)
         let wantedSats = min(targetSats ?? limitSats, limitSats)
-        guard wantedSats >= MoveToSparkMath.minMoveSats else { throw MoveToSparkError.nothingToMove }
+        guard wantedSats >= MoveToSparkMath.minMoveSats, MoveToSparkMath.hasMovableBalance(limitSats: limitSats) else {
+            throw MoveToSparkError.nothingToMove
+        }
         guard MoveToSparkMath.isSparkUsable(spark) else { throw MoveToSparkError.sparkUnavailable }
 
         let invoice = try await spark.receive(
