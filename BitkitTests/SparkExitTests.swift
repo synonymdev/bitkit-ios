@@ -1704,6 +1704,48 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(record.skippedLeafCount, 14)
     }
 
+    private func fundingAskForASkippedLeaf() async throws -> SparkExitRecord {
+        var record = rebuildingRecord()
+        record.leafIds = ["leaf-1", "leaf-2"]
+        record.skippedLeafCount = 3
+        var prepared = SparkExitFixtures.prepared(leaves: ["leaf-1"])
+        prepared.skipped = [SkippedLeaf(leafId: "leaf-2", valueSats: 50000, reason: .unverified)]
+        sdk.preparedResponse = prepared
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1")])]
+        record = try await driver().tick(record)
+        let landed = SparkExitFixtures.recovery([SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 990))])
+        sdk.checks = [CheckRecoverFundsResponse(recovery: landed, verdict: .done)]
+        sdk.preparedResponse = SparkExitFixtures.prepared(leaves: ["leaf-2"])
+        sdk.recoverError = SdkError.InsufficientCpfpFunds(requiredSats: 3000, docsUrl: "")
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.phase, .needsFunding(requiredSats: 3136))
+        return record
+    }
+
+    /// The week's let-go of an unpaid fee ask needs only the chain: it comes while the SDK can't connect too.
+    func testAnUnpaidFeeAskIsLetGoWithoutTheSdk() async throws {
+        var record = try await fundingAskForASkippedLeaf()
+        chain.tip = 1000 + SparkExitDriver.releaseBlocks
+        record = try await driver(withSdk: false).tick(record)
+        XCTAssertEqual(record.phase, .done)
+    }
+
+    /// A let-go tick that can't read the funding address changes nothing; the next one lets go once.
+    func testAnUnpaidFeeAskLetGoIsAllOrNothing() async throws {
+        var record = try await fundingAskForASkippedLeaf()
+        chain.tip = 1000 + SparkExitDriver.releaseBlocks
+        chain.isUtxosUnreadable = true
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.phase, .needsFunding(requiredSats: 3136))
+        XCTAssertEqual(record.waitingLeafIds, ["leaf-2"])
+        XCTAssertEqual(record.skippedLeafCount, 3)
+
+        chain.isUtxosUnreadable = false
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.phase, .done)
+        XCTAssertEqual(record.skippedLeafCount, 4)
+    }
+
     /// A skipped leaf still unverified after about a week is let go, and the exit ends.
     func testAPartialBuildLetsTheSkippedLeafGoAfterAWeek() async throws {
         var record = rebuildingRecord()
