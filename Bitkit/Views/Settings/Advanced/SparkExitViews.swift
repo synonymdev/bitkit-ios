@@ -429,6 +429,11 @@ struct SparkExitConfirmView: View {
                         SparkExitQuoteRows(quote: quote)
                     }
 
+                    if let savingsPayment = exit.savingsPayment {
+                        SparkExitAmountRow(label: t("lightning__spark_exit__savings_fee"), sats: savingsPayment.feeSats)
+                        SparkExitAmountRow(label: t("lightning__spark_exit__savings_total"), sats: savingsPayment.totalSats)
+                    }
+
                     SparkExitBackgroundNotes()
                         .padding(.top, 16)
                 }

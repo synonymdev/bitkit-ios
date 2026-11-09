@@ -558,4 +558,34 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(receivedSats, 20000)
         XCTAssertGreaterThanOrEqual(sats, 15000)
     }
+
+    // MARK: Savings payment on Confirm (review thread 4511769453)
+
+    /// Pay from savings shows its own fee and the total that leaves savings; funding from another wallet shows neither.
+    @MainActor
+    func testConfirmShowsTheSavingsPaymentFeeAndTotal() {
+        let exit = SparkExitManager(walletIndex: 9999)
+        exit.useQuote(
+            SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 6000)),
+            destination: "bcrt1qdestination",
+            feeRate: 2,
+            fundingIndex: 0,
+            fundingAddress: "bcrt1qfunding"
+        )
+        exit.savingsFeeSats = 453
+        XCTAssertNil(exit.savingsPayment, "paid from another wallet")
+
+        exit.fundFromSavings = true
+        XCTAssertEqual(exit.savingsPayment?.feeSats, 453)
+        XCTAssertEqual(exit.savingsPayment?.totalSats, 6453)
+
+        exit.useQuote(
+            SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: nil)),
+            destination: "bcrt1qdestination",
+            feeRate: 2,
+            fundingIndex: 0,
+            fundingAddress: "bcrt1qfunding"
+        )
+        XCTAssertNil(exit.savingsPayment, "nothing to fund")
+    }
 }

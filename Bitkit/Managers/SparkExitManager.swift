@@ -67,6 +67,13 @@ final class SparkExitManager {
         pendingFeeRate
     }
 
+    /// What paying the fee funding from savings costs: that payment's own fee, and the total that leaves savings. Nil
+    /// when another wallet pays, or there is nothing to fund.
+    var savingsPayment: (feeSats: UInt64, totalSats: UInt64)? {
+        guard fundFromSavings, let quote, quote.fundingSats > 0 else { return nil }
+        return (savingsFeeSats, quote.fundingSats + savingsFeeSats)
+    }
+
     var isExiting: Bool {
         record?.isActive == true
     }
