@@ -355,8 +355,6 @@ final class AddressTypeIntegrationTests: XCTestCase {
     func testGetChannelFundableBalanceExcludesLegacy() async throws {
         try await setupWalletAndNode()
 
-        let blocktank = CoreService.shared.blocktank
-
         // Enable legacy monitoring and switch to legacy
         settings.addressTypesToMonitor = [.nativeSegwit, .legacy]
         UserDefaults.standard.synchronize()
@@ -364,10 +362,10 @@ final class AddressTypeIntegrationTests: XCTestCase {
 
         let legacyAddress = try await settings.lightningService.newAddressForType(.legacy)
         Logger.test("Funding legacy address: \(legacyAddress)", context: "AddressTypeIntegrationTests")
-        let txId = try await blocktank.regtestDepositFunds(address: legacyAddress, amountSat: 50000)
+        let txId = try await LocalRegtest.deposit(address: legacyAddress, amountSat: 50000)
         XCTAssertFalse(txId.isEmpty)
 
-        try await blocktank.regtestMineBlocks(6)
+        try await LocalRegtest.mineBlocks(6)
 
         // Verify legacy has balance
         try await waitForBalance(.legacy, atLeast: 1)
@@ -387,8 +385,6 @@ final class AddressTypeIntegrationTests: XCTestCase {
     func testSetMonitoringDisableWithBalanceFails() async throws {
         try await setupWalletAndNode()
 
-        let blocktank = CoreService.shared.blocktank
-
         // Enable taproot monitoring
         settings.addressTypesToMonitor = [.nativeSegwit]
         UserDefaults.standard.synchronize()
@@ -397,10 +393,10 @@ final class AddressTypeIntegrationTests: XCTestCase {
         // Fund the taproot address
         let taprootAddress = try await settings.lightningService.newAddressForType(.taproot)
         Logger.test("Funding taproot address: \(taprootAddress)", context: "AddressTypeIntegrationTests")
-        let txId = try await blocktank.regtestDepositFunds(address: taprootAddress, amountSat: 50000)
+        let txId = try await LocalRegtest.deposit(address: taprootAddress, amountSat: 50000)
         XCTAssertFalse(txId.isEmpty)
 
-        try await blocktank.regtestMineBlocks(6)
+        try await LocalRegtest.mineBlocks(6)
 
         // Verify taproot has balance
         try await waitForBalance(.taproot, atLeast: 1)
@@ -418,8 +414,6 @@ final class AddressTypeIntegrationTests: XCTestCase {
     func testPruneEmptyPreservesTypesWithBalance() async throws {
         try await setupWalletAndNode()
 
-        let blocktank = CoreService.shared.blocktank
-
         // Enable taproot monitoring
         settings.addressTypesToMonitor = [.nativeSegwit]
         UserDefaults.standard.synchronize()
@@ -428,10 +422,10 @@ final class AddressTypeIntegrationTests: XCTestCase {
         // Fund the taproot address
         let taprootAddress = try await settings.lightningService.newAddressForType(.taproot)
         Logger.test("Funding taproot for prune test: \(taprootAddress)", context: "AddressTypeIntegrationTests")
-        let txId = try await blocktank.regtestDepositFunds(address: taprootAddress, amountSat: 50000)
+        let txId = try await LocalRegtest.deposit(address: taprootAddress, amountSat: 50000)
         XCTAssertFalse(txId.isEmpty)
 
-        try await blocktank.regtestMineBlocks(6)
+        try await LocalRegtest.mineBlocks(6)
         try await waitForBalance(.taproot, atLeast: 1)
 
         // Add legacy (will be empty)
