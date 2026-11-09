@@ -1025,14 +1025,16 @@ class LightningService: NodeLifecycleService {
         }
     }
 
+    /// `channelsOnly` keeps a payment quoted against the channels on them, never falling back to the channel-free rail.
     func send(
         bolt11: String,
         sats: UInt64? = nil,
         params: RouteParametersConfig? = nil,
+        channelsOnly: Bool = false,
         beforeSubmission: @escaping () throws -> Void = {}
     ) async throws -> PaymentHash {
         let paymentHash = (try? Bolt11Invoice.fromStr(invoiceStr: bolt11).paymentHash()).map { String($0) }
-        if let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: sats) {
+        if !channelsOnly, let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: sats) {
             // LDK refuses its own repeats; Spark doesn't, so a Spark send checks both rails.
             if let paid = try await settledEarlierAttempt(paymentHash: paymentHash, on: [.ldk, .channelFree]) {
                 return paid

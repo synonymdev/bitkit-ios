@@ -315,6 +315,19 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(Bitkit.LightningService.receiveRoute(amountMsats: nil, railTakes: true), Route.rail(amountSats: nil))
     }
 
+    func testAChannelsOnlyPaymentNeverFallsBackToSpark() async {
+        // The channels can't pay it (there are none in tests) and Spark could, as after a quote whose channel went away.
+        rail.balanceSats = 100_000
+
+        do {
+            _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice, channelsOnly: true)
+            XCTFail("Expected the payment to fail on the channels")
+        } catch {
+            XCTAssertTrue("\(error)".contains("nodeNotSetup"), "\(error)")
+        }
+        XCTAssertNil(rail.sentBolt11, "A deselected Spark balance paid a channel-funded payment")
+    }
+
     private func sendOverSpark() async throws {
         rail.balanceSats = 100_000
         _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
