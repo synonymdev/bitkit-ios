@@ -537,7 +537,6 @@ final class SparkManager: ChannelFreeLightningRail {
             // Withdrawals Spark already lists for this address and amount belong to earlier attempts, so recovery never
             // takes one of them for this attempt.
             earlierPayments = try await sdk.listPayments(request: ListPaymentsRequest(sortAscending: false)).payments
-            try await beforeSend()
         } catch {
             throw SparkWithdrawalNotSent(underlying: error)
         }
@@ -550,10 +549,19 @@ final class SparkManager: ChannelFreeLightningRail {
             tags: tags,
             earlierPaymentIds: Self.withdrawalIds(to: address, amountSats: amountSats, in: earlierPayments)
         )
-        Self.pendingContactWithdrawal = pending
-        Self.lastContactWithdrawalResolution = nil
         isWithdrawingToContact = true
         defer { isWithdrawingToContact = false }
+        let journaled = pending
+        try await Self.startJournaledWithdrawal(
+            writeJournal: {
+                Self.pendingContactWithdrawal = journaled
+                Self.lastContactWithdrawalResolution = nil
+            },
+            beforeSend: beforeSend,
+            closeUnsent: {
+                await Self.closeUnsentWithdrawal(journaled, releaseProof: Self.releaseUnsentProof, failAllowance: Self.failAllowance)
+            }
+        )
         let response: SendPaymentResponse
         do {
             response = try await sdk.sendPayment(request: SendPaymentRequest(
@@ -607,6 +615,23 @@ final class SparkManager: ChannelFreeLightningRail {
         } else if allowClear, Self.canCloseUnlisted(pending, now: now) {
             Logger.info("Closed a Spark contact withdrawal Spark never listed", context: "SparkManager")
             await Self.closeUnsentWithdrawal(pending, releaseProof: Self.releaseUnsentProof, failAllowance: Self.failAllowance)
+        }
+    }
+
+    /// Writes the attempt's journal before `beforeSend` starts the request's proof, so a kill between the two leaves a
+    /// journal that recovery closes as unsent once it expires, releasing the proof; a refusal in `beforeSend` closes it
+    /// at once, releasing what it started.
+    static func startJournaledWithdrawal(
+        writeJournal: () -> Void,
+        beforeSend: () async throws -> Void,
+        closeUnsent: () async -> Void
+    ) async throws {
+        writeJournal()
+        do {
+            try await beforeSend()
+        } catch {
+            await closeUnsent()
+            throw SparkWithdrawalNotSent(underlying: error)
         }
     }
 

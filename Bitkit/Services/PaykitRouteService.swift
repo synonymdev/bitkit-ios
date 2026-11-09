@@ -149,14 +149,14 @@ enum PaykitRouteService {
         error is SparkWithdrawalNotSent && openJournalRequest != proofRequest
     }
 
-    /// Starts the on-chain proof of a request a Spark leg pays, in a direct send's order: the proof is prepared, then the
-    /// request (its checks and private list consumption), then the proof is marked started. Any failure releases the
-    /// private payment list as unsent, and one after the proof was prepared cancels it, so the request can be paid again.
+    /// Prepares the on-chain proof of a request a Spark leg pays, in a direct send's order: the proof is prepared, then
+    /// the request (its checks and private list consumption). Spark's withdrawal marks the proof started once its journal
+    /// is written. Any failure releases the private payment list as unsent, and one after the proof was prepared cancels
+    /// it, so the request can be paid again.
     static func startLegRequestProof(
         prepareProof: () async throws -> Void,
         prepareRequest: () async throws -> Void,
         paymentIdentity: () async throws -> String,
-        markStarted: (String) async throws -> Void,
         cancelProof: () async -> Void,
         releasePaymentList: () async -> Void
     ) async throws -> String {
@@ -168,9 +168,7 @@ enum PaykitRouteService {
         }
         do {
             try await prepareRequest()
-            let identity = try await paymentIdentity()
-            try await markStarted(identity)
-            return identity
+            return try await paymentIdentity()
         } catch {
             await cancelProof()
             await releasePaymentList()

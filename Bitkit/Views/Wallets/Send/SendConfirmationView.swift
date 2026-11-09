@@ -1488,6 +1488,7 @@ struct SendConfirmationView: View {
         let context = app.contactPaymentContext
         let request = context?.incomingPaymentRequest
         var proofRequest: SparkContactWithdrawal.PaykitRequest?
+        var markProofStarted: (() async throws -> Void)?
         do {
             if let request {
                 guard let privateContext = context?.privatePaymentContext else { throw PaykitPaymentRequestError.requestUnavailable }
@@ -1503,24 +1504,25 @@ struct SendConfirmationView: View {
                     },
                     prepareRequest: { try await prepareIncomingPaymentRequest() },
                     paymentIdentity: { try await PaykitPaymentProofService.shared.onchainPaymentIdentity(requestId: request.id) },
-                    markStarted: { identity in
-                        // The proof keeps the list version this send consumed, so dropping it as unsent gives the list back.
-                        let previousVersion = await PrivatePaykitService.shared.consumedPaymentListVersion(
-                            publicKey: request.counterparty,
-                            attemptId: context?.id
-                        )
-                        try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(
-                            request,
-                            address: leg.endpoint.value,
-                            paymentIdentity: identity,
-                            privatePaymentListVersion: privateContext.paymentListVersion,
-                            previousPrivatePaymentListVersion: previousVersion
-                        )
-                    },
                     cancelProof: { await PaykitPaymentProofService.shared.cancelPreparation(request) },
                     releasePaymentList: { await context?.resolvePrivatePaymentListConsumption(.definitePreBroadcastFailure) }
                 )
                 proofRequest = SparkContactWithdrawal.PaykitRequest(id: request.id, identity: identity)
+                // Spark's withdrawal runs this once its journal is written, so recovery owns the started proof.
+                markProofStarted = {
+                    // The proof keeps the list version this send consumed, so dropping it as unsent gives the list back.
+                    let previousVersion = await PrivatePaykitService.shared.consumedPaymentListVersion(
+                        publicKey: request.counterparty,
+                        attemptId: context?.id
+                    )
+                    try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(
+                        request,
+                        address: leg.endpoint.value,
+                        paymentIdentity: identity,
+                        privatePaymentListVersion: privateContext.paymentListVersion,
+                        previousPrivatePaymentListVersion: previousVersion
+                    )
+                }
             }
             let txid: String
             do {
@@ -1542,13 +1544,18 @@ struct SendConfirmationView: View {
                         await PaykitAllowanceExecutor.shared.finishManualPayment(attemptId: $0, outcome: $1, transactionId: $2)
                     }
                 ) { beforeSend in
-                    try await PaykitRouteService.pay(
-                        leg,
-                        contact: context?.publicKey,
-                        request: proofRequest,
-                        tags: tagManager.selectedTagsArray,
-                        beforeSend: beforeSend
-                    )
+                    try await withoutActuallyEscaping(beforeSend) { beforeSend in
+                        try await PaykitRouteService.pay(
+                            leg,
+                            contact: context?.publicKey,
+                            request: proofRequest,
+                            tags: tagManager.selectedTagsArray,
+                            beforeSend: {
+                                try await markProofStarted?()
+                                try await beforeSend()
+                            }
+                        )
+                    }
                 }
             } catch {
                 // Refused before Spark's send: nothing left, so this call's started proof goes. After it, the journal settles it.
@@ -1559,6 +1566,10 @@ struct SendConfirmationView: View {
                     proofRequest: proofRequest
                 ) {
                     await PaykitPaymentProofService.shared.failSparkOnchainPayment(requestId: proofRequest.id, identity: proofRequest.identity)
+                }
+                if refusedBeforeSend, let request {
+                    // A refusal before the proof was marked started leaves it prepared; started proofs stay as they are.
+                    await PaykitPaymentProofService.shared.cancelPreparation(request)
                 }
                 await context?.resolvePrivatePaymentListConsumption(refusedBeforeSend ? .definitePreBroadcastFailure : .uncertain)
                 Logger.error("Service route payment failed: \(error)", context: "SendConfirmation")

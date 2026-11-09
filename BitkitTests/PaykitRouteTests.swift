@@ -325,6 +325,32 @@ final class PaykitRouteTests: XCTestCase {
     }
 
     @MainActor
+    func testAWithdrawalsJournalIsWrittenBeforeItsProofStarts() async {
+        struct Refused: Error {}
+        var steps: [String] = []
+
+        try? await SparkManager.startJournaledWithdrawal(
+            writeJournal: { steps.append("journal") },
+            beforeSend: { steps.append("proof started") },
+            closeUnsent: { steps.append("closed") }
+        )
+        XCTAssertEqual(steps, ["journal", "proof started"], "A kill after the proof starts leaves a journal that releases it")
+
+        steps = []
+        do {
+            try await SparkManager.startJournaledWithdrawal(
+                writeJournal: { steps.append("journal") },
+                beforeSend: { steps.append("proof started"); throw Refused() },
+                closeUnsent: { steps.append("closed") }
+            )
+            XCTFail("A refusal before the send must reach the caller")
+        } catch {
+            XCTAssertTrue(error is SparkWithdrawalNotSent)
+        }
+        XCTAssertEqual(steps, ["journal", "proof started", "closed"], "A refusal closes the journal, releasing what it started")
+    }
+
+    @MainActor
     func testAPendingSparkSendNeverAdoptsTheNodesOnchainAttempt() {
         let attempt = SparkWithdrawalAttempt(address: onchain.value, amountSats: 20000, requestId: nil)
 
@@ -341,18 +367,17 @@ final class PaykitRouteTests: XCTestCase {
             prepareProof: { steps.append("proof") },
             prepareRequest: { steps.append("request") },
             paymentIdentity: { steps.append("identity"); return "payer" },
-            markStarted: { steps.append("started \($0)") },
             cancelProof: { steps.append("cancel") },
             releasePaymentList: { steps.append("release") }
         )
 
         XCTAssertEqual(identity, "payer")
-        XCTAssertEqual(steps, ["proof", "request", "identity", "started payer"], "The request is approved before Spark's payment check")
+        XCTAssertEqual(steps, ["proof", "request", "identity"], "The request is approved before Spark's payment check")
     }
 
     func testLegThatFailsBeforeSendingFreesTheRequest() async {
         struct Refused: Error {}
-        for failing in ["proof", "request", "started"] {
+        for failing in ["proof", "request"] {
             var steps: [String] = []
             do {
                 _ = try await PaykitRouteService.startLegRequestProof(
@@ -367,11 +392,6 @@ final class PaykitRouteTests: XCTestCase {
                         }
                     },
                     paymentIdentity: { "payer" },
-                    markStarted: {
-                        _ in if failing == "started" {
-                            throw Refused()
-                        }
-                    },
                     cancelProof: { steps.append("cancel") },
                     releasePaymentList: { steps.append("release") }
                 )
