@@ -1641,6 +1641,32 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(chain.broadcasts.map(\.txid), ["n1", "n2"])
     }
 
+    /// A skipped leaf's fee ask nobody pays is let go after the same week as its retries, and the exit ends.
+    func testASkippedLeafsFeeAskNobodyPaysIsLetGoAfterAWeek() async throws {
+        var record = rebuildingRecord()
+        record.leafIds = ["leaf-1", "leaf-2"]
+        var prepared = SparkExitFixtures.prepared(leaves: ["leaf-1"])
+        prepared.skipped = [SkippedLeaf(leafId: "leaf-2", valueSats: 50000, reason: .unverified)]
+        sdk.preparedResponse = prepared
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1")])]
+        record = try await driver().tick(record)
+
+        let landed = SparkExitFixtures.recovery([SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 990))])
+        sdk.checks = [CheckRecoverFundsResponse(recovery: landed, verdict: .done)]
+        sdk.preparedResponse = SparkExitFixtures.prepared(leaves: ["leaf-2"])
+        sdk.recoverError = SdkError.InsufficientCpfpFunds(requiredSats: 3000, docsUrl: "")
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.phase, .needsFunding(requiredSats: 3136))
+
+        chain.tip = 999 + SparkExitDriver.releaseBlocks
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.phase, .needsFunding(requiredSats: 3136))
+        chain.tip = 1000 + SparkExitDriver.releaseBlocks
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.phase, .done)
+        XCTAssertNil(record.waitingLeafIds)
+    }
+
     /// A skipped leaf still unverified after about a week is let go, and the exit ends.
     func testAPartialBuildLetsTheSkippedLeafGoAfterAWeek() async throws {
         var record = rebuildingRecord()

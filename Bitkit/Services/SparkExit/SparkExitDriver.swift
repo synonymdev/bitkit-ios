@@ -97,6 +97,16 @@ struct SparkExitDriver {
             // Still waiting for funding (a generation that finished meanwhile is back to running).
             if record.phase != .running {
                 guard let recovering else { return try saveIfChanged(record, from: before) }
+                // A skipped leaf's fee funding that never came is let go after the same week as its retries.
+                if record.isFundingWaitingLeaves, let since = record.retrySince, let tip = try? await chain.tipHeight(),
+                   tip.saturatingSub(since) >= Self.releaseBlocks
+                {
+                    Logger.warn("Spark exit lets go of skipped leaves whose fee funding never came", context: "SparkExitDriver")
+                    letGoOfWaitingLeaves(&record)
+                    await finish(&record, phase: .done)
+                    try save(record)
+                    return record
+                }
                 // Nothing to fund when every leaf is recovered cooperatively.
                 if let shortfall = record.fundingShortfallSats {
                     guard try await adoptFunding(&record, requiredSats: shortfall) else {
