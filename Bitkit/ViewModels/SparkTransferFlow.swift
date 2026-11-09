@@ -364,3 +364,23 @@ final class SparkTransferFlow {
         setClaimState(.notSeen, for: txid)
     }
 }
+
+/// A transfer to the Spark deposit address whose outcome was unknown, resolved later from the Send sheet's pending screen.
+enum SparkFundingRecovery {
+    /// Lists the deposit as a transfer and tells Spark about it, so it shows as pending and is claimed.
+    static func handOff(txid: String, amountSats: UInt64) async {
+        await CoreService.shared.activity.markOnchainActivityAsTransfer(txId: txid)
+        await SparkManager.shared.onDepositBroadcast(txid: txid, amountSats: amountSats)
+    }
+
+    /// Hands a recovered Spark funding to Spark and returns true, so the caller leaves the funding flow whose confirm
+    /// screen would offer the sent transfer again; false for any other resolution.
+    static func follow(
+        _ resolution: OnchainSendLocalResolution,
+        handOff: (String, UInt64) async -> Void = { await handOff(txid: $0, amountSats: $1) }
+    ) async -> Bool {
+        guard resolution.isSparkFunding else { return false }
+        await handOff(resolution.txid, resolution.amountSats)
+        return true
+    }
+}

@@ -616,6 +616,11 @@ struct SendPendingScreen: View {
         foundActivity = .onchain(resolution.activity)
         onchainAttempt?.status = .accepted
         onchainAttempt?.localFollowupComplete = true
+        if resolution.isSparkFunding {
+            // Leave the funding flow, whose confirm screen would offer the sent transfer again.
+            sheets.hideSheet(reason: "Recovered Spark funding")
+            navigation.reset()
+        }
     }
 
     static func matchesLocalResolution(_ resolution: OnchainSendLocalResolution, attempt: OnchainSendAttempt?,

@@ -1,4 +1,5 @@
 import BitkitCore
+import Combine
 import LDKNode
 import SwiftUI
 
@@ -9,6 +10,7 @@ struct SwapUpdatesStopTimeoutError: Error {}
 class WalletViewModel: ObservableObject {
     let usdtWallet: UsdtWalletManager
     @Published var walletExists: Bool? = nil
+    private var cancellables = Set<AnyCancellable>()
     @Published var isSyncingWallet = false // Syncing both LN and on chain
     @AppStorage("totalBalanceSats") var totalBalanceSats: Int = 0 // Combined onchain and LN
     @AppStorage("totalOnchainSats") var totalOnchainSats: Int = 0 // The total balance of our on-chain wallet
@@ -175,6 +177,12 @@ class WalletViewModel: ObservableObject {
         lightningService.onchainTransactionReceived = { await onchainObservation($0, false) }
         lightningService.onchainTransactionConfirmed = { await onchainObservation($0, true) }
         lightningService.channelFreeRailSupported = { await MainActor.run { SparkManager.shared.isSupported } }
+        // A Spark funding whose outcome was unknown resolves later, from the pending screen or once the chain shows it.
+        OnchainSendAttemptService.localResolutionPublisher
+            .sink { resolution in
+                Task { _ = await SparkFundingRecovery.follow(resolution) }
+            }
+            .store(in: &cancellables)
         SparkManager.shared.onStateChanged = { [weak self] in
             Task { @MainActor in
                 guard let self else { return }

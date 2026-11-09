@@ -77,6 +77,11 @@ struct SpendingConfirm: View {
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .offlineOverlay(title: t("lightning__transfer__nav_title"))
+        .onReceive(OnchainSendAttemptService.localResolutionPublisher.receive(on: DispatchQueue.main)) { resolution in
+            if Self.leavesAfter(resolution, isPaying: isPaying) {
+                navigation.reset()
+            }
+        }
         .task(id: QuoteInputs(amountSats: flow.amountSats, isMaxAmount: flow.isMaxAmount, speed: flow.speed)) {
             guard !SparkTransferFlow.isRunningInPreview else { return }
             while !Task.isCancelled {
@@ -157,6 +162,14 @@ struct SpendingConfirm: View {
             )
             throw error
         }
+    }
+}
+
+extension SpendingConfirm {
+    /// A Spark funding that resolved on its own while this screen stayed open, after an unknown outcome the user left
+    /// pending, would let the swipe send the transfer again; the swipe's own funding resolves while it is paying.
+    static func leavesAfter(_ resolution: OnchainSendLocalResolution, isPaying: Bool) -> Bool {
+        resolution.isSparkFunding && !isPaying
     }
 }
 
