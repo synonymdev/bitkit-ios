@@ -986,6 +986,13 @@ class ActivityService {
             nil
         }
 
+        // Paying an invoice of the wallet's own Spark (Move to Spark) gives an LDK send and a Spark receive under one hash:
+        // the send is the payment, so its row wins whichever leg arrives first.
+        if rail == .channelFree, payment.direction == .inbound, existingLightning?.txType == .sent {
+            return
+        }
+        let replacesSelfReceive = rail == .ldk && payment.direction == .outbound && existingLightning?.txType == .received
+
         let state: BitkitCore.PaymentState = switch payment.status {
         case .failed: .failed
         case .pending: .pending
@@ -1006,7 +1013,7 @@ class ActivityService {
         if let existing = existingLightning, let existingUpdatedAt = existing.updatedAt {
             let statusChanging = existing.status != state
             let needsPrivateContactAttribution = existing.contact == nil && payment.direction == .inbound
-            if existingUpdatedAt > paymentTimestamp && !statusChanging && !needsPrivateContactAttribution {
+            if existingUpdatedAt > paymentTimestamp && !statusChanging && !needsPrivateContactAttribution && !replacesSelfReceive {
                 return
             }
         }
