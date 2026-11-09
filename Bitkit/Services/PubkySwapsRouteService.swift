@@ -61,12 +61,15 @@ enum PubkySwapsRouteService {
     }
 
     /// Rebuilds the swaps this wallet started from each provider's listing, after a restore from the seed. The listing
-    /// does not carry the contact's address, so a restored swap claims to a fresh Savings address. Returns the swap ids.
+    /// does not carry the contact's address, so a restored swap claims to a fresh Savings address. bitkit-core checks
+    /// each listed lockup against the Lightning payment this node sent for its hash. Returns the ids to drive: the swaps
+    /// restored now and those already on record.
     static func restoreSwaps(contacts: [String]) async throws -> [String] {
         let (mnemonic, passphrase) = try secrets()
         let payoutAddress = try await LightningService.shared.newAddress()
-        return try await pubkySwapsRestore(
+        let report = try await pubkySwapsRestore(
             providers: contacts + Env.pubkySwapsProviders,
+            sentPayments: await sentPayments(),
             electrumUrl: Env.electrumServerUrl,
             payoutAddress: payoutAddress,
             feeRateSatVb: claimFeeRateSatVb,
@@ -74,6 +77,25 @@ enum PubkySwapsRouteService {
             mnemonic: mnemonic,
             bip39Passphrase: passphrase
         )
+        if !report.incompleteProviders.isEmpty {
+            Logger.warn("Swap lists incomplete from \(report.incompleteProviders)", context: "PubkySwapsRoute")
+        }
+        return report.restored + report.known
+    }
+
+    /// The Lightning payments this node sent, pending or settled, by hash and the amount paid to the payee.
+    private static func sentPayments() async -> [PubkySwapSentPayment] {
+        (await LightningService.shared.listPayments() ?? []).compactMap { payment in
+            guard payment.direction == .outbound, payment.status != .failed,
+                  case let .bolt11(hash, _, _, _, _) = payment.kind,
+                  let amountMsat = payment.amountMsat
+            else { return nil }
+            return PubkySwapSentPayment(
+                paymentHashHex: hash,
+                amountSat: amountMsat / 1000,
+                settled: payment.status == .succeeded
+            )
+        }
     }
 
     static func commit(quoteId: String) async throws -> PubkySwapRoutePayment {
