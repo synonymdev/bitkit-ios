@@ -256,6 +256,16 @@ final class SparkExitManager {
     }
 
     func retrySavingsPayment() async throws {
+        // Under the ticks' lock from the check to the saved txid, as the start's payment: a cancel either ends the exit
+        // before savings pays again or finds the payment and refuses.
+        while isTicking {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        isTicking = true
+        defer { isTicking = false }
+        if let stored = try? Self.loadRecord(store: store, lostLeafStore: lostLeafStore) {
+            record = stored
+        }
         guard let current = record, let refused = refusedSavingsPayment else { return }
         let attempts = OnchainSendAttemptService.shared
         let txid = try await Self.payRefusedAgain(refused, record: current) { context in
@@ -268,10 +278,6 @@ final class SparkExitManager {
             throw AppError(message: t("wallet__send_error_tx_failed"), debugMessage: "Spark exit savings payment refused again")
         }
         _ = try? await attempts.resumeAcceptedOrdinarySend(walletId: refused.walletId, observedTxid: txid)
-        // Written between ticks, so a tick in flight never saves over it.
-        while isTicking {
-            try? await Task.sleep(nanoseconds: 100_000_000)
-        }
         guard var paid = record, paid.createdAt == current.createdAt, paid.isActive else { return }
         paid.fundingPaymentTxid = txid
         try saveRecord(paid)
