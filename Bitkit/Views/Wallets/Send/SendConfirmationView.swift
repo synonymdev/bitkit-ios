@@ -1420,9 +1420,12 @@ struct SendConfirmationView: View {
             if let paymentId = createdMetadataPaymentId {
                 try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: paymentId)
             }
+            // bitkit-core spends a quote on its first commit, and a refused one is no better, so a retry starts from
+            // the amount, where Continue asks for a fresh quote.
+            app.paykitSwapRoute?.quote = nil
             navigationPath.append(.failure(SendFailureContext(
                 error: error,
-                retryRoute: .confirm,
+                retryRoute: .amount,
                 routingCacheResetAttempted: routingCacheResetAttempted,
                 paymentRequest: nil
             )))

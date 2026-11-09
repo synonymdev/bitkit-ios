@@ -1,12 +1,15 @@
 import SwiftUI
 
 enum SendRetryRoute: Hashable {
+    /// Back to the amount, where Continue asks for a fresh swap quote.
+    case amount
     case confirm
     case quickpay
     case lnurlPayConfirm
 
     var sendRoute: SendRoute {
         switch self {
+        case .amount: .amount
         case .confirm: .confirm
         case .quickpay: .quickpay
         case .lnurlPayConfirm: .lnurlPayConfirm
