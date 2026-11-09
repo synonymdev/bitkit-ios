@@ -31,6 +31,7 @@ struct SendConfirmationView: View {
     @State private var routedIncomingRequestId: PaykitPaymentRequest.ID?
     /// Set when Confirm picks a request's source itself, so that switch isn't routed twice.
     @State private var skipNextSourceReroute = false
+    @State private var refusedRouteSource: WalletType?
     @State private var hasShownAmountReview = false
     @State private var showingBiometricError = false
     @State private var biometricErrorMessage = ""
@@ -1260,9 +1261,10 @@ struct SendConfirmationView: View {
         isSetupPending: Bool = false,
         isPreparingWallet: Bool = false,
         isAmountReviewRequired: Bool = false,
-        isPreparingOnchainSend: Bool = false
+        isPreparingOnchainSend: Bool = false,
+        isRouteRefused: Bool = false
     ) -> Bool {
-        isAmountReviewRequired || isPreparingRequest || isSetupPending || isPreparingWallet || isPreparingOnchainSend
+        isAmountReviewRequired || isPreparingRequest || isSetupPending || isPreparingWallet || isPreparingOnchainSend || isRouteRefused
             || isHardwareConfirmationUnavailable
             || isFeeRateMissing(walletType: walletType, isHardwarePayment: isHardwarePayment, feeRate: feeRate)
     }
@@ -1285,7 +1287,8 @@ struct SendConfirmationView: View {
             isSetupPending: isRequestSetupPending,
             isPreparingWallet: walletSwitchContext != nil,
             isAmountReviewRequired: requiresAmountReview,
-            isPreparingOnchainSend: isPreparingOnchainSend
+            isPreparingOnchainSend: isPreparingOnchainSend,
+            isRouteRefused: refusedRouteSource == app.selectedWalletToPayFrom
         )
     }
 
@@ -1421,8 +1424,9 @@ struct SendConfirmationView: View {
                 app.selectedWalletToPayFrom = .lightning
             }
         }
-        let source: PaykitRouteService.Source = app.selectedWalletToPayFrom == .lightning ? .spending : .savings
-        _ = await app.routeContactPayment(
+        let walletType = app.selectedWalletToPayFrom
+        let source: PaykitRouteService.Source = walletType == .lightning ? .spending : .savings
+        let outcome = await app.routeContactPayment(
             route,
             amountSats: amountSats,
             source: source,
@@ -1430,6 +1434,19 @@ struct SendConfirmationView: View {
             onchainSpendableSats: source == .savings ? UInt64(max(0, wallet.spendableOnchainBalanceSats)) : 0,
             request: request
         )
+        if sourceChanged {
+            refusedRouteSource = Self.refusedRouteSource(after: outcome, on: walletType, previous: refusedRouteSource)
+        }
+    }
+
+    /// A source the router refused on Confirm keeps the swipe off while it's selected, so nothing consumes the contact's
+    /// private list for a send with nothing to pay; another source is still payable. A late outcome for a source never
+    /// clears another one's refusal.
+    static func refusedRouteSource(after outcome: PaykitRouteOutcome, on walletType: WalletType, previous: WalletType?) -> WalletType? {
+        if outcome == .refused {
+            return walletType
+        }
+        return previous == walletType ? nil : previous
     }
 
     /// What Savings can send to the request's address after the on-chain fee; its balance while no fee rate is known.

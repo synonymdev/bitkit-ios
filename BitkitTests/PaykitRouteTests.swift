@@ -272,6 +272,32 @@ final class PaykitRouteTests: XCTestCase {
         XCTAssertFalse(SendConfirmationView.sourceSwitchNeedsReroute(route: nil, walletType: .onchain, hasLightningPayment: false))
     }
 
+    func testARefusedRerouteOnConfirmKeepsTheSwipeOffUntilAnotherSourceIsPicked() {
+        let refused = SendConfirmationView.refusedRouteSource(after: .refused, on: .lightning, previous: nil)
+
+        XCTAssertEqual(refused, .lightning)
+        XCTAssertTrue(SendConfirmationView.isSwipeDisabled(
+            walletType: .lightning,
+            isHardwarePayment: false,
+            isHardwareConfirmationUnavailable: false,
+            feeRate: 5,
+            isRouteRefused: refused == .lightning
+        ), "a refused route must keep the swipe off, so no private list is consumed for it")
+        XCTAssertFalse(SendConfirmationView.isSwipeDisabled(
+            walletType: .onchain,
+            isHardwarePayment: false,
+            isHardwareConfirmationUnavailable: false,
+            feeRate: 5,
+            isRouteRefused: refused == .onchain
+        ), "switching back to Savings pays the contact again")
+        XCTAssertNil(SendConfirmationView.refusedRouteSource(after: .leg, on: .lightning, previous: refused))
+    }
+
+    func testALateRerouteOutcomeKeepsAnotherSourcesRefusal() {
+        XCTAssertEqual(SendConfirmationView.refusedRouteSource(after: .direct, on: .onchain, previous: .lightning), .lightning)
+        XCTAssertEqual(SendConfirmationView.refusedRouteSource(after: .refused, on: .onchain, previous: .lightning), .onchain)
+    }
+
     func testOnchainRequestStartsOnSpendingWhenSavingsCantCoverIt() {
         // Savings 5,000 can't cover a 20,000 request, so Spending (Spark 50,000) pays it through the leg.
         XCTAssertTrue(SendConfirmationView.requestStartsOnSpending(savingsSendableSats: 5000, amountSats: 20000, offersSparkLeg: true))
