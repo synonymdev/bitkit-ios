@@ -19,6 +19,7 @@ struct AppStatusView: View {
                     bitcoinNodeStatusRow
                     nodeStatusRow
                     channelsStatusRow
+                    exitStatusRow
                     backupStatusRow
                 }
             }
@@ -134,6 +135,22 @@ struct AppStatusView: View {
             }
         )
         .accessibilityIdentifier("Status-lightning_connection")
+    }
+
+    @ViewBuilder
+    private var exitStatusRow: some View {
+        if let step = AppStatusHelper.exitStep(record: SparkExitManager.shared.record) {
+            StatusRow(
+                imageName: "warning",
+                title: t("settings__status__exit__title"),
+                description: t("settings__status__exit__\(step.rawValue)"),
+                status: .pending,
+                onTap: {
+                    navigation.navigate(.sparkExitProgress)
+                }
+            )
+            .accessibilityIdentifier("Status-spark_exit")
+        }
     }
 
     private var backupStatusRow: some View {

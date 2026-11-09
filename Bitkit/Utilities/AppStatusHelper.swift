@@ -22,8 +22,24 @@ enum HealthStatus: String {
     }
 }
 
+/// The step of a running emergency exit, named like its App Status subtitle key.
+enum ExitStatusStep: String {
+    case funding
+    case pending
+}
+
 @MainActor
 struct AppStatusHelper {
+    /// Nil while no emergency exit runs.
+    nonisolated static func exitStep(record: SparkExitRecord?) -> ExitStatusStep? {
+        guard let record, record.isActive else { return nil }
+        switch record.phase {
+        case .awaitingFunding, .needsFunding: return .funding
+        case .running: return .pending
+        case .done, .failed: return nil
+        }
+    }
+
     static func internetStatus(network: NetworkMonitor) -> HealthStatus {
         return network.isConnected ? .ready : .error
     }
