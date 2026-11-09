@@ -45,6 +45,23 @@ final class MoveToSparkActivityTests: XCTestCase {
         try await assertOneOutgoingRowWithTheRoutingFee()
     }
 
+    func testSparkReceiveWaitingOnItsContactLookupKeepsTheLdkSendStoredMeanwhile() async throws {
+        let activity = Bitkit.CoreService.shared.activity
+        let send = ldkSend(timestamp: 1000)
+        // The receive's contact lookup is where it waits; the send lands in that gap.
+        activity.setPrivatePaykitContactResolvers(
+            invoice: { _ in
+                try? await Bitkit.CoreService.shared.activity.syncLdkNodePayments([send])
+                return nil
+            },
+            onchainAddresses: nil
+        )
+        defer { activity.setPrivatePaykitContactResolvers(invoice: nil, onchainAddresses: nil) }
+        try await activity.recordChannelFreeRailPayment(sparkReceive(timestamp: 1001))
+
+        try await assertOneOutgoingRowWithTheRoutingFee()
+    }
+
     private func assertOneOutgoingRowWithTheRoutingFee(file: StaticString = #filePath, line: UInt = #line) async throws {
         let rows = try await Bitkit.CoreService.shared.activity.get(filter: .lightning, walletId: WalletScope.default)
         XCTAssertEqual(rows.count, 1, file: file, line: line)

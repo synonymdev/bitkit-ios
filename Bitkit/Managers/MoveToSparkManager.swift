@@ -185,6 +185,7 @@ final class MoveToSparkManager {
     func move(wallet: WalletViewModel) async {
         guard case let .confirm(quote, isMoving) = state, !isMoving else { return }
         generation += 1
+        let moveGeneration = generation
         keepsOutcome = true
         isMoveInFlight = true
         defer { isMoveInFlight = false }
@@ -196,7 +197,7 @@ final class MoveToSparkManager {
                 bolt11: quote.invoice,
                 sats: quote.amountSats,
                 maxFeeMsat: MoveToSparkMath.feeCapMsat(feeSats: quote.feeSats),
-                onLateFailure: { [weak self] in self?.lateFailure(amountSats: quote.amountSats) }
+                onLateFailure: { [weak self] in self?.lateFailure(amountSats: quote.amountSats, moveGeneration: moveGeneration) }
             ) else {
                 state = .inFlight(amountSats: quote.amountSats)
                 return
@@ -261,10 +262,11 @@ final class MoveToSparkManager {
     }
 
     /// A move that was still in flight failed after the wait: its amount stays in the channel, so the screen, if it still
-    /// shows that move, says it could not move, and a toast tells the user wherever they are.
-    private func lateFailure(amountSats: UInt64) {
+    /// shows that same move, says it could not move, and a toast tells the user wherever they are.
+    private func lateFailure(amountSats: UInt64, moveGeneration: Int) {
         Logger.warn("Move to Spark of '\(amountSats)' sats failed after the wait", context: "MoveToSpark")
-        if state == .inFlight(amountSats: amountSats) {
+        // Only the move that owns the screen may change it: a later move counts a new generation.
+        if generation == moveGeneration, case .inFlight = state {
             state = .failed(.unknown)
         }
         guard !ToastWindowManager.areToastsDisabled() else { return }

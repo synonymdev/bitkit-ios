@@ -1044,22 +1044,28 @@ class ActivityService {
             seenAt: existingLightning?.seenAt
         )
 
-        if existingActivity != nil {
-            try await ServiceQueue.background(.core) {
-                var updated = ln
-                if case let .lightning(latest)? = try getActivityById(walletId: ln.walletId, activityId: payment.id),
-                   latest.contact != existingLightning?.contact
-                {
-                    updated.contact = latest.contact
-                }
-                if self.isContactDetached(activityId: payment.id, walletId: ln.walletId) {
-                    updated.contact = nil
-                }
-                try updateActivity(activityId: payment.id, activity: .lightning(updated))
-                self.activitiesChangedSubject.send()
+        let isChannelFreeReceive = rail == .channelFree && payment.direction == .inbound
+        try await ServiceQueue.background(.core) {
+            let latestActivity = try getActivityById(walletId: ln.walletId, activityId: payment.id)
+            // The move's LDK send can be stored while this receive waited on its contact lookup; it still wins.
+            if isChannelFreeReceive, case let .lightning(latest)? = latestActivity, latest.txType == .sent {
+                return
             }
-        } else {
-            try await upsert(.lightning(ln))
+            guard let latestActivity else {
+                try upsertActivity(activity: .lightning(ln))
+                self.updateBoostTxIdsCache(for: .lightning(ln))
+                self.activitiesChangedSubject.send()
+                return
+            }
+            var updated = ln
+            if case let .lightning(latest) = latestActivity, latest.contact != existingLightning?.contact {
+                updated.contact = latest.contact
+            }
+            if self.isContactDetached(activityId: payment.id, walletId: ln.walletId) {
+                updated.contact = nil
+            }
+            try updateActivity(activityId: payment.id, activity: .lightning(updated))
+            self.activitiesChangedSubject.send()
         }
     }
 
