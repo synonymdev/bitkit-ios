@@ -895,10 +895,17 @@ class LightningService: NodeLifecycleService {
     /// Pays on the channel-free rail when no channel has the outbound capacity and the rail's balance covers the amount.
     @MainActor
     private func shouldPayWithRail(_ rail: ChannelFreeLightningRail, bolt11: String, sats: UInt64?) -> Bool {
-        guard rail.isReady else { return false }
-        let invoiceSats = (try? Bolt11Invoice.fromStr(invoiceStr: bolt11).amountMilliSatoshis()).flatMap { $0 }.map { $0 / 1000 }
-        guard let amountSats = sats ?? invoiceSats else { return false }
+        guard rail.isReady, let amountSats = Self.paymentAmountSats(bolt11: bolt11, sats: sats) else { return false }
         return !canSendWithChannels(amountSats: amountSats) && rail.sendableSats >= amountSats
+    }
+
+    private static func paymentAmountSats(bolt11: String, sats: UInt64?) -> UInt64? {
+        sats ?? (try? Bolt11Invoice.fromStr(invoiceStr: bolt11).amountMilliSatoshis()).flatMap { $0 }.map { $0 / 1000 }
+    }
+
+    /// LDK's routing fee limit when a caller sets none, 1% + 50 sats, so a send over the rail is capped the same way.
+    private static func defaultMaxFeeSats(amountSats: UInt64) -> UInt64 {
+        amountSats / 100 + 50
     }
 
     /// Checks if we have the correct outbound capacity to send the amount
@@ -1021,7 +1028,8 @@ class LightningService: NodeLifecycleService {
             return try await rail.send(
                 bolt11: bolt11,
                 sats: sats,
-                maxFeeSats: params?.maxTotalRoutingFeeMsat.map { $0 / 1000 },
+                maxFeeSats: params?.maxTotalRoutingFeeMsat.map { $0 / 1000 }
+                    ?? Self.paymentAmountSats(bolt11: bolt11, sats: sats).map(Self.defaultMaxFeeSats),
                 beforeSubmission: beforeSubmission
             )
         }

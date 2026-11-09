@@ -159,6 +159,15 @@ extension ChannelFreeRailTests {
         XCTAssertNil(rail.sentBolt11)
     }
 
+    func testUserSendOverTheRailHasAFeeLimit() async throws {
+        // WalletViewModel.send and sendWithTimeout pass no route parameters, so LDK applies its default
+        // limit (1% + 50 sats); the rail must not be left without one.
+        _ = try await Bitkit.LightningService.shared.send(bolt11: "lnbcrt1rail", sats: 1000)
+
+        XCTAssertEqual(rail.sentBolt11, "lnbcrt1rail")
+        XCTAssertNotNil(rail.sentFeeLimitSats, "A user send over Spark went out with no fee limit")
+    }
+
     func testCanSendLeavesRoomForTheSparkFee() {
         rail.balanceSats = 100_000
         let sendable = Bitkit.ChannelFreeRailFees.sendableSats(balanceSats: 100_000)
