@@ -588,4 +588,23 @@ final class SparkExitReviewTests: XCTestCase {
         )
         XCTAssertNil(exit.savingsPayment, "nothing to fund")
     }
+
+    // MARK: Transfer while failed leaves are retried (pwltr's Android finding on c554a0185)
+
+    /// A confirmed sweep never ends the transfer while failed cooperative leaves are still retried: their value stays
+    /// in transfer to savings until the exit ends.
+    func testTheTransferStaysWhileFailedLeavesAreRetried() {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.failedLeafRetrySince = 1000
+        XCTAssertTrue(record.isRetryingFailedLeaves)
+        XCTAssertFalse(SparkExitManager.isTransferFinished(record, isSweepSeen: true))
+        XCTAssertFalse(SparkExitManager.isTransferFinished(record, isSweepSeen: false))
+
+        record.failedLeafRetrySince = nil
+        XCTAssertTrue(SparkExitManager.isTransferFinished(record, isSweepSeen: true), "the sweep reached savings")
+        XCTAssertFalse(SparkExitManager.isTransferFinished(record, isSweepSeen: false))
+
+        record.phase = .done
+        XCTAssertTrue(SparkExitManager.isTransferFinished(record, isSweepSeen: false), "the exit ended")
+    }
 }

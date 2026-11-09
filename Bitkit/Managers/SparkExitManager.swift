@@ -381,22 +381,28 @@ final class SparkExitManager {
         }
     }
 
-    /// Ends the exit's transfer once the sweep reaches savings, once only leaves the operators moved on-chain are left,
-    /// or once the exit ended, so its amount is never counted both as in transfer and in the on-chain balance. Runs on
-    /// every tick and launch until it holds. A sweep of a generation the failed-leaf retry replaced is looked for too.
+    /// Ends the exit's transfer once the sweep reaches savings or once the exit ended, so its amount is never counted
+    /// both as in transfer and in the on-chain balance. Runs on every tick and launch until it holds. A sweep of a
+    /// generation the failed-leaf retry replaced is looked for too.
     private func settleIfFinished(_ record: SparkExitRecord) async {
         guard let transferId = record.transferId, let transfer = try? TransferStorage.shared.getById(transferId) else { return }
         let activity = CoreService.shared.activity
-        var isFinished = !record.isActive || record.isRetryingFailedLeaves
+        var isSweepSeen = false
         // The sweep's activity is marked as a transfer even after the transfer settled: it may reach the activity
         // list only later.
         for txid in SparkExitMath.sweepTxids(record) {
             guard await activity.hasOnchainActivityForTxid(txid: txid) else { continue }
             await activity.markOnchainActivityAsTransfer(txId: txid)
-            isFinished = true
+            isSweepSeen = true
         }
-        guard isFinished, !transfer.isSettled else { return }
+        guard Self.isTransferFinished(record, isSweepSeen: isSweepSeen), !transfer.isSettled else { return }
         try? await TransferService(lightningService: .shared).markSettled(id: transferId)
+    }
+
+    /// The exit's transfer ends once the exit ended, or once its sweep reached savings and no failed cooperative leaf is
+    /// still retried: the value those leaves hold stays in transfer, less what already reached savings (`inTransferSats`).
+    nonisolated static func isTransferFinished(_ record: SparkExitRecord, isSweepSeen: Bool) -> Bool {
+        !record.isActive || (isSweepSeen && !record.isRetryingFailedLeaves)
     }
 
     /// Settles exit transfers no running exit owns, so their amount never stays in transfer to savings for good.
