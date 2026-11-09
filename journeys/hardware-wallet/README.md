@@ -51,7 +51,8 @@ Several journeys mutate pairing state. Run them in this order, or re-pair betwee
 1. `connect-home-tile.xml` — pairs the emulator; every other journey assumes it ran.
 2. `settings-hardware-wallets.xml`, `connect-flow.xml`, `suggestion-intro-sheet.xml` — each forgets
    and re-pairs the device, ending paired.
-3. `activity-blue-icons.xml`, `activity-detail-hw-tags.xml`, `reconnect.xml`, `send-onchain.xml`.
+3. `activity-blue-icons.xml`, `activity-detail-hw-tags.xml`, `reconnect.xml`, `send-onchain.xml`,
+   `scan-onchain-amount-over-spendable.xml`.
 4. `passphrase-pairing.xml` → `passphrase-duplicate.xml` → `passphrase-settings-remove.xml`.
 5. `detail-overview.xml` **last** — its final step forgets the device.
 

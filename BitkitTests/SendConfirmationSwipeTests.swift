@@ -1,8 +1,77 @@
 @testable import Bitkit
 import LDKNode
+import SwiftUI
 import XCTest
 
 final class SendConfirmationSwipeTests: XCTestCase {
+    @MainActor
+    func testRestoredLoadingSwipeKeepsItsSpinnerInTheKnob() async throws {
+        let confirmation = NavigationStack(path: .constant([true])) {
+            Color.black
+                .navigationDestination(for: Bool.self) { _ in
+                    SwipeButton(title: "Swipe To Pay", accentColor: Color(red: 1, green: 0.4, blue: 0), isLoading: true) {
+                        XCTFail("Restoring a loading control must not start another operation")
+                    }
+                    .frame(width: 343, height: 76)
+                }
+        }
+        let controller = UIHostingController(rootView: AnyView(confirmation))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.windowScene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+
+        try await assertSpinnerIsInsideKnob(window, name: "initial-loading-confirmation")
+        controller.rootView = AnyView(Color.black)
+        try await Task.sleep(for: .milliseconds(300))
+        controller.rootView = AnyView(confirmation)
+        try await assertSpinnerIsInsideKnob(window, name: "restored-loading-confirmation")
+    }
+
+    @MainActor
+    private func assertSpinnerIsInsideKnob(_ window: UIWindow, name: String) async throws {
+        try await Task.sleep(for: .milliseconds(1500))
+        let view = try XCTUnwrap(window.rootViewController?.view)
+        view.layoutIfNeeded()
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let snapshot = UIGraphicsImageRenderer(bounds: view.bounds, format: format).image { _ in
+            view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
+        }
+        let attachment = XCTAttachment(image: snapshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let image = try XCTUnwrap(snapshot.cgImage)
+        let context = try XCTUnwrap(CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8,
+                                              bytesPerRow: image.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        let pixels = try XCTUnwrap(context.data).assumingMemoryBound(to: UInt8.self)
+        var orangePoints: [CGPoint] = []
+        for y in 0 ..< image.height {
+            for x in 0 ..< image.width {
+                let offset = (y * image.width + x) * 4
+                if pixels[offset] > 200, pixels[offset + 1] > 60, pixels[offset + 1] < 160, pixels[offset + 2] < 60 {
+                    orangePoints.append(CGPoint(x: x, y: y))
+                }
+            }
+        }
+        let centerX = try Int((XCTUnwrap(orangePoints.map(\.x).min()) + XCTUnwrap(orangePoints.map(\.x).max())) / 2)
+        let centerY = try Int((XCTUnwrap(orangePoints.map(\.y).min()) + XCTUnwrap(orangePoints.map(\.y).max())) / 2)
+        var darkPixels = 0
+        for y in centerY - 16 ..< centerY + 16 {
+            for x in centerX - 16 ..< centerX + 16 {
+                let offset = (y * image.width + x) * 4
+                if pixels[offset] < 80, pixels[offset + 1] < 80, pixels[offset + 2] < 80 {
+                    darkPixels += 1
+                }
+            }
+        }
+        XCTAssertGreaterThan(darkPixels, 20, "The loading spinner must remain centered in its knob after navigation restoration")
+    }
+
     func testManualSelectionFailureStopsSubmissionAndAllowsRetry() async throws {
         enum SelectionError: Error { case unavailable }
         var attempts = 0
@@ -72,6 +141,18 @@ final class SendConfirmationSwipeTests: XCTestCase {
         }
     }
 
+    func testRequiredAmountReviewKeepsSwipeDisabledWithKnownFees() {
+        for walletType in [WalletType.lightning, .onchain] {
+            XCTAssertTrue(SendConfirmationView.isSwipeDisabled(
+                walletType: walletType,
+                isHardwarePayment: false,
+                isHardwareConfirmationUnavailable: false,
+                feeRate: 5,
+                isAmountReviewRequired: true
+            ))
+        }
+    }
+
     func testWalletPreparationKeepsSwipeDisabledWithKnownFees() {
         XCTAssertTrue(SendConfirmationView.isSwipeDisabled(
             walletType: .onchain,
@@ -82,22 +163,121 @@ final class SendConfirmationSwipeTests: XCTestCase {
         ))
     }
 
-    func testPreparingRequestKeepsSwipeDisabledAndLoadingWithKnownFees() {
-        for walletType in [WalletType.lightning, .onchain] {
-            XCTAssertTrue(SendConfirmationView.isSwipeDisabled(
-                walletType: walletType,
-                isHardwarePayment: false,
-                isHardwareConfirmationUnavailable: false,
-                feeRate: 5,
-                isPreparingRequest: true
+    func testAScannedAmountCannotBeEditedFromConfirm() {
+        XCTAssertFalse(SendConfirmationView.canEditScannedAmount(walletToPayFrom: .onchain, lightningAmountSats: nil, onchainAmountSats: 10000))
+        XCTAssertFalse(SendConfirmationView.canEditScannedAmount(walletToPayFrom: .lightning, lightningAmountSats: 10000, onchainAmountSats: 0))
+        XCTAssertTrue(SendConfirmationView.canEditScannedAmount(walletToPayFrom: .onchain, lightningAmountSats: 10000, onchainAmountSats: 0))
+        XCTAssertTrue(SendConfirmationView.canEditScannedAmount(walletToPayFrom: .lightning, lightningAmountSats: 0, onchainAmountSats: 10000))
+        XCTAssertTrue(SendConfirmationView.canEditScannedAmount(walletToPayFrom: .onchain, lightningAmountSats: nil, onchainAmountSats: nil))
+    }
+
+    func testAFailedHardwarePreviewLeavesConfirmOnlyForItsInitialSource() {
+        XCTAssertTrue(SendConfirmationView.leavesConfirmAfterFeeFailure(isHardwarePayment: true, isContactPayment: false, afterFundingSwitch: false))
+        // A switch to a device that cannot pay keeps Confirm, so another source can be picked.
+        XCTAssertFalse(SendConfirmationView.leavesConfirmAfterFeeFailure(isHardwarePayment: true, isContactPayment: false, afterFundingSwitch: true))
+        XCTAssertFalse(SendConfirmationView.leavesConfirmAfterFeeFailure(isHardwarePayment: true, isContactPayment: true, afterFundingSwitch: false))
+        XCTAssertFalse(SendConfirmationView.leavesConfirmAfterFeeFailure(
+            isHardwarePayment: false,
+            isContactPayment: false,
+            afterFundingSwitch: false
+        ))
+    }
+
+    func testAFixedAmountSavingsCannotPayMovesToAHardwareWalletThatCovers() {
+        let balances: [(walletId: String, balanceSats: UInt64)] = [("small", 20000), ("large", 549_577)]
+        XCTAssertEqual(
+            SendConfirmationView.hardwareWalletCovering(amount: 300_000, savingsBalanceSats: 209_714, balances: balances),
+            "large"
+        )
+        XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 600_000, savingsBalanceSats: 209_714, balances: balances))
+        XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 300_000, savingsBalanceSats: 209_714, balances: []))
+    }
+
+    func testAFixedAmountSavingsCannotPayMovesToTheLargestHardwareWallet() {
+        // The first wallet also covers the amount, but has less room for the fee.
+        let balances: [(walletId: String, balanceSats: UInt64)] = [("smaller", 300_100), ("larger", 549_577)]
+        XCTAssertEqual(
+            SendConfirmationView.hardwareWalletCovering(amount: 300_000, savingsBalanceSats: 0, balances: balances),
+            "larger"
+        )
+    }
+
+    func testAFailedPreviewOfTheSavingsFallbackWalletIsInsufficientSavingsOnlyWhenTheFeeDoesNotFit() {
+        func isShort(
+            fallback: String?,
+            wallet: String?,
+            amount: UInt64,
+            balance: UInt64 = 100_000,
+            reserve: UInt64 = 1200,
+            errorDetail: String? = "Electrum connection failed: Failed to connect to Electrum: Connection refused (os error 61)"
+        ) -> Bool {
+            SendConfirmationView.isSavingsFallbackShortOfFee(
+                fallbackWalletId: fallback,
+                walletId: wallet,
+                previewErrorDetail: errorDetail,
+                amountSats: amount,
+                balanceSats: balance,
+                feeReserveSats: reserve
+            )
+        }
+        XCTAssertTrue(isShort(fallback: "trezor", wallet: "trezor", amount: 99970))
+        XCTAssertTrue(isShort(fallback: "trezor", wallet: "trezor", amount: 1000, balance: 1100))
+        // The fee fits, so the preview failed for another reason, such as Electrum being unreachable.
+        XCTAssertFalse(isShort(fallback: "trezor", wallet: "trezor", amount: 50000))
+        XCTAssertFalse(isShort(fallback: "trezor", wallet: "trezor", amount: 98800))
+        // Many inputs can need more than the reserve; the compose then reports the shortfall itself.
+        let shortfall = "Insufficient funds: 100000 sat available of 101310 sat needed"
+        XCTAssertTrue(isShort(fallback: "trezor", wallet: "trezor", amount: 98000, errorDetail: shortfall))
+        XCTAssertFalse(isShort(fallback: nil, wallet: "trezor", amount: 98000, errorDetail: shortfall))
+        // A source the user picked, or none, keeps the Try again handling.
+        XCTAssertFalse(isShort(fallback: nil, wallet: "trezor", amount: 99970))
+        XCTAssertFalse(isShort(fallback: "trezor", wallet: "jade", amount: 99970))
+        XCTAssertFalse(isShort(fallback: nil, wallet: nil, amount: 99970))
+    }
+
+    func testACoinSelectionFailureWithEnoughSavingsDoesNotMoveToAHardwareWallet() {
+        let balances: [(walletId: String, balanceSats: UInt64)] = [("large", 549_577)]
+        XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 10000, savingsBalanceSats: 209_714, balances: balances))
+        XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 209_714, savingsBalanceSats: 209_714, balances: balances))
+    }
+
+    func testOnlyTheNewestFeeCalculationHoldsTheSwipe() {
+        XCTAssertTrue(SendConfirmationView.isCalculatingOnchainFee(calculationId: 3, latestCalculationId: 3))
+        // A funding switch starts a newer calculation that may not be on-chain at all.
+        XCTAssertFalse(SendConfirmationView.isCalculatingOnchainFee(calculationId: 3, latestCalculationId: 4))
+        XCTAssertFalse(SendConfirmationView.isCalculatingOnchainFee(calculationId: nil, latestCalculationId: 4))
+    }
+
+    func testOnchainPreparationKeepsSwipeDisabledWithKnownFeeRate() {
+        XCTAssertTrue(SendConfirmationView.isSwipeDisabled(
+            walletType: .onchain,
+            isHardwarePayment: false,
+            isHardwareConfirmationUnavailable: false,
+            feeRate: 5,
+            isPreparingOnchainSend: true
+        ))
+    }
+
+    func testPendingRequestPreparationKeepsSwipeDisabledAndLoadingWithKnownFees() {
+        for (preparingRequest, setupPending) in [(true, false), (false, true)] {
+            for walletType in [WalletType.lightning, .onchain] {
+                XCTAssertTrue(SendConfirmationView.isSwipeDisabled(
+                    walletType: walletType,
+                    isHardwarePayment: false,
+                    isHardwareConfirmationUnavailable: false,
+                    feeRate: 5,
+                    isPreparingRequest: preparingRequest,
+                    isSetupPending: setupPending
+                ))
+            }
+            XCTAssertTrue(SendConfirmationView.isSwipeLoading(
+                hasStartedAutomaticPayment: false,
+                isFeeRateMissing: false,
+                feeRateLoadFailed: false,
+                isPreparingRequest: preparingRequest,
+                isSetupPending: setupPending
             ))
         }
-        XCTAssertTrue(SendConfirmationView.isSwipeLoading(
-            hasStartedAutomaticPayment: false,
-            isFeeRateMissing: false,
-            feeRateLoadFailed: false,
-            isPreparingRequest: true
-        ))
     }
 
     func testOnchainPaymentWithoutFeeRateDisablesSwipe() {

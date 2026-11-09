@@ -612,6 +612,14 @@
 "security__use_pin" = "Utilitzar el codi PIN";
 "security__wiped_title" = "Dades de la cartera eliminades";
 "security__wiped_message" = "Bitkit s\'ha restablert i totes les dades de la cartera s\'han eliminat.";
+"security__pin_unavailable" = "Bitkit no ha pogut comprovar el teu PIN. Torna-ho a provar.";
+"security__wipe_not_started" = "No s'ha pogut iniciar el restabliment. No s'ha eliminat res.";
+"security__wipe_gate_title" = "Restablint Bitkit";
+"security__wipe_gate_text" = "Bitkit està eliminant les dades de la cartera d'aquest dispositiu. Mantén l'aplicació oberta fins que acabi.";
+"security__wipe_gate_failed" = "Bitkit no ha pogut acabar d'eliminar les dades de la cartera i ho tornarà a provar. Pots tornar-ho a provar ara o exportar els registres per al suport.";
+"security__wipe_gate_step" = "Pas {step} de {total}";
+"security__wipe_gate_blocked_title" = "Bitkit està bloquejat";
+"security__wipe_gate_blocked_text" = "Bitkit no pot verificar el seu estat de seguretat. Torna-ho a provar o exporta els registres per al suport.";
 "security__authorization__success" = "Èxit";
 "pubky_auth__title" = "Autoritzar";
 "pubky_auth__description_prefix" = "Un servei sol·licita permís per accedir i editar les teves dades de ";
@@ -968,7 +976,8 @@
 "contacts__add_error_self" = "No pots afegir el teu propi pubky com a contacte.";
 "contacts__add_retrieving" = "Obtenint la informació\ndel contacte";
 "contacts__add_error" = "No s'ha pogut afegir el contacte";
-"contacts__add_disclaimer" = "Tingues en compte que tu i {name} us heu d'afegir mútuament com a contactes per pagar-vos de forma privada. Altrament, el pagament serà visible públicament.";
+"contacts__add_disclaimer" = "Tingues en compte que tu i {name} us heu d'afegir mútuament com a contactes abans de poder pagar-vos de forma privada. Si pagues sense desar el contacte, el pagament és visible públicament.";
+"contacts__pay_private_link_pending" = "Bitkit encara està configurant una connexió privada amb aquest contacte. Assegura't que també t'ha afegit com a contacte o demana-li que t'enviï una sol·licitud de pagament.";
 "contacts__import_nav_title" = "Importar";
 "contacts__import_found_title" = "Perfil i contactes\n<accent>trobats</accent>";
 "contacts__import_found_description" = "Bitkit ha trobat dades de perfil i contactes vinculades al pubky <accent>{key}</accent>";
@@ -1078,8 +1087,10 @@
 "profile__edit" = "Editar";
 "profile__pay_contacts_nav_title" = "Pagar contactes";
 "profile__pay_contacts_title" = "Deixa que els teus contactes\n<accent>et paguin</accent>";
-"profile__pay_contacts_description" = "Utilitza Bitkit amb els teus contactes per enviar pagaments directament, en qualsevol moment i a qualsevol lloc.";
-"profile__pay_contacts_toggle" = "Pagaments amb contactes";
+"profile__pay_contacts_description" = "Comparteix les dades de pagament en privat amb els teus contactes. Els pagaments públics continuen desactivats fins que els activis a Configuració.";
+"profile__private_payments_toggle" = "Pagaments privats a contactes";
+"profile__public_payments_toggle" = "Pagaments públics";
+"profile__payments_pending" = "Hi ha canvis pendents. Les dades de pagament compartides anteriorment poden continuar disponibles.";
 "profile__add_link_title" = "Afegir enllaç";
 "profile__add_link_label" = "ETIQUETA";
 "profile__add_link_label_placeholder" = "Per exemple 'Website'";
@@ -1678,7 +1689,7 @@
 "usdt__to_address" = "A l'adreça";
 "usdt__disable_unavailable" = "USDT ha de continuar activat mentre tinguis saldo o una transferència pendent. Espera que finalitzin les transferències i comprova el saldo abans de desactivar-lo.";
 "usdt__enable" = "Activar USDT";
-"usdt__intro_description" = "Bitcoin de cor. Dòlars quan els necessitis. Activa USDT (Tether) per enviar i rebre dòlars digitals amb Bitkit.";
+"usdt__intro_description" = "Bitcoin de cor. Dòlars quan els necessitis. Activa USDT (Tether) per enviar i rebre dòlars digitals ràpidament amb Bitkit.";
 "usdt__intro_headline" = "<accent>DÒLARS?</accent>\nTU DECIDEIXES";
 "usdt__intro_title" = "Novetat: USDT";
 "usdt__no_thanks" = "No, gràcies";
@@ -1701,6 +1712,10 @@
 "wallet__send_error_support" = "Contacta amb el suport";
 "subscriptions__allowances" = "Assignacions";
 "subscriptions__allowances_empty_headline" = "Configura\n<accent>assignacions</accent>";
+"subscriptions__allowances_paused_description" = "Els teus registres d'assignacions són més antics que altres que aquest moneder ja ha fet servir. Les sol·licituds demanaran la teva aprovació fins que reprenguis.";
+"subscriptions__allowances_paused_restore_description" = "Aquest moneder s'ha restaurat a partir d'una còpia de seguretat. Les sol·licituds demanaran la teva aprovació fins que reprenguis.";
+"subscriptions__allowances_paused_resume" = "Reprèn";
+"subscriptions__allowances_paused_title" = "Pagaments automàtics en pausa";
 "subscriptions__allowances_empty_description" = "Pots establir límits de despesa per pagar automàticament les sol·licituds de pagament de contactes de confiança.";
 "subscriptions__allowance_add" = "Afegir assignació";
 "subscriptions__allowance_title" = "Assignació";
@@ -1752,3 +1767,5 @@
 "subscriptions__allowance_auto_paid" = "Pagat automàticament";
 
 "wallet__balance_updating" = "S’està actualitzant el saldo…";
+"other__error_keychain" = "Problema de connexió de dades";
+"other__error_keychain_msg" = "No s'ha pogut carregar la clau principal del clauer.";

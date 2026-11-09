@@ -1,4 +1,5 @@
 @testable import Bitkit
+import os
 import XCTest
 
 @MainActor
@@ -9,10 +10,10 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         super.setUp()
         stored = [
             "bolt11", "bip21", "onchainAddress", PublicPaykitService.publishingEnabledKey,
-            PublicPaykitService.cleanupPendingKey, PaykitFeatureFlags.uiEnabledKey,
+            PublicPaykitService.cleanupPendingKey, PublicPaykitService.reconciliationRevisionKey, PaykitFeatureFlags.uiEnabledKey,
             "publicPaykitBolt11", "publicPaykitBolt11PaymentHash", "publicPaykitBolt11ExpiresAt",
             PublicPaykitService.lightningPaymentOptionEnabledKey, PublicPaykitService.usdtPaymentOptionEnabledKey,
-            PrivatePaykitService.publishingEnabledKey,
+            PrivatePaykitService.publishingEnabledKey, PublicPaykitService.onchainPaymentOptionEnabledKey,
         ].map { (
             $0,
             UserDefaults.standard.object(forKey: $0)
@@ -21,6 +22,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
             UserDefaults.standard.removeObject(forKey: key)
         }
         UserDefaults.standard.set(false, forKey: PublicPaykitService.usdtPaymentOptionEnabledKey)
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
     }
 
     override func tearDown() {
@@ -297,14 +299,14 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                             }
                         )
                     },
+                    syncPrivateCapability: { _, _ in },
                     preparePrivateEndpoints: { _, _, _ in nil }, removePrivateEndpoints: { _ in },
                     setPublicCleanupPending: PublicPaykitService.setCleanupPending,
                     setPrivateCleanupPending: PrivatePaykitService.setContactSharingCleanupPending
                 )
                 do {
-                    let applied = try await ContactPaymentsService.setEnabled(
-                        true, pubkyProfile: profile, contactsManager: ContactsManager(),
-                        operations: operations, privatePaymentAccess: { _ in false }
+                    let applied = try await ContactPaymentsService.setPublicEnabled(
+                        true, pubkyProfile: profile, operations: operations
                     )
                     XCTAssertEqual(invalidations, 1)
                     XCTAssertTrue(applied)
@@ -320,7 +322,8 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                     XCTAssertTrue(published.isEmpty)
                 }
                 XCTAssertEqual(profile.currentSession, session)
-                XCTAssertEqual(ContactPaymentsService.isEnabled(), invalidations == 1)
+                XCTAssertEqual(UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey), invalidations == 1)
+                XCTAssertFalse(ContactPaymentsService.isEnabled())
                 XCTAssertEqual(removals, invalidations == 1 ? 0 : 1)
                 XCTAssertEqual(endpointRefreshes, 1)
                 XCTAssertEqual(wallet.addressCallCount, 1)
@@ -455,14 +458,14 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                         applyEndpoints: { XCTAssertTrue($0.isEmpty, "Deletion must not publish replacement endpoints") }
                     )
                 },
+                syncPrivateCapability: { _, _ in },
                 preparePrivateEndpoints: { _, _, _ in nil }, removePrivateEndpoints: { _ in },
                 setPublicCleanupPending: PublicPaykitService.setCleanupPending,
                 setPrivateCleanupPending: PrivatePaykitService.setContactSharingCleanupPending
             )
             let change = Task {
-                try await ContactPaymentsService.setEnabled(
-                    true, pubkyProfile: profile, contactsManager: ContactsManager(),
-                    operations: operations, privatePaymentAccess: { _ in false }
+                try await ContactPaymentsService.setPublicEnabled(
+                    true, pubkyProfile: profile, operations: operations
                 )
             }
             await fulfillment(of: [creation.started], timeout: 5)
@@ -478,6 +481,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                 }
                 XCTAssertTrue(wallet.publicPaykitBolt11.isEmpty)
                 XCTAssertFalse(ContactPaymentsService.isEnabled())
+                XCTAssertFalse(UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey))
                 XCTAssertEqual(creations, heldCreation)
             }
         }
@@ -621,7 +625,6 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                 let session = try XCTUnwrap(profile.automaticPaykitSession)
                 UserDefaults.standard.set(restoresSharing, forKey: PublicPaykitService.publishingEnabledKey)
                 PublicPaykitService.setCleanupPending(!replacesInvoice)
-                let contacts = ContactsManager()
                 let preparation = PublicationGate("Explicit endpoint snapshot")
                 wallet.afterPublicEndpointSnapshot = {
                     wallet.afterPublicEndpointSnapshot = nil
@@ -643,15 +646,15 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                             applyEndpoints: { published += $0.map(\.value) }
                         )
                     },
+                    syncPrivateCapability: { _, _ in },
                     preparePrivateEndpoints: { _, _, _ in nil },
                     removePrivateEndpoints: { _ in },
                     setPublicCleanupPending: PublicPaykitService.setCleanupPending,
                     setPrivateCleanupPending: PrivatePaykitService.setContactSharingCleanupPending
                 )
                 let change = Task {
-                    try await ContactPaymentsService.setEnabled(
-                        true, pubkyProfile: profile, contactsManager: contacts,
-                        operations: operations, privatePaymentAccess: { _ in false }
+                    try await ContactPaymentsService.setPublicEnabled(
+                        true, pubkyProfile: profile, operations: operations
                     )
                 }
                 await fulfillment(of: [preparation.started], timeout: 5)
@@ -773,6 +776,11 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         profile.publicKey = "pubky" + String(repeating: "y", count: 52)
         profile.authState = .authenticated
         let wallet = GatedReceiveWallet(pubkyProfile: profile)
+        let session = profile.automaticPaykitSession
+        wallet.publicationAdmission = {
+            session != nil && profile.automaticPaykitSession == session &&
+                PublicPaykitService.pendingReconciliationMode() == .publishEndpoints
+        }
         wallet.stubPublicEndpoints = true
         wallet.publicPaykitBolt11 = "ln-public"
         wallet.usableChannels = route == .channelUsable
@@ -784,7 +792,11 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
 
         func refresh(_ wallet: GatedReceiveWallet) async throws {
             switch self {
-            case .receive: try await wallet.refreshBip21(forceRefreshBolt11: true)
+            case .receive:
+                try await wallet.refreshBip21(forceRefreshBolt11: true)
+                do {
+                    try await wallet.syncReceivePublicPaykitEndpoints(isSessionCurrent: wallet.publicationAdmission)
+                } catch {}
             case .channelUsable, .channelUnavailable:
                 await wallet.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "test")
             }
@@ -817,6 +829,8 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         }
         wallet.invoiceAmountSats = 2000
         try await wallet.refreshBip21(forceRefreshBolt11: true)
+        XCTAssertEqual(wallet.endpointSyncCount, 0)
+        try await wallet.syncReceivePublicPaykitEndpoints { true }
         XCTAssertEqual(wallet.endpointSyncCount, 1)
     }
 
@@ -867,6 +881,81 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         XCTAssertTrue(wallet.publicPaykitBolt11.isEmpty)
         XCTAssertTrue(PublicPaykitService.isCleanupPending)
         await PrivatePaykitService.shared.endProfileDeletion()
+    }
+
+    func testPaidPublicInvoiceIsReplacedWithoutWaitingForMaintenanceRound() async {
+        let (_, wallet) = publicationWallet(route: .channelUsable)
+        wallet.replaceEmptyPublicInvoice = true
+        wallet.publicPaykitBolt11 = "ln-paid"
+        wallet.publicPaykitBolt11PaymentHash = "paid-hash"
+        PublicPaykitService.setCleanupPending(false)
+        var publishedInvoices: [String] = []
+        wallet.applyPublicEndpoints = { endpoints in
+            publishedInvoices += endpoints.filter { $0.methodId == .bitcoinLightningBolt11 }.map(\.value)
+        }
+        wallet.invoiceAmountSats = 2000
+        let rotated = wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: "paid-hash")
+        await wallet.refreshAfterPaymentReceived(
+            paymentHash: "paid-hash", rotatedPublicInvoice: rotated, isSessionCurrent: wallet.publicationAdmission
+        )
+        XCTAssertTrue(rotated)
+        XCTAssertFalse(publishedInvoices.contains("ln-paid"))
+        XCTAssertEqual(publishedInvoices.last, "ln-current")
+    }
+
+    func testUnrelatedPaymentDoesNotSynchronizePublicEndpoints() async {
+        let (_, wallet) = publicationWallet(route: .channelUsable)
+        wallet.publicPaykitBolt11 = "ln-unpaid"
+        wallet.publicPaykitBolt11PaymentHash = "unpaid-hash"
+        wallet.invoiceAmountSats = 2000
+        var writes = 0
+        wallet.applyPublicEndpoints = { _ in writes += 1 }
+        let rotated = wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: "other-hash")
+        await wallet.refreshAfterPaymentReceived(
+            paymentHash: "other-hash", rotatedPublicInvoice: rotated, isSessionCurrent: wallet.publicationAdmission
+        )
+        XCTAssertFalse(rotated)
+        XCTAssertEqual(writes, 0)
+        XCTAssertEqual(wallet.publicPaykitBolt11, "ln-unpaid")
+    }
+
+    func testPaidInvoiceRefreshRetainsOriginalIdentityAdmission() async {
+        let (profile, wallet) = publicationWallet(route: .channelUsable)
+        wallet.publicPaykitBolt11 = "ln-paid"
+        wallet.publicPaykitBolt11PaymentHash = "paid-hash"
+        wallet.invoiceAmountSats = 2000
+        wallet.beforeReceiveAddress = { profile.publicKey = "pubky" + String(repeating: "z", count: 52) }
+        var writes = 0
+        wallet.applyPublicEndpoints = { _ in writes += 1 }
+        let admission = wallet.publicationAdmission
+        let rotated = wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: "paid-hash")
+        await wallet.refreshAfterPaymentReceived(
+            paymentHash: "paid-hash", rotatedPublicInvoice: rotated, isSessionCurrent: admission
+        )
+        XCTAssertFalse(admission())
+        XCTAssertEqual(writes, 0)
+        XCTAssertTrue(PublicPaykitService.isCleanupPending)
+    }
+
+    func testPaidInvoicePublicationFailureRemainsPendingForMaintenance() async {
+        let (_, wallet) = publicationWallet(route: .channelUsable)
+        wallet.replaceEmptyPublicInvoice = true
+        wallet.publicPaykitBolt11 = "ln-paid"
+        wallet.publicPaykitBolt11PaymentHash = "paid-hash"
+        wallet.invoiceAmountSats = 2000
+        var writes = 0
+        wallet.applyPublicEndpoints = { _ in
+            writes += 1
+            throw NSError(domain: "controlled-publication", code: 1)
+        }
+        let rotated = wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: "paid-hash")
+        await wallet.refreshAfterPaymentReceived(
+            paymentHash: "paid-hash", rotatedPublicInvoice: rotated, isSessionCurrent: wallet.publicationAdmission
+        )
+        XCTAssertEqual(writes, 1)
+        XCTAssertTrue(PublicPaykitService.isCleanupPending)
+        XCTAssertFalse(wallet.isReceiveInvoiceUpdating)
+        XCTAssertNil(wallet.receiveInvoiceError)
     }
 
     func testAdmittedPublicWriteCannotAcknowledgeNewerPaidInvoiceInvalidation() async throws {
@@ -1025,7 +1114,10 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
 
     private func assertEndpointRefreshPreservesReceiveAddress(initialAddress: String) async throws {
         UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
-        let wallet = GatedReceiveWallet()
+        let profile = PubkyProfileManager()
+        profile.publicKey = "pubky" + String(repeating: "y", count: 52)
+        profile.authState = .authenticated
+        let wallet = GatedReceiveWallet(pubkyProfile: profile)
         wallet.onchainAddress = initialAddress
         wallet.invoiceAmountSats = 1000
         let receive = Task { try await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false) }
@@ -1174,12 +1266,200 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         let wallet = GatedReceiveWallet()
         wallet.invoiceAmountSats = 2000
         wallet.gateEndpointSync = true
-        let refresh = Task { try await wallet.refreshBip21(forceRefreshBolt11: true) }
+        try await wallet.refreshBip21(forceRefreshBolt11: true)
+        let refresh = Task { try await wallet.syncReceivePublicPaykitEndpoints { true } }
         await fulfillment(of: [wallet.endpointSyncStarted], timeout: 5)
         XCTAssertTrue(wallet.hasCoherentReceiveInvoice)
         XCTAssertFalse(wallet.isReceiveInvoiceUpdating)
         wallet.releaseEndpointSync()
         try await refresh.value
+    }
+
+    func testOrdinaryInvoiceRefreshReturnsBeforePublicReconciliation() async throws {
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+        UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        let (_, wallet) = publicationWallet(route: .receive)
+        wallet.invoiceAmountSats = 2000
+        wallet.gateEndpointSync = true
+        let returned = expectation(description: "Ordinary receive preparation returns")
+        let refresh = Task {
+            try await wallet.refreshBip21(forceRefreshBolt11: true)
+            returned.fulfill()
+        }
+        await fulfillment(of: [returned], timeout: 1)
+        XCTAssertTrue(wallet.hasCoherentReceiveInvoice)
+        XCTAssertFalse(wallet.isReceiveInvoiceUpdating)
+        XCTAssertEqual(wallet.endpointSyncCount, 0)
+        XCTAssertTrue(PublicPaykitService.isCleanupPending)
+        wallet.releaseEndpointSync()
+        try await refresh.value
+    }
+
+    func testOlderPublicWriteCannotClearNewerOrdinaryAddressReconciliation() async throws {
+        for refreshIfNeeded in [false, true] {
+            let (_, wallet) = publicationWallet(route: .receive)
+            UserDefaults.standard.set(true, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
+            wallet.publicEndpointAddress = "bcrt1qolder"
+            let write = PublicationGate("Older public endpoint write")
+            var published: [String] = []
+            wallet.applyPublicEndpoints = { endpoints in
+                let address = endpoints.first { $0.methodId.onchainNetwork == Env.network }?.value ?? ""
+                if published.isEmpty {
+                    await write.wait()
+                }
+                published.append(address)
+            }
+            let older = Task {
+                try await wallet.publishPublicPaykitEndpoints(
+                    refreshIfNeeded: refreshIfNeeded, isSessionCurrent: wallet.publicationAdmission
+                )
+            }
+            await fulfillment(of: [write.started], timeout: 5)
+            wallet.publicEndpointAddress = "bcrt1qnewer"
+            wallet.invoiceAmountSats = 2000
+            try await wallet.refreshBip21(forceRefreshBolt11: true)
+            XCTAssertTrue(PublicPaykitService.isCleanupPending)
+            write.release()
+            try await older.value
+            XCTAssertTrue(PublicPaykitService.isCleanupPending)
+            try await wallet.syncReceivePublicPaykitEndpoints(isSessionCurrent: wallet.publicationAdmission)
+            XCTAssertEqual(published, ["bcrt1qolder", "bcrt1qnewer"])
+            XCTAssertFalse(PublicPaykitService.isCleanupPending)
+        }
+    }
+
+    func testLateOlderAddressSnapshotRetainsRetryAfterNewerSnapshotWasAcknowledged() async throws {
+        for refreshIfNeeded in [false, true] {
+            let (_, wallet) = publicationWallet(route: .receive)
+            UserDefaults.standard.set(true, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
+            wallet.publicEndpointAddress = "bcrt1qolder"
+            let preparation = PublicationGate("Older public snapshot preparation")
+            wallet.afterPublicEndpointSnapshot = {
+                wallet.afterPublicEndpointSnapshot = nil
+                await preparation.wait()
+            }
+            var published: [String] = []
+            wallet.applyPublicEndpoints = { endpoints in
+                published.append(endpoints.first { $0.methodId.onchainNetwork == Env.network }?.value ?? "")
+            }
+            let older = Task {
+                try await wallet.publishPublicPaykitEndpoints(
+                    refreshIfNeeded: refreshIfNeeded, isSessionCurrent: wallet.publicationAdmission
+                )
+            }
+            await fulfillment(of: [preparation.started], timeout: 5)
+            wallet.publicEndpointAddress = "bcrt1qnewer"
+            wallet.invoiceAmountSats = 2000
+            try await wallet.refreshBip21(forceRefreshBolt11: true)
+            try await wallet.syncReceivePublicPaykitEndpoints(isSessionCurrent: wallet.publicationAdmission)
+            XCTAssertFalse(PublicPaykitService.isCleanupPending)
+            preparation.release()
+            try await older.value
+            XCTAssertEqual(published, ["bcrt1qnewer", "bcrt1qolder"])
+            XCTAssertTrue(PublicPaykitService.isCleanupPending)
+            try await wallet.syncReceivePublicPaykitEndpoints(isSessionCurrent: wallet.publicationAdmission)
+            XCTAssertEqual(published.last, "bcrt1qnewer")
+            XCTAssertFalse(PublicPaykitService.isCleanupPending)
+        }
+    }
+
+    func testLateOlderAddressMutationKeepsRetryAfterLostAcknowledgementOrCancellation() async throws {
+        for refreshIfNeeded in [false, true] {
+            for cancelAfterWrite in [false, true] {
+                let (_, wallet) = publicationWallet(route: .receive)
+                UserDefaults.standard.set(true, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
+                wallet.publicEndpointAddress = "bcrt1qolder"
+                let preparation = PublicationGate("Older public snapshot preparation")
+                wallet.afterPublicEndpointSnapshot = {
+                    wallet.afterPublicEndpointSnapshot = nil
+                    await preparation.wait()
+                }
+                var published: [String] = []
+                var older: Task<Void, Error>?
+                wallet.applyPublicEndpoints = { endpoints in
+                    let address = endpoints.first { $0.methodId.onchainNetwork == Env.network }?.value ?? ""
+                    published.append(address)
+                    if address == "bcrt1qolder" {
+                        if cancelAfterWrite {
+                            older?.cancel()
+                        } else {
+                            throw PublicPaykitError.publicationFailed
+                        }
+                    }
+                }
+                older = Task {
+                    try await wallet.publishPublicPaykitEndpoints(
+                        refreshIfNeeded: refreshIfNeeded, isSessionCurrent: wallet.publicationAdmission
+                    )
+                }
+                await fulfillment(of: [preparation.started], timeout: 5)
+                wallet.publicEndpointAddress = "bcrt1qnewer"
+                wallet.invoiceAmountSats = 2000
+                try await wallet.refreshBip21(forceRefreshBolt11: true)
+                try await wallet.syncReceivePublicPaykitEndpoints(isSessionCurrent: wallet.publicationAdmission)
+                XCTAssertFalse(PublicPaykitService.isCleanupPending)
+                preparation.release()
+                do {
+                    try await older?.value
+                    XCTAssertTrue(cancelAfterWrite)
+                } catch PublicPaykitError.publicationFailed {
+                    XCTAssertFalse(cancelAfterWrite)
+                }
+                XCTAssertEqual(published, ["bcrt1qnewer", "bcrt1qolder"])
+                XCTAssertTrue(PublicPaykitService.isCleanupPending)
+                try await wallet.syncReceivePublicPaykitEndpoints(isSessionCurrent: wallet.publicationAdmission)
+                XCTAssertEqual(published.last, "bcrt1qnewer")
+                XCTAssertFalse(PublicPaykitService.isCleanupPending)
+            }
+        }
+    }
+
+    func testLastChannelClosureWithdrawsPublicInvoiceWithoutForegroundRetry() async {
+        let (_, wallet) = publicationWallet(route: .channelUnavailable)
+        wallet.stubPublicEndpoints = false
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
+        var published = ["ln-public"]
+        wallet.applyPublicEndpoints = { published = $0.map(\.value) }
+
+        await wallet.refreshAfterChannelClosed(channelId: "closed-channel", reason: nil)
+
+        XCTAssertTrue(wallet.hasCoherentReceiveInvoice)
+        XCTAssertTrue(wallet.publicPaykitBolt11.isEmpty)
+        XCTAssertTrue(published.isEmpty)
+        XCTAssertEqual(wallet.publicationRefreshModes, [false])
+    }
+
+    func testQueuedReceivePublicationSurvivesWalletRecreationAndFailure() async throws {
+        let (_, wallet) = publicationWallet(route: .receive)
+        wallet.invoiceAmountSats = 2000
+        try await wallet.refreshBip21(forceRefreshBolt11: true)
+        XCTAssertTrue(PublicPaykitService.isCleanupPending)
+
+        let (_, restoredWallet) = publicationWallet(route: .receive)
+        XCTAssertTrue(PublicPaykitService.isCleanupPending)
+        restoredWallet.applyPublicEndpoints = { _ in throw PublicPaykitError.publicationFailed }
+        do {
+            try await restoredWallet.syncReceivePublicPaykitEndpoints(isSessionCurrent: restoredWallet.publicationAdmission)
+            XCTFail("Expected failed publication")
+        } catch PublicPaykitError.publicationFailed {}
+        XCTAssertTrue(PublicPaykitService.isCleanupPending)
+        var published: [String] = []
+        restoredWallet.applyPublicEndpoints = { published = $0.map(\.value) }
+        try await restoredWallet.syncReceivePublicPaykitEndpoints(isSessionCurrent: restoredWallet.publicationAdmission)
+        XCTAssertEqual(published, ["ln-public"])
+        XCTAssertFalse(PublicPaykitService.isCleanupPending)
+    }
+
+    func testReceiveDoesNotQueuePublicationAfterIdentityChanges() async throws {
+        let (profile, wallet) = publicationWallet(route: .receive)
+        wallet.invoiceAmountSats = 2000
+        wallet.beforeReceiveAddress = {
+            profile.publicKey = "pubky" + String(repeating: "o", count: 52)
+        }
+        try await wallet.refreshBip21(forceRefreshBolt11: true)
+        XCTAssertTrue(wallet.hasCoherentReceiveInvoice)
+        XCTAssertFalse(PublicPaykitService.isCleanupPending)
+        XCTAssertEqual(wallet.endpointSyncCount, 0)
     }
 
     func testFailedBackgroundForcedRefreshKeepsValidQr() async {
@@ -1237,7 +1517,8 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         let wallet = GatedReceiveWallet()
         wallet.invoiceAmountSats = 2000
         wallet.gateEndpointSync = true
-        let older = Task { try await wallet.refreshBip21(forceRefreshBolt11: true) }
+        try await wallet.refreshBip21(forceRefreshBolt11: true)
+        let older = Task { try await wallet.syncReceivePublicPaykitEndpoints { true } }
         await fulfillment(of: [wallet.endpointSyncStarted], timeout: 5)
         wallet.invoiceAmountSats = 1000
         let newer = Task { try await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false) }
@@ -1342,6 +1623,7 @@ private final class GatedReceiveWallet: WalletViewModel {
     var beforeReceiveAddress: (() async -> Void)?
     var applyPublicEndpoints: (([PublicPaykitService.Endpoint]) async throws -> Void)?
     var publicationRefreshModes: [Bool] = []
+    var publicationAdmission: @MainActor () -> Bool = { false }
     var usableChannels: Bool?
     let endpointSyncStarted = XCTestExpectation(description: "Public endpoint sync suspended")
     private var endpointSync: CheckedContinuation<Void, Never>?
@@ -1396,7 +1678,7 @@ private final class GatedReceiveWallet: WalletViewModel {
         forceRefreshBolt11: Bool = false,
         includeOnchain: Bool = true,
         includeLightning: Bool = true
-    ) async throws -> (onchainAddress: String, bolt11: String) {
+    ) async throws -> PublicPaykitEndpoints {
         await beforePublicEndpointRefresh?()
         if failPublicEndpointRefresh {
             throw TestError.failed
@@ -1406,8 +1688,15 @@ private final class GatedReceiveWallet: WalletViewModel {
                 publicPaykitBolt11 = "ln-current"
             }
             let invoice = publicPaykitBolt11
+            let address = publicEndpointAddress
             await afterPublicEndpointSnapshot?()
-            return (publicEndpointAddress, invoice)
+            return PublicPaykitEndpoints(
+                onchainSnapshot: address.isEmpty ? nil : publicAddressSnapshot(
+                    address,
+                    publicKey: publicPaykitSession?.publicKey ?? ""
+                ),
+                bolt11: invoice
+            )
         }
         return try await super.refreshPublicPaykitEndpoints(
             forceRefreshBolt11: forceRefreshBolt11, includeOnchain: includeOnchain, includeLightning: includeLightning
@@ -1427,6 +1716,21 @@ private final class GatedReceiveWallet: WalletViewModel {
     override func persistPreActivityMetadata(paymentId: String, paymentHash: String?, address: String, tags: [String]) async {}
     override func canCreateReceiveLightningInvoice(amountSats: UInt64?) -> Bool {
         true
+    }
+
+    override func publicPaykitOnchainAddressSnapshot(for publicKey: String) async throws -> PrivatePaykitAddressReservationStore
+        .PublicAddressSnapshot
+    {
+        let address = try await refreshReusableOnchainAddress()
+        return publicAddressSnapshot(address, publicKey: publicKey)
+    }
+
+    private func publicAddressSnapshot(_ address: String, publicKey: String) -> PrivatePaykitAddressReservationStore.PublicAddressSnapshot {
+        let revision = UUID()
+        return .init(
+            address: address, publicKey: PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey,
+            revision: revision, revisionState: OSAllocatedUnfairLock(initialState: revision)
+        )
     }
 
     override func refreshReusableOnchainAddress() async throws -> String {

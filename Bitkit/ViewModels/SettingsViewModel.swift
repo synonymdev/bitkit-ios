@@ -113,7 +113,6 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     // PIN Management
     @Published var pinEnabled: Bool = false
-    @AppStorage("pinFailedAttempts") var pinFailedAttempts: Int = 0
     @AppStorage("requirePinForPayments") var requirePinForPayments: Bool = false
     @AppStorage("useBiometrics") var useBiometrics: Bool = false
 
@@ -235,7 +234,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         UserDefaults.standard.set(true, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
         ignoresSwitchUnitToast = false
         ignoresHideBalanceToast = false
-        pinFailedAttempts = 0
         requirePinForPayments = false
         useBiometrics = false
         showWidgets = true
@@ -495,6 +493,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         wallet?.syncState()
         if !enabled, let wallet {
             await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(wallet: wallet, reason: "address type monitoring changed")
+            await wallet.refreshPublicPaykitAddressIfNeeded()
         }
         return true
     }
@@ -857,8 +856,27 @@ class SettingsViewModel: NSObject, ObservableObject {
         return ElectrumServer(host: host, portString: port, protocolType: protocolType)
     }
 
-    /// Restores settings dictionary to UserDefaults
-    func restoreSettingsDictionary(_ dict: [String: Any]) {
+    /// Reads a string setting in either app's form: bitkit-android writes `addressTypesToMonitor` as an array and
+    /// enums by their Kotlin names, such as `BITCOIN` and `MODERN`.
+    nonisolated static func iosSettingString(_ value: Any, forKey key: String) -> String? {
+        if let values = value as? [String] {
+            return values.joined(separator: ",")
+        }
+        guard let string = value as? String else { return nil }
+        switch key {
+        case "primaryDisplay":
+            return [PrimaryDisplay.bitcoin, .fiat].first { $0.rawValue.caseInsensitiveCompare(string) == .orderedSame }?.rawValue ?? string
+        case "defaultTransactionSpeed":
+            return string == "medium" ? TransactionSpeed.normal.rawValue : string
+        case "bitcoinDisplayUnit":
+            return BitcoinDisplayUnit.allCases.first { $0.rawValue.caseInsensitiveCompare(string) == .orderedSame }?.rawValue ?? string
+        default:
+            return string
+        }
+    }
+
+    /// Writes a SETTINGS backup from either app into `defaults` under the iOS keys and value forms.
+    nonisolated static func writeRestoredSettings(_ dict: [String: Any], to defaults: UserDefaults) {
         if let coinSelectAuto = dict["coinSelectAuto"] as? Bool {
             let methodString = coinSelectAuto ? "autopilot" : "manual"
             defaults.set(methodString, forKey: "coinSelectionMethod")
@@ -882,7 +900,7 @@ class SettingsViewModel: NSObject, ObservableObject {
 
             switch type {
             case .string:
-                if let stringValue = value as? String {
+                if let stringValue = Self.iosSettingString(value, forKey: iosKey) {
                     defaults.set(stringValue, forKey: iosKey)
                 }
             case .bool:
@@ -909,6 +927,11 @@ class SettingsViewModel: NSObject, ObservableObject {
                 }
             }
         }
+    }
+
+    /// Restores settings dictionary to UserDefaults
+    func restoreSettingsDictionary(_ dict: [String: Any]) {
+        Self.writeRestoredSettings(dict, to: defaults)
 
         if let electrumServerUrl = dict["electrumServer"] as? String, !electrumServerUrl.isEmpty,
            let server = parseElectrumServerUrlForRestore(electrumServerUrl)
@@ -981,6 +1004,12 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     /// Restores app cache data from backup
     func restoreAppCacheData(_ cache: AppCacheData) {
+        if let address = cache.onchainAddress, !address.isEmpty {
+            var addresses = Set(defaults.stringArray(forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey) ?? [])
+            addresses.insert(address)
+            defaults.set(addresses.sorted(), forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey)
+        }
+
         defaults.set(cache.hasSeenContactsIntro, forKey: "hasSeenContactsIntro")
         defaults.set(cache.hasSeenProfileIntro, forKey: "hasSeenProfileIntro")
         defaults.set(cache.hasSeenNotificationsIntro, forKey: "hasSeenNotificationsIntro")

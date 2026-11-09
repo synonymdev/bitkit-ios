@@ -7,8 +7,14 @@ pins the one rule that must never break: a payment interrupted mid-flight is nev
 The PIN journey checks that the payer's grant, accept and end ask for the payment PIN when the
 user requires one, while automatic payments never prompt.
 The restore journey checks that a payer restored from its recovery phrase keeps its allowance history.
+`allowance-paused-after-restore.xml` checks that the restored payer pays nothing automatically until it
+taps Resume, also after a relaunch.
 
 ## Setup
+
+Allowances are on by default and can be turned off from Dev Settings ("Enable Allowances"). With them
+off the Allowances tab is hidden and every request opens as an ordinary Payment Request;
+`allowances-turned-off.xml` covers it.
 
 Run Bitkit against regtest with Paykit UI enabled on two instances that have each other saved as
 contacts and linked, exactly as for [`../subscriptions/README.md`](../subscriptions/README.md). One
@@ -25,6 +31,8 @@ UI snapshot cannot see.
 "Limit Reached" posts nothing while Bitkit is in the foreground and unlocked, because the Payment
 Request sheet for the same request opens at the same time; behind the PIN screen the sheet waits, so
 the notification is posted.
+
+A wallet restore leaves automatic payments paused until Resume. Journeys that restore, such as `restore-keeps-history.xml`, end with automatic payments paused, so tap Resume in Allowances before running an automatic payment journey on the same instance.
 
 The journeys set $5 a payment and $50 a month, the second stop on each slider, and the cap journey
 sets $5 a payment and $10 a month, the first monthly stop. Requests are one-time Payment Requests
@@ -59,7 +67,8 @@ killed right after handing the payment to the node never paid twice after relaun
 - Payments tab: `Tab-payments`, `PaymentRequestRequestPayment`,
   `PaymentRequestRow-<paymentRequestId>-one-time` whose subtitle ends with "· Auto-paid" for an
   automatic payment
-- Incoming request: `PaymentRequestsBell`, `PaymentRequestsSheet`
+- Incoming request: `PaymentRequestsBell`, `PaymentRequestsSheet`, or `PaymentRequestConfirm`
+  when the request opens straight on its confirm screen
 
 The payee's wallet accepts the payer's offer by itself once the offer has arrived, which can take a
 while between contacts that have never exchanged a private message, and posts "<payer> set up an

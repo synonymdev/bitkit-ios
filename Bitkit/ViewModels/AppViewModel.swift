@@ -449,8 +449,10 @@ class AppViewModel: ObservableObject {
         )
     }
 
+    /// A scanned amount below the on-chain minimum cannot be paid, and Amount does not open to change it.
     private func validateIncomingOnchainPaymentRequestAmount(_ amount: UInt64) -> Bool {
-        guard contactPaymentContext?.incomingPaymentRequest != nil, amount < Env.dustLimit else { return true }
+        let isPaymentRequest = contactPaymentContext?.incomingPaymentRequest != nil
+        guard amount < Env.dustLimit, isPaymentRequest || amount > 0 else { return true }
         didRejectScannedPayment = true
         toast(
             type: .error,
@@ -459,7 +461,7 @@ class AppViewModel: ObservableObject {
                 "wallet__lnurl_pay__error_min__description",
                 variables: ["amount": CurrencyFormatter.formatSats(UInt64(Env.dustLimit))]
             ),
-            accessibilityIdentifier: "PaymentRequestAmountTooLowToast"
+            accessibilityIdentifier: isPaymentRequest ? "PaymentRequestAmountTooLowToast" : "AmountTooLowToast"
         )
         return false
     }
@@ -814,6 +816,18 @@ extension AppViewModel {
                 isUsdtEnabled: SettingsViewModel.shared.isUsdtEnabled
             ) || context.incomingPaymentRequest.map { PaykitUsdtPaymentService.shared.hasBinding(for: $0.id) } == true
             selectedWalletToPayFrom = canUseLightning || (hasLightning && scannedOnchainInvoice == nil) ? .lightning : .onchain
+            let canSelectUsdt = SettingsViewModel.shared.isUsdtEnabled && context.endpoints.contains { $0.methodId == .usdtArbitrum }
+            if !paykitUsesUsdt, !canSelectUsdt, let request = context.incomingPaymentRequest {
+                do {
+                    let terms = try request.payment(using: paykitPaymentMethod)
+                    let minimumAmount = selectedWalletToPayFrom == .lightning ? max(1, lnurlPayData?.minSendableSat ?? 1) : UInt64(Env.dustLimit)
+                    guard terms.isValid(at: Date()), terms.amount.atomic >= minimumAmount else { return }
+                    paykitPaymentTerms = terms
+                    paykitReviewedAmount = terms.amount
+                } catch PaykitAmountError.rateUnavailable {
+                    return
+                }
+            }
             return
         }
 

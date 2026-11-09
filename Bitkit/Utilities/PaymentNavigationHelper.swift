@@ -44,6 +44,12 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore = .shared,
         coordinator: QuickPayPaymentCoordinator? = nil
     ) {
+        if app.contactPaymentContext?.incomingPaymentRequest != nil,
+           let route = contactPaymentRoute(app: app, currency: currency, settings: settings, spendStore: spendStore, coordinator: coordinator)
+        {
+            sheetViewModel.showSheet(.send, data: SendConfig(view: route))
+            return
+        }
         if app.contactPaymentContext?.requiresAssetSelection == true {
             sheetViewModel.showSheet(.send, data: SendConfig(view: .amount))
             return
@@ -86,19 +92,17 @@ struct PaymentNavigationHelper {
 
             if amount > 0 && shouldUseQuickpay {
                 sheetViewModel.showSheet(.send, data: SendConfig(view: .quickpay))
+            } else if amount == 0 {
+                sheetViewModel.showSheet(.send, data: SendConfig(view: .amount))
             } else {
-                if amount == 0 {
-                    sheetViewModel.showSheet(.send, data: SendConfig(view: .amount))
-                } else {
-                    sheetViewModel.showSheet(.send, data: SendConfig(view: .confirm))
-                }
+                sheetViewModel.showSheet(.send, data: SendConfig(view: .confirm))
             }
             return
         }
 
         // Handle onchain invoice
         if app.scannedOnchainInvoice != nil {
-            sheetViewModel.showSheet(.send, data: SendConfig(view: .amount))
+            sheetViewModel.showSheet(.send, data: SendConfig(view: onchainInvoiceRoute(app: app)))
             return
         }
     }
@@ -149,22 +153,32 @@ struct PaymentNavigationHelper {
 
             if amount > 0 && shouldUseQuickpay {
                 return .quickpay
+            } else if amount == 0 {
+                return .amount
             } else {
-                if amount == 0 {
-                    return .amount
-                } else {
-                    return .confirm
-                }
+                return .confirm
             }
         }
 
         // Handle onchain invoice
-        if let _ = app.scannedOnchainInvoice {
-            return .amount
+        if app.scannedOnchainInvoice != nil {
+            return onchainInvoiceRoute(app: app)
         }
 
         // No valid invoice data
         return nil
+    }
+
+    /// A BIP21 request with an amount skips Amount; the balance was already checked when it was scanned.
+    /// Contact payments keep Amount because it records the reviewed amount for the payment.
+    static func onchainInvoiceRoute(app: AppViewModel) -> SendRoute {
+        // Below the on-chain minimum, Amount shows why it cannot be sent.
+        guard let invoice = app.scannedOnchainInvoice, invoice.amountSatoshis >= UInt64(Env.dustLimit),
+              app.contactPaymentContext == nil
+        else {
+            return .amount
+        }
+        return .confirm
     }
 
     static func confirmRouteAfterQuickPayCap(app: AppViewModel) -> SendRoute {
@@ -204,8 +218,14 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore = .shared,
         coordinator: QuickPayPaymentCoordinator? = nil
     ) -> SendRoute? {
-        if app.contactPaymentContext?.requiresAssetSelection == true, app.paykitPaymentTerms == nil {
-            return .amount
+        if app.contactPaymentContext?.requiresAssetSelection == true {
+            if app.paykitPaymentTerms == nil {
+                return .amount
+            }
+            // LNURL confirmation has no funding selector, so keep both Bitcoin methods reachable here.
+            if app.lnurlPayData != nil, app.scannedOnchainInvoice != nil {
+                return .amount
+            }
         }
         guard let route = appropriateSendRoute(
             app: app,

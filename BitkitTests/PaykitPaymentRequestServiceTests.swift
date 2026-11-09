@@ -15,7 +15,15 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     func testPreparationUsesAcceptedMethodsBeforeWalletSelection() throws {
         let usdt = PublicPaykitService.MethodId.usdtArbitrum.rawValue
         let bitcoin = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
-        for (endpoints, accent): ([String], Color) in [([usdt], .usdtAccent), ([usdt, bitcoin], .textSecondary)] {
+        let onchain = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let cases: [([String], Color)] = [
+            ([usdt], .usdtAccent),
+            ([bitcoin], .purpleAccent),
+            ([onchain], .brandAccent),
+            ([usdt, bitcoin], .textSecondary),
+            ([bitcoin, onchain], .textSecondary),
+        ]
+        for (endpoints, accent) in cases {
             let record = try paymentRequestRecord(amount: "5", asset: "usd",
                                                   conversion: .fixed(rates: [.init(asset: "btc", value: "0.00001"),
                                                                              .init(asset: "usdt", value: "1")]),
@@ -24,7 +32,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             let view = SendConfirmationView(
                 navigationPath: .constant([]), isSubmittingPayment: .constant(false), hwSend: HwSendCoordinator(),
                 requestPinCheck: { false }, prepareIncomingPaymentRequest: {}, routingCacheResetAttempted: false,
-                preparingRequest: request
+                preparingRequest: request, isAmountReviewRequired: .constant(false)
             )
             XCTAssertEqual(view.accentColor, accent)
         }
@@ -200,21 +208,43 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 window.isHidden = true
                 window.rootViewController = nil
             }
-            try await waitUntil {
+            func waitForStage(_ stage: String, condition: @MainActor () async -> Bool) async throws {
+                do {
+                    try await waitUntil(condition: condition)
+                } catch {
+                    let diagnostics = """
+                    stage=\(stage), authorized=\(authorized)
+                    quoteCount=\(quoteCount), authorizationCount=\(authorizationCount), sendCount=\(sendCount)
+                    path=\(navigation.path), authorizationVisible=\(navigation.authorizationVisible)
+                    isSendPresented=\(manager.isSendPresented), resumedCancellation=\(resumedAuthorizationWasCancelled)
+                    windowKey=\(window.isKeyWindow), windowHidden=\(window.isHidden)
+                    rootAttached=\(window.rootViewController?.view.window === window)
+                    navigationControllers=\(initialPaymentNavigation(window)?.viewControllers.map { String(describing: type(of: $0)) } ?? [])
+                    """
+                    let attachment = XCTAttachment(string: diagnostics)
+                    attachment.name = "initial-usdt-authorization-\(authorized)-\(stage)"
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                    throw NSError(domain: "InitialUsdtAuthorizationNavigation", code: 1, userInfo: [
+                        NSLocalizedDescriptionKey: "\(stage) (authorized=\(authorized)) failed: \(error)",
+                    ])
+                }
+            }
+            try await waitForStage("authorization-visible") {
                 navigation.authorizationVisible && !manager.isSendPresented
             }
             XCTAssertEqual(quoteCount, 1)
             XCTAssertEqual(authorizationCount, 1)
             XCTAssertEqual(sendCount, 0)
             navigation.path.removeAll()
-            try await waitUntil { !navigation.authorizationVisible && manager.isSendPresented }
+            try await waitForStage("send-visible-after-return") { !navigation.authorizationVisible && manager.isSendPresented }
             let continuation = try XCTUnwrap(authorization)
             authorization = nil
             continuation.resume(returning: authorized)
-            try await waitUntil { !resumedAuthorizationWasCancelled.isEmpty }
+            try await waitForStage("authorization-resumed") { !resumedAuthorizationWasCancelled.isEmpty }
             XCTAssertEqual(resumedAuthorizationWasCancelled, [false])
             if authorized {
-                try await waitUntil { sendCount == 1 }
+                try await waitForStage("single-send") { sendCount == 1 }
             }
             let settings = SettingsViewModel.shared
             settings.usdtPreference = .disabled
@@ -318,6 +348,49 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(stack.viewControllers.count, 2)
         XCTAssertTrue(stack.isNavigationBarHidden)
         XCTAssertFalse(SwipeBackState.allowSwipeBack)
+    }
+
+    func testUsdtPaymentReviewDisplaysExactAmountsBeforeAuthorization() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let view = UsdtSendView(onDetails: { _ in }, authenticatePayment: {
+            XCTFail("Displaying review must not authorize payment")
+            return false
+        }, sendPayment: { _ in XCTFail("Displaying review must not send payment") })
+        let currency = CurrencyViewModel(currencyService: OfflineCurrencyService())
+        for (amount, expected): (UInt64, String) in [(123_456, "0.123456"), (1, "0.000001")] {
+            let quote = UsdtQuote(bridgeProvider: nil, id: "exact-review", recipient: initialUsdtQuote.recipient,
+                                  destination: .ethereum, amount: amount, receivedAmount: amount, maximumFee: 1,
+                                  expiresAt: UInt64(Date().timeIntervalSince1970) + 60)
+            for details in [false, true] {
+                let content = Group {
+                    if details {
+                        view.quoteDetails(quote)
+                    } else {
+                        view.confirmation(quote)
+                    }
+                }
+                .padding(16)
+                .environmentObject(currency)
+                .environmentObject(SettingsViewModel.shared)
+                .preferredColorScheme(.dark)
+                let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+                window.rootViewController = UIHostingController(rootView: content)
+                window.makeKeyAndVisible()
+                defer { window.isHidden = true; window.rootViewController = nil }
+                window.rootViewController?.view.layoutIfNeeded()
+                try await Task.sleep(for: .milliseconds(200))
+                let labels = try initialPaymentSnapshot(window, name: "exact-review-\(amount)-\(details)")
+                XCTAssertTrue(labels.contains { $0.contains(expected) }, "\(labels)")
+                if details {
+                    XCTAssertEqual(labels.joined(separator: " ").components(separatedBy: expected).count - 1,
+                                   amount == 1 ? 3 : 2, "Payment, recipient amount and matching fee: \(labels)")
+                    XCTAssertTrue(labels.contains { $0.contains("0.000001") }, "Fee: \(labels)")
+                    let total = amount == 1 ? "0.000002" : "0.123457"
+                    XCTAssertTrue(labels.contains { $0.contains(total) }, "Maximum total: \(labels)")
+                }
+            }
+        }
     }
 
     private func initialPaymentNavigation(_ window: UIWindow) -> UINavigationController? {
@@ -598,7 +671,48 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 XCTAssertEqual(priorities["observation"], [priority], context)
                 XCTAssertNil(priorities["requests"], context)
                 XCTAssertNil(priorities["peers"], context)
+                XCTAssertEqual(priorities["inbox"] ?? [], mode >= .inbox && priority == .background ? [.background] : [], context)
             }
+        }
+    }
+
+    func testForcedAndNonBackgroundRefreshRetainSeparateReceiveAndObservation() async {
+        for mode in [PaykitPaymentRequestRefreshMode.inbox, .full] {
+            for priority in [PaykitSdkOperationLock.Priority.background, .ordered, .interactive] {
+                let sdk = PaymentRequestSdkMock(records: [])
+                let manager = paymentRequestManager(sdk: sdk)
+                await manager.refresh(mode: mode, forceFresh: priority == .background, refreshPriority: priority)
+                let priorities = await sdk.operationPriorities
+                XCTAssertEqual(priorities["receive"], [priority])
+                XCTAssertEqual(priorities["observation"], [priority])
+                XCTAssertNil(priorities["inbox"])
+            }
+        }
+    }
+
+    func testAutomaticFullRefreshFinishesPendingDrainBeforeObservationAndStopsOnDeferral() async throws {
+        for deferred in [false, true] {
+            let sdk = PaymentRequestSdkMock(records: [])
+            let manager = paymentRequestManager(sdk: sdk)
+            await sdk.pauseNextProcess()
+            if deferred {
+                await sdk.failNextProcess(with: PaykitPaymentRequestError.operationInProgress)
+            }
+            let refresh = Task { await manager.refresh(mode: .full) }
+            try await waitUntil { await sdk.processIsPaused() }
+            let paused = await sdk.operationPriorities
+            XCTAssertEqual(paused["pending"], [.background])
+            XCTAssertNil(paused["inbox"])
+            XCTAssertNil(paused["receive"])
+            XCTAssertNil(paused["observation"])
+            await sdk.resumeProcess()
+            let result = await refresh.value
+            let priorities = await sdk.operationPriorities
+            XCTAssertEqual(result, !deferred)
+            XCTAssertEqual(priorities["pending"], [.background])
+            XCTAssertEqual(priorities["inbox"] ?? [], deferred ? [] : [.background])
+            XCTAssertEqual(priorities["receive"] ?? [], deferred ? [] : [.background])
+            XCTAssertEqual(priorities["observation"] ?? [], deferred ? [] : [.background])
         }
     }
 
@@ -4657,25 +4771,29 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     }
 
     func testDeferredRefreshPreservesRequestsAndAllowsRecoveryAndRetry() async throws {
-        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
-        let manager = paymentRequestManager(sdk: sdk)
-        let loaded = await manager.refresh(mode: .stored)
-        XCTAssertTrue(loaded)
-        let pending = manager.pendingRequests
-        await sdk.failNextProcess(with: PaykitPaymentRequestError.operationInProgress)
-        let deferred = await manager.refresh()
-        XCTAssertFalse(deferred)
-        XCTAssertEqual(manager.pendingRequests, pending)
-        let skipped = await sdk.snapshot()
-        XCTAssertEqual(skipped.receiveCallCount, 0)
-        let recovered = await manager.refresh(forceFresh: true)
-        XCTAssertTrue(recovered)
-        let priorities = await sdk.operationPriorities
-        XCTAssertEqual(priorities["observation"], [.background, .ordered])
-        await sdk.setRecords([])
-        let retried = await manager.refresh()
-        XCTAssertTrue(retried)
-        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        for forceFresh in [false, true] {
+            let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+            let manager = paymentRequestManager(sdk: sdk)
+            let loaded = await manager.refresh(mode: .stored)
+            XCTAssertTrue(loaded)
+            let pending = manager.pendingRequests
+            await sdk.failNextProcess(with: PaykitPaymentRequestError.operationInProgress)
+            let deferred = await manager.refresh(forceFresh: forceFresh, refreshPriority: forceFresh ? .background : nil)
+            XCTAssertFalse(deferred)
+            XCTAssertEqual(manager.pendingRequests, pending)
+            let skipped = await sdk.snapshot()
+            XCTAssertEqual(skipped.receiveCallCount, 0)
+            let deferredPriorities = await sdk.operationPriorities
+            XCTAssertEqual(deferredPriorities["pending"], [.background])
+            let recovered = await manager.refresh(forceFresh: true)
+            XCTAssertTrue(recovered)
+            let priorities = await sdk.operationPriorities
+            XCTAssertEqual(priorities["observation"], [.background, .ordered])
+            await sdk.setRecords([])
+            let retried = await manager.refresh()
+            XCTAssertTrue(retried)
+            XCTAssertTrue(manager.pendingRequests.isEmpty)
+        }
     }
 
     func testBackgroundStateChangeRefreshDefersWithoutConsumingSnapshotOrBlockingRecovery() async throws {
@@ -4805,6 +4923,44 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             await manager.refresh()
             XCTAssertTrue(manager.pendingRequests.isEmpty)
             XCTAssertTrue(manager.historyRequests.isEmpty)
+        }
+    }
+
+    func testAutomaticInboxKeepsIntakeDiagnosticsAndTimeBeforeFailedObservation() async throws {
+        for deferred in [false, true] {
+            let record = try paymentRequestRecord()
+            let sdk = PaymentRequestSdkMock(records: [record])
+            await sdk.setReceiveReports([
+                PrivateStreamCounterpartyIntakeReport(
+                    counterparty: record.counterparty, report: nil, error: PaymentRequestIntakeError(noPointer: .init())
+                ),
+            ])
+            if deferred {
+                await sdk.setBackgroundObservationDeferred(true)
+            } else {
+                await sdk.setLinkedPeersError(.linkedPeers)
+            }
+            let recorder = PaymentRequestLogRecorder()
+            let service = PaykitPaymentRequestService(sdk: sdk, now: {
+                recorder.append("synchronization-date")
+                return Date()
+            }, logWarning: { recorder.append($0) })
+            do {
+                _ = try await service.synchronize(
+                    mode: .inbox, priority: .background, messagePriority: .background,
+                    expectedIdentity: "pubky\(String(repeating: "z", count: 52))", combineReceiveObservation: true
+                )
+                XCTFail("Expected observation failure")
+            } catch PaykitPaymentRequestError.operationInProgress {
+                XCTAssertTrue(deferred)
+            } catch PaymentRequestSdkMockError.linkedPeers {
+                XCTAssertFalse(deferred)
+            }
+            XCTAssertEqual(recorder.messages.count, 2)
+            XCTAssertTrue(recorder.messages[0].hasPrefix("Failed to receive Paykit private messages"))
+            XCTAssertEqual(recorder.messages[1], "synchronization-date")
+            let snapshot = await sdk.snapshot()
+            XCTAssertEqual(snapshot.receiveCallCount, 1)
         }
     }
 
@@ -5384,11 +5540,127 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
     }
 
-    func testBelowMinimumUnifiedRequestClosesSheetAfterSyncFallback() async throws {
+    func testInitialQuotedBitcoinMinimumRoutesBeforeSheetSetup() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let settings = SettingsViewModel.shared
+        settings.usdtPreference = .disabled
+        let address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"
+        let onchain = PublicPaykitService.onchainMethodId(for: address)
+        for rail in ["savings", "spendingUnavailable", "lnurl", "lnurlWithSavings"] {
+            let usesLnurl = rail == "lnurl" || rail == "lnurlWithSavings"
+            let offersSavings = rail != "lnurl"
+            let offersLightning = rail != "savings"
+            let lightning: PublicPaykitService.MethodId = usesLnurl ? .bitcoinLightningLnurl : .bitcoinLightningBolt11
+            let minimum = usesLnurl ? 1000 : 547
+            for sats in [minimum - 1, minimum] {
+                let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(
+                    amount: "1", asset: "usd",
+                    conversion: .fixed(rates: [ConversionRate(asset: "btc", value: String(format: "0.%08d", sats))]),
+                    endpoints: [offersSavings ? onchain.rawValue : lightning.rawValue] +
+                        (offersSavings && offersLightning ? [lightning.rawValue] : [])
+                )])
+                let manager = paymentRequestManager(sdk: sdk)
+                await manager.refresh()
+                defer { manager.clear() }
+                let request = try XCTUnwrap(manager.requestsForPresentation().first)
+                let sheets = SheetViewModel()
+                let app = AppViewModel(
+                    sheetViewModel: sheets, navigationViewModel: NavigationViewModel(),
+                    scanPaymentOperations: ScanPaymentOperations(
+                        state: { ScanPaymentState(isNodeRunning: true, spendableOnchainBalanceSats: 100_000,
+                                                  totalLightningBalanceSats: 100_000, hasChannels: false, hasUsableChannels: false) },
+                        canSendLightning: { _ in rail != "spendingUnavailable" },
+                        decodeInvoice: { value in
+                            if value.contains(address) {
+                                return .onChain(invoice: OnChainInvoice(address: address, amountSatoshis: 0, label: nil, message: nil, params: nil))
+                            }
+                            if usesLnurl {
+                                return .lnurlPay(data: LnurlPayData(
+                                    uri: "https://example.com/pay", callback: "https://example.com/callback",
+                                    minSendable: 1_000_000, maxSendable: 100_000_000,
+                                    metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
+                                ))
+                            }
+                            return .lightning(invoice: LightningInvoice(
+                                bolt11: "test-invoice", paymentHash: Data(), amountSatoshis: 0,
+                                timestampSeconds: 0, expirySeconds: 0, isExpired: false,
+                                description: nil, networkType: .regtest, payeeNodeId: nil
+                            ))
+                        }
+                    )
+                )
+                var endpoints: [PublicPaykitService.Endpoint] = []
+                if offersSavings {
+                    endpoints.append(.init(methodId: onchain, value: address, min: nil, max: nil, rawPayload: ""))
+                }
+                if offersLightning {
+                    endpoints.append(.init(methodId: lightning, value: "https://example.com/pay", min: nil, max: nil, rawPayload: ""))
+                }
+                let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request, endpoints: endpoints)
+                XCTAssertTrue(app.claimContactPaymentContext(context))
+                try await app.handleScannedData(address, claimedContactPaymentContext: context)
+                let expectedRoute: SendRoute = sats < minimum || rail == "lnurlWithSavings" ? .amount : usesLnurl ? .lnurlPayConfirm : .confirm
+                XCTAssertEqual(PaymentNavigationHelper.contactPaymentRoute(
+                    app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()), settings: settings
+                ), expectedRoute, "\(rail) \(sats)")
+                if sats < minimum {
+                    XCTAssertNil(app.paykitPaymentTerms, "\(rail) \(sats)")
+                    XCTAssertNil(app.paykitReviewedAmount, "\(rail) \(sats)")
+                }
+                guard expectedRoute == .amount else { continue }
+
+                PaymentNavigationHelper.openPaymentSheet(
+                    app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()), settings: settings, sheetViewModel: sheets
+                )
+                let config = try XCTUnwrap(sheets.sendSheetItem)
+                let wallet = PaymentRequestSendWallet()
+                wallet.channelCount = 0
+                wallet.channels = []
+                wallet.nodeLifecycleState = .stopped
+                let view = SendSheet(config: config)
+                    .environment(manager)
+                    .environment(UsdtWalletManager(rpcUrl: nil, bundlerUrl: nil, loadCredentials: { throw CancellationError() }))
+                    .environment(HwWalletManager()).environment(TrezorManager())
+                    .environmentObject(app).environmentObject(wallet as WalletViewModel).environmentObject(sheets).environmentObject(NetworkMonitor())
+                    .environmentObject(settings).environmentObject(TagManager()).environmentObject(PubkyProfileManager())
+                    .environmentObject(ActivityListViewModel()).environmentObject(ContactsManager())
+                    .environmentObject(CurrencyViewModel(currencyService: OfflineCurrencyService())).environmentObject(FeeEstimatesManager())
+                let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+                window.rootViewController = UIHostingController(rootView: view)
+                window.makeKeyAndVisible()
+                defer {
+                    window.isHidden = true
+                    window.rootViewController = nil
+                    sheets.hideSheet(reason: "Test cleanup")
+                    ToastWindowManager.shared.hideToast()
+                }
+                let setupDeadline = ContinuousClock.now + .seconds(3)
+                while !config.state.didStartSetup || config.state.isSetupPending, ContinuousClock.now < setupDeadline {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                XCTAssertTrue(config.state.didStartSetup)
+                XCTAssertFalse(config.state.isSetupPending)
+                XCTAssertGreaterThan(wallet.feeRateLoadCount, 0)
+                wallet.nodeLifecycleState = .running
+                let deadline = ContinuousClock.now + .seconds(3)
+                while !config.state.hasValidatedAfterSync, sheets.activeSheetConfiguration != nil, ContinuousClock.now < deadline {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                XCTAssertEqual(config.state.rootRoute, .amount, "\(rail) \(sats)")
+                XCTAssertTrue(config.state.navigationPath.isEmpty)
+                XCTAssertTrue(config.state.hasValidatedAfterSync)
+                XCTAssertNotNil(sheets.activeSheetConfiguration, "Initial minimum fallback must survive sheet setup")
+            }
+        }
+    }
+
+    func testBelowMinimumQuotedRequestWaitsForSyncBeforeFallback() async throws {
         snapshotAppDefaults("channelCount")
         let onchainMethod = PublicPaykitService.MethodId.onchainMethodId(network: Env.network, scriptType: .p2wpkh)
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(
-            amount: "0.000001", endpoints: [onchainMethod.rawValue, PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue]
+            amount: "0.10", asset: "usd", conversion: .fixed(rates: [ConversionRate(asset: "btc", value: "0.00001")]),
+            endpoints: [onchainMethod.rawValue, PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue]
         )])
         let manager = paymentRequestManager(sdk: sdk)
         await manager.refresh()
@@ -5412,6 +5684,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             amountSatoshis: 0, timestampSeconds: 0, expirySeconds: 0, isExpired: false,
             description: nil, networkType: .regtest, payeeNodeId: nil
         )
+        app.paykitPaymentTerms = try request.payment(using: .bitcoinLightningBolt11)
+        app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
         sheets.showSheet(.send, data: SendConfig(view: .confirm, onDismiss: {
             manager.dismissPreparingRequest(request)
             app.resetSendState()
@@ -5440,7 +5714,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             window.rootViewController = nil
             ToastWindowManager.shared.hideToast()
         }
-        try await waitUntil { wallet.sendAmountSats == request.amount.atomic }
+        try await waitUntil { wallet.sendAmountSats == app.paykitPaymentTerms?.amount.atomic }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertNotNil(sheets.activeSheetConfiguration, "Confirmation must wait for wallet synchronization")
 
         wallet.nodeLifecycleState = .running
         try await waitUntil { sheets.activeSheetConfiguration == nil }
@@ -6735,6 +7011,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         await manager.refresh()
         let request = try XCTUnwrap(manager.pendingRequests.first)
         await sdk.failNextAcceptAfterRemoval()
+        await sdk.setReceiveError(.process)
+        let beforeFailure = await sdk.snapshot()
 
         do {
             try await manager.prepareForPayment(request)
@@ -6745,6 +7023,57 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         XCTAssertTrue(manager.pendingRequests.isEmpty)
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+        let afterFailure = await sdk.snapshot()
+        XCTAssertEqual(afterFailure.processCallCount, beforeFailure.processCallCount)
+        XCTAssertEqual(afterFailure.receiveCallCount, beforeFailure.receiveCallCount)
+        XCTAssertEqual(afterFailure.paymentRequestListCallCount, beforeFailure.paymentRequestListCallCount + 1)
+
+        let firstFullRefresh = await manager.refresh()
+        XCTAssertFalse(firstFullRefresh, "The inbox transport failure belongs to the next full refresh")
+        let afterFullRefresh = await sdk.snapshot()
+        XCTAssertEqual(afterFullRefresh.processCallCount, beforeFailure.processCallCount + 1)
+        await sdk.setReceiveError(nil)
+        let next = try paymentRequestRecord(id: "next")
+        await sdk.setIncomingRecords([next])
+        let recovered = await manager.refresh()
+        XCTAssertTrue(recovered)
+        XCTAssertEqual(manager.pendingRequests.map(\.paymentRequestId), [next.paymentRequestId])
+    }
+
+    func testPreparationFailureRefreshKeepsProcessingGuardAndRejectsReplacementIdentity() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        await sdk.pauseNextPaymentRequestList()
+        let preparation = Task {
+            try await manager.prepareForPayment(request) {
+                throw PaymentRequestSdkMockError.preparation
+            }
+        }
+        try await waitUntil { await sdk.paymentRequestListIsPaused() }
+        XCTAssertFalse(manager.requestPresentation(request))
+        do {
+            try await manager.prepareForPayment(request)
+            XCTFail("A pending failure refresh must keep the request in flight")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .operationInProgress)
+        }
+        let replacementIdentity = "pubky\(String(repeating: "y", count: 52))"
+        manager.clear()
+        manager.activate(identity: replacementIdentity)
+        await sdk.setActiveIdentity(replacementIdentity)
+        await sdk.resumePaymentRequestList()
+        do {
+            try await preparation.value
+            XCTFail("Expected the original preparation failure")
+        } catch {
+            XCTAssertEqual(error as? PaymentRequestSdkMockError, .preparation)
+        }
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        XCTAssertTrue(manager.historyRequests.isEmpty)
+        XCTAssertFalse(manager.isApprovedForPayment(request))
     }
 
     func testFailedRejectionDropsRequestRemovedFromAuthoritativeQueue() async throws {
@@ -6753,6 +7082,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         await manager.refresh()
         let request = try XCTUnwrap(manager.pendingRequests.first)
         await sdk.failNextRejectAfterRemoval()
+        let beforeFailure = await sdk.snapshot()
 
         do {
             try await manager.reject(request)
@@ -6763,6 +7093,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         XCTAssertTrue(manager.pendingRequests.isEmpty)
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+        let afterFailure = await sdk.snapshot()
+        XCTAssertEqual(afterFailure.processCallCount, beforeFailure.processCallCount + 1)
+        XCTAssertEqual(afterFailure.receiveCallCount, beforeFailure.receiveCallCount + 1)
     }
 
     func testInterruptedPreparationRemainsImmediatelyPresentableAfterForegroundOrUnlock() async throws {
@@ -7989,16 +8322,25 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             let manager = paymentRequestManager(sdk: sdk, acceptanceStore: store)
             await manager.refresh()
             let request = try XCTUnwrap(manager.pendingRequests.first)
-            await sdk.setAcceptanceResponseError(error)
+            var accepted = record
+            accepted.state = .accepted
+            accepted.acceptedEventId = "accepted"
+            accepted.executionClaimAppId = "bitkit"
+            await sdk.setAcceptanceResponseError(error, committedRecord: accepted)
+            let beforeFailure = await sdk.snapshot()
 
             do {
                 try await manager.prepareForPayment(request)
                 XCTFail("The interrupted call must not authorize execution")
             } catch {}
             XCTAssertFalse(manager.isApprovedForPayment(request))
-            var accepted = record
-            accepted.state = .accepted
-            await sdk.setRecords([accepted])
+            XCTAssertEqual(try store.load(identity: "pubky\(String(repeating: "z", count: 52))"), [request.id])
+            XCTAssertEqual(manager.pendingRequests.map(\.id), [request.id])
+            XCTAssertEqual(manager.historyRequests.first?.lifecycleState, .accepted)
+            let afterFailure = await sdk.snapshot()
+            XCTAssertEqual(afterFailure.processCallCount, beforeFailure.processCallCount)
+            XCTAssertEqual(afterFailure.receiveCallCount, beforeFailure.receiveCallCount)
+            XCTAssertEqual(afterFailure.paymentRequestListCallCount, beforeFailure.paymentRequestListCallCount + 1)
             let restarted = paymentRequestManager(sdk: sdk, acceptanceStore: store)
             await restarted.refresh()
             let retry = try XCTUnwrap(restarted.pendingRequests.first)
@@ -9136,23 +9478,39 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             role: .payee,
             expiresAt: timestamp(expiresAt)
         ))
-        let manager = paymentRequestManager(sdk: sdk)
+        let activity = PaykitPaymentActivity()
+        let manager = paymentRequestManager(sdk: sdk, paymentActivity: activity)
         await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
         let target = try XCTUnwrap(manager.eligibleTargets.first)
 
         let wasPaused = await PrivatePaykitService.shared.isBackgroundWorkPaused
         addTeardownBlock { await PrivatePaykitService.shared.setBackgroundWorkPaused(wasPaused) }
+        await sdk.pauseNextLinkedPeers()
         await sdk.pauseNextProposal()
+        await sdk.pauseNextProcess()
         let proposal = Task {
             try await manager.propose(
                 PaykitPaymentRequestDraft(amount: PaykitAmount(asset: .btc, atomic: 1), note: "Coffee", expiresAt: expiresAt),
                 to: target
             )
         }
+        try await waitUntil { await sdk.linkedPeersIsPaused() }
+        XCTAssertTrue(activity.shouldDeferRefresh)
+        XCTAssertFalse(activity.isActive)
+        await sdk.resumeLinkedPeers()
         try await waitUntil { await sdk.proposalIsPaused() }
+        XCTAssertTrue(activity.shouldDeferRefresh)
         await PrivatePaykitService.shared.setBackgroundWorkPaused(true)
         await sdk.resumeProposal()
+        try await waitUntil { await sdk.processIsPaused() }
+        XCTAssertTrue(activity.shouldDeferRefresh)
+        let otherReview = activity.beginReview()
+        await sdk.resumeProcess()
         let request = try await proposal.value
+        XCTAssertTrue(activity.shouldDeferRefresh)
+        activity.endReview(otherReview)
+        XCTAssertFalse(activity.shouldDeferRefresh)
+        XCTAssertFalse(manager.isCreatingRequest)
 
         XCTAssertEqual(request.amount.atomic, 1)
         XCTAssertEqual(request.note, "Coffee")
@@ -9175,6 +9533,47 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(priorities["identity"], [.background, .interactive])
         XCTAssertEqual(priorities["peers"], [.background, .interactive])
         XCTAssertEqual(priorities["delivery"], [.interactive])
+    }
+
+    func testCancelledProposalReleasesReviewAndAllowsAnotherCreation() async throws {
+        let publicKey = "pubky\(String(repeating: "y", count: 52))"
+        let expiresAt = Date(timeIntervalSince1970: 1_900_000_000)
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: publicKey, state: .linked)],
+            requestCapabilitiesByPublicKey: [publicKey: true]
+        )
+        try await sdk.setProposalResult(paymentRequestRecord(
+            id: "outgoing", counterparty: publicKey, role: .payee, expiresAt: timestamp(expiresAt)
+        ))
+        let activity = PaykitPaymentActivity()
+        let manager = paymentRequestManager(sdk: sdk, paymentActivity: activity)
+        await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
+        let target = try XCTUnwrap(manager.eligibleTargets.first)
+        let draft = PaykitPaymentRequestDraft(amount: PaykitAmount(asset: .btc, atomic: 1), note: "", expiresAt: expiresAt)
+        await sdk.pauseNextLinkedPeers()
+        let proposal = Task { try await manager.propose(draft, to: target) }
+        try await waitUntil { await sdk.linkedPeersIsPaused() }
+        XCTAssertTrue(activity.shouldDeferRefresh)
+
+        proposal.cancel()
+        await sdk.resumeLinkedPeers()
+        do {
+            _ = try await proposal.value
+            XCTFail("Expected cancelled recipient discovery")
+        } catch is CancellationError {}
+        XCTAssertFalse(activity.shouldDeferRefresh)
+        XCTAssertFalse(manager.isCreatingRequest)
+        let cancelledSnapshot = await sdk.snapshot()
+        XCTAssertTrue(cancelledSnapshot.proposedRequests.isEmpty)
+        XCTAssertTrue(cancelledSnapshot.processedCounterparties.isEmpty)
+
+        let request = try await manager.propose(draft, to: target)
+        XCTAssertEqual(request.paymentRequestId, "outgoing")
+        XCTAssertFalse(activity.shouldDeferRefresh)
+        let snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.proposedRequests.count, 1)
+        XCTAssertEqual(snapshot.processedCounterparties, [publicKey])
     }
 
     func testProposalsOnlyInspectAndDrainSelectedSavedTarget() async throws {
@@ -9342,7 +9741,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 id: "outgoing", counterparty: publicKey, role: .payee, proposalOutboundMessageId: 7
             ))
             await sdk.setPaymentRequestListError(error)
-            let manager = paymentRequestManager(sdk: sdk)
+            let activity = PaykitPaymentActivity()
+            let manager = paymentRequestManager(sdk: sdk, paymentActivity: activity)
             await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
 
             let request = try await manager.propose(
@@ -9350,6 +9750,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 to: XCTUnwrap(manager.eligibleTargets.first)
             )
 
+            XCTAssertFalse(activity.shouldDeferRefresh)
+            XCTAssertFalse(manager.isCreatingRequest)
             XCTAssertEqual(request.deliveryStatus, .queued)
             XCTAssertEqual(manager.outgoingRequests.map(\.paymentRequestId), ["outgoing"])
             let snapshot = await sdk.snapshot()
@@ -9466,7 +9868,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             } else {
                 await sdk.failNextProcess()
             }
-            let manager = paymentRequestManager(sdk: sdk)
+            let activity = PaykitPaymentActivity()
+            let manager = paymentRequestManager(sdk: sdk, paymentActivity: activity)
             await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
 
             let request = try await manager.propose(
@@ -9474,6 +9877,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 to: XCTUnwrap(manager.eligibleTargets.first)
             )
 
+            XCTAssertFalse(activity.shouldDeferRefresh)
+            XCTAssertFalse(manager.isCreatingRequest)
             XCTAssertEqual(request.deliveryStatus, .queued)
             XCTAssertEqual(manager.outgoingRequests.map(\.paymentRequestId), ["outgoing"])
             let snapshot = await sdk.snapshot()
@@ -9498,7 +9903,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             role: .payee,
             expiresAt: timestamp(expiresAt)
         ))
-        let manager = paymentRequestManager(sdk: sdk)
+        let activity = PaykitPaymentActivity()
+        let manager = paymentRequestManager(sdk: sdk, paymentActivity: activity)
         await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
         let target = try XCTUnwrap(manager.eligibleTargets.first)
 
@@ -9513,6 +9919,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         } catch let error as PaykitPaymentRequestError {
             XCTAssertEqual(error, .requestUnavailable)
         }
+        XCTAssertFalse(activity.shouldDeferRefresh)
+        XCTAssertFalse(manager.isCreatingRequest)
         let snapshot = await sdk.snapshot()
         XCTAssertTrue(snapshot.proposedRequests.isEmpty)
     }
@@ -9557,7 +9965,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             expiresAt: timestamp(expiresAt)
         ))
         await sdk.pauseNextProposal()
-        let manager = paymentRequestManager(sdk: sdk)
+        let activity = PaykitPaymentActivity()
+        let manager = paymentRequestManager(sdk: sdk, paymentActivity: activity)
         await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
         let target = try XCTUnwrap(manager.eligibleTargets.first)
 
@@ -9568,10 +9977,12 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             )
         }
         try await waitUntil { await sdk.proposalIsPaused() }
+        XCTAssertTrue(activity.shouldDeferRefresh)
         manager.clear()
         await sdk.resumeProposal()
 
         let committedRequest = try await task.value
+        XCTAssertFalse(activity.shouldDeferRefresh)
         XCTAssertEqual(committedRequest.paymentRequestId, "outgoing")
         XCTAssertTrue(manager.outgoingRequests.isEmpty)
         XCTAssertTrue(manager.eligibleTargets.isEmpty)
@@ -9592,7 +10003,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             expiresAt: timestamp(expiresAt)
         ))
         await sdk.pauseNextProposal()
-        let manager = paymentRequestManager(sdk: sdk)
+        let activity = PaykitPaymentActivity()
+        let manager = paymentRequestManager(sdk: sdk, paymentActivity: activity)
         await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
         let target = try XCTUnwrap(manager.eligibleTargets.first)
 
@@ -9603,6 +10015,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             )
         }
         try await waitUntil { await sdk.proposalIsPaused() }
+        XCTAssertTrue(activity.shouldDeferRefresh)
         await sdk.setActiveIdentity("pubky\(String(repeating: "a", count: 52))")
         await sdk.resumeProposal()
 
@@ -9612,6 +10025,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         } catch let error as PaykitPaymentRequestError {
             XCTAssertEqual(error, .requestUnavailable)
         }
+        XCTAssertFalse(activity.shouldDeferRefresh)
+        XCTAssertFalse(manager.isCreatingRequest)
         let snapshot = await sdk.snapshot()
         XCTAssertTrue(snapshot.proposedRequests.isEmpty)
         XCTAssertTrue(manager.outgoingRequests.isEmpty)
@@ -10280,6 +10695,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     private var rejectedRequests: [PaymentRequestInvocation] = []
     private var acceptFailuresAfterRemoval = 0
     private var acceptanceResponseError: Error?
+    private var acceptanceCommittedRecord: PaymentRequestRecord?
 
     private var rejectFailuresAfterRemoval = 0
     private var proposedRequests: [ProposedPaymentRequestInvocation] = []
@@ -10357,6 +10773,17 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         records.append(contentsOf: incomingRecords)
         incomingRecords = []
         return receiveReports
+    }
+
+    func receiveAndObserveState(
+        expectedIdentity: String,
+        onReceive: @Sendable ([PrivateStreamCounterpartyIntakeReport]) -> Date
+    ) async throws -> (observation: PaykitStateObservation, synchronizationDate: Date) {
+        operationPriorities["inbox", default: []].append(.background)
+        let reports = try receivePrivateMessagesFromLinkedPeers(priority: .background)
+        let synchronizationDate = onReceive(reports)
+        let observation = try await observeState(priority: .background, expectedIdentity: expectedIdentity)
+        return (observation, synchronizationDate)
     }
 
     func readPaymentRequests(counterparty: String, expectedIdentity: String?) async -> PaymentRequestRead {
@@ -10591,6 +11018,9 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
             )
         }
         if let acceptanceResponseError {
+            if let acceptanceCommittedRecord {
+                records.append(acceptanceCommittedRecord)
+            }
             throw acceptanceResponseError
         }
         if acceptFailuresAfterRemoval > 0 {
@@ -10647,8 +11077,9 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         processFailuresRemaining += 1
     }
 
-    func setAcceptanceResponseError(_ error: Error) {
+    func setAcceptanceResponseError(_ error: Error, committedRecord: PaymentRequestRecord? = nil) {
         acceptanceResponseError = error
+        acceptanceCommittedRecord = committedRecord
     }
 
     func pauseNextProcess(for counterparty: String? = nil) {

@@ -40,6 +40,9 @@ struct PaykitAllowance: Identifiable, Hashable {
     let lastEventAt: Date?
     /// The proposal's stream item as displayed; acceptance names it so a re-sent proposal asks again.
     let proposalStreamItemId: UInt64?
+    /// Terms with a limit beyond the per-payment cap and the one monthly amount Bitkit checks itself, such as a lifetime
+    /// amount, a payment count or another period. Bitkit never proposes these, and they never pay automatically.
+    let hasUncheckedLimits: Bool
 
     var counterparty: String {
         id.counterparty
@@ -65,7 +68,8 @@ struct PaykitAllowance: Identifiable, Hashable {
               terms.asset() == PaykitIssuerInterop.bitcoinAsset
         else { return nil }
 
-        let monthly = terms.periodLimits().first { Self.isMonthly($0.period()) }
+        let periodLimits = terms.periodLimits()
+        let monthly = periodLimits.first { Self.isMonthly($0.period()) }
         let perPaymentMaxSats = terms.perPaymentAmount().flatMap { Self.sats(fromBitcoinAmount: $0.maximum()) }
         let monthlyLimitSats = monthly?.amountLimit().flatMap { Self.sats(fromBitcoinAmount: $0) }
         let monthlyAnchor = monthly?.period().anchor().flatMap(PaykitAllowanceTime.parse)
@@ -85,6 +89,8 @@ struct PaykitAllowance: Identifiable, Hashable {
         allowedPaymentEndpointIdentifiers = terms.allowedPaymentEndpointIdentifiers()
         lastEventAt = record.lastEventAt.flatMap(PaykitAllowanceTime.parse)
         proposalStreamItemId = record.proposalStreamItemId
+        hasUncheckedLimits = terms.lifetimeAmountLimit() != nil || periodLimits.count > 1 ||
+            periodLimits.contains { !Self.isMonthly($0.period()) || $0.paymentCountLimit() != nil }
     }
 
     init(
@@ -99,7 +105,8 @@ struct PaykitAllowance: Identifiable, Hashable {
         expiresAt: Date? = nil,
         allowedPaymentEndpointIdentifiers: [String]? = nil,
         lastEventAt: Date? = nil,
-        proposalStreamItemId: UInt64? = nil
+        proposalStreamItemId: UInt64? = nil,
+        hasUncheckedLimits: Bool = false
     ) {
         self.id = id
         self.role = role
@@ -113,6 +120,7 @@ struct PaykitAllowance: Identifiable, Hashable {
         self.allowedPaymentEndpointIdentifiers = allowedPaymentEndpointIdentifiers
         self.lastEventAt = lastEventAt
         self.proposalStreamItemId = proposalStreamItemId
+        self.hasUncheckedLimits = hasUncheckedLimits
     }
 
     func status(at now: Date) -> Status {
@@ -284,6 +292,7 @@ enum PaykitAllowanceTime {
 /// Allowance's live automatic attempts in the current month first and keeps an over-cap request on the manual flow.
 enum PaykitAllowanceCapacity {
     struct Attempt: Equatable {
+        let attemptId: String
         let counterparty: String
         let allowanceId: String
         let amountSats: UInt64
@@ -302,7 +311,8 @@ enum PaykitAllowanceCapacity {
             .reduce(0) { $0 + $1.amountSats }
     }
 
-    static func fits(amountSats: UInt64, allowance: PaykitAllowance, attempts: [Attempt], now: Date) -> Bool {
+    /// Spending counts the higher of the ledger's `attempts` and this wallet's own `localAttempts`.
+    static func fits(amountSats: UInt64, allowance: PaykitAllowance, attempts: [Attempt], now: Date, localAttempts: [Attempt] = []) -> Bool {
         if let perPaymentMaxSats = allowance.perPaymentMaxSats, amountSats > perPaymentMaxSats {
             return false
         }
@@ -310,8 +320,47 @@ enum PaykitAllowanceCapacity {
         guard allowance.perPaymentMaxSats != nil, let monthlyLimitSats = allowance.monthlyLimitSats, let anchor = allowance.monthlyAnchor else {
             return false
         }
-        let used = usedSats(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId, attempts: attempts, anchor: anchor, now: now)
+        // Every attempt of the ledger and of this wallet counts once, so neither side's missing attempts hide the other's.
+        let ledgerIds = Set(attempts.map(\.attemptId))
+        let all = attempts + localAttempts.filter { !ledgerIds.contains($0.attemptId) }
+        let used = usedSats(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId, attempts: all, anchor: anchor, now: now)
         return used + amountSats <= monthlyLimitSats
+    }
+
+    enum Fit: Equatable {
+        /// The allowances with only the limits this wallet checks that fit the request, in the order given; the request can
+        /// pay automatically through one of them.
+        case automatic([PaykitAllowance])
+        /// Only allowances with limits this wallet does not check fit, so the request asks without Limit Reached.
+        case uncheckedOnly
+        /// No allowance fits the request, so it asks and Limit Reached is raised.
+        case none
+    }
+
+    /// Which of a request's matching allowances can pay it automatically. Every allowance is measured against the
+    /// per-payment cap and monthly amount this wallet checks; only one without other limits can pay automatically.
+    static func fit(amountSats: UInt64, allowances: [PaykitAllowance], attempts: [Attempt], now: Date, localAttempts: [Attempt] = []) -> Fit {
+        let fitting = allowances.filter {
+            fits(amountSats: amountSats, allowance: $0, attempts: attempts, now: now, localAttempts: localAttempts)
+        }
+        let automatic = fitting.filter { !$0.hasUncheckedLimits }
+        if !automatic.isEmpty {
+            return .automatic(automatic)
+        }
+        return fitting.isEmpty ? .none : .uncheckedOnly
+    }
+
+    static func attempts(from spends: [PaykitAllowanceLocalState.AutomaticSpend]) -> [Attempt] {
+        spends.map {
+            Attempt(
+                attemptId: $0.attemptId,
+                counterparty: $0.counterparty,
+                allowanceId: $0.allowanceId,
+                amountSats: $0.amountSats,
+                admittedAt: $0.admittedAt,
+                isLive: true
+            )
+        }
     }
 
     static func attempts(from history: Paykit.AllowanceAccountingHistory) -> [Attempt] {
@@ -324,6 +373,7 @@ enum PaykitAllowanceCapacity {
                   let amountSats = PaykitAllowance.sats(fromBitcoinAmount: attempt.amount.value())
             else { return nil }
             return Attempt(
+                attemptId: attempt.attemptId,
                 counterparty: counterparty,
                 allowanceId: allowanceId,
                 amountSats: amountSats,

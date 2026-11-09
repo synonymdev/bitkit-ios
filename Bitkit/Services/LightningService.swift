@@ -5,7 +5,17 @@ import LDKNode
 
 // TODO: catch all errors and pass a readable error message to the UI
 
-class LightningService {
+/// The node lifecycle `WalletViewModel` drives, apart from the rest of `LightningService` so its ordering can be tested.
+protocol NodeLifecycleService: AnyObject {
+    var hasNode: Bool { get }
+    func setup(walletIndex: Int, electrumServerUrl: String?, rgsServerUrl: String?, channelMigration: ChannelDataMigration?) async throws
+    func start(onEvent: ((Event) -> Void)?) async throws
+    func stop(clearEventCallback: Bool) async throws
+    func isNodeRunning() async -> Bool
+    func wipeStorage(walletIndex: Int) async throws
+}
+
+class LightningService: NodeLifecycleService {
     private static let watchOnlyAccountHighestPreRevealedAddressIndex: UInt32 = 999
 
     private var node: Node?
@@ -39,6 +49,8 @@ class LightningService {
     private var storedEventCallback: ((Event) -> Void)?
     var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
     var onchainTransactionReceived: (@Sendable (String) async -> Void)?
+    typealias OnchainActivityCompletion = @MainActor () async -> Void
+    @MainActor var onchainActivityWillPersist: (() -> OnchainActivityCompletion?)?
 
     var syncStatusChangedPublisher: AnyPublisher<UInt64, Never> {
         syncStatusChangedSubject.eraseToAnyPublisher()
@@ -306,7 +318,7 @@ class LightningService {
 
         Logger.debug("Stopping node...")
         try await ServiceQueue.background(.ldk) {
-            try node.stop()
+            try Self.stopReleasingFinishedNode(node.stop)
         }
         self.node = nil
 
@@ -321,9 +333,25 @@ class LightningService {
         Logger.info("Node stopped")
     }
 
+    /// ldk-node's `stop()` fails with `NotRunning` for a node whose `start()` failed, which leaves it built but not running, so
+    /// that releases it. Any other failure keeps the node, and a retried stop then finds it not running.
+    static func stopReleasingFinishedNode(_ stop: () throws -> Void) throws {
+        do {
+            try stop()
+        } catch NodeError.NotRunning {
+            Logger.info("Node was not running, releasing it", context: "LightningService")
+        }
+    }
+
+    /// Reads the node itself rather than the cached status, which can lag behind a failed start or stop.
+    func isNodeRunning() async -> Bool {
+        guard let node else { return false }
+        return await (try? ServiceQueue.background(.ldk) { node.status().isRunning }) ?? false
+    }
+
     func wipeStorage(walletIndex: Int) async throws {
         guard node == nil else {
-            throw AppError(serviceError: .nodeNotSetup)
+            throw AppError(serviceError: .nodeStillRunning)
         }
 
         let directory = Env.ldkStorage(walletIndex: walletIndex)
@@ -1348,6 +1376,24 @@ extension LightningService {
 // MARK: Events
 
 extension LightningService {
+    func deliverEvent(_ event: Event, onEvent: ((Event) -> Void)?) async -> OnchainActivityCompletion? {
+        let completion: OnchainActivityCompletion? = switch event {
+        case .onchainTransactionReceived, .onchainTransactionConfirmed, .onchainTransactionReplaced,
+             .onchainTransactionReorged, .onchainTransactionEvicted:
+            // Capture ownership before raw delivery or asynchronous activity processing can replace the session.
+            await MainActor.run { onchainActivityWillPersist?() }
+        default:
+            nil
+        }
+        onEvent?(event)
+        return completion
+    }
+
+    func persistOnchainActivity(completion: OnchainActivityCompletion?, operation: () async throws -> Void) async throws {
+        try await operation()
+        await completion?()
+    }
+
     func listenForEvents(onEvent: ((Event) -> Void)? = nil) {
         Task {
             while true {
@@ -1368,7 +1414,7 @@ extension LightningService {
                     await refreshChannelCache()
                 }
 
-                onEvent?(event)
+                let onchainActivityCompletion = await deliverEvent(event, onEvent: onEvent)
 
                 switch event {
                 case let .paymentSuccessful(paymentId, paymentHash, _, feePaidMsat):
@@ -1460,7 +1506,9 @@ extension LightningService {
                     Task {
                         await self.onchainTransactionReceived?(txid)
                         do {
-                            try await CoreService.shared.activity.handleOnchainTransactionReceived(txid: txid, details: details)
+                            try await self.persistOnchainActivity(completion: onchainActivityCompletion) {
+                                try await CoreService.shared.activity.handleOnchainTransactionReceived(txid: txid, details: details)
+                            }
                         } catch {
                             Logger.error("Failed to handle transaction received for \(txid): \(error)", context: "LightningService")
                         }
@@ -1472,10 +1520,12 @@ extension LightningService {
                             await onchainTransactionConfirmed(txid)
                         }
                         do {
-                            try await CoreService.shared.activity.handleOnchainTransactionConfirmed(
-                                txid: txid,
-                                details: details
-                            )
+                            try await self.persistOnchainActivity(completion: onchainActivityCompletion) {
+                                try await CoreService.shared.activity.handleOnchainTransactionConfirmed(
+                                    txid: txid,
+                                    details: details
+                                )
+                            }
                         } catch {
                             Logger.error("Failed to handle transaction confirmed for \(txid): \(error)", context: "LightningService")
                         }
@@ -1484,7 +1534,9 @@ extension LightningService {
                     Logger.info("🔄 Onchain transaction replaced (RBF): txid=\(txid) by \(conflicts.count) conflict(s)")
                     Task {
                         do {
-                            try await CoreService.shared.activity.handleOnchainTransactionReplaced(txid: txid, conflicts: conflicts)
+                            try await self.persistOnchainActivity(completion: onchainActivityCompletion) {
+                                try await CoreService.shared.activity.handleOnchainTransactionReplaced(txid: txid, conflicts: conflicts)
+                            }
                         } catch {
                             Logger.error("Failed to handle transaction replaced for \(txid): \(error)", context: "LightningService")
                         }
@@ -1493,7 +1545,9 @@ extension LightningService {
                     Logger.warn("⚠️ Onchain transaction reorged (unconfirmed): txid=\(txid)")
                     Task {
                         do {
-                            try await CoreService.shared.activity.handleOnchainTransactionReorged(txid: txid)
+                            try await self.persistOnchainActivity(completion: onchainActivityCompletion) {
+                                try await CoreService.shared.activity.handleOnchainTransactionReorged(txid: txid)
+                            }
                         } catch {
                             Logger.error("Failed to handle transaction reorged for \(txid): \(error)", context: "LightningService")
                         }
@@ -1502,7 +1556,9 @@ extension LightningService {
                     Logger.warn("🗑️ Onchain transaction removed from mempool: txid=\(txid)")
                     Task {
                         do {
-                            try await CoreService.shared.activity.handleOnchainTransactionEvicted(txid: txid)
+                            try await self.persistOnchainActivity(completion: onchainActivityCompletion) {
+                                try await CoreService.shared.activity.handleOnchainTransactionEvicted(txid: txid)
+                            }
                         } catch {
                             Logger.error("Failed to handle transaction evicted for \(txid): \(error)", context: "LightningService")
                         }

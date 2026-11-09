@@ -639,6 +639,210 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testImplicitRegistryPublicationUsesPrivateConsentAfterIdentityLookup() async throws {
+        snapshotAppDefaultsDomain()
+        for initiallyEnabled in [false, true] {
+            UserDefaults.standard.set(initiallyEnabled, forKey: PrivatePaykitService.publishingEnabledKey)
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = identityA
+            sdk.supportsPrivatePayments = true
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            await sdk.identityStatusGate.close()
+            defer { Task { await sdk.identityStatusGate.open() } }
+            let publication = Task { try await PublicPaykitService.syncPaykitApp(sdkService: service) }
+            try await sdk.reads.waitForEntries(count: 1)
+
+            UserDefaults.standard.set(!initiallyEnabled, forKey: PrivatePaykitService.publishingEnabledKey)
+            await sdk.identityStatusGate.open()
+            try await publication.value
+
+            XCTAssertEqual(sdk.privatePaymentsAtWrites, [!initiallyEnabled])
+        }
+    }
+
+    @MainActor
+    func testExplicitRegistryConsentOverridesTheStoredPreference() async throws {
+        snapshotAppDefaultsDomain()
+        for enabled in [false, true] {
+            UserDefaults.standard.set(!enabled, forKey: PrivatePaykitService.publishingEnabledKey)
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = identityA
+            sdk.supportsPrivatePayments = true
+            let service = PaykitSdkService(sdkFactory: { sdk })
+
+            try await PublicPaykitService.syncPaykitApp(privateSharingEnabled: enabled, sdkService: service)
+
+            XCTAssertEqual(sdk.privatePaymentsAtWrites, [enabled])
+        }
+    }
+
+    @MainActor
+    func testSharingWritesRecheckTheOriginalSessionAfterWaitingForTheSdkLock() async throws {
+        for registry in [false, true] {
+            for replacementIdentity in [identityA, identityB] {
+                let sdk = IdentitySwitchingSdk(noPointer: .init())
+                sdk.identity = identityA
+                let service = PaykitSdkService(sdkFactory: { sdk })
+                var isCurrent = true
+                await sdk.contactRecordsGate.close()
+                let lockHolder = Task { try await service.contactRecords() }
+                try await sdk.contactRecordsStarted.waitForEntries(count: 1)
+
+                let write = Task {
+                    if registry {
+                        try await service.syncPaykitApp(privatePaymentsEnabled: false, isSessionCurrent: { isCurrent })
+                    } else {
+                        _ = try await service.syncPublicEndpoints([], isSessionCurrent: { isCurrent })
+                    }
+                }
+                try await Task.sleep(for: .milliseconds(50))
+                XCTAssertEqual(sdk.writes, [])
+                sdk.identity = replacementIdentity
+                isCurrent = false
+                await sdk.contactRecordsGate.open()
+                _ = try await lockHolder.value
+                do {
+                    try await write.value
+                    XCTFail("A superseded sharing change must not write, including a new session with the same key")
+                } catch PubkyServiceError.sessionNotActive {}
+                XCTAssertEqual(sdk.writes, [])
+            }
+        }
+    }
+
+    @MainActor
+    func testLivePrivateCleanupRegistryWriteRejectsSessionReplacementWhileWaitingForSdkLock() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+        UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+        for replacementIdentity in [identityA, identityB] {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = identityA
+            sdk.peerState = nil
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            let privateService = PrivatePaykitService()
+            var isCurrent = true
+            var passedFinalCleanupCheck = false
+            let finalCleanupCheck = expectation(description: "Live cleanup checked ownership before registry sync")
+            await sdk.linkedPeersGate.close()
+            await sdk.contactRecordsGate.close()
+            let cleanup = Task {
+                try await privateService.removePublishedEndpoints(for: [contactKey], isSessionCurrent: {
+                    if sdk.hasReadLinkedPeers, !passedFinalCleanupCheck {
+                        passedFinalCleanupCheck = true
+                        finalCleanupCheck.fulfill()
+                    }
+                    return isCurrent
+                }, sdkService: service)
+            }
+            try await sdk.linkedPeersStarted.waitForEntries(count: 1)
+            let lockHolder = Task { try await service.contactRecords() }
+            try await Task.sleep(for: .milliseconds(50))
+            await sdk.linkedPeersGate.open()
+            try await sdk.contactRecordsStarted.waitForEntries(count: 1)
+            await fulfillment(of: [finalCleanupCheck], timeout: 2)
+            try await Task.sleep(for: .milliseconds(50))
+            XCTAssertTrue(passedFinalCleanupCheck)
+            XCTAssertTrue(sdk.writes.isEmpty)
+            let registryAdmissions = await sdk.sharingStarted.count
+            XCTAssertEqual(registryAdmissions, 0)
+
+            sdk.identity = replacementIdentity
+            isCurrent = false
+            await sdk.contactRecordsGate.open()
+            _ = try await lockHolder.value
+            do {
+                try await cleanup.value
+                XCTFail("Live cleanup must retain its original session even when the replacement has the same key")
+            } catch PubkyServiceError.sessionNotActive {}
+            XCTAssertTrue(sdk.writes.isEmpty)
+            let replacementAdmissions = await sdk.sharingStarted.count
+            XCTAssertEqual(replacementAdmissions, 0)
+        }
+    }
+
+    @MainActor
+    func testLivePrivateCleanupRegistryWritePreservesCurrentAndUnownedCleanup() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+        UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+        for guarded in [false, true] {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = identityA
+            sdk.peerState = nil
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            let privateService = PrivatePaykitService()
+            let isSessionCurrent: (@MainActor () -> Bool)? = guarded ? { @MainActor in true } : nil
+            try await privateService.removePublishedEndpoints(
+                for: [contactKey], isSessionCurrent: isSessionCurrent, sdkService: service
+            )
+            XCTAssertTrue(sdk.hasReadLinkedPeers)
+            XCTAssertEqual(sdk.writes, ["registry"])
+            XCTAssertEqual(sdk.identitiesAtWrites, [identityA])
+        }
+    }
+
+    @MainActor
+    func testAdmittedLivePrivateCleanupRegistryWriteDrainsBeforeSignOutDespiteCancellation() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+        UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+        let sdk = IdentitySwitchingSdk(noPointer: .init())
+        sdk.identity = identityA
+        sdk.peerState = nil
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        let privateService = PrivatePaykitService()
+        var isCurrent = true
+        await sdk.sharingGate.close()
+        let cleanup = Task {
+            try await privateService.removePublishedEndpoints(for: [contactKey], isSessionCurrent: { isCurrent }, sdkService: service)
+        }
+        try await sdk.sharingStarted.waitForEntries(count: 1)
+        isCurrent = false
+        cleanup.cancel()
+        let signOut = Task { try await service.signOut() }
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(sdk.identity, identityA)
+        XCTAssertTrue(sdk.writes.isEmpty)
+        await sdk.sharingGate.open()
+        _ = await cleanup.result
+        try await signOut.value
+        XCTAssertEqual(sdk.writes, ["registry"])
+        XCTAssertEqual(sdk.identitiesAtWrites, [identityA])
+        XCTAssertNil(sdk.identity)
+    }
+
+    @MainActor
+    func testAdmittedSharingWritesDrainBeforeSignOutDespiteCancellation() async throws {
+        for registry in [false, true] {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = identityA
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            var isCurrent = true
+            await sdk.sharingGate.close()
+            let write = Task {
+                if registry {
+                    try await service.syncPaykitApp(privatePaymentsEnabled: false, isSessionCurrent: { isCurrent })
+                } else {
+                    _ = try await service.syncPublicEndpoints([], isSessionCurrent: { isCurrent })
+                }
+            }
+            try await sdk.sharingStarted.waitForEntries(count: 1)
+            isCurrent = false
+            write.cancel()
+            let signOut = Task { try await service.signOut() }
+            try await Task.sleep(for: .milliseconds(50))
+            XCTAssertEqual(sdk.identity, identityA)
+            await sdk.sharingGate.open()
+            _ = await write.result
+            try await signOut.value
+            XCTAssertEqual(sdk.writes, [registry ? "registry" : "endpoints"])
+            XCTAssertEqual(sdk.identitiesAtWrites, [identityA])
+            XCTAssertNil(sdk.identity)
+        }
+    }
+
     func testSignOutWaitsForAtomicContactRestoration() async throws {
         for bulk in [false, true] {
             let sdk = IdentitySwitchingSdk(noPointer: .init())
@@ -719,6 +923,119 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
             lastEventAt: "2026-10-20T12:00:00Z", invalidReason: nil
         )
     }
+
+    @MainActor
+    func testCleanupAWipeStoppedWaitingForNeitherRecreatesOldKeyStateNorReachesTheNextWallet() async throws {
+        try await assertAbandonedCleanupCannotReachReplacementWallet(heldRead: .registry)
+    }
+
+    func testCleanupResumingFromBackupRevisionReadCannotReachTheNextWallet() async throws {
+        try await assertAbandonedCleanupCannotReachReplacementWallet(heldRead: .revision)
+    }
+
+    func testCleanupResumingFromCapabilityReadCannotReachTheNextWallet() async throws {
+        try await assertAbandonedCleanupCannotReachReplacementWallet(heldRead: .capability)
+    }
+
+    func testCleanupResumingFromPeerReadCannotRecoverTheNextWalletsLinks() async throws {
+        try await assertAbandonedCleanupCannotReachReplacementWallet(heldRead: .peers)
+    }
+
+    func testCleanupFinishingLinkRecoveryCannotStartAnotherMutation() async throws {
+        try await assertAbandonedCleanupCannotReachReplacementWallet(heldRead: .linkRecovery)
+    }
+
+    private enum CleanupRead {
+        case registry, revision, capability, peers, linkRecovery
+    }
+
+    private func assertAbandonedCleanupCannotReachReplacementWallet(heldRead: CleanupRead) async throws {
+        let oldSecret = String(repeating: "71", count: 32)
+        let newSecret = String(repeating: "72", count: 32)
+        let oldPublicKey = try PubkyProfileManager.publicKeyFromSecretKey(oldSecret)
+        let newPublicKey = try PubkyProfileManager.publicKeyFromSecretKey(newSecret)
+        let oldGenerationKey = KeychainEntryType.paykitKeyGeneration(publicKey: oldPublicKey)
+        let keys: [KeychainEntryType] = [.pubkySecretKey, oldGenerationKey, .paykitKeyGeneration(publicKey: newPublicKey)]
+        let saved = try keys.map { try Keychain.load(key: $0) }
+        let savedReference = AdoptedPubkyReference.current
+        defer {
+            AdoptedPubkyReference.current = savedReference
+            for (key, value) in zip(keys, saved) {
+                if let value {
+                    try? Keychain.upsert(key: key, data: value)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
+            }
+        }
+        AdoptedPubkyReference.current = nil
+        for key in keys {
+            try Keychain.delete(key: key)
+        }
+        try Keychain.upsert(key: .pubkySecretKey, data: Data(oldSecret.utf8))
+
+        let readEntered = expectation(description: "the old cleanup is reading SDK state")
+        let cleanupEnded = expectation(description: "the abandoned cleanup returns")
+        let readGate = AsyncGate()
+        defer { readGate.open() }
+        let oldSdk = AbandonedCleanupSdk(noPointer: .init())
+        let suspendRead = {
+            readEntered.fulfill()
+            // Like the UniFFI call, it ignores Swift cancellation
+            await readGate.wait()
+        }
+        switch heldRead {
+        case .registry: oldSdk.registryRead = suspendRead
+        case .revision: oldSdk.revisionRead = suspendRead
+        case .capability: oldSdk.identityRead = suspendRead
+        case .peers: oldSdk.peerRead = suspendRead
+        case .linkRecovery:
+            oldSdk.recoveringPeers.append(identityA)
+            oldSdk.linkRecovery = suspendRead
+        }
+        let replacementSdk = AbandonedCleanupSdk(noPointer: .init())
+        var creations = 0
+        let service = PaykitSdkService(sdkFactory: {
+            creations += 1
+            return creations == 1 ? oldSdk : replacementSdk
+        })
+
+        let wipe = Task {
+            try await service.withWalletWipe {
+                await AppReset.runRemoteCleanup(timeout: .milliseconds(100)) {
+                    switch heldRead {
+                    case .registry, .revision:
+                        _ = try? await service.syncPublicEndpoints([])
+                    case .capability:
+                        try? await service.syncPaykitApp(privatePaymentsEnabled: false)
+                    case .peers, .linkRecovery:
+                        _ = try? await service.clearPrivatePaymentLists(to: oldSdk.recoveringPeers, isSessionCurrent: { !Task.isCancelled })
+                    }
+                    cleanupEnded.fulfill()
+                }
+                // The wipe clears these once it has stopped waiting for the cleanup
+                try Keychain.delete(key: .pubkySecretKey)
+                try Keychain.delete(key: oldGenerationKey)
+            }
+        }
+        await fulfillment(of: [readEntered], timeout: 2)
+        try await wipe.value
+        XCTAssertNil(try Keychain.load(key: oldGenerationKey))
+
+        // The next wallet's first operation creates its own SDK and identity before the old response arrives
+        try Keychain.upsert(key: .pubkySecretKey, data: Data(newSecret.utf8))
+        _ = try await service.contactRecords()
+        XCTAssertEqual(creations, 2)
+        XCTAssertTrue(replacementSdk.mutations.isEmpty)
+
+        readGate.open()
+        await fulfillment(of: [cleanupEnded], timeout: 2)
+
+        XCTAssertNil(try Keychain.load(key: oldGenerationKey), "Completed wipe must not recreate the old identity's keychain state")
+        let alreadyStartedMutations = heldRead == .linkRecovery ? ["recoverLink"] : []
+        XCTAssertEqual(oldSdk.mutations, alreadyStartedMutations, "Abandoned cleanup must not start another mutation")
+        XCTAssertTrue(replacementSdk.mutations.isEmpty, "An old wallet cleanup must not mutate the replacement SDK")
+    }
 }
 
 private let identityA = "pubky8qd4tbz3hyafi7h7hoqwd5hm7tsaz1n7txcyojmd4kxf9xp7mgro"
@@ -786,10 +1103,16 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
     private var recordedWrites: [String] = []
     private var recordedIdentitiesAtWrites: [String?] = []
     private var recordedContactReads = 0
+    private var completedLinkedPeersRead = false
     private var recordedProfileReads = 0
     private var storedProfileExists = false
+    private var privateIdentity = false
+    private var recordedPrivateCapabilities: [Bool] = []
+    let identityStatusGate = IdentityCheckGate()
+    let linkedPeersGate = IdentityCheckGate()
+    let linkedPeersStarted = IdentityCheckCallLog()
     private var pendingReadErrors: [PaykitError] = []
-    private var linkedPeerState: LinkedPeerState = .linked
+    private var linkedPeerState: LinkedPeerState? = .linked
     let reads = IdentityCheckCallLog()
     var paymentRequestRead: (String, String?) async throws -> PaymentRequestRead = { _, _ in
         PaymentRequestRead(identityStatus: nil, paymentRequests: [])
@@ -805,6 +1128,8 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
     let observationStarted = IdentityCheckCallLog()
     let restoreGate = IdentityCheckGate()
     let restoreStarted = IdentityCheckCallLog()
+    let sharingGate = IdentityCheckGate()
+    let sharingStarted = IdentityCheckCallLog()
 
     var identity: String? {
         get { lock.withLock { signedInIdentity } }
@@ -816,12 +1141,21 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
         set { lock.withLock { liveSession = newValue } }
     }
 
+    var supportsPrivatePayments: Bool {
+        get { lock.withLock { privateIdentity } }
+        set { lock.withLock { privateIdentity = newValue } }
+    }
+
+    var privatePaymentsAtWrites: [Bool] {
+        lock.withLock { recordedPrivateCapabilities }
+    }
+
     var readErrors: [PaykitError] {
         get { lock.withLock { pendingReadErrors } }
         set { lock.withLock { pendingReadErrors = newValue } }
     }
 
-    var peerState: LinkedPeerState {
+    var peerState: LinkedPeerState? {
         get { lock.withLock { linkedPeerState } }
         set { lock.withLock { linkedPeerState = newValue } }
     }
@@ -837,6 +1171,10 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
 
     var contactReads: Int {
         lock.withLock { recordedContactReads }
+    }
+
+    var hasReadLinkedPeers: Bool {
+        lock.withLock { completedLinkedPeersRead }
     }
 
     var profileReads: Int {
@@ -865,20 +1203,25 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
 
     override func identityStatus() async throws -> IdentityStatus? {
         await reads.record()
+        await identityStatusGate.wait()
         let error = lock.withLock { pendingReadErrors.isEmpty ? nil : pendingReadErrors.removeFirst() }
         if let error {
             throw error
         }
-        return IdentityStatus(publicKey: identity, capability: identity != nil && hasLiveSession ? .publicOnly : .signedOut)
+        let capability: PubkyIdentityCapability = supportsPrivatePayments ? .privateLinkCapable : .publicOnly
+        return IdentityStatus(publicKey: identity, capability: identity != nil && hasLiveSession ? capability : .signedOut)
     }
 
     override func linkedPeers() async throws -> [LinkedPeerRecord] {
+        await linkedPeersStarted.record()
+        await linkedPeersGate.wait()
         await reads.record()
         let error = lock.withLock { pendingReadErrors.isEmpty ? nil : pendingReadErrors.removeFirst() }
         if let error {
             throw error
         }
-        guard identity != nil else { return [] }
+        lock.withLock { completedLinkedPeersRead = true }
+        guard identity != nil, let peerState else { return [] }
         return [LinkedPeerRecord(
             counterparty: contactKey, state: peerState, lastSyncAt: nil, lastPrivateReceiveAt: nil,
             failureCount: 0, localRecoveryAttemptId: nil, localRecoveryMarkerCreatedAt: nil,
@@ -969,6 +1312,21 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
         )
     }
 
+    override func publishPaykitApp(displayName _: String, capabilities: PaykitAppCapabilities) async throws -> PaykitAppRegistry {
+        await sharingStarted.record()
+        await sharingGate.wait()
+        lock.withLock { recordedPrivateCapabilities.append(capabilities.privatePayments) }
+        recordWrite("registry")
+        return PaykitAppRegistry(keyGeneration: 1, noisePublicKey: nil, apps: [], defaultAppId: nil, defaultAppsByEndpoint: [:])
+    }
+
+    override func syncPublicEndpointsWithReceivingDetails(receivingDetails _: [PublicReceivingDetail]) async throws -> EndpointSyncReport {
+        await sharingStarted.record()
+        await sharingGate.wait()
+        recordWrite("endpoints")
+        return EndpointSyncReport(published: [], removed: [], failed: [])
+    }
+
     private static func record(publicKey: String, label: String?) -> ContactRecord {
         ContactRecord(
             publicKey: publicKey, label: label, profile: nil,
@@ -976,5 +1334,79 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
             publicContactMarkerStatus: .notPublished,
             publicContactPublishedAt: nil, publicContactRemovedAt: nil, publicContactLastError: nil
         )
+    }
+}
+
+private final class AbandonedCleanupSdk: PaykitSdk, @unchecked Sendable {
+    var registryRead: () async -> Void = {}
+    var revisionRead: () async -> Void = {}
+    var identityRead: () async -> Void = {}
+    var peerRead: () async -> Void = {}
+    var linkRecovery: () async -> Void = {}
+    var mutations: [String] = []
+    var recoveringPeers = [contactKey]
+
+    override func paykitAppRegistry(publicKey _: String) async throws -> PaykitAppRegistry? {
+        await registryRead()
+        return nil
+    }
+
+    override func contactRecords() async throws -> [ContactRecord] {
+        []
+    }
+
+    override func backupStateRevision() async throws -> String {
+        await revisionRead()
+        return "unchanged"
+    }
+
+    override func stateRevision() throws -> String? {
+        nil
+    }
+
+    override func observedBackupStateRevision() throws -> ObservedBackupStateRevision? {
+        nil
+    }
+
+    override func syncPublicEndpointsWithReceivingDetails(receivingDetails _: [PublicReceivingDetail]) async throws -> EndpointSyncReport {
+        mutations.append("publicEndpoints")
+        return EndpointSyncReport(published: [], removed: [], failed: [])
+    }
+
+    override func identityStatus() async throws -> IdentityStatus? {
+        await identityRead()
+        return IdentityStatus(publicKey: nil, capability: .privateLinkCapable)
+    }
+
+    override func publishPaykitApp(displayName _: String, capabilities _: PaykitAppCapabilities) async throws -> PaykitAppRegistry {
+        mutations.append("publishApp")
+        return PaykitAppRegistry(keyGeneration: 1, noisePublicKey: nil, apps: [], defaultAppId: nil, defaultAppsByEndpoint: [:])
+    }
+
+    override func linkedPeers() async throws -> [LinkedPeerRecord] {
+        await peerRead()
+        return recoveringPeers.map {
+            LinkedPeerRecord(
+                counterparty: $0, state: .recoveryRequired,
+                lastSyncAt: nil, lastPrivateReceiveAt: nil, failureCount: 0,
+                localRecoveryAttemptId: nil, localRecoveryMarkerCreatedAt: nil, localRecoveryMarkerLastError: nil,
+                remoteRecoveryAttemptId: nil, remoteRecoveryMarkerObservedAt: nil
+            )
+        }
+    }
+
+    override func ensureLinkWithPeer(counterparty: String, maxAdvanceSteps _: UInt32) async throws -> LinkedPeerHandshakeReport {
+        mutations.append("recoverLink")
+        if mutations.count == 1 {
+            await linkRecovery()
+        }
+        return LinkedPeerHandshakeReport(counterparty: counterparty, state: .linking, generation: 1, handshakeRole: nil)
+    }
+
+    override func syncPrivatePaymentListsWithReservationsAndProcessOutbound(
+        updates _: [PrivatePaymentListReservationUpdateInput], clearUnlistedLinkedPeers _: Bool
+    ) async throws -> PrivatePaymentListDeliveryReport {
+        mutations.append("privateEndpoints")
+        return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
     }
 }

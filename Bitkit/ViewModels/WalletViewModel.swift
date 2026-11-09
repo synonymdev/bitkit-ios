@@ -2,6 +2,9 @@ import BitkitCore
 import LDKNode
 import SwiftUI
 
+/// The swap updates stream did not stop within `WalletViewModel.swapUpdatesWipeStopTimeout`.
+struct SwapUpdatesStopTimeoutError: Error {}
+
 @MainActor
 class WalletViewModel: ObservableObject {
     let usdtWallet: UsdtWalletManager
@@ -86,7 +89,11 @@ class WalletViewModel: ObservableObject {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
     }
 
+    private let swapUpdatesStream: SwapUpdatesStreaming
+    private let swapUpdatesWipeStopTimeout: Duration
+    private let nodeLifecycleWipeTimeout: Duration
     private let lightningService: LightningService
+    private let nodeLifecycle: NodeLifecycleService
     private let coreService: CoreService
     private let electrumConfigService: ElectrumConfigService
     private let rgsConfigService: RgsConfigService
@@ -103,8 +110,15 @@ class WalletViewModel: ObservableObject {
     @Published var currentBlockHeight: UInt32 = 0
     @Published var isRetryingLightningPayment = false
 
+    private var isNodeLifecycleOperationActive = false
+    private var nodeLifecycleWaiters: [(id: UUID, continuation: CheckedContinuation<Bool, Never>)] = []
+    /// How long a wipe waits for a start or stop in flight, which a hung node start could otherwise hold forever.
+    nonisolated static let nodeLifecycleWipeTimeout: Duration = .seconds(30)
+    private var isStartAdmissionClosedForWipe = false
+
     init(
         lightningService: LightningService = .shared,
+        nodeLifecycle: NodeLifecycleService? = nil,
         coreService: CoreService = .shared,
         electrumConfigService: ElectrumConfigService = ElectrumConfigService(),
         rgsConfigService: RgsConfigService = RgsConfigService(),
@@ -113,10 +127,17 @@ class WalletViewModel: ObservableObject {
         feeEstimatesManager: FeeEstimatesManager,
         onchainAttemptService: OnchainSendAttemptService = .shared,
         pubkyProfile: PubkyProfileManager? = nil,
-        usdtWallet: UsdtWalletManager? = nil
+        usdtWallet: UsdtWalletManager? = nil,
+        swapUpdatesStream: SwapUpdatesStreaming = BoltzService.shared,
+        swapUpdatesWipeStopTimeout: Duration = WalletViewModel.swapUpdatesWipeStopTimeout,
+        nodeLifecycleWipeTimeout: Duration = WalletViewModel.nodeLifecycleWipeTimeout
     ) {
+        self.nodeLifecycleWipeTimeout = nodeLifecycleWipeTimeout
         self.usdtWallet = usdtWallet ?? UsdtWalletManager()
+        self.swapUpdatesStream = swapUpdatesStream
+        self.swapUpdatesWipeStopTimeout = swapUpdatesWipeStopTimeout
         self.lightningService = lightningService
+        self.nodeLifecycle = nodeLifecycle ?? lightningService
         self.coreService = coreService
         self.electrumConfigService = electrumConfigService
         self.rgsConfigService = rgsConfigService
@@ -152,6 +173,11 @@ class WalletViewModel: ObservableObject {
         }
         lightningService.onchainTransactionReceived = { await onchainObservation($0, false) }
         lightningService.onchainTransactionConfirmed = { await onchainObservation($0, true) }
+        lightningService.onchainActivityWillPersist = { [weak self] in
+            guard let self else { return nil }
+            let isSessionCurrent = publicPaykitPublicationAdmission()
+            return { await self.refreshPublicPaykitAddressIfNeeded(isSessionCurrent: isSessionCurrent) }
+        }
     }
 
     /// Convenience initializer for previews and testing
@@ -178,7 +204,44 @@ class WalletViewModel: ObservableObject {
     }
 
     func start(walletIndex: Int = 0) async throws {
-        if !lightningService.hasNode, nodeLifecycleState == .running {
+        guard try await withNodeLifecycleLock({ try await startNode(walletIndex: walletIndex) }) else { return }
+        // A start that finished late does nothing more once a wipe is under way
+        guard !isStartAdmissionClosedForWipe, !WipeCoordinator.shared.isGateUp else { return }
+
+        do {
+            try await lightningService.disconnectIdlePeers()
+        } catch {
+            Logger.error("Failed to disconnect idle peers: \(error)")
+        }
+
+        // Migration only: fetch peers from remote backup (once) and persist in ldk-node
+        let peerUris = await MigrationsService.shared.tryFetchMigrationPeersFromBackup(walletIndex: walletIndex)
+        for uri in peerUris {
+            guard let peer = try? LnPeer(connection: uri) else { continue }
+            do {
+                try await lightningService.connectPeer(peer: peer, persist: true)
+            } catch {
+                Logger.error("Failed to connect migration peer \(peer.nodeId): \(error)")
+            }
+        }
+
+        Task { @MainActor in
+            try? await refreshBip21(syncPublicPaykit: false)
+        }
+
+        // Always sync on start but don't need to wait for this
+        Task { @MainActor in
+            try? await sync()
+        }
+    }
+
+    private func startNode(walletIndex: Int) async throws -> Bool {
+        guard !isStartAdmissionClosedForWipe, !WipeCoordinator.shared.isGateUp else {
+            Logger.warn("Refusing to start the node while a wallet wipe is pending", context: "WalletViewModel")
+            throw AppError(serviceError: .wipeInProgress)
+        }
+
+        if !nodeLifecycle.hasNode, nodeLifecycleState == .running {
             Logger.warn("Node lifecycle was running but service node is missing, restarting", context: "WalletViewModel")
             nodeLifecycleState = .stopped
         }
@@ -189,7 +252,7 @@ class WalletViewModel: ObservableObject {
             break // Allowed to proceed
         case .starting, .running, .stopping:
             Logger.debug("Node already starting or running, skipping start")
-            return
+            return false
         }
 
         if nodeLifecycleState != .initializing {
@@ -212,14 +275,14 @@ class WalletViewModel: ObservableObject {
 
                 await runLegacyNetworkGraphCleanupIfNeeded()
 
-                try await lightningService.setup(
+                try await nodeLifecycle.setup(
                     walletIndex: walletIndex,
                     electrumServerUrl: electrumServerUrl,
                     rgsServerUrl: rgsServerUrl.isEmpty ? nil : rgsServerUrl,
                     channelMigration: channelMigration
                 )
             }
-            try await lightningService.start(onEvent: { event in
+            try await nodeLifecycle.start(onEvent: { event in
                 Task { @MainActor in
                     // Notify all event handlers
                     for handler in self.eventHandlers.values {
@@ -246,15 +309,12 @@ class WalletViewModel: ObservableObject {
                         )
                     case let .paymentReceived(_, paymentHash, _, _):
                         self.invalidateReceiveInvoice()
-                        if self.isPaykitUIActive {
-                            self.rotatePublicPaykitInvoiceIfNeeded(paymentHash: paymentHash)
-                        }
+                        let rotatedPublicInvoice = self.isPaykitUIActive && self.rotatePublicPaykitInvoiceIfNeeded(paymentHash: paymentHash)
+                        let isSessionCurrent = self.publicPaykitPublicationAdmission()
                         Task {
-                            if self.isPaykitUIActive {
-                                await PrivatePaykitService.shared.handleReceivedPayment(paymentHash: paymentHash, wallet: self)
-                            }
-                            await self.refreshAndSyncState()
-                            try? await self.refreshBip21(reportsError: false)
+                            await self.refreshAfterPaymentReceived(
+                                paymentHash: paymentHash, rotatedPublicInvoice: rotatedPublicInvoice, isSessionCurrent: isSessionCurrent
+                            )
                         }
                     case .channelReady:
                         self.invalidateReceiveInvoice()
@@ -275,12 +335,7 @@ class WalletViewModel: ObservableObject {
                     case let .channelClosed(channelId, _, _, reason):
                         self.invalidateReceiveInvoice()
                         Task {
-                            await self.refreshAndSyncState()
-                            await self.handleChannelClosed(channelId: channelId, reason: reason)
-                            try? await self.refreshBip21(reportsError: false)
-                            if self.isPaykitUIActive {
-                                await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(wallet: self, reason: "channel-closed refresh")
-                            }
+                            await self.refreshAfterChannelClosed(channelId: channelId, reason: reason)
                         }
 
                     // MARK: Onchain Transaction Events
@@ -328,8 +383,10 @@ class WalletViewModel: ObservableObject {
                         self.isSyncingWallet = false
                         self.currentBlockHeight = syncedBlockHeight
                         Logger.info("Sync completed: \(syncType) at height \(syncedBlockHeight)")
+                        let isSessionCurrent = self.publicPaykitPublicationAdmission()
                         Task {
                             await self.refreshAndSyncState()
+                            await self.refreshPublicPaykitAddressIfNeeded(isSessionCurrent: isSessionCurrent)
                         }
 
                     // MARK: Balance Events
@@ -351,32 +408,7 @@ class WalletViewModel: ObservableObject {
         nodeLifecycleState = .running
 
         syncState()
-
-        do {
-            try await lightningService.disconnectIdlePeers()
-        } catch {
-            Logger.error("Failed to disconnect idle peers: \(error)")
-        }
-
-        // Migration only: fetch peers from remote backup (once) and persist in ldk-node
-        let peerUris = await MigrationsService.shared.tryFetchMigrationPeersFromBackup(walletIndex: walletIndex)
-        for uri in peerUris {
-            guard let peer = try? LnPeer(connection: uri) else { continue }
-            do {
-                try await lightningService.connectPeer(peer: peer, persist: true)
-            } catch {
-                Logger.error("Failed to connect migration peer \(peer.nodeId): \(error)")
-            }
-        }
-
-        Task { @MainActor in
-            try? await refreshBip21(syncPublicPaykit: false)
-        }
-
-        // Always sync on start but don't need to wait for this
-        Task { @MainActor in
-            try? await sync()
-        }
+        return true
     }
 
     /// Fetches orphaned channel monitors from RN remote backup before LDK setup.
@@ -417,15 +449,44 @@ class WalletViewModel: ObservableObject {
     }
 
     func stopLightningNode(clearEventCallback: Bool = false) async throws {
+        try await withNodeLifecycleLock {
+            try await stopNodeLocked(clearEventCallback: clearEventCallback)
+        }
+    }
+
+    /// Refuses every later start, then stops whatever node is built once a start in flight has settled, whatever state
+    /// it reports: a start that failed leaves a node that is built but not running.
+    func stopForWipe() async throws {
+        closeStartAdmissionForWipe()
+        try await withNodeLifecycleLockForWipe {
+            // With or without a node, as a swap flow opens the stream without one. First, so a stop that times out fails the
+            // wipe with the node untouched.
+            try await stopSwapUpdatesForWipe()
+            if nodeLifecycle.hasNode {
+                try await stopNodeLocked(clearEventCallback: true, swapUpdatesStopped: true)
+            }
+            guard !nodeLifecycle.hasNode else {
+                throw AppError(serviceError: .nodeStillRunning)
+            }
+        }
+    }
+
+    func closeStartAdmissionForWipe() {
+        isStartAdmissionClosedForWipe = true
+    }
+
+    private func stopNodeLocked(clearEventCallback: Bool, swapUpdatesStopped: Bool = false) async throws {
         nodeLifecycleState = .stopping
-        // Stop the swap updates stream with the node; it restarts on the next wallet start.
-        await stopSwapUpdates()
+        if !swapUpdatesStopped {
+            // Stop the swap updates stream with the node; it restarts on the next wallet start.
+            await stopSwapUpdates()
+        }
 
         do {
-            try await lightningService.stop(clearEventCallback: clearEventCallback)
+            try await nodeLifecycle.stop(clearEventCallback: clearEventCallback)
         } catch {
             Logger.warn("Failed to stop Lightning node: \(error)", context: "WalletViewModel")
-            nodeLifecycleState = lightningService.hasNode ? .running : .stopped
+            nodeLifecycleState = await nodeLifecycle.isNodeRunning() ? .running : .stopped
             syncState()
             throw error
         }
@@ -433,6 +494,52 @@ class WalletViewModel: ObservableObject {
         nodeLifecycleState = .stopped
         probeOutcomes.removeAll()
         syncState()
+    }
+
+    private func withNodeLifecycleLock<T>(_ operation: () async throws -> T) async rethrows -> T {
+        _ = await acquireNodeLifecycleLock(timeout: nil)
+        defer { releaseNodeLifecycleLock() }
+        return try await operation()
+    }
+
+    private func withNodeLifecycleLockForWipe<T>(_ operation: () async throws -> T) async throws -> T {
+        guard await acquireNodeLifecycleLock(timeout: nodeLifecycleWipeTimeout) else {
+            Logger.warn("A node start or stop in flight held the wipe too long", context: "WalletViewModel")
+            throw WipeWaitTimeoutError(wait: "node lifecycle")
+        }
+        defer { releaseNodeLifecycleLock() }
+        return try await operation()
+    }
+
+    private func acquireNodeLifecycleLock(timeout: Duration?) async -> Bool {
+        guard isNodeLifecycleOperationActive else {
+            isNodeLifecycleOperationActive = true
+            return true
+        }
+
+        let id = UUID()
+        return await withCheckedContinuation { continuation in
+            nodeLifecycleWaiters.append((id, continuation))
+            guard let timeout else { return }
+            Task { [weak self] in
+                try? await Task.sleep(for: timeout)
+                self?.abandonNodeLifecycleWait(id)
+            }
+        }
+    }
+
+    private func abandonNodeLifecycleWait(_ id: UUID) {
+        guard let index = nodeLifecycleWaiters.firstIndex(where: { $0.id == id }) else { return }
+        nodeLifecycleWaiters.remove(at: index).continuation.resume(returning: false)
+    }
+
+    private func releaseNodeLifecycleLock() {
+        guard !nodeLifecycleWaiters.isEmpty else {
+            isNodeLifecycleOperationActive = false
+            return
+        }
+
+        nodeLifecycleWaiters.removeFirst().continuation.resume(returning: true)
     }
 
     // MARK: - Boltz swap updates stream
@@ -444,6 +551,9 @@ class WalletViewModel: ObservableObject {
     /// Ceiling on swap updates stream start attempts per run (~14 min of backoff). Giving up is
     /// safe: the stream is retried on the next node start and when entering a swap flow.
     private static let swapUpdatesMaxAttempts = 20
+    /// Upper bound on how long a wipe waits for the stream to stop. bitkit-core subscribes each pending swap while it holds
+    /// the lock its stop takes, for up to about 10 s a swap while Boltz is unreachable.
+    nonisolated static let swapUpdatesWipeStopTimeout: Duration = .seconds(30)
 
     private var swapUpdatesTask: Task<Void, Never>?
     private var swapEventsTask: Task<Void, Never>?
@@ -454,7 +564,8 @@ class WalletViewModel: ObservableObject {
     /// background tasks and could race an in-flight claim. Safe to call repeatedly. Runs only
     /// where swaps are supported and enabled in dev settings, see `BoltzService.isSwapEnabled`.
     func ensureSwapUpdatesRunning() {
-        guard BoltzService.shared.isSwapEnabled else { return }
+        // The stream holds the wallet's mnemonic, so once a wipe starts nothing opens it again.
+        guard !isStartAdmissionClosedForWipe, swapUpdatesStream.isSwapEnabled else { return }
         collectSwapEventsOnce()
         guard !swapUpdatesRunning, swapUpdatesTask == nil else { return }
         swapUpdatesTask = Task { [weak self] in
@@ -475,7 +586,7 @@ class WalletViewModel: ObservableObject {
                 if let rates = await feeEstimatesManager.getEstimates() {
                     feeRate = Double(SettingsViewModel.shared.defaultTransactionSpeed.getFeeRate(from: rates))
                 }
-                try await BoltzService.shared.startUpdates(feeRateSatPerVb: feeRate, acceptZeroConf: true)
+                try await swapUpdatesStream.startUpdates(feeRateSatPerVb: feeRate, acceptZeroConf: true)
                 swapUpdatesRunning = true
                 return
             } catch {
@@ -496,8 +607,8 @@ class WalletViewModel: ObservableObject {
     /// Refresh balances when a swap lands on-chain so savings reflect it without a manual sync.
     private func collectSwapEventsOnce() {
         guard swapEventsTask == nil else { return }
-        swapEventsTask = Task { [weak self] in
-            for await event in BoltzService.shared.events() {
+        swapEventsTask = Task { [weak self, swapUpdatesStream] in
+            for await event in swapUpdatesStream.events() {
                 if case let .claimed(swapId, _) = event {
                     Logger.info("Savings swap claimed: \(swapId)", context: "WalletViewModel")
                     await self?.syncStateAsync()
@@ -506,11 +617,25 @@ class WalletViewModel: ObservableObject {
         }
     }
 
-    private func stopSwapUpdates() async {
-        swapUpdatesTask?.cancel()
+    /// With `awaitingStart`, returns only once no start can land any more: a start handed to bitkit-core cannot be cancelled,
+    /// and one landing after the stop would keep the stream running. A node stop does not wait, as the next start reopens it.
+    private func stopSwapUpdates(awaitingStart: Bool = false) async {
+        let startTask = swapUpdatesTask
+        startTask?.cancel()
+        if awaitingStart {
+            await startTask?.value
+        }
         swapUpdatesTask = nil
         swapUpdatesRunning = false
-        await BoltzService.shared.stopUpdates()
+        await swapUpdatesStream.stopUpdates()
+    }
+
+    /// Bounded, so a wipe fails before it deletes anything instead of waiting on Boltz. The stop goes on after a timeout,
+    /// and a retried wipe waits for it again.
+    private func stopSwapUpdatesForWipe() async throws {
+        guard await withDeadline(swapUpdatesWipeStopTimeout, { await self.stopSwapUpdates(awaitingStart: true) }) != nil else {
+            throw SwapUpdatesStopTimeoutError()
+        }
     }
 
     func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
@@ -553,6 +678,7 @@ class WalletViewModel: ObservableObject {
     }
 
     func sync() async throws {
+        let isSessionCurrent = publicPaykitPublicationAdmission()
         syncState()
 
         if isSyncingWallet {
@@ -580,6 +706,7 @@ class WalletViewModel: ObservableObject {
         isSyncingWallet = false
         syncState()
         QuickPayPaymentCoordinator.shared.reconcileAgainstLdk()
+        await refreshPublicPaykitAddressIfNeeded(isSessionCurrent: isSessionCurrent)
         if isPaykitUIActive {
             await PrivatePaykitService.shared.reconcileReceivedPayments(wallet: self)
             await PrivatePaykitService.shared.handleOnchainActivity(wallet: self)
@@ -1328,24 +1455,41 @@ class WalletViewModel: ObservableObject {
         return address
     }
 
+    struct PublicPaykitEndpoints {
+        let onchainSnapshot: PrivatePaykitAddressReservationStore.PublicAddressSnapshot?
+        let bolt11: String
+
+        var onchainAddress: String {
+            onchainSnapshot?.address ?? ""
+        }
+    }
+
+    var publicPaykitSession: PubkyProfileManager.SignedInSession? {
+        pubkyProfile?.currentSession
+    }
+
     func refreshPublicPaykitEndpoints(
         forceRefreshBolt11: Bool = false,
         includeOnchain: Bool = true,
         includeLightning: Bool = true
-    ) async throws -> (onchainAddress: String, bolt11: String) {
+    ) async throws -> PublicPaykitEndpoints {
         guard isPaykitUIActive else {
-            return ("", "")
+            return PublicPaykitEndpoints(onchainSnapshot: nil, bolt11: "")
         }
 
         let initialInvoiceRevision = publicPaykitInvoiceRevision
         let session = pubkyProfile?.currentSession
         let wasSharing = sharesPublicPaykitEndpoints
-        let receiveID = receiveRefreshID
-        let commitID = receiveCommitID
-        let previousAddress = onchainAddress
-        let publicOnchainAddress = includeOnchain ? try await refreshReusableOnchainAddress() : ""
-        if includeOnchain, receiveRefreshID == receiveID, receiveCommitID == commitID, onchainAddress == previousAddress {
-            onchainAddress = publicOnchainAddress
+        let publicOnchainSnapshot: PrivatePaykitAddressReservationStore.PublicAddressSnapshot?
+        if includeOnchain {
+            guard let session else { throw PubkyServiceError.sessionNotActive }
+            publicOnchainSnapshot = try await publicPaykitOnchainAddressSnapshot(for: session.publicKey)
+            // A reservation committed before cancellation still needs publication or reconciliation.
+            if isPaykitUIActive, sharesPublicPaykitEndpoints, pubkyProfile?.currentSession == session {
+                PublicPaykitService.setCleanupPending(true)
+            }
+        } else {
+            publicOnchainSnapshot = nil
         }
 
         for attempt in 0 ..< 2 {
@@ -1385,9 +1529,40 @@ class WalletViewModel: ObservableObject {
                 clearPublicPaykitBolt11()
             }
 
-            return (publicOnchainAddress, includeLightning ? publicPaykitBolt11 : "")
+            return PublicPaykitEndpoints(onchainSnapshot: publicOnchainSnapshot, bolt11: includeLightning ? publicPaykitBolt11 : "")
         }
         throw PublicPaykitError.publicationFailed
+    }
+
+    func publicPaykitOnchainAddressSnapshot(for publicKey: String) async throws -> PrivatePaykitAddressReservationStore.PublicAddressSnapshot {
+        try await PrivatePaykitAddressReservationStore.shared.currentOrRotatedPublicAddressSnapshot(for: publicKey)
+    }
+
+    func needsPublicPaykitAddressRotation(for publicKey: String) async throws -> Bool {
+        try await PrivatePaykitAddressReservationStore.shared.needsPublicAddressRotation(for: publicKey)
+    }
+
+    func refreshPublicPaykitAddressIfNeeded(isSessionCurrent: (@MainActor () -> Bool)? = nil) async {
+        let isSessionCurrent = isSessionCurrent ?? publicPaykitPublicationAdmission()
+        let canPublish = {
+            !Task.isCancelled && isSessionCurrent() && self.isPaykitUIActive && self.sharesPublicPaykitEndpoints &&
+                self.pubkyProfile?.isDeletingProfile != true && PublicPaykitService.isOnchainPaymentOptionEnabled()
+        }
+        guard canPublish(), let session = pubkyProfile?.automaticPaykitSession,
+              await !PrivatePaykitService.shared.isDeletingProfile
+        else { return }
+        do {
+            guard try await needsPublicPaykitAddressRotation(for: session.publicKey),
+                  canPublish(), pubkyProfile?.automaticPaykitSession == session,
+                  await !PrivatePaykitService.shared.isDeletingProfile
+            else { return }
+            PublicPaykitService.setCleanupPending(true)
+            try await syncReceivePublicPaykitEndpoints(isSessionCurrent: canPublish)
+        } catch {
+            guard canPublish(), pubkyProfile?.automaticPaykitSession == session else { return }
+            PublicPaykitService.setCleanupPending(true)
+            Logger.warn("Failed to refresh public Paykit address: \(error)", context: "WalletViewModel")
+        }
     }
 
     func refreshPublicPaykitEndpointsOnForeground(isSessionCurrent: @escaping @MainActor () -> Bool) async {
@@ -1496,15 +1671,29 @@ class WalletViewModel: ObservableObject {
         clearPublicPaykitBolt11()
     }
 
-    func rotatePublicPaykitInvoiceIfNeeded(paymentHash: String) {
+    @discardableResult
+    func rotatePublicPaykitInvoiceIfNeeded(paymentHash: String) -> Bool {
         guard !publicPaykitBolt11PaymentHash.isEmpty,
               publicPaykitBolt11PaymentHash == paymentHash
-        else { return }
+        else { return false }
 
         invalidatePublicPaykitInvoice()
         if sharesPublicPaykitEndpoints {
             PublicPaykitService.setCleanupPending(true)
         }
+        return true
+    }
+
+    func refreshAfterPaymentReceived(
+        paymentHash: String, rotatedPublicInvoice: Bool, isSessionCurrent: @escaping @MainActor () -> Bool
+    ) async {
+        if isPaykitUIActive {
+            await PrivatePaykitService.shared.handleReceivedPayment(paymentHash: paymentHash, wallet: self)
+        }
+        await refreshAndSyncState()
+        try? await refreshBip21(reportsError: false)
+        guard rotatedPublicInvoice else { return }
+        try? await syncReceivePublicPaykitEndpoints(isSessionCurrent: isSessionCurrent)
     }
 
     func refreshBip21(forceRefreshBolt11: Bool = false, syncPublicPaykit: Bool = true, reportsError: Bool = true) async throws {
@@ -1586,14 +1775,8 @@ class WalletViewModel: ObservableObject {
             receiveCommitID = UUID()
             isReceiveInvoiceUpdating = false
 
-            if syncPublicPaykit, isPaykitUIActive, sharesPublicPaykitEndpoints,
-               await !PrivatePaykitService.shared.isDeletingProfile
-            {
-                do {
-                    try await syncReceivePublicPaykitEndpoints(isSessionCurrent: isSessionCurrent)
-                } catch {
-                    Logger.warn("Failed to refresh public paykit endpoints after receive refresh: \(error)", context: "WalletViewModel")
-                }
+            if syncPublicPaykit, isSessionCurrent() {
+                PublicPaykitService.queueEndpointReconciliation()
             }
         } catch {
             guard receiveRefreshID == refreshID else {
@@ -1736,6 +1919,24 @@ class WalletViewModel: ObservableObject {
         return formatter.string(from: NSNumber(value: btcAmount)) ?? "0"
     }
 
+    /// An in-sheet scan can open Confirm directly, so amount and coin choices from an earlier recipient must not carry over.
+    func prepareFixedAmountOnchainSend(amountSats: UInt64) {
+        sendAmountSats = amountSats
+        isMaxAmountSend = false
+        selectedUtxos = nil
+        availableUtxos = []
+    }
+
+    /// Amount restores the scanned amount over an edited one; coins and a Max choice made for the edit no longer fit,
+    /// and a Confirm opened directly from the scan keeps them unless they are cleared here.
+    func restoreScannedSendAmount(_ amountSats: UInt64) {
+        if sendAmountSats != amountSats {
+            selectedUtxos = nil
+            isMaxAmountSend = false
+        }
+        sendAmountSats = amountSats
+    }
+
     func resetSendState(speed: TransactionSpeed) {
         sendAmountSats = nil
         selectedFeeRateSatsPerVByte = nil
@@ -1745,6 +1946,12 @@ class WalletViewModel: ObservableObject {
         selectedSpeed = speed
         isMaxAmountSend = false
         routingFeeEstimateSats = 0
+    }
+
+    func refreshAfterChannelClosed(channelId: LDKNode.ChannelId, reason: LDKNode.ClosureReason?) async {
+        await refreshAndSyncState()
+        await handleChannelClosed(channelId: channelId, reason: reason)
+        await refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "channel-closed refresh")
     }
 
     private func handleChannelClosed(channelId: LDKNode.ChannelId, reason: LDKNode.ClosureReason?) async {
@@ -1821,15 +2028,12 @@ class WalletViewModel: ObservableObject {
         return (false, false)
     }
 
+    /// Deletes the wallet's Lightning storage and display state. Throws when a node is still held: call `stopForWipe` first.
     func wipe() async throws {
         Logger.warn("Starting wallet wipe", context: "WalletViewModel")
-        await waitForNodeToRun(timeoutSeconds: 5.0)
-
-        if nodeLifecycleState == .starting || nodeLifecycleState == .running {
-            try await stopLightningNode(clearEventCallback: true)
+        try await withNodeLifecycleLockForWipe {
+            try await nodeLifecycle.wipeStorage(walletIndex: 0)
         }
-
-        try await lightningService.wipeStorage(walletIndex: 0)
 
         probeOutcomes.removeAll()
 

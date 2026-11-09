@@ -9,11 +9,20 @@ The resolution-failure journey is ported alongside Android's matching `requested
 ## Issuer interoperability
 
 `fixed-price-bitcoin.xml` verifies a USD-denominated request settled in BTC and an explicit
-same-asset rail price. After preparation, the Amount screen shows the fixed, uneditable payment
-amount with Savings selected. Continue opens confirmation with the same amount. The amount uses
-the issuer's fixed rate; the displayed fiat estimate uses Bitkit's own market rate. The flow stops
-before broadcasting. Differing rail prices,
-fractional-satoshi Lightning payments, and dynamic quotes remain unsupported.
+same-asset rail price. After preparation, confirmation shows the fixed, uneditable payment
+amount with Savings selected. The amount uses the issuer's fixed rate; the displayed fiat
+estimate uses Bitkit's own market rate. The flow stops before broadcasting.
+Fractional-satoshi Lightning payments and dynamic quotes remain unsupported.
+
+`fixed-quoted-confirmation.xml` also covers funding choices and rail-specific quotes. On iOS,
+requests offering both LNURL Spending and Savings retain the Amount funding-source selector;
+LNURL confirmation has no wallet selector. Android provides that choice in its common
+confirmation view. LNURL-only requests with a quote meeting the endpoint minimum go directly to confirmation on both platforms.
+On iOS, initially below-minimum Savings or LNURL quotes stay on Amount with Continue disabled,
+and Back after failed automatic coin preparation closes that fallback review. A controlled manual
+UTXO-loading failure exercises the same Back behavior in `SendConfirmationLifecycleTests`; the
+standard journey environment has no selector for that fault, so the automatic failure journey is
+not evidence for the manual fault case.
 
 ### Setup
 
@@ -281,3 +290,16 @@ must explain that its payment details are unsupported and offer no Subscribe con
 `minimum-onchain-amount.xml` checks requests below the on-chain minimum, including
 manual retry and a subsequent request at the 547-sat minimum. It uses the same fixture
 setup and actions on iOS and Android, and stops before sending funds.
+
+## Automatic refresh during review
+
+`automatic-presentation.xml` starts after a foreground resume and checks that each received request
+appears once. `review-refresh.xml` sends a second request while the first confirmation is open,
+then checks that the original review remains usable and the second request arrives after cancellation.
+Allow ordinary foreground polling and synchronization to finish; these steps set no arrival deadline
+and do not require an immediate refresh when review closes.
+
+The exact overlap of a saved-contact callback, message receipt, and a queued SDK operation requires
+controlled callback timing outside the journey capabilities. Repository tests cover that ordering,
+automatic forced-refresh deferral, and later polling. These journeys check the visible request and
+payment safeguards without claiming that a specific callback race occurred.

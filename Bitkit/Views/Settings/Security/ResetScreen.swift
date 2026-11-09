@@ -3,8 +3,6 @@ import SwiftUI
 struct ResetScreen: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var sheets: SheetViewModel
-    @EnvironmentObject var wallet: WalletViewModel
-    @EnvironmentObject var session: SessionManager
 
     @State private var showAlert = false
 
@@ -57,22 +55,6 @@ struct ResetScreen: View {
     }
 
     private func onReset() {
-        Task {
-            do {
-                try await AppReset.wipe(
-                    app: app,
-                    wallet: wallet,
-                    session: session
-                )
-
-                sheets.hideSheet()
-            } catch {
-                app.toast(
-                    type: .error,
-                    title: "Wipe Failed",
-                    description: "Bitkit was unable to reset your wallet data. Please try again."
-                )
-            }
-        }
+        AppReset.begin(.userReset, app: app)
     }
 }

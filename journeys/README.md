@@ -76,6 +76,12 @@ what the journeys assert on, and it avoids the image-size limits the Android run
 
 ## Backend preconditions
 
+The `UsdtWalletUITests` XCTest suite uses unavailable loopback endpoints by default. To run its
+optional funded fork case, explicitly pass `BITKIT_TEST_USDT_RPC_URL` and
+`BITKIT_TEST_USDT_BUNDLER_URL` in the test runner environment for an isolated, disposable
+`bitkit-core/tests/usdt-fork` fixture. Set `BITKIT_TEST_USDT_OFFLINE_RPC_URL` to an unavailable
+endpoint for its offline check. Confirm fixture ownership before running; the test funds its wallet.
+
 In a build with USDT configured, resolve the introductory USDT sheet by enabling or declining it before starting an unrelated journey. The choice persists; a fresh undecided wallet can show the sheet after Home appears. USDT journeys state whether they require opt-in.
 
 Most journeys need regtest and a reachable LSP. Start the stack from a sibling `bitkit-docker`
@@ -121,14 +127,14 @@ subscription payment-method switches: preserve the originally entered denominati
 
 ### Paykit payment-method review
 
-In `paykit-quoted-usdt.xml`, Android keeps confirmation open when a Savings/Spending switch can
-bind valid quoted Bitcoin terms, showing the selected method's exact amount and refreshed fees.
-Unavailable or expired terms, or a Lightning amount below its minimum, return to Amount for
-review. Opening Amount manually after a valid switch and then tapping Back closes the sheet. iOS
-keeps confirmation open when the exact amount, quote and validity window are unchanged and still
-valid; changed or expired terms return to Amount. Verify the selected method and exact payable
-amount on both platforms, and close without signing. The optional Savings/Spending confirmation
-check requires existing Bitcoin regtest funds and a usable Lightning channel.
+In `paykit-quoted-usdt.xml`, both platforms can keep confirmation open when switching between valid
+quoted Bitcoin methods, rebinding the exact payable amount for the selected method. For a Savings
+quote below 547 sats, Android disables confirmation while iOS returns to Amount with Continue
+disabled. Unavailable or expired terms require review again. On Android, opening Amount manually
+after a valid switch and then tapping Back closes the sheet. Verify the selected method and exact
+payable amount on both platforms, and close without signing. The optional Savings/Spending
+confirmation check requires existing Bitcoin regtest funds, a usable Lightning channel and
+controlled fixed rates for the 546/547-sat boundary.
 
 ### USDT full-balance errors
 
@@ -177,6 +183,7 @@ Known naming differences:
 | Send max | `SendAmountMax` | *(no button — tap `AvailableAmount`)* |
 | External amount available | — | `ExternalAmountAvailable` |
 | Payment Request details screen | `PaymentRequestDetailsScreen` | `PaymentRequestDetailScreen` |
+| Request Payment button | `PaymentRequestCreate` | `PaymentRequestRequestPayment` |
 | Hardware wallet receive tab | `Tab-hardware` (after bitkit-android#1231) | `Tab-trezor` for a Trezor wallet, `Tab-jade` for a Jade |
 | Hardware sign amount | `HardwareSendAmount` | `HardwareSendSignAmount` |
 | Hardware sign destination | `HardwareSendAddress` | *(no address identifier; read the destination under "To address (confirm on device)" inside `HardwareSendSign`)* |
@@ -287,11 +294,20 @@ merges, the two platforms share the journeys and that identifier. Android master
 then. The identifiers the journeys use that still differ on Android are in the Identifiers table
 above.
 
+`paykit-quoted-usdt.xml` uses the iOS dot-decimal convention for USD and USDT, including
+in comma-decimal system regions, matching `usdt-number-format.xml`. Keep the region checks and
+exact-value, trailing-zero and six-decimal assertions; the locale does not change the separator.
+
 A journey is a shared spec, so a behaviour that is meant to match Android can be checked by running
 the same file on both sides: `xcodebuildmcp` here, the `android` CLI against a `bitkit-android`
 checkout there (`android layout` is the `snapshot-ui` equivalent). A disagreement is worth writing
 down — as an intentional platform difference, or as something to look into — but it is not by itself
 a bug report. `AGENTS.md` has the commands.
+
+`security/pin-attempts-wipe-gate.xml` is new on both platforms at once: synonymdev/bitkit-android#1753
+carries the same file name, journey name and actions, changing only the identifiers and commands the
+platform forces. The iOS description also leaves the Recovery home-screen quick action to a manual check,
+as the harness cannot trigger one.
 
 `payment-requests/minimum-onchain-amount.xml` is shared with Android: minimum amount
 feedback, preparation cleanup, and manual retry use the same actions and
