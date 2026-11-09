@@ -119,6 +119,40 @@ final class BackupServiceTests: XCTestCase {
         XCTAssertFalse(service.getBackupStatus(category: .settings).isRequired)
     }
 
+    func testScheduledBackupsRetryAfterVssSetupTimesOutWithObservationStopped() async throws {
+        for category in [BackupCategory.wallet, .usdt] {
+            let suite = "BackupServiceTests.\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let completed = expectation(description: "\(category.rawValue) backup completed after setup recovered")
+            let payload = Data(category.rawValue.utf8)
+            var attempts = 0
+            var retryDelays: [UInt64] = []
+            let service = BackupService(defaults: defaults, backupData: { _ in payload }, uploadBackup: { key, data in
+                XCTAssertEqual(key, category.rawValue)
+                XCTAssertEqual(data, payload)
+                attempts += 1
+                if attempts == 1 {
+                    try await Bitkit.VssBackupClient.shared.withSetupTimeout(seconds: 0.01) {
+                        try await Task.sleep(nanoseconds: 60_000_000_000)
+                    }
+                }
+            }, waitForBackupDelay: {}, waitForTemporaryFailureDelay: { retryDelays.append($0) })
+            await service.stopObservingBackups()
+            let subscription = service.backupStatusesPublisher
+                .filter { $0[category].map { !$0.isRequired && !$0.running } == true }
+                .first().sink { _ in completed.fulfill() }
+            service.markBackupRequired(category: category)
+            await fulfillment(of: [completed], timeout: 3)
+            subscription.cancel()
+            await service.stopObservingBackups()
+            XCTAssertEqual(attempts, 2)
+            XCTAssertEqual(retryDelays, [10_000_000_000])
+            XCTAssertFalse(service.getBackupStatus(category: category).isRequired)
+        }
+        XCTAssertFalse(BackupService.isTemporaryBackupFailure(Bitkit.AppError(message: "Operation timed out", debugMessage: nil)))
+    }
+
     func testReleasedVssAuthorizationDenialStaysPendingWithoutAutomaticRetry() async throws {
         let suite = "BackupServiceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

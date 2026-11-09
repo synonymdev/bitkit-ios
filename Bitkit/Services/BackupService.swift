@@ -549,6 +549,8 @@ class BackupService {
 
     static func isTemporaryBackupFailure(_ error: Error) -> Bool {
         switch error {
+        case let error as AppError:
+            return error.underlyingError is VssBackupClient.SetupTimeout
         case MetadataBackupError.walletTemporarilyUnavailable,
              PaykitError.ConcurrentUpdate, PaykitError.SharedStateBusy, PaykitError.Transport,
              VssError.ConnectionError, VssError.NetworkError, VssError.StoreError, VssError.PutError:
