@@ -376,6 +376,7 @@
 "lightning__spark_exit__fees" = "Сетевые комиссии";
 "lightning__spark_exit__receive" = "Вы получите примерно";
 "lightning__spark_exit__savings_fee" = "Комиссия платежа из сбережений";
+"lightning__spark_exit__savings_refused" = "Платёж из сбережений не прошёл. Оплатите снова или пополните с другого кошелька.";
 "lightning__spark_exit__savings_total" = "Всего из сбережений";
 "lightning__spark_exit__funding" = "Нужно средств на комиссии";
 "lightning__spark_exit__left_behind" = "Остаётся в Spark";

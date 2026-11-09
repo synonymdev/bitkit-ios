@@ -381,6 +381,7 @@
 "lightning__spark_exit__fees" = "Opłaty sieciowe";
 "lightning__spark_exit__receive" = "Otrzymasz około";
 "lightning__spark_exit__savings_fee" = "Opłata za płatność z oszczędności";
+"lightning__spark_exit__savings_refused" = "Twoja płatność z Oszczędności nie przeszła. Zapłać ponownie lub sfinansuj z innego portfela.";
 "lightning__spark_exit__savings_total" = "Łącznie z oszczędności";
 "lightning__spark_exit__funding" = "Potrzebne środki na opłaty";
 "lightning__spark_exit__left_behind" = "Zostaje na Spark";

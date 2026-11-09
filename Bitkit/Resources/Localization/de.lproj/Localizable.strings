@@ -379,6 +379,7 @@
 "lightning__spark_exit__fees" = "Netzwerkgebühren";
 "lightning__spark_exit__receive" = "Du erhältst etwa";
 "lightning__spark_exit__savings_fee" = "Gebühr für Zahlung aus dem Sparkonto";
+"lightning__spark_exit__savings_refused" = "Deine Zahlung vom Sparkonto ist nicht durchgegangen. Zahle erneut oder finanziere aus einer anderen Wallet.";
 "lightning__spark_exit__savings_total" = "Gesamt aus dem Sparkonto";
 "lightning__spark_exit__funding" = "Benötigte Gebührendeckung";
 "lightning__spark_exit__left_behind" = "Bleibt auf Spark";

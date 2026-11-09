@@ -365,6 +365,7 @@
 "lightning__spark_exit__fees" = "Comissions de xarxa";
 "lightning__spark_exit__receive" = "Rebràs aproximadament";
 "lightning__spark_exit__savings_fee" = "Comissió del pagament des d'estalvis";
+"lightning__spark_exit__savings_refused" = "El teu pagament dels estalvis no s'ha completat. Torna a pagar o finança des d'un altre moneder.";
 "lightning__spark_exit__savings_total" = "Total des d'estalvis";
 "lightning__spark_exit__funding" = "Finançament de comissions necessari";
 "lightning__spark_exit__left_behind" = "Es queda a Spark";

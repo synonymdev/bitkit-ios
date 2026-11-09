@@ -379,6 +379,7 @@
 "lightning__spark_exit__fees" = "Netwerkkosten";
 "lightning__spark_exit__receive" = "Je ontvangt ongeveer";
 "lightning__spark_exit__savings_fee" = "Vergoeding betaling uit spaargeld";
+"lightning__spark_exit__savings_refused" = "Je betaling uit spaargeld is niet gelukt. Betaal opnieuw of financier vanuit een andere wallet.";
 "lightning__spark_exit__savings_total" = "Totaal uit spaargeld";
 "lightning__spark_exit__funding" = "Benodigde vergoedingsdekking";
 "lightning__spark_exit__left_behind" = "Blijft op Spark";

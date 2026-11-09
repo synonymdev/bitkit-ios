@@ -328,6 +328,7 @@
 "lightning__spark_exit__fees" = "رسوم الشبكة";
 "lightning__spark_exit__receive" = "ستستلم نحو";
 "lightning__spark_exit__savings_fee" = "رسوم الدفع من المدخرات";
+"lightning__spark_exit__savings_refused" = "لم يكتمل دفعك من المدخرات. ادفع مرة أخرى، أو موّل من محفظة أخرى.";
 "lightning__spark_exit__savings_total" = "الإجمالي من المدخرات";
 "lightning__spark_exit__funding" = "تمويل الرسوم المطلوب";
 "lightning__spark_exit__left_behind" = "يبقى على Spark";

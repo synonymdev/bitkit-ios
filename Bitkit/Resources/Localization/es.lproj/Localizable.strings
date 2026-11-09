@@ -366,6 +366,7 @@
 "lightning__spark_exit__fees" = "Comisiones de red";
 "lightning__spark_exit__receive" = "Recibes aproximadamente";
 "lightning__spark_exit__savings_fee" = "Comisión del pago desde ahorros";
+"lightning__spark_exit__savings_refused" = "Tu pago desde ahorros no se completó. Paga de nuevo o financia desde otro monedero.";
 "lightning__spark_exit__savings_total" = "Total desde ahorros";
 "lightning__spark_exit__funding" = "Fondos para comisiones necesarios";
 "lightning__spark_exit__left_behind" = "Se queda en Spark";

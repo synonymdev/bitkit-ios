@@ -375,6 +375,7 @@
 "lightning__spark_exit__fees" = "Commissioni di rete";
 "lightning__spark_exit__receive" = "Ricevi circa";
 "lightning__spark_exit__savings_fee" = "Commissione del pagamento dai risparmi";
+"lightning__spark_exit__savings_refused" = "Il tuo pagamento dai risparmi non è andato a buon fine. Paga di nuovo o finanzia da un altro portafoglio.";
 "lightning__spark_exit__savings_total" = "Totale dai risparmi";
 "lightning__spark_exit__funding" = "Finanziamento commissioni necessario";
 "lightning__spark_exit__left_behind" = "Resta su Spark";

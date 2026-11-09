@@ -379,6 +379,7 @@
 "lightning__spark_exit__fees" = "Taxas de rede";
 "lightning__spark_exit__receive" = "Recebe cerca de";
 "lightning__spark_exit__savings_fee" = "Taxa do pagamento da poupança";
+"lightning__spark_exit__savings_refused" = "O seu pagamento da poupança não foi concluído. Pague novamente ou financie a partir de outra carteira.";
 "lightning__spark_exit__savings_total" = "Total da poupança";
 "lightning__spark_exit__funding" = "Fundos para taxas necessários";
 "lightning__spark_exit__left_behind" = "Fica na Spark";

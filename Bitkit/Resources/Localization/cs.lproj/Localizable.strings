@@ -381,6 +381,7 @@
 "lightning__spark_exit__fees" = "Síťové poplatky";
 "lightning__spark_exit__receive" = "Obdržíte přibližně";
 "lightning__spark_exit__savings_fee" = "Poplatek za platbu z úspor";
+"lightning__spark_exit__savings_refused" = "Vaše platba z úspor neprošla. Zaplaťte znovu, nebo financujte z jiné peněženky.";
 "lightning__spark_exit__savings_total" = "Celkem z úspor";
 "lightning__spark_exit__funding" = "Potřebné krytí poplatků";
 "lightning__spark_exit__left_behind" = "Zůstává na Spark";

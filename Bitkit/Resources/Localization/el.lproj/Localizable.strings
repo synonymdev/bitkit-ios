@@ -352,6 +352,7 @@
 "lightning__spark_exit__fees" = "Τέλη δικτύου";
 "lightning__spark_exit__receive" = "Λαμβάνετε περίπου";
 "lightning__spark_exit__savings_fee" = "Τέλος πληρωμής από αποταμιεύσεις";
+"lightning__spark_exit__savings_refused" = "Η πληρωμή σας από αποταμιεύσεις δεν ολοκληρώθηκε. Πληρώστε ξανά ή χρηματοδοτήστε από άλλο πορτοφόλι.";
 "lightning__spark_exit__savings_total" = "Σύνολο από αποταμιεύσεις";
 "lightning__spark_exit__funding" = "Απαιτούμενη χρηματοδότηση τελών";
 "lightning__spark_exit__left_behind" = "Παραμένει στο Spark";

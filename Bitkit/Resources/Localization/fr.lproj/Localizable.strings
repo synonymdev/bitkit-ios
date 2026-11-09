@@ -382,6 +382,7 @@
 "lightning__spark_exit__fees" = "Frais de réseau";
 "lightning__spark_exit__receive" = "Vous recevez environ";
 "lightning__spark_exit__savings_fee" = "Frais de paiement depuis l'épargne";
+"lightning__spark_exit__savings_refused" = "Votre paiement depuis l'épargne n'a pas abouti. Payez à nouveau ou financez depuis un autre portefeuille.";
 "lightning__spark_exit__savings_total" = "Total depuis l'épargne";
 "lightning__spark_exit__funding" = "Financement des frais requis";
 "lightning__spark_exit__left_behind" = "Reste sur Spark";
