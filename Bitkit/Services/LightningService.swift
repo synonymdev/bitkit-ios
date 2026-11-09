@@ -994,7 +994,12 @@ class LightningService: NodeLifecycleService {
         params: RouteParametersConfig? = nil,
         beforeSubmission: @escaping () throws -> Void = {}
     ) async throws -> PaymentHash {
+        let paymentHash = (try? Bolt11Invoice.fromStr(invoiceStr: bolt11).paymentHash()).map { String($0) }
         if let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: sats) {
+            // LDK refuses its own repeats; Spark doesn't, so a Spark send checks both rails.
+            if let paid = try await settledEarlierAttempt(paymentHash: paymentHash, on: [.ldk, .channelFree]) {
+                return paid
+            }
             // Spark takes no route parameters, so a caller's routing fee cap is checked against its estimate instead.
             if let maxFeeMsat = params?.maxTotalRoutingFeeMsat {
                 let feeSats: UInt64
@@ -1020,6 +1025,9 @@ class LightningService: NodeLifecycleService {
                 beforeSubmission: beforeSubmission
             )
         }
+        if let paid = try await settledEarlierAttempt(paymentHash: paymentHash, on: [.channelFree]) {
+            return paid
+        }
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
@@ -1042,6 +1050,36 @@ class LightningService: NodeLifecycleService {
             dumpNetworkGraphInfo(bolt11: bolt11)
             throw error
         }
+    }
+
+    /// The node's payment list; tests replace it, as they run without a node.
+    lazy var nodePayments: () async -> [PaymentDetails]? = { [unowned self] in await listPayments() }
+
+    /// An invoice must never go out on both rails: an earlier attempt still pending on `rails` refuses the payment as a
+    /// duplicate, as LDK does its own, and a settled one returns its hash as paid. A failed, unknown or unlistable one
+    /// lets the payment go.
+    private func settledEarlierAttempt(paymentHash: String?, on rails: [LightningPaymentRail]) async throws -> PaymentHash? {
+        guard let paymentHash else { return nil }
+        var statuses: [PaymentStatus] = []
+        if rails.contains(.ldk), let payment = await nodePayments()?.first(where: {
+            $0.direction == .outbound && $0.id.caseInsensitiveCompare(paymentHash) == .orderedSame
+        }) {
+            statuses.append(payment.status)
+        }
+        if rails.contains(.channelFree), let payments = try? await channelFreeRailPayments(),
+           let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: paymentHash)
+        {
+            statuses.append(payment.status)
+        }
+        if statuses.contains(.succeeded) {
+            Logger.info("Skipped paying '\(paymentHash)', an earlier attempt already paid it", context: "LightningService")
+            return paymentHash
+        }
+        if statuses.contains(.pending) {
+            Logger.info("Refused paying '\(paymentHash)', an earlier attempt is still pending", context: "LightningService")
+            throw NodeError.DuplicatePayment(message: "An earlier attempt to pay '\(paymentHash)' is still pending")
+        }
+        return nil
     }
 
     static func submitPayment<Result>(
