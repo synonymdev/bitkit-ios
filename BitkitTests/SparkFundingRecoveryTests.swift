@@ -2,6 +2,7 @@
 import XCTest
 
 /// A Spark funding whose outcome was unknown, resolved from the Send sheet's pending screen.
+@MainActor
 final class SparkFundingRecoveryTests: XCTestCase {
     private let walletId = OnchainSendAttemptService.walletId(index: 0)
 
