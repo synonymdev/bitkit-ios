@@ -635,6 +635,15 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(settled, ["transfer-2", "transfer-1"])
     }
 
+    /// No tick drives an exit while its start still settles its leaves: the optimization wait, the requote and the
+    /// reconnect.
+    func testNoTickDrivesAnExitWhileItsStartSettles() {
+        let record = SparkExitFixtures.record()
+        XCTAssertFalse(SparkExitManager.canDrive(record, startingCreatedAt: record.createdAt))
+        XCTAssertTrue(SparkExitManager.canDrive(record, startingCreatedAt: nil))
+        XCTAssertTrue(SparkExitManager.canDrive(record, startingCreatedAt: record.createdAt.addingTimeInterval(-60)))
+    }
+
     /// Fee rates that cannot be read fail the savings price, so Pay from savings shows its error instead of loading.
     func testSavingsFeeFailsWithoutFeeRates() async {
         let rates = FeeRates(fast: 9, mid: 6, slow: 1)

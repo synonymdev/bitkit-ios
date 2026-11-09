@@ -53,6 +53,9 @@ final class SparkExitManager {
     @ObservationIgnored var savingsFeeSats: UInt64 = 0
     @ObservationIgnored private var walletIndex = 0
     @ObservationIgnored private var isTicking = false
+    /// The exit a start is still settling: no tick or background run drives it until its optimization wait, requote
+    /// and reconnect end, since optimization may still swap the leaves it exits.
+    @ObservationIgnored private var startingCreatedAt: Date?
     @ObservationIgnored private(set) var pendingDestination: String?
     @ObservationIgnored private var pendingFeeRate: UInt64?
     @ObservationIgnored private(set) var pendingFundingIndex: UInt32?
@@ -331,7 +334,7 @@ final class SparkExitManager {
                 Self.scheduleBackgroundRuns()
             }
         }
-        guard !isTicking, let current = record, current.needsDriving, let chain else { return }
+        guard !isTicking, let current = record, Self.canDrive(current, startingCreatedAt: startingCreatedAt), let chain else { return }
         isTicking = true
         defer { isTicking = false }
         let store = store
@@ -648,6 +651,8 @@ final class SparkExitManager {
         UserDefaults.standard.set(walletIndex, forKey: Self.walletIndexKey)
         UserDefaults.standard.set(Int(fundingIndex) + 1, forKey: fundingIndexKey)
         pendingFundingIndex = nil
+        startingCreatedAt = record.createdAt
+        defer { startingCreatedAt = nil }
         self.record = record
         SparkManager.shared.detachForExit()
         // Reconnecting cuts an optimization short, which would leave its counter-swap unclaimed for a while.
@@ -776,6 +781,11 @@ final class SparkExitManager {
         return requoted
     }
 
+    /// Whether a tick may drive the exit now: not while its start still settles it (`startingCreatedAt`).
+    nonisolated static func canDrive(_ record: SparkExitRecord, startingCreatedAt: Date?) -> Bool {
+        record.needsDriving && record.createdAt != startingCreatedAt
+    }
+
     /// Savings pays at most the funding the user confirmed: a higher fresh amount goes through the shortfall flow on
     /// Progress, which asks for the rest.
     nonisolated static func savingsFundingSats(confirmed: SparkExitQuote, fresh: SparkExitQuote) -> UInt64 {
@@ -886,7 +896,7 @@ final class SparkExitManager {
         while isTicking, !Task.isCancelled, Date() < deadline {
             try? await Task.sleep(nanoseconds: 250_000_000)
         }
-        guard !isTicking, let chain else { return .init(record: record) }
+        guard !isTicking, startingCreatedAt == nil, let chain else { return .init(record: record) }
         let wasActive = record?.isActive == true
         isTicking = true
         defer { isTicking = false }
