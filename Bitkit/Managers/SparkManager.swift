@@ -130,6 +130,7 @@ final class SparkManager: ChannelFreeLightningRail {
             activitiesSynced = try await Self.startConnected(
                 activitiesSynced: activitiesSynced,
                 refresh: { try await refresh() },
+                syncWallet: { _ = try await requireSdk().syncWallet(request: SyncWalletRequest()) },
                 syncActivities: { try await syncActivities() }
             )
         } catch {
@@ -141,13 +142,21 @@ final class SparkManager: ChannelFreeLightningRail {
     /// A start reads the balance every time, but rewrites every Spark activity only until that has succeeded once, so
     /// each foreground doesn't redo it; a start whose refresh failed leaves the sync to the next one. Returns whether
     /// the activities are synced.
+    /// Spark lists a send that was still in flight when the app was killed only once its own sync reaches it, so the
+    /// first activity sync waits for one.
     static func startConnected(
         activitiesSynced: Bool,
         refresh: () async throws -> Void,
+        syncWallet: () async throws -> Void = {},
         syncActivities: () async throws -> Void
     ) async throws -> Bool {
         try await refresh()
         guard !activitiesSynced else { return true }
+        do {
+            try await syncWallet()
+        } catch {
+            Logger.warn("Failed to sync Spark before recording its activities: \(error)", context: "SparkManager")
+        }
         try await syncActivities()
         return true
     }

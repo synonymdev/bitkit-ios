@@ -963,6 +963,10 @@ class ActivityService {
         }
     }
 
+    /// Contacts of Lightning sends, by payment hash, kept from before the payment goes out until its activity is saved,
+    /// so a send recorded after the app was killed mid-payment still names its contact.
+    nonisolated(unsafe) static var sentPaymentContacts = SentPaymentContacts(defaults: .standard)
+
     /// Whether a Lightning activity keeps its status against an update: a settled payment stays settled, and a failure
     /// from the rail that didn't carry the latest attempt is stale.
     static func keepsLightningStatus(existing: BitkitCore.PaymentState, update: BitkitCore.PaymentState, isStaleRailFailure: Bool) -> Bool {
@@ -1013,6 +1017,8 @@ class ActivityService {
 
         let contact = if let existingContact = existingLightning?.contact {
             existingContact
+        } else if payment.direction == .outbound, let sentContact = Self.sentPaymentContacts.contact(forPaymentHash: payment.id) {
+            sentContact
         } else {
             await privatePaykitContactPublicKey(
                 forReceivedInvoicePaymentHash: payment.id,
@@ -1053,6 +1059,9 @@ class ActivityService {
             }
         } else {
             try await upsert(.lightning(ln))
+        }
+        if payment.direction == .outbound, ln.contact != nil, payment.status != .pending {
+            Self.sentPaymentContacts.forget(paymentHash: payment.id)
         }
     }
 
@@ -2607,5 +2616,28 @@ class CoreService {
                 Logger.error("Failed to update Blocktank URL: \(error)", context: "CoreService")
             }
         }
+    }
+}
+
+/// The contact a Lightning send pays, remembered by payment hash before it goes out.
+struct SentPaymentContacts {
+    private static let key = "sentPaymentContacts"
+    let defaults: UserDefaults
+
+    func remember(_ contact: String, forPaymentHash paymentHash: String) {
+        var contacts = defaults.dictionary(forKey: Self.key) as? [String: String] ?? [:]
+        contacts[paymentHash.lowercased()] = contact
+        defaults.set(contacts, forKey: Self.key)
+    }
+
+    func contact(forPaymentHash paymentHash: String) -> String? {
+        (defaults.dictionary(forKey: Self.key) as? [String: String])?[paymentHash.lowercased()]
+    }
+
+    func forget(paymentHash: String) {
+        guard var contacts = defaults.dictionary(forKey: Self.key) as? [String: String],
+              contacts.removeValue(forKey: paymentHash.lowercased()) != nil
+        else { return }
+        defaults.set(contacts, forKey: Self.key)
     }
 }
