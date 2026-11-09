@@ -42,12 +42,27 @@ final class SparkFundingRecoveryTests: XCTestCase {
         XCTAssertEqual(handedOff, 0)
     }
 
-    func testSpendingConfirmLeavesOnceItsFundingResolvesOnItsOwn() async throws {
+    func testSpendingConfirmFollowsItsFundingOnceItResolvesOnItsOwn() async throws {
         let spark = try await resolvedSend(isSparkFunding: true, txid: String(repeating: "7c", count: 32))
         let ordinary = try await resolvedSend(isSparkFunding: false, txid: String(repeating: "8d", count: 32))
 
-        XCTAssertTrue(SpendingConfirm.leavesAfter(spark, isPaying: false))
-        XCTAssertFalse(SpendingConfirm.leavesAfter(spark, isPaying: true), "The swipe's own funding goes on to Setting Up")
-        XCTAssertFalse(SpendingConfirm.leavesAfter(ordinary, isPaying: false))
+        XCTAssertTrue(SpendingConfirm.followsRecovered(spark, isPaying: false))
+        XCTAssertFalse(SpendingConfirm.followsRecovered(spark, isPaying: true), "The swipe's own funding goes on to Setting Up")
+        XCTAssertFalse(SpendingConfirm.followsRecovered(ordinary, isPaying: false))
+    }
+
+    func testAnOpenSpendingConfirmOwnsTheRecoveredFunding() {
+        XCTAssertFalse(SparkFundingRecovery.pendingScreenGoesHome(confirmScreenOpen: true), "Spending Confirm follows it at the chosen speed")
+        XCTAssertTrue(SparkFundingRecovery.pendingScreenGoesHome(confirmScreenOpen: false))
+    }
+
+    func testSettingUpShowsLaterWheneverTheTextSaysItWaitsForConfirmations() {
+        for state in [SparkClaimState.later, .unavailable, .notSeen] {
+            XCTAssertTrue(SettingUpView.showsLater(speed: .instant, state: state), "\(state)")
+        }
+        for state in [SparkClaimState.looking, .claiming, .adding, .repriced(feeSats: 1)] {
+            XCTAssertFalse(SettingUpView.showsLater(speed: .instant, state: state), "\(state)")
+        }
+        XCTAssertTrue(SettingUpView.showsLater(speed: .later, state: .looking))
     }
 }

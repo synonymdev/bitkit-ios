@@ -617,9 +617,11 @@ struct SendPendingScreen: View {
         onchainAttempt?.status = .accepted
         onchainAttempt?.localFollowupComplete = true
         if resolution.isSparkFunding {
-            // Leave the funding flow, whose confirm screen would offer the sent transfer again.
             sheets.hideSheet(reason: "Recovered Spark funding")
-            navigation.reset()
+            // An open Spending Confirm follows it at the chosen speed; otherwise leave the funding flow for home.
+            if SparkFundingRecovery.pendingScreenGoesHome(confirmScreenOpen: SparkFundingRecovery.confirmScreenOpen) {
+                navigation.reset()
+            }
         }
     }
 

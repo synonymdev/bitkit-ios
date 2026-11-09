@@ -727,7 +727,8 @@ class TransferViewModel: ObservableObject {
             // Pay the hold invoice. `send` returns a payment id as soon as the HTLC is dispatched;
             // a hold invoice never settles until Boltz claims on-chain, so this does not block on
             // the claim. A failure to dispatch the payment throws and is surfaced immediately.
-            let paymentId = try await lightningService.send(bolt11: swap.invoice)
+            // Quoted against the channels; a deselected Spark balance must never pay it if the channels can't.
+            let paymentId = try await lightningService.send(bolt11: swap.invoice, channelsOnly: true)
 
             let result = await awaitSwapOutcome(
                 swapId: swap.id,

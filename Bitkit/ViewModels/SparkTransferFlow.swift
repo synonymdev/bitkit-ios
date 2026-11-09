@@ -367,6 +367,15 @@ final class SparkTransferFlow {
 
 /// A transfer to the Spark deposit address whose outcome was unknown, resolved later from the Send sheet's pending screen.
 enum SparkFundingRecovery {
+    /// Set while Spending Confirm is open: it then owns a recovered funding, at the speed the user chose.
+    @MainActor static var confirmScreenOpen = false
+
+    /// The Send sheet's pending screen goes home only when no open Spending Confirm owns the recovered funding, so one
+    /// path decides the claim speed and where the user lands.
+    static func pendingScreenGoesHome(confirmScreenOpen: Bool) -> Bool {
+        !confirmScreenOpen
+    }
+
     /// Lists the deposit as a transfer and tells Spark about it, so it shows as pending and is claimed.
     static func handOff(txid: String, amountSats: UInt64) async {
         await CoreService.shared.activity.markOnchainActivityAsTransfer(txId: txid)

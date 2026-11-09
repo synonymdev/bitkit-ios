@@ -844,11 +844,20 @@ class LightningService: NodeLifecycleService {
         expirySecs: UInt32 = 3600,
         isPaykitEndpoint: Bool = false
     ) async throws -> String {
-        if let rail = channelFreeRail,
-           await shouldReceiveWithRail(rail, amountSats: amountMsats.map { $0 / 1000 }, isPaykitEndpoint: isPaykitEndpoint)
-        {
-            let amountSats = amountMsats.map { $0 / 1000 }.flatMap { $0 > 0 ? $0 : nil }
-            return try await rail.receive(amountSats: amountSats, description: description, expirySecs: expirySecs)
+        if let rail = channelFreeRail {
+            // Judged on the amount rounded up, so channels that can't take the last part of a sat don't get it.
+            let railTakes = await shouldReceiveWithRail(rail, amountSats: amountMsats.map { ($0 + 999) / 1000 }, isPaykitEndpoint: isPaykitEndpoint)
+            switch Self.receiveRoute(amountMsats: amountMsats, railTakes: railTakes) {
+            case let .rail(amountSats):
+                return try await rail.receive(amountSats: amountSats, description: description, expirySecs: expirySecs)
+            case .refused:
+                throw AppError(
+                    message: t("other__lnurl_withdr_error_no_capacity"),
+                    debugMessage: "Spark invoices are whole sats, and no channel can receive \(amountMsats ?? 0) msat"
+                )
+            case .node:
+                break
+            }
         }
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
@@ -874,6 +883,22 @@ class LightningService: NodeLifecycleService {
         }
 
         return bolt11.description
+    }
+
+    enum ReceiveRoute: Equatable {
+        case rail(amountSats: UInt64?)
+        case node
+        /// Neither rail can receive the exact amount.
+        case refused
+    }
+
+    /// Where an invoice for `amountMsats` is made, given whether the channel-free rail takes it. The rail's invoices
+    /// are whole sats, so an amount with a part of a sat goes to the channels, or is refused when they can't take it,
+    /// rather than invoicing less than asked.
+    static func receiveRoute(amountMsats: UInt64?, railTakes: Bool) -> ReceiveRoute {
+        guard railTakes else { return .node }
+        guard let amountMsats, amountMsats > 0 else { return .rail(amountSats: nil) }
+        return amountMsats % 1000 == 0 ? .rail(amountSats: amountMsats / 1000) : .refused
     }
 
     /// Receives on the channel-free rail when no ready channel has the inbound capacity for the amount.
@@ -1003,14 +1028,16 @@ class LightningService: NodeLifecycleService {
         }
     }
 
+    /// `channelsOnly` keeps a payment quoted against the channels on them, never falling back to the channel-free rail.
     func send(
         bolt11: String,
         sats: UInt64? = nil,
         params: RouteParametersConfig? = nil,
+        channelsOnly: Bool = false,
         beforeSubmission: @escaping () throws -> Void = {}
     ) async throws -> PaymentHash {
         let paymentHash = (try? Bolt11Invoice.fromStr(invoiceStr: bolt11).paymentHash()).map { String($0) }
-        if let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: sats) {
+        if !channelsOnly, let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: sats) {
             // LDK refuses its own repeats; Spark doesn't, so a Spark send checks both rails.
             if let paid = try await settledEarlierAttempt(paymentHash: paymentHash, on: [.ldk, .channelFree]) {
                 return paid
@@ -1097,10 +1124,11 @@ class LightningService: NodeLifecycleService {
     }
 
     /// Called once the rail reports the attempt failed or lists none, so a channel retry isn't held while it can't list.
+    /// Skipped while a rail send of the invoice is in flight, as that retry holds it again.
     func releaseRailAttempt(paymentHash: String) {
         let hash = paymentHash.lowercased()
         eventCallbackLock.withLock {
-            guard var hashes = railAttemptsStore.stringArray(forKey: Self.railAttemptsKey), hashes.contains(hash) else { return }
+            guard !railSendsInFlight.contains(hash), var hashes = railAttemptsStore.stringArray(forKey: Self.railAttemptsKey), hashes.contains(hash) else { return }
             hashes.removeAll { $0 == hash }
             railAttemptsStore.set(hashes, forKey: Self.railAttemptsKey)
         }

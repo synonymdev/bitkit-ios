@@ -318,6 +318,59 @@ extension ChannelFreeRailTests {
         XCTAssertTrue(payments.isEmpty)
     }
 
+    func testAFixedWithdrawalWithAPartOfASatKeepsItsExactAmount() {
+        typealias Route = Bitkit.LightningService.ReceiveRoute
+        // A fixed LNURL withdrawal of 222 538 msat: channels that can take it get the exact amount; Spark can't, so
+        // without such a channel it is refused rather than invoicing 222 000 msat, below the endpoint's minimum.
+        XCTAssertEqual(Bitkit.LightningService.receiveRoute(amountMsats: 222_538, railTakes: false), Route.node)
+        XCTAssertEqual(Bitkit.LightningService.receiveRoute(amountMsats: 222_538, railTakes: true), Route.refused)
+        XCTAssertEqual(Bitkit.LightningService.receiveRoute(amountMsats: 222_000, railTakes: true), Route.rail(amountSats: 222))
+    }
+
+    func testAnAmountUnderASatIsNeverInvoicedAsAmountless() {
+        typealias Route = Bitkit.LightningService.ReceiveRoute
+        XCTAssertEqual(Bitkit.LightningService.receiveRoute(amountMsats: 500, railTakes: true), Route.refused)
+        XCTAssertEqual(Bitkit.LightningService.receiveRoute(amountMsats: 500, railTakes: false), Route.node)
+        XCTAssertEqual(Bitkit.LightningService.receiveRoute(amountMsats: nil, railTakes: true), Route.rail(amountSats: nil))
+    }
+
+    func testAChannelsOnlyPaymentNeverFallsBackToSpark() async {
+        // The channels can't pay it (there are none in tests) and Spark could, as after a quote whose channel went away.
+        rail.balanceSats = 100_000
+
+        do {
+            _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice, channelsOnly: true)
+            XCTFail("Expected the payment to fail on the channels")
+        } catch {
+            XCTAssertTrue("\(error)".contains("nodeNotSetup"), "\(error)")
+        }
+        XCTAssertNil(rail.sentBolt11, "A deselected Spark balance paid a channel-funded payment")
+    }
+
+    func testAHeldInvoiceIsNotReleasedWhileItsSparkRetryIsInFlight() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        var release: CheckedContinuation<Void, Never>?
+        rail.sendGate = { await withCheckedContinuation { release = $0 } }
+        rail.balanceSats = 100_000
+        let retry = Task { try await Bitkit.LightningService.shared.send(bolt11: Self.invoice) }
+        var waited = 0
+        while release == nil, waited < 500 {
+            try await Task.sleep(nanoseconds: 10_000_000)
+            waited += 1
+        }
+        XCTAssertNotNil(release, "The Spark retry never started")
+
+        // What a launch's sync does with an earlier failed send of the same invoice.
+        Bitkit.LightningService.shared.releaseRailAttempt(paymentHash: hash)
+        release?.resume()
+        _ = try await retry.value
+        rail.sentBolt11 = nil
+        rail.listError = NSError(domain: "spark", code: 1)
+        rail.balanceSats = 0
+
+        await assertRefusedAsDuplicate()
+    }
+
     private func sendOverSpark() async throws {
         rail.balanceSats = 100_000
         _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
