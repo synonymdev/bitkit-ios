@@ -40,5 +40,7 @@ struct WalletRestoreError: View {
         }
         .padding(.horizontal, 32)
         .bottomSafeAreaPadding()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("WalletRestoreError")
     }
 }

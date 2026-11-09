@@ -49,7 +49,8 @@ final class UsdtWalletUITests: XCTestCase {
         capture(app, "USDT unknown wallet in German region")
         try XCTUnwrap(app.buttons.matching(identifier: "NavigationBack").allElementsBoundByIndex.first(where: \.isHittable)).tap()
         app.buttons["Send"].tap()
-        XCTAssertTrue(app.buttons["RecipientManual"].waitForExistence(timeout: 5))
+        try app.skipIfBitcoinNodeUnavailable(waitingFor: app.buttons["RecipientManual"], timeout: 30)
+        XCTAssertTrue(app.buttons["RecipientManual"].exists)
         app.buttons["RecipientManual"].tap()
         let input = app.textViews["RecipientInput"]
         XCTAssertTrue(input.waitForExistence(timeout: 5))
