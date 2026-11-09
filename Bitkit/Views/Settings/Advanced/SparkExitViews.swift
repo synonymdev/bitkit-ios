@@ -10,7 +10,7 @@ struct SparkExitIntroView: View {
             NavigationBar(title: t("lightning__spark_exit__nav_title"))
                 .padding(.bottom, 16)
 
-            DisplayText(t("lightning__spark_exit__intro_title"), accentColor: .yellowAccent)
+            DisplayText(t("lightning__spark_exit__intro_title"), accentColor: .brandAccent)
 
             BodyMText(t("lightning__spark_exit__intro_text"), accentFont: Fonts.bold)
                 .fixedSize(horizontal: false, vertical: true)
@@ -68,7 +68,7 @@ struct SparkExitQuoteView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    DisplayText(t("lightning__spark_exit__quote_title"), accentColor: .yellowAccent)
+                    DisplayText(t("lightning__spark_exit__quote_title"), accentColor: .brandAccent)
                         .padding(.bottom, 32)
 
                     if let quote = exit.quote {
@@ -195,7 +195,7 @@ struct SparkExitFundingView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    DisplayText(t("lightning__spark_exit__funding_title"), accentColor: .yellowAccent)
+                    DisplayText(t("lightning__spark_exit__funding_title"), accentColor: .brandAccent)
 
                     BodyMText(
                         t("lightning__spark_exit__funding_text", variables: ["amount": currency.primaryAmountText(sats: fundingSats)]),
@@ -418,7 +418,7 @@ struct SparkExitConfirmView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    DisplayText(t("lightning__spark_exit__confirm_title"), accentColor: .yellowAccent)
+                    DisplayText(t("lightning__spark_exit__confirm_title"), accentColor: .brandAccent)
 
                     BodyMText(t("lightning__spark_exit__confirm_text"), accentFont: Fonts.bold)
                         .fixedSize(horizontal: false, vertical: true)
@@ -440,7 +440,7 @@ struct SparkExitConfirmView: View {
                 .padding(.bottom, 16)
             }
 
-            SwipeButton(title: t("lightning__spark_exit__swipe"), accentColor: .yellowAccent) {
+            SwipeButton(title: t("lightning__spark_exit__swipe"), accentColor: .brandAccent) {
                 do {
                     try await exit.start()
                     navigation.navigate(.sparkExitProgress)
@@ -550,7 +550,7 @@ struct SparkExitProgressView: View {
             NavigationBar(title: t("lightning__spark_exit__nav_title"))
                 .padding(.bottom, 16)
 
-            DisplayText(title, accentColor: .yellowAccent)
+            DisplayText(title, accentColor: .brandAccent)
                 .padding(.bottom, 16)
 
             BodyMText(text, accentFont: Fonts.bold)
@@ -764,7 +764,7 @@ struct SparkExitFeeBumpView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    DisplayText(t("lightning__spark_exit__fee_bump_title"), accentColor: .yellowAccent)
+                    DisplayText(t("lightning__spark_exit__fee_bump_title"), accentColor: .brandAccent)
 
                     BodyMText(
                         t("lightning__spark_exit__fee_bump_text", variables: ["rate": "\(exit.record?.feeRateSatPerVbyte ?? 0)"]),
