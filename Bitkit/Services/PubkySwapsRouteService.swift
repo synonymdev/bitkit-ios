@@ -67,9 +67,10 @@ enum PubkySwapsRouteService {
     static func restoreSwaps(contacts: [String]) async throws -> [String] {
         let (mnemonic, passphrase) = try secrets()
         let payoutAddress = try await LightningService.shared.newAddress()
+        let payments = try await sentPayments()
         let report = try await pubkySwapsRestore(
             providers: contacts + Env.pubkySwapsProviders,
-            sentPayments: try await sentPayments(),
+            sentPayments: payments,
             electrumUrl: Env.electrumServerUrl,
             payoutAddress: payoutAddress,
             feeRateSatVb: claimFeeRateSatVb,
