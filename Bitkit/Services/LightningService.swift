@@ -1121,10 +1121,11 @@ class LightningService: NodeLifecycleService {
     }
 
     /// Called once the rail reports the attempt failed or lists none, so a channel retry isn't held while it can't list.
+    /// Skipped while a rail send of the invoice is in flight, as that retry holds it again.
     func releaseRailAttempt(paymentHash: String) {
         let hash = paymentHash.lowercased()
         eventCallbackLock.withLock {
-            guard var hashes = railAttemptsStore.stringArray(forKey: Self.railAttemptsKey), hashes.contains(hash) else { return }
+            guard !railSendsInFlight.contains(hash), var hashes = railAttemptsStore.stringArray(forKey: Self.railAttemptsKey), hashes.contains(hash) else { return }
             hashes.removeAll { $0 == hash }
             railAttemptsStore.set(hashes, forKey: Self.railAttemptsKey)
         }

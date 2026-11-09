@@ -328,6 +328,30 @@ extension ChannelFreeRailTests {
         XCTAssertNil(rail.sentBolt11, "A deselected Spark balance paid a channel-funded payment")
     }
 
+    func testAHeldInvoiceIsNotReleasedWhileItsSparkRetryIsInFlight() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        var release: CheckedContinuation<Void, Never>?
+        rail.sendGate = { await withCheckedContinuation { release = $0 } }
+        rail.balanceSats = 100_000
+        let retry = Task { try await Bitkit.LightningService.shared.send(bolt11: Self.invoice) }
+        var waited = 0
+        while release == nil, waited < 500 {
+            try await Task.sleep(nanoseconds: 10_000_000)
+            waited += 1
+        }
+        XCTAssertNotNil(release, "The Spark retry never started")
+
+        // What a launch's sync does with an earlier failed send of the same invoice.
+        Bitkit.LightningService.shared.releaseRailAttempt(paymentHash: hash)
+        release?.resume()
+        _ = try await retry.value
+        rail.sentBolt11 = nil
+        rail.listError = NSError(domain: "spark", code: 1)
+        rail.balanceSats = 0
+
+        await assertRefusedAsDuplicate()
+    }
+
     private func sendOverSpark() async throws {
         rail.balanceSats = 100_000
         _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
