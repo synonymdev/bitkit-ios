@@ -159,6 +159,25 @@ extension ChannelFreeRailTests {
         XCTAssertNil(rail.sentBolt11)
     }
 
+    /// An emergency exit takes Spark off Lightning: an invoice Spark was paying when it started is still not paid again
+    /// over a channel.
+    func testAnInvoiceSparkWasPayingIsNotSentAgainThroughTheNodeDuringAnExit() async {
+        let hash = try? String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash ?? "", direction: .outbound, status: .pending, preimage: nil)]
+        let previousHistory = Bitkit.LightningService.shared.channelFreePaymentHistory
+        Bitkit.LightningService.shared.channelFreePaymentHistory = rail
+        Bitkit.LightningService.shared.channelFreeRail = nil
+        defer { Bitkit.LightningService.shared.channelFreePaymentHistory = previousHistory }
+
+        do {
+            _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+            XCTFail("Expected the pending Spark payment to refuse the retry")
+        } catch {
+            XCTAssertTrue(PrivatePaykitService.isDuplicatePaymentError(error), "\(error)")
+        }
+        XCTAssertNil(rail.sentBolt11)
+    }
+
     func testUserSendOverTheRailHasAFeeLimit() async throws {
         // WalletViewModel.send and sendWithTimeout pass no route parameters, so LDK applies its default
         // limit (1% + 50 sats); the rail must not be left without one.

@@ -271,6 +271,7 @@ final class SparkManager: ChannelFreeLightningRail {
             }
             // Registered before the first refresh marks Spark ready, so Lightning calls never see it ready while they
             // still go to LDK, even when that refresh or the activity sync fails. An emergency exit keeps it out.
+            LightningService.shared.channelFreePaymentHistory = self
             if !isExiting {
                 LightningService.shared.channelFreeRail = self
             }
@@ -358,6 +359,9 @@ final class SparkManager: ChannelFreeLightningRail {
         isOptimizing = false
         if LightningService.shared.channelFreeRail === self {
             LightningService.shared.channelFreeRail = nil
+        }
+        if LightningService.shared.channelFreePaymentHistory === self {
+            LightningService.shared.channelFreePaymentHistory = nil
         }
         var disconnectError: Error?
         if let sdk {

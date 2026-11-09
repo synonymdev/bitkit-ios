@@ -128,6 +128,9 @@ class LightningService: NodeLifecycleService {
     /// Payment hashes inside a rail send, which Spark lists only once it returns.
     private var railSendsInFlight: Set<String> = []
     weak var channelFreeRail: ChannelFreeLightningRail?
+    /// The rail whose payments the duplicate-payment check reads, kept while an emergency exit takes Spark off
+    /// Lightning: an invoice Spark paid or is paying is never paid again over a channel.
+    weak var channelFreePaymentHistory: ChannelFreeLightningRail?
     var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
     var onchainTransactionReceived: (@Sendable (String) async -> Void)?
     typealias OnchainActivityCompletion = @MainActor () async -> Void
@@ -1078,7 +1081,7 @@ class LightningService: NodeLifecycleService {
         }) {
             statuses.append(payment.status)
         }
-        if rails.contains(.channelFree), let payments = try? await channelFreeRailPayments(),
+        if rails.contains(.channelFree), let payments = try? await (channelFreeRail ?? channelFreePaymentHistory)?.lightningPayments(),
            let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: paymentHash)
         {
             statuses.append(payment.status)
