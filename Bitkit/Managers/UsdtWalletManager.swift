@@ -48,6 +48,8 @@ final class UsdtWalletManager {
     /// Starts with the receipts saved before launch or restored from a backup, which were already celebrated.
     private var announcedReceiptIds: Set<String> = []
     private var receiptEpoch = 0
+    /// Open from the start of a restore until it ends, so later restore steps keep the window's start time.
+    private var restoreReceiptWindowOpen = false
     private(set) var refreshing = false
     private(set) var recoveryGeneration = 0
     var errorMessage: String?
@@ -256,10 +258,18 @@ final class UsdtWalletManager {
         UInt64(max(0, date.timeIntervalSince1970 - 60))
     }
 
-    /// Keeps the announced IDs, so a receipt celebrated just before a restore is not celebrated again.
-    private func startRestoreReceiptWindow() {
-        receiptsSince = Self.receiptBaseline(now())
+    /// Starts the receipt window when a restore begins, before backup discovery, so a receipt that confirms while
+    /// backups are found and downloaded still celebrates. Keeps the announced IDs, so a receipt celebrated just
+    /// before a restore is not celebrated again.
+    func startRestoreReceiptWindow() {
         receiptEpoch &+= 1
+        guard !restoreReceiptWindowOpen else { return }
+        restoreReceiptWindowOpen = true
+        receiptsSince = Self.receiptBaseline(now())
+    }
+
+    func endRestoreReceiptWindow() {
+        restoreReceiptWindowOpen = false
     }
 
     func quote(recipient: String, amount: String, destination: UsdtDestination) async throws -> UsdtQuote {
@@ -504,7 +514,6 @@ final class UsdtWalletManager {
         !recoveryPaused && !UsdtRecoveryRestoreGate.isPending
     }
 
-    /// Starts the receipt window before the backups download, so a receipt that confirms meanwhile still celebrates.
     func pauseForRecoveryRestore() async {
         recoveryPaused = true
         startRestoreReceiptWindow()
@@ -516,6 +525,7 @@ final class UsdtWalletManager {
 
     func resumeAfterRecoveryRestore() {
         recoveryPaused = false
+        restoreReceiptWindowOpen = false
     }
 
     private func performWipe() async throws {
@@ -534,6 +544,7 @@ final class UsdtWalletManager {
         pendingDepositIds.removeAll()
         historyComplete = false
         receiptsSince = nil
+        restoreReceiptWindowOpen = false
         announcedReceiptIds.removeAll()
         receiptEpoch &+= 1
         errorMessage = nil

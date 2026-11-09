@@ -529,6 +529,35 @@ final class UsdtWalletManagerTests: XCTestCase {
         XCTAssertEqual(announced, [received.id])
     }
 
+    func testReceiptConfirmedDuringBackupDiscoveryCelebrates() async throws {
+        try XCTSkipUnless(Env.isUsdtEnabled)
+        var clock = Date(timeIntervalSince1970: 1_800_000_000)
+        let wallet = SyncingUsdtWallet(noPointer: .init())
+        wallet.syncResults = [true, false]
+        let manager = UsdtWalletManager(rpcUrl: "http://127.0.0.1:1", bundlerUrl: "http://127.0.0.1:1", now: { clock }, core: wallet,
+                                        loadCredentials: { throw UsdtError.InvalidCredentials })
+        var announced: [String] = []
+        let subscription = manager.receivedTxPublisher.sink { announced.append($0.id) }
+        defer { subscription.cancel() }
+        await manager.refresh(includeHistory: true)
+
+        clock = Date(timeIntervalSince1970: 1_800_001_000)
+        manager.startRestoreReceiptWindow()
+        clock = Date(timeIntervalSince1970: 1_800_001_090)
+        await manager.pauseForRecoveryRestore()
+        let beforeRestore = transfer("before restore", timestamp: 1_800_000_500)
+        wallet.transfers = [beforeRestore]
+        try await manager.restoreBackup("snapshot")
+        manager.resumeAfterRecoveryRestore()
+        manager.endRestoreReceiptWindow()
+
+        let received = transfer("received", timestamp: 1_800_001_003)
+        wallet.transfers = [received, beforeRestore]
+        clock.addTimeInterval(20)
+        await manager.refresh(includeHistory: true)
+        XCTAssertEqual(announced, [received.id], "A receipt confirmed while backups are being discovered must celebrate")
+    }
+
     func testLinkedOrderStatusAndErrorSupersedeDepositStateTogether() {
         let deposit = UsdtDeposit(id: "deposit", network: "solana", asset: "USDT", amount: 100, sourceTx: "tx", status: "held",
                                   code: "standing_route_unavailable", refundTx: nil)
