@@ -459,14 +459,21 @@ struct SendAmountView: View {
     }
 
     private func quoteSwapRoute(_ route: PaykitSwapRoute) async -> Bool {
+        let generation = app.sendStateGeneration
+        let context = app.contactPaymentContext
+        let quotedAmountSats = amountSats
         do {
             let paykitRoute = try await PubkySwapsRouteService.quote(
-                amountSats: amountSats,
+                amountSats: quotedAmountSats,
                 endpoint: route.endpoint,
                 lightningSpendableSats: UInt64(wallet.maxSendLightningSats),
                 onchainSpendableSats: UInt64(wallet.spendableOnchainBalanceSats),
                 contacts: contactsManager.contacts.map(\.publicKey)
             )
+            // A quote for a replaced send, another contact or an edited amount is dropped.
+            guard app.sendStateGeneration == generation, app.contactPaymentContext == context,
+                  app.paykitSwapRoute == route, amountSats == quotedAmountSats
+            else { return false }
             switch paykitRoute {
             case let .swap(quote):
                 var quoted = route
@@ -481,7 +488,9 @@ struct SendAmountView: View {
                 Logger.error("Unexpected service route \(leg.service)", context: "SendAmountView")
                 app.toast(type: .error, title: t("slashtags__error_pay_title"), description: t("common__error_body"))
             case .direct:
+                // Savings now covers the payment, so it goes on-chain directly.
                 app.paykitSwapRoute = nil
+                selectFundingSource(.savings)
                 app.toast(type: .error, title: t("slashtags__error_pay_title"), description: t("common__error_body"))
             }
         } catch {

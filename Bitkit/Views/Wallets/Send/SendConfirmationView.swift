@@ -1364,16 +1364,56 @@ struct SendConfirmationView: View {
     private func performSwapRoutedPayment(_ quote: PubkySwapRouteQuote) async {
         isSubmittingPayment = true
         defer { isSubmittingPayment = false }
+        let contactPublicKey = app.contactPaymentContext?.publicKey
+        var createdMetadataPaymentId: String?
+        let eventId = "swap-route-\(quote.quoteId)"
+        defer { wallet.removeOnEvent(id: eventId) }
         do {
+            // The quote must deliver the amount the user confirmed.
+            guard quote.deliveredSat == wallet.sendAmountSats else { throw PaykitPaymentRequestError.amountMismatch }
             let payment = try await PubkySwapsRouteService.commit(quoteId: quote.quoteId)
             Logger.info("Committed Pubky Swaps route \(payment.swapId) to \(payment.destinationAddress)", context: "SendConfirmation")
+            guard case let .lightning(holdInvoice) = try await decode(invoice: payment.invoice) else {
+                throw AppError(message: t("common__error_body"), debugMessage: "Swap hold invoice is not a Lightning invoice")
+            }
+            let paymentHash = holdInvoice.paymentHash.hex
+            createdMetadataPaymentId = paymentHash
+            await createPreActivityMetadata(paymentId: paymentHash, paymentHash: paymentHash)
+            // A failed hold payment ends the wait at once instead of polling the swap until the claim timeout.
+            var holdFailure: Error?
+            var claim: Task<String, Error>?
+            wallet.addOnEvent(id: eventId) { event in
+                guard case let .paymentFailed(_, failedHash, reason) = event, failedHash == paymentHash else { return }
+                holdFailure = AppError(paymentFailureReason: reason)
+                claim?.cancel()
+            }
             // The hold invoice settles only after the claim reveals the preimage, so its payment stays pending until then.
-            let paymentHash = try await LightningService.shared.send(bolt11: payment.invoice)
-            let claimTxid = try await PubkySwapsRouteService.awaitClaim(swapId: payment.swapId)
+            _ = try await LightningService.shared.send(bolt11: payment.invoice)
+            if let holdFailure {
+                throw holdFailure
+            }
+            let claimTask = Task { try await PubkySwapsRouteService.awaitClaim(swapId: payment.swapId) }
+            claim = claimTask
+            let claimTxid: String
+            do {
+                claimTxid = try await claimTask.value
+            } catch {
+                if let holdFailure {
+                    throw holdFailure
+                }
+                // The hold payment is still in flight, so its tags stay.
+                createdMetadataPaymentId = nil
+                throw error
+            }
             Logger.info("Claimed Pubky Swaps route \(payment.swapId) in \(claimTxid)", context: "SendConfirmation")
-            navigationPath.append(.success(paymentId: String(paymentHash)))
+            // The claim pays the contact's address: the wallet's own record of the payment is the hold invoice's debit.
+            await syncContactForActivity(paymentId: paymentHash, contactPublicKey: contactPublicKey)
+            navigationPath.append(.success(paymentId: paymentHash))
         } catch {
             Logger.error("Pubky Swaps route payment failed: \(error)", context: "SendConfirmation")
+            if let paymentId = createdMetadataPaymentId {
+                try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: paymentId)
+            }
             navigationPath.append(.failure(SendFailureContext(
                 error: error,
                 retryRoute: .confirm,

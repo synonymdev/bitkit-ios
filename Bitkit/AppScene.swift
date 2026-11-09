@@ -1268,21 +1268,26 @@ struct AppScene: View {
         restorePubkySwaps()
     }
 
-    /// Finishes swap routes a restored wallet left in flight: each is rebuilt from its provider's listing and claimed to
-    /// Savings, since the contact's address did not survive the restore, so the user learns the payment came back.
+    /// Finishes swap routes a restored wallet left in flight. A swap rebuilt from its provider's listing is claimed to
+    /// Savings, since the contact's address did not survive the restore, so the user learns the payment came back; a
+    /// swap still on record keeps its destination and is finished silently.
     private func restorePubkySwaps() {
         guard PubkySwapsRouteService.isEnabled else { return }
         let contacts = contactsManager.contacts.map(\.publicKey)
         Task {
-            let restored: [String]
+            let swaps: (restored: [String], known: [String])
             do {
-                restored = try await PubkySwapsRouteService.restoreSwaps(contacts: contacts)
+                swaps = try await PubkySwapsRouteService.restoreSwaps(contacts: contacts)
             } catch {
                 Logger.warn("Failed to restore Pubky Swaps routes: \(error)", context: "AppScene")
                 return
             }
-            Logger.info("Restored \(restored.count) Pubky Swaps routes", context: "AppScene")
-            for swapId in restored {
+            Logger.info("Restored \(swaps.restored.count) Pubky Swaps routes, \(swaps.known.count) known", context: "AppScene")
+            // A known swap keeps the destination it was committed with, such as the contact, so it is driven silently.
+            for swapId in swaps.known {
+                Task { _ = try? await PubkySwapsRouteService.awaitClaim(swapId: swapId) }
+            }
+            for swapId in swaps.restored {
                 Task {
                     guard await (try? PubkySwapsRouteService.awaitClaim(swapId: swapId)) != nil else { return }
                     app.toast(type: .info, title: t("wallet__swap_route_restored_title"), description: t("wallet__swap_route_restored_text"))
