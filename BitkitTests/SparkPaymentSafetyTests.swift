@@ -7,6 +7,38 @@ import XCTest
 final class SparkPaymentSafetyTests: XCTestCase {
     private struct RefreshFailed: Error {}
 
+    // MARK: - Start
+
+    func testAStartWhileConnectedDoesNotRewriteEveryActivity() async throws {
+        var upserts: [String: Int] = [:]
+        var synced = false
+        let sync = { ["a", "b"].forEach { upserts[$0, default: 0] += 1 } }
+
+        for _ in 0 ..< 2 {
+            synced = try await SparkManager.startConnected(activitiesSynced: synced, refresh: {}, syncActivities: sync)
+        }
+
+        XCTAssertEqual(upserts, ["a": 1, "b": 1])
+    }
+
+    func testAStartWhoseRefreshFailedLeavesTheActivitySyncToTheNext() async throws {
+        var syncs = 0
+        var synced = false
+
+        do {
+            synced = try await SparkManager.startConnected(
+                activitiesSynced: synced,
+                refresh: { throw RefreshFailed() },
+                syncActivities: { syncs += 1 }
+            )
+            XCTFail("Expected the refresh to fail")
+        } catch {}
+        synced = try await SparkManager.startConnected(activitiesSynced: synced, refresh: {}, syncActivities: { syncs += 1 })
+
+        XCTAssertTrue(synced)
+        XCTAssertEqual(syncs, 1)
+    }
+
     // MARK: - Settled payment events
 
     func testSettledPaymentIsRecordedAndEmittedEvenWhenTheRefreshFails() async {
