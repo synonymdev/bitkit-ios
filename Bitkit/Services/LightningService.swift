@@ -1128,7 +1128,9 @@ class LightningService: NodeLifecycleService {
     func releaseRailAttempt(paymentHash: String) {
         let hash = paymentHash.lowercased()
         eventCallbackLock.withLock {
-            guard !railSendsInFlight.contains(hash), var hashes = railAttemptsStore.stringArray(forKey: Self.railAttemptsKey), hashes.contains(hash) else { return }
+            guard !railSendsInFlight.contains(hash), var hashes = railAttemptsStore.stringArray(forKey: Self.railAttemptsKey),
+                  hashes.contains(hash)
+            else { return }
             hashes.removeAll { $0 == hash }
             railAttemptsStore.set(hashes, forKey: Self.railAttemptsKey)
         }
