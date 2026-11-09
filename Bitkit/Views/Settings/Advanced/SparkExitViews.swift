@@ -703,6 +703,12 @@ struct SparkExitProgressView: View {
                             .accessibilityIdentifier("SparkExitOutsideExit")
                         }
 
+                        if exit.isSavingsPaymentRefused {
+                            BodySText(t("lightning__spark_exit__savings_refused"), textColor: .redAccent)
+                                .padding(.top, 16)
+                                .accessibilityIdentifier("SparkExitSavingsRefused")
+                        }
+
                         if record.isActive {
                             SparkExitBackgroundNotes()
                                 .padding(.top, 16)
@@ -714,6 +720,18 @@ struct SparkExitProgressView: View {
                         }
                     }
                 }
+            }
+
+            if exit.isSavingsPaymentRefused {
+                CustomButton(title: t("lightning__spark_exit__fund_savings"), variant: .secondary) {
+                    do {
+                        try await exit.retrySavingsPayment()
+                    } catch {
+                        app.toast(error)
+                    }
+                }
+                .padding(.bottom, 16)
+                .accessibilityIdentifier("SparkExitRetrySavings")
             }
 
             if exit.canPayHigherFee {

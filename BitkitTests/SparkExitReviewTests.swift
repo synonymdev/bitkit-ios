@@ -663,6 +663,53 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertFalse(SparkExitManager.isFundingOfExit(nil, record: next))
     }
 
+    private func refusedPayment(status: OnchainSendAttempt.Status = .rejected, address: String = "bcrt1qfunding") -> OnchainSendAttempt {
+        var attempt = OnchainSendAttempt(
+            id: UUID(), walletId: "wallet", requestId: nil, orderId: nil, address: address, amountSats: 9000, isMaxAmount: false,
+            status: status, txid: "refused"
+        )
+        attempt.recoveryContext = OnchainSendRecoveryContext(
+            inputs: [OnchainSendInput(txid: String(repeating: "a", count: 64), vout: 0)],
+            satsPerVbyte: 9,
+            paymentIdentity: nil,
+            candidateTxids: ["refused"]
+        )
+        return attempt
+    }
+
+    /// Progress says a savings payment was refused only while the exit still waits for its first funding.
+    func testARefusedSavingsPaymentIsShownUntilAPaymentIsKept() {
+        let record = SparkExitFixtures.record()
+        XCTAssertTrue(SparkExitManager.isSavingsPaymentRefused(record, attempt: refusedPayment()))
+        XCTAssertFalse(SparkExitManager.isSavingsPaymentRefused(record, attempt: refusedPayment(status: .unknown)), "it may still go out")
+        XCTAssertFalse(SparkExitManager.isSavingsPaymentRefused(record, attempt: refusedPayment(address: "bcrt1qother")))
+        var paid = record
+        paid.fundingPaymentTxid = "paid"
+        XCTAssertFalse(SparkExitManager.isSavingsPaymentRefused(paid, attempt: refusedPayment()))
+        XCTAssertFalse(SparkExitManager.isSavingsPaymentRefused(SparkExitFixtures.record(phase: .running), attempt: refusedPayment()))
+    }
+
+    /// Paying again re-signs the refused attempt itself, over the inputs it already spends, so at most one confirms.
+    func testPayingAgainRetriesOnlyTheRefusedAttempt() async throws {
+        let refused = refusedPayment()
+        var contexts: [OnchainSendPendingContext] = []
+        let txid = try await SparkExitManager.payRefusedAgain(refused, record: SparkExitFixtures.record()) { context in
+            contexts.append(context)
+            return .accepted(txid: "again")
+        }
+        XCTAssertEqual(txid, "again")
+        XCTAssertEqual(contexts, [OnchainSendPendingContext(attemptId: refused.id, walletId: "wallet", txid: "refused")])
+
+        do {
+            _ = try await SparkExitManager.payRefusedAgain(refusedPayment(status: .unknown), record: SparkExitFixtures.record()) { context in
+                contexts.append(context)
+                return .accepted(txid: "again")
+            }
+            XCTFail("a payment that may still go out is never paid again")
+        } catch {}
+        XCTAssertEqual(contexts.count, 1)
+    }
+
     /// Fee rates that cannot be read fail the savings price, so Pay from savings shows its error instead of loading.
     func testSavingsFeeFailsWithoutFeeRates() async {
         let rates = FeeRates(fast: 9, mid: 6, slow: 1)

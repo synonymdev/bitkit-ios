@@ -374,6 +374,7 @@
 "lightning__spark_exit__fees" = "Network fees";
 "lightning__spark_exit__receive" = "You receive about";
 "lightning__spark_exit__savings_fee" = "Savings payment fee";
+"lightning__spark_exit__savings_refused" = "Your savings payment didn't go through. Pay again, or fund from another wallet.";
 "lightning__spark_exit__savings_total" = "Total from savings";
 "lightning__spark_exit__funding" = "Fee funding needed";
 "lightning__spark_exit__left_behind" = "Stays on Spark";
