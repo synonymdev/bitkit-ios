@@ -325,6 +325,20 @@ final class PaykitRouteTests: XCTestCase {
         XCTAssertEqual(transfers, ["tx-savings"])
     }
 
+    func testSparkScreenWithdrawalsLeaveOutContactPayments() {
+        let saved = SparkManager.contactWithdrawalTxIds
+        defer { SparkManager.contactWithdrawalTxIds = saved }
+        SparkManager.contactWithdrawalTxIds = ["tx-contact"]
+        let toContact = Self.withdrawal(id: "contact", to: onchain.value, amountSats: 20000, timestamp: 1)
+        let toSavings = Self.withdrawal(id: "savings", to: "bcrt1qsavings", amountSats: 5000, timestamp: 1)
+
+        XCTAssertEqual(
+            SparkManager.withdrawals([toContact, toSavings]).map(\.txid),
+            ["tx-savings"],
+            "A contact payment is not a transfer to savings"
+        )
+    }
+
     private static func endpoint(_ methodId: PublicPaykitService.MethodId, _ value: String) -> PublicPaykitService.Endpoint {
         PublicPaykitService.Endpoint(methodId: methodId, value: value, min: nil, max: nil, rawPayload: value)
     }

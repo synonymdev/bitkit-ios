@@ -834,9 +834,12 @@ final class SparkManager: ChannelFreeLightningRail {
         }
     }
 
+    /// Spark's withdrawals to Savings, without the ones that paid contacts.
     nonisolated static func withdrawals(_ payments: [Payment]) -> [SparkWithdrawal] {
-        payments.compactMap { payment in
-            guard payment.status != .failed, case let .withdraw(txId, _, _) = payment.details else { return nil }
+        let contactWithdrawals = contactWithdrawalTxIds
+        return payments.compactMap { payment in
+            guard payment.status != .failed, case let .withdraw(txId, _, _) = payment.details,
+                  !contactWithdrawals.contains(txId) else { return nil }
             return SparkWithdrawal(txid: txId, amountSats: sats(payment.amount), feeSats: sats(payment.fees))
         }
     }
