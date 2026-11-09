@@ -922,7 +922,8 @@ struct SparkExitDriver {
     }
 
     /// A sweep refused for its fee is not final: the leftover waits again, keeping when its wait began, and is built
-    /// again from the next block at the rate the refusal asks for (`refusedSweepRate`), or the economy rate if higher.
+    /// again from the next block at the rate the refusal asks for (`refusedSweepRate`, capped by `refusedSweepFloor`), or
+    /// the economy rate if higher.
     private func waitAfterFeeRefusal(_ record: inout SparkExitRecord, refusal: String) async {
         // Without a tip no height is written: the refusal is kept, and the next tick turns it into the wait.
         guard let sweep = record.leftoverSweep, let tip = try? await chain.tipHeight() else {
@@ -983,9 +984,15 @@ struct SparkExitDriver {
                 return
             }
         }
-        let economy = try? await chain.networkFees().economy
-        // A rate a node refused stays refused: the least it asked for lifts the economy rate, past the exit's if need be.
-        let rate = max(SparkExitMath.sweepFeeRate(economy: economy, exitRate: record.feeRateSatPerVbyte), waiting?.refusedFeeRate ?? 0)
+        let fees = try? await chain.networkFees()
+        // A rate a node refused stays refused: the least it asked for lifts the economy rate, up to the next block's or
+        // the exit's rate. A node asking more refuses again, and the sweep waits a block for fees to drop.
+        let refusedFloor = SparkExitMath.refusedSweepFloor(
+            waiting?.refusedFeeRate ?? 0,
+            nextBlock: fees?.fastest,
+            exitRate: record.feeRateSatPerVbyte
+        )
+        let rate = max(SparkExitMath.sweepFeeRate(economy: fees?.economy, exitRate: record.feeRateSatPerVbyte), refusedFloor)
         let built = try await SparkExitLeftoverSweep.build(
             utxos: SparkExitMath.economicalUtxos(confirmed, rate: rate),
             fundingAddress: address,

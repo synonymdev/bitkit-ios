@@ -535,6 +535,12 @@ enum SparkExitMath {
         return max(leastRate, bumped)
     }
 
+    /// What a refused rate lifts the sweep to: never above the next block's rate or the exit's own, whichever is higher,
+    /// so a host's absurd ask never spends the leftover on fees.
+    static func refusedSweepFloor(_ refusedRate: UInt64, nextBlock: UInt64?, exitRate: UInt64) -> UInt64 {
+        min(refusedRate, max(nextBlock ?? 0, exitRate))
+    }
+
     /// The UTXOs worth sending at `rate`: each holds more than the fee of its own input.
     static func economicalUtxos(_ utxos: [EsploraUtxo], rate: UInt64) -> [EsploraUtxo] {
         utxos.filter { $0.value > inputVbytes * rate }

@@ -542,6 +542,35 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.refusedSweepRate("min relay fee not met, 450 < 674", paidRate: 1), 2)
         XCTAssertEqual(SparkExitMath.refusedSweepRate("mempool min fee not met, 900 < 2700", paidRate: 2), 6)
         XCTAssertEqual(SparkExitMath.refusedSweepRate("insufficient fee", paidRate: 3), 4, "no numbers: one sat/vB more")
+        let absurd = SparkExitMath.refusedSweepRate("min relay fee not met, 110 < 22000", paidRate: 1)
+        XCTAssertEqual(absurd, 200)
+        XCTAssertEqual(SparkExitMath.refusedSweepFloor(absurd, nextBlock: 5, exitRate: 2), 5, "capped at the next block's rate")
+        XCTAssertEqual(SparkExitMath.refusedSweepFloor(absurd, nextBlock: 5, exitRate: 8), 8, "or the exit's, if higher")
+        XCTAssertEqual(SparkExitMath.refusedSweepFloor(absurd, nextBlock: nil, exitRate: 2), 2, "the exit's without a next-block rate")
+        XCTAssertEqual(SparkExitMath.refusedSweepFloor(2, nextBlock: 5, exitRate: 2), 2, "a modest ask is kept")
+    }
+
+    /// A host answers a 1 sat/vB sweep with an absurd ask, 22,000 sats for ~110 vB: the retry pays the next block's
+    /// rate at most, never the 200 sat/vB the refusal names.
+    func testARefusalCannotPushTheSweepAboveTheNextBlockRate() async throws {
+        var record = endedRecord()
+        let utxo = SparkExitFixtures.utxo(String(repeating: "1", count: 64), value: 25000)
+        record.leftover = [.init(txid: utxo.txid, vout: 0, valueSats: 25000)]
+        chain.utxosByAddress[key.address] = [utxo]
+        chain.economyFee = 1
+        chain.fastestFee = 5
+        chain.outcome = .rejected("min relay fee not met, 110 < 22000")
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.leftoverSweep?.refusedFeeRate, 200)
+
+        chain.tip = 1001
+        chain.outcome = .accepted
+        record = try await driver().tick(record)
+
+        let sweep = try XCTUnwrap(record.leftoverSweep)
+        XCTAssertEqual(sweep.isAccepted, true)
+        XCTAssertEqual(sweep.feeRateSatPerVbyte, 5)
     }
 
     /// The result names the leftover once, with its total, whatever state it is in.
