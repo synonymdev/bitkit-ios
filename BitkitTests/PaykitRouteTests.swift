@@ -387,6 +387,19 @@ final class PaykitRouteTests: XCTestCase {
     }
 
     @MainActor
+    func testAStaleRecoveryNeverClearsANewerWithdrawalsJournal() async {
+        snapshotAppDefaultsDomain()
+        let older = SparkContactWithdrawal(address: onchain.value, amountSats: 20000, contact: "contact", startedAt: 1000)
+        let newer = SparkContactWithdrawal(address: onchain.value, amountSats: 30000, contact: "contact", startedAt: 2000)
+        // A recovery captured the older withdrawal; another one closed it and the newer withdrawal wrote its journal.
+        SparkManager.pendingContactWithdrawal = newer
+
+        await SparkManager.closeUnsentWithdrawal(older, releaseProof: { _ in .nothingStarted }, failAllowance: { _ in })
+
+        XCTAssertEqual(SparkManager.pendingContactWithdrawal, newer, "Losing the newer journal could pay it twice")
+    }
+
+    @MainActor
     func testAPendingSparkSendNeverAdoptsTheNodesOnchainAttempt() {
         let attempt = SparkWithdrawalAttempt(address: onchain.value, amountSats: 20000, requestId: nil)
 
