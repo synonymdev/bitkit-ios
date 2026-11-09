@@ -501,6 +501,34 @@ final class UsdtWalletManagerTests: XCTestCase {
         XCTAssertEqual(relaunchAnnounced, [next.id])
     }
 
+    func testReceiptConfirmedWhileRestoreDownloadsBackupsCelebrates() async throws {
+        try XCTSkipUnless(Env.isUsdtEnabled)
+        var clock = Date(timeIntervalSince1970: 1_800_000_000)
+        let wallet = SyncingUsdtWallet(noPointer: .init())
+        wallet.syncResults = [true, false]
+        let manager = UsdtWalletManager(rpcUrl: "http://127.0.0.1:1", bundlerUrl: "http://127.0.0.1:1", now: { clock }, core: wallet,
+                                        loadCredentials: { throw UsdtError.InvalidCredentials })
+        var announced: [String] = []
+        let subscription = manager.receivedTxPublisher.sink { announced.append($0.id) }
+        defer { subscription.cancel() }
+        await manager.refresh(includeHistory: true)
+        XCTAssertTrue(manager.historyComplete)
+
+        clock = Date(timeIntervalSince1970: 1_800_001_000)
+        await manager.pauseForRecoveryRestore()
+        clock = Date(timeIntervalSince1970: 1_800_001_090)
+        let beforeRestore = transfer("before restore", timestamp: 1_800_000_500)
+        wallet.transfers = [beforeRestore]
+        try await manager.restoreBackup("snapshot")
+        manager.resumeAfterRecoveryRestore()
+
+        let received = transfer("received", timestamp: 1_800_001_003)
+        wallet.transfers = [received, beforeRestore]
+        clock.addTimeInterval(20)
+        await manager.refresh(includeHistory: true)
+        XCTAssertEqual(announced, [received.id])
+    }
+
     func testLinkedOrderStatusAndErrorSupersedeDepositStateTogether() {
         let deposit = UsdtDeposit(id: "deposit", network: "solana", asset: "USDT", amount: 100, sourceTx: "tx", status: "held",
                                   code: "standing_route_unavailable", refundTx: nil)
@@ -797,6 +825,8 @@ private final class SyncingUsdtWallet: UsdtWallet, @unchecked Sendable {
         defer { syncCalls += 1 }
         return syncResults.indices.contains(syncCalls) ? syncResults[syncCalls] : true
     }
+
+    override func restoreBackup(snapshot _: String) async throws {}
 }
 
 private final class RecoveryUsdtWallet: UsdtWallet, @unchecked Sendable {

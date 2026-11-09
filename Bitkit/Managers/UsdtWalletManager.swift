@@ -42,9 +42,10 @@ final class UsdtWalletManager {
     private var pendingDepositIds: Set<String> = []
     private(set) var historyComplete = false
     /// Before the first complete history sync, a confirmed receipt counts as new only if its block time is after this
-    /// point (first refresh, restore or wipe). Older entries are history the sync is still discovering.
+    /// point (first refresh after launch or wipe, or the start of a restore). Older entries are history the sync is still
+    /// discovering.
     private var receiptsSince: UInt64?
-    /// Starts with the receipts saved before launch, which were already celebrated.
+    /// Starts with the receipts saved before launch or restored from a backup, which were already celebrated.
     private var announcedReceiptIds: Set<String> = []
     private var receiptEpoch = 0
     private(set) var refreshing = false
@@ -256,7 +257,7 @@ final class UsdtWalletManager {
     }
 
     /// Keeps the announced IDs, so a receipt celebrated just before a restore is not celebrated again.
-    private func resetReceiptBaseline() {
+    private func startRestoreReceiptWindow() {
         receiptsSince = Self.receiptBaseline(now())
         receiptEpoch &+= 1
     }
@@ -305,7 +306,11 @@ final class UsdtWalletManager {
         pendingDepositIds.removeAll()
         transfers = try wallet.history()
         historyComplete = false
-        resetReceiptBaseline()
+        if receiptsSince == nil {
+            receiptsSince = Self.receiptBaseline(now())
+        }
+        receiptEpoch &+= 1
+        announcedReceiptIds.formUnion(Self.receiptIds(transfers))
     }
 
     func paymentEndpoint() async throws -> PublicPaykitService.Endpoint {
@@ -499,8 +504,10 @@ final class UsdtWalletManager {
         !recoveryPaused && !UsdtRecoveryRestoreGate.isPending
     }
 
+    /// Starts the receipt window before the backups download, so a receipt that confirms meanwhile still celebrates.
     func pauseForRecoveryRestore() async {
         recoveryPaused = true
+        startRestoreReceiptWindow()
         PaykitUsdtPaymentService.shared.pauseForRecoveryRestore()
         if activeOperations > 0 {
             await withCheckedContinuation { idleWaiters.append($0) }
