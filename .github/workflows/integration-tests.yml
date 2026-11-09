@@ -91,7 +91,7 @@ jobs:
       # never arrive, and the run stalls until the step times out. Check it before building.
       - name: Check regtest backend
         run: |
-          if ! curl -sSf -m 30 -o /dev/null -w "Regtest deposit answered in %{time_total}s\n" \
+          if ! curl -sSf -m 30 -o /dev/null -w "Regtest deposit took %{time_total}s\n" \
             -H 'content-type: application/json' \
             -d '{"address":"bcrt1q6rz28mcfaxtmd6v789l9rrlrusdprr9pz3cppk","amountSat":1000}' \
             https://api.stag0.blocktank.to/blocktank/api/v2/regtest/chain/deposit; then
