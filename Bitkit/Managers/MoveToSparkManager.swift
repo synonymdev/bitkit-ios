@@ -124,6 +124,9 @@ final class MoveToSparkManager {
     private(set) var state: MoveToSparkState = .quoting
     /// A move was started and its outcome is still the screen's, so showing the screen again keeps it.
     private var keepsOutcome = false
+    /// Counts quotes, moves and resets; a quote writes its result only while it is still the latest.
+    private var generation = 0
+    private var isQuoting = false
 
     private let lightningService: LightningService
     private let spark: SparkManager
@@ -133,33 +136,44 @@ final class MoveToSparkManager {
         spark = .shared
     }
 
-    /// Opens the screen: quotes a new move, unless a move started earlier is still running or showing its outcome.
+    /// Opens the screen: quotes a new move, unless a quote is still running or a move started earlier is still running
+    /// or showing its outcome.
     func start(wallet: WalletViewModel) async {
-        guard !keepsOutcome else { return }
+        guard !keepsOutcome, !isQuoting else { return }
         await quote(wallet: wallet)
     }
 
     /// Forgets the last move once its screen is left.
     func reset() {
+        generation += 1
+        isQuoting = false
         keepsOutcome = false
         state = .quoting
     }
 
     /// Quotes moving `targetSats`, or everything the channels can send.
     func quote(wallet: WalletViewModel, targetSats: UInt64? = nil) async {
+        generation += 1
+        let quoteGeneration = generation
+        isQuoting = true
         keepsOutcome = false
         state = .quoting
         await wallet.syncStateAsync()
+        let result: MoveToSparkState
         do {
-            state = try await .confirm(makeQuote(channels: wallet.channels, targetSats: targetSats), isMoving: false)
+            result = try await .confirm(makeQuote(channels: wallet.channels, targetSats: targetSats), isMoving: false)
         } catch {
             Logger.warn("Failed to quote move to Spark of '\(String(describing: targetSats))': \(error)", context: "MoveToSpark")
-            state = Self.state(for: error)
+            result = Self.state(for: error)
         }
+        guard quoteGeneration == generation else { return }
+        isQuoting = false
+        state = result
     }
 
     func move(wallet: WalletViewModel) async {
         guard case let .confirm(quote, isMoving) = state, !isMoving else { return }
+        generation += 1
         keepsOutcome = true
         state = .confirm(quote, isMoving: true)
         do {
