@@ -82,7 +82,7 @@ struct SpendingConfirm: View {
         .onReceive(OnchainSendAttemptService.localResolutionPublisher.receive(on: DispatchQueue.main)) { resolution in
             guard Self.followsRecovered(resolution, isPaying: isPaying), !hideSwipeButton else { return }
             // This screen owns the recovered funding: follow it at the chosen speed, as a swipe would have.
-            flow.onBroadcast(txid: resolution.txid)
+            flow.onRecoveredBroadcast(txid: resolution.txid)
             hideSwipeButton = true
             navigation.navigate(.settingUp)
         }
@@ -143,6 +143,7 @@ struct SpendingConfirm: View {
             throw SpendingFeesIncreasedError()
         }
 
+        flow.approveSwipe()
         do {
             let txid = try await transfer.fundSpark(
                 address: fresh.address,
