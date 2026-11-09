@@ -1367,10 +1367,20 @@ struct SendConfirmationView: View {
         return note
     }
 
+    /// A swap result belongs to the sheet that started it; a nil start never matches, so a dismissed sheet cannot pass.
+    static func isSwapRouteResultCurrent(startedIn startedPresentationID: UUID?, active activePresentationID: UUID?) -> Bool {
+        startedPresentationID != nil && startedPresentationID == activePresentationID
+    }
+
     private func performSwapRoutedPayment(_ quote: PubkySwapRouteQuote) async {
         isSubmittingPayment = true
         defer { isSubmittingPayment = false }
-        let contactPublicKey = app.contactPaymentContext?.publicKey
+        let contactPaymentContext = app.contactPaymentContext
+        // The claim can land after the sheet is dismissed, when another send may be open.
+        let startedPresentationID = sheets.activeSheetConfiguration?.presentationID
+        func isSendCurrent() -> Bool {
+            Self.isSwapRouteResultCurrent(startedIn: startedPresentationID, active: sheets.activeSheetConfiguration?.presentationID)
+        }
         var createdMetadataPaymentId: String?
         let eventId = "swap-route-\(quote.quoteId)"
         defer { wallet.removeOnEvent(id: eventId) }
@@ -1413,12 +1423,32 @@ struct SendConfirmationView: View {
             }
             Logger.info("Claimed Pubky Swaps route \(payment.swapId) in \(claimTxid)", context: "SendConfirmation")
             // The claim pays the contact's address: the wallet's own record of the payment is the hold invoice's debit.
-            await syncContactForActivity(paymentId: paymentHash, contactPublicKey: contactPublicKey)
+            await syncContactForActivity(paymentId: paymentHash, contactPaymentContext: contactPaymentContext)
+            guard isSendCurrent() else {
+                app.toast(
+                    type: .lightning,
+                    title: t("wallet__toast_payment_success_title"),
+                    description: t("wallet__toast_payment_success_description"),
+                    accessibilityIdentifier: "PaymentSuccessToast"
+                )
+                return
+            }
             navigationPath.append(.success(paymentId: paymentHash))
         } catch {
             Logger.error("Pubky Swaps route payment failed: \(error)", context: "SendConfirmation")
             if let paymentId = createdMetadataPaymentId {
                 try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: paymentId)
+            }
+            guard isSendCurrent() else {
+                if !(error is CancellationError) {
+                    app.toast(
+                        type: .error,
+                        title: t("wallet__toast_payment_failed_title"),
+                        description: t("wallet__payment_failed_description"),
+                        accessibilityIdentifier: "PaymentFailedToast"
+                    )
+                }
+                return
             }
             // bitkit-core spends a quote on its first commit, and a refused one is no better, so a retry starts from
             // the amount, where Continue asks for a fresh quote.
@@ -1538,7 +1568,7 @@ struct SendConfirmationView: View {
                         shouldCancelPaymentProof = false
                         privatePaymentListOutcome = .succeeded
                         await contactPaymentContext?.resolvePrivatePaymentListConsumption(privatePaymentListOutcome)
-                        await syncContactForActivity(paymentId: paymentHash, contactPublicKey: contactPublicKey)
+                        await syncContactForActivity(paymentId: paymentHash, contactPaymentContext: contactPaymentContext)
                         Logger.info("Lightning payment successful: \(paymentHash)")
                         navigationPath.append(.success(paymentId: paymentHash))
                     } catch is PaymentTimeoutError {
@@ -1841,14 +1871,14 @@ struct SendConfirmationView: View {
         }
     }
 
-    private func syncContactForActivity(paymentId: String, contactPublicKey: String?) async {
-        guard let contactPublicKey else {
+    private func syncContactForActivity(paymentId: String, contactPaymentContext: ContactPaymentContext?) async {
+        guard let contactPaymentContext else {
             return
         }
 
         do {
-            app.addPendingContactPaymentContext(paymentId, context: app.contactPaymentContext)
-            try await activityList.setContact(contactPublicKey, forPaymentId: paymentId)
+            app.addPendingContactPaymentContext(paymentId, context: contactPaymentContext)
+            try await activityList.setContact(contactPaymentContext.publicKey, forPaymentId: paymentId)
             app.consumeContactPaymentContext(forPendingPaymentHash: paymentId)
         } catch {
             Logger.warn("Failed to set contact for activity \(paymentId): \(error)", context: "SendConfirmationView")

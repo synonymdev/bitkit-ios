@@ -203,4 +203,12 @@ final class SendConfirmationViewTests: XCTestCase {
         )
         XCTAssertEqual(SendConfirmationView.swapRouteWarningAmountSats(route, sendAmountSats: 50000), 51200)
     }
+
+    func testSwapRouteResultReachesOnlyTheSheetThatStartedIt() {
+        let started = UUID()
+        XCTAssertTrue(SendConfirmationView.isSwapRouteResultCurrent(startedIn: started, active: started))
+        XCTAssertFalse(SendConfirmationView.isSwapRouteResultCurrent(startedIn: started, active: UUID()))
+        XCTAssertFalse(SendConfirmationView.isSwapRouteResultCurrent(startedIn: started, active: nil))
+        XCTAssertFalse(SendConfirmationView.isSwapRouteResultCurrent(startedIn: nil, active: nil))
+    }
 }
