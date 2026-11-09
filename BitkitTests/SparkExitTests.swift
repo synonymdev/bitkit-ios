@@ -1216,6 +1216,7 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(record.generation, 2, "the build that found the lost leaf is not adopted")
         XCTAssertEqual(record.lostLeaves, [.init(leafId: "leaf-1", valueSats: 100_000)])
         XCTAssertEqual(record.lostSats, 100_000)
+        XCTAssertEqual(SparkExitMath.inTransferSats(record, fundingSeenSats: 0), 50000, "the lost leaf leaves the transfer")
         XCTAssertTrue(record.isRebuilding)
         XCTAssertEqual(record.phase, .running)
         XCTAssertEqual(SparkExitMath.reminders(record, tip: 1000, now: clock, network: .regtest).first?.id, "lost-1")
