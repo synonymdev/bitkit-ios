@@ -86,6 +86,19 @@ jobs:
             const {reportRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
             await reportRetargetResult({github, context, core, name: 'Run Integration Tests', phase: 'start'});
 
+      # The suite funds wallets through Blocktank's regtest API on stag0. When that API is slow,
+      # deposits time out in the app's 30 s HTTP client, every funded test waits for coins that
+      # never arrive, and the run stalls until the step times out. Check it before building.
+      - name: Check regtest backend
+        run: |
+          if ! curl -sSf -m 30 -o /dev/null -w "Regtest deposit answered in %{time_total}s\n" \
+            -H 'content-type: application/json' \
+            -d '{"address":"bcrt1q6rz28mcfaxtmd6v789l9rrlrusdprr9pz3cppk","amountSat":1000}' \
+            https://api.stag0.blocktank.to/blocktank/api/v2/regtest/chain/deposit; then
+            echo "::error::Blocktank stag0 regtest deposit failed or took over 30 s; integration tests would time out"
+            exit 1
+          fi
+
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -147,6 +160,9 @@ jobs:
           #
           # The live regtest suites are flaky on CI runners, so a failed test is retried once on
           # its own instead of rebuilding and rerunning the whole suite.
+          #
+          # A test that runs past 5 minutes fails instead of stalling the step; the slowest
+          # test takes under 2 minutes on a healthy run.
           set -o pipefail && TEST_RUNNER_BITKIT_DESTRUCTIVE_TESTS=1 xcodebuild test-without-building \
             -scheme Bitkit \
             -destination "$DESTINATION" \
@@ -160,6 +176,9 @@ jobs:
             -parallel-testing-enabled NO \
             -retry-tests-on-failure \
             -test-iterations 2 \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 300 \
+            -maximum-test-execution-time-allowance 300 \
             -only-testing:BitkitTests/UtxoSelectionTests \
             -only-testing:BitkitTests/BlocktankTests \
             -only-testing:BitkitTests/AddressTypeIntegrationTests \
