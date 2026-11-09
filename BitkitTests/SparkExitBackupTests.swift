@@ -52,9 +52,19 @@ final class SparkExitBackupTests: XCTestCase {
     func testObservingRestartedOnAForegroundDoesNotMarkTheSameConnectionAgain() {
         var mark = SparkExitBackupMark()
 
-        XCTAssertFalse(mark.claim(connection: nil), "Nothing to back up while Spark is disconnected")
-        XCTAssertTrue(mark.claim(connection: 1))
-        XCTAssertFalse(mark.claim(connection: 1), "Spark stayed connected while observing restarted")
-        XCTAssertTrue(mark.claim(connection: 2), "A new connection is backed up again")
+        XCTAssertFalse(mark.claim(version: nil), "Nothing to back up while Spark is disconnected")
+        XCTAssertTrue(mark.claim(version: 1))
+        XCTAssertFalse(mark.claim(version: 1), "Spark stayed connected while observing restarted")
+        XCTAssertTrue(mark.claim(version: 2), "A changed exit state is backed up again")
+    }
+
+    func testAnExitStateChangeMissedWhileObservingWasStoppedIsBackedUpOnRestart() {
+        var mark = SparkExitBackupMark()
+        _ = mark.claim(version: SparkManager.exitStateGeneration)
+
+        // Spark reports a change while the node, and so backup observing, is stopped.
+        SparkManager.notifyExitStateChanged()
+
+        XCTAssertTrue(mark.claim(version: SparkManager.exitStateGeneration), "The restart kept the stale exit data backup")
     }
 }

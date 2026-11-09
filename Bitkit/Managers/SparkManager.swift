@@ -15,6 +15,20 @@ import Observation
 final class SparkManager: ChannelFreeLightningRail {
     static let shared = SparkManager()
     private nonisolated(unsafe) static let exitStateChanged = PassthroughSubject<Void, Never>()
+    private nonisolated static let exitStateLock = NSLock()
+    private nonisolated(unsafe) static var exitStateGenerationValue = 0
+
+    /// Bumped on every connect and exit data change, kept outside the backup observers, which stop while the node does,
+    /// so a change they missed is still backed up once they start again.
+    nonisolated static var exitStateGeneration: Int {
+        exitStateLock.withLock { exitStateGenerationValue }
+    }
+
+    nonisolated static func notifyExitStateChanged() {
+        exitStateLock.withLock { exitStateGenerationValue += 1 }
+        exitStateChanged.send()
+    }
+
     /// Fires once Spark connects and whenever its unilateral exit data changes, so the exit data backup is redone.
     nonisolated static var exitStateChangedPublisher: AnyPublisher<Void, Never> {
         exitStateChanged.eraseToAnyPublisher()
@@ -62,13 +76,11 @@ final class SparkManager: ChannelFreeLightningRail {
         sdk != nil
     }
 
-    /// Counts connects in this process, nil while disconnected, so a backup can tell a new connection from observing
+    /// The exit data's generation while connected, nil while disconnected, so a backup can tell a change from observing
     /// that restarted while Spark stayed connected.
-    var connectionId: Int? {
-        sdk == nil ? nil : connectionCount
+    var exitStateVersion: Int? {
+        sdk == nil ? nil : Self.exitStateGeneration
     }
-
-    @ObservationIgnored private var connectionCount = 0
 
     /// Spark's regtest has no Lightning network, so there a Lightning invoice from another Spark wallet is paid as a
     /// Spark transfer, which lets two dev builds pay each other's invoices.
@@ -152,10 +164,9 @@ final class SparkManager: ChannelFreeLightningRail {
             await self?.onSdkEvent(event)
         })
         sdk = connected
-        connectionCount += 1
         Logger.info("Connected Spark wallet on '\(network)'", context: "SparkManager")
         await importRestoredExitState(walletIndex: walletIndex)
-        Self.exitStateChanged.send()
+        Self.notifyExitStateChanged()
     }
 
     /// The SDK config Bitkit connects with.
@@ -718,7 +729,7 @@ final class SparkManager: ChannelFreeLightningRail {
         case let .paymentPending(payment):
             await recordActivity(payment)
         case .unilateralExitStateChanged:
-            Self.exitStateChanged.send()
+            Self.notifyExitStateChanged()
         default:
             break
         }
