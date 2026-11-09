@@ -760,9 +760,17 @@ extension AppViewModel {
         return paykitBitcoinMethod(for: selectedWalletToPayFrom)
     }
 
+    /// The method a send prices with. Spending with no Lightning payment to make funds the Spark leg to the on-chain
+    /// endpoint, so it takes that endpoint's price, the one the leg and its proof pay.
     func paykitBitcoinMethod(for wallet: WalletType) -> PublicPaykitService.MethodId {
         if wallet == .lightning {
-            return lnurlPayData != nil ? .bitcoinLightningLnurl : .bitcoinLightningBolt11
+            if lnurlPayData != nil {
+                return .bitcoinLightningLnurl
+            }
+            if scannedLightningInvoice == nil, let address = scannedOnchainInvoice?.address {
+                return PublicPaykitService.onchainMethodId(for: address)
+            }
+            return .bitcoinLightningBolt11
         }
         return PublicPaykitService.onchainMethodId(for: scannedOnchainInvoice?.address ?? "")
     }

@@ -29,6 +29,22 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         XCTAssertEqual(wallet.sendAmountSats, 10000)
     }
 
+    func testASparkFundedOnchainRequestKeepsItsOnchainPriceOnSpending() throws {
+        snapshotAppDefaultsDomain()
+        let request = try onchainRequest(rates: [
+            ConversionRate(asset: "btc", value: "0.000002188"),
+            ConversionRate(asset: "btc-lightning", value: "0.00002"),
+        ])
+        let app = AppViewModel()
+        app.scannedOnchainInvoice = invoice
+        let onchainTerms = try request.payment(using: app.paykitPaymentMethod)
+
+        // Spending funds the Spark leg, which still pays the request's on-chain endpoint.
+        app.selectedWalletToPayFrom = .lightning
+
+        XCTAssertEqual(try request.payment(using: app.paykitPaymentMethod), onchainTerms)
+    }
+
     func testQuotedWalletSwitchRebindsAmountOnConfirmation() async throws {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
