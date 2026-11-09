@@ -30,7 +30,8 @@ final class UsdtWalletUITests: XCTestCase {
             XCTAssertTrue(app.buttons["NewWallet"].waitForExistence(timeout: 5))
             app.buttons["NewWallet"].tap()
         }
-        XCTAssertTrue(app.otherElements["TotalBalance-primary"].waitForExistence(timeout: 90))
+        try app.skipIfBitcoinNodeUnavailable(waitingFor: app.otherElements["TotalBalance-primary"], timeout: 90)
+        XCTAssertTrue(app.otherElements["TotalBalance-primary"].exists)
         if app.buttons["UsdtIntroEnable"].waitForExistence(timeout: 10) {
             app.buttons["UsdtIntroEnable"].tap()
         }
