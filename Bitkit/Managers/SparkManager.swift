@@ -713,15 +713,20 @@ final class SparkManager: ChannelFreeLightningRail {
     /// allowance attempt, left unknown when the send's outcome was, then fails, so the ledger lets it be paid again.
     static func closeUnsentWithdrawal(
         _ pending: SparkContactWithdrawal,
-        releaseProof: (SparkContactWithdrawal.PaykitRequest) async -> Bool,
+        releaseProof: (SparkContactWithdrawal.PaykitRequest) async -> SparkProofRelease,
         failAllowance: (SparkContactWithdrawal.PaykitRequest) async -> Void
     ) async {
         if let request = pending.request {
-            guard await releaseProof(request) else {
+            switch await releaseProof(request) {
+            case .failed:
                 Logger.warn("Kept the Spark contact withdrawal journal: its unsent proof is not released yet", context: "SparkManager")
                 return
+            case .released:
+                // The allowance attempt begins only once the proof started, so only then is there one to fail.
+                await failAllowance(request)
+            case .nothingStarted:
+                break
             }
-            await failAllowance(request)
         }
         pendingContactWithdrawal = nil
         resolveContactWithdrawal(pending, txId: nil)
@@ -733,7 +738,7 @@ final class SparkManager: ChannelFreeLightningRail {
         contactWithdrawalResolutionSubject.send(resolution)
     }
 
-    private static func releaseUnsentProof(_ request: SparkContactWithdrawal.PaykitRequest) async -> Bool {
+    private static func releaseUnsentProof(_ request: SparkContactWithdrawal.PaykitRequest) async -> SparkProofRelease {
         await PaykitPaymentProofService.shared.failSparkOnchainPayment(requestId: request.id, identity: request.identity)
     }
 

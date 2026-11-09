@@ -218,18 +218,25 @@ final class PaykitRouteTests: XCTestCase {
         SparkManager.pendingContactWithdrawal = pending
 
         var failedAllowances: [SparkContactWithdrawal.PaykitRequest] = []
-        await SparkManager.closeUnsentWithdrawal(pending, releaseProof: { _ in false }, failAllowance: { failedAllowances.append($0) })
+        await SparkManager.closeUnsentWithdrawal(pending, releaseProof: { _ in .failed }, failAllowance: { failedAllowances.append($0) })
         XCTAssertEqual(SparkManager.pendingContactWithdrawal, pending, "A proof that wasn't released keeps the journal, so the next sync retries it")
         XCTAssertEqual(failedAllowances, [], "The attempt stays unknown while the journal is still open")
 
         var released: SparkContactWithdrawal.PaykitRequest?
         await SparkManager.closeUnsentWithdrawal(
             pending,
-            releaseProof: { released = $0; return true },
+            releaseProof: { released = $0; return .released },
             failAllowance: { failedAllowances.append($0) }
         )
         XCTAssertEqual(released, request)
         XCTAssertEqual(failedAllowances, [request], "An unsent withdrawal fails its allowance attempt, so the ledger lets the request be paid again")
+        XCTAssertNil(SparkManager.pendingContactWithdrawal)
+
+        // A kill before the proof started leaves no Spark attempt, so a direct send's attempt for the request stays.
+        SparkManager.pendingContactWithdrawal = pending
+        failedAllowances = []
+        await SparkManager.closeUnsentWithdrawal(pending, releaseProof: { _ in .nothingStarted }, failAllowance: { failedAllowances.append($0) })
+        XCTAssertEqual(failedAllowances, [], "Only the Spark withdrawal's own allowance attempt fails")
         XCTAssertNil(SparkManager.pendingContactWithdrawal)
     }
 
@@ -305,7 +312,7 @@ final class PaykitRouteTests: XCTestCase {
         let subscription = SparkManager.contactWithdrawalResolutionPublisher.sink { resolutions.append($0) }
         defer { subscription.cancel() }
 
-        await SparkManager.closeUnsentWithdrawal(pending, releaseProof: { _ in true }, failAllowance: { _ in })
+        await SparkManager.closeUnsentWithdrawal(pending, releaseProof: { _ in .released }, failAllowance: { _ in })
 
         let unsent = SparkContactWithdrawalResolution(attempt: pending.attempt, txId: nil)
         XCTAssertEqual(resolutions, [unsent])

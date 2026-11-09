@@ -1523,7 +1523,8 @@ struct SendConfirmationView: View {
                         address: leg.endpoint.value,
                         paymentIdentity: identity,
                         privatePaymentListVersion: privateContext.paymentListVersion,
-                        previousPrivatePaymentListVersion: previousVersion
+                        previousPrivatePaymentListVersion: previousVersion,
+                        sparkWithdrawal: true
                     )
                 }
             }
