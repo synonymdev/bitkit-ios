@@ -44,8 +44,6 @@ struct SendSyncScreen: View {
         }
         .navigationBarHidden(true)
         .sheetBackground()
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("SendSync")
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onChange(of: wallet.isSyncingWallet) { _, newValue in
             if !newValue {
