@@ -43,10 +43,6 @@ struct SpendingConfirm: View {
                             if let error = flow.quoteError {
                                 quoteError(error)
                                     .padding(.bottom, 16)
-                            } else if let quote = flow.quote, !quote.coversClaimFee {
-                                BodyMText(quote.belowClaimFeeMessage, textColor: .redAccent)
-                                    .padding(.bottom, 16)
-                                    .accessibilityIdentifier("SpendingConfirmBelowMinimum")
                             }
 
                             SpendingSpeedPicker(quote: flow.quote, speed: Bindable(flow).speed)
@@ -117,7 +113,7 @@ struct SpendingConfirm: View {
 
     private var canConfirm: Bool {
         guard let quote = flow.quote, !isPaying, !flow.isQuoting else { return false }
-        return quote.networkFeeSats > 0 && quote.coversClaimFee && quote.toSpendingSats(for: flow.speed) > 0
+        return quote.networkFeeSats > 0 && quote.toSpendingSats(for: flow.speed) > 0
     }
 
     private func quoteError(_ message: String) -> some View {
@@ -141,11 +137,7 @@ struct SpendingConfirm: View {
             throw AppError(message: t("lightning__spending_confirm__error_quote"), debugMessage: "Re-quote before sending failed")
         }
         guard fresh.coversClaimFee else {
-            app.toast(
-                type: .warning,
-                title: t("lightning__spending_amount__error_min__title"),
-                description: fresh.belowClaimFeeMessage
-            )
+            app.toastBelowClaimFee(fresh)
             throw SpendingFeesIncreasedError()
         }
         let increase = fresh.increase(over: shown, speed: flow.speed)

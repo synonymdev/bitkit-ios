@@ -45,10 +45,6 @@ struct SpendingHwSign: View {
                         if let error = flow.quoteError {
                             BodyMText(error, textColor: .redAccent)
                                 .padding(.bottom, 16)
-                        } else if let quote = flow.quote, !quote.coversClaimFee, !hwSend.hasPendingBroadcast {
-                            BodyMText(quote.belowClaimFeeMessage, textColor: .redAccent)
-                                .padding(.bottom, 16)
-                                .accessibilityIdentifier("HardwareTransferBelowMinimum")
                         }
 
                         SpendingSpeedPicker(quote: flow.quote, speed: Bindable(flow).speed)
@@ -82,7 +78,7 @@ struct SpendingHwSign: View {
 
             CustomButton(
                 title: hwSend.hasPendingBroadcast ? t("common__retry") : vendor.sendSignButtonTitle,
-                isDisabled: isBusy || flow.quote == nil || !(hwSend.hasPendingBroadcast || flow.quote?.coversClaimFee == true),
+                isDisabled: isBusy || flow.quote == nil,
                 isLoading: isBusy
             ) {
                 startSigning()
@@ -193,11 +189,7 @@ struct SpendingHwSign: View {
         guard let fresh = await flow.refreshQuote(wallet: wallet, feeEstimatesManager: feeEstimatesManager, hwWalletManager: hwWalletManager)
         else { return nil }
         guard fresh.coversClaimFee else {
-            app.toast(
-                type: .warning,
-                title: t("lightning__spending_amount__error_min__title"),
-                description: fresh.belowClaimFeeMessage
-            )
+            app.toastBelowClaimFee(fresh)
             return nil
         }
         let increase = fresh.increase(over: shown, speed: flow.speed)

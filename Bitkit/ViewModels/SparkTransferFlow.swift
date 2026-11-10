@@ -60,6 +60,17 @@ struct SparkTransferQuote: Equatable {
     }
 }
 
+extension AppViewModel {
+    /// The toast for a transfer below the claim minimum, shown wherever the transfer is priced, as on Android.
+    func toastBelowClaimFee(_ quote: SparkTransferQuote) {
+        toast(
+            type: .warning,
+            title: t("lightning__spending_amount__error_min__title"),
+            description: quote.belowClaimFeeMessage
+        )
+    }
+}
+
 /// Where a transfer to spending stands once its deposit is broadcast.
 enum SparkClaimState: Equatable {
     /// Instant was chosen and Spark has not listed the deposit yet.
