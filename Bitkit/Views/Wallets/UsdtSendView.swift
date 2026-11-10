@@ -155,6 +155,11 @@ struct UsdtSendView: View {
         paymentContext != nil && settings.isUsdtEnabled && quote != nil && !submitted
     }
 
+    private var hasSufficientRequestFunds: Bool {
+        // Native quoting checks funds even when the observable balance has not loaded yet.
+        paymentContext?.incomingPaymentRequest == nil || usdt.balance == nil || quote?.isAffordable(with: usdt.balance) == true
+    }
+
     var body: some View {
         Group {
             if !settings.isUsdtEnabled, !submitted {
@@ -606,7 +611,7 @@ struct UsdtSendView: View {
                 .id(showDetails)
             }
             SwipeButton(
-                title: t("wallet__send_swipe"), accentColor: .usdtAccent, isDisabled: busy,
+                title: t("wallet__send_swipe"), accentColor: .usdtAccent, isDisabled: busy || !hasSufficientRequestFunds,
                 isLoading: busy, isSubmitted: submitted, isComplete: paymentComplete, swipeProgress: $swipeProgress
             ) {
                 automaticPayment = false
@@ -873,6 +878,7 @@ struct UsdtSendView: View {
 
     private func confirmPayment() async throws {
         guard let quote, !busy, !submitted else { return }
+        guard hasSufficientRequestFunds else { throw UsdtError.InsufficientBalance }
         var warnings: [String] = []
         if let balance = usdt.balance, quote.amount > balance / 2 {
             warnings.append("wallet__send_dialog2_usdt")
@@ -912,6 +918,7 @@ struct UsdtSendView: View {
 
     private func authenticateAndSend() async throws {
         guard !busy else { return }
+        guard hasSufficientRequestFunds else { throw UsdtError.InsufficientBalance }
         if let authenticatePayment {
             busy = true
             let authorized = await authenticatePayment()
@@ -1009,6 +1016,7 @@ struct UsdtSendView: View {
             }
         }
         do {
+            guard hasSufficientRequestFunds else { throw UsdtError.InsufficientBalance }
             if let sendPayment {
                 try await sendPayment(quote)
             } else {

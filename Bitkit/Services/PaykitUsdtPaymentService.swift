@@ -168,6 +168,7 @@ final class PaykitUsdtPaymentService {
         guard !sending, !preparing else { throw PaykitPaymentRequestError.operationInProgress }
         sending = true
         stateGeneration += 1
+        let generation = stateGeneration
         defer { sending = false }
         let wasResumable = try setPaymentStarted(quoteId: quote.id, started: true)
         do {
@@ -191,15 +192,17 @@ final class PaykitUsdtPaymentService {
             }
         } catch {
             // Core persists signed operations before broadcast. Only this completed send can establish non-submission.
-            if !(error is CancellationError), await (try? wallet.storedTransfer(quote.id) == nil) == true {
-                _ = try? setPaymentStarted(quoteId: quote.id, started: false, resumable: wasResumable)
+            if !(error is CancellationError), await (try? wallet.storedTransfer(quote.id) == nil) == true,
+               !Task.isCancelled, stateGeneration == generation
+            {
+                _ = try? setPaymentStarted(quoteId: quote.id, started: false, resumable: wasResumable, releaseBinding: true)
             }
             throw error
         }
     }
 
     @discardableResult
-    private func setPaymentStarted(quoteId: String, started: Bool, resumable: Bool = false) throws -> Bool {
+    private func setPaymentStarted(quoteId: String, started: Bool, resumable: Bool = false, releaseBinding: Bool = false) throws -> Bool {
         var state = try load()
         guard let index = state.attempts.firstIndex(where: {
             $0.quoteId == quoteId && $0.wallet == activeWallet && $0.identity == activeIdentity
@@ -215,7 +218,8 @@ final class PaykitUsdtPaymentService {
                 resumableRequests.insert(requestId)
             }
         }
-        try save(state)
+        let attempt = state.attempts[index]
+        try save(state, releasing: releaseBinding && !started && attempt.proof == nil && !attempt.proofQueued ? attempt : nil)
         return wasResumable
     }
 
@@ -224,9 +228,12 @@ final class PaykitUsdtPaymentService {
         return try JSONDecoder().decode(State.self, from: data)
     }
 
-    private func save(_ state: State) throws {
+    private func save(_ state: State, releasing attempt: Attempt? = nil) throws {
         boundRequestIds = nil
         try Keychain.upsert(key: .paykitUsdtPayments, data: JSONEncoder().encode(state))
+        if let attempt {
+            releasedAttempts.append(attempt)
+        }
         publish(state)
         Self.stateChanged.send()
         Self.paymentProtectionChanged.send()

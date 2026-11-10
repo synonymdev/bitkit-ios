@@ -26,6 +26,18 @@ final class UsdtPreparedQuoteTests: XCTestCase {
         XCTAssertEqual(quote.totalCost, 20)
     }
 
+    func testAffordabilityIncludesMaximumFeeAndRechecksChangedBalance() {
+        var quote = prepared.quote
+        XCTAssertTrue(quote.isAffordable(with: 1_000_020))
+        for balance: UInt64? in [1_000_019, 1_000_000, 0, nil] {
+            XCTAssertFalse(quote.isAffordable(with: balance))
+        }
+        quote.receivedAmount = 400_000
+        XCTAssertTrue(quote.isAffordable(with: 1_000_020), "A fee deducted from the sent amount is not charged twice")
+        quote.maximumFee = UInt64.max
+        XCTAssertFalse(quote.isAffordable(with: UInt64.max))
+    }
+
     func testUnchangedPaymentKeepsTheApprovedFeeUntilTheExpiryBuffer() {
         XCTAssertTrue(prepared.matches(recipient: recipient, amount: "1", destination: .arbitrum, sender: sender,
                                        now: Date(timeIntervalSince1970: 114)))

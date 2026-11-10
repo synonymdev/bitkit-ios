@@ -400,6 +400,49 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
     }
 
     @MainActor
+    func testCompletedUsdtSendWithoutStoredTransferReleasesFundingBinding() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let wallet = UsdtWalletManager(storageDirectory: directory, rpcUrl: "http://127.0.0.1:1", bundlerUrl: "http://127.0.0.1:1", loadCredentials: {
+            ("test test test test test test test test test test test junk", nil)
+        })
+        let owner = try await wallet.paymentEndpoint().value.lowercased()
+        for cancelled in [false, true] {
+            let service = PaykitUsdtPaymentService()
+            let requestId = PaykitPaymentRequest.ID(paymentRequestId: "unsubmitted-request", counterparty: "counterparty")
+            let attempt = PaykitUsdtPaymentService.Attempt(quoteId: "missing-quote", wallet: owner, identity: identity,
+                                                           contact: requestId.counterparty, requestId: requestId, binding: nil, billingPeriod: nil)
+            try saveUsdtAttempts([attempt])
+            await service.reconcile(context: { (owner, self.identity) }, storedTransfer: { _ in nil },
+                                    paymentProof: { _, _ in nil }, submitProof: { _ in false },
+                                    paymentRequests: { [] }, verifyPayment: { _, _ in nil })
+            try await service.storeAttempt(attempt) { _ in nil }
+            XCTAssertTrue(service.hasBinding(for: requestId))
+            let quote = UsdtQuote(bridgeProvider: nil, id: attempt.quoteId, recipient: owner, destination: .arbitrum,
+                                  amount: 50000, receivedAmount: 50000, maximumFee: 100, expiresAt: UInt64.max)
+            do {
+                try await service.send(quote, context: ContactPaymentContext(publicKey: requestId.counterparty),
+                                       paymentTerms: nil, wallet: wallet)
+                {
+                    if cancelled {
+                        throw CancellationError()
+                    }
+                }
+                XCTFail("A missing quote must not send")
+            } catch is CancellationError {
+                XCTAssertTrue(cancelled)
+            } catch UsdtError.QuoteExpired {
+                XCTAssertFalse(cancelled)
+            }
+            let storedTransfer = try await wallet.storedTransfer(quote.id)
+            XCTAssertNil(storedTransfer)
+            XCTAssertEqual(service.hasBinding(for: requestId), cancelled)
+            XCTAssertFalse(try XCTUnwrap(service.attempts.first).paymentStarted)
+            XCTAssertTrue(PaykitUsdtPaymentService().hasBinding(for: requestId), "Restart requires fresh authoritative journal evidence")
+        }
+    }
+
+    @MainActor
     func testInterruptedReconciliationPreservesOnlyCurrentOwnerFailureEvidence() async throws {
         for reason in ["missing", "error", "cancel", "restore", "wipe", "other-wallet", "pending"] {
             let service = PaykitUsdtPaymentService()

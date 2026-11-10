@@ -50,6 +50,13 @@ struct LnurlPayConfirm: View {
             app.contactPaymentContext?.incomingPaymentRequest?.pricing.conversion == nil
     }
 
+    private var hasSufficientFunds: Bool {
+        guard app.contactPaymentContext?.incomingPaymentRequest != nil else { return true }
+        guard let data = app.lnurlPayData else { return false }
+        let amount = wallet.sendAmountSats ?? data.minSendableSat
+        return amount > 0 && amount <= UInt64(clamping: wallet.maxSendLightningSats)
+    }
+
     var body: some View {
         ZStack {
             if let lnurlPayData = app.lnurlPayData {
@@ -215,6 +222,7 @@ struct LnurlPayConfirm: View {
                     ? t("subscriptions__swipe_to_subscribe_and_pay")
                     : t("wallet__send_swipe"),
                 accentColor: app.contactPaymentContext?.incomingPaymentRequest != nil ? .purpleAccent : .greenAccent,
+                isDisabled: !hasSufficientFunds,
                 isLoading: hasStartedAutomaticPayment || isSubmittingPayment,
                 isSubmitted: hasStartedAutomaticPayment,
                 swipeProgress: $swipeProgress
@@ -275,6 +283,7 @@ struct LnurlPayConfirm: View {
     }
 
     private func authorizeAndPerformPayment() async throws {
+        guard hasSufficientFunds else { throw NodeError.InsufficientFunds(message: "Insufficient spendable Lightning balance") }
         // Check if we need to show warning for amounts over $100 USD
         if settings.warnWhenSendingOver100 {
             let sats: UInt64 = if let invoice = app.scannedLightningInvoice {
@@ -297,6 +306,7 @@ struct LnurlPayConfirm: View {
         }
 
         // Check if authentication is required for payments
+        guard hasSufficientFunds else { throw NodeError.InsufficientFunds(message: "Insufficient spendable Lightning balance") }
         if settings.requirePinForPayments && settings.pinEnabled {
             if settings.useBiometrics && BiometricAuth.isAvailable {
                 let result = await BiometricAuth.authenticate()
@@ -328,6 +338,7 @@ struct LnurlPayConfirm: View {
     }
 
     private func performPayment() async throws {
+        guard hasSufficientFunds else { throw NodeError.InsufficientFunds(message: "Insufficient spendable Lightning balance") }
         guard let lnurlPayData = app.lnurlPayData else {
             throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing LNURL pay data"])
         }

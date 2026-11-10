@@ -83,7 +83,7 @@ This project uses [SwiftFormat](https://github.com/nicklockwood/SwiftFormat) for
 brew install swiftformat
 ```
 
-CI pins SwiftFormat 0.64.0, and `.swiftformat` sets it as the minimum version.
+CI pins SwiftFormat 0.64.6, and `.swiftformat` sets it as the minimum version.
 
 **IDE Extensions:**
 - [VSCode extension](https://open-vsx.org/extension/vknabel/vscode-swiftformat)

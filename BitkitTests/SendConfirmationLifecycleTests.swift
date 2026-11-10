@@ -8,6 +8,45 @@ import XCTest
 
 @MainActor
 final class SendConfirmationLifecycleTests: XCTestCase {
+    func testUnfundedBolt11RequestCannotAuthorizeAutomaticPayment() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let settings = SettingsViewModel.shared
+        let previousPinEnabled = settings.pinEnabled
+        defer { settings.pinEnabled = previousPinEnabled }
+        settings.pinEnabled = true
+        settings.requirePinForPayments = true
+        settings.useBiometrics = false
+        let request = try onchainRequest(isQuoted: false, acceptsLightning: true)
+        let app = AppViewModel()
+        app.contactPaymentContext = ContactPaymentContext(
+            publicKey: request.counterparty, incomingPaymentRequest: request, isInitialSubscriptionPayment: true
+        )
+        app.selectedWalletToPayFrom = .lightning
+        app.scannedLightningInvoice = LightningInvoice(
+            bolt11: "test-invoice", paymentHash: Data(), amountSatoshis: 2500, timestampSeconds: 0, expirySeconds: 0,
+            isExpired: false, description: nil, networkType: .regtest, payeeNodeId: nil
+        )
+        let wallet = WalletViewModel()
+        wallet.sendAmountSats = 2500
+        wallet.maxSendLightningSats = 1000
+        wallet.totalLightningSats = 10000
+        let sheets = SheetViewModel()
+        sheets.activeSheetConfiguration = SheetConfiguration(id: .send, data: nil)
+        let setup = SendConfirmationTestSetup()
+        setup.isPending = false
+        var path: [SendRoute] = []
+        let window = host(app: app, wallet: wallet, sheets: sheets, path: Binding(get: { path }, set: { path = $0 }), setup: setup)
+        defer { close(window) }
+        let deadline = ContinuousClock.now + .seconds(3)
+        while path.isEmpty, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(setup.pinChecks.isEmpty)
+        guard case let .failure(context) = path.last else { return XCTFail("An unfunded request cannot dispatch") }
+        XCTAssertEqual(context.failureType, sendFailureType(for: NodeError.InsufficientFunds(message: "")))
+    }
+
     func testFixedLightningReviewUsesInvoiceAmountAfterEditingAnotherFundingSource() async throws {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")

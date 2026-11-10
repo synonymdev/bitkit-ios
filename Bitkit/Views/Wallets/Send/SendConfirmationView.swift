@@ -68,6 +68,13 @@ struct SendConfirmationView: View {
         isSetupPending && app.contactPaymentContext?.incomingPaymentRequest != nil
     }
 
+    private var hasSufficientLightningRequestFunds: Bool {
+        guard app.contactPaymentContext?.incomingPaymentRequest != nil, app.selectedWalletToPayFrom == .lightning else { return true }
+        let amount = wallet.sendAmountSats ?? app.scannedLightningInvoice?.amountSatoshis ?? 0
+        let available = UInt64(clamping: wallet.maxSendLightningSats)
+        return amount > 0 && amount <= available && wallet.routingFeeEstimateSats <= available - amount
+    }
+
     private var requiresAmountReview: Bool {
         hasShownAmountReview || isAmountReviewRequired
     }
@@ -798,7 +805,7 @@ struct SendConfirmationView: View {
     private var fundingSourceButton: some View {
         SendFundingSourceButton(
             hwSend: hwSend,
-            disabled: isSubmittingPayment || isHardwarePreparationLoading || retainedHardwareRetry != nil,
+            disabled: isSubmittingPayment || isRequestSetupPending || isHardwarePreparationLoading || retainedHardwareRetry != nil,
             allowsUsdt: app.contactPaymentContext?.incomingPaymentRequest != nil
         ) { source in
             if app.contactPaymentContext?.incomingPaymentRequest != nil, let onSelectRequestFundingSource {
@@ -838,6 +845,7 @@ struct SendConfirmationView: View {
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
         guard !isSubmittingPayment else { return }
+        guard hasSufficientLightningRequestFunds else { throw NodeError.InsufficientFunds(message: "Insufficient spendable Lightning balance") }
         guard !requiresAmountReview, preparingRequest == nil, !isRequestSetupPending, walletSwitchContext == nil,
               isAutomatic || !prepareRequestCoinsIfNeeded() else { throw CancellationError() }
         // An automatic payment settles the fee itself below.
@@ -910,6 +918,7 @@ struct SendConfirmationView: View {
         }
 
         // Check if authentication is required for payments
+        guard hasSufficientLightningRequestFunds else { throw NodeError.InsufficientFunds(message: "Insufficient spendable Lightning balance") }
         if settings.requirePinForPayments && settings.pinEnabled {
             if settings.useBiometrics && BiometricAuth.isAvailable {
                 let result = await BiometricAuth.authenticate()
@@ -936,6 +945,7 @@ struct SendConfirmationView: View {
             return
         }
 
+        guard hasSufficientLightningRequestFunds else { throw NodeError.InsufficientFunds(message: "Insufficient spendable Lightning balance") }
         if hwSend.isActive {
             navigationPath.append(.hardwareSign)
         } else {
@@ -1147,7 +1157,7 @@ struct SendConfirmationView: View {
     }
 
     private var isSwipeDisabled: Bool {
-        Self.isSwipeDisabled(
+        !hasSufficientLightningRequestFunds || Self.isSwipeDisabled(
             walletType: app.selectedWalletToPayFrom,
             isHardwarePayment: hwSend.isActive,
             isHardwareConfirmationUnavailable: isHardwareConfirmationUnavailable,

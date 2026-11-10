@@ -1,10 +1,87 @@
 @testable import Bitkit
 import BitkitCore
+import LDKNode
+import Paykit
 import SwiftUI
 import XCTest
 
 @MainActor
 final class LnurlPayConfirmTests: XCTestCase {
+    func testInsufficientSpendingStopsBeforeAuthorizationAndRechecksAfterPin() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let settings = SettingsViewModel.shared
+        let previousPinEnabled = settings.pinEnabled
+        defer { settings.pinEnabled = previousPinEnabled }
+        settings.pinEnabled = true
+        settings.requirePinForPayments = true
+        settings.useBiometrics = false
+        let record = try PaymentRequestRecord(
+            counterparty: "test-contact", paymentRequestId: "550e8400-e29b-41d4-a716-446655440000",
+            localRole: .payer, state: .proposed, proposalStreamItemId: 1, proposalOutboundMessageId: nil, proposalOutboundStatus: nil,
+            proposalEventId: "650e8400-e29b-41d4-a716-446655440000", proposalAppId: "bitkit", payerAppId: nil, executionClaimAppId: nil,
+            terms: PaymentRequestTerms(
+                amount: PaymentRequestAmount(value: "0.0075", asset: "btc"), paymentReference: PaymentReference(text: "invoice"),
+                proposalExpiresAt: nil, recurrence: nil,
+                acceptedPaymentEndpointIdentifiers: [PublicPaykitService.MethodId.bitcoinLightningLnurl.rawValue],
+                paymentEndpoints: nil, requiredAppId: "bitkit", conversion: nil, paymentDeadline: nil, metadata: PrivateJsonObject(text: "{}")
+            ),
+            acceptedEventId: nil, acceptedOutboundStatus: nil, rejectedEventId: nil, rejectedOutboundStatus: nil,
+            canceledEventId: nil, canceledOutboundStatus: nil, conversionQuotes: [], paymentProofs: [], lastStreamItemId: 1,
+            lastOutboundMessageId: nil, lastOutboundStatus: nil, lastEventAt: nil, invalidReason: nil
+        )
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        for (available, expectedPinChecks) in [(490_000, 0), (750_000, 1)] {
+            let app = AppViewModel()
+            let wallet = WalletViewModel()
+            wallet.maxSendLightningSats = available
+            wallet.sendAmountSats = 750_000
+            app.contactPaymentContext = ContactPaymentContext(
+                publicKey: request.counterparty, incomingPaymentRequest: request, isInitialSubscriptionPayment: true
+            )
+            app.lnurlPayData = LnurlPayData(
+                uri: "https://example.com/pay", callback: "https://example.com/callback",
+                minSendable: 750_000_000, maxSendable: 750_000_000,
+                metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
+            )
+            let flow = SendPresentationState(initialRoute: .lnurlPayConfirm)
+            var pinChecks = 0
+            let view = LnurlPayConfirm(
+                navigationPath: Binding(get: { flow.navigationPath }, set: { flow.navigationPath = $0 }),
+                isSubmittingPayment: Binding(get: { flow.isSubmittingPayment }, set: { flow.isSubmittingPayment = $0 }),
+                requestPinCheck: {
+                    pinChecks += 1
+                    wallet.maxSendLightningSats = 490_000
+                    return true
+                },
+                prepareIncomingPaymentRequest: { XCTFail("An unaffordable payment must not prepare or dispatch") },
+                routingCacheResetAttempted: false
+            )
+            .environment(PaykitPaymentRequestManager())
+            .environmentObject(app)
+            .environmentObject(wallet)
+            .environmentObject(SheetViewModel())
+            .environmentObject(CurrencyViewModel(currencyService: OfflineCurrencyService()))
+            .environmentObject(settings)
+            .environmentObject(ContactsManager())
+            let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+            window.rootViewController = UIHostingController(rootView: view)
+            window.makeKeyAndVisible()
+            defer { window.isHidden = true; window.rootViewController = nil }
+            window.rootViewController?.view.layoutIfNeeded()
+            let deadline = ContinuousClock.now + .seconds(3)
+            while flow.navigationPath.isEmpty, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            XCTAssertEqual(pinChecks, expectedPinChecks)
+            guard case let .failure(context) = flow.navigationPath.last else {
+                return XCTFail("Insufficient capacity must end automatic payment without dispatch")
+            }
+            XCTAssertEqual(context.failureType, sendFailureType(for: NodeError.InsufficientFunds(message: "")))
+            XCTAssertFalse(flow.isSubmittingPayment)
+        }
+    }
+
     func testRecreatedConfirmationCannotStartAnotherPaymentDuringAuthorizationOrDispatch() async throws {
         for suspendedStage in ["authorization", "callback"] {
             let flow = SendPresentationState(initialRoute: .lnurlPayConfirm)
