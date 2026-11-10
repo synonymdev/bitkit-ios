@@ -10,16 +10,16 @@
     fixture-issuer saved as contacts. Start a 20 000 sat payment to the fixture-issuer through the swap route, wait
     until the provider logs "HTLC funded; awaiting client claim", and force-stop the app before any block is mined.
     Then delete the app, reset the simulator's keychain (`xcrun simctl keychain <udid> reset`), reinstall it, launch it
-    with the same arguments, and enter the same recovery phrase on the restore screen. On iOS the received sheet opens
-    once the claim confirms, after the toast, so the toast shows before the sheet rather than after closing it.
+    with the same arguments, and enter the same recovery phrase on the restore screen. On iOS the toast shows as soon
+    as the claim is broadcast and hides after 4 s, so it is checked after the first block, before the claim confirms.
   </description>
   <actions>
     <action>Tap Restore (tag "RestoreButton") and wait for the Wallet Restored screen, then tap Get Started (tag "GetStartedButton")</action>
     <action>Verify the savings balance (tag "ActivitySavings") shows 0</action>
     <action>Mine one block on bitkit-docker's bitcoind, so the provider's lockup confirms</action>
+    <action>Verify the toast "Payment returned to Savings" is visible</action>
     <action>Verify the provider logs "client claimed; hold invoice settled"</action>
     <action>Mine one more block, so the claim confirms</action>
-    <action>Verify the toast "Payment returned to Savings" is visible</action>
     <action>Verify the "Received Bitcoin" sheet shows 20 000, then close it</action>
     <action>Verify the savings balance (tag "ActivitySavings") shows 20 000, and bitcoind shows the claim transaction paying exactly 0.0002 BTC to the wallet's own address</action>
   </actions>

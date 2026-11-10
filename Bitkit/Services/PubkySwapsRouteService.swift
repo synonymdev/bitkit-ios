@@ -8,6 +8,13 @@ struct PaykitSwapRoute: Equatable {
     var providerName: String?
 }
 
+/// How a swap's claim wait ended without a claim: bitkit-core failed the swap, or the wait ran out with the outcome
+/// still open, when the provider may yet settle the hold invoice.
+enum PubkySwapClaimError: Error {
+    case failed(String)
+    case timedOut(Error)
+}
+
 /// Routes a Paykit payment through a Pubky Swaps provider when no balance the wallet holds reaches an endpoint the
 /// contact published. bitkit-core picks the provider and checks its quote, contract and hold invoice; the wallet pays
 /// the hold invoice from spending and bitkit-core claims the provider's lockup straight to the contact's address.
@@ -17,7 +24,7 @@ enum PubkySwapsRouteService {
     private static let claimTimeout: TimeInterval = 10 * 60
     /// How often a broadcast claim is advanced, so bitkit-core rebroadcasts it until it confirms.
     private static let confirmationPollInterval: Duration = .seconds(30)
-    /// How long a broadcast claim is advanced in the background before polling stops.
+    /// How long a swap is advanced in the background, after its claim broadcast or claim wait, before polling stops.
     private static let confirmationTimeout: TimeInterval = 60 * 60
 
     static var isEnabled: Bool {
@@ -126,8 +133,20 @@ enum PubkySwapsRouteService {
     /// Advance the swap until bitkit-core broadcasts the claim to the contact, returning the claim txid. The provider
     /// settles the hold invoice once it sees the claim, so the payment is done; the claim is still advanced in the
     /// background so bitkit-core rebroadcasts it until it confirms.
+    /// A wait that runs out keeps advancing the swap in the background too, so it can still claim and settle the hold
+    /// payment, and throws `PubkySwapClaimError.timedOut`.
     static func awaitClaim(swapId: String) async throws -> String {
-        let txid = try await pollClaim(swapId: swapId, interval: pollInterval, timeout: claimTimeout, untilConfirmed: false)
+        do {
+            let txid = try await pollClaim(swapId: swapId, interval: pollInterval, timeout: claimTimeout, untilConfirmed: false)
+            advanceInBackground(swapId: swapId)
+            return txid
+        } catch let PubkySwapClaimError.timedOut(lastFailure) {
+            advanceInBackground(swapId: swapId)
+            throw PubkySwapClaimError.timedOut(lastFailure)
+        }
+    }
+
+    private static func advanceInBackground(swapId: String) {
         Task.detached {
             do {
                 let confirmed = try await pollClaim(
@@ -138,7 +157,6 @@ enum PubkySwapsRouteService {
                 Logger.warn("Failed to confirm Pubky Swaps claim for \(swapId): \(error)", context: "PubkySwapsRoute")
             }
         }
-        return txid
     }
 
     private static func pollClaim(
@@ -167,14 +185,14 @@ enum PubkySwapsRouteService {
             case let .claimBroadcast(txid)? where !untilConfirmed:
                 return txid
             case let .failed(reason)?:
-                throw AppError(message: reason, debugMessage: nil)
+                throw PubkySwapClaimError.failed(reason)
             case let state?:
                 Logger.debug("Pubky Swaps route \(swapId): \(state)", context: "PubkySwapsRoute")
                 lastFailure = AppError(message: "Swap \(swapId) not claimed yet", debugMessage: "\(state)")
             case nil:
                 break
             }
-            guard Date() < deadline else { throw lastFailure }
+            guard Date() < deadline else { throw PubkySwapClaimError.timedOut(lastFailure) }
             try await Task.sleep(for: interval)
         }
     }

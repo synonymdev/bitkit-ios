@@ -206,9 +206,29 @@ final class SendConfirmationViewTests: XCTestCase {
 
     func testSwapRouteResultReachesOnlyTheSheetThatStartedIt() {
         let started = UUID()
-        XCTAssertTrue(SendConfirmationView.isSwapRouteResultCurrent(startedIn: started, active: started))
-        XCTAssertFalse(SendConfirmationView.isSwapRouteResultCurrent(startedIn: started, active: UUID()))
-        XCTAssertFalse(SendConfirmationView.isSwapRouteResultCurrent(startedIn: started, active: nil))
-        XCTAssertFalse(SendConfirmationView.isSwapRouteResultCurrent(startedIn: nil, active: nil))
+        func isCurrent(_ start: UUID?, _ active: UUID?) -> Bool {
+            SendConfirmationView.isSwapRouteResultCurrent(startedIn: start, active: active, quoteId: "quote", activeQuoteId: "quote")
+        }
+        XCTAssertTrue(isCurrent(started, started))
+        XCTAssertFalse(isCurrent(started, UUID()))
+        XCTAssertFalse(isCurrent(started, nil))
+        XCTAssertFalse(isCurrent(nil, nil))
+    }
+
+    func testSwapRouteResultSkipsAPaymentEditedInTheSameSheet() {
+        let sheet = UUID()
+        func isCurrent(_ activeQuoteId: String?) -> Bool {
+            SendConfirmationView.isSwapRouteResultCurrent(startedIn: sheet, active: sheet, quoteId: "quote", activeQuoteId: activeQuoteId)
+        }
+        XCTAssertFalse(isCurrent("edited-quote"))
+        XCTAssertFalse(isCurrent(nil))
+    }
+
+    func testOnlyAFailedSwapEndsASentHoldPayment() {
+        let electrumError = AppError(message: "electrum", debugMessage: nil)
+        XCTAssertTrue(SendConfirmationView.isDefiniteSwapFailure(PubkySwapClaimError.failed("lockup expired")))
+        XCTAssertFalse(SendConfirmationView.isDefiniteSwapFailure(PubkySwapClaimError.timedOut(electrumError)))
+        XCTAssertFalse(SendConfirmationView.isDefiniteSwapFailure(CancellationError()))
+        XCTAssertFalse(SendConfirmationView.isDefiniteSwapFailure(electrumError))
     }
 }

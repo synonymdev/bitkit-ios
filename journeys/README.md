@@ -252,7 +252,9 @@ When you port an Android feature, port its journeys too — see the Journeys sec
 
 Some suites are adapted rather than ported verbatim: `pubky-marketplace` because the two-wallet payment runs on regtest here. In `pubky-auth`, the
 watch-only OS handoff journey is iOS-only; `grant-signup.xml` and
-`grant-signup-existing-identity.xml` are shared with Android.
+`grant-signup-existing-identity.xml` are shared with Android. `paykit-swap-restore.xml` checks the
+"Payment returned to Savings" toast right after the first block, before the claim confirms, because on
+iOS the toast shows once the claim is broadcast and hides before the Received sheet opens.
 
 `profile/signup-create-profile.xml` is currently iOS-only. It covers the iOS Profile Error regression
 after staging signup. Android also supports this signup flow, but this journey has not been ported there.

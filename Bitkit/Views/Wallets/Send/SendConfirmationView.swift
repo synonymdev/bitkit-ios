@@ -1367,19 +1367,37 @@ struct SendConfirmationView: View {
         return note
     }
 
-    /// A swap result belongs to the sheet that started it; a nil start never matches, so a dismissed sheet cannot pass.
-    static func isSwapRouteResultCurrent(startedIn startedPresentationID: UUID?, active activePresentationID: UUID?) -> Bool {
-        startedPresentationID != nil && startedPresentationID == activePresentationID
+    /// A swap result belongs to the sheet and quote that started it; a nil start never matches, so a dismissed sheet
+    /// cannot pass, and a payment edited from Amount in the same sheet holds a fresh quote or none.
+    static func isSwapRouteResultCurrent(
+        startedIn startedPresentationID: UUID?,
+        active activePresentationID: UUID?,
+        quoteId: String,
+        activeQuoteId: String?
+    ) -> Bool {
+        startedPresentationID != nil && startedPresentationID == activePresentationID && quoteId == activeQuoteId
+    }
+
+    /// Only a swap bitkit-core failed ends a sent hold payment for sure; any other claim error leaves it open.
+    static func isDefiniteSwapFailure(_ error: Error) -> Bool {
+        guard case PubkySwapClaimError.failed = error else { return false }
+        return true
     }
 
     private func performSwapRoutedPayment(_ quote: PubkySwapRouteQuote) async {
         isSubmittingPayment = true
         defer { isSubmittingPayment = false }
         let contactPaymentContext = app.contactPaymentContext
-        // The claim can land after the sheet is dismissed, when another send may be open.
+        // The claim can land after the sheet is dismissed, when another send may be open, or after the user went back
+        // to Amount in the same sheet, which quotes the edited payment afresh.
         let startedPresentationID = sheets.activeSheetConfiguration?.presentationID
         func isSendCurrent() -> Bool {
-            Self.isSwapRouteResultCurrent(startedIn: startedPresentationID, active: sheets.activeSheetConfiguration?.presentationID)
+            Self.isSwapRouteResultCurrent(
+                startedIn: startedPresentationID,
+                active: sheets.activeSheetConfiguration?.presentationID,
+                quoteId: quote.quoteId,
+                activeQuoteId: app.paykitSwapRoute?.quote?.quoteId
+            )
         }
         var createdMetadataPaymentId: String?
         let eventId = "swap-route-\(quote.quoteId)"
@@ -1419,6 +1437,18 @@ struct SendConfirmationView: View {
                 }
                 // The hold payment is still in flight, so its tags stay.
                 createdMetadataPaymentId = nil
+                guard Self.isDefiniteSwapFailure(error) else {
+                    // The provider may still settle the hold payment, so a fresh one could pay the contact twice: the
+                    // pending screen waits for this one while the swap keeps advancing in the background.
+                    Logger.warn("Pubky Swaps route \(payment.swapId) outcome unknown: \(error)", context: "SendConfirmation")
+                    app.addPendingPaymentHash(paymentHash, contactPaymentContext: contactPaymentContext)
+                    guard isSendCurrent() else {
+                        app.toast(type: .info, title: t("wallet__send_pending"), description: t("wallet__send_pending_note"))
+                        return
+                    }
+                    navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .amount, paymentRequest: payment.invoice))
+                    return
+                }
                 throw error
             }
             Logger.info("Claimed Pubky Swaps route \(payment.swapId) in \(claimTxid)", context: "SendConfirmation")
