@@ -320,12 +320,18 @@ struct ActivityInfoSection: View {
     let title: String
     let content: String
     let testId: String?
+    /// The step lists' divider instead of the system one, for screens whose rows use it.
+    let usesCustomDivider: Bool
+    /// Space under the divider; a screen whose next row brings its own top spacing passes 0.
+    let bottomSpacing: CGFloat
     @EnvironmentObject var app: AppViewModel
 
-    init(title: String, content: String, testId: String? = nil) {
+    init(title: String, content: String, testId: String? = nil, usesCustomDivider: Bool = false, bottomSpacing: CGFloat = 16) {
         self.title = title
         self.content = content
         self.testId = testId
+        self.usesCustomDivider = usesCustomDivider
+        self.bottomSpacing = bottomSpacing
     }
 
     var body: some View {
@@ -339,8 +345,14 @@ struct ActivityInfoSection: View {
                 BodySSBText(content)
                     .padding(.bottom, 16)
 
-                Divider()
-                    .padding(.bottom, 16)
+                Group {
+                    if usesCustomDivider {
+                        CustomDivider()
+                    } else {
+                        Divider()
+                    }
+                }
+                .padding(.bottom, bottomSpacing)
             }
         }
         .buttonStyle(.plain)

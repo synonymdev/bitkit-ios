@@ -16,7 +16,7 @@ struct SparkExitIntroView: View {
 
             BodyMText(t("lightning__spark_exit__intro_text"), accentFont: Fonts.bold)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 8)
+                .padding(.top, SparkExitLayout.headlineGap)
 
             Spacer()
 
@@ -206,7 +206,7 @@ struct SparkExitFundingView: View {
                         accentFont: Fonts.bold
                     )
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 8)
+                    .padding(.top, SparkExitLayout.headlineGap)
 
                     if let steps = exit.quote?.fundedSteps, steps > 1 {
                         BodySText(t("lightning__spark_exit__funding_split", variables: ["count": "\(steps)"]))
@@ -400,7 +400,7 @@ struct SparkExitTxNote: View {
         VStack(alignment: .leading, spacing: 0) {
             BodySText(text, accentColor: .white, accentFont: Fonts.bold)
                 .fixedSize(horizontal: false, vertical: true)
-            ActivityInfoSection(title: t("wallet__activity_tx_id"), content: txid)
+            ActivityInfoSection(title: t("wallet__activity_tx_id"), content: txid, usesCustomDivider: true, bottomSpacing: 0)
                 .padding(.top, 16)
         }
     }
@@ -508,7 +508,7 @@ struct SparkExitConfirmView: View {
 
                     BodyMText(t("lightning__spark_exit__confirm_text"), accentFont: Fonts.bold)
                         .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 8)
+                        .padding(.top, SparkExitLayout.headlineGap)
                         .padding(.bottom, 32)
 
                     if let quote = exit.quote {
@@ -648,15 +648,21 @@ struct SparkExitProgressView: View {
 
                     BodyMText(text, accentFont: Fonts.bold)
                         .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 8)
+                        .padding(.top, SparkExitLayout.headlineGap)
                         .padding(.bottom, 24)
 
                     if let record {
                         SparkExitSteps(record: record, tipHeight: exit.tipHeight)
 
                         if let sweepTxid = SparkExitMath.received(record)?.sweepTxid {
-                            ActivityInfoSection(title: t("wallet__activity_tx_id"), content: sweepTxid, testId: "SparkExitSweepTxid")
-                                .padding(.top, 24)
+                            ActivityInfoSection(
+                                title: t("wallet__activity_tx_id"),
+                                content: sweepTxid,
+                                testId: "SparkExitSweepTxid",
+                                usesCustomDivider: true,
+                                bottomSpacing: 0
+                            )
+                            .padding(.top, 24)
                         }
 
                         if exit.isSavingsPaymentRefused {
@@ -731,6 +737,7 @@ struct SparkExitProgressView: View {
                                 BodySText(t("lightning__spark_exit__fee_rose"), textColor: .yellowAccent)
                                     .fixedSize(horizontal: false, vertical: true)
                                     .multilineTextAlignment(.leading)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .buttonStyle(PlainButtonStyle())
                             .padding(.top, 16)
@@ -905,7 +912,7 @@ struct SparkExitFeeBumpView: View {
                         accentFont: Fonts.bold
                     )
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 8)
+                    .padding(.top, SparkExitLayout.headlineGap)
                     .padding(.bottom, 24)
 
                     if exit.isPricingFeeBump {
@@ -1108,4 +1115,10 @@ struct SparkExitSteps: View {
             CustomDivider()
         }
     }
+}
+
+enum SparkExitLayout {
+    /// The gap under an exit headline: master's 8, plus 1 so it renders like Android's, whose Display line height
+    /// adds 9 dp under a headline. Measured on 2x media devices.
+    static let headlineGap: CGFloat = 9
 }
