@@ -51,6 +51,8 @@ final class SparkManager: ChannelFreeLightningRail {
     @ObservationIgnored private var broadcastDeposits: [String: UInt64] = [:]
     /// Sends recorded before Spark knew their fee; its completion event reports 0 until a later sync.
     @ObservationIgnored private var sendsRecordedWithoutFee: Set<String> = []
+    /// Payments whose activity failed to save, written again at the next refresh.
+    @ObservationIgnored private var unsavedPayments: Set<String> = []
     @ObservationIgnored private var sdk: BreezSdk?
     /// The last withdrawal quote, which the withdrawal reuses while it holds.
     @ObservationIgnored private var preparedWithdrawal: (quote: SparkWithdrawalQuote, response: PrepareSendPaymentResponse)?
@@ -241,6 +243,7 @@ final class SparkManager: ChannelFreeLightningRail {
         withdrawals = []
         broadcastDeposits = [:]
         sendsRecordedWithoutFee = []
+        unsavedPayments = []
         sentWithdrawalTxIds = []
         preparedWithdrawal = nil
         onStateChanged?()
@@ -678,7 +681,7 @@ final class SparkManager: ChannelFreeLightningRail {
         if changed {
             onStateChanged?()
         }
-        for payment in payments where sendsRecordedWithoutFee.contains(payment.id) && Self.sats(payment.fees) > 0 {
+        for payment in Self.paymentsToRecordAgain(payments, unsaved: unsavedPayments, recordedWithoutFee: sendsRecordedWithoutFee) {
             await recordActivity(payment)
         }
         for txId in Self.transferTxIds(unclaimed: unclaimed, payments: payments) {
@@ -756,15 +759,43 @@ final class SparkManager: ChannelFreeLightningRail {
 
     private func syncActivities() async throws {
         let payments = try await requireSdk().listPayments(request: ListPaymentsRequest()).payments
-        for payment in payments {
-            await recordActivity(payment)
+        var recordError: Error?
+        do {
+            try await Self.recordAll(payments) { await self.recordActivity($0) }
+        } catch {
+            recordError = error
         }
         // A send that failed while the app was closed released no hold on a channel retry. Spark's list is read again,
         // so a retry the user started while the activities were recorded keeps its hold.
-        guard let latest = try? await requireSdk().listPayments(request: ListPaymentsRequest()).payments else { return }
-        for paymentHash in Self.failedSendHashes(latest) {
-            LightningService.shared.releaseRailAttempt(paymentHash: paymentHash)
+        if let latest = try? await requireSdk().listPayments(request: ListPaymentsRequest()).payments {
+            for paymentHash in Self.failedSendHashes(latest) {
+                LightningService.shared.releaseRailAttempt(paymentHash: paymentHash)
+            }
         }
+        if let recordError {
+            throw recordError
+        }
+    }
+
+    /// Records every payment, then throws when any failed to save, so the activity sync isn't marked complete.
+    static func recordAll(_ payments: [Payment], record: (Payment) async -> Bool) async throws {
+        var unsaved = 0
+        for payment in payments where await !record(payment) {
+            unsaved += 1
+        }
+        guard unsaved == 0 else {
+            throw AppError(message: "Failed to save \(unsaved) Spark activities", debugMessage: nil)
+        }
+    }
+
+    /// The payments a refresh writes again: those whose last write failed, and sends recorded before Spark knew the fee
+    /// it now reports.
+    nonisolated static func paymentsToRecordAgain(
+        _ payments: [Payment],
+        unsaved: Set<String>,
+        recordedWithoutFee: Set<String>
+    ) -> [Payment] {
+        payments.filter { unsaved.contains($0.id) || (recordedWithoutFee.contains($0.id) && sats($0.fees) > 0) }
     }
 
     private func onSdkEvent(_ event: SdkEvent) async {
@@ -808,8 +839,10 @@ final class SparkManager: ChannelFreeLightningRail {
         }
     }
 
-    private func recordActivity(_ payment: Payment) async {
-        guard case let .lightning(description, invoice, _, htlcDetails, _, _, _, _) = payment.details else { return }
+    /// Returns whether the payment's activity is saved; a failed write is kept in `unsavedPayments` for the next refresh.
+    @discardableResult
+    private func recordActivity(_ payment: Payment) async -> Bool {
+        guard case let .lightning(description, invoice, _, htlcDetails, _, _, _, _) = payment.details else { return true }
         let details = PaymentDetails(
             id: htlcDetails.paymentHash,
             kind: .bolt11(
@@ -832,8 +865,12 @@ final class SparkManager: ChannelFreeLightningRail {
         }
         do {
             try await CoreService.shared.activity.recordChannelFreeRailPayment(details)
+            unsavedPayments.remove(payment.id)
+            return true
         } catch {
             Logger.error("Failed to record Spark payment '\(payment.id)': \(error)", context: "SparkManager")
+            unsavedPayments.insert(payment.id)
+            return false
         }
     }
 
