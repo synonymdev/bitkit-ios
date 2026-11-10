@@ -384,6 +384,14 @@ final class SparkManager: ChannelFreeLightningRail {
         return ChannelFreeRailSendRefused(reason: t("other__scan__error__expired"))
     }
 
+    nonisolated func hasSynced(after seconds: UInt64?) async -> Bool {
+        guard let info = try? await requireSdk().getInfo(request: GetInfoRequest(ensureSynced: false)),
+              info.lastSyncError == nil
+        else { return false }
+        guard let seconds else { return true }
+        return info.lastSyncedAt.map { $0 > seconds } ?? false
+    }
+
     nonisolated func lightningPayments() async throws -> [ChannelFreeRailPayment] {
         let payments = try await requireSdk().listPayments(request: ListPaymentsRequest(sortAscending: false)).payments
         return payments.compactMap { payment in
@@ -654,10 +662,14 @@ final class SparkManager: ChannelFreeLightningRail {
             ))
         } catch {
             Logger.warn("Spark withdrawal to a contact failed or its outcome is unknown: \(error)", context: "SparkManager")
+            let failedAt = UInt64(Date().timeIntervalSince1970)
             Task {
-                // Only a sync that succeeded now can tell whether this withdrawal went out.
-                guard await (try? requireSdk().syncWallet(request: SyncWalletRequest())) != nil else { return }
-                await settleContactWithdrawal(allowClear: true)
+                await Self.settleAfterFailedWithdrawal(
+                    failedAt: failedAt,
+                    syncWallet: { _ = try await self.requireSdk().syncWallet(request: SyncWalletRequest()) },
+                    hasSynced: { await self.hasSynced(after: $0) },
+                    settle: { await self.settleContactWithdrawal(allowClear: $0) }
+                )
             }
             throw error
         }
@@ -700,6 +712,29 @@ final class SparkManager: ChannelFreeLightningRail {
             Logger.info("Closed a Spark contact withdrawal Spark never listed", context: "SparkManager")
             await Self.closeUnsentWithdrawal(pending, releaseProof: Self.releaseUnsentProof, failAllowance: Self.failAllowance)
         }
+    }
+
+    /// Settles a withdrawal whose send failed or has an unknown outcome from the sync after it. That sync returns even
+    /// when it never reached Spark, so only one that completed after `failedAt` may close an unlisted one as unsent.
+    static func settleAfterFailedWithdrawal(
+        failedAt: UInt64,
+        syncWallet: () async throws -> Void,
+        hasSynced: (UInt64) async -> Bool,
+        settle: (_ allowClear: Bool) async -> Void
+    ) async {
+        guard await (try? syncWallet()) != nil else { return }
+        await settleAfterSync(since: failedAt, hasSynced: hasSynced, settle: settle)
+    }
+
+    /// Spark reports a sync that never reached it as done too, its `.synced` event included, so only one that completed
+    /// after `since` may close an unlisted withdrawal as unsent.
+    static func settleAfterSync(
+        since: UInt64,
+        hasSynced: (UInt64) async -> Bool,
+        settle: (_ allowClear: Bool) async -> Void
+    ) async {
+        let synced = await hasSynced(since)
+        await settle(synced)
     }
 
     /// Writes the attempt's journal before `beforeSend` starts the request's proof, so a kill between the two leaves a
@@ -1222,7 +1257,11 @@ final class SparkManager: ChannelFreeLightningRail {
         switch event {
         case .synced:
             await refreshState()
-            await settleContactWithdrawal(allowClear: true)
+            await Self.settleAfterSync(
+                since: Self.pendingContactWithdrawal?.startedAt ?? 0,
+                hasSynced: { await self.hasSynced(after: $0) },
+                settle: { await self.settleContactWithdrawal(allowClear: $0) }
+            )
         case .newDeposits, .claimedDeposits:
             await refreshState()
         case let .unclaimedDeposits(deposits):

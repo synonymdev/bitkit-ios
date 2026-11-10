@@ -182,6 +182,33 @@ final class PaykitRouteTests: XCTestCase {
         )
     }
 
+    func testAFailedWithdrawalStaysOpenAfterASyncThatNeverReachedSpark() async {
+        var allowedClears: [Bool] = []
+        // The sync call returns, but Spark keeps its failed sync in `lastSyncError`, so it never synced after the failure.
+        await SparkManager.settleAfterFailedWithdrawal(
+            failedAt: 1000,
+            syncWallet: {},
+            hasSynced: { _ in false },
+            settle: { allowedClears.append($0) }
+        )
+        XCTAssertEqual(allowedClears, [false], "A sync that never reached Spark can't show the withdrawal was never sent")
+
+        var syncedAfter: UInt64?
+        await SparkManager.settleAfterFailedWithdrawal(
+            failedAt: 1000,
+            syncWallet: {},
+            hasSynced: { syncedAfter = $0; return true },
+            settle: { allowedClears.append($0) }
+        )
+        XCTAssertEqual(syncedAfter, 1000)
+        XCTAssertEqual(allowedClears, [false, true])
+
+        // Spark's `.synced` event also follows a sync that never reached it.
+        await SparkManager.settleAfterSync(since: 900, hasSynced: { syncedAfter = $0; return false }, settle: { allowedClears.append($0) })
+        XCTAssertEqual(syncedAfter, 900)
+        XCTAssertEqual(allowedClears, [false, true, false], "A synced event alone can't show the withdrawal was never sent")
+    }
+
     func testJournalStaysOpenUntilEveryLocalRecordIsSaved() async {
         let saved = await SparkManager.recordWithdrawalLocally(saveProof: { true }, saveActivity: { true }, saveTags: { true })
         XCTAssertTrue(saved)
