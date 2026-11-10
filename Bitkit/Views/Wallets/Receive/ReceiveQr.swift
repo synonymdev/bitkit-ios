@@ -525,9 +525,9 @@ struct ReceiveQr: View {
             }
         }
         .padding(32)
+        .frame(maxHeight: .infinity)
         .background(Color.black)
         .cornerRadius(8)
-        .aspectRatio(1, contentMode: .fit)
         .overlay(alignment: .bottomLeading) {
             if !UIScreen.main.isSmall {
                 Image("arrow-cjit")
@@ -537,6 +537,10 @@ struct ReceiveQr: View {
                     .offset(x: 70, y: 110)
             }
         }
+        // Figma leaves 122 pt between the card and the button; the spacer above the button adds the last 8.
+        .padding(.bottom, UIScreen.main.isSmall ? 0 : 114)
+        // Ahead of the tab's bottom spacer, so the card takes the rest of the page.
+        .layoutPriority(1)
     }
 
     func detailsContent(for tab: ReceiveTab) -> some View {
