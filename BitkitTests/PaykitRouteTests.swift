@@ -358,6 +358,31 @@ final class PaykitRouteTests: XCTestCase {
     }
 
     @MainActor
+    func testAWithdrawalWhoseQuoteExpiresBeforeItSendsNeverLeaves() async {
+        var now = Date(timeIntervalSince1970: 1_800_000_000)
+        var steps: [String] = []
+        do {
+            try await SparkManager.startJournaledWithdrawal(
+                writeJournal: { steps.append("journal") },
+                beforeSend: {
+                    // The quote expires while the allowance and the request are checked.
+                    now = now.addingTimeInterval(120)
+                    steps.append("proof started")
+                },
+                closeUnsent: { steps.append("closed") },
+                paymentDeadline: PaykitPreciseInstant(date: now.addingTimeInterval(60)),
+                now: { now }
+            )
+            XCTFail("An expired quote must stop the send")
+        } catch let error as SparkWithdrawalNotSent {
+            XCTAssertEqual(error.underlying as? PaykitPaymentRequestError, .requestExpired)
+        } catch {
+            XCTFail("Unexpected error \(error)")
+        }
+        XCTAssertEqual(steps, ["journal", "proof started", "closed"], "The refusal closes the journal, releasing the started proof")
+    }
+
+    @MainActor
     func testARouteThatReturnsAfterItsPaymentChangedNeverLandsOnTheNextOne() async {
         snapshotAppDefaultsDomain()
         let app = AppViewModel()

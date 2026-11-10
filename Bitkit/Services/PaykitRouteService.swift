@@ -212,6 +212,7 @@ enum PaykitRouteService {
         contact: String?,
         request: SparkContactWithdrawal.PaykitRequest? = nil,
         tags: [String] = [],
+        paymentDeadline: PaykitPreciseInstant? = nil,
         beforeSend: () async throws -> Void = {}
     ) async throws -> String {
         guard leg.service == SparkManager.routeService else {
@@ -224,6 +225,7 @@ enum PaykitRouteService {
             request: request,
             tags: tags,
             maxFeeSats: leg.debitSat.saturatingSub(leg.deliveredSat),
+            paymentDeadline: paymentDeadline,
             beforeSend: beforeSend
         )
     }

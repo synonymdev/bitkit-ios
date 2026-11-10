@@ -597,6 +597,7 @@ final class SparkManager: ChannelFreeLightningRail {
         request: SparkContactWithdrawal.PaykitRequest? = nil,
         tags: [String] = [],
         maxFeeSats: UInt64? = nil,
+        paymentDeadline: PaykitPreciseInstant? = nil,
         beforeSend: () async throws -> Void = {}
     ) async throws -> String {
         // Everything before the journal is written sends nothing, so a refusal here says so to the caller.
@@ -642,7 +643,8 @@ final class SparkManager: ChannelFreeLightningRail {
             beforeSend: beforeSend,
             closeUnsent: {
                 await Self.closeUnsentWithdrawal(journaled, releaseProof: Self.releaseUnsentProof, failAllowance: Self.failAllowance)
-            }
+            },
+            paymentDeadline: paymentDeadline
         )
         let response: SendPaymentResponse
         do {
@@ -701,16 +703,20 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// Writes the attempt's journal before `beforeSend` starts the request's proof, so a kill between the two leaves a
-    /// journal that recovery closes as unsent once it expires, releasing the proof; a refusal in `beforeSend` closes it
-    /// at once, releasing what it started.
+    /// journal that recovery closes as unsent once it expires, releasing the proof; a refusal in `beforeSend`, or a
+    /// `paymentDeadline` passed by then, closes it at once, releasing what it started.
     static func startJournaledWithdrawal(
         writeJournal: () -> Void,
         beforeSend: () async throws -> Void,
-        closeUnsent: () async -> Void
+        closeUnsent: () async -> Void,
+        paymentDeadline: PaykitPreciseInstant? = nil,
+        now: () -> Date = Date.init
     ) async throws {
         writeJournal()
         do {
             try await beforeSend()
+            // A quote can expire while the request and its allowance are checked, so it is checked last.
+            try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline, at: now())
         } catch {
             await closeUnsent()
             throw SparkWithdrawalNotSent(underlying: error)

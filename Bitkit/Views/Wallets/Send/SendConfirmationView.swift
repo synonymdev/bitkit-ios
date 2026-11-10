@@ -1509,6 +1509,8 @@ struct SendConfirmationView: View {
         var proofRequest: SparkContactWithdrawal.PaykitRequest?
         var markProofStarted: (() async throws -> Void)?
         do {
+            // The selected conversion quote's expiry bounds the send too, as on a direct send.
+            let paymentDeadline = try request?.submissionDeadline(quoteId: app.paykitPaymentTerms?.quoteId)
             if let request {
                 guard let privateContext = context?.privatePaymentContext else { throw PaykitPaymentRequestError.requestUnavailable }
                 let identity = try await PaykitRouteService.startLegRequestProof(
@@ -1577,6 +1579,7 @@ struct SendConfirmationView: View {
                             contact: context?.publicKey,
                             request: proofRequest,
                             tags: tagManager.selectedTagsArray,
+                            paymentDeadline: paymentDeadline,
                             beforeSend: {
                                 try await markProofStarted?()
                                 try await beforeSend()
