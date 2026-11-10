@@ -422,6 +422,30 @@ final class PaykitRouteTests: XCTestCase {
     }
 
     @MainActor
+    func testAStaleCloseDuringARetryKeepsTheNewerProofAndAllowanceAttempt() async {
+        snapshotAppDefaultsDomain()
+        let request = SparkContactWithdrawal.PaykitRequest(
+            id: PaykitPaymentRequest.ID(paymentRequestId: "request", counterparty: "payee"),
+            identity: "payer"
+        )
+        let older = SparkContactWithdrawal(address: onchain.value, amountSats: 20000, contact: "contact", startedAt: 1000, request: request)
+        let newer = SparkContactWithdrawal(address: onchain.value, amountSats: 20000, contact: "contact", startedAt: 2000, request: request)
+        SparkManager.pendingContactWithdrawal = newer
+        var released: [SparkContactWithdrawal.PaykitRequest] = []
+        var failedAllowances: [SparkContactWithdrawal.PaykitRequest] = []
+
+        await SparkManager.closeUnsentWithdrawal(
+            older,
+            releaseProof: { released.append($0); return .released },
+            failAllowance: { failedAllowances.append($0) }
+        )
+
+        XCTAssertEqual(released, [], "The proof matches by request, so a stale close would release the retry's started proof")
+        XCTAssertEqual(failedAllowances, [], "The retry's allowance attempt stays open while it is in flight")
+        XCTAssertEqual(SparkManager.pendingContactWithdrawal, newer)
+    }
+
+    @MainActor
     func testAPendingSparkSendNeverAdoptsTheNodesOnchainAttempt() {
         let attempt = SparkWithdrawalAttempt(address: onchain.value, amountSats: 20000, requestId: nil)
 

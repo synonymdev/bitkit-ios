@@ -687,6 +687,8 @@ final class SparkManager: ChannelFreeLightningRail {
     /// Writes the withdrawal's sent activity, tags and request proof, and closes the journal only once all of them are
     /// saved, so a failed or interrupted write is retried from the journal.
     private func recordContactWithdrawal(_ payment: Payment, txId: String, pending: SparkContactWithdrawal) async {
+        // A settle that raced this one already saved everything; its request's proof and allowance may be a retry's now.
+        guard Self.isOpenJournal(pending) else { return }
         guard payment.status != .failed else {
             await Self.closeUnsentWithdrawal(pending, releaseProof: Self.releaseUnsentProof, failAllowance: Self.failAllowance)
             return
@@ -740,6 +742,8 @@ final class SparkManager: ChannelFreeLightningRail {
         releaseProof: (SparkContactWithdrawal.PaykitRequest) async -> SparkProofRelease,
         failAllowance: (SparkContactWithdrawal.PaykitRequest) async -> Void
     ) async {
+        // The proof and allowance attempt match by request, so a stale close would release a retry's.
+        guard isOpenJournal(pending) else { return }
         if let request = pending.request {
             switch await releaseProof(request) {
             case .failed:
@@ -757,11 +761,15 @@ final class SparkManager: ChannelFreeLightningRail {
         }
     }
 
+    nonisolated static func isOpenJournal(_ pending: SparkContactWithdrawal) -> Bool {
+        pendingContactWithdrawal == pending
+    }
+
     /// Clears `pending`'s journal only while it is still the open one, so a stale recovery never drops a newer
     /// withdrawal's journal, which could then be paid twice. Returns whether it cleared it: only then is the resolution
     /// this attempt's to publish, since a retry of the same request shares its attempt.
     nonisolated static func clearJournal(_ pending: SparkContactWithdrawal) -> Bool {
-        guard pendingContactWithdrawal == pending else { return false }
+        guard isOpenJournal(pending) else { return false }
         pendingContactWithdrawal = nil
         return true
     }
