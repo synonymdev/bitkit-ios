@@ -746,6 +746,12 @@ final class SparkManager: ChannelFreeLightningRail {
         }
     }
 
+    /// Whether Spark refused to quote a withdrawal because even its cheapest fee leaves dust.
+    nonisolated static func isBelowMinimum(_ error: Error) -> Bool {
+        guard case let SdkError.InvalidInput(message) = error else { return false }
+        return message.lowercased().hasPrefix("amount is below the minimum")
+    }
+
     /// The fee `withdrawAll(to:maxFeeSats:)` pays at its speed, which comes out of the balance it moves.
     func withdrawAllFeeSats(to address: String) async throws -> UInt64 {
         try await Self.withdrawalFeeSats(prepareWithdrawAll(to: address))
@@ -940,7 +946,10 @@ final class SparkManager: ChannelFreeLightningRail {
             isStale: withdrawalFailedAt != nil || info.lastSyncError != nil,
             isExiting: isExiting
         )
-        let changed = !isReady || shownBalanceSats != (kept ?? info.balanceSats) || pendingDepositSats != pending
+        let changed = !isReady || Self.balancesChanged(
+            from: SparkBalances(readSats: balanceSats, keptSats: keptBalanceSats, pendingSats: pendingDepositSats),
+            to: SparkBalances(readSats: info.balanceSats, keptSats: kept, pendingSats: pending)
+        )
         isReady = true
         balanceSats = info.balanceSats
         keptBalanceSats = kept
@@ -961,6 +970,12 @@ final class SparkManager: ChannelFreeLightningRail {
         for txId in Self.transferTxIds(unclaimed: unclaimed, payments: payments) {
             await CoreService.shared.activity.markOnchainActivityAsTransfer(txId: txId)
         }
+    }
+
+    /// Whether balances and the receive invoice must follow a refresh: the read balance counts too, as sends use it, and
+    /// it can come back to the shown one while that stays the same.
+    nonisolated static func balancesChanged(from old: SparkBalances, to new: SparkBalances) -> Bool {
+        old != new
     }
 
     /// After a failed withdrawal, or while Spark's last sync failed (`isStale`), Spark can read 0 with the funds still
@@ -986,12 +1001,13 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// Spark can still list a deposit it already claimed early as unclaimed, so a claimed one is listed only as claimed.
+    /// Matched by output, as one transaction can hold several deposits.
     nonisolated static func unclaimedDeposits(_ unclaimed: [DepositInfo], claimed: [Payment]) -> [DepositInfo] {
-        let claimedTxIds = Set(claimed.compactMap { payment -> String? in
-            guard case let .deposit(txId, _) = payment.details else { return nil }
-            return txId.lowercased()
+        let claimedOutputs = Set(claimed.compactMap { payment -> String? in
+            guard case let .deposit(txId, vout) = payment.details else { return nil }
+            return "\(txId.lowercased()):\(vout)"
         })
-        return unclaimed.filter { !claimedTxIds.contains($0.txid.lowercased()) }
+        return unclaimed.filter { !claimedOutputs.contains("\($0.txid.lowercased()):\($0.vout)") }
     }
 
     nonisolated static func withdrawals(_ payments: [Payment]) -> [SparkWithdrawal] {
@@ -1078,12 +1094,12 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// Releases the holds of the sends Spark's list shows failed. The list is read after the activities were recorded,
-    /// so a retry the user started meanwhile keeps its hold, as does one recorded while the list is read.
+    /// so a retry the user started meanwhile keeps its hold, as does one recorded or ending while the list is read.
     static func releaseFailedSendHolds(listPayments: () async throws -> [Payment]) async {
-        let recordsBefore = LightningService.shared.attemptRecordCount
+        let mark = LightningService.shared.attemptMark
         guard let latest = try? await listPayments() else { return }
         for paymentHash in failedSendHashes(latest) {
-            LightningService.shared.releaseRailAttempt(paymentHash: paymentHash, recordedBy: recordsBefore)
+            LightningService.shared.releaseRailAttempt(paymentHash: paymentHash, since: mark)
         }
     }
 
@@ -1421,4 +1437,11 @@ private final class SparkFirstResume: @unchecked Sendable {
             return !isClaimed
         }
     }
+}
+
+/// The balances a refresh reads: what Spark read (`readSats`), the balance kept on screen, and pending deposits.
+struct SparkBalances: Equatable {
+    let readSats: UInt64
+    let keptSats: UInt64?
+    let pendingSats: UInt64
 }

@@ -1,4 +1,5 @@
 @testable import Bitkit
+import BreezSdkSpark
 import XCTest
 
 final class SparkWithdrawalTests: XCTestCase {
@@ -119,6 +120,21 @@ final class SparkWithdrawalTests: XCTestCase {
 
         XCTAssertFalse(transfer.isSparkWithdrawTooSmall)
         XCTAssertEqual(transfer.sparkWithdrawFeeSats, 1093)
+    }
+
+    @MainActor
+    func testABalanceSparkRefusesToQuoteAsBelowTheMinimumIsTooSmallToMove() async {
+        let transfer = TransferViewModel()
+        // What the SDK answers when even its cheapest fee would leave dust.
+        transfer.priceSparkWithdrawal = { _ in
+            throw SdkError.InvalidInput("Amount is below the minimum of 330 sats required for this address after lowest fees of 1093 sats")
+        }
+
+        transfer.loadSparkWithdrawFee(balanceSats: 500, savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+
+        XCTAssertTrue(transfer.isSparkWithdrawTooSmall, "Spark stayed selected with nothing to retry")
+        XCTAssertNil(transfer.sparkWithdrawFeeSats)
     }
 
     @MainActor
