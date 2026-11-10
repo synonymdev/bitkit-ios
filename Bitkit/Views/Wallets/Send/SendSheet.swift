@@ -1,12 +1,15 @@
 import SwiftUI
 
 enum SendRetryRoute: Hashable {
+    /// Back to the amount, where Continue asks for a fresh swap quote.
+    case amount
     case confirm
     case quickpay
     case lnurlPayConfirm
 
     var sendRoute: SendRoute {
         switch self {
+        case .amount: .amount
         case .confirm: .confirm
         case .quickpay: .quickpay
         case .lnurlPayConfirm: .lnurlPayConfirm
@@ -863,8 +866,8 @@ struct SendSheet: View {
             }
         }
 
-        // Validate onchain payment balance (for pure onchain invoices)
-        if let onchainInvoice = app.scannedOnchainInvoice {
+        // Validate onchain payment balance (for pure onchain invoices); a swap route pays it from spending
+        if app.paykitSwapRoute == nil, let onchainInvoice = app.scannedOnchainInvoice {
             let onchainBalance = max(
                 LightningService.shared.balances?.spendableOnchainBalanceSats ?? 0,
                 hwWalletManager.maximumFundingBalanceSats

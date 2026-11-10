@@ -78,7 +78,7 @@ struct SendFailure: View {
         switch context.retryRoute {
         case .confirm:
             return app.selectedWalletToPayFrom == .lightning ? t("wallet__send_instant_failed") : t("wallet__send_error_tx_failed")
-        case .quickpay, .lnurlPayConfirm:
+        case .amount, .quickpay, .lnurlPayConfirm:
             return t("wallet__send_instant_failed")
         }
     }

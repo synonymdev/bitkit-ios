@@ -256,6 +256,29 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertFalse(manager.isLoading)
     }
 
+    /// Swap restore snapshots the saved contacts, so it waits for a load another task started, and for no longer than the
+    /// timeout when no load comes.
+    func testWaitUntilLoadedWaitsForARunningLoadOrTheTimeout() async throws {
+        let record = contactRecord(key: "pubky" + String(repeating: "y", count: 52), name: "Provider")
+        let source = SuspendedContactRecords(records: [record])
+        let manager = ContactsManager(observedContactRecords: { _ in await source.load() })
+        let load = Task { try await manager.loadObservedContacts(for: "owner") }
+        while await !(source.isPaused) {
+            await Task.yield()
+        }
+        let wait = Task { await manager.waitUntilLoaded(timeout: .seconds(30)) }
+        await source.resume(with: [record])
+        await wait.value
+        XCTAssertEqual(manager.contacts.map(\.publicKey), [record.publicKey])
+        try await load.value
+
+        let idle = ContactsManager()
+        let start = ContinuousClock.now
+        await idle.waitUntilLoaded(timeout: .milliseconds(50))
+        XCTAssertFalse(idle.hasLoaded)
+        XCTAssertLessThan(ContinuousClock.now - start, .seconds(5))
+    }
+
     /// General Settings used to await `loadContactsIfNeeded` in its `.task`, so leaving mid-load surfaced the cancellation
     /// as an error toast. Another caller still finishes the load whichever screen's load it waited on is cancelled. The
     /// Contacts screen's cancelled load reports no error, also when its record read throws once cancelled, as a read
