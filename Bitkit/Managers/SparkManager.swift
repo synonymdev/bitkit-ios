@@ -501,6 +501,7 @@ final class SparkManager: ChannelFreeLightningRail {
     private func deleteWipedData(walletIndex: Int) throws {
         balanceSats = 0
         keptBalanceSats = nil
+        keptBeforeExit = nil
         withdrawalFailedAt = nil
         pendingDepositSats = 0
         recoverableFundsSats = 0
