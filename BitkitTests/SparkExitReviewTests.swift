@@ -819,6 +819,32 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(priced, .priced(rate: TransactionSpeed.fast.getFeeRate(from: rates), feeSats: 300))
     }
 
+    /// A start whose savings payment was refused for a higher prepared fee: the next funding prices at least that fee,
+    /// so Funding shows it and the next swipe approves it.
+    @MainActor
+    func testTheNextFundingAfterAStartRefusedForAHigherSavingsFeePricesAtLeastThatFee() async {
+        let rates = FeeRates(fast: 9, mid: 6, slow: 1)
+        let exit = SparkExitManager(walletIndex: 9999)
+        func price() async -> SparkExitFundingView.SavingsFee {
+            await SparkExitFundingView.priceSavingsFee(
+                address: "bcrt1qfunding",
+                fundingSats: 20000,
+                refusedFeeSats: exit.savingsFundingRefusedFeeSats,
+                estimates: { rates },
+                calculate: { _, _, _ in 420 }
+            )
+        }
+        let rate = TransactionSpeed.fast.getFeeRate(from: rates)
+        let first = await price()
+        XCTAssertEqual(first, .priced(rate: rate, feeSats: 420))
+
+        exit.noteSavingsFundingRefused(preparedFeeSats: 600)
+        let next = await price()
+
+        // Savings' coin selection needs 600 sats where the estimate says 420.
+        XCTAssertEqual(next, .priced(rate: rate, feeSats: 600), "the same refused estimate was confirmed again")
+    }
+
     /// Savings never pays more than the funding the user confirmed; the rest is asked for on Progress once the payment
     /// confirms.
     func testSavingsPaysAtMostTheConfirmedFundingAndProgressAsksForTheRest() throws {

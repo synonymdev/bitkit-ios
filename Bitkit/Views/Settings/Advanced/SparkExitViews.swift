@@ -273,6 +273,7 @@ struct SparkExitFundingView: View {
         let priced = await Self.priceSavingsFee(
             address: exit.fundingAddress,
             fundingSats: fundingSats,
+            refusedFeeSats: exit.savingsFundingRefusedFeeSats,
             estimates: { await feeEstimatesManager.getEstimates(refresh: true) },
             calculate: { try await wallet.calculateTotalFee(address: $0, amountSats: $1, satsPerVByte: $2) }
         )
@@ -299,6 +300,7 @@ struct SparkExitFundingView: View {
     nonisolated static func priceSavingsFee(
         address: String?,
         fundingSats: UInt64,
+        refusedFeeSats: UInt64? = nil,
         estimates: () async -> FeeRates?,
         calculate: (String, UInt64, UInt32) async throws -> UInt64
     ) async -> SavingsFee {
@@ -310,7 +312,9 @@ struct SparkExitFundingView: View {
         }
         let rate = TransactionSpeed.fast.getFeeRate(from: feeRates)
         do {
-            return try await .priced(rate: rate, feeSats: calculate(address, fundingSats, rate))
+            // Coin selection can need more fee than the estimate: after a refused start, at least the fee it asked.
+            let feeSats = try await calculate(address, fundingSats, rate)
+            return .priced(rate: rate, feeSats: max(feeSats, refusedFeeSats ?? 0))
         } catch {
             Logger.warn("Failed to price the Spark exit funding from savings: \(error)", context: "SparkExitFundingView")
             return .failed
@@ -531,7 +535,13 @@ struct SparkExitConfirmView: View {
                     // Cancelled while the start waited: nothing was paid, nothing to say. Rethrown so the swipe resets.
                     throw error
                 } catch {
-                    app.toast(error)
+                    if case let OnchainSendAttemptError.preDispatch(refused) = error, let changed = refused as? SparkFundingChanged {
+                        // Savings never pays more than the fee confirmed: the next funding asks for the refused one.
+                        exit.noteSavingsFundingRefused(preparedFeeSats: changed.preparedFeeSats)
+                        app.toast(type: .info, title: t("lightning__spending_confirm__fees_changed_title"))
+                    } else {
+                        app.toast(error)
+                    }
                     // The exit started but paying its fee funding failed: the progress screen shows where to fund it.
                     if exit.isExiting {
                         navigation.navigate(.sparkExitProgress)

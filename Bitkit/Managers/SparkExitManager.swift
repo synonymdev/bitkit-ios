@@ -65,6 +65,8 @@ final class SparkExitManager {
     @ObservationIgnored var savingsFeeSats: UInt64 = 0
     /// The savings fee a higher-fee payment was refused for, by rate.
     @ObservationIgnored private var feeBumpRefusedFees: [UInt64: UInt64] = [:]
+    /// The savings fee the start's funding payment was refused for: the next funding prices and approves at least that.
+    @ObservationIgnored private(set) var savingsFundingRefusedFeeSats: UInt64?
     @ObservationIgnored private var walletIndex = 0
     @ObservationIgnored private var isTicking = false
     /// The exit a start is still settling: no tick or background run drives it until its optimization wait, requote
@@ -213,6 +215,7 @@ final class SparkExitManager {
         fundFromSavings = false
         savingsFeeRate = 0
         savingsFeeSats = 0
+        savingsFundingRefusedFeeSats = nil
         fundingSeenSats = 0
         fundingSeenCount = 0
         Self.clearReminders()
@@ -638,6 +641,11 @@ final class SparkExitManager {
         feeBumpOptions[i].paymentFeeSats = Self.feeBumpPaymentFee(priced: sats, refusedFeeSats: feeBumpRefusedFees[rate])
     }
 
+    /// Notes the savings fee the start's funding payment was refused for, so the next funding prices and approves it.
+    func noteSavingsFundingRefused(preparedFeeSats: UInt64?) {
+        savingsFundingRefusedFeeSats = preparedFeeSats
+    }
+
     /// Notes the savings fee a higher-fee payment at `rate` was refused for, so the next confirm approves it.
     func noteFeeBumpRefused(rate: UInt64, preparedFeeSats: UInt64?) {
         feeBumpRefusedFees[rate] = preparedFeeSats
@@ -849,6 +857,7 @@ final class SparkExitManager {
             }
             self.record = started
             setFunding(SparkExitMath.fundingState(started, utxos: nil), for: started)
+            savingsFundingRefusedFeeSats = nil
         }
         Task { await tick() }
     }
