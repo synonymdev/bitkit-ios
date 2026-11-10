@@ -346,29 +346,6 @@
 "lightning__transaction" = "Transaction";
 "lightning__order_fee" = "Frais";
 "lightning__balance" = "Solde";
-"lightning__move_to_spark__amount" = "Montant";
-"lightning__move_to_spark__confirm_text" = "Votre solde passe à Spark via Lightning, le moyen le moins coûteux de le garder dans Dépenses. Les frais de routage ci-dessous sont le maximum que vous payez.";
-"lightning__move_to_spark__confirm_title" = "Déplacer vers\n<accent>Spark</accent>";
-"lightning__move_to_spark__done_rest_text" = "Une partie de votre solde est maintenant sur Spark. Déplacez le reste de la même façon, puis fermez la connexion vidée.";
-"lightning__move_to_spark__done_text" = "Votre solde est maintenant sur Spark. Fermez la connexion vidée pour rendre sa réserve à Épargnes.";
-"lightning__move_to_spark__done_title" = "Déplacé vers\n<accent>Spark</accent>";
-"lightning__move_to_spark__failed_nothing" = "Vos connexions Lightning n'ont plus de solde à déplacer.";
-"lightning__move_to_spark__failed_spark" = "Spark n'est pas encore prêt à recevoir. Réessayez dans un instant.";
-"lightning__move_to_spark__failed_title" = "Le déplacement\n<accent>a échoué</accent>";
-"lightning__move_to_spark__failed_unknown" = "Un problème est survenu pendant la préparation du déplacement. Réessayez.";
-"lightning__move_to_spark__fee" = "Frais de routage";
-"lightning__move_to_spark__intro_text" = "Blocktank ferme ses connexions Lightning. Déplacez votre solde vers Spark maintenant : c'est l'option la moins coûteuse, et il reste dans Dépenses.";
-"lightning__move_to_spark__intro_title" = "Votre connexion\n<accent>se ferme</accent>";
-"lightning__move_to_spark__move_half" = "Moitié";
-"lightning__move_to_spark__move_now" = "Déplacer";
-"lightning__move_to_spark__move_rest" = "Le reste";
-"lightning__move_to_spark__nav_title" = "Déplacer vers Spark";
-"lightning__move_to_spark__quoting" = "Recherche d'un itinéraire et de ses frais…";
-"lightning__move_to_spark__swipe" = "Glissez pour déplacer";
-"lightning__move_to_spark__too_large_none" = "Fermez plutôt la connexion pour rendre le solde à Épargnes.";
-"lightning__move_to_spark__too_large_smaller" = "Vous pouvez le déplacer en plus petites parties.";
-"lightning__move_to_spark__too_large_text" = "{amount} est trop élevé pour être acheminé vers Spark en un seul paiement.";
-"lightning__move_to_spark__too_large_title" = "Le montant est\n<accent>trop élevé</accent>";
 "lightning__spark" = "Spark";
 "lightning__spark_claim_fee" = "Frais de réclamation";
 "lightning__spark_confirmations" = "{count}/3 confirmations";
@@ -2002,5 +1979,3 @@
 "subscriptions__allowance_auto_paid" = "Payé automatiquement";
 
 "wallet__balance_updating" = "Mise à jour du solde…";
-"lightning__move_to_spark__in_flight_text" = "Le paiement est en route et apparaîtra dans Spark une fois réglé. S'il échoue, le montant reste dans votre connexion.";
-"lightning__move_to_spark__in_flight_title" = "Déplacement vers\n<accent>Spark</accent>";

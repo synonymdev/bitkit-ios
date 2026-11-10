@@ -330,29 +330,6 @@
 "lightning__transaction" = "Transacción";
 "lightning__order_fee" = "Tarifa de pedido";
 "lightning__balance" = "Saldo";
-"lightning__move_to_spark__amount" = "Cantidad";
-"lightning__move_to_spark__confirm_text" = "Su saldo pasa a Spark por Lightning, la forma de menor comisión para mantenerlo en Gasto. La comisión de enrutamiento de abajo es lo máximo que paga.";
-"lightning__move_to_spark__confirm_title" = "Mover a\n<accent>Spark</accent>";
-"lightning__move_to_spark__done_rest_text" = "Una parte de su saldo ya está en Spark. Mueva el resto de la misma forma y luego termine la conexión vacía.";
-"lightning__move_to_spark__done_text" = "Su saldo ya está en Spark. Termine la conexión vacía para devolver su reserva a Ahorro.";
-"lightning__move_to_spark__done_title" = "Movido a\n<accent>Spark</accent>";
-"lightning__move_to_spark__failed_nothing" = "Sus conexiones Lightning ya no tienen saldo para mover.";
-"lightning__move_to_spark__failed_spark" = "Spark aún no está listo para recibir. Inténtelo de nuevo en un momento.";
-"lightning__move_to_spark__failed_title" = "No se pudo\n<accent>mover</accent>";
-"lightning__move_to_spark__failed_unknown" = "Algo salió mal al preparar el movimiento. Inténtelo de nuevo.";
-"lightning__move_to_spark__fee" = "Comisión de enrutamiento";
-"lightning__move_to_spark__intro_text" = "Blocktank está cerrando sus conexiones Lightning. Mueva su saldo a Spark ahora: es la opción de menor comisión y se mantiene en Gasto.";
-"lightning__move_to_spark__intro_title" = "Su conexión\n<accent>se cierra</accent>";
-"lightning__move_to_spark__move_half" = "Mover mitad";
-"lightning__move_to_spark__move_now" = "Mover ahora";
-"lightning__move_to_spark__move_rest" = "Mover resto";
-"lightning__move_to_spark__nav_title" = "Mover a Spark";
-"lightning__move_to_spark__quoting" = "Buscando una ruta y su comisión…";
-"lightning__move_to_spark__swipe" = "Deslizar para mover";
-"lightning__move_to_spark__too_large_none" = "Termine la conexión para devolver el saldo a Ahorro.";
-"lightning__move_to_spark__too_large_smaller" = "Puede moverlo en partes más pequeñas.";
-"lightning__move_to_spark__too_large_text" = "{amount} es demasiado grande para enrutarse a Spark en un solo pago.";
-"lightning__move_to_spark__too_large_title" = "La cantidad es\n<accent>excesiva</accent>";
 "lightning__spark" = "Spark";
 "lightning__spark_claim_fee" = "Comisión de reclamo";
 "lightning__spark_confirmations" = "{count}/3 confirmaciones";
@@ -1873,5 +1850,3 @@
 "subscriptions__allowance_auto_paid" = "Pagado automáticamente";
 
 "wallet__balance_updating" = "Actualizando saldo…";
-"lightning__move_to_spark__in_flight_text" = "El pago está en camino y aparecerá en Spark cuando se liquide. Si falla, el importe se queda en tu conexión.";
-"lightning__move_to_spark__in_flight_title" = "Moviendo a\n<accent>Spark</accent>";
