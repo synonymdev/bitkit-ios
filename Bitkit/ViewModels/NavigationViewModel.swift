@@ -218,6 +218,13 @@ class NavigationViewModel: ObservableObject {
         path.append(route)
     }
 
+    /// Pushes `route` only while the stack is still `expectedPath`, so a screen that awaited something before
+    /// navigating doesn't reopen a flow the user left with Back meanwhile.
+    func navigate(_ route: Route, from expectedPath: [Route]) {
+        guard path == expectedPath else { return }
+        path.append(route)
+    }
+
     func navigateBack() {
         guard !path.isEmpty else { return }
         path.removeLast()

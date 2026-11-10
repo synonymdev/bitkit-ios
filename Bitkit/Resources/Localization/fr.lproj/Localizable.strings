@@ -242,7 +242,6 @@
 "lightning__spending_confirm__amount" = "Vers Dépenses";
 "lightning__spending_confirm__total" = "Total";
 "lightning__spending_confirm__spending_fee" = "Spending fee";
-"lightning__spending_confirm__up_to" = "up to";
 "lightning__spending_confirm__instant_text" = "Ready in a few minutes";
 "lightning__spending_confirm__later" = "Later";
 "lightning__spending_confirm__later_text" = "After 3 confirmations, about 30 minutes";
@@ -279,6 +278,7 @@
 "lightning__savings_spark_failed__toast" = "Échec du transfert Spark";
 "lightning__transfer_success__nav_title" = "Transfert réussi";
 "lightning__transfer_success__title_spending" = "Fonds transférés \n<accent>vers Dépenses</accent>";
+"lightning__transfer_success__text_spending" = "Vos fonds ont été transférés et votre solde Dépenses est prêt à être utilisé.";
 "lightning__transfer_success__title_savings" = "Fonds transférés \n<accent>à l\'épargne</accent>";
 "lightning__transfer_success__text_savings" = "Vos fonds ont été transférés. Vous pouvez utiliser ces fonds immédiatement.";
 "lightning__external__nav_title" = "Connexion Lightning";
@@ -386,7 +386,7 @@
 "lightning__spark_deposit__wait_button" = "Attendre";
 "lightning__spark_deposit__waiting" = "Spark l'ajoute à votre solde de dépenses {when}.";
 "lightning__spark_deposit__waiting_next" = "Spark l'ajoute à votre solde de dépenses après la prochaine confirmation.";
-"lightning__spark_deposit__repriced" = "Instant now costs {fee}. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
+"lightning__spark_deposit__repriced" = "Instant now costs <accent>{fee}</accent>. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__pay" = "Pay {fee}";
 "lightning__spark_deposit__instant_unavailable" = "Instant isn't available for this transfer. Spark adds it to your spending balance after 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__not_seen" = "Spark hasn't seen your transfer yet. It's added after 3 confirmations; you can leave this screen.";

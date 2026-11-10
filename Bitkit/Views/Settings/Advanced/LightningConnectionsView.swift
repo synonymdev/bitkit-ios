@@ -251,7 +251,7 @@ struct LightningConnectionsView: View {
     // MARK: - Computed Properties
 
     private var spendingBalance: UInt64 {
-        let sparkSats = SparkManager.shared.balanceSats
+        let sparkSats = SparkManager.shared.shownBalanceSats
         guard let balanceDetails = wallet.balanceDetails else { return sparkSats }
         return balanceDetails.totalLightningBalanceSats + sparkSats
     }

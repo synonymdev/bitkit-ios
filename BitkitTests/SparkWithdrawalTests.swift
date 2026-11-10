@@ -89,6 +89,39 @@ final class SparkWithdrawalTests: XCTestCase {
     }
 
     @MainActor
+    func testASparkBalanceTooSmallToMoveLeavesTheChannelsToMoveByDefault() async {
+        let transfer = TransferViewModel()
+        transfer.beginSavingsTransfer()
+        transfer.priceSparkWithdrawal = { _ in 1250 }
+        transfer.loadSparkWithdrawFee(balanceSats: 1000, savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+
+        let selection = transfer.savingsSelection(readyChannelIds: ["channel"], sparkSats: 1000)
+
+        XCTAssertEqual(selection, SavingsSelection(channelIds: ["channel"], withdrawsSpark: false))
+        XCTAssertTrue(transfer.isSparkWithdrawalPriced(withdrawsSpark: selection.withdrawsSpark), "Spark held the channels back")
+    }
+
+    @MainActor
+    func testABalanceThatLeavesDustAfterItsFeeIsTooSmallToMove() async {
+        let transfer = TransferViewModel()
+        transfer.priceSparkWithdrawal = { _ in 1093 }
+
+        transfer.loadSparkWithdrawFee(balanceSats: 1093 + UInt64(Env.dustLimit) - 1, savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+
+        XCTAssertTrue(transfer.isSparkWithdrawTooSmall)
+        XCTAssertNil(transfer.sparkWithdrawFeeSats)
+        XCTAssertFalse(transfer.isSparkWithdrawalPriced(withdrawsSpark: true))
+
+        transfer.loadSparkWithdrawFee(balanceSats: 1093 + UInt64(Env.dustLimit), savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+
+        XCTAssertFalse(transfer.isSparkWithdrawTooSmall)
+        XCTAssertEqual(transfer.sparkWithdrawFeeSats, 1093)
+    }
+
+    @MainActor
     func testCloseInsteadWaitsForTheSparkFee() {
         let transfer = TransferViewModel()
 
@@ -154,6 +187,50 @@ final class SparkWithdrawalTests: XCTestCase {
         XCTAssertEqual(transfer.sparkWithdrawFeeSats, 2300)
     }
 
+    @MainActor
+    func testTheSwipeWithdrawsSparkAtTheFeeItConfirmedWhenSparkIsPricedAgainBeforeTheWithdrawal() async throws {
+        let transfer = await pricedTransfer()
+        try await transfer.confirmSavingsSwipe(channels: [], withdrawsSpark: true)
+
+        let withdrawnFeeSats = try await repriceAndWithdraw(transfer)
+
+        XCTAssertEqual(withdrawnFeeSats, 1470, "Spark withdrew at a fee priced after the swipe")
+    }
+
+    @MainActor
+    func testCloseInsteadWithdrawsSparkAtTheFeeShownWhenSparkIsPricedAgainBeforeTheWithdrawal() async throws {
+        let transfer = await pricedTransfer()
+        XCTAssertTrue(transfer.onTransferToSavingsConfirm(channels: [], withdrawsSpark: true, mode: .close))
+
+        let withdrawnFeeSats = try await repriceAndWithdraw(transfer)
+
+        XCTAssertEqual(withdrawnFeeSats, 1470, "Spark withdrew at a fee priced after close instead")
+    }
+
+    @MainActor
+    private func pricedTransfer() async -> TransferViewModel {
+        let transfer = TransferViewModel()
+        transfer.priceSparkWithdrawal = { _ in 1470 }
+        transfer.loadSparkWithdrawFee(balanceSats: 40000, savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+        return transfer
+    }
+
+    /// A receive lands during the transition, so the confirm screen prices Spark's new balance, then the transfer runs.
+    @MainActor
+    private func repriceAndWithdraw(_ transfer: TransferViewModel) async throws -> UInt64? {
+        transfer.priceSparkWithdrawal = { _ in 1620 }
+        transfer.loadSparkWithdrawFee(balanceSats: 52000, savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+        let withdrawn = WithdrawnFee()
+        transfer.sparkBalanceSats = { 52000 }
+        transfer.withdrawSpark = { _, feeSats in withdrawn.feeSats = feeSats }
+        _ = try await transfer.closeSelectedChannels()
+        return withdrawn.feeSats
+    }
+
+    // MARK: - Failed withdrawal
+
     // MARK: - Failed withdrawal
 
     func testFailedSparkWithdrawalIsShownAndNamesWhetherChannelsMoved() {
@@ -215,4 +292,9 @@ private actor PriceGate {
         waiters.forEach { $0.resume() }
         waiters = []
     }
+}
+
+@MainActor
+private final class WithdrawnFee {
+    var feeSats: UInt64?
 }

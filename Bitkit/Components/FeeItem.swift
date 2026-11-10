@@ -7,10 +7,12 @@ struct FeeItem: View {
     let iconName: String
     let iconColor: Color
     let amount: UInt64
-    /// Shown before the amount when it is a bound or an estimate ("up to", "≈").
+    /// Shown before the amount when it is a bound or an estimate ("±").
     var amountPrefix: String?
     let isSelected: Bool
     let isDisabled: Bool
+    /// Draws the row's divider under it instead of above it, so a selected row's fill touches nothing above.
+    var dividerAtBottom = false
     let onPress: () -> Void
 
     @EnvironmentObject var currency: CurrencyViewModel
@@ -45,8 +47,10 @@ struct FeeItem: View {
         amountPrefix: String? = nil,
         isSelected: Bool,
         isDisabled: Bool,
+        dividerAtBottom: Bool = false,
         onPress: @escaping () -> Void
     ) {
+        self.dividerAtBottom = dividerAtBottom
         self.title = title
         self.subtitle = subtitle
         self.iconName = iconName
@@ -60,8 +64,10 @@ struct FeeItem: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Divider()
-                .padding(.horizontal, 16)
+            if !dividerAtBottom {
+                Divider()
+                    .padding(.horizontal, 16)
+            }
 
             Button(action: onPress) {
                 HStack(spacing: 16) {
@@ -91,6 +97,11 @@ struct FeeItem: View {
             }
             .disabled(isDisabled)
             .buttonStyle(PlainButtonStyle())
+
+            if dividerAtBottom {
+                Divider()
+                    .padding(.horizontal, 16)
+            }
         }
     }
 }
