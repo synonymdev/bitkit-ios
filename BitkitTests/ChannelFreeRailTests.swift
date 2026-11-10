@@ -206,6 +206,56 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(rail.sentBolt11, Self.invoice)
     }
 
+    func testSparkWaitsForTheNodesFirstListingWhenItsEarlierPaymentsWereNeverKept() async throws {
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        defer { service.nodePayments = nodePayments }
+        // Node payments made before their hashes were kept: none is held until the node lists them.
+        service.railAttemptsStore.removeObject(forKey: Bitkit.LightningService.ldkAttemptsSeededKey)
+        rail.balanceSats = 100_000
+
+        service.nodePayments = { nil }
+        do {
+            _ = try await service.send(bolt11: Self.invoice)
+            XCTFail("Spark paid while the node's earlier payments were unknown")
+        } catch {}
+        XCTAssertNil(rail.sentBolt11)
+
+        service.nodePayments = { [] }
+        _ = try await service.send(bolt11: Self.invoice)
+        rail.sentBolt11 = nil
+        service.nodePayments = { nil }
+        _ = try await service.send(bolt11: Self.invoice)
+
+        XCTAssertEqual(rail.sentBolt11, Self.invoice, "Spark stayed held after the node listed its payments")
+    }
+
+    func testANodePaymentMadeBeforeHashesWereKeptHoldsSparkOnceTheNodeListedIt() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let pending = LDKNode.PaymentDetails(
+            id: hash, kind: .bolt11(hash: hash, preimage: nil, secret: nil, description: nil, bolt11: Self.invoice),
+            amountMsat: 20_000_000, feePaidMsat: nil, direction: .outbound, status: .pending, latestUpdateTimestamp: 0
+        )
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        defer { service.nodePayments = nodePayments }
+        service.railAttemptsStore.removeObject(forKey: Bitkit.LightningService.ldkAttemptsSeededKey)
+        rail.balanceSats = 100_000
+
+        service.nodePayments = { [pending] }
+        do {
+            _ = try await service.send(bolt11: Self.invoice)
+        } catch {}
+        service.nodePayments = { nil }
+        do {
+            _ = try await service.send(bolt11: Self.invoice)
+            XCTFail("Expected the node's pending payment to hold Spark while the node can't list it")
+        } catch {
+            XCTAssertTrue(PrivatePaykitService.isDuplicatePaymentError(error), "\(error)")
+        }
+        XCTAssertNil(rail.sentBolt11)
+    }
+
     func testANodeAttemptTheNodeListsAsFailedNoLongerHoldsSpark() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         let failed = LDKNode.PaymentDetails(

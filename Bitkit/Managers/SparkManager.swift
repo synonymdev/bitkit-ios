@@ -642,12 +642,15 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// Clears the fee cap an early claim of `offer` left on its deposit, back to the configured one, which never claims
-    /// early (`sdkConfig`): a claim that names no cap clears the stored one before it is attempted.
-    func releaseEarlyClaim(_ offer: SparkClaimOffer) async {
+    /// early (`sdkConfig`): a claim that names no cap clears the stored one before it is attempted. False when the cap
+    /// may still be there: the call failed, or another claim of the deposit held it, which leaves the cap unchanged.
+    func releaseEarlyClaim(_ offer: SparkClaimOffer) async -> Bool {
         do {
             _ = try await requireSdk().claimDeposit(request: ClaimDepositRequest(txid: offer.txid, vout: offer.vout, maxFee: nil))
+            return true
         } catch {
             Logger.warn("Failed to clear the early claim cap of Spark deposit \(offer.txid): \(error)", context: "SparkManager")
+            return false
         }
     }
 
