@@ -422,7 +422,7 @@ final class SparkExitReviewTests: XCTestCase {
             SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 990)),
             SparkExitFixtures.tx("s", kind: .sweep, dependsOn: ["n1"]),
         ]))
-        chain.confirmedTxids = ["s"]
+        chain.confirmedTxids = ["n1", "s"]
         chain.utxosByAddress["bcrt1qfunding"] = []
 
         record = try await driver(withSdk: false).tick(record)

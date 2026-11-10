@@ -146,12 +146,20 @@ final class FakeSparkExitChain: SparkExitChain, @unchecked Sendable {
 
     /// Transactions every host answers not found for, as for one a node dropped.
     var droppedTxids: Set<String> = []
+    /// Block heights of confirmed transactions; 900 for any other.
+    var heights: [String: UInt32] = [:]
+    /// Confirmed transactions whose host answers no block height.
+    var unknownHeightTxids: Set<String> = []
 
     func txStatus(txid: String) async throws -> EsploraTxStatus {
         if droppedTxids.contains(txid) {
             throw URLError(.fileDoesNotExist)
         }
-        return lock.withLock { EsploraTxStatus(confirmed: confirmedTxids.contains(txid), blockHeight: confirmedTxids.contains(txid) ? 900 : nil) }
+        return lock.withLock {
+            let isConfirmed = confirmedTxids.contains(txid)
+            let height = isConfirmed && !unknownHeightTxids.contains(txid) ? heights[txid] ?? 900 : nil
+            return EsploraTxStatus(confirmed: isConfirmed, blockHeight: height)
+        }
     }
 
     func isKnown(txid: String) async throws -> Bool {
@@ -1023,7 +1031,8 @@ final class SparkExitDriverTests: XCTestCase {
             fromHex,
             fallback,
         ]))
-        chain.confirmedTxids = [SparkExitFixtures.csvParentTxid]
+        chain.confirmedTxids = [SparkExitFixtures.csvParentTxid, "n1"]
+        chain.heights["n1"] = 995
 
         chain.tip = 908
         record = try await driver(withSdk: false).tick(record)
@@ -1046,6 +1055,8 @@ final class SparkExitDriverTests: XCTestCase {
             SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: nil)),
             SparkExitFixtures.tx("r1", kind: .refund, dependsOn: ["n1"], status: .waitingForDependencies, csv: 5),
         ]))
+        chain.confirmedTxids = ["n1"]
+        chain.unknownHeightTxids = ["n1"]
         chain.tip = 5000
 
         _ = try await driver(withSdk: false).tick(record)
@@ -1077,6 +1088,7 @@ final class SparkExitDriverTests: XCTestCase {
             SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 10)),
             SparkExitFixtures.tx("n2", cpfp: "03c", dependsOn: ["n1"]),
         ]))
+        chain.confirmedTxids = ["n1"]
         chain.outcome = .inputsMissing("bad-txns-inputs-missingorspent")
 
         record = try await driver(withSdk: false).tick(record)
@@ -1089,6 +1101,66 @@ final class SparkExitDriverTests: XCTestCase {
         sdk.checks = try [CheckRecoverFundsResponse(recovery: XCTUnwrap(record.recovery?.response), verdict: .valid)]
         record = try await driver().tick(record)
         XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2", "n2"])
+    }
+
+    private func reorgedParentRecord() -> SparkExitRecord {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.adopt(SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("r1", dependsOn: ["n1"], status: .waitingForDependencies),
+        ]))
+        return record
+    }
+
+    /// A reorg undid a confirmation the record saved: the keyless pass asks the chain again before sending its child.
+    func testWithoutTheSdkASavedConfirmationAReorgUndidIsAskedAgain() async throws {
+        var record = reorgedParentRecord()
+        chain.outcome = .inputsMissing("bad-txns-inputs-missingorspent")
+
+        record = try await driver(withSdk: false).tick(record)
+
+        XCTAssertFalse(chain.broadcasts.contains { $0.txid == "r1" })
+        if case .confirmed = record.recovery?.response.transactions.first(where: { $0.txid == "n1" })?.status {
+            XCTFail("the reorged parent stayed confirmed")
+        }
+        XCTAssertFalse(record.broadcastLog.contains { $0.txid == "r1" && $0.isInputSpent == true })
+
+        chain.confirmedTxids = ["n1"]
+        chain.outcome = .accepted
+        record = try await driver(withSdk: false).tick(record)
+        XCTAssertEqual(chain.broadcasts.map(\.txid).filter { $0 == "r1" }, ["r1"])
+    }
+
+    /// A child refused as spent while its parent's confirmation was a reorged one is sent again once it reconfirms.
+    func testWithoutTheSdkAReorgClearsTheSpentInputItsChildWasRefusedFor() async throws {
+        var record = reorgedParentRecord()
+        record.broadcastLog = [.init(
+            generation: 1,
+            txid: "r1",
+            attempts: 1,
+            rejections: 0,
+            lastAttemptAt: clock,
+            lastOutcome: "inputs missing",
+            isAccepted: false,
+            isInputSpent: true
+        )]
+
+        record = try await driver(withSdk: false).tick(record)
+        XCTAssertNotEqual(record.broadcastLog.first { $0.txid == "r1" }?.isInputSpent, true)
+
+        chain.confirmedTxids = ["n1"]
+        record = try await driver(withSdk: false).tick(record)
+        XCTAssertEqual(chain.broadcasts.map(\.txid).filter { $0 == "r1" }, ["r1"])
+    }
+
+    /// No host answering for a saved confirmation keeps it.
+    func testWithoutTheSdkASavedConfirmationStaysWhileNoHostAnswers() async throws {
+        chain.droppedTxids = ["n1"]
+
+        let record = try await driver(withSdk: false).tick(reorgedParentRecord())
+
+        XCTAssertEqual(record.recovery?.response.transactions.first?.status, .confirmed(blockHeight: 900))
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["r1"])
     }
 
     /// qa-03 shared-ancestor race, with the operators down so nothing else diverges: another wallet's CPFP child

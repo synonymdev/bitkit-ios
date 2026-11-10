@@ -1220,27 +1220,38 @@ struct SparkExitDriver {
         guard var recovery = record.recovery?.response else { return }
         let tip = try await chain.tipHeight()
         let listed = Set(recovery.transactions.map(\.txid))
-        var confirmed = Set(recovery.transactions.filter(\.isConfirmed).map(\.txid))
+        let saved = Set(recovery.transactions.filter(\.isConfirmed).map(\.txid))
+        var confirmed = saved
         var heights: [String: UInt32] = [:]
         for tx in recovery.transactions {
             if case let .confirmed(height?) = tx.status {
                 heights[tx.txid] = height
             }
         }
-        let unknown = recovery.transactions.filter { !$0.isConfirmed }.map(\.txid)
-            + Set(recovery.transactions.flatMap(\.dependsOn)).subtracting(listed).subtracting(confirmed)
+        // A saved confirmation is asked again, since a reorg can undo it; it stands only while no host answers.
+        let unknown = recovery.transactions.map(\.txid) + Set(recovery.transactions.flatMap(\.dependsOn)).subtracting(listed)
         let statuses = await statuses(unknown)
+        let reorged = saved.filter { statuses[$0]?.confirmed == false }
+        for txid in reorged {
+            confirmed.remove(txid)
+            heights[txid] = nil
+        }
+        if !reorged.isEmpty {
+            Self.undoReorg(reorged, in: recovery, record: &record)
+        }
         for (txid, status) in statuses where status.confirmed {
             confirmed.insert(txid)
-            heights[txid] = status.blockHeight
+            heights[txid] = status.blockHeight ?? heights[txid]
         }
         for (i, tx) in recovery.transactions.enumerated() {
             guard !Task.isCancelled else { break }
-            if tx.isConfirmed {
+            if let status = statuses[tx.txid], status.confirmed {
+                recovery.transactions[i].status = .confirmed(blockHeight: status.blockHeight ?? heights[tx.txid])
                 continue
             }
-            if let status = statuses[tx.txid], status.confirmed {
-                recovery.transactions[i].status = .confirmed(blockHeight: status.blockHeight)
+            if reorged.contains(tx.txid) {
+                recovery.transactions[i].status = .waitingForDependencies
+            } else if tx.isConfirmed {
                 continue
             }
             guard tx.dependsOn.allSatisfy(confirmed.contains), isDue(tx.txid, in: record, withoutSdk: true) else { continue }
@@ -1267,6 +1278,28 @@ struct SparkExitDriver {
             try save(record)
         }
         record.recovery = StoredRecovery(recovery)
+    }
+
+    /// What was concluded from confirmations a reorg undid, a spent input or a failed fee chain of a step or of a step
+    /// after it, no longer holds.
+    private static func undoReorg(_ reorged: Set<String>, in recovery: RecoverFundsResponse, record: inout SparkExitRecord) {
+        Logger.warn("Spark exit steps \(reorged.sorted()) lost their confirmation; asking again", context: "SparkExitDriver")
+        var undone = reorged
+        while true {
+            let added = recovery.transactions
+                .filter { !undone.contains($0.txid) && $0.dependsOn.contains(where: undone.contains) }
+                .map(\.txid)
+            if added.isEmpty {
+                break
+            }
+            undone.formUnion(added)
+        }
+        for i in record.broadcastLog.indices where record.broadcastLog[i].generation == record.generation
+            && undone.contains(record.broadcastLog[i].txid)
+        {
+            record.broadcastLog[i].isInputSpent = nil
+            record.broadcastLog[i].feeChainFailures = nil
+        }
     }
 
     /// Without the SDK, a step whose input someone else spent is never due: only a rebuild moves on from it.
