@@ -374,7 +374,7 @@ class LightningService: NodeLifecycleService {
         await refreshChannelCache()
         await refreshCache()
         if let payments = await nodePayments() {
-            seedLdkAttempts(from: payments)
+            keepLdkAttempts(from: payments)
         }
 
         Logger.info("Node started")
@@ -1119,6 +1119,7 @@ class LightningService: NodeLifecycleService {
     /// have an attempt there that a node payment would repeat.
     var railAttemptsStore: UserDefaults = .standard
     private static let railAttemptsKey = "channelFreeRailAttemptedPaymentHashes"
+    /// How many paid hashes each key keeps; one whose payment may still be pending is kept past it too.
     private static let railAttemptsLimit = 500
 
     /// Payment hashes sent over the node, kept across launches: while the node can't list its payments (stopped or not
@@ -1128,7 +1129,7 @@ class LightningService: NodeLifecycleService {
     /// there. Until then an unlistable node refuses every Spark payment.
     static let ldkAttemptsSeededKey = "ldkAttemptedPaymentHashesSeeded"
 
-    private func recordRailAttempt(paymentHash: String?) {
+    func recordRailAttempt(paymentHash: String?) {
         recordAttempt(paymentHash: paymentHash, key: Self.railAttemptsKey)
     }
 
@@ -1142,8 +1143,24 @@ class LightningService: NodeLifecycleService {
             var hashes = railAttemptsStore.stringArray(forKey: key) ?? []
             guard !hashes.contains(paymentHash) else { return }
             hashes.append(paymentHash)
-            railAttemptsStore.set(Array(hashes.suffix(Self.railAttemptsLimit)), forKey: key)
+            railAttemptsStore.set(hashes, forKey: key)
         }
+    }
+
+    /// Past the limit, drops the oldest hashes `paid` lists as paid, so a payment that may still be pending keeps
+    /// holding the other rail. Callers hold `eventCallbackLock`.
+    private func trimPaidAttempts(_ paid: Set<String>, key: String) {
+        guard let hashes = railAttemptsStore.stringArray(forKey: key), hashes.count > Self.railAttemptsLimit else { return }
+        var excess = hashes.count - Self.railAttemptsLimit
+        var kept: [String] = []
+        for hash in hashes {
+            if excess > 0, paid.contains(hash) {
+                excess -= 1
+            } else {
+                kept.append(hash)
+            }
+        }
+        railAttemptsStore.set(kept, forKey: key)
     }
 
     /// Called once the rail reports the attempt failed or lists none, so a channel retry isn't held while it can't list.
@@ -1191,19 +1208,29 @@ class LightningService: NodeLifecycleService {
     }
 
     /// Keeps the hashes of the node's pending and paid outbound payments, once, so those made before hashes were kept
-    /// hold Spark while the node can't list them.
-    private func seedLdkAttempts(from payments: [PaymentDetails]) {
+    /// hold Spark while the node can't list them, then trims only paid ones past the limit.
+    private func keepLdkAttempts(from payments: [PaymentDetails]) {
+        let sends = payments
+            .filter { $0.direction == .outbound && $0.status != .failed }
+            .sorted { $0.latestUpdateTimestamp < $1.latestUpdateTimestamp }
+        let paid = Set(sends.filter { $0.status == .succeeded }.map { $0.id.lowercased() })
         eventCallbackLock.withLock {
-            guard !railAttemptsStore.bool(forKey: Self.ldkAttemptsSeededKey) else { return }
-            let seeded = payments
-                .filter { $0.direction == .outbound && $0.status != .failed }
-                .sorted { $0.latestUpdateTimestamp < $1.latestUpdateTimestamp }
-                .map { $0.id.lowercased() }
-            let kept = railAttemptsStore.stringArray(forKey: Self.ldkAttemptsKey) ?? []
-            let hashes = seeded.filter { !kept.contains($0) } + kept
-            railAttemptsStore.set(Array(hashes.suffix(Self.railAttemptsLimit)), forKey: Self.ldkAttemptsKey)
-            railAttemptsStore.set(true, forKey: Self.ldkAttemptsSeededKey)
+            if !railAttemptsStore.bool(forKey: Self.ldkAttemptsSeededKey) {
+                let kept = railAttemptsStore.stringArray(forKey: Self.ldkAttemptsKey) ?? []
+                let seeded = sends.map { $0.id.lowercased() }.filter { !kept.contains($0) }
+                railAttemptsStore.set(seeded + kept, forKey: Self.ldkAttemptsKey)
+                railAttemptsStore.set(true, forKey: Self.ldkAttemptsSeededKey)
+            }
+            trimPaidAttempts(paid, key: Self.ldkAttemptsKey)
         }
+    }
+
+    /// Trims only the rail's paid hashes past the limit, so a payment that may still be pending keeps holding the node.
+    private func keepRailAttempts(from payments: [ChannelFreeRailPayment]) {
+        let outbound = payments.filter { $0.direction == .outbound }
+        let hashes = { (status: PaymentStatus) in Set(outbound.filter { $0.status == status }.map { $0.paymentHash.lowercased() }) }
+        let paid = hashes(.succeeded).subtracting(hashes(.pending))
+        eventCallbackLock.withLock { trimPaidAttempts(paid, key: Self.railAttemptsKey) }
     }
 
     private var hasSeededLdkAttempts: Bool {
@@ -1218,7 +1245,7 @@ class LightningService: NodeLifecycleService {
         var statuses: [PaymentStatus] = rails.contains(.channelFree) && isRailSendInFlight(paymentHash: paymentHash) ? [.pending] : []
         if rails.contains(.ldk) {
             if let payments = await nodePayments() {
-                seedLdkAttempts(from: payments)
+                keepLdkAttempts(from: payments)
                 let payment = payments.first {
                     $0.direction == .outbound && $0.id.caseInsensitiveCompare(paymentHash) == .orderedSame
                 }
@@ -1238,6 +1265,7 @@ class LightningService: NodeLifecycleService {
         }
         if rails.contains(.channelFree) {
             if let payments = await readableRailPayments() {
+                keepRailAttempts(from: payments)
                 let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: paymentHash)
                 if let payment {
                     statuses.append(payment.status)
