@@ -72,7 +72,7 @@ extension PrivatePaykitService {
         return decodedInvoice.paymentHash.hex
     }
 
-    /// Whether this wallet already tried to pay `paymentHash`, or nil when Spark could not list its payments.
+    /// Whether this wallet already tried to pay `paymentHash`, or nil when the node or Spark could not list its payments.
     func hasAttemptedOutboundBolt11Payment(paymentHash: String) async -> Bool? {
         guard let attempted = try? await attemptedOutboundBolt11PaymentHashes() else { return nil }
         return attempted.contains(paymentHash)
@@ -144,9 +144,10 @@ extension PrivatePaykitService {
         return Set(ldkHashes + railHashes)
     }
 
-    /// Throws when Spark could not list its payments, so a payment it may have attempted isn't read as never tried.
+    /// Throws when the node or Spark could not list its payments, so a payment either may have attempted isn't read as
+    /// never tried.
     func attemptedOutboundBolt11PaymentHashes() async throws -> Set<String> {
-        let payments = await LightningService.shared.listPayments() ?? []
+        guard let payments = await LightningService.shared.nodePayments() else { throw AppError(serviceError: .nodeNotSetup) }
         let ldkHashes = payments.compactMap { payment -> String? in
             guard payment.direction == .outbound,
                   payment.status != .failed,

@@ -13,8 +13,9 @@
     swipe pays at once. The higher-total path (the "Fees changed" toast) needs fee rates to rise between
     the quote and the swipe, which is not a listed capability.
 
-    Precondition: a freshly onboarded Debug build on the staging regtest backend with Spark connected,
-    no spending balance and exactly two confirmed on-chain UTXOs of 150 000 sats each (two
+    Precondition: a freshly onboarded Debug build on the staging regtest backend with Spark connected, launched with
+    SPARK_CHAIN_SERVICE_URL set to that regtest's Esplora URL (otherwise the transfer shows the Transfer Unavailable
+    sheet), no spending balance and exactly two confirmed on-chain UTXOs of 150 000 sats each (two
     ../bitkit-android/lsp deposits to the wallet's savings address, each followed by a mine). Start on
     the wallet home screen.
   </description>

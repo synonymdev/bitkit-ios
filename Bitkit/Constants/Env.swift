@@ -222,11 +222,12 @@ enum Env {
     }
 
     /// Esplora REST API Spark reads the chain from and broadcasts through, in place of the SDK's default
-    /// (mempool.space with blockstream as fallback on mainnet); nil keeps the default.
+    /// (mempool.space with blockstream as fallback on mainnet); nil keeps the default. On regtest a debug or E2E build
+    /// can point Spark at Bitkit's own chain with `SPARK_CHAIN_SERVICE_URL`, so a Savings deposit reaches it.
     static func sparkChainServiceUrl(for network: LDKNode.Network) -> String? {
         switch network {
         case .bitcoin: "https://bitkit.to/electrs"
-        default: nil
+        default: configValue("SPARK_CHAIN_SERVICE_URL")
         }
     }
 

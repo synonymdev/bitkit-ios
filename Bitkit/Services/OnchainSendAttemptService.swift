@@ -941,6 +941,12 @@ actor OnchainSendAttemptService {
         try store.save([attempt])
     }
 
+    /// The Spark funding still waiting on its outcome, so the confirm screen can keep the approval its swipe gave.
+    func unresolvedSparkFundingAttemptId() -> UUID? {
+        guard let attempt = try? currentAttempt(), attempt.isSparkFunding, attempt.status != .accepted else { return nil }
+        return attempt.id
+    }
+
     private func currentAdmissionAttempt() throws -> OnchainSendAttempt? {
         do { return try currentAttempt() }
         catch { throw OnchainSendAttemptError.unresolved }

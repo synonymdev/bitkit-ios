@@ -1,4 +1,5 @@
 @testable import Bitkit
+import BreezSdkSpark
 import LDKNode
 import XCTest
 
@@ -22,6 +23,7 @@ final class ChannelFreeRailTests: XCTestCase {
         previousAttemptsStore = service.railAttemptsStore
         service.railAttemptsStore = UserDefaults(suiteName: "ChannelFreeRailTests")!
         service.forgetRailAttempts()
+        service.forgetLdkAttempts()
         previousRailSupported = service.channelFreeRailSupported
         service.channelFreeRailSupported = { true }
     }
@@ -29,6 +31,7 @@ final class ChannelFreeRailTests: XCTestCase {
     override func tearDown() {
         let service = Bitkit.LightningService.shared
         service.forgetRailAttempts()
+        service.forgetLdkAttempts()
         service.railAttemptsStore = previousAttemptsStore
         service.channelFreeRailSupported = previousRailSupported
         service.clearEventCallback()
@@ -68,12 +71,29 @@ final class ChannelFreeRailTests: XCTestCase {
             Bitkit.ChannelFreeRailPayment(paymentHash: "out", direction: .outbound, status: .pending, preimage: nil),
             Bitkit.ChannelFreeRailPayment(paymentHash: "failed", direction: .outbound, status: .failed, preimage: nil),
         ]
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        service.nodePayments = { [] }
+        defer { service.nodePayments = nodePayments }
 
         let received = await PrivatePaykitService.shared.receivedSettledPaymentHashes()
         let attempted = try await PrivatePaykitService.shared.attemptedOutboundBolt11PaymentHashes()
 
         XCTAssertTrue(received.contains("in"))
         XCTAssertEqual(attempted.intersection(["out", "failed"]), ["out"])
+    }
+
+    func testAContactListInvoicePaidOnSparkReadsAsSettled() async {
+        // The private payment list's invoice was created on Spark, so only Spark's list shows it paid.
+        let hash = String(repeating: "ab", count: 32)
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .inbound, status: .pending, preimage: nil)]
+        let pending = await PrivatePaykitService.shared.isReceivedInvoiceSettled(paymentHash: hash)
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .inbound, status: .succeeded, preimage: nil)]
+
+        let paid = await PrivatePaykitService.shared.isReceivedInvoiceSettled(paymentHash: hash)
+
+        XCTAssertFalse(pending)
+        XCTAssertTrue(paid, "A paid Spark invoice would leave the private list unrotated")
     }
 
     func testLightningWaitFinishesWhenTheRailSettledBeforeWatching() async throws {
@@ -154,6 +174,189 @@ extension ChannelFreeRailTests {
             XCTAssertTrue(PrivatePaykitService.isDuplicatePaymentError(error), "\(error)")
         }
         XCTAssertNil(rail.sentBolt11)
+    }
+
+    func testAnInvoiceSentOverTheNodeIsNotSentThroughSparkWhileTheNodeCantListIt() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        service.nodePayments = { nil }
+        defer { service.nodePayments = nodePayments }
+        service.recordLdkAttempt(paymentHash: hash)
+        rail.balanceSats = 100_000
+
+        do {
+            _ = try await service.send(bolt11: Self.invoice)
+            XCTFail("Expected the node attempt it can't list to refuse the Spark send")
+        } catch {
+            XCTAssertTrue(PrivatePaykitService.isDuplicatePaymentError(error), "\(error)")
+        }
+        XCTAssertNil(rail.sentBolt11)
+    }
+
+    func testSparkStillPaysWhileTheNodeCantListWhenTheNodeNeverTriedTheInvoice() async throws {
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        service.nodePayments = { nil }
+        defer { service.nodePayments = nodePayments }
+        rail.balanceSats = 100_000
+
+        _ = try await service.send(bolt11: Self.invoice)
+
+        XCTAssertEqual(rail.sentBolt11, Self.invoice)
+    }
+
+    func testSparkWaitsForTheNodesFirstListingWhenItsEarlierPaymentsWereNeverKept() async throws {
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        defer { service.nodePayments = nodePayments }
+        // Node payments made before their hashes were kept: none is held until the node lists them.
+        service.railAttemptsStore.removeObject(forKey: Bitkit.LightningService.ldkAttemptsSeededKey)
+        rail.balanceSats = 100_000
+
+        service.nodePayments = { nil }
+        do {
+            _ = try await service.send(bolt11: Self.invoice)
+            XCTFail("Spark paid while the node's earlier payments were unknown")
+        } catch {}
+        XCTAssertNil(rail.sentBolt11)
+
+        service.nodePayments = { [] }
+        _ = try await service.send(bolt11: Self.invoice)
+        rail.sentBolt11 = nil
+        service.nodePayments = { nil }
+        _ = try await service.send(bolt11: Self.invoice)
+
+        XCTAssertEqual(rail.sentBolt11, Self.invoice, "Spark stayed held after the node listed its payments")
+    }
+
+    func testANodePaymentMadeBeforeHashesWereKeptHoldsSparkOnceTheNodeListedIt() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let pending = LDKNode.PaymentDetails(
+            id: hash, kind: .bolt11(hash: hash, preimage: nil, secret: nil, description: nil, bolt11: Self.invoice),
+            amountMsat: 20_000_000, feePaidMsat: nil, direction: .outbound, status: .pending, latestUpdateTimestamp: 0
+        )
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        defer { service.nodePayments = nodePayments }
+        service.railAttemptsStore.removeObject(forKey: Bitkit.LightningService.ldkAttemptsSeededKey)
+        rail.balanceSats = 100_000
+
+        service.nodePayments = { [pending] }
+        do {
+            _ = try await service.send(bolt11: Self.invoice)
+        } catch {}
+        service.nodePayments = { nil }
+        do {
+            _ = try await service.send(bolt11: Self.invoice)
+            XCTFail("Expected the node's pending payment to hold Spark while the node can't list it")
+        } catch {
+            XCTAssertTrue(PrivatePaykitService.isDuplicatePaymentError(error), "\(error)")
+        }
+        XCTAssertNil(rail.sentBolt11)
+    }
+
+    func testANodeAttemptTheNodeListsAsFailedNoLongerHoldsSpark() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let failed = LDKNode.PaymentDetails(
+            id: hash, kind: .bolt11(hash: hash, preimage: nil, secret: nil, description: nil, bolt11: Self.invoice),
+            amountMsat: 20_000_000, feePaidMsat: nil, direction: .outbound, status: .failed, latestUpdateTimestamp: 0
+        )
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        defer { service.nodePayments = nodePayments }
+        service.recordLdkAttempt(paymentHash: hash)
+        rail.balanceSats = 100_000
+
+        service.nodePayments = { [failed] }
+        _ = try await service.send(bolt11: Self.invoice)
+        rail.sentBolt11 = nil
+        service.nodePayments = { nil }
+        _ = try await service.send(bolt11: Self.invoice)
+
+        XCTAssertEqual(rail.sentBolt11, Self.invoice, "A failed node attempt kept holding the invoice")
+    }
+
+    func testAPendingNodePaymentBehindTheCapOfSettledOnesStillHoldsSparkWhileTheNodeCantList() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let pending = LDKNode.PaymentDetails(
+            id: hash, kind: .bolt11(hash: hash, preimage: nil, secret: nil, description: nil, bolt11: Self.invoice),
+            amountMsat: 20_000_000, feePaidMsat: nil, direction: .outbound, status: .pending, latestUpdateTimestamp: 0
+        )
+        let settled = (1 ... 500).map { index in
+            LDKNode.PaymentDetails(
+                id: Self.otherHash(index), kind: .bolt11(hash: Self.otherHash(index), preimage: nil, secret: nil, description: nil, bolt11: ""),
+                amountMsat: 1000, feePaidMsat: nil, direction: .outbound, status: .succeeded, latestUpdateTimestamp: UInt64(index)
+            )
+        }
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        defer { service.nodePayments = nodePayments }
+        service.railAttemptsStore.removeObject(forKey: Bitkit.LightningService.ldkAttemptsSeededKey)
+        rail.balanceSats = 100_000
+
+        service.nodePayments = { [pending] + settled }
+        _ = try? await service.send(bolt11: Self.invoice)
+        service.nodePayments = { nil }
+
+        await assertRefusedAsDuplicate()
+    }
+
+    func testANodeSendStillPendingBehindTheCapOfLaterSendsStillHoldsSparkWhileTheNodeCantList() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        service.nodePayments = { nil }
+        defer { service.nodePayments = nodePayments }
+        service.recordLdkAttempt(paymentHash: hash)
+        for index in 1 ... 500 {
+            service.recordLdkAttempt(paymentHash: Self.otherHash(index))
+        }
+        rail.balanceSats = 100_000
+
+        await assertRefusedAsDuplicate()
+    }
+
+    func testASparkSendStillPendingBehindTheCapOfLaterSendsStillHoldsTheNode() async throws {
+        try await sendOverSpark()
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        for index in 1 ... 500 {
+            service.recordRailAttempt(paymentHash: Self.otherHash(index))
+        }
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .pending, preimage: nil)]
+            + (1 ... 500).map {
+                Bitkit.ChannelFreeRailPayment(paymentHash: Self.otherHash($0), direction: .outbound, status: .succeeded, preimage: nil)
+            }
+        rail.balanceSats = 0
+        await assertRefusedAsDuplicate()
+
+        rail.listError = NSError(domain: "spark", code: 1)
+
+        await assertRefusedAsDuplicate()
+    }
+
+    private static func otherHash(_ index: Int) -> String {
+        String(format: "%064x", index)
+    }
+
+    func testPaykitReadsAnUnlistableNodeAsUnknownNotAsNeverPaid() async {
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        service.nodePayments = { nil }
+        defer { service.nodePayments = nodePayments }
+
+        let attempted = await PrivatePaykitService.shared.hasAttemptedOutboundBolt11Payment(paymentHash: "out")
+
+        XCTAssertNil(attempted)
+    }
+
+    func testQuickPayWaitsWhileTheNodeCantListItsPayments() async throws {
+        let sparkFailure = Bitkit.ChannelFreeRailPayment(paymentHash: "aa", direction: .outbound, status: .failed, preimage: nil)
+
+        let rows = try await QuickPayPaymentCoordinator.reconcileRows(railPayments: { [sparkFailure] }, nodePayments: { nil })
+
+        XCTAssertNil(rows, "Spark's rows alone can release a record the node is still paying")
     }
 
     func testAnInvoiceSparkIsStillPayingIsNotSentAgainThroughTheNode() async {
@@ -411,6 +614,14 @@ extension ChannelFreeRailTests {
         XCTAssertFalse(Bitkit.LightningService.shared.canSend(amountSats: 100_000))
     }
 
+    func testAnAmountlessInvoiceNeedsSparkToHoldFunds() {
+        rail.balanceSats = 0
+        XCTAssertFalse(Bitkit.LightningService.shared.canSend(amountSats: 0), "An empty Spark wallet offered Spending for an amountless invoice")
+
+        rail.balanceSats = 10000
+        XCTAssertTrue(Bitkit.LightningService.shared.canSend(amountSats: 0))
+    }
+
     func testSendableSatsFitsTheFeeBesideTheAmount() {
         for balance: UInt64 in [0, 1, 400, 401, 9572, 100_000, 21_000_000] {
             let sendable = Bitkit.ChannelFreeRailFees.sendableSats(balanceSats: balance)
@@ -435,6 +646,10 @@ extension ChannelFreeRailTests {
 
     func testDuplicatePaymentCheckSeesARailAttempt() async {
         rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: "out", direction: .outbound, status: .pending, preimage: nil)]
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        service.nodePayments = { [] }
+        defer { service.nodePayments = nodePayments }
 
         let attempted = await PrivatePaykitService.shared.hasAttemptedOutboundBolt11Payment(paymentHash: "out")
         let fresh = await PrivatePaykitService.shared.hasAttemptedOutboundBolt11Payment(paymentHash: "new")
@@ -454,6 +669,18 @@ extension ChannelFreeRailTests {
 
         XCTAssertEqual(latest, retry)
         XCTAssertEqual(Bitkit.ChannelFreeRailPayment.latestOutboundAttempt([failed], paymentHash: "aa"), failed)
+    }
+
+    func testTheSendSheetWaitsForTheChannelWhenSparkCanCoverOnlyTheAmountNotItsFee() {
+        XCTAssertFalse(SendSheet.sparkCanPay(amountSats: 100_000, isReady: true, balanceSats: 100_000))
+        XCTAssertTrue(SendSheet.sparkCanPay(amountSats: 99750, isReady: true, balanceSats: 100_000))
+    }
+
+    func testInsufficientFundsInsideTheSparkSendIsARefusal() {
+        let failure = Bitkit.SparkManager.sendPaymentFailure(SdkError.InsufficientFunds(tokenIdentifier: nil))
+
+        XCTAssertTrue(failure is Bitkit.ChannelFreeRailSendRefused, "\(failure)")
+        XCTAssertFalse(Bitkit.SparkManager.sendPaymentFailure(SdkError.SparkError("operators")) is Bitkit.ChannelFreeRailSendRefused)
     }
 
     func testSendableSatsDoesNotOverflowOnAHugeBalance() {

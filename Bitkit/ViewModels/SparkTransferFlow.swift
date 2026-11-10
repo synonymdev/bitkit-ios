@@ -114,13 +114,17 @@ struct SparkClaimOperations {
     var claimEarly: (SparkClaimOffer) async throws -> SparkEarlyClaim
     var refresh: () async -> Void
     var sleep: (Duration) async -> Void
+    /// Clears the early-claim fee cap `claimEarly` left on the deposit, so only the claim at maturity is made. False when
+    /// the cap may still be there, as while another claim of the deposit is running.
+    var releaseEarlyClaim: (SparkClaimOffer) async -> Bool = { _ in true }
 
     static var live: SparkClaimOperations {
         SparkClaimOperations(
             offer: { try await SparkManager.shared.depositClaimOffer(txid: $0) },
             claimEarly: { try await SparkManager.shared.claimEarly($0) },
             refresh: { await SparkManager.shared.refreshState() },
-            sleep: { try? await Task.sleep(for: $0) }
+            sleep: { try? await Task.sleep(for: $0) },
+            releaseEarlyClaim: { await SparkManager.shared.releaseEarlyClaim($0) }
         )
     }
 }
@@ -158,8 +162,11 @@ final class SparkTransferFlow {
     /// Each broadcast deposit keeps its own claim: a later transfer neither stops an earlier one's early claim nor takes
     /// its results, which only the current transfer's screen shows.
     @ObservationIgnored private var offers: [String: SparkClaimOffer] = [:]
+    /// Offers whose early claim was attempted, so the fee cap it left on the deposit can be cleared on Wait.
+    @ObservationIgnored private var claimedOffers: [String: SparkClaimOffer] = [:]
     @ObservationIgnored private var ceilings: [String: UInt64] = [:]
     @ObservationIgnored private var approved: (ceilingSats: UInt64, speed: SparkTransferSpeed)?
+    @ObservationIgnored private var approvals: [UUID: (ceilingSats: UInt64, speed: SparkTransferSpeed)] = [:]
     @ObservationIgnored private var watchTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var quoteRequestId = 0
     @ObservationIgnored private let operations: SparkClaimOperations
@@ -289,10 +296,17 @@ final class SparkTransferFlow {
         approved = (ceilingSats: quote?.claimFees.instantMaxSats ?? 0, speed: speed)
     }
 
+    /// Ties the last swipe's approval to the funding it left unresolved. A later swipe rejected while that funding is
+    /// still unresolved finds it already tied, so it can't change the ceiling or speed the user approved for it.
+    func bindApproval(to attemptId: UUID) {
+        guard let approved, approvals[attemptId] == nil else { return }
+        approvals[attemptId] = approved
+    }
+
     /// Starts the claim of a funding whose outcome was unknown at the swipe, at the ceiling and speed then approved; with
-    /// nothing approved, an early claim asks first.
-    func onRecoveredBroadcast(txid: String) {
-        let approved = approved ?? (ceilingSats: 0, speed: speed)
+    /// nothing approved for that funding, an early claim asks first.
+    func onRecoveredBroadcast(txid: String, attemptId: UUID) {
+        let approved = approvals.removeValue(forKey: attemptId) ?? (ceilingSats: 0, speed: speed)
         speed = approved.speed
         onBroadcast(txid: txid, ceilingSats: approved.ceilingSats)
     }
@@ -316,11 +330,29 @@ final class SparkTransferFlow {
         watch(txid: txid)
     }
 
-    /// Leaves the deposit to the claim after 3 confirmations.
+    /// Leaves the deposit to the claim after 3 confirmations, clearing the fee cap an early claim attempt left on it, so
+    /// Spark doesn't still claim it early.
     func waitForConfirmations() {
         if let txid {
             watchTasks[txid]?.cancel()
             watchTasks[txid] = nil
+            if let offer = claimedOffers.removeValue(forKey: txid) {
+                let operations = operations
+                let attempts = max(pollAttempts, 1)
+                // Not awaited: the SDK call ignores cancellation and can take a while. Tried again while another claim of
+                // the deposit, such as Spark's own sync, leaves the cap in place.
+                Task {
+                    for attempt in 1 ... attempts {
+                        if await operations.releaseEarlyClaim(offer) {
+                            return
+                        }
+                        if attempt < attempts {
+                            await operations.sleep(Self.pollInterval)
+                        }
+                    }
+                    Logger.warn("Gave up clearing the early claim cap of Spark deposit \(offer.txid)", context: "SparkTransferFlow")
+                }
+            }
         }
         claimState = .later
     }
@@ -366,6 +398,7 @@ final class SparkTransferFlow {
                         return
                     }
                     setClaimState(.claiming, for: txid)
+                    claimedOffers[txid] = found
                     let claim = try await operations.claimEarly(found)
                     guard !Task.isCancelled else { return }
                     if let state = SparkClaimDecision.onClaim(claim) {

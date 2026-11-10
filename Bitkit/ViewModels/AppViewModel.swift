@@ -108,6 +108,9 @@ struct ScanPaymentState {
     let hasUsableChannels: Bool
     /// Spark sends Lightning without channels.
     var hasChannelFreeRail = false
+    /// What the channels can send, usable or not, so a channel whose peer is briefly offline is waited for only when it
+    /// could pay.
+    var channelOutboundSats: UInt64 = 0
 }
 
 struct ScanPaymentOperations {
@@ -127,7 +130,8 @@ struct ScanPaymentOperations {
                         + (lightningService.channelFreeRail?.balanceSats ?? 0),
                     hasChannels: channels?.isEmpty == false,
                     hasUsableChannels: channels?.contains(where: \.isUsable) == true,
-                    hasChannelFreeRail: lightningService.channelFreeRail?.isReady == true
+                    hasChannelFreeRail: lightningService.channelFreeRail?.isReady == true,
+                    channelOutboundSats: (channels ?? []).map(\.outboundCapacityMsat).reduce(0, +) / 1000
                 )
             },
             canSendLightning: lightningService.canSend
@@ -989,21 +993,21 @@ extension AppViewModel {
                         if nodeIsRunning {
                             // Node is running → we have fresh balances; validate immediately.
                             // Prefer lightning; if insufficient or no channels/capacity, fall back to onchain.
-                            let canSendLightning = try scanPaymentOperations.canSendLightning(
-                                contactPaymentContext?.incomingPaymentRequest?.payment(using: .bitcoinLightningBolt11).amount.atomic ??
-                                    lightningInvoice.amountSatoshis
-                            )
+                            let lightningAmount = try contactPaymentContext?.incomingPaymentRequest?
+                                .payment(using: .bitcoinLightningBolt11).amount.atomic ?? lightningInvoice.amountSatoshis
+                            let canSendLightning = scanPaymentOperations.canSendLightning(lightningAmount)
 
                             if canSendLightning {
                                 handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
                                 return
                             }
 
-                            // Channels exist but none are usable (e.g. peer offline): still prefer
-                            // lightning. The send sheet shows the sync overlay and either proceeds
-                            // over lightning when the peer reconnects or falls back to onchain
-                            // after its timeout.
-                            if paymentState.hasChannels, !paymentState.hasUsableChannels {
+                            // Channels exist but none are usable (e.g. peer offline) and they could pay once it is
+                            // back: still prefer lightning. The send sheet shows the sync overlay and either proceeds
+                            // over lightning when the peer reconnects or falls back to onchain after its timeout.
+                            if paymentState.hasChannels, !paymentState.hasUsableChannels,
+                               paymentState.channelOutboundSats >= max(1, lightningAmount)
+                            {
                                 handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
                                 return
                             }
