@@ -447,7 +447,6 @@
 "lightning__spark_exit__fee_bump_button" = "Höhere Gebühr zahlen";
 "lightning__spark_exit__fee_bump_title" = "Höhere Gebühr\n<accent>zahlen</accent>";
 "lightning__spark_exit__fee_bump_text" = "Dieser Ausstieg zahlt <accent>{rate} sat/vB</accent>, weniger als das Netzwerk derzeit verlangt. Wähle einen höheren Satz, und Bitkit sendet die wartenden Schritte erneut. Die Differenz wird aus dem Sparkonto bezahlt: der Betrag neben jeder Geschwindigkeit.";
-"lightning__spark_exit__fee_bump_loading" = "Kosten einer höheren Gebühr werden berechnet…";
 "lightning__spark_exit__fee_bump_error" = "Höhere Gebühr konnte nicht berechnet werden. Versuche es erneut.";
 "lightning__spark_exit__fee_bump_confirm" = "Diese Gebühr nutzen";
 "lightning__spark_exit__leftover_waiting" = "{amount} Gebührenwechselgeld erreichen dein Sparkonto, wenn die Netzwerkgebühren sinken.";

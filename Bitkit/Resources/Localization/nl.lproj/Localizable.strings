@@ -447,7 +447,6 @@
 "lightning__spark_exit__fee_bump_button" = "Hogere vergoeding betalen";
 "lightning__spark_exit__fee_bump_title" = "Betaal een\n<accent>hogere vergoeding</accent>";
 "lightning__spark_exit__fee_bump_text" = "Deze exit betaalt <accent>{rate} sat/vB</accent>, minder dan het netwerk nu vraagt. Kies een hoger tarief en Bitkit verstuurt de wachtende stappen opnieuw. Het verschil wordt uit je spaargeld betaald: het bedrag naast elke snelheid.";
-"lightning__spark_exit__fee_bump_loading" = "Berekenen wat een hogere vergoeding kost…";
 "lightning__spark_exit__fee_bump_error" = "Kon de prijs van een hogere vergoeding niet berekenen. Probeer het opnieuw.";
 "lightning__spark_exit__fee_bump_confirm" = "Deze vergoeding gebruiken";
 "lightning__spark_exit__leftover_waiting" = "{amount} aan wisselgeld van de vergoeding komt in je spaargeld wanneer de netwerkkosten dalen.";

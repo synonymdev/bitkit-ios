@@ -449,7 +449,6 @@
 "lightning__spark_exit__fee_bump_button" = "Zapłać wyższą opłatę";
 "lightning__spark_exit__fee_bump_title" = "Zapłać\n<accent>wyższą opłatę</accent>";
 "lightning__spark_exit__fee_bump_text" = "To wyjście płaci <accent>{rate} sat/vB</accent>, mniej niż sieć wymaga teraz. Wybierz wyższą stawkę, a Bitkit ponownie wyśle oczekujące kroki. Różnicę zapłaci z oszczędności: kwota obok każdej prędkości.";
-"lightning__spark_exit__fee_bump_loading" = "Obliczanie kosztu wyższej opłaty…";
 "lightning__spark_exit__fee_bump_error" = "Nie udało się wycenić wyższej opłaty. Spróbuj ponownie.";
 "lightning__spark_exit__fee_bump_confirm" = "Użyj tej opłaty";
 "lightning__spark_exit__leftover_waiting" = "{amount} reszty z opłat trafi do Twoich oszczędności, gdy opłaty sieciowe spadną.";

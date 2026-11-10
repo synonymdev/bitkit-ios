@@ -433,7 +433,6 @@
 "lightning__spark_exit__fee_bump_button" = "Paga una comissió més alta";
 "lightning__spark_exit__fee_bump_title" = "Paga una\n<accent>comissió més alta</accent>";
 "lightning__spark_exit__fee_bump_text" = "Aquesta sortida paga <accent>{rate} sat/vB</accent>, menys del que la xarxa demana ara. Tria una taxa més alta i Bitkit tornarà a enviar els passos pendents. Paga la diferència des d'estalvis: l'import al costat de cada velocitat.";
-"lightning__spark_exit__fee_bump_loading" = "Calculant quant costa una comissió més alta…";
 "lightning__spark_exit__fee_bump_error" = "No s'ha pogut calcular el preu d'una comissió més alta. Torna-ho a provar.";
 "lightning__spark_exit__fee_bump_confirm" = "Fes servir aquesta comissió";
 "lightning__spark_exit__leftover_waiting" = "{amount} de canvi de comissions arribarà als teus estalvis quan baixin les comissions de xarxa.";

@@ -420,7 +420,6 @@
 "lightning__spark_exit__fee_bump_button" = "Πληρωμή υψηλότερου τέλους";
 "lightning__spark_exit__fee_bump_title" = "Πληρώστε\n<accent>υψηλότερο τέλος</accent>";
 "lightning__spark_exit__fee_bump_text" = "Αυτή η έξοδος πληρώνει <accent>{rate} sat/vB</accent>, λιγότερο από όσο ζητά τώρα το δίκτυο. Επιλέξτε υψηλότερο ρυθμό και το Bitkit στέλνει ξανά τα βήματα σε αναμονή. Πληρώνει τη διαφορά από τις αποταμιεύσεις: το ποσό δίπλα σε κάθε ταχύτητα.";
-"lightning__spark_exit__fee_bump_loading" = "Υπολογισμός κόστους υψηλότερου τέλους…";
 "lightning__spark_exit__fee_bump_error" = "Δεν ήταν δυνατός ο υπολογισμός υψηλότερου τέλους. Δοκιμάστε ξανά.";
 "lightning__spark_exit__fee_bump_confirm" = "Χρήση αυτού του τέλους";
 "lightning__spark_exit__leftover_waiting" = "{amount} ρέστα τελών θα φτάσουν στις αποταμιεύσεις σας όταν μειωθούν τα τέλη δικτύου.";

@@ -450,7 +450,6 @@
 "lightning__spark_exit__fee_bump_button" = "Payer des frais plus élevés";
 "lightning__spark_exit__fee_bump_title" = "Payer des\n<accent>frais plus élevés</accent>";
 "lightning__spark_exit__fee_bump_text" = "Cette sortie paie <accent>{rate} sat/vB</accent>, moins que ce que le réseau demande actuellement. Choisissez un taux plus élevé et Bitkit renvoie les étapes en attente. La différence est payée depuis l'épargne : le montant affiché à côté de chaque vitesse.";
-"lightning__spark_exit__fee_bump_loading" = "Calcul du coût de frais plus élevés…";
 "lightning__spark_exit__fee_bump_error" = "Impossible d'estimer des frais plus élevés. Réessayez.";
 "lightning__spark_exit__fee_bump_confirm" = "Utiliser ces frais";
 "lightning__spark_exit__leftover_waiting" = "{amount} de monnaie de frais arrivera dans votre épargne lorsque les frais de réseau baisseront.";

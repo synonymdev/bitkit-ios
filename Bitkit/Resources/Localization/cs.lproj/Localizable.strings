@@ -449,7 +449,6 @@
 "lightning__spark_exit__fee_bump_button" = "Zaplatit vyšší poplatek";
 "lightning__spark_exit__fee_bump_title" = "Zaplatit\n<accent>vyšší poplatek</accent>";
 "lightning__spark_exit__fee_bump_text" = "Tento výstup platí <accent>{rate} sat/vB</accent>, méně, než síť nyní požaduje. Zvolte vyšší sazbu a Bitkit čekající kroky odešle znovu. Rozdíl zaplatí z úspor: částku uvedenou u každé rychlosti.";
-"lightning__spark_exit__fee_bump_loading" = "Zjišťujeme, kolik stojí vyšší poplatek…";
 "lightning__spark_exit__fee_bump_error" = "Cenu vyššího poplatku se nepodařilo zjistit. Zkuste to znovu.";
 "lightning__spark_exit__fee_bump_confirm" = "Použít tento poplatek";
 "lightning__spark_exit__leftover_waiting" = "{amount} vrácených poplatků dorazí do vašich úspor, až síťové poplatky klesnou.";

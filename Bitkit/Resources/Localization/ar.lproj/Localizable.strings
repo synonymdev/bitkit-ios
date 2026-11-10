@@ -396,7 +396,6 @@
 "lightning__spark_exit__fee_bump_button" = "ادفع رسومًا أعلى";
 "lightning__spark_exit__fee_bump_title" = "ادفع\n<accent>رسومًا أعلى</accent>";
 "lightning__spark_exit__fee_bump_text" = "يدفع هذا الخروج <accent>{rate} sat/vB</accent>، وهو أقل مما تطلبه الشبكة الآن. اختر معدلًا أعلى وسيعيد Bitkit إرسال الخطوات المنتظرة. يدفع الفرق من المدخرات: المبلغ الظاهر بجانب كل سرعة.";
-"lightning__spark_exit__fee_bump_loading" = "جارٍ حساب تكلفة رسوم أعلى…";
 "lightning__spark_exit__fee_bump_error" = "تعذّر تسعير رسوم أعلى. حاول مرة أخرى.";
 "lightning__spark_exit__fee_bump_confirm" = "استخدم هذه الرسوم";
 "lightning__spark_exit__leftover_waiting" = "سيصل {amount} من فكة الرسوم إلى مدخراتك عند انخفاض رسوم الشبكة.";

@@ -111,11 +111,16 @@ struct SparkExitDriver {
                     try save(record)
                     return record
                 }
-                guard let recovering else { return try saveIfChanged(record, from: before) }
+                guard let recovering else {
+                    await updateClaimableHeight(&record)
+                    return try saveIfChanged(record, from: before)
+                }
                 // Nothing to fund when every leaf is recovered cooperatively.
                 if let shortfall = record.fundingShortfallSats {
                     guard try await adoptFunding(&record, requiredSats: shortfall) else {
                         await countShortOwnPayment(&record)
+                        // The steps already out keep their countdown while the top-up is awaited.
+                        await updateClaimableHeight(&record)
                         return try saveIfChanged(record, from: before)
                     }
                 }
@@ -151,14 +156,18 @@ struct SparkExitDriver {
                 }
             }
         }
-        // Without the tip the countdown keeps its last target rather than jump to another measure.
+        await updateClaimableHeight(&record)
+        try save(record)
+        return record
+    }
+
+    /// Without the tip the countdown keeps its last target rather than jump to another measure.
+    private func updateClaimableHeight(_ record: inout SparkExitRecord) async {
         if let tip = try? await chain.tipHeight() {
             record.claimableAtHeight = record.recovery.flatMap { SparkExitMath.claimableAtHeight($0.response, tip: tip) }
         } else if record.claimableAtHeight == nil {
             record.claimableAtHeight = record.recovery.flatMap { SparkExitMath.claimableAtHeight($0.response) }
         }
-        try save(record)
-        return record
     }
 
     private func saveIfChanged(_ record: SparkExitRecord, from before: SparkExitRecord) throws -> SparkExitRecord {

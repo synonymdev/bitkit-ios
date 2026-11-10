@@ -12,10 +12,11 @@ struct SparkExitIntroView: View {
                 .padding(.bottom, 16)
 
             DisplayText(t("lightning__spark_exit__intro_title"), accentColor: .brandAccent)
+                .padding(.top, 32)
 
             BodyMText(t("lightning__spark_exit__intro_text"), accentFont: Fonts.bold)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 16)
+                .padding(.top, 8)
 
             Spacer()
 
@@ -70,6 +71,7 @@ struct SparkExitQuoteView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     DisplayText(t("lightning__spark_exit__quote_title"), accentColor: .brandAccent)
+                        .padding(.top, 32)
                         .padding(.bottom, 32)
 
                     if let quote = exit.quote {
@@ -97,7 +99,7 @@ struct SparkExitQuoteView: View {
                             .accessibilityIdentifier("SparkExitQuoteBlocked")
                     }
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, 32)
             }
 
             CustomButton(title: t("common__continue"), isLoading: exit.isQuoting) {
@@ -197,13 +199,14 @@ struct SparkExitFundingView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     DisplayText(t("lightning__spark_exit__funding_title"), accentColor: .brandAccent)
+                        .padding(.top, 32)
 
                     BodyMText(
                         t("lightning__spark_exit__funding_text", variables: ["amount": currency.primaryAmountText(sats: fundingSats)]),
                         accentFont: Fonts.bold
                     )
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 16)
+                    .padding(.top, 8)
 
                     if let steps = exit.quote?.fundedSteps, steps > 1 {
                         BodySText(t("lightning__spark_exit__funding_split", variables: ["count": "\(steps)"]))
@@ -222,7 +225,7 @@ struct SparkExitFundingView: View {
                         .padding(.top, 24)
                     }
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, 32)
             }
 
             if showsAddress {
@@ -501,10 +504,11 @@ struct SparkExitConfirmView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     DisplayText(t("lightning__spark_exit__confirm_title"), accentColor: .brandAccent)
+                        .padding(.top, 32)
 
                     BodyMText(t("lightning__spark_exit__confirm_text"), accentFont: Fonts.bold)
                         .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 16)
+                        .padding(.top, 8)
                         .padding(.bottom, 32)
 
                     if let quote = exit.quote {
@@ -515,11 +519,8 @@ struct SparkExitConfirmView: View {
                         SparkExitAmountRow(label: t("lightning__spark_exit__savings_fee"), sats: savingsPayment.feeSats)
                         SparkExitAmountRow(label: t("lightning__spark_exit__savings_total"), sats: savingsPayment.totalSats)
                     }
-
-                    SparkExitBackgroundNotes()
-                        .padding(.top, 16)
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, 32)
             }
 
             SwipeButton(title: t("lightning__spark_exit__swipe"), accentColor: .brandAccent) {
@@ -559,6 +560,7 @@ struct SparkExitProgressView: View {
     @EnvironmentObject var currency: CurrencyViewModel
 
     private let exit = SparkExitManager.shared
+    @State private var isConfirmingCancel = false
 
     private var record: SparkExitRecord? {
         exit.record
@@ -639,15 +641,16 @@ struct SparkExitProgressView: View {
             NavigationBar(title: t("lightning__spark_exit__nav_title"))
                 .padding(.bottom, 16)
 
-            DisplayText(title, accentColor: .brandAccent)
-                .padding(.bottom, 16)
-
-            BodyMText(text, accentFont: Fonts.bold)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.bottom, 24)
-
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
+                    DisplayText(title, accentColor: .brandAccent)
+                        .padding(.top, 32)
+
+                    BodyMText(text, accentFont: Fonts.bold)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 8)
+                        .padding(.bottom, 24)
+
                     if let record {
                         SparkExitSteps(record: record, tipHeight: exit.tipHeight)
 
@@ -656,28 +659,10 @@ struct SparkExitProgressView: View {
                                 .padding(.top, 24)
                         }
 
-                        if record.isActive, record.isRebuiltFromChain == true {
-                            BodySText(t("lightning__spark_exit__rebuilt_from_chain"))
-                                .fixedSize(horizontal: false, vertical: true)
-                                .padding(.top, 16)
-                                .accessibilityIdentifier("SparkExitRebuiltFromChain")
-                        }
-
-                        if record.isActive, record.isWaitingForLeaves {
-                            BodySText(t("lightning__spark_exit__waiting_leaves"))
-                                .fixedSize(horizontal: false, vertical: true)
-                                .padding(.top, 16)
-                                .accessibilityIdentifier("SparkExitWaitingLeaves")
-                        }
-
-                        if record.isWaitingForOperators {
-                            BodySText(t(
-                                "lightning__spark_exit__waiting_operators",
-                                variables: ["amount": sparkExitAmountAccent(currency.primaryAmountText(sats: record.failedLeavesSats))]
-                            ), accentColor: .white, accentFont: Fonts.bold)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .padding(.top, 16)
-                                .accessibilityIdentifier("SparkExitWaitingOperators")
+                        if exit.isSavingsPaymentRefused {
+                            BodySText(t("lightning__spark_exit__savings_refused"), textColor: .redAccent)
+                                .padding(.top, 24)
+                                .accessibilityIdentifier("SparkExitSavingsRefused")
                         }
 
                         if let address = record.funding.first?.address {
@@ -704,24 +689,31 @@ struct SparkExitProgressView: View {
                             }
                         }
 
-                        if record.leftBehindSats > 0 {
+                        if record.isActive, record.isRebuiltFromChain == true {
+                            BodySText(t("lightning__spark_exit__rebuilt_from_chain"))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.top, 16)
+                                .accessibilityIdentifier("SparkExitRebuiltFromChain")
+                        }
+
+                        if record.isWaitingForOperators {
                             BodySText(t(
-                                "lightning__spark_exit__left_behind_leaves",
-                                variables: ["amount": sparkExitAmountAccent(currency.primaryAmountText(sats: record.leftBehindSats))]
+                                "lightning__spark_exit__waiting_operators",
+                                variables: ["amount": sparkExitAmountAccent(currency.primaryAmountText(sats: record.failedLeavesSats))]
                             ), accentColor: .white, accentFont: Fonts.bold)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .padding(.top, 16)
-                                .accessibilityIdentifier("SparkExitLeftBehind")
+                                .accessibilityIdentifier("SparkExitWaitingOperators")
                         }
 
-                        if let lostText {
-                            BodySText(lostText, textColor: .redAccent, accentColor: .redAccent, accentFont: Fonts.bold)
+                        if record.isActive, record.isWaitingForLeaves {
+                            BodySText(t("lightning__spark_exit__waiting_leaves"))
                                 .fixedSize(horizontal: false, vertical: true)
                                 .padding(.top, 16)
-                                .accessibilityIdentifier("SparkExitLostLeaves")
+                                .accessibilityIdentifier("SparkExitWaitingLeaves")
                         }
 
-                        if record.isActive, let rejection = record.surfacedRejection {
+                        if let rejection = record.surfacedRejection {
                             BodySText(t("lightning__spark_exit__not_moving", variables: ["error": rejection]), textColor: .redAccent)
                                 .padding(.top, 16)
                                 .accessibilityIdentifier("SparkExitNotMoving")
@@ -754,10 +746,21 @@ struct SparkExitProgressView: View {
                                 .accessibilityIdentifier("SparkExitOutsideExit")
                         }
 
-                        if exit.isSavingsPaymentRefused {
-                            BodySText(t("lightning__spark_exit__savings_refused"), textColor: .redAccent)
+                        if let lostText {
+                            BodySText(lostText, textColor: .redAccent, accentColor: .redAccent, accentFont: Fonts.bold)
+                                .fixedSize(horizontal: false, vertical: true)
                                 .padding(.top, 16)
-                                .accessibilityIdentifier("SparkExitSavingsRefused")
+                                .accessibilityIdentifier("SparkExitLostLeaves")
+                        }
+
+                        if record.leftBehindSats > 0 {
+                            BodySText(t(
+                                "lightning__spark_exit__left_behind_leaves",
+                                variables: ["amount": sparkExitAmountAccent(currency.primaryAmountText(sats: record.leftBehindSats))]
+                            ), accentColor: .white, accentFont: Fonts.bold)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.top, 16)
+                                .accessibilityIdentifier("SparkExitLeftBehind")
                         }
 
                         if record.isActive {
@@ -773,6 +776,11 @@ struct SparkExitProgressView: View {
                         }
                     }
                 }
+                .padding(.bottom, 32)
+            }
+            .refreshable {
+                await SparkManager.shared.refreshState()
+                await exit.tick()
             }
 
             if record?.isActive == true, notifications.authorizationStatus == .denied {
@@ -807,12 +815,7 @@ struct SparkExitProgressView: View {
 
             if exit.canCancel {
                 CustomButton(title: t("lightning__spark_exit__cancel"), variant: .secondary) {
-                    // A funding address that cannot be read keeps the exit: a payment there is never orphaned.
-                    if await exit.cancel() == .keep {
-                        app.toast(type: .error, title: t("lightning__spark_exit__cancel_failed"), description: nil)
-                    } else {
-                        navigation.reset()
-                    }
+                    isConfirmingCancel = true
                 }
                 .padding(.bottom, 16)
                 .accessibilityIdentifier("SparkExitCancel")
@@ -826,9 +829,23 @@ struct SparkExitProgressView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
-        .refreshable {
-            await SparkManager.shared.refreshState()
-            await exit.tick()
+        .alert(t("lightning__spark_exit__cancel_title"), isPresented: $isConfirmingCancel) {
+            Button(t("lightning__spark_exit__cancel"), role: .destructive) {
+                Task {
+                    // A funding address that cannot be read keeps the exit: a payment there is never orphaned.
+                    switch await exit.cancel() {
+                    case .keep: app.toast(type: .error, title: t("lightning__spark_exit__cancel_failed"), description: nil)
+                    // Funding that reached the address is swept back on this screen, as the exit's leftover.
+                    case .sweepFunding: break
+                    case .forget: navigation.reset()
+                    }
+                }
+            }
+            .accessibilityIdentifier("SparkExitCancelConfirm")
+
+            Button(t("common__dialog_cancel"), role: .cancel) {}
+        } message: {
+            Text(t("lightning__spark_exit__cancel_text"))
         }
         .task {
             await SparkManager.shared.refreshState()
@@ -881,19 +898,26 @@ struct SparkExitFeeBumpView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     DisplayText(t("lightning__spark_exit__fee_bump_title"), accentColor: .brandAccent)
+                        .padding(.top, 32)
 
                     BodyMText(
                         t("lightning__spark_exit__fee_bump_text", variables: ["rate": "\(exit.record?.feeRateSatPerVbyte ?? 0)"]),
                         accentFont: Fonts.bold
                     )
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 16)
+                    .padding(.top, 8)
                     .padding(.bottom, 24)
 
                     if exit.isPricingFeeBump {
-                        BodyMText(t("lightning__spark_exit__fee_bump_loading"))
+                        ProgressView()
+                            .tint(.white32)
+                            .frame(maxWidth: .infinity)
+                    } else if exit.isFeeBumpLeavingLeaves {
+                        BodyMText(t("lightning__spark_exit__fee_bump_leaves_behind"))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("SparkExitFeeBumpLeavesBehind")
                     } else if let error = exit.feeBumpError {
-                        BodyMText(error, textColor: .redAccent)
+                        BodyMText(error)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("SparkExitFeeBumpError")
                     } else {
@@ -916,7 +940,7 @@ struct SparkExitFeeBumpView: View {
                         .padding(.horizontal, -16)
                     }
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, 32)
             }
 
             if isInsufficient {
@@ -925,14 +949,23 @@ struct SparkExitFeeBumpView: View {
                     .accessibilityIdentifier("SparkExitFeeBumpInsufficient")
             }
 
-            CustomButton(
-                title: t(selected?.extraSats == 0 ? "lightning__spark_exit__fee_bump_confirm" : "lightning__spark_exit__fund_savings"),
-                isLoading: isPaying || exit.isPricingFeeBump
-            ) {
-                await pay()
+            if exit.feeBumpError != nil {
+                CustomButton(title: t("common__try_again")) {
+                    await exit.loadFeeBumpOptions()
+                    await priceSavingsPayments()
+                    selectedRate = exit.feeBumpOptions.first(where: canPay)?.rate
+                }
+                .accessibilityIdentifier("SparkExitFeeBumpRetry")
+            } else if !exit.isFeeBumpLeavingLeaves {
+                CustomButton(
+                    title: t(selected?.extraSats == 0 ? "lightning__spark_exit__fee_bump_confirm" : "lightning__spark_exit__fund_savings"),
+                    isLoading: isPaying || exit.isPricingFeeBump
+                ) {
+                    await pay()
+                }
+                .disabled(selected.map { !canPay($0) } ?? true)
+                .accessibilityIdentifier("SparkExitFeeBumpPay")
             }
-            .disabled(selected.map { !canPay($0) } ?? true)
-            .accessibilityIdentifier("SparkExitFeeBumpPay")
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)

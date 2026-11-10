@@ -444,7 +444,6 @@
 "lightning__spark_exit__fee_bump_button" = "Заплатить больше";
 "lightning__spark_exit__fee_bump_title" = "Повысить\n<accent>комиссию</accent>";
 "lightning__spark_exit__fee_bump_text" = "Этот выход платит <accent>{rate} sat/vB</accent>, меньше, чем сейчас требует сеть. Выберите более высокую ставку, и Bitkit заново отправит ожидающие шаги. Разницу он оплатит из сбережений: сумма указана рядом с каждой скоростью.";
-"lightning__spark_exit__fee_bump_loading" = "Считаем стоимость более высокой комиссии…";
 "lightning__spark_exit__fee_bump_error" = "Не удалось рассчитать более высокую комиссию. Попробуйте снова.";
 "lightning__spark_exit__fee_bump_confirm" = "Использовать эту комиссию";
 "lightning__spark_exit__leftover_waiting" = "{amount} сдачи с комиссий поступит в ваши сбережения, когда сетевые комиссии снизятся.";

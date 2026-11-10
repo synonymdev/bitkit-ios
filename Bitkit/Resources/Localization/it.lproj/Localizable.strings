@@ -443,7 +443,6 @@
 "lightning__spark_exit__fee_bump_button" = "Paga una commissione più alta";
 "lightning__spark_exit__fee_bump_title" = "Paga una\n<accent>commissione più alta</accent>";
 "lightning__spark_exit__fee_bump_text" = "Questa uscita paga <accent>{rate} sat/vB</accent>, meno di quanto chiede ora la rete. Scegli un tasso più alto e Bitkit invia di nuovo i passaggi in attesa. Paga la differenza dai risparmi: l'importo accanto a ogni velocità.";
-"lightning__spark_exit__fee_bump_loading" = "Calcolo del costo di una commissione più alta…";
 "lightning__spark_exit__fee_bump_error" = "Impossibile calcolare una commissione più alta. Riprova.";
 "lightning__spark_exit__fee_bump_confirm" = "Usa questa commissione";
 "lightning__spark_exit__leftover_waiting" = "{amount} di resto delle commissioni arriverà nei tuoi risparmi quando le commissioni di rete scenderanno.";

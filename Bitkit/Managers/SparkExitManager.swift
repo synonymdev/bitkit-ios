@@ -38,6 +38,8 @@ final class SparkExitManager {
     private(set) var feeBumpOptions: [SparkExitFeeBumpOption] = []
     private(set) var isPricingFeeBump = false
     private(set) var feeBumpError: String?
+    /// Every higher rate would leave leaves on Spark, so none is offered.
+    private(set) var isFeeBumpLeavingLeaves = false
     /// What the running exit shows about its fee funding while it lacks some.
     var fundingState: SparkExitFundingState? {
         Self.isFundingOfExit(fundingExitCreatedAt, record: record) ? storedFundingState : nil
@@ -577,6 +579,7 @@ final class SparkExitManager {
         guard let record, let chain else { return }
         isPricingFeeBump = true
         feeBumpError = nil
+        isFeeBumpLeavingLeaves = false
         defer { isPricingFeeBump = false }
         await refreshNetworkFees(chain: chain)
         guard let networkFees else {
@@ -607,8 +610,11 @@ final class SparkExitManager {
         }
         feeBumpOptions = options.filter { $0.extraSats != nil }
         if feeBumpOptions.isEmpty {
-            let key = leavesBehind ? "lightning__spark_exit__fee_bump_leaves_behind" : "lightning__spark_exit__fee_bump_error"
-            feeBumpError = t(key)
+            if leavesBehind {
+                isFeeBumpLeavingLeaves = true
+            } else {
+                feeBumpError = t("lightning__spark_exit__fee_bump_error")
+            }
         }
     }
 
