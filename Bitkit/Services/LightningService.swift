@@ -1077,7 +1077,6 @@ class LightningService: NodeLifecycleService {
                     throw ChannelFreeRailSendRefused(reason: t("wallet__max_possible_fee_rate"))
                 }
             }
-            noteAttempt(on: .channelFree, bolt11: bolt11)
             do {
                 return try await rail.send(
                     bolt11: bolt11,
@@ -1087,6 +1086,8 @@ class LightningService: NodeLifecycleService {
                     beforeSubmission: { [weak self] in
                         try beforeSubmission()
                         try self?.admitSend(paymentHash: paymentHash, on: .channelFree, since: mark)
+                        // Noted once admitted, so a refused attempt never takes the place of the one that went out.
+                        self?.noteAttempt(on: .channelFree, bolt11: bolt11)
                         self?.recordRailAttempt(paymentHash: paymentHash, expiresAt: expiresAt)
                     }
                 )
@@ -1112,7 +1113,6 @@ class LightningService: NodeLifecycleService {
         }
 
         Logger.info("Paying bolt11: \(bolt11)")
-        noteAttempt(on: .ldk, bolt11: bolt11)
 
         let sendKey = paymentHash?.lowercased()
         defer { endLdkSend(paymentHash: sendKey) }
@@ -1121,6 +1121,7 @@ class LightningService: NodeLifecycleService {
                 try beforeSubmission()
                 guard let self else { return }
                 try admitSend(paymentHash: sendKey, on: .ldk, since: mark)
+                noteAttempt(on: .ldk, bolt11: bolt11)
                 recordLdkAttempt(paymentHash: paymentHash, expiresAt: expiresAt)
             }) {
                 if let sats {

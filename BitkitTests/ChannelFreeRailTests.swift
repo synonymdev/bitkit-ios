@@ -476,6 +476,20 @@ extension ChannelFreeRailTests {
         await assertRefusedAsDuplicate()
     }
 
+    func testASparkAttemptRefusedAtAdmissionKeepsTheNodeAttemptAsTheLatest() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        // The node's send of the invoice went out, and Spark's checks don't see it before Spark's submission.
+        service.noteAttempt(on: .ldk, paymentHash: hash)
+        service.beginLdkSend(paymentHash: hash)
+        defer { service.endLdkSend(paymentHash: hash) }
+        rail.balanceSats = 100_000
+
+        await assertRefusedAsDuplicate()
+
+        XCTAssertEqual(service.attemptRail(paymentHash: hash), .ldk, "a refused Spark attempt took the node's place")
+    }
+
     func testSendsNoListingShowsAreDroppedOnceTheirInvoiceExpiredPastTheSettleWindow() async throws {
         let service = Bitkit.LightningService.shared
         let nodePayments = service.nodePayments
