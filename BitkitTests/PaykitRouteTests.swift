@@ -245,15 +245,22 @@ final class PaykitRouteTests: XCTestCase {
         SparkManager.pendingContactWithdrawal = pending
 
         var failedAllowances: [SparkContactWithdrawal.PaykitRequest] = []
-        await SparkManager.closeUnsentWithdrawal(pending, releaseProof: { _ in .failed }, failAllowance: { failedAllowances.append($0) })
+        await SparkManager.closeUnsentWithdrawal(
+            pending,
+            releaseProof: { _, _ in .failed },
+            failAllowance: { failedAllowances.append($0); return true }
+        )
         XCTAssertEqual(SparkManager.pendingContactWithdrawal, pending, "A proof that wasn't released keeps the journal, so the next sync retries it")
         XCTAssertEqual(failedAllowances, [], "The attempt stays unknown while the journal is still open")
 
         var released: SparkContactWithdrawal.PaykitRequest?
         await SparkManager.closeUnsentWithdrawal(
             pending,
-            releaseProof: { released = $0; return .released },
-            failAllowance: { failedAllowances.append($0) }
+            releaseProof: { request, failAllowance in
+                released = request
+                return await failAllowance() ? .released : .failed
+            },
+            failAllowance: { failedAllowances.append($0); return true }
         )
         XCTAssertEqual(released, request)
         XCTAssertEqual(failedAllowances, [request], "An unsent withdrawal fails its allowance attempt, so the ledger lets the request be paid again")
@@ -262,7 +269,11 @@ final class PaykitRouteTests: XCTestCase {
         // A kill before the proof started leaves no Spark attempt, so a direct send's attempt for the request stays.
         SparkManager.pendingContactWithdrawal = pending
         failedAllowances = []
-        await SparkManager.closeUnsentWithdrawal(pending, releaseProof: { _ in .nothingStarted }, failAllowance: { failedAllowances.append($0) })
+        await SparkManager.closeUnsentWithdrawal(
+            pending,
+            releaseProof: { _, _ in .nothingStarted },
+            failAllowance: { failedAllowances.append($0); return true }
+        )
         XCTAssertEqual(failedAllowances, [], "Only the Spark withdrawal's own allowance attempt fails")
         XCTAssertNil(SparkManager.pendingContactWithdrawal)
     }
@@ -339,7 +350,7 @@ final class PaykitRouteTests: XCTestCase {
         let subscription = SparkManager.contactWithdrawalResolutionPublisher.sink { resolutions.append($0) }
         defer { subscription.cancel() }
 
-        await SparkManager.closeUnsentWithdrawal(pending, releaseProof: { _ in .released }, failAllowance: { _ in })
+        await SparkManager.closeUnsentWithdrawal(pending, releaseProof: { _, _ in .released }, failAllowance: { _ in true })
 
         let unsent = SparkContactWithdrawalResolution(attempt: pending.attempt, txId: nil)
         XCTAssertEqual(resolutions, [unsent])
@@ -508,7 +519,7 @@ final class PaykitRouteTests: XCTestCase {
         // A recovery captured the older withdrawal; another one closed it and the newer withdrawal wrote its journal.
         SparkManager.pendingContactWithdrawal = newer
 
-        await SparkManager.closeUnsentWithdrawal(older, releaseProof: { _ in .nothingStarted }, failAllowance: { _ in })
+        await SparkManager.closeUnsentWithdrawal(older, releaseProof: { _, _ in .nothingStarted }, failAllowance: { _ in true })
 
         XCTAssertEqual(SparkManager.pendingContactWithdrawal, newer, "Losing the newer journal could pay it twice")
     }
@@ -529,7 +540,7 @@ final class PaykitRouteTests: XCTestCase {
         let subscription = SparkManager.contactWithdrawalResolutionPublisher.sink { resolutions.append($0) }
         defer { subscription.cancel() }
 
-        await SparkManager.closeUnsentWithdrawal(older, releaseProof: { _ in .nothingStarted }, failAllowance: { _ in })
+        await SparkManager.closeUnsentWithdrawal(older, releaseProof: { _, _ in .nothingStarted }, failAllowance: { _ in true })
 
         XCTAssertEqual(SparkManager.pendingContactWithdrawal, newer)
         XCTAssertEqual(resolutions, [], "An unsent resolution for the newer send's attempt would offer Try Again while it is in flight")
@@ -550,8 +561,11 @@ final class PaykitRouteTests: XCTestCase {
 
         await SparkManager.closeUnsentWithdrawal(
             older,
-            releaseProof: { released.append($0); return .released },
-            failAllowance: { failedAllowances.append($0) }
+            releaseProof: { request, failAllowance in
+                released.append(request)
+                return await failAllowance() ? .released : .failed
+            },
+            failAllowance: { failedAllowances.append($0); return true }
         )
 
         XCTAssertEqual(released, [], "The proof matches by request, so a stale close would release the retry's started proof")

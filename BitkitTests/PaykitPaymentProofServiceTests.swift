@@ -1926,6 +1926,47 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertTrue(remaining.isEmpty)
     }
 
+    func testAnUnsentSparkWithdrawalKeepsItsProofUntilItsAllowanceAttemptIsSettled() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let store = PaymentProofMemoryStore()
+        let service = paymentProofService(sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store)
+        try await service.prepare(request: request, paymentAppId: "paykit-server", paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.markOnchainPaymentStarted(request, address: onchainAddress, sparkWithdrawal: true)
+
+        let unsettled = await service.failSparkOnchainPayment(requestId: request.id, identity: identity, settleAllowance: { false })
+        XCTAssertEqual(unsettled, .failed, "A failed allowance write keeps the journal open for a retry")
+        let kept = await store.snapshot()
+        XCTAssertEqual(kept.count, 1, "The proof stays until its allowance attempt is settled, so a restart still settles it")
+
+        var proofsWhileSettling: Int?
+        let released = await service.failSparkOnchainPayment(requestId: request.id, identity: identity, settleAllowance: {
+            proofsWhileSettling = await store.snapshot().count
+            return true
+        })
+        XCTAssertEqual(released, .released)
+        XCTAssertEqual(proofsWhileSettling, 1, "The allowance attempt is settled before its proof is removed")
+        let remaining = await store.snapshot()
+        XCTAssertTrue(remaining.isEmpty)
+    }
+
+    func testAnUnstartedSparkWithdrawalSettlesNoAllowanceAttempt() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let service = paymentProofService(sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: PaymentProofMemoryStore())
+        var settled = false
+
+        let release = await service.failSparkOnchainPayment(requestId: request.id, identity: identity, settleAllowance: {
+            settled = true
+            return true
+        })
+
+        XCTAssertEqual(release, .nothingStarted)
+        XCTAssertFalse(settled, "Only a started Spark proof has an allowance attempt to settle")
+    }
+
     func testClosingASparkJournalLeavesADirectOnchainProofForTheSameRequest() async throws {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
         let record = try paymentRequestRecord(endpoints: [endpoint])

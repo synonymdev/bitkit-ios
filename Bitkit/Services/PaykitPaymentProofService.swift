@@ -1374,7 +1374,8 @@ actor PaykitPaymentProofService {
         requestId: PaykitPaymentRequest.ID,
         identity: String,
         unstartedPaymentList: SparkContactWithdrawal.PaymentList? = nil,
-        privatePaykitService: PrivatePaykitService = .shared
+        privatePaykitService: PrivatePaykitService = .shared,
+        settleAllowance: () async -> Bool = { true }
     ) async -> SparkProofRelease {
         do {
             return try await mutationLock.withLock {
@@ -1395,6 +1396,9 @@ actor PaykitPaymentProofService {
                     }
                     return .nothingStarted
                 }
+                // The allowance attempt is settled before the proof goes: a restart in between, or a failed ledger
+                // write, leaves the proof and so the journal, which retry the settlement.
+                guard await settleAllowance() else { return .failed }
                 for proof in unsent {
                     guard let version = proof.privatePaymentListVersion else { continue }
                     try await privatePaykitService.releaseUnsentPaymentListVersion(
