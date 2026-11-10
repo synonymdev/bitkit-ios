@@ -12,6 +12,8 @@ class TransferViewModel: ObservableObject {
     /// Spark's fee to withdraw its balance to savings, for the confirm screen; nil until priced.
     @Published var sparkWithdrawFeeSats: UInt64?
     @Published var isPricingSparkWithdrawal = false
+    /// Spark's balance would leave less than the dust limit after its withdrawal fee, so it can't move to savings.
+    @Published private(set) var isSparkWithdrawTooSmall = false
     /// While the swipe prices Spark's withdrawal again, nothing else may commit the transfer.
     @Published private(set) var isRecheckingSparkFee = false
     /// Why the last transfer's Spark withdrawal failed, so the progress screen shows it instead of success.
@@ -286,6 +288,7 @@ class TransferViewModel: ObservableObject {
         sparkFeeTask = nil
         sparkFeeBalanceSats = balanceSats
         sparkWithdrawFeeSats = nil
+        isSparkWithdrawTooSmall = false
         isPricingSparkWithdrawal = false
         if sparkWithdrawAddress == nil, !savingsAddress.isEmpty {
             sparkWithdrawAddress = savingsAddress
@@ -303,7 +306,10 @@ class TransferViewModel: ObservableObject {
             guard let self, !Task.isCancelled else { return }
             sparkFeeTask = nil
             isPricingSparkWithdrawal = false
-            if let fee {
+            if let fee, balanceSats < fee + UInt64(Env.dustLimit) {
+                isSparkWithdrawTooSmall = true
+                sparkFeeBalanceSats = nil
+            } else if let fee {
                 sparkWithdrawFeeSats = fee
             } else {
                 sparkFeeBalanceSats = nil

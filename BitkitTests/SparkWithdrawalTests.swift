@@ -89,6 +89,25 @@ final class SparkWithdrawalTests: XCTestCase {
     }
 
     @MainActor
+    func testABalanceThatLeavesDustAfterItsFeeIsTooSmallToMove() async {
+        let transfer = TransferViewModel()
+        transfer.priceSparkWithdrawal = { _ in 1093 }
+
+        transfer.loadSparkWithdrawFee(balanceSats: 1093 + UInt64(Env.dustLimit) - 1, savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+
+        XCTAssertTrue(transfer.isSparkWithdrawTooSmall)
+        XCTAssertNil(transfer.sparkWithdrawFeeSats)
+        XCTAssertFalse(transfer.isSparkWithdrawalPriced(withdrawsSpark: true))
+
+        transfer.loadSparkWithdrawFee(balanceSats: 1093 + UInt64(Env.dustLimit), savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+
+        XCTAssertFalse(transfer.isSparkWithdrawTooSmall)
+        XCTAssertEqual(transfer.sparkWithdrawFeeSats, 1093)
+    }
+
+    @MainActor
     func testCloseInsteadWaitsForTheSparkFee() {
         let transfer = TransferViewModel()
 

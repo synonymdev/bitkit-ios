@@ -53,6 +53,13 @@ struct SavingsConfirmView: View {
         (swapState.quote?.amountSat ?? totalSats) + (selection.withdrawsSpark ? sparkSats : 0)
     }
 
+    /// What reaches savings: the swap's receive plus Spark's balance net of its withdrawal fee.
+    private func receiveSats(_ quote: SavingsSwapQuote) -> UInt64 {
+        guard selection.withdrawsSpark else { return quote.receiveSat }
+        let feeSats = transfer.sparkWithdrawFeeSats ?? 0
+        return quote.receiveSat + (sparkSats > feeSats ? sparkSats - feeSats : 0)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("lightning__transfer__nav_title"))
@@ -97,7 +104,7 @@ struct SavingsConfirmView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 16)
+                .padding(.top, 32)
             }
 
             Spacer()
@@ -118,7 +125,7 @@ struct SavingsConfirmView: View {
 
             Spacer()
 
-            if !hideSwipeButton, !selection.isEmpty {
+            if !hideSwipeButton {
                 SwipeButton(
                     title: t("lightning__transfer__swipe"),
                     accentColor: .brandAccent,
@@ -141,7 +148,7 @@ struct SavingsConfirmView: View {
                         throw error
                     }
                 }
-                .disabled(!transfer.isSparkWithdrawalPriced(withdrawsSpark: selection.withdrawsSpark))
+                .disabled(selection.isEmpty || !transfer.isSparkWithdrawalPriced(withdrawsSpark: selection.withdrawsSpark))
             }
 
             if swapState.quote != nil {
@@ -181,8 +188,20 @@ struct SavingsConfirmView: View {
         }
     }
 
-    /// Spark's withdrawal fee could not be priced; the swipe waits for it, so it can be retried here.
+    /// Spark's withdrawal fee could not be priced; the swipe waits for it, so it can be retried here. A balance too
+    /// small to move after its fee has nothing to retry.
+    @ViewBuilder
     private var sparkFeeError: some View {
+        if transfer.isSparkWithdrawTooSmall {
+            BodyMText(t("lightning__savings_confirm__amount_too_low"), textColor: .redAccent)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("SavingsSparkTooLow")
+        } else {
+            sparkFeeRetry
+        }
+    }
+
+    private var sparkFeeRetry: some View {
         HStack(alignment: .center, spacing: 16) {
             BodyMText(t("lightning__spending_confirm__error_quote"), textColor: .redAccent)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -226,9 +245,9 @@ struct SavingsConfirmView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             HStack(alignment: .top, spacing: 16) {
-                FeeDisplayRow(label: t("lightning__savings_confirm__amount"), amount: quote.amountSat)
+                FeeDisplayRow(label: t("lightning__savings_confirm__amount"), amount: headlineSats)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                FeeDisplayRow(label: t("lightning__savings_confirm__receive"), amount: quote.receiveSat)
+                FeeDisplayRow(label: t("lightning__savings_confirm__receive"), amount: receiveSats(quote))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
