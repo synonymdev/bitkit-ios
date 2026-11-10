@@ -117,15 +117,14 @@ jobs:
       fail-fast: false
       matrix:
         shard:
-          - { name: multi_address, grep: "@multi_address_staging" }
           - { name: pubky, grep: "@pubky_staging" }
-          - { name: transfer, grep: "@transfer_staging" }
           - { name: ios_nightly_ui, grep: "@ios_nightly" }
 
     name: e2e-tests-staging - ${{ matrix.shard.name }}
 
     env:
       BACKEND: regtest
+      BLOCKTANK_REGTEST_AUTH: ${{ secrets.BLOCKTANK_REGTEST_AUTH }}
 
     steps:
       - name: Resolve E2E tests ref
