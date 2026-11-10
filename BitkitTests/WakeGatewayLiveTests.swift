@@ -47,16 +47,22 @@ final class WakeGatewayLiveTests: XCTestCase {
         ) else { return XCTFail("Not registered") }
         XCTAssertEqual(first.identities, [identity])
         XCTAssertEqual(first.unknownTopics, [])
-        let unchanged = try await registrar.register(credentials: credentials, pushToken: pushToken, identities: [identity], force: false, sign: sign)
+        let unchanged = try await registrar.register(
+            credentials: credentials, pushToken: pushToken, identities: [identity], force: false, sign: sign
+        )
         XCTAssertEqual(unchanged, .unchanged)
         let newToken = (0 ..< 32).map { _ in String(format: "%02x", UInt8.random(in: 0 ... 255)) }.joined()
-        let afterTokenChange = try await registrar.register(credentials: credentials, pushToken: newToken, identities: [identity], force: false, sign: sign)
+        let afterTokenChange = try await registrar.register(
+            credentials: credentials, pushToken: newToken, identities: [identity], force: false, sign: sign
+        )
         XCTAssertNotEqual(afterTokenChange, .unchanged)
 
         // A device clock an hour ahead is refused as stale and signed again with the gateway's time.
         var skewed = registrar
         skewed.now = { WakeTimestamp.now + 3600 }
-        let afterStaleTimestamp = try await skewed.register(credentials: credentials, pushToken: pushToken, identities: [identity], force: false, sign: sign)
+        let afterStaleTimestamp = try await skewed.register(
+            credentials: credentials, pushToken: pushToken, identities: [identity], force: false, sign: sign
+        )
         XCTAssertNotEqual(afterStaleTimestamp, .unchanged)
         let device = try await wakeGetDevice(gatewayUrl: gatewayUrl, deviceSecret: credentials.deviceSecret)
         XCTAssertEqual(device.environment, .sandbox)
