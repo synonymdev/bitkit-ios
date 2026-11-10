@@ -747,10 +747,15 @@ final class SparkExitManager {
             skippedLeafCount: quote.prepared.skipped.count
         )
         record.fundingStrategy = SparkExitRecord.perNodeStrategy
-        // Saved before the transfer exists, so a failed save never leaves a transfer counted with no exit behind it.
-        try store.save(record)
-        record.transferId = try await TransferService(lightningService: .shared).createTransfer(type: .sparkExit, amountSats: quote.incomingSats)
-        try store.save(record)
+        let transfers = TransferService(lightningService: .shared)
+        let store = store
+        record = try await Self.writeStart(
+            record,
+            incomingSats: quote.incomingSats,
+            createTransfer: { try await transfers.createTransfer(type: .sparkExit, amountSats: $0) },
+            save: { try store.save($0) },
+            markSettled: { try? await transfers.markSettled(id: $0) }
+        )
         UserDefaults.standard.set(walletIndex, forKey: Self.walletIndexKey)
         UserDefaults.standard.set(Int(fundingIndex) + 1, forKey: fundingIndexKey)
         pendingFundingIndex = nil
@@ -855,6 +860,28 @@ final class SparkExitManager {
         record.leafTotalSats = fresh.leafTotalSats
         record.expectedSats = fresh.incomingSats
         record.skippedLeafCount = fresh.prepared.skipped.count
+        return record
+    }
+
+    /// The new exit stored with its transfer in one write, so no running exit is ever stored without the transfer
+    /// counting it. A failed save settles the transfer again; one a killed start left behind is settled as an orphan
+    /// on the next load.
+    nonisolated static func writeStart(
+        _ record: SparkExitRecord,
+        incomingSats: UInt64,
+        createTransfer: (UInt64) async throws -> String,
+        save: (SparkExitRecord) throws -> Void,
+        markSettled: (String) async -> Void
+    ) async throws -> SparkExitRecord {
+        var record = record
+        let transferId = try await createTransfer(incomingSats)
+        record.transferId = transferId
+        do {
+            try save(record)
+        } catch {
+            await markSettled(transferId)
+            throw error
+        }
         return record
     }
 

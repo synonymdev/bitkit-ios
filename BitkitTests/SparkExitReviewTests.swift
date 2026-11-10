@@ -635,6 +635,55 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(settled, ["transfer-2", "transfer-1"])
     }
 
+    /// A start killed before its transfer is written stores no exit: none runs on without the transfer counting it.
+    func testAStartCutShortBeforeItsTransferStoresNoExit() async {
+        struct WriteFailed: Error {}
+        var record = SparkExitFixtures.record()
+        record.transferId = nil
+        var saved: [SparkExitRecord] = []
+
+        let started = try? await SparkExitManager.writeStart(
+            record,
+            incomingSats: 111_000,
+            createTransfer: { _ in throw WriteFailed() },
+            save: { saved.append($0) },
+            markSettled: { _ in }
+        )
+
+        XCTAssertNil(started)
+        XCTAssertTrue(saved.isEmpty, "no exit is stored before its transfer exists")
+    }
+
+    /// A start killed after its transfer is written leaves only that transfer, settled as an orphan on the next load;
+    /// a failed save settles it at once. Every exit stored carries its transfer.
+    func testAStartCutShortAfterItsTransferLeavesOnlyAnOrphanToSettle() async throws {
+        struct WriteFailed: Error {}
+        var record = SparkExitFixtures.record()
+        record.transferId = nil
+        var saved: [SparkExitRecord] = []
+        var settled: [String] = []
+
+        let notSaved = try? await SparkExitManager.writeStart(
+            record,
+            incomingSats: 111_000,
+            createTransfer: { _ in "transfer-1" },
+            save: { _ in throw WriteFailed() },
+            markSettled: { settled.append($0) }
+        )
+        XCTAssertNil(notSaved)
+        XCTAssertEqual(settled, ["transfer-1"])
+
+        let started = try await SparkExitManager.writeStart(
+            record,
+            incomingSats: 111_000,
+            createTransfer: { _ in "transfer-2" },
+            save: { saved.append($0) },
+            markSettled: { settled.append($0) }
+        )
+        XCTAssertEqual(started.transferId, "transfer-2")
+        XCTAssertEqual(saved.map(\.transferId), ["transfer-2"], "every exit stored carries its transfer")
+    }
+
     /// No tick drives an exit while its start still settles its leaves: the optimization wait, the requote and the
     /// reconnect.
     func testNoTickDrivesAnExitWhileItsStartSettles() {
