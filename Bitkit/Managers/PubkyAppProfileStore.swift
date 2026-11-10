@@ -16,9 +16,11 @@ enum PubkyAppProfileError: LocalizedError {
 }
 
 /// Orders profile writes with profile deletion per identity. A deletion refuses every write until it ends and every
-/// later write of a load or save that started before it, and waits for the writes already under way.
+/// later write of a load or save that started before it, and waits for the writes already under way. A load refreshes
+/// the Paykit copy only when no save started since it read the copy, so it never writes back tags a save replaced.
 struct ProfileWriteGate {
     private var generations: [String: Int] = [:]
+    private var copyEpochs: [String: Int] = [:]
     private var deleting: Set<String> = []
     private var writesInFlight: [String: Int] = [:]
     private var writesSettled: [String: [CheckedContinuation<Void, Never>]] = [:]
@@ -57,6 +59,24 @@ struct ProfileWriteGate {
     mutating func endDeletion(_ key: String) {
         generations[key, default: 0] += 1
         deleting.remove(key)
+    }
+
+    /// The copy epoch a load reads the Paykit copy at; odd while a save runs.
+    func copyEpoch(_ key: String) -> Int {
+        copyEpochs[key, default: 0]
+    }
+
+    mutating func beginSave(_ key: String) {
+        copyEpochs[key, default: 0] += 1
+    }
+
+    mutating func endSave(_ key: String) {
+        copyEpochs[key, default: 0] += 1
+    }
+
+    /// Whether a load that read the Paykit copy at `epoch` may write it back: no save ran since or was running then.
+    func mayRefreshCopy(_ key: String, epoch: Int) -> Bool {
+        epoch.isMultiple(of: 2) && copyEpochs[key, default: 0] == epoch
     }
 
     func hasWritesInFlight(_ key: String) -> Bool {
@@ -105,6 +125,7 @@ actor PubkyAppProfileStore {
     private var pendingAvatarUris: [String: String] = [:]
     private var tagsUnavailable: Set<String> = []
     private var writeGate = ProfileWriteGate()
+    private var copyRefreshes: [String: [UUID: Task<Void, Never>]] = [:]
     private static let rememberedRevisions = 8
 
     /// Loads the profile. An identity that is signed in and has only a Bitkit profile moves it to pubky.app first; until
@@ -113,6 +134,7 @@ actor PubkyAppProfileStore {
     func load(publicKey: String) async throws -> PubkyProfile {
         let key = Self.normalized(publicKey)
         let generation = writeGate.generation(key)
+        let copyEpoch = writeGate.copyEpoch(key)
         let paykitData: PubkyProfileData?
         var paykitReadError: Error?
         do {
@@ -161,8 +183,14 @@ actor PubkyAppProfileStore {
             profile = profile.withImageUrl(uri)
         }
         remember(profile, for: key)
-        if isSignedIn, !avatarPending, let paykitData, paykitData != PubkyProfileData.from(profile: profile) {
-            try? await publishCopy(profile, expectedIdentity: key, generation: generation)
+        if isSignedIn, !avatarPending, let paykitData, paykitData != PubkyProfileData.from(profile: profile),
+           writeGate.mayRefreshCopy(key, epoch: copyEpoch)
+        {
+            let id = UUID()
+            let refresh = Task { _ = try? await publishCopy(profile, expectedIdentity: key, generation: generation) }
+            copyRefreshes[key, default: [:]][id] = refresh
+            await refresh.value
+            copyRefreshes[key]?[id] = nil
         }
         return profile
     }
@@ -175,6 +203,8 @@ actor PubkyAppProfileStore {
         let data = Self.normalized(data)
         let key = try await Self.identity(expectedIdentity)
         let generation = writeGate.generation(key)
+        writeGate.beginSave(key)
+        defer { writeGate.endSave(key) }
         let copyUnread = tagsUnavailable.contains(key)
         var base: PubkyProfile?
         if let baseRevision = data.baseRevision {
@@ -226,6 +256,10 @@ actor PubkyAppProfileStore {
         // the tags it last stored so a retry is reported again.
         var copyError: Error?
         if tags != nil {
+            // A copy refresh begun before this save started would otherwise land after it with the old tags.
+            for refresh in copyRefreshes[key, default: [:]].values {
+                await refresh.value
+            }
             do {
                 try await publishCopy(profile, expectedIdentity: key, generation: generation)
                 tagsUnavailable.remove(key)

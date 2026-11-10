@@ -133,6 +133,29 @@ final class ProfileWriteGateTests: XCTestCase {
         XCTAssertNoThrow(try gate.admit("b", generation: gate.generation("b")))
     }
 
+    func testCopyRefreshFromBeforeASaveIsRefused() {
+        var gate = ProfileWriteGate()
+        let readBeforeSave = gate.copyEpoch("a")
+
+        gate.beginSave("a")
+        gate.endSave("a")
+
+        XCTAssertFalse(gate.mayRefreshCopy("a", epoch: readBeforeSave))
+        XCTAssertTrue(gate.mayRefreshCopy("a", epoch: gate.copyEpoch("a")))
+    }
+
+    func testNoCopyRefreshDuringASave() {
+        var gate = ProfileWriteGate()
+
+        gate.beginSave("a")
+        let readDuringSave = gate.copyEpoch("a")
+
+        XCTAssertFalse(gate.mayRefreshCopy("a", epoch: readDuringSave))
+        gate.endSave("a")
+        XCTAssertFalse(gate.mayRefreshCopy("a", epoch: readDuringSave))
+        XCTAssertTrue(gate.mayRefreshCopy("b", epoch: gate.copyEpoch("b")))
+    }
+
     func testDeletionWaitsForWritesUnderWay() async throws {
         actor Box {
             var gate = ProfileWriteGate()
