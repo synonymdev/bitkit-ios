@@ -1043,6 +1043,9 @@
 "settings__status__lightning_connection__ready" = "Ouvrir";
 "settings__status__lightning_connection__pending" = "Ouverture...";
 "settings__status__lightning_connection__error" = "Pas de connexions ouvertes";
+"settings__status__exit__title" = "Sortie d'urgence";
+"settings__status__exit__pending" = "En cours";
+"settings__status__exit__funding" = "Financement des frais requis";
 "settings__status__backup__title" = "Dernière sauvegarde complète";
 "settings__status__backup__ready" = "Sauvegardé";
 "settings__status__backup__pending" = "Sauvegarde...";
