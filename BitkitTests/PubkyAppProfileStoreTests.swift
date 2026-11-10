@@ -134,8 +134,14 @@ final class ProfileWriteGateTests: XCTestCase {
         actor Box {
             var gate = ProfileWriteGate()
             var settled = false
-            func admit() throws { try gate.admit("a", generation: gate.generation("a")) }
-            func end() { gate.end("a") }
+            func admit() throws {
+                try gate.admit("a", generation: gate.generation("a"))
+            }
+
+            func end() {
+                gate.end("a")
+            }
+
             func delete() async {
                 gate.beginDeletion("a")
                 if gate.hasWritesInFlight("a") {
