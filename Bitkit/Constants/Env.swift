@@ -316,6 +316,18 @@ enum Env {
         }
     }
 
+    /// The wake gateway the app registers with for background pushes. Wakes do nothing without one. No gateway is
+    /// deployed yet, so only a debug build given `WAKE_GATEWAY_URL` in its environment or launch arguments has one.
+    static var wakeGatewayUrl: String? {
+        if isDebug, let override = configValue("WAKE_GATEWAY_URL") {
+            return override
+        }
+        switch network {
+        case .bitcoin: return nil
+        case .testnet, .signet, .regtest: return nil
+        }
+    }
+
     static var btcRatesServer: String {
         switch network {
         case .bitcoin: "https://api1.blocktank.to/api/fx/rates/btc"

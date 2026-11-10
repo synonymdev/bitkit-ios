@@ -4,6 +4,8 @@ import Security
 enum KeychainEntryType {
     case bip39Mnemonic(index: Int)
     case bip39Passphrase(index: Int)
+    case wakeCredentials
+    case wakeRegistration
     case securityPin
     case pinFailedAttempts
     case wipePending
@@ -26,6 +28,8 @@ enum KeychainEntryType {
         switch self {
         case let .bip39Mnemonic(index): "bip39_mnemonic_\(index)"
         case let .bip39Passphrase(index): "bip39_passphrase_\(index)"
+        case .wakeCredentials: "wake_credentials"
+        case .wakeRegistration: "wake_registration"
         case .securityPin: "security_pin"
         case .pinFailedAttempts: "pin_failed_attempts"
         case .wipePending: "wipe_pending"

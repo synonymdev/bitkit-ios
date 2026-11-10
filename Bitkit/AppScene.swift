@@ -599,6 +599,7 @@ struct AppScene: View {
                 await pubkyProfile.retrySessionRestoration()
             }
             .task(id: [scenePhase == .active, network.isConnected, wipeCoordinator.isGateUp]) { await pollIncomingPaykitPaymentRequests() }
+            .task(id: wakeRegistrationInputs) { await WakeManager.shared.registerIfAllowed(wakeRegistrationInputs) }
             .task(id: foregroundContactSession) {
                 shopContactImport?.task.cancel()
                 shopContactImport = nil
@@ -1392,6 +1393,12 @@ struct AppScene: View {
             }
         }
 
+        if newPhase == .active {
+            WakeManager.shared.sceneBecameActive()
+        } else if newPhase == .background {
+            WakeManager.shared.sceneEnteredBackground()
+        }
+
         if newPhase == .background {
             if settings.pinEnabled {
                 // If PIN is enabled, lock the app when the app goes to the background
@@ -1443,6 +1450,16 @@ struct AppScene: View {
                 }
             }
         }
+    }
+
+    private var wakeRegistrationInputs: WakeRegistrationInputs {
+        WakeRegistrationInputs(
+            isNodeReady: wallet.nodeLifecycleState == .running && !wipeCoordinator.isGateUp,
+            pushToken: pushManager.deviceToken,
+            authorizationStatus: pushManager.authorizationStatus,
+            notificationsEnabled: settings.enableNotifications,
+            pubkyPublicKey: pubkyProfile.publicKey
+        )
     }
 
     private var foregroundContactSession: PubkyProfileManager.SignedInSession? {
