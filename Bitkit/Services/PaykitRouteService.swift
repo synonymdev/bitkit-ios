@@ -260,12 +260,18 @@ extension AppViewModel {
         var unrouted = route
         unrouted.serviceLeg = nil
         let contactId = contactPaymentContext?.id
+        paykitRoutingGeneration += 1
+        let generation = paykitRoutingGeneration
+        // A dismissed or replaced payment, a newer routing request (a new amount or source) or a source picked since
+        // makes the answer stale, so it never lands on what followed it.
+        let isCurrent = {
+            self.contactPaymentContext?.id == contactId && self.paykitRoutingGeneration == generation &&
+                (self.selectedWalletToPayFrom == .lightning) == (source == .spending) &&
+                (self.paykitRoute.map { $0.endpoints == route.endpoints } ?? true)
+        }
         do {
             let picked = try await router(route, amountSats, source, lightningSpendableSats, onchainSpendableSats)
-            // A dismissed or replaced payment's route must never land on the one that followed it.
-            guard contactPaymentContext?.id == contactId, paykitRoute.map({ $0.endpoints == route.endpoints }) ?? true else {
-                return .stale
-            }
+            guard isCurrent() else { return .stale }
             switch picked {
             case let .direct(endpoint):
                 paykitRoute = unrouted
@@ -292,7 +298,7 @@ extension AppViewModel {
             }
         } catch {
             Logger.error("Failed to route Paykit payment: \(error)", context: "PaykitRoute")
-            guard contactPaymentContext?.id == contactId else { return .stale }
+            guard isCurrent() else { return .stale }
             showNoPaykitRouteToast(isBalanceShort: false)
             return .refused
         }

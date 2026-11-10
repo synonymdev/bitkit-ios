@@ -172,6 +172,8 @@ class AppViewModel: ObservableObject {
     private(set) var didRejectScannedPayment = false
     @Published var paykitUsesUsdt = false
     @Published var paykitRoute: PaykitRouteUi?
+    /// Bumped by each routing request, so only the latest one's answer lands.
+    var paykitRoutingGeneration = 0
     @Published var paykitReviewedAmount: PaykitAmount?
     @Published var paykitPaymentTerms: PaykitRequestPricing.Payment?
 

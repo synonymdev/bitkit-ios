@@ -439,6 +439,68 @@ final class PaykitRouteTests: XCTestCase {
     }
 
     @MainActor
+    func testARouteThatReturnsAfterTheSourceChangedNeverRestoresIt() async {
+        snapshotAppDefaultsDomain()
+        let app = AppViewModel()
+        let route = PaykitRouteUi(endpoints: [onchain], offersSparkLeg: true)
+        app.contactPaymentContext = ContactPaymentContext(publicKey: "contact", privatePaymentContext: nil, endpoints: [])
+        app.paykitRoute = route
+        app.selectedWalletToPayFrom = .lightning
+
+        let outcome = await app.routeContactPayment(
+            route,
+            amountSats: 20000,
+            source: .spending,
+            lightningSpendableSats: 50000,
+            onchainSpendableSats: 0,
+            request: nil
+        ) { _, _, _, _, _ in
+            // The user goes back to Savings while Spark quotes the Spending leg.
+            app.selectedWalletToPayFrom = .onchain
+            return .service(leg: self.sparkLeg(amountSats: 20000, feeSats: 300))
+        }
+
+        XCTAssertEqual(outcome, .stale)
+        XCTAssertEqual(app.selectedWalletToPayFrom, .onchain, "a superseded Spending quote must not take the source back")
+        XCTAssertNil(app.paykitRoute?.serviceLeg)
+    }
+
+    @MainActor
+    func testARouteSupersededByANewerOneIsDropped() async {
+        snapshotAppDefaultsDomain()
+        let app = AppViewModel()
+        let route = PaykitRouteUi(endpoints: [onchain], offersSparkLeg: true)
+        app.contactPaymentContext = ContactPaymentContext(publicKey: "contact", privatePaymentContext: nil, endpoints: [])
+        app.paykitRoute = route
+        app.selectedWalletToPayFrom = .lightning
+        var newer: PaykitRouteOutcome?
+
+        let older = await app.routeContactPayment(
+            route,
+            amountSats: 20000,
+            source: .spending,
+            lightningSpendableSats: 50000,
+            onchainSpendableSats: 0,
+            request: nil
+        ) { _, _, _, _, _ in
+            // A new amount asks the router again before the first quote returns.
+            newer = await app.routeContactPayment(
+                route,
+                amountSats: 30000,
+                source: .spending,
+                lightningSpendableSats: 50000,
+                onchainSpendableSats: 0,
+                request: nil
+            ) { _, _, _, _, _ in .service(leg: self.sparkLeg(amountSats: 30000, feeSats: 300)) }
+            return .service(leg: self.sparkLeg(amountSats: 20000, feeSats: 300))
+        }
+
+        XCTAssertEqual(newer, .leg)
+        XCTAssertEqual(older, .stale)
+        XCTAssertEqual(app.paykitRoute?.serviceLeg?.deliveredSat, 30000, "the older amount's leg must not replace the newer one")
+    }
+
+    @MainActor
     func testAStaleRecoveryNeverClearsANewerWithdrawalsJournal() async {
         snapshotAppDefaultsDomain()
         let older = SparkContactWithdrawal(address: onchain.value, amountSats: 20000, contact: "contact", startedAt: 1000)
