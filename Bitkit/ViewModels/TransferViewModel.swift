@@ -55,6 +55,11 @@ class TransferViewModel: ObservableObject {
     var sparkBalanceSats: @MainActor () -> UInt64 = { SparkManager.shared.balanceSats }
     /// Sends Spark's balance to the address, refusing above the shown fee; tests replace it.
     var withdrawSpark: @MainActor (String, UInt64) async throws -> Void = { try await SparkManager.shared.withdrawAll(to: $0, maxFeeSats: $1) }
+    /// Whether Spark reads Savings' chain, so its withdrawal reaches Savings; tests replace it.
+    var sparkReadsSavingsChain: @MainActor () -> Bool = {
+        SparkManager.readsBitkitChain(network: Env.network, chainServiceUrl: Env.sparkChainServiceUrl(for: Env.network))
+    }
+
     /// How long the confirm screen waits for Spark's withdrawal fee before offering to retry; a full-balance quote can
     /// take minutes.
     var sparkFeeTimeout: TimeInterval = 180
@@ -303,11 +308,26 @@ class TransferViewModel: ObservableObject {
         let price = priceSparkWithdrawal
         let timeout = sparkFeeTimeout
         sparkFeeTask = Task { [weak self] in
-            let fee = await Self.withTimeout(seconds: timeout) { try await price(address) }
+            // Spark refuses to quote a balance that even its cheapest fee leaves as dust, which is too small, not unpriced.
+            let priced = await Self.withTimeout(seconds: timeout) { () -> SparkWithdrawalPrice in
+                do {
+                    return try await .fee(price(address))
+                } catch where SparkManager.isBelowMinimum(error) {
+                    return .belowMinimum
+                }
+            }
             guard let self, !Task.isCancelled else { return }
             sparkFeeTask = nil
             isPricingSparkWithdrawal = false
-            if let fee, balanceSats < fee + UInt64(Env.dustLimit) {
+            let fee: UInt64? = if case let .fee(sats) = priced {
+                sats
+            } else {
+                nil
+            }
+            if priced == .belowMinimum {
+                isSparkWithdrawTooSmall = true
+                sparkFeeBalanceSats = nil
+            } else if let fee, balanceSats < fee + UInt64(Env.dustLimit) {
                 isSparkWithdrawTooSmall = true
                 sparkFeeBalanceSats = nil
             } else if let fee {
@@ -439,6 +459,8 @@ class TransferViewModel: ObservableObject {
         guard let confirmedFeeSats = confirmedSparkFeeSats, let address = sparkWithdrawAddress else {
             throw AppError(message: "lightning__spending_confirm__error_quote", debugMessage: "Spark withdrawal not priced")
         }
+        // On regtest Spark may read another chain than Savings, where Savings' address would take Spark's funds.
+        guard sparkReadsSavingsChain() else { throw SparkReadsAnotherChain() }
         try await withdrawSpark(address, confirmedFeeSats)
         sparkWithdrawAddress = nil
         sparkFeeBalanceSats = nil
@@ -468,14 +490,25 @@ class TransferViewModel: ObservableObject {
             ),
             isSparkFunding: true
         )
-        guard case let .accepted(txid) = result else {
-            throw AppError(message: t("wallet__send_error_tx_failed"), debugMessage: "Spark funding outcome: \(result)")
-        }
+        let txid = try Self.fundedTxid(result)
         _ = try? await attempts.resumeAcceptedOrdinarySend(walletId: walletId, observedTxid: txid)
         await SparkFundingRecovery.handOff(txid: txid, amountSats: amountSats)
         Logger.info("Funded Spark wallet with \(amountSats) sats in \(txid)", context: "TransferViewModel")
         await onBalanceRefresh?()
         return txid
+    }
+
+    /// The txid of an accepted funding. A rejected or unknown one is kept and broadcast again, so it is unresolved, not
+    /// failed, and is never swiped a second time.
+    static func fundedTxid(_ result: OnchainSendResult) throws -> String {
+        switch result {
+        case let .accepted(txid):
+            return txid
+        case let .rejected(txid, reason):
+            throw SparkFundingUnresolved(txid: txid, rejectionReason: reason)
+        case let .unknown(txid):
+            throw SparkFundingUnresolved(txid: txid)
+        }
     }
 
     func closeChannels(channels: [ChannelDetails]) async throws -> [ChannelDetails] {
@@ -1040,3 +1073,19 @@ private final class FirstResult<T: Sendable>: @unchecked Sendable {
         }
     }
 }
+
+/// A Spark withdrawal's fee, or Spark's refusal to quote a balance below its minimum.
+private enum SparkWithdrawalPrice: Equatable {
+    case fee(UInt64)
+    case belowMinimum
+}
+
+/// A Spark funding the network rejected or whose broadcast outcome is unknown. It is kept and broadcast again, so it is
+/// never sent a second time.
+struct SparkFundingUnresolved: Error {
+    let txid: String
+    var rejectionReason: String?
+}
+
+/// Spark reads another chain than Savings, so a withdrawal to Savings would never arrive.
+private struct SparkReadsAnotherChain: Error {}

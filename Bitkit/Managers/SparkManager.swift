@@ -73,6 +73,8 @@ final class SparkManager: ChannelFreeLightningRail {
     /// Payments whose activity failed to save, written again at the next refresh.
     @ObservationIgnored private var unsavedPayments: Set<String> = []
     @ObservationIgnored private var sdk: BreezSdk?
+    /// Whether a wallet sync ended since this run connected, so the SDK's sync error describes this run.
+    @ObservationIgnored private var syncedThisRun = false
     /// The last withdrawal quote, which the withdrawal reuses while it holds.
     @ObservationIgnored private var preparedWithdrawal: (quote: SparkWithdrawalQuote, response: PrepareSendPaymentResponse)?
     /// Withdrawals this app sent, known before Spark lists them.
@@ -156,7 +158,10 @@ final class SparkManager: ChannelFreeLightningRail {
             activitiesSynced = try await Self.startConnected(
                 activitiesSynced: activitiesSynced,
                 refresh: { try await refresh() },
-                syncWallet: { _ = try await requireSdk().syncWallet(request: SyncWalletRequest()) },
+                syncWallet: {
+                    _ = try await requireSdk().syncWallet(request: SyncWalletRequest())
+                    syncedThisRun = true
+                },
                 syncActivities: { try await syncActivities() }
             )
             await settleContactWithdrawal(allowClear: false)
@@ -202,6 +207,7 @@ final class SparkManager: ChannelFreeLightningRail {
         if let chainServiceUrl = Env.sparkChainServiceUrl(for: Env.network) {
             await builder.withRestChainService(url: chainServiceUrl, apiType: .esplora, credentials: nil)
         }
+        syncedThisRun = false
         let connected = try await builder.build()
         guard generation == connectGeneration else {
             try? await connected.disconnect()
@@ -237,6 +243,7 @@ final class SparkManager: ChannelFreeLightningRail {
     /// keep the wiped wallet; throws when the data could not be deleted, so the wipe is retried.
     func wipe(walletIndex: Int) async throws {
         connectGeneration += 1
+        syncedThisRun = false
         if let connectTask {
             _ = try? await connectTask.value
         }
@@ -364,7 +371,6 @@ final class SparkManager: ChannelFreeLightningRail {
         return !overflow && total <= balanceSats
     }
 
-    /// The SDK refuses an expired Lightning invoice before anything leaves the wallet, with the scanner's expiry copy.
     /// What a failure inside `sendPayment` means for the caller.
     nonisolated static func sendPaymentFailure(_ error: Error) -> Error {
         // The SDK checks the expiry again before sending, so an invoice that expired on the confirm screen left nothing.
@@ -379,17 +385,29 @@ final class SparkManager: ChannelFreeLightningRail {
         return error
     }
 
+    /// The SDK refuses an expired Lightning invoice before anything leaves the wallet, with the scanner's expiry copy.
     nonisolated static func expiredInvoiceRefusal(_ error: Error) -> ChannelFreeRailSendRefused? {
         guard case let SdkError.InvalidInput(message) = error, message.localizedCaseInsensitiveContains("invoice has expired") else { return nil }
         return ChannelFreeRailSendRefused(reason: t("other__scan__error__expired"))
     }
 
     nonisolated func hasSynced(after seconds: UInt64?) async -> Bool {
-        guard let info = try? await requireSdk().getInfo(request: GetInfoRequest(ensureSynced: false)),
-              info.lastSyncError == nil
-        else { return false }
+        guard let info = try? await requireSdk().getInfo(request: GetInfoRequest(ensureSynced: false)) else { return false }
+        return await Self.hasSynced(
+            after: seconds,
+            syncedThisRun: syncedThisRun,
+            lastSyncFailed: info.lastSyncError != nil,
+            lastSyncedAt: info.lastSyncedAt
+        )
+    }
+
+    /// The SDK keeps `lastSyncedAt` across launches but not `lastSyncError`, which is unset after each connect until that
+    /// run's first sync ends, so only a sync this run, after a wallet sync that ever succeeded, shows Spark's list is complete.
+    nonisolated static func hasSynced(after seconds: UInt64?, syncedThisRun: Bool, lastSyncFailed: Bool, lastSyncedAt: UInt64?) -> Bool {
+        // The SDK sets `lastSyncedAt` only on a wallet sync that succeeded, while it reports Synced for partial ones too.
+        guard syncedThisRun, !lastSyncFailed, let lastSyncedAt else { return false }
         guard let seconds else { return true }
-        return info.lastSyncedAt.map { $0 > seconds } ?? false
+        return lastSyncedAt > seconds
     }
 
     nonisolated func lightningPayments() async throws -> [ChannelFreeRailPayment] {
@@ -525,6 +543,12 @@ final class SparkManager: ChannelFreeLightningRail {
         } catch {
             Logger.warn("Failed to refresh Spark after its withdrawal: \(error)", context: "SparkManager")
         }
+    }
+
+    /// Whether Spark refused to quote a withdrawal because even its cheapest fee leaves dust.
+    nonisolated static func isBelowMinimum(_ error: Error) -> Bool {
+        guard case let SdkError.InvalidInput(message) = error else { return false }
+        return message.lowercased().hasPrefix("amount is below the minimum")
     }
 
     /// The fee `withdrawAll(to:maxFeeSats:)` pays at its speed, which comes out of the balance it moves.
@@ -666,7 +690,10 @@ final class SparkManager: ChannelFreeLightningRail {
             Task {
                 await Self.settleAfterFailedWithdrawal(
                     failedAt: failedAt,
-                    syncWallet: { _ = try await self.requireSdk().syncWallet(request: SyncWalletRequest()) },
+                    syncWallet: {
+                        _ = try await self.requireSdk().syncWallet(request: SyncWalletRequest())
+                        self.syncedThisRun = true
+                    },
                     hasSynced: { await self.hasSynced(after: $0) },
                     settle: { await self.settleContactWithdrawal(allowClear: $0) }
                 )
@@ -1013,6 +1040,7 @@ final class SparkManager: ChannelFreeLightningRail {
         Task {
             do {
                 _ = try await requireSdk().syncWallet(request: SyncWalletRequest())
+                syncedThisRun = true
             } catch {
                 Logger.warn("Failed to sync Spark after deposit \(txid): \(error)", context: "SparkManager")
             }
@@ -1076,7 +1104,10 @@ final class SparkManager: ChannelFreeLightningRail {
         let kept = Self.keptBalanceSats(
             read: info.balanceSats, lastShown: shownBalanceSats, isStale: withdrawalFailedAt != nil || info.lastSyncError != nil
         )
-        let changed = !isReady || shownBalanceSats != (kept ?? info.balanceSats) || pendingDepositSats != pending
+        let changed = !isReady || Self.balancesChanged(
+            from: SparkBalances(readSats: balanceSats, keptSats: keptBalanceSats, pendingSats: pendingDepositSats),
+            to: SparkBalances(readSats: info.balanceSats, keptSats: kept, pendingSats: pending)
+        )
         isReady = true
         balanceSats = info.balanceSats
         keptBalanceSats = kept
@@ -1104,6 +1135,12 @@ final class SparkManager: ChannelFreeLightningRail {
         }
     }
 
+    /// Whether balances and the receive invoice must follow a refresh: the read balance counts too, as sends use it, and
+    /// it can come back to the shown one while that stays the same.
+    nonisolated static func balancesChanged(from old: SparkBalances, to new: SparkBalances) -> Bool {
+        old != new
+    }
+
     /// After a failed withdrawal, or while Spark's last sync failed (`isStale`), Spark can read 0 with the funds still
     /// there, so the last shown balance stays shown until it reads one again.
     nonisolated static func keptBalanceSats(read: UInt64, lastShown: UInt64, isStale: Bool) -> UInt64? {
@@ -1121,12 +1158,13 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// Spark can still list a deposit it already claimed early as unclaimed, so a claimed one is listed only as claimed.
+    /// Matched by output, as one transaction can hold several deposits.
     nonisolated static func unclaimedDeposits(_ unclaimed: [DepositInfo], claimed: [Payment]) -> [DepositInfo] {
-        let claimedTxIds = Set(claimed.compactMap { payment -> String? in
-            guard case let .deposit(txId, _) = payment.details else { return nil }
-            return txId.lowercased()
+        let claimedOutputs = Set(claimed.compactMap { payment -> String? in
+            guard case let .deposit(txId, vout) = payment.details else { return nil }
+            return "\(txId.lowercased()):\(vout)"
         })
-        return unclaimed.filter { !claimedTxIds.contains($0.txid.lowercased()) }
+        return unclaimed.filter { !claimedOutputs.contains("\($0.txid.lowercased()):\($0.vout)") }
     }
 
     /// Spark's withdrawals to Savings, without the ones that paid contacts.
@@ -1221,12 +1259,12 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// Releases the holds of the sends Spark's list shows failed. The list is read after the activities were recorded,
-    /// so a retry the user started meanwhile keeps its hold, as does one recorded while the list is read.
+    /// so a retry the user started meanwhile keeps its hold, as does one recorded or ending while the list is read.
     static func releaseFailedSendHolds(listPayments: () async throws -> [Payment]) async {
-        let recordsBefore = LightningService.shared.attemptRecordCount
+        let mark = LightningService.shared.attemptMark
         guard let latest = try? await listPayments() else { return }
         for paymentHash in failedSendHashes(latest) {
-            LightningService.shared.releaseRailAttempt(paymentHash: paymentHash, recordedBy: recordsBefore)
+            LightningService.shared.releaseRailAttempt(paymentHash: paymentHash, since: mark)
         }
     }
 
@@ -1254,6 +1292,7 @@ final class SparkManager: ChannelFreeLightningRail {
     private func onSdkEvent(_ event: SdkEvent) async {
         switch event {
         case .synced:
+            syncedThisRun = true
             await refreshState()
             await Self.settleAfterSync(
                 since: Self.pendingContactWithdrawal?.startedAt ?? 0,
@@ -1580,4 +1619,11 @@ private final class SparkEventListener: BreezSdkSpark.EventListener, @unchecked 
     func onEvent(event: SdkEvent) async {
         await handler(event)
     }
+}
+
+/// The balances a refresh reads: what Spark read (`readSats`), the balance kept on screen, and pending deposits.
+struct SparkBalances: Equatable {
+    let readSats: UInt64
+    let keptSats: UInt64?
+    let pendingSats: UInt64
 }

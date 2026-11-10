@@ -350,8 +350,8 @@ struct OnchainSendFollowupContext: Codable, Equatable {
     var channelId: String? = nil
 }
 
-/// A max Spark funding refused before broadcast because it would send another amount, or pay a higher mining fee, than
-/// the user approved, as after the balance grew. A fixed amount's fee isn't bound: its coin selection can vary.
+/// A Spark funding refused before broadcast because it would send another amount, or pay a higher mining fee, than the
+/// user approved, as after the balance grew. A fixed amount's fee is bound too, as its coin selection can vary.
 struct SparkFundingChanged: Error {
     /// The mining fee of the refused prepared send, nil when it was unknown.
     var preparedFeeSats: UInt64?

@@ -1,4 +1,5 @@
 @testable import Bitkit
+import BreezSdkSpark
 import XCTest
 
 final class SparkWithdrawalTests: XCTestCase {
@@ -122,6 +123,21 @@ final class SparkWithdrawalTests: XCTestCase {
     }
 
     @MainActor
+    func testABalanceSparkRefusesToQuoteAsBelowTheMinimumIsTooSmallToMove() async {
+        let transfer = TransferViewModel()
+        // What the SDK answers when even its cheapest fee would leave dust.
+        transfer.priceSparkWithdrawal = { _ in
+            throw SdkError.InvalidInput("Amount is below the minimum of 330 sats required for this address after lowest fees of 1093 sats")
+        }
+
+        transfer.loadSparkWithdrawFee(balanceSats: 500, savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+
+        XCTAssertTrue(transfer.isSparkWithdrawTooSmall, "Spark stayed selected with nothing to retry")
+        XCTAssertNil(transfer.sparkWithdrawFeeSats)
+    }
+
+    @MainActor
     func testCloseInsteadWaitsForTheSparkFee() {
         let transfer = TransferViewModel()
 
@@ -208,8 +224,25 @@ final class SparkWithdrawalTests: XCTestCase {
     }
 
     @MainActor
+    func testSparkIsNotWithdrawnToASavingsAddressOnAnotherChain() async throws {
+        let transfer = await pricedTransfer()
+        XCTAssertTrue(transfer.onTransferToSavingsConfirm(channels: [], withdrawsSpark: true, mode: .close))
+        // A regtest Savings wallet reads its own chain unless Spark is pointed at it.
+        transfer.sparkReadsSavingsChain = { false }
+        let withdrawn = WithdrawnFee()
+        transfer.sparkBalanceSats = { 40000 }
+        transfer.withdrawSpark = { _, feeSats in withdrawn.feeSats = feeSats }
+
+        _ = try await transfer.closeSelectedChannels()
+
+        XCTAssertNil(withdrawn.feeSats, "Spark sent its balance to a Savings address on another chain")
+        XCTAssertNotNil(transfer.sparkWithdrawError, "the withdrawal was skipped without telling the user")
+    }
+
+    @MainActor
     private func pricedTransfer() async -> TransferViewModel {
         let transfer = TransferViewModel()
+        transfer.sparkReadsSavingsChain = { true }
         transfer.priceSparkWithdrawal = { _ in 1470 }
         transfer.loadSparkWithdrawFee(balanceSats: 40000, savingsAddress: "bcrt1q-savings")
         await waitUntilPriced(transfer)

@@ -102,7 +102,8 @@ enum SparkClaimDecision {
         guard speed == .instant else { return .later }
         switch kind {
         case .automatic:
-            return .added
+            // Spark claims it by itself; success shows once it lists the deposit as claimed (`noteSettled`).
+            return .adding
         case .standard:
             return .unavailable
         case let .choice(earlyFeeSats, _, _, _):
@@ -210,6 +211,8 @@ final class SparkTransferFlow {
         if self.amountSats != amountSats || self.isMaxAmount != isMaxAmount || self.walletId != walletId {
             quote = nil
             fixedFeeFloorSats = nil
+            // A funding followed for the earlier transfer never stands in for this one's swipe.
+            txid = nil
         }
         self.amountSats = amountSats
         self.isMaxAmount = isMaxAmount
@@ -341,6 +344,14 @@ final class SparkTransferFlow {
         case OnchainSendAttemptError.blocked, OnchainSendAttemptError.duplicate: return
         default: bindApproval(to: attemptId)
         }
+    }
+
+    /// Follows a recovered funding a swipe of this flow approved, whichever screen shows when it resolves, so its claim
+    /// starts and a later swipe can't fund it again. False for one it doesn't own or already follows.
+    func followIfOwned(txid: String, attemptId: UUID) -> Bool {
+        guard approvals[attemptId] != nil, self.txid != txid else { return false }
+        onRecoveredBroadcast(txid: txid, attemptId: attemptId)
+        return true
     }
 
     /// Starts the claim of a funding whose outcome was unknown at the swipe, at the ceiling and speed then approved; with

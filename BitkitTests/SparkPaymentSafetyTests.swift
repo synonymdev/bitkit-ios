@@ -175,6 +175,7 @@ final class SparkPaymentSafetyTests: XCTestCase {
         transfer.sparkBalanceSats = { 99901 }
         var sent: (String, UInt64)?
         transfer.withdrawSpark = { sent = ($0, $1) }
+        transfer.sparkReadsSavingsChain = { true }
         transfer.loadSparkWithdrawFee(balanceSats: 99901, savingsAddress: "bcrt1q-savings")
         for _ in 0 ..< 100 where transfer.isPricingSparkWithdrawal {
             try await Task.sleep(nanoseconds: 20_000_000)
@@ -296,6 +297,28 @@ final class SparkPaymentSafetyTests: XCTestCase {
         XCTAssertEqual(service.railAttemptsStore.stringArray(forKey: "channelFreeRailAttemptedPaymentHashes"), ["retried"])
     }
 
+    func testASparkRetryInFlightWhenTheSyncReadsSparksListKeepsItsHoldAfterItEnds() async throws {
+        let service = Bitkit.LightningService.shared
+        let store = service.railAttemptsStore
+        service.railAttemptsStore = try XCTUnwrap(UserDefaults(suiteName: "SparkPaymentSafetyTests"))
+        service.forgetRailAttempts()
+        defer {
+            service.endRailSend(paymentHash: "retried")
+            service.forgetRailAttempts()
+            service.railAttemptsStore = store
+        }
+        service.recordRailAttempt(paymentHash: "retried")
+        XCTAssertTrue(service.beginRailSend(paymentHash: "retried"))
+
+        await SparkManager.releaseFailedSendHolds {
+            // The retry recorded before this list ends while the list, which still shows it failed, is read.
+            service.endRailSend(paymentHash: "retried")
+            return [self.lightningPayment(type: .send, status: .failed, hash: "retried")]
+        }
+
+        XCTAssertEqual(service.railAttemptsStore.stringArray(forKey: "channelFreeRailAttemptedPaymentHashes"), ["retried"])
+    }
+
     private func lightningPayment(
         type: PaymentType,
         status: BreezSdkSpark.PaymentStatus,
@@ -334,5 +357,27 @@ private actor FeeQuotes {
 
     func next() -> UInt64 {
         fees.count > 1 ? fees.removeFirst() : fees[0]
+    }
+}
+
+extension SparkPaymentSafetyTests {
+    func testSparkCountsAsSyncedOnlyAfterASyncThisRun() {
+        // After a relaunch the SDK reports no sync error until this run's first sync ends, and keeps the last sync time.
+        XCTAssertFalse(
+            SparkManager.hasSynced(after: nil, syncedThisRun: false, lastSyncFailed: false, lastSyncedAt: 2000),
+            "a relaunched wallet's unsynced list was read as complete"
+        )
+        XCTAssertFalse(SparkManager.hasSynced(after: 1000, syncedThisRun: false, lastSyncFailed: false, lastSyncedAt: 2000))
+        XCTAssertTrue(SparkManager.hasSynced(after: 1000, syncedThisRun: true, lastSyncFailed: false, lastSyncedAt: 2000))
+        XCTAssertFalse(SparkManager.hasSynced(after: nil, syncedThisRun: true, lastSyncFailed: true, lastSyncedAt: 2000))
+    }
+
+    func testSparkCountsAsSyncedOnlyOnceAWalletSyncSucceeded() {
+        // The SDK reports no error before any sync ends, and sets its sync time only on a wallet sync that succeeded,
+        // while it also reports Synced for a partial or skipped sync.
+        XCTAssertFalse(
+            SparkManager.hasSynced(after: nil, syncedThisRun: true, lastSyncFailed: false, lastSyncedAt: nil),
+            "a list no wallet sync filled was read as complete"
+        )
     }
 }
