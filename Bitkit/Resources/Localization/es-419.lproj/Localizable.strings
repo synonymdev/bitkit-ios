@@ -418,10 +418,8 @@
 "lightning__spark_exit__leftover_swept" = "{amount} sobrante de los fondos para comisiones se envió a ahorros.";
 "lightning__spark_exit__leftover_sending" = "Enviando a ahorros {amount} sobrante de los fondos para comisiones.";
 "lightning__spark_exit__leftover_dust" = "{amount} sobrante de los fondos para comisiones es demasiado pequeño para enviarlo y se queda en {address}, ruta de derivación {path}.";
-"lightning__spark_exit__leftover_txid" = "ID de la transacción: {txid}";
 "lightning__spark_exit__fund_paid" = "Pagado desde ahorros, esperando confirmación.";
 "lightning__spark_exit__fund_pending" = "Pago detectado, esperando confirmación.";
-"lightning__spark_exit__funding_txid" = "ID de la transacción: {txid}";
 "lightning__spark_exit__lost_leaves" = "Un propietario anterior de estos fondos reclamó {amount} on-chain y no se puede recuperar.";
 "lightning__spark_exit__notification_lost" = "{amount} de tu salida no se puede recuperar. Abre Bitkit para ver por qué.";
 "lightning__spark_exit__notification_failed" = "Tu salida de emergencia se detuvo. Abre Bitkit para ver por qué.";
@@ -444,7 +442,6 @@
 "lightning__spark_exit__waiting_leaves" = "En este momento no se puede leer on-chain una parte de esta salida. Bitkit lo vuelve a intentar durante hasta una semana.";
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit no pudo leer el progreso guardado de esta salida, así que lo reconstruye a partir de la cadena.";
 "lightning__spark_exit__done_received" = "{amount} llegó a tus ahorros.";
-"lightning__spark_exit__sweep_txid" = "ID de la transacción: {txid}";
 "lightning__spark_exit__leftover_rejected" = "{amount} sobrante de los fondos para comisiones no se pudo enviar y se queda en {address}, ruta de derivación {path}.";
 "lightning__spark_exit__notification_not_moving" = "Tu salida de emergencia no avanza. Abre Bitkit para ver por qué.";
 "lightning__spark_exit__funding_split" = "Bitkit lo divide en {count} partes, una para cada paso, para que un paso atascado no retrase a los demás.";

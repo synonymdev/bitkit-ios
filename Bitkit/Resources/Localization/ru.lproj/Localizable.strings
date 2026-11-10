@@ -412,10 +412,8 @@
 "lightning__spark_exit__leftover_swept" = "{amount} оставшихся средств на комиссии отправлено в сбережения.";
 "lightning__spark_exit__leftover_sending" = "Отправляем {amount} оставшихся средств на комиссии в сбережения.";
 "lightning__spark_exit__leftover_dust" = "{amount} оставшихся средств на комиссии слишком мало для отправки, они остаются на адресе {address}, путь деривации {path}.";
-"lightning__spark_exit__leftover_txid" = "ID транзакции: {txid}";
 "lightning__spark_exit__fund_paid" = "Оплачено из сбережений, ждём подтверждения.";
 "lightning__spark_exit__fund_pending" = "Платёж обнаружен, ждём подтверждения.";
-"lightning__spark_exit__funding_txid" = "ID транзакции: {txid}";
 "lightning__spark_exit__lost_leaves" = "{amount} забрал ончейн один из прежних владельцев этих средств, их нельзя вернуть.";
 "lightning__spark_exit__notification_lost" = "{amount} из вашего выхода нельзя вернуть. Откройте Bitkit, чтобы узнать причину.";
 "lightning__spark_exit__notification_failed" = "Ваш экстренный выход остановлен. Откройте Bitkit, чтобы узнать причину.";
@@ -438,7 +436,6 @@
 "lightning__spark_exit__waiting_leaves" = "Часть этого выхода сейчас не удаётся прочитать в блокчейне. Bitkit будет пробовать снова в течение недели.";
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit не смог прочитать сохранённый прогресс этого выхода и восстанавливает его по блокчейну.";
 "lightning__spark_exit__done_received" = "{amount} поступило в ваши сбережения.";
-"lightning__spark_exit__sweep_txid" = "ID транзакции: {txid}";
 "lightning__spark_exit__leftover_rejected" = "{amount} оставшихся средств на комиссии не удалось отправить, они остаются на адресе {address}, путь деривации {path}.";
 "lightning__spark_exit__notification_not_moving" = "Ваш экстренный выход не продвигается. Откройте Bitkit, чтобы узнать причину.";
 "lightning__spark_exit__funding_split" = "Bitkit делит их на части ({count}), по одной на каждый шаг, чтобы один застрявший шаг не задерживал остальные.";

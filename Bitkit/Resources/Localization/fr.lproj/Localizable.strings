@@ -418,10 +418,8 @@
 "lightning__spark_exit__leftover_swept" = "{amount} de financement des frais restant a été envoyé vers l'épargne.";
 "lightning__spark_exit__leftover_sending" = "Envoi de {amount} de financement des frais restant vers l'épargne.";
 "lightning__spark_exit__leftover_dust" = "{amount} de financement des frais restant est trop faible pour être envoyé et reste à {address}, chemin de dérivation {path}.";
-"lightning__spark_exit__leftover_txid" = "ID de la transaction : {txid}";
 "lightning__spark_exit__fund_paid" = "Payé depuis l'épargne, en attente de confirmation.";
 "lightning__spark_exit__fund_pending" = "Paiement détecté, en attente de confirmation.";
-"lightning__spark_exit__funding_txid" = "ID de la transaction : {txid}";
 "lightning__spark_exit__lost_leaves" = "{amount} a été réclamé on-chain par un ancien propriétaire de ces fonds et ne peut pas être récupéré.";
 "lightning__spark_exit__notification_lost" = "{amount} de votre sortie ne peut pas être récupéré. Ouvrez Bitkit pour savoir pourquoi.";
 "lightning__spark_exit__notification_failed" = "Votre sortie d'urgence s'est arrêtée. Ouvrez Bitkit pour savoir pourquoi.";
@@ -444,7 +442,6 @@
 "lightning__spark_exit__waiting_leaves" = "Une partie de cette sortie ne peut pas être lue on-chain pour le moment. Bitkit réessaie pendant une semaine au maximum.";
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit n'a pas pu lire la progression enregistrée de cette sortie, il la reconstruit donc à partir de la blockchain.";
 "lightning__spark_exit__done_received" = "{amount} est arrivé dans votre épargne.";
-"lightning__spark_exit__sweep_txid" = "ID de la transaction : {txid}";
 "lightning__spark_exit__leftover_rejected" = "{amount} de financement des frais restant n'a pas pu être envoyé et reste à {address}, chemin de dérivation {path}.";
 "lightning__spark_exit__notification_not_moving" = "Votre sortie d'urgence n'avance pas. Ouvrez Bitkit pour savoir pourquoi.";
 "lightning__spark_exit__funding_split" = "Bitkit le divise en {count} parties, une pour chaque étape, afin qu'une étape bloquée ne retarde pas les autres.";

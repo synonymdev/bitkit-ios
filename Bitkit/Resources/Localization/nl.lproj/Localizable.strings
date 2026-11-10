@@ -415,10 +415,8 @@
 "lightning__spark_exit__leftover_swept" = "{amount} aan overgebleven vergoedingsdekking is naar je spaargeld gestuurd.";
 "lightning__spark_exit__leftover_sending" = "{amount} aan overgebleven vergoedingsdekking wordt naar je spaargeld gestuurd.";
 "lightning__spark_exit__leftover_dust" = "{amount} aan overgebleven vergoedingsdekking is te klein om te versturen en blijft op {address}, afleidingspad {path}.";
-"lightning__spark_exit__leftover_txid" = "Transactie-ID: {txid}";
 "lightning__spark_exit__fund_paid" = "Betaald uit spaargeld, wachten op bevestiging.";
 "lightning__spark_exit__fund_pending" = "Betaling gezien, wachten op bevestiging.";
-"lightning__spark_exit__funding_txid" = "Transactie-ID: {txid}";
 "lightning__spark_exit__lost_leaves" = "{amount} is on-chain geclaimd door een eerdere eigenaar van dit geld en kan niet worden teruggehaald.";
 "lightning__spark_exit__notification_lost" = "{amount} van je exit kan niet worden teruggehaald. Open Bitkit om te zien waarom.";
 "lightning__spark_exit__notification_failed" = "Je nooduitgang is gestopt. Open Bitkit om te zien waarom.";
@@ -441,7 +439,6 @@
 "lightning__spark_exit__waiting_leaves" = "Een deel van deze exit kan nu niet on-chain worden gelezen. Bitkit probeert het tot een week lang opnieuw.";
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit kon de opgeslagen voortgang van deze exit niet lezen, dus bouwt het die opnieuw op vanuit de blockchain.";
 "lightning__spark_exit__done_received" = "{amount} is aangekomen in je spaargeld.";
-"lightning__spark_exit__sweep_txid" = "Transactie-ID: {txid}";
 "lightning__spark_exit__leftover_rejected" = "{amount} aan overgebleven vergoedingsdekking kon niet worden verstuurd en blijft op {address}, afleidingspad {path}.";
 "lightning__spark_exit__notification_not_moving" = "Je nooduitgang komt niet verder. Open Bitkit om te zien waarom.";
 "lightning__spark_exit__funding_split" = "Bitkit splitst het in {count} delen, één per stap, zodat één vastgelopen stap de andere niet ophoudt.";

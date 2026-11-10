@@ -417,10 +417,8 @@
 "lightning__spark_exit__leftover_swept" = "{amount} zbývajícího krytí poplatků bylo odesláno do úspor.";
 "lightning__spark_exit__leftover_sending" = "Odesíláme {amount} zbývajícího krytí poplatků do úspor.";
 "lightning__spark_exit__leftover_dust" = "{amount} zbývajícího krytí poplatků je příliš málo k odeslání a zůstává na adrese {address}, derivační cesta {path}.";
-"lightning__spark_exit__leftover_txid" = "ID transakce: {txid}";
 "lightning__spark_exit__fund_paid" = "Zaplaceno z úspor, čeká se na potvrzení.";
 "lightning__spark_exit__fund_pending" = "Platba zaznamenána, čeká se na potvrzení.";
-"lightning__spark_exit__funding_txid" = "ID transakce: {txid}";
 "lightning__spark_exit__lost_leaves" = "{amount} si on-chain nárokoval dřívější vlastník těchto prostředků a nelze to získat zpět.";
 "lightning__spark_exit__notification_lost" = "{amount} z vašeho výstupu nelze získat zpět. Otevřete Bitkit a zjistěte proč.";
 "lightning__spark_exit__notification_failed" = "Váš nouzový výstup se zastavil. Otevřete Bitkit a zjistěte proč.";
@@ -443,7 +441,6 @@
 "lightning__spark_exit__waiting_leaves" = "Část tohoto výstupu teď nelze na blockchainu načíst. Bitkit to bude zkoušet znovu až týden.";
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit nedokázal načíst uložený postup tohoto výstupu, proto ho obnovuje z blockchainu.";
 "lightning__spark_exit__done_received" = "{amount} dorazilo do vašich úspor.";
-"lightning__spark_exit__sweep_txid" = "ID transakce: {txid}";
 "lightning__spark_exit__leftover_rejected" = "{amount} zbývajícího krytí poplatků se nepodařilo odeslat a zůstává na adrese {address}, derivační cesta {path}.";
 "lightning__spark_exit__notification_not_moving" = "Váš nouzový výstup nepostupuje. Otevřete Bitkit a zjistěte proč.";
 "lightning__spark_exit__funding_split" = "Bitkit ji rozdělí na {count} částí, jednu pro každý krok, aby jeden zaseknutý krok nezdržel ostatní.";

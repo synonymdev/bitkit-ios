@@ -401,10 +401,8 @@
 "lightning__spark_exit__leftover_swept" = "S'han enviat a estalvis {amount} del finançament de comissions sobrant.";
 "lightning__spark_exit__leftover_sending" = "Enviant a estalvis {amount} del finançament de comissions sobrant.";
 "lightning__spark_exit__leftover_dust" = "{amount} del finançament de comissions sobrant és massa poc per enviar i es queda a {address}, camí de derivació {path}.";
-"lightning__spark_exit__leftover_txid" = "ID de transacció: {txid}";
 "lightning__spark_exit__fund_paid" = "Pagat des d'estalvis, esperant la confirmació.";
 "lightning__spark_exit__fund_pending" = "Pagament detectat, esperant la confirmació.";
-"lightning__spark_exit__funding_txid" = "ID de transacció: {txid}";
 "lightning__spark_exit__lost_leaves" = "Un propietari anterior d'aquests fons ha reclamat {amount} on-chain i no es pot recuperar.";
 "lightning__spark_exit__notification_lost" = "{amount} de la teva sortida no es pot recuperar. Obre Bitkit per saber per què.";
 "lightning__spark_exit__notification_failed" = "La teva sortida d'emergència s'ha aturat. Obre Bitkit per saber per què.";
@@ -427,7 +425,6 @@
 "lightning__spark_exit__waiting_leaves" = "Ara mateix no es pot llegir on-chain una part d'aquesta sortida. Bitkit ho torna a provar durant una setmana com a màxim.";
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit no ha pogut llegir el progrés desat d'aquesta sortida, així que el reconstrueix a partir de la cadena.";
 "lightning__spark_exit__done_received" = "{amount} ha arribat als teus estalvis.";
-"lightning__spark_exit__sweep_txid" = "ID de transacció: {txid}";
 "lightning__spark_exit__leftover_rejected" = "{amount} del finançament de comissions sobrant no s'ha pogut enviar i es queda a {address}, camí de derivació {path}.";
 "lightning__spark_exit__notification_not_moving" = "La teva sortida d'emergència no avança. Obre Bitkit per saber per què.";
 "lightning__spark_exit__funding_split" = "Bitkit el divideix en {count} parts, una per a cada pas, perquè un pas encallat no pugui retenir els altres.";

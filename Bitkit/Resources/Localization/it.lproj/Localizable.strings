@@ -411,10 +411,8 @@
 "lightning__spark_exit__leftover_swept" = "{amount} di finanziamento commissioni avanzato è stato inviato ai risparmi.";
 "lightning__spark_exit__leftover_sending" = "Invio di {amount} di finanziamento commissioni avanzato ai risparmi.";
 "lightning__spark_exit__leftover_dust" = "{amount} di finanziamento commissioni avanzato è troppo poco per essere inviato e resta su {address}, percorso di derivazione {path}.";
-"lightning__spark_exit__leftover_txid" = "ID Transazione: {txid}";
 "lightning__spark_exit__fund_paid" = "Pagato dai risparmi, in attesa di conferma.";
 "lightning__spark_exit__fund_pending" = "Pagamento rilevato, in attesa di conferma.";
-"lightning__spark_exit__funding_txid" = "ID Transazione: {txid}";
 "lightning__spark_exit__lost_leaves" = "{amount} è stato riscattato on-chain da un precedente proprietario di questi fondi e non può essere recuperato.";
 "lightning__spark_exit__notification_lost" = "{amount} della tua uscita non può essere recuperato. Apri Bitkit per scoprire perché.";
 "lightning__spark_exit__notification_failed" = "La tua uscita di emergenza si è fermata. Apri Bitkit per scoprire perché.";
@@ -437,7 +435,6 @@
 "lightning__spark_exit__waiting_leaves" = "Parte di questa uscita non può essere letta on-chain al momento. Bitkit riprova per un massimo di una settimana.";
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit non è riuscito a leggere i progressi salvati di questa uscita, quindi li ricostruisce dalla blockchain.";
 "lightning__spark_exit__done_received" = "{amount} è arrivato nei tuoi risparmi.";
-"lightning__spark_exit__sweep_txid" = "ID Transazione: {txid}";
 "lightning__spark_exit__leftover_rejected" = "{amount} di finanziamento commissioni avanzato non è stato inviato e resta su {address}, percorso di derivazione {path}.";
 "lightning__spark_exit__notification_not_moving" = "La tua uscita di emergenza non avanza. Apri Bitkit per scoprire perché.";
 "lightning__spark_exit__funding_split" = "Bitkit lo divide in {count} parti, una per ogni passaggio, così un passaggio bloccato non può trattenere gli altri.";

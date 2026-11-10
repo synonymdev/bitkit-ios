@@ -364,10 +364,8 @@
 "lightning__spark_exit__leftover_swept" = "أُرسل {amount} من تمويل الرسوم المتبقي إلى المدخرات.";
 "lightning__spark_exit__leftover_sending" = "جارٍ إرسال {amount} من تمويل الرسوم المتبقي إلى المدخرات.";
 "lightning__spark_exit__leftover_dust" = "{amount} من تمويل الرسوم المتبقي صغير جدًا بحيث لا يمكن إرساله ويبقى في {address}، مسار الاشتقاق {path}.";
-"lightning__spark_exit__leftover_txid" = "معرّف المعاملة: {txid}";
 "lightning__spark_exit__fund_paid" = "تم الدفع من المدخرات، بانتظار التأكيد.";
 "lightning__spark_exit__fund_pending" = "تم رصد الدفعة، بانتظار التأكيد.";
-"lightning__spark_exit__funding_txid" = "معرّف المعاملة: {txid}";
 "lightning__spark_exit__lost_leaves" = "طالب مالك سابق لهذه الأموال بمبلغ {amount} على السلسلة ولا يمكن استرداده.";
 "lightning__spark_exit__notification_lost" = "لا يمكن استرداد {amount} من خروجك. افتح Bitkit لمعرفة السبب.";
 "lightning__spark_exit__notification_failed" = "توقف خروجك الطارئ. افتح Bitkit لمعرفة السبب.";
@@ -390,7 +388,6 @@
 "lightning__spark_exit__waiting_leaves" = "تتعذّر قراءة جزء من هذا الخروج على السلسلة الآن. يحاول Bitkit مجددًا لمدة تصل إلى أسبوع.";
 "lightning__spark_exit__rebuilt_from_chain" = "تعذّر على Bitkit قراءة التقدم المحفوظ لهذا الخروج، لذا يعيد بناءه من السلسلة.";
 "lightning__spark_exit__done_received" = "وصل {amount} إلى مدخراتك.";
-"lightning__spark_exit__sweep_txid" = "معرّف المعاملة: {txid}";
 "lightning__spark_exit__leftover_rejected" = "تعذّر إرسال {amount} من تمويل الرسوم المتبقي ويبقى في {address}، مسار الاشتقاق {path}.";
 "lightning__spark_exit__notification_not_moving" = "خروجك الطارئ لا يتقدم. افتح Bitkit لمعرفة السبب.";
 "lightning__spark_exit__funding_split" = "يقسّمه Bitkit إلى {count} أجزاء، جزء لكل خطوة، حتى لا تعطّل خطوة عالقة الخطوات الأخرى.";

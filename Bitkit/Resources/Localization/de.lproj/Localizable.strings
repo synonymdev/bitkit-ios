@@ -415,10 +415,8 @@
 "lightning__spark_exit__leftover_swept" = "{amount} übrige Gebührendeckung wurden ans Sparkonto gesendet.";
 "lightning__spark_exit__leftover_sending" = "{amount} übrige Gebührendeckung werden ans Sparkonto gesendet.";
 "lightning__spark_exit__leftover_dust" = "{amount} übrige Gebührendeckung sind zu klein zum Senden und bleiben auf {address}, Ableitungspfad {path}.";
-"lightning__spark_exit__leftover_txid" = "Transaktions-ID: {txid}";
 "lightning__spark_exit__fund_paid" = "Aus dem Sparkonto bezahlt, warte auf Bestätigung.";
 "lightning__spark_exit__fund_pending" = "Zahlung erkannt, warte auf Bestätigung.";
-"lightning__spark_exit__funding_txid" = "Transaktions-ID: {txid}";
 "lightning__spark_exit__lost_leaves" = "{amount} wurden von einem früheren Besitzer dieser Mittel on-chain beansprucht und können nicht wiederhergestellt werden.";
 "lightning__spark_exit__notification_lost" = "{amount} deines Ausstiegs können nicht wiederhergestellt werden. Öffne Bitkit, um den Grund zu sehen.";
 "lightning__spark_exit__notification_failed" = "Dein Notausstieg wurde gestoppt. Öffne Bitkit, um den Grund zu sehen.";
@@ -441,7 +439,6 @@
 "lightning__spark_exit__waiting_leaves" = "Ein Teil dieses Ausstiegs kann derzeit nicht on-chain gelesen werden. Bitkit versucht es bis zu einer Woche lang erneut.";
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit konnte den gespeicherten Fortschritt dieses Ausstiegs nicht lesen und stellt ihn daher aus der Blockchain wieder her.";
 "lightning__spark_exit__done_received" = "{amount} sind in deinem Sparkonto angekommen.";
-"lightning__spark_exit__sweep_txid" = "Transaktions-ID: {txid}";
 "lightning__spark_exit__leftover_rejected" = "{amount} übrige Gebührendeckung konnten nicht gesendet werden und bleiben auf {address}, Ableitungspfad {path}.";
 "lightning__spark_exit__notification_not_moving" = "Dein Notausstieg kommt nicht voran. Öffne Bitkit, um den Grund zu sehen.";
 "lightning__spark_exit__funding_split" = "Bitkit teilt sie in {count} Teile auf, einen pro Schritt, damit ein hängender Schritt die anderen nicht aufhält.";

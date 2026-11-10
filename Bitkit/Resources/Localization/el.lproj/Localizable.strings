@@ -388,10 +388,8 @@
 "lightning__spark_exit__leftover_swept" = "{amount} από την υπόλοιπη χρηματοδότηση τελών στάλθηκε στις αποταμιεύσεις.";
 "lightning__spark_exit__leftover_sending" = "Αποστολή {amount} από την υπόλοιπη χρηματοδότηση τελών στις αποταμιεύσεις.";
 "lightning__spark_exit__leftover_dust" = "{amount} από την υπόλοιπη χρηματοδότηση τελών είναι πολύ μικρό για αποστολή και παραμένει στη διεύθυνση {address}, διαδρομή παραγωγής {path}.";
-"lightning__spark_exit__leftover_txid" = "ID Συναλλαγής: {txid}";
 "lightning__spark_exit__fund_paid" = "Πληρώθηκε από τις αποταμιεύσεις, αναμονή επιβεβαίωσης.";
 "lightning__spark_exit__fund_pending" = "Η πληρωμή εντοπίστηκε, αναμονή επιβεβαίωσης.";
-"lightning__spark_exit__funding_txid" = "ID Συναλλαγής: {txid}";
 "lightning__spark_exit__lost_leaves" = "{amount} διεκδικήθηκε on-chain από προηγούμενο κάτοχο αυτών των κεφαλαίων και δεν μπορεί να ανακτηθεί.";
 "lightning__spark_exit__notification_lost" = "{amount} της εξόδου σας δεν μπορεί να ανακτηθεί. Ανοίξτε το Bitkit για να δείτε γιατί.";
 "lightning__spark_exit__notification_failed" = "Η έξοδος έκτακτης ανάγκης σταμάτησε. Ανοίξτε το Bitkit για να δείτε γιατί.";
@@ -414,7 +412,6 @@
 "lightning__spark_exit__waiting_leaves" = "Μέρος αυτής της εξόδου δεν μπορεί να διαβαστεί on-chain αυτή τη στιγμή. Το Bitkit προσπαθεί ξανά για έως μία εβδομάδα.";
 "lightning__spark_exit__rebuilt_from_chain" = "Το Bitkit δεν μπόρεσε να διαβάσει την αποθηκευμένη πρόοδο αυτής της εξόδου, οπότε την ανακατασκευάζει από την αλυσίδα.";
 "lightning__spark_exit__done_received" = "{amount} έφτασε στις αποταμιεύσεις σας.";
-"lightning__spark_exit__sweep_txid" = "ID Συναλλαγής: {txid}";
 "lightning__spark_exit__leftover_rejected" = "{amount} από την υπόλοιπη χρηματοδότηση τελών δεν ήταν δυνατό να σταλεί και παραμένει στη διεύθυνση {address}, διαδρομή παραγωγής {path}.";
 "lightning__spark_exit__notification_not_moving" = "Η έξοδος έκτακτης ανάγκης δεν προχωρά. Ανοίξτε το Bitkit για να δείτε γιατί.";
 "lightning__spark_exit__funding_split" = "Το Bitkit τη χωρίζει σε {count} μέρη, ένα για κάθε βήμα, ώστε ένα κολλημένο βήμα να μην καθυστερεί τα υπόλοιπα.";

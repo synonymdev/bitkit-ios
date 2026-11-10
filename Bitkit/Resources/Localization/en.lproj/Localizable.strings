@@ -396,7 +396,7 @@
 "lightning__spark_exit__confirm_text" = "You won't be able to use these funds for <accent>up to 4 weeks</accent>.";
 "lightning__spark_exit__swipe" = "Swipe To Exit";
 "lightning__spark_exit__progress_title" = "Exit in\n<accent>progress</accent>";
-"lightning__spark_exit__progress_text" = "This runs in the background. Bitkit notifies you if it needs you.";
+"lightning__spark_exit__progress_text" = "The exit runs in the background, also while Bitkit is closed. Bitkit notifies you if it needs you.";
 "lightning__spark_exit__step_funding" = "Fee funding confirms";
 "lightning__spark_exit__step_publish" = "Publishing exit transactions";
 "lightning__spark_exit__step_timelock" = "Waiting for the timelock";
@@ -410,10 +410,8 @@
 "lightning__spark_exit__leftover_swept" = "{amount} of leftover fee funding was sent to savings.";
 "lightning__spark_exit__leftover_sending" = "Sending {amount} of leftover fee funding to savings.";
 "lightning__spark_exit__leftover_dust" = "{amount} of leftover fee funding is too small to send and stays at {address}, derivation path {path}.";
-"lightning__spark_exit__leftover_txid" = "Transaction ID: {txid}";
 "lightning__spark_exit__fund_paid" = "Paid from savings, waiting for confirmation.";
 "lightning__spark_exit__fund_pending" = "Payment seen, waiting for confirmation.";
-"lightning__spark_exit__funding_txid" = "Transaction ID: {txid}";
 "lightning__spark_exit__lost_leaves" = "{amount} was claimed on-chain by an older owner of these funds and can't be recovered.";
 "lightning__spark_exit__notification_lost" = "{amount} of your exit can't be recovered. Open Bitkit to see why.";
 "lightning__spark_exit__notification_failed" = "Your emergency exit stopped. Open Bitkit to see why.";
@@ -430,13 +428,13 @@
 "lightning__spark_exit__notification_funding" = "Your exit needs more fees to continue. Open Bitkit to fund it.";
 "lightning__spark_exit__bg_refresh_off" = "Background App Refresh is off for Bitkit, so the exit only moves while Bitkit is open. Turn it on in Settings to let it run in the background.";
 "lightning__spark_exit__low_power" = "Low Power Mode pauses background work. The exit continues once it is off, or when you open Bitkit.";
-"lightning__spark_exit__notifications_off" = "Notifications are off, so Bitkit can't tell you when the exit needs you. Turn them on in Settings to be reminded.";
+"lightning__spark_exit__notifications_off" = "Notifications are off, so Bitkit can't tell you if the exit needs you. Without them, open Bitkit every few hours until the exit finishes.";
+"lightning__spark_exit__note_notifications_button" = "Turn on notifications";
 "lightning__spark_exit__not_moving" = "The exit is not moving: {error}";
 "lightning__spark_exit__fee_low" = "The network is busier than this exit's fee rate of {rate} sat/vB. Pay a higher fee, or wait for fees to drop.";
 "lightning__spark_exit__waiting_leaves" = "Part of this exit can't be read on-chain right now. Bitkit tries again for up to a week.";
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit couldn't read this exit's saved progress, so it rebuilds it from the chain.";
 "lightning__spark_exit__done_received" = "{amount} reached your savings.";
-"lightning__spark_exit__sweep_txid" = "Transaction ID: {txid}";
 "lightning__spark_exit__leftover_rejected" = "{amount} of leftover fee funding could not be sent and stays at {address}, derivation path {path}.";
 "lightning__spark_exit__notification_not_moving" = "Your emergency exit is not moving. Open Bitkit to see why.";
 "lightning__spark_exit__funding_split" = "Bitkit splits it into {count} parts, one for each step, so one stuck step can't hold up the others.";

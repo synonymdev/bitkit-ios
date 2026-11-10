@@ -118,38 +118,6 @@ struct ActivityExplorerView: View {
         }
     }
 
-    private struct InfoSection: View {
-        let title: String
-        let content: String
-        let testId: String?
-        @EnvironmentObject var app: AppViewModel
-
-        init(title: String, content: String, testId: String? = nil) {
-            self.title = title
-            self.content = content
-            self.testId = testId
-        }
-
-        var body: some View {
-            Button {
-                UIPasteboard.general.string = content
-                app.toast(type: .success, title: t("common__copied"), description: content)
-            } label: {
-                VStack(alignment: .leading, spacing: 0) {
-                    CaptionMText(title)
-                        .padding(.bottom, 8)
-                    BodySSBText(content)
-                        .padding(.bottom, 16)
-
-                    Divider()
-                        .padding(.bottom, 16)
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifierIfPresent(testId)
-        }
-    }
-
     private var navTitle: String {
         switch item {
         case let .lightning(activity) where activity.status == .pending:
@@ -181,7 +149,7 @@ struct ActivityExplorerView: View {
             .padding(.bottom, 32)
 
             if let onchain {
-                InfoSection(
+                ActivityInfoSection(
                     title: t("wallet__activity_tx_id"),
                     content: onchain.txId,
                     testId: "TXID"
@@ -227,7 +195,7 @@ struct ActivityExplorerView: View {
                         .padding(.bottom, 16)
                     ForEach(Array(onchain.boostTxIds.enumerated()), id: \.offset) { index, boostTxId in
                         let isRBF = onchain.txType == .sent || !(boostTxDoesExist[boostTxId] ?? true)
-                        InfoSection(
+                        ActivityInfoSection(
                             title: t(isRBF ? "wallet__activity_boosted_rbf" : "wallet__activity_boosted_cpfp", variables: ["num": String(index + 1)]),
                             content: boostTxId,
                             testId: isRBF ? "RBFBoosted" : "CPFPBoosted"
@@ -236,20 +204,20 @@ struct ActivityExplorerView: View {
                 }
             } else if let lightning {
                 if let preimage = lightning.preimage {
-                    InfoSection(
+                    ActivityInfoSection(
                         title: t("wallet__activity_preimage"),
                         content: preimage
                     )
                 }
 
                 if let paymentHash {
-                    InfoSection(
+                    ActivityInfoSection(
                         title: t("wallet__activity_payment_hash"),
                         content: paymentHash
                     )
                 }
 
-                InfoSection(
+                ActivityInfoSection(
                     title: t("wallet__activity_invoice"),
                     content: lightning.invoice
                 )
@@ -344,5 +312,38 @@ struct ActivityExplorer_Previews: PreviewProvider {
         .environmentObject(SettingsViewModel.shared)
         .environmentObject(CurrencyViewModel())
         .preferredColorScheme(.dark)
+    }
+}
+
+/// A detail of an activity, its title above its value, that copies the value on tap.
+struct ActivityInfoSection: View {
+    let title: String
+    let content: String
+    let testId: String?
+    @EnvironmentObject var app: AppViewModel
+
+    init(title: String, content: String, testId: String? = nil) {
+        self.title = title
+        self.content = content
+        self.testId = testId
+    }
+
+    var body: some View {
+        Button {
+            UIPasteboard.general.string = content
+            app.toast(type: .success, title: t("common__copied"), description: content)
+        } label: {
+            VStack(alignment: .leading, spacing: 0) {
+                CaptionMText(title)
+                    .padding(.bottom, 8)
+                BodySSBText(content)
+                    .padding(.bottom, 16)
+
+                Divider()
+                    .padding(.bottom, 16)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifierIfPresent(testId)
     }
 }
