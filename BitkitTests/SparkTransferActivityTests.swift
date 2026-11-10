@@ -48,6 +48,15 @@ final class SparkTransferActivityTests: XCTestCase {
         XCTAssertEqual(unclaimed.map(\.vout), [1], "Another output of a claimed deposit's transaction was hidden")
     }
 
+    func testARecoveredReadBalanceNotifiesEvenWhenItEqualsTheShownOne() {
+        let kept = SparkBalances(readSats: 0, keptSats: 9000, pendingSats: 0)
+        let recovered = SparkBalances(readSats: 9000, keptSats: nil, pendingSats: 0)
+
+        XCTAssertTrue(SparkManager.balancesChanged(from: kept, to: recovered), "Sendable stayed 0 after Spark read the balance again")
+        XCTAssertFalse(SparkManager.balancesChanged(from: recovered, to: recovered))
+        XCTAssertTrue(SparkManager.balancesChanged(from: recovered, to: SparkBalances(readSats: 9000, keptSats: nil, pendingSats: 1)))
+    }
+
     func testAZeroReadAfterAFailedWithdrawalOrSyncKeepsTheLastKnownBalance() {
         XCTAssertEqual(SparkManager.keptBalanceSats(read: 0, lastShown: 9000, isStale: true), 9000, "The balance read 0 while stale")
         XCTAssertNil(SparkManager.keptBalanceSats(read: 0, lastShown: 9000, isStale: false))

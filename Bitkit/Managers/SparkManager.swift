@@ -694,7 +694,10 @@ final class SparkManager: ChannelFreeLightningRail {
         let kept = Self.keptBalanceSats(
             read: info.balanceSats, lastShown: shownBalanceSats, isStale: withdrawalFailedAt != nil || info.lastSyncError != nil
         )
-        let changed = !isReady || shownBalanceSats != (kept ?? info.balanceSats) || pendingDepositSats != pending
+        let changed = !isReady || Self.balancesChanged(
+            from: SparkBalances(readSats: balanceSats, keptSats: keptBalanceSats, pendingSats: pendingDepositSats),
+            to: SparkBalances(readSats: info.balanceSats, keptSats: kept, pendingSats: pending)
+        )
         isReady = true
         balanceSats = info.balanceSats
         keptBalanceSats = kept
@@ -714,6 +717,12 @@ final class SparkManager: ChannelFreeLightningRail {
         for txId in Self.transferTxIds(unclaimed: unclaimed, payments: payments) {
             await CoreService.shared.activity.markOnchainActivityAsTransfer(txId: txId)
         }
+    }
+
+    /// Whether balances and the receive invoice must follow a refresh: the read balance counts too, as sends use it, and
+    /// it can come back to the shown one while that stays the same.
+    nonisolated static func balancesChanged(from old: SparkBalances, to new: SparkBalances) -> Bool {
+        old != new
     }
 
     /// After a failed withdrawal, or while Spark's last sync failed (`isStale`), Spark can read 0 with the funds still
@@ -1125,4 +1134,11 @@ private final class SparkEventListener: BreezSdkSpark.EventListener, @unchecked 
     func onEvent(event: SdkEvent) async {
         await handler(event)
     }
+}
+
+/// The balances a refresh reads: what Spark read (`readSats`), the balance kept on screen, and pending deposits.
+struct SparkBalances: Equatable {
+    let readSats: UInt64
+    let keptSats: UInt64?
+    let pendingSats: UInt64
 }
