@@ -58,6 +58,8 @@ final class SparkManager: ChannelFreeLightningRail {
     @ObservationIgnored private var preparedWithdrawal: (quote: SparkWithdrawalQuote, response: PrepareSendPaymentResponse)?
     /// Withdrawals this app sent, known before Spark lists them.
     @ObservationIgnored private var sentWithdrawalTxIds: Set<String> = []
+    /// Set by a failed withdrawal until Spark reads a balance again (`shownBalanceSats`).
+    @ObservationIgnored private var withdrawalFailed = false
     @ObservationIgnored private var listenerId: String?
     @ObservationIgnored private var connectTask: Task<Void, Error>?
     /// Bumped by `wipe`, so a connect that started before it disconnects instead of keeping the wiped wallet.
@@ -238,6 +240,7 @@ final class SparkManager: ChannelFreeLightningRail {
         activitiesSynced = false
         isReady = false
         balanceSats = 0
+        withdrawalFailed = false
         pendingDepositSats = 0
         deposits = []
         withdrawals = []
@@ -458,17 +461,23 @@ final class SparkManager: ChannelFreeLightningRail {
     /// Moves the whole Spark balance to the on-chain `address`, fees included, for Spending to Savings. Refuses before
     /// sending when the fee is above `maxFeeSats`, the fee the confirm screen showed.
     func withdrawAll(to address: String, maxFeeSats: UInt64) async throws {
-        let prepared = try await prepareWithdrawAll(to: address)
-        try Self.checkWithdrawalFee(Self.withdrawalFeeSats(prepared), shownFeeSats: maxFeeSats)
-        let response = try await requireSdk().sendPayment(request: SendPaymentRequest(
-            prepareResponse: prepared,
-            options: .bitcoinAddress(confirmationSpeed: .medium)
-        ))
-        preparedWithdrawal = nil
-        if case let .withdraw(txId, _, _) = response.payment.details {
-            sentWithdrawalTxIds.insert(txId)
+        do {
+            let prepared = try await prepareWithdrawAll(to: address)
+            try Self.checkWithdrawalFee(Self.withdrawalFeeSats(prepared), shownFeeSats: maxFeeSats)
+            let response = try await requireSdk().sendPayment(request: SendPaymentRequest(
+                prepareResponse: prepared,
+                options: .bitcoinAddress(confirmationSpeed: .medium)
+            ))
+            preparedWithdrawal = nil
+            if case let .withdraw(txId, _, _) = response.payment.details {
+                sentWithdrawalTxIds.insert(txId)
+            }
+            withdrawalFailed = response.payment.status == .failed
+            try await Self.settleWithdrawal(status: response.payment.status) { try await self.refresh() }
+        } catch {
+            withdrawalFailed = true
+            throw error
         }
-        try await Self.settleWithdrawal(status: response.payment.status) { try await self.refresh() }
     }
 
     /// A sent withdrawal has left the balance, so only Spark's own failed status fails it; reading the balance
@@ -669,9 +678,15 @@ final class SparkManager: ChannelFreeLightningRail {
         // A wipe while this read was in flight leaves the state it cleared.
         guard self.sdk === sdk else { return }
         let pending = unclaimed.reduce(0) { $0 + $1.amountSats }
-        let changed = !isReady || balanceSats != info.balanceSats || pendingDepositSats != pending
+        if info.balanceSats > 0 {
+            withdrawalFailed = false
+        }
+        let shownBalance = Self.shownBalanceSats(
+            read: info.balanceSats, lastKnown: balanceSats, isStale: withdrawalFailed || info.lastSyncError != nil
+        )
+        let changed = !isReady || balanceSats != shownBalance || pendingDepositSats != pending
         isReady = true
-        balanceSats = info.balanceSats
+        balanceSats = shownBalance
         pendingDepositSats = pending
         deposits = listedDeposits
         withdrawals = Self.withdrawals(payments)
@@ -688,6 +703,12 @@ final class SparkManager: ChannelFreeLightningRail {
         for txId in Self.transferTxIds(unclaimed: unclaimed, payments: payments) {
             await CoreService.shared.activity.markOnchainActivityAsTransfer(txId: txId)
         }
+    }
+
+    /// After a failed withdrawal, or while Spark's last sync failed (`isStale`), Spark can read 0 with the funds still
+    /// there, so the last known balance stays shown until it reads one again.
+    nonisolated static func shownBalanceSats(read: UInt64, lastKnown: UInt64, isStale: Bool) -> UInt64 {
+        read == 0 && isStale ? lastKnown : read
     }
 
     /// Spark can still list a deposit it already claimed early as unclaimed, so a claimed one is listed only as claimed.

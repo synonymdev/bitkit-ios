@@ -34,6 +34,12 @@ final class SparkTransferActivityTests: XCTestCase {
         XCTAssertEqual(unclaimed.map(\.txid), ["pending-deposit"], "A deposit claimed early still shows as in progress")
     }
 
+    func testAZeroReadAfterAFailedWithdrawalOrSyncKeepsTheLastKnownBalance() {
+        XCTAssertEqual(SparkManager.shownBalanceSats(read: 0, lastKnown: 9000, isStale: true), 9000, "The balance read 0 while stale")
+        XCTAssertEqual(SparkManager.shownBalanceSats(read: 0, lastKnown: 9000, isStale: false), 0)
+        XCTAssertEqual(SparkManager.shownBalanceSats(read: 4000, lastKnown: 9000, isStale: true), 4000)
+    }
+
     func testListsWithdrawalsWithWhatSparkKept() {
         let payments = [
             payment(id: "1", status: .completed, details: .withdraw(txId: "withdrawal", vout: 0, destinationAddress: "bcrt1qsavings"), fees: 1470),
