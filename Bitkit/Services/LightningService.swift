@@ -1472,6 +1472,17 @@ class LightningService: NodeLifecycleService {
         return pending
     }
 
+    /// Spark's kept sends whose invoice is unexpired. A sync can still resume one Spark committed but lists no row for,
+    /// also after a relaunch, so it is pending until its invoice expires, the rule `railSyncedSinceUncertainSend` holds.
+    private func unexpiredRailAttempts() -> Set<String> {
+        let seconds = Int(now().timeIntervalSince1970)
+        return eventCallbackLock.withLock {
+            let expiries = attemptExpiries(key: Self.railAttemptsKey)
+            let hashes = railAttemptsStore.stringArray(forKey: Self.railAttemptsKey) ?? []
+            return Set(hashes.filter { hash in expiries[hash].map { $0 > seconds } ?? false })
+        }
+    }
+
     private func endRailSendUncertainty(paymentHash: String) {
         _ = eventCallbackLock.withLock { uncertainRailSends.removeValue(forKey: paymentHash.lowercased()) }
     }
@@ -2112,8 +2123,14 @@ extension LightningService {
             // A restored wallet fills its list on its first sync, so before a sync reaches Spark a missing send proves
             // nothing.
             guard await rail.hasSynced(after: nil) else { throw ChannelFreeRailUnavailable() }
+            // Read before the listing, so a sync that ends while it is read can't settle a send the listing predates.
+            let unsettled = await unsettledUncertainRailSends()
+            let kept = unexpiredRailAttempts()
             let payments = try await rail.lightningPayments()
-            return await payments + unsettledUncertainRailSends()
+            let listed = Set((payments + unsettled).filter { $0.direction == .outbound }.map { $0.paymentHash.lowercased() })
+            let unlisted = kept.subtracting(listed).sorted()
+                .map { ChannelFreeRailPayment(paymentHash: $0, direction: .outbound, status: .pending, preimage: nil) }
+            return payments + unsettled + unlisted
         }
         if await channelFreeRailSupported() {
             throw ChannelFreeRailUnavailable()

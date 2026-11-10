@@ -211,6 +211,8 @@ final class SparkTransferFlow {
         if self.amountSats != amountSats || self.isMaxAmount != isMaxAmount || self.walletId != walletId {
             quote = nil
             fixedFeeFloorSats = nil
+            // A funding followed for the earlier transfer never stands in for this one's swipe.
+            txid = nil
         }
         self.amountSats = amountSats
         self.isMaxAmount = isMaxAmount

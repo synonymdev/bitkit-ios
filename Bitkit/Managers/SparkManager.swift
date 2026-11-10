@@ -77,6 +77,8 @@ final class SparkManager: ChannelFreeLightningRail {
     /// Payments whose activity failed to save, written again at the next refresh.
     @ObservationIgnored private var unsavedPayments: Set<String> = []
     @ObservationIgnored private var sdk: BreezSdk?
+    /// Whether a wallet sync ended since this run connected, so the SDK's sync error describes this run.
+    @ObservationIgnored private var syncedThisRun = false
     /// The last withdrawal quote, which the withdrawal reuses while it holds.
     @ObservationIgnored private var preparedWithdrawal: (quote: SparkWithdrawalQuote, response: PrepareSendPaymentResponse)?
     /// Withdrawals this app sent, known before Spark lists them.
@@ -351,7 +353,10 @@ final class SparkManager: ChannelFreeLightningRail {
             activitiesSynced = try await Self.startConnected(
                 activitiesSynced: activitiesSynced,
                 refresh: { try await refresh() },
-                syncWallet: { _ = try await requireSdk().syncWallet(request: SyncWalletRequest()) },
+                syncWallet: {
+                    _ = try await requireSdk().syncWallet(request: SyncWalletRequest())
+                    syncedThisRun = true
+                },
                 syncActivities: { try await syncActivities() }
             )
         } catch {
@@ -397,6 +402,7 @@ final class SparkManager: ChannelFreeLightningRail {
         if let chainServiceUrl = Env.sparkChainServiceUrl(for: Env.network) {
             await builder.withRestChainService(url: chainServiceUrl, apiType: .esplora, credentials: nil)
         }
+        syncedThisRun = false
         let connected = try await builder.build()
         guard generation == connectGeneration, !isWiping else {
             try? await connected.disconnect()
@@ -440,6 +446,7 @@ final class SparkManager: ChannelFreeLightningRail {
             closeAdmission: {
                 isWiping = true
                 connectGeneration += 1
+                syncedThisRun = false
             },
             drainExitWork: { await SparkExitManager.shared.wipe() },
             disconnect: { disconnectError = await disconnectForWipe() },
@@ -619,11 +626,21 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     nonisolated func hasSynced(after seconds: UInt64?) async -> Bool {
-        guard let info = try? await requireSdk().getInfo(request: GetInfoRequest(ensureSynced: false)),
-              info.lastSyncError == nil
-        else { return false }
+        guard let info = try? await requireSdk().getInfo(request: GetInfoRequest(ensureSynced: false)) else { return false }
+        return await Self.hasSynced(
+            after: seconds,
+            syncedThisRun: syncedThisRun,
+            lastSyncFailed: info.lastSyncError != nil,
+            lastSyncedAt: info.lastSyncedAt
+        )
+    }
+
+    /// The SDK keeps `lastSyncedAt` across launches but not `lastSyncError`, which is unset after each connect until that
+    /// run's first sync ends, so only a sync this run shows Spark's list is complete.
+    nonisolated static func hasSynced(after seconds: UInt64?, syncedThisRun: Bool, lastSyncFailed: Bool, lastSyncedAt: UInt64?) -> Bool {
+        guard syncedThisRun, !lastSyncFailed else { return false }
         guard let seconds else { return true }
-        return info.lastSyncedAt.map { $0 > seconds } ?? false
+        return lastSyncedAt.map { $0 > seconds } ?? false
     }
 
     nonisolated func lightningPayments() async throws -> [ChannelFreeRailPayment] {
@@ -895,6 +912,7 @@ final class SparkManager: ChannelFreeLightningRail {
         Task {
             do {
                 _ = try await requireSdk().syncWallet(request: SyncWalletRequest())
+                syncedThisRun = true
             } catch {
                 Logger.warn("Failed to sync Spark after deposit \(txid): \(error)", context: "SparkManager")
             }
@@ -1141,7 +1159,10 @@ final class SparkManager: ChannelFreeLightningRail {
 
     private func onSdkEvent(_ event: SdkEvent) async {
         switch event {
-        case .synced, .newDeposits, .claimedDeposits:
+        case .synced:
+            syncedThisRun = true
+            await refreshState()
+        case .newDeposits, .claimedDeposits:
             await refreshState()
         case let .unclaimedDeposits(deposits):
             Logger.warn("Found '\(deposits.count)' unclaimed Spark deposits", context: "SparkManager")

@@ -673,6 +673,44 @@ extension ChannelFreeRailTests {
         await assertReachesTheNode()
     }
 
+    func testASyncEndingWhileSparksListIsReadKeepsAnUnknownSendHeld() async throws {
+        let expiresAt = try Self.invoiceExpiresAt()
+        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: expiresAt - 600) }
+        rail.balanceSats = 100_000
+        rail.errorAfterSubmission = NSError(domain: "spark", code: 2)
+        _ = try? await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+        rail.errorAfterSubmission = nil
+        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: expiresAt) }
+        // Spark synced only before the failure, and a sync after it ends while the listing that lacks the send is read.
+        rail.syncedAfter = { $0 == nil }
+        let fake: FakeRail = rail
+        fake.onList = {
+            fake.onList = nil
+            fake.syncedAfter = { _ in true }
+        }
+        rail.balanceSats = 0
+
+        await assertRefusedAsDuplicate()
+    }
+
+    func testAnUnlistedSparkSendKeptFromAnEarlierLaunchHoldsTheNodeUntilItsInvoiceExpires() async throws {
+        let invoice = try Bolt11Invoice.fromStr(invoiceStr: Self.invoice)
+        let hash = String(invoice.paymentHash())
+        let expiresAt = Int(invoice.secondsSinceEpoch() + invoice.expiryTimeSeconds())
+        let service = Bitkit.LightningService.shared
+        // After a relaunch only the kept hash is left, and Spark synced since but lists no row for the send.
+        service.recordRailAttempt(paymentHash: hash, expiresAt: expiresAt)
+        service.now = { Date(timeIntervalSince1970: TimeInterval(expiresAt - 600)) }
+        rail.balanceSats = 0
+
+        let status = await PaykitLightningPaymentProofLookup.railStatus(paymentHash: hash)
+
+        XCTAssertEqual(status, .pending, "a send Spark can still resume was read as never made")
+        await assertRefusedAsDuplicate()
+        service.now = { Date(timeIntervalSince1970: TimeInterval(expiresAt)) }
+        await assertReachesTheNode()
+    }
+
     private static func invoiceExpiresAt() throws -> TimeInterval {
         let invoice = try Bolt11Invoice.fromStr(invoiceStr: invoice)
         return TimeInterval(invoice.secondsSinceEpoch() + invoice.expiryTimeSeconds())
