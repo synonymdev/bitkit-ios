@@ -402,7 +402,7 @@ extension ChannelFreeRailTests {
         }
         rail.balanceSats = 100_000
 
-        _ = try await service.send(bolt11: Self.invoice)
+        await assertRefusedAsDuplicate()
 
         let kept = service.railAttemptsStore.stringArray(forKey: Self.ldkAttemptsKey) ?? []
         XCTAssertEqual(kept, [hash], "An older listing released the node retry's hold")
@@ -423,7 +423,7 @@ extension ChannelFreeRailTests {
         }
         rail.balanceSats = 0
 
-        await assertReachesTheNode()
+        await assertRefusedAsDuplicate()
 
         let kept = service.railAttemptsStore.stringArray(forKey: Self.railAttemptsKey) ?? []
         XCTAssertEqual(kept, [hash, Self.otherHash(1)], "An older listing dropped the hold of a Spark retry")
@@ -463,6 +463,17 @@ extension ChannelFreeRailTests {
 
         let kept = service.railAttemptsStore.stringArray(forKey: Self.ldkAttemptsKey) ?? []
         XCTAssertEqual(kept, [retried], "An older listing dropped the hold of a node retry that ended while it was read")
+    }
+
+    func testANodeSendAdmittedWhileSparkPreparesRefusesSparksSubmission() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        defer { service.endLdkSend(paymentHash: hash) }
+        // The node starts sending the invoice after Spark's checks passed and before Spark submits it.
+        rail.beforeSubmit = { service.beginLdkSend(paymentHash: hash) }
+        rail.balanceSats = 100_000
+
+        await assertRefusedAsDuplicate()
     }
 
     func testSendsNoListingShowsAreDroppedOnceTheirInvoiceExpiredPastTheSettleWindow() async throws {
@@ -1125,6 +1136,8 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     var refusalAfterSubmission: Bitkit.ChannelFreeRailSendRefused?
     /// Runs while a listing is read, before it returns `payments`.
     var onList: (() -> Void)?
+    /// Runs as a send is about to be submitted, before `beforeSubmission`.
+    var beforeSubmit: (() -> Void)?
 
     func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String {
         "lnbcrt1fake"
@@ -1134,6 +1147,7 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
         if let refusal {
             throw refusal
         }
+        beforeSubmit?()
         try beforeSubmission()
         if let refusalAfterSubmission {
             throw refusalAfterSubmission

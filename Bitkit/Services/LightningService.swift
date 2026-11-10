@@ -1046,6 +1046,8 @@ class LightningService: NodeLifecycleService {
         let invoice = try? Bolt11Invoice.fromStr(invoiceStr: bolt11)
         let paymentHash = invoice.map { String($0.paymentHash()) }
         let expiresAt = invoice.map { Int(clamping: min($0.secondsSinceEpoch(), .max - $0.expiryTimeSeconds()) + $0.expiryTimeSeconds()) }
+        // Read before the checks, so a send on the other rail admitted after them refuses this one at submission.
+        let mark = attemptMark
         if !channelsOnly, let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: sats) {
             // LDK refuses its own repeats; Spark doesn't, so a Spark send checks both rails.
             if let paid = try await settledEarlierAttempt(paymentHash: paymentHash, on: [.ldk, .channelFree]) {
@@ -1079,6 +1081,7 @@ class LightningService: NodeLifecycleService {
                         ?? Self.paymentAmountSats(bolt11: bolt11, sats: sats).map(Self.defaultMaxFeeSats),
                     beforeSubmission: { [weak self] in
                         try beforeSubmission()
+                        try self?.admitSend(paymentHash: paymentHash, on: .channelFree, since: mark)
                         self?.recordRailAttempt(paymentHash: paymentHash, expiresAt: expiresAt)
                     }
                 )
@@ -1106,7 +1109,7 @@ class LightningService: NodeLifecycleService {
             return try await Self.submitPayment(beforeSubmission: { [weak self] in
                 try beforeSubmission()
                 guard let self else { return }
-                beginLdkSend(paymentHash: sendKey)
+                try admitSend(paymentHash: sendKey, on: .ldk, since: mark)
                 recordLdkAttempt(paymentHash: paymentHash, expiresAt: expiresAt)
             }) {
                 if let sats {
@@ -1368,9 +1371,13 @@ class LightningService: NodeLifecycleService {
                 if let payment {
                     statuses.append(payment.status)
                 }
-                // A retry in flight, or one recorded while the listing was read, holds the invoice again.
-                if payment == nil || payment?.status == .failed, !live.contains(paymentHash.lowercased()) {
-                    releaseLdkAttempt(paymentHash: paymentHash)
+                // A retry in flight, or one recorded while the listing was read, holds the invoice as pending.
+                if payment == nil || payment?.status == .failed {
+                    if live.contains(paymentHash.lowercased()) {
+                        statuses.append(.pending)
+                    } else {
+                        releaseLdkAttempt(paymentHash: paymentHash)
+                    }
                 }
             } else if hasAttempt(paymentHash: paymentHash, key: Self.ldkAttemptsKey) {
                 Logger.warn("Refused paying '\(paymentHash)', the node can't list the earlier attempt now", context: "LightningService")
@@ -1388,10 +1395,12 @@ class LightningService: NodeLifecycleService {
                 if let payment {
                     statuses.append(payment.status)
                 }
-                if payment == nil || payment?.status == .failed, !live.contains(paymentHash.lowercased()),
-                   !isRailSendInFlight(paymentHash: paymentHash)
-                {
-                    releaseRailAttempt(paymentHash: paymentHash)
+                if payment == nil || payment?.status == .failed {
+                    if live.contains(paymentHash.lowercased()) || isRailSendInFlight(paymentHash: paymentHash) {
+                        statuses.append(.pending)
+                    } else {
+                        releaseRailAttempt(paymentHash: paymentHash)
+                    }
                 }
             } else if hasRailAttempt(paymentHash: paymentHash) {
                 Logger.warn("Refused paying '\(paymentHash)', Spark can't list the earlier attempt now", context: "LightningService")
@@ -1421,6 +1430,24 @@ class LightningService: NodeLifecycleService {
     func beginRailSend(paymentHash: String?) -> Bool {
         guard let paymentHash else { return true }
         return eventCallbackLock.withLock { railSendsInFlight.insert(paymentHash.lowercased()).inserted }
+    }
+
+    /// The last check before a send leaves on `rail`, under the same lock that marks the other rail's sends in flight,
+    /// so of two sends of one invoice only the first admitted goes out. Refuses while the other rail has one in flight,
+    /// or recorded one since `mark`. An admitted node send stays in flight until `endLdkSend`; a Spark send already is.
+    func admitSend(paymentHash: String?, on rail: LightningPaymentRail, since mark: AttemptMark) throws {
+        guard let hash = paymentHash?.lowercased() else { return }
+        try eventCallbackLock.withLock {
+            let otherInFlight = rail == .ldk ? railSendsInFlight : ldkSendsInFlight
+            let otherKey = rail == .ldk ? Self.railAttemptsKey : Self.ldkAttemptsKey
+            if otherInFlight.contains(hash) || attemptsRecorded(since: mark.records, key: otherKey).contains(hash) {
+                Logger.warn("Refused paying '\(hash)', the other rail sent it meanwhile", context: "LightningService")
+                throw Self.pendingDuplicate(paymentHash: hash)
+            }
+            if rail == .ldk {
+                ldkSendsInFlight.insert(hash)
+            }
+        }
     }
 
     func beginLdkSend(paymentHash: String?) {
