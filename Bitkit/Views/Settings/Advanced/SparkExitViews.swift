@@ -998,7 +998,7 @@ struct SparkExitSteps: View {
     private func step(_ title: String, detail: String? = nil, isDone: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 12) {
-                Image(isDone ? "check-mark" : "hourglass")
+                Image(isDone ? "check-mark" : "hourglass-simple")
                     .resizable()
                     .foregroundColor(isDone ? .greenAccent : .textSecondary)
                     .frame(width: 20, height: 20)
