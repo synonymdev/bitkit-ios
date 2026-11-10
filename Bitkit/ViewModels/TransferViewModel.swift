@@ -934,10 +934,10 @@ enum SavingsTransferOutcome: Equatable {
     }
 }
 
-/// Whether a transfer to savings swaps funds out or closes a channel (default).
 /// The swipe's commit was refused, as Spark's withdrawal fee is being priced again; nothing was committed.
 struct SavingsCommitRefused: Error {}
 
+/// Whether a transfer to savings swaps funds out or closes a channel (default).
 enum SavingsTransferMode {
     case swap
     case close
