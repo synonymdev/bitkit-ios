@@ -89,6 +89,20 @@ final class SparkWithdrawalTests: XCTestCase {
     }
 
     @MainActor
+    func testASparkBalanceTooSmallToMoveLeavesTheChannelsToMoveByDefault() async {
+        let transfer = TransferViewModel()
+        transfer.beginSavingsTransfer()
+        transfer.priceSparkWithdrawal = { _ in 1250 }
+        transfer.loadSparkWithdrawFee(balanceSats: 1000, savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+
+        let selection = transfer.savingsSelection(readyChannelIds: ["channel"], sparkSats: 1000)
+
+        XCTAssertEqual(selection, SavingsSelection(channelIds: ["channel"], withdrawsSpark: false))
+        XCTAssertTrue(transfer.isSparkWithdrawalPriced(withdrawsSpark: selection.withdrawsSpark), "Spark held the channels back")
+    }
+
+    @MainActor
     func testABalanceThatLeavesDustAfterItsFeeIsTooSmallToMove() async {
         let transfer = TransferViewModel()
         transfer.priceSparkWithdrawal = { _ in 1093 }

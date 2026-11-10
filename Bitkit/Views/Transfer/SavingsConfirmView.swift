@@ -31,6 +31,11 @@ struct SavingsConfirmView: View {
         transfer.savingsSelection(readyChannelIds: readyChannels.map(\.channelId), sparkSats: sparkSats)
     }
 
+    /// Spark is priced while picked with a balance, also once too small to move, so a receive can bring it back in.
+    private var pricesSpark: Bool {
+        transfer.isSparkSelected && sparkSats > 0
+    }
+
     private var channels: [ChannelDetails] {
         let ids = selection.channelIds
         return readyChannels.filter { ids.contains($0.channelId) }
@@ -86,7 +91,7 @@ struct SavingsConfirmView: View {
                 )
                 .padding(.top, swapState.quote == nil ? 24 : 16)
                 .accessibilityIdentifier("SavingsSparkFee")
-            } else if selection.withdrawsSpark {
+            } else if selection.withdrawsSpark || selection.isEmpty && pricesSpark && transfer.isSparkWithdrawTooSmall {
                 sparkFeeError
                     .padding(.top, swapState.quote == nil ? 24 : 16)
             }
@@ -182,7 +187,7 @@ struct SavingsConfirmView: View {
                 spendableSats: channelsSendableSats
             )
         }
-        .onChange(of: selection.withdrawsSpark ? sparkSats : nil, initial: true) { _, balanceSats in
+        .onChange(of: pricesSpark ? sparkSats : nil, initial: true) { _, balanceSats in
             guard let balanceSats else { return }
             transfer.loadSparkWithdrawFee(balanceSats: balanceSats, savingsAddress: wallet.onchainAddress)
         }
