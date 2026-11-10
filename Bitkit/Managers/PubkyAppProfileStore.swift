@@ -349,6 +349,11 @@ actor PubkyAppProfileStore {
             image: keptImage,
             links: fitted.links.map { Paykit.PubkyProfileLink(title: $0.label, url: $0.url) }
         )
+        // Recorded before the profile is created without it, so an app stopped before the move still retries it. A failed
+        // create keeps it too: the create may have landed, and the next load or save handles either case.
+        if let uri = data.image, Self.isPaykitStorage(uri) {
+            Self.pubkyAppAvatarPending.insert(publicKey)
+        }
         let snapshot: Paykit.PubkyProfileSnapshot
         do {
             snapshot = try await admitted(publicKey, generation: generation) {
