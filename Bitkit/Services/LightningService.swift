@@ -17,6 +17,9 @@ protocol ChannelFreeLightningRail: AnyObject {
     func estimateRoutingFees(bolt11: String, amountSats: UInt64?) async throws -> UInt64
     /// Throws when the rail could not list its payments, so a duplicate-payment check can tell that from none.
     func lightningPayments() async throws -> [ChannelFreeRailPayment]
+    /// Whether the rail's last wallet sync reached it, and started after `seconds` since 1970 when given. The rail
+    /// finishes an interrupted send only on such a sync, so before one its list can lack a send that went out.
+    func hasSynced(after seconds: UInt64?) async -> Bool
 }
 
 @MainActor
@@ -130,6 +133,8 @@ class LightningService: NodeLifecycleService {
     private var attemptRails: [String: LightningPaymentRail] = [:]
     /// Payment hashes inside a rail send, which Spark lists only once it returns.
     private var railSendsInFlight: Set<String> = []
+    /// Rail sends that failed after they were submitted, by hash, with the time they failed in seconds since 1970.
+    private var uncertainRailSends: [String: UInt64] = [:]
     /// Counts attempts recorded in this run, so a listing drops a hash just when the hash was recorded before the
     /// listing was read, never a retry recorded while it was read.
     private var attemptRecords = 0
@@ -1091,6 +1096,12 @@ class LightningService: NodeLifecycleService {
                     releaseRailAttempt(paymentHash: paymentHash, unlessInFlight: false)
                 }
                 throw refusal
+            } catch {
+                // A send that failed once submitted may still go out, so its outcome waits for a later sync.
+                if let paymentHash {
+                    markRailSendUncertain(paymentHash: paymentHash, since: mark)
+                }
+                throw error
             }
         }
         if let paid = try await settledEarlierAttempt(paymentHash: paymentHash, on: [.channelFree]) {
@@ -1285,6 +1296,7 @@ class LightningService: NodeLifecycleService {
     /// Called when the rail's wallet is wiped, as its payments go with it.
     func forgetRailAttempts() {
         eventCallbackLock.withLock {
+            uncertainRailSends = [:]
             railAttemptsStore.removeObject(forKey: Self.railAttemptsKey)
             railAttemptsStore.removeObject(forKey: Self.expiriesKey(Self.railAttemptsKey))
             attemptRecordedAt[Self.railAttemptsKey] = nil
@@ -1398,9 +1410,14 @@ class LightningService: NodeLifecycleService {
                 if payment == nil || payment?.status == .failed {
                     if live.contains(paymentHash.lowercased()) || isRailSendInFlight(paymentHash: paymentHash) {
                         statuses.append(.pending)
+                    } else if await !railSyncedSinceUncertainSend(paymentHash: paymentHash) {
+                        Logger.info("Held '\(paymentHash)' until Spark syncs after its unknown send", context: "LightningService")
+                        statuses.append(.pending)
                     } else {
                         releaseRailAttempt(paymentHash: paymentHash)
                     }
+                } else {
+                    endRailSendUncertainty(paymentHash: paymentHash)
                 }
             } else if hasRailAttempt(paymentHash: paymentHash) {
                 Logger.warn("Refused paying '\(paymentHash)', Spark can't list the earlier attempt now", context: "LightningService")
@@ -1420,7 +1437,35 @@ class LightningService: NodeLifecycleService {
 
     /// Nil while the rail's payments can't be read: listing them failed, or the rail runs here but isn't connected.
     private func readableRailPayments() async -> [ChannelFreeRailPayment]? {
-        try? await channelFreeRailPayments()
+        // A restored wallet fills its list on its first sync, so before a sync reaches Spark a missing send proves
+        // nothing.
+        if let rail = channelFreeRail, await !rail.hasSynced(after: nil) {
+            return nil
+        }
+        return try? await channelFreeRailPayments()
+    }
+
+    /// A rail send that failed after it was submitted, with the time it failed, until a sync after it settles it.
+    private func markRailSendUncertain(paymentHash: String, since mark: AttemptMark) {
+        let hash = paymentHash.lowercased()
+        let failedAt = UInt64(max(0, now().timeIntervalSince1970))
+        eventCallbackLock.withLock {
+            guard attemptsRecorded(since: mark.records, key: Self.railAttemptsKey).contains(hash) else { return }
+            uncertainRailSends[hash] = failedAt
+        }
+    }
+
+    private func endRailSendUncertainty(paymentHash: String) {
+        _ = eventCallbackLock.withLock { uncertainRailSends.removeValue(forKey: paymentHash.lowercased()) }
+    }
+
+    /// True unless the hash's last rail send failed after it was submitted and no sync has reached the rail since.
+    private func railSyncedSinceUncertainSend(paymentHash: String) async -> Bool {
+        let hash = paymentHash.lowercased()
+        guard let failedAt = eventCallbackLock.withLock({ uncertainRailSends[hash] }) else { return true }
+        guard let rail = channelFreeRail, await rail.hasSynced(after: failedAt) else { return false }
+        endRailSendUncertainty(paymentHash: hash)
+        return true
     }
 
     private static func pendingDuplicate(paymentHash: String?) -> NodeError {

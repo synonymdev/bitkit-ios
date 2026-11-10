@@ -368,6 +368,14 @@ final class SparkManager: ChannelFreeLightningRail {
         return ChannelFreeRailSendRefused(reason: t("other__scan__error__expired"))
     }
 
+    nonisolated func hasSynced(after seconds: UInt64?) async -> Bool {
+        guard let info = try? await requireSdk().getInfo(request: GetInfoRequest(ensureSynced: false)),
+              info.lastSyncError == nil
+        else { return false }
+        guard let seconds else { return true }
+        return info.lastSyncedAt.map { $0 > seconds } ?? false
+    }
+
     nonisolated func lightningPayments() async throws -> [ChannelFreeRailPayment] {
         let payments = try await requireSdk().listPayments(request: ListPaymentsRequest(sortAscending: false)).payments
         return payments.compactMap { payment in

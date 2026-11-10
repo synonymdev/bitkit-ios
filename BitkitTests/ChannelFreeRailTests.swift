@@ -636,6 +636,23 @@ extension ChannelFreeRailTests {
         await assertReachesTheNode()
     }
 
+    func testASparkSendWithAnUnknownOutcomeHoldsTheInvoiceUntilSparkSyncsAgain() async {
+        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: 1000) }
+        rail.balanceSats = 100_000
+        // The connection drops inside Spark's send, after it may have committed the payment.
+        rail.errorAfterSubmission = NSError(domain: "spark", code: 2)
+        _ = try? await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+        rail.errorAfterSubmission = nil
+        // Spark last synced before the send failed, so its list, which lacks the send, proves nothing yet.
+        rail.syncedAfter = { ($0 ?? 0) < 1000 }
+        rail.balanceSats = 0
+
+        await assertRefusedAsDuplicate()
+
+        rail.syncedAfter = { _ in true }
+        await assertReachesTheNode()
+    }
+
     private static let ldkAttemptsKey = "ldkAttemptedPaymentHashes"
     private static let railAttemptsKey = "channelFreeRailAttemptedPaymentHashes"
 
@@ -1138,6 +1155,10 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     var onList: (() -> Void)?
     /// Runs as a send is about to be submitted, before `beforeSubmission`.
     var beforeSubmit: (() -> Void)?
+    /// Thrown after the send was submitted, as when the connection drops inside Spark's send.
+    var errorAfterSubmission: Error?
+    /// Whether the rail's last sync reached it, after the given seconds when there are any.
+    var syncedAfter: (UInt64?) -> Bool = { _ in true }
 
     func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String {
         "lnbcrt1fake"
@@ -1152,6 +1173,9 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
         if let refusalAfterSubmission {
             throw refusalAfterSubmission
         }
+        if let errorAfterSubmission {
+            throw errorAfterSubmission
+        }
         await sendGate?()
         sentFeeLimitSats = maxFeeSats
         sentBolt11 = bolt11
@@ -1163,6 +1187,10 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
             throw estimateError
         }
         return routingFeeSats
+    }
+
+    func hasSynced(after seconds: UInt64?) async -> Bool {
+        syncedAfter(seconds)
     }
 
     func lightningPayments() async throws -> [Bitkit.ChannelFreeRailPayment] {
