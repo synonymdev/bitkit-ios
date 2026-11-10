@@ -380,6 +380,30 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         }
     }
 
+    /// The emergency exit's fee funding from savings never pays more mining fee than the user confirmed: a changed
+    /// input set asks again instead.
+    func testSparkExitFundingThatGrewAfterApprovalIsRefusedBeforeBroadcast() async throws {
+        for (fee, valid): (UInt64?, Bool) in [(500, true), (400, true), (501, false), (nil, false)] {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = PreparedAttemptNodeMock()
+            sender.amount = 20000
+            sender.miningFee = fee
+            sender.result = .accepted(txid: sender.txid)
+            do {
+                _ = try await SparkExitManager.sendFunding(
+                    using: sender, attempts: service, address: "bcrt1qfunding", sats: 20000, satsPerVbyte: 2, feeSats: 500
+                )
+                XCTAssertTrue(valid, "A funding for a \(String(describing: fee)) fee needs a new approval")
+                XCTAssertEqual(sender.broadcasts, 1)
+            } catch let OnchainSendAttemptError.preDispatch(error) {
+                XCTAssertFalse(valid, "The approved funding must still go out")
+                XCTAssertEqual((error as? SparkFundingChanged)?.preparedFeeSats, fee, "Refused with \(error)")
+                XCTAssertEqual(sender.broadcasts, 0)
+            }
+        }
+    }
+
     func testPreparedReceiptIsDurableBeforeNativeDispatch() async throws {
         for max in [false, true] {
             let store = MemoryAttemptStore()

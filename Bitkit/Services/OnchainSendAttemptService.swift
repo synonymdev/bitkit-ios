@@ -607,6 +607,7 @@ actor OnchainSendAttemptService {
         followupContext: OnchainSendFollowupContext? = nil,
         transferContext: OnchainSendTransferContext? = nil,
         isSparkFunding: Bool = false,
+        approvedMiningFeeSats: UInt64? = nil,
         paymentDeadline: PaykitPreciseInstant? = nil,
         beforeBroadcastAttempt: () async throws -> Void = {},
         onPreDispatchFailure: (Error) async throws -> Void = { _ in throw OnchainSendAttemptError.preDispatchCleanupFailed }
@@ -656,9 +657,9 @@ actor OnchainSendAttemptService {
                     else { throw OnchainSendAttemptError.unresolved }
                 }
                 // Savings never pay more than the Total the user confirmed, so a higher fee asks for another swipe.
-                if isSparkFunding {
+                if isSparkFunding || approvedMiningFeeSats != nil {
                     guard prepared.recipientAmountSats == amountSats, let miningFee = prepared.miningFeeSats,
-                          let approvedFee = followupContext?.feeSats, miningFee <= approvedFee
+                          let approvedFee = approvedMiningFeeSats ?? followupContext?.feeSats, miningFee <= approvedFee
                     else { throw SparkFundingChanged(preparedFeeSats: prepared.miningFeeSats) }
                 }
                 attempt.amountSats = prepared.recipientAmountSats

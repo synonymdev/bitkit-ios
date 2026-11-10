@@ -644,7 +644,10 @@ final class SparkExitManager {
         }
         var txid: String?
         if extraSats > 0 {
-            txid = try await payFunding(address: address, sats: extraSats, satsPerVbyte: savingsFeeRate, feeSats: option.paymentFeeSats ?? 0)
+            guard let paymentFeeSats = option.paymentFeeSats else {
+                throw AppError(message: t("lightning__spark_exit__fee_bump_error"), debugMessage: "Fee bump payment not priced")
+            }
+            txid = try await payFunding(address: address, sats: extraSats, satsPerVbyte: savingsFeeRate, feeSats: paymentFeeSats)
         }
         // Written between ticks, so a tick in flight never saves over it.
         while isTicking {
@@ -960,20 +963,8 @@ final class SparkExitManager {
     func payFunding(address: String, sats: UInt64, satsPerVbyte: UInt32, feeSats: UInt64) async throws -> String {
         let lightning = LightningService.shared
         let attempts = OnchainSendAttemptService.shared
-        let result = try await attempts.send(
-            using: lightning,
-            address: address,
-            amountSats: sats,
-            satsPerVbyte: satsPerVbyte,
-            utxosToSpend: nil,
-            isMaxAmount: false,
-            followupContext: OnchainSendFollowupContext(
-                feeSats: feeSats,
-                feeRate: satsPerVbyte,
-                tags: [],
-                contact: nil,
-                createdAt: UInt64(Date().timeIntervalSince1970)
-            )
+        let result = try await Self.sendFunding(
+            using: lightning, attempts: attempts, address: address, sats: sats, satsPerVbyte: satsPerVbyte, feeSats: feeSats
         )
         // An unknown outcome may still have gone out: it is kept as paid (pending), so the exit, and its address, stay
         // until the payment lands or the own-payment expiry forgets it.
@@ -990,6 +981,34 @@ final class SparkExitManager {
             Logger.warn("Spark exit funding \(txid) has an unknown outcome; kept as pending", context: "SparkExitManager")
         }
         return txid
+    }
+
+    /// Sends the fee funding from savings for the mining fee `feeSats` the user confirmed, which it never exceeds: a higher
+    /// one is refused before broadcast (`SparkFundingChanged`) and asks again.
+    nonisolated static func sendFunding(
+        using sender: any OnchainSending,
+        attempts: OnchainSendAttemptService,
+        address: String,
+        sats: UInt64,
+        satsPerVbyte: UInt32,
+        feeSats: UInt64
+    ) async throws -> OnchainSendResult {
+        try await attempts.send(
+            using: sender,
+            address: address,
+            amountSats: sats,
+            satsPerVbyte: satsPerVbyte,
+            utxosToSpend: nil,
+            isMaxAmount: false,
+            followupContext: OnchainSendFollowupContext(
+                feeSats: feeSats,
+                feeRate: satsPerVbyte,
+                tags: [],
+                contact: nil,
+                createdAt: UInt64(Date().timeIntervalSince1970)
+            ),
+            approvedMiningFeeSats: feeSats
+        )
     }
 
     /// The funding payment's txid to keep as paid: accepted, or unknown (it may still have gone out). A refused one is none.
