@@ -108,7 +108,7 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertTrue(reminders.contains { $0.id.hasPrefix("1-") }, "the live steps keep their reminders")
     }
 
-    /// A payment no host knows for a block is forgotten: the ask and the funding reminder come back.
+    /// A payment no host knows for three blocks is forgotten: the ask and the funding reminder come back.
     func testADroppedSavingsPaymentBringsTheAskBack() async throws {
         var record = bumpedRecord()
         sdk.checks = try Array(repeating: CheckRecoverFundsResponse(recovery: XCTUnwrap(record.recovery?.response), verdict: .valid), count: 3)
@@ -117,11 +117,36 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(record.fundingPaymentMissingSince, 1000)
         XCTAssertEqual(record.fundingPaymentTxid, "bump", "one read is not enough")
 
-        chain.tip = 1001
+        chain.tip = 1003
         record = try await driver().tick(record)
         XCTAssertNil(record.fundingPaymentTxid)
         XCTAssertFalse(record.isAwaitingOwnPayment)
-        XCTAssertTrue(SparkExitMath.reminders(record, tip: 1001, now: clock, network: .regtest).contains { $0.isFunding })
+        XCTAssertTrue(SparkExitMath.reminders(record, tip: 1003, now: clock, network: .regtest).contains { $0.isFunding })
+    }
+
+    /// A payment one host misses just before a block and just after it, seconds apart, may still be indexing: it is
+    /// kept. A read that finds it starts the count over; only a miss that lasts three blocks forgets it.
+    func testASavingsPaymentMissedForABlockOrASingleReadIsKept() async throws {
+        var record = bumpedRecord()
+        sdk.checks = try Array(repeating: CheckRecoverFundsResponse(recovery: XCTUnwrap(record.recovery?.response), verdict: .valid), count: 6)
+
+        record = try await driver().tick(record)
+        chain.tip = 1001
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.fundingPaymentTxid, "bump", "a one-block miss asked for the funding again")
+
+        chain.mempoolTxids = ["bump"]
+        chain.tip = 1002
+        record = try await driver().tick(record)
+        chain.mempoolTxids = []
+        chain.tip = 1003
+        record = try await driver().tick(record)
+        chain.tip = 1005
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.fundingPaymentTxid, "bump")
+        chain.tip = 1006
+        record = try await driver().tick(record)
+        XCTAssertNil(record.fundingPaymentTxid)
     }
 
     /// One still unadopted after a day is forgotten too, known or not.

@@ -852,7 +852,7 @@ final class SparkExitSweepTests: XCTestCase {
 
         record = try await driver().tick(record)
         XCTAssertNotNil(record.fundingPaymentTxid)
-        chain.tip = 1001
+        chain.tip = 1003
         record = try await driver().tick(record)
         XCTAssertNil(record.fundingPaymentTxid)
         XCTAssertFalse(record.needsDriving)

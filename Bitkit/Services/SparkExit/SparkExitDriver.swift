@@ -67,8 +67,9 @@ struct SparkExitDriver {
     /// About four weeks: then the change too small to send stays at the funding address.
     static let sweepWaitBlocks: UInt32 = 4032
     /// A savings payment Bitkit sent that no host knows for this many blocks, or that the exit did not adopt within
-    /// `ownPaymentTimeoutBlocks`, is forgotten: the exit asks for the funding, and reminds, again.
-    static let ownPaymentMissingBlocks: UInt32 = 1
+    /// `ownPaymentTimeoutBlocks`, is forgotten: the exit asks for the funding, and reminds, again. Long enough that a
+    /// host still indexing it, or one false miss, never asks for the funding twice.
+    static let ownPaymentMissingBlocks: UInt32 = 3
     static let ownPaymentTimeoutBlocks: UInt32 = 144
 
     @discardableResult
