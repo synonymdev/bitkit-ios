@@ -923,6 +923,12 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertEqual(WalletViewModel.spendingSparkSats(isExiting: true, balanceSats: 50000, outsideExitSats: nil), 0)
     }
 
+    /// While an exit runs, Spark counts as 0 where Spending and its connections show it, as on Android.
+    func testSparkShowsZeroInSpendingDuringAnExit() {
+        XCTAssertEqual(SparkManager.shownSpendingSats(isExiting: false, shownBalanceSats: 50000), 50000)
+        XCTAssertEqual(SparkManager.shownSpendingSats(isExiting: true, shownBalanceSats: 50000), 0, "Spending showed Spark during an exit")
+    }
+
     /// A start goes on only with its own exit still stored and active: one cancelled while it waited stops it.
     func testStartGoesOnOnlyWithItsExitStillRunning() throws {
         let createdAt = Date(timeIntervalSince1970: 1_700_000_000.123_456)

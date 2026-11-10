@@ -48,6 +48,16 @@ final class SparkManager: ChannelFreeLightningRail {
         keptBalanceSats ?? balanceSats
     }
 
+    /// The balance Spending and its connections show: 0 during an emergency exit, whose amount shows in transfer to
+    /// savings instead.
+    var shownSpendingSats: UInt64 {
+        Self.shownSpendingSats(isExiting: isExiting, shownBalanceSats: shownBalanceSats)
+    }
+
+    nonisolated static func shownSpendingSats(isExiting: Bool, shownBalanceSats: UInt64) -> UInt64 {
+        isExiting ? 0 : shownBalanceSats
+    }
+
     /// Deposits seen on-chain that Spark claims into `balanceSats` after 3 confirmations.
     private(set) var pendingDepositSats: UInt64 = 0
     /// Funds an emergency exit can still recover, as Spark reports them.
