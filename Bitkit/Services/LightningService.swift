@@ -211,7 +211,7 @@ class LightningService: NodeLifecycleService {
             } catch {
                 Logger.debug("Node was already stopped or failed to stop: \(error)")
                 // Clear the node reference anyway
-                node = nil
+                releaseNode()
                 try? StateLocker.unlock(.lightning)
             }
         }
@@ -246,7 +246,7 @@ class LightningService: NodeLifecycleService {
                 try await stop()
             } catch {
                 Logger.error("Failed to stop node during recovery: \(error)")
-                node = nil
+                releaseNode()
                 try? StateLocker.unlock(.lightning)
             }
         }
@@ -326,9 +326,7 @@ class LightningService: NodeLifecycleService {
         try await ServiceQueue.background(.ldk) {
             try Self.stopReleasingFinishedNode(node.stop)
         }
-        // Dropping the node shuts down its tokio runtime, so a backgrounded app with detached work exits before that.
-        runtimeExitGuard.nodeStopped(hasDetachedWork: runtimeMonitor.hasDetachedWork)
-        self.node = nil
+        releaseNode()
 
         if clearEventCallback {
             storedEventCallback = nil
@@ -339,6 +337,17 @@ class LightningService: NodeLifecycleService {
         }
 
         Logger.info("Node stopped")
+    }
+
+    private func releaseNode() {
+        Self.releaseNode(exitGuard: runtimeExitGuard, monitor: runtimeMonitor) { node = nil }
+    }
+
+    /// Dropping the node shuts down its tokio runtime, so a backgrounded app with detached work exits before that. ldk-node can
+    /// detach tasks and still fail the stop (`PersistenceFailed`), so every path that drops the node goes through here.
+    static func releaseNode(exitGuard: DetachedRuntimeExitGuard, monitor: NodeRuntimeMonitor, drop: () -> Void) {
+        exitGuard.nodeStopped(hasDetachedWork: monitor.hasDetachedWork)
+        drop()
     }
 
     /// ldk-node's `stop()` fails with `NotRunning` for a node whose `start()` failed, which leaves it built but not running, so

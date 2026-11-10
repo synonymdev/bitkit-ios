@@ -95,6 +95,34 @@ final class DetachedRuntimeExitGuardTests: XCTestCase {
         XCTAssertEqual(exitCount, 0)
     }
 
+    /// Regression: a stop that detached tasks and then threw `PersistenceFailed` dropped the node in `restart()` without the guard
+    func testReleaseExitsBeforeDroppingANodeWithDetachedWorkInBackground() {
+        var events: [String] = []
+        let exitGuard = Bitkit.DetachedRuntimeExitGuard { events.append("exit") }
+        let monitor = Bitkit.NodeRuntimeMonitor()
+        monitor.onLog(LogRecord(
+            level: .error,
+            args: "Detaching background tasks after cancellation timed out.",
+            modulePath: "ldk_node::runtime",
+            line: 1
+        ))
+        exitGuard.appEnteredBackground()
+
+        Bitkit.LightningService.releaseNode(exitGuard: exitGuard, monitor: monitor) { events.append("drop") }
+
+        XCTAssertEqual(events, ["exit", "drop"])
+    }
+
+    func testReleaseDropsANodeWithoutDetachedWork() {
+        var events: [String] = []
+        let exitGuard = Bitkit.DetachedRuntimeExitGuard { events.append("exit") }
+        exitGuard.appEnteredBackground()
+
+        Bitkit.LightningService.releaseNode(exitGuard: exitGuard, monitor: Bitkit.NodeRuntimeMonitor()) { events.append("drop") }
+
+        XCTAssertEqual(events, ["drop"])
+    }
+
     func testNeverExitsForAStopWithoutDetachedWork() {
         sut.appEnteredBackground()
         sut.nodeStopped(hasDetachedWork: false)
