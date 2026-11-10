@@ -2,7 +2,8 @@
 
 Cover pairing a Trezor, the home tile and detail screen, the Hardware Wallets settings surface,
 passphrase (hidden) wallets, wallet-scoped activity, and the watch-only Transfer To Spending flow,
-which pays the Spark deposit address from the device (the Transfer Unavailable sheet while Spark is not ready).
+which pays the Spark deposit address from the device. It needs Spark connected on a regtest build launched with
+`SPARK_CHAIN_SERVICE_URL` set to the regtest's Esplora URL; otherwise it shows the Transfer Unavailable sheet.
 
 ## Transport: Bridge, not USB
 

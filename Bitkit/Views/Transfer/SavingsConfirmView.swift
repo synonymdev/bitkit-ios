@@ -127,12 +127,8 @@ struct SavingsConfirmView: View {
                     // The swipe always commits the transfer: it swaps when a quote is ready and
                     // otherwise falls back to the pre-swap behaviour of closing the channel, so it
                     // is never inert.
-                    if selection.withdrawsSpark {
-                        try await recheckSparkFee()
-                    }
+                    try await confirmSwipe()
                     do {
-                        transfer.onTransferToSavingsConfirm(channels: channels, withdrawsSpark: selection.withdrawsSpark)
-
                         try await Task.sleep(nanoseconds: 300_000_000)
 
                         navigation.navigate(.savingsProgress)
@@ -150,8 +146,14 @@ struct SavingsConfirmView: View {
 
             if swapState.quote != nil {
                 // Fallback: drain a whole channel on-chain by closing it instead of swapping.
-                CustomButton(title: t("lightning__savings_confirm__close_instead"), variant: .tertiary) {
-                    transfer.onTransferToSavingsConfirm(channels: channels, withdrawsSpark: selection.withdrawsSpark, mode: .close)
+                CustomButton(
+                    title: t("lightning__savings_confirm__close_instead"),
+                    variant: .tertiary,
+                    isDisabled: !transfer.isSparkWithdrawalPriced(withdrawsSpark: selection.withdrawsSpark) || transfer.isRecheckingSparkFee
+                ) {
+                    guard transfer.onTransferToSavingsConfirm(channels: channels, withdrawsSpark: selection.withdrawsSpark, mode: .close) else {
+                        return
+                    }
                     navigation.navigate(.savingsProgress)
                 }
                 .padding(.top, 12)
@@ -192,10 +194,13 @@ struct SavingsConfirmView: View {
         }
     }
 
-    /// Asks for another swipe when Spark's withdrawal fee rose since it was shown.
-    private func recheckSparkFee() async throws {
+    /// Commits the swipe. Asks for another swipe when Spark's withdrawal fee rose since it was shown, or is being priced
+    /// again for a new balance, which the swipe shows as loading.
+    private func confirmSwipe() async throws {
         do {
-            try await transfer.recheckSparkWithdrawFee()
+            try await transfer.confirmSavingsSwipe(channels: channels, withdrawsSpark: selection.withdrawsSpark)
+        } catch is SavingsCommitRefused {
+            throw SavingsCommitRefused()
         } catch let increase as SparkWithdrawalFeeIncreased {
             app.toast(
                 type: .info,

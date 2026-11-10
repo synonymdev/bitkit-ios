@@ -12,6 +12,8 @@ class TransferViewModel: ObservableObject {
     /// Spark's fee to withdraw its balance to savings, for the confirm screen; nil until priced.
     @Published var sparkWithdrawFeeSats: UInt64?
     @Published var isPricingSparkWithdrawal = false
+    /// While the swipe prices Spark's withdrawal again, nothing else may commit the transfer.
+    @Published private(set) var isRecheckingSparkFee = false
     /// Why the last transfer's Spark withdrawal failed, so the progress screen shows it instead of success.
     @Published private(set) var sparkWithdrawError: String?
     @Published var channelsToClose: [ChannelDetails] = []
@@ -250,6 +252,11 @@ class TransferViewModel: ObservableObject {
 
     // MARK: - Savings Transfer Methods
 
+    /// Opens Transfer to Savings with nothing left from an earlier visit that ended before the swipe.
+    func beginSavingsTransfer() {
+        selectAllForSavings()
+    }
+
     /// Back to transferring everything, the default.
     func selectAllForSavings() {
         selectedChannelIds = nil
@@ -315,6 +322,8 @@ class TransferViewModel: ObservableObject {
             throw AppError(message: "lightning__spending_confirm__error_quote", debugMessage: "Spark withdrawal not priced")
         }
         let price = priceSparkWithdrawal
+        isRecheckingSparkFee = true
+        defer { isRecheckingSparkFee = false }
         guard let feeSats = await Self.withTimeout(seconds: sparkFeeTimeout, { try await price(address) }) else {
             throw AppError(message: "lightning__spending_confirm__error_quote", debugMessage: "Spark withdrawal re-quote failed")
         }
@@ -326,39 +335,62 @@ class TransferViewModel: ObservableObject {
         }
     }
 
-    /// The result of `operation`, or nil when it throws or takes longer than `seconds`.
+    /// The result of `operation`, or nil when it throws, takes longer than `seconds` or the caller is cancelled. Returns
+    /// at the deadline even while `operation` ignores cancellation, as the Breez SDK calls do.
     private nonisolated static func withTimeout<T: Sendable>(
         seconds: TimeInterval,
         _ operation: @escaping @Sendable () async throws -> T
     ) async -> T? {
-        await withTaskGroup(of: T?.self) { group in
-            group.addTask {
-                do {
-                    return try await operation()
-                } catch {
-                    Logger.error("Failed to price the Spark withdrawal", context: error.localizedDescription)
-                    return nil
-                }
+        let result = FirstResult<T?>()
+        let work = Task {
+            do {
+                try await result.resume(operation())
+            } catch {
+                Logger.error("Failed to price the Spark withdrawal", context: error.localizedDescription)
+                result.resume(nil)
             }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                return nil
-            }
-            defer { group.cancelAll() }
-            return await group.next() ?? nil
+        }
+        let deadline = Task {
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            result.resume(nil)
+        }
+        defer {
+            work.cancel()
+            deadline.cancel()
+        }
+        return await withTaskCancellationHandler {
+            await result.value()
+        } onCancel: {
+            result.resume(nil)
         }
     }
 
-    /// Commit the transfer and pick how it runs. A swap needs a priced quote, so without one
+    /// The swipe: prices a Spark withdrawal again, then commits the transfer. Throws `SavingsCommitRefused` when the
+    /// commit is refused, as when Spark's balance changed during the recheck, so the swipe resets instead of opening
+    /// progress.
+    func confirmSavingsSwipe(channels: [ChannelDetails], withdrawsSpark: Bool) async throws {
+        if withdrawsSpark {
+            try await recheckSparkWithdrawFee()
+        }
+        guard onTransferToSavingsConfirm(channels: channels, withdrawsSpark: withdrawsSpark) else {
+            throw SavingsCommitRefused()
+        }
+    }
+
+    /// Commit the transfer and pick how it runs. A Spark withdrawal commits only at a fee shown and not being priced again,
+    /// returning false otherwise. A swap needs a priced quote, so without one
     /// (swaps unsupported on this network, Boltz unreachable, or an amount below the swap
     /// minimum) the transfer closes a channel exactly as it did before swaps existed.
-    func onTransferToSavingsConfirm(channels: [ChannelDetails], withdrawsSpark: Bool, mode: SavingsTransferMode? = nil) {
+    @discardableResult
+    func onTransferToSavingsConfirm(channels: [ChannelDetails], withdrawsSpark: Bool, mode: SavingsTransferMode? = nil) -> Bool {
+        guard !withdrawsSpark || (isSparkWithdrawalPriced(withdrawsSpark: true) && !isRecheckingSparkFee) else { return false }
         savingsTransferMode = mode ?? resolvedSavingsTransferMode
         selectAllForSavings()
         channelsToClose = channels
         self.withdrawsSpark = withdrawsSpark
         // Each swipe commit is a new transfer; the previous run's memo must not satisfy it.
         savingsSwapRun = nil
+        return true
     }
 
     private var resolvedSavingsTransferMode: SavingsTransferMode {
@@ -902,6 +934,9 @@ enum SavingsTransferOutcome: Equatable {
     }
 }
 
+/// The swipe's commit was refused, as Spark's withdrawal fee is being priced again; nothing was committed.
+struct SavingsCommitRefused: Error {}
+
 /// Whether a transfer to savings swaps funds out or closes a channel (default).
 enum SavingsTransferMode {
     case swap
@@ -956,5 +991,39 @@ actor ChannelPendingCapture {
 
     func getChannelData() -> ChannelData? {
         return channelData
+    }
+}
+
+/// The first value any of several racing tasks resumes with; later ones are dropped.
+private final class FirstResult<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var result: T?
+    private var isResolved = false
+    private var continuation: CheckedContinuation<T, Never>?
+
+    func resume(_ value: T) {
+        lock.lock()
+        guard !isResolved else { return lock.unlock() }
+        isResolved = true
+        let waiting = continuation
+        continuation = nil
+        if waiting == nil {
+            result = value
+        }
+        lock.unlock()
+        waiting?.resume(returning: value)
+    }
+
+    func value() async -> T {
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            if isResolved, let result {
+                lock.unlock()
+                continuation.resume(returning: result)
+            } else {
+                self.continuation = continuation
+                lock.unlock()
+            }
+        }
     }
 }

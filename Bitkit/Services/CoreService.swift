@@ -2620,14 +2620,19 @@ class CoreService {
 }
 
 /// The contact a Lightning send pays, remembered by payment hash before it goes out.
-struct SentPaymentContacts {
+/// Shared across actors: every read-modify-write holds `lock`.
+struct SentPaymentContacts: @unchecked Sendable {
     private static let key = "sentPaymentContacts"
+    /// `remember` runs on the main actor and `forget` on the core queue, so each read-modify-write holds this.
+    private static let lock = NSLock()
     let defaults: UserDefaults
 
     func remember(_ contact: String, forPaymentHash paymentHash: String) {
-        var contacts = defaults.dictionary(forKey: Self.key) as? [String: String] ?? [:]
-        contacts[paymentHash.lowercased()] = contact
-        defaults.set(contacts, forKey: Self.key)
+        Self.lock.withLock {
+            var contacts = defaults.dictionary(forKey: Self.key) as? [String: String] ?? [:]
+            contacts[paymentHash.lowercased()] = contact
+            defaults.set(contacts, forKey: Self.key)
+        }
     }
 
     func contact(forPaymentHash paymentHash: String) -> String? {
@@ -2635,9 +2640,11 @@ struct SentPaymentContacts {
     }
 
     func forget(paymentHash: String) {
-        guard var contacts = defaults.dictionary(forKey: Self.key) as? [String: String],
-              contacts.removeValue(forKey: paymentHash.lowercased()) != nil
-        else { return }
-        defaults.set(contacts, forKey: Self.key)
+        Self.lock.withLock {
+            guard var contacts = defaults.dictionary(forKey: Self.key) as? [String: String],
+                  contacts.removeValue(forKey: paymentHash.lowercased()) != nil
+            else { return }
+            defaults.set(contacts, forKey: Self.key)
+        }
     }
 }

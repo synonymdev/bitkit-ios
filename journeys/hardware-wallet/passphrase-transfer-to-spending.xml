@@ -5,7 +5,9 @@
     dropped Bitkit asks for the passphrase again, and a wrong one is refused instead of signing
     from whichever wallet the device happens to have open. Requires the emulator started with
     passphrase protection enabled, the hidden wallet from passphrase-pairing.xml paired, and its
-    native-segwit account holding spendable regtest funds, and Spark connected.
+    native-segwit account holding spendable regtest funds, and Spark connected on a regtest build launched
+    with SPARK_CHAIN_SERVICE_URL set to the regtest's Esplora URL (otherwise the Transfer Unavailable sheet
+    opens).
   </description>
   <actions>
     <action>Launch the Bitkit app and go to the wallet home screen</action>
