@@ -125,8 +125,11 @@ final class ProfileWriteGateTests: XCTestCase {
         var gate = ProfileWriteGate()
 
         gate.beginDeletion("a")
+        let startedDuring = gate.generation("a")
 
-        XCTAssertThrowsError(try gate.admit("a", generation: gate.generation("a")))
+        XCTAssertThrowsError(try gate.admit("a", generation: startedDuring))
+        gate.endDeletion("a")
+        XCTAssertThrowsError(try gate.admit("a", generation: startedDuring))
         XCTAssertNoThrow(try gate.admit("b", generation: gate.generation("b")))
     }
 

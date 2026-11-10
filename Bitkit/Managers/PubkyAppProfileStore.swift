@@ -53,7 +53,9 @@ struct ProfileWriteGate {
         deleting.insert(key)
     }
 
+    /// Ends a deletion, moving the generation on again so a load or save that started during it writes nothing either.
     mutating func endDeletion(_ key: String) {
+        generations[key, default: 0] += 1
         deleting.remove(key)
     }
 
