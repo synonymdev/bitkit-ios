@@ -653,6 +653,15 @@ extension ChannelFreeRailTests {
         await assertReachesTheNode()
     }
 
+    func testPaykitReadsSparkBeforeItsFirstSyncAsUnavailable() async {
+        // A restored wallet fills Spark's list on its first sync, so the list before it lacks sends Spark made.
+        rail.syncedAfter = { _ in false }
+
+        let status = await PaykitLightningPaymentProofLookup.railStatus(paymentHash: "aa")
+
+        XCTAssertEqual(status, .unavailable, "Spark's unsynced list was read as complete")
+    }
+
     private static let ldkAttemptsKey = "ldkAttemptedPaymentHashes"
     private static let railAttemptsKey = "channelFreeRailAttemptedPaymentHashes"
 

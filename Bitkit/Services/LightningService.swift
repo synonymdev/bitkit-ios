@@ -1437,12 +1437,7 @@ class LightningService: NodeLifecycleService {
 
     /// Nil while the rail's payments can't be read: listing them failed, or the rail runs here but isn't connected.
     private func readableRailPayments() async -> [ChannelFreeRailPayment]? {
-        // A restored wallet fills its list on its first sync, so before a sync reaches Spark a missing send proves
-        // nothing.
-        if let rail = channelFreeRail, await !rail.hasSynced(after: nil) {
-            return nil
-        }
-        return try? await channelFreeRailPayments()
+        try? await channelFreeRailPayments()
     }
 
     /// A rail send that failed after it was submitted, with the time it failed, until a sync after it settles it.
@@ -2075,10 +2070,14 @@ extension LightningService {
         return isStaleFailure(paymentHash: hash, from: rail)
     }
 
-    /// The rail's Lightning payments, none where the rail doesn't run; throws when the rail could not list them, or runs
-    /// here but isn't connected, so a payment it may hold is never read as one it never made.
+    /// The rail's Lightning payments, none where the rail doesn't run; throws when the rail could not list them, runs
+    /// here but isn't connected, or no sync has reached it yet, so a payment it may hold is never read as one it never
+    /// made.
     func channelFreeRailPayments() async throws -> [ChannelFreeRailPayment] {
         if let rail = channelFreeRail {
+            // A restored wallet fills its list on its first sync, so before a sync reaches Spark a missing send proves
+            // nothing.
+            guard await rail.hasSynced(after: nil) else { throw ChannelFreeRailUnavailable() }
             return try await rail.lightningPayments()
         }
         if await channelFreeRailSupported() {
