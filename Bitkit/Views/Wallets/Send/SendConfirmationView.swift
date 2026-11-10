@@ -132,18 +132,34 @@ struct SendConfirmationView: View {
     }
 
     private var fundingSources: [SendFundingSource] {
-        var sources: [SendFundingSource] = []
-        if app.scannedLightningInvoice != nil {
-            sources.append(.spending)
-        }
-        if app.scannedOnchainInvoice != nil {
-            sources.append(.savings)
-            sources.append(contentsOf: hwWalletManager.wallets.compactMap { hardwareWallet in
+        Self.fundingSources(
+            hasLightningInvoice: app.scannedLightningInvoice != nil,
+            hasOnchainInvoice: app.scannedOnchainInvoice != nil,
+            offersSparkLeg: app.paykitRoute?.offersSparkLeg == true,
+            hardwareWalletIds: hwWalletManager.wallets.compactMap { hardwareWallet in
                 guard hardwareWallet.fundingBalanceSats > 0 || hardwareWallet.walletId == hwSend.walletId else {
                     return nil
                 }
-                return .hardware(walletId: hardwareWallet.walletId)
-            })
+                return hardwareWallet.walletId
+            }
+        )
+    }
+
+    /// The sources the amount screen offers: a Spark leg can carry an on-chain contact payment from Spending, whether or not
+    /// Savings covers it.
+    static func fundingSources(
+        hasLightningInvoice: Bool,
+        hasOnchainInvoice: Bool,
+        offersSparkLeg: Bool,
+        hardwareWalletIds: [String]
+    ) -> [SendFundingSource] {
+        var sources: [SendFundingSource] = []
+        if hasLightningInvoice || offersSparkLeg {
+            sources.append(.spending)
+        }
+        if hasOnchainInvoice {
+            sources.append(.savings)
+            sources.append(contentsOf: hardwareWalletIds.map { .hardware(walletId: $0) })
         }
         return sources
     }

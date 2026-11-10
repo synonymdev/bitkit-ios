@@ -505,6 +505,28 @@ final class PaykitRouteTests: XCTestCase {
         )
     }
 
+    func testConfirmOffersSpendingWhileASparkLegCanCarryAnOnchainRequest() {
+        // Savings covers the request, so its Confirm opens on Savings; Spending through Spark is still a source.
+        XCTAssertEqual(
+            SendConfirmationView.fundingSources(hasLightningInvoice: false, hasOnchainInvoice: true, offersSparkLeg: true, hardwareWalletIds: []),
+            [.spending, .savings]
+        )
+        // Savings is short, so the request opens on Spending, which must be in the list to switch back to.
+        XCTAssertEqual(
+            SendConfirmationView.fundingSources(hasLightningInvoice: false, hasOnchainInvoice: true, offersSparkLeg: true, hardwareWalletIds: ["hw"]),
+            [.spending, .savings, .hardware(walletId: "hw")]
+        )
+        XCTAssertEqual(
+            SendConfirmationView.fundingSources(hasLightningInvoice: false, hasOnchainInvoice: true, offersSparkLeg: false, hardwareWalletIds: []),
+            [.savings],
+            "Without a Spark leg an on-chain request has no Spending source"
+        )
+        XCTAssertEqual(
+            SendConfirmationView.fundingSources(hasLightningInvoice: true, hasOnchainInvoice: true, offersSparkLeg: true, hardwareWalletIds: []),
+            [.spending, .savings]
+        )
+    }
+
     func testRefusalWhileAnOlderJournalIsOpenReleasesThisCallsProof() {
         struct Refused: Error {}
         let older = SparkContactWithdrawal.PaykitRequest(
