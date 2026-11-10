@@ -6,18 +6,20 @@ struct ProgressSteps: View {
     let currentStep: Int
 
     private let size: CGFloat = 32
+    private let stepPadding: CGFloat = 16
 
     var body: some View {
         VStack(spacing: 0) {
             // Steps with circles and separators
             GeometryReader { geometry in
                 ZStack(alignment: .center) {
-                    // Dashed line background
+                    // Dashed line from the first circle's centre to the last one's, behind the circles
                     Path { path in
                         let y = geometry.size.height / 2
-                        let padding = 36.0 * 2.5 // Account for circle radius (16) + horizontal padding (20)
-                        path.move(to: CGPoint(x: padding, y: y))
-                        path.addLine(to: CGPoint(x: geometry.size.width - padding, y: y))
+                        let stepWidth = size + stepPadding * 2
+                        let inset = (geometry.size.width - stepWidth * CGFloat(steps.count)) / 2 + stepWidth / 2
+                        path.move(to: CGPoint(x: inset, y: y))
+                        path.addLine(to: CGPoint(x: geometry.size.width - inset, y: y))
                     }
                     .stroke(style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
                     .foregroundColor(Color.white32)
@@ -49,7 +51,7 @@ struct ProgressSteps: View {
                                         .frame(width: size, height: size)
                                 }
                             }
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, stepPadding)
                         }
                     }
                 }

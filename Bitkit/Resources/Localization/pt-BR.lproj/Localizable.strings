@@ -241,7 +241,6 @@
 "lightning__spending_confirm__amount" = "Para gastos";
 "lightning__spending_confirm__total" = "Total";
 "lightning__spending_confirm__spending_fee" = "Spending fee";
-"lightning__spending_confirm__up_to" = "up to";
 "lightning__spending_confirm__instant_text" = "Ready in a few minutes";
 "lightning__spending_confirm__later" = "Later";
 "lightning__spending_confirm__later_text" = "After 3 confirmations, about 30 minutes";
@@ -278,6 +277,7 @@
 "lightning__savings_spark_failed__toast" = "Transferência Spark falhou";
 "lightning__transfer_success__nav_title" = "Transferência bem-sucedida";
 "lightning__transfer_success__title_spending" = "Fundos transferidos\n<accent>para gastos</accent>";
+"lightning__transfer_success__text_spending" = "Seus fundos foram transferidos e seu saldo de gastos está pronto para ser usado.";
 "lightning__transfer_success__title_savings" = "Fundos transferidos\n<accent>para poupança</accent>";
 "lightning__transfer_success__text_savings" = "Seus fundos foram transferidos. Você já pode usar esses fundos imediatamente.";
 "lightning__external__nav_title" = "Conexões Lightning";
@@ -362,7 +362,7 @@
 "lightning__spark_deposit__wait_button" = "Esperar";
 "lightning__spark_deposit__waiting" = "A Spark adiciona ao seu saldo de gastos {when}.";
 "lightning__spark_deposit__waiting_next" = "A Spark adiciona ao seu saldo de gastos após a próxima confirmação.";
-"lightning__spark_deposit__repriced" = "Instant now costs {fee}. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
+"lightning__spark_deposit__repriced" = "Instant now costs <accent>{fee}</accent>. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__pay" = "Pay {fee}";
 "lightning__spark_deposit__instant_unavailable" = "Instant isn't available for this transfer. Spark adds it to your spending balance after 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__not_seen" = "Spark hasn't seen your transfer yet. It's added after 3 confirmations; you can leave this screen.";

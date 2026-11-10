@@ -9,6 +9,7 @@ final class SparkConfigTests: XCTestCase {
 
             XCTAssertNil(config.realTimeSyncServerUrl, "\(network)")
             XCTAssertNil(config.lnurlDomain, "\(network)")
+            XCTAssertFalse(config.useDefaultExternalInputParsers, "Parsing input must not look it up with a third party")
             XCTAssertEqual(config.apiKey, "test-key")
         }
     }

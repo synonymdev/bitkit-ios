@@ -1698,6 +1698,10 @@ struct SendConfirmationView: View {
                 }
                 createdMetadataPaymentId = paymentHash
                 await createPreActivityMetadata(paymentId: paymentHash, paymentHash: paymentHash)
+                // Kept before the payment goes out, so a send recorded after the app was killed still names its contact.
+                if let contactPublicKey {
+                    ActivityService.sentPaymentContacts.remember(contactPublicKey, forPaymentHash: paymentHash)
+                }
 
                 // Perform the Lightning payment (10s timeout → navigate to pending for hold invoices)
                 // For invoices with a built-in amount, pass sats: nil so LDK uses the invoice's

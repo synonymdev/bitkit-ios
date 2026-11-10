@@ -252,7 +252,6 @@ struct ReceiveQr: View {
                     } else {
                         CustomButton(
                             title: t("common__show_details"),
-                            variant: .tertiary,
                             isDisabled: selectedTab == .hardware && displayedHardwareAddress == nil
                         ) {
                             showDetails.toggle()
@@ -510,7 +509,7 @@ struct ReceiveQr: View {
     var cjitOnboarding: some View {
         VStack(alignment: .leading, spacing: 0) {
             DisplayText(t("wallet__receive_spending_title"), accentColor: .purpleAccent)
-                .padding(.bottom, 12)
+                .padding(.bottom, 8)
 
             BodyMText(t("wallet__receive_spending_text"))
 

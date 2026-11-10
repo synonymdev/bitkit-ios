@@ -64,6 +64,88 @@ final class SparkTransferFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testWaitAfterAClaimTimeRepriceClearsTheEarlyClaimCap() async throws {
+        var released: [String] = []
+        let operations = SparkClaimOperations(
+            offer: { txid in SparkClaimOffer(txid: txid, vout: 0, kind: .choice(
+                earlyFeeSats: 900, earlyConfirmations: 0, standardFeeSats: 198, standardConfirmations: 3
+            )) },
+            claimEarly: { _ in .repriced(requiredFeeSats: 1500) },
+            refresh: {},
+            sleep: { _ in },
+            releaseEarlyClaim: { released.append($0.txid)
+                return true
+            }
+        )
+        let flow = SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: 2)
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 1500))
+
+        flow.waitForConfirmations()
+        for _ in 0 ..< 100 where released.isEmpty {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        XCTAssertEqual(flow.claimState, .later)
+        XCTAssertEqual(released, ["txid"], "Spark may still claim early at the cap Wait declined")
+    }
+
+    @MainActor
+    func testWaitClearsTheEarlyClaimCapAgainWhenAnotherClaimHeldTheDeposit() async throws {
+        var releaseCalls = 0
+        let operations = SparkClaimOperations(
+            offer: { txid in SparkClaimOffer(txid: txid, vout: 0, kind: .choice(
+                earlyFeeSats: 900, earlyConfirmations: 0, standardFeeSats: 198, standardConfirmations: 3
+            )) },
+            claimEarly: { _ in .repriced(requiredFeeSats: 1500) },
+            refresh: {},
+            sleep: { _ in },
+            releaseEarlyClaim: { _ in
+                releaseCalls += 1
+                // The first call meets Spark's own sync claiming the deposit, which leaves the cap in place.
+                return releaseCalls > 1
+            }
+        )
+        let flow = SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: 2)
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+
+        flow.waitForConfirmations()
+        for _ in 0 ..< 100 where releaseCalls < 2 {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(releaseCalls, 2, "Wait gave up on the early claim cap after Spark was busy with the deposit")
+    }
+
+    @MainActor
+    func testWaitBeforeAnyClaimAttemptLeavesTheDepositAlone() async throws {
+        var released: [String] = []
+        let operations = SparkClaimOperations(
+            offer: { txid in SparkClaimOffer(txid: txid, vout: 0, kind: .choice(
+                earlyFeeSats: 1500, earlyConfirmations: 0, standardFeeSats: 198, standardConfirmations: 3
+            )) },
+            claimEarly: { _ in .claimed },
+            refresh: {},
+            sleep: { _ in },
+            releaseEarlyClaim: { released.append($0.txid)
+                return true
+            }
+        )
+        let flow = SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: 2)
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 1500))
+
+        flow.waitForConfirmations()
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(released, [])
+    }
+
+    @MainActor
     func testTimeoutWhenSparkNeverListsTheDeposit() async {
         let flow = pollingFlow(offers: [nil, nil, nil])
         flow.onBroadcast(txid: "txid")
@@ -171,14 +253,76 @@ final class SparkTransferFlowTests: XCTestCase {
     func testARecoveredFundingClaimsEarlyOnlyUpToTheSwipedCeiling() async {
         let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
         flow.quote = quote(instantMax: 337)
+        let attemptId = UUID()
         flow.approveSwipe()
+        flow.bindApproval(to: attemptId)
         // The confirm screen requoted under the pending sheet while fee rates rose.
         flow.quote = quote(instantMax: 3010)
 
-        flow.onRecoveredBroadcast(txid: "txid")
+        flow.onRecoveredBroadcast(txid: "txid", attemptId: attemptId)
         await flow.waitForClaim()
 
         XCTAssertEqual(flow.claimState, .repriced(feeSats: 800), "Paid an early claim fee the user never approved")
+    }
+
+    @MainActor
+    func testARecoveredFundingKeepsItsOwnApprovalWhenALaterSwipeIsRejected() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
+        let first = UUID()
+        flow.quote = quote(instantMax: 337)
+        flow.approveSwipe()
+        flow.bindApproval(to: first)
+        // A second swipe at a higher ceiling is rejected while the first funding is still unresolved, so the attempt
+        // the screen sees is still the first one.
+        flow.quote = quote(instantMax: 3010)
+        flow.approveSwipe()
+        flow.bindApproval(to: first)
+
+        flow.onRecoveredBroadcast(txid: "txid", attemptId: first)
+        await flow.waitForClaim()
+
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 800), "The first funding claimed early at the rejected swipe's ceiling")
+    }
+
+    @MainActor
+    func testASwipeRefusedForAnOlderFundingAfterARelaunchLeavesItsEarlyClaimAsking() async {
+        // After a relaunch nothing is tied to the older funding still unresolved, which refuses the new swipe.
+        let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
+        let older = UUID()
+        flow.quote = quote(instantMax: 3010)
+        flow.approveSwipe()
+        flow.bindApproval(to: older, after: OnchainSendAttemptError.blocked(nil))
+
+        flow.onRecoveredBroadcast(txid: "txid", attemptId: older)
+        await flow.waitForClaim()
+
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 800), "The older funding claimed early at the refused swipe's ceiling")
+    }
+
+    @MainActor
+    func testASwipeWhoseFundingIsLeftUnresolvedTiesItsApprovalToIt() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
+        let attemptId = UUID()
+        flow.quote = quote(instantMax: 3010)
+        flow.approveSwipe()
+        flow.bindApproval(to: attemptId, after: OnchainSendAttemptError.unresolved)
+
+        flow.onRecoveredBroadcast(txid: "txid", attemptId: attemptId)
+        await flow.waitForClaim()
+
+        XCTAssertEqual(flow.claimState, .adding, "The funding this swipe left unresolved lost the approval it gave")
+    }
+
+    @MainActor
+    func testARecoveredFundingWithNoApprovalAsksBeforeAnEarlyClaim() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
+        flow.quote = quote(instantMax: 3010)
+        flow.approveSwipe()
+
+        flow.onRecoveredBroadcast(txid: "txid", attemptId: UUID())
+        await flow.waitForClaim()
+
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 800), "Claimed early on an approval made for another attempt")
     }
 
     private func quote(instantMax: UInt64) -> SparkTransferQuote {

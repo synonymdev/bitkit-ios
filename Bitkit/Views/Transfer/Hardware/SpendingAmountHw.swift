@@ -9,12 +9,14 @@ struct SpendingAmountHw: View {
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var wallet: WalletViewModel
     @Environment(HwWalletManager.self) private var hwWalletManager
     @Environment(SparkTransferFlow.self) private var flow
 
     @State private var amountViewModel = AmountInputViewModel()
     @State private var isPricingFailed = false
     @State private var maxAttempt = 0
+    @State private var isPricing = false
 
     private var amountSats: UInt64 {
         amountViewModel.amountSats
@@ -67,9 +69,8 @@ struct SpendingAmountHw: View {
                 amountViewModel.handleNumberPadInput(key, currency: currency)
             }
 
-            CustomButton(title: t("common__continue"), isDisabled: !isValidAmount) {
-                flow.start(amountSats: amountSats, isMaxAmount: amountSats >= maxAllowed, walletId: walletId)
-                navigation.navigate(.spendingHwSign(walletId: walletId))
+            CustomButton(title: t("common__continue"), isDisabled: !isValidAmount || isPricing, isLoading: isPricing) {
+                await onContinue()
             }
             .accessibilityIdentifier("HardwareTransferAmountContinue")
         }
@@ -111,6 +112,21 @@ struct SpendingAmountHw: View {
                 testIdentifier: "HardwareTransferAmountAvailable"
             )
         }
+    }
+
+    /// Prices the transfer first, so an amount below the claim minimum stays here with a toast, as on Android.
+    private func onContinue() async {
+        guard isValidAmount, !isPricing else { return }
+        flow.start(amountSats: amountSats, isMaxAmount: amountSats >= maxAllowed, walletId: walletId)
+        isPricing = true
+        defer { isPricing = false }
+        if let quote = await flow.refreshQuote(wallet: wallet, feeEstimatesManager: feeEstimatesManager, hwWalletManager: hwWalletManager),
+           !quote.coversClaimFee
+        {
+            app.toastBelowClaimFee(quote)
+            return
+        }
+        navigation.navigate(.spendingHwSign(walletId: walletId))
     }
 
     private func loadAvailable() async {

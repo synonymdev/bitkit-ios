@@ -349,6 +349,36 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         }
     }
 
+    func testSparkFundingThatGrewAfterApprovalIsRefusedBeforeBroadcast() async throws {
+        // The approved quote: 99000 reaches Spark for a 500 sat mining fee.
+        for (isMax, amount, fee, valid): (Bool, UInt64, UInt64?, Bool) in [
+            (true, 99000, 500, true), (true, 99000, 400, true),
+            (true, 99500, 500, false), (true, 98500, 500, false),
+            (true, 99000, 501, false), (true, 99000, nil, false),
+            // A fixed amount is already pinned, and its coin selection may differ from the quote's, so its fee isn't bound.
+            (false, 99000, 500, true), (false, 99000, 501, true),
+        ] {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = PreparedAttemptNodeMock()
+            sender.amount = amount
+            sender.miningFee = fee
+            let context = OnchainSendFollowupContext(feeSats: 500, feeRate: 2, tags: [], contact: nil, createdAt: 0)
+            do {
+                _ = try await service.send(using: sender, address: "spark", amountSats: 99000, satsPerVbyte: 2,
+                                           utxosToSpend: nil, isMaxAmount: isMax, followupContext: context,
+                                           isSparkFunding: true)
+                XCTAssertTrue(valid, "A funding that sends \(amount) for a \(String(describing: fee)) fee needs a new approval")
+                XCTAssertEqual(sender.broadcasts, 1)
+            } catch let OnchainSendAttemptError.preDispatch(error) {
+                XCTAssertFalse(valid, "The approved funding must still go out")
+                XCTAssertTrue(error is SparkFundingChanged, "Refused with \(error)")
+                XCTAssertEqual(sender.broadcasts, 0)
+                XCTAssertTrue(store.snapshot().isEmpty)
+            }
+        }
+    }
+
     func testPreparedReceiptIsDurableBeforeNativeDispatch() async throws {
         for max in [false, true] {
             let store = MemoryAttemptStore()

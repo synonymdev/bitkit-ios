@@ -4,9 +4,10 @@
     transfer amount, shows the "Spending Balance Maximum" warning toast, and still allows deleting
     digits while at the cap.
 
-    Precondition: onboarded dev wallet with a POSITIVE on-chain Savings balance and Spark connected (a
-    dev build reaches Spark's regtest with no key), so the transfer opens the amount screen rather than
-    the Transfer Unavailable sheet. The maximum is the Savings balance less the fast-rate network fee for
+    Precondition: onboarded dev wallet with a POSITIVE on-chain Savings balance and Spark connected, on a
+    regtest build launched with SPARK_CHAIN_SERVICE_URL set to the regtest's Esplora URL (Spark's default
+    regtest is its own chain, so without it the transfer shows the Transfer Unavailable sheet), so the
+    transfer opens the amount screen. The maximum is the Savings balance less the fast-rate network fee for
     sending all of it to the Spark deposit address; it loads behind a spinner — wait for it to populate.
     Start on the wallet home screen.
 

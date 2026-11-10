@@ -63,6 +63,18 @@ final class SavingsSelectionTests: XCTestCase {
         XCTAssertTrue(transfer.isSparkSelected)
     }
 
+    @MainActor
+    func testEnteringTheFlowDropsAPickLeftFromAnAbandonedVisit() {
+        let transfer = TransferViewModel()
+        transfer.selectedChannelIds = ["closed-since"]
+        transfer.isSparkSelected = false
+
+        transfer.beginSavingsTransfer()
+
+        XCTAssertNil(transfer.selectedChannelIds)
+        XCTAssertTrue(transfer.isSparkSelected)
+    }
+
     private func resolve(selected: Set<String>?, spark: Bool, sparkSats: UInt64) -> SavingsSelection {
         SavingsSelection.resolve(readyChannelIds: channels, selectedChannelIds: selected, isSparkSelected: spark, sparkSats: sparkSats)
     }

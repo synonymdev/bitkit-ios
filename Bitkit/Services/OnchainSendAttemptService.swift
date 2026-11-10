@@ -350,6 +350,10 @@ struct OnchainSendFollowupContext: Codable, Equatable {
     var channelId: String? = nil
 }
 
+/// A max Spark funding refused before broadcast because it would send another amount, or pay a higher mining fee, than
+/// the user approved, as after the balance grew. A fixed amount's fee isn't bound: its coin selection can vary.
+struct SparkFundingChanged: Error {}
+
 struct OnchainSendTransferContext: Codable, Equatable {
     let clientBalanceSats: UInt64
     let txTotalSats: UInt64
@@ -648,6 +652,11 @@ actor OnchainSendAttemptService {
                           prepared.recipientAmountSats <= context.txTotalSats - miningFee
                     else { throw OnchainSendAttemptError.unresolved }
                 }
+                if isSparkFunding && isMaxAmount {
+                    guard prepared.recipientAmountSats == amountSats, let miningFee = prepared.miningFeeSats,
+                          let approvedFee = followupContext?.feeSats, miningFee <= approvedFee
+                    else { throw SparkFundingChanged() }
+                }
                 attempt.amountSats = prepared.recipientAmountSats
                 attempt.txid = prepared.txid
                 if let miningFee = prepared.miningFeeSats {
@@ -939,6 +948,12 @@ actor OnchainSendAttemptService {
         knownAttempt = attempt
         guard try store.load().first?.id == attemptId else { throw OnchainSendAttemptError.outcomeNotSaved }
         try store.save([attempt])
+    }
+
+    /// The Spark funding still waiting on its outcome, so the confirm screen can keep the approval its swipe gave.
+    func unresolvedSparkFundingAttemptId() -> UUID? {
+        guard let attempt = try? currentAttempt(), attempt.isSparkFunding, attempt.status != .accepted else { return nil }
+        return attempt.id
     }
 
     private func currentAdmissionAttempt() throws -> OnchainSendAttempt? {

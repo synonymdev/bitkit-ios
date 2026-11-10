@@ -25,7 +25,8 @@ struct SavingsProgressContentView: View {
         switch progressState {
         case .inProgress, .settling: return t("lightning__transfer__nav_title")
         case .failed: return t("lightning__savings_interrupted__nav_title")
-        case .success, .sparkFailed: return t("lightning__transfer__nav_title")
+        case .success: return t("lightning__transfer_success__nav_title")
+        case .sparkFailed: return t("lightning__transfer__nav_title")
         }
     }
 
@@ -64,7 +65,7 @@ struct SavingsProgressContentView: View {
                 .padding(.bottom, 16)
 
             DisplayText(title, accentColor: .brandAccent)
-                .padding(.bottom, 16)
+                .padding(.bottom, 8)
 
             BodyMText(text, accentFont: Fonts.bold)
 
@@ -122,13 +123,12 @@ struct SavingsProgressContentView: View {
 
             Spacer()
 
-            CustomButton(
-                title: t("common__ok"),
-                isLoading: progressState == .inProgress
-            ) {
-                navigation.reset()
+            if progressState != .inProgress {
+                CustomButton(title: t("common__ok")) {
+                    navigation.reset()
+                }
+                .accessibilityIdentifierIfPresent(imageIdentifier.map { "\($0)-button" })
             }
-            .accessibilityIdentifierIfPresent(imageIdentifier.map { "\($0)-button" })
         }
         .navigationBarHidden(true)
         .allowSwipeBack(false)

@@ -68,6 +68,155 @@ final class SparkWithdrawalTests: XCTestCase {
         XCTAssertEqual(transfer.sparkWithdrawFeeSats, 2190)
     }
 
+    @MainActor
+    func testTheFeeTimeoutEndsTheWaitWhileTheSdkCallIgnoresCancellation() async {
+        let transfer = TransferViewModel()
+        transfer.sparkFeeTimeout = 0.05
+        // Like the Breez bridge, this call doesn't observe task cancellation.
+        transfer.priceSparkWithdrawal = { _ in
+            await withCheckedContinuation { continuation in
+                DispatchQueue.global().asyncAfter(deadline: .now() + 3) { continuation.resume(returning: 2190) }
+            }
+        }
+        let start = Date()
+
+        transfer.loadSparkWithdrawFee(balanceSats: 99901, savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+
+        XCTAssertFalse(transfer.isPricingSparkWithdrawal)
+        XCTAssertNil(transfer.sparkWithdrawFeeSats)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1.5)
+    }
+
+    @MainActor
+    func testABalanceThatLeavesDustAfterItsFeeIsTooSmallToMove() async {
+        let transfer = TransferViewModel()
+        transfer.priceSparkWithdrawal = { _ in 1093 }
+
+        transfer.loadSparkWithdrawFee(balanceSats: 1093 + UInt64(Env.dustLimit) - 1, savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+
+        XCTAssertTrue(transfer.isSparkWithdrawTooSmall)
+        XCTAssertNil(transfer.sparkWithdrawFeeSats)
+        XCTAssertFalse(transfer.isSparkWithdrawalPriced(withdrawsSpark: true))
+
+        transfer.loadSparkWithdrawFee(balanceSats: 1093 + UInt64(Env.dustLimit), savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+
+        XCTAssertFalse(transfer.isSparkWithdrawTooSmall)
+        XCTAssertEqual(transfer.sparkWithdrawFeeSats, 1093)
+    }
+
+    @MainActor
+    func testCloseInsteadWaitsForTheSparkFee() {
+        let transfer = TransferViewModel()
+
+        let committed = transfer.onTransferToSavingsConfirm(channels: [], withdrawsSpark: true, mode: .close)
+
+        XCTAssertFalse(committed, "A Spark withdrawal was committed with no fee shown")
+        XCTAssertFalse(transfer.hasChannelsToClose)
+    }
+
+    @MainActor
+    func testNoSecondCommitWhileTheSwipeRepricesTheSparkFee() async throws {
+        let transfer = TransferViewModel()
+        transfer.priceSparkWithdrawal = { _ in 2190 }
+        transfer.loadSparkWithdrawFee(balanceSats: 99901, savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+        let gate = PriceGate()
+        transfer.priceSparkWithdrawal = { _ in
+            await gate.wait()
+            return 2190
+        }
+
+        let recheck = Task { try await transfer.recheckSparkWithdrawFee() }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let committedDuringRecheck = transfer.onTransferToSavingsConfirm(channels: [], withdrawsSpark: true, mode: .close)
+        await gate.open()
+        try await recheck.value
+
+        XCTAssertFalse(committedDuringRecheck, "Close instead committed while the swipe was repricing")
+        XCTAssertTrue(transfer.onTransferToSavingsConfirm(channels: [], withdrawsSpark: true))
+    }
+
+    @MainActor
+    func testTheSwipeResetsWhenSparksBalanceChangesDuringItsRecheck() async throws {
+        let transfer = TransferViewModel()
+        transfer.priceSparkWithdrawal = { _ in 2190 }
+        transfer.loadSparkWithdrawFee(balanceSats: 99901, savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+        let recheckGate = PriceGate()
+        transfer.priceSparkWithdrawal = { _ in
+            await recheckGate.wait()
+            return 2190
+        }
+
+        let swipe = Task { try await transfer.confirmSavingsSwipe(channels: [], withdrawsSpark: true) }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let repriceGate = PriceGate()
+        transfer.priceSparkWithdrawal = { _ in
+            await repriceGate.wait()
+            return 2300
+        }
+        // A receive lands during the recheck, so the confirm screen prices the new balance.
+        transfer.loadSparkWithdrawFee(balanceSats: 120_000, savingsAddress: "bcrt1q-savings")
+        await recheckGate.open()
+
+        do {
+            try await swipe.value
+            XCTFail("The swipe committed while Spark's new balance was being priced")
+        } catch {
+            XCTAssertTrue(error is SavingsCommitRefused, "Unexpected error: \(error)")
+        }
+        await repriceGate.open()
+        await waitUntilPriced(transfer)
+        XCTAssertEqual(transfer.sparkWithdrawFeeSats, 2300)
+    }
+
+    @MainActor
+    func testTheSwipeWithdrawsSparkAtTheFeeItConfirmedWhenSparkIsPricedAgainBeforeTheWithdrawal() async throws {
+        let transfer = await pricedTransfer()
+        try await transfer.confirmSavingsSwipe(channels: [], withdrawsSpark: true)
+
+        let withdrawnFeeSats = try await repriceAndWithdraw(transfer)
+
+        XCTAssertEqual(withdrawnFeeSats, 1470, "Spark withdrew at a fee priced after the swipe")
+    }
+
+    @MainActor
+    func testCloseInsteadWithdrawsSparkAtTheFeeShownWhenSparkIsPricedAgainBeforeTheWithdrawal() async throws {
+        let transfer = await pricedTransfer()
+        XCTAssertTrue(transfer.onTransferToSavingsConfirm(channels: [], withdrawsSpark: true, mode: .close))
+
+        let withdrawnFeeSats = try await repriceAndWithdraw(transfer)
+
+        XCTAssertEqual(withdrawnFeeSats, 1470, "Spark withdrew at a fee priced after close instead")
+    }
+
+    @MainActor
+    private func pricedTransfer() async -> TransferViewModel {
+        let transfer = TransferViewModel()
+        transfer.priceSparkWithdrawal = { _ in 1470 }
+        transfer.loadSparkWithdrawFee(balanceSats: 40000, savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+        return transfer
+    }
+
+    /// A receive lands during the transition, so the confirm screen prices Spark's new balance, then the transfer runs.
+    @MainActor
+    private func repriceAndWithdraw(_ transfer: TransferViewModel) async throws -> UInt64? {
+        transfer.priceSparkWithdrawal = { _ in 1620 }
+        transfer.loadSparkWithdrawFee(balanceSats: 52000, savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+        let withdrawn = WithdrawnFee()
+        transfer.sparkBalanceSats = { 52000 }
+        transfer.withdrawSpark = { _, feeSats in withdrawn.feeSats = feeSats }
+        _ = try await transfer.closeSelectedChannels()
+        return withdrawn.feeSats
+    }
+
+    // MARK: - Failed withdrawal
+
     // MARK: - Failed withdrawal
 
     func testFailedSparkWithdrawalIsShownAndNamesWhetherChannelsMoved() {
@@ -113,4 +262,25 @@ private actor PriceCalls {
     func record(_ address: String) {
         addresses.append(address)
     }
+}
+
+private actor PriceGate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        waiters.forEach { $0.resume() }
+        waiters = []
+    }
+}
+
+@MainActor
+private final class WithdrawnFee {
+    var feeSats: UInt64?
 }
