@@ -12,6 +12,7 @@ struct SpendingAmount: View {
     @State private var isCalculatingMax = true
     @State private var maxTransferAmount: UInt64?
     @State private var maxAttempt = 0
+    @State private var isPricing = false
 
     private var amountSats: UInt64 {
         amountViewModel.amountSats
@@ -69,9 +70,10 @@ struct SpendingAmount: View {
 
             CustomButton(
                 title: t("common__continue"),
-                isDisabled: !isValidAmount
+                isDisabled: !isValidAmount,
+                isLoading: isPricing
             ) {
-                onContinue()
+                await onContinue()
             }
             .accessibilityIdentifier("SpendingAmountContinue")
         }
@@ -166,10 +168,21 @@ struct SpendingAmount: View {
         }
     }
 
-    private func onContinue() {
-        guard let max = maxTransferAmount, isValidAmount else { return }
+    /// Prices the transfer first, so an amount below the claim minimum stays here with a toast, as on Android.
+    private func onContinue() async {
+        guard let max = maxTransferAmount, isValidAmount, !isPricing else { return }
         flow.start(amountSats: amountSats, isMaxAmount: amountSats >= max)
-        navigation.navigate(.spendingConfirm)
+        isPricing = true
+        defer { isPricing = false }
+        let shownPath = navigation.path
+        if let quote = await flow.refreshQuote(wallet: wallet, feeEstimatesManager: feeEstimatesManager), !quote.coversClaimFee {
+            if navigation.path == shownPath {
+                app.toastBelowClaimFee(quote)
+            }
+            return
+        }
+        // Back while the quote was loading leaves this screen, so the transfer stays closed.
+        navigation.navigate(.spendingConfirm, from: shownPath)
     }
 
     /// The most savings can send to the Spark deposit address after the fast-rate network fee for sending all of it.

@@ -39,6 +39,46 @@ final class SparkPaymentSafetyTests: XCTestCase {
         XCTAssertEqual(syncs, 1)
     }
 
+    func testAStartWhoseActivityWriteFailedSyncsTheActivitiesAgain() async throws {
+        let payments = ["a", "b"].map { lightningPayment(type: .receive, status: .completed, id: $0) }
+        var writes: [String: Int] = [:]
+        var failing: Set = ["b"]
+        var synced = false
+        let sync = {
+            try await SparkManager.recordAll(payments) { payment in
+                writes[payment.id, default: 0] += 1
+                return !failing.contains(payment.id)
+            }
+        }
+
+        do {
+            synced = try await SparkManager.startConnected(activitiesSynced: synced, refresh: {}, syncActivities: sync)
+        } catch {}
+        XCTAssertFalse(synced, "A sync that failed to save a payment was marked complete")
+        failing = []
+        synced = try await SparkManager.startConnected(activitiesSynced: synced, refresh: {}, syncActivities: sync)
+
+        XCTAssertTrue(synced)
+        XCTAssertEqual(writes, ["a": 2, "b": 2])
+    }
+
+    func testAPaymentThatFailedToSaveIsWrittenAgainAtTheNextRefresh() {
+        let payments = [
+            lightningPayment(type: .receive, status: .completed, id: "receive"),
+            lightningPayment(type: .send, status: .completed, id: "send"),
+            lightningPayment(type: .send, status: .completed, id: "fee-now-known"),
+            lightningPayment(type: .receive, status: .completed, id: "saved"),
+        ]
+
+        let again = SparkManager.paymentsToRecordAgain(
+            payments,
+            unsaved: ["receive", "send"],
+            recordedWithoutFee: ["fee-now-known"]
+        )
+
+        XCTAssertEqual(again.map(\.id), ["receive", "send", "fee-now-known"])
+    }
+
     // MARK: - Settled payment events
 
     func testSettledPaymentIsRecordedAndEmittedEvenWhenTheRefreshFails() async {
@@ -235,9 +275,35 @@ final class SparkPaymentSafetyTests: XCTestCase {
         XCTAssertEqual(SparkManager.failedSendHashes(payments), ["failed"])
     }
 
-    private func lightningPayment(type: PaymentType, status: BreezSdkSpark.PaymentStatus, hash: String = "hash") -> Payment {
+    func testASparkRetryThatReturnsWhileTheSyncReadsSparksListKeepsItsHold() async throws {
+        let service = Bitkit.LightningService.shared
+        let store = service.railAttemptsStore
+        service.railAttemptsStore = try XCTUnwrap(UserDefaults(suiteName: "SparkPaymentSafetyTests"))
+        service.forgetRailAttempts()
+        defer {
+            service.forgetRailAttempts()
+            service.railAttemptsStore = store
+        }
+        service.recordRailAttempt(paymentHash: "failed")
+        service.recordRailAttempt(paymentHash: "retried")
+
+        await SparkManager.releaseFailedSendHolds {
+            // The user retries one invoice, and the retry returns, while this list, which still shows it failed, is read.
+            service.recordRailAttempt(paymentHash: "retried")
+            return ["failed", "retried"].map { self.lightningPayment(type: .send, status: .failed, hash: $0) }
+        }
+
+        XCTAssertEqual(service.railAttemptsStore.stringArray(forKey: "channelFreeRailAttemptedPaymentHashes"), ["retried"])
+    }
+
+    private func lightningPayment(
+        type: PaymentType,
+        status: BreezSdkSpark.PaymentStatus,
+        hash: String = "hash",
+        id: String = "id"
+    ) -> Payment {
         Payment(
-            id: "id",
+            id: id,
             paymentType: type,
             status: status,
             amount: 1000,

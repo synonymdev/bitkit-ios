@@ -1440,7 +1440,7 @@ class WalletViewModel: ObservableObject {
             }
             let sparkBalanceSats = Self.spendingSparkSats(
                 isExiting: spark.isExiting,
-                balanceSats: spark.balanceSats,
+                balanceSats: spark.shownBalanceSats,
                 outsideExitSats: outsideExitSats
             )
 

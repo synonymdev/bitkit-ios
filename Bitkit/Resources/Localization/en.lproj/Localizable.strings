@@ -194,7 +194,7 @@
 "lightning__funding__nav_title" = "Spending Balance";
 "lightning__funding__text" = "The easiest option is to use your Bitkit savings or send bitcoin from a different wallet.";
 "lightning__funding__title" = "Fund your <accent>spending balance</accent>";
-"lightning__funding__button1" = "Transfer from Savings";
+"lightning__funding__button1" = "Transfer From Savings";
 "lightning__funding__button2" = "Use Other Wallet";
 "lightning__funding__button3" = "Manual Setup";
 "lightning__funding_advanced__button_short" = "Advanced Setup";
@@ -234,12 +234,13 @@
 "lightning__spending_confirm__amount" = "To spending";
 "lightning__spending_confirm__total" = "Total";
 "lightning__spending_confirm__spending_fee" = "Spending fee";
-"lightning__spending_confirm__up_to" = "up to";
 "lightning__spending_confirm__instant_text" = "Ready in a few minutes";
 "lightning__spending_confirm__later" = "Later";
 "lightning__spending_confirm__later_text" = "After 3 confirmations, about 30 minutes";
 "lightning__spending_confirm__error_quote" = "Bitkit couldn't get the fees for this transfer. Check your connection and try again.";
 "lightning__spending_confirm__fees_changed_title" = "Fees changed";
+"lightning__spending_confirm__max_changed_title" = "Amount changed";
+"lightning__spending_confirm__max_changed" = "The most you can transfer is now {amount}, because fee rates or your savings balance changed while you were on this screen. Swipe again to confirm.";
 "lightning__spending_confirm__fees_changed_network" = "Fees are {amount} higher because fee rates or your savings balance changed while you were on this screen. Swipe again to confirm.";
 "lightning__savings_intro__title" = "Transfer\n<accent>to savings</accent>";
 "lightning__savings_intro__text" = "Transfer your spending balance to your savings to store your Bitcoin long-term and secure your future.";
@@ -271,6 +272,7 @@
 "lightning__savings_spark_failed__toast" = "Spark transfer failed";
 "lightning__transfer_success__nav_title" = "Transfer Successful";
 "lightning__transfer_success__title_spending" = "Funds moved\n<accent>to spending</accent>";
+"lightning__transfer_success__text_spending" = "Your funds have been transferred and your spending balance is ready to use.";
 "lightning__transfer_success__title_savings" = "Funds moved\n<accent>to savings</accent>";
 "lightning__transfer_success__text_savings" = "Your funds have been transferred. You are able to use these funds immediately.";
 "lightning__external__nav_title" = "Lightning Connection";
@@ -355,7 +357,7 @@
 "lightning__spark_deposit__wait_button" = "Wait";
 "lightning__spark_deposit__waiting" = "Spark adds it to your spending balance {when}.";
 "lightning__spark_deposit__waiting_next" = "Spark adds it to your spending balance after the next confirmation.";
-"lightning__spark_deposit__repriced" = "Instant now costs {fee}. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
+"lightning__spark_deposit__repriced" = "Instant now costs <accent>{fee}</accent>. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__pay" = "Pay {fee}";
 "lightning__spark_deposit__instant_unavailable" = "Instant isn't available for this transfer. Spark adds it to your spending balance after 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__not_seen" = "Spark hasn't seen your transfer yet. It's added after 3 confirmations; you can leave this screen.";
@@ -1514,7 +1516,7 @@
 "wallet__receive_show_qr" = "QR Code";
 "wallet__receive_text_lnfunds" = "Want to receive <accent>Lightning</accent> funds?";
 "wallet__receive_spending" = "Receive Lightning Funds";
-"wallet__receive_spending_text" = "Enjoy instant and cheap bitcoin payments on the Lightning Network.";
+"wallet__receive_spending_text" = "Enjoy instant and cheap transactions with friends, family, and merchants.";
 "wallet__receive_spending_title" = "Receive on <accent>spending balance</accent>";
 "wallet__receive_cjit_error" = "Transaction Failed";
 "wallet__receive_cjit_error_msg" = "Failed to send funds to your spending account.";

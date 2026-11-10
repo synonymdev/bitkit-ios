@@ -12,6 +12,8 @@ class TransferViewModel: ObservableObject {
     /// Spark's fee to withdraw its balance to savings, for the confirm screen; nil until priced.
     @Published var sparkWithdrawFeeSats: UInt64?
     @Published var isPricingSparkWithdrawal = false
+    /// Spark's balance would leave less than the dust limit after its withdrawal fee, so it can't move to savings.
+    @Published private(set) var isSparkWithdrawTooSmall = false
     /// While the swipe prices Spark's withdrawal again, nothing else may commit the transfer.
     @Published private(set) var isRecheckingSparkFee = false
     /// Why the last transfer's Spark withdrawal failed, so the progress screen shows it instead of success.
@@ -59,6 +61,8 @@ class TransferViewModel: ObservableObject {
     private var sparkFeeTask: Task<Void, Never>?
     /// The Spark balance the fee was priced for, so it is priced once per balance.
     private var sparkFeeBalanceSats: UInt64?
+    /// The Spark withdrawal fee shown when the transfer was confirmed, the most `withdrawSparkToSavings` pays.
+    private var confirmedSparkFeeSats: UInt64?
     /// One Savings address for Spark's withdrawal, priced on the confirm screen and then paid to, so the withdrawal
     /// reuses the quote the fee came from.
     private var sparkWithdrawAddress: String?
@@ -269,7 +273,8 @@ class TransferViewModel: ObservableObject {
             readyChannelIds: readyChannelIds,
             selectedChannelIds: selectedChannelIds,
             isSparkSelected: isSparkSelected,
-            sparkSats: sparkSats
+            sparkSats: sparkSats,
+            isSparkTooSmall: isSparkWithdrawTooSmall
         )
     }
 
@@ -284,6 +289,7 @@ class TransferViewModel: ObservableObject {
         sparkFeeTask = nil
         sparkFeeBalanceSats = balanceSats
         sparkWithdrawFeeSats = nil
+        isSparkWithdrawTooSmall = false
         isPricingSparkWithdrawal = false
         if sparkWithdrawAddress == nil, !savingsAddress.isEmpty {
             sparkWithdrawAddress = savingsAddress
@@ -301,7 +307,10 @@ class TransferViewModel: ObservableObject {
             guard let self, !Task.isCancelled else { return }
             sparkFeeTask = nil
             isPricingSparkWithdrawal = false
-            if let fee {
+            if let fee, balanceSats < fee + UInt64(Env.dustLimit) {
+                isSparkWithdrawTooSmall = true
+                sparkFeeBalanceSats = nil
+            } else if let fee {
                 sparkWithdrawFeeSats = fee
             } else {
                 sparkFeeBalanceSats = nil
@@ -388,6 +397,8 @@ class TransferViewModel: ObservableObject {
         selectAllForSavings()
         channelsToClose = channels
         self.withdrawsSpark = withdrawsSpark
+        // Spark withdraws at the fee shown now, even if the screen prices it again before the withdrawal runs.
+        confirmedSparkFeeSats = withdrawsSpark ? sparkWithdrawFeeSats : nil
         // Each swipe commit is a new transfer; the previous run's memo must not satisfy it.
         savingsSwapRun = nil
         return true
@@ -425,10 +436,10 @@ class TransferViewModel: ObservableObject {
         sparkFeeTask = nil
         isPricingSparkWithdrawal = false
         guard sparkBalanceSats() > 0, !SparkManager.shared.isExiting else { return }
-        guard let shownFeeSats = sparkWithdrawFeeSats, let address = sparkWithdrawAddress else {
+        guard let confirmedFeeSats = confirmedSparkFeeSats, let address = sparkWithdrawAddress else {
             throw AppError(message: "lightning__spending_confirm__error_quote", debugMessage: "Spark withdrawal not priced")
         }
-        try await withdrawSpark(address, shownFeeSats)
+        try await withdrawSpark(address, confirmedFeeSats)
         sparkWithdrawAddress = nil
         sparkFeeBalanceSats = nil
         sparkWithdrawFeeSats = nil
@@ -901,17 +912,19 @@ struct SavingsSelection: Equatable {
         channelIds.isEmpty && !withdrawsSpark
     }
 
-    /// Without a pick (`selectedChannelIds` nil) every ready channel moves. Spark moves when picked and holding a
-    /// balance, which is 0 during an emergency exit.
+    /// Without a pick (`selectedChannelIds` nil) every ready channel moves. Spark moves when picked and holding a balance
+    /// its withdrawal fee leaves something of, so one too small to move never holds the channels back. Its balance is 0
+    /// during an emergency exit.
     static func resolve(
         readyChannelIds: [String],
         selectedChannelIds: Set<String>?,
         isSparkSelected: Bool,
-        sparkSats: UInt64
+        sparkSats: UInt64,
+        isSparkTooSmall: Bool = false
     ) -> SavingsSelection {
         SavingsSelection(
             channelIds: readyChannelIds.filter { selectedChannelIds?.contains($0) ?? true },
-            withdrawsSpark: isSparkSelected && sparkSats > 0
+            withdrawsSpark: isSparkSelected && sparkSats > 0 && !isSparkTooSmall
         )
     }
 }
