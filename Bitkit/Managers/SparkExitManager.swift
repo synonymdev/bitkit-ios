@@ -429,7 +429,8 @@ final class SparkExitManager {
             chain: chain,
             recovering: SparkManager.shared.exitRecovering,
             makeSigner: { try Self.signer(walletIndex: walletIndex, index: $0) },
-            save: saveRecord
+            save: saveRecord,
+            trustedFeeRate: Self.trustedFeeRate
         )
         do {
             tipHeight = try? await chain.tipHeight()
@@ -982,6 +983,11 @@ final class SparkExitManager {
         "sparkExitNextFundingIndex-\(Env.network)-\(walletIndex)"
     }
 
+    /// The fast rate of Bitkit's own fee source, the ceiling of a leftover sweep with the exit's own rate.
+    nonisolated static func trustedFeeRate() async -> UInt64? {
+        await (try? CoreService.shared.blocktank.fees())?.map { UInt64($0.fast) }
+    }
+
     /// Pays the fee funding from savings. It shows as an ordinary payment, not as a transfer to spending.
     @discardableResult
     func payFunding(address: String, sats: UInt64, satsPerVbyte: UInt32, feeSats: UInt64) async throws -> String {
@@ -1097,7 +1103,8 @@ final class SparkExitManager {
                     chain: chain,
                     recovering: recovering,
                     makeSigner: { try Self.signer(walletIndex: walletIndex, index: $0) },
-                    save: saveRecord
+                    save: saveRecord,
+                    trustedFeeRate: Self.trustedFeeRate
                 )
             },
             chain: chain,

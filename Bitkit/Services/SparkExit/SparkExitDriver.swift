@@ -31,6 +31,9 @@ struct SparkExitDriver {
     let makeSigner: (UInt32) throws -> CpfpSigner
     let save: (SparkExitRecord) throws -> Void
     var now: () -> Date = Date.init
+    /// The fast rate of Bitkit's own fee source, nil when it cannot be read: with the exit's own rate, the most a
+    /// leftover sweep pays, whatever the chain host asks.
+    var trustedFeeRate: () async -> UInt64? = { nil }
 
     /// A ready transaction accepted in this generation is sent again after this long, in case a node dropped it.
     static let rebroadcastInterval: TimeInterval = 600
@@ -932,10 +935,12 @@ struct SparkExitDriver {
                 // A node that dropped it answers not found: that is unconfirmed too.
                 isReplaceDue = await (try? chain.txStatus(txid: oldTxid))?.confirmed != true
             }
-            if isReplaceDue {
+            // At the ceiling already: sent again as it is until it confirms.
+            let ceiling = isReplaceDue ? await sweepFeeCeiling(record) : 0
+            if isReplaceDue, oldRate < ceiling {
                 // A host with no fee estimates still gets a replacement one sat/vB over the old rate.
                 let fastest = try? await chain.fastestFeeRate()
-                let rate = max(fastest ?? 0, oldRate + 1)
+                let rate = min(max(fastest ?? 0, oldRate + 1), ceiling)
                 let utxos = SparkExitMath.economicalUtxos(record.leftover.map {
                     EsploraUtxo(txid: $0.txid, vout: $0.vout, value: $0.valueSats, status: EsploraTxStatus(confirmed: true, blockHeight: nil))
                 }, rate: rate)
@@ -1154,9 +1159,10 @@ struct SparkExitDriver {
         let fees = try? await chain.networkFees()
         // A rate a node refused stays refused: the least it asked for lifts the economy rate, up to the next block's or
         // the exit's rate. A node asking more refuses again, and the sweep waits a block for fees to drop.
+        let ceiling = await sweepFeeCeiling(record)
         let refusedFloor = SparkExitMath.refusedSweepFloor(
             waiting?.refusedFeeRate ?? 0,
-            nextBlock: fees?.fastest,
+            nextBlock: fees.map { min($0.fastest, ceiling) },
             exitRate: record.feeRateSatPerVbyte
         )
         let rate = max(SparkExitMath.sweepFeeRate(economy: fees?.economy, exitRate: record.feeRateSatPerVbyte), refusedFloor)
@@ -1190,6 +1196,12 @@ struct SparkExitDriver {
             )
         }
         try save(record)
+    }
+
+    /// The most a leftover sweep pays per vbyte: the exit's own rate, which the user confirmed, or Bitkit's own fast rate
+    /// when higher. The chain host's estimates and refusals are not trusted past it.
+    private func sweepFeeCeiling(_ record: SparkExitRecord) async -> UInt64 {
+        await max(record.feeRateSatPerVbyte, trustedFeeRate() ?? 0)
     }
 
     // MARK: Broadcast

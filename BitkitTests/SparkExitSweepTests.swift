@@ -24,12 +24,13 @@ final class SparkExitSweepTests: XCTestCase {
         try singleKeyCpfpSigner(secretKeyBytes: key.secretKey)
     }
 
-    private func driver() -> SparkExitDriver {
+    private func driver(trustedFeeRate: UInt64? = 10) -> SparkExitDriver {
         SparkExitDriver(
             chain: chain,
             recovering: nil,
             makeSigner: { [unowned self] _ in try signer() },
-            save: { [unowned self] in saved.append($0) }
+            save: { [unowned self] in saved.append($0) },
+            trustedFeeRate: { trustedFeeRate }
         )
     }
 
@@ -281,7 +282,7 @@ final class SparkExitSweepTests: XCTestCase {
         accepted.leftoverSweep = .init(txid: "s", txHex: "02", valueSats: 4800, isAccepted: true, feeRateSatPerVbyte: 2, sentAtHeight: 1000)
         chain.confirmedTxids = []
         chain.fastestFee = 50
-        accepted = try await driver().tick(accepted)
+        accepted = try await driver(trustedFeeRate: 50).tick(accepted)
         XCTAssertEqual(accepted.leftoverSweep?.txid, "s")
         XCTAssertTrue(accepted.needsDriving)
     }
@@ -595,6 +596,33 @@ final class SparkExitSweepTests: XCTestCase {
         let sweep = try XCTUnwrap(record.leftoverSweep)
         XCTAssertEqual(sweep.isAccepted, true)
         XCTAssertEqual(sweep.feeRateSatPerVbyte, 5)
+    }
+
+    /// The host's next block asks 5,000 sat/vB and its refusal 550,000 sats for ~110 vB of a 2M-sat leftover: the sweep
+    /// pays Bitkit's own fast rate at most, and is not replaced above it.
+    func testAHostQuotingAnAbsurdFeeRateCannotPushTheSweepPastBitkitsOwnRate() async throws {
+        var record = endedRecord()
+        let utxo = SparkExitFixtures.utxo(String(repeating: "1", count: 64), value: 2_000_000)
+        record.leftover = [.init(txid: utxo.txid, vout: 0, valueSats: 2_000_000)]
+        chain.utxosByAddress[key.address] = [utxo]
+        chain.economyFee = 1
+        chain.fastestFee = 5000
+        chain.outcome = .rejected("min relay fee not met, 110 < 550000")
+
+        record = try await driver().tick(record)
+        chain.tip = 1001
+        chain.outcome = .accepted
+        record = try await driver().tick(record)
+
+        let sweep = try XCTUnwrap(record.leftoverSweep)
+        XCTAssertEqual(sweep.isAccepted, true)
+        XCTAssertEqual(sweep.feeRateSatPerVbyte, 10, "the refused sweep went out at the host's rate")
+
+        // A day unconfirmed: no replacement above the ceiling, the same sweep is sent again.
+        chain.tip = 1145
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.leftoverSweep?.txid, sweep.txid)
+        XCTAssertEqual(record.leftoverSweep?.feeRateSatPerVbyte, 10)
     }
 
     /// The result names the leftover once, with its total, whatever state it is in.
