@@ -201,7 +201,23 @@ struct SendConfirmationView: View {
     }
 
     private var canSwitchFundingSource: Bool {
-        retainedHardwareRetry == nil && fundingSources.count > 1
+        Self.canSwitchFundingSource(hasRetainedHardwareRetry: retainedHardwareRetry != nil, fundingSources: fundingSources)
+    }
+
+    static func canSwitchFundingSource(hasRetainedHardwareRetry: Bool, fundingSources: [SendFundingSource]) -> Bool {
+        !hasRetainedHardwareRetry && fundingSources.count > 1
+    }
+
+    /// What Confirm's FROM control shows and does.
+    struct FromControl: Equatable {
+        let titleKey: String
+        let isSwitchable: Bool
+    }
+
+    /// A Spark leg pays from Spending, and the payer can still move a fixed request to Savings or a hardware wallet,
+    /// which reroutes it.
+    static func sparkRouteFromControl(canSwitchFundingSource: Bool) -> FromControl {
+        FromControl(titleKey: "wallet__spending__title", isSwitchable: canSwitchFundingSource)
     }
 
     var canSwitchWallet: Bool {
@@ -760,13 +776,13 @@ struct SendConfirmationView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 SendSectionView(t("wallet__send_from")) {
-                    // The payer can still move a fixed request to Savings or a hardware wallet here, which reroutes it.
+                    let control = Self.sparkRouteFromControl(canSwitchFundingSource: canSwitchFundingSource)
                     NumberPadActionButton(
-                        text: t("wallet__spending__title"),
-                        imageName: canSwitchFundingSource ? "arrow-up-down" : nil,
+                        text: t(control.titleKey),
+                        imageName: control.isSwitchable ? "arrow-up-down" : nil,
                         color: .purpleAccent,
-                        variant: canSwitchFundingSource ? .primary : .secondary,
-                        disabled: !canSwitchFundingSource
+                        variant: control.isSwitchable ? .primary : .secondary,
+                        disabled: !control.isSwitchable
                     ) {
                         selectNextFundingSource()
                     }

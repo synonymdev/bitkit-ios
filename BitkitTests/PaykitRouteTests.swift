@@ -563,6 +563,24 @@ final class PaykitRouteTests: XCTestCase {
         XCTAssertNil(SendConfirmationView.route(nil, afterSelecting: .hardware(walletId: "hw")))
     }
 
+    func testTheFromControlStaysSwitchableOnASparkRoute() {
+        let sources = SendConfirmationView.fundingSources(
+            hasLightningInvoice: false,
+            hasOnchainInvoice: true,
+            offersSparkLeg: true,
+            hardwareWalletIds: []
+        )
+        let canSwitch = SendConfirmationView.canSwitchFundingSource(hasRetainedHardwareRetry: false, fundingSources: sources)
+
+        let control = SendConfirmationView.sparkRouteFromControl(canSwitchFundingSource: canSwitch)
+
+        XCTAssertTrue(control.isSwitchable, "After picking Spark, FROM still moves a fixed request to Savings")
+        XCTAssertEqual(control.titleKey, "wallet__spending__title")
+        // A retained hardware retry pins the source, on a Spark route too.
+        let pinned = SendConfirmationView.canSwitchFundingSource(hasRetainedHardwareRetry: true, fundingSources: sources)
+        XCTAssertFalse(SendConfirmationView.sparkRouteFromControl(canSwitchFundingSource: pinned).isSwitchable)
+    }
+
     func testARefusedRerouteOnConfirmKeepsTheSwipeOffUntilAnotherSourceIsPicked() {
         let refused = SendConfirmationView.refusedRouteSource(after: .refused, on: .lightning, previous: nil)
 
