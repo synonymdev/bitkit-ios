@@ -85,6 +85,10 @@ struct DevSettingsView: View {
                         testIdentifier: "SavingsSwapToggle"
                     )
 
+                    if Env.isDebug {
+                        WakeDevSettingsSection()
+                    }
+
                     SettingsSectionHeader("RECOVERY")
                         .padding(.top, 16)
 
