@@ -2108,8 +2108,9 @@ extension LightningService {
             // A restored wallet fills its list on its first sync, so before a sync reaches Spark a missing send proves
             // nothing.
             guard await rail.hasSynced(after: nil) else { throw ChannelFreeRailUnavailable() }
-            let payments = try await rail.lightningPayments()
-            return await payments + unsettledUncertainRailSends()
+            // Read before the listing, so a sync that ends while it is read can't settle a send the listing predates.
+            let unsettled = await unsettledUncertainRailSends()
+            return try await rail.lightningPayments() + unsettled
         }
         if await channelFreeRailSupported() {
             throw ChannelFreeRailUnavailable()

@@ -673,6 +673,26 @@ extension ChannelFreeRailTests {
         await assertReachesTheNode()
     }
 
+    func testASyncEndingWhileSparksListIsReadKeepsAnUnknownSendHeld() async throws {
+        let expiresAt = try Self.invoiceExpiresAt()
+        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: expiresAt - 600) }
+        rail.balanceSats = 100_000
+        rail.errorAfterSubmission = NSError(domain: "spark", code: 2)
+        _ = try? await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+        rail.errorAfterSubmission = nil
+        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: expiresAt) }
+        // Spark synced only before the failure, and a sync after it ends while the listing that lacks the send is read.
+        rail.syncedAfter = { $0 == nil }
+        let fake: FakeRail = rail
+        fake.onList = {
+            fake.onList = nil
+            fake.syncedAfter = { _ in true }
+        }
+        rail.balanceSats = 0
+
+        await assertRefusedAsDuplicate()
+    }
+
     private static func invoiceExpiresAt() throws -> TimeInterval {
         let invoice = try Bolt11Invoice.fromStr(invoiceStr: invoice)
         return TimeInterval(invoice.secondsSinceEpoch() + invoice.expiryTimeSeconds())
