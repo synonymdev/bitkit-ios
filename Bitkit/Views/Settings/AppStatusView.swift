@@ -139,7 +139,7 @@ struct AppStatusView: View {
 
     @ViewBuilder
     private var exitStatusRow: some View {
-        if let step = AppStatusHelper.exitStep(record: SparkExitManager.shared.record) {
+        if let step = AppStatusHelper.exitStep(record: SparkExitManager.shared.record, fundingState: SparkExitManager.shared.fundingState) {
             StatusRow(
                 imageName: "warning",
                 title: t("settings__status__exit__title"),
@@ -149,6 +149,7 @@ struct AppStatusView: View {
                     navigation.navigate(.sparkExitProgress)
                 }
             )
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("Status-spark_exit")
         }
     }

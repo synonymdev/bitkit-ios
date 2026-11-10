@@ -30,13 +30,13 @@ enum ExitStatusStep: String {
 
 @MainActor
 struct AppStatusHelper {
-    /// Nil while no emergency exit runs.
-    nonisolated static func exitStep(record: SparkExitRecord?) -> ExitStatusStep? {
+    /// Nil while no emergency exit runs. Asks for fee funding only while no payment covers it, as the progress screen does.
+    nonisolated static func exitStep(record: SparkExitRecord?, fundingState: SparkExitFundingState? = nil) -> ExitStatusStep? {
         guard let record, record.isActive else { return nil }
-        switch record.phase {
-        case .awaitingFunding, .needsFunding: return .funding
-        case .running: return .pending
-        case .done, .failed: return nil
+        guard record.fundingShortfallSats != nil else { return .pending }
+        switch fundingState ?? SparkExitMath.fundingState(record, utxos: nil) {
+        case .paid, .seen: return .pending
+        default: return .funding
         }
     }
 

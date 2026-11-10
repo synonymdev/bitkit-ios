@@ -12,6 +12,12 @@ final class AppStatusExitTests: XCTestCase {
         XCTAssertEqual(AppStatusHelper.exitStep(record: record(.running)), .pending)
         XCTAssertEqual(AppStatusHelper.exitStep(record: record(.awaitingFunding(requiredSats: 1000))), .funding)
         XCTAssertEqual(AppStatusHelper.exitStep(record: record(.needsFunding(requiredSats: 1000))), .funding)
+        XCTAssertEqual(AppStatusHelper.exitStep(record: record(.needsFunding(requiredSats: 1000)), fundingState: .ask(sats: 1000)), .funding)
+    }
+
+    func testExitStepIsPendingOnceAPaymentCoversTheFunding() {
+        XCTAssertEqual(AppStatusHelper.exitStep(record: record(.awaitingFunding(requiredSats: 1000)), fundingState: .paid(txid: "txid")), .pending)
+        XCTAssertEqual(AppStatusHelper.exitStep(record: record(.needsFunding(requiredSats: 1000)), fundingState: .seen(txid: "txid")), .pending)
     }
 
     private func record(_ phase: SparkExitRecord.Phase) -> SparkExitRecord {
