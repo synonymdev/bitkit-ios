@@ -733,12 +733,13 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// Spark can still list a deposit it already claimed early as unclaimed, so a claimed one is listed only as claimed.
+    /// Matched by output, as one transaction can hold several deposits.
     nonisolated static func unclaimedDeposits(_ unclaimed: [DepositInfo], claimed: [Payment]) -> [DepositInfo] {
-        let claimedTxIds = Set(claimed.compactMap { payment -> String? in
-            guard case let .deposit(txId, _) = payment.details else { return nil }
-            return txId.lowercased()
+        let claimedOutputs = Set(claimed.compactMap { payment -> String? in
+            guard case let .deposit(txId, vout) = payment.details else { return nil }
+            return "\(txId.lowercased()):\(vout)"
         })
-        return unclaimed.filter { !claimedTxIds.contains($0.txid.lowercased()) }
+        return unclaimed.filter { !claimedOutputs.contains("\($0.txid.lowercased()):\($0.vout)") }
     }
 
     nonisolated static func withdrawals(_ payments: [Payment]) -> [SparkWithdrawal] {

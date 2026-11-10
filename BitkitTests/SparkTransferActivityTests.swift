@@ -34,6 +34,20 @@ final class SparkTransferActivityTests: XCTestCase {
         XCTAssertEqual(unclaimed.map(\.txid), ["pending-deposit"], "A deposit claimed early still shows as in progress")
     }
 
+    func testAClaimedDepositHidesOnlyItsOwnOutputOfTheTransaction() {
+        let deposits = [0, 1].map {
+            DepositInfo(
+                txid: "batched", vout: $0, amountSats: 7500, isMature: true,
+                refundTx: nil, refundTxId: nil, refundState: nil, claimError: nil, instantClaimStatus: nil, maxClaimFee: nil
+            )
+        }
+        let claimed = [payment(id: "1", status: .completed, details: .deposit(txId: "batched", vout: 0))]
+
+        let unclaimed = SparkManager.unclaimedDeposits(deposits, claimed: claimed)
+
+        XCTAssertEqual(unclaimed.map(\.vout), [1], "Another output of a claimed deposit's transaction was hidden")
+    }
+
     func testAZeroReadAfterAFailedWithdrawalOrSyncKeepsTheLastKnownBalance() {
         XCTAssertEqual(SparkManager.keptBalanceSats(read: 0, lastShown: 9000, isStale: true), 9000, "The balance read 0 while stale")
         XCTAssertNil(SparkManager.keptBalanceSats(read: 0, lastShown: 9000, isStale: false))
