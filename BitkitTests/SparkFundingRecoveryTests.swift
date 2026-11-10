@@ -74,4 +74,22 @@ final class SparkFundingRecoveryTests: XCTestCase {
         }
         XCTAssertEqual(SettingUpView.currentStep(for: .adding), 2, "Adding is the last step, Spark adding it")
     }
+
+    /// The same step as Android's `SettingUpScreen` for every state: a deposit Spark has not seen stays on
+    /// Payment Successful, whatever the speed.
+    func testSettingUpStepMatchesAndroidForEveryState() {
+        let expected: [(SparkClaimState, Int)] = [
+            (.looking, 1),
+            (.notSeen, 1),
+            (.later, 1),
+            (.claiming, 2),
+            (.adding, 2),
+            (.repriced(feeSats: 1), 2),
+            (.unavailable, 2),
+            (.added, 3),
+        ]
+        for (state, step) in expected {
+            XCTAssertEqual(SettingUpView.currentStep(for: state), step, "\(state)")
+        }
+    }
 }
