@@ -35,9 +35,21 @@ final class SparkTransferActivityTests: XCTestCase {
     }
 
     func testAZeroReadAfterAFailedWithdrawalOrSyncKeepsTheLastKnownBalance() {
-        XCTAssertEqual(SparkManager.shownBalanceSats(read: 0, lastKnown: 9000, isStale: true), 9000, "The balance read 0 while stale")
-        XCTAssertEqual(SparkManager.shownBalanceSats(read: 0, lastKnown: 9000, isStale: false), 0)
-        XCTAssertEqual(SparkManager.shownBalanceSats(read: 4000, lastKnown: 9000, isStale: true), 4000)
+        XCTAssertEqual(SparkManager.keptBalanceSats(read: 0, lastShown: 9000, isStale: true), 9000, "The balance read 0 while stale")
+        XCTAssertNil(SparkManager.keptBalanceSats(read: 0, lastShown: 9000, isStale: false))
+        XCTAssertNil(SparkManager.keptBalanceSats(read: 4000, lastShown: 9000, isStale: true))
+        XCTAssertNil(SparkManager.keptBalanceSats(read: 0, lastShown: 0, isStale: true))
+    }
+
+    func testASyncedZeroReadAfterAFailedWithdrawalClearsTheKeptBalance() {
+        XCTAssertNil(
+            SparkManager.withdrawalFailedAt(100, read: 0, lastSyncedAt: 101, syncFailed: false),
+            "A sync after the failed withdrawal read 0 and the balance stayed kept"
+        )
+        XCTAssertEqual(SparkManager.withdrawalFailedAt(100, read: 0, lastSyncedAt: 40, syncFailed: false), 100)
+        XCTAssertEqual(SparkManager.withdrawalFailedAt(100, read: 0, lastSyncedAt: 101, syncFailed: true), 100)
+        XCTAssertEqual(SparkManager.withdrawalFailedAt(100, read: 0, lastSyncedAt: nil, syncFailed: false), 100)
+        XCTAssertNil(SparkManager.withdrawalFailedAt(100, read: 4000, lastSyncedAt: nil, syncFailed: true))
     }
 
     func testListsWithdrawalsWithWhatSparkKept() {
