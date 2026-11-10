@@ -1225,12 +1225,22 @@ class LightningService: NodeLifecycleService {
 
     /// Called once the rail reports the attempt failed or lists none, so a channel retry isn't held while it can't list.
     /// With `unlessInFlight`, skipped while a rail send of the invoice is in flight, as that retry holds it again.
-    func releaseRailAttempt(paymentHash: String, unlessInFlight: Bool = true) {
+    /// With `recordedBy`, skipped too when the hash was recorded after `attemptRecordCount` read that count, as a retry
+    /// recorded while a listing was read holds it again.
+    func releaseRailAttempt(paymentHash: String, unlessInFlight: Bool = true, recordedBy records: Int? = nil) {
         let hash = paymentHash.lowercased()
         eventCallbackLock.withLock {
             guard !unlessInFlight || !railSendsInFlight.contains(hash) else { return }
+            if let records, attemptsRecorded(since: records, key: Self.railAttemptsKey).contains(hash) {
+                return
+            }
             removeAttempt(paymentHash: hash, key: Self.railAttemptsKey)
         }
+    }
+
+    /// The attempts recorded so far, read before a listing so a release from it can skip the retries recorded since.
+    var attemptRecordCount: Int {
+        eventCallbackLock.withLock { attemptRecords }
     }
 
     private func releaseLdkAttempt(paymentHash: String) {
