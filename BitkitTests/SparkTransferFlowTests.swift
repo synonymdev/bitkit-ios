@@ -1,4 +1,5 @@
 @testable import Bitkit
+import LDKNode
 import XCTest
 
 final class SparkTransferFlowTests: XCTestCase {
@@ -329,6 +330,17 @@ final class SparkTransferFlowTests: XCTestCase {
         await flow.waitForClaim()
 
         XCTAssertEqual(flow.claimState, .added, "The funding this swipe left unresolved lost the approval it gave")
+    }
+
+    @MainActor
+    func testAFundingWhoseOutcomeIsUnknownIsKeptNotFailed() {
+        XCTAssertEqual(try TransferViewModel.fundedTxid(.accepted(txid: "txid")), "txid")
+        XCTAssertThrowsError(try TransferViewModel.fundedTxid(.unknown(txid: "txid"))) { error in
+            XCTAssertEqual((error as? SparkFundingUnresolved)?.txid, "txid", "A funding that may be on the network read as failed")
+        }
+        XCTAssertThrowsError(try TransferViewModel.fundedTxid(.rejected(txid: "txid", reason: "fee too low"))) { error in
+            XCTAssertEqual((error as? SparkFundingUnresolved)?.rejectionReason, "fee too low")
+        }
     }
 
     @MainActor

@@ -483,14 +483,25 @@ class TransferViewModel: ObservableObject {
             ),
             isSparkFunding: true
         )
-        guard case let .accepted(txid) = result else {
-            throw AppError(message: t("wallet__send_error_tx_failed"), debugMessage: "Spark funding outcome: \(result)")
-        }
+        let txid = try Self.fundedTxid(result)
         _ = try? await attempts.resumeAcceptedOrdinarySend(walletId: walletId, observedTxid: txid)
         await SparkFundingRecovery.handOff(txid: txid, amountSats: amountSats)
         Logger.info("Funded Spark wallet with \(amountSats) sats in \(txid)", context: "TransferViewModel")
         await onBalanceRefresh?()
         return txid
+    }
+
+    /// The txid of an accepted funding. A rejected or unknown one is kept and broadcast again, so it is unresolved, not
+    /// failed, and is never swiped a second time.
+    static func fundedTxid(_ result: OnchainSendResult) throws -> String {
+        switch result {
+        case let .accepted(txid):
+            return txid
+        case let .rejected(txid, reason):
+            throw SparkFundingUnresolved(txid: txid, rejectionReason: reason)
+        case let .unknown(txid):
+            throw SparkFundingUnresolved(txid: txid)
+        }
     }
 
     func closeChannels(channels: [ChannelDetails]) async throws -> [ChannelDetails] {
@@ -1060,4 +1071,11 @@ private final class FirstResult<T: Sendable>: @unchecked Sendable {
 private enum SparkWithdrawalPrice: Equatable {
     case fee(UInt64)
     case belowMinimum
+}
+
+/// A Spark funding the network rejected or whose broadcast outcome is unknown. It is kept and broadcast again, so it is
+/// never sent a second time.
+struct SparkFundingUnresolved: Error {
+    let txid: String
+    var rejectionReason: String?
 }

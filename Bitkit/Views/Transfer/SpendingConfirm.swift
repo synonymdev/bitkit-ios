@@ -5,6 +5,7 @@ struct SpendingConfirm: View {
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var transfer: TransferViewModel
     @EnvironmentObject var wallet: WalletViewModel
     @Environment(SparkTransferFlow.self) private var flow
@@ -198,6 +199,22 @@ struct SpendingConfirm: View {
                 )
             }
             throw SpendingFeesIncreasedError()
+        } catch let unresolved as SparkFundingUnresolved {
+            // The funding may be on the network and is kept, so Payment Pending shows it, as for any on-chain send.
+            if let attemptId = await OnchainSendAttemptService.shared.unresolvedSparkFundingAttemptId() {
+                flow.bindApproval(to: attemptId)
+            }
+            Logger.warn("Spark funding \(unresolved.txid) is unresolved", context: "SpendingConfirm")
+            if let reason = unresolved.rejectionReason {
+                app.toast(type: .error, title: t("wallet__onchain_broadcast_rejected"),
+                          description: t("wallet__onchain_broadcast_rejected_note", variables: ["reason": reason]))
+            } else {
+                app.toast(type: .warning, title: t("wallet__onchain_broadcast_unconfirmed"),
+                          description: t("wallet__onchain_broadcast_unconfirmed_note"))
+            }
+            let route = await SendConfirmationView.onchainPendingRoute(txid: unresolved.txid, requestId: nil)
+            sheets.showSheet(.send, data: SendConfig(view: route))
+            throw unresolved
         } catch {
             if let attemptId = await OnchainSendAttemptService.shared.unresolvedSparkFundingAttemptId() {
                 flow.bindApproval(to: attemptId, after: error)
@@ -348,6 +365,7 @@ private func spendingConfirmPreview(_ flow: SparkTransferFlow) -> some View {
             .environmentObject(FeeEstimatesManager())
             .environmentObject(NavigationViewModel())
             .environmentObject(SettingsViewModel.shared)
+            .environmentObject(SheetViewModel())
             .environmentObject(TransferViewModel())
             .environmentObject(WalletViewModel())
             .environment(flow)
