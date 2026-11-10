@@ -133,6 +133,8 @@ class LightningService: NodeLifecycleService {
     /// Counts node attempts recorded in this run, so a listing drops a hash it shows only as failed just when the hash
     /// was recorded before the listing was read, never a retry recorded while it was read.
     private var ldkAttemptRecords = 0
+    /// Node sends under way, so a listing that shows only an earlier failed attempt doesn't drop their hash.
+    private var ldkSendsInFlight: Set<String> = []
     private var ldkAttemptRecordedAt: [String: Int] = [:]
     weak var channelFreeRail: ChannelFreeLightningRail?
     var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
@@ -1097,10 +1099,20 @@ class LightningService: NodeLifecycleService {
         Logger.info("Paying bolt11: \(bolt11)")
         noteAttempt(on: .ldk, bolt11: bolt11)
 
+        let sendKey = paymentHash?.lowercased()
+        defer {
+            if let sendKey {
+                _ = eventCallbackLock.withLock { self.ldkSendsInFlight.remove(sendKey) }
+            }
+        }
         do {
             return try await Self.submitPayment(beforeSubmission: { [weak self] in
                 try beforeSubmission()
-                self?.recordLdkAttempt(paymentHash: paymentHash, expiresAt: expiresAt)
+                guard let self else { return }
+                if let sendKey {
+                    _ = eventCallbackLock.withLock { self.ldkSendsInFlight.insert(sendKey) }
+                }
+                recordLdkAttempt(paymentHash: paymentHash, expiresAt: expiresAt)
             }) {
                 if let sats {
                     try node.bolt11Payment().sendUsingAmount(
@@ -1130,9 +1142,10 @@ class LightningService: NodeLifecycleService {
     /// The clock a trim checks invoice expiries against; tests set it.
     var now: () -> Date = Date.init
     private static let railAttemptsKey = "channelFreeRailAttemptedPaymentHashes"
-    /// Past this many hashes per key, a listing drops the oldest it shows as failed, or as paid once the invoice has
-    /// expired, so the other rail can't pay it again. A paid hash with no known expiry is dropped like a failed one. A
-    /// hash whose payment may still be pending, or that no listing has shown yet, is kept past it.
+    /// A listing drops the hashes it shows failed only, or paid once the invoice has expired, so the other rail can't
+    /// pay it again. Paid hashes with no known expiry (kept before expiries were, or whose invoice can't be parsed) are
+    /// dropped oldest first only past this many per key. A hash whose payment may still be pending, or that no listing
+    /// has shown yet, always stays.
     private static let railAttemptsLimit = 500
 
     /// Payment hashes sent over the node, kept across launches: while the node can't list its payments (stopped or not
@@ -1179,23 +1192,26 @@ class LightningService: NodeLifecycleService {
         }
     }
 
-    /// Past the limit, drops the oldest hashes a listing showed as failed, or as paid with an expired or unknown
-    /// invoice expiry, so a payment that may still be pending, or a paid one whose invoice can still be paid, keeps
-    /// holding the other rail. Callers hold `eventCallbackLock`.
+    /// Drops the hashes a listing showed as `failed` only, or as `paid` with an expired invoice, and past the limit the
+    /// oldest paid ones with no known expiry. Callers pass no hash whose payment may still be pending, so it keeps
+    /// holding the other rail, as does a paid one whose invoice can still be paid. Callers hold `eventCallbackLock`.
     private func trimSettledAttempts(paid: Set<String>, failed: Set<String>, key: String) {
-        guard let hashes = railAttemptsStore.stringArray(forKey: key), hashes.count > Self.railAttemptsLimit else { return }
+        guard let hashes = railAttemptsStore.stringArray(forKey: key) else { return }
         let expiries = attemptExpiries(key: key)
         let nowSeconds = Int(now().timeIntervalSince1970)
-        var excess = hashes.count - Self.railAttemptsLimit
+        let listed = hashes.filter { hash in
+            !failed.contains(hash) && !(paid.contains(hash) && expiries[hash].map { $0 <= nowSeconds } == true)
+        }
+        var excess = listed.count - Self.railAttemptsLimit
         var kept: [String] = []
-        for hash in hashes {
-            let expired = expiries[hash].map { $0 <= nowSeconds } ?? true
-            if excess > 0, failed.contains(hash) || paid.contains(hash) && expired {
+        for hash in listed {
+            if excess > 0, paid.contains(hash), expiries[hash] == nil {
                 excess -= 1
             } else {
                 kept.append(hash)
             }
         }
+        guard kept.count < hashes.count else { return }
         railAttemptsStore.set(kept, forKey: key)
         railAttemptsStore.set(expiries.filter { kept.contains($0.key) }, forKey: Self.expiriesKey(key))
     }
@@ -1282,24 +1298,22 @@ class LightningService: NodeLifecycleService {
                 railAttemptsStore.set(seeded + kept, forKey: Self.ldkAttemptsKey)
                 railAttemptsStore.set(true, forKey: Self.ldkAttemptsSeededKey)
             }
-            let failedOnly = hashes(.failed).subtracting(hashes(.succeeded)).subtracting(hashes(.pending))
-            removeAttempts(failedOnly.filter { ldkAttemptRecordedAt[$0, default: 0] <= recordsBefore }, key: Self.ldkAttemptsKey)
-            trimSettledAttempts(paid: hashes(.succeeded), failed: [], key: Self.ldkAttemptsKey)
+            let failedOnly = hashes(.failed).subtracting(hashes(.succeeded)).subtracting(hashes(.pending)).subtracting(ldkSendsInFlight)
+                .filter { ldkAttemptRecordedAt[$0, default: 0] <= recordsBefore }
+            trimSettledAttempts(paid: hashes(.succeeded), failed: failedOnly, key: Self.ldkAttemptsKey)
+            failedOnly.forEach { ldkAttemptRecordedAt[$0] = nil }
         }
     }
 
-    /// Trims only the rail's paid and failed hashes past the limit, so a payment that may still be pending, or a
-    /// send in flight that the listing predates, keeps holding the node.
+    /// Trims the rail's paid and failed-only hashes, so a payment that may still be pending, or a send in flight that
+    /// the listing predates, keeps holding the node.
     private func keepRailAttempts(from payments: [ChannelFreeRailPayment]) {
         let outbound = payments.filter { $0.direction == .outbound }
         let hashes = { (status: PaymentStatus) in Set(outbound.filter { $0.status == status }.map { $0.paymentHash.lowercased() }) }
         eventCallbackLock.withLock {
             let live = hashes(.pending).union(railSendsInFlight)
-            trimSettledAttempts(
-                paid: hashes(.succeeded).subtracting(live),
-                failed: hashes(.failed).subtracting(live),
-                key: Self.railAttemptsKey
-            )
+            let paid = hashes(.succeeded).subtracting(live)
+            trimSettledAttempts(paid: paid, failed: hashes(.failed).subtracting(paid).subtracting(live), key: Self.railAttemptsKey)
         }
     }
 

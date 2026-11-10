@@ -432,6 +432,24 @@ extension ChannelFreeRailTests {
         XCTAssertFalse(kept.contains(hash), "The paid Spark hash whose invoice expired was kept")
     }
 
+    func testSparkHashesListedFailedOnlyOrPaidWithAnExpiredInvoiceAreDroppedUnderTheCap() async {
+        let service = Bitkit.LightningService.shared
+        service.now = { Date(timeIntervalSince1970: 1000) }
+        service.recordRailAttempt(paymentHash: Self.otherHash(1), expiresAt: 1000)
+        service.recordRailAttempt(paymentHash: Self.otherHash(2), expiresAt: 1001)
+        service.recordRailAttempt(paymentHash: Self.otherHash(3))
+        service.recordRailAttempt(paymentHash: Self.otherHash(4))
+        rail.payments = (1 ... 3).map {
+            Bitkit.ChannelFreeRailPayment(paymentHash: Self.otherHash($0), direction: .outbound, status: .succeeded, preimage: nil)
+        } + [Bitkit.ChannelFreeRailPayment(paymentHash: Self.otherHash(4), direction: .outbound, status: .failed, preimage: nil)]
+        rail.balanceSats = 0
+
+        await assertReachesTheNode()
+
+        let kept = service.railAttemptsStore.stringArray(forKey: Self.railAttemptsKey) ?? []
+        XCTAssertEqual(kept, [Self.otherHash(2), Self.otherHash(3)], "Expired or failed Spark hashes stayed, or live ones went")
+    }
+
     /// Records 500 newer Spark sends after `hash` and lists them all as paid, so a node send trims past the cap.
     private func listPaidSparkSendBehindTheCap(_ hash: String) async throws {
         let service = Bitkit.LightningService.shared
@@ -444,7 +462,7 @@ extension ChannelFreeRailTests {
         rail.sentBolt11 = nil
     }
 
-    func testSparkHashesListedAsFailedAreTrimmedPastTheCap() async {
+    func testSparkHashesListedAsFailedAreDroppedPastTheCapToo() async {
         let service = Bitkit.LightningService.shared
         (1 ... 501).forEach { service.recordRailAttempt(paymentHash: Self.otherHash($0)) }
         rail.payments = (1 ... 501).map {
@@ -455,8 +473,7 @@ extension ChannelFreeRailTests {
         await assertReachesTheNode()
 
         let kept = service.railAttemptsStore.stringArray(forKey: Self.railAttemptsKey) ?? []
-        XCTAssertEqual(kept.count, 500, "Failed Spark hashes stayed past the cap")
-        XCTAssertFalse(kept.contains(Self.otherHash(1)), "The oldest failed Spark hash was kept")
+        XCTAssertEqual(kept, [], "Failed Spark hashes stayed")
     }
 
     func testASendSparkRefusedAfterItWasRecordedIsNotHeldWhileSparkCannotList() async {
