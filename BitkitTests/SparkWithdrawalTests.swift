@@ -224,8 +224,25 @@ final class SparkWithdrawalTests: XCTestCase {
     }
 
     @MainActor
+    func testSparkIsNotWithdrawnToASavingsAddressOnAnotherChain() async throws {
+        let transfer = await pricedTransfer()
+        XCTAssertTrue(transfer.onTransferToSavingsConfirm(channels: [], withdrawsSpark: true, mode: .close))
+        // A regtest Savings wallet reads its own chain unless Spark is pointed at it.
+        transfer.sparkReadsSavingsChain = { false }
+        let withdrawn = WithdrawnFee()
+        transfer.sparkBalanceSats = { 40000 }
+        transfer.withdrawSpark = { _, feeSats in withdrawn.feeSats = feeSats }
+
+        _ = try await transfer.closeSelectedChannels()
+
+        XCTAssertNil(withdrawn.feeSats, "Spark sent its balance to a Savings address on another chain")
+        XCTAssertNotNil(transfer.sparkWithdrawError, "the withdrawal was skipped without telling the user")
+    }
+
+    @MainActor
     private func pricedTransfer() async -> TransferViewModel {
         let transfer = TransferViewModel()
+        transfer.sparkReadsSavingsChain = { true }
         transfer.priceSparkWithdrawal = { _ in 1470 }
         transfer.loadSparkWithdrawFee(balanceSats: 40000, savingsAddress: "bcrt1q-savings")
         await waitUntilPriced(transfer)

@@ -175,6 +175,7 @@ final class SparkPaymentSafetyTests: XCTestCase {
         transfer.sparkBalanceSats = { 99901 }
         var sent: (String, UInt64)?
         transfer.withdrawSpark = { sent = ($0, $1) }
+        transfer.sparkReadsSavingsChain = { true }
         transfer.loadSparkWithdrawFee(balanceSats: 99901, savingsAddress: "bcrt1q-savings")
         for _ in 0 ..< 100 where transfer.isPricingSparkWithdrawal {
             try await Task.sleep(nanoseconds: 20_000_000)
