@@ -336,6 +336,98 @@ extension ChannelFreeRailTests {
         await assertRefusedAsDuplicate()
     }
 
+    func testNodeHashesListedAsFailedAreTrimmedPastTheCap() async throws {
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        defer { service.nodePayments = nodePayments }
+        let pending = Self.nodePayment(Self.otherHash(0), status: .pending)
+        let failed = (1 ... 501).map { Self.nodePayment(Self.otherHash($0), status: .failed) }
+        ([pending] + failed).forEach { service.recordLdkAttempt(paymentHash: $0.id) }
+        service.nodePayments = { [pending] + failed }
+        rail.balanceSats = 100_000
+
+        _ = try await service.send(bolt11: Self.invoice)
+
+        let kept = service.railAttemptsStore.stringArray(forKey: Self.ldkAttemptsKey) ?? []
+        XCTAssertEqual(kept.count, 500, "Failed node hashes stayed past the cap")
+        XCTAssertEqual(kept.first, Self.otherHash(0), "The pending node hash was dropped")
+        XCTAssertFalse(kept.contains(Self.otherHash(1)), "The oldest failed node hash was kept")
+    }
+
+    func testANodeRetryRecordedDuringAnOlderListingSurvivesItsTrim() async throws {
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        defer { service.nodePayments = nodePayments }
+        let retried = Self.otherHash(0)
+        let failed = (0 ... 500).map { Self.nodePayment(Self.otherHash($0), status: .failed) }
+        failed.forEach { service.recordLdkAttempt(paymentHash: $0.id) }
+        // The node retries the oldest failed invoice while this listing, which still shows it failed, is read.
+        service.nodePayments = {
+            service.recordLdkAttempt(paymentHash: retried)
+            return failed
+        }
+        rail.balanceSats = 100_000
+
+        _ = try await service.send(bolt11: Self.invoice)
+
+        let kept = service.railAttemptsStore.stringArray(forKey: Self.ldkAttemptsKey) ?? []
+        XCTAssertEqual(kept.count, 500, "Failed node hashes stayed past the cap")
+        XCTAssertEqual(kept.last, retried, "The retry in flight was dropped by a trim from an older listing")
+    }
+
+    func testAPendingNodePaymentBehindTheCapOfFailedOnesStillHoldsSparkWhileTheNodeCantList() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        defer { service.nodePayments = nodePayments }
+        let failed = (1 ... 501).map { Self.nodePayment(Self.otherHash($0), status: .failed) }
+        service.recordLdkAttempt(paymentHash: hash)
+        failed.forEach { service.recordLdkAttempt(paymentHash: $0.id) }
+        rail.balanceSats = 100_000
+
+        service.nodePayments = { [Self.nodePayment(hash, status: .pending)] + failed }
+        await assertRefusedAsDuplicate()
+        service.nodePayments = { nil }
+
+        await assertRefusedAsDuplicate()
+    }
+
+    func testSparkHashesListedAsFailedAreTrimmedPastTheCap() async {
+        let service = Bitkit.LightningService.shared
+        (1 ... 501).forEach { service.recordRailAttempt(paymentHash: Self.otherHash($0)) }
+        rail.payments = (1 ... 501).map {
+            Bitkit.ChannelFreeRailPayment(paymentHash: Self.otherHash($0), direction: .outbound, status: .failed, preimage: nil)
+        }
+        rail.balanceSats = 0
+
+        await assertReachesTheNode()
+
+        let kept = service.railAttemptsStore.stringArray(forKey: Self.railAttemptsKey) ?? []
+        XCTAssertEqual(kept.count, 500, "Failed Spark hashes stayed past the cap")
+        XCTAssertFalse(kept.contains(Self.otherHash(1)), "The oldest failed Spark hash was kept")
+    }
+
+    func testASendSparkRefusedAfterItWasRecordedIsNotHeldWhileSparkCannotList() async {
+        rail.balanceSats = 100_000
+        rail.refusalAfterSubmission = Bitkit.ChannelFreeRailSendRefused(reason: "insufficient funds")
+        _ = try? await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+        rail.refusalAfterSubmission = nil
+        rail.listError = NSError(domain: "spark", code: 1)
+        rail.balanceSats = 0
+
+        await assertReachesTheNode()
+    }
+
+    private static let ldkAttemptsKey = "ldkAttemptedPaymentHashes"
+    private static let railAttemptsKey = "channelFreeRailAttemptedPaymentHashes"
+
+    private static func nodePayment(_ hash: String, status: LDKNode.PaymentStatus) -> LDKNode.PaymentDetails {
+        LDKNode.PaymentDetails(
+            id: hash, kind: .bolt11(hash: hash, preimage: nil, secret: nil, description: nil, bolt11: ""),
+            amountMsat: 1000, feePaidMsat: nil, direction: .outbound, status: status, latestUpdateTimestamp: 0
+        )
+    }
+
     private static func otherHash(_ index: Int) -> String {
         String(format: "%064x", index)
     }
@@ -823,6 +915,7 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     var sentFeeLimitSats: UInt64?
     var sendGate: (() async -> Void)?
     var refusal: Bitkit.ChannelFreeRailSendRefused?
+    var refusalAfterSubmission: Bitkit.ChannelFreeRailSendRefused?
 
     func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String {
         "lnbcrt1fake"
@@ -833,6 +926,9 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
             throw refusal
         }
         try beforeSubmission()
+        if let refusalAfterSubmission {
+            throw refusalAfterSubmission
+        }
         await sendGate?()
         sentFeeLimitSats = maxFeeSats
         sentBolt11 = bolt11
