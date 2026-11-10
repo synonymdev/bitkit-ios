@@ -693,6 +693,24 @@ extension ChannelFreeRailTests {
         await assertRefusedAsDuplicate()
     }
 
+    func testAnUnlistedSparkSendKeptFromAnEarlierLaunchHoldsTheNodeUntilItsInvoiceExpires() async throws {
+        let invoice = try Bolt11Invoice.fromStr(invoiceStr: Self.invoice)
+        let hash = String(invoice.paymentHash())
+        let expiresAt = Int(invoice.secondsSinceEpoch() + invoice.expiryTimeSeconds())
+        let service = Bitkit.LightningService.shared
+        // After a relaunch only the kept hash is left, and Spark synced since but lists no row for the send.
+        service.recordRailAttempt(paymentHash: hash, expiresAt: expiresAt)
+        service.now = { Date(timeIntervalSince1970: TimeInterval(expiresAt - 600)) }
+        rail.balanceSats = 0
+
+        let status = await PaykitLightningPaymentProofLookup.railStatus(paymentHash: hash)
+
+        XCTAssertEqual(status, .pending, "a send Spark can still resume was read as never made")
+        await assertRefusedAsDuplicate()
+        service.now = { Date(timeIntervalSince1970: TimeInterval(expiresAt)) }
+        await assertReachesTheNode()
+    }
+
     private static func invoiceExpiresAt() throws -> TimeInterval {
         let invoice = try Bolt11Invoice.fromStr(invoiceStr: invoice)
         return TimeInterval(invoice.secondsSinceEpoch() + invoice.expiryTimeSeconds())
