@@ -270,6 +270,7 @@
 "lightning__savings_spark_failed__toast" = "Transferència Spark fallida";
 "lightning__transfer_success__nav_title" = "Transferència realitzada";
 "lightning__transfer_success__title_spending" = "Fons transferits\n<accent>a despesa</accent>";
+"lightning__transfer_success__text_spending" = "Els teus fons s\'han transferit i el teu saldo de despesa està llest per utilitzar.";
 "lightning__transfer_success__title_savings" = "Fons transferits\n<accent>a estalvis</accent>";
 "lightning__transfer_success__text_savings" = "Els teus fons s\'han transferit. Pots utilitzar aquests fons immediatament.";
 "lightning__external__nav_title" = "Connexió Lightning";
@@ -346,7 +347,7 @@
 "lightning__spark_deposit__wait_button" = "Espera";
 "lightning__spark_deposit__waiting" = "Spark ho afegeix al teu saldo de despeses {when}.";
 "lightning__spark_deposit__waiting_next" = "Spark ho afegeix al teu saldo de despeses després de la confirmació següent.";
-"lightning__spark_deposit__repriced" = "Instant now costs {fee}. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
+"lightning__spark_deposit__repriced" = "Instant now costs <accent>{fee}</accent>. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__pay" = "Pay {fee}";
 "lightning__spark_deposit__instant_unavailable" = "Instant isn't available for this transfer. Spark adds it to your spending balance after 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__not_seen" = "Spark hasn't seen your transfer yet. It's added after 3 confirmations; you can leave this screen.";

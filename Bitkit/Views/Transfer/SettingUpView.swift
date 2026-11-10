@@ -25,7 +25,8 @@ struct SettingUpView: View {
     }
 
     var text: String {
-        switch state {
+        guard isTransferring else { return t("lightning__transfer_success__text_spending") }
+        return switch state {
         case .looking: t("lightning__spark_deposit__looking")
         case .claiming, .adding: t("lightning__spark_deposit__claimed")
         case let .repriced(feeSats): t("lightning__spark_deposit__repriced", variables: ["fee": currency.primaryAmountText(sats: feeSats)])
@@ -76,7 +77,7 @@ struct SettingUpView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 DisplayText(title, accentColor: .purpleAccent)
-                    .padding(.bottom, 14)
+                    .padding(.bottom, 8)
                     .layoutPriority(1)
 
                 BodyMText(text, accentColor: .white, accentFont: Fonts.bold)

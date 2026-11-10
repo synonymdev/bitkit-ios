@@ -276,6 +276,7 @@
 "lightning__savings_spark_failed__toast" = "Spark-Transfer fehlgeschlagen";
 "lightning__transfer_success__nav_title" = "Übertragung erfolgreich";
 "lightning__transfer_success__title_spending" = "Bewegte Mittel\n<accent>zu den Ausgaben</accent>";
+"lightning__transfer_success__text_spending" = "Deine Gelder wurden übertragen und dein Ausgabenguthaben ist einsatzbereit.";
 "lightning__transfer_success__title_savings" = "Bewegte Mittel\n<accent>zu den Einsparungen</accent>";
 "lightning__transfer_success__text_savings" = "Ihr Geld wurde überwiesen. Sie können diese Mittel sofort verwenden.";
 "lightning__external__nav_title" = "Lightning-Verbindung";
@@ -360,7 +361,7 @@
 "lightning__spark_deposit__wait_button" = "Warten";
 "lightning__spark_deposit__waiting" = "Spark schreibt es deinem Ausgabenguthaben {when} gut.";
 "lightning__spark_deposit__waiting_next" = "Spark schreibt es deinem Ausgabenguthaben nach der nächsten Bestätigung gut.";
-"lightning__spark_deposit__repriced" = "Instant now costs {fee}. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
+"lightning__spark_deposit__repriced" = "Instant now costs <accent>{fee}</accent>. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__pay" = "Pay {fee}";
 "lightning__spark_deposit__instant_unavailable" = "Instant isn't available for this transfer. Spark adds it to your spending balance after 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__not_seen" = "Spark hasn't seen your transfer yet. It's added after 3 confirmations; you can leave this screen.";
