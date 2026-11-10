@@ -156,12 +156,15 @@ class Logger {
 
 final class LdkLogWriter: LogWriter {
     private let maxLogLevel: LogLevel
+    private let onRecord: ((LogRecord) -> Void)?
 
-    init(maxLogLevel: LogLevel = Env.ldkLogLevel) {
+    init(maxLogLevel: LogLevel = Env.ldkLogLevel, onRecord: ((LogRecord) -> Void)? = nil) {
         self.maxLogLevel = maxLogLevel
+        self.onRecord = onRecord
     }
 
     func log(record: LogRecord) {
+        onRecord?(record)
         guard logLevelOrder(record.level) >= logLevelOrder(maxLogLevel) else { return }
 
         let context = "[LDK] [\(record.modulePath):\(record.line)]"

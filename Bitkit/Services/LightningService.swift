@@ -79,6 +79,10 @@ class LightningService: NodeLifecycleService {
 
     private init() {}
 
+    /// Watches the current node's ldk-node logs for tracked tasks left detached by a timed-out stop.
+    private var runtimeMonitor = NodeRuntimeMonitor()
+    let runtimeExitGuard = DetachedRuntimeExitGuard()
+
     /// Flag and lock to prevent concurrent setup calls
     private var isSettingUp = false
     private let setupLock = NSLock()
@@ -132,7 +136,8 @@ class LightningService: NodeLifecycleService {
         #endif
 
         let builder = Builder.fromConfig(config: config)
-        builder.setCustomLogger(logWriter: LdkLogWriter())
+        let monitor = NodeRuntimeMonitor()
+        builder.setCustomLogger(logWriter: LdkLogWriter(onRecord: monitor.onLog))
 
         let resolvedElectrumServerUrl = electrumServerUrl ?? Env.electrumServerUrl
 
@@ -186,6 +191,7 @@ class LightningService: NodeLifecycleService {
                 fixedHeaders: [:]
             )
         }
+        runtimeMonitor = monitor
         shouldReleaseLightningLock = false
 
         Logger.info("LDK node setup")
@@ -320,6 +326,8 @@ class LightningService: NodeLifecycleService {
         try await ServiceQueue.background(.ldk) {
             try Self.stopReleasingFinishedNode(node.stop)
         }
+        // Dropping the node shuts down its tokio runtime, so a backgrounded app with detached work exits before that.
+        runtimeExitGuard.nodeStopped(hasDetachedWork: runtimeMonitor.hasDetachedWork)
         self.node = nil
 
         if clearEventCallback {
@@ -1850,5 +1858,86 @@ extension LightningService {
 
             return ProbeDispatch(paymentIds: Set(handles.map(\.paymentId)))
         }
+    }
+}
+
+/// Flags a node whose stop timed out and left tracked tasks detached on its tokio runtime.
+///
+/// ldk-node reports this only through its log, as an `error` from `ldk_node::runtime` starting with "Detaching" (background
+/// tasks, cancellable background tasks, or the event processor).
+final class NodeRuntimeMonitor {
+    private static let runtimeModule = "ldk_node::runtime"
+    private static let detachingPrefix = "Detaching "
+
+    private let lock = NSLock()
+    private var detached = false
+
+    var hasDetachedWork: Bool {
+        lock.withLock { detached }
+    }
+
+    func onLog(_ record: LogRecord) {
+        guard record.level == .error,
+              record.modulePath.hasPrefix(Self.runtimeModule),
+              record.args.hasPrefix(Self.detachingPrefix)
+        else { return }
+        lock.withLock { detached = true }
+    }
+}
+
+/// Ends the process before a stopped node's runtime can abort the app (synonymdev/bitkit-android#1536).
+///
+/// When a stop leaves tasks detached, dropping the node shuts down its tokio runtime underneath them, and the first one that
+/// resumes (a VSS write returning, or the app resuming from suspension) polls a timer on the dead runtime and aborts with
+/// "A Tokio 1.x context was found, but it is being shutdown." In the background the process exits before the node is dropped,
+/// so the runtime never shuts down. In the foreground the node is still dropped, since exiting would close the app in front of
+/// the user, and the process exits once the app next enters the background, before it is suspended.
+final class DetachedRuntimeExitGuard {
+    private let exitProcess: () -> Void
+    private let lock = NSLock()
+    private var isInBackground = false
+    private var exitPending = false
+
+    init(exitProcess: @escaping () -> Void = DetachedRuntimeExitGuard.exitWithoutTeardown) {
+        self.exitProcess = exitProcess
+    }
+
+    func nodeStopped(hasDetachedWork: Bool) {
+        guard hasDetachedWork else { return }
+        let exitNow = lock.withLock {
+            exitPending = true
+            return isInBackground
+        }
+        if exitNow {
+            exit(reason: "node stop left ldk_node tasks detached while in background")
+        } else {
+            Logger.warn("Node stop left ldk_node tasks detached, exiting when the app enters the background", context: "LightningService")
+        }
+    }
+
+    func appEnteredBackground() {
+        let exitNow = lock.withLock {
+            isInBackground = true
+            return exitPending
+        }
+        if exitNow {
+            exit(reason: "app entered the background after a node stop left ldk_node tasks detached")
+        }
+    }
+
+    func appBecameActive() {
+        lock.withLock { isInBackground = false }
+    }
+
+    private func exit(reason: String) {
+        Logger.warn("Exiting process: \(reason)", context: "LightningService")
+        exitProcess()
+    }
+
+    /// `_exit` skips atexit handlers and static destructors, so no native teardown touches the live runtime.
+    static func exitWithoutTeardown() {
+        try? StateLocker.unlock(.lightning)
+        Logger.queue.sync {}
+        _exit(0)
     }
 }

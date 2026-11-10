@@ -1399,10 +1399,12 @@ struct AppScene: View {
                 isPinVerified = false
             }
             hwWalletManager.onAppBackgrounded()
+            LightningService.shared.runtimeExitGuard.appEnteredBackground()
         }
 
         // `.inactive` is left alone: the iOS Bluetooth pairing alert puts the app there mid-connect.
         if newPhase == .active {
+            LightningService.shared.runtimeExitGuard.appBecameActive()
             if wipeCoordinator.isGateUp {
                 wipeCoordinator.retry()
                 guard !wipeCoordinator.isGateUp else { return }
