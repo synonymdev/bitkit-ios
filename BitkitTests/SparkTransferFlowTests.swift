@@ -350,6 +350,24 @@ final class SparkTransferFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testANewAmountAfterAFollowedFundingIsANewTransfer() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
+        let attemptId = UUID()
+        flow.start(amountSats: 40000, isMaxAmount: false)
+        flow.quote = quote(instantMax: 3010)
+        flow.approveSwipe()
+        flow.bindApproval(to: attemptId, after: OnchainSendAttemptError.unresolved)
+        XCTAssertTrue(flow.followIfOwned(txid: "txid", attemptId: attemptId))
+        await flow.waitForClaim()
+
+        flow.start(amountSats: 40000, isMaxAmount: false)
+        XCTAssertEqual(flow.txid, "txid", "the transfer lost the funding it follows")
+        // The funding resolved while Spending Amount showed, and a new amount is a new transfer.
+        flow.start(amountSats: 50000, isMaxAmount: false)
+        XCTAssertNil(flow.txid, "an earlier funding stood in for a new transfer's swipe")
+    }
+
+    @MainActor
     func testAFundingWhoseOutcomeIsUnknownIsKeptNotFailed() {
         XCTAssertEqual(try TransferViewModel.fundedTxid(.accepted(txid: "txid")), "txid")
         XCTAssertThrowsError(try TransferViewModel.fundedTxid(.unknown(txid: "txid"))) { error in
