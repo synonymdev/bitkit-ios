@@ -944,7 +944,8 @@ class LightningService: NodeLifecycleService {
     /// Note: Uses cached channels for fast, non-blocking checks
     @MainActor
     func canSend(amountSats: UInt64) -> Bool {
-        if let rail = channelFreeRail, rail.isReady, rail.sendableSats >= amountSats, !canSendWithChannels(amountSats: amountSats) {
+        // An amountless invoice still needs funds on Spark, as the channels need capacity above the amount.
+        if let rail = channelFreeRail, rail.isReady, rail.sendableSats >= max(1, amountSats), !canSendWithChannels(amountSats: amountSats) {
             return true
         }
         return canSendWithChannels(amountSats: amountSats)

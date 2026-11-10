@@ -424,6 +424,14 @@ extension ChannelFreeRailTests {
         XCTAssertFalse(Bitkit.LightningService.shared.canSend(amountSats: 100_000))
     }
 
+    func testAnAmountlessInvoiceNeedsSparkToHoldFunds() {
+        rail.balanceSats = 0
+        XCTAssertFalse(Bitkit.LightningService.shared.canSend(amountSats: 0), "An empty Spark wallet offered Spending for an amountless invoice")
+
+        rail.balanceSats = 10000
+        XCTAssertTrue(Bitkit.LightningService.shared.canSend(amountSats: 0))
+    }
+
     func testSendableSatsFitsTheFeeBesideTheAmount() {
         for balance: UInt64 in [0, 1, 400, 401, 9572, 100_000, 21_000_000] {
             let sendable = Bitkit.ChannelFreeRailFees.sendableSats(balanceSats: balance)
