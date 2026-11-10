@@ -239,7 +239,6 @@
 "lightning__spending_confirm__amount" = "Naar bestedingssaldo";
 "lightning__spending_confirm__total" = "Totaal";
 "lightning__spending_confirm__spending_fee" = "Spending fee";
-"lightning__spending_confirm__up_to" = "up to";
 "lightning__spending_confirm__instant_text" = "Ready in a few minutes";
 "lightning__spending_confirm__later" = "Later";
 "lightning__spending_confirm__later_text" = "After 3 confirmations, about 30 minutes";
