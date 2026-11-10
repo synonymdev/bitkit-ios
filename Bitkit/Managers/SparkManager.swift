@@ -598,7 +598,6 @@ final class SparkManager: ChannelFreeLightningRail {
         return !overflow && total <= balanceSats
     }
 
-    /// The SDK refuses an expired Lightning invoice before anything leaves the wallet, with the scanner's expiry copy.
     /// What a failure inside `sendPayment` means for the caller.
     nonisolated static func sendPaymentFailure(_ error: Error) -> Error {
         // The SDK checks the expiry again before sending, so an invoice that expired on the confirm screen left nothing.
@@ -613,9 +612,18 @@ final class SparkManager: ChannelFreeLightningRail {
         return error
     }
 
+    /// The SDK refuses an expired Lightning invoice before anything leaves the wallet, with the scanner's expiry copy.
     nonisolated static func expiredInvoiceRefusal(_ error: Error) -> ChannelFreeRailSendRefused? {
         guard case let SdkError.InvalidInput(message) = error, message.localizedCaseInsensitiveContains("invoice has expired") else { return nil }
         return ChannelFreeRailSendRefused(reason: t("other__scan__error__expired"))
+    }
+
+    nonisolated func hasSynced(after seconds: UInt64?) async -> Bool {
+        guard let info = try? await requireSdk().getInfo(request: GetInfoRequest(ensureSynced: false)),
+              info.lastSyncError == nil
+        else { return false }
+        guard let seconds else { return true }
+        return info.lastSyncedAt.map { $0 > seconds } ?? false
     }
 
     nonisolated func lightningPayments() async throws -> [ChannelFreeRailPayment] {
