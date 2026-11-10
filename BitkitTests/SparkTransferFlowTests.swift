@@ -27,10 +27,11 @@ final class SparkTransferFlowTests: XCTestCase {
         )
     }
 
-    func testInstantClaimedBySdkAddsIt() {
+    func testInstantClaimedBySdkShowsAddingUntilSparkListsItClaimed() {
         XCTAssertEqual(
             SparkClaimDecision.onOffer(.automatic(feeSats: 300, confirmations: 0), speed: .instant, ceilingSats: ceiling),
-            .added
+            .adding,
+            "Success showed before Spark claimed the deposit"
         )
     }
 

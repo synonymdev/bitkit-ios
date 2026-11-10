@@ -102,7 +102,8 @@ enum SparkClaimDecision {
         guard speed == .instant else { return .later }
         switch kind {
         case .automatic:
-            return .added
+            // Spark claims it by itself; success shows once it lists the deposit as claimed (`noteSettled`).
+            return .adding
         case .standard:
             return .unavailable
         case let .choice(earlyFeeSats, _, _, _):
