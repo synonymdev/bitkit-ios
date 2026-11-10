@@ -339,7 +339,21 @@ extension ChannelFreeRailTests {
         await assertRefusedAsDuplicate()
     }
 
-    func testNodeHashesListedAsFailedAreTrimmedPastTheCap() async throws {
+    func testANodeHashListedOnlyAsFailedIsDropped() async throws {
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        defer { service.nodePayments = nodePayments }
+        service.recordLdkAttempt(paymentHash: Self.otherHash(1))
+        service.nodePayments = { [Self.nodePayment(Self.otherHash(1), status: .failed)] }
+        rail.balanceSats = 100_000
+
+        _ = try await service.send(bolt11: Self.invoice)
+
+        let kept = service.railAttemptsStore.stringArray(forKey: Self.ldkAttemptsKey) ?? []
+        XCTAssertFalse(kept.contains(Self.otherHash(1)), "A node hash listed only as failed was kept")
+    }
+
+    func testNodeHashesListedOnlyAsFailedAreDroppedPastTheCapToo() async throws {
         let service = Bitkit.LightningService.shared
         let nodePayments = service.nodePayments
         defer { service.nodePayments = nodePayments }
@@ -352,9 +366,7 @@ extension ChannelFreeRailTests {
         _ = try await service.send(bolt11: Self.invoice)
 
         let kept = service.railAttemptsStore.stringArray(forKey: Self.ldkAttemptsKey) ?? []
-        XCTAssertEqual(kept.count, 500, "Failed node hashes stayed past the cap")
-        XCTAssertEqual(kept.first, Self.otherHash(0), "The pending node hash was dropped")
-        XCTAssertFalse(kept.contains(Self.otherHash(1)), "The oldest failed node hash was kept")
+        XCTAssertEqual(kept, [Self.otherHash(0)], "Failed node hashes stayed, or the pending one was dropped")
     }
 
     func testANodeRetryRecordedDuringAnOlderListingSurvivesItsTrim() async throws {
@@ -374,8 +386,7 @@ extension ChannelFreeRailTests {
         _ = try await service.send(bolt11: Self.invoice)
 
         let kept = service.railAttemptsStore.stringArray(forKey: Self.ldkAttemptsKey) ?? []
-        XCTAssertEqual(kept.count, 500, "Failed node hashes stayed past the cap")
-        XCTAssertEqual(kept.last, retried, "The retry in flight was dropped by a trim from an older listing")
+        XCTAssertEqual(kept, [retried], "Failed node hashes stayed, or an older listing dropped the retry in flight")
     }
 
     func testAPendingNodePaymentBehindTheCapOfFailedOnesStillHoldsSparkWhileTheNodeCantList() async throws {

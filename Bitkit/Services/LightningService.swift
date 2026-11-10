@@ -130,6 +130,10 @@ class LightningService: NodeLifecycleService {
     private var attemptRails: [String: LightningPaymentRail] = [:]
     /// Payment hashes inside a rail send, which Spark lists only once it returns.
     private var railSendsInFlight: Set<String> = []
+    /// Counts node attempts recorded in this run, so a listing drops a hash it shows only as failed just when the hash
+    /// was recorded before the listing was read, never a retry recorded while it was read.
+    private var ldkAttemptRecords = 0
+    private var ldkAttemptRecordedAt: [String: Int] = [:]
     weak var channelFreeRail: ChannelFreeLightningRail?
     var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
     var onchainTransactionReceived: (@Sendable (String) async -> Void)?
@@ -370,9 +374,7 @@ class LightningService: NodeLifecycleService {
 
         await refreshChannelCache()
         await refreshCache()
-        if let payments = await nodePayments() {
-            keepLdkAttempts(from: payments)
-        }
+        _ = await listNodePaymentsKeepingAttempts()
 
         Logger.info("Node started")
     }
@@ -1167,6 +1169,10 @@ class LightningService: NodeLifecycleService {
             hashes.removeAll { $0 == paymentHash }
             hashes.append(paymentHash)
             railAttemptsStore.set(hashes, forKey: key)
+            if key == Self.ldkAttemptsKey {
+                ldkAttemptRecords += 1
+                ldkAttemptRecordedAt[paymentHash] = ldkAttemptRecords
+            }
             var expiries = attemptExpiries(key: key)
             expiries[paymentHash] = expiresAt
             railAttemptsStore.set(expiries, forKey: Self.expiriesKey(key))
@@ -1210,12 +1216,18 @@ class LightningService: NodeLifecycleService {
 
     /// Callers hold `eventCallbackLock`.
     private func removeAttempt(paymentHash hash: String, key: String) {
-        guard var hashes = railAttemptsStore.stringArray(forKey: key), hashes.contains(hash) else { return }
-        hashes.removeAll { $0 == hash }
+        removeAttempts([hash], key: key)
+    }
+
+    /// Callers hold `eventCallbackLock`.
+    private func removeAttempts(_ removed: Set<String>, key: String) {
+        guard var hashes = railAttemptsStore.stringArray(forKey: key), hashes.contains(where: removed.contains) else { return }
+        hashes.removeAll { removed.contains($0) }
         railAttemptsStore.set(hashes, forKey: key)
-        var expiries = attemptExpiries(key: key)
-        expiries[hash] = nil
-        railAttemptsStore.set(expiries, forKey: Self.expiriesKey(key))
+        railAttemptsStore.set(attemptExpiries(key: key).filter { !removed.contains($0.key) }, forKey: Self.expiriesKey(key))
+        if key == Self.ldkAttemptsKey {
+            removed.forEach { ldkAttemptRecordedAt[$0] = nil }
+        }
     }
 
     private func hasRailAttempt(paymentHash: String) -> Bool {
@@ -1241,13 +1253,23 @@ class LightningService: NodeLifecycleService {
         eventCallbackLock.withLock {
             railAttemptsStore.removeObject(forKey: Self.ldkAttemptsKey)
             railAttemptsStore.removeObject(forKey: Self.expiriesKey(Self.ldkAttemptsKey))
+            ldkAttemptRecordedAt = [:]
             railAttemptsStore.set(true, forKey: Self.ldkAttemptsSeededKey)
         }
     }
 
+    /// The node's payments, after keeping its attempts from them; nil while the node can't list them.
+    private func listNodePaymentsKeepingAttempts() async -> [PaymentDetails]? {
+        let recordsBefore = eventCallbackLock.withLock { ldkAttemptRecords }
+        guard let payments = await nodePayments() else { return nil }
+        keepLdkAttempts(from: payments, recordsBefore: recordsBefore)
+        return payments
+    }
+
     /// Keeps the hashes of the node's pending and paid outbound payments, once, so those made before hashes were kept
-    /// hold Spark while the node can't list them, then trims only paid and failed ones past the limit.
-    private func keepLdkAttempts(from payments: [PaymentDetails]) {
+    /// hold Spark while the node can't list them. Then drops the ones listed only as failed that were recorded before
+    /// the listing was read (`recordsBefore`), and trims paid ones past the limit.
+    private func keepLdkAttempts(from payments: [PaymentDetails], recordsBefore: Int) {
         let outbound = payments.filter { $0.direction == .outbound }
         let sends = outbound
             .filter { $0.status != .failed }
@@ -1260,7 +1282,9 @@ class LightningService: NodeLifecycleService {
                 railAttemptsStore.set(seeded + kept, forKey: Self.ldkAttemptsKey)
                 railAttemptsStore.set(true, forKey: Self.ldkAttemptsSeededKey)
             }
-            trimSettledAttempts(paid: hashes(.succeeded), failed: hashes(.failed), key: Self.ldkAttemptsKey)
+            let failedOnly = hashes(.failed).subtracting(hashes(.succeeded)).subtracting(hashes(.pending))
+            removeAttempts(failedOnly.filter { ldkAttemptRecordedAt[$0, default: 0] <= recordsBefore }, key: Self.ldkAttemptsKey)
+            trimSettledAttempts(paid: hashes(.succeeded), failed: [], key: Self.ldkAttemptsKey)
         }
     }
 
@@ -1290,8 +1314,7 @@ class LightningService: NodeLifecycleService {
         guard let paymentHash else { return nil }
         var statuses: [PaymentStatus] = rails.contains(.channelFree) && isRailSendInFlight(paymentHash: paymentHash) ? [.pending] : []
         if rails.contains(.ldk) {
-            if let payments = await nodePayments() {
-                keepLdkAttempts(from: payments)
+            if let payments = await listNodePaymentsKeepingAttempts() {
                 let payment = payments.first {
                     $0.direction == .outbound && $0.id.caseInsensitiveCompare(paymentHash) == .orderedSame
                 }
