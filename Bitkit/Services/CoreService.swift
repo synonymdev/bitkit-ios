@@ -2620,7 +2620,8 @@ class CoreService {
 }
 
 /// The contact a Lightning send pays, remembered by payment hash before it goes out.
-struct SentPaymentContacts {
+/// Shared across actors: every read-modify-write holds `lock`.
+struct SentPaymentContacts: @unchecked Sendable {
     private static let key = "sentPaymentContacts"
     /// `remember` runs on the main actor and `forget` on the core queue, so each read-modify-write holds this.
     private static let lock = NSLock()
