@@ -175,7 +175,7 @@ struct SpendingConfirm: View {
             throw SpendingFeesIncreasedError()
         } catch {
             if let attemptId = await OnchainSendAttemptService.shared.unresolvedSparkFundingAttemptId() {
-                flow.bindApproval(to: attemptId)
+                flow.bindApproval(to: attemptId, after: error)
             }
             Logger.error("Failed to transfer to spending: \(error)", context: "SpendingConfirm")
             app.toast(

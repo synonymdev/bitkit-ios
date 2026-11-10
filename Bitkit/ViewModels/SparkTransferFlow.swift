@@ -303,6 +303,16 @@ final class SparkTransferFlow {
         approvals[attemptId] = approved
     }
 
+    /// Ties the approval to the unresolved funding only when the swipe that failed with `error` created it. A swipe
+    /// refused before that, as blocked by or a duplicate of an earlier funding, finds the earlier one unresolved, and
+    /// after a relaunch nothing is tied to it yet, so its early claim must still ask.
+    func bindApproval(to attemptId: UUID, after error: Error) {
+        switch error {
+        case OnchainSendAttemptError.blocked, OnchainSendAttemptError.duplicate: return
+        default: bindApproval(to: attemptId)
+        }
+    }
+
     /// Starts the claim of a funding whose outcome was unknown at the swipe, at the ceiling and speed then approved; with
     /// nothing approved for that funding, an early claim asks first.
     func onRecoveredBroadcast(txid: String, attemptId: UUID) {

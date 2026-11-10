@@ -285,6 +285,35 @@ final class SparkTransferFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testASwipeRefusedForAnOlderFundingAfterARelaunchLeavesItsEarlyClaimAsking() async {
+        // After a relaunch nothing is tied to the older funding still unresolved, which refuses the new swipe.
+        let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
+        let older = UUID()
+        flow.quote = quote(instantMax: 3010)
+        flow.approveSwipe()
+        flow.bindApproval(to: older, after: OnchainSendAttemptError.blocked(nil))
+
+        flow.onRecoveredBroadcast(txid: "txid", attemptId: older)
+        await flow.waitForClaim()
+
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 800), "The older funding claimed early at the refused swipe's ceiling")
+    }
+
+    @MainActor
+    func testASwipeWhoseFundingIsLeftUnresolvedTiesItsApprovalToIt() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
+        let attemptId = UUID()
+        flow.quote = quote(instantMax: 3010)
+        flow.approveSwipe()
+        flow.bindApproval(to: attemptId, after: OnchainSendAttemptError.unresolved)
+
+        flow.onRecoveredBroadcast(txid: "txid", attemptId: attemptId)
+        await flow.waitForClaim()
+
+        XCTAssertEqual(flow.claimState, .adding, "The funding this swipe left unresolved lost the approval it gave")
+    }
+
+    @MainActor
     func testARecoveredFundingWithNoApprovalAsksBeforeAnEarlyClaim() async {
         let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
         flow.quote = quote(instantMax: 3010)
