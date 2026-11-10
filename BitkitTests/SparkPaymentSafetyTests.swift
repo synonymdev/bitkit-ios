@@ -296,6 +296,28 @@ final class SparkPaymentSafetyTests: XCTestCase {
         XCTAssertEqual(service.railAttemptsStore.stringArray(forKey: "channelFreeRailAttemptedPaymentHashes"), ["retried"])
     }
 
+    func testASparkRetryInFlightWhenTheSyncReadsSparksListKeepsItsHoldAfterItEnds() async throws {
+        let service = Bitkit.LightningService.shared
+        let store = service.railAttemptsStore
+        service.railAttemptsStore = try XCTUnwrap(UserDefaults(suiteName: "SparkPaymentSafetyTests"))
+        service.forgetRailAttempts()
+        defer {
+            service.endRailSend(paymentHash: "retried")
+            service.forgetRailAttempts()
+            service.railAttemptsStore = store
+        }
+        service.recordRailAttempt(paymentHash: "retried")
+        XCTAssertTrue(service.beginRailSend(paymentHash: "retried"))
+
+        await SparkManager.releaseFailedSendHolds {
+            // The retry recorded before this list ends while the list, which still shows it failed, is read.
+            service.endRailSend(paymentHash: "retried")
+            return [self.lightningPayment(type: .send, status: .failed, hash: "retried")]
+        }
+
+        XCTAssertEqual(service.railAttemptsStore.stringArray(forKey: "channelFreeRailAttemptedPaymentHashes"), ["retried"])
+    }
+
     private func lightningPayment(
         type: PaymentType,
         status: BreezSdkSpark.PaymentStatus,

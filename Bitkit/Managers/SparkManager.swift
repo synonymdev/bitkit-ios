@@ -825,12 +825,12 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// Releases the holds of the sends Spark's list shows failed. The list is read after the activities were recorded,
-    /// so a retry the user started meanwhile keeps its hold, as does one recorded while the list is read.
+    /// so a retry the user started meanwhile keeps its hold, as does one recorded or ending while the list is read.
     static func releaseFailedSendHolds(listPayments: () async throws -> [Payment]) async {
-        let recordsBefore = LightningService.shared.attemptRecordCount
+        let mark = LightningService.shared.attemptMark
         guard let latest = try? await listPayments() else { return }
         for paymentHash in failedSendHashes(latest) {
-            LightningService.shared.releaseRailAttempt(paymentHash: paymentHash, recordedBy: recordsBefore)
+            LightningService.shared.releaseRailAttempt(paymentHash: paymentHash, since: mark)
         }
     }
 

@@ -429,6 +429,42 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(kept, [hash, Self.otherHash(1)], "An older listing dropped the hold of a Spark retry")
     }
 
+    func testASparkRetryInFlightWhenAnOlderListingIsReadKeepsItsHoldAfterItEnds() async {
+        let service = Bitkit.LightningService.shared
+        let retried = Self.otherHash(1)
+        service.recordRailAttempt(paymentHash: retried)
+        XCTAssertTrue(service.beginRailSend(paymentHash: retried))
+        // A Spark retry recorded before this listing ends while the listing, which still shows it failed, is read.
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: retried, direction: .outbound, status: .failed, preimage: nil)]
+        rail.onList = { service.endRailSend(paymentHash: retried) }
+        rail.balanceSats = 0
+
+        await assertReachesTheNode()
+
+        let kept = service.railAttemptsStore.stringArray(forKey: Self.railAttemptsKey) ?? []
+        XCTAssertEqual(kept, [retried], "An older listing dropped the hold of a Spark retry that ended while it was read")
+    }
+
+    func testANodeRetryInFlightWhenAnOlderListingIsReadKeepsItsHoldAfterItEnds() async throws {
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        defer { service.nodePayments = nodePayments }
+        let retried = Self.otherHash(0)
+        service.recordLdkAttempt(paymentHash: retried)
+        service.beginLdkSend(paymentHash: retried)
+        // A node retry recorded before this listing ends while the listing, which still shows it failed, is read.
+        service.nodePayments = {
+            service.endLdkSend(paymentHash: retried)
+            return [Self.nodePayment(retried, status: .failed)]
+        }
+        rail.balanceSats = 100_000
+
+        _ = try await service.send(bolt11: Self.invoice)
+
+        let kept = service.railAttemptsStore.stringArray(forKey: Self.ldkAttemptsKey) ?? []
+        XCTAssertEqual(kept, [retried], "An older listing dropped the hold of a node retry that ended while it was read")
+    }
+
     func testSendsNoListingShowsAreDroppedOnceTheirInvoiceExpiredPastTheSettleWindow() async throws {
         let service = Bitkit.LightningService.shared
         let nodePayments = service.nodePayments
