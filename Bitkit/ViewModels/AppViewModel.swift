@@ -680,6 +680,18 @@ extension AppViewModel {
         }
     }
 
+    /// Fails a pending send whose payment can no longer settle, as the payment's own failure event would.
+    func failPendingPayment(_ hash: String) {
+        guard pendingPaymentHashes.remove(hash) != nil else { return }
+        sendSheetPendingResolution = SendSheetPendingResolution(paymentHash: hash, success: false, failureReason: nil)
+        toast(
+            type: .error,
+            title: t("wallet__toast_payment_failed_title"),
+            description: t("wallet__payment_failed_description"),
+            accessibilityIdentifier: "PaymentFailedToast"
+        )
+    }
+
     func addPendingContactPaymentContext(_ hash: String, context: ContactPaymentContext?) {
         guard let context else { return }
         pendingContactPaymentContexts[hash] = context

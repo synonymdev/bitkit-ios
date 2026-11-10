@@ -1400,8 +1400,6 @@ struct SendConfirmationView: View {
             )
         }
         var createdMetadataPaymentId: String?
-        let eventId = "swap-route-\(quote.quoteId)"
-        defer { wallet.removeOnEvent(id: eventId) }
         do {
             // The quote must deliver the amount the user confirmed.
             guard quote.deliveredSat == wallet.sendAmountSats else { throw PaykitPaymentRequestError.amountMismatch }
@@ -1413,57 +1411,17 @@ struct SendConfirmationView: View {
             let paymentHash = holdInvoice.paymentHash.hex
             createdMetadataPaymentId = paymentHash
             await createPreActivityMetadata(paymentId: paymentHash, paymentHash: paymentHash)
-            // A failed hold payment ends the wait at once instead of polling the swap until the claim timeout.
-            var holdFailure: Error?
-            var claim: Task<String, Error>?
-            wallet.addOnEvent(id: eventId) { event in
-                guard case let .paymentFailed(_, failedHash, reason) = event, failedHash == paymentHash else { return }
-                holdFailure = AppError(paymentFailureReason: reason)
-                claim?.cancel()
-            }
             // The hold invoice settles only after the claim reveals the preimage, so its payment stays pending until then.
             _ = try await LightningService.shared.send(bolt11: payment.invoice)
-            if let holdFailure {
-                throw holdFailure
+            // The hold payment's tags stay with it from here.
+            createdMetadataPaymentId = nil
+            // The provider settles the hold payment once it sees the claim, so the send waits on it like a pending
+            // Lightning payment. Pending has no way back to Amount, where a fresh quote could pay the contact twice.
+            app.addPendingPaymentHash(paymentHash, contactPaymentContext: contactPaymentContext)
+            if isSendCurrent() {
+                navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .amount, paymentRequest: payment.invoice))
             }
-            let claimTask = Task { try await PubkySwapsRouteService.awaitClaim(swapId: payment.swapId) }
-            claim = claimTask
-            let claimTxid: String
-            do {
-                claimTxid = try await claimTask.value
-            } catch {
-                if let holdFailure {
-                    throw holdFailure
-                }
-                // The hold payment is still in flight, so its tags stay.
-                createdMetadataPaymentId = nil
-                guard Self.isDefiniteSwapFailure(error) else {
-                    // The provider may still settle the hold payment, so a fresh one could pay the contact twice: the
-                    // pending screen waits for this one while the swap keeps advancing in the background.
-                    Logger.warn("Pubky Swaps route \(payment.swapId) outcome unknown: \(error)", context: "SendConfirmation")
-                    app.addPendingPaymentHash(paymentHash, contactPaymentContext: contactPaymentContext)
-                    guard isSendCurrent() else {
-                        app.toast(type: .info, title: t("wallet__send_pending"), description: t("wallet__send_pending_note"))
-                        return
-                    }
-                    navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .amount, paymentRequest: payment.invoice))
-                    return
-                }
-                throw error
-            }
-            Logger.info("Claimed Pubky Swaps route \(payment.swapId) in \(claimTxid)", context: "SendConfirmation")
-            // The claim pays the contact's address: the wallet's own record of the payment is the hold invoice's debit.
-            await syncContactForActivity(paymentId: paymentHash, contactPaymentContext: contactPaymentContext)
-            guard isSendCurrent() else {
-                app.toast(
-                    type: .lightning,
-                    title: t("wallet__toast_payment_success_title"),
-                    description: t("wallet__toast_payment_success_description"),
-                    accessibilityIdentifier: "PaymentSuccessToast"
-                )
-                return
-            }
-            navigationPath.append(.success(paymentId: paymentHash))
+            driveSwapClaim(payment, paymentHash: paymentHash, contactPaymentContext: contactPaymentContext, isSendCurrent: isSendCurrent)
         } catch {
             Logger.error("Pubky Swaps route payment failed: \(error)", context: "SendConfirmation")
             if let paymentId = createdMetadataPaymentId {
@@ -1489,6 +1447,48 @@ struct SendConfirmationView: View {
                 routingCacheResetAttempted: routingCacheResetAttempted,
                 paymentRequest: nil
             )))
+        }
+    }
+
+    /// Drives a paid swap to its claim; the hold payment's own events finish the send.
+    private func driveSwapClaim(
+        _ payment: PubkySwapRoutePayment,
+        paymentHash: String,
+        contactPaymentContext: ContactPaymentContext?,
+        isSendCurrent: @escaping () -> Bool
+    ) {
+        let eventId = "swap-route-\(payment.swapId)"
+        let claim = Task { try await PubkySwapsRouteService.awaitClaim(swapId: payment.swapId) }
+        // A failed hold payment ends the wait at once instead of polling the swap until the claim timeout.
+        wallet.addOnEvent(id: eventId) { event in
+            guard case let .paymentFailed(_, failedHash, _) = event, failedHash == paymentHash else { return }
+            claim.cancel()
+        }
+        Task { @MainActor in
+            defer { wallet.removeOnEvent(id: eventId) }
+            do {
+                let claimTxid = try await claim.value
+                Logger.info("Claimed Pubky Swaps route \(payment.swapId) in \(claimTxid)", context: "SendConfirmation")
+                // The claim pays the contact's address: the wallet's own record of the payment is the hold invoice's debit.
+                await syncContactForActivity(paymentId: paymentHash, contactPaymentContext: contactPaymentContext)
+            } catch {
+                // A failed hold payment cancels the wait, and its tags go with it.
+                if error is CancellationError {
+                    try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: paymentHash)
+                }
+                guard Self.isDefiniteSwapFailure(error) else {
+                    // The hold payment failed, or the wait ran out while the provider may still settle it.
+                    Logger.warn("Pubky Swaps route \(payment.swapId) not claimed: \(error)", context: "SendConfirmation")
+                    return
+                }
+                // A failed swap never reveals the preimage, so its hold payment cannot settle and a retry is safe.
+                Logger.error("Pubky Swaps route \(payment.swapId) failed: \(error)", context: "SendConfirmation")
+                try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: paymentHash)
+                if isSendCurrent() {
+                    app.paykitSwapRoute?.quote = nil
+                }
+                app.failPendingPayment(paymentHash)
+            }
         }
     }
 
