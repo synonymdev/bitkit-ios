@@ -82,7 +82,12 @@ struct AppStatusHelper {
     /// Nil where Spark is unsupported.
     static func sparkStatus(network: NetworkMonitor) -> HealthStatus? {
         let spark = SparkManager.shared
-        return sparkStatus(isOnline: network.isConnected, isSupported: spark.isSupported, isReady: spark.isReady)
+        return sparkStatus(
+            isOnline: network.isConnected,
+            isSupported: spark.isSupported,
+            isReady: spark.isReady,
+            hasStartFailed: spark.hasStartFailed
+        )
     }
 
     /// Spark carries Lightning when no channel can, so the connection is ready through it; red only when neither can pay.
@@ -105,15 +110,18 @@ struct AppStatusHelper {
         }
     }
 
-    /// No channel can carry a payment, so Spark carries Lightning.
+    /// No channel is usable, so Spark carries Lightning payments.
     nonisolated static func isLightningViaSpark(isOnline: Bool, hasUsableChannels: Bool, isSparkReady: Bool) -> Bool {
         isOnline && !hasUsableChannels && isSparkReady
     }
 
-    nonisolated static func sparkStatus(isOnline: Bool, isSupported: Bool, isReady: Bool) -> HealthStatus? {
+    nonisolated static func sparkStatus(isOnline: Bool, isSupported: Bool, isReady: Bool, hasStartFailed: Bool) -> HealthStatus? {
         guard isSupported else { return nil }
         guard isOnline else { return .error }
-        return isReady ? .ready : .pending
+        if isReady {
+            return .ready
+        }
+        return hasStartFailed ? .error : .pending
     }
 
     static func combinedAppStatus(from wallet: WalletViewModel, network: NetworkMonitor) -> HealthStatus {

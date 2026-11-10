@@ -3,13 +3,17 @@ import XCTest
 
 final class AppStatusHelperTests: XCTestCase {
     func testSparkStatusIsNilWhenSparkIsUnsupported() {
-        XCTAssertNil(AppStatusHelper.sparkStatus(isOnline: true, isSupported: false, isReady: true))
+        XCTAssertNil(AppStatusHelper.sparkStatus(isOnline: true, isSupported: false, isReady: true, hasStartFailed: false))
     }
 
     func testSparkStatusMapsToReadyPendingAndError() {
-        XCTAssertEqual(AppStatusHelper.sparkStatus(isOnline: true, isSupported: true, isReady: true), .ready)
-        XCTAssertEqual(AppStatusHelper.sparkStatus(isOnline: true, isSupported: true, isReady: false), .pending)
-        XCTAssertEqual(AppStatusHelper.sparkStatus(isOnline: false, isSupported: true, isReady: true), .error)
+        XCTAssertEqual(AppStatusHelper.sparkStatus(isOnline: true, isSupported: true, isReady: true, hasStartFailed: false), .ready)
+        XCTAssertEqual(AppStatusHelper.sparkStatus(isOnline: true, isSupported: true, isReady: false, hasStartFailed: false), .pending)
+        XCTAssertEqual(AppStatusHelper.sparkStatus(isOnline: false, isSupported: true, isReady: true, hasStartFailed: false), .error)
+    }
+
+    func testSparkStatusIsErrorWhenItsStartFailed() {
+        XCTAssertEqual(AppStatusHelper.sparkStatus(isOnline: true, isSupported: true, isReady: false, hasStartFailed: true), .error)
     }
 
     func testChannelsStatusIsReadyThroughSparkWhenNoChannelIsUsable() {

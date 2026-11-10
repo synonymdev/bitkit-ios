@@ -891,6 +891,11 @@
 "settings__status__lightning_connection__ready" = "Obrir";
 "settings__status__lightning_connection__pending" = "Obrint ...";
 "settings__status__lightning_connection__error" = "No hi ha connexions obertes";
+"settings__status__lightning_connection__spark" = "Utilitzant Spark";
+"settings__status__spark__title" = "Spark";
+"settings__status__spark__ready" = "Connectat";
+"settings__status__spark__pending" = "Conectant ...";
+"settings__status__spark__error" = "Fora de línia";
 "settings__status__backup__title" = "Última còpia de seguretat completa de dades";
 "settings__status__backup__error" = "No s\'ha pogut completar una còpia de seguretat completa";
 "settings__adv__section_debug" = "Debug";

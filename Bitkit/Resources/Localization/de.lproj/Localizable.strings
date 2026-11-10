@@ -952,6 +952,11 @@
 "settings__status__lightning_connection__ready" = "Geöffnet";
 "settings__status__lightning_connection__pending" = "In Vorbereitung...";
 "settings__status__lightning_connection__error" = "Keine offenen Verbindungen";
+"settings__status__lightning_connection__spark" = "Nutzt Spark";
+"settings__status__spark__title" = "Spark";
+"settings__status__spark__ready" = "Verbunden";
+"settings__status__spark__pending" = "Verbinden...";
+"settings__status__spark__error" = "Offline";
 "settings__status__backup__title" = "Vollständiges Backup";
 "settings__status__backup__ready" = "Abgeschlossen";
 "settings__status__backup__pending" = "In Bearbeitung...";

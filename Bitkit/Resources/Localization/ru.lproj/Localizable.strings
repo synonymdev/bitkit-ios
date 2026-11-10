@@ -949,6 +949,11 @@
 "settings__status__lightning_connection__ready" = "Открыто";
 "settings__status__lightning_connection__pending" = "Открытие...";
 "settings__status__lightning_connection__error" = "Нет открытых соединений";
+"settings__status__lightning_connection__spark" = "Через Spark";
+"settings__status__spark__title" = "Spark";
+"settings__status__spark__ready" = "Подключено";
+"settings__status__spark__pending" = "Подключение...";
+"settings__status__spark__error" = "Не в сети";
 "settings__status__backup__title" = "Последнее Полное Резервное Копирование Данных";
 "settings__status__backup__ready" = "Скопировано";
 "settings__status__backup__pending" = "Резервное копирование...";

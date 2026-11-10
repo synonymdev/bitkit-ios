@@ -38,6 +38,8 @@ final class SparkManager: ChannelFreeLightningRail {
     private nonisolated static let depositClaimFeePpm: UInt32 = 2000
 
     private(set) var isReady = false
+    /// The last start failed before Spark could read its state; the next start clears it.
+    private(set) var hasStartFailed = false
     private(set) var balanceSats: UInt64 = 0
     /// Deposits seen on-chain that Spark claims into `balanceSats` after 3 confirmations.
     private(set) var pendingDepositSats: UInt64 = 0
@@ -133,8 +135,10 @@ final class SparkManager: ChannelFreeLightningRail {
                 syncWallet: { _ = try await requireSdk().syncWallet(request: SyncWalletRequest()) },
                 syncActivities: { try await syncActivities() }
             )
+            hasStartFailed = false
         } catch {
             connectTask = nil
+            hasStartFailed = true
             Logger.error("Failed to start Spark wallet: \(error)", context: "SparkManager")
         }
     }
@@ -235,6 +239,7 @@ final class SparkManager: ChannelFreeLightningRail {
         refreshAgain = false
         activitiesSynced = false
         isReady = false
+        hasStartFailed = false
         balanceSats = 0
         pendingDepositSats = 0
         deposits = []
