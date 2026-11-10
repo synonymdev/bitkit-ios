@@ -661,9 +661,10 @@ final class SparkManager: ChannelFreeLightningRail {
         if let syncError = info.lastSyncError {
             Logger.warn("Spark's last sync failed: \(syncError)", context: "SparkManager")
         }
-        let unclaimed = try await sdk.listUnclaimedDeposits(request: ListUnclaimedDepositsRequest()).deposits
+        let listedUnclaimed = try await sdk.listUnclaimedDeposits(request: ListUnclaimedDepositsRequest()).deposits
         let payments = try await sdk.listPayments(request: ListPaymentsRequest()).payments
         let claimed = payments.filter { $0.method == .deposit && $0.status == .completed }
+        let unclaimed = Self.unclaimedDeposits(listedUnclaimed, claimed: claimed)
         let listedDeposits = await Self.deposits(unclaimed: unclaimed, claimed: claimed)
         // A wipe while this read was in flight leaves the state it cleared.
         guard self.sdk === sdk else { return }
@@ -687,6 +688,15 @@ final class SparkManager: ChannelFreeLightningRail {
         for txId in Self.transferTxIds(unclaimed: unclaimed, payments: payments) {
             await CoreService.shared.activity.markOnchainActivityAsTransfer(txId: txId)
         }
+    }
+
+    /// Spark can still list a deposit it already claimed early as unclaimed, so a claimed one is listed only as claimed.
+    nonisolated static func unclaimedDeposits(_ unclaimed: [DepositInfo], claimed: [Payment]) -> [DepositInfo] {
+        let claimedTxIds = Set(claimed.compactMap { payment -> String? in
+            guard case let .deposit(txId, _) = payment.details else { return nil }
+            return txId.lowercased()
+        })
+        return unclaimed.filter { !claimedTxIds.contains($0.txid.lowercased()) }
     }
 
     nonisolated static func withdrawals(_ payments: [Payment]) -> [SparkWithdrawal] {

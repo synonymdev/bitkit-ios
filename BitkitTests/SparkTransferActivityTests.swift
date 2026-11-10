@@ -20,6 +20,20 @@ final class SparkTransferActivityTests: XCTestCase {
         XCTAssertEqual(txIds, ["pending-deposit", "claimed-deposit", "withdrawal"])
     }
 
+    func testADepositClaimedEarlyIsListedOnlyAsClaimed() {
+        let deposits = ["claimed-early", "pending-deposit"].map {
+            DepositInfo(
+                txid: $0, vout: 0, amountSats: 7500, isMature: true,
+                refundTx: nil, refundTxId: nil, refundState: nil, claimError: nil, instantClaimStatus: nil, maxClaimFee: nil
+            )
+        }
+        let claimed = [payment(id: "1", status: .completed, details: .deposit(txId: "claimed-early", vout: 0))]
+
+        let unclaimed = SparkManager.unclaimedDeposits(deposits, claimed: claimed)
+
+        XCTAssertEqual(unclaimed.map(\.txid), ["pending-deposit"], "A deposit claimed early still shows as in progress")
+    }
+
     func testListsWithdrawalsWithWhatSparkKept() {
         let payments = [
             payment(id: "1", status: .completed, details: .withdraw(txId: "withdrawal", vout: 0, destinationAddress: "bcrt1qsavings"), fees: 1470),
