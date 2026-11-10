@@ -1,334 +1,78 @@
 name: e2e-tests
-run-name: >-
-  ${{ inputs.retarget_run && format('Retarget E2E for PR #{0}', inputs.pr) || github.event.pull_request.title || github.event.head_commit.message || github.workflow }}
-
+run-name: Four-case iOS diagnostics on the original app artifact
 on:
   workflow_dispatch:
     inputs:
       e2e_branch:
-        description: "Branch of synonymdev/bitkit-e2e-tests to use (main | default-feature-branch | custom branch name)"
-        required: false
-        default: "default-feature-branch"
-      pr:
-        description: "PR number to test as merged into master"
-        required: false
-        default: ""
-      merge_commit:
-        description: "Pinned PR merge commit for retarget validation"
-        default: ""
-      head_sha:
-        description: "PR head verified by the retarget dispatcher"
-        default: ""
-      app_branch:
-        description: "PR branch for selecting matching E2E coverage"
-        default: ""
-      check_run_id:
-        description: "PR check owned by this retarget validation"
-        default: ""
-      retarget_run:
-        description: "Retarget status owner (set by e2e-retarget.yml)"
-        default: ""
-      workflow_ref:
-        description: "Workflow source recorded for this validation generation"
-        default: master
-      helper_ref:
-        description: "Recovery helper branch or tag"
-        default: master
-  # PRs stacked on another branch run no E2E until they target master; e2e-retarget.yml starts it on retarget
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    branches: [master]
-
+        description: Exact diagnostics E2E commit SHA
+        required: true
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: ios-four-case-diagnostics-${{ github.ref }}
+  cancel-in-progress: false
 env:
   TERM: xterm-256color
   FORCE_COLOR: 1
   GIT_LFS_SKIP_SMUDGE: "1"
-
-concurrency:
-  group: e2e-tests-${{ github.event.pull_request.number || inputs.pr || github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  detect-changes:
-    if: github.event.pull_request.draft == false
-    runs-on: ubuntu-24.04
-    outputs:
-      code: ${{ (github.event_name == 'workflow_dispatch' && !inputs.pr) || steps.filter.outputs.code == 'true' }}
+  diagnostics:
+    runs-on: namespace-profile-mac
+    timeout-minutes: 150
+    env:
+      SIMULATOR_NAME: iPhone 17
+      SIMULATOR_OS_VERSION: "26.5"
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.merge_commit || (inputs.pr && format('refs/pull/{0}/merge', inputs.pr)) || '' }}
-          fetch-depth: 2
-      - name: Resolve tested PR merge commits
-        if: inputs.pr != ''
-        id: merge-base
-        run: |
-          echo "base=$(git rev-parse HEAD^1)" >> "$GITHUB_OUTPUT"
-          echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - uses: dorny/paths-filter@v4
-        # Retarget filters the exact tested merge against its first parent.
-        if: github.event_name == 'pull_request' || inputs.pr
-        id: filter
-        with:
-          base: ${{ steps.merge-base.outputs.base || 'master' }}
-          ref: ${{ steps.merge-base.outputs.head || '' }}
-          filters: |
-            code:
-              - 'Bitkit/**'
-              - 'BitkitNotification/**'
-              - 'Bitkit.xcodeproj/**'
-              - 'Package.swift'
-              - '.github/workflows/e2e-tests.yml'
-              - '.github/scripts/**'
-
-  build-local:
-    needs: detect-changes
-    # PR code must not publish dependency caches into the dispatch ref's scope.
-    cache-mode: read
-    permissions:
-      contents: read
-      packages: read
-      pull-requests: read
-      checks: write
-      actions: write
-    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
-    runs-on: macos-26
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.merge_commit || (inputs.pr && format('refs/pull/{0}/merge', inputs.pr)) || '' }}
-
-      - name: Checkout retarget reporter
-        if: inputs.retarget_run != ''
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.workflow_sha }}
-          path: retarget-ci
           sparse-checkout: .github/scripts
-      - name: Report retarget tests running
-        if: inputs.retarget_run != ''
-        uses: actions/github-script@v9
-        env:
-          RETARGET_CHECK_RUN_ID: ${{ inputs.check_run_id }}
-          RETARGET_RUN: ${{ inputs.retarget_run }}
-          RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
-          RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
-          RETARGET_PR: ${{ inputs.pr }}
-          RETARGET_HELPER_REF: ${{ inputs.helper_ref }}
-        with:
-          script: |
-            const {reportRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
-            await reportRetargetResult({github, context, core, name: 'e2e-status', phase: 'start'});
-
-      - name: Set up Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: "26.6"
-
-      - name: System Information
-        run: |
-          echo "=== System Information ==="
-          echo "macOS Version:"
-          sw_vers
-          echo ""
-          echo "Xcode Version:"
-          xcodebuild -version
-
-      - name: Verify current PR merge checkout
-        if: github.event_name == 'pull_request' || inputs.pr
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr }}
-        run: |
-          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]] || exit 1
-          tested=$(git rev-parse HEAD)
-          head=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq 'select(.base.ref == "master") | .head.sha')
-          base=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/master" --jq '.object.sha')
-          expected="$base $head"
-          actual=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tested" --jq '[.parents[].sha] | join(" ")')
-          if [[ ! "$expected" =~ ^[0-9a-f]{40}\ [0-9a-f]{40}$ || "$actual" != "$expected" ]]; then
-            echo "::error::Checked-out merge does not match the PR's current base and head"
-            exit 1
-          fi
-
-      - name: Install xcbeautify
-        run: |
-          brew install xcbeautify
-
-      - name: Swift packages
-        uses: ./.github/actions/swift-packages
-
-      - name: Pre-start simulator
-        run: |
-          echo "⏱️  Starting simulator at $(date)"
-          xcrun simctl boot "iPhone 17" || true
-          echo "✅ Simulator started at $(date)"
-
-      - name: Build iOS app (local)
-        env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CHATWOOT_API: ${{ secrets.CHATWOOT_API }}
-          SIMULATOR_NAME: "iPhone 17"
-          OS_VERSION: "26.5"
-        run: |
-          echo "=== Building iOS app (local) ==="
-          echo "Using simulator: $SIMULATOR_NAME (iOS $OS_VERSION)"
-
-          if xcodebuild -showsdks | grep -q "iOS Simulator"; then
-            echo "✅ iOS Simulator platform already installed"
-          else
-            echo "⚙️  iOS Simulator platform not found — downloading..."
-            xcodebuild -downloadPlatform iOS
-          fi
-
-          xcodebuild -workspace Bitkit.xcodeproj/project.xcworkspace \
-            -scheme Bitkit \
-            -configuration Debug \
-            -destination "platform=iOS Simulator,name=$SIMULATOR_NAME,OS=$OS_VERSION" \
-            -derivedDataPath DerivedData \
-            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
-            -disablePackageRepositoryCache \
-            -disableAutomaticPackageResolution \
-            -skipPackageUpdates \
-            SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG E2E_BUILD' \
-            TREZOR_BRIDGE=true \
-            TREZOR_BRIDGE_URL=http://127.0.0.1:21325 \
-            -allowProvisioningUpdates \
-            build
-
-      - name: Prepare app for E2E tests (local)
-        run: |
-          # Copy the .app bundle to the expected location and name
-          mkdir -p e2e-app
-          cp -r DerivedData/Build/Products/Debug-iphonesimulator/Bitkit.app e2e-app/bitkit.app
-
-      - name: Upload iOS app (local)
-        uses: actions/upload-artifact@v7
-        with:
-          name: bitkit-e2e-ios_${{ github.run_number }}
-          path: e2e-app/
-
-  e2e-branch:
-    needs: detect-changes
-    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
-    uses: synonymdev/bitkit-e2e-tests/.github/workflows/determine-e2e-branch.yml@main
-    with:
-      app_branch: ${{ inputs.app_branch || github.head_ref || github.ref_name }}
-      e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
-
-  e2e-tests-local:
-    cache-mode: read
-    permissions:
-      contents: read
-      packages: read
-      pull-requests: read
-      checks: write
-      actions: write
-    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
-    runs-on: namespace-profile-mac
-    needs: [detect-changes, build-local, e2e-branch]
-    env:
-      SIMULATOR_NAME: "iPhone 17"
-      SIMULATOR_OS_VERSION: "26.5"
-
-    strategy:
-      fail-fast: false
-      matrix:
-        shard:
-          # - { name: onboarding_backup_numberpad, grep: "@onboarding|@backup|@numberpad" }
-          # - { name: onchain_boost_receive_widgets, grep: "@onchain|@boost|@receive|@widgets" }
-          # - { name: settings, grep: "@settings" }
-          # - { name: security, grep: "@security" }
-          - { name: e2e, grep: '@ios_gate' }
-
-    name: e2e-tests-local - ${{ matrix.shard.name }}
-
-    steps:
-      - name: Checkout stack scripts
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.merge_commit || '' }}
-          sparse-checkout: .github/scripts
-
-      - name: Checkout retarget reporter
-        if: inputs.retarget_run != ''
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.workflow_sha }}
-          path: retarget-ci
-          sparse-checkout: .github/scripts
-      - name: Report retarget tests running
-        if: inputs.retarget_run != ''
-        uses: actions/github-script@v9
-        env:
-          RETARGET_CHECK_RUN_ID: ${{ inputs.check_run_id }}
-          RETARGET_RUN: ${{ inputs.retarget_run }}
-          RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
-          RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
-          RETARGET_PR: ${{ inputs.pr }}
-          RETARGET_HELPER_REF: ${{ inputs.helper_ref }}
-        with:
-          script: |
-            const {reportRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
-            await reportRetargetResult({github, context, core, name: 'e2e-status', phase: 'start'});
-
-      - name: Resolve E2E tests ref
-        id: e2e-ref
-        uses: synonymdev/bitkit-e2e-tests/.github/actions/resolve-e2e-ref@main
-        with:
-          selected: ${{ needs.e2e-branch.outputs.branch }}
-          e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
-
-      - name: Clone E2E tests
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-e2e-tests
+          ref: ${{ inputs.e2e_branch }}
           path: bitkit-e2e-tests
-          ref: ${{ steps.e2e-ref.outputs.ref }}
-
-      - name: Download iOS app
-        uses: actions/download-artifact@v8
+      - name: Verify exact inputs
+        env:
+          EXPECTED_E2E: ${{ inputs.e2e_branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$EXPECTED_E2E" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git -C bitkit-e2e-tests rev-parse HEAD)" = "$EXPECTED_E2E"
+          gh api repos/synonymdev/bitkit-ios/actions/artifacts/13763346131 > app-artifact.json
+          python3 - <<'PYTHON'
+          import json
+          a = json.load(open('app-artifact.json'))
+          assert a['id'] == 13763346131 and not a['expired']
+          assert a['name'] == 'bitkit-e2e-ios_4187'
+          assert a['workflow_run']['id'] == 42808207298
+          assert a['digest'] == 'sha256:bceca9d5c238e1faf89066553e0050f1df8f921a23f7d26f1c6516cad91db73d'
+          print('Original app artifact and digest verified; built from e0998076e49b0b4923ebdd55a69eb76344d0382f')
+          PYTHON
+      - uses: actions/download-artifact@v8
         with:
-          name: bitkit-e2e-ios_${{ github.run_number }}
+          name: bitkit-e2e-ios_4187
+          run-id: 42808207298
+          github-token: ${{ github.token }}
           path: bitkit-e2e-tests/aut
-
-      - name: List iOS app directory contents
-        run: ls -l bitkit-e2e-tests/aut
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
-
-      - name: Cache npm cache
-        uses: actions/cache@v6
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
       - name: Install dependencies
         working-directory: bitkit-e2e-tests
         run: npm ci
-
-      - name: Run regtest setup
+      - name: Start original backend stack
         run: |
           .github/scripts/namespace-stack.sh up bitkit-e2e-tests/docker
           (cd bitkit-e2e-tests/docker && docker compose up --force-recreate -d)
           .github/scripts/namespace-stack.sh forward 43782 39388 60001 8080 9735 10009 3003 9001 9002 21325 21328
-
-      - name: Wait for electrum server
+      - name: Wait for Electrum
         run: |
           for _ in $(seq 1 60); do
             python3 -c 'import socket; s = socket.create_connection(("127.0.0.1", 60001), 10); s.sendall(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"blockchain.headers.subscribe\",\"params\":[]}\n"); assert b"height" in s.recv(4096)' && exit 0
             sleep 5
           done
           exit 1
-
       - name: Copy LND credentials
         working-directory: bitkit-e2e-tests/docker
         run: |
@@ -339,14 +83,7 @@ jobs:
           done
           docker cp lnd:/home/lnd/.lnd/tls.cert lnd/tls.cert
           test -s lnd/data/chain/bitcoin/regtest/admin.macaroon
-
-      - name: Clear previous E2E artifacts
-        working-directory: bitkit-e2e-tests
-        run: |
-          rm -rf artifacts/
-          rm -rf /tmp/lock/
-
-      - name: Clear iOS Simulator environment
+      - name: Reset simulator
         run: |
           udid=$(xcrun simctl list devices available -j | python3 -c '
           import json, os, sys
@@ -359,99 +96,61 @@ jobs:
           xcrun simctl boot "$udid"
           xcrun simctl bootstatus "$udid" -b
           defaults write com.apple.iphonesimulator DisableAllNotifications -bool true
-
-      - name: Run E2E Tests 1 (${{ matrix.shard.name }})
-        continue-on-error: true
-        id: test1
+          rm -rf /tmp/lock/
+      - name: Validate failed-hook and failed-body diagnostics
         working-directory: bitkit-e2e-tests
-        run: ./ci_run_ios.sh --mochaOpts.grep '${{ matrix.shard.grep }}'
         env:
           RECORD_VIDEO: true
+          ATTEMPT: probe
+        run: |
+          set +e
+          ./ci_run_ios.sh --spec ./test/diagnostics/probe.e2e.ts
+          status=$?
+          set -e
+          test "$status" -ne 0
+          python3 - <<'PYTHON'
+          import json
+          from pathlib import Path
+          root = Path('artifacts/attempt-probe')
+          for kind, error in [('setup', 'INTENTIONAL_DIAGNOSTICS_SETUP_FAILURE'), ('body', 'INTENTIONAL_DIAGNOSTICS_BODY_FAILURE')]:
+              matches = [p for p in root.glob('*/failure/failure.json') if error in p.read_text()]
+              assert len(matches) == 1, (kind, matches)
+              failure = matches[0].parent
+              for name in ['screen.png', 'source.xml', '../recording.mp4']:
+                  assert (failure / name).stat().st_size > 0, (kind, name)
+              manifest = json.loads((failure / 'native-manifest.json').read_text())
+              assert manifest['appLogs'], (kind, manifest)
+              assert any(p.get('exitCode') == 0 and p.get('file') == 'lnd-state.json' for p in manifest['probes'])
+              assert (failure / 'forward-10009.log').is_file()
+              print('Verified collector:', kind, failure)
+          PYTHON
+          rm -rf /tmp/lock/
+      - name: Four cases - attempt 1
+        id: first
+        continue-on-error: true
+        working-directory: bitkit-e2e-tests
+        env:
+          RECORD_VIDEO: true
+          SAVE_DIAGNOSTICS: true
           ATTEMPT: 1
-
-      - name: Run E2E Tests 2 (${{ matrix.shard.name }})
-        continue-on-error: true
-        if: steps.test1.outcome != 'success'
-        id: test2
+        run: ./ci_run_ios.sh --mochaOpts.grep '@boost_2|@multi_address_3|@send_2|@send_3'
+      - name: Four cases - failed-only retry
+        if: steps.first.outcome == 'failure'
         working-directory: bitkit-e2e-tests
-        run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
         env:
           RECORD_VIDEO: true
+          SAVE_DIAGNOSTICS: true
           ATTEMPT: 2
-
-      - name: Run E2E Tests 3 (${{ matrix.shard.name }})
-        if: steps.test1.outcome != 'success' && steps.test2.outcome != 'success'
-        id: test3
-        working-directory: bitkit-e2e-tests
-        run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
-        env:
-          RECORD_VIDEO: true
-          ATTEMPT: 3
-
-      - name: Upload E2E Artifacts (${{ matrix.shard.name }})
-        # Preserve failed-attempt evidence even when a retry passes.
+        run: ./ci_run_ios.sh --mochaOpts.grep '@boost_2|@multi_address_3|@send_2|@send_3'
+      - name: Retain all attempt evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-artifacts_${{ matrix.shard.name }}_${{ github.run_number }}
-          path: bitkit-e2e-tests/artifacts/
+          name: ios-four-case-diagnostics-${{ github.run_id }}
+          path: |
+            bitkit-e2e-tests/artifacts/
+            app-artifact.json
           retention-days: 7
-
-      - name: Tear down regtest stack
+      - name: Tear down backend
         if: always()
         run: .github/scripts/namespace-stack.sh down
-
-  e2e-status:
-    if: always() && github.event.pull_request.draft == false
-    name: e2e-status
-    runs-on: ubuntu-24.04
-    needs: [detect-changes, e2e-tests-local]
-    steps:
-      - name: Verify change detection succeeded
-        if: needs.detect-changes.result != 'success'
-        run: |
-          echo "Change detection failed or did not complete."
-          exit 1
-
-      - name: E2E skipped - no code changes
-        if: needs.detect-changes.outputs.code != 'true'
-        run: echo "✅ E2E skipped - no code changes"
-
-      - name: Verify all E2E shards succeeded
-        if: needs.detect-changes.outputs.code == 'true'
-        run: |
-          if [ "${{ needs.e2e-tests-local.result }}" != "success" ]; then
-            echo "❌ Some E2E shards failed."
-            exit 1
-          fi
-          echo "✅ All E2E shards passed!"
-
-  report-retarget-result:
-    name: Report retarget E2E result
-    if: always() && inputs.retarget_run != ''
-    needs: [detect-changes, build-local, e2e-branch, e2e-tests-local, e2e-status]
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      pull-requests: read
-      checks: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.workflow_sha }}
-          path: retarget-ci
-          sparse-checkout: .github/scripts
-      - uses: actions/github-script@v9
-        env:
-          RETARGET_CHECK_RUN_ID: ${{ inputs.check_run_id }}
-          RETARGET_RUN: ${{ inputs.retarget_run }}
-          RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
-          RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
-          RETARGET_PR: ${{ inputs.pr }}
-          RETARGET_HELPER_REF: ${{ inputs.helper_ref }}
-          TEST_RESULTS: ${{ toJSON(needs) }}
-        with:
-          script: |
-            const {reportRetargetResult, e2eRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
-            const result = e2eRetargetResult(JSON.parse(process.env.TEST_RESULTS));
-            await reportRetargetResult({github, context, core, name: 'e2e-status', phase: 'complete', result});
