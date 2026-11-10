@@ -171,6 +171,8 @@ struct SpendingConfirm: View {
         } catch let OnchainSendAttemptError.preDispatch(error) where error is SparkFundingChanged {
             // The max quote reads the cached savings balance, so it is read again before pricing the new transfer.
             await wallet.syncStateAsync()
+            // The next swipe approves the fee this one was refused for.
+            flow.onFundingChanged(preparedFeeSats: (error as? SparkFundingChanged)?.preparedFeeSats)
             guard let repriced = await flow.refreshQuote(wallet: wallet, feeEstimatesManager: feeEstimatesManager) else {
                 throw AppError(message: t("lightning__spending_confirm__error_quote"), debugMessage: "Re-quote after refusal failed")
             }

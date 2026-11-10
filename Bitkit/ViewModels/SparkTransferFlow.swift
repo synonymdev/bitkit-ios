@@ -180,6 +180,8 @@ final class SparkTransferFlow {
     @ObservationIgnored private var approvals: [UUID: (ceilingSats: UInt64, speed: SparkTransferSpeed)] = [:]
     @ObservationIgnored private var watchTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var quoteRequestId = 0
+    /// The mining fee a refused fixed-amount funding needed, which this transfer's quotes show at least.
+    @ObservationIgnored private(set) var fixedFeeFloorSats: UInt64?
     @ObservationIgnored private let operations: SparkClaimOperations
     @ObservationIgnored private let pollAttempts: Int
 
@@ -204,6 +206,7 @@ final class SparkTransferFlow {
     func start(amountSats: UInt64, isMaxAmount: Bool, walletId: String? = nil) {
         if self.amountSats != amountSats || self.isMaxAmount != isMaxAmount || self.walletId != walletId {
             quote = nil
+            fixedFeeFloorSats = nil
         }
         self.amountSats = amountSats
         self.isMaxAmount = isMaxAmount
@@ -220,6 +223,7 @@ final class SparkTransferFlow {
         speed = .instant
         quote = nil
         quoteError = nil
+        fixedFeeFloorSats = nil
     }
 
     // MARK: Quote
@@ -236,6 +240,7 @@ final class SparkTransferFlow {
         let amountSats = amountSats
         let isMaxAmount = isMaxAmount
         let walletId = walletId
+        let fixedFeeFloorSats = fixedFeeFloorSats ?? 0
         isQuoting = true
         defer {
             if requestId == quoteRequestId {
@@ -262,7 +267,11 @@ final class SparkTransferFlow {
                 networkFeeSats = try await wallet.estimateSendAllFee(address: address, satsPerVByte: rate)
                 depositSats = UInt64(max(0, wallet.spendableOnchainBalanceSats)).saturatingSub(networkFeeSats)
             } else {
-                networkFeeSats = try await wallet.calculateTotalFee(address: address, amountSats: amountSats, satsPerVByte: rate)
+                // A fixed amount's coin selection can need more fee than its quote, so after a refusal it shows at least that.
+                networkFeeSats = try await max(
+                    wallet.calculateTotalFee(address: address, amountSats: amountSats, satsPerVByte: rate),
+                    fixedFeeFloorSats
+                )
                 depositSats = amountSats
             }
             let claimFees = try await SparkManager.shared.depositClaimFees(amountSats: depositSats)
@@ -299,6 +308,13 @@ final class SparkTransferFlow {
         if speed == .instant {
             watch(txid: txid)
         }
+    }
+
+    /// A fixed-amount funding refused for needing `preparedFeeSats` keeps that fee in this transfer's quotes, so the next
+    /// swipe approves it.
+    func onFundingChanged(preparedFeeSats: UInt64?) {
+        guard !isMaxAmount, walletId == nil else { return }
+        fixedFeeFloorSats = preparedFeeSats
     }
 
     /// Records the early-claim ceiling and speed the user swiped, as the confirm screen keeps requoting while a payment

@@ -349,6 +349,22 @@ final class SparkTransferFlowTests: XCTestCase {
         return SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: pollAttempts ?? offers.count + 1)
     }
 
+    @MainActor
+    func testARefusedFixedFundingKeepsItsFeeUntilTheTransferChanges() {
+        let flow = SparkTransferFlow()
+        flow.start(amountSats: 50000, isMaxAmount: false)
+        flow.onFundingChanged(preparedFeeSats: 700)
+        XCTAssertEqual(flow.fixedFeeFloorSats, 700, "The next swipe would approve less than the refused fee")
+        flow.start(amountSats: 50000, isMaxAmount: false)
+        XCTAssertEqual(flow.fixedFeeFloorSats, 700)
+        flow.start(amountSats: 60000, isMaxAmount: false)
+        XCTAssertNil(flow.fixedFeeFloorSats)
+
+        flow.start(amountSats: 60000, isMaxAmount: true)
+        flow.onFundingChanged(preparedFeeSats: 700)
+        XCTAssertNil(flow.fixedFeeFloorSats, "Max re-prices from the balance instead")
+    }
+
     func testQuoteTiles() {
         XCTAssertEqual(quote.toSpendingSats(for: .instant), 100_000 - 1093)
         XCTAssertEqual(quote.toSpendingSats(for: .later), 100_000 - 198)
