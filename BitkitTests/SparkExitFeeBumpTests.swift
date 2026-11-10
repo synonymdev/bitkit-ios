@@ -354,6 +354,13 @@ final class SparkExitFeeBumpTests: XCTestCase {
     }
 
     /// A failed-leaf retry that built a recovery of its own can be sped up like any live recovery; its timing stays.
+    /// Coin selection needed more than the estimate: the next confirm approves the fee the refused one asked.
+    func testTheNextConfirmAfterARefusedHigherFeeApprovesTheFeeItWasRefusedFor() {
+        XCTAssertEqual(SparkExitManager.feeBumpPaymentFee(priced: 420, refusedFeeSats: 600), 600, "the same refused fee was confirmed again")
+        XCTAssertEqual(SparkExitManager.feeBumpPaymentFee(priced: 700, refusedFeeSats: 600), 700)
+        XCTAssertEqual(SparkExitManager.feeBumpPaymentFee(priced: 420, refusedFeeSats: nil), 420)
+    }
+
     func testAFailedLeafRetryThatBuiltCanPayAHigherFee() async throws {
         var record = doneWithFailedLeaf()
         sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("c1", kind: .cooperative)])]

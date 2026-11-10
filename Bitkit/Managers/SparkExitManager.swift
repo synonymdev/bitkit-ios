@@ -63,6 +63,8 @@ final class SparkExitManager {
     @ObservationIgnored var fundFromSavings = false
     @ObservationIgnored var savingsFeeRate: UInt32 = 0
     @ObservationIgnored var savingsFeeSats: UInt64 = 0
+    /// The savings fee a higher-fee payment was refused for, by rate.
+    @ObservationIgnored private var feeBumpRefusedFees: [UInt64: UInt64] = [:]
     @ObservationIgnored private var walletIndex = 0
     @ObservationIgnored private var isTicking = false
     /// The exit a start is still settling: no tick or background run drives it until its optimization wait, requote
@@ -633,7 +635,18 @@ final class SparkExitManager {
     /// Notes what savings pays in fees to send the extra funding of `rate`.
     func setFeeBumpPaymentFee(rate: UInt64, sats: UInt64) {
         guard let i = feeBumpOptions.firstIndex(where: { $0.rate == rate }) else { return }
-        feeBumpOptions[i].paymentFeeSats = sats
+        feeBumpOptions[i].paymentFeeSats = Self.feeBumpPaymentFee(priced: sats, refusedFeeSats: feeBumpRefusedFees[rate])
+    }
+
+    /// Notes the savings fee a higher-fee payment at `rate` was refused for, so the next confirm approves it.
+    func noteFeeBumpRefused(rate: UInt64, preparedFeeSats: UInt64?) {
+        feeBumpRefusedFees[rate] = preparedFeeSats
+    }
+
+    /// The fee a higher-fee payment is confirmed at: coin selection can need more than the estimate, so after a refusal
+    /// at least the fee it was refused for.
+    nonisolated static func feeBumpPaymentFee(priced: UInt64, refusedFeeSats: UInt64?) -> UInt64 {
+        max(priced, refusedFeeSats ?? 0)
     }
 
     /// Moves the exit to `option`'s rate: pays its extra funding from savings at `savingsFeeRate` first, then rebuilds

@@ -1013,6 +1013,7 @@ struct SparkExitFeeBumpView: View {
         } catch let OnchainSendAttemptError.preDispatch(error) where error is SparkFundingChanged {
             // Savings never pays more than the fee confirmed: the rates are priced again for another confirm.
             app.toast(type: .info, title: t("lightning__spending_confirm__fees_changed_title"))
+            exit.noteFeeBumpRefused(rate: selected.rate, preparedFeeSats: (error as? SparkFundingChanged)?.preparedFeeSats)
             await exit.loadFeeBumpOptions()
             await priceSavingsPayments()
             selectedRate = exit.feeBumpOptions.first(where: canPay)?.rate
