@@ -240,6 +240,8 @@ struct SpendingConfirmFees: View {
                 FeeDisplayRow(
                     label: t("lightning__spending_confirm__amount"),
                     amount: quote?.toSpendingSats(for: speed) ?? 0,
+                    // What reaches spending is net of the estimated claim fee, so it is an estimate too.
+                    prefix: SpendingSpeedPicker.feePrefix(for: speed),
                     isLoading: isLoading
                 )
                 .frame(maxWidth: .infinity)
