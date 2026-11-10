@@ -120,6 +120,40 @@ final class SparkWithdrawalTests: XCTestCase {
         XCTAssertTrue(transfer.onTransferToSavingsConfirm(channels: [], withdrawsSpark: true))
     }
 
+    @MainActor
+    func testTheSwipeResetsWhenSparksBalanceChangesDuringItsRecheck() async throws {
+        let transfer = TransferViewModel()
+        transfer.priceSparkWithdrawal = { _ in 2190 }
+        transfer.loadSparkWithdrawFee(balanceSats: 99901, savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+        let recheckGate = PriceGate()
+        transfer.priceSparkWithdrawal = { _ in
+            await recheckGate.wait()
+            return 2190
+        }
+
+        let swipe = Task { try await transfer.confirmSavingsSwipe(channels: [], withdrawsSpark: true) }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let repriceGate = PriceGate()
+        transfer.priceSparkWithdrawal = { _ in
+            await repriceGate.wait()
+            return 2300
+        }
+        // A receive lands during the recheck, so the confirm screen prices the new balance.
+        transfer.loadSparkWithdrawFee(balanceSats: 120_000, savingsAddress: "bcrt1q-savings")
+        await recheckGate.open()
+
+        do {
+            try await swipe.value
+            XCTFail("The swipe committed while Spark's new balance was being priced")
+        } catch {
+            XCTAssertTrue(error is SavingsCommitRefused, "Unexpected error: \(error)")
+        }
+        await repriceGate.open()
+        await waitUntilPriced(transfer)
+        XCTAssertEqual(transfer.sparkWithdrawFeeSats, 2300)
+    }
+
     // MARK: - Failed withdrawal
 
     func testFailedSparkWithdrawalIsShownAndNamesWhetherChannelsMoved() {

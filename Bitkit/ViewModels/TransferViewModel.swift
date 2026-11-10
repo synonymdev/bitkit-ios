@@ -365,6 +365,18 @@ class TransferViewModel: ObservableObject {
         }
     }
 
+    /// The swipe: prices a Spark withdrawal again, then commits the transfer. Throws `SavingsCommitRefused` when the
+    /// commit is refused, as when Spark's balance changed during the recheck, so the swipe resets instead of opening
+    /// progress.
+    func confirmSavingsSwipe(channels: [ChannelDetails], withdrawsSpark: Bool) async throws {
+        if withdrawsSpark {
+            try await recheckSparkWithdrawFee()
+        }
+        guard onTransferToSavingsConfirm(channels: channels, withdrawsSpark: withdrawsSpark) else {
+            throw SavingsCommitRefused()
+        }
+    }
+
     /// Commit the transfer and pick how it runs. A Spark withdrawal commits only at a fee shown and not being priced again,
     /// returning false otherwise. A swap needs a priced quote, so without one
     /// (swaps unsupported on this network, Boltz unreachable, or an amount below the swap
@@ -923,6 +935,9 @@ enum SavingsTransferOutcome: Equatable {
 }
 
 /// Whether a transfer to savings swaps funds out or closes a channel (default).
+/// The swipe's commit was refused, as Spark's withdrawal fee is being priced again; nothing was committed.
+struct SavingsCommitRefused: Error {}
+
 enum SavingsTransferMode {
     case swap
     case close

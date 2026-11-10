@@ -73,7 +73,9 @@ final class SparkTransferFlowTests: XCTestCase {
             claimEarly: { _ in .repriced(requiredFeeSats: 1500) },
             refresh: {},
             sleep: { _ in },
-            releaseEarlyClaim: { released.append($0.txid) }
+            releaseEarlyClaim: { released.append($0.txid)
+                return true
+            }
         )
         let flow = SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: 2)
         flow.onBroadcast(txid: "txid")
@@ -90,6 +92,35 @@ final class SparkTransferFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testWaitClearsTheEarlyClaimCapAgainWhenAnotherClaimHeldTheDeposit() async throws {
+        var releaseCalls = 0
+        let operations = SparkClaimOperations(
+            offer: { txid in SparkClaimOffer(txid: txid, vout: 0, kind: .choice(
+                earlyFeeSats: 900, earlyConfirmations: 0, standardFeeSats: 198, standardConfirmations: 3
+            )) },
+            claimEarly: { _ in .repriced(requiredFeeSats: 1500) },
+            refresh: {},
+            sleep: { _ in },
+            releaseEarlyClaim: { _ in
+                releaseCalls += 1
+                // The first call meets Spark's own sync claiming the deposit, which leaves the cap in place.
+                return releaseCalls > 1
+            }
+        )
+        let flow = SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: 2)
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+
+        flow.waitForConfirmations()
+        for _ in 0 ..< 100 where releaseCalls < 2 {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(releaseCalls, 2, "Wait gave up on the early claim cap after Spark was busy with the deposit")
+    }
+
+    @MainActor
     func testWaitBeforeAnyClaimAttemptLeavesTheDepositAlone() async throws {
         var released: [String] = []
         let operations = SparkClaimOperations(
@@ -99,7 +130,9 @@ final class SparkTransferFlowTests: XCTestCase {
             claimEarly: { _ in .claimed },
             refresh: {},
             sleep: { _ in },
-            releaseEarlyClaim: { released.append($0.txid) }
+            releaseEarlyClaim: { released.append($0.txid)
+                return true
+            }
         )
         let flow = SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: 2)
         flow.onBroadcast(txid: "txid")

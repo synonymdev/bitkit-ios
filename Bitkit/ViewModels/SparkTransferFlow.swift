@@ -114,8 +114,9 @@ struct SparkClaimOperations {
     var claimEarly: (SparkClaimOffer) async throws -> SparkEarlyClaim
     var refresh: () async -> Void
     var sleep: (Duration) async -> Void
-    /// Clears the early-claim fee cap `claimEarly` left on the deposit, so only the claim at maturity is made.
-    var releaseEarlyClaim: (SparkClaimOffer) async -> Void = { _ in }
+    /// Clears the early-claim fee cap `claimEarly` left on the deposit, so only the claim at maturity is made. False when
+    /// the cap may still be there, as while another claim of the deposit is running.
+    var releaseEarlyClaim: (SparkClaimOffer) async -> Bool = { _ in true }
 
     static var live: SparkClaimOperations {
         SparkClaimOperations(
@@ -337,8 +338,20 @@ final class SparkTransferFlow {
             watchTasks[txid] = nil
             if let offer = claimedOffers.removeValue(forKey: txid) {
                 let operations = operations
-                // Not awaited: the SDK call ignores cancellation and can take a while.
-                Task { await operations.releaseEarlyClaim(offer) }
+                let attempts = max(pollAttempts, 1)
+                // Not awaited: the SDK call ignores cancellation and can take a while. Tried again while another claim of
+                // the deposit, such as Spark's own sync, leaves the cap in place.
+                Task {
+                    for attempt in 1 ... attempts {
+                        if await operations.releaseEarlyClaim(offer) {
+                            return
+                        }
+                        if attempt < attempts {
+                            await operations.sleep(Self.pollInterval)
+                        }
+                    }
+                    Logger.warn("Gave up clearing the early claim cap of Spark deposit \(offer.txid)", context: "SparkTransferFlow")
+                }
             }
         }
         claimState = .later
