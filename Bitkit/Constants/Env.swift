@@ -236,6 +236,12 @@ enum Env {
         configValue("TREZOR_BRIDGE_URL") ?? "http://127.0.0.1:21325"
     }
 
+    /// Basic auth (`user:password`) for Blocktank's regtest routes, read only in Debug and E2E builds.
+    static var blocktankRegtestAuth: String? {
+        guard isDebug || isE2E else { return nil }
+        return configValue("BLOCKTANK_REGTEST_AUTH")
+    }
+
     static var trezorElectrumUrl: String? {
         guard isDebug || isE2E else { return nil }
         return configValue("TREZOR_ELECTRUM_URL")
