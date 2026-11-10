@@ -1427,7 +1427,7 @@
 "wallet__receive_show_qr" = "QR Code";
 "wallet__receive_text_lnfunds" = "Want to receive <accent>Lightning</accent> funds?";
 "wallet__receive_spending" = "Receive Lightning Funds";
-"wallet__receive_spending_text" = "Enjoy instant and cheap bitcoin payments on the Lightning Network.";
+"wallet__receive_spending_text" = "Enjoy instant and cheap transactions with friends, family, and merchants.";
 "wallet__receive_spending_title" = "Receive on <accent>spending balance</accent>";
 "wallet__receive_cjit_error" = "Transaction Failed";
 "wallet__receive_cjit_error_msg" = "Failed to send funds to your spending account.";
