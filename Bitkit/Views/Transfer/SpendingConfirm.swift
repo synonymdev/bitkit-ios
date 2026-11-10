@@ -96,8 +96,11 @@ struct SpendingConfirm: View {
         .onDisappear { SparkFundingRecovery.confirmScreenOpen = false }
         .onReceive(OnchainSendAttemptService.localResolutionPublisher.receive(on: DispatchQueue.main)) { resolution in
             guard Self.followsRecovered(resolution, isPaying: isPaying), !hideSwipeButton else { return }
-            // This screen owns the recovered funding: follow it at the chosen speed, as a swipe would have.
-            flow.onRecoveredBroadcast(txid: resolution.txid, attemptId: resolution.attemptId)
+            // This screen owns the recovered funding: follow it at the chosen speed, as a swipe would have, unless the
+            // flow already follows it.
+            if flow.txid != resolution.txid {
+                flow.onRecoveredBroadcast(txid: resolution.txid, attemptId: resolution.attemptId)
+            }
             hideSwipeButton = true
             navigation.navigate(.settingUp)
         }
@@ -130,6 +133,11 @@ struct SpendingConfirm: View {
     }
 
     private func onConfirm() async throws {
+        // A funding of this transfer resolved while another screen showed, so it is followed, not sent again.
+        if flow.txid != nil {
+            navigation.navigate(.settingUp)
+            return
+        }
         guard let shown = flow.quote, !isPaying else { return }
         isPaying = true
         defer { isPaying = false }

@@ -344,6 +344,14 @@ final class SparkTransferFlow {
         }
     }
 
+    /// Follows a recovered funding a swipe of this flow approved, whichever screen shows when it resolves, so its claim
+    /// starts and a later swipe can't fund it again. False for one it doesn't own or already follows.
+    func followIfOwned(txid: String, attemptId: UUID) -> Bool {
+        guard approvals[attemptId] != nil, self.txid != txid else { return false }
+        onRecoveredBroadcast(txid: txid, attemptId: attemptId)
+        return true
+    }
+
     /// Starts the claim of a funding whose outcome was unknown at the swipe, at the ceiling and speed then approved; with
     /// nothing approved for that funding, an early claim asks first.
     func onRecoveredBroadcast(txid: String, attemptId: UUID) {

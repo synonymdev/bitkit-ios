@@ -333,6 +333,23 @@ final class SparkTransferFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testAFundingThatResolvesOffTheConfirmScreenIsFollowedOnce() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
+        let attemptId = UUID()
+        flow.quote = quote(instantMax: 3010)
+        flow.approveSwipe()
+        flow.bindApproval(to: attemptId, after: OnchainSendAttemptError.unresolved)
+
+        // The swipe's funding resolves while the Amount screen shows, so no confirm screen follows it.
+        XCTAssertTrue(flow.followIfOwned(txid: "txid", attemptId: attemptId), "A funding this flow approved went unfollowed")
+        await flow.waitForClaim()
+
+        XCTAssertEqual(flow.txid, "txid")
+        XCTAssertEqual(flow.claimState, .added)
+        XCTAssertFalse(flow.followIfOwned(txid: "txid", attemptId: attemptId), "A followed funding was followed again")
+    }
+
+    @MainActor
     func testAFundingWhoseOutcomeIsUnknownIsKeptNotFailed() {
         XCTAssertEqual(try TransferViewModel.fundedTxid(.accepted(txid: "txid")), "txid")
         XCTAssertThrowsError(try TransferViewModel.fundedTxid(.unknown(txid: "txid"))) { error in
