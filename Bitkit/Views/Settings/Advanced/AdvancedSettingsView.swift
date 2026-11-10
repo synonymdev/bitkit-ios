@@ -7,6 +7,11 @@ struct AdvancedSettingsView: View {
     @AppStorage("showDevSettings") private var showDevSettings = Env.isDebug
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
 
+    private var connectionsRowRightText: String? {
+        let openChannelCount = wallet.channels?.filter(\.isChannelReady).count ?? 0
+        return openChannelCount > 0 ? String(openChannelCount) : nil
+    }
+
     private var electrumRowRightText: String {
         let currentServerUrl = settings.electrumCurrentServer.fullUrl
 
@@ -82,7 +87,8 @@ struct AdvancedSettingsView: View {
                     NavigationLink(value: Route.connections) {
                         SettingsRow(
                             title: t("settings__adv__lightning_connections"),
-                            iconName: "bolt-hollow"
+                            iconName: "bolt-hollow",
+                            rightText: connectionsRowRightText
                         )
                     }
                     .accessibilityIdentifier("Channels")
