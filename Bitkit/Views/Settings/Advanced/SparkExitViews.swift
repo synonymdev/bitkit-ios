@@ -789,6 +789,13 @@ struct SparkExitProgressView: View {
                 await SparkManager.shared.refreshState()
                 await exit.tick()
             }
+            // Over the bottom inset: content cut at the edge fades out above the buttons, and scrolled to the end the
+            // last line clears it.
+            .overlay(alignment: .bottom) {
+                LinearGradient(colors: [.customBlack.opacity(0), .customBlack], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 32)
+                    .allowsHitTesting(false)
+            }
 
             if record?.isActive == true, notifications.authorizationStatus == .denied {
                 CustomButton(title: t("lightning__spark_exit__note_notifications_button"), variant: .secondary) {
