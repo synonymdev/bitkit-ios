@@ -277,6 +277,69 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(rail.sentBolt11, Self.invoice, "A failed node attempt kept holding the invoice")
     }
 
+    func testAPendingNodePaymentBehindTheCapOfSettledOnesStillHoldsSparkWhileTheNodeCantList() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let pending = LDKNode.PaymentDetails(
+            id: hash, kind: .bolt11(hash: hash, preimage: nil, secret: nil, description: nil, bolt11: Self.invoice),
+            amountMsat: 20_000_000, feePaidMsat: nil, direction: .outbound, status: .pending, latestUpdateTimestamp: 0
+        )
+        let settled = (1 ... 500).map { index in
+            LDKNode.PaymentDetails(
+                id: Self.otherHash(index), kind: .bolt11(hash: Self.otherHash(index), preimage: nil, secret: nil, description: nil, bolt11: ""),
+                amountMsat: 1000, feePaidMsat: nil, direction: .outbound, status: .succeeded, latestUpdateTimestamp: UInt64(index)
+            )
+        }
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        defer { service.nodePayments = nodePayments }
+        service.railAttemptsStore.removeObject(forKey: Bitkit.LightningService.ldkAttemptsSeededKey)
+        rail.balanceSats = 100_000
+
+        service.nodePayments = { [pending] + settled }
+        _ = try? await service.send(bolt11: Self.invoice)
+        service.nodePayments = { nil }
+
+        await assertRefusedAsDuplicate()
+    }
+
+    func testANodeSendStillPendingBehindTheCapOfLaterSendsStillHoldsSparkWhileTheNodeCantList() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        service.nodePayments = { nil }
+        defer { service.nodePayments = nodePayments }
+        service.recordLdkAttempt(paymentHash: hash)
+        for index in 1 ... 500 {
+            service.recordLdkAttempt(paymentHash: Self.otherHash(index))
+        }
+        rail.balanceSats = 100_000
+
+        await assertRefusedAsDuplicate()
+    }
+
+    func testASparkSendStillPendingBehindTheCapOfLaterSendsStillHoldsTheNode() async throws {
+        try await sendOverSpark()
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        for index in 1 ... 500 {
+            service.recordRailAttempt(paymentHash: Self.otherHash(index))
+        }
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .pending, preimage: nil)]
+            + (1 ... 500).map {
+                Bitkit.ChannelFreeRailPayment(paymentHash: Self.otherHash($0), direction: .outbound, status: .succeeded, preimage: nil)
+            }
+        rail.balanceSats = 0
+        await assertRefusedAsDuplicate()
+
+        rail.listError = NSError(domain: "spark", code: 1)
+
+        await assertRefusedAsDuplicate()
+    }
+
+    private static func otherHash(_ index: Int) -> String {
+        String(format: "%064x", index)
+    }
+
     func testPaykitReadsAnUnlistableNodeAsUnknownNotAsNeverPaid() async {
         let service = Bitkit.LightningService.shared
         let nodePayments = service.nodePayments
