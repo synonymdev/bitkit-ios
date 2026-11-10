@@ -13,6 +13,7 @@ final class ChannelFreeRailTests: XCTestCase {
     private var previousRail: Bitkit.ChannelFreeLightningRail?
     private var previousAttemptsStore: UserDefaults!
     private var previousRailSupported: (() async -> Bool)!
+    private var previousNow: (() -> Date)!
 
     override func setUp() {
         super.setUp()
@@ -26,6 +27,7 @@ final class ChannelFreeRailTests: XCTestCase {
         service.forgetLdkAttempts()
         previousRailSupported = service.channelFreeRailSupported
         service.channelFreeRailSupported = { true }
+        previousNow = service.now
     }
 
     override func tearDown() {
@@ -34,6 +36,7 @@ final class ChannelFreeRailTests: XCTestCase {
         service.forgetLdkAttempts()
         service.railAttemptsStore = previousAttemptsStore
         service.channelFreeRailSupported = previousRailSupported
+        service.now = previousNow
         service.clearEventCallback()
         service.channelFreeRail = previousRail
         rail = nil
@@ -390,6 +393,44 @@ extension ChannelFreeRailTests {
         service.nodePayments = { nil }
 
         await assertRefusedAsDuplicate()
+    }
+
+    func testAPaidSparkSendWhoseInvoiceIsUnexpiredStillHoldsTheNodeBehindTheCapWhileSparkCantList() async throws {
+        let invoice = try Bolt11Invoice.fromStr(invoiceStr: Self.invoice)
+        let service = Bitkit.LightningService.shared
+        service.now = { Date(timeIntervalSince1970: TimeInterval(invoice.secondsSinceEpoch())) }
+        try await sendOverSpark()
+        try await listPaidSparkSendBehindTheCap(String(invoice.paymentHash()))
+
+        rail.listError = NSError(domain: "spark", code: 1)
+
+        await assertRefusedAsDuplicate()
+    }
+
+    func testAPaidSparkSendWhoseInvoiceExpiredIsTrimmedPastTheCap() async throws {
+        let invoice = try Bolt11Invoice.fromStr(invoiceStr: Self.invoice)
+        let hash = String(invoice.paymentHash())
+        let service = Bitkit.LightningService.shared
+        service.now = { Date(timeIntervalSince1970: TimeInterval(invoice.secondsSinceEpoch() + invoice.expiryTimeSeconds())) }
+        try await sendOverSpark()
+
+        try await listPaidSparkSendBehindTheCap(hash)
+
+        let kept = service.railAttemptsStore.stringArray(forKey: Self.railAttemptsKey) ?? []
+        XCTAssertEqual(kept.count, 500, "Paid Spark hashes stayed past the cap")
+        XCTAssertFalse(kept.contains(hash), "The paid Spark hash whose invoice expired was kept")
+    }
+
+    /// Records 500 newer Spark sends after `hash` and lists them all as paid, so a node send trims past the cap.
+    private func listPaidSparkSendBehindTheCap(_ hash: String) async throws {
+        let service = Bitkit.LightningService.shared
+        (1 ... 500).forEach { service.recordRailAttempt(paymentHash: Self.otherHash($0)) }
+        rail.payments = ([hash] + (1 ... 500).map(Self.otherHash)).map {
+            Bitkit.ChannelFreeRailPayment(paymentHash: $0, direction: .outbound, status: .succeeded, preimage: nil)
+        }
+        rail.balanceSats = 0
+        _ = try? await service.send(bolt11: Self.invoice)
+        rail.sentBolt11 = nil
     }
 
     func testSparkHashesListedAsFailedAreTrimmedPastTheCap() async {
