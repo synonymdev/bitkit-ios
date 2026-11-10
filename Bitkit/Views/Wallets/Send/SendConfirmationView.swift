@@ -857,6 +857,12 @@ struct SendConfirmationView: View {
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
         guard !isSubmittingPayment, !isAuthorizingPayment else { return }
+        if isAutomatic, app.contactPaymentContext?.incomingPaymentRequest != nil,
+           app.selectedWalletToPayFrom == .lightning, wallet.routingFeeEstimateSats == nil
+        {
+            showManualConfirmation(reason: "routing fee unknown")
+            return
+        }
         guard hasSufficientLightningRequestFunds else { throw NodeError.InsufficientFunds(message: "Insufficient spendable Lightning balance") }
         guard !requiresAmountReview, preparingRequest == nil, !isRequestSetupPending, walletSwitchContext == nil,
               isAutomatic || !prepareRequestCoinsIfNeeded() else { throw CancellationError() }

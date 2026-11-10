@@ -8,7 +8,7 @@ import XCTest
 
 @MainActor
 final class SendConfirmationLifecycleTests: XCTestCase {
-    func testUnfundedBolt11RequestCannotAuthorizeAutomaticPayment() async throws {
+    func testAutomaticBolt11RequestRequiresKnownAffordableFee() async throws {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
         let settings = SettingsViewModel.shared
@@ -40,19 +40,37 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             sheets.activeSheetConfiguration = SheetConfiguration(id: .send, data: nil)
             let setup = SendConfirmationTestSetup()
             setup.isPending = false
-            var path: [SendRoute] = []
-            let window = host(app: app, wallet: wallet, sheets: sheets, path: Binding(get: { path }, set: { path = $0 }), setup: setup)
+            let navigation = SendConfirmationTestNavigation()
+            navigation.path = []
+            let window = host(
+                app: app, wallet: wallet, sheets: sheets,
+                path: Binding(get: { navigation.path }, set: { navigation.path = $0 }),
+                navigation: navigation, setup: setup, confirmationIsRoot: true
+            )
             defer { close(window) }
             let deadline = ContinuousClock.now + .seconds(3)
-            while path.isEmpty, setup.pinChecks.isEmpty, ContinuousClock.now < deadline {
+            while navigation.path.isEmpty, setup.pinChecks.isEmpty, ContinuousClock.now < deadline {
                 try await Task.sleep(for: .milliseconds(10))
             }
             XCTAssertEqual(wallet.routingFeeEstimateFailed, fee == nil)
             if canAuthorize {
                 XCTAssertEqual(setup.pinChecks, [false], "A successful zero-fee route remains payable")
+            } else if fee == nil {
+                XCTAssertTrue(navigation.path.isEmpty, "An unknown fee must leave confirmation open for retry")
+                XCTAssertTrue(setup.pinChecks.isEmpty, "An unknown fee must block authorization")
+                wallet.routingFee = 0
+                await wallet.refreshRoutingFeeEstimate(bolt11: "test-invoice", amountSats: nil)
+                XCTAssertEqual(wallet.routingFeeEstimateSats, 0)
+                navigation.path.append(.tag)
+                try await navigation.waitForAppearance(.tag)
+                navigation.path.removeLast()
+                try await navigation.waitForAppearance(.confirm)
+                try await Task.sleep(for: .milliseconds(100))
+                XCTAssertTrue(navigation.path.isEmpty)
+                XCTAssertTrue(setup.pinChecks.isEmpty, "Fee recovery and returning to confirmation must still require a swipe")
             } else {
-                XCTAssertTrue(setup.pinChecks.isEmpty, "Unknown or unaffordable fees must block authorization")
-                guard case let .failure(context) = path.last else { return XCTFail("An unfunded request cannot dispatch") }
+                XCTAssertTrue(setup.pinChecks.isEmpty, "Unaffordable fees must block authorization")
+                guard case let .failure(context) = navigation.path.last else { return XCTFail("An unfunded request cannot dispatch") }
                 XCTAssertEqual(context.failureType, sendFailureType(for: NodeError.InsufficientFunds(message: "")))
             }
         }
