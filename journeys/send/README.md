@@ -1,6 +1,6 @@
 # Send
 
-`bip21-core-validation.xml` is shared with Android, with identical actions and fixtures. The app pins bitkit-core `0.8.0-rc12`, which includes [PR #151](https://github.com/synonymdev/bitkit-core/pull/151). Keep the adoption PR in draft until the required checks and this journey pass.
+`bip21-core-validation.xml` is shared with Android, with identical actions and fixtures. The app pins bitkit-core `0.8.0-rc13`, which includes [PR #151](https://github.com/synonymdev/bitkit-core/pull/151). Run the required checks and this journey against the pinned SDK before merging the adoption PR.
 
 Deliver each `Open bitcoin:...` action with `xcrun simctl openurl <simulator-udid> "<uri>"`, replacing XML `&amp;` with `&` in the actual URI. Confirm the system’s Open in Bitkit prompt when shown. Dismiss introductory USDT, received-payment and backup prompts before starting. Inspect errors immediately. Use XcodeBuildMCP snapshots for payment state and screenshots for transient error toasts.
 
