@@ -204,6 +204,8 @@ final class MoveToSparkManager {
                 bolt11: quote.invoice,
                 sats: quote.amountSats,
                 maxFeeMsat: MoveToSparkMath.feeCapMsat(feeSats: quote.feeSats),
+                // Shown in the step that stops waiting, so a late outcome right after it finds this move in flight.
+                onTimeout: { [weak self] in self?.showInFlight(amountSats: quote.amountSats, moveGeneration: moveGeneration) },
                 onLateFailure: { [weak self] in self?.lateFailure(amountSats: quote.amountSats, moveGeneration: moveGeneration) },
                 onLateSuccess: { [weak self, weak wallet] settled in
                     guard let self, let wallet else { return }
@@ -218,7 +220,6 @@ final class MoveToSparkManager {
                 }
             ) else {
                 isSettled = false
-                state = .inFlight(amountSats: quote.amountSats)
                 return
             }
             await wallet.syncStateAsync()
@@ -289,6 +290,13 @@ final class MoveToSparkManager {
     nonisolated static func showsInFlightMove(_ state: MoveToSparkState, generation: Int, moveGeneration: Int) -> Bool {
         guard generation == moveGeneration, case .inFlight = state else { return false }
         return true
+    }
+
+    /// The wait for the move of `moveGeneration` ended unsettled: the screen, if it still shows that move, shows it in
+    /// flight.
+    private func showInFlight(amountSats: UInt64, moveGeneration: Int) {
+        guard generation == moveGeneration else { return }
+        state = .inFlight(amountSats: amountSats)
     }
 
     /// A move that was still in flight paid after the wait: the screen, if it still shows that same move, shows it moved.

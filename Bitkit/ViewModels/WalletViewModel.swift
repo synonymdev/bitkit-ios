@@ -1175,6 +1175,7 @@ class WalletViewModel: ObservableObject {
         sats: UInt64,
         maxFeeMsat: UInt64,
         timeout: Duration = .seconds(120),
+        onTimeout: @escaping @MainActor () -> Void = {},
         onLateFailure: @escaping @MainActor () -> Void = {},
         onLateSuccess: @escaping @MainActor (SettledLightningPayment) -> Void = { _ in }
     ) async throws -> SettledLightningPayment? {
@@ -1196,13 +1197,36 @@ class WalletViewModel: ObservableObject {
             sink.finish()
             throw error
         }
-        return try await withCheckedThrowingContinuation { continuation in
+        return try await Self.settle(
+            paymentId: id,
+            events: events,
+            timeout: timeout,
+            onTimeout: onTimeout,
+            onLateFailure: onLateFailure,
+            onLateSuccess: onLateSuccess,
+            onEnd: { [weak self] in
+                self?.removeOnEvent(id: listenerId)
+                sink.finish()
+            }
+        )
+    }
+
+    /// Waits for the payment `paymentId`'s outcome in `events`, or `nil` after `timeout`. `onTimeout` runs in the same
+    /// step that gives up waiting, so an outcome that arrives right after already finds the caller's in-flight state
+    /// and goes to `onLateFailure` or `onLateSuccess`.
+    static func settle(
+        paymentId id: String,
+        events: AsyncStream<Event>,
+        timeout: Duration,
+        onTimeout: @escaping @MainActor () -> Void,
+        onLateFailure: @escaping @MainActor () -> Void,
+        onLateSuccess: @escaping @MainActor (SettledLightningPayment) -> Void,
+        onEnd: @escaping @MainActor () -> Void = {}
+    ) async throws -> SettledLightningPayment? {
+        try await withCheckedThrowingContinuation { continuation in
             var isAnswered = false
-            Task { @MainActor [weak self] in
-                defer {
-                    self?.removeOnEvent(id: listenerId)
-                    sink.finish()
-                }
+            Task { @MainActor in
+                defer { onEnd() }
                 for await event in events {
                     let outcome: Result<SettledLightningPayment?, Error>
                     switch event {
@@ -1230,6 +1254,7 @@ class WalletViewModel: ObservableObject {
                 try? await Task.sleep(for: timeout)
                 guard !isAnswered else { return }
                 isAnswered = true
+                onTimeout()
                 continuation.resume(returning: nil)
             }
         }
