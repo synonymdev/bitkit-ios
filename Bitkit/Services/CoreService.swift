@@ -1018,8 +1018,12 @@ class ActivityService {
         // Skip if existing activity has newer timestamp, unless payment status is changing
         if let existing = existingLightning, let existingUpdatedAt = existing.updatedAt {
             let statusChanging = existing.status != state
+            // The Spark receive of a move can settle the send before the node's routing fee is recorded.
+            let feeChanging = payment.feePaidMsat.map { $0 / 1000 != existing.fee } ?? false
             let needsPrivateContactAttribution = existing.contact == nil && payment.direction == .inbound
-            if existingUpdatedAt > paymentTimestamp && !statusChanging && !needsPrivateContactAttribution && !replacesSelfReceive {
+            if existingUpdatedAt > paymentTimestamp && !statusChanging && !feeChanging && !needsPrivateContactAttribution
+                && !replacesSelfReceive
+            {
                 return
             }
         }

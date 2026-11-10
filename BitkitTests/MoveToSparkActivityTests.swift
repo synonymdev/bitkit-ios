@@ -70,6 +70,18 @@ final class MoveToSparkActivityTests: XCTestCase {
         try await assertOneOutgoingRowWithTheRoutingFee()
     }
 
+    func testSparkReceiveSettlingTheSendTakesTheRoutingFeeFromTheLaterLdkUpdate() async throws {
+        let activity = Bitkit.CoreService.shared.activity
+        // A pending send has no fee yet; the receive's settle stamps the row after the node's later update.
+        try await activity.syncLdkNodePayments([
+            payment(direction: .outbound, feeSats: nil, timestamp: 1000, status: .pending),
+        ])
+        try await activity.recordChannelFreeRailPayment(sparkReceive(timestamp: 1001))
+        try await activity.syncLdkNodePayments([ldkSend(timestamp: 1002)])
+
+        try await assertOneOutgoingRowWithTheRoutingFee()
+    }
+
     func testPendingLdkSendKeepsTheSucceededSparkReceiveUntilTheSendSucceeds() async throws {
         let activity = Bitkit.CoreService.shared.activity
         try await activity.recordChannelFreeRailPayment(sparkReceive(timestamp: 1000))
@@ -111,7 +123,7 @@ final class MoveToSparkActivityTests: XCTestCase {
 
     private func payment(
         direction: LDKNode.PaymentDirection,
-        feeSats: UInt64,
+        feeSats: UInt64?,
         timestamp: UInt64,
         status: LDKNode.PaymentStatus = .succeeded
     ) -> LDKNode.PaymentDetails {
@@ -125,7 +137,7 @@ final class MoveToSparkActivityTests: XCTestCase {
                 bolt11: invoice
             ),
             amountMsat: movedSats * 1000,
-            feePaidMsat: feeSats * 1000,
+            feePaidMsat: feeSats.map { $0 * 1000 },
             direction: direction,
             status: status,
             latestUpdateTimestamp: timestamp
