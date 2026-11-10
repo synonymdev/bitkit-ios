@@ -160,6 +160,7 @@ final class SparkTransferFlow {
     @ObservationIgnored private var offers: [String: SparkClaimOffer] = [:]
     @ObservationIgnored private var ceilings: [String: UInt64] = [:]
     @ObservationIgnored private var approved: (ceilingSats: UInt64, speed: SparkTransferSpeed)?
+    @ObservationIgnored private var approvals: [UUID: (ceilingSats: UInt64, speed: SparkTransferSpeed)] = [:]
     @ObservationIgnored private var watchTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var quoteRequestId = 0
     @ObservationIgnored private let operations: SparkClaimOperations
@@ -289,10 +290,17 @@ final class SparkTransferFlow {
         approved = (ceilingSats: quote?.claimFees.instantMaxSats ?? 0, speed: speed)
     }
 
+    /// Ties the last swipe's approval to the funding it left unresolved. A later swipe rejected while that funding is
+    /// still unresolved finds it already tied, so it can't change the ceiling or speed the user approved for it.
+    func bindApproval(to attemptId: UUID) {
+        guard let approved, approvals[attemptId] == nil else { return }
+        approvals[attemptId] = approved
+    }
+
     /// Starts the claim of a funding whose outcome was unknown at the swipe, at the ceiling and speed then approved; with
-    /// nothing approved, an early claim asks first.
-    func onRecoveredBroadcast(txid: String) {
-        let approved = approved ?? (ceilingSats: 0, speed: speed)
+    /// nothing approved for that funding, an early claim asks first.
+    func onRecoveredBroadcast(txid: String, attemptId: UUID) {
+        let approved = approvals.removeValue(forKey: attemptId) ?? (ceilingSats: 0, speed: speed)
         speed = approved.speed
         onBroadcast(txid: txid, ceilingSats: approved.ceilingSats)
     }

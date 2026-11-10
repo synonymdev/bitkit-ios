@@ -171,14 +171,47 @@ final class SparkTransferFlowTests: XCTestCase {
     func testARecoveredFundingClaimsEarlyOnlyUpToTheSwipedCeiling() async {
         let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
         flow.quote = quote(instantMax: 337)
+        let attemptId = UUID()
         flow.approveSwipe()
+        flow.bindApproval(to: attemptId)
         // The confirm screen requoted under the pending sheet while fee rates rose.
         flow.quote = quote(instantMax: 3010)
 
-        flow.onRecoveredBroadcast(txid: "txid")
+        flow.onRecoveredBroadcast(txid: "txid", attemptId: attemptId)
         await flow.waitForClaim()
 
         XCTAssertEqual(flow.claimState, .repriced(feeSats: 800), "Paid an early claim fee the user never approved")
+    }
+
+    @MainActor
+    func testARecoveredFundingKeepsItsOwnApprovalWhenALaterSwipeIsRejected() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
+        let first = UUID()
+        flow.quote = quote(instantMax: 337)
+        flow.approveSwipe()
+        flow.bindApproval(to: first)
+        // A second swipe at a higher ceiling is rejected while the first funding is still unresolved, so the attempt
+        // the screen sees is still the first one.
+        flow.quote = quote(instantMax: 3010)
+        flow.approveSwipe()
+        flow.bindApproval(to: first)
+
+        flow.onRecoveredBroadcast(txid: "txid", attemptId: first)
+        await flow.waitForClaim()
+
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 800), "The first funding claimed early at the rejected swipe's ceiling")
+    }
+
+    @MainActor
+    func testARecoveredFundingWithNoApprovalAsksBeforeAnEarlyClaim() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
+        flow.quote = quote(instantMax: 3010)
+        flow.approveSwipe()
+
+        flow.onRecoveredBroadcast(txid: "txid", attemptId: UUID())
+        await flow.waitForClaim()
+
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 800), "Claimed early on an approval made for another attempt")
     }
 
     private func quote(instantMax: UInt64) -> SparkTransferQuote {
