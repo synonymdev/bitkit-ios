@@ -239,6 +239,8 @@
 "lightning__spending_confirm__later_text" = "After 3 confirmations, about 30 minutes";
 "lightning__spending_confirm__error_quote" = "Bitkit couldn't get the fees for this transfer. Check your connection and try again.";
 "lightning__spending_confirm__fees_changed_title" = "Fees changed";
+"lightning__spending_confirm__max_changed_title" = "Amount changed";
+"lightning__spending_confirm__max_changed" = "The most you can transfer is now {amount}, because fee rates or your savings balance changed while you were on this screen. Swipe again to confirm.";
 "lightning__spending_confirm__fees_changed_network" = "Fees are {amount} higher because fee rates or your savings balance changed while you were on this screen. Swipe again to confirm.";
 "lightning__savings_intro__title" = "Transfer\n<accent>to savings</accent>";
 "lightning__savings_intro__text" = "Transfer your spending balance to your savings to store your Bitcoin long-term and secure your future.";

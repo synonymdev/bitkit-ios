@@ -176,14 +176,27 @@ struct SpendingConfirm: View {
             guard let repriced = await flow.refreshQuote(wallet: wallet, feeEstimatesManager: feeEstimatesManager) else {
                 throw AppError(message: t("lightning__spending_confirm__error_quote"), debugMessage: "Re-quote after refusal failed")
             }
-            app.toast(
-                type: .info,
-                title: t("lightning__spending_confirm__fees_changed_title"),
-                description: t(
-                    "lightning__spending_confirm__fees_changed_network",
-                    variables: ["amount": currency.primaryAmountText(sats: repriced.increase(over: fresh, speed: flow.speed))]
+            let toSpendingSats = repriced.toSpendingSats(for: flow.speed)
+            if flow.isMaxAmount, toSpendingSats != fresh.toSpendingSats(for: flow.speed) {
+                // A max transfer's amount moves with the balance and fees, so a fee increase would mostly be that move.
+                app.toast(
+                    type: .info,
+                    title: t("lightning__spending_confirm__max_changed_title"),
+                    description: t(
+                        "lightning__spending_confirm__max_changed",
+                        variables: ["amount": currency.primaryAmountText(sats: toSpendingSats)]
+                    )
                 )
-            )
+            } else {
+                app.toast(
+                    type: .info,
+                    title: t("lightning__spending_confirm__fees_changed_title"),
+                    description: t(
+                        "lightning__spending_confirm__fees_changed_network",
+                        variables: ["amount": currency.primaryAmountText(sats: repriced.increase(over: fresh, speed: flow.speed))]
+                    )
+                )
+            }
             throw SpendingFeesIncreasedError()
         } catch {
             if let attemptId = await OnchainSendAttemptService.shared.unresolvedSparkFundingAttemptId() {
