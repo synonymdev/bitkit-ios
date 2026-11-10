@@ -145,6 +145,27 @@ final class ClipboardPromptValidatorTests: XCTestCase {
         XCTAssertFalse(supported)
     }
 
+    func testBip21WithLnurlMetadataIsValidatedWithoutNetworkRequests() async throws {
+        let probe = try ClipboardConnectionProbe()
+        defer { probe.stop() }
+        let ready = expectation(description: "loopback listener ready")
+        probe.start(ready: ready)
+        await fulfillment(of: [ready], timeout: 5)
+        let port = try XCTUnwrap(probe.port)
+        let lnurl = ClipboardLnurlEncoder.encode("http://127.0.0.1:\(port)/lnurlp")
+        let address = "bcrt1qr289x0fhg62672e8urudfnxnsr8tcax64xk2vk"
+        let valid = "bitcoin:\(address)?message=bitcoin:donation&lightning=\(lnurl)"
+        let doubled = "bitcoin:\(address)?amount=0.0000002bitcoin:\(address)?amount=0.0000003&lightning=\(lnurl)"
+
+        for prefix in ["", "bitkit://", "bitkit://lightning:"] {
+            for (uri, expected) in [(valid, true), (doubled, false)] {
+                let supported = await ClipboardPromptValidator.isSupportedURI(prefix + uri, ownPublicKey: nil, contacts: [])
+                XCTAssertEqual(supported, expected, prefix + uri)
+            }
+        }
+        XCTAssertEqual(probe.connections, 0, "BIP21 inspection must not fetch optional LNURL metadata before consent")
+    }
+
     func testNonNetworkDecodeKeepsOriginalNormalizedPayload() async {
         let supported = await ClipboardPromptValidator.isSupportedURI("  LIGHTNING:lnbc-invalid  ", ownPublicKey: nil, contacts: []) {
             XCTAssertEqual($0, "lnbc-invalid")

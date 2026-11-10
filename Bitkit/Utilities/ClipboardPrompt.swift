@@ -94,6 +94,10 @@ enum ClipboardPromptValidator {
                 payload.removeFirst("lightning:".count)
             }
         }
+        // Core validates BIP21 locally, including any optional Lightning metadata.
+        if payload.lowercased().hasPrefix("bitcoin:") {
+            return false
+        }
         return payload.lowercased().range(of: lnurlPattern, options: .regularExpression) != nil
             || payload.range(of: lightningAddressPattern, options: .regularExpression) != nil
     }
