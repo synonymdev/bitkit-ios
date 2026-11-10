@@ -169,10 +169,10 @@ class PubkyProfileManager: ObservableObject {
         },
         profileDeleter: @escaping ProfileDeleter = {
             // A Ring identity's profile belongs to Ring, so unlinking it leaves its pubky.app profile in place.
-            if !PubkyProfileManager.isRingAdopted(publicKey: $0) {
-                try await PubkyAppProfileStore.shared.deleteProfile(expectedIdentity: $0)
-            }
-            try await PubkyService.deletePaykitProfile(expectedIdentity: $0)
+            try await PubkyAppProfileStore.shared.deleteProfile(
+                expectedIdentity: $0,
+                keepPubkyAppProfile: PubkyProfileManager.isRingAdopted(publicKey: $0)
+            )
         }
     ) {
         self.remoteProfileResolver = remoteProfileResolver

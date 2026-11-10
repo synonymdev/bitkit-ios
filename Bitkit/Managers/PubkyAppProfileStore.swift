@@ -15,6 +15,57 @@ enum PubkyAppProfileError: LocalizedError {
     }
 }
 
+/// Orders profile writes with profile deletion per identity. A deletion refuses every write until it ends and every
+/// later write of a load or save that started before it, and waits for the writes already under way.
+struct ProfileWriteGate {
+    private var generations: [String: Int] = [:]
+    private var deleting: Set<String> = []
+    private var writesInFlight: [String: Int] = [:]
+    private var writesSettled: [String: [CheckedContinuation<Void, Never>]] = [:]
+
+    /// The generation a load or save starts at, which its writes pass to `admit`.
+    func generation(_ key: String) -> Int {
+        generations[key, default: 0]
+    }
+
+    /// Admits a write; pair each admitted write with `end`.
+    mutating func admit(_ key: String, generation: Int) throws {
+        guard !deleting.contains(key), generations[key, default: 0] == generation else {
+            throw PubkyServiceError.identityChanged
+        }
+        writesInFlight[key, default: 0] += 1
+    }
+
+    mutating func end(_ key: String) {
+        let remaining = writesInFlight[key, default: 1] - 1
+        guard remaining == 0 else {
+            writesInFlight[key] = remaining
+            return
+        }
+        writesInFlight[key] = nil
+        writesSettled.removeValue(forKey: key)?.forEach { $0.resume() }
+    }
+
+    /// Starts a deletion, which then waits until `hasWritesInFlight` is false (`onWritesSettled`) and ends with
+    /// `endDeletion`.
+    mutating func beginDeletion(_ key: String) {
+        generations[key, default: 0] += 1
+        deleting.insert(key)
+    }
+
+    mutating func endDeletion(_ key: String) {
+        deleting.remove(key)
+    }
+
+    func hasWritesInFlight(_ key: String) -> Bool {
+        writesInFlight[key, default: 0] > 0
+    }
+
+    mutating func onWritesSettled(_ key: String, _ continuation: CheckedContinuation<Void, Never>) {
+        writesSettled[key, default: []].append(continuation)
+    }
+}
+
 /// The identity's own pubky.app profile, which Bitkit reads and edits directly. A save writes only the fields that differ
 /// from the loaded profile, at the revision it was loaded at, so an edit made in pubky.app is never overwritten. Profile
 /// tags have no pubky.app field: they live in Bitkit's public Paykit profile copy, which follows each save for other
@@ -51,6 +102,7 @@ actor PubkyAppProfileStore {
     private var savedProfiles: [UUID: PubkyProfile] = [:]
     private var pendingAvatarUris: [String: String] = [:]
     private var tagsUnavailable: Set<String> = []
+    private var writeGate = ProfileWriteGate()
     private static let rememberedRevisions = 8
 
     /// Loads the profile. An identity that is signed in and has only a Bitkit profile moves it to pubky.app first; until
@@ -58,6 +110,7 @@ actor PubkyAppProfileStore {
     /// pubky.app profile.
     func load(publicKey: String) async throws -> PubkyProfile {
         let key = Self.normalized(publicKey)
+        let generation = writeGate.generation(key)
         let paykitData: PubkyProfileData?
         var paykitReadError: Error?
         do {
@@ -77,10 +130,10 @@ actor PubkyAppProfileStore {
         // Once a pubky.app profile was seen, one missing there was deleted there, so it is not moved back from Bitkit.
         let hadPubkyAppProfile = Self.pubkyAppProfileOwners.contains(key)
         if fetched == nil, isSignedIn, !hadPubkyAppProfile, let paykitData {
-            snapshot = await migrate(paykitData, publicKey: key)
+            snapshot = await migrate(paykitData, publicKey: key, generation: generation)
         } else if let current = fetched, isSignedIn, Self.pubkyAppAvatarPending.contains(key), let uri = paykitData?.image {
             if current.profile.image == nil, Self.isPaykitStorage(uri) {
-                snapshot = await moveAvatar(uri, onto: current, publicKey: key) ?? current
+                snapshot = await moveAvatar(uri, onto: current, publicKey: key, generation: generation) ?? current
             } else {
                 // An avatar set on pubky.app meanwhile wins over the one still to move, and only a Bitkit avatar on Paykit
                 // storage is moved.
@@ -107,7 +160,7 @@ actor PubkyAppProfileStore {
         }
         remember(profile, for: key)
         if isSignedIn, !avatarPending, let paykitData, paykitData != PubkyProfileData.from(profile: profile) {
-            try? await publishCopy(profile, expectedIdentity: key)
+            try? await publishCopy(profile, expectedIdentity: key, generation: generation)
         }
         return profile
     }
@@ -119,6 +172,7 @@ actor PubkyAppProfileStore {
     func save(_ data: PubkyProfileData, expectedIdentity: String?) async throws {
         let data = Self.normalized(data)
         let key = try await Self.identity(expectedIdentity)
+        let generation = writeGate.generation(key)
         let copyUnread = tagsUnavailable.contains(key)
         var base: PubkyProfile?
         if let baseRevision = data.baseRevision {
@@ -139,8 +193,10 @@ actor PubkyAppProfileStore {
         }
         let snapshot: Paykit.PubkyProfileSnapshot
         do {
-            snapshot = try await withPubkyAppScope {
-                try await PubkyService.publishPubkyProfile(update, expectedRevision: data.baseRevision, expectedIdentity: key)
+            snapshot = try await admitted(key, generation: generation) {
+                try await withPubkyAppScope {
+                    try await PubkyService.publishPubkyProfile(update, expectedRevision: data.baseRevision, expectedIdentity: key)
+                }
             }
         } catch PaykitError.ConcurrentUpdate {
             _ = try? await load(publicKey: key)
@@ -169,7 +225,7 @@ actor PubkyAppProfileStore {
         var copyError: Error?
         if tags != nil {
             do {
-                try await publishCopy(profile, expectedIdentity: key)
+                try await publishCopy(profile, expectedIdentity: key, generation: generation)
                 tagsUnavailable.remove(key)
             } catch {
                 copyError = error
@@ -247,7 +303,7 @@ actor PubkyAppProfileStore {
         return data
     }
 
-    private func migrate(_ data: PubkyProfileData, publicKey: String) async -> Paykit.PubkyProfileSnapshot? {
+    private func migrate(_ data: PubkyProfileData, publicKey: String, generation: Int) async -> Paykit.PubkyProfileSnapshot? {
         let fitted = Self.fitted(data)
         // An avatar already on pubky.app is kept as is; one on Paykit storage is moved below.
         let keptImage = data.image.flatMap { Self.isPubkyAppFile($0) ? $0 : nil }
@@ -259,8 +315,10 @@ actor PubkyAppProfileStore {
         )
         let snapshot: Paykit.PubkyProfileSnapshot
         do {
-            snapshot = try await withPubkyAppScope {
-                try await PubkyService.publishPubkyProfile(update, expectedRevision: nil, expectedIdentity: publicKey)
+            snapshot = try await admitted(publicKey, generation: generation) {
+                try await withPubkyAppScope {
+                    try await PubkyService.publishPubkyProfile(update, expectedRevision: nil, expectedIdentity: publicKey)
+                }
             }
             Logger.info("Moved Bitkit profile to pubky.app", context: "PubkyAppProfileStore")
         } catch {
@@ -268,16 +326,17 @@ actor PubkyAppProfileStore {
             return nil
         }
         guard let uri = data.image, Self.isPaykitStorage(uri) else { return snapshot }
-        return await moveAvatar(uri, onto: snapshot, publicKey: publicKey) ?? snapshot
+        return await moveAvatar(uri, onto: snapshot, publicKey: publicKey, generation: generation) ?? snapshot
     }
 
     private func moveAvatar(
         _ uri: String,
         onto snapshot: Paykit.PubkyProfileSnapshot,
-        publicKey: String
+        publicKey: String,
+        generation: Int
     ) async -> Paykit.PubkyProfileSnapshot? {
         do {
-            let moved = try await withPubkyAppScope {
+            let moved = try await admitted(publicKey, generation: generation) { try await withPubkyAppScope {
                 let bytes = try await PubkyService.fetchFile(uri: uri, maxBytes: Self.avatarMaxBytes)
                 let image = try await PubkyService.uploadPubkyAppAvatar(
                     bytes: bytes,
@@ -289,7 +348,7 @@ actor PubkyAppProfileStore {
                     expectedRevision: snapshot.revision,
                     expectedIdentity: publicKey
                 )
-            }
+            } }
             Self.pubkyAppAvatarPending.remove(publicKey)
             return moved
         } catch {
@@ -299,23 +358,42 @@ actor PubkyAppProfileStore {
         }
     }
 
-    /// Deletes the identity's pubky.app profile, for a wallet-owned identity deleting its profile.
-    func deleteProfile(expectedIdentity: String) async throws {
+    /// Deletes the identity's Bitkit profile copy and, unless `keepPubkyAppProfile`, its pubky.app profile. Writes already
+    /// under way finish first, and no load or save writes while it runs or, when it started before, after it, so
+    /// neither profile is written back once deleted.
+    func deleteProfile(expectedIdentity: String, keepPubkyAppProfile: Bool) async throws {
         let key = Self.normalized(expectedIdentity)
-        guard let revision = try await PubkyService.fetchPubkyProfileWithRevision(publicKey: key)?.revision else { return }
-        try await withPubkyAppScope {
-            try await PubkyService.deletePubkyProfile(expectedRevision: revision, expectedIdentity: key)
+        writeGate.beginDeletion(key)
+        defer { writeGate.endDeletion(key) }
+        if writeGate.hasWritesInFlight(key) {
+            await withCheckedContinuation { writeGate.onWritesSettled(key, $0) }
         }
-        profilesByRevision[key] = nil
-        revisionOrder[key] = nil
+        if !keepPubkyAppProfile, let revision = try await PubkyService.fetchPubkyProfileWithRevision(publicKey: key)?.revision {
+            try await withPubkyAppScope {
+                try await PubkyService.deletePubkyProfile(expectedRevision: revision, expectedIdentity: key)
+            }
+            profilesByRevision[key] = nil
+            revisionOrder[key] = nil
+        }
+        try await PubkyService.deletePaykitProfile(expectedIdentity: key)
     }
 
-    private func publishCopy(_ profile: PubkyProfile, expectedIdentity: String) async throws {
+    /// Runs a write of a load or save that started at `generation`, refused during a deletion or after one that began
+    /// since.
+    private func admitted<T>(_ key: String, generation: Int, _ write: () async throws -> T) async throws -> T {
+        try writeGate.admit(key, generation: generation)
+        defer { writeGate.end(key) }
+        return try await write()
+    }
+
+    private func publishCopy(_ profile: PubkyProfile, expectedIdentity: String, generation: Int) async throws {
         do {
-            try await PubkyService.publishPaykitProfile(
-                PubkyProfileData.from(profile: profile).toPaykitProfile(),
-                expectedIdentity: expectedIdentity
-            )
+            try await admitted(expectedIdentity, generation: generation) {
+                try await PubkyService.publishPaykitProfile(
+                    PubkyProfileData.from(profile: profile).toPaykitProfile(),
+                    expectedIdentity: expectedIdentity
+                )
+            }
         } catch {
             Logger.warn("Failed to update Bitkit profile copy: \(error)", context: "PubkyAppProfileStore")
             throw error

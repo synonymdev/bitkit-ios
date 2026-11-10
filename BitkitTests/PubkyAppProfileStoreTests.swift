@@ -108,3 +108,55 @@ final class PubkyAppProfileStoreTests: XCTestCase {
         XCTAssertFalse(fitted.links.contains { $0.label == "City" })
     }
 }
+
+final class ProfileWriteGateTests: XCTestCase {
+    func testWriteFromBeforeADeletionIsRefused() {
+        var gate = ProfileWriteGate()
+        let generation = gate.generation("a")
+
+        gate.beginDeletion("a")
+        gate.endDeletion("a")
+
+        XCTAssertThrowsError(try gate.admit("a", generation: generation))
+        XCTAssertNoThrow(try gate.admit("a", generation: gate.generation("a")))
+    }
+
+    func testNoWriteIsAdmittedDuringADeletion() {
+        var gate = ProfileWriteGate()
+
+        gate.beginDeletion("a")
+
+        XCTAssertThrowsError(try gate.admit("a", generation: gate.generation("a")))
+        XCTAssertNoThrow(try gate.admit("b", generation: gate.generation("b")))
+    }
+
+    func testDeletionWaitsForWritesUnderWay() async throws {
+        actor Box {
+            var gate = ProfileWriteGate()
+            var settled = false
+            func admit() throws { try gate.admit("a", generation: gate.generation("a")) }
+            func end() { gate.end("a") }
+            func delete() async {
+                gate.beginDeletion("a")
+                if gate.hasWritesInFlight("a") {
+                    await withCheckedContinuation { gate.onWritesSettled("a", $0) }
+                }
+                settled = true
+            }
+        }
+        let box = Box()
+        try await box.admit()
+        try await box.admit()
+        let deletion = Task { await box.delete() }
+
+        await box.end()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let settledEarly = await box.settled
+        XCTAssertFalse(settledEarly)
+
+        await box.end()
+        await deletion.value
+        let settled = await box.settled
+        XCTAssertTrue(settled)
+    }
+}
