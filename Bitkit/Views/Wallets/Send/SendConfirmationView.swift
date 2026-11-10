@@ -48,6 +48,7 @@ struct SendConfirmationView: View {
     @State private var savingsFallbackWalletId: String?
     @State private var onchainFeeCalculationId: Int?
     @State private var presentationID: UUID?
+    @State private var isAuthorizingPayment = false
 
     private struct WalletSwitchRun {
         let id: UUID
@@ -70,9 +71,15 @@ struct SendConfirmationView: View {
 
     private var hasSufficientLightningRequestFunds: Bool {
         guard app.contactPaymentContext?.incomingPaymentRequest != nil, app.selectedWalletToPayFrom == .lightning else { return true }
+        guard let routingFee = wallet.routingFeeEstimateSats else { return false }
         let amount = wallet.sendAmountSats ?? app.scannedLightningInvoice?.amountSatoshis ?? 0
         let available = UInt64(clamping: wallet.maxSendLightningSats)
-        return amount > 0 && amount <= available && wallet.routingFeeEstimateSats <= available - amount
+        return amount > 0 && amount <= available && routingFee <= available - amount
+    }
+
+    private var isLightningRequestFeeFailed: Bool {
+        app.contactPaymentContext?.incomingPaymentRequest != nil
+            && app.selectedWalletToPayFrom == .lightning && wallet.routingFeeEstimateFailed
     }
 
     private var requiresAmountReview: Bool {
@@ -387,9 +394,13 @@ struct SendConfirmationView: View {
                 .accessibilityIdentifier("SendConfirmToggleDetails")
             }
 
-            if preparingRequest == nil, isFeeRateMissing, wallet.feeRateLoadFailed {
+            if preparingRequest == nil, (isFeeRateMissing && wallet.feeRateLoadFailed) || isLightningRequestFeeFailed {
                 CustomButton(title: t("common__try_again"), size: .small) {
-                    await retryFeeRate()
+                    if isLightningRequestFeeFailed {
+                        await calculateRoutingFee()
+                    } else {
+                        await retryFeeRate()
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.bottom, 16)
@@ -732,12 +743,12 @@ struct SendConfirmationView: View {
                                 .frame(width: 16, height: 16)
                                 .padding(.trailing, 4)
 
-                            if wallet.routingFeeEstimateSats > 0 {
+                            if let routingFee = wallet.routingFeeEstimateSats, routingFee > 0 {
                                 let feeText = "\(t("fee__instant__title")) (±"
                                 HStack(spacing: 0) {
                                     BodySSBText(feeText)
                                     MoneyText(
-                                        sats: Int(wallet.routingFeeEstimateSats),
+                                        sats: Int(routingFee),
                                         size: .bodySSB,
                                         symbol: true,
                                         symbolColor: .textPrimary
@@ -805,7 +816,8 @@ struct SendConfirmationView: View {
     private var fundingSourceButton: some View {
         SendFundingSourceButton(
             hwSend: hwSend,
-            disabled: isSubmittingPayment || isRequestSetupPending || isHardwarePreparationLoading || retainedHardwareRetry != nil,
+            disabled: isAuthorizingPayment || isSubmittingPayment || isRequestSetupPending || isHardwarePreparationLoading || retainedHardwareRetry !=
+                nil,
             allowsUsdt: app.contactPaymentContext?.incomingPaymentRequest != nil
         ) { source in
             if app.contactPaymentContext?.incomingPaymentRequest != nil, let onSelectRequestFundingSource {
@@ -844,7 +856,7 @@ struct SendConfirmationView: View {
     }
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
-        guard !isSubmittingPayment else { return }
+        guard !isSubmittingPayment, !isAuthorizingPayment else { return }
         guard hasSufficientLightningRequestFunds else { throw NodeError.InsufficientFunds(message: "Insufficient spendable Lightning balance") }
         guard !requiresAmountReview, preparingRequest == nil, !isRequestSetupPending, walletSwitchContext == nil,
               isAutomatic || !prepareRequestCoinsIfNeeded() else { throw CancellationError() }
@@ -918,6 +930,8 @@ struct SendConfirmationView: View {
         }
 
         // Check if authentication is required for payments
+        isAuthorizingPayment = true
+        defer { isAuthorizingPayment = false }
         guard hasSufficientLightningRequestFunds else { throw NodeError.InsufficientFunds(message: "Insufficient spendable Lightning balance") }
         if settings.requirePinForPayments && settings.pinEnabled {
             if settings.useBiometrics && BiometricAuth.isAvailable {
@@ -2209,9 +2223,9 @@ struct SendConfirmationView: View {
 
     @MainActor
     private func calculateRoutingFee() async {
-        guard !requiresAmountReview else { return }
+        guard !Task.isCancelled, !isAuthorizingPayment, !isSubmittingPayment, confirmationContext != nil else { return }
         guard let bolt11 = app.scannedLightningInvoice?.bolt11 else {
-            wallet.routingFeeEstimateSats = 0
+            wallet.resetRoutingFeeEstimate()
             return
         }
 
@@ -2220,7 +2234,7 @@ struct SendConfirmationView: View {
             let amountSats: UInt64? = app.scannedLightningInvoice?.amountSatoshis == 0 ? wallet.sendAmountSats : nil
             await wallet.refreshRoutingFeeEstimate(bolt11: bolt11, amountSats: amountSats)
         } else {
-            wallet.routingFeeEstimateSats = 0
+            wallet.resetRoutingFeeEstimate()
         }
     }
 }
