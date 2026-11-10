@@ -449,6 +449,7 @@ class LightningService: NodeLifecycleService {
 
         Logger.warn("Wiping on lighting wallet...")
         try FileManager.default.removeItem(at: directory)
+        forgetLdkAttempts()
 
         await MainActor.run {
             clearCache()
@@ -947,7 +948,8 @@ class LightningService: NodeLifecycleService {
     /// Note: Uses cached channels for fast, non-blocking checks
     @MainActor
     func canSend(amountSats: UInt64) -> Bool {
-        if let rail = channelFreeRail, rail.isReady, rail.sendableSats >= amountSats, !canSendWithChannels(amountSats: amountSats) {
+        // An amountless invoice still needs funds on Spark, as the channels need capacity above the amount.
+        if let rail = channelFreeRail, rail.isReady, rail.sendableSats >= max(1, amountSats), !canSendWithChannels(amountSats: amountSats) {
             return true
         }
         return canSendWithChannels(amountSats: amountSats)
@@ -1084,7 +1086,10 @@ class LightningService: NodeLifecycleService {
         noteAttempt(on: .ldk, bolt11: bolt11)
 
         do {
-            return try await Self.submitPayment(beforeSubmission: beforeSubmission) {
+            return try await Self.submitPayment(beforeSubmission: { [weak self] in
+                try beforeSubmission()
+                self?.recordLdkAttempt(paymentHash: paymentHash)
+            }) {
                 if let sats {
                     try node.bolt11Payment().sendUsingAmount(
                         invoice: .fromStr(invoiceStr: bolt11), amountMsat: sats * 1000, routeParameters: params
@@ -1113,13 +1118,25 @@ class LightningService: NodeLifecycleService {
     private static let railAttemptsKey = "channelFreeRailAttemptedPaymentHashes"
     private static let railAttemptsLimit = 500
 
+    /// Payment hashes sent over the node, kept across launches: while the node can't list its payments (stopped or not
+    /// started yet), only these may have an attempt there that a Spark payment would repeat.
+    private static let ldkAttemptsKey = "ldkAttemptedPaymentHashes"
+
     private func recordRailAttempt(paymentHash: String?) {
+        recordAttempt(paymentHash: paymentHash, key: Self.railAttemptsKey)
+    }
+
+    func recordLdkAttempt(paymentHash: String?) {
+        recordAttempt(paymentHash: paymentHash, key: Self.ldkAttemptsKey)
+    }
+
+    private func recordAttempt(paymentHash: String?, key: String) {
         guard let paymentHash = paymentHash?.lowercased() else { return }
         eventCallbackLock.withLock {
-            var hashes = railAttemptsStore.stringArray(forKey: Self.railAttemptsKey) ?? []
+            var hashes = railAttemptsStore.stringArray(forKey: key) ?? []
             guard !hashes.contains(paymentHash) else { return }
             hashes.append(paymentHash)
-            railAttemptsStore.set(Array(hashes.suffix(Self.railAttemptsLimit)), forKey: Self.railAttemptsKey)
+            railAttemptsStore.set(Array(hashes.suffix(Self.railAttemptsLimit)), forKey: key)
         }
     }
 
@@ -1128,18 +1145,29 @@ class LightningService: NodeLifecycleService {
     func releaseRailAttempt(paymentHash: String, unlessInFlight: Bool = true) {
         let hash = paymentHash.lowercased()
         eventCallbackLock.withLock {
-            guard !unlessInFlight || !railSendsInFlight.contains(hash),
-                  var hashes = railAttemptsStore.stringArray(forKey: Self.railAttemptsKey),
-                  hashes.contains(hash)
-            else { return }
-            hashes.removeAll { $0 == hash }
-            railAttemptsStore.set(hashes, forKey: Self.railAttemptsKey)
+            guard !unlessInFlight || !railSendsInFlight.contains(hash) else { return }
+            removeAttempt(paymentHash: hash, key: Self.railAttemptsKey)
         }
     }
 
+    private func releaseLdkAttempt(paymentHash: String) {
+        eventCallbackLock.withLock { removeAttempt(paymentHash: paymentHash.lowercased(), key: Self.ldkAttemptsKey) }
+    }
+
+    /// Callers hold `eventCallbackLock`.
+    private func removeAttempt(paymentHash hash: String, key: String) {
+        guard var hashes = railAttemptsStore.stringArray(forKey: key), hashes.contains(hash) else { return }
+        hashes.removeAll { $0 == hash }
+        railAttemptsStore.set(hashes, forKey: key)
+    }
+
     private func hasRailAttempt(paymentHash: String) -> Bool {
+        hasAttempt(paymentHash: paymentHash, key: Self.railAttemptsKey)
+    }
+
+    private func hasAttempt(paymentHash: String, key: String) -> Bool {
         eventCallbackLock.withLock {
-            railAttemptsStore.stringArray(forKey: Self.railAttemptsKey)?.contains(paymentHash.lowercased()) ?? false
+            railAttemptsStore.stringArray(forKey: key)?.contains(paymentHash.lowercased()) ?? false
         }
     }
 
@@ -1148,16 +1176,32 @@ class LightningService: NodeLifecycleService {
         eventCallbackLock.withLock { railAttemptsStore.removeObject(forKey: Self.railAttemptsKey) }
     }
 
+    /// Called when the node's wallet is wiped, as its payments go with it.
+    func forgetLdkAttempts() {
+        eventCallbackLock.withLock { railAttemptsStore.removeObject(forKey: Self.ldkAttemptsKey) }
+    }
+
     /// An invoice must never go out on both rails: an earlier attempt still pending on `rails` refuses the payment as a
     /// duplicate, as LDK does its own, and a settled one returns its hash as paid. A failed or unknown one lets the
-    /// payment go. While the rail can't list its payments, an invoice it was sent over is refused as pending too.
+    /// payment go. While either rail can't list its payments, an invoice it was sent over is refused as pending too.
     private func settledEarlierAttempt(paymentHash: String?, on rails: [LightningPaymentRail]) async throws -> PaymentHash? {
         guard let paymentHash else { return nil }
         var statuses: [PaymentStatus] = rails.contains(.channelFree) && isRailSendInFlight(paymentHash: paymentHash) ? [.pending] : []
-        if rails.contains(.ldk), let payment = await nodePayments()?.first(where: {
-            $0.direction == .outbound && $0.id.caseInsensitiveCompare(paymentHash) == .orderedSame
-        }) {
-            statuses.append(payment.status)
+        if rails.contains(.ldk) {
+            if let payments = await nodePayments() {
+                let payment = payments.first {
+                    $0.direction == .outbound && $0.id.caseInsensitiveCompare(paymentHash) == .orderedSame
+                }
+                if let payment {
+                    statuses.append(payment.status)
+                }
+                if payment == nil || payment?.status == .failed {
+                    releaseLdkAttempt(paymentHash: paymentHash)
+                }
+            } else if hasAttempt(paymentHash: paymentHash, key: Self.ldkAttemptsKey) {
+                Logger.warn("Refused paying '\(paymentHash)', the node can't list the earlier attempt now", context: "LightningService")
+                throw Self.pendingDuplicate(paymentHash: paymentHash)
+            }
         }
         if rails.contains(.channelFree) {
             if let payments = await readableRailPayments() {

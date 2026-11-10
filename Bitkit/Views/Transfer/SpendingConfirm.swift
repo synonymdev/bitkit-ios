@@ -82,7 +82,7 @@ struct SpendingConfirm: View {
         .onReceive(OnchainSendAttemptService.localResolutionPublisher.receive(on: DispatchQueue.main)) { resolution in
             guard Self.followsRecovered(resolution, isPaying: isPaying), !hideSwipeButton else { return }
             // This screen owns the recovered funding: follow it at the chosen speed, as a swipe would have.
-            flow.onRecoveredBroadcast(txid: resolution.txid)
+            flow.onRecoveredBroadcast(txid: resolution.txid, attemptId: resolution.attemptId)
             hideSwipeButton = true
             navigation.navigate(.settingUp)
         }
@@ -159,6 +159,9 @@ struct SpendingConfirm: View {
                 hideSwipeButton = true
             }
         } catch {
+            if let attemptId = await OnchainSendAttemptService.shared.unresolvedSparkFundingAttemptId() {
+                flow.bindApproval(to: attemptId)
+            }
             Logger.error("Failed to transfer to spending: \(error)", context: "SpendingConfirm")
             app.toast(
                 type: .error,

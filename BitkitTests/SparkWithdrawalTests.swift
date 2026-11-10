@@ -68,6 +68,58 @@ final class SparkWithdrawalTests: XCTestCase {
         XCTAssertEqual(transfer.sparkWithdrawFeeSats, 2190)
     }
 
+    @MainActor
+    func testTheFeeTimeoutEndsTheWaitWhileTheSdkCallIgnoresCancellation() async {
+        let transfer = TransferViewModel()
+        transfer.sparkFeeTimeout = 0.05
+        // Like the Breez bridge, this call doesn't observe task cancellation.
+        transfer.priceSparkWithdrawal = { _ in
+            await withCheckedContinuation { continuation in
+                DispatchQueue.global().asyncAfter(deadline: .now() + 3) { continuation.resume(returning: 2190) }
+            }
+        }
+        let start = Date()
+
+        transfer.loadSparkWithdrawFee(balanceSats: 99901, savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+
+        XCTAssertFalse(transfer.isPricingSparkWithdrawal)
+        XCTAssertNil(transfer.sparkWithdrawFeeSats)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1.5)
+    }
+
+    @MainActor
+    func testCloseInsteadWaitsForTheSparkFee() {
+        let transfer = TransferViewModel()
+
+        let committed = transfer.onTransferToSavingsConfirm(channels: [], withdrawsSpark: true, mode: .close)
+
+        XCTAssertFalse(committed, "A Spark withdrawal was committed with no fee shown")
+        XCTAssertFalse(transfer.hasChannelsToClose)
+    }
+
+    @MainActor
+    func testNoSecondCommitWhileTheSwipeRepricesTheSparkFee() async throws {
+        let transfer = TransferViewModel()
+        transfer.priceSparkWithdrawal = { _ in 2190 }
+        transfer.loadSparkWithdrawFee(balanceSats: 99901, savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+        let gate = PriceGate()
+        transfer.priceSparkWithdrawal = { _ in
+            await gate.wait()
+            return 2190
+        }
+
+        let recheck = Task { try await transfer.recheckSparkWithdrawFee() }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let committedDuringRecheck = transfer.onTransferToSavingsConfirm(channels: [], withdrawsSpark: true, mode: .close)
+        await gate.open()
+        try await recheck.value
+
+        XCTAssertFalse(committedDuringRecheck, "Close instead committed while the swipe was repricing")
+        XCTAssertTrue(transfer.onTransferToSavingsConfirm(channels: [], withdrawsSpark: true))
+    }
+
     // MARK: - Failed withdrawal
 
     func testFailedSparkWithdrawalIsShownAndNamesWhetherChannelsMoved() {
@@ -112,5 +164,21 @@ private actor PriceCalls {
 
     func record(_ address: String) {
         addresses.append(address)
+    }
+}
+
+private actor PriceGate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        waiters.forEach { $0.resume() }
+        waiters = []
     }
 }
