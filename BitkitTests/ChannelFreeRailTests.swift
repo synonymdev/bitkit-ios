@@ -636,7 +636,7 @@ extension ChannelFreeRailTests {
         await assertReachesTheNode()
     }
 
-    func testASparkSendWithAnUnknownOutcomeHoldsTheInvoiceUntilSparkSyncsAgain() async {
+    func testASparkSendWithAnUnknownOutcomeHoldsTheInvoiceUntilSparkSyncsAgain() async throws {
         Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: 1000) }
         rail.balanceSats = 100_000
         // The connection drops inside Spark's send, after it may have committed the payment.
@@ -649,8 +649,33 @@ extension ChannelFreeRailTests {
 
         await assertRefusedAsDuplicate()
 
+        // A sync after the failure reached Spark and the invoice expired, so the send can no longer go out.
         rail.syncedAfter = { _ in true }
+        let expiresAt = try Self.invoiceExpiresAt()
+        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: expiresAt) }
         await assertReachesTheNode()
+    }
+
+    func testAnUnknownSparkSendMissingAfterAFreshSyncIsHeldUntilItsInvoiceExpires() async throws {
+        let expiresAt = try Self.invoiceExpiresAt()
+        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: expiresAt - 600) }
+        rail.balanceSats = 100_000
+        rail.errorAfterSubmission = NSError(domain: "spark", code: 2)
+        _ = try? await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+        rail.errorAfterSubmission = nil
+        // Every sync after the failure reaches Spark, yet Spark lists no such send: resuming it may have failed.
+        rail.syncedAfter = { _ in true }
+        rail.balanceSats = 0
+
+        await assertRefusedAsDuplicate()
+
+        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: expiresAt) }
+        await assertReachesTheNode()
+    }
+
+    private static func invoiceExpiresAt() throws -> TimeInterval {
+        let invoice = try Bolt11Invoice.fromStr(invoiceStr: invoice)
+        return TimeInterval(invoice.secondsSinceEpoch() + invoice.expiryTimeSeconds())
     }
 
     func testPaykitReadsSparkBeforeItsFirstSyncAsUnavailable() async {

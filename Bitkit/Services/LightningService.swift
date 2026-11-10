@@ -134,7 +134,7 @@ class LightningService: NodeLifecycleService {
     /// Payment hashes inside a rail send, which Spark lists only once it returns.
     private var railSendsInFlight: Set<String> = []
     /// Rail sends that failed after they were submitted, by hash, with the time they failed in seconds since 1970.
-    private var uncertainRailSends: [String: UInt64] = [:]
+    private var uncertainRailSends: [String: UncertainRailSend] = [:]
     /// Counts attempts recorded in this run, so a listing drops a hash just when the hash was recorded before the
     /// listing was read, never a retry recorded while it was read.
     private var attemptRecords = 0
@@ -1099,7 +1099,7 @@ class LightningService: NodeLifecycleService {
             } catch {
                 // A send that failed once submitted may still go out, so its outcome waits for a later sync.
                 if let paymentHash {
-                    markRailSendUncertain(paymentHash: paymentHash, since: mark)
+                    markRailSendUncertain(paymentHash: paymentHash, since: mark, expiresAt: expiresAt)
                 }
                 throw error
             }
@@ -1440,13 +1440,19 @@ class LightningService: NodeLifecycleService {
         try? await channelFreeRailPayments()
     }
 
-    /// A rail send that failed after it was submitted, with the time it failed, until a sync after it settles it.
-    private func markRailSendUncertain(paymentHash: String, since mark: AttemptMark) {
+    /// A rail send whose outcome stayed unknown: when it failed, and when its invoice expires, in seconds since 1970.
+    private struct UncertainRailSend {
+        let failedAt: UInt64
+        let expiresAt: Int?
+    }
+
+    /// A rail send that failed after it was submitted, until a sync after it and its invoice's expiry settle it.
+    private func markRailSendUncertain(paymentHash: String, since mark: AttemptMark, expiresAt: Int?) {
         let hash = paymentHash.lowercased()
         let failedAt = UInt64(max(0, now().timeIntervalSince1970))
         eventCallbackLock.withLock {
             guard attemptsRecorded(since: mark.records, key: Self.railAttemptsKey).contains(hash) else { return }
-            uncertainRailSends[hash] = failedAt
+            uncertainRailSends[hash] = UncertainRailSend(failedAt: failedAt, expiresAt: expiresAt)
         }
     }
 
@@ -1467,11 +1473,15 @@ class LightningService: NodeLifecycleService {
         _ = eventCallbackLock.withLock { uncertainRailSends.removeValue(forKey: paymentHash.lowercased()) }
     }
 
-    /// True unless the hash's last rail send failed after it was submitted and no sync has reached the rail since.
+    /// True unless the hash's last rail send failed after it was submitted and may still go out: no sync has reached the
+    /// rail since, or its invoice hasn't expired.
     private func railSyncedSinceUncertainSend(paymentHash: String) async -> Bool {
         let hash = paymentHash.lowercased()
-        guard let failedAt = eventCallbackLock.withLock({ uncertainRailSends[hash] }) else { return true }
-        guard let rail = channelFreeRail, await rail.hasSynced(after: failedAt) else { return false }
+        guard let uncertain = eventCallbackLock.withLock({ uncertainRailSends[hash] }) else { return true }
+        guard let rail = channelFreeRail, await rail.hasSynced(after: uncertain.failedAt) else { return false }
+        // Spark keeps a send it committed but didn't finish in a cache no call exposes, and a sync that reached Spark
+        // can still fail to resume it, so only an expired invoice shows a missing send will never go out.
+        guard let expiresAt = uncertain.expiresAt, Int(now().timeIntervalSince1970) >= expiresAt else { return false }
         endRailSendUncertainty(paymentHash: hash)
         return true
     }
