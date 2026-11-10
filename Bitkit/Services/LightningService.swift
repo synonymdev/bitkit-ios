@@ -1450,6 +1450,19 @@ class LightningService: NodeLifecycleService {
         }
     }
 
+    /// Rail sends whose outcome stayed unknown, listed as pending until a sync after them reaches the rail: Spark may
+    /// still finish one, while its own list shows only an earlier attempt, or nothing.
+    private func unsettledUncertainRailSends() async -> [ChannelFreeRailPayment] {
+        let hashes = eventCallbackLock.withLock { Array(uncertainRailSends.keys) }
+        var pending: [ChannelFreeRailPayment] = []
+        for hash in hashes {
+            if await !railSyncedSinceUncertainSend(paymentHash: hash) {
+                pending.append(ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .pending, preimage: nil))
+            }
+        }
+        return pending
+    }
+
     private func endRailSendUncertainty(paymentHash: String) {
         _ = eventCallbackLock.withLock { uncertainRailSends.removeValue(forKey: paymentHash.lowercased()) }
     }
@@ -2078,7 +2091,8 @@ extension LightningService {
             // A restored wallet fills its list on its first sync, so before a sync reaches Spark a missing send proves
             // nothing.
             guard await rail.hasSynced(after: nil) else { throw ChannelFreeRailUnavailable() }
-            return try await rail.lightningPayments()
+            let payments = try await rail.lightningPayments()
+            return await payments + unsettledUncertainRailSends()
         }
         if await channelFreeRailSupported() {
             throw ChannelFreeRailUnavailable()

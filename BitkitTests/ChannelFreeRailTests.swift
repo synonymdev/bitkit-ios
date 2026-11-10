@@ -662,6 +662,22 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(status, .unavailable, "Spark's unsynced list was read as complete")
     }
 
+    func testPaykitReadsAnOlderFailedAttemptOfAnUnknownSparkSendAsPending() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: 1000) }
+        rail.balanceSats = 100_000
+        rail.errorAfterSubmission = NSError(domain: "spark", code: 2)
+        _ = try? await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+        rail.errorAfterSubmission = nil
+        // Spark lists only an earlier attempt that failed, and has not synced since this send failed.
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil)]
+        rail.syncedAfter = { ($0 ?? 0) < 1000 }
+
+        let status = await PaykitLightningPaymentProofLookup.railStatus(paymentHash: hash)
+
+        XCTAssertEqual(status, .pending, "an earlier attempt's failure ended a send Spark may still finish")
+    }
+
     private static let ldkAttemptsKey = "ldkAttemptedPaymentHashes"
     private static let railAttemptsKey = "channelFreeRailAttemptedPaymentHashes"
 
