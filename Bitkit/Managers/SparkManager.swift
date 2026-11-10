@@ -142,13 +142,19 @@ final class SparkManager: ChannelFreeLightningRail {
         }
     }
 
+    /// Saves the kept balance as an exit starts, before a refresh reads Spark as exiting and drops it: a cancelled
+    /// exit shows it again.
+    func holdKeptBalanceForExit() {
+        keptBeforeExit = keptBalanceSats ?? keptBeforeExit
+        keptBalanceSats = nil
+    }
+
     /// Connects Spark again so its leaf optimization follows whether an exit runs: off when one starts, back on
     /// once it ends. An exit cancelled before it paid anything (`isCancel`) shows the kept balance again.
     func reconnectForExit(isCancel: Bool = false) async {
         guard let network = Self.sparkNetwork, !isWiping else { return }
         if isExiting {
-            keptBeforeExit = keptBalanceSats ?? keptBeforeExit
-            keptBalanceSats = nil
+            holdKeptBalanceForExit()
         } else {
             keptBalanceSats = Self.keptBalanceSats(afterExitKept: keptBeforeExit, read: balanceSats, isCancel: isCancel)
                 ?? keptBalanceSats

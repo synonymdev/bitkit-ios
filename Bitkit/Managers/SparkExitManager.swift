@@ -792,6 +792,8 @@ final class SparkExitManager {
         startingCreatedAt = record.createdAt
         defer { startingCreatedAt = nil }
         self.record = record
+        // In the same step the exit shows: a refresh before the reconnect below would read Spark as exiting.
+        SparkManager.shared.holdKeptBalanceForExit()
         SparkManager.shared.detachForExit()
         // Reconnecting cuts an optimization short, which would leave its counter-swap unclaimed for a while.
         await SparkManager.shared.waitForOptimization()
