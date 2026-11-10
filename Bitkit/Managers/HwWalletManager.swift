@@ -943,15 +943,15 @@ final class HwWalletManager: Sendable {
     /// them to the wallet.
     func handleWatcherEvent(watcherId: String, event: WatcherEvent) {
         guard case let .transactionsChanged(
-            activities,
-            transactionDetails,
-            balance,
-            _,
-            _,
-            _,
-            nextUnusedExternalAddress
-        ) = event,
-            let addressType = AddressScriptType.from(string: addressType(fromWatcherId: watcherId))
+                  activities,
+                  transactionDetails,
+                  balance,
+                  _,
+                  _,
+                  _,
+                  nextUnusedExternalAddress
+              ) = event,
+              let addressType = AddressScriptType.from(string: addressType(fromWatcherId: watcherId))
         else { return }
         let walletId = walletId(fromWatcherId: watcherId)
         let previous = watcherData[watcherId]

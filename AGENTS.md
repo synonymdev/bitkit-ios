@@ -311,7 +311,7 @@ Bumping `bitkit-core`, `ldk-node`, `paykit` or `vss-rust-client-ffi` changes the
 
 ### Code Formatting
 ```bash
-# Install SwiftFormat (CI pins 0.64.0; `.swiftformat` sets it as the minimum version)
+# Install SwiftFormat (CI pins 0.64.6; `.swiftformat` sets it as the minimum version)
 brew install swiftformat
 
 # Format all Swift code
