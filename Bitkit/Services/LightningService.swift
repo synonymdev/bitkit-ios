@@ -2040,9 +2040,16 @@ extension LightningService {
 
     /// Spark runs before the node starts, so its events wait until the node's event callback is set rather than being lost.
     func emitChannelFreeRailEvent(_ event: Event) {
-        if case let .paymentFailed(_, paymentHash?, _) = event {
+        switch event {
+        case let .paymentFailed(_, paymentHash?, _):
             // The failure of the send itself, which may arrive while its send call is still returning.
             releaseRailAttempt(paymentHash: paymentHash, unlessInFlight: false)
+            // The event settles a send whose outcome was unknown, so retries of its invoice are no longer held.
+            endRailSendUncertainty(paymentHash: paymentHash)
+        case let .paymentSuccessful(_, paymentHash, _, _):
+            endRailSendUncertainty(paymentHash: paymentHash)
+        default:
+            break
         }
         if isStaleFailure(event, from: .channelFree) {
             Logger.info("Ignored a Spark failure for a payment retried over a channel: \(event)", context: "LightningService")
