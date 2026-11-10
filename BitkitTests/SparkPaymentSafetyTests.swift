@@ -371,4 +371,13 @@ extension SparkPaymentSafetyTests {
         XCTAssertTrue(SparkManager.hasSynced(after: 1000, syncedThisRun: true, lastSyncFailed: false, lastSyncedAt: 2000))
         XCTAssertFalse(SparkManager.hasSynced(after: nil, syncedThisRun: true, lastSyncFailed: true, lastSyncedAt: 2000))
     }
+
+    func testSparkCountsAsSyncedOnlyOnceAWalletSyncSucceeded() {
+        // The SDK reports no error before any sync ends, and sets its sync time only on a wallet sync that succeeded,
+        // while it also reports Synced for a partial or skipped sync.
+        XCTAssertFalse(
+            SparkManager.hasSynced(after: nil, syncedThisRun: true, lastSyncFailed: false, lastSyncedAt: nil),
+            "a list no wallet sync filled was read as complete"
+        )
+    }
 }

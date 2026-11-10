@@ -386,11 +386,12 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// The SDK keeps `lastSyncedAt` across launches but not `lastSyncError`, which is unset after each connect until that
-    /// run's first sync ends, so only a sync this run shows Spark's list is complete.
+    /// run's first sync ends, so only a sync this run, after a wallet sync that ever succeeded, shows Spark's list is complete.
     nonisolated static func hasSynced(after seconds: UInt64?, syncedThisRun: Bool, lastSyncFailed: Bool, lastSyncedAt: UInt64?) -> Bool {
-        guard syncedThisRun, !lastSyncFailed else { return false }
+        // The SDK sets `lastSyncedAt` only on a wallet sync that succeeded, while it reports Synced for partial ones too.
+        guard syncedThisRun, !lastSyncFailed, let lastSyncedAt else { return false }
         guard let seconds else { return true }
-        return lastSyncedAt.map { $0 > seconds } ?? false
+        return lastSyncedAt > seconds
     }
 
     nonisolated func lightningPayments() async throws -> [ChannelFreeRailPayment] {
