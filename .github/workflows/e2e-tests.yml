@@ -97,7 +97,7 @@ jobs:
           xcrun simctl bootstatus "$udid" -b
           defaults write com.apple.iphonesimulator DisableAllNotifications -bool true
           rm -rf /tmp/lock/
-      - name: Validate failed-hook and failed-body diagnostics
+      - name: Validate timed-out setup and thrown-failure diagnostics
         working-directory: bitkit-e2e-tests
         env:
           RECORD_VIDEO: true
@@ -112,8 +112,10 @@ jobs:
           import json
           from pathlib import Path
           root = Path('artifacts/attempt-probe')
-          for kind, error in [('setup', 'INTENTIONAL_DIAGNOSTICS_SETUP_FAILURE'), ('body', 'INTENTIONAL_DIAGNOSTICS_BODY_FAILURE')]:
-              matches = [p for p in root.glob('*/failure/failure.json') if error in p.read_text()]
+          for kind, error in [('timeout', 'Timeout'), ('setup', 'INTENTIONAL_DIAGNOSTICS_SETUP_FAILURE'), ('body', 'INTENTIONAL_DIAGNOSTICS_BODY_FAILURE')]:
+              matches = [p for p in root.glob('*/failure/failure.json') if error in json.loads(p.read_text())['error']['message']]
+              if kind == 'timeout':
+                  assert all('diagnostics_probe_timeout_case' in json.loads(p.read_text())['case'] for p in matches)
               assert len(matches) == 1, (kind, matches)
               failure = matches[0].parent
               for name in ['screen.png', 'source.xml', '../recording.mp4']:
@@ -123,6 +125,7 @@ jobs:
               assert any(p.get('exitCode') == 0 and p.get('file') == 'lnd-state.json' for p in manifest['probes'])
               assert (failure / 'forward-10009.log').is_file()
               print('Verified collector:', kind, failure)
+          assert len(list(root.glob('*/failure/failure.json'))) == 3
           PYTHON
           rm -rf /tmp/lock/
       - name: Four cases - attempt 1
