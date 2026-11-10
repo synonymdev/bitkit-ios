@@ -46,7 +46,7 @@ struct MoveToSparkView: View {
         VStack(alignment: .leading, spacing: 16) {
             DisplayText(title, accentColor: .purpleAccent)
                 .fixedSize(horizontal: false, vertical: true)
-            BodyMText(text)
+            BodyMText(text, accentFont: Fonts.bold)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -56,8 +56,19 @@ struct MoveToSparkView: View {
             .resizable()
             .aspectRatio(contentMode: .fit)
             .frame(maxWidth: 256, maxHeight: 256)
+            .scaleEffect(Self.illustrationScale(name))
             .frame(maxWidth: .infinity)
             .frame(maxHeight: .infinity)
+    }
+
+    /// Scales each illustration so its drawing fills its box like the zap; the others have wider transparent margins.
+    private static func illustrationScale(_ name: String) -> CGFloat {
+        switch name {
+        case "check": 1.25
+        case "cross": 1.4
+        case "exclamation-mark": 1.1
+        default: 1
+        }
     }
 
     private var quoting: some View {
@@ -140,7 +151,10 @@ struct MoveToSparkView: View {
 
     private func tooLarge(amountSats: UInt64, smallerSats: UInt64?) -> some View {
         let next = smallerSats == nil ? t("lightning__move_to_spark__too_large_none") : t("lightning__move_to_spark__too_large_smaller")
-        let amount = t("lightning__move_to_spark__too_large_text", variables: ["amount": currency.primaryAmountText(sats: amountSats)])
+        let amount = t(
+            "lightning__move_to_spark__too_large_text",
+            variables: ["amount": "<accent>\(currency.primaryAmountText(sats: amountSats))</accent>"]
+        )
         return VStack(alignment: .leading, spacing: 0) {
             header(title: t("lightning__move_to_spark__too_large_title"), text: "\(amount) \(next)")
             illustration("exclamation-mark")
