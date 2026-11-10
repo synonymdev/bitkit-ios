@@ -59,6 +59,8 @@ class TransferViewModel: ObservableObject {
     private var sparkFeeTask: Task<Void, Never>?
     /// The Spark balance the fee was priced for, so it is priced once per balance.
     private var sparkFeeBalanceSats: UInt64?
+    /// The Spark withdrawal fee shown when the transfer was confirmed, the most `withdrawSparkToSavings` pays.
+    private var confirmedSparkFeeSats: UInt64?
     /// One Savings address for Spark's withdrawal, priced on the confirm screen and then paid to, so the withdrawal
     /// reuses the quote the fee came from.
     private var sparkWithdrawAddress: String?
@@ -388,6 +390,8 @@ class TransferViewModel: ObservableObject {
         selectAllForSavings()
         channelsToClose = channels
         self.withdrawsSpark = withdrawsSpark
+        // Spark withdraws at the fee shown now, even if the screen prices it again before the withdrawal runs.
+        confirmedSparkFeeSats = withdrawsSpark ? sparkWithdrawFeeSats : nil
         // Each swipe commit is a new transfer; the previous run's memo must not satisfy it.
         savingsSwapRun = nil
         return true
@@ -425,10 +429,10 @@ class TransferViewModel: ObservableObject {
         sparkFeeTask = nil
         isPricingSparkWithdrawal = false
         guard sparkBalanceSats() > 0 else { return }
-        guard let shownFeeSats = sparkWithdrawFeeSats, let address = sparkWithdrawAddress else {
+        guard let confirmedFeeSats = confirmedSparkFeeSats, let address = sparkWithdrawAddress else {
             throw AppError(message: "lightning__spending_confirm__error_quote", debugMessage: "Spark withdrawal not priced")
         }
-        try await withdrawSpark(address, shownFeeSats)
+        try await withdrawSpark(address, confirmedFeeSats)
         sparkWithdrawAddress = nil
         sparkFeeBalanceSats = nil
         sparkWithdrawFeeSats = nil
