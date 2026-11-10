@@ -1,6 +1,6 @@
 <journey name="spark transfer to spending">
   <description>
-    Verifies the transfer to spending flow on Spark. With Spark ready, Funding leads with "Transfer from Savings"
+    Verifies the transfer to spending flow on Spark. With Spark ready, Funding leads with "Transfer From Savings"
     (testTag "FundTransfer") and "Use Other Wallet" (testTag "FundReceive") above "Manual Setup" (testTag
     "FundManual") and an enabled "Transfer from HW wallet" (testTag "FundHardware"), which opens a paired hardware
     wallet's transfer to spending, a funded one first, or the connect sheet when none is paired; and the Savings and
@@ -25,8 +25,8 @@
     <action>Tap "Learn More" (testTag "SpendingConfirmMore"), verify the screen explains Instant and Later and shows a spending-only balance bar, then tap "Understood" (testTag "LiquidityContinue")</action>
     <action>Go back to the wallet home, tap the Spending balance card (testTag "ActivitySpending"), tap "Transfer From Savings" (testTag "TransferFromSavings") and verify the amount screen opens without the intro</action>
     <action>Go back to the wallet home, open Settings › Advanced › Lightning Connections and tap add connection (testTag "add_connection_button")</action>
-    <action>Verify "Transfer from Savings" (testTag "FundTransfer") and "Use Other Wallet" (testTag "FundReceive") are enabled above "Manual Setup" (testTag "FundManual"), and "Transfer from HW wallet" (testTag "FundHardware") is enabled below it</action>
+    <action>Verify "Transfer From Savings" (testTag "FundTransfer") and "Use Other Wallet" (testTag "FundReceive") are enabled above "Manual Setup" (testTag "FundManual"), and "Transfer from HW wallet" (testTag "FundHardware") is enabled below it</action>
     <action>With no hardware wallet paired, tap "Transfer from HW wallet" and verify the connect hardware wallet sheet opens; close it</action>
-    <action>Tap "Transfer from Savings" and verify the amount screen (testTag "SpendingAmount") opens</action>
+    <action>Tap "Transfer From Savings" and verify the amount screen (testTag "SpendingAmount") opens</action>
   </actions>
 </journey>
