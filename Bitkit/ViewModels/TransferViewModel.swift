@@ -273,7 +273,8 @@ class TransferViewModel: ObservableObject {
             readyChannelIds: readyChannelIds,
             selectedChannelIds: selectedChannelIds,
             isSparkSelected: isSparkSelected,
-            sparkSats: sparkSats
+            sparkSats: sparkSats,
+            isSparkTooSmall: isSparkWithdrawTooSmall
         )
     }
 
@@ -911,16 +912,18 @@ struct SavingsSelection: Equatable {
         channelIds.isEmpty && !withdrawsSpark
     }
 
-    /// Without a pick (`selectedChannelIds` nil) every ready channel moves. Spark moves when picked and holding a balance.
+    /// Without a pick (`selectedChannelIds` nil) every ready channel moves. Spark moves when picked and holding a balance
+    /// its withdrawal fee leaves something of, so one too small to move never holds the channels back.
     static func resolve(
         readyChannelIds: [String],
         selectedChannelIds: Set<String>?,
         isSparkSelected: Bool,
-        sparkSats: UInt64
+        sparkSats: UInt64,
+        isSparkTooSmall: Bool = false
     ) -> SavingsSelection {
         SavingsSelection(
             channelIds: readyChannelIds.filter { selectedChannelIds?.contains($0) ?? true },
-            withdrawsSpark: isSparkSelected && sparkSats > 0
+            withdrawsSpark: isSparkSelected && sparkSats > 0 && !isSparkTooSmall
         )
     }
 }

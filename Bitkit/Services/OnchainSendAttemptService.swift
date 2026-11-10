@@ -352,7 +352,10 @@ struct OnchainSendFollowupContext: Codable, Equatable {
 
 /// A max Spark funding refused before broadcast because it would send another amount, or pay a higher mining fee, than
 /// the user approved, as after the balance grew. A fixed amount's fee isn't bound: its coin selection can vary.
-struct SparkFundingChanged: Error {}
+struct SparkFundingChanged: Error {
+    /// The mining fee of the refused prepared send, nil when it was unknown.
+    var preparedFeeSats: UInt64?
+}
 
 struct OnchainSendTransferContext: Codable, Equatable {
     let clientBalanceSats: UInt64
@@ -652,10 +655,11 @@ actor OnchainSendAttemptService {
                           prepared.recipientAmountSats <= context.txTotalSats - miningFee
                     else { throw OnchainSendAttemptError.unresolved }
                 }
-                if isSparkFunding && isMaxAmount {
+                // Savings never pay more than the Total the user confirmed, so a higher fee asks for another swipe.
+                if isSparkFunding {
                     guard prepared.recipientAmountSats == amountSats, let miningFee = prepared.miningFeeSats,
                           let approvedFee = followupContext?.feeSats, miningFee <= approvedFee
-                    else { throw SparkFundingChanged() }
+                    else { throw SparkFundingChanged(preparedFeeSats: prepared.miningFeeSats) }
                 }
                 attempt.amountSats = prepared.recipientAmountSats
                 attempt.txid = prepared.txid

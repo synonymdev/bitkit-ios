@@ -11,9 +11,9 @@ struct SpendingConfirm: View {
 
     @State private var isPaying = false
     @State private var hideSwipeButton = false
-    @State private var aboveCoinsHeight: CGFloat = 0
 
-    private static let bottomPadding: CGFloat = 16
+    /// The coin drawing fills 72% of its square image, so this draws it about 134 pt wide, Android's third of the screen.
+    private static let coinsSize: CGFloat = 186
 
     /// Fee rates move while the screen is open, so the quote is redone this often as well as on every change.
     private static let requoteInterval: Duration = .seconds(60)
@@ -30,46 +30,46 @@ struct SpendingConfirm: View {
                 .disabled(isPaying)
                 .padding(.bottom, 16)
 
-            // The coins take the space left above the swipe, as on Android; on a short screen the content scrolls.
+            // The coins sit in the space left above the swipe, as on Android; on a short screen the content scrolls.
             GeometryReader { geo in
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            DisplayText(t("lightning__transfer__confirm"), accentColor: .purpleAccent)
+                        DisplayText(t("lightning__transfer__confirm"), accentColor: .purpleAccent)
 
-                            SpendingConfirmFees(quote: flow.quote, speed: flow.speed, isLoading: flow.quote == nil && flow.quoteError == nil)
-                                .padding(.top, 32)
+                        SpendingConfirmFees(quote: flow.quote, speed: flow.speed, isLoading: flow.quote == nil && flow.quoteError == nil)
+                            .padding(.top, 16)
 
-                            if let error = flow.quoteError {
-                                quoteError(error)
-                                    .padding(.bottom, 16)
-                            }
-
-                            SpendingSpeedPicker(quote: flow.quote, speed: Bindable(flow).speed)
-                                .disabled(isPaying)
-                                .padding(.top, 16)
-                                .padding(.horizontal, -16)
+                        if let error = flow.quoteError {
+                            quoteError(error)
                                 .padding(.bottom, 16)
-
-                            CustomButton(title: t("common__learn_more"), size: .small) {
-                                navigation.navigate(.transferLearnMore)
-                            }
-                            .disabled(isPaying)
-                            .accessibilityIdentifier("SpendingConfirmMore")
                         }
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { aboveCoinsHeight = $0 }
+
+                        SpendingSpeedPicker(quote: flow.quote, speed: Bindable(flow).speed)
+                            .disabled(isPaying)
+                            .padding(.top, 8)
+                            .padding(.horizontal, -16)
+                            .padding(.bottom, 10)
+
+                        CustomButton(title: t("common__learn_more"), size: .small) {
+                            navigation.navigate(.transferLearnMore)
+                        }
+                        .disabled(isPaying)
+                        .accessibilityIdentifier("SpendingConfirmMore")
+
+                        Spacer(minLength: 0)
 
                         Image("coin-stack-x")
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .padding(.horizontal, 44)
-                            .padding(.vertical, 8)
+                            .frame(width: Self.coinsSize, height: Self.coinsSize)
                             .frame(maxWidth: .infinity)
-                            .frame(height: max(0, geo.size.height - aboveCoinsHeight - Self.bottomPadding))
+
+                        Spacer(minLength: 0)
                     }
                     // The speed rows run edge to edge, so the scroll spans the screen and pads its own content.
                     .padding(.horizontal, 16)
-                    .padding(.bottom, Self.bottomPadding)
+                    .padding(.bottom, 16)
+                    .frame(minHeight: geo.size.height)
                 }
             }
             .padding(.horizontal, -16)
@@ -171,17 +171,32 @@ struct SpendingConfirm: View {
         } catch let OnchainSendAttemptError.preDispatch(error) where error is SparkFundingChanged {
             // The max quote reads the cached savings balance, so it is read again before pricing the new transfer.
             await wallet.syncStateAsync()
+            // The next swipe approves the fee this one was refused for.
+            flow.onFundingChanged(preparedFeeSats: (error as? SparkFundingChanged)?.preparedFeeSats)
             guard let repriced = await flow.refreshQuote(wallet: wallet, feeEstimatesManager: feeEstimatesManager) else {
                 throw AppError(message: t("lightning__spending_confirm__error_quote"), debugMessage: "Re-quote after refusal failed")
             }
-            app.toast(
-                type: .info,
-                title: t("lightning__spending_confirm__fees_changed_title"),
-                description: t(
-                    "lightning__spending_confirm__fees_changed_network",
-                    variables: ["amount": currency.primaryAmountText(sats: repriced.increase(over: fresh, speed: flow.speed))]
+            let toSpendingSats = repriced.toSpendingSats(for: flow.speed)
+            if flow.isMaxAmount, toSpendingSats != fresh.toSpendingSats(for: flow.speed) {
+                // A max transfer's amount moves with the balance and fees, so a fee increase would mostly be that move.
+                app.toast(
+                    type: .info,
+                    title: t("lightning__spending_confirm__max_changed_title"),
+                    description: t(
+                        "lightning__spending_confirm__max_changed",
+                        variables: ["amount": currency.primaryAmountText(sats: toSpendingSats)]
+                    )
                 )
-            )
+            } else {
+                app.toast(
+                    type: .info,
+                    title: t("lightning__spending_confirm__fees_changed_title"),
+                    description: t(
+                        "lightning__spending_confirm__fees_changed_network",
+                        variables: ["amount": currency.primaryAmountText(sats: repriced.increase(over: fresh, speed: flow.speed))]
+                    )
+                )
+            }
             throw SpendingFeesIncreasedError()
         } catch {
             if let attemptId = await OnchainSendAttemptService.shared.unresolvedSparkFundingAttemptId() {
@@ -238,6 +253,8 @@ struct SpendingConfirmFees: View {
                 FeeDisplayRow(
                     label: t("lightning__spending_confirm__amount"),
                     amount: quote?.toSpendingSats(for: speed) ?? 0,
+                    // What reaches spending is net of the estimated claim fee, so it is an estimate too.
+                    prefix: SpendingSpeedPicker.feePrefix(for: speed),
                     isLoading: isLoading
                 )
                 .frame(maxWidth: .infinity)

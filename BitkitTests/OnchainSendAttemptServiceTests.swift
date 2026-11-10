@@ -355,8 +355,9 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
             (true, 99000, 500, true), (true, 99000, 400, true),
             (true, 99500, 500, false), (true, 98500, 500, false),
             (true, 99000, 501, false), (true, 99000, nil, false),
-            // A fixed amount is already pinned, and its coin selection may differ from the quote's, so its fee isn't bound.
-            (false, 99000, 500, true), (false, 99000, 501, true),
+            // A fixed amount must not spend more Savings than the confirmed Total either, so its fee is bound too.
+            (false, 99000, 500, true), (false, 99000, 400, true),
+            (false, 99000, 501, false), (false, 99000, nil, false),
         ] {
             let store = MemoryAttemptStore()
             let service = OnchainSendAttemptService(store: store)
@@ -372,7 +373,7 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
                 XCTAssertEqual(sender.broadcasts, 1)
             } catch let OnchainSendAttemptError.preDispatch(error) {
                 XCTAssertFalse(valid, "The approved funding must still go out")
-                XCTAssertTrue(error is SparkFundingChanged, "Refused with \(error)")
+                XCTAssertEqual((error as? SparkFundingChanged)?.preparedFeeSats, fee, "Refused with \(error)")
                 XCTAssertEqual(sender.broadcasts, 0)
                 XCTAssertTrue(store.snapshot().isEmpty)
             }

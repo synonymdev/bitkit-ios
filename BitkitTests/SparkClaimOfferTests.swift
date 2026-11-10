@@ -28,7 +28,7 @@ final class SparkClaimOfferTests: XCTestCase {
     }
 
     func testMapsEachClaimOutcome() {
-        XCTAssertEqual(SparkEarlyClaim(.submitted), .claimed)
+        XCTAssertEqual(SparkEarlyClaim(.submitted), .submitted)
         XCTAssertEqual(SparkEarlyClaim(.deferred(reason: .noEarlyClaimAvailable)), .waiting)
         XCTAssertEqual(SparkEarlyClaim(.deferred(reason: .maxFeeExceeded(requiredFeeSats: 1500, maxFeeSats: 1350))), .repriced(requiredFeeSats: 1500))
         XCTAssertEqual(SparkEarlyClaim(.deferred(reason: .providerDeclined(message: "busy"))), .declined)

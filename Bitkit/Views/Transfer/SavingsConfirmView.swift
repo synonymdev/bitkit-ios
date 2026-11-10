@@ -31,6 +31,11 @@ struct SavingsConfirmView: View {
         transfer.savingsSelection(readyChannelIds: readyChannels.map(\.channelId), sparkSats: sparkSats)
     }
 
+    /// Spark is priced while picked with a balance, also once too small to move, so a receive can bring it back in.
+    private var pricesSpark: Bool {
+        transfer.isSparkSelected && sparkSats > 0
+    }
+
     private var channels: [ChannelDetails] {
         let ids = selection.channelIds
         return readyChannels.filter { ids.contains($0.channelId) }
@@ -65,65 +70,62 @@ struct SavingsConfirmView: View {
             NavigationBar(title: t("lightning__transfer__nav_title"))
                 .padding(.bottom, 16)
 
-            DisplayText(t("lightning__transfer__confirm"), accentColor: .brandAccent)
-                .fixedSize(horizontal: false, vertical: true)
+            // The piggybank keeps its size; when the fees, slider and Spark row make the content tall, it scrolls above the swipe.
+            GeometryReader { geo in
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        DisplayText(t("lightning__transfer__confirm"), accentColor: .brandAccent)
+                            .fixedSize(horizontal: false, vertical: true)
 
-            CaptionMText(t("lightning__savings_confirm__label"))
-                .padding(.top, 32)
-                .padding(.bottom, 16)
+                        CaptionMText(t("lightning__savings_confirm__label"))
+                            .padding(.top, 32)
+                            .padding(.bottom, 16)
 
-            MoneyText(sats: Int(headlineSats), size: .display, symbol: true)
+                        MoneyText(sats: Int(headlineSats), size: .display, symbol: true)
 
-            if let quote = swapState.quote {
-                quoteSection(quote)
-            }
-
-            if selection.withdrawsSpark, transfer.sparkWithdrawFeeSats != nil || transfer.isPricingSparkWithdrawal {
-                FeeDisplayRow(
-                    label: t("lightning__savings_confirm__spark_fee"),
-                    amount: transfer.sparkWithdrawFeeSats ?? 0,
-                    isLoading: transfer.isPricingSparkWithdrawal
-                )
-                .padding(.top, swapState.quote == nil ? 24 : 16)
-                .accessibilityIdentifier("SavingsSparkFee")
-            } else if selection.withdrawsSpark {
-                sparkFeeError
-                    .padding(.top, swapState.quote == nil ? 24 : 16)
-            }
-
-            if hasMultipleItems {
-                HStack(spacing: 16) {
-                    if hasSelectedItems {
-                        CustomButton(title: t("lightning__savings_confirm__transfer_all"), size: .small) {
-                            transfer.selectAllForSavings()
+                        if let quote = swapState.quote {
+                            quoteSection(quote)
                         }
-                    } else {
-                        CustomButton(title: t("common__advanced"), size: .small) {
-                            navigation.navigate(.savingsAdvanced)
+
+                        sparkSection
+
+                        if hasMultipleItems {
+                            HStack(spacing: 16) {
+                                if hasSelectedItems {
+                                    CustomButton(title: t("lightning__savings_confirm__transfer_all"), size: .small) {
+                                        transfer.selectAllForSavings()
+                                    }
+                                } else {
+                                    CustomButton(title: t("common__advanced"), size: .small) {
+                                        navigation.navigate(.savingsAdvanced)
+                                    }
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 32)
                         }
+
+                        Spacer(minLength: 0)
+
+                        // A spinner stands in for the piggybank while the quote loads.
+                        Group {
+                            if swapState.quote == nil, swapState.isLoading {
+                                ProgressView()
+                            } else {
+                                Image("piggybank-right")
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 256, height: 256)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+
+                        Spacer(minLength: 0)
                     }
+                    .frame(minHeight: geo.size.height)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 32)
             }
-
-            Spacer()
-
-            // Flexible middle: the piggybank shrinks when the fees/slider are shown and
-            // gives way to a spinner while the quote loads.
-            if swapState.quote == nil, swapState.isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 32)
-            } else {
-                Image("piggybank-right")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: 256, maxHeight: 256)
-                    .frame(maxWidth: .infinity, alignment: .center)
-            }
-
-            Spacer()
 
             if !hideSwipeButton {
                 SwipeButton(
@@ -182,9 +184,26 @@ struct SavingsConfirmView: View {
                 spendableSats: channelsSendableSats
             )
         }
-        .onChange(of: selection.withdrawsSpark ? sparkSats : nil, initial: true) { _, balanceSats in
+        .onChange(of: pricesSpark ? sparkSats : nil, initial: true) { _, balanceSats in
             guard let balanceSats else { return }
             transfer.loadSparkWithdrawFee(balanceSats: balanceSats, savingsAddress: wallet.onchainAddress)
+        }
+    }
+
+    /// Spark's withdrawal fee, or why it could not be priced, below the swap's fees or the headline when there is no swap.
+    @ViewBuilder
+    private var sparkSection: some View {
+        if selection.withdrawsSpark, transfer.sparkWithdrawFeeSats != nil || transfer.isPricingSparkWithdrawal {
+            FeeDisplayRow(
+                label: t("lightning__savings_confirm__spark_fee"),
+                amount: transfer.sparkWithdrawFeeSats ?? 0,
+                isLoading: transfer.isPricingSparkWithdrawal
+            )
+            .padding(.top, swapState.quote == nil ? 40 : 16)
+            .accessibilityIdentifier("SavingsSparkFee")
+        } else if selection.withdrawsSpark || selection.isEmpty && pricesSpark && transfer.isSparkWithdrawTooSmall {
+            sparkFeeError
+                .padding(.top, 16)
         }
     }
 
@@ -237,7 +256,7 @@ struct SavingsConfirmView: View {
     }
 
     private func quoteSection(_ quote: SavingsSwapQuote) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 16) {
                 FeeDisplayRow(label: t("lightning__savings_confirm__network_fee"), amount: quote.networkFeeSat)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -261,10 +280,12 @@ struct SavingsConfirmView: View {
                     minValue: swapState.minSat,
                     maxValue: swapState.maxSat
                 )
-                .padding(.top, 16)
+                // Inset so the knob stays on screen at either end.
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
             }
         }
-        .padding(.top, 24)
+        .padding(.top, 40)
     }
 }
 

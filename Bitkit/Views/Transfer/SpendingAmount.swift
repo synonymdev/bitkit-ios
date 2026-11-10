@@ -174,11 +174,15 @@ struct SpendingAmount: View {
         flow.start(amountSats: amountSats, isMaxAmount: amountSats >= max)
         isPricing = true
         defer { isPricing = false }
+        let shownPath = navigation.path
         if let quote = await flow.refreshQuote(wallet: wallet, feeEstimatesManager: feeEstimatesManager), !quote.coversClaimFee {
-            app.toastBelowClaimFee(quote)
+            if navigation.path == shownPath {
+                app.toastBelowClaimFee(quote)
+            }
             return
         }
-        navigation.navigate(.spendingConfirm)
+        // Back while the quote was loading leaves this screen, so the transfer stays closed.
+        navigation.navigate(.spendingConfirm, from: shownPath)
     }
 
     /// The most savings can send to the Spark deposit address after the fast-rate network fee for sending all of it.

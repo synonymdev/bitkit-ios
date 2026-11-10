@@ -120,13 +120,17 @@ struct SpendingAmountHw: View {
         flow.start(amountSats: amountSats, isMaxAmount: amountSats >= maxAllowed, walletId: walletId)
         isPricing = true
         defer { isPricing = false }
+        let shownPath = navigation.path
         if let quote = await flow.refreshQuote(wallet: wallet, feeEstimatesManager: feeEstimatesManager, hwWalletManager: hwWalletManager),
            !quote.coversClaimFee
         {
-            app.toastBelowClaimFee(quote)
+            if navigation.path == shownPath {
+                app.toastBelowClaimFee(quote)
+            }
             return
         }
-        navigation.navigate(.spendingHwSign(walletId: walletId))
+        // Back while the quote was loading leaves this screen, so the transfer stays closed.
+        navigation.navigate(.spendingHwSign(walletId: walletId), from: shownPath)
     }
 
     private func loadAvailable() async {

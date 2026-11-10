@@ -389,6 +389,90 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(kept, [retried], "Failed node hashes stayed, or an older listing dropped the retry in flight")
     }
 
+    func testANodeRetryOfTheSameInvoiceRecordedDuringAnOlderListingKeepsItsHold() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        defer { service.nodePayments = nodePayments }
+        service.recordLdkAttempt(paymentHash: hash)
+        // The node retries the invoice Spark is about to pay, and the retry returns, while this listing is read.
+        service.nodePayments = {
+            service.recordLdkAttempt(paymentHash: hash)
+            return [Self.nodePayment(hash, status: .failed)]
+        }
+        rail.balanceSats = 100_000
+
+        _ = try await service.send(bolt11: Self.invoice)
+
+        let kept = service.railAttemptsStore.stringArray(forKey: Self.ldkAttemptsKey) ?? []
+        XCTAssertEqual(kept, [hash], "An older listing released the node retry's hold")
+    }
+
+    func testASparkRetryRecordedDuringAnOlderListingKeepsItsHold() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        service.recordRailAttempt(paymentHash: hash)
+        service.recordRailAttempt(paymentHash: Self.otherHash(1))
+        // Spark retries both invoices, and the retries return, while this listing, which still shows them failed, is read.
+        rail.payments = [hash, Self.otherHash(1)].map {
+            Bitkit.ChannelFreeRailPayment(paymentHash: $0, direction: .outbound, status: .failed, preimage: nil)
+        }
+        rail.onList = { [hash] in
+            service.recordRailAttempt(paymentHash: hash)
+            service.recordRailAttempt(paymentHash: Self.otherHash(1))
+        }
+        rail.balanceSats = 0
+
+        await assertReachesTheNode()
+
+        let kept = service.railAttemptsStore.stringArray(forKey: Self.railAttemptsKey) ?? []
+        XCTAssertEqual(kept, [hash, Self.otherHash(1)], "An older listing dropped the hold of a Spark retry")
+    }
+
+    func testSendsNoListingShowsAreDroppedOnceTheirInvoiceExpiredPastTheSettleWindow() async throws {
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        defer { service.nodePayments = nodePayments }
+        let window = 14 * 24 * 60 * 60
+        let now = 10 * window
+        service.now = { Date(timeIntervalSince1970: TimeInterval(now)) }
+        for key in [Self.railAttemptsKey, Self.ldkAttemptsKey] {
+            let record = key == Self.railAttemptsKey ? service.recordRailAttempt : service.recordLdkAttempt
+            record(Self.otherHash(1), now - window)
+            record(Self.otherHash(2), now - window + 1)
+            record(Self.otherHash(3), nil)
+        }
+        // A send recorded while the listings are read is not in them yet.
+        rail.onList = { service.recordRailAttempt(paymentHash: Self.otherHash(4), expiresAt: now - window) }
+        service.nodePayments = {
+            service.recordLdkAttempt(paymentHash: Self.otherHash(4), expiresAt: now - window)
+            return []
+        }
+        rail.balanceSats = 100_000
+
+        _ = try await service.send(bolt11: Self.invoice)
+
+        for key in [Self.railAttemptsKey, Self.ldkAttemptsKey] {
+            let kept = service.railAttemptsStore.stringArray(forKey: key) ?? []
+            XCTAssertFalse(kept.contains(Self.otherHash(1)), "\(key) kept a send no listing shows past the settle window")
+            XCTAssertTrue(
+                Set([2, 3, 4].map(Self.otherHash)).isSubset(of: kept),
+                "\(key) dropped a send that may be pending or has no known expiry"
+            )
+        }
+    }
+
+    func testSendsNoListingShowsWithNoKnownExpiryAreDroppedOldestFirstPastTheCap() async {
+        let service = Bitkit.LightningService.shared
+        (1 ... 501).forEach { service.recordRailAttempt(paymentHash: Self.otherHash($0)) }
+        rail.balanceSats = 0
+
+        await assertReachesTheNode()
+
+        let kept = service.railAttemptsStore.stringArray(forKey: Self.railAttemptsKey) ?? []
+        XCTAssertEqual(kept, (2 ... 501).map(Self.otherHash), "Spark hashes no listing shows grew past the cap")
+    }
+
     func testAPendingNodePaymentBehindTheCapOfFailedOnesStillHoldsSparkWhileTheNodeCantList() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         let service = Bitkit.LightningService.shared
@@ -985,6 +1069,8 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     var sendGate: (() async -> Void)?
     var refusal: Bitkit.ChannelFreeRailSendRefused?
     var refusalAfterSubmission: Bitkit.ChannelFreeRailSendRefused?
+    /// Runs while a listing is read, before it returns `payments`.
+    var onList: (() -> Void)?
 
     func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String {
         "lnbcrt1fake"
@@ -1012,6 +1098,7 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     }
 
     func lightningPayments() async throws -> [Bitkit.ChannelFreeRailPayment] {
+        onList?()
         if let listError {
             throw listError
         }
