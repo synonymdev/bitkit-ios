@@ -389,6 +389,25 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(kept, [retried], "Failed node hashes stayed, or an older listing dropped the retry in flight")
     }
 
+    func testANodeRetryOfTheSameInvoiceRecordedDuringAnOlderListingKeepsItsHold() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        defer { service.nodePayments = nodePayments }
+        service.recordLdkAttempt(paymentHash: hash)
+        // The node retries the invoice Spark is about to pay, and the retry returns, while this listing is read.
+        service.nodePayments = {
+            service.recordLdkAttempt(paymentHash: hash)
+            return [Self.nodePayment(hash, status: .failed)]
+        }
+        rail.balanceSats = 100_000
+
+        _ = try await service.send(bolt11: Self.invoice)
+
+        let kept = service.railAttemptsStore.stringArray(forKey: Self.ldkAttemptsKey) ?? []
+        XCTAssertEqual(kept, [hash], "An older listing released the node retry's hold")
+    }
+
     func testASparkRetryRecordedDuringAnOlderListingKeepsItsHold() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         let service = Bitkit.LightningService.shared
