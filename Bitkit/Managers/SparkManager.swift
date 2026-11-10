@@ -461,7 +461,7 @@ final class SparkManager: ChannelFreeLightningRail {
             let outcome = try await requireSdk().claimDeposit(request: request).outcome
             claim = SparkEarlyClaim(outcome)
         } catch SdkError.DepositClaimInProgress {
-            claim = .claimed
+            claim = .submitted
         }
         Logger.info("Early claim of Spark deposit \(offer.txid): \(claim)", context: "SparkManager")
         await refreshState()
@@ -1034,8 +1034,10 @@ struct SparkClaimFees: Equatable {
 
 /// What accepting an early claim did.
 enum SparkEarlyClaim: Equatable {
-    /// The claim is submitted and the deposit reaches the balance shortly.
+    /// The claim settled, so the deposit is in the balance.
     case claimed
+    /// The claim is submitted and Spark adds the deposit to the balance once it settles.
+    case submitted
     /// Not offered at this depth yet; Spark claims it early once a confirmation brings the offer.
     case waiting
     /// The provider now asks `requiredFeeSats`, more than was accepted.
@@ -1045,8 +1047,10 @@ enum SparkEarlyClaim: Equatable {
 
     init(_ outcome: ClaimDepositOutcome) {
         switch outcome {
-        case .settled, .submitted:
+        case .settled:
             self = .claimed
+        case .submitted:
+            self = .submitted
         case let .deferred(reason):
             switch reason {
             case .noEarlyClaimAvailable: self = .waiting

@@ -77,8 +77,10 @@ enum SparkClaimState: Equatable {
     case looking
     /// Accepting the early claim.
     case claiming
-    /// The early claim is accepted, so the deposit reaches the spending balance shortly.
+    /// The early claim is submitted, so Spark is adding the deposit to the spending balance.
     case adding
+    /// The deposit reached the spending balance.
+    case added
     /// The early claim now costs more than the user accepted.
     case repriced(feeSats: UInt64)
     /// No early claim is offered for this deposit, so Spark adds it after 3 confirmations.
@@ -89,7 +91,7 @@ enum SparkClaimState: Equatable {
     case notSeen
 
     var isDone: Bool {
-        self == .adding
+        self == .added
     }
 }
 
@@ -100,7 +102,7 @@ enum SparkClaimDecision {
         guard speed == .instant else { return .later }
         switch kind {
         case .automatic:
-            return .adding
+            return .added
         case .standard:
             return .unavailable
         case let .choice(earlyFeeSats, _, _, _):
@@ -111,7 +113,8 @@ enum SparkClaimDecision {
     /// What accepting the early claim did; nil keeps polling, since the offer comes with a later confirmation.
     static func onClaim(_ claim: SparkEarlyClaim) -> SparkClaimState? {
         switch claim {
-        case .claimed: .adding
+        case .claimed: .added
+        case .submitted: .adding
         case let .repriced(requiredFeeSats): .repriced(feeSats: requiredFeeSats)
         case .declined: .unavailable
         case .waiting: nil
@@ -356,7 +359,7 @@ final class SparkTransferFlow {
         else { return }
         watchTasks[txid]?.cancel()
         watchTasks[txid] = nil
-        claimState = .adding
+        claimState = .added
     }
 
     /// Accepts the early claim at the repriced fee.
@@ -424,7 +427,7 @@ final class SparkTransferFlow {
                 guard !Task.isCancelled else { return }
                 if found == nil, offers[txid] != nil {
                     // Listed before and no longer unclaimed: the early claim went through.
-                    setClaimState(.adding, for: txid)
+                    setClaimState(.added, for: txid)
                     return
                 }
                 if let found {
