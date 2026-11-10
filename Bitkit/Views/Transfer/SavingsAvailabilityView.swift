@@ -12,7 +12,7 @@ struct SavingsAvailabilityView: View {
             DisplayText(t("lightning__availability__title"), accentColor: .brandAccent)
 
             BodyMText(t("lightning__availability__text"), accentFont: Fonts.bold)
-                .padding(.top, 16)
+                .padding(.top, 8)
 
             Spacer()
 

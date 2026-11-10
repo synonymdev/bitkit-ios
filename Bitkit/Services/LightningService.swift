@@ -130,6 +130,13 @@ class LightningService: NodeLifecycleService {
     private var attemptRails: [String: LightningPaymentRail] = [:]
     /// Payment hashes inside a rail send, which Spark lists only once it returns.
     private var railSendsInFlight: Set<String> = []
+    /// Counts attempts recorded in this run, so a listing drops a hash just when the hash was recorded before the
+    /// listing was read, never a retry recorded while it was read.
+    private var attemptRecords = 0
+    /// Per store key, the `attemptRecords` count at each hash's latest record.
+    private var attemptRecordedAt: [String: [String: Int]] = [:]
+    /// Node sends under way, so a listing that shows only an earlier failed attempt doesn't drop their hash.
+    private var ldkSendsInFlight: Set<String> = []
     weak var channelFreeRail: ChannelFreeLightningRail?
     var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
     var onchainTransactionReceived: (@Sendable (String) async -> Void)?
@@ -370,9 +377,7 @@ class LightningService: NodeLifecycleService {
 
         await refreshChannelCache()
         await refreshCache()
-        if let payments = await nodePayments() {
-            keepLdkAttempts(from: payments)
-        }
+        await listNodePaymentsKeepingAttempts()
 
         Logger.info("Node started")
     }
@@ -1038,7 +1043,9 @@ class LightningService: NodeLifecycleService {
         channelsOnly: Bool = false,
         beforeSubmission: @escaping () throws -> Void = {}
     ) async throws -> PaymentHash {
-        let paymentHash = (try? Bolt11Invoice.fromStr(invoiceStr: bolt11).paymentHash()).map { String($0) }
+        let invoice = try? Bolt11Invoice.fromStr(invoiceStr: bolt11)
+        let paymentHash = invoice.map { String($0.paymentHash()) }
+        let expiresAt = invoice.map { Int(clamping: min($0.secondsSinceEpoch(), .max - $0.expiryTimeSeconds()) + $0.expiryTimeSeconds()) }
         if !channelsOnly, let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: sats) {
             // LDK refuses its own repeats; Spark doesn't, so a Spark send checks both rails.
             if let paid = try await settledEarlierAttempt(paymentHash: paymentHash, on: [.ldk, .channelFree]) {
@@ -1064,16 +1071,24 @@ class LightningService: NodeLifecycleService {
                 }
             }
             noteAttempt(on: .channelFree, bolt11: bolt11)
-            return try await rail.send(
-                bolt11: bolt11,
-                sats: sats,
-                maxFeeSats: params?.maxTotalRoutingFeeMsat.map { $0 / 1000 }
-                    ?? Self.paymentAmountSats(bolt11: bolt11, sats: sats).map(Self.defaultMaxFeeSats),
-                beforeSubmission: { [weak self] in
-                    try beforeSubmission()
-                    self?.recordRailAttempt(paymentHash: paymentHash)
+            do {
+                return try await rail.send(
+                    bolt11: bolt11,
+                    sats: sats,
+                    maxFeeSats: params?.maxTotalRoutingFeeMsat.map { $0 / 1000 }
+                        ?? Self.paymentAmountSats(bolt11: bolt11, sats: sats).map(Self.defaultMaxFeeSats),
+                    beforeSubmission: { [weak self] in
+                        try beforeSubmission()
+                        self?.recordRailAttempt(paymentHash: paymentHash, expiresAt: expiresAt)
+                    }
+                )
+            } catch let refusal as ChannelFreeRailSendRefused {
+                // Nothing left the wallet, and the checks above leave no earlier live attempt under this hash.
+                if let paymentHash {
+                    releaseRailAttempt(paymentHash: paymentHash, unlessInFlight: false)
                 }
-            )
+                throw refusal
+            }
         }
         if let paid = try await settledEarlierAttempt(paymentHash: paymentHash, on: [.channelFree]) {
             return paid
@@ -1085,10 +1100,20 @@ class LightningService: NodeLifecycleService {
         Logger.info("Paying bolt11: \(bolt11)")
         noteAttempt(on: .ldk, bolt11: bolt11)
 
+        let sendKey = paymentHash?.lowercased()
+        defer {
+            if let sendKey {
+                _ = eventCallbackLock.withLock { self.ldkSendsInFlight.remove(sendKey) }
+            }
+        }
         do {
             return try await Self.submitPayment(beforeSubmission: { [weak self] in
                 try beforeSubmission()
-                self?.recordLdkAttempt(paymentHash: paymentHash)
+                guard let self else { return }
+                if let sendKey {
+                    _ = eventCallbackLock.withLock { self.ldkSendsInFlight.insert(sendKey) }
+                }
+                recordLdkAttempt(paymentHash: paymentHash, expiresAt: expiresAt)
             }) {
                 if let sats {
                     try node.bolt11Payment().sendUsingAmount(
@@ -1115,9 +1140,17 @@ class LightningService: NodeLifecycleService {
     /// Payment hashes sent over the rail, kept across launches: while the rail can't list its payments, only these may
     /// have an attempt there that a node payment would repeat.
     var railAttemptsStore: UserDefaults = .standard
+    /// The clock a trim checks invoice expiries against; tests set it.
+    var now: () -> Date = Date.init
     private static let railAttemptsKey = "channelFreeRailAttemptedPaymentHashes"
-    /// How many paid hashes each key keeps; one whose payment may still be pending is kept past it too.
+    /// A listing drops the hashes it shows failed only, or paid once the invoice has expired, so the other rail can't
+    /// pay it again, and ones it doesn't show once the invoice expired `unlistedAttemptSettleSeconds` ago. Paid or
+    /// unlisted hashes with no known expiry (kept before expiries were, or whose invoice can't be parsed) are dropped
+    /// oldest first only past this many per key. A hash whose payment may still be pending always stays.
     private static let railAttemptsLimit = 500
+    /// No send starts after its invoice expires, and one settles within its HTLC timeout, which LDK caps at 1008
+    /// blocks (about a week). Spark's routes are shorter, so twice that cap leaves room for slow blocks.
+    private static let unlistedAttemptSettleSeconds = 14 * 24 * 60 * 60
 
     /// Payment hashes sent over the node, kept across launches: while the node can't list its payments (stopped or not
     /// started yet), only these may have an attempt there that a Spark payment would repeat.
@@ -1126,48 +1159,88 @@ class LightningService: NodeLifecycleService {
     /// there. Until then an unlistable node refuses every Spark payment.
     static let ldkAttemptsSeededKey = "ldkAttemptedPaymentHashesSeeded"
 
-    func recordRailAttempt(paymentHash: String?) {
-        recordAttempt(paymentHash: paymentHash, key: Self.railAttemptsKey)
+    /// `expiresAt` is the invoice's expiry in seconds since 1970, kept beside each key's hashes.
+    func recordRailAttempt(paymentHash: String?, expiresAt: Int? = nil) {
+        recordAttempt(paymentHash: paymentHash, expiresAt: expiresAt, key: Self.railAttemptsKey)
     }
 
-    func recordLdkAttempt(paymentHash: String?) {
-        recordAttempt(paymentHash: paymentHash, key: Self.ldkAttemptsKey)
+    func recordLdkAttempt(paymentHash: String?, expiresAt: Int? = nil) {
+        recordAttempt(paymentHash: paymentHash, expiresAt: expiresAt, key: Self.ldkAttemptsKey)
     }
 
-    private func recordAttempt(paymentHash: String?, key: String) {
+    private static func expiriesKey(_ key: String) -> String {
+        key + "Expiries"
+    }
+
+    /// Callers hold `eventCallbackLock`.
+    private func attemptExpiries(key: String) -> [String: Int] {
+        railAttemptsStore.dictionary(forKey: Self.expiriesKey(key)) as? [String: Int] ?? [:]
+    }
+
+    /// A retry of a kept hash moves it to the newest end, so a trim working from a listing read before the retry
+    /// drops older hashes first.
+    private func recordAttempt(paymentHash: String?, expiresAt: Int?, key: String) {
         guard let paymentHash = paymentHash?.lowercased() else { return }
         eventCallbackLock.withLock {
             var hashes = railAttemptsStore.stringArray(forKey: key) ?? []
-            guard !hashes.contains(paymentHash) else { return }
+            hashes.removeAll { $0 == paymentHash }
             hashes.append(paymentHash)
             railAttemptsStore.set(hashes, forKey: key)
+            attemptRecords += 1
+            attemptRecordedAt[key, default: [:]][paymentHash] = attemptRecords
+            var expiries = attemptExpiries(key: key)
+            expiries[paymentHash] = expiresAt
+            railAttemptsStore.set(expiries, forKey: Self.expiriesKey(key))
         }
     }
 
-    /// Past the limit, drops the oldest hashes `paid` lists as paid, so a payment that may still be pending keeps
-    /// holding the other rail. Callers hold `eventCallbackLock`.
-    private func trimPaidAttempts(_ paid: Set<String>, key: String) {
-        guard let hashes = railAttemptsStore.stringArray(forKey: key), hashes.count > Self.railAttemptsLimit else { return }
-        var excess = hashes.count - Self.railAttemptsLimit
+    /// Drops the hashes a listing showed as `failed` only, or as `paid` with an expired invoice, ones it didn't show
+    /// (`listed` is every hash it shows) whose invoice expired past `unlistedAttemptSettleSeconds`, and past the limit
+    /// the oldest paid or unlisted ones with no known expiry. A hash whose payment may still be pending (`live`) keeps
+    /// holding the other rail, as does a paid one whose invoice can still be paid. Callers hold `eventCallbackLock`.
+    private func trimSettledAttempts(paid: Set<String>, failed: Set<String>, listed: Set<String>, live: Set<String>, key: String) {
+        guard let hashes = railAttemptsStore.stringArray(forKey: key) else { return }
+        let expiries = attemptExpiries(key: key)
+        let nowSeconds = Int(now().timeIntervalSince1970)
+        let isExpired = { (hash: String, settleSeconds: Int) in expiries[hash].map { $0 + settleSeconds <= nowSeconds } == true }
+        let unsettled = hashes.filter { hash in
+            live.contains(hash) || !(failed.contains(hash) || paid.contains(hash) && isExpired(hash, 0)
+                || !listed.contains(hash) && isExpired(hash, Self.unlistedAttemptSettleSeconds))
+        }
+        var excess = unsettled.count - Self.railAttemptsLimit
         var kept: [String] = []
-        for hash in hashes {
-            if excess > 0, paid.contains(hash) {
+        for hash in unsettled {
+            if excess > 0, !live.contains(hash), expiries[hash] == nil, paid.contains(hash) || !listed.contains(hash) {
                 excess -= 1
             } else {
                 kept.append(hash)
             }
         }
+        guard kept.count < hashes.count else { return }
+        let keptSet = Set(kept)
         railAttemptsStore.set(kept, forKey: key)
+        railAttemptsStore.set(expiries.filter { keptSet.contains($0.key) }, forKey: Self.expiriesKey(key))
+        attemptRecordedAt[key] = attemptRecordedAt[key]?.filter { keptSet.contains($0.key) }
     }
 
     /// Called once the rail reports the attempt failed or lists none, so a channel retry isn't held while it can't list.
     /// With `unlessInFlight`, skipped while a rail send of the invoice is in flight, as that retry holds it again.
-    func releaseRailAttempt(paymentHash: String, unlessInFlight: Bool = true) {
+    /// With `recordedBy`, skipped too when the hash was recorded after `attemptRecordCount` read that count, as a retry
+    /// recorded while a listing was read holds it again.
+    func releaseRailAttempt(paymentHash: String, unlessInFlight: Bool = true, recordedBy records: Int? = nil) {
         let hash = paymentHash.lowercased()
         eventCallbackLock.withLock {
             guard !unlessInFlight || !railSendsInFlight.contains(hash) else { return }
+            if let records, attemptsRecorded(since: records, key: Self.railAttemptsKey).contains(hash) {
+                return
+            }
             removeAttempt(paymentHash: hash, key: Self.railAttemptsKey)
         }
+    }
+
+    /// The attempts recorded so far, read before a listing so a release from it can skip the retries recorded since.
+    var attemptRecordCount: Int {
+        eventCallbackLock.withLock { attemptRecords }
     }
 
     private func releaseLdkAttempt(paymentHash: String) {
@@ -1176,9 +1249,21 @@ class LightningService: NodeLifecycleService {
 
     /// Callers hold `eventCallbackLock`.
     private func removeAttempt(paymentHash hash: String, key: String) {
-        guard var hashes = railAttemptsStore.stringArray(forKey: key), hashes.contains(hash) else { return }
-        hashes.removeAll { $0 == hash }
+        removeAttempts([hash], key: key)
+    }
+
+    /// Callers hold `eventCallbackLock`.
+    private func removeAttempts(_ removed: Set<String>, key: String) {
+        guard var hashes = railAttemptsStore.stringArray(forKey: key), hashes.contains(where: removed.contains) else { return }
+        hashes.removeAll { removed.contains($0) }
         railAttemptsStore.set(hashes, forKey: key)
+        railAttemptsStore.set(attemptExpiries(key: key).filter { !removed.contains($0.key) }, forKey: Self.expiriesKey(key))
+        removed.forEach { attemptRecordedAt[key]?[$0] = nil }
+    }
+
+    /// The hashes recorded under `key` after `attemptRecords` read `records`. Callers hold `eventCallbackLock`.
+    private func attemptsRecorded(since records: Int, key: String) -> Set<String> {
+        Set((attemptRecordedAt[key] ?? [:]).filter { $0.value > records }.keys)
     }
 
     private func hasRailAttempt(paymentHash: String) -> Bool {
@@ -1193,41 +1278,73 @@ class LightningService: NodeLifecycleService {
 
     /// Called when the rail's wallet is wiped, as its payments go with it.
     func forgetRailAttempts() {
-        eventCallbackLock.withLock { railAttemptsStore.removeObject(forKey: Self.railAttemptsKey) }
+        eventCallbackLock.withLock {
+            railAttemptsStore.removeObject(forKey: Self.railAttemptsKey)
+            railAttemptsStore.removeObject(forKey: Self.expiriesKey(Self.railAttemptsKey))
+            attemptRecordedAt[Self.railAttemptsKey] = nil
+        }
     }
 
     /// Called when the node's wallet is wiped, as its payments go with it.
     func forgetLdkAttempts() {
         eventCallbackLock.withLock {
             railAttemptsStore.removeObject(forKey: Self.ldkAttemptsKey)
+            railAttemptsStore.removeObject(forKey: Self.expiriesKey(Self.ldkAttemptsKey))
+            attemptRecordedAt[Self.ldkAttemptsKey] = nil
             railAttemptsStore.set(true, forKey: Self.ldkAttemptsSeededKey)
         }
     }
 
+    /// The node's payments, after keeping its attempts from them, with the hashes still holding Spark (`live`); nil
+    /// while the node can't list them.
+    @discardableResult
+    private func listNodePaymentsKeepingAttempts() async -> (payments: [PaymentDetails], live: Set<String>)? {
+        let recordsBefore = eventCallbackLock.withLock { attemptRecords }
+        guard let payments = await nodePayments() else { return nil }
+        let live = keepLdkAttempts(from: payments, recordsBefore: recordsBefore)
+        return (payments, live)
+    }
+
     /// Keeps the hashes of the node's pending and paid outbound payments, once, so those made before hashes were kept
-    /// hold Spark while the node can't list them, then trims only paid ones past the limit.
-    private func keepLdkAttempts(from payments: [PaymentDetails]) {
-        let sends = payments
-            .filter { $0.direction == .outbound && $0.status != .failed }
+    /// hold Spark while the node can't list them. Then drops the ones listed only as failed that were recorded before
+    /// the listing was read (`recordsBefore`), and trims paid ones past the limit. Returns the hashes still live.
+    private func keepLdkAttempts(from payments: [PaymentDetails], recordsBefore: Int) -> Set<String> {
+        let outbound = payments.filter { $0.direction == .outbound }
+        let sends = outbound
+            .filter { $0.status != .failed }
             .sorted { $0.latestUpdateTimestamp < $1.latestUpdateTimestamp }
-        let paid = Set(sends.filter { $0.status == .succeeded }.map { $0.id.lowercased() })
-        eventCallbackLock.withLock {
+        let hashes = { (status: PaymentStatus) in Set(outbound.filter { $0.status == status }.map { $0.id.lowercased() }) }
+        return eventCallbackLock.withLock {
             if !railAttemptsStore.bool(forKey: Self.ldkAttemptsSeededKey) {
                 let kept = railAttemptsStore.stringArray(forKey: Self.ldkAttemptsKey) ?? []
                 let seeded = sends.map { $0.id.lowercased() }.filter { !kept.contains($0) }
                 railAttemptsStore.set(seeded + kept, forKey: Self.ldkAttemptsKey)
                 railAttemptsStore.set(true, forKey: Self.ldkAttemptsSeededKey)
             }
-            trimPaidAttempts(paid, key: Self.ldkAttemptsKey)
+            let live = hashes(.pending).union(ldkSendsInFlight).union(attemptsRecorded(since: recordsBefore, key: Self.ldkAttemptsKey))
+            let paid = hashes(.succeeded).subtracting(live)
+            let listed = Set(outbound.map { $0.id.lowercased() })
+            trimSettledAttempts(
+                paid: paid, failed: hashes(.failed).subtracting(paid).subtracting(live), listed: listed, live: live, key: Self.ldkAttemptsKey
+            )
+            return live
         }
     }
 
-    /// Trims only the rail's paid hashes past the limit, so a payment that may still be pending keeps holding the node.
-    private func keepRailAttempts(from payments: [ChannelFreeRailPayment]) {
+    /// Trims the rail's settled hashes, so a payment that may still be pending, a send in flight, or one recorded
+    /// after the listing was read (`recordsBefore`) keeps holding the node. Returns those live hashes.
+    private func keepRailAttempts(from payments: [ChannelFreeRailPayment], recordsBefore: Int) -> Set<String> {
         let outbound = payments.filter { $0.direction == .outbound }
         let hashes = { (status: PaymentStatus) in Set(outbound.filter { $0.status == status }.map { $0.paymentHash.lowercased() }) }
-        let paid = hashes(.succeeded).subtracting(hashes(.pending))
-        eventCallbackLock.withLock { trimPaidAttempts(paid, key: Self.railAttemptsKey) }
+        return eventCallbackLock.withLock {
+            let live = hashes(.pending).union(railSendsInFlight).union(attemptsRecorded(since: recordsBefore, key: Self.railAttemptsKey))
+            let paid = hashes(.succeeded).subtracting(live)
+            let listed = Set(outbound.map { $0.paymentHash.lowercased() })
+            trimSettledAttempts(
+                paid: paid, failed: hashes(.failed).subtracting(paid).subtracting(live), listed: listed, live: live, key: Self.railAttemptsKey
+            )
+            return live
+        }
     }
 
     private var hasSeededLdkAttempts: Bool {
@@ -1241,15 +1358,15 @@ class LightningService: NodeLifecycleService {
         guard let paymentHash else { return nil }
         var statuses: [PaymentStatus] = rails.contains(.channelFree) && isRailSendInFlight(paymentHash: paymentHash) ? [.pending] : []
         if rails.contains(.ldk) {
-            if let payments = await nodePayments() {
-                keepLdkAttempts(from: payments)
+            if let (payments, live) = await listNodePaymentsKeepingAttempts() {
                 let payment = payments.first {
                     $0.direction == .outbound && $0.id.caseInsensitiveCompare(paymentHash) == .orderedSame
                 }
                 if let payment {
                     statuses.append(payment.status)
                 }
-                if payment == nil || payment?.status == .failed {
+                // A retry in flight, or one recorded while the listing was read, holds the invoice again.
+                if payment == nil || payment?.status == .failed, !live.contains(paymentHash.lowercased()) {
                     releaseLdkAttempt(paymentHash: paymentHash)
                 }
             } else if hasAttempt(paymentHash: paymentHash, key: Self.ldkAttemptsKey) {
@@ -1261,13 +1378,16 @@ class LightningService: NodeLifecycleService {
             }
         }
         if rails.contains(.channelFree) {
+            let recordsBefore = eventCallbackLock.withLock { attemptRecords }
             if let payments = await readableRailPayments() {
-                keepRailAttempts(from: payments)
+                let live = keepRailAttempts(from: payments, recordsBefore: recordsBefore)
                 let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: paymentHash)
                 if let payment {
                     statuses.append(payment.status)
                 }
-                if payment == nil || payment?.status == .failed, !isRailSendInFlight(paymentHash: paymentHash) {
+                if payment == nil || payment?.status == .failed, !live.contains(paymentHash.lowercased()),
+                   !isRailSendInFlight(paymentHash: paymentHash)
+                {
                     releaseRailAttempt(paymentHash: paymentHash)
                 }
             } else if hasRailAttempt(paymentHash: paymentHash) {

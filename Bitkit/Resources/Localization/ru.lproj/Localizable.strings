@@ -237,7 +237,6 @@
 "lightning__spending_confirm__amount" = "На Баланс Расходов";
 "lightning__spending_confirm__total" = "Итого";
 "lightning__spending_confirm__spending_fee" = "Spending fee";
-"lightning__spending_confirm__up_to" = "up to";
 "lightning__spending_confirm__instant_text" = "Ready in a few minutes";
 "lightning__spending_confirm__later" = "Later";
 "lightning__spending_confirm__later_text" = "After 3 confirmations, about 30 minutes";
@@ -274,6 +273,7 @@
 "lightning__savings_spark_failed__toast" = "Перевод Spark не выполнен";
 "lightning__transfer_success__nav_title" = "Перевод Выполнен Успешно";
 "lightning__transfer_success__title_spending" = "Средства Переведены\n<accent>на Расходы</accent>";
+"lightning__transfer_success__text_spending" = "Ваши средства переведены, и ваш баланс расходов готов к использованию.";
 "lightning__transfer_success__title_savings" = "Средства Переведены\n<accent>в Сбережения</accent>";
 "lightning__transfer_success__text_savings" = "Ваши средства переведены. Вы можете использовать эти средства немедленно.";
 "lightning__external__nav_title" = "Lightning Соединение";
@@ -357,7 +357,7 @@
 "lightning__spark_deposit__wait_button" = "Ждать";
 "lightning__spark_deposit__waiting" = "Spark зачислит их на ваш расходный баланс {when}.";
 "lightning__spark_deposit__waiting_next" = "Spark зачислит их на ваш расходный баланс после следующего подтверждения.";
-"lightning__spark_deposit__repriced" = "Instant now costs {fee}. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
+"lightning__spark_deposit__repriced" = "Instant now costs <accent>{fee}</accent>. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__pay" = "Pay {fee}";
 "lightning__spark_deposit__instant_unavailable" = "Instant isn't available for this transfer. Spark adds it to your spending balance after 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__not_seen" = "Spark hasn't seen your transfer yet. It's added after 3 confirmations; you can leave this screen.";

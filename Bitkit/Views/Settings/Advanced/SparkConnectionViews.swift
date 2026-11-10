@@ -9,7 +9,7 @@ struct SparkConnectionRow: View {
 
     static var isVisible: Bool {
         let spark = SparkManager.shared
-        return spark.isReady && (spark.balanceSats > 0 || !spark.deposits.isEmpty || Env.network == .regtest)
+        return spark.isReady && (spark.shownBalanceSats > 0 || !spark.deposits.isEmpty || Env.network == .regtest)
     }
 
     var body: some View {
@@ -28,8 +28,8 @@ struct SparkConnectionRow: View {
                 .padding(.bottom, 6)
 
                 LightningChannel(
-                    capacity: spark.balanceSats,
-                    localBalance: spark.balanceSats,
+                    capacity: spark.shownBalanceSats,
+                    localBalance: spark.shownBalanceSats,
                     remoteBalance: 0,
                     status: .open,
                     showReceiving: false
@@ -120,8 +120,8 @@ struct SparkConnectionDetailView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     LightningChannel(
-                        capacity: spark.balanceSats,
-                        localBalance: spark.balanceSats,
+                        capacity: spark.shownBalanceSats,
+                        localBalance: spark.shownBalanceSats,
                         remoteBalance: 0,
                         status: .open,
                         showReceiving: false
@@ -153,7 +153,7 @@ struct SparkConnectionDetailView: View {
 
                         VStack(alignment: .leading, spacing: 0) {
                             SettingsSectionHeader(t("lightning__balance"))
-                            amountRow(label: t("lightning__spending_label"), amount: spark.balanceSats)
+                            amountRow(label: t("lightning__spending_label"), amount: spark.shownBalanceSats)
                         }
 
                         let pending = spark.deposits.filter { !$0.isClaimed }

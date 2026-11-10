@@ -1431,8 +1431,8 @@ class WalletViewModel: ObservableObject {
 
             // Update display values with adjusted balances
             totalOnchainSats = Int(state.totalOnchainSats)
-            totalLightningSats = Int(state.totalLightningSats + spark.balanceSats)
-            totalBalanceSats = Int(state.totalBalanceSats + spark.balanceSats + spark.pendingDepositSats)
+            totalLightningSats = Int(state.totalLightningSats + spark.shownBalanceSats)
+            totalBalanceSats = Int(state.totalBalanceSats + spark.shownBalanceSats + spark.pendingDepositSats)
             // A payment goes over one rail, so the larger of the two balances caps it.
             maxSendLightningSats = Int(max(state.maxSendLightningSats, spark.sendableSats))
 
