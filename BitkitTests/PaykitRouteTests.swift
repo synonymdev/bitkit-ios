@@ -400,6 +400,28 @@ final class PaykitRouteTests: XCTestCase {
     }
 
     @MainActor
+    func testAStaleCloseNeverTellsTheNewerWithdrawalsScreenItEnded() async {
+        snapshotAppDefaultsDomain()
+        let request = SparkContactWithdrawal.PaykitRequest(
+            id: PaykitPaymentRequest.ID(paymentRequestId: "request", counterparty: "payee"),
+            identity: "payer"
+        )
+        // A retry of the same request: same address, amount and request, so both share one attempt.
+        let older = SparkContactWithdrawal(address: onchain.value, amountSats: 20000, contact: "contact", startedAt: 1000, request: request)
+        let newer = SparkContactWithdrawal(address: onchain.value, amountSats: 20000, contact: "contact", startedAt: 2000, request: request)
+        XCTAssertEqual(older.attempt, newer.attempt)
+        SparkManager.pendingContactWithdrawal = newer
+        var resolutions: [SparkContactWithdrawalResolution] = []
+        let subscription = SparkManager.contactWithdrawalResolutionPublisher.sink { resolutions.append($0) }
+        defer { subscription.cancel() }
+
+        await SparkManager.closeUnsentWithdrawal(older, releaseProof: { _ in .nothingStarted }, failAllowance: { _ in })
+
+        XCTAssertEqual(SparkManager.pendingContactWithdrawal, newer)
+        XCTAssertEqual(resolutions, [], "An unsent resolution for the newer send's attempt would offer Try Again while it is in flight")
+    }
+
+    @MainActor
     func testAPendingSparkSendNeverAdoptsTheNodesOnchainAttempt() {
         let attempt = SparkWithdrawalAttempt(address: onchain.value, amountSats: 20000, requestId: nil)
 

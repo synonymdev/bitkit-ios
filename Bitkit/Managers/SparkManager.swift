@@ -724,8 +724,9 @@ final class SparkManager: ChannelFreeLightningRail {
             if let request = pending.request {
                 await PaykitAllowanceExecutor.shared.settleManualPayment(requestId: request.id, outcome: .succeeded, transactionId: txId)
             }
-            Self.clearJournal(pending)
-            Self.resolveContactWithdrawal(pending, txId: txId)
+            if Self.clearJournal(pending) {
+                Self.resolveContactWithdrawal(pending, txId: txId)
+            }
         } else {
             Logger.warn("Kept the Spark contact withdrawal journal: its local records are not all saved yet", context: "SparkManager")
         }
@@ -751,15 +752,18 @@ final class SparkManager: ChannelFreeLightningRail {
                 break
             }
         }
-        clearJournal(pending)
-        resolveContactWithdrawal(pending, txId: nil)
+        if clearJournal(pending) {
+            resolveContactWithdrawal(pending, txId: nil)
+        }
     }
 
     /// Clears `pending`'s journal only while it is still the open one, so a stale recovery never drops a newer
-    /// withdrawal's journal, which could then be paid twice.
-    nonisolated static func clearJournal(_ pending: SparkContactWithdrawal) {
-        guard pendingContactWithdrawal == pending else { return }
+    /// withdrawal's journal, which could then be paid twice. Returns whether it cleared it: only then is the resolution
+    /// this attempt's to publish, since a retry of the same request shares its attempt.
+    nonisolated static func clearJournal(_ pending: SparkContactWithdrawal) -> Bool {
+        guard pendingContactWithdrawal == pending else { return false }
         pendingContactWithdrawal = nil
+        return true
     }
 
     static func resolveContactWithdrawal(_ pending: SparkContactWithdrawal, txId: String?) {
