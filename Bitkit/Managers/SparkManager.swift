@@ -38,7 +38,7 @@ final class SparkManager: ChannelFreeLightningRail {
     private nonisolated static let depositClaimFeePpm: UInt32 = 2000
 
     private(set) var isReady = false
-    /// The last start failed before Spark could read its state; the next start clears it.
+    /// The last start failed; the next start clears it when it begins.
     private(set) var hasStartFailed = false
     private(set) var balanceSats: UInt64 = 0
     /// Deposits seen on-chain that Spark claims into `balanceSats` after 3 confirmations.
@@ -117,6 +117,8 @@ final class SparkManager: ChannelFreeLightningRail {
 
     func start(walletIndex: Int) async {
         guard let network = Self.sparkNetwork else { return }
+        // A retry reads as connecting until it fails again.
+        hasStartFailed = false
         do {
             if sdk == nil {
                 if connectTask == nil {
@@ -135,7 +137,6 @@ final class SparkManager: ChannelFreeLightningRail {
                 syncWallet: { _ = try await requireSdk().syncWallet(request: SyncWalletRequest()) },
                 syncActivities: { try await syncActivities() }
             )
-            hasStartFailed = false
         } catch {
             connectTask = nil
             hasStartFailed = true
