@@ -66,4 +66,20 @@ final class MoveToSparkLateOutcomeTests: XCTestCase {
         XCTAssertEqual(settled?.feePaidSats, 12)
         XCTAssertFalse(timedOut)
     }
+
+    @MainActor
+    func testWipeForgetsAnUnsettledMove() {
+        let manager = MoveToSparkManager()
+        let moveGeneration = manager.beginMove()
+        manager.showInFlight(amountSats: 40000, moveGeneration: moveGeneration)
+        manager.reset()
+        XCTAssertEqual(manager.state, .inFlight(amountSats: 40000), "leaving the screen keeps the unsettled move")
+
+        manager.resetForWipe()
+        XCTAssertEqual(manager.state, .quoting)
+        manager.showInFlight(amountSats: 40000, moveGeneration: moveGeneration)
+        XCTAssertEqual(manager.state, .quoting, "the wiped move's late result leaves the next wallet's screen alone")
+        manager.reset()
+        XCTAssertFalse(MoveToSparkManager.showsInFlightMove(manager.state, generation: manager.generation, moveGeneration: moveGeneration))
+    }
 }

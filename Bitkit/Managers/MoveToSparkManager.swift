@@ -86,6 +86,10 @@ enum MoveToSparkPayments {
     static func contains(_ paymentHash: String?) -> Bool {
         paymentHash.map { paymentHashes.contains($0.lowercased()) } ?? false
     }
+
+    static func removeAll() {
+        paymentHashes.removeAll()
+    }
 }
 
 enum MoveToSparkFailure {
@@ -133,7 +137,7 @@ final class MoveToSparkManager {
     /// A move was started and its outcome is still the screen's, so showing the screen again keeps it.
     private var keepsOutcome = false
     /// Counts quotes, moves and resets; a quote writes its result only while it is still the latest.
-    private var generation = 0
+    private(set) var generation = 0
     private var isQuoting = false
     /// A swiped payment that has not settled yet; leaving the screen keeps it, so it is never quoted over.
     private var isMoveInFlight = false
@@ -162,6 +166,17 @@ final class MoveToSparkManager {
         state = .quoting
     }
 
+    /// Forgets everything of the wiped wallet, its unsettled move too: a new generation makes that move's pending result
+    /// and late outcome leave the screen of the next wallet alone.
+    func resetForWipe() {
+        generation += 1
+        isQuoting = false
+        keepsOutcome = false
+        isMoveInFlight = false
+        state = .quoting
+        MoveToSparkPayments.removeAll()
+    }
+
     /// Quotes moving `targetSats`, or everything the channels can send.
     func quote(wallet: WalletViewModel, targetSats: UInt64? = nil) async {
         generation += 1
@@ -184,10 +199,7 @@ final class MoveToSparkManager {
 
     func move(wallet: WalletViewModel) async {
         guard case let .confirm(quote, isMoving) = state, !isMoving else { return }
-        generation += 1
-        let moveGeneration = generation
-        keepsOutcome = true
-        isMoveInFlight = true
+        let moveGeneration = beginMove()
         // A payment still unsettled after the wait keeps the move until its late outcome, so leaving and reopening the
         // screen shows it again instead of a new quote.
         var isSettled = true
@@ -222,14 +234,25 @@ final class MoveToSparkManager {
                 isSettled = false
                 return
             }
+            guard moveGeneration == generation else { return }
             await wallet.syncStateAsync()
+            guard moveGeneration == generation else { return }
             state = Self.doneState(amountSats: quote.amountSats, feeSats: settled.feePaidSats, channels: wallet.channels)
         } catch {
             Logger.error("Failed to move '\(quote.amountSats)' sats to Spark: \(error)", context: "MoveToSpark")
+            guard moveGeneration == generation else { return }
             state = Self.isNoRoute(error) || Self.isSendWithoutRoute(error, invoice: quote.invoice)
                 ? .tooLarge(amountSats: quote.amountSats, smallerSats: MoveToSparkMath.smallerAmount(quote.amountSats))
                 : .failed(.unknown)
         }
+    }
+
+    /// Starts a move: it keeps its outcome and stays in flight until it settles. Returns the move's generation.
+    func beginMove() -> Int {
+        generation += 1
+        keepsOutcome = true
+        isMoveInFlight = true
+        return generation
     }
 
     func makeQuote(channels: [ChannelDetails]?, targetSats: UInt64?) async throws -> MoveToSparkQuote {
@@ -294,7 +317,7 @@ final class MoveToSparkManager {
 
     /// The wait for the move of `moveGeneration` ended unsettled: the screen, if it still shows that move, shows it in
     /// flight.
-    private func showInFlight(amountSats: UInt64, moveGeneration: Int) {
+    func showInFlight(amountSats: UInt64, moveGeneration: Int) {
         guard generation == moveGeneration else { return }
         state = .inFlight(amountSats: amountSats)
     }
