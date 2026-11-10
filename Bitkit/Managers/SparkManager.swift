@@ -271,7 +271,8 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// Errors before `sendPayment` are `ChannelFreeRailSendRefused`, since nothing left the wallet; a failure inside it
-    /// stays uncertain, as the payment may have been dispatched.
+    /// stays uncertain, as the payment may have been dispatched, unless it is one raised before dispatch
+    /// (`sendPaymentFailure`).
     nonisolated func send(
         bolt11: String,
         sats: UInt64?,
@@ -312,8 +313,7 @@ final class SparkManager: ChannelFreeLightningRail {
                 options: Self.bolt11SendOptions
             ))
         } catch {
-            // The SDK checks the expiry again before sending, so an invoice that expired on the confirm screen left nothing.
-            throw Self.expiredInvoiceRefusal(error) ?? error
+            throw Self.sendPaymentFailure(error)
         }
         Logger.info("Sent Spark payment '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
         return invoiceDetails.paymentHash
@@ -333,6 +333,20 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// The SDK refuses an expired Lightning invoice before anything leaves the wallet, with the scanner's expiry copy.
+    /// What a failure inside `sendPayment` means for the caller.
+    nonisolated static func sendPaymentFailure(_ error: Error) -> Error {
+        // The SDK checks the expiry again before sending, so an invoice that expired on the confirm screen left nothing.
+        if let refusal = expiredInvoiceRefusal(error) {
+            return refusal
+        }
+        // Spark selects the leaves to spend before anything goes to the operators, so a balance short of the payment
+        // left nothing, for instance when an earlier send spent it after the cached balance was read.
+        if case SdkError.InsufficientFunds = error {
+            return ChannelFreeRailSendRefused(reason: t("other__pay_insufficient_spending_description"), underlying: error)
+        }
+        return error
+    }
+
     nonisolated static func expiredInvoiceRefusal(_ error: Error) -> ChannelFreeRailSendRefused? {
         guard case let SdkError.InvalidInput(message) = error, message.localizedCaseInsensitiveContains("invoice has expired") else { return nil }
         return ChannelFreeRailSendRefused(reason: t("other__scan__error__expired"))
@@ -402,6 +416,16 @@ final class SparkManager: ChannelFreeLightningRail {
         guard let deposit = unclaimed.first(where: { $0.txid.caseInsensitiveCompare(txid) == .orderedSame }) else { return nil }
         let quote = try await sdk.fetchClaimDepositQuote(request: FetchClaimDepositQuoteRequest(txid: deposit.txid, vout: deposit.vout))
         return SparkClaimOffer(txid: deposit.txid, vout: deposit.vout, quote: quote)
+    }
+
+    /// Clears the fee cap an early claim of `offer` left on its deposit, back to the configured one, which never claims
+    /// early (`sdkConfig`): a claim that names no cap clears the stored one before it is attempted.
+    func releaseEarlyClaim(_ offer: SparkClaimOffer) async {
+        do {
+            _ = try await requireSdk().claimDeposit(request: ClaimDepositRequest(txid: offer.txid, vout: offer.vout, maxFee: nil))
+        } catch {
+            Logger.warn("Failed to clear the early claim cap of Spark deposit \(offer.txid): \(error)", context: "SparkManager")
+        }
     }
 
     /// Accepts the early claim of `offer` at its quoted fee. The fee ceiling stays on the deposit, so an early claim
@@ -523,6 +547,12 @@ final class SparkManager: ChannelFreeLightningRail {
         if isConnected {
             await importRestoredExitState(walletIndex: walletIndex)
         }
+    }
+
+    /// Whether restored exit data is still waiting for its import, after trying that again while connected.
+    func hasStagedExitState(walletIndex: Int) async -> Bool {
+        await importRestoredExitState(walletIndex: walletIndex)
+        return FileManager.default.fileExists(atPath: Env.sparkExitRestore(walletIndex: walletIndex).path)
     }
 
     private func importRestoredExitState(walletIndex: Int) async {

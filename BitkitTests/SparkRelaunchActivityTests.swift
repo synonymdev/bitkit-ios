@@ -32,6 +32,21 @@ final class SparkRelaunchActivityTests: XCTestCase {
         XCTAssertTrue(synced)
     }
 
+    func testContactsRememberedAndForgottenAtOnceAreNotLost() throws {
+        let suite = "SparkRelaunchActivityTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let contacts = SentPaymentContacts(defaults: defaults)
+
+        DispatchQueue.concurrentPerform(iterations: 500) { index in
+            contacts.remember("pk:\(index)", forPaymentHash: "hash\(index)")
+            contacts.forget(paymentHash: "gone\(index)")
+        }
+
+        let lost = (0 ..< 500).filter { contacts.contact(forPaymentHash: "hash\($0)") == nil }
+        XCTAssertEqual(lost, [], "Concurrent updates dropped remembered contacts")
+    }
+
     func testASendRecordedAfterARelaunchKeepsTheContactItPaid() async throws {
         let suite = "SparkRelaunchActivityTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

@@ -114,13 +114,16 @@ struct SparkClaimOperations {
     var claimEarly: (SparkClaimOffer) async throws -> SparkEarlyClaim
     var refresh: () async -> Void
     var sleep: (Duration) async -> Void
+    /// Clears the early-claim fee cap `claimEarly` left on the deposit, so only the claim at maturity is made.
+    var releaseEarlyClaim: (SparkClaimOffer) async -> Void = { _ in }
 
     static var live: SparkClaimOperations {
         SparkClaimOperations(
             offer: { try await SparkManager.shared.depositClaimOffer(txid: $0) },
             claimEarly: { try await SparkManager.shared.claimEarly($0) },
             refresh: { await SparkManager.shared.refreshState() },
-            sleep: { try? await Task.sleep(for: $0) }
+            sleep: { try? await Task.sleep(for: $0) },
+            releaseEarlyClaim: { await SparkManager.shared.releaseEarlyClaim($0) }
         )
     }
 }
@@ -158,6 +161,8 @@ final class SparkTransferFlow {
     /// Each broadcast deposit keeps its own claim: a later transfer neither stops an earlier one's early claim nor takes
     /// its results, which only the current transfer's screen shows.
     @ObservationIgnored private var offers: [String: SparkClaimOffer] = [:]
+    /// Offers whose early claim was attempted, so the fee cap it left on the deposit can be cleared on Wait.
+    @ObservationIgnored private var claimedOffers: [String: SparkClaimOffer] = [:]
     @ObservationIgnored private var ceilings: [String: UInt64] = [:]
     @ObservationIgnored private var approved: (ceilingSats: UInt64, speed: SparkTransferSpeed)?
     @ObservationIgnored private var approvals: [UUID: (ceilingSats: UInt64, speed: SparkTransferSpeed)] = [:]
@@ -324,11 +329,17 @@ final class SparkTransferFlow {
         watch(txid: txid)
     }
 
-    /// Leaves the deposit to the claim after 3 confirmations.
+    /// Leaves the deposit to the claim after 3 confirmations, clearing the fee cap an early claim attempt left on it, so
+    /// Spark doesn't still claim it early.
     func waitForConfirmations() {
         if let txid {
             watchTasks[txid]?.cancel()
             watchTasks[txid] = nil
+            if let offer = claimedOffers.removeValue(forKey: txid) {
+                let operations = operations
+                // Not awaited: the SDK call ignores cancellation and can take a while.
+                Task { await operations.releaseEarlyClaim(offer) }
+            }
         }
         claimState = .later
     }
@@ -374,6 +385,7 @@ final class SparkTransferFlow {
                         return
                     }
                     setClaimState(.claiming, for: txid)
+                    claimedOffers[txid] = found
                     let claim = try await operations.claimEarly(found)
                     guard !Task.isCancelled else { return }
                     if let state = SparkClaimDecision.onClaim(claim) {

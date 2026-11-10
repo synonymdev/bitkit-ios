@@ -64,6 +64,55 @@ final class SparkTransferFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testWaitAfterAClaimTimeRepriceClearsTheEarlyClaimCap() async throws {
+        var released: [String] = []
+        let operations = SparkClaimOperations(
+            offer: { txid in SparkClaimOffer(txid: txid, vout: 0, kind: .choice(
+                earlyFeeSats: 900, earlyConfirmations: 0, standardFeeSats: 198, standardConfirmations: 3
+            )) },
+            claimEarly: { _ in .repriced(requiredFeeSats: 1500) },
+            refresh: {},
+            sleep: { _ in },
+            releaseEarlyClaim: { released.append($0.txid) }
+        )
+        let flow = SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: 2)
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 1500))
+
+        flow.waitForConfirmations()
+        for _ in 0 ..< 100 where released.isEmpty {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        XCTAssertEqual(flow.claimState, .later)
+        XCTAssertEqual(released, ["txid"], "Spark may still claim early at the cap Wait declined")
+    }
+
+    @MainActor
+    func testWaitBeforeAnyClaimAttemptLeavesTheDepositAlone() async throws {
+        var released: [String] = []
+        let operations = SparkClaimOperations(
+            offer: { txid in SparkClaimOffer(txid: txid, vout: 0, kind: .choice(
+                earlyFeeSats: 1500, earlyConfirmations: 0, standardFeeSats: 198, standardConfirmations: 3
+            )) },
+            claimEarly: { _ in .claimed },
+            refresh: {},
+            sleep: { _ in },
+            releaseEarlyClaim: { released.append($0.txid) }
+        )
+        let flow = SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: 2)
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 1500))
+
+        flow.waitForConfirmations()
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(released, [])
+    }
+
+    @MainActor
     func testTimeoutWhenSparkNeverListsTheDeposit() async {
         let flow = pollingFlow(offers: [nil, nil, nil])
         flow.onBroadcast(txid: "txid")
