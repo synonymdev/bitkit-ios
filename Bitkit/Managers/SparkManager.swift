@@ -134,6 +134,9 @@ final class SparkManager: ChannelFreeLightningRail {
     /// once it ends.
     func reconnectForExit() async {
         guard let network = Self.sparkNetwork, !isWiping else { return }
+        if isExiting {
+            keptBalanceSats = nil
+        }
         noteOptimizationCutShort()
         if let sdk {
             if let listenerId {
@@ -915,7 +918,10 @@ final class SparkManager: ChannelFreeLightningRail {
             withdrawalFailedAt, read: info.balanceSats, lastSyncedAt: info.lastSyncedAt, syncFailed: info.lastSyncError != nil
         )
         let kept = Self.keptBalanceSats(
-            read: info.balanceSats, lastShown: shownBalanceSats, isStale: withdrawalFailedAt != nil || info.lastSyncError != nil
+            read: info.balanceSats,
+            lastShown: shownBalanceSats,
+            isStale: withdrawalFailedAt != nil || info.lastSyncError != nil,
+            isExiting: isExiting
         )
         let changed = !isReady || shownBalanceSats != (kept ?? info.balanceSats) || pendingDepositSats != pending
         isReady = true
@@ -941,9 +947,10 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// After a failed withdrawal, or while Spark's last sync failed (`isStale`), Spark can read 0 with the funds still
-    /// there, so the last shown balance stays shown until it reads one again.
-    nonisolated static func keptBalanceSats(read: UInt64, lastShown: UInt64, isStale: Bool) -> UInt64? {
-        read == 0 && isStale && lastShown > 0 ? lastShown : nil
+    /// there, so the last shown balance stays shown until it reads one again. An emergency exit moves the balance to
+    /// savings, so a 0 read during one keeps nothing.
+    nonisolated static func keptBalanceSats(read: UInt64, lastShown: UInt64, isStale: Bool, isExiting: Bool) -> UInt64? {
+        read == 0 && isStale && lastShown > 0 && !isExiting ? lastShown : nil
     }
 
     /// A failed withdrawal stops keeping the balance once Spark reads one, or reads 0 after a sync that ended after it.
