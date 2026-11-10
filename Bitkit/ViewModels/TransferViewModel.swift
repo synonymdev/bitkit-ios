@@ -303,11 +303,26 @@ class TransferViewModel: ObservableObject {
         let price = priceSparkWithdrawal
         let timeout = sparkFeeTimeout
         sparkFeeTask = Task { [weak self] in
-            let fee = await Self.withTimeout(seconds: timeout) { try await price(address) }
+            // Spark refuses to quote a balance that even its cheapest fee leaves as dust, which is too small, not unpriced.
+            let priced = await Self.withTimeout(seconds: timeout) { () -> SparkWithdrawalPrice in
+                do {
+                    return try await .fee(price(address))
+                } catch where SparkManager.isBelowMinimum(error) {
+                    return .belowMinimum
+                }
+            }
             guard let self, !Task.isCancelled else { return }
             sparkFeeTask = nil
             isPricingSparkWithdrawal = false
-            if let fee, balanceSats < fee + UInt64(Env.dustLimit) {
+            let fee: UInt64? = if case let .fee(sats) = priced {
+                sats
+            } else {
+                nil
+            }
+            if priced == .belowMinimum {
+                isSparkWithdrawTooSmall = true
+                sparkFeeBalanceSats = nil
+            } else if let fee, balanceSats < fee + UInt64(Env.dustLimit) {
                 isSparkWithdrawTooSmall = true
                 sparkFeeBalanceSats = nil
             } else if let fee {
@@ -1039,4 +1054,10 @@ private final class FirstResult<T: Sendable>: @unchecked Sendable {
             }
         }
     }
+}
+
+/// A Spark withdrawal's fee, or Spark's refusal to quote a balance below its minimum.
+private enum SparkWithdrawalPrice: Equatable {
+    case fee(UInt64)
+    case belowMinimum
 }

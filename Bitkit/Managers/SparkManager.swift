@@ -503,6 +503,12 @@ final class SparkManager: ChannelFreeLightningRail {
         }
     }
 
+    /// Whether Spark refused to quote a withdrawal because even its cheapest fee leaves dust.
+    nonisolated static func isBelowMinimum(_ error: Error) -> Bool {
+        guard case let SdkError.InvalidInput(message) = error else { return false }
+        return message.lowercased().hasPrefix("amount is below the minimum")
+    }
+
     /// The fee `withdrawAll(to:maxFeeSats:)` pays at its speed, which comes out of the balance it moves.
     func withdrawAllFeeSats(to address: String) async throws -> UInt64 {
         try await Self.withdrawalFeeSats(prepareWithdrawAll(to: address))
