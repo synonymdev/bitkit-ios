@@ -1196,7 +1196,8 @@ class LightningService: NodeLifecycleService {
         guard let hashes = railAttemptsStore.stringArray(forKey: key) else { return }
         let expiries = attemptExpiries(key: key)
         let nowSeconds = Int(now().timeIntervalSince1970)
-        let isExpired = { (hash: String, settleSeconds: Int) in expiries[hash].map { $0 + settleSeconds <= nowSeconds } == true }
+        // Against now minus the window, as an invoice that never expires is kept at Int.max.
+        let isExpired = { (hash: String, settleSeconds: Int) in expiries[hash].map { $0 <= nowSeconds - settleSeconds } == true }
         let unsettled = hashes.filter { hash in
             live.contains(hash) || !(failed.contains(hash) || paid.contains(hash) && isExpired(hash, 0)
                 || !listed.contains(hash) && isExpired(hash, Self.unlistedAttemptSettleSeconds))

@@ -498,6 +498,24 @@ extension ChannelFreeRailTests {
         }
     }
 
+    func testASendWhoseInvoiceNeverExpiresKeepsItsHold() async throws {
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        defer { service.nodePayments = nodePayments }
+        // An invoice whose expiry is past what an Int holds is kept at Int.max.
+        service.recordRailAttempt(paymentHash: Self.otherHash(1), expiresAt: .max)
+        service.recordLdkAttempt(paymentHash: Self.otherHash(1), expiresAt: .max)
+        service.nodePayments = { [] }
+        rail.balanceSats = 100_000
+
+        _ = try await service.send(bolt11: Self.invoice)
+
+        for key in [Self.railAttemptsKey, Self.ldkAttemptsKey] {
+            let kept = service.railAttemptsStore.stringArray(forKey: key) ?? []
+            XCTAssertTrue(kept.contains(Self.otherHash(1)), "\(key) dropped a send whose invoice never expires")
+        }
+    }
+
     func testSendsNoListingShowsWithNoKnownExpiryAreDroppedOldestFirstPastTheCap() async {
         let service = Bitkit.LightningService.shared
         (1 ... 501).forEach { service.recordRailAttempt(paymentHash: Self.otherHash($0)) }
