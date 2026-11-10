@@ -381,7 +381,7 @@ final class SparkExitManager {
             if let transferId = record.transferId {
                 try? await TransferService(lightningService: .shared).markSettled(id: transferId)
             }
-            await reattachSpark()
+            await reattachSpark(isCancel: true)
             Logger.info("Cancelled the Spark exit after funding arrived; sweeping it back to savings", context: "SparkExitManager")
             // After the lock is released by this function's return.
             Task { await tick() }
@@ -395,7 +395,7 @@ final class SparkExitManager {
         if let transferId = record.transferId {
             try? await TransferService(lightningService: .shared).markSettled(id: transferId)
         }
-        await reattachSpark()
+        await reattachSpark(isCancel: true)
         Logger.info("Cancelled the Spark exit before it was funded", context: "SparkExitManager")
         return .forget
     }
@@ -500,9 +500,9 @@ final class SparkExitManager {
         }
     }
 
-    private func reattachSpark() async {
+    private func reattachSpark(isCancel: Bool = false) async {
         let spark = SparkManager.shared
-        await spark.reconnectForExit()
+        await spark.reconnectForExit(isCancel: isCancel)
         if LightningService.shared.channelFreeRail == nil, spark.isReady {
             LightningService.shared.channelFreeRail = spark
         }

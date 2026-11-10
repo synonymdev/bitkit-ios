@@ -43,6 +43,8 @@ final class SparkManager: ChannelFreeLightningRail {
     private(set) var balanceSats: UInt64 = 0
     /// The last balance shown, kept while Spark reads 0 after a failed withdrawal or a failed sync; display only.
     private(set) var keptBalanceSats: UInt64?
+    /// The kept balance when an exit started, shown again should the exit be cancelled.
+    @ObservationIgnored private var keptBeforeExit: UInt64?
     /// The balance Home and the Spark connection show.
     var shownBalanceSats: UInt64 {
         keptBalanceSats ?? balanceSats
@@ -141,11 +143,16 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// Connects Spark again so its leaf optimization follows whether an exit runs: off when one starts, back on
-    /// once it ends.
-    func reconnectForExit() async {
+    /// once it ends. An exit cancelled before it paid anything (`isCancel`) shows the kept balance again.
+    func reconnectForExit(isCancel: Bool = false) async {
         guard let network = Self.sparkNetwork, !isWiping else { return }
         if isExiting {
+            keptBeforeExit = keptBalanceSats ?? keptBeforeExit
             keptBalanceSats = nil
+        } else {
+            keptBalanceSats = Self.keptBalanceSats(afterExitKept: keptBeforeExit, read: balanceSats, isCancel: isCancel)
+                ?? keptBalanceSats
+            keptBeforeExit = nil
         }
         noteOptimizationCutShort()
         if let sdk {
@@ -961,6 +968,11 @@ final class SparkManager: ChannelFreeLightningRail {
     /// savings, so a 0 read during one keeps nothing.
     nonisolated static func keptBalanceSats(read: UInt64, lastShown: UInt64, isStale: Bool, isExiting: Bool) -> UInt64? {
         read == 0 && isStale && lastShown > 0 && !isExiting ? lastShown : nil
+    }
+
+    /// The balance kept again once an exit ends: a cancelled exit moved nothing, so what was kept before it still is.
+    nonisolated static func keptBalanceSats(afterExitKept kept: UInt64?, read: UInt64, isCancel: Bool) -> UInt64? {
+        isCancel && read == 0 ? kept : nil
     }
 
     /// A failed withdrawal stops keeping the balance once Spark reads one, or reads 0 after a sync that ended after it.

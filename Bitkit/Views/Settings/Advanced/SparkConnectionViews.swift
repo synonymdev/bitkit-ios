@@ -115,10 +115,10 @@ struct SparkConnectionDetailView: View {
 
     private let spark = SparkManager.shared
 
-    /// The emergency exit is offered while Spark holds funds, and leads to the exit's progress or result while it
-    /// runs or its leftover fee funding is still on its way to savings.
+    /// The emergency exit is offered while Spark holds funds, also a kept balance while it reads 0, and leads to the
+    /// exit's progress or result while it runs or its leftover fee funding is still on its way to savings.
     private var showsExit: Bool {
-        spark.balanceSats > 0 || spark.recoverableFundsSats > 0 || SparkExitManager.shared.showsResult
+        spark.shownBalanceSats > 0 || spark.recoverableFundsSats > 0 || SparkExitManager.shared.showsResult
     }
 
     var body: some View {

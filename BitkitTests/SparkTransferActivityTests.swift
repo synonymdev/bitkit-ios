@@ -50,6 +50,13 @@ final class SparkTransferActivityTests: XCTestCase {
         )
     }
 
+    func testACancelledExitShowsTheBalanceKeptBeforeIt() {
+        XCTAssertEqual(SparkManager.keptBalanceSats(afterExitKept: 10000, read: 0, isCancel: true), 10000, "The cancel dropped the kept balance")
+        XCTAssertNil(SparkManager.keptBalanceSats(afterExitKept: 10000, read: 0, isCancel: false), "The exit's balance came back after it ended")
+        XCTAssertNil(SparkManager.keptBalanceSats(afterExitKept: 10000, read: 4000, isCancel: true))
+        XCTAssertNil(SparkManager.keptBalanceSats(afterExitKept: nil, read: 0, isCancel: true))
+    }
+
     func testASyncedZeroReadAfterAFailedWithdrawalClearsTheKeptBalance() {
         XCTAssertNil(
             SparkManager.withdrawalFailedAt(100, read: 0, lastSyncedAt: 101, syncFailed: false),
