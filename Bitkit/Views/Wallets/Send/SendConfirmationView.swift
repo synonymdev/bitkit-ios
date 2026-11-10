@@ -760,13 +760,17 @@ struct SendConfirmationView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 SendSectionView(t("wallet__send_from")) {
+                    // The payer can still move a fixed request to Savings or a hardware wallet here, which reroutes it.
                     NumberPadActionButton(
                         text: t("wallet__spending__title"),
+                        imageName: canSwitchFundingSource ? "arrow-up-down" : nil,
                         color: .purpleAccent,
-                        variant: .secondary,
-                        disabled: true
-                    ) {}
-                        .accessibilityIdentifier("SendConfirmAssetButton")
+                        variant: canSwitchFundingSource ? .primary : .secondary,
+                        disabled: !canSwitchFundingSource
+                    ) {
+                        selectNextFundingSource()
+                    }
+                    .accessibilityIdentifier("SendConfirmAssetButton")
                 }
 
                 Spacer(minLength: 16)
@@ -937,6 +941,14 @@ struct SendConfirmationView: View {
         }
     }
 
+    /// A hardware wallet signs the on-chain send itself and the router never runs for it, so picking one drops the Spark
+    /// leg; Savings and Spending ask the router again, which settles the leg.
+    static func route(_ route: PaykitRouteUi?, afterSelecting source: SendFundingSource) -> PaykitRouteUi? {
+        guard case .hardware = source, var route else { return route }
+        route.serviceLeg = nil
+        return route
+    }
+
     private func selectNextFundingSource() {
         guard canSwitchFundingSource else { return }
         let currentIndex = fundingSources.firstIndex(of: selectedFundingSource)
@@ -956,6 +968,7 @@ struct SendConfirmationView: View {
             hwSend.selectWallet(nil)
             app.selectedWalletToPayFrom = .onchain
         case let .hardware(walletId):
+            app.paykitRoute = Self.route(app.paykitRoute, afterSelecting: source)
             let balance = hwWalletManager.fundingBalance(walletId: walletId)
             let reserve = HwFundingSigner.feeReserve(
                 balanceSats: balance,

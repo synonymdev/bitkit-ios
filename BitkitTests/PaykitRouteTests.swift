@@ -540,6 +540,29 @@ final class PaykitRouteTests: XCTestCase {
         XCTAssertFalse(SendConfirmationView.sourceSwitchNeedsReroute(route: nil, walletType: .onchain, hasLightningPayment: false))
     }
 
+    func testASparkRoutedConfirmCanMoveToAnotherSource() throws {
+        let context = ContactPaymentContext(
+            publicKey: "contact",
+            privatePaymentContext: nil,
+            endpoints: [Self.endpoint(.regtestOnchainP2wpkh, onchain.value)]
+        )
+        var routed = try XCTUnwrap(PaykitRouteService.routeUi(for: context, canRouteThroughSpark: true, canPayDirectly: false))
+        routed.serviceLeg = sparkLeg(amountSats: 20000, feeSats: 2190)
+
+        XCTAssertEqual(
+            SendConfirmationView.fundingSources(hasLightningInvoice: false, hasOnchainInvoice: true, offersSparkLeg: true, hardwareWalletIds: ["hw"]),
+            [.spending, .savings, .hardware(walletId: "hw")],
+            "Confirm on a Spark leg still offers Savings and the hardware wallet"
+        )
+        // The router never runs for a hardware wallet, so its pick drops the leg for the on-chain send it signs.
+        XCTAssertNil(SendConfirmationView.route(routed, afterSelecting: .hardware(walletId: "hw"))?.serviceLeg)
+        XCTAssertEqual(SendConfirmationView.route(routed, afterSelecting: .hardware(walletId: "hw"))?.endpoints, routed.endpoints)
+        // Savings and Spending ask the router again, which settles the leg.
+        XCTAssertEqual(SendConfirmationView.route(routed, afterSelecting: .savings), routed)
+        XCTAssertEqual(SendConfirmationView.route(routed, afterSelecting: .spending), routed)
+        XCTAssertNil(SendConfirmationView.route(nil, afterSelecting: .hardware(walletId: "hw")))
+    }
+
     func testARefusedRerouteOnConfirmKeepsTheSwipeOffUntilAnotherSourceIsPicked() {
         let refused = SendConfirmationView.refusedRouteSource(after: .refused, on: .lightning, previous: nil)
 
