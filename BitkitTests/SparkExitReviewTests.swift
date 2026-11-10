@@ -475,6 +475,28 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(salvaged.earlierReceivedSats, ["sweep-1": 40000])
     }
 
+    /// A salvaged exit imports the exit data it kept before it is prepared again: the SDK may no longer hold a leaf
+    /// being exited.
+    func testASalvagedExitImportsItsSnapshotBeforeItsFirstRebuild() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 25000)
+        record.exitStateSnapshot = "snapshot-1"
+        let salvaged = try XCTUnwrap(SparkExitRecordCoder.salvage(SparkExitRecordCoder.encode(record)))
+        chain.utxosByAddress["bcrt1qfunding"] = [SparkExitFixtures.utxo("f0", vout: 1, value: 25000)]
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1")])]
+        var importsAtPrepare: [[String]] = []
+        sdk.preparedByRequest = { [sdk] _ in
+            importsAtPrepare.append(sdk?.imports ?? [])
+            return SparkExitFixtures.prepared()
+        }
+
+        _ = try await driver().tick(salvaged)
+
+        XCTAssertFalse(importsAtPrepare.isEmpty, "the salvaged exit is prepared again")
+        XCTAssertEqual(importsAtPrepare.first, ["snapshot-1"], "its kept exit data is imported before it is prepared")
+        XCTAssertEqual(sdk.exports, 0)
+    }
+
     /// Background runs wrap the chain to time it: the wrapper forwards the economy tier, so their sweeps pay it.
     func testTheTimedBackgroundChainForwardsTheNetworkFees() async throws {
         chain.fastestFee = 9

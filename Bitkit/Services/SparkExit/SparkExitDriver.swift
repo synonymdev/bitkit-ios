@@ -443,7 +443,8 @@ struct SparkExitDriver {
             } catch {
                 Logger.warn("Failed to export the Spark exit data before the first build: \(error)", context: "SparkExitDriver")
             }
-        } else if let snapshot = record.exitStateSnapshot, record.recovery != nil || record.generation > 0 {
+        } else if let snapshot = record.exitStateSnapshot {
+            // Also a salvaged exit's, before its first rebuild: the SDK may no longer hold a leaf being exited.
             do {
                 try await recovering.importExitState(snapshot)
             } catch {
