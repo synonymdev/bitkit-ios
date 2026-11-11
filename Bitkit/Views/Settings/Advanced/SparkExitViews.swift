@@ -172,9 +172,10 @@ struct SparkExitFundingView: View {
         exit.quote?.fundingSats ?? 0
     }
 
-    /// What savings pays: the funding less what another wallet already sent to the address, as the start pays it.
+    /// What savings pays: the funding less what another wallet already sent to the address, plus the savings
+    /// payment's own input fee then, as the start pays it.
     private var savingsSats: UInt64 {
-        fundingSats.saturatingSub(exit.fundingSeenSats)
+        exit.savingsSats
     }
 
     /// What the funding address has to hold for the payments seen so far, and what the next one should bring it to.

@@ -106,10 +106,23 @@ final class SparkExitManager {
     /// What paying the fee funding from savings costs: that payment's own fee, and the total that leaves savings. Nil
     /// when another wallet pays, or there is nothing to fund.
     var savingsPayment: (feeSats: UInt64, totalSats: UInt64)? {
-        guard fundFromSavings, let quote else { return nil }
-        let sats = quote.fundingSats.saturatingSub(fundingSeenSats)
+        guard fundFromSavings else { return nil }
+        let sats = savingsSats
         guard sats > 0 else { return nil }
         return (savingsFeeSats, sats + savingsFeeSats)
+    }
+
+    /// What savings pays for the quote on screen: what the funding address still lacks, with the input fee of the
+    /// savings payment when it completes a payment from another wallet.
+    var savingsSats: UInt64 {
+        guard let quote else { return 0 }
+        return Self.savingsFundingSats(
+            confirmed: quote,
+            fresh: quote,
+            seenSats: fundingSeenSats,
+            seenCount: fundingSeenCount,
+            feeRate: pendingFeeRate ?? 0
+        )
     }
 
     var isExiting: Bool {
@@ -907,7 +920,13 @@ final class SparkExitManager {
         await SparkManager.shared.reconnectForExit()
         Logger.info("Started Spark exit of \(exitQuote.exitSats) sats over \(exitQuote.leafIds.count) leaves", context: "SparkExitManager")
 
-        let savingsSats = Self.savingsFundingSats(confirmed: quote, fresh: exitQuote, seenSats: fundingSeenSats)
+        let savingsSats = Self.savingsFundingSats(
+            confirmed: quote,
+            fresh: exitQuote,
+            seenSats: fundingSeenSats,
+            seenCount: fundingSeenCount,
+            feeRate: feeRate
+        )
         if fundFromSavings, savingsSats > 0 {
             let txid: String
             do {
@@ -1028,8 +1047,20 @@ final class SparkExitManager {
     /// Savings pays at most the funding the user confirmed: a higher fresh amount goes through the shortfall flow on
     /// Progress, which asks for the rest.
     /// Funding another wallet already sent to the address (`seenSats`) is not paid again.
-    nonisolated static func savingsFundingSats(confirmed: SparkExitQuote, fresh: SparkExitQuote, seenSats: UInt64) -> UInt64 {
-        min(confirmed.fundingSats, fresh.fundingSats).saturatingSub(seenSats)
+    nonisolated static func savingsFundingSats(
+        confirmed: SparkExitQuote,
+        fresh: SparkExitQuote,
+        seenSats: UInt64,
+        seenCount: Int,
+        feeRate: UInt64
+    ) -> UInt64 {
+        let total = SparkExitMath.prestartFunding(
+            fundingSats: min(confirmed.fundingSats, fresh.fundingSats),
+            payments: seenCount,
+            receivedSats: seenSats,
+            feeRate: feeRate
+        ).toSend
+        return total.saturatingSub(seenSats)
     }
 
     /// The exit a start began, still stored and active (not cancelled meanwhile); nil otherwise. The store keeps

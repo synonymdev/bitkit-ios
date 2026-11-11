@@ -25,8 +25,22 @@ final class SparkExitReviewTests: XCTestCase {
     /// Funding sent from another wallet before the user picked savings is not paid twice.
     func testSavingsPaysOnlyWhatTheFundingAddressDoesNotHoldYet() {
         let quote = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 20000))
-        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: quote, fresh: quote, seenSats: 8000), 12000)
-        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: quote, fresh: quote, seenSats: 25000), 0)
+        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: quote, fresh: quote, seenSats: 25000, seenCount: 1, feeRate: 2), 0)
+    }
+
+    /// Savings completing a partial payment from another wallet is one more funding input: it pays that input's fee
+    /// too, so both payments together are adopted. A 20,000 quote at 2 sat/vB with 8,000 received needs 20,136.
+    func testSavingsCompletingPartialFundingPaysTheExtraInputsFee() {
+        let quote = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 20000))
+        let sats = SparkExitManager.savingsFundingSats(confirmed: quote, fresh: quote, seenSats: 8000, seenCount: 1, feeRate: 2)
+
+        XCTAssertEqual(sats, 12136, "savings left the exit short of the second input's fee")
+        let paid = [
+            SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 8000),
+            SparkExitFixtures.utxo(String(repeating: "b", count: 64), value: sats),
+        ]
+        XCTAssertNotNil(SparkExitMath.fundingTopUp(paid, requiredSats: 20000, inputFeeSats: SparkExitMath.inputVbytes * 2))
+        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: quote, fresh: quote, seenSats: 0, seenCount: 0, feeRate: 2), 20000)
     }
 
     /// A tapped notification for an exit whose result was seen already is let go once the record loaded, so a later
@@ -996,8 +1010,8 @@ final class SparkExitReviewTests: XCTestCase {
         let confirmed = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 20000))
         let higher = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 35000, leaves: ["leaf-1", "leaf-2"]))
         let lower = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 15000, leaves: ["leaf-2"]))
-        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: confirmed, fresh: higher, seenSats: 0), 20000)
-        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: confirmed, fresh: lower, seenSats: 0), 15000)
+        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: confirmed, fresh: higher, seenSats: 0, seenCount: 0, feeRate: 2), 20000)
+        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: confirmed, fresh: lower, seenSats: 0, seenCount: 0, feeRate: 2), 15000)
 
         var record = try XCTUnwrap(SparkExitManager.requoted(SparkExitFixtures.record(), fresh: higher, sparkBalanceSats: 0))
         record.fundingPaymentTxid = "paid"
