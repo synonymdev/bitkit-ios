@@ -84,6 +84,9 @@ struct AppCacheData: Codable {
     let detachedActivityContacts: Set<String>
     /// Imported cache addresses may have been public; local snapshots do not export the live receive address.
     let onchainAddress: String?
+    /// The funding key index each wallet's next Spark exit takes, keyed `<network>/wallet<n>` as bitkit-android keys
+    /// its own. Nil in envelopes written before this field.
+    let sparkExitNextFundingIndexes: [String: Int]?
 
     init(
         hasSeenContactsIntro: Bool,
@@ -103,7 +106,8 @@ struct AppCacheData: Codable {
         dismissedSuggestions: [String],
         lastUsedTags: [String],
         quickPayLedger: QuickPayLedger? = nil,
-        detachedActivityContacts: Set<String> = []
+        detachedActivityContacts: Set<String> = [],
+        sparkExitNextFundingIndexes: [String: Int]? = nil
     ) {
         self.hasSeenContactsIntro = hasSeenContactsIntro
         self.hasSeenProfileIntro = hasSeenProfileIntro
@@ -123,6 +127,7 @@ struct AppCacheData: Codable {
         self.lastUsedTags = lastUsedTags
         self.quickPayLedger = quickPayLedger
         self.detachedActivityContacts = detachedActivityContacts
+        self.sparkExitNextFundingIndexes = sparkExitNextFundingIndexes
         onchainAddress = nil
     }
 
@@ -147,6 +152,7 @@ struct AppCacheData: Codable {
         quickPayLedger = try c.decodeIfPresent(QuickPayLedger.self, forKey: .quickPayLedger)
         detachedActivityContacts = try c.decodeIfPresent(Set<String>.self, forKey: .detachedActivityContacts) ?? []
         onchainAddress = try c.decodeIfPresent(String.self, forKey: .onchainAddress)
+        sparkExitNextFundingIndexes = try c.decodeIfPresent([String: Int].self, forKey: .sparkExitNextFundingIndexes)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -158,6 +164,7 @@ struct AppCacheData: Codable {
         case quickPayLedger
         case detachedActivityContacts
         case onchainAddress
+        case sparkExitNextFundingIndexes
     }
 }
 

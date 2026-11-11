@@ -544,6 +544,8 @@ final class SparkExitManager {
         // A payment that lands at the forgotten address late is then seen by the next exit, which uses it again.
         let counter = UserDefaults.standard.integer(forKey: fundingIndexKey)
         UserDefaults.standard.set(Self.fundingCounterAfterForget(counter, index: record.fundingIndex), forKey: fundingIndexKey)
+        // The counter rides the metadata backup, which its dynamic key does not mark by itself.
+        SettingsViewModel.shared.notifyAppStateChanged()
         if let transferId = record.transferId {
             try? await TransferService(lightningService: .shared).markSettled(id: transferId)
         }
@@ -962,6 +964,7 @@ final class SparkExitManager {
         )
         UserDefaults.standard.set(walletIndex, forKey: Self.walletIndexKey)
         UserDefaults.standard.set(Int(fundingIndex) + 1, forKey: fundingIndexKey)
+        SettingsViewModel.shared.notifyAppStateChanged()
         pendingFundingIndex = nil
         startingCreatedAt = record.createdAt
         defer { startingCreatedAt = nil }
@@ -1176,7 +1179,7 @@ final class SparkExitManager {
     }
 
     private var fundingIndexKey: String {
-        "sparkExitNextFundingIndex-\(Env.network)-\(walletIndex)"
+        SparkExitFundingIndexes.defaultsKey(network: "\(Env.network)", walletIndex: walletIndex)
     }
 
     /// The fast rate of Bitkit's own fee source, the ceiling of a leftover sweep with the exit's own rate.

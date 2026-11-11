@@ -679,3 +679,36 @@ enum SparkExitMath {
         readsBitkitChain && fundingSats > 0 && spendableSats >= fundingSats.saturatingAdd(paymentFeeSats)
     }
 }
+
+/// Each wallet's next exit funding index in the metadata backup, keyed `<network>/wallet<n>` as bitkit-android keys its
+/// `sparkExitNextFundingIndexes`, so a backup from either app restores on the other.
+enum SparkExitFundingIndexes {
+    private static let defaultsPrefix = "sparkExitNextFundingIndex-"
+
+    /// The counter the last exit start left, per network and wallet.
+    static func defaultsKey(network: String, walletIndex: Int) -> String {
+        "\(defaultsPrefix)\(network)-\(walletIndex)"
+    }
+
+    /// The counters kept in `defaults`, nil with none.
+    static func backup(_ defaults: UserDefaults) -> [String: Int]? {
+        let kept = defaults.dictionaryRepresentation().reduce(into: [String: Int]()) { kept, entry in
+            guard entry.key.hasPrefix(defaultsPrefix), let index = entry.value as? Int else { return }
+            let rest = entry.key.dropFirst(defaultsPrefix.count)
+            guard let dash = rest.lastIndex(of: "-"), let wallet = Int(rest[rest.index(after: dash)...]) else { return }
+            kept["\(rest[..<dash])/wallet\(wallet)"] = index
+        }
+        return kept.isEmpty ? nil : kept
+    }
+
+    /// Writes `backedUp` into `defaults`, keeping the higher of it and a counter already there.
+    static func restore(_ backedUp: [String: Int]?, into defaults: UserDefaults) {
+        for (key, index) in backedUp ?? [:] {
+            let parts = key.split(separator: "/")
+            guard parts.count == 2, parts[1].hasPrefix("wallet"), let wallet = Int(parts[1].dropFirst("wallet".count)) else { continue }
+            let defaultsKey = defaultsKey(network: String(parts[0]), walletIndex: wallet)
+            let local = defaults.object(forKey: defaultsKey) as? Int ?? 0
+            defaults.set(max(local, index), forKey: defaultsKey)
+        }
+    }
+}
