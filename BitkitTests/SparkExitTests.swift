@@ -1616,6 +1616,45 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2"], "leaf-1's matured step n2 was not sent")
     }
 
+    /// An unverified rebuild that skips the leaf it could not read but builds another unilateral leaf keeps the valid
+    /// generation: the unread leaf's signed steps are still sent once the chain reads again.
+    func testAnUnverifiedRebuildBesideAnotherUnilateralLeafKeepsTheValidGeneration() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.leafIds = ["leaf-1", "leaf-2"]
+        let unread = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("n2", dependsOn: ["n1"], status: .unverified),
+            SparkExitFixtures.tx("m1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("m2", dependsOn: ["m1"], status: .waitingForTimelock(spendableAtHeight: 2000)),
+        ])
+        record.adopt(unread, at: clock)
+        sdk.checks = [CheckRecoverFundsResponse(recovery: unread, verdict: .valid)]
+        var prepared = SparkExitFixtures.prepared(funding: nil, leaves: ["leaf-2"])
+        prepared.skipped = [SkippedLeaf(leafId: "leaf-1", valueSats: 100_000, reason: .unverified)]
+        sdk.preparedResponse = prepared
+        sdk.builds = Array(repeating: SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("m1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("m2b", dependsOn: ["m1"], status: .waitingForTimelock(spendableAtHeight: 2000)),
+        ]), count: 2)
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.generation, 1, "rebuild adopted a recovery without leaf-1's signed steps")
+
+        // The chain reads again: whatever the record holds, its unverified steps now read as ready.
+        var reread = try XCTUnwrap(record.recovery?.response)
+        reread.transactions = reread.transactions.map {
+            var tx = $0
+            if tx.status == .unverified {
+                tx.status = .ready
+            }
+            return tx
+        }
+        sdk.checks = [CheckRecoverFundsResponse(recovery: reread, verdict: .valid)]
+        chain.tip = 1001
+        record = try await driver().tick(record)
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2"], "leaf-1's matured step n2 was not sent")
+    }
+
     /// The valid generation beside a step the SDK could not read, whose rebuild of only failed cooperative leaves asks
     /// for fee funding first.
     private func unverifiedAsk() async throws -> (record: SparkExitRecord, readable: RecoverFundsResponse, failure: CooperativeRecoveryFailure) {

@@ -914,15 +914,16 @@ struct SparkExitDriver {
         }
     }
 
-    /// A rebuild of only failed cooperative leaves beside the leaf it could not read drops that leaf's signed steps,
-    /// which a matured step needs sent within the operators' window: the valid generation stays, as `valid` holds it,
-    /// and is what the tick saves. True when it stayed.
+    /// A rebuild that leaves waiting a leaf the valid generation recovers drops that leaf's signed steps, which a
+    /// matured step needs sent within the operators' window, whether it built only failed cooperative leaves or other
+    /// leaves: the valid generation stays, as `valid` holds it, and is what the tick saves. While the leaf stays
+    /// unreadable the rebuild repeats once a block. True when it stayed.
     @discardableResult
     private func keepValidGeneration(_ record: inout SparkExitRecord, over valid: SparkExitRecord) -> Bool {
-        guard record.generation != valid.generation, record.recovery?.response.transactions.isEmpty == true,
-              !(record.waitingLeafIds ?? []).isEmpty
+        guard record.generation != valid.generation, let waiting = record.waitingLeafIds,
+              valid.recovery?.response.leaves.contains(where: { waiting.contains($0.leafId) }) == true
         else { return false }
-        Logger.warn("Spark exit keeps its generation: the rebuild built only failed leaves", context: "SparkExitDriver")
+        Logger.warn("Spark exit keeps its generation: the rebuild left waiting a leaf it recovers", context: "SparkExitDriver")
         record = valid
         return true
     }
