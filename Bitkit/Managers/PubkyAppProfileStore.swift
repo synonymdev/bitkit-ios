@@ -128,6 +128,9 @@ actor PubkyAppProfileStore {
     private var savedProfiles: [UUID: PubkyProfile] = [:]
     private var pendingAvatarUris: [String: String] = [:]
     private var tagsUnavailable: Set<String> = []
+    /// Moved on each time a load records whether it read the copy, so a save clears `tagsUnavailable` only if no load
+    /// set it since the save began.
+    private var tagsReadEpochs: [String: Int] = [:]
     private var writeGate = ProfileWriteGate()
     private var copyRefreshes: [String: [UUID: Task<Void, Never>]] = [:]
     private static let rememberedRevisions = 8
@@ -146,11 +149,13 @@ actor PubkyAppProfileStore {
                 PubkyProfileData.from(paykitProfile: $0.profile)
             }
             tagsUnavailable.remove(key)
+            tagsReadEpochs[key, default: 0] += 1
         } catch {
             Logger.warn("Failed to read Bitkit profile copy: \(error)", context: "PubkyAppProfileStore")
             paykitData = nil
             paykitReadError = error
             tagsUnavailable.insert(key)
+            tagsReadEpochs[key, default: 0] += 1
         }
         let fetched = try await PubkyService.fetchPubkyProfileWithRevision(publicKey: key)
         var snapshot = fetched
@@ -212,6 +217,7 @@ actor PubkyAppProfileStore {
         defer { writeGate.endSave(key) }
         // Unread when the edit began or now: either way the form's tags are not the stored ones.
         let copyUnread = data.baseTagsUnread || tagsUnavailable.contains(key)
+        let readEpoch = tagsReadEpochs[key, default: 0]
         var base: PubkyProfile?
         if let baseRevision = data.baseRevision {
             guard let known = profilesByRevision[key]?[baseRevision] else {
@@ -243,6 +249,10 @@ actor PubkyAppProfileStore {
         Self.pubkyAppProfileOwners.insert(key)
         let previousTags = base?.tags ?? []
         let stored = await storedCopy(for: key, copyUnread: copyUnread)
+        // This save read the copy itself, so the tags are readable again, unless a load found otherwise meanwhile.
+        if copyUnread, stored?.tags != nil, tagsReadEpochs[key, default: 0] == readEpoch {
+            tagsUnavailable.remove(key)
+        }
         if let paykitAvatar, snapshot.profile.image == nil {
             Self.pubkyAppAvatarPending.insert(key)
             pendingAvatarUris[key] = paykitAvatar
