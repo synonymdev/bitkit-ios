@@ -645,7 +645,8 @@ enum SparkExitMath {
     static func outsideExitSats(sparkBalanceSats: UInt64, record: SparkExitRecord) -> UInt64? {
         guard record.isActive else { return nil }
         let live = staysOnSparkSats(sparkBalanceSats: sparkBalanceSats, record: record) ?? 0
-        let outside = max(live, record.outsideSats ?? 0)
+        // The start's snapshot predates any leaf the exit left behind, which stays on Spark too.
+        let outside = max(live, (record.outsideSats ?? 0) + record.leftBehindSats)
         return outside > 0 ? outside : nil
     }
 

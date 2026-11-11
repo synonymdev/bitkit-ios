@@ -727,6 +727,18 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(exit.fundingSeenCount, 0)
     }
 
+    /// Quoted leaves A (65,536) and B (32,768) and C (1,696) outside; the first build leaves B behind. Once A is
+    /// published and leaves the balance (34,464), Spending still holds B and C.
+    func testALeafLeftBehindStaysInSpendingOnceThePublishedLeavesLeftTheBalance() {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.leafIds = ["A", "B"]
+        record.leafTotalSats = 98304
+        record.outsideSats = 1696
+        record.leftBehindLeaves = [.init(leafId: "B", valueSats: 32768, reason: "its refund cannot pay")]
+
+        XCTAssertEqual(SparkExitMath.outsideExitSats(sparkBalanceSats: 34464, record: record), 34464, "B was in neither total")
+    }
+
     // MARK: What stays on Spark (Android 124d66170, caa349d4b)
 
     /// The start and the requote save what stays on Spark without the lost leaves Spark still counts: 100,000 sats
