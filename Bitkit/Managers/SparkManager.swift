@@ -311,8 +311,8 @@ final class SparkManager: ChannelFreeLightningRail {
         sdk == nil ? nil : Self.exitStateGeneration
     }
 
-    /// Spark's regtest has no Lightning network, so there a Lightning invoice from another Spark wallet is paid as a
-    /// Spark transfer, which lets two dev builds pay each other's invoices.
+    /// On regtest, an invoice that carries a Spark address is paid as a Spark transfer. Bitkit's own invoices carry none,
+    /// so two dev builds pay each other over Lightning through Spark's provider, as on mainnet.
     nonisolated static var prefersSpark: Bool {
         Env.network == .regtest
     }
@@ -636,11 +636,12 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// The SDK keeps `lastSyncedAt` across launches but not `lastSyncError`, which is unset after each connect until that
-    /// run's first sync ends, so only a sync this run shows Spark's list is complete.
+    /// run's first sync ends, so only a sync this run, after a wallet sync that ever succeeded, shows Spark's list is complete.
     nonisolated static func hasSynced(after seconds: UInt64?, syncedThisRun: Bool, lastSyncFailed: Bool, lastSyncedAt: UInt64?) -> Bool {
-        guard syncedThisRun, !lastSyncFailed else { return false }
+        // The SDK sets `lastSyncedAt` only on a wallet sync that succeeded, while it reports Synced for partial ones too.
+        guard syncedThisRun, !lastSyncFailed, let lastSyncedAt else { return false }
         guard let seconds else { return true }
-        return lastSyncedAt.map { $0 > seconds } ?? false
+        return lastSyncedAt > seconds
     }
 
     nonisolated func lightningPayments() async throws -> [ChannelFreeRailPayment] {

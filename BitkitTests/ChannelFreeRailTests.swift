@@ -476,6 +476,20 @@ extension ChannelFreeRailTests {
         await assertRefusedAsDuplicate()
     }
 
+    func testASparkAttemptRefusedAtAdmissionKeepsTheNodeAttemptAsTheLatest() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        // The node's send of the invoice went out, and Spark's checks don't see it before Spark's submission.
+        service.noteAttempt(on: .ldk, paymentHash: hash)
+        service.beginLdkSend(paymentHash: hash)
+        defer { service.endLdkSend(paymentHash: hash) }
+        rail.balanceSats = 100_000
+
+        await assertRefusedAsDuplicate()
+
+        XCTAssertEqual(service.attemptRail(paymentHash: hash), .ldk, "a refused Spark attempt took the node's place")
+    }
+
     func testSendsNoListingShowsAreDroppedOnceTheirInvoiceExpiredPastTheSettleWindow() async throws {
         let service = Bitkit.LightningService.shared
         let nodePayments = service.nodePayments
@@ -755,6 +769,60 @@ extension ChannelFreeRailTests {
         rail.balanceSats = 0
 
         await assertReachesTheNode()
+    }
+
+    func testAnUnknownSparkSendStaysHeldAfterARelaunchWhenSparkListsOnlyAnOlderFailedAttempt() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        service.now = { Date(timeIntervalSince1970: 1000) }
+        rail.balanceSats = 100_000
+        rail.errorAfterSubmission = NSError(domain: "spark", code: 2)
+        _ = try? await service.send(bolt11: Self.invoice)
+        rail.errorAfterSubmission = nil
+        try simulateRelaunch()
+
+        // The launch's sync reads Spark's list, which shows only an earlier attempt of the invoice that failed.
+        await SparkManager.releaseFailedSendHolds { [Self.sparkPayment(hash: hash, status: .failed)] }
+
+        let kept = service.railAttemptsStore.stringArray(forKey: Self.railAttemptsKey) ?? []
+        XCTAssertTrue(kept.contains(hash), "an earlier attempt's failure released a send Spark may still resume")
+        // Spark has not synced since the send failed, so it may still finish it.
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil)]
+        rail.syncedAfter = { ($0 ?? 0) < 1000 }
+        rail.balanceSats = 0
+        await assertRefusedAsDuplicate()
+    }
+
+    /// Keeps only what the service stores across launches: the rail's kept keys survive, everything in memory goes.
+    private func simulateRelaunch() throws {
+        let service = Bitkit.LightningService.shared
+        let kept = service.railAttemptsStore.dictionaryRepresentation().filter { $0.key.hasPrefix("channelFreeRail") }
+        XCTAssertNotNil(kept[Self.railAttemptsKey], "the send left no kept hash to survive the relaunch")
+        service.forgetRailAttempts()
+        kept.forEach { service.railAttemptsStore.set($0.value, forKey: $0.key) }
+    }
+
+    private static func sparkPayment(hash: String, status: BreezSdkSpark.PaymentStatus) -> Payment {
+        Payment(
+            id: hash,
+            paymentType: .send,
+            status: status,
+            amount: 20000,
+            fees: 0,
+            timestamp: 1,
+            method: .lightning,
+            details: .lightning(
+                description: nil,
+                invoice: invoice,
+                destinationPubkey: "pubkey",
+                htlcDetails: SparkHtlcDetails(paymentHash: hash, preimage: nil, expiryTime: 0, status: .returned),
+                lnurlPayInfo: nil,
+                lnurlWithdrawInfo: nil,
+                lnurlReceiveMetadata: nil,
+                conversionInfo: nil
+            ),
+            conversionDetails: nil
+        )
     }
 
     private static let ldkAttemptsKey = "ldkAttemptedPaymentHashes"

@@ -175,6 +175,7 @@ final class SparkPaymentSafetyTests: XCTestCase {
         transfer.sparkBalanceSats = { 99901 }
         var sent: (String, UInt64)?
         transfer.withdrawSpark = { sent = ($0, $1) }
+        transfer.sparkReadsSavingsChain = { true }
         transfer.loadSparkWithdrawFee(balanceSats: 99901, savingsAddress: "bcrt1q-savings")
         for _ in 0 ..< 100 where transfer.isPricingSparkWithdrawal {
             try await Task.sleep(nanoseconds: 20_000_000)
@@ -369,5 +370,14 @@ extension SparkPaymentSafetyTests {
         XCTAssertFalse(SparkManager.hasSynced(after: 1000, syncedThisRun: false, lastSyncFailed: false, lastSyncedAt: 2000))
         XCTAssertTrue(SparkManager.hasSynced(after: 1000, syncedThisRun: true, lastSyncFailed: false, lastSyncedAt: 2000))
         XCTAssertFalse(SparkManager.hasSynced(after: nil, syncedThisRun: true, lastSyncFailed: true, lastSyncedAt: 2000))
+    }
+
+    func testSparkCountsAsSyncedOnlyOnceAWalletSyncSucceeded() {
+        // The SDK reports no error before any sync ends, and sets its sync time only on a wallet sync that succeeded,
+        // while it also reports Synced for a partial or skipped sync.
+        XCTAssertFalse(
+            SparkManager.hasSynced(after: nil, syncedThisRun: true, lastSyncFailed: false, lastSyncedAt: nil),
+            "a list no wallet sync filled was read as complete"
+        )
     }
 }
