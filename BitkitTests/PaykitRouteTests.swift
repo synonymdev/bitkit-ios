@@ -575,7 +575,29 @@ final class PaykitRouteTests: XCTestCase {
     }
 
     @MainActor
-    private func openLightningContact() -> (AppViewModel, PaykitRouteUi, PaykitEndpoint, PaykitEndpoint) {
+    func testARerouteFromBolt11ToLnurlBelowItsMinimumShowsTheMinimumToast() async {
+        let (app, route, bolt11, lnurl) = openLightningContact(lnurlMinSendableMsats: 1_000_000)
+        defer { ToastWindowManager.shared.hideToast() }
+
+        let first = await routeDirectly(app, route, to: bolt11)
+        XCTAssertEqual(first, .direct)
+        XCTAssertNil(app.lnurlPayData)
+
+        let second = await routeDirectly(app, app.paykitRoute ?? route, to: lnurl, amountSats: 500)
+        XCTAssertEqual(second, .direct)
+        XCTAssertEqual(app.lnurlPayData?.uri, lnurl.value)
+        XCTAssertFalse(app.validateRoutedLnurlMinimum(amountSats: 500), "the restored LNURL's minimum must stop Confirm")
+        let toast = ToastWindowManager.shared.currentToast
+        XCTAssertEqual(toast?.accessibilityIdentifier, "LnurlPayAmountTooLowToast")
+        XCTAssertEqual(toast?.title, t("wallet__lnurl_pay__error_min__title"))
+        XCTAssertEqual(toast?.description, t(
+            "wallet__lnurl_pay__error_min__description",
+            variables: ["amount": CurrencyFormatter.formatSats(1000)]
+        ))
+    }
+
+    @MainActor
+    private func openLightningContact(lnurlMinSendableMsats: UInt64 = 1000) -> (AppViewModel, PaykitRouteUi, PaykitEndpoint, PaykitEndpoint) {
         snapshotAppDefaultsDomain()
         let app = AppViewModel()
         let bolt11 = PaykitEndpoint(
@@ -597,7 +619,7 @@ final class PaykitRouteTests: XCTestCase {
         app.lnurlPayData = LnurlPayData(
             uri: lightning.value,
             callback: "https://example.com/pay",
-            minSendable: 1000,
+            minSendable: lnurlMinSendableMsats,
             maxSendable: 100_000_000,
             metadataStr: "[]",
             commentAllowed: nil,
@@ -609,10 +631,15 @@ final class PaykitRouteTests: XCTestCase {
     }
 
     @MainActor
-    private func routeDirectly(_ app: AppViewModel, _ route: PaykitRouteUi, to endpoint: PaykitEndpoint) async -> PaykitRouteOutcome {
+    private func routeDirectly(
+        _ app: AppViewModel,
+        _ route: PaykitRouteUi,
+        to endpoint: PaykitEndpoint,
+        amountSats: UInt64 = 2000
+    ) async -> PaykitRouteOutcome {
         await app.routeContactPayment(
             route,
-            amountSats: 2000,
+            amountSats: amountSats,
             source: .spending,
             lightningSpendableSats: 50000,
             onchainSpendableSats: 0,

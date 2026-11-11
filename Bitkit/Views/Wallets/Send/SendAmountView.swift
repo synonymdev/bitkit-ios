@@ -439,7 +439,9 @@ struct SendAmountView: View {
                     return
                 }
 
-                navigationPath.append(app.lnurlPayData != nil && app.scannedLightningInvoice == nil ? .lnurlPayConfirm : .confirm)
+                let paysLnurl = app.lnurlPayData != nil && app.scannedLightningInvoice == nil
+                guard !paysLnurl || app.validateRoutedLnurlMinimum(amountSats: amountSats) else { return }
+                navigationPath.append(paysLnurl ? .lnurlPayConfirm : .confirm)
                 return
             }
 

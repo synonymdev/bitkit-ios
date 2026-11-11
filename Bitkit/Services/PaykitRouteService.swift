@@ -364,4 +364,21 @@ extension AppViewModel {
             accessibilityIdentifier: isBalanceShort ? "PaykitRouteBalanceToast" : "PaykitRouteNoneToast"
         )
     }
+
+    /// The route can restore an LNURL a BOLT11 pick cleared, so Amount checks its minimum after routing.
+    func validateRoutedLnurlMinimum(amountSats: UInt64) -> Bool {
+        guard let lnurlPayData else { return true }
+        let minimumAmount = max(1, lnurlPayData.minSendableSat)
+        guard amountSats < minimumAmount else { return true }
+        toast(
+            type: .error,
+            title: t("wallet__lnurl_pay__error_min__title"),
+            description: t(
+                "wallet__lnurl_pay__error_min__description",
+                variables: ["amount": CurrencyFormatter.formatSats(minimumAmount)]
+            ),
+            accessibilityIdentifier: "LnurlPayAmountTooLowToast"
+        )
+        return false
+    }
 }
