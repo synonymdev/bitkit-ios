@@ -663,6 +663,38 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(exit.fundingSeenCount, 0)
     }
 
+    // MARK: Wallet totals (pwltr, android#1782)
+
+    /// Funding seen at the address changes what is in transfer to savings: the wallet recomputes its totals.
+    @MainActor func testAFundingSeenOnlyChangeRefreshesTheWalletBalance() {
+        var refreshes = 0
+        let watch = SparkExitBalanceWatch { refreshes += 1 }
+        var record = SparkExitFixtures.record(phase: .awaitingFunding(requiredSats: 20000))
+        record.transferId = "transfer-1"
+        watch.update(record: record, fundingSeenSats: 0, sparkBalanceSats: 0)
+        let before = refreshes
+
+        watch.update(record: record, fundingSeenSats: 5000, sparkBalanceSats: 0)
+
+        XCTAssertEqual(refreshes, before + 1, "the wallet kept the in-transfer amount from before the funding was seen")
+    }
+
+    /// A record write that leaves the totals' amounts alone does not recompute them.
+    @MainActor func testAnExitWriteThatLeavesTheTotalsAloneDoesNotRefreshTheWalletBalance() {
+        var refreshes = 0
+        let watch = SparkExitBalanceWatch { refreshes += 1 }
+        var record = SparkExitFixtures.record(phase: .awaitingFunding(requiredSats: 20000))
+        record.transferId = "transfer-1"
+        watch.update(record: record, fundingSeenSats: 0, sparkBalanceSats: 0)
+        let before = refreshes
+
+        record.isResultSeen = true
+        record.lastBuildAt = Date(timeIntervalSince1970: 1_800_000_000)
+        watch.update(record: record, fundingSeenSats: 0, sparkBalanceSats: 0)
+
+        XCTAssertEqual(refreshes, before)
+    }
+
     // MARK: What stays on Spark (Android 124d66170, caa349d4b)
 
     /// The start and the requote save what stays on Spark without the lost leaves Spark still counts: 100,000 sats

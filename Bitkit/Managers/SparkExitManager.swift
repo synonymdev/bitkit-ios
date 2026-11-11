@@ -25,13 +25,19 @@ final class SparkExitManager {
     /// How long a foreground tick waits for Spark to connect again before it goes on without the SDK.
     private static let reconnectTimeoutSeconds: TimeInterval = 20
 
-    private(set) var record: SparkExitRecord?
+    private(set) var record: SparkExitRecord? {
+        didSet { noteBalanceInputs() }
+    }
+
     private(set) var quote: SparkExitQuote?
     private(set) var quoteError: String?
     private(set) var isQuoting = false
     private(set) var tipHeight: UInt32?
     /// Confirmed or not, what reached the funding address and is not a funding input yet.
-    private(set) var fundingSeenSats: UInt64 = 0
+    private(set) var fundingSeenSats: UInt64 = 0 {
+        didSet { noteBalanceInputs() }
+    }
+
     /// How many payments make up `fundingSeenSats` on the pre-start funding screen.
     private(set) var fundingSeenCount = 0
     /// The network's rates now, read on every tick: the SDK's recommendation, or the chain host's without the SDK.
@@ -80,9 +86,16 @@ final class SparkExitManager {
     @ObservationIgnored private var pendingFeeRate: UInt64?
     @ObservationIgnored private(set) var pendingFundingIndex: UInt32?
 
+    /// Recomputes the wallet's totals, through Spark's state hook, when what they read from the exit changed.
+    @ObservationIgnored private let balanceWatch = SparkExitBalanceWatch { SparkManager.shared.onStateChanged?() }
+
     /// The app uses `shared`; tests make their own, on a wallet index no wallet uses.
     init(walletIndex: Int = 0) {
         self.walletIndex = walletIndex
+    }
+
+    private func noteBalanceInputs() {
+        balanceWatch.update(record: record, fundingSeenSats: fundingSeenSats, sparkBalanceSats: SparkManager.shared.balanceSats)
     }
 
     /// The fee rate of the quote on screen.
@@ -1371,5 +1384,37 @@ final class SparkExitWriteGate: @unchecked Sendable {
 
     func close() {
         lock.withLock { closed = true }
+    }
+}
+
+/// What the wallet's totals read from the exit: its transfer, what is still in transfer to savings and what stays on
+/// Spark. A funding payment seen at the address or a record write changes them without any Spark state change, so
+/// the watch asks the wallet to recompute when they changed, and only then.
+struct SparkExitBalanceInputs: Equatable {
+    let transferId: String?
+    let inTransferSats: UInt64?
+    let outsideExitSats: UInt64?
+
+    init(record: SparkExitRecord?, fundingSeenSats: UInt64, sparkBalanceSats: UInt64) {
+        transferId = record?.transferId
+        inTransferSats = record.map { SparkExitMath.inTransferSats($0, fundingSeenSats: fundingSeenSats) }
+        outsideExitSats = record.flatMap { SparkExitMath.outsideExitSats(sparkBalanceSats: sparkBalanceSats, record: $0) }
+    }
+}
+
+@MainActor
+final class SparkExitBalanceWatch {
+    private var last: SparkExitBalanceInputs?
+    private let onChange: () -> Void
+
+    init(onChange: @escaping () -> Void) {
+        self.onChange = onChange
+    }
+
+    func update(record: SparkExitRecord?, fundingSeenSats: UInt64, sparkBalanceSats: UInt64) {
+        let inputs = SparkExitBalanceInputs(record: record, fundingSeenSats: fundingSeenSats, sparkBalanceSats: sparkBalanceSats)
+        guard inputs != last else { return }
+        last = inputs
+        onChange()
     }
 }
