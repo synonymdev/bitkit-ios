@@ -970,7 +970,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
                 buildEndpoints: { _ in [endpoint] },
                 syncPaymentLists: { _ in
                     writes.append("private:published")
-                    return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+                    return PrivatePaymentListDeliveryReport(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
                 }
             )
             let reachedHeldPoint = expectation(description: "\(testCase.name): publication reached its held point")
