@@ -1153,6 +1153,9 @@
 "wallet__send_sync_long_title" = "مشاكل\n<accent>الاتصال</accent>";
 "wallet__send_sync_long_description" = "يبدو أنك غير متصل. يرجى التحقق من اتصالك. سيحاول Bitkit إعادة الاتصال كل بضع ثوانٍ.";
 "wallet__send_to" = "إلى";
+"wallet__send_swap_route" = "المسار";
+"wallet__send_paykit_no_route__title" = "تعذّر الدفع لجهة الاتصال هذه";
+"wallet__send_paykit_no_route__description" = "ليس لدى جهة الاتصال هذه طريقة دفع يمكن لـ Bitkit استخدامها حاليًا.";
 "wallet__recipient_contact" = "جهة الاتصال";
 "wallet__recipient_invoice" = "لصق فاتورة";
 "wallet__recipient_manual" = "إدخال يدوي";

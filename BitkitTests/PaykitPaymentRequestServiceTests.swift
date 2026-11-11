@@ -7110,6 +7110,24 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertFalse(manager.isApprovedForPayment(request))
     }
 
+    func testDismissedRequestIsNotPresentedAgainWhenTheSdkListsItAsProposedAgain() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.requestsForPresentation().first)
+        XCTAssertTrue(manager.markPresentedIfPending(request))
+
+        try await manager.dismiss(request)
+        try await sdk.setRecords([paymentRequestRecord(state: .rejected)])
+        await manager.refresh()
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+
+        try await sdk.setRecords([paymentRequestRecord()])
+        await manager.refresh()
+        XCTAssertEqual(manager.pendingRequests.map(\.id), [request.id])
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+    }
+
     func testFailedRejectionDropsRequestRemovedFromAuthoritativeQueue() async throws {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)
