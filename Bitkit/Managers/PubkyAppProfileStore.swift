@@ -249,10 +249,6 @@ actor PubkyAppProfileStore {
         Self.pubkyAppProfileOwners.insert(key)
         let previousTags = base?.tags ?? []
         let stored = await storedCopy(for: key, copyUnread: copyUnread)
-        // This save read the copy itself, so the tags are readable again, unless a load found otherwise meanwhile.
-        if copyUnread, stored?.tags != nil, tagsReadEpochs[key, default: 0] == readEpoch {
-            tagsUnavailable.remove(key)
-        }
         if let paykitAvatar, snapshot.profile.image == nil {
             Self.pubkyAppAvatarPending.insert(key)
             pendingAvatarUris[key] = paykitAvatar
@@ -278,8 +274,8 @@ actor PubkyAppProfileStore {
             }
             if tags == previousTags {
                 // No tag change to report, so the save does not wait for the copy: it follows as a tracked refresh,
-                // which the next save waits for and a deletion refuses or waits for. It leaves the unread flag alone,
-                // which a load may have set since.
+                // which the next save waits for and a deletion refuses or waits for. Its outcome leaves the unread flag
+                // alone, which a load may have set since.
                 let id = UUID()
                 copyRefreshes[key, default: [:]][id] = Task {
                     do {
@@ -288,6 +284,12 @@ actor PubkyAppProfileStore {
                         Logger.warn("Failed to update Bitkit profile copy: \(error)", context: "PubkyAppProfileStore")
                     }
                     copyRefreshes[key]?[id] = nil
+                }
+                // This save read the copy itself and keeps its tags in the profile it stores, so they are readable
+                // again, unless a load found otherwise meanwhile. A save that writes the copy at once clears the flag
+                // only once that write succeeds, since a failed one stores the profile without the copy's tags.
+                if copyUnread, stored?.tags != nil, tagsReadEpochs[key, default: 0] == readEpoch {
+                    tagsUnavailable.remove(key)
                 }
             } else {
                 do {
