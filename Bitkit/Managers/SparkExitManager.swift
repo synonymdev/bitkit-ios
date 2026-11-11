@@ -569,6 +569,10 @@ final class SparkExitManager {
                 try? store.save(updated)
             }
             record = updated
+            if Self.isFundingAskWithdrawn(updated, previous: current) {
+                Self.dismissDeliveredFundingNotifications(record: updated)
+            }
+            earlierAddresses = (try? earlierAddressStore.load()) ?? earlierAddresses
             lastError = nil
             await afterTick(updated, wasActive: current.isActive)
         } catch {
@@ -1427,6 +1431,21 @@ final class SparkExitManager {
 
     private nonisolated static func rememberedReminders() -> [String: TimeInterval] {
         UserDefaults.standard.dictionary(forKey: remindersKey) as? [String: TimeInterval] ?? [:]
+    }
+
+    /// An unverified rebuild's fee ask the tick from `previous` withdrew: the valid generation needs nothing more.
+    nonisolated static func isFundingAskWithdrawn(_ record: SparkExitRecord, previous: SparkExitRecord) -> Bool {
+        guard previous.isUnverifiedAsk == true, case .needsFunding = previous.phase else { return false }
+        return record.phase == .running
+    }
+
+    /// Takes back the exit's delivered fee asks, which no longer hold.
+    private nonisolated static func dismissDeliveredFundingNotifications(record: SparkExitRecord) {
+        let prefix = notificationId(SparkExitReminder(id: "", fireAt: Date()), record: record)
+        UNUserNotificationCenter.current().getDeliveredNotifications { delivered in
+            let ids = delivered.map(\.request.identifier).filter { $0.hasPrefix(prefix) && $0.contains("funding-") }
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ids)
+        }
     }
 
     private nonisolated static func clearReminders() {

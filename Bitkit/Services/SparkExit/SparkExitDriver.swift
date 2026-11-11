@@ -297,6 +297,15 @@ struct SparkExitDriver {
         record.noteProgressAfterRebuildFromChain(checked.recovery)
         switch checked.verdict {
         case .valid:
+            // An unverified rebuild's ask ends once every step reads again: the valid generation needs nothing more.
+            // Funding that reached the address meanwhile stays there, for a later rebuild or the leftover sweep.
+            if record.isUnverifiedAsk == true, record.fundingPaymentTxid == nil,
+               !checked.recovery.transactions.contains(where: { $0.status == .unverified })
+            {
+                Logger.info("Spark exit steps read again: the unverified rebuild's fee ask is withdrawn", context: "SparkExitDriver")
+                record.phase = .running
+                record.isUnverifiedAsk = nil
+            }
             let tip = try? await chain.tipHeight()
             try await broadcastReady(&record, tip: tip)
         case .done:

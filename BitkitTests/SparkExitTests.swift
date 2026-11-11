@@ -1665,6 +1665,21 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertNil(record.isUnverifiedAsk)
     }
 
+    /// An unverified rebuild's fee ask ends once every step reads again and nothing was paid: the exit runs again.
+    func testAnUnverifiedRebuildsFeeAskEndsOnceItsStepsReadAgain() async throws {
+        var (record, readable, _) = try await unverifiedAsk()
+        let asked = record
+        sdk.checks = [CheckRecoverFundsResponse(recovery: readable, verdict: .valid)]
+        chain.tip = 1001
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.phase, .running, "the fee ask stayed after every step read again")
+        XCTAssertNil(record.isUnverifiedAsk)
+        XCTAssertTrue(SparkExitManager.isFundingAskWithdrawn(record, previous: asked))
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2"])
+    }
+
     /// R2: while a unilateral step is ready, a rebuild would conflict with it, so nothing rebuilds; a cooperative step
     /// the SDK could not read is still sent.
     func testAReadyStepHoldsTheUnverifiedRebuildAndCooperativeStepsAreStillSent() async throws {
