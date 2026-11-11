@@ -88,6 +88,18 @@ final class SparkTransferActivityTests: XCTestCase {
         )
     }
 
+    func testABalanceReadBeforeAFullWithdrawalNeverBringsItBack() {
+        XCTAssertEqual(
+            SparkManager.withdrewAllAt(100, read: 9000, lastSyncedAt: 90),
+            100,
+            "A refresh that read the balance before the withdrawal brought it back"
+        )
+        XCTAssertEqual(SparkManager.withdrewAllAt(100, read: 9000, lastSyncedAt: nil), 100)
+        XCTAssertEqual(SparkManager.withdrewAllAt(100, read: 0, lastSyncedAt: 101), 100)
+        XCTAssertNil(SparkManager.withdrewAllAt(100, read: 2000, lastSyncedAt: 101), "New funds after the withdrawal stayed hidden")
+        XCTAssertNil(SparkManager.withdrewAllAt(nil, read: 0, lastSyncedAt: 101))
+    }
+
     func testASyncedZeroReadAfterAFailedWithdrawalClearsTheKeptBalance() {
         XCTAssertNil(
             SparkManager.withdrawalFailedAt(100, read: 0, lastSyncedAt: 101, syncFailed: false),

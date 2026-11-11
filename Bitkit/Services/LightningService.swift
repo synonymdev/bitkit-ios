@@ -1056,7 +1056,9 @@ class LightningService: NodeLifecycleService {
         let mark = attemptMark
         if !channelsOnly, let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: sats) {
             // LDK refuses its own repeats; Spark doesn't, so a Spark send checks both rails.
-            if let paid = try await settledEarlierAttempt(paymentHash: paymentHash, on: [.ldk, .channelFree]) {
+            if let paid = try await settledEarlierAttempt(
+                paymentHash: paymentHash, on: [.ldk, .channelFree], invoiceCreatedAt: invoice?.secondsSinceEpoch()
+            ) {
                 return paid
             }
             guard beginRailSend(paymentHash: paymentHash) else { throw Self.pendingDuplicate(paymentHash: paymentHash) }
@@ -2187,6 +2189,13 @@ extension LightningService {
             let kept = unexpiredRailAttempts()
             let payments = try await rail.lightningPayments()
             if let since = sparkHistoryUnseededSince, await rail.hasSynced(after: UInt64(clamping: since)) {
+                // Kept, so after a relaunch the sends Spark listed hold the node until Spark syncs again.
+                let seeded = payments.filter { $0.direction == .outbound && $0.status != .failed }.map { $0.paymentHash.lowercased() }
+                eventCallbackLock.withLock {
+                    let hashes = railAttemptsStore.stringArray(forKey: Self.railAttemptsKey) ?? []
+                    let added = Array(Set(seeded).subtracting(hashes)).sorted()
+                    railAttemptsStore.set(added + hashes, forKey: Self.railAttemptsKey)
+                }
                 clearSparkHistoryUnseeded()
             }
             let listed = Set((payments + unsettled).filter { $0.direction == .outbound }.map { $0.paymentHash.lowercased() })

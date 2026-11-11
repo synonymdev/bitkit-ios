@@ -86,8 +86,9 @@ final class SparkManager: ChannelFreeLightningRail {
     /// When a withdrawal last failed, in seconds since 1970, until Spark reads a balance again or syncs after it
     /// (`keptBalanceSats`).
     @ObservationIgnored private var withdrawalFailedAt: UInt64?
-    /// Whether a withdrawal moved the whole balance, so a read of 0 is real until Spark reads a balance again.
-    @ObservationIgnored private var withdrewAll = false
+    /// When a withdrawal moved the whole balance, in seconds since 1970, so a read of 0 is real until a sync after it
+    /// reads a balance again (`withdrewAllAt(_:read:lastSyncedAt:)`).
+    @ObservationIgnored private var withdrewAllAt: UInt64?
     @ObservationIgnored private var listenerId: String?
     @ObservationIgnored private var connectTask: Task<Void, Error>?
     /// A leaf optimization is running, as its events tell.
@@ -543,7 +544,7 @@ final class SparkManager: ChannelFreeLightningRail {
         keptBalanceSats = nil
         keptBeforeExit = nil
         withdrawalFailedAt = nil
-        withdrewAll = false
+        withdrewAllAt = nil
         pendingDepositSats = 0
         recoverableFundsSats = 0
         deposits = []
@@ -804,7 +805,7 @@ final class SparkManager: ChannelFreeLightningRail {
                 sentWithdrawalTxIds.insert(txId)
             }
             withdrawalFailedAt = response.payment.status == .failed ? Self.nowSecs() : nil
-            withdrewAll = response.payment.status != .failed
+            withdrewAllAt = response.payment.status == .failed ? nil : Self.nowSecs()
             try await Self.settleWithdrawal(status: response.payment.status) { try await self.refresh() }
         } catch {
             withdrawalFailedAt = Self.nowSecs()
@@ -1020,12 +1021,12 @@ final class SparkManager: ChannelFreeLightningRail {
         withdrawalFailedAt = Self.withdrawalFailedAt(
             withdrawalFailedAt, read: info.balanceSats, lastSyncedAt: info.lastSyncedAt, syncFailed: info.lastSyncError != nil
         )
-        withdrewAll = withdrewAll && info.balanceSats == 0
+        withdrewAllAt = Self.withdrewAllAt(withdrewAllAt, read: info.balanceSats, lastSyncedAt: info.lastSyncedAt)
         let kept = Self.keptBalanceSats(
             read: info.balanceSats,
             lastShown: shownBalanceSats,
             isStale: withdrawalFailedAt != nil || info.lastSyncError != nil,
-            withdrewAll: withdrewAll,
+            withdrewAll: withdrewAllAt != nil,
             isExiting: isExiting
         )
         let changed = !isReady || Self.balancesChanged(
@@ -1076,6 +1077,13 @@ final class SparkManager: ChannelFreeLightningRail {
     nonisolated static func withdrawalFailedAt(_ failedAt: UInt64?, read: UInt64, lastSyncedAt: UInt64?, syncFailed: Bool) -> UInt64? {
         guard let failedAt, read == 0, syncFailed || (lastSyncedAt ?? 0) <= failedAt else { return nil }
         return failedAt
+    }
+
+    /// A full withdrawal stops making a read of 0 real once a sync that ended after it reads a balance, so a refresh
+    /// that read the balance before the withdrawal can't bring it back.
+    nonisolated static func withdrewAllAt(_ withdrewAt: UInt64?, read: UInt64, lastSyncedAt: UInt64?) -> UInt64? {
+        guard let withdrewAt, read == 0 || (lastSyncedAt ?? 0) <= withdrewAt else { return nil }
+        return withdrewAt
     }
 
     private nonisolated static func nowSecs() -> UInt64 {
