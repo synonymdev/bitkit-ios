@@ -1404,6 +1404,7 @@
 "wallet__payment_recipient_rejected" = "The recipient rejected this Lightning payment. Please check the invoice and try again.";
 "wallet__payment_abandoned" = "The Lightning payment was stopped before it completed.";
 "wallet__payment_expired" = "This Lightning payment expired. Please request a new invoice.";
+"wallet__payment_restored_invoice" = "Bitkit can't confirm this invoice wasn't paid before you restored your wallet. Please request a new invoice.";
 "wallet__payment_timeout" = "Payment timed out. Please try again.";
 "wallet__payment_route_not_found" = "Bitkit couldn't find a Lightning route for this payment.";
 "wallet__payment_retries_exhausted" = "Bitkit tried several Lightning routes, but the payment could not be completed.";

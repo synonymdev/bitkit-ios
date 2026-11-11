@@ -290,7 +290,7 @@ struct RestoreWalletView: View {
             // The node never started, so no sync will lift the hold. Left in place it would silence
             // every later on-chain receive, across retries and relaunches. #588
             SettingsViewModel.shared.pendingRestoreActivitySeenSince = 0
-            LightningService.shared.clearSparkHistoryUnseeded()
+            LightningService.shared.clearSparkRestore()
             BackupService.shared.setRestoring(false)
             app.toast(error)
         }
