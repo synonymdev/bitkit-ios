@@ -145,6 +145,21 @@ final class ClipboardPromptValidatorTests: XCTestCase {
         XCTAssertFalse(supported)
     }
 
+    func testNormalizedLnurlInspectionDoesNotContactEndpoints() async throws {
+        let probe = try ClipboardConnectionProbe()
+        defer { probe.stop() }
+        let ready = expectation(description: "loopback listener ready")
+        probe.start(ready: ready)
+        await fulfillment(of: [ready], timeout: 5)
+        let port = try XCTUnwrap(probe.port)
+        let lnurl = ClipboardLnurlEncoder.encode("http://127.0.0.1:\(port)/lnurlp")
+        for input in ["\u{0085}\(lnurl)", "bitkit://lightning: \(lnurl)", "bitkit://bitkbitkit://it://\(lnurl)"] {
+            let supported = await ClipboardPromptValidator.isSupportedURI(input, ownPublicKey: nil, contacts: [])
+            XCTAssertTrue(supported, input)
+        }
+        XCTAssertEqual(probe.connections, 0, "Normalized candidates must not contact endpoints before confirmation")
+    }
+
     func testBip21WithLnurlMetadataIsValidatedWithoutNetworkRequests() async throws {
         let probe = try ClipboardConnectionProbe()
         defer { probe.stop() }

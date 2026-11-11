@@ -86,14 +86,18 @@ enum ClipboardPromptValidator {
     }
 
     private static func requiresNetworkResolution(_ uri: String) -> Bool {
-        var payload = uri
-        if payload.hasPrefix("bitkit://") {
-            // The core scanner removes all Bitkit wrappers, then recursively decodes the remaining payload.
+        var payload = uri.trimmingCharacters(in: .whitespacesAndNewlines)
+        if payload.hasPrefix("lightning:") {
+            payload.removeFirst("lightning:".count)
+        }
+        while payload.hasPrefix("bitkit://") {
             payload = payload.replacingOccurrences(of: "bitkit://", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             if payload.hasPrefix("lightning:") {
                 payload.removeFirst("lightning:".count)
             }
         }
+        payload = payload.trimmingCharacters(in: .whitespacesAndNewlines)
         // Core validates BIP21 locally, including any optional Lightning metadata.
         if payload.lowercased().hasPrefix("bitcoin:") {
             return false
