@@ -560,6 +560,7 @@ final class SparkManager: ChannelFreeLightningRail {
         // wallet's index even when the exit manager holds another one.
         try SparkExitStore(walletIndex: walletIndex).deleteWithCopies()
         try Self.removeIfPresent(Env.sparkExitLostLeaves(walletIndex: walletIndex))
+        try Self.removeIfPresent(Env.sparkExitEarlierAddresses(walletIndex: walletIndex))
     }
 
     nonisolated static func removeIfPresent(_ url: URL) throws {

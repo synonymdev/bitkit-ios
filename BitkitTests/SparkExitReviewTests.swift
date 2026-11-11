@@ -773,6 +773,26 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(record.isFundingPaymentShort, true)
     }
 
+    /// A cancelled exit's funding address stays listed, and for four weeks the foreground reads it: a late payment
+    /// shows there with its balance.
+    func testACancelledExitsAddressShowsALatePaymentForFourWeeks() async throws {
+        let record = SparkExitFixtures.record()
+        let cancelled = try XCTUnwrap(SparkExitEarlierAddress.cancelledFunding(record, network: .regtest, at: clock.addingTimeInterval(-86400)))
+        XCTAssertEqual(cancelled.address, record.funding[0].address)
+        XCTAssertEqual(cancelled.kind, .cancelledFunding)
+        let old = SparkExitEarlierAddress(address: "bcrt1qold", path: "m/84'/1'/7797'/0/1", kind: .cancelledFunding, sats: nil,
+                                          date: clock.addingTimeInterval(-29 * 86400))
+        let kept = SparkExitEarlierAddress(address: "bcrt1qkept", path: "m/84'/1'/7797'/0/2", kind: .keptChange, sats: 600,
+                                           date: clock.addingTimeInterval(-86400))
+
+        let refreshed = await SparkExitEarlierAddress.refreshed([cancelled, old, kept], now: clock) { address in
+            address == cancelled.address ? [SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 5000, confirmed: false)]
+                : [SparkExitFixtures.utxo(String(repeating: "b", count: 64), value: 9)]
+        }
+
+        XCTAssertEqual(refreshed.map(\.sats), [5000, nil, 600], "a late payment at a cancelled exit's address showed nowhere")
+    }
+
     // MARK: What stays on Spark (Android 124d66170, caa349d4b)
 
     /// The start and the requote save what stays on Spark without the lost leaves Spark still counts: 100,000 sats

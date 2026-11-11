@@ -304,6 +304,12 @@ enum Env {
     }
 
     /// The leaves an older state of the wallet claimed in an earlier Spark exit, kept out of every later one.
+    static func sparkExitEarlierAddresses(walletIndex: Int) -> URL {
+        appStorageUrl
+            .appendingPathComponent(networkName)
+            .appendingPathComponent("wallet\(walletIndex)/spark-exit-earlier-addresses.json")
+    }
+
     static func sparkExitLostLeaves(walletIndex: Int) -> URL {
         appStorageUrl
             .appendingPathComponent(networkName)

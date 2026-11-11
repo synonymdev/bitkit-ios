@@ -411,6 +411,9 @@
 "lightning__spark_exit__leftover" = "{amount} of fee funding is still at {address}.";
 "lightning__spark_exit__leftover_swept" = "{amount} of leftover fee funding was sent to savings.";
 "lightning__spark_exit__leftover_sending" = "Sending {amount} of leftover fee funding to savings.";
+"lightning__spark_exit__earlier_addresses" = "Earlier exit addresses";
+"lightning__spark_exit__earlier_addresses_text" = "Earlier emergency exits used these funding addresses. Coins left at one stay yours: spend them with your recovery phrase and its derivation path.";
+"lightning__spark_exit__earlier_path" = "Derivation path";
 "lightning__spark_exit__leftover_dust" = "{amount} of leftover fee funding is too small to send and stays at {address}, derivation path {path}.";
 "lightning__spark_exit__fund_paid" = "Paid from savings, waiting for confirmation.";
 "lightning__spark_exit__fund_pending" = "Payment seen, waiting for confirmation.";

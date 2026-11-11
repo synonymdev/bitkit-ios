@@ -11,7 +11,8 @@ struct SparkConnectionRow: View {
         let spark = SparkManager.shared
         // An exit's progress and result stay reachable while Spark is not ready, such as with the operators down.
         let hasExit = spark.isExiting || spark.recoverableFundsSats > 0
-        return SparkExitManager.shared.showsResult
+        // An earlier exit's address stays reachable once Spark holds nothing.
+        return SparkExitManager.shared.showsResult || !SparkExitManager.shared.shownEarlierAddresses.isEmpty
             || spark.isReady && (spark.shownBalanceSats > 0 || !spark.deposits.isEmpty || hasExit || Env.network == .regtest)
     }
 
@@ -185,6 +186,26 @@ struct SparkConnectionDetailView: View {
                             }
                         }
 
+                        let earlier = SparkExitManager.shared.shownEarlierAddresses
+                        if !earlier.isEmpty {
+                            VStack(alignment: .leading, spacing: 0) {
+                                SettingsSectionHeader(t("lightning__spark_exit__earlier_addresses"))
+                                BodySText(t("lightning__spark_exit__earlier_addresses_text"))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .padding(.bottom, 8)
+                                ForEach(earlier) { entry in
+                                    copyRow(label: t("wallet__activity_address"), value: entry.address)
+                                        .accessibilityIdentifier("SparkExitEarlierAddress")
+                                    copyRow(label: t("lightning__spark_exit__earlier_path"), value: entry.path)
+                                        .accessibilityIdentifier("SparkExitEarlierPath")
+                                    if let sats = entry.sats {
+                                        amountRow(label: t("lightning__balance"), amount: sats)
+                                    }
+                                }
+                                .padding(.bottom, 8)
+                            }
+                        }
+
                         if !spark.withdrawals.isEmpty {
                             VStack(alignment: .leading, spacing: 0) {
                                 SettingsSectionHeader(t("lightning__savings_confirm__label"))
@@ -223,9 +244,13 @@ struct SparkConnectionDetailView: View {
         .bottomSafeAreaPadding()
         .refreshable {
             await spark.refreshState()
+            await SparkExitManager.shared.refreshEarlierAddresses()
         }
         .task {
             await loadDepositAddress()
+        }
+        .task {
+            await SparkExitManager.shared.refreshEarlierAddresses()
         }
     }
 
@@ -251,6 +276,18 @@ struct SparkConnectionDetailView: View {
             .frame(height: 50)
             CustomDivider()
         }
+    }
+
+    private func copyRow(label: String, value: String) -> some View {
+        Button {
+            UIPasteboard.general.string = value
+            Haptics.play(.copiedToClipboard)
+            app.toast(type: .success, title: t("common__copied"), description: value)
+        } label: {
+            detailRow(label: label, value: value)
+                .contentShape(.rect)
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 
     private func amountRow(label: String, amount: UInt64) -> some View {

@@ -30,6 +30,8 @@ final class SparkExitManager {
     }
 
     private(set) var quote: SparkExitQuote?
+    /// Funding addresses earlier exits left coins at, or may still receive them at: kept change and cancelled exits'.
+    private(set) var earlierAddresses: [SparkExitEarlierAddress] = []
     private(set) var quoteError: String?
     private(set) var isQuoting = false
     private(set) var tipHeight: UInt32?
@@ -139,6 +141,32 @@ final class SparkExitManager {
         record?.showsResult == true
     }
 
+    /// The earlier exits' addresses to show: one the current exit uses again is that exit's, shown on its progress.
+    var shownEarlierAddresses: [SparkExitEarlierAddress] {
+        let current = record?.funding.first?.address
+        return earlierAddresses.filter { $0.address != current }
+    }
+
+    private var earlierAddressStore: SparkExitEarlierAddressStore {
+        SparkExitEarlierAddressStore(walletIndex: walletIndex)
+    }
+
+    /// Reads the cancelled exits' addresses still watched for a late payment, and shows what each holds.
+    func refreshEarlierAddresses() async {
+        let store = earlierAddressStore
+        let stored = (try? store.load()) ?? earlierAddresses
+        earlierAddresses = stored
+        guard let chain, stored.contains(where: { $0.isWatched(now: Date()) }) else { return }
+        let refreshed = await SparkExitEarlierAddress.refreshed(stored, now: Date()) { try await chain.utxos(address: $0) }
+        guard refreshed != stored else { return }
+        do {
+            try store.save(refreshed)
+        } catch {
+            Logger.warn("Failed to save the earlier Spark exit addresses: \(error)", context: "SparkExitManager")
+        }
+        earlierAddresses = refreshed
+    }
+
     private var store: SparkExitStore {
         SparkExitStore(walletIndex: walletIndex)
     }
@@ -150,7 +178,7 @@ final class SparkExitManager {
     /// Saves the record, and keeps the leaves it lost to an older state for every later exit of the wallet. The lost-leaf
     /// list is best effort: it never fails the save the driver relies on.
     private var saveRecord: (SparkExitRecord) throws -> Void {
-        Self.gatedSave(store: store, lostLeafStore: lostLeafStore, gate: writeGate)
+        Self.gatedSave(store: store, lostLeafStore: lostLeafStore, earlierAddressStore: earlierAddressStore, gate: writeGate)
     }
 
     /// Writes from ticks and background runs, closed for good once the wallet is wiped: a tick still running then can
@@ -160,6 +188,7 @@ final class SparkExitManager {
     nonisolated static func gatedSave(
         store: SparkExitStore,
         lostLeafStore: SparkExitLostLeafStore,
+        earlierAddressStore: SparkExitEarlierAddressStore? = nil,
         gate: SparkExitWriteGate
     ) -> (SparkExitRecord) throws -> Void {
         {
@@ -169,6 +198,14 @@ final class SparkExitManager {
                 try lostLeafStore.add(lostIn: $0)
             } catch {
                 Logger.warn("Failed to keep the Spark exit's lost leaves: \(error)", context: "SparkExitManager")
+            }
+            // Kept change stays reachable after a later exit replaced this record. Best effort, as the lost leaves.
+            if let earlierAddressStore, let kept = SparkExitEarlierAddress.keptChange($0, network: Env.bitkitCoreNetwork, at: Date()) {
+                do {
+                    try earlierAddressStore.add(kept)
+                } catch {
+                    Logger.warn("Failed to keep the Spark exit's kept change address: \(error)", context: "SparkExitManager")
+                }
             }
         }
     }
@@ -184,6 +221,7 @@ final class SparkExitManager {
         self.walletIndex = walletIndex
         do {
             record = try Self.loadRecord(store: store, lostLeafStore: lostLeafStore)
+            earlierAddresses = (try? earlierAddressStore.load()) ?? []
             hasLoadedRecord = true
         } catch is SparkExitStore.Unavailable {
             // Before the first unlock the file is there but cannot be read yet: it is read again on the next load.
@@ -243,6 +281,8 @@ final class SparkExitManager {
             Logger.error("Failed to delete the wiped wallet's Spark exit record: \(error)", context: "SparkExitManager")
         }
         try? lostLeafStore.delete()
+        try? earlierAddressStore.delete()
+        earlierAddresses = []
         record = nil
         hasLoadedRecord = false
         quote = nil
@@ -458,6 +498,14 @@ final class SparkExitManager {
         case .forget:
             break
         }
+        // Its address stays listed, and is read for a late payment while the app is in the foreground for four weeks.
+        if let cancelled = SparkExitEarlierAddress.cancelledFunding(record, network: Env.bitkitCoreNetwork, at: Date()) {
+            do {
+                earlierAddresses = try earlierAddressStore.add(cancelled)
+            } catch {
+                Logger.warn("Failed to keep the cancelled Spark exit's address: \(error)", context: "SparkExitManager")
+            }
+        }
         try? store.delete()
         self.record = nil
         Self.clearReminders()
@@ -474,6 +522,7 @@ final class SparkExitManager {
 
     /// Ticks every minute while the app is active and an exit runs. Each step of an exit needs Bitkit to publish it.
     func runWhileActive() async {
+        await refreshEarlierAddresses()
         while !Task.isCancelled, needsDriving {
             await tick()
             try? await Task.sleep(nanoseconds: Self.foregroundTickSeconds * 1_000_000_000)

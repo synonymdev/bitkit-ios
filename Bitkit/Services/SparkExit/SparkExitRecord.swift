@@ -313,11 +313,11 @@ struct SparkExitRecord: Codable, Equatable {
     }
 
     /// Whether Emergency exit opens this exit rather than a new one: it runs, its leftover is still on its way to
-    /// savings, the leftover waits at the funding address for good (the sweep was refused, or the change was kept), or
-    /// it failed or lost leaves and the user has not seen that yet. Coins left at the funding address keep the result,
-    /// with the address and the path that spends them, and no new exit replaces it.
+    /// savings, the leftover sweep was refused and the leftover waits at the funding address, or it failed, lost leaves
+    /// or kept change and the user has not seen that yet. Kept change's address and path stay in the earlier exit
+    /// addresses (`SparkExitEarlierAddress`), so a later exit may replace this record.
     var showsResult: Bool {
-        needsDriving || (!leftover.isEmpty && leftoverSweep?.rejection != nil) || isChangeKept || hasUnseenResult
+        needsDriving || (!leftover.isEmpty && leftoverSweep?.rejection != nil) || hasUnseenResult
     }
 
     /// The leaves builds select: the quote's, less those an older state claimed and those left behind.

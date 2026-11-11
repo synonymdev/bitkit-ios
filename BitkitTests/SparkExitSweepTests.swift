@@ -676,9 +676,9 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertEqual(SparkExitFeeBumpOption.options(exitRate: 2, fees: fees).map(\.rate), [3], "a bump still offers a higher rate")
     }
 
-    /// Change kept at the funding address keeps its address and path reachable, even once the result was opened, so
-    /// the user can spend it and no new exit overwrites the record.
-    func testKeptChangeKeepsItsRecoveryDetailsReachable() async throws {
+    /// Change kept at the funding address shows its result once, then lets a later exit start: its address and path
+    /// stay in the earlier exit addresses, which no new exit replaces.
+    func testKeptChangeShowsOnceAndItsAddressStaysListed() async throws {
         var record = endedRecord()
         record.isResultSeen = true
         record.feeRateSatPerVbyte = 20
@@ -692,7 +692,25 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertEqual(record.leftoverLine, .kept(sats: 600))
         XCTAssertTrue(record.showsResult, "the funding address and its path were out of reach")
         record.isResultSeen = true
-        XCTAssertTrue(record.showsResult, "the funding address and its path went out of reach once the result was opened")
+        XCTAssertFalse(record.showsResult, "the kept change blocked every later exit")
+
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let earlier = SparkExitEarlierAddressStore(url: dir.appendingPathComponent("earlier.json"))
+        let save = SparkExitManager.gatedSave(
+            store: SparkExitStore(url: dir.appendingPathComponent("spark-exit.json")),
+            lostLeafStore: SparkExitLostLeafStore(url: dir.appendingPathComponent("lost.json")),
+            earlierAddressStore: earlier,
+            gate: SparkExitWriteGate()
+        )
+        try save(record)
+        try save(record)
+
+        let listed = try earlier.load()
+        XCTAssertEqual(listed.map(\.address), [key.address], "the kept change's address is in no list")
+        XCTAssertEqual(listed.first?.kind, .keptChange)
+        XCTAssertEqual(listed.first?.sats, 600)
+        XCTAssertEqual(listed.first?.path, SparkExitFundingKey.path(index: 0, network: Env.bitkitCoreNetwork))
     }
 
     /// After about four weeks (4,032 blocks) the change stays at the funding address and the exit is let go.
