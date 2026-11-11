@@ -715,10 +715,11 @@ class WalletViewModel: ObservableObject {
     /// Runs the Paykit follow-up of a node sync off the caller's path: each step can wait on a homeserver write lock,
     /// so a caller such as pull-to-refresh must not wait for it. A sync that lands while one runs queues one more pass.
     private func schedulePaykitPostSync(isSessionCurrent: @escaping @MainActor () -> Bool) {
+        guard !isPaykitPostSyncBlockedByWipe else { return }
         pendingPaykitPostSyncSession = isSessionCurrent
         guard paykitPostSyncTask == nil else { return }
         paykitPostSyncTask = Task { [weak self] in
-            while let self, !Task.isCancelled, let session = pendingPaykitPostSyncSession {
+            while let self, !Task.isCancelled, !isPaykitPostSyncBlockedByWipe, let session = pendingPaykitPostSyncSession {
                 pendingPaykitPostSyncSession = nil
                 await runPaykitPostSync(isSessionCurrent: session)
             }
@@ -734,6 +735,18 @@ class WalletViewModel: ObservableObject {
         await PrivatePaykitService.shared.reconcileReceivedPayments(wallet: self)
         guard !Task.isCancelled, isPaykitUIActive else { return }
         await PrivatePaykitService.shared.handleOnchainActivity(wallet: self)
+    }
+
+    /// Waits for the Paykit follow-up of earlier syncs, including a pass queued while one ran. For callers that must
+    /// act after it, such as the foreground endpoint refresh, which would otherwise race its publication.
+    func waitForPaykitPostSync() async {
+        while let task = paykitPostSyncTask, !Task.isCancelled {
+            await task.value
+        }
+    }
+
+    private var isPaykitPostSyncBlockedByWipe: Bool {
+        isStartAdmissionClosedForWipe || WipeCoordinator.shared.isGateUp
     }
 
     private func cancelPaykitPostSync() {

@@ -304,6 +304,8 @@ enum WalletPullRefresh {
         var firstError: Error?
         do {
             try await wallet.sync()
+        } catch is CancellationError {
+            return
         } catch {
             firstError = error
         }
