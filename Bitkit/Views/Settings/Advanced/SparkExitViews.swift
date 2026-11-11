@@ -193,7 +193,8 @@ struct SparkExitFundingView: View {
         return SparkExitMath.canFundFromSavings(
             spendableSats: UInt64(max(0, wallet.spendableOnchainBalanceSats)),
             fundingSats: savingsSats,
-            paymentFeeSats: savingsFeeSats
+            paymentFeeSats: savingsFeeSats,
+            readsBitkitChain: SparkManager.shared.canFundFromChain
         )
     }
 
@@ -242,7 +243,8 @@ struct SparkExitFundingView: View {
                 .disabled(exit.fundingSeenSats < prestartFunding.covered)
                 .accessibilityIdentifier("SparkExitFundingContinue")
             } else {
-                if hasSavingsFeeFailed || (savingsFeeSats != nil && !canFundFromSavings) {
+                // Savings on a chain Spark does not read is off without a balance line, as on the transfer screens.
+                if SparkManager.shared.canFundFromChain, hasSavingsFeeFailed || (savingsFeeSats != nil && !canFundFromSavings) {
                     CaptionText(t("lightning__spark_exit__fund_insufficient"))
                         .padding(.bottom, 16)
                 }

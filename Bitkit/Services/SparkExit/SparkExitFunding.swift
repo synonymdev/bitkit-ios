@@ -673,8 +673,9 @@ enum SparkExitMath {
         network == .regtest ? 10 * 60 : 4 * 60 * 60
     }
 
-    /// Savings can pay the fee funding when its spendable balance covers the funding and the payment's own fee.
-    static func canFundFromSavings(spendableSats: UInt64, fundingSats: UInt64, paymentFeeSats: UInt64) -> Bool {
-        fundingSats > 0 && spendableSats >= fundingSats.saturatingAdd(paymentFeeSats)
+    /// Savings can pay the fee funding when Spark reads Bitkit's chain, which the payment goes out on
+    /// (`readsBitkitChain`), and its spendable balance covers the funding and the payment's own fee.
+    static func canFundFromSavings(spendableSats: UInt64, fundingSats: UInt64, paymentFeeSats: UInt64, readsBitkitChain: Bool) -> Bool {
+        readsBitkitChain && fundingSats > 0 && spendableSats >= fundingSats.saturatingAdd(paymentFeeSats)
     }
 }

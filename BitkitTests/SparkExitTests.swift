@@ -2966,9 +2966,15 @@ final class SparkExitMathTests: XCTestCase {
     }
 
     func testSavingsMustCoverTheFundingAndItsFee() {
-        XCTAssertTrue(SparkExitMath.canFundFromSavings(spendableSats: 10500, fundingSats: 10000, paymentFeeSats: 500))
-        XCTAssertFalse(SparkExitMath.canFundFromSavings(spendableSats: 10499, fundingSats: 10000, paymentFeeSats: 500))
-        XCTAssertFalse(SparkExitMath.canFundFromSavings(spendableSats: 10000, fundingSats: 0, paymentFeeSats: 0))
+        XCTAssertTrue(SparkExitMath.canFundFromSavings(spendableSats: 10500, fundingSats: 10000, paymentFeeSats: 500, readsBitkitChain: true))
+        XCTAssertFalse(SparkExitMath.canFundFromSavings(spendableSats: 10499, fundingSats: 10000, paymentFeeSats: 500, readsBitkitChain: true))
+        XCTAssertFalse(SparkExitMath.canFundFromSavings(spendableSats: 10000, fundingSats: 0, paymentFeeSats: 0, readsBitkitChain: true))
+    }
+
+    /// A Savings payment goes out on Bitkit's chain: while Spark reads another chain, such as its hosted regtest, it
+    /// would never fund the exit.
+    func testSavingsCannotFundAnExitOnAChainSparkDoesNotRead() {
+        XCTAssertFalse(SparkExitMath.canFundFromSavings(spendableSats: 10500, fundingSats: 10000, paymentFeeSats: 500, readsBitkitChain: false))
     }
 
     func testEtaUsesTheNetworksBlockTime() {
@@ -3272,7 +3278,6 @@ final class SparkExitBroadcasterTests: XCTestCase {
         XCTAssertEqual(chain.readHosts.map(\.absoluteString), ["http://localhost:3002"])
         XCTAssertEqual(chain.broadcastHosts.map(\.url.absoluteString), ["http://localhost:3002"])
     }
-
 
     func testSendsAPackageToBitkitElectrsWithoutTheV1Path() async {
         let http = FakeHTTP()
