@@ -559,6 +559,8 @@ class WalletViewModel: ObservableObject {
     private var swapUpdatesTask: Task<Void, Never>?
     private var paykitPostSyncTask: Task<Void, Never>?
     private var pendingPaykitPostSyncSession: (@MainActor () -> Bool)?
+    /// Replaces the Paykit follow-up of a sync in tests, so a pass can be held open without a homeserver.
+    var paykitPostSyncOperationForTesting: (@MainActor (@escaping @MainActor () -> Bool) async -> Void)?
     private var swapEventsTask: Task<Void, Never>?
     private var swapUpdatesRunning = false
 
@@ -714,14 +716,18 @@ class WalletViewModel: ObservableObject {
 
     /// Runs the Paykit follow-up of a node sync off the caller's path: each step can wait on a homeserver write lock,
     /// so a caller such as pull-to-refresh must not wait for it. A sync that lands while one runs queues one more pass.
-    private func schedulePaykitPostSync(isSessionCurrent: @escaping @MainActor () -> Bool) {
+    func schedulePaykitPostSync(isSessionCurrent: @escaping @MainActor () -> Bool) {
         guard !isPaykitPostSyncBlockedByWipe else { return }
         pendingPaykitPostSyncSession = isSessionCurrent
         guard paykitPostSyncTask == nil else { return }
         paykitPostSyncTask = Task { [weak self] in
             while let self, !Task.isCancelled, !isPaykitPostSyncBlockedByWipe, let session = pendingPaykitPostSyncSession {
                 pendingPaykitPostSyncSession = nil
-                await runPaykitPostSync(isSessionCurrent: session)
+                if let operation = paykitPostSyncOperationForTesting {
+                    await operation(session)
+                } else {
+                    await runPaykitPostSync(isSessionCurrent: session)
+                }
             }
             if !Task.isCancelled {
                 self?.paykitPostSyncTask = nil
