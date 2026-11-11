@@ -100,7 +100,7 @@ enum PaykitRouteService {
         source: Source,
         lightningSpendableSats: UInt64,
         onchainSpendableSats: UInt64,
-        quoteLegs: ([PaykitEndpoint], UInt64) async -> [ServiceRouteLeg] = { await sparkLegs(to: $0, amountSats: $1) }
+        quoteLegs: ([PaykitEndpoint], UInt64) async throws -> [ServiceRouteLeg] = { try await sparkLegs(to: $0, amountSats: $1) }
     ) async throws -> PaykitRoute {
         func pick(_ serviceLegs: [ServiceRouteLeg]) throws -> PaykitRoute {
             try paykitRoutePayment(
@@ -117,20 +117,33 @@ enum PaykitRouteService {
         }
         let direct = try pick([])
         guard case .none = direct, source == .spending, route.offersSparkLeg else { return direct }
-        let serviceLegs = await quoteLegs(route.onchainEndpoints, amountSats)
+        let serviceLegs = try await quoteLegs(route.onchainEndpoints, amountSats)
         return serviceLegs.isEmpty ? direct : try pick(serviceLegs)
     }
 
-    private static func sparkLegs(to endpoints: [PaykitEndpoint], amountSats: UInt64) async -> [ServiceRouteLeg] {
+    /// Spark's leg to each of `endpoints`, from `quote`. Throws `SparkLegUnaffordable` when no leg is quoted and one
+    /// was dropped because Spark's balance can't cover the amount and its fee.
+    static func sparkLegs(
+        to endpoints: [PaykitEndpoint],
+        amountSats: UInt64,
+        quote: (PaykitEndpoint, UInt64) async throws -> ServiceRouteLeg? = {
+            try await SparkManager.shared.withdrawalRouteLeg(endpoint: $0, amountSats: $1)
+        }
+    ) async throws -> [ServiceRouteLeg] {
         var legs: [ServiceRouteLeg] = []
+        var unaffordable: SparkLegUnaffordable?
         for endpoint in endpoints {
             do {
-                if let leg = try await SparkManager.shared.withdrawalRouteLeg(endpoint: endpoint, amountSats: amountSats) {
+                if let leg = try await quote(endpoint, amountSats) {
                     legs.append(leg)
                 }
             } catch {
+                unaffordable = unaffordable ?? error as? SparkLegUnaffordable
                 Logger.warn("No Spark route to \(endpoint.methodId): \(error)", context: "PaykitRoute")
             }
+        }
+        if legs.isEmpty, let unaffordable {
+            throw unaffordable
         }
         return legs
     }
@@ -282,6 +295,20 @@ extension AppViewModel {
         let generation = paykitRoutingGeneration
         // A dismissed or replaced payment, a newer routing request (a new amount or source) or a source picked since
         // makes the answer stale, so it never lands on what followed it.
+        // A short balance names itself first, then the limit of an LNURL that refused the amount (the router never saw
+        // it), then a Spark leg the balance can't cover with its fee.
+        func refuse(sparkLegShort: Bool) -> PaykitRouteOutcome {
+            paykitRoute = unrouted
+            let isBalanceShort = PaykitRouteService.isBalanceShort(
+                amountSats: amountSats,
+                lightningSpendableSats: lightningSpendableSats,
+                onchainSpendableSats: onchainSpendableSats
+            )
+            if isBalanceShort || unrouted.lnurl.map({ validateLnurlAmount($0, amountSats: amountSats) }) != false {
+                showNoPaykitRouteToast(isBalanceShort: isBalanceShort || sparkLegShort)
+            }
+            return .refused
+        }
         let isCurrent = {
             self.contactPaymentContext?.id == contactId && self.paykitRoutingGeneration == generation &&
                 (self.selectedWalletToPayFrom == .lightning) == (source == .spending) &&
@@ -307,18 +334,12 @@ extension AppViewModel {
                 return .leg
             case let .none(reason):
                 Logger.warn("Found no Paykit route: '\(reason)'", context: "PaykitRoute")
-                paykitRoute = unrouted
-                let isBalanceShort = PaykitRouteService.isBalanceShort(
-                    amountSats: amountSats,
-                    lightningSpendableSats: lightningSpendableSats,
-                    onchainSpendableSats: onchainSpendableSats
-                )
-                // The router never saw an LNURL whose limits refuse the amount, so its limit says why.
-                if isBalanceShort || unrouted.lnurl.map({ validateLnurlAmount($0, amountSats: amountSats) }) != false {
-                    showNoPaykitRouteToast(isBalanceShort: isBalanceShort)
-                }
-                return .refused
+                return refuse(sparkLegShort: false)
             }
+        } catch let error as SparkLegUnaffordable {
+            Logger.warn("Found no Paykit route: \(error)", context: "PaykitRoute")
+            guard isCurrent() else { return .stale }
+            return refuse(sparkLegShort: true)
         } catch {
             Logger.error("Failed to route Paykit payment: \(error)", context: "PaykitRoute")
             guard isCurrent() else { return .stale }

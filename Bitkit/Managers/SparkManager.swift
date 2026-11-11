@@ -623,22 +623,42 @@ final class SparkManager: ChannelFreeLightningRail {
 
     /// A Paykit route that withdraws exactly `amountSats` to the contact's on-chain `endpoint` at medium speed, with
     /// Spark's fee on top, or nil while Spark cannot send it. bitkit-core's Paykit router weighs it against the contact's
-    /// other endpoints.
+    /// other endpoints. Throws `SparkLegUnaffordable` when the balance can't cover the amount and its fee.
     func withdrawalRouteLeg(endpoint: PaykitEndpoint, amountSats: UInt64) async throws -> ServiceRouteLeg? {
-        guard isReady, balanceSats >= amountSats else { return nil }
+        guard isReady else { return nil }
+        guard balanceSats >= amountSats else { throw SparkLegUnaffordable(debitSats: amountSats, balanceSats: balanceSats) }
         let prepared = try await prepareSend(paymentRequest: endpoint.value, amountSats: amountSats)
         guard case let .bitcoinAddress(_, feeQuote) = prepared.paymentMethod else {
             throw AppError(message: "Unexpected Spark payment method", debugMessage: "\(prepared.paymentMethod)")
         }
-        let debitSats = Self.withdrawalDebitSats(amountSats: amountSats, fee: feeQuote.speedMedium)
-        guard !feeQuote.isEstimate, balanceSats >= debitSats else { return nil }
+        guard !feeQuote.isEstimate else { return nil }
+        return try Self.withdrawalRouteLeg(
+            endpoint: endpoint,
+            amountSats: amountSats,
+            fee: feeQuote.speedMedium,
+            validUntilUnix: feeQuote.expiresAt,
+            balanceSats: balanceSats
+        )
+    }
+
+    /// The leg that withdraws `amountSats` to `endpoint` with `fee` on top. Throws `SparkLegUnaffordable` when
+    /// `balanceSats` can't cover both.
+    nonisolated static func withdrawalRouteLeg(
+        endpoint: PaykitEndpoint,
+        amountSats: UInt64,
+        fee: SendOnchainSpeedFeeQuote,
+        validUntilUnix: UInt64,
+        balanceSats: UInt64
+    ) throws -> ServiceRouteLeg {
+        let debitSats = withdrawalDebitSats(amountSats: amountSats, fee: fee)
+        guard balanceSats >= debitSats else { throw SparkLegUnaffordable(debitSats: debitSats, balanceSats: balanceSats) }
         return ServiceRouteLeg(
-            service: Self.routeService,
+            service: routeService,
             endpoint: endpoint,
             deliveredSat: amountSats,
             debitSat: debitSats,
-            atomicity: Self.routeAtomicity,
-            validUntilUnix: feeQuote.expiresAt
+            atomicity: routeAtomicity,
+            validUntilUnix: validUntilUnix
         )
     }
 
@@ -1653,6 +1673,12 @@ enum SparkWithdrawalSettlement: Equatable {
 
 struct SparkWithdrawalNotSent: Error {
     let underlying: Error
+}
+
+/// Spark's balance can't cover a contact withdrawal's amount and fee, so the route offers no Spark leg.
+struct SparkLegUnaffordable: Error {
+    let debitSats: UInt64
+    let balanceSats: UInt64
 }
 
 struct SparkContactWithdrawal: Codable, Equatable {

@@ -686,6 +686,42 @@ final class PaykitRouteTests: XCTestCase {
     }
 
     @MainActor
+    func testASparkLegItsFeeTakesPastTheBalanceShowsTheBalanceCopy() async {
+        snapshotAppDefaultsDomain()
+        let app = AppViewModel()
+        defer { ToastWindowManager.shared.hideToast() }
+        app.contactPaymentContext = ContactPaymentContext(publicKey: "contact", privatePaymentContext: nil, endpoints: [])
+        app.selectedWalletToPayFrom = .lightning
+        let fee = SendOnchainSpeedFeeQuote(userFeeSat: 750, l1BroadcastFeeSat: 1440)
+
+        let outcome = await app.routeContactPayment(
+            PaykitRouteUi(endpoints: [onchain], offersSparkLeg: true),
+            amountSats: 9000,
+            source: .spending,
+            lightningSpendableSats: 10000,
+            onchainSpendableSats: 0,
+            request: nil
+        ) { route, amountSats, source, lightningSats, onchainSats in
+            try await PaykitRouteService.route(
+                route, amountSats: amountSats, source: source, lightningSpendableSats: lightningSats, onchainSpendableSats: onchainSats
+            ) { endpoints, amountSats in
+                try await PaykitRouteService.sparkLegs(to: endpoints, amountSats: amountSats) { endpoint, amountSats in
+                    try SparkManager.withdrawalRouteLeg(
+                        endpoint: endpoint, amountSats: amountSats, fee: fee, validUntilUnix: 0, balanceSats: 10000
+                    )
+                }
+            }
+        }
+
+        XCTAssertEqual(outcome, .refused)
+        XCTAssertEqual(
+            ToastWindowManager.shared.currentToast?.accessibilityIdentifier,
+            "PaykitRouteBalanceToast",
+            "Spark holds 10,000 but the 9,000 withdrawal takes 11,190 with its fee, so the balance is what falls short"
+        )
+    }
+
+    @MainActor
     func testAPendingWithdrawalSendIsHeldUntilItsJournalSettles() {
         var pending = Self.withdrawal(id: "sent", to: onchain.value, amountSats: 20000, timestamp: 1001)
         pending.status = .pending
