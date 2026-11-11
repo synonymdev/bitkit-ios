@@ -283,7 +283,10 @@ struct SparkExitDriver {
             // A payment still on its way is followed after the end and swept back with the leftover.
             record.phase = .running
         case .redo:
-            break
+            // The diverged generation is never sent again: its rebuild, a Redo one, waits for the top-up.
+            Logger.warn("Spark exit diverged on-chain while a top-up is awaited; rebuilding once it confirms", context: "SparkExitDriver")
+            record.isRebuilding = true
+            record.isRedoRebuild = true
         }
     }
 

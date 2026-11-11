@@ -108,6 +108,21 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertTrue(reminders.contains { $0.id.hasPrefix("1-") }, "the live steps keep their reminders")
     }
 
+    /// A Redo while a higher fee's top-up is awaited: the diverged generation is never sent again, and its rebuild
+    /// waits for the top-up as a Redo rebuild.
+    func testARedoWhileAHigherFeesTopUpIsAwaitedStopsDrivingTheDivergedGeneration() async throws {
+        var record = bumpedRecord()
+        chain.mempoolTxids = ["bump"]
+        sdk.checks = try [CheckRecoverFundsResponse(recovery: XCTUnwrap(record.recovery?.response), verdict: .redo(reason: .onChainStateDiverged))]
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.phase, .needsFunding(requiredSats: 25680))
+        XCTAssertTrue(record.isRebuilding)
+        XCTAssertEqual(record.isRedoRebuild, true)
+        XCTAssertFalse(record.isDrivingWhileFunding, "the diverged generation would be sent again")
+    }
+
     /// A payment no host knows for three blocks is forgotten: the ask and the funding reminder come back.
     func testADroppedSavingsPaymentBringsTheAskBack() async throws {
         var record = bumpedRecord()
