@@ -1303,6 +1303,29 @@ final class PaykitRouteTests: XCTestCase {
         )
     }
 
+    func testSparkScreenWithdrawalsLeaveOutAPendingContactPayment() {
+        snapshotAppDefaultsDomain()
+        SparkManager.contactWithdrawalTxIds = []
+        var toContact = Self.withdrawal(id: "contact", to: onchain.value, amountSats: 20000, timestamp: 1)
+        toContact.status = .pending
+        let toSavings = Self.withdrawal(id: "savings", to: "bcrt1qsavings", amountSats: 5000, timestamp: 1)
+        var journal = SparkContactWithdrawal(address: onchain.value, amountSats: 20000, contact: "contact", startedAt: 1)
+        SparkManager.pendingContactWithdrawal = journal
+
+        XCTAssertEqual(
+            SparkManager.withdrawals([toContact, toSavings]).map(\.txid),
+            ["tx-savings"],
+            "Before Spark returns it, the open journal's address and amount tell the contact payment apart"
+        )
+        journal.paymentId = "contact"
+        SparkManager.pendingContactWithdrawal = journal
+        XCTAssertEqual(
+            SparkManager.withdrawals([toContact, toSavings]).map(\.txid),
+            ["tx-savings"],
+            "A contact payment Spark keeps pending is not a transfer to savings"
+        )
+    }
+
     private static func endpoint(_ methodId: PublicPaykitService.MethodId, _ value: String) -> PublicPaykitService.Endpoint {
         PublicPaykitService.Endpoint(methodId: methodId, value: value, min: nil, max: nil, rawPayload: value)
     }

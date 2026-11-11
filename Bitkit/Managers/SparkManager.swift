@@ -1280,11 +1280,13 @@ final class SparkManager: ChannelFreeLightningRail {
         return unclaimed.filter { !claimedOutputs.contains("\($0.txid.lowercased()):\($0.vout)") }
     }
 
-    /// Spark's withdrawals to Savings, without the ones that paid contacts.
+    /// Spark's withdrawals to Savings, without the ones that paid contacts: those recorded as sent, and the open
+    /// journal's, which Spark keeps pending until its payout is accepted.
     nonisolated static func withdrawals(_ payments: [Payment]) -> [SparkWithdrawal] {
         let contactWithdrawals = contactWithdrawalTxIds
+        let journaledId = pendingContactWithdrawal.flatMap { matchingWithdrawal($0, in: payments)?.id }
         return payments.compactMap { payment in
-            guard payment.status != .failed, case let .withdraw(txId, _, _) = payment.details,
+            guard payment.status != .failed, payment.id != journaledId, case let .withdraw(txId, _, _) = payment.details,
                   !contactWithdrawals.contains(txId) else { return nil }
             return SparkWithdrawal(txid: txId, amountSats: sats(payment.amount), feeSats: sats(payment.fees))
         }
