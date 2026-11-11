@@ -1146,6 +1146,8 @@ struct SparkExitDriver {
             if tip.saturatingSub(since) >= Self.sweepWaitBlocks {
                 Logger.info("Spark exit keeps its fee change at the funding address after waiting for fees", context: "SparkExitDriver")
                 record.leftoverSweep?.isDustKept = true
+                // Shown once more with its path, even after the result was opened: nothing else reaches that address.
+                record.isResultSeen = nil
                 try save(record)
                 return
             }

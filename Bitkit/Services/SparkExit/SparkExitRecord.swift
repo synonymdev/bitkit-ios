@@ -301,9 +301,15 @@ struct SparkExitRecord: Codable, Equatable {
         return false
     }
 
-    /// An ended exit that failed or lost leaves, whose result the user has not opened yet.
+    /// An ended exit that failed, lost leaves or kept change at the funding address, whose result the user has not
+    /// opened yet.
     var hasUnseenResult: Bool {
-        !isActive && (isFailed || lostSats > 0) && isResultSeen != true
+        !isActive && (isFailed || lostSats > 0 || isChangeKept) && isResultSeen != true
+    }
+
+    /// The fee change stays at the funding address for good, shown with the path that spends it.
+    var isChangeKept: Bool {
+        !leftover.isEmpty && leftoverSweep?.isDustKept == true
     }
 
     /// Whether Emergency exit opens this exit rather than a new one: it runs, its leftover is still on its way to

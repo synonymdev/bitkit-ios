@@ -663,6 +663,25 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertEqual(SparkExitFeeBumpOption.options(exitRate: 2, fees: fees).map(\.rate), [3], "a bump still offers a higher rate")
     }
 
+    /// Change kept at the funding address shows its path once, even when the result was opened before, so the user
+    /// can spend it; after that a new exit may start.
+    func testKeptChangeShowsItsRecoveryDetailsOnce() async throws {
+        var record = endedRecord()
+        record.isResultSeen = true
+        record.feeRateSatPerVbyte = 20
+        chain.economyFee = 20
+        chain.utxosByAddress[key.address] = [SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 600)]
+        record = try await driver().tick(record)
+        chain.tip = 1000 + SparkExitDriver.sweepWaitBlocks
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.leftoverLine, .kept(sats: 600))
+        XCTAssertTrue(record.showsResult, "the funding address and its path were out of reach")
+        record.isResultSeen = true
+        XCTAssertFalse(record.showsResult, "a new exit may start")
+    }
+
     /// After about four weeks (4,032 blocks) the change stays at the funding address and the exit is let go.
     func testChangeTooSmallForFourWeeksIsKept() async throws {
         var record = endedRecord()
