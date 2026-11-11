@@ -406,6 +406,13 @@ struct SparkExitDriver {
             if let leafId = SparkExitMath.unexitableLeafId(message), record.exitLeafIds.contains(leafId) {
                 leaveBehind([leafId], reason: message, in: &record)
             }
+            // Over a valid generation that recovers a leaf this build left waiting, that generation stays, rebuilt over
+            // again under its guard once a block.
+            if var valid, valid.recovery?.response.leaves.contains(where: { waitingLeafIds.contains($0.leafId) }) == true {
+                valid.leftBehindLeaves = record.leftBehindLeaves
+                record = valid
+                return
+            }
             record.isRebuilding = record.recovery != nil
             record.lastBuildAt = nil
             return

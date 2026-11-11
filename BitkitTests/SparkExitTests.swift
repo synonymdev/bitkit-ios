@@ -1908,6 +1908,26 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(record.recovery?.response.transactions.map(\.txid), ["n1", "n2"])
     }
 
+    /// An unverified rebuild that cannot exit leaf-3 leaves it behind and keeps the valid generation running, with
+    /// leaf-1 still unread: leaf-1's refund n2 stays and nothing rebuilds without the guard.
+    func testAnUnverifiedRebuildThatCannotExitALeafKeepsTheValidGenerationRunning() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.leafIds = ["leaf-1", "leaf-2", "leaf-3"]
+        record.adopt(leafOneSteps(.unverified), at: clock)
+        var prepared = SparkExitFixtures.prepared(funding: nil, leaves: ["leaf-2", "leaf-3"])
+        prepared.skipped = [SkippedLeaf(leafId: "leaf-1", valueSats: 100_000, reason: .unverified)]
+        sdk.preparedResponse = prepared
+        sdk.recoverErrors = [SdkError.SparkError("Leaf leaf-3 cannot be exited: its refund cannot pay its own fee at this fee rate")]
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.generation, 1)
+        XCTAssertFalse(record.isRebuilding, "the next tick rebuilds without the valid generation's guard")
+        XCTAssertEqual(record.phase, .running)
+        XCTAssertEqual(record.recovery?.response.transactions.map(\.txid), ["n1", "n2"], "leaf-1's refund n2 is gone")
+        XCTAssertEqual(record.leftBehindLeaves?.map(\.leafId), ["leaf-3"])
+    }
+
     /// Funding an unverified rebuild's ask resumes a rebuild that waits for the unread leaf once a block, as the
     /// check's rebuild does: a second tick at the same tip prepares nothing.
     func testAFundedUnverifiedRebuildWaitingForTheUnreadLeafPreparesOnceABlock() async throws {
