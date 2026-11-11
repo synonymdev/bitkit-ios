@@ -22,6 +22,8 @@ final class SparkExitManager {
     /// The `bitkit_action` of the exit's notifications, so tapping one opens the exit.
     nonisolated static let notificationAction = "spark_exit"
     private static let foregroundTickSeconds: UInt64 = 60
+    /// How long a foreground tick waits for Spark to connect again before it goes on without the SDK.
+    private static let reconnectTimeoutSeconds: TimeInterval = 20
 
     private(set) var record: SparkExitRecord?
     private(set) var quote: SparkExitQuote?
@@ -425,6 +427,10 @@ final class SparkExitManager {
         defer { isTicking = false }
         let store = store
         let walletIndex = walletIndex
+        // A reconnect for the exit that failed leaves Spark ready but disconnected: the tick connects it again.
+        if SparkManager.shared.isReady, !SparkManager.shared.isConnected {
+            _ = await SparkManager.shared.connectForExit(walletIndex: walletIndex, timeout: Self.reconnectTimeoutSeconds)
+        }
         let driver = SparkExitDriver(
             chain: chain,
             recovering: SparkManager.shared.exitRecovering,
@@ -509,7 +515,8 @@ final class SparkExitManager {
     private func reattachSpark(isCancel: Bool = false) async {
         let spark = SparkManager.shared
         await spark.reconnectForExit(isCancel: isCancel)
-        if LightningService.shared.channelFreeRail == nil, spark.isReady {
+        // A Spark the reconnect left disconnected stays off the rail, so Lightning keeps paying through LDK.
+        if LightningService.shared.channelFreeRail == nil, spark.isReady, spark.isConnected {
             LightningService.shared.channelFreeRail = spark
         }
         spark.onStateChanged?()

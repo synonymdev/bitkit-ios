@@ -164,6 +164,11 @@ final class SparkManager: ChannelFreeLightningRail {
                 ?? keptBalanceSats
             keptBeforeExit = nil
         }
+        // A connect still running, such as the launch's, builds an SDK on the same storage: it ends first and is
+        // disconnected below, so no second SDK keeps running.
+        if let connecting = connectTask {
+            _ = try? await connecting.value
+        }
         noteOptimizationCutShort()
         if let sdk {
             if let listenerId {
@@ -174,7 +179,16 @@ final class SparkManager: ChannelFreeLightningRail {
         sdk = nil
         listenerId = nil
         do {
-            try await connect(walletIndex: walletIndex, network: network, generation: connectGeneration)
+            let generation = connectGeneration
+            let walletIndex = walletIndex
+            let connecting = Task { try await connect(walletIndex: walletIndex, network: network, generation: generation) }
+            connectTask = connecting
+            defer {
+                if connectTask == connecting {
+                    connectTask = nil
+                }
+            }
+            try await connecting.value
             try await refresh()
         } catch {
             Logger.error("Failed to reconnect Spark for the exit: \(error)", context: "SparkManager")
@@ -349,8 +363,14 @@ final class SparkManager: ChannelFreeLightningRail {
                     let generation = connectGeneration
                     connectTask = Task { try await connect(walletIndex: walletIndex, network: network, generation: generation) }
                 }
-                try await connectTask?.value
-                connectTask = nil
+                let task = connectTask
+                // A reconnect may have replaced the task while this one was awaited: only the task it awaited is cleared.
+                defer {
+                    if connectTask == task {
+                        connectTask = nil
+                    }
+                }
+                try await task?.value
             }
             // Registered before the first refresh marks Spark ready, so Lightning calls never see it ready while they
             // still go to LDK, even when that refresh or the activity sync fails. An emergency exit keeps it out.
@@ -368,7 +388,6 @@ final class SparkManager: ChannelFreeLightningRail {
                 syncActivities: { try await syncActivities() }
             )
         } catch {
-            connectTask = nil
             Logger.error("Failed to start Spark wallet: \(error)", context: "SparkManager")
         }
     }
