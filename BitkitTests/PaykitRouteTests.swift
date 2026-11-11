@@ -1150,12 +1150,26 @@ final class PaykitRouteTests: XCTestCase {
         var routed = offered
         routed.serviceLeg = sparkLeg(amountSats: 20000, feeSats: 2190)
 
-        XCTAssertTrue(SendConfirmationView.sourceSwitchNeedsReroute(route: routed, walletType: .onchain, hasLightningPayment: false))
-        XCTAssertFalse(SendConfirmationView.sourceSwitchNeedsReroute(route: routed, walletType: .lightning, hasLightningPayment: false))
-        XCTAssertTrue(SendConfirmationView.sourceSwitchNeedsReroute(route: offered, walletType: .lightning, hasLightningPayment: false))
-        XCTAssertFalse(SendConfirmationView.sourceSwitchNeedsReroute(route: offered, walletType: .lightning, hasLightningPayment: true))
-        XCTAssertFalse(SendConfirmationView.sourceSwitchNeedsReroute(route: offered, walletType: .onchain, hasLightningPayment: false))
-        XCTAssertFalse(SendConfirmationView.sourceSwitchNeedsReroute(route: nil, walletType: .onchain, hasLightningPayment: false))
+        XCTAssertTrue(SendConfirmationView.sourceSwitchNeedsReroute(route: routed, walletType: .onchain))
+        XCTAssertFalse(SendConfirmationView.sourceSwitchNeedsReroute(route: routed, walletType: .lightning))
+        XCTAssertTrue(SendConfirmationView.sourceSwitchNeedsReroute(route: offered, walletType: .lightning))
+        XCTAssertFalse(SendConfirmationView.sourceSwitchNeedsReroute(route: offered, walletType: .onchain))
+        XCTAssertFalse(SendConfirmationView.sourceSwitchNeedsReroute(route: nil, walletType: .onchain))
+    }
+
+    func testADirectLnurlPickOnConfirmPaysOnTheLnurlConfirm() {
+        XCTAssertTrue(SendConfirmationView.reroutePaysLnurl(outcome: .direct, walletType: .lightning, hasInvoice: false, hasLnurl: true))
+        XCTAssertFalse(SendConfirmationView.reroutePaysLnurl(outcome: .direct, walletType: .lightning, hasInvoice: true, hasLnurl: true))
+        XCTAssertFalse(SendConfirmationView.reroutePaysLnurl(outcome: .leg, walletType: .lightning, hasInvoice: false, hasLnurl: true))
+        XCTAssertFalse(SendConfirmationView.reroutePaysLnurl(outcome: .direct, walletType: .onchain, hasInvoice: false, hasLnurl: true))
+    }
+
+    /// A mixed contact paid directly from Savings keeps its decoded Lightning payment, so a switch to Spending must still
+    /// ask the router: over Lightning's limit only a Spark withdrawal pays it.
+    func testSourceSwitchToSpendingReroutesAMixedContactRoutedDirectFromSavings() {
+        let route = PaykitRouteUi(endpoints: [lightning, onchain], offersSparkLeg: true)
+
+        XCTAssertTrue(SendConfirmationView.sourceSwitchNeedsReroute(route: route, walletType: .lightning))
     }
 
     func testASparkRoutedConfirmCanMoveToAnotherSource() throws {

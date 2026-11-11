@@ -542,11 +542,7 @@ struct SendConfirmationView: View {
                 walletSwitchContext = sendContext
                 if skipNextSourceReroute {
                     skipNextSourceReroute = false
-                } else if Self.sourceSwitchNeedsReroute(
-                    route: app.paykitRoute,
-                    walletType: app.selectedWalletToPayFrom,
-                    hasLightningPayment: app.scannedLightningInvoice != nil || app.lnurlPayData != nil
-                ) {
+                } else if Self.sourceSwitchNeedsReroute(route: app.paykitRoute, walletType: app.selectedWalletToPayFrom) {
                     Task { await routeContactPaymentOnConfirm(sourceChanged: true) }
                 }
             }
@@ -1110,14 +1106,15 @@ struct SendConfirmationView: View {
         }
     }
 
-    /// A source switch on Confirm needs the router only when it moves a Spark leg's send to Savings, or a send that has no
-    /// Lightning payment to Spending, where a Spark leg can carry it. The app's own switch to a leg's source asks nothing.
-    static func sourceSwitchNeedsReroute(route: PaykitRouteUi?, walletType: WalletType, hasLightningPayment: Bool) -> Bool {
+    /// A source switch on Confirm needs the router only when it moves a Spark leg's send to Savings, or any send to
+    /// Spending, where a Spark leg can carry it: a mixed contact paid from Savings keeps its decoded Lightning payment,
+    /// which can't pay past Lightning's limit. The app's own switch to a leg's source asks nothing.
+    static func sourceSwitchNeedsReroute(route: PaykitRouteUi?, walletType: WalletType) -> Bool {
         guard let route else { return false }
         if route.serviceLeg != nil {
             return walletType != .lightning
         }
-        return walletType == .lightning && !hasLightningPayment && route.offersSparkLeg
+        return walletType == .lightning && route.offersSparkLeg
     }
 
     /// The wallet switch chooses coins separately from send setup, so the automatic start waits for both. A source the
@@ -1485,6 +1482,20 @@ struct SendConfirmationView: View {
         )
         // The first call when Confirm opens keeps a refusal too, so a request with no route offers no swipe.
         refusedRouteSource = Self.refusedRouteSource(after: outcome, on: walletType, previous: refusedRouteSource)
+        if Self.reroutePaysLnurl(
+            outcome: outcome,
+            walletType: app.selectedWalletToPayFrom,
+            hasInvoice: app.scannedLightningInvoice != nil,
+            hasLnurl: app.lnurlPayData != nil
+        ) {
+            navigationPath.append(.lnurlPayConfirm)
+        }
+    }
+
+    /// Confirm has no LNURL send, so a Direct LNURL pick from Spending pays on the LNURL's own confirm, as one picked on
+    /// Continue does.
+    static func reroutePaysLnurl(outcome: PaykitRouteOutcome, walletType: WalletType, hasInvoice: Bool, hasLnurl: Bool) -> Bool {
+        outcome == .direct && walletType == .lightning && hasLnurl && !hasInvoice
     }
 
     /// A source the router refused on Confirm keeps the swipe off while it's selected, so nothing consumes the contact's
@@ -2623,3 +2634,4 @@ struct SendConfirmationView: View {
         }
     }
 }
+
