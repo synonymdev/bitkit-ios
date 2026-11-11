@@ -678,6 +678,17 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(record.outsideSats, 1696, "the lost leaf was kept as staying on Spark")
     }
 
+    /// A leaf the exit left behind stays on Spark: Spending counts it while it is out of the transfer.
+    func testALeafTheExitLeftBehindCountsOnSpark() {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.leafIds = ["leaf-1", "leaf-2"]
+        record.leafTotalSats = 108_192
+        record.leftBehindLeaves = [.init(leafId: "leaf-2", valueSats: 8192, reason: "its refund cannot pay")]
+
+        XCTAssertEqual(SparkExitMath.staysOnSparkSats(sparkBalanceSats: 108_192, record: record), 8192, "the leaf is in neither total")
+        XCTAssertEqual(SparkExitMath.outsideExitSats(sparkBalanceSats: 108_192, record: record), 8192)
+    }
+
     // MARK: Requote at the start (review 1ac10966a, Android 64004d7)
 
     /// An optimization swapped the leaves while the start waited: the exit is quoted again over the leaves Spark holds now.

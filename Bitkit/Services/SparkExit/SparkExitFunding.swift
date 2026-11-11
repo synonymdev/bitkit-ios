@@ -650,10 +650,11 @@ enum SparkExitMath {
     }
 
     /// What the Spark balance holds beyond the exit's leaves, in any phase: what a failed exit leaves on Spark. Lost
-    /// leaves count only while the balance still holds them (`beyondLostLeaves`).
+    /// leaves count only while the balance still holds them (`beyondLostLeaves`); a leaf the exit left behind stays on
+    /// Spark, so it counts here, not in the transfer.
     static func staysOnSparkSats(sparkBalanceSats: UInt64, record: SparkExitRecord) -> UInt64? {
         guard let leafTotal = record.leafTotalSats else { return nil }
-        let liveLeafTotal = leafTotal.saturatingSub(record.lostSats)
+        let liveLeafTotal = leafTotal.saturatingSub(record.lostSats).saturatingSub(record.leftBehindSats)
         guard sparkBalanceSats > liveLeafTotal else { return nil }
         let stays = beyondLostLeaves(sparkBalanceSats - liveLeafTotal, lostLeafSats: (record.lostLeaves ?? []).map(\.valueSats))
         return stays > 0 ? stays : nil
