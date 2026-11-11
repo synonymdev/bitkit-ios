@@ -152,6 +152,7 @@ struct SparkExitDriver {
                     valid.isUnverifiedAsk = nil
                     try await build(&record, recovering: recovering)
                     keepValidGeneration(&record, over: valid)
+                    keepRetryClock(&record, from: valid)
                 } else {
                     try await build(&record, recovering: recovering)
                     // Held funding that pays for less: the awaited top-up is still followed, as while waiting for it.
@@ -593,6 +594,7 @@ struct SparkExitDriver {
                 try save(record)
                 let valid = record
                 try await build(&record, recovering: recovering)
+                keepRetryClock(&record, from: valid)
                 if !keepValidGeneration(&record, over: valid), case .needsFunding = record.phase {
                     // Like a fee bump's, the valid generation keeps going while the funding it asks for comes.
                     record.isUnverifiedAsk = true
@@ -926,6 +928,14 @@ struct SparkExitDriver {
         Logger.warn("Spark exit keeps its generation: the rebuild left waiting a leaf it recovers", context: "SparkExitDriver")
         record = valid
         return true
+    }
+
+    /// An unverified rebuild that adopted nothing keeps the valid generation's retry clock: one it set while waiting
+    /// for the unread leaf would let that leaf go after about a week, ending the exit before its signed steps are sent.
+    private func keepRetryClock(_ record: inout SparkExitRecord, from valid: SparkExitRecord) {
+        guard record.generation == valid.generation, record.isActive else { return }
+        record.retrySince = valid.retrySince
+        record.retriedAt = valid.retriedAt
     }
 
     private func isRebuildDue(_ record: SparkExitRecord) -> Bool {

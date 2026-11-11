@@ -1719,6 +1719,79 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2"])
     }
 
+    /// The steps of leaf-1 as the chain reads them: n2 unread, waiting for its timelock, then ready.
+    private func leafOneSteps(_ status: ExitTransactionStatus) -> RecoverFundsResponse {
+        SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("n2", dependsOn: ["n1"], status: status),
+        ])
+    }
+
+    /// A prepare that skips leaf-1, as the SDK does while it cannot read leaf-1's chain.
+    private var skipsUnreadLeaf: PrepareRecoverFundsResponse {
+        var prepared = SparkExitFixtures.prepared(funding: nil, leaves: [])
+        prepared.skipped = [SkippedLeaf(leafId: "leaf-1", valueSats: 100_000, reason: .unverified)]
+        return prepared
+    }
+
+    /// Funding an unverified rebuild's ask resumes a rebuild that waits for the unread leaf: the valid generation keeps
+    /// no retry clock from it, so a week on the exit still sends leaf-1's signed step once it matures.
+    func testAFundedUnverifiedRebuildThatWaitsForTheUnreadLeafLeavesNoStaleRetryClock() async throws {
+        let unread = leafOneSteps(.unverified)
+        var record = SparkExitFixtures.record(phase: .running)
+        record.adopt(unread, at: clock)
+        sdk.checks = [CheckRecoverFundsResponse(recovery: unread, verdict: .valid)]
+        sdk.recoverError = SdkError.InsufficientCpfpFunds(requiredSats: 30000, docsUrl: "")
+        record = try await driver().tick(record)
+        guard case .needsFunding = record.phase else { return XCTFail("the unverified rebuild asked for no funding: \(record.phase)") }
+        XCTAssertEqual(record.isUnverifiedAsk, true)
+
+        sdk.recoverError = nil
+        sdk.preparedResponse = skipsUnreadLeaf
+        sdk.checks = [CheckRecoverFundsResponse(recovery: unread, verdict: .valid)]
+        chain.utxosByAddress[record.funding[0].address] = [SparkExitFixtures.utxo(String(repeating: "f", count: 64), value: 100_000)]
+        chain.tip = 1001
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.generation, 1)
+        XCTAssertNil(record.retrySince, "the funded unverified rebuild saved a retry clock at '\(record.retrySince.map(String.init) ?? "")'")
+
+        try await runsUntilLeafOneMatures(&record)
+    }
+
+    /// A check's unverified rebuild that waits for the unread leaf keeps the valid generation without a retry clock.
+    func testAnUnverifiedRebuildThatWaitsForTheUnreadLeafLeavesNoStaleRetryClock() async throws {
+        let unread = leafOneSteps(.unverified)
+        var record = SparkExitFixtures.record(phase: .running)
+        record.adopt(unread, at: clock)
+        sdk.checks = [CheckRecoverFundsResponse(recovery: unread, verdict: .valid)]
+        sdk.preparedResponse = skipsUnreadLeaf
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.generation, 1)
+        XCTAssertNil(record.retrySince, "the unverified rebuild saved a retry clock at '\(record.retrySince.map(String.init) ?? "")'")
+
+        try await runsUntilLeafOneMatures(&record)
+    }
+
+    /// Leaf-1 reads as waiting for its timelock, unread again a week later, then ready: n2 goes out.
+    private func runsUntilLeafOneMatures(_ record: inout SparkExitRecord) async throws {
+        sdk.checks = [CheckRecoverFundsResponse(recovery: leafOneSteps(.waitingForTimelock(spendableAtHeight: 3000)), verdict: .valid)]
+        chain.tip = 1002
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.phase, .running)
+        XCTAssertNil(record.retrySince, "the exit runs with a stale retry clock '\(record.retrySince.map(String.init) ?? "")'")
+
+        sdk.checks = [CheckRecoverFundsResponse(recovery: leafOneSteps(.unverified), verdict: .valid)]
+        chain.tip = 2100
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.phase, .running, "the exit ended before leaf-1's signed step n2 was sent")
+        XCTAssertEqual(record.generation, 1)
+
+        sdk.checks = [CheckRecoverFundsResponse(recovery: leafOneSteps(.ready), verdict: .valid)]
+        chain.tip = 3000
+        record = try await driver().tick(record)
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2"], "leaf-1's matured step n2 was not sent")
+    }
+
     /// R2: while a unilateral step is ready, a rebuild would conflict with it, so nothing rebuilds; a cooperative step
     /// the SDK could not read is still sent.
     func testAReadyStepHoldsTheUnverifiedRebuildAndCooperativeStepsAreStillSent() async throws {
