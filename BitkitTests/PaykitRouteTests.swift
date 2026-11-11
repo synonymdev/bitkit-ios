@@ -636,6 +636,29 @@ final class PaykitRouteTests: XCTestCase {
         )
     }
 
+    func testALightningPayableContactRoutesDirectWithoutASparkQuote() async throws {
+        let route = PaykitRouteUi(endpoints: [lightning, onchain], offersSparkLeg: true)
+        var quotes = 0
+
+        let direct = try await PaykitRouteService.route(
+            route, amountSats: 2000, source: .spending, lightningSpendableSats: 50000, onchainSpendableSats: 0
+        ) { _, _ in quotes += 1; return [] }
+        XCTAssertEqual(direct, .direct(endpoint: lightning))
+        XCTAssertEqual(quotes, 0, "Spark's quote is never fetched for a payment Lightning makes")
+
+        let leg = sparkLeg(amountSats: 60000, feeSats: 300)
+        let routed = try await PaykitRouteService.route(
+            route, amountSats: 60000, source: .spending, lightningSpendableSats: 50000, onchainSpendableSats: 0
+        ) { endpoints, amountSats in
+            quotes += 1
+            XCTAssertEqual(endpoints, [self.onchain])
+            XCTAssertEqual(amountSats, 60000)
+            return [leg]
+        }
+        XCTAssertEqual(routed, .service(leg: leg), "An amount past Lightning's limit still takes the quoted Spark leg")
+        XCTAssertEqual(quotes, 1)
+    }
+
     private func lnurlData(minSendableMsats: UInt64) -> LnurlPayData {
         LnurlPayData(
             uri: lightning.value,

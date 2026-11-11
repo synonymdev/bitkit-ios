@@ -92,29 +92,33 @@ enum PaykitRouteService {
         }
     }
 
-    /// Asks the router how to pay `amountSats` from `source`, quoting a Spark leg to each on-chain endpoint first when
-    /// the route offers one.
+    /// Asks the router how to pay `amountSats` from `source`. The router pays directly before it weighs any leg, so a
+    /// Spark leg to each on-chain endpoint is quoted only when the route offers one and no balance pays.
     static func route(
         _ route: PaykitRouteUi,
         amountSats: UInt64,
         source: Source,
         lightningSpendableSats: UInt64,
-        onchainSpendableSats: UInt64
+        onchainSpendableSats: UInt64,
+        quoteLegs: ([PaykitEndpoint], UInt64) async -> [ServiceRouteLeg] = { await sparkLegs(to: $0, amountSats: $1) }
     ) async throws -> PaykitRoute {
-        let serviceLegs = source == .spending && route.offersSparkLeg
-            ? await sparkLegs(to: route.onchainEndpoints, amountSats: amountSats)
-            : []
-        return try paykitRoutePayment(
-            request: request(
-                route: route,
-                amountSats: amountSats,
-                source: source,
-                lightningSpendableSats: lightningSpendableSats,
-                onchainSpendableSats: onchainSpendableSats,
-                serviceLegs: serviceLegs
-            ),
-            network: Env.bitkitCoreNetwork
-        )
+        func pick(_ serviceLegs: [ServiceRouteLeg]) throws -> PaykitRoute {
+            try paykitRoutePayment(
+                request: request(
+                    route: route,
+                    amountSats: amountSats,
+                    source: source,
+                    lightningSpendableSats: lightningSpendableSats,
+                    onchainSpendableSats: onchainSpendableSats,
+                    serviceLegs: serviceLegs
+                ),
+                network: Env.bitkitCoreNetwork
+            )
+        }
+        let direct = try pick([])
+        guard case .none = direct, source == .spending, route.offersSparkLeg else { return direct }
+        let serviceLegs = await quoteLegs(route.onchainEndpoints, amountSats)
+        return serviceLegs.isEmpty ? direct : try pick(serviceLegs)
     }
 
     private static func sparkLegs(to endpoints: [PaykitEndpoint], amountSats: UInt64) async -> [ServiceRouteLeg] {
@@ -265,7 +269,9 @@ extension AppViewModel {
         lightningSpendableSats: UInt64,
         onchainSpendableSats: UInt64,
         request: PaykitPaymentRequest?,
-        router: (PaykitRouteUi, UInt64, PaykitRouteService.Source, UInt64, UInt64) async throws -> PaykitRoute = PaykitRouteService.route
+        router: (PaykitRouteUi, UInt64, PaykitRouteService.Source, UInt64, UInt64) async throws -> PaykitRoute = {
+            try await PaykitRouteService.route($0, amountSats: $1, source: $2, lightningSpendableSats: $3, onchainSpendableSats: $4)
+        }
     ) async -> PaykitRouteOutcome {
         var unrouted = route
         unrouted.serviceLeg = nil
