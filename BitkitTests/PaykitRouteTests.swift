@@ -586,7 +586,7 @@ final class PaykitRouteTests: XCTestCase {
         let second = await routeDirectly(app, app.paykitRoute ?? route, to: lnurl, amountSats: 500)
         XCTAssertEqual(second, .direct)
         XCTAssertEqual(app.lnurlPayData?.uri, lnurl.value)
-        XCTAssertFalse(app.validateRoutedLnurlMinimum(amountSats: 500), "the restored LNURL's minimum must stop Confirm")
+        XCTAssertFalse(app.validateRoutedLnurlAmount(amountSats: 500), "the restored LNURL's minimum must stop Confirm")
         let toast = ToastWindowManager.shared.currentToast
         XCTAssertEqual(toast?.accessibilityIdentifier, "LnurlPayAmountTooLowToast")
         XCTAssertEqual(toast?.title, t("wallet__lnurl_pay__error_min__title"))
@@ -597,7 +597,29 @@ final class PaykitRouteTests: XCTestCase {
     }
 
     @MainActor
-    private func openLightningContact(lnurlMinSendableMsats: UInt64 = 1000) -> (AppViewModel, PaykitRouteUi, PaykitEndpoint, PaykitEndpoint) {
+    func testARerouteFromBolt11ToLnurlAboveItsMaximumShowsTheMaximumToast() async {
+        let (app, route, bolt11, lnurl) = openLightningContact(lnurlMaxSendableMsats: 3_000_000)
+        defer { ToastWindowManager.shared.hideToast() }
+
+        let first = await routeDirectly(app, route, to: bolt11)
+        XCTAssertEqual(first, .direct)
+        XCTAssertNil(app.lnurlPayData)
+
+        let second = await routeDirectly(app, app.paykitRoute ?? route, to: lnurl, amountSats: 4000)
+        XCTAssertEqual(second, .direct)
+        XCTAssertEqual(app.lnurlPayData?.uri, lnurl.value)
+        XCTAssertFalse(app.validateRoutedLnurlAmount(amountSats: 4000), "the restored LNURL's maximum must stop Confirm")
+        let toast = ToastWindowManager.shared.currentToast
+        XCTAssertEqual(toast?.accessibilityIdentifier, "LnurlPayAmountTooHighToast")
+        XCTAssertEqual(toast?.title, t("wallet__lnurl_pay__error_max__title"))
+        XCTAssertEqual(toast?.description, t("wallet__lnurl_pay__error_max__description"))
+    }
+
+    @MainActor
+    private func openLightningContact(
+        lnurlMinSendableMsats: UInt64 = 1000,
+        lnurlMaxSendableMsats: UInt64 = 100_000_000
+    ) -> (AppViewModel, PaykitRouteUi, PaykitEndpoint, PaykitEndpoint) {
         snapshotAppDefaultsDomain()
         let app = AppViewModel()
         let bolt11 = PaykitEndpoint(
@@ -620,7 +642,7 @@ final class PaykitRouteTests: XCTestCase {
             uri: lightning.value,
             callback: "https://example.com/pay",
             minSendable: lnurlMinSendableMsats,
-            maxSendable: 100_000_000,
+            maxSendable: lnurlMaxSendableMsats,
             metadataStr: "[]",
             commentAllowed: nil,
             allowsNostr: false,

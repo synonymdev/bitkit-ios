@@ -440,7 +440,7 @@ struct SendAmountView: View {
                 }
 
                 let paysLnurl = app.lnurlPayData != nil && app.scannedLightningInvoice == nil
-                guard !paysLnurl || app.validateRoutedLnurlMinimum(amountSats: amountSats) else { return }
+                guard !paysLnurl || app.validateRoutedLnurlAmount(amountSats: amountSats) else { return }
                 navigationPath.append(paysLnurl ? .lnurlPayConfirm : .confirm)
                 return
             }
