@@ -567,6 +567,8 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.refusedSweepRate("min relay fee not met, 450 < 674", paidRate: 1), 2)
         XCTAssertEqual(SparkExitMath.refusedSweepRate("mempool min fee not met, 900 < 2700", paidRate: 2), 6)
         XCTAssertEqual(SparkExitMath.refusedSweepRate("insufficient fee", paidRate: 3), 4, "no numbers: one sat/vB more")
+        // A host's number past any real rate asks for more than every cap, and never traps.
+        XCTAssertEqual(SparkExitMath.refusedSweepRate("mempool min fee not met, 450 < 10000000000000000000", paidRate: 2), .max)
         let absurd = SparkExitMath.refusedSweepRate("min relay fee not met, 110 < 22000", paidRate: 1)
         XCTAssertEqual(absurd, 200)
         XCTAssertEqual(SparkExitMath.refusedSweepFloor(absurd, nextBlock: 5, exitRate: 2), 5, "capped at the next block's rate")

@@ -540,8 +540,11 @@ enum SparkExitMath {
         guard let match = refusal.firstMatch(of: #/(?:min relay fee|mempool min fee) not met[^0-9]*(\d+)\s*<\s*(\d+)/#),
               let paid = UInt64(match.1), let least = UInt64(match.2), paid > 0
         else { return bumped }
-        let leastRate = (least * max(paidRate, 1) + paid - 1) / paid
-        return max(leastRate, bumped)
+        // A host's number can be anything: one too big asks for more than any cap, which the caller applies.
+        let (scaled, isScaledOver) = least.multipliedReportingOverflow(by: max(paidRate, 1))
+        let (rounded, isRoundedOver) = scaled.addingReportingOverflow(paid - 1)
+        guard !isScaledOver, !isRoundedOver else { return .max }
+        return max(rounded / paid, bumped)
     }
 
     /// What a refused rate lifts the sweep to: never above the next block's rate or the exit's own, whichever is higher,
