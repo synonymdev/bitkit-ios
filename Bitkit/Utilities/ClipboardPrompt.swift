@@ -45,7 +45,7 @@ struct ClipboardPromptHistory {
 enum ClipboardPromptValidator {
     // Mirrors bitkit-core's LNURL_ADDRESS_REGEX and Scanner::find_lnurl, whose matches can trigger network resolution.
     private static let lightningAddressPattern = #"^[a-z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"#
-    private static let lnurlPattern = #"^(?:(http.*|bitcoin:.*)[&?]lightning=|lightning:)?(lnurl1[02-9ac-hj-np-z]+)"#
+    private static let lnurlPattern = #"^(?:(http[^\n]*|bitcoin:[^\n]*)[&?]lightning=|lightning:)?(lnurl1[02-9ac-hj-np-z]+)"#
 
     static func isSupportedURI(
         _ uri: String,
