@@ -704,6 +704,8 @@
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Create a new Pubky identity on this homeserver. Only continue if you trust it.";
 "pubky_auth__approval_failed" = "Authorization Failed";
+"pubky_auth__identity_unavailable_desc" = "Check your connection and try again.";
+"profile__auth_error_signup_code_rejected" = "The homeserver did not accept this signup code. Try again or use another signup link.";
 "watch_only_accounts__active_section" = "Active accounts";
 "watch_only_accounts__copy_xpub" = "Copy xpub";
 "watch_only_accounts__description" = "Each approved Paykit server gets a separate Bitcoin account. Turn tracking off to unload an account without deleting its wallet history.";
@@ -1465,6 +1467,7 @@
 "wallet__payment_received" = "Received Bitcoin";
 "wallet__payment_request" = "Payment Request";
 "wallet__payment_request_unavailable" = "The payment request is no longer available.";
+"wallet__payment_request_note_too_long" = "Shorten the note and try again.";
 "wallet__payment_request_expired" = "The payment request has expired.";
 "wallet__payment_request_waiting_for_details" = "Payment details are still being recovered. Try again shortly.";
 "wallet__payment_request_in_progress" = "The payment request is already being processed.";
@@ -1910,6 +1913,7 @@
 
 "wallet__payment_request_underpaid" = "Received · Underpaid";
 "wallet__payment_request_after_expiry" = "Received · After expiry";
+"wallet__payment_request_before_request" = "Received · Before request";
 
 "pubky_auth__usdt_intro_description" = "To earn, you need to share your USDT address with Paykit. It can view sales activity, but cannot spend funds.";
 "pubky_auth__usdt_intro_optional" = "You can share your USDT address with Paykit to receive earnings. It can view sales activity, but cannot spend funds.";

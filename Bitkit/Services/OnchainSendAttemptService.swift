@@ -1079,11 +1079,11 @@ actor OnchainSendAttemptService {
             isTransfer: true, channelId: nil, createdAt: context.createdAt
         )])
         guard await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
-            txid: txid, address: attempt.address, amount: attempt.amountSats, fee: context.feeSats,
-            feeRate: context.feeRate, isTransfer: true,
-            feeIsExact: attempt.recoveryContext.map { $0.candidateTxids.first?.caseInsensitiveCompare(txid) != .orderedSame } ?? false
-        ), let activity = try await CoreService.shared.activity.getOnchainActivityByTxId(txid: txid),
-        activity.txType == .sent, activity.isTransfer
+                  txid: txid, address: attempt.address, amount: attempt.amountSats, fee: context.feeSats,
+                  feeRate: context.feeRate, isTransfer: true,
+                  feeIsExact: attempt.recoveryContext.map { $0.candidateTxids.first?.caseInsensitiveCompare(txid) != .orderedSame } ?? false
+              ), let activity = try await CoreService.shared.activity.getOnchainActivityByTxId(txid: txid),
+              activity.txType == .sent, activity.isTransfer
         else { throw OnchainSendAttemptError.localFollowupNotSaved }
         try acknowledgeLocalFollowup(txid: txid)
         Self.localResolutionSubject.send(OnchainSendLocalResolution(
