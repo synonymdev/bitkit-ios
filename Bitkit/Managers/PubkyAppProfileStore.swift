@@ -261,16 +261,31 @@ actor PubkyAppProfileStore {
         // Tags live only in the Paykit copy, so a tag change it does not take is reported, and the remembered base keeps
         // the tags it last stored so a retry is reported again.
         var copyError: Error?
-        if tags != nil {
+        if let tags {
             // A copy refresh begun before this save started would otherwise land after it with the old tags.
             for refresh in copyRefreshes[key, default: [:]].values {
                 await refresh.value
             }
-            do {
-                try await publishCopy(profile, expectedIdentity: key, generation: generation)
-                tagsUnavailable.remove(key)
-            } catch {
-                copyError = error
+            if tags == previousTags {
+                // No tag change to report, so the save does not wait for the copy: it follows as a tracked refresh,
+                // which the next save waits for and a deletion refuses or waits for.
+                let id = UUID()
+                copyRefreshes[key, default: [:]][id] = Task {
+                    do {
+                        try await publishCopy(profile, expectedIdentity: key, generation: generation)
+                        tagsUnavailable.remove(key)
+                    } catch {
+                        Logger.warn("Failed to update Bitkit profile copy: \(error)", context: "PubkyAppProfileStore")
+                    }
+                    copyRefreshes[key]?[id] = nil
+                }
+            } else {
+                do {
+                    try await publishCopy(profile, expectedIdentity: key, generation: generation)
+                    tagsUnavailable.remove(key)
+                } catch {
+                    copyError = error
+                }
             }
         }
         var storedProfile = tags != nil && copyError == nil ? profile : profile.withTags(previousTags)
