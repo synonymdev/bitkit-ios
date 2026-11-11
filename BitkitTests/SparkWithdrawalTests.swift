@@ -163,7 +163,7 @@ final class SparkWithdrawalTests: XCTestCase {
         try await Task.sleep(nanoseconds: 50_000_000)
         let committedDuringRecheck = transfer.onTransferToSavingsConfirm(channels: [], withdrawsSpark: true, mode: .close)
         await gate.open()
-        try await recheck.value
+        _ = try await recheck.value
 
         XCTAssertFalse(committedDuringRecheck, "Close instead committed while the swipe was repricing")
         XCTAssertTrue(transfer.onTransferToSavingsConfirm(channels: [], withdrawsSpark: true))
@@ -201,6 +201,41 @@ final class SparkWithdrawalTests: XCTestCase {
         await repriceGate.open()
         await waitUntilPriced(transfer)
         XCTAssertEqual(transfer.sparkWithdrawFeeSats, 2300)
+    }
+
+    @MainActor
+    func testTheSwipeResetsWhenSparksNewBalanceIsPricedBeforeItsRecheckReturns() async throws {
+        let transfer = TransferViewModel()
+        transfer.sparkReadsSavingsChain = { true }
+        transfer.priceSparkWithdrawal = { _ in 2190 }
+        transfer.loadSparkWithdrawFee(balanceSats: 99901, savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+        let recheckGate = PriceGate()
+        transfer.priceSparkWithdrawal = { _ in
+            await recheckGate.wait()
+            return 2190
+        }
+
+        let swipe = Task { try await transfer.confirmSavingsSwipe(channels: [], withdrawsSpark: true) }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        // A receive lands during the recheck, and the confirm screen prices the new balance before the recheck returns.
+        transfer.priceSparkWithdrawal = { _ in 2300 }
+        transfer.loadSparkWithdrawFee(balanceSats: 120_000, savingsAddress: "bcrt1q-savings")
+        await waitUntilPriced(transfer)
+        XCTAssertEqual(transfer.sparkWithdrawFeeSats, 2300)
+        await recheckGate.open()
+
+        do {
+            try await swipe.value
+            XCTFail("The swipe committed at a fee it did not recheck")
+        } catch {
+            XCTAssertTrue(error is SavingsCommitRefused, "Unexpected error: \(error)")
+        }
+        let withdrawn = WithdrawnFee()
+        transfer.sparkBalanceSats = { 120_000 }
+        transfer.withdrawSpark = { _, feeSats in withdrawn.feeSats = feeSats }
+        _ = try await transfer.closeSelectedChannels()
+        XCTAssertNil(withdrawn.feeSats, "Spark withdrew at a fee the swipe did not approve")
     }
 
     @MainActor
