@@ -156,6 +156,21 @@ final class ProfileWriteGateTests: XCTestCase {
         XCTAssertTrue(gate.mayRefreshCopy("b", epoch: gate.copyEpoch("b")))
     }
 
+    func testNoCopyRefreshDuringOverlappingSaves() {
+        var gate = ProfileWriteGate()
+
+        gate.beginSave("a")
+        gate.beginSave("a")
+        let readDuringSaves = gate.copyEpoch("a")
+
+        XCTAssertFalse(gate.mayRefreshCopy("a", epoch: readDuringSaves))
+        gate.endSave("a")
+        XCTAssertFalse(gate.mayRefreshCopy("a", epoch: readDuringSaves))
+        gate.endSave("a")
+        XCTAssertFalse(gate.mayRefreshCopy("a", epoch: readDuringSaves))
+        XCTAssertTrue(gate.mayRefreshCopy("a", epoch: gate.copyEpoch("a")))
+    }
+
     func testDeletionWaitsForWritesUnderWay() async throws {
         actor Box {
             var gate = ProfileWriteGate()

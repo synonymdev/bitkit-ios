@@ -21,6 +21,7 @@ enum PubkyAppProfileError: LocalizedError {
 struct ProfileWriteGate {
     private var generations: [String: Int] = [:]
     private var copyEpochs: [String: Int] = [:]
+    private var savesRunning: [String: Int] = [:]
     private var deleting: Set<String> = []
     private var writesInFlight: [String: Int] = [:]
     private var writesSettled: [String: [CheckedContinuation<Void, Never>]] = [:]
@@ -61,22 +62,25 @@ struct ProfileWriteGate {
         deleting.remove(key)
     }
 
-    /// The copy epoch a load reads the Paykit copy at; odd while a save runs.
+    /// The copy epoch a load reads the Paykit copy at; it moves on when a save starts and when it ends.
     func copyEpoch(_ key: String) -> Int {
         copyEpochs[key, default: 0]
     }
 
     mutating func beginSave(_ key: String) {
         copyEpochs[key, default: 0] += 1
+        savesRunning[key, default: 0] += 1
     }
 
     mutating func endSave(_ key: String) {
         copyEpochs[key, default: 0] += 1
+        let remaining = savesRunning[key, default: 1] - 1
+        savesRunning[key] = remaining > 0 ? remaining : nil
     }
 
     /// Whether a load that read the Paykit copy at `epoch` may write it back: no save ran since or was running then.
     func mayRefreshCopy(_ key: String, epoch: Int) -> Bool {
-        epoch.isMultiple(of: 2) && copyEpochs[key, default: 0] == epoch
+        savesRunning[key, default: 0] == 0 && copyEpochs[key, default: 0] == epoch
     }
 
     func hasWritesInFlight(_ key: String) -> Bool {
