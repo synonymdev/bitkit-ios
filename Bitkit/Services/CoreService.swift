@@ -2283,6 +2283,13 @@ class BlocktankService {
             do {
                 return try await operation()
             } catch {
+                if "\(error)".contains("401 Unauthorized") {
+                    throw AppError(
+                        message: "Blocktank regtest auth is missing or was rejected. Launch the app with BLOCKTANK_REGTEST_AUTH=user:password.",
+                        debugMessage: "\(error)",
+                        underlyingError: error
+                    )
+                }
                 lastError = error
                 Logger.warn("Regtest operation failed on attempt \(attempt + 1)/\(maxRetries): \(error)", context: "BlocktankService")
 
@@ -2304,7 +2311,7 @@ class BlocktankService {
 
         try await executeWithRetry {
             try await ServiceQueue.background(.core) {
-                try await regtestMine(count: count)
+                try await regtestMine(count: count, auth: Env.blocktankRegtestAuth)
             }
         }
     }
@@ -2316,7 +2323,7 @@ class BlocktankService {
 
         return try await executeWithRetry {
             try await ServiceQueue.background(.core) {
-                try await regtestDeposit(address: address, amountSat: amountSat)
+                try await regtestDeposit(address: address, amountSat: amountSat, auth: Env.blocktankRegtestAuth)
             }
         }
     }
@@ -2328,7 +2335,7 @@ class BlocktankService {
 
         return try await executeWithRetry {
             try await ServiceQueue.background(.core) {
-                try await regtestPay(invoice: invoice, amountSat: amountSat)
+                try await regtestPay(invoice: invoice, amountSat: amountSat, auth: Env.blocktankRegtestAuth)
             }
         }
     }
@@ -2344,7 +2351,12 @@ class BlocktankService {
 
         return try await executeWithRetry {
             try await ServiceQueue.background(.core) {
-                try await regtestCloseChannel(fundingTxId: fundingTxo.txid, vout: fundingTxo.vout, forceCloseAfterS: forceCloseAfterSeconds)
+                try await regtestCloseChannel(
+                    fundingTxId: fundingTxo.txid,
+                    vout: fundingTxo.vout,
+                    forceCloseAfterS: forceCloseAfterSeconds,
+                    auth: Env.blocktankRegtestAuth
+                )
             }
         }
     }

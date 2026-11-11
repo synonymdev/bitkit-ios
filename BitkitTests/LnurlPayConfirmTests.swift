@@ -19,14 +19,15 @@ final class LnurlPayConfirmTests: XCTestCase {
         let record = try PaymentRequestRecord(
             counterparty: "test-contact", paymentRequestId: "550e8400-e29b-41d4-a716-446655440000",
             localRole: .payer, state: .proposed, proposalStreamItemId: 1, proposalOutboundMessageId: nil, proposalOutboundStatus: nil,
-            proposalEventId: "650e8400-e29b-41d4-a716-446655440000", proposalAppId: "bitkit", payerAppId: nil, executionClaimAppId: nil,
+            proposalEventId: "650e8400-e29b-41d4-a716-446655440000", proposalAppId: "bitkit", proposalRecordedAt: nil,
+            payerAppId: nil, executionClaimAppId: nil,
             terms: PaymentRequestTerms(
                 amount: PaymentRequestAmount(value: "0.0075", asset: "btc"), paymentReference: PaymentReference(text: "invoice"),
                 proposalExpiresAt: nil, recurrence: nil,
                 acceptedPaymentEndpointIdentifiers: [PublicPaykitService.MethodId.bitcoinLightningLnurl.rawValue],
                 paymentEndpoints: nil, requiredAppId: "bitkit", conversion: nil, paymentDeadline: nil, metadata: PrivateJsonObject(text: "{}")
             ),
-            acceptedEventId: nil, acceptedOutboundStatus: nil, rejectedEventId: nil, rejectedOutboundStatus: nil,
+            acceptedEventId: nil, acceptedOutboundStatus: nil, acceptanceRecordedAt: nil, rejectedEventId: nil, rejectedOutboundStatus: nil,
             canceledEventId: nil, canceledOutboundStatus: nil, conversionQuotes: [], paymentProofs: [], lastStreamItemId: 1,
             lastOutboundMessageId: nil, lastOutboundStatus: nil, lastEventAt: nil, invalidReason: nil
         )

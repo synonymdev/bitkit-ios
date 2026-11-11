@@ -61,9 +61,20 @@ final class PaykitUsdtPaymentService {
         let receivedAt: Date
         let underpaid: Bool
         let afterExpiry: Bool
+        /// Transferred before this wallet recorded its request, so it does not pay the request.
+        var beforeRequest: Bool? = false
         var satisfied: Bool {
-            verified && !underpaid && !afterExpiry
+            verified && !underpaid && !afterExpiry && beforeRequest != true
         }
+    }
+
+    /// Arbitrum's sequencer may set a block timestamp up to a day behind real time.
+    static let transferTimeTolerance: TimeInterval = 24 * 60 * 60
+
+    /// A transfer is checked against the time this wallet stored its proposal, not the payer's own times.
+    static func isBeforeRequest(receivedAt: Date, proposalRecordedAt: String?) -> Bool {
+        guard let recordedAt = proposalRecordedAt.flatMap(PaykitPaymentRequest.parseDate) else { return false }
+        return receivedAt < recordedAt.addingTimeInterval(-transferTimeTolerance)
     }
 
     private struct State: Codable {
@@ -314,26 +325,17 @@ final class PaykitUsdtPaymentService {
 
     /// Check the complete wire message, including its outer request fields, before spending funds.
     static func validateProofSize(binding: UsdtPaymentProofBinding) throws {
-        let placeholder = Proof(UsdtPaymentProof(chainId: "42161", transactionHash: "0x" + String(repeating: "0", count: 64),
-                                                 receiptLogIndex: String(repeating: "9", count: 78),
-                                                 signature: "0x" + String(repeating: "0", count: 130)))
-        var message: [String: Any] = try [
-            "version": 1, "kind": "paykit.payment_proof", "app_id": "bitkit", "event_id": UUID().uuidString.lowercased(),
-            "payment_request_id": binding.paymentRequestId, "payment_reference": binding.paymentReference,
-            "payment_app_id": binding.paymentAppId,
-            "payment_endpoint_identifier": binding.paymentEndpointIdentifier,
-            "billing_period": NSNull(), "proof": JSONSerialization.jsonObject(with: JSONEncoder().encode(placeholder)),
-        ]
-        if !binding.periodStartsAt.isEmpty {
-            message["billing_period"] = ["starts_at": binding.periodStartsAt, "ends_at": binding.periodEndsAt]
-        }
-        if !binding.conversionQuoteId.isEmpty {
-            message["conversion_quote_id"] = binding.conversionQuoteId
-        }
-        guard try JSONSerialization.data(withJSONObject: message, options: [.withoutEscapingSlashes]).count <= PaykitSdkService.maximumMessageBytes
-        else {
-            throw PaykitPaymentRequestError.requestUnavailable
-        }
+        try PaykitPaymentProofSize.validate(
+            paymentReference: binding.paymentReference,
+            paymentAppId: binding.paymentAppId,
+            paymentEndpointIdentifier: binding.paymentEndpointIdentifier,
+            billingPeriod: binding.periodStartsAt.isEmpty
+                ? nil
+                : Paykit.BillingPeriod(startsAt: binding.periodStartsAt, endsAt: binding.periodEndsAt),
+            allowanceId: nil,
+            conversionQuoteId: binding.conversionQuoteId.isEmpty ? nil : binding.conversionQuoteId,
+            kind: .usdt
+        )
     }
 
     func prepare(context: ContactPaymentContext, quote: UsdtQuote, wallet: UsdtWalletManager,
@@ -589,7 +591,9 @@ final class PaykitUsdtPaymentService {
                                               paymentId: payment.paymentId, proofEventId: submission.eventId, verified: true,
                                               transferId: payment.transferId, amount: received,
                                               receivedAt: receivedAt, underpaid: received.atomic < terms.amount.atomic,
-                                              afterExpiry: !terms.isValid(at: receivedAt))
+                                              afterExpiry: !terms.isValid(at: receivedAt),
+                                              beforeRequest: Self.isBeforeRequest(receivedAt: receivedAt,
+                                                                                  proposalRecordedAt: record.proposalRecordedAt))
                         guard !current.receipts.contains(receipt) else { continue }
                         current.receipts.removeAll { $0.wallet == owner && $0.identity == identity && $0.paymentId == payment.paymentId }
                         current.receipts.append(receipt)

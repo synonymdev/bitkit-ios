@@ -1328,6 +1328,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             proposalOutboundStatus: nil,
             proposalEventId: "650e8400-e29b-41d4-a716-446655440000",
             proposalAppId: "bitkit",
+            proposalRecordedAt: nil,
             payerAppId: nil,
             executionClaimAppId: nil,
             terms: PaymentRequestTerms(
@@ -1347,6 +1348,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             ),
             acceptedEventId: nil,
             acceptedOutboundStatus: nil,
+            acceptanceRecordedAt: nil,
             rejectedEventId: nil,
             rejectedOutboundStatus: nil,
             canceledEventId: nil,
