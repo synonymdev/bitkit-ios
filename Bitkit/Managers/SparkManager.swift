@@ -911,6 +911,7 @@ final class SparkManager: ChannelFreeLightningRail {
         switch event {
         case .synced:
             syncedThisRun = true
+            await LightningService.shared.listRailSendsIfUnseeded()
             await refreshState()
         case .newDeposits, .claimedDeposits:
             await refreshState()
