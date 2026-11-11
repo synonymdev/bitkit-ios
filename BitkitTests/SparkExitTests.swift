@@ -1570,6 +1570,38 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2b"], "the unverified step is still not sent")
     }
 
+    /// An unverified rebuild that builds only failed cooperative leaves, beside the leaf it could not read, keeps the
+    /// valid generation: its signed steps are still sent once the chain reads again.
+    func testAnUnverifiedRebuildOfOnlyFailedLeavesKeepsTheValidGeneration() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.leafIds = ["leaf-1", "coop-1"]
+        let failure = CooperativeRecoveryFailure(leafId: "coop-1", outputTxid: "o", outputVout: 0, error: .operatorsUnavailable(message: "down"))
+        let unread = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("n2", dependsOn: ["n1"], status: .unverified),
+        ], failed: [failure])
+        let readable = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("n2", dependsOn: ["n1"]),
+        ], failed: [failure])
+        record.adopt(unread, at: clock)
+        sdk.checks = [
+            CheckRecoverFundsResponse(recovery: unread, verdict: .valid),
+            CheckRecoverFundsResponse(recovery: readable, verdict: .valid),
+        ]
+        var prepared = SparkExitFixtures.prepared(funding: nil, leaves: ["coop-1"])
+        prepared.skipped = [SkippedLeaf(leafId: "leaf-1", valueSats: 100_000, reason: .unverified)]
+        sdk.preparedResponse = prepared
+        sdk.builds = Array(repeating: SparkExitFixtures.recovery([], failed: [failure]), count: 2)
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.generation, 1, "rebuild adopted a recovery without leaf-1's signed steps")
+
+        chain.tip = 1001
+        record = try await driver().tick(record)
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2"], "leaf-1's matured step n2 was not sent")
+    }
+
     /// R2: while a unilateral step is ready, a rebuild would conflict with it, so nothing rebuilds; a cooperative step
     /// the SDK could not read is still sent.
     func testAReadyStepHoldsTheUnverifiedRebuildAndCooperativeStepsAreStillSent() async throws {

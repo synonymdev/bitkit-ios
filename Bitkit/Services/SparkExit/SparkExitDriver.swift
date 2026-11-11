@@ -554,7 +554,17 @@ struct SparkExitDriver {
                 Logger.warn("Spark exit has a step the SDK could not read, rebuilding over it", context: "SparkExitDriver")
                 record.unverifiedRebuiltAtHeight = tip
                 try save(record)
+                let valid = record
                 try await build(&record, recovering: recovering)
+                // A rebuild of only failed cooperative leaves beside the leaf it could not read drops that leaf's signed
+                // steps, which a matured step needs sent within the operators' window: the valid generation stays, as
+                // it was before the build, and is what the tick saves.
+                if record.generation != valid.generation, record.recovery?.response.transactions.isEmpty == true,
+                   !(record.waitingLeafIds ?? []).isEmpty
+                {
+                    Logger.warn("Spark exit keeps its generation: the rebuild built only failed leaves", context: "SparkExitDriver")
+                    record = valid
+                }
                 return
             }
             // The SDK sees no divergence when another wallet's CPFP child confirmed a node our leaves share.
