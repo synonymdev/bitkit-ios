@@ -183,6 +183,7 @@ actor PubkyAppProfileStore {
         let avatarPending = Self.pubkyAppAvatarPending.contains(key)
         pendingAvatarUris[key] = avatarPending ? paykitData?.image : nil
         var profile = Self.profile(publicKey: key, snapshot: snapshot, tags: paykitData?.tags ?? [])
+        profile.tagsUnread = paykitReadError != nil
         if avatarPending, let uri = paykitData?.image {
             profile = profile.withImageUrl(uri)
         }
@@ -209,7 +210,8 @@ actor PubkyAppProfileStore {
         let generation = writeGate.generation(key)
         writeGate.beginSave(key)
         defer { writeGate.endSave(key) }
-        let copyUnread = tagsUnavailable.contains(key)
+        // Unread when the edit began or now: either way the form's tags are not the stored ones.
+        let copyUnread = data.baseTagsUnread || tagsUnavailable.contains(key)
         var base: PubkyProfile?
         if let baseRevision = data.baseRevision {
             guard let known = profilesByRevision[key]?[baseRevision] else {
@@ -240,7 +242,7 @@ actor PubkyAppProfileStore {
         }
         Self.pubkyAppProfileOwners.insert(key)
         let previousTags = base?.tags ?? []
-        let stored = await storedCopy(for: key)
+        let stored = await storedCopy(for: key, copyUnread: copyUnread)
         if let paykitAvatar, snapshot.profile.image == nil {
             Self.pubkyAppAvatarPending.insert(key)
             pendingAvatarUris[key] = paykitAvatar
@@ -271,7 +273,8 @@ actor PubkyAppProfileStore {
                 copyError = error
             }
         }
-        let storedProfile = tags != nil && copyError == nil ? profile : profile.withTags(previousTags)
+        var storedProfile = tags != nil && copyError == nil ? profile : profile.withTags(previousTags)
+        storedProfile.tagsUnread = copyUnread && (tags == nil || copyError != nil)
         remember(storedProfile, for: key)
         if let saveId = data.saveId {
             savedProfiles[saveId] = storedProfile
@@ -299,10 +302,10 @@ actor PubkyAppProfileStore {
         revisionOrder[key] = order
     }
 
-    /// What a save keeps from the Paykit copy after the last load could not read it, as the form then lacked its tags
-    /// and the avatar still to move: empty when that load read it, nil while it still cannot be read.
-    private func storedCopy(for key: String) async -> (tags: [String]?, image: String?)? {
-        guard tagsUnavailable.contains(key) else { return (nil, nil) }
+    /// What a save keeps from the Paykit copy when its form was built without it, as the form then lacked its tags and
+    /// the avatar still to move: empty when the copy is read, nil while it still cannot be read.
+    private func storedCopy(for key: String, copyUnread: Bool) async -> (tags: [String]?, image: String?)? {
+        guard copyUnread else { return (nil, nil) }
         do {
             let data = try await PubkyService.fetchPaykitProfile(publicKey: key).map { PubkyProfileData.from(paykitProfile: $0.profile) }
             return (data?.tags ?? [], data?.image)

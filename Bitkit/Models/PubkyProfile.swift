@@ -11,6 +11,8 @@ struct PubkyProfileData: Codable, Equatable {
     var tags: [String]
     /// The pubky.app revision an edit started from; never part of the published copy.
     var baseRevision: String?
+    /// Whether the profile the edit started from lacked the stored tags, as the copy could not be read; never published.
+    var baseTagsUnread = false
     /// Identifies the save, so its caller can read back the profile it stored; never part of the published copy.
     var saveId: UUID?
 
@@ -125,10 +127,13 @@ struct PubkyProfile {
     let status: String?
     /// The pubky.app revision this profile was read or saved at, for a save to check against.
     var revision: String?
+    /// Set when Bitkit's copy could not be read, so `tags` are not the stored ones and a save keeps those.
+    var tagsUnread = false
 
     func withImageUrl(_ imageUrl: String?) -> PubkyProfile {
         var profile = PubkyProfile(publicKey: publicKey, name: name, bio: bio, imageUrl: imageUrl, links: links, tags: tags, status: status)
         profile.revision = revision
+        profile.tagsUnread = tagsUnread
         return profile
     }
 
@@ -203,6 +208,7 @@ struct PubkyProfile {
     func withTags(_ tags: [String]) -> PubkyProfile {
         var profile = PubkyProfile(publicKey: publicKey, name: name, bio: bio, imageUrl: imageUrl, links: links, tags: tags, status: status)
         profile.revision = revision
+        profile.tagsUnread = tagsUnread
         return profile
     }
 

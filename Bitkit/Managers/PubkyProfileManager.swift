@@ -908,7 +908,8 @@ class PubkyProfileManager: ObservableObject {
         links: [PubkyProfileLink],
         tags: [String] = [],
         avatarImage: UIImage? = nil,
-        baseRevision: String? = nil
+        baseRevision: String? = nil,
+        baseTagsUnread: Bool = false
     ) async throws -> Bool {
         guard let session = currentSession else { return false }
         _ = try activeSessionSecret()
@@ -919,6 +920,7 @@ class PubkyProfileManager: ObservableObject {
             tags: tags,
             avatarImage: avatarImage,
             baseRevision: baseRevision,
+            baseTagsUnread: baseTagsUnread,
             session: session
         )
     }
@@ -937,6 +939,7 @@ class PubkyProfileManager: ObservableObject {
         tags: [String],
         avatarImage: UIImage?,
         baseRevision: String?,
+        baseTagsUnread: Bool,
         session: SignedInSession
     ) async throws -> Bool {
         if profileReadAwaitingSaves?.session != session {
@@ -952,6 +955,7 @@ class PubkyProfileManager: ObservableObject {
                 tags: tags,
                 avatarImage: avatarImage,
                 baseRevision: baseRevision,
+                baseTagsUnread: baseTagsUnread,
                 session: session
             )
             profileSavesInFlight -= 1
@@ -970,6 +974,7 @@ class PubkyProfileManager: ObservableObject {
         tags: [String],
         avatarImage: UIImage?,
         baseRevision: String?,
+        baseTagsUnread: Bool,
         session: SignedInSession
     ) async throws -> Bool {
         var newImageUrl: String?
@@ -995,6 +1000,7 @@ class PubkyProfileManager: ObservableObject {
             tags: tags,
             newImageUrl: newImageUrl,
             baseRevision: baseRevision,
+            baseTagsUnread: baseTagsUnread,
             session: session
         )
     }
@@ -1009,6 +1015,7 @@ class PubkyProfileManager: ObservableObject {
         tags: [String],
         newImageUrl: String?,
         baseRevision: String?,
+        baseTagsUnread: Bool,
         session: SignedInSession
     ) async throws -> Bool {
         let resolvedImageUrl = Self.resolvedImageUrl(newImageUrl: newImageUrl, existingImageUrl: profile?.imageUrl)
@@ -1023,6 +1030,7 @@ class PubkyProfileManager: ObservableObject {
                 links: links,
                 tags: tags,
                 baseRevision: baseRevision,
+                baseTagsUnread: baseTagsUnread,
                 expectedIdentity: session.publicKey
             )
         } catch PubkyServiceError.identityChanged {
@@ -1125,6 +1133,7 @@ class PubkyProfileManager: ObservableObject {
         links: [PubkyProfileLink],
         tags: [String] = [],
         baseRevision: String? = nil,
+        baseTagsUnread: Bool = false,
         expectedIdentity: String? = nil
     ) async throws -> (profile: PubkyProfile?, tagsNotSavedAt: String?) {
         var profileData = PubkyProfileData(
@@ -1135,6 +1144,7 @@ class PubkyProfileManager: ObservableObject {
             tags: tags
         )
         profileData.baseRevision = baseRevision
+        profileData.baseTagsUnread = baseTagsUnread
         let saveId = UUID()
         profileData.saveId = saveId
 
@@ -1229,6 +1239,7 @@ class PubkyProfileManager: ObservableObject {
                 tags: tags,
                 avatarImage: avatarImage,
                 baseRevision: profile?.revision,
+                baseTagsUnread: profile?.tagsUnread ?? false,
                 session: session
             )
         }

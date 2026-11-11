@@ -280,7 +280,8 @@ struct ProfileView: View {
                     bio: profile.bio,
                     links: profile.links,
                     tags: tags,
-                    baseRevision: profile.revision
+                    baseRevision: profile.revision,
+                    baseTagsUnread: profile.tagsUnread
                 )
             } catch {
                 Logger.error("Failed to update profile tags: \(error)", context: "ProfileView")
