@@ -2567,6 +2567,25 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertFalse(SparkExitMath.isUnexitableLeafError("operators unavailable"))
     }
 
+    /// A run that cannot read the tip guesses each timelock's reminder about 6 hours out: the guess never takes the
+    /// date of the reminder at maturity, which a run with the tip plans.
+    func testARunWithoutTheTipNeverTakesATimelocksReminderEarly() throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.adopt(SparkExitFixtures.recovery([SparkExitFixtures.tx("r1", kind: .refund, status: .waitingForTimelock(spendableAtHeight: 3000))]))
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let id = "\(record.generation)-h3000"
+        let guessed = try XCTUnwrap(SparkExitMath.reminders(record, tip: nil, now: now, network: .bitcoin).first { $0.id == id })
+        let known = try XCTUnwrap(SparkExitMath.reminders(record, tip: 2000, now: now, network: .bitcoin).first { $0.id == id })
+
+        let first = SparkExitManager.reminderDate(guessed, rememberedAt: nil, now: now)
+        let second = SparkExitManager.reminderDate(known, rememberedAt: first.remembered, now: now)
+        let third = SparkExitManager.reminderDate(guessed, rememberedAt: second.remembered, now: now)
+
+        XCTAssertNil(first.remembered, "a date guessed without the tip was kept")
+        XCTAssertEqual(second.fireAt, known.fireAt, "the reminder at maturity was taken early")
+        XCTAssertEqual(third.fireAt, known.fireAt)
+    }
+
     /// With the operators down an older state's refund can take a leaf 100 blocks after ours matures, and the
     /// watchtower may publish after 50: reminders land well inside the smaller window.
     func testRemindersLandWellInsideTheDeadline() {

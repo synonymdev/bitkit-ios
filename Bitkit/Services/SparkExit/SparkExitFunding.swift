@@ -214,6 +214,8 @@ struct SparkExitReminder: Equatable {
     var isLostLeaves = false
     var isFailed = false
     var isNotMoving = false
+    /// Planned without the chain tip, so its date is a guess that never takes the place of one planned with it.
+    var isEstimated = false
 }
 
 /// What the exit shows about its fee funding while it lacks some.
@@ -347,7 +349,7 @@ enum SparkExitMath {
         }
         for height in heights.sorted().prefix(maxTimelockReminders) {
             let wait = tip.map { secondsUntil(height: height, tip: $0, network: network) } ?? reminderSeconds(network: network)
-            reminders.append(SparkExitReminder(id: "\(generation)-h\(height)", fireAt: now.addingTimeInterval(wait + grace)))
+            reminders.append(SparkExitReminder(id: "\(generation)-h\(height)", fireAt: now.addingTimeInterval(wait + grace), isEstimated: tip == nil))
         }
         if let readyTxid {
             reminders.append(SparkExitReminder(id: "\(generation)-ready-\(readyTxid)", fireAt: now.addingTimeInterval(grace)))

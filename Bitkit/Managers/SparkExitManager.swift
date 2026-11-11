@@ -433,7 +433,7 @@ final class SparkExitManager {
             trustedFeeRate: Self.trustedFeeRate
         )
         do {
-            tipHeight = try? await chain.tipHeight()
+            tipHeight = await (try? chain.tipHeight()) ?? tipHeight
             unresolvedSendAddress = await OnchainSendAttemptService.shared.unresolvedSendAddress()
             await refreshRefusedSavingsPayment()
             await refreshNetworkFees(chain: chain)
@@ -1116,7 +1116,7 @@ final class SparkExitManager {
             connect: { timeout in await SparkManager.shared.connectForExit(walletIndex: walletIndex, timeout: timeout) },
             deadline: deadline
         )
-        tipHeight = try? await chain.tipHeight()
+        tipHeight = await (try? chain.tipHeight()) ?? tipHeight
         let outcome = await run.run()
         let seconds = SparkExitBackgroundRun.Step.allCases.compactMap { step in
             outcome.seconds[step].map { "\(step.rawValue)=\(String(format: "%.2f", $0))s" }
@@ -1209,15 +1209,9 @@ final class SparkExitManager {
         var requests: [UNNotificationRequest] = []
         for reminder in planned {
             let id = Self.notificationId(reminder, record: record)
-            // A reminder that fired is not posted again. One still ahead keeps its earliest date, so runs that do not
-            // publish its step never push it out.
-            let rememberedAt = remembered[id].map(Date.init(timeIntervalSince1970:))
-            if let rememberedAt, rememberedAt <= now {
-                kept[id] = rememberedAt.timeIntervalSince1970
-                continue
-            }
-            let fireAt = max(now.addingTimeInterval(1), min(reminder.fireAt, rememberedAt ?? reminder.fireAt))
-            kept[id] = fireAt.timeIntervalSince1970
+            let date = Self.reminderDate(reminder, rememberedAt: remembered[id].map(Date.init(timeIntervalSince1970:)), now: now)
+            kept[id] = date.remembered?.timeIntervalSince1970
+            guard let fireAt = date.fireAt else { continue }
             let content = UNMutableNotificationContent()
             content.userInfo = ["bitkit_action": Self.notificationAction]
             content.title = t("lightning__spark_exit__notification_title")
@@ -1239,6 +1233,21 @@ final class SparkExitManager {
             try? await center.add(request)
         }
         UserDefaults.standard.set(Self.keepingFired(kept, remembered: remembered, now: now), forKey: Self.remindersKey)
+    }
+
+    /// When `reminder` posts, nil once it fired, and the date remembered for it. A reminder that fired is not posted
+    /// again. One still ahead keeps its earliest date, so runs that do not publish its step never push it out.
+    /// A date guessed without the tip keeps the remembered one and is never remembered itself, so a later run with the
+    /// tip still plans the reminder at maturity.
+    nonisolated static func reminderDate(_ reminder: SparkExitReminder, rememberedAt: Date?, now: Date) -> (fireAt: Date?, remembered: Date?) {
+        if let rememberedAt, rememberedAt <= now {
+            return (nil, rememberedAt)
+        }
+        if reminder.isEstimated {
+            return (max(now.addingTimeInterval(1), rememberedAt ?? reminder.fireAt), rememberedAt)
+        }
+        let fireAt = max(now.addingTimeInterval(1), min(reminder.fireAt, rememberedAt ?? reminder.fireAt))
+        return (fireAt, fireAt)
     }
 
     /// How long a fired reminder stays remembered after it left the plan, so a plan that drops an id for one run (a
