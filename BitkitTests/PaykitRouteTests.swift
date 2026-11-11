@@ -659,6 +659,32 @@ final class PaykitRouteTests: XCTestCase {
         XCTAssertEqual(quotes, 1)
     }
 
+    @MainActor
+    func testANoneRouteNamesTheLnurlLimitTheAmountMissed() async {
+        snapshotAppDefaultsDomain()
+        let app = AppViewModel()
+        defer { ToastWindowManager.shared.hideToast() }
+        app.contactPaymentContext = ContactPaymentContext(publicKey: "contact", privatePaymentContext: nil, endpoints: [])
+        app.lnurlPayData = lnurlData(minSendableMsats: 1_000_000)
+        app.selectedWalletToPayFrom = .lightning
+
+        let outcome = await app.routeContactPayment(
+            PaykitRouteUi(endpoints: [lightning], offersSparkLeg: false),
+            amountSats: 500,
+            source: .spending,
+            lightningSpendableSats: 50000,
+            onchainSpendableSats: 0,
+            request: nil
+        )
+
+        XCTAssertEqual(outcome, .refused)
+        XCTAssertEqual(
+            ToastWindowManager.shared.currentToast?.accessibilityIdentifier,
+            "LnurlPayAmountTooLowToast",
+            "A contact with a working LNURL is payable, only not at this amount"
+        )
+    }
+
     private func lnurlData(minSendableMsats: UInt64) -> LnurlPayData {
         LnurlPayData(
             uri: lightning.value,

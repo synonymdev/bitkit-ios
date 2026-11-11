@@ -308,11 +308,15 @@ extension AppViewModel {
             case let .none(reason):
                 Logger.warn("Found no Paykit route: '\(reason)'", context: "PaykitRoute")
                 paykitRoute = unrouted
-                showNoPaykitRouteToast(isBalanceShort: PaykitRouteService.isBalanceShort(
+                let isBalanceShort = PaykitRouteService.isBalanceShort(
                     amountSats: amountSats,
                     lightningSpendableSats: lightningSpendableSats,
                     onchainSpendableSats: onchainSpendableSats
-                ))
+                )
+                // The router never saw an LNURL whose limits refuse the amount, so its limit says why.
+                if isBalanceShort || unrouted.lnurl.map({ validateLnurlAmount($0, amountSats: amountSats) }) != false {
+                    showNoPaykitRouteToast(isBalanceShort: isBalanceShort)
+                }
                 return .refused
             }
         } catch {
@@ -371,7 +375,13 @@ extension AppViewModel {
 
     /// The route can restore an LNURL a BOLT11 pick cleared, so Amount checks its limits after routing.
     func validateRoutedLnurlAmount(amountSats: UInt64) -> Bool {
-        guard let lnurlPayData, !lnurlPayData.accepts(amountSats: amountSats) else { return true }
+        guard let lnurlPayData else { return true }
+        return validateLnurlAmount(lnurlPayData, amountSats: amountSats)
+    }
+
+    /// Shows `lnurl`'s too-low or too-high toast when `amountSats` is outside its limits; true when it accepts it.
+    func validateLnurlAmount(_ lnurlPayData: LnurlPayData, amountSats: UInt64) -> Bool {
+        guard !lnurlPayData.accepts(amountSats: amountSats) else { return true }
         let minimumAmount = max(1, lnurlPayData.minSendableSat)
         if amountSats < minimumAmount {
             toast(
