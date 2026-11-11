@@ -704,6 +704,11 @@ enum SparkExitMath {
 enum SparkExitFundingIndexes {
     private static let defaultsPrefix = "sparkExitNextFundingIndex-"
 
+    /// How the metadata backup keys a wallet's exit state, as bitkit-android does.
+    static func walletKey(network: String, walletIndex: Int) -> String {
+        "\(network)/wallet\(walletIndex)"
+    }
+
     /// The counter the last exit start left, per network and wallet.
     static func defaultsKey(network: String, walletIndex: Int) -> String {
         "\(defaultsPrefix)\(network)-\(walletIndex)"

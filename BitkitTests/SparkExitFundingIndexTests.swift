@@ -9,15 +9,20 @@ final class SparkExitFundingIndexTests: XCTestCase {
     private var defaults: UserDefaults!
     private let chain = FakeSparkExitChain()
     private let key = SparkExitFundingIndexes.defaultsKey(network: "regtest", walletIndex: 0)
+    private var earlierAddressStore: SparkExitEarlierAddressStore!
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
     override func setUp() {
         super.setUp()
         UserDefaults().removePersistentDomain(forName: suiteName)
         defaults = UserDefaults(suiteName: suiteName)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("SparkExitFundingIndexTests-\(UUID().uuidString).json")
+        earlierAddressStore = SparkExitEarlierAddressStore(url: url)
     }
 
     override func tearDown() {
         UserDefaults().removePersistentDomain(forName: suiteName)
+        try? earlierAddressStore.delete()
         super.tearDown()
     }
 
@@ -25,8 +30,16 @@ final class SparkExitFundingIndexTests: XCTestCase {
         "bcrt1qfunding\(index)"
     }
 
+    private func path(_ index: UInt32) -> String {
+        "m/84'/1'/7797'/0/\(index)"
+    }
+
     private func nextFundingIndex() async throws -> UInt32 {
         try await SparkExitManager.nextFundingIndex(defaults: defaults, key: key, record: nil, chain: chain) { self.address($0) }
+    }
+
+    private func keptCoins(_ index: UInt32, sats: UInt64) -> SparkExitEarlierAddress {
+        SparkExitEarlierAddress(address: address(index), path: path(index), kind: .keptChange, sats: sats, date: now)
     }
 
     /// What a new device holds after a restore: the app's data is gone, and only the backed-up cache comes back.
@@ -161,5 +174,46 @@ final class SparkExitFundingIndexTests: XCTestCase {
         XCTAssertTrue(isMempoolUsed)
         XCTAssertTrue(isSpentUsed)
         XCTAssertFalse(isFreshUsed)
+    }
+
+    // MARK: Earlier exit addresses in the backup
+
+    func testTheMetadataBackupCarriesTheEarlierExitAddresses() throws {
+        try earlierAddressStore.add(keptCoins(2, sats: 600))
+        try earlierAddressStore.add(SparkExitEarlierAddress(address: address(0), path: path(0), kind: .cancelledFunding, sats: nil, date: now))
+
+        let backup = SparkExitEarlierAddressBackup.backup(earlierAddressStore, walletKey: "regtest/wallet0")
+
+        let millis: Int64 = 1_800_000_000_000
+        XCTAssertEqual(backup, ["regtest/wallet0": [
+            SparkExitEarlierAddressBackupV1(address: address(2), path: path(2), kind: "keptChange", atMillis: millis),
+            SparkExitEarlierAddressBackupV1(address: address(0), path: path(0), kind: "cancelledFunding", atMillis: millis),
+        ]])
+    }
+
+    func testARestoreListsTheBackedUpEarlierAddressesAndKeepsTheDevices() throws {
+        let onDevice = keptCoins(1, sats: 600)
+        try earlierAddressStore.add(onDevice)
+        let backedUp = [
+            SparkExitEarlierAddressBackupV1(address: address(1), path: path(1), kind: "cancelledFunding", atMillis: 1000),
+            SparkExitEarlierAddressBackupV1(address: address(2), path: path(2), kind: "keptChange", atMillis: 2000),
+            SparkExitEarlierAddressBackupV1(address: address(3), path: path(3), kind: "someLaterKind", atMillis: 3000),
+        ]
+
+        SparkExitEarlierAddressBackup.restore(["regtest/wallet0": backedUp, "bitcoin/wallet0": backedUp], network: "regtest") { _ in
+            self.earlierAddressStore
+        }
+
+        let restored = SparkExitEarlierAddress(address: address(2), path: path(2), kind: .keptChange, sats: nil, date: Date(timeIntervalSince1970: 2))
+        XCTAssertEqual(try earlierAddressStore.load(), [onDevice, restored])
+    }
+
+    func testAMetadataBackupWithAnUnreadableEarlierAddressListKeepsTheRest() throws {
+        let json = #"{"version":1,"createdAt":1,"tagMetadata":[],"cache":{"hasSeenContactsIntro":true},"sparkExitEarlierAddresses":{"regtest/wallet0":[{"address":1}]}}"#
+
+        let backup = try JSONDecoder().decode(MetadataBackupV1.self, from: Data(json.utf8))
+
+        XCTAssertTrue(backup.cache.hasSeenContactsIntro, "one bad entry fails the whole metadata restore")
+        XCTAssertNil(backup.sparkExitEarlierAddresses)
     }
 }

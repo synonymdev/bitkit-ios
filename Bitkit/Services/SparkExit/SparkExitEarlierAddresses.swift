@@ -1,4 +1,5 @@
 import BitkitCore
+import Combine
 import Foundation
 
 /// A funding address an earlier exit left coins at, or may still receive them at, with the path that spends it. Kept
@@ -91,6 +92,10 @@ struct SparkExitEarlierAddress: Codable, Equatable, Identifiable {
 
 /// The earlier exits' addresses of a wallet, across exits. A wipe deletes it with the record.
 struct SparkExitEarlierAddressStore {
+    /// Sends on every write of any wallet's list, so the metadata backup that carries them runs again.
+    static let savedPublisher = savedSubject.eraseToAnyPublisher()
+    private static let savedSubject = PassthroughSubject<Void, Never>()
+
     let url: URL
 
     init(url: URL) {
@@ -130,10 +135,64 @@ struct SparkExitEarlierAddressStore {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .millisecondsSince1970
         try encoder.encode(entries).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        Self.savedSubject.send()
     }
 
     func delete() throws {
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         try FileManager.default.removeItem(at: url)
+    }
+}
+
+/// The earlier exit addresses in the metadata backup.
+enum SparkExitEarlierAddressBackup {
+    /// The entries of `store`, keyed `walletKey`; nil with none, or when the list can't be read, which then never
+    /// blocks the rest of the metadata.
+    static func backup(_ store: SparkExitEarlierAddressStore, walletKey: String) -> [String: [SparkExitEarlierAddressBackupV1]]? {
+        guard let entries = try? store.load(), !entries.isEmpty else { return nil }
+        return [walletKey: entries.map(\.backup)]
+    }
+
+    /// Lists each backed-up address of `network` in its wallet's store, next to the entries already there.
+    static func restore(
+        _ backedUp: [String: [SparkExitEarlierAddressBackupV1]]?,
+        network: String,
+        store: (Int) -> SparkExitEarlierAddressStore
+    ) {
+        for (key, entries) in backedUp ?? [:] {
+            let prefix = "\(network)/wallet"
+            guard key.hasPrefix(prefix), let walletIndex = Int(key.dropFirst(prefix.count)) else { continue }
+            let walletStore = store(walletIndex)
+            for entry in entries.compactMap(SparkExitEarlierAddress.init(backup:)) {
+                do {
+                    try walletStore.add(entry)
+                } catch {
+                    Logger.warn("Failed to restore the earlier Spark exit address: \(error)", context: "SparkExitEarlierAddressBackup")
+                }
+            }
+        }
+    }
+}
+
+extension SparkExitEarlierAddress {
+    var backup: SparkExitEarlierAddressBackupV1 {
+        SparkExitEarlierAddressBackupV1(
+            address: address,
+            path: path,
+            kind: kind.rawValue,
+            atMillis: Int64((date.timeIntervalSince1970 * 1000).rounded())
+        )
+    }
+
+    /// The backed-up entry, with what it holds read again later; nil for a kind this app does not know.
+    init?(backup: SparkExitEarlierAddressBackupV1) {
+        guard let kind = Kind(rawValue: backup.kind) else { return nil }
+        self.init(
+            address: backup.address,
+            path: backup.path,
+            kind: kind,
+            sats: nil,
+            date: Date(timeIntervalSince1970: Double(backup.atMillis) / 1000)
+        )
     }
 }

@@ -27,6 +27,9 @@ struct MetadataBackupV1: Codable {
     /// before this field, and in envelopes from an app that knows no names. Shared with
     /// bitkit-android, which spells the key the same way — see its `MetadataBackupV1`.
     let hwWalletNames: [String: String]?
+    /// The earlier Spark exit addresses each wallet watches, keyed `<network>/wallet<n>` as bitkit-android keys them.
+    /// Nil in envelopes written before this field.
+    var sparkExitEarlierAddresses: [String: [SparkExitEarlierAddressBackupV1]]?
 
     init(
         version: Int,
@@ -35,7 +38,8 @@ struct MetadataBackupV1: Codable {
         cache: AppCacheData,
         pubkySession: PubkySessionBackupV1?,
         pubkyContactProfileOverrides: [String: PubkyProfileData]?,
-        hwWalletNames: [String: String]? = nil
+        hwWalletNames: [String: String]? = nil,
+        sparkExitEarlierAddresses: [String: [SparkExitEarlierAddressBackupV1]]? = nil
     ) {
         self.version = version
         self.createdAt = createdAt
@@ -44,7 +48,35 @@ struct MetadataBackupV1: Codable {
         self.pubkySession = pubkySession
         self.pubkyContactProfileOverrides = pubkyContactProfileOverrides
         self.hwWalletNames = hwWalletNames
+        self.sparkExitEarlierAddresses = sparkExitEarlierAddresses
     }
+}
+
+extension MetadataBackupV1 {
+    /// An earlier exit address list this app can't read is left out, so it never fails the rest of the envelope.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        version = try c.decode(Int.self, forKey: .version)
+        createdAt = try c.decode(UInt64.self, forKey: .createdAt)
+        tagMetadata = try c.decode([PreActivityMetadata].self, forKey: .tagMetadata)
+        cache = try c.decode(AppCacheData.self, forKey: .cache)
+        pubkySession = try c.decodeIfPresent(PubkySessionBackupV1.self, forKey: .pubkySession)
+        pubkyContactProfileOverrides = try c.decodeIfPresent([String: PubkyProfileData].self, forKey: .pubkyContactProfileOverrides)
+        hwWalletNames = try c.decodeIfPresent([String: String].self, forKey: .hwWalletNames)
+        sparkExitEarlierAddresses = try? c.decodeIfPresent(
+            [String: [SparkExitEarlierAddressBackupV1]].self,
+            forKey: .sparkExitEarlierAddresses
+        )
+    }
+}
+
+/// An earlier Spark exit address as both apps back it up. `kind` is `keptChange` or `cancelledFunding`; a reader skips
+/// one it does not know. What the address holds is read again from the chain.
+struct SparkExitEarlierAddressBackupV1: Codable, Equatable {
+    let address: String
+    let path: String
+    let kind: String
+    let atMillis: Int64
 }
 
 struct PubkySessionBackupV1: Codable, Equatable {
