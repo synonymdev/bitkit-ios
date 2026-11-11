@@ -980,6 +980,10 @@ final class SparkManager: ChannelFreeLightningRail {
         let prepared: PrepareSendPaymentResponse
         let earlierPayments: [Payment]
         do {
+            // An exit spends every leaf, so no contact withdrawal starts while one runs.
+            guard !isExiting else {
+                throw ChannelFreeRailSendRefused(reason: t("wallet__payment_failed_description"))
+            }
             try claimContactWithdrawal()
         } catch {
             throw SparkWithdrawalNotSent(underlying: error)
@@ -1023,35 +1027,34 @@ final class SparkManager: ChannelFreeLightningRail {
             },
             paymentDeadline: paymentDeadline
         )
-        let response: SendPaymentResponse
-        do {
-            response = try await sdk.sendPayment(request: SendPaymentRequest(
-                prepareResponse: prepared,
-                options: .bitcoinAddress(confirmationSpeed: .medium),
-                idempotencyKey: pending.idempotencyKey
-            ))
-        } catch {
-            throw await Self.withdrawalSendFailure(
-                error,
-                closeUnsent: {
-                    await Self.closeUnsentWithdrawal(journaled, releaseProof: Self.releaseUnsentProof, failAllowance: Self.failAllowance)
-                },
-                settleLater: {
-                    let failedAt = UInt64(Date().timeIntervalSince1970)
-                    Task {
-                        await Self.settleAfterFailedWithdrawal(
-                            failedAt: failedAt,
-                            syncWallet: {
-                                _ = try await self.requireSdk().syncWallet(request: SyncWalletRequest())
-                                self.syncedThisRun = true
-                            },
-                            hasSynced: { await self.hasSynced(after: $0) },
-                            settle: { await self.settleContactWithdrawal(allowClear: $0) }
-                        )
-                    }
+        let idempotencyKey = pending.idempotencyKey
+        let response = try await Self.sendJournaledWithdrawal(
+            spends: spends,
+            send: {
+                try await sdk.sendPayment(request: SendPaymentRequest(
+                    prepareResponse: prepared,
+                    options: .bitcoinAddress(confirmationSpeed: .medium),
+                    idempotencyKey: idempotencyKey
+                ))
+            },
+            closeUnsent: {
+                await Self.closeUnsentWithdrawal(journaled, releaseProof: Self.releaseUnsentProof, failAllowance: Self.failAllowance)
+            },
+            settleLater: {
+                let failedAt = UInt64(Date().timeIntervalSince1970)
+                Task {
+                    await Self.settleAfterFailedWithdrawal(
+                        failedAt: failedAt,
+                        syncWallet: {
+                            _ = try await self.requireSdk().syncWallet(request: SyncWalletRequest())
+                            self.syncedThisRun = true
+                        },
+                        hasSynced: { await self.hasSynced(after: $0) },
+                        settle: { await self.settleContactWithdrawal(allowClear: $0) }
+                    )
                 }
-            )
-        }
+            }
+        )
         Logger.info("Sent Spark withdrawal '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
         pending.paymentId = response.payment.id
         Self.pendingContactWithdrawal = pending
@@ -1091,6 +1094,22 @@ final class SparkManager: ChannelFreeLightningRail {
         }
         guard case let .withdraw(txId, _, _) = payment.details else { return payment.id }
         return txId
+    }
+
+    /// Sends a contact withdrawal whose journal is open, counted in `spends` so an exit starting meanwhile refuses it or
+    /// waits for it. A send refused before it left closes the journal and ends as `SparkWithdrawalNotSent`; any other
+    /// failure settles later from Spark's payment list.
+    static func sendJournaledWithdrawal<T>(
+        spends: SparkSpends,
+        send: () async throws -> T,
+        closeUnsent: () async -> Void,
+        settleLater: () -> Void
+    ) async throws -> T {
+        do {
+            return try await spends.run(send)
+        } catch {
+            throw await withdrawalSendFailure(error, closeUnsent: closeUnsent, settleLater: settleLater)
+        }
     }
 
     /// What a failed `sendPayment` of a journaled withdrawal means. A refusal Spark makes before anything reaches the
