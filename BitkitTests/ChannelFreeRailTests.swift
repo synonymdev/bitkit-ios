@@ -25,6 +25,7 @@ final class ChannelFreeRailTests: XCTestCase {
         service.railAttemptsStore = UserDefaults(suiteName: "ChannelFreeRailTests")!
         service.forgetRailAttempts()
         service.forgetLdkAttempts()
+        service.clearSparkHistoryUnseeded()
         previousRailSupported = service.channelFreeRailSupported
         service.channelFreeRailSupported = { true }
         previousNow = service.now
@@ -34,6 +35,7 @@ final class ChannelFreeRailTests: XCTestCase {
         let service = Bitkit.LightningService.shared
         service.forgetRailAttempts()
         service.forgetLdkAttempts()
+        service.clearSparkHistoryUnseeded()
         service.railAttemptsStore = previousAttemptsStore
         service.channelFreeRailSupported = previousRailSupported
         service.now = previousNow
@@ -1143,6 +1145,69 @@ extension ChannelFreeRailTests {
         rail.listError = NSError(domain: "spark", code: 1)
         rail.balanceSats = 0
 
+        await assertReachesTheNode()
+    }
+
+    // MARK: - Restore
+
+    /// Marks the wallet restored `offset` seconds after the fixture invoice was created.
+    private func restore(secondsAfterTheInvoice offset: Int) throws {
+        let createdAt = try Int(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).secondsSinceEpoch())
+        let service = Bitkit.LightningService.shared
+        service.now = { Date(timeIntervalSince1970: TimeInterval(createdAt + offset)) }
+        service.markSparkHistoryUnseeded()
+        service.now = previousNow
+    }
+
+    /// Spark can't list its sends and has no balance to pay the invoice, so the send goes to the node.
+    private func leaveSparkUnsyncedAndEmpty() {
+        rail.syncedAfter = { _ in false }
+        rail.balanceSats = 0
+    }
+
+    private func assertRefusedUntilSparkLists(file: StaticString = #filePath, line: UInt = #line) async {
+        do {
+            _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+            XCTFail("A node send of an invoice made before the restore went out before Spark listed its sends", file: file, line: line)
+        } catch {
+            XCTAssertTrue(error is Bitkit.ChannelFreeRailSendRefused, "\(error)", file: file, line: line)
+        }
+        XCTAssertNil(rail.sentBolt11, file: file, line: line)
+    }
+
+    func testAnInvoiceMadeBeforeARestoreIsRefusedOverTheNodeUntilSparkSyncs() async throws {
+        try restore(secondsAfterTheInvoice: 60)
+        leaveSparkUnsyncedAndEmpty()
+
+        await assertRefusedUntilSparkLists()
+    }
+
+    func testAnInvoiceMadeAfterARestorePaysOverTheNodeWhileSparkIsUnsynced() async throws {
+        try restore(secondsAfterTheInvoice: -60)
+        leaveSparkUnsyncedAndEmpty()
+
+        await assertReachesTheNode()
+    }
+
+    func testAWalletNeverRestoredIsNeverHeldWhileSparkIsUnsynced() async {
+        leaveSparkUnsyncedAndEmpty()
+
+        await assertReachesTheNode()
+        XCTAssertNil(Bitkit.LightningService.shared.sparkHistoryUnseededSince)
+    }
+
+    func testSparksListingAfterASyncEndsTheRestoreHold() async throws {
+        try restore(secondsAfterTheInvoice: 60)
+        leaveSparkUnsyncedAndEmpty()
+        await assertRefusedUntilSparkLists()
+
+        // What Spark's synced event does once its sync reached it.
+        rail.syncedAfter = { _ in true }
+        await Bitkit.LightningService.shared.listRailSendsIfUnseeded()
+        // A later outage no longer holds the invoice, as Spark's list showed no send of it.
+        rail.syncedAfter = { _ in false }
+
+        XCTAssertNil(Bitkit.LightningService.shared.sparkHistoryUnseededSince)
         await assertReachesTheNode()
     }
 
