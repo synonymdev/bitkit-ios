@@ -2284,7 +2284,11 @@ class BlocktankService {
                 return try await operation()
             } catch {
                 if "\(error)".contains("401 Unauthorized") {
-                    throw error
+                    throw AppError(
+                        message: "Blocktank regtest auth is missing or was rejected. Launch the app with BLOCKTANK_REGTEST_AUTH=user:password.",
+                        debugMessage: "\(error)",
+                        underlyingError: error
+                    )
                 }
                 lastError = error
                 Logger.warn("Regtest operation failed on attempt \(attempt + 1)/\(maxRetries): \(error)", context: "BlocktankService")
