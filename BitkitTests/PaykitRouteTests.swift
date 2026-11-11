@@ -139,6 +139,41 @@ final class PaykitRouteTests: XCTestCase {
         XCTAssertNil(PaykitRouteService.routeUi(for: usdtOnly, canRouteThroughSpark: true, canPayDirectly: false))
     }
 
+    func testASparkWithdrawalIsWeighedAgainstSparksBalanceNotTheLightningLimit() {
+        let route = PaykitRouteUi(endpoints: [onchain], offersSparkLeg: true)
+        var quoted = route
+        quoted.serviceLeg = sparkLeg(amountSats: 999_000, feeSats: 500)
+
+        // Lightning's limit of 997,506 sats never caps a withdrawal from Spark's 1,000,000.
+        XCTAssertEqual(
+            PaykitRouteService.sparkWithdrawalValidity(route: route, amountSats: 999_000, sparkBalanceSats: 1_000_000),
+            true,
+            "continue asks spark for a quote"
+        )
+        XCTAssertEqual(
+            PaykitRouteService.sparkWithdrawalValidity(route: quoted, amountSats: 999_000, sparkBalanceSats: 1_000_000),
+            true,
+            "the quoted debit fits spark's balance"
+        )
+        XCTAssertEqual(
+            PaykitRouteService.sparkWithdrawalValidity(route: quoted, amountSats: 999_000, sparkBalanceSats: 999_499),
+            false,
+            "a debit past spark's balance can't be sent"
+        )
+        XCTAssertNil(
+            PaykitRouteService.sparkWithdrawalValidity(route: route, amountSats: 1_000_001, sparkBalanceSats: 1_000_000),
+            "past spark's balance, lightning's limit decides"
+        )
+        XCTAssertNil(
+            PaykitRouteService.sparkWithdrawalValidity(
+                route: PaykitRouteUi(endpoints: [onchain], offersSparkLeg: false),
+                amountSats: 999_000,
+                sparkBalanceSats: 1_000_000
+            ),
+            "without a spark leg, lightning's limit decides"
+        )
+    }
+
     // MARK: - Contact withdrawal journal
 
     func testJournaledWithdrawalMatchesOnlyItsOwnAttempt() {

@@ -134,6 +134,17 @@ enum PaykitRouteService {
         return legs
     }
 
+    /// Whether a Spark withdrawal carries `amountSats` on `route`, or nil when Lightning's limit decides. A withdrawal
+    /// is paid from Spark's whole balance, so Lightning's limit never caps it: a quoted leg fits when its debit, fees
+    /// included, does, and before the quote an amount the balance covers lets Continue ask for one.
+    static func sparkWithdrawalValidity(route: PaykitRouteUi?, amountSats: UInt64, sparkBalanceSats: UInt64) -> Bool? {
+        guard let route, route.offersSparkLeg, amountSats > 0 else { return nil }
+        if let leg = route.serviceLeg, leg.deliveredSat == amountSats {
+            return sparkBalanceSats >= leg.debitSat
+        }
+        return sparkBalanceSats >= amountSats ? true : nil
+    }
+
     /// Whether a None route is a short balance rather than a contact Bitkit can't pay.
     static func isBalanceShort(amountSats: UInt64, lightningSpendableSats: UInt64, onchainSpendableSats: UInt64) -> Bool {
         amountSats > lightningSpendableSats.saturatingAdd(onchainSpendableSats)

@@ -121,12 +121,35 @@ struct SendAmountView: View {
         }
         let minAmount = app.selectedWalletToPayFrom == .lightning ? 1 : Env.dustLimit
 
+        if !hwSend.isActive, app.selectedWalletToPayFrom == .lightning, let valid = sparkWithdrawalValidity {
+            return valid
+        }
         if app.selectedWalletToPayFrom == .lightning, let data = app.lnurlPayData,
            !data.accepts(amountSats: amountSats)
         {
             return false
         }
         return amountSats >= minAmount && amountSats <= availableAmount
+    }
+
+    /// Spark's whole balance pays a withdrawal to the contact, so Lightning's limit never caps it.
+    private var sparkWithdrawalBalanceSats: UInt64 {
+        guard app.contactPaymentContext != nil, app.paykitRoute?.offersSparkLeg == true, SparkManager.shared.isReady else { return 0 }
+        return SparkManager.shared.balanceSats
+    }
+
+    private var sparkWithdrawalValidity: Bool? {
+        PaykitRouteService.sparkWithdrawalValidity(
+            route: app.paykitRoute,
+            amountSats: amountSats,
+            sparkBalanceSats: sparkWithdrawalBalanceSats
+        )
+    }
+
+    /// The pad's cap: what Spending can send, or Spark's whole balance when a withdrawal can carry more.
+    private var inputCapSats: UInt64 {
+        guard !hwSend.isActive, app.selectedWalletToPayFrom == .lightning else { return availableAmount }
+        return max(availableAmount, sparkWithdrawalBalanceSats)
     }
 
     /// Determines if the current amount is a max amount send
@@ -339,7 +362,7 @@ struct SendAmountView: View {
                 }
             }
         }
-        .onChange(of: availableAmount, initial: true) { updateInputCap() }
+        .onChange(of: inputCapSats, initial: true) { updateInputCap() }
         .onChange(of: amountViewModel.maxExceededCount) { showMaxExceededToast() }
     }
 
@@ -478,7 +501,7 @@ struct SendAmountView: View {
 
     private func updateInputCap() {
         // Don't cap when nothing is sendable, so the pad stays usable (Continue stays disabled instead).
-        amountViewModel.maxAmountOverride = availableAmount > 0 ? availableAmount : nil
+        amountViewModel.maxAmountOverride = inputCapSats > 0 ? inputCapSats : nil
     }
 
     private var fundingSourceMenu: some View {
