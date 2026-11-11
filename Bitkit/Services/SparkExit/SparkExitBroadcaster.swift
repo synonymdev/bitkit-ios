@@ -147,8 +147,12 @@ struct EsploraSparkExitChain: SparkExitChain {
 
     /// On mainnet the chain service Spark connects with (`Env.sparkChainServiceUrl`) answers every read and takes
     /// broadcasts first, on its `/txs/package` (no `/v1`); the SDK's default hosts stay as broadcast fallbacks. On
-    /// regtest the SDK's default host (breez spark-sdk `default_rest_chain_services`) does both.
-    static func network(_ network: BreezSdkSpark.Network) -> EsploraSparkExitChain {
+    /// regtest the chain service Spark connects with, `regtestChainServiceUrl` (`SPARK_CHAIN_SERVICE_URL`), does both,
+    /// else the SDK's default host (breez spark-sdk `default_rest_chain_services`).
+    static func network(
+        _ network: BreezSdkSpark.Network,
+        regtestChainServiceUrl: String? = Env.sparkChainServiceUrl(for: .regtest)
+    ) -> EsploraSparkExitChain {
         switch network {
         case .mainnet:
             let electrs = URL(string: Env.sparkChainServiceUrl(for: .bitcoin)!)!
@@ -161,7 +165,8 @@ struct EsploraSparkExitChain: SparkExitChain {
                 ]
             )
         case .regtest:
-            return EsploraSparkExitChain(hosts: [URL(string: "https://regtest-mempool.us-west-2.sparkinfra.net/api")!])
+            let configured = regtestChainServiceUrl.flatMap(URL.init(string:))
+            return EsploraSparkExitChain(hosts: [configured ?? URL(string: "https://regtest-mempool.us-west-2.sparkinfra.net/api")!])
         default:
             return EsploraSparkExitChain(hosts: [])
         }

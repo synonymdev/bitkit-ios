@@ -3260,8 +3260,19 @@ final class SparkExitBroadcasterTests: XCTestCase {
             .init(url: mempool, packagePaths: ["/v1/txs/package", "/txs/package"]),
             .init(url: blockstream, packagePaths: ["/v1/txs/package", "/txs/package"]),
         ])
-        XCTAssertEqual(EsploraSparkExitChain.network(.regtest).readHosts.map(\.host), ["regtest-mempool.us-west-2.sparkinfra.net"])
+        XCTAssertEqual(
+            EsploraSparkExitChain.network(.regtest, regtestChainServiceUrl: nil).readHosts.map(\.host),
+            ["regtest-mempool.us-west-2.sparkinfra.net"]
+        )
     }
+
+    /// On regtest the exit reads and broadcasts on the chain Spark connects with when `SPARK_CHAIN_SERVICE_URL` names one.
+    func testTheRegtestExitUsesTheConfiguredSparkChain() {
+        let chain = EsploraSparkExitChain.network(.regtest, regtestChainServiceUrl: "http://localhost:3002")
+        XCTAssertEqual(chain.readHosts.map(\.absoluteString), ["http://localhost:3002"])
+        XCTAssertEqual(chain.broadcastHosts.map(\.url.absoluteString), ["http://localhost:3002"])
+    }
+
 
     func testSendsAPackageToBitkitElectrsWithoutTheV1Path() async {
         let http = FakeHTTP()
