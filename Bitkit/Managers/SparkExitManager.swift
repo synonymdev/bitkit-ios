@@ -211,7 +211,11 @@ final class SparkExitManager {
             try? await Task.sleep(nanoseconds: 100_000_000)
         }
         writeGate = SparkExitWriteGate()
-        try? store.delete()
+        do {
+            try store.deleteWithCopies()
+        } catch {
+            Logger.error("Failed to delete the wiped wallet's Spark exit record: \(error)", context: "SparkExitManager")
+        }
         try? lostLeafStore.delete()
         record = nil
         hasLoadedRecord = false

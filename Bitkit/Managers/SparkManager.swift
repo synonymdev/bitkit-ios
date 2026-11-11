@@ -549,6 +549,10 @@ final class SparkManager: ChannelFreeLightningRail {
         onStateChanged?()
         try Self.removeIfPresent(Env.sparkStorage(walletIndex: walletIndex))
         try Self.removeIfPresent(Env.sparkExitRestore(walletIndex: walletIndex))
+        // The exit's own wipe only logs a failed delete: here it throws, so the wipe is retried, and covers the wiped
+        // wallet's index even when the exit manager holds another one.
+        try SparkExitStore(walletIndex: walletIndex).deleteWithCopies()
+        try Self.removeIfPresent(Env.sparkExitLostLeaves(walletIndex: walletIndex))
     }
 
     nonisolated static func removeIfPresent(_ url: URL) throws {

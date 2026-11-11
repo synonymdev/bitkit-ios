@@ -603,6 +603,18 @@ struct SparkExitStore {
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         try FileManager.default.removeItem(at: url)
     }
+
+    /// Deletes the record and the copies kept aside for support (`keepCopyAside`, `setAside`), for a wallet being
+    /// wiped: they hold its addresses and signed transactions.
+    func deleteWithCopies() throws {
+        try delete()
+        let dir = url.deletingLastPathComponent()
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return }
+        let prefix = url.deletingPathExtension().lastPathComponent + ".unreadable-"
+        for name in names where name.hasPrefix(prefix) {
+            try FileManager.default.removeItem(at: dir.appendingPathComponent(name))
+        }
+    }
 }
 
 /// The ids of the leaves an older state of the wallet claimed on-chain, across exits. The operators keep listing such

@@ -50,6 +50,19 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(SparkExitManager.fundingCounterAfterForget(6, index: 3), 6, "a later address is in use")
     }
 
+    /// A wipe deletes the copies of an unreadable record kept aside, which hold the wiped wallet's addresses.
+    func testAWipeDeletesTheRecordsCopiesKeptAside() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = SparkExitStore(url: dir.appendingPathComponent("spark-exit.json"))
+        try store.save(SparkExitFixtures.record())
+        try store.keepCopyAside()
+
+        try store.deleteWithCopies()
+
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path), [])
+    }
+
     // MARK: H1 cancel
 
     func testCancelIsOffAfterAPaymentFromSavings() {
