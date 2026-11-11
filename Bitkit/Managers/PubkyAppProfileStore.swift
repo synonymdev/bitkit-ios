@@ -268,12 +268,12 @@ actor PubkyAppProfileStore {
             }
             if tags == previousTags {
                 // No tag change to report, so the save does not wait for the copy: it follows as a tracked refresh,
-                // which the next save waits for and a deletion refuses or waits for.
+                // which the next save waits for and a deletion refuses or waits for. It leaves the unread flag alone,
+                // which a load may have set since.
                 let id = UUID()
                 copyRefreshes[key, default: [:]][id] = Task {
                     do {
                         try await publishCopy(profile, expectedIdentity: key, generation: generation)
-                        tagsUnavailable.remove(key)
                     } catch {
                         Logger.warn("Failed to update Bitkit profile copy: \(error)", context: "PubkyAppProfileStore")
                     }
