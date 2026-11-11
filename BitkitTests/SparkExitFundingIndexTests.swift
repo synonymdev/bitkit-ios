@@ -9,6 +9,7 @@ final class SparkExitFundingIndexTests: XCTestCase {
     private var defaults: UserDefaults!
     private let chain = FakeSparkExitChain()
     private let key = SparkExitFundingIndexes.defaultsKey(network: "regtest", walletIndex: 0)
+    private let pendingKey = SparkExitFundingIndexes.recoveryPendingKey(network: "regtest", walletIndex: 0)
     private var earlierAddressStore: SparkExitEarlierAddressStore!
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
@@ -34,8 +35,20 @@ final class SparkExitFundingIndexTests: XCTestCase {
         "m/84'/1'/7797'/0/\(index)"
     }
 
+    private var recovery: SparkExitManager.FundingRecovery {
+        SparkExitManager.FundingRecovery(
+            defaults: defaults,
+            key: key,
+            pendingKey: pendingKey,
+            record: nil,
+            chain: chain,
+            earlierAddressStore: earlierAddressStore,
+            funding: { [unowned self] in (address($0), path($0)) }
+        )
+    }
+
     private func nextFundingIndex() async throws -> UInt32 {
-        try await SparkExitManager.nextFundingIndex(defaults: defaults, key: key, record: nil, chain: chain) { self.address($0) }
+        try await SparkExitManager.nextFundingIndex(recovery, now: now)
     }
 
     private func keptCoins(_ index: UInt32, sats: UInt64) -> SparkExitEarlierAddress {
@@ -176,7 +189,51 @@ final class SparkExitFundingIndexTests: XCTestCase {
         XCTAssertFalse(isFreshUsed)
     }
 
-    // MARK: Earlier exit addresses in the backup
+    // MARK: Earlier exit addresses after a restore
+
+    func testARestoredWalletWithNoCounterWatchesTheFundingAddressesThatStillHoldCoins() async throws {
+        // Index 2 still holds what a lost exit received; 0 and 1 were spent by earlier exits.
+        chain.usedAddresses = [address(0), address(1)]
+        chain.utxosByAddress[address(2)] = [SparkExitFixtures.utxo("lost", value: 5000)]
+
+        let next = try await SparkExitManager.recoverFunding(recovery, now: now)
+
+        XCTAssertEqual(next, 3)
+        XCTAssertEqual(try earlierAddressStore.load(), [keptCoins(2, sats: 5000)], "the lost funding goes unwatched")
+        XCTAssertEqual(defaults.object(forKey: key) as? Int, 3)
+    }
+
+    func testAFundingAddressWithHistoryButNoCoinsIsNotWatched() async throws {
+        chain.usedAddresses = [address(0)]
+        chain.utxosByAddress[address(1)] = [SparkExitFixtures.utxo("lost", value: 700)]
+
+        try await SparkExitManager.recoverFunding(recovery, now: now)
+
+        XCTAssertEqual(try earlierAddressStore.load(), [keptCoins(1, sats: 700)])
+    }
+
+    func testARestoredCounterBringsBackTheFundingAddressesThatStillHoldCoins() async throws {
+        SparkExitFundingIndexes.restore(["regtest/wallet0": 3], into: defaults)
+        chain.usedAddresses = [address(0), address(1)]
+        chain.utxosByAddress[address(2)] = [SparkExitFixtures.utxo("lost", value: 5000)]
+
+        try await SparkExitManager.recoverFunding(recovery, now: now)
+
+        XCTAssertEqual(try earlierAddressStore.load(), [keptCoins(2, sats: 5000)], "the lost funding goes unwatched")
+        XCTAssertTrue(chain.addressReads.isEmpty, "a restored counter needs no scan for the next index")
+        XCTAssertNil(defaults.object(forKey: pendingKey), "every start reads the funding addresses again")
+        XCTAssertEqual(defaults.integer(forKey: key), 3)
+    }
+
+    func testAKeptCounterWithNoRestorePendingReadsNoFundingAddress() async throws {
+        defaults.set(3, forKey: key)
+        chain.utxosByAddress[address(2)] = [SparkExitFixtures.utxo("lost", value: 5000)]
+
+        try await SparkExitManager.recoverFunding(recovery, now: now)
+
+        XCTAssertTrue(chain.addressReads.isEmpty)
+        XCTAssertEqual(try earlierAddressStore.load(), [])
+    }
 
     func testTheMetadataBackupCarriesTheEarlierExitAddresses() throws {
         try earlierAddressStore.add(keptCoins(2, sats: 600))

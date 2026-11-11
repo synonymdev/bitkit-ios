@@ -709,6 +709,11 @@ enum SparkExitFundingIndexes {
         "\(network)/wallet\(walletIndex)"
     }
 
+    /// Set when a restore brought the counter back, so the exit looks once for funding addresses that still hold coins.
+    static func recoveryPendingKey(network: String, walletIndex: Int) -> String {
+        "sparkExitFundingRecoveryPending-\(network)-\(walletIndex)"
+    }
+
     /// The counter the last exit start left, per network and wallet.
     static func defaultsKey(network: String, walletIndex: Int) -> String {
         "\(defaultsPrefix)\(network)-\(walletIndex)"
@@ -733,6 +738,8 @@ enum SparkExitFundingIndexes {
             let defaultsKey = defaultsKey(network: String(parts[0]), walletIndex: wallet)
             let local = defaults.object(forKey: defaultsKey) as? Int ?? 0
             defaults.set(max(local, index), forKey: defaultsKey)
+            // The exit then looks once for funding addresses below it that still hold coins and nothing watches.
+            defaults.set(true, forKey: recoveryPendingKey(network: String(parts[0]), walletIndex: wallet))
         }
     }
 }
