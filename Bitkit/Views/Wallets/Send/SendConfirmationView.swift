@@ -410,7 +410,7 @@ struct SendConfirmationView: View {
 
             if showDetails {
                 if let route = app.paykitRoute, let totalFeeSat = route.totalFeeSat {
-                    paykitRouteView(route, totalFeeSat: totalFeeSat)
+                    paykitRouteView(route, totalFeeSat: totalFeeSat, note: oneOffPaymentRequestNote)
                 } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                     onchainView(invoice)
                 } else if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
@@ -769,7 +769,7 @@ struct SendConfirmationView: View {
         }
     }
 
-    func paykitRouteView(_ route: PaykitRouteUi, totalFeeSat: UInt64) -> some View {
+    func paykitRouteView(_ route: PaykitRouteUi, totalFeeSat: UInt64, note: String?) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 SendSectionView(t("wallet__send_from")) {
@@ -825,6 +825,10 @@ struct SendConfirmationView: View {
                             .accessibilityIdentifier("TagsAddSend")
                     }
                 }
+            }
+
+            if let note {
+                PaymentRequestInvoiceNote(note: note)
             }
         }
     }
@@ -2635,3 +2639,43 @@ struct SendConfirmationView: View {
     }
 }
 
+#Preview("Spark leg with a request note") {
+    let onchain = PaykitEndpoint(methodId: "btc-regtest-p2wpkh", value: "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x")
+    let leg = ServiceRouteLeg(
+        service: SparkManager.routeService,
+        endpoint: onchain,
+        deliveredSat: 20000,
+        debitSat: 22190,
+        atomicity: "trusted",
+        validUntilUnix: 0
+    )
+    ScrollView {
+        SendConfirmationView(
+            navigationPath: .constant([]),
+            isSubmittingPayment: .constant(false),
+            hwSend: HwSendCoordinator(walletId: nil),
+            requestPinCheck: { true },
+            prepareIncomingPaymentRequest: {},
+            routingCacheResetAttempted: false,
+            isAmountReviewRequired: .constant(false)
+        )
+        .paykitRouteView(
+            PaykitRouteUi(endpoints: [onchain], offersSparkLeg: true, serviceLeg: leg),
+            totalFeeSat: 2190,
+            note: "Dinner on Friday"
+        )
+        .padding(16)
+    }
+    .background(Color.black)
+    .environmentObject(AppViewModel())
+    .environmentObject(ActivityListViewModel())
+    .environmentObject(ContactsManager())
+    .environmentObject(CurrencyViewModel())
+    .environmentObject(FeeEstimatesManager())
+    .environmentObject(SettingsViewModel.shared)
+    .environmentObject(SheetViewModel())
+    .environmentObject(WalletViewModel())
+    .environmentObject(TagManager())
+    .environment(HwWalletManager())
+    .preferredColorScheme(.dark)
+}
