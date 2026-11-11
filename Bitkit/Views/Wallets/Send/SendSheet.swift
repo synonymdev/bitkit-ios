@@ -305,26 +305,30 @@ struct SendSheet: View {
             return false
         }
 
-        // Node must be running
-        guard wallet.nodeLifecycleState == .running else { return true }
-
-        // For lightning payments, also need usable channels (peer connected)
         let isLightningPayment = app.scannedLightningInvoice != nil
             || app.lnurlPayData != nil
             || app.selectedWalletToPayFrom == .lightning
+        return Self.waitsForNode(
+            isNodeRunning: wallet.nodeLifecycleState == .running,
+            isLightningPayment: isLightningPayment,
+            hasAnyChannels: (wallet.channels?.isEmpty == false) || wallet.channelCount > 0,
+            hasUsableChannels: wallet.hasUsableChannels,
+            sparkCanPay: sparkCanPayScannedInvoice
+        )
+    }
 
-        if isLightningPayment {
-            // If there are no channels at all, don't show the sync overlay –
-            // there is nothing to \"sync into\". Let validation/UX handle this as
-            // an \"insufficient capacity / no channels\" case instead of a sync wait.
-            let hasAnyChannels = (wallet.channels?.isEmpty == false) || wallet.channelCount > 0
-            guard hasAnyChannels, !sparkCanPayScannedInvoice else { return false }
-
-            // We have channels but none are usable yet → show sync overlay
-            return !wallet.hasUsableChannels
+    /// A Lightning payment Spark can pay goes ahead without the node. Otherwise the node must run, and a Lightning
+    /// payment over channels waits for a usable one. With no channels at all there is nothing to sync into, so
+    /// validation reports the missing capacity instead.
+    static func waitsForNode(
+        isNodeRunning: Bool, isLightningPayment: Bool, hasAnyChannels: Bool, hasUsableChannels: Bool, sparkCanPay: Bool
+    ) -> Bool {
+        if isLightningPayment, sparkCanPay {
+            return false
         }
-
-        return false
+        guard isNodeRunning else { return true }
+        guard isLightningPayment, hasAnyChannels, !sparkCanPay else { return false }
+        return !hasUsableChannels
     }
 
     /// Spark pays without channels, so a channel that is still reconnecting is no reason to wait.

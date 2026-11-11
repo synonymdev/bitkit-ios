@@ -82,6 +82,8 @@ final class SparkManager: ChannelFreeLightningRail {
     /// When a withdrawal last failed, in seconds since 1970, until Spark reads a balance again or syncs after it
     /// (`keptBalanceSats`).
     @ObservationIgnored private var withdrawalFailedAt: UInt64?
+    /// Whether a withdrawal moved the whole balance, so a read of 0 is real until Spark reads a balance again.
+    @ObservationIgnored private var withdrewAll = false
     @ObservationIgnored private var listenerId: String?
     @ObservationIgnored private var connectTask: Task<Void, Error>?
     /// Bumped by `wipe`, so a connect that started before it disconnects instead of keeping the wiped wallet.
@@ -272,6 +274,7 @@ final class SparkManager: ChannelFreeLightningRail {
         balanceSats = 0
         keptBalanceSats = nil
         withdrawalFailedAt = nil
+        withdrewAll = false
         pendingDepositSats = 0
         deposits = []
         withdrawals = []
@@ -525,6 +528,7 @@ final class SparkManager: ChannelFreeLightningRail {
                 sentWithdrawalTxIds.insert(txId)
             }
             withdrawalFailedAt = response.payment.status == .failed ? Self.nowSecs() : nil
+            withdrewAll = response.payment.status != .failed
             try await Self.settleWithdrawal(status: response.payment.status) { try await self.refresh() }
         } catch {
             withdrawalFailedAt = Self.nowSecs()
@@ -1185,8 +1189,12 @@ final class SparkManager: ChannelFreeLightningRail {
         withdrawalFailedAt = Self.withdrawalFailedAt(
             withdrawalFailedAt, read: info.balanceSats, lastSyncedAt: info.lastSyncedAt, syncFailed: info.lastSyncError != nil
         )
+        withdrewAll = withdrewAll && info.balanceSats == 0
         let kept = Self.keptBalanceSats(
-            read: info.balanceSats, lastShown: shownBalanceSats, isStale: withdrawalFailedAt != nil || info.lastSyncError != nil
+            read: info.balanceSats,
+            lastShown: shownBalanceSats,
+            isStale: withdrawalFailedAt != nil || info.lastSyncError != nil,
+            withdrewAll: withdrewAll
         )
         let changed = !isReady || Self.balancesChanged(
             from: SparkBalances(readSats: balanceSats, keptSats: keptBalanceSats, pendingSats: pendingDepositSats),
@@ -1226,9 +1234,10 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// After a failed withdrawal, or while Spark's last sync failed (`isStale`), Spark can read 0 with the funds still
-    /// there, so the last shown balance stays shown until it reads one again.
-    nonisolated static func keptBalanceSats(read: UInt64, lastShown: UInt64, isStale: Bool) -> UInt64? {
-        read == 0 && isStale && lastShown > 0 ? lastShown : nil
+    /// there, so the last shown balance stays shown until it reads one again. After a withdrawal of the whole balance
+    /// (`withdrewAll`) the 0 is real.
+    nonisolated static func keptBalanceSats(read: UInt64, lastShown: UInt64, isStale: Bool, withdrewAll: Bool) -> UInt64? {
+        read == 0 && isStale && !withdrewAll && lastShown > 0 ? lastShown : nil
     }
 
     /// A failed withdrawal stops keeping the balance once Spark reads one, or reads 0 after a sync that ended after it.
@@ -1377,6 +1386,7 @@ final class SparkManager: ChannelFreeLightningRail {
         switch event {
         case .synced:
             syncedThisRun = true
+            await LightningService.shared.listRailSendsIfUnseeded()
             await refreshState()
             await Self.settleAfterSync(
                 since: Self.pendingContactWithdrawal?.startedAt ?? 0,
