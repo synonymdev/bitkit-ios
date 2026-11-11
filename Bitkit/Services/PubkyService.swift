@@ -321,6 +321,12 @@ enum PubkyService {
         return result.sessionAccess.exportSessionSecret()
     }
 
+    /// Signs in again with the stored key, to gain a scope an older session lacks, only while `expectedIdentity` is signed in
+    /// and the key is its own. See `PaykitSdkService.reauthenticate(expectedIdentity:)`.
+    static func reauthenticate(expectedIdentity: String) async throws {
+        _ = try await PaykitSdkService.shared.reauthenticate(expectedIdentity: expectedIdentity)
+    }
+
     // MARK: - File Fetching
 
     /// Fetch raw bytes from a `pubky://` URI via PKDNS resolution.
@@ -748,6 +754,22 @@ actor PaykitSdkService {
     func signIn(secretKeyHex: String) async throws -> PubkySessionBootstrapResult {
         try await operationLock.withLock {
             try await signInLocked(secretKeyHex: secretKeyHex)
+        }
+    }
+
+    /// Signs in again with the stored key only while `expectedIdentity` is signed in and the key is its own, both checked in
+    /// the same locked operation as the sign-in, so a sign-out or another identity's sign-in that lands first is never
+    /// undone and throws `identityChanged`.
+    func reauthenticate(
+        expectedIdentity: String,
+        secretKeyHex: () -> String? = { PubkyProfileManager.activeSecretKeyHex() }
+    ) async throws -> PubkySessionBootstrapResult {
+        try await operationLock.withLock {
+            try await Self.requireSignedInIdentity(expectedIdentity, in: handle())
+            guard let secretKeyHex = secretKeyHex(),
+                  PubkyPublicKeyFormat.matches(try? PubkyProfileManager.publicKeyFromSecretKey(secretKeyHex), expectedIdentity)
+            else { throw PubkyServiceError.identityChanged }
+            return try await signInLocked(secretKeyHex: secretKeyHex)
         }
     }
 

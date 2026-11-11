@@ -238,7 +238,7 @@ actor PubkyAppProfileStore {
         let snapshot: Paykit.PubkyProfileSnapshot
         do {
             snapshot = try await admitted(key, generation: generation) {
-                try await withPubkyAppScope {
+                try await withPubkyAppScope(key) {
                     try await PubkyService.publishPubkyProfile(update, expectedRevision: data.baseRevision, expectedIdentity: key)
                 }
             }
@@ -348,7 +348,7 @@ actor PubkyAppProfileStore {
     /// Uploads a JPEG avatar as a pubky.app blob and file and returns the file URI for the profile image.
     func uploadAvatar(_ jpegData: Data, expectedIdentity: String?) async throws -> String {
         let key = try await Self.identity(expectedIdentity)
-        return try await withPubkyAppScope {
+        return try await withPubkyAppScope(key) {
             try await PubkyService.uploadPubkyAppAvatar(bytes: jpegData, contentType: "image/jpeg", expectedIdentity: key)
         }
     }
@@ -389,7 +389,7 @@ actor PubkyAppProfileStore {
         let snapshot: Paykit.PubkyProfileSnapshot
         do {
             snapshot = try await admitted(publicKey, generation: generation) {
-                try await withPubkyAppScope {
+                try await withPubkyAppScope(publicKey) {
                     try await PubkyService.publishPubkyProfile(update, expectedRevision: nil, expectedIdentity: publicKey)
                 }
             }
@@ -409,7 +409,7 @@ actor PubkyAppProfileStore {
         generation: Int
     ) async -> Paykit.PubkyProfileSnapshot? {
         do {
-            let moved = try await admitted(publicKey, generation: generation) { try await withPubkyAppScope {
+            let moved = try await admitted(publicKey, generation: generation) { try await withPubkyAppScope(publicKey) {
                 let bytes = try await PubkyService.fetchFile(uri: uri, maxBytes: Self.avatarMaxBytes)
                 let image = try await PubkyService.uploadPubkyAppAvatar(
                     bytes: bytes,
@@ -442,7 +442,7 @@ actor PubkyAppProfileStore {
             await withCheckedContinuation { writeGate.onWritesSettled(key, $0) }
         }
         if !keepPubkyAppProfile, let revision = try await PubkyService.fetchPubkyProfileWithRevision(publicKey: key)?.revision {
-            try await withPubkyAppScope {
+            try await withPubkyAppScope(key) {
                 try await PubkyService.deletePubkyProfile(expectedRevision: revision, expectedIdentity: key)
             }
             profilesByRevision[key] = nil
@@ -473,13 +473,14 @@ actor PubkyAppProfileStore {
         }
     }
 
-    /// Sessions from builds before pubky.app profile writes lack its scope; sign in again once to gain it.
-    private func withPubkyAppScope<T>(_ operation: () async throws -> T) async throws -> T {
+    /// Sessions from builds before pubky.app profile writes lack its scope; sign in again once to gain it, only while
+    /// `identity` is still signed in, so a sign-out that lands meanwhile is never undone.
+    private func withPubkyAppScope<T>(_ identity: String, _ operation: () async throws -> T) async throws -> T {
         do {
             return try await operation()
         } catch let error as PaykitError {
-            guard case .Identity = error, let secretKeyHex = PubkyProfileManager.activeSecretKeyHex() else { throw error }
-            _ = try await PubkyService.signIn(secretKeyHex: secretKeyHex)
+            guard case .Identity = error else { throw error }
+            try await PubkyService.reauthenticate(expectedIdentity: identity)
             return try await operation()
         }
     }
