@@ -192,6 +192,8 @@ final class FakeSparkExitRecovering: SparkExitRecovering, @unchecked Sendable {
     var builds: [RecoverFundsResponse] = []
     var checks: [CheckRecoverFundsResponse] = []
     var recoverError: Error?
+    /// Errors the next recovers throw, in order, before `recoverError`.
+    var recoverErrors: [Error] = []
     /// Thrown by the next prepares, in order.
     var prepareErrors: [Error] = []
     var preparedByRequest: ((PrepareRecoverFundsRequest) -> PrepareRecoverFundsResponse)?
@@ -209,6 +211,9 @@ final class FakeSparkExitRecovering: SparkExitRecovering, @unchecked Sendable {
 
     func recover(_ request: RecoverFundsRequest, signer _: CpfpSigner?) async throws -> RecoverFundsResponse {
         recoverRequests.append(request)
+        if !recoverErrors.isEmpty {
+            throw recoverErrors.removeFirst()
+        }
         if let recoverError {
             throw recoverError
         }
@@ -1878,6 +1883,29 @@ final class SparkExitDriverTests: XCTestCase {
         chain.tip = 1001
         record = try await driver().tick(record)
         XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2"], "leaf-1's refund n2 was not sent")
+    }
+
+    /// An unverified rebuild that cannot exit leaf-3 leaves it behind and rebuilds on the next tick: with leaf-1 still
+    /// unread, that rebuild keeps the valid generation and leaf-1's refund n2.
+    func testARebuildAfterAnUnverifiedRebuildLeftALeafBehindKeepsLeafOnesRefund() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.leafIds = ["leaf-1", "leaf-2", "leaf-3"]
+        record.adopt(leafOneSteps(.unverified), at: clock)
+        var prepared = SparkExitFixtures.prepared(funding: nil, leaves: ["leaf-2", "leaf-3"])
+        prepared.skipped = [SkippedLeaf(leafId: "leaf-1", valueSats: 100_000, reason: .unverified)]
+        sdk.preparedResponse = prepared
+        sdk.recoverErrors = [SdkError.SparkError("Leaf leaf-3 cannot be exited: its refund cannot pay its own fee at this fee rate")]
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("m1", cpfp: "03c1")])]
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.leftBehindLeaves?.map(\.leafId), ["leaf-3"])
+        chain.tip = 1001
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.generation, 1, "the rebuild adopted a recovery without leaf-1's refund n2")
+        XCTAssertTrue(saved.allSatisfy { $0.generation == 1 }, "a killed run would resume the recovery without leaf-1")
+        XCTAssertFalse(record.isRebuilding, "the valid generation is no longer checked or sent")
+        XCTAssertEqual(record.recovery?.response.transactions.map(\.txid), ["n1", "n2"])
     }
 
     /// Leaf-1 reads as waiting for its timelock, unread again a week later, then ready: n2 goes out.
