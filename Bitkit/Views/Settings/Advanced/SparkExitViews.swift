@@ -202,7 +202,7 @@ struct SparkExitFundingView: View {
                         .padding(.top, 32)
 
                     BodyMText(
-                        t("lightning__spark_exit__funding_text", variables: ["amount": currency.primaryAmountText(sats: fundingSats)]),
+                        t("lightning__spark_exit__funding_text", variables: ["amount": currency.bitcoinAmountText(sats: fundingSats)]),
                         accentFont: Fonts.bold
                     )
                     .fixedSize(horizontal: false, vertical: true)
@@ -345,7 +345,7 @@ struct SparkExitFundingAddress: View {
 
             BodySText(
                 t("lightning__spark_exit__fund_external_text",
-                  variables: ["amount": sparkExitAmountAccent(currency.primaryAmountText(sats: requiredSats))]),
+                  variables: ["amount": sparkExitAmountAccent(currency.bitcoinAmountText(sats: requiredSats))]),
                 accentColor: .white,
                 accentFont: Fonts.bold
             )
@@ -365,9 +365,9 @@ struct SparkExitFundingAddress: View {
 
             if let missingSats = SparkExitMath.partialFundingSats(receivedSats: receivedSats, requiredSats: targetSats) {
                 BodySText(t("lightning__spark_exit__fund_partial", variables: [
-                    "received": sparkExitAmountAccent(currency.primaryAmountText(sats: receivedSats)),
-                    "required": sparkExitAmountAccent(currency.primaryAmountText(sats: targetSats)),
-                    "missing": sparkExitAmountAccent(currency.primaryAmountText(sats: missingSats)),
+                    "received": sparkExitAmountAccent(currency.bitcoinAmountText(sats: receivedSats)),
+                    "required": sparkExitAmountAccent(currency.bitcoinAmountText(sats: targetSats)),
+                    "missing": sparkExitAmountAccent(currency.bitcoinAmountText(sats: missingSats)),
                 ]), accentColor: .white, accentFont: Fonts.bold)
                     .accessibilityIdentifier("SparkExitFundingPartial")
             } else if showsSeen, receivedSats >= targetSats, targetSats > 0 {
@@ -640,7 +640,7 @@ struct SparkExitProgressView: View {
         case .needsFunding where !isFundingOnItsWay:
             t(
                 "lightning__spark_exit__needs_funding_text",
-                variables: ["amount": currency.primaryAmountText(sats: record.flatMap { SparkExitMath.neededSats($0, state: fundingState) } ?? 0)]
+                variables: ["amount": currency.bitcoinAmountText(sats: record.flatMap { SparkExitMath.neededSats($0, state: fundingState) } ?? 0)]
             )
         default: t("lightning__spark_exit__progress_text")
         }
