@@ -495,9 +495,11 @@ final class SparkExitReviewTests: XCTestCase {
         record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 20000)
         record.fundingStrategy = SparkExitRecord.perNodeStrategy
         record.earlierReceivedSats = ["sweep-1": 40000]
+        record.outsideSats = 14167
         let salvaged = try XCTUnwrap(SparkExitRecordCoder.salvage(SparkExitRecordCoder.encode(record)))
         XCTAssertEqual(salvaged.fundingStrategy, SparkExitRecord.perNodeStrategy)
         XCTAssertEqual(salvaged.earlierReceivedSats, ["sweep-1": 40000])
+        XCTAssertEqual(salvaged.outsideSats, 14167)
     }
 
     /// A salvaged exit imports the exit data it kept before it is prepared again: the SDK may no longer hold a leaf
@@ -612,12 +614,13 @@ final class SparkExitReviewTests: XCTestCase {
 
         let requote = await SparkExitManager.requote(sdk, confirmed: confirmed, feeRate: 2, destination: "bcrt1qdestination", lostLeafIds: [])
         let fresh = try XCTUnwrap(requote)
-        let record = try XCTUnwrap(SparkExitManager.requoted(SparkExitFixtures.record(), fresh: fresh))
+        let record = try XCTUnwrap(SparkExitManager.requoted(SparkExitFixtures.record(), fresh: fresh, sparkBalanceSats: 214_167))
 
         XCTAssertEqual(record.leafIds, ["leaf-2", "leaf-3"])
         XCTAssertEqual(record.phase, .awaitingFunding(requiredSats: 35000))
         XCTAssertEqual(record.expectedSats, fresh.incomingSats)
         XCTAssertEqual(record.leafTotalSats, 200_000)
+        XCTAssertEqual(record.outsideSats, 14167, "what stays on Spark beyond the fresh leaves")
         XCTAssertEqual(sdk.prepareRequests.last?.destination, "bcrt1qdestination")
     }
 
@@ -645,7 +648,7 @@ final class SparkExitReviewTests: XCTestCase {
         struct WriteFailed: Error {}
         let started = SparkExitFixtures.record()
         let fresh = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 25000, leaves: ["leaf-2"]))
-        let requoted = try XCTUnwrap(SparkExitManager.requoted(started, fresh: fresh))
+        let requoted = try XCTUnwrap(SparkExitManager.requoted(started, fresh: fresh, sparkBalanceSats: 0))
         var settled: [String] = []
 
         let noTransfer = await SparkExitManager.writeRequote(
@@ -879,7 +882,7 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: confirmed, fresh: higher), 20000)
         XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: confirmed, fresh: lower), 15000)
 
-        var record = try XCTUnwrap(SparkExitManager.requoted(SparkExitFixtures.record(), fresh: higher))
+        var record = try XCTUnwrap(SparkExitManager.requoted(SparkExitFixtures.record(), fresh: higher, sparkBalanceSats: 0))
         record.fundingPaymentTxid = "paid"
         let paid = [SparkExitFixtures.utxo("paid", value: 20000)]
         guard case let .ask(sats, receivedSats) = SparkExitMath.fundingState(record, utxos: paid) else {

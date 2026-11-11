@@ -778,6 +778,7 @@ final class SparkExitManager {
             skippedLeafCount: quote.prepared.skipped.count
         )
         record.fundingStrategy = SparkExitRecord.perNodeStrategy
+        record.outsideSats = SparkExitMath.staysOnSparkSats(sparkBalanceSats: SparkManager.shared.balanceSats, record: record)
         let transfers = TransferService(lightningService: .shared)
         let store = store
         record = try await Self.writeStart(
@@ -822,7 +823,7 @@ final class SparkExitManager {
                destination: destination,
                lostLeafIds: (try? lostLeafStore.load()) ?? []
            ),
-           let requoted = Self.requoted(started, fresh: fresh)
+           let requoted = Self.requoted(started, fresh: fresh, sparkBalanceSats: SparkManager.shared.balanceSats)
         {
             let transfers = TransferService(lightningService: .shared)
             let store = store
@@ -887,8 +888,8 @@ final class SparkExitManager {
         }
     }
 
-    /// The started exit over the fresh quote's leaves, amount and funding.
-    nonisolated static func requoted(_ record: SparkExitRecord, fresh: SparkExitQuote) -> SparkExitRecord? {
+    /// The started exit over the fresh quote's leaves, amount and funding, and what `sparkBalanceSats` holds beyond them.
+    nonisolated static func requoted(_ record: SparkExitRecord, fresh: SparkExitQuote, sparkBalanceSats: UInt64) -> SparkExitRecord? {
         guard case .awaitingFunding = record.phase else { return nil }
         var record = record
         record.phase = .awaitingFunding(requiredSats: fresh.fundingSats)
@@ -896,6 +897,7 @@ final class SparkExitManager {
         record.leafTotalSats = fresh.leafTotalSats
         record.expectedSats = fresh.incomingSats
         record.skippedLeafCount = fresh.prepared.skipped.count
+        record.outsideSats = SparkExitMath.staysOnSparkSats(sparkBalanceSats: sparkBalanceSats, record: record)
         return record
     }
 

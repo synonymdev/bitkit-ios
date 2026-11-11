@@ -186,6 +186,9 @@ struct SparkExitRecord: Codable, Equatable {
     var leafIds: [String]
     /// What the quote's leaves hold together, for telling how much of the Spark balance is outside the exit.
     var leafTotalSats: UInt64?
+    /// Spark's balance beyond the quote's leaves when the exit started: what stays on Spark, also once published leaves
+    /// left the balance.
+    var outsideSats: UInt64?
     var funding: [Funding]
     /// Bumped on every rebuild. Broadcasts are logged per generation and a rebuilt recovery replaces the old one
     /// entirely, so older hex is never sent again.
@@ -697,6 +700,7 @@ enum SparkExitRecordCoder {
         record.exitStateSnapshot = kept.exitStateSnapshot
         record.fundingStrategy = kept.fundingStrategy
         record.earlierReceivedSats = kept.earlierReceivedSats
+        record.outsideSats = kept.outsideSats
         // Change and fan-out outputs of earlier generations at the funding address stay the exit's own, not new funding.
         let chained = (kept.earlierCpfpTxids ?? []) + (kept.recovery.map { SparkExitTxid.chainedTxids($0.response) } ?? [])
         record.earlierCpfpTxids = chained.isEmpty ? nil : chained
@@ -722,10 +726,12 @@ enum SparkExitRecordCoder {
         let recovery: StoredRecovery?
         let fundingStrategy: String?
         let earlierReceivedSats: [String: UInt64]?
+        let outsideSats: UInt64?
 
         private enum CodingKeys: String, CodingKey {
             case network, createdAt, phase, feeRateSatPerVbyte, destination, leafIds, leafTotalSats, funding, transferId, expectedSats
             case lostLeaves, leftBehindLeaves, exitStateSnapshot, earlierCpfpTxids, recovery, fundingStrategy, earlierReceivedSats
+            case outsideSats
         }
 
         init(from decoder: Decoder) throws {
@@ -747,6 +753,7 @@ enum SparkExitRecordCoder {
             recovery = try? c.decodeIfPresent(StoredRecovery.self, forKey: .recovery)
             fundingStrategy = try? c.decodeIfPresent(String.self, forKey: .fundingStrategy)
             earlierReceivedSats = try? c.decodeIfPresent([String: UInt64].self, forKey: .earlierReceivedSats)
+            outsideSats = try? c.decodeIfPresent(UInt64.self, forKey: .outsideSats)
         }
     }
 }

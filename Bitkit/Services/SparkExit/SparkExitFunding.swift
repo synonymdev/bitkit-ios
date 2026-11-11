@@ -620,11 +620,14 @@ enum SparkExitMath {
         return record.expectedSats.saturatingSub(received).saturatingSub(unpaid).saturatingSub(record.lostSats)
     }
 
-    /// What the Spark balance holds beyond the exit's leaves: value that reached Spark after the quote, such as a
-    /// counter-swap claimed late, which this exit leaves on Spark. Nil when nothing is beyond them.
+    /// What stays on Spark while the exit runs: the Spark balance beyond the exit's leaves, such as a counter-swap
+    /// claimed late, or, once published leaves left the balance, what the start saw beyond them (`outsideSats`),
+    /// whichever is more. Nil when nothing is beyond them.
     static func outsideExitSats(sparkBalanceSats: UInt64, record: SparkExitRecord) -> UInt64? {
         guard record.isActive else { return nil }
-        return staysOnSparkSats(sparkBalanceSats: sparkBalanceSats, record: record)
+        let live = staysOnSparkSats(sparkBalanceSats: sparkBalanceSats, record: record) ?? 0
+        let outside = max(live, record.outsideSats ?? 0)
+        return outside > 0 ? outside : nil
     }
 
     /// What the Spark balance holds beyond the exit's leaves, in any phase: what a failed exit leaves on Spark. Lost

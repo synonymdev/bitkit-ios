@@ -315,6 +315,7 @@ final class SparkExitRecordTests: XCTestCase {
         record.fundingPaymentTxid = "pay"
         record.spentStepStrikes = ["r1": 1]
         record.lostLeaves = [.init(leafId: "leaf-1", valueSats: 5000)]
+        record.outsideSats = 14167
         XCTAssertEqual(try SparkExitRecordCoder.decode(SparkExitRecordCoder.encode(record)), record)
     }
 
@@ -2401,6 +2402,21 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertNil(SparkExitMath.outsideExitSats(sparkBalanceSats: 17097, record: record))
         record.phase = .done
         XCTAssertNil(SparkExitMath.outsideExitSats(sparkBalanceSats: 49865, record: record))
+    }
+
+    /// The hosted-regtest run: 14,167 sats stay on Spark, and the exit's 100,000 sats of leaves are published, so they
+    /// left the balance.
+    func testSpendingKeepsWhatStaysOnSparkOnceTheExitsPublishedLeavesLeftItsBalance() {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.leafTotalSats = 100_000
+        record.outsideSats = 14167
+
+        let outside = SparkExitMath.outsideExitSats(sparkBalanceSats: 14167, record: record)
+
+        XCTAssertEqual(outside, 14167)
+        XCTAssertEqual(WalletViewModel.spendingSparkSats(isExiting: true, balanceSats: 14167, outsideExitSats: outside), 14167)
+        // While the leaves still count in the balance, a late claim beyond them still shows.
+        XCTAssertEqual(SparkExitMath.outsideExitSats(sparkBalanceSats: 120_000, record: record), 20000)
     }
 
     /// A failed exit claims only what Spark still holds beyond its leaves, never the leaves it lost.
