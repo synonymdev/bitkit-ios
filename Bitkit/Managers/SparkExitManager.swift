@@ -91,9 +91,13 @@ final class SparkExitManager {
     /// Recomputes the wallet's totals, through Spark's state hook, when what they read from the exit changed.
     @ObservationIgnored private let balanceWatch = SparkExitBalanceWatch { SparkManager.shared.onStateChanged?() }
 
-    /// The app uses `shared`; tests make their own, on a wallet index no wallet uses.
-    init(walletIndex: Int = 0) {
+    /// The chain a test drives the exit on, in place of the network's hosts.
+    @ObservationIgnored private let testChain: SparkExitChain?
+
+    /// The app uses `shared`; tests make their own, on a wallet index no wallet uses, optionally on their own chain.
+    init(walletIndex: Int = 0, chain: SparkExitChain? = nil) {
         self.walletIndex = walletIndex
+        testChain = chain
     }
 
     private func noteBalanceInputs() {
@@ -236,6 +240,9 @@ final class SparkExitManager {
     }
 
     private var chain: SparkExitChain? {
+        if let testChain {
+            return testChain
+        }
         guard let network = SparkManager.exitNetwork else { return nil }
         return EsploraSparkExitChain.network(network)
     }
@@ -588,8 +595,9 @@ final class SparkExitManager {
             if updated.phase != current.phase {
                 await refreshFundingSeen(chain: chain, record: updated)
             }
-            // The result may have been opened while this tick ran.
-            if record?.isResultSeen == true, updated.isResultSeen != true {
+            // The result may have been opened while this tick ran; a reset the driver made, such as for change kept
+            // after the result was opened, stays.
+            if record?.isResultSeen == true, current.isResultSeen != true, updated.isResultSeen != true {
                 updated.isResultSeen = true
                 try? store.save(updated)
             }

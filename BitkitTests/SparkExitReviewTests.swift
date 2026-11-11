@@ -837,6 +837,35 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(refreshed?.map(\.address), [first.address, added.address])
     }
 
+    /// The foreground tick keeps the driver's reset of a seen result: change kept after the result was opened shows
+    /// that result again with its path.
+    @MainActor func testTheForegroundTickKeepsTheDriversResetOfASeenResult() async throws {
+        let walletIndex = 9996
+        let store = SparkExitStore(walletIndex: walletIndex)
+        defer {
+            try? store.delete()
+            try? SparkExitEarlierAddressStore(walletIndex: walletIndex).delete()
+            try? SparkExitLostLeafStore(walletIndex: walletIndex).delete()
+        }
+        var record = SparkExitFixtures.record(phase: .failed(reason: "Nothing could be recovered"))
+        record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 9000)
+        record.leftover = [.init(txid: String(repeating: "a", count: 64), vout: 0, valueSats: 600)]
+        record.leftoverSweep = SparkExitRecord.LeftoverSweep(waitingSince: 1000, checkedAtHeight: 1000)
+        record.isResultSeen = true
+        XCTAssertTrue(record.needsDriving)
+        XCTAssertFalse(record.hasUnseenResult)
+        try store.save(record)
+        chain.tip = 1000 + SparkExitDriver.sweepWaitBlocks
+        let exit = SparkExitManager(walletIndex: walletIndex, chain: chain)
+        exit.load(walletIndex: walletIndex)
+
+        await exit.tick()
+
+        XCTAssertEqual(exit.record?.isChangeKept, true)
+        XCTAssertEqual(exit.record?.hasUnseenResult, true, "the tick hid the kept change's result again")
+        XCTAssertEqual(try store.load()?.hasUnseenResult, true, "the stored record hid the kept change's result again")
+    }
+
     // MARK: What stays on Spark (Android 124d66170, caa349d4b)
 
     /// The start and the requote save what stays on Spark without the lost leaves Spark still counts: 100,000 sats
