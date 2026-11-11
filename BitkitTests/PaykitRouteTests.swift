@@ -512,6 +512,80 @@ final class PaykitRouteTests: XCTestCase {
     }
 
     @MainActor
+    func testADirectRerouteFromBolt11BackToLnurlPaysTheLnurl() async {
+        let (app, route, bolt11, lnurl) = openLightningContact()
+
+        let first = await routeDirectly(app, route, to: bolt11)
+        XCTAssertEqual(first, .direct)
+        XCTAssertNil(app.lnurlPayData)
+
+        let second = await routeDirectly(app, app.paykitRoute ?? route, to: lnurl)
+        XCTAssertEqual(second, .direct)
+        XCTAssertEqual(app.lnurlPayData?.uri, lnurl.value, "the LNURL pick must pay the LNURL, not the skipped invoice")
+        XCTAssertNil(app.scannedLightningInvoice)
+    }
+
+    @MainActor
+    func testADirectRerouteFromLnurlBackToBolt11PaysTheInvoice() async {
+        let (app, route, bolt11, lnurl) = openLightningContact()
+
+        let first = await routeDirectly(app, route, to: lnurl)
+        XCTAssertEqual(first, .direct)
+        XCTAssertNil(app.scannedLightningInvoice, "the LNURL pick must not leave the invoice to pay")
+
+        let second = await routeDirectly(app, app.paykitRoute ?? route, to: bolt11)
+        XCTAssertEqual(second, .direct)
+        XCTAssertEqual(app.scannedLightningInvoice?.bolt11, bolt11.value)
+        XCTAssertNil(app.lnurlPayData)
+    }
+
+    @MainActor
+    private func openLightningContact() -> (AppViewModel, PaykitRouteUi, PaykitEndpoint, PaykitEndpoint) {
+        snapshotAppDefaultsDomain()
+        let app = AppViewModel()
+        let bolt11 = PaykitEndpoint(
+            methodId: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            value: "lnbcrt1contactreroute"
+        )
+        app.contactPaymentContext = ContactPaymentContext(publicKey: "contact", privatePaymentContext: nil, endpoints: [])
+        app.scannedLightningInvoice = LightningInvoice(
+            bolt11: bolt11.value,
+            paymentHash: Data(),
+            amountSatoshis: 0,
+            timestampSeconds: 1,
+            expirySeconds: 3600,
+            isExpired: false,
+            description: nil,
+            networkType: .regtest,
+            payeeNodeId: nil
+        )
+        app.lnurlPayData = LnurlPayData(
+            uri: lightning.value,
+            callback: "https://example.com/pay",
+            minSendable: 1000,
+            maxSendable: 100_000_000,
+            metadataStr: "[]",
+            commentAllowed: nil,
+            allowsNostr: false,
+            nostrPubkey: nil
+        )
+        app.selectedWalletToPayFrom = .lightning
+        return (app, PaykitRouteUi(endpoints: [bolt11, lightning], offersSparkLeg: false), bolt11, lightning)
+    }
+
+    @MainActor
+    private func routeDirectly(_ app: AppViewModel, _ route: PaykitRouteUi, to endpoint: PaykitEndpoint) async -> PaykitRouteOutcome {
+        await app.routeContactPayment(
+            route,
+            amountSats: 2000,
+            source: .spending,
+            lightningSpendableSats: 50000,
+            onchainSpendableSats: 0,
+            request: nil
+        ) { _, _, _, _, _ in .direct(endpoint: endpoint) }
+    }
+
+    @MainActor
     func testAStaleRecoveryNeverClearsANewerWithdrawalsJournal() async {
         snapshotAppDefaultsDomain()
         let older = SparkContactWithdrawal(address: onchain.value, amountSats: 20000, contact: "contact", startedAt: 1000)

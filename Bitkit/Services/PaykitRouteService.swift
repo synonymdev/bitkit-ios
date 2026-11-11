@@ -3,11 +3,13 @@ import Foundation
 import Paykit
 
 /// A contact payment bitkit-core's Paykit router picks the way for: the contact's bitcoin endpoints, whether a Spark leg
-/// may reach its on-chain ones, and the leg once the router picked one.
+/// may reach its on-chain ones, the leg once the router picked one, and the decoded invoice and LNURL a Direct pick pays.
 struct PaykitRouteUi: Equatable {
     let endpoints: [PaykitEndpoint]
     let offersSparkLeg: Bool
     var serviceLeg: ServiceRouteLeg?
+    var invoice: LightningInvoice?
+    var lnurl: LnurlPayData?
 
     var deliveredSat: UInt64? {
         serviceLeg?.deliveredSat
@@ -259,6 +261,8 @@ extension AppViewModel {
     ) async -> PaykitRouteOutcome {
         var unrouted = route
         unrouted.serviceLeg = nil
+        unrouted.invoice = route.invoice ?? scannedLightningInvoice
+        unrouted.lnurl = route.lnurl ?? lnurlPayData
         let contactId = contactPaymentContext?.id
         paykitRoutingGeneration += 1
         let generation = paykitRoutingGeneration
@@ -275,13 +279,13 @@ extension AppViewModel {
             switch picked {
             case let .direct(endpoint):
                 paykitRoute = unrouted
-                guard await payDirectly(endpoint) else { return .refused }
+                guard await payDirectly(endpoint, route: unrouted) else { return .refused }
                 if let request {
                     paykitPaymentTerms = try request.payment(using: paykitPaymentMethod)
                 }
                 return .direct
             case let .service(leg):
-                var routed = route
+                var routed = unrouted
                 routed.serviceLeg = leg
                 paykitRoute = routed
                 selectedWalletToPayFrom = .lightning
@@ -304,8 +308,9 @@ extension AppViewModel {
         }
     }
 
-    /// Switches the send to the endpoint the router picked, when the scan opened another one.
-    private func payDirectly(_ endpoint: PaykitEndpoint) async -> Bool {
+    /// Switches the send to exactly the endpoint the router picked, clearing the other Lightning one. An earlier pick may
+    /// have cleared the picked one, so it comes back from `route`.
+    private func payDirectly(_ endpoint: PaykitEndpoint, route: PaykitRouteUi) async -> Bool {
         if endpoint.isOnchain {
             selectedWalletToPayFrom = .onchain
             if scannedOnchainInvoice?.address != endpoint.value {
@@ -315,17 +320,27 @@ extension AppViewModel {
         }
         selectedWalletToPayFrom = .lightning
         if endpoint.isLnurl {
-            return lnurlPayData != nil || scannedLightningInvoice != nil
-        }
-        if scannedLightningInvoice?.bolt11.caseInsensitiveCompare(endpoint.value) == .orderedSame {
+            guard let lnurl = lnurlPayData ?? route.lnurl else {
+                Logger.warn("Found no LNURL for the endpoint the router picked", context: "PaykitRoute")
+                showNoPaykitRouteToast(isBalanceShort: false)
+                return false
+            }
+            lnurlPayData = lnurl
+            scannedLightningInvoice = nil
             return true
         }
-        guard case let .lightning(invoice) = try? await decode(invoice: endpoint.value) else {
-            Logger.warn("Failed to decode the Lightning endpoint the router picked", context: "PaykitRoute")
-            showNoPaykitRouteToast(isBalanceShort: false)
-            return false
+        let known = [scannedLightningInvoice, route.invoice].compactMap { $0 }
+            .first { $0.bolt11.caseInsensitiveCompare(endpoint.value) == .orderedSame }
+        if let known {
+            scannedLightningInvoice = known
+        } else {
+            guard case let .lightning(invoice) = try? await decode(invoice: endpoint.value) else {
+                Logger.warn("Failed to decode the Lightning endpoint the router picked", context: "PaykitRoute")
+                showNoPaykitRouteToast(isBalanceShort: false)
+                return false
+            }
+            scannedLightningInvoice = invoice
         }
-        scannedLightningInvoice = invoice
         lnurlPayData = nil
         return true
     }
