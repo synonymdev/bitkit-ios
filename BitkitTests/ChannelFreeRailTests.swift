@@ -1226,6 +1226,39 @@ extension ChannelFreeRailTests {
         XCTAssertTrue(SendSheet.sparkCanPay(amountSats: 99750, isReady: true, balanceSats: 100_000))
     }
 
+    func testTheSendSheetLetsSparkPayWhileTheNodeIsDown() {
+        let payable = SendSheet.sparkCanPay(amountSats: 99750, isReady: true, balanceSats: 100_000)
+        XCTAssertFalse(
+            SendSheet.waitsForNode(
+                isNodeRunning: false, isLightningPayment: true, hasAnyChannels: true, hasUsableChannels: false, sparkCanPay: payable
+            ),
+            "A Lightning payment Spark can pay waited for the node to start"
+        )
+        XCTAssertFalse(SendSheet.waitsForNode(
+            isNodeRunning: false, isLightningPayment: true, hasAnyChannels: false, hasUsableChannels: false, sparkCanPay: payable
+        ))
+
+        let unpayable = [
+            SendSheet.sparkCanPay(amountSats: 99750, isReady: false, balanceSats: 100_000),
+            SendSheet.sparkCanPay(amountSats: 100_000, isReady: true, balanceSats: 100_000),
+            SendSheet.sparkCanPay(amountSats: 0, isReady: true, balanceSats: 100_000),
+        ]
+        for sparkCanPay in unpayable {
+            XCTAssertTrue(SendSheet.waitsForNode(
+                isNodeRunning: false, isLightningPayment: true, hasAnyChannels: true, hasUsableChannels: false, sparkCanPay: sparkCanPay
+            ))
+        }
+        XCTAssertTrue(SendSheet.waitsForNode(
+            isNodeRunning: false, isLightningPayment: false, hasAnyChannels: true, hasUsableChannels: false, sparkCanPay: payable
+        ), "An on-chain payment went ahead without the node")
+        XCTAssertTrue(SendSheet.waitsForNode(
+            isNodeRunning: true, isLightningPayment: true, hasAnyChannels: true, hasUsableChannels: false, sparkCanPay: false
+        ))
+        XCTAssertFalse(SendSheet.waitsForNode(
+            isNodeRunning: true, isLightningPayment: true, hasAnyChannels: true, hasUsableChannels: false, sparkCanPay: payable
+        ))
+    }
+
     func testInsufficientFundsInsideTheSparkSendIsARefusal() {
         let failure = Bitkit.SparkManager.sendPaymentFailure(SdkError.InsufficientFunds(tokenIdentifier: nil))
 
