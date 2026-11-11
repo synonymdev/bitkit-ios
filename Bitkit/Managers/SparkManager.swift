@@ -575,6 +575,30 @@ final class SparkManager: ChannelFreeLightningRail {
         sent.contains(txid) || withdrawals.contains { $0.txid == txid }
     }
 
+    /// Whether `txid` is a Spark withdrawal, which LDK never held and so can't boost: one this app sent, to Savings or a
+    /// contact, or one Spark lists.
+    func isSparkWithdrawal(txid: String) async -> Bool {
+        let known = sentWithdrawalTxIds.union(Self.contactWithdrawalTxIds).union(withdrawals.map(\.txid))
+        if Self.isSparkWithdrawal(txid: txid, known: known, payments: []) {
+            return true
+        }
+        guard isReady else { return false }
+        do {
+            let payments = try await requireSdk().listPayments(request: ListPaymentsRequest(sortAscending: false)).payments
+            return Self.isSparkWithdrawal(txid: txid, known: known, payments: payments)
+        } catch {
+            Logger.warn("Failed to list Spark payments for \(txid): \(error)", context: "SparkManager")
+            return false
+        }
+    }
+
+    nonisolated static func isSparkWithdrawal(txid: String, known: Set<String>, payments: [Payment]) -> Bool {
+        known.contains(txid) || payments.contains { payment in
+            guard case let .withdraw(txId, _, _) = payment.details else { return false }
+            return txId == txid
+        }
+    }
+
     /// Reuses the provider's withdrawal quote while it holds for the same address and balance, so the withdrawal
     /// pays the fee the confirm screen showed; a second full-balance quote can take minutes.
     private func prepareWithdrawAll(to address: String) async throws -> PrepareSendPaymentResponse {

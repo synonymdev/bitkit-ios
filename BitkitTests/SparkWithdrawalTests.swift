@@ -295,6 +295,27 @@ final class SparkWithdrawalTests: XCTestCase {
         XCTAssertFalse(SparkManager.isWithdrawal(txid: "payment", sent: ["sent"], withdrawals: listed))
     }
 
+    func testASparkWithdrawalIsNeverBoosted() {
+        let pending = Payment(
+            id: "pending",
+            paymentType: .send,
+            status: .pending,
+            amount: 20000,
+            fees: 300,
+            timestamp: 1,
+            method: .withdraw,
+            details: .withdraw(txId: "listed", vout: 0, destinationAddress: "bcrt1qcontact"),
+            conversionDetails: nil
+        )
+
+        XCTAssertTrue(SparkManager.isSparkWithdrawal(txid: "contact", known: ["contact"], payments: []))
+        XCTAssertTrue(
+            SparkManager.isSparkWithdrawal(txid: "listed", known: [], payments: [pending]),
+            "a pending withdrawal Spark lists can't be boosted"
+        )
+        XCTAssertFalse(SparkManager.isSparkWithdrawal(txid: "savings", known: ["contact"], payments: [pending]))
+    }
+
     @MainActor
     private func waitUntilPriced(_ transfer: TransferViewModel) async {
         for _ in 0 ..< 100 where transfer.isPricingSparkWithdrawal {
