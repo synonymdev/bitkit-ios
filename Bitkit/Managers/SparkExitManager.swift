@@ -592,6 +592,9 @@ final class SparkExitManager {
         guard let address = record.funding.first?.address else { return }
         fundingAddress = address
         guard record.fundingShortfallSats != nil else {
+            // Adopted, or nothing to fund: what was seen is part of the exit now, never funding still to count.
+            fundingSeenSats = 0
+            fundingSeenCount = 0
             setFunding(nil, for: record)
             return
         }
@@ -802,6 +805,11 @@ final class SparkExitManager {
 
     /// The quote the funding and confirm screens show, and `start()` starts from.
     func useQuote(_ quote: SparkExitQuote, destination: String, feeRate: UInt64, fundingIndex: UInt32, fundingAddress: String) {
+        // What reached another address, an earlier exit's, is not this exit's funding.
+        if self.fundingAddress != fundingAddress {
+            fundingSeenSats = 0
+            fundingSeenCount = 0
+        }
         pendingDestination = destination
         pendingFeeRate = feeRate
         pendingFundingIndex = fundingIndex

@@ -709,6 +709,24 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(refreshes, before)
     }
 
+    // MARK: Round 3 (Corey 5859257501)
+
+    /// A quote for a new funding address starts with nothing seen there: an earlier exit's funding never lowers what
+    /// savings pays.
+    @MainActor func testAQuoteForANewFundingAddressStartsWithNothingSeen() {
+        let exit = SparkExitManager(walletIndex: 9999)
+        let quote = SparkExitQuote(prepared: SparkExitFixtures.prepared())
+        exit.useQuote(quote, destination: "bcrt1qdestination", feeRate: 2, fundingIndex: 3, fundingAddress: "bcrt1qearlier")
+        exit.noteFundingSeen([SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 8000)])
+        exit.useQuote(quote, destination: "bcrt1qdestination", feeRate: 2, fundingIndex: 3, fundingAddress: "bcrt1qearlier")
+        XCTAssertEqual(exit.fundingSeenSats, 8000, "a quote again for the same address keeps what reached it")
+
+        exit.useQuote(quote, destination: "bcrt1qdestination", feeRate: 2, fundingIndex: 4, fundingAddress: "bcrt1qnext")
+
+        XCTAssertEqual(exit.fundingSeenSats, 0, "the earlier exit's funding was taken as already sent")
+        XCTAssertEqual(exit.fundingSeenCount, 0)
+    }
+
     // MARK: What stays on Spark (Android 124d66170, caa349d4b)
 
     /// The start and the requote save what stays on Spark without the lost leaves Spark still counts: 100,000 sats
