@@ -14,6 +14,12 @@ final class SparkConfigTests: XCTestCase {
         }
     }
 
+    func testInvoicesCarryNoSparkAddressOnAnyNetworkSoEveryPaymentIsALightningPaymentBitkitRecords() {
+        for network in [BreezSdkSpark.Network.mainnet, .regtest] {
+            XCTAssertFalse(SparkManager.sdkConfig(network: network, apiKey: nil).preferSparkOverLightning, "\(network)")
+        }
+    }
+
     func testChainServiceIsBitkitElectrsOnMainnetOnly() {
         XCTAssertEqual(Env.sparkChainServiceUrl(for: .bitcoin), "https://bitkit.to/electrs")
         XCTAssertNil(Env.sparkChainServiceUrl(for: .regtest))

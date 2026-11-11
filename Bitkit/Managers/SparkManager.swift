@@ -121,8 +121,8 @@ final class SparkManager: ChannelFreeLightningRail {
         sdk == nil ? nil : Self.exitStateGeneration
     }
 
-    /// Spark's regtest has no Lightning network, so there a Lightning invoice from another Spark wallet is paid as a
-    /// Spark transfer, which lets two dev builds pay each other's invoices.
+    /// On regtest, an invoice that carries a Spark address is paid as a Spark transfer. Bitkit's own invoices carry none,
+    /// so two dev builds pay each other over Lightning through Spark's provider, as on mainnet.
     nonisolated static var prefersSpark: Bool {
         Env.network == .regtest
     }
