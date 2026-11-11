@@ -2789,6 +2789,13 @@ final class SparkExitBroadcasterTests: XCTestCase {
         guard case .rejected = outcome else { return XCTFail("Expected the refusal, got \(outcome)") }
     }
 
+    /// Esplora hosts (bitkit.to, blockstream.info) answer a step that already confirmed in Core's newer plain-text form.
+    func testReadsAStepAlreadyInTheUtxoSetAsAccepted() {
+        let text = "sendrawtransaction RPC error -27: Transaction outputs already in utxo set"
+        XCTAssertEqual(SparkExitBroadcastClassifier.single(status: 400, body: Data(text.utf8)), .accepted)
+        XCTAssertEqual(SparkExitBroadcastClassifier.classify(error: "sendrawtransaction RPC error -27: unknown"), .accepted)
+    }
+
     func testClassifiesNodeAnswers() {
         XCTAssertEqual(SparkExitBroadcastClassifier.single(status: 400, body: Data(#"sendrawtransaction RPC error: {"code":-27}"#.utf8)), .accepted)
         XCTAssertEqual(

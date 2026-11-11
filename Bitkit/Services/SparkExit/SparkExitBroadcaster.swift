@@ -286,6 +286,8 @@ enum SparkExitBroadcastClassifier {
         "txn-already-known",
         "txn-same-nonwitness-data-in-mempool",
         "already in block chain",
+        // Core's newer wording, which esplora hosts pass on as plain text.
+        "already in utxo set",
     ]
     private static let notMatureMessages = ["non-BIP68-final", "non-final"]
     private static let missingInputMessages = ["bad-txns-inputs-missingorspent", "missing-inputs", "missingorspent"]
@@ -393,8 +395,9 @@ enum SparkExitBroadcastClassifier {
         return .rejected(text)
     }
 
-    /// The RPC code, also when the node's error sits JSON-escaped inside mempool's own error object.
+    /// The RPC code, also when the node's error sits JSON-escaped inside mempool's own error object, or as esplora's
+    /// plain text (`sendrawtransaction RPC error -27: …`).
     private static func hasRpcCode(_ code: Int, in text: String) -> Bool {
-        text.range(of: #"code\\?"\s*:\s*\#(code)\b"#, options: .regularExpression) != nil
+        text.range(of: #"(code\\?"\s*:\s*|RPC error )\#(code)\b"#, options: .regularExpression) != nil
     }
 }
