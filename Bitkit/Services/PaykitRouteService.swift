@@ -93,7 +93,9 @@ enum PaykitRouteService {
     }
 
     /// Asks the router how to pay `amountSats` from `source`. The router pays directly before it weighs any leg, so a
-    /// Spark leg to each on-chain endpoint is quoted only when the route offers one and no balance pays.
+    /// Spark leg to each on-chain endpoint is quoted only when the route offers one and no balance pays. Spark takes one
+    /// contact withdrawal at a time, so while an earlier one's journal is open no leg is quoted and this throws
+    /// `SparkWithdrawalSettling`.
     static func route(
         _ route: PaykitRouteUi,
         amountSats: UInt64,
@@ -117,6 +119,7 @@ enum PaykitRouteService {
         }
         let direct = try pick([])
         guard case .none = direct, source == .spending, route.offersSparkLeg else { return direct }
+        guard SparkManager.pendingContactWithdrawal == nil else { throw SparkWithdrawalSettling() }
         let serviceLegs = try await quoteLegs(route.onchainEndpoints, amountSats)
         return serviceLegs.isEmpty ? direct : try pick(serviceLegs)
     }
@@ -258,6 +261,9 @@ enum PaykitRouteService {
     }
 }
 
+/// Only a Spark leg could pay, but an earlier contact withdrawal's journal is still open.
+struct SparkWithdrawalSettling: Error {}
+
 /// What asking the router did to a contact payment.
 enum PaykitRouteOutcome: Equatable {
     /// The send pays the endpoint the router picked.
@@ -336,6 +342,26 @@ extension AppViewModel {
                 Logger.warn("Found no Paykit route: '\(reason)'", context: "PaykitRoute")
                 return refuse(sparkLegShort: false)
             }
+        } catch is SparkWithdrawalSettling {
+            Logger.warn("Found no Paykit route: an earlier Spark contact withdrawal is still settling", context: "PaykitRoute")
+            guard isCurrent() else { return .stale }
+            // A short balance and an LNURL limit name themselves first, as for any other refusal.
+            let lnurlRefuses = unrouted.lnurl.map { !$0.accepts(amountSats: amountSats) } ?? false
+            if lnurlRefuses || PaykitRouteService.isBalanceShort(
+                amountSats: amountSats,
+                lightningSpendableSats: lightningSpendableSats,
+                onchainSpendableSats: onchainSpendableSats
+            ) {
+                return refuse(sparkLegShort: false)
+            }
+            paykitRoute = unrouted
+            toast(
+                type: .error,
+                title: t("wallet__send_paykit_no_route__title"),
+                description: t("wallet__send_paykit_withdrawal_settling__description"),
+                accessibilityIdentifier: "PaykitRouteSettlingToast"
+            )
+            return .refused
         } catch let error as SparkLegUnaffordable {
             Logger.warn("Found no Paykit route: \(error)", context: "PaykitRoute")
             guard isCurrent() else { return .stale }
