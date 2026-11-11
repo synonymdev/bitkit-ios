@@ -1053,7 +1053,9 @@ class LightningService: NodeLifecycleService {
         let mark = attemptMark
         if !channelsOnly, let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: sats) {
             // LDK refuses its own repeats; Spark doesn't, so a Spark send checks both rails.
-            if let paid = try await settledEarlierAttempt(paymentHash: paymentHash, on: [.ldk, .channelFree]) {
+            if let paid = try await settledEarlierAttempt(
+                paymentHash: paymentHash, on: [.ldk, .channelFree], invoiceCreatedAt: invoice?.secondsSinceEpoch()
+            ) {
                 return paid
             }
             guard beginRailSend(paymentHash: paymentHash) else { throw Self.pendingDuplicate(paymentHash: paymentHash) }

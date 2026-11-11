@@ -1149,7 +1149,7 @@ extension ChannelFreeRailTests {
     private func assertRefusedUntilSparkLists(file: StaticString = #filePath, line: UInt = #line) async {
         do {
             _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
-            XCTFail("A node send of an invoice made before the restore went out before Spark listed its sends", file: file, line: line)
+            XCTFail("A send of an invoice made before the restore went out before Spark listed its sends", file: file, line: line)
         } catch {
             XCTAssertTrue(error is Bitkit.ChannelFreeRailSendRefused, "\(error)", file: file, line: line)
         }
@@ -1211,6 +1211,15 @@ extension ChannelFreeRailTests {
         } catch {
             XCTAssertFalse("\(error)".contains("nodeNotSetup"), "Reached the node: \(error)")
         }
+    }
+
+    func testAnInvoiceMadeBeforeARestoreIsRefusedOverAFundedSparkUntilSparkSyncs() async throws {
+        try restore(secondsAfterTheInvoice: 60)
+        // Spark is ready and funded, but no sync since the restore has listed its sends.
+        rail.syncedAfter = { _ in false }
+        rail.balanceSats = 100_000
+
+        await assertRefusedUntilSparkLists()
     }
 
     private func sendOverSpark() async throws {
