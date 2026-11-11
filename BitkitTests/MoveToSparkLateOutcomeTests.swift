@@ -68,6 +68,27 @@ final class MoveToSparkLateOutcomeTests: XCTestCase {
     }
 
     @MainActor
+    func testEndedStreamStopsTheLateWatch() async throws {
+        let (events, sink) = AsyncStream<Event>.makeStream(bufferingPolicy: .unbounded)
+        var lateOutcomes = 0
+        let ended = expectation(description: "the watch ends with its stream")
+        let settled = try await WalletViewModel.settle(
+            paymentId: "move-hash",
+            events: events,
+            timeout: .milliseconds(10),
+            onTimeout: {},
+            onLateFailure: { lateOutcomes += 1 },
+            onLateSuccess: { _ in lateOutcomes += 1 },
+            onEnd: { ended.fulfill() }
+        )
+        XCTAssertNil(settled)
+        // A wipe ends the stream of a move still waiting for its late outcome.
+        sink.finish()
+        await fulfillment(of: [ended], timeout: 2)
+        XCTAssertEqual(lateOutcomes, 0)
+    }
+
+    @MainActor
     func testWipeForgetsAnUnsettledMove() {
         let manager = MoveToSparkManager()
         let moveGeneration = manager.beginMove()

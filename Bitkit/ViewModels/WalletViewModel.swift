@@ -218,6 +218,10 @@ class WalletViewModel: ObservableObject {
         walletExists = try Keychain.exists(key: .bip39Mnemonic(index: 0))
     }
 
+    /// The event streams of moves still waiting for their outcome, by listener id: `wipe` ends them, since the wiped
+    /// node reports no late outcome.
+    private var moveEventSinks: [String: AsyncStream<Event>.Continuation] = [:]
+
     func addOnEvent(id: String, handler: @escaping (Event) -> Void) {
         eventHandlers[id] = handler
     }
@@ -1189,11 +1193,13 @@ class WalletViewModel: ObservableObject {
         let listenerId = "move-to-spark-\(UUID().uuidString)"
         let (events, sink) = AsyncStream<Event>.makeStream(bufferingPolicy: .unbounded)
         addOnEvent(id: listenerId) { sink.yield($0) }
+        moveEventSinks[listenerId] = sink
         let id: String
         do {
             id = try await String(lightningService.send(bolt11: bolt11, sats: sats, params: params, channelsOnly: true))
         } catch {
             removeOnEvent(id: listenerId)
+            moveEventSinks.removeValue(forKey: listenerId)
             sink.finish()
             throw error
         }
@@ -1206,6 +1212,7 @@ class WalletViewModel: ObservableObject {
             onLateSuccess: onLateSuccess,
             onEnd: { [weak self] in
                 self?.removeOnEvent(id: listenerId)
+                self?.moveEventSinks.removeValue(forKey: listenerId)
                 sink.finish()
             }
         )
@@ -2200,6 +2207,11 @@ class WalletViewModel: ObservableObject {
         try await SparkManager.shared.wipe(walletIndex: 0)
 
         probeOutcomes.removeAll()
+        // A move's late outcome belongs to the wiped wallet, and its node is gone: stop waiting for it
+        for sink in moveEventSinks.values {
+            sink.finish()
+        }
+        moveEventSinks.removeAll()
 
         // Reset AppStorage display values
         totalBalanceSats = 0
