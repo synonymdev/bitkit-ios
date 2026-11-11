@@ -91,8 +91,10 @@ final class SparkExitManager {
     /// What paying the fee funding from savings costs: that payment's own fee, and the total that leaves savings. Nil
     /// when another wallet pays, or there is nothing to fund.
     var savingsPayment: (feeSats: UInt64, totalSats: UInt64)? {
-        guard fundFromSavings, let quote, quote.fundingSats > 0 else { return nil }
-        return (savingsFeeSats, quote.fundingSats + savingsFeeSats)
+        guard fundFromSavings, let quote else { return nil }
+        let sats = quote.fundingSats.saturatingSub(fundingSeenSats)
+        guard sats > 0 else { return nil }
+        return (savingsFeeSats, sats + savingsFeeSats)
     }
 
     var isExiting: Bool {
@@ -852,7 +854,7 @@ final class SparkExitManager {
         await SparkManager.shared.reconnectForExit()
         Logger.info("Started Spark exit of \(exitQuote.exitSats) sats over \(exitQuote.leafIds.count) leaves", context: "SparkExitManager")
 
-        let savingsSats = Self.savingsFundingSats(confirmed: quote, fresh: exitQuote)
+        let savingsSats = Self.savingsFundingSats(confirmed: quote, fresh: exitQuote, seenSats: fundingSeenSats)
         if fundFromSavings, savingsSats > 0 {
             let txid: String
             do {
@@ -972,8 +974,9 @@ final class SparkExitManager {
 
     /// Savings pays at most the funding the user confirmed: a higher fresh amount goes through the shortfall flow on
     /// Progress, which asks for the rest.
-    nonisolated static func savingsFundingSats(confirmed: SparkExitQuote, fresh: SparkExitQuote) -> UInt64 {
-        min(confirmed.fundingSats, fresh.fundingSats)
+    /// Funding another wallet already sent to the address (`seenSats`) is not paid again.
+    nonisolated static func savingsFundingSats(confirmed: SparkExitQuote, fresh: SparkExitQuote, seenSats: UInt64) -> UInt64 {
+        min(confirmed.fundingSats, fresh.fundingSats).saturatingSub(seenSats)
     }
 
     /// The exit a start began, still stored and active (not cancelled meanwhile); nil otherwise. The store keeps

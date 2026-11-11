@@ -172,6 +172,11 @@ struct SparkExitFundingView: View {
         exit.quote?.fundingSats ?? 0
     }
 
+    /// What savings pays: the funding less what another wallet already sent to the address, as the start pays it.
+    private var savingsSats: UInt64 {
+        fundingSats.saturatingSub(exit.fundingSeenSats)
+    }
+
     /// What the funding address has to hold for the payments seen so far, and what the next one should bring it to.
     private var prestartFunding: (covered: UInt64, toSend: UInt64) {
         SparkExitMath.prestartFunding(
@@ -186,7 +191,7 @@ struct SparkExitFundingView: View {
         guard let savingsFeeSats else { return false }
         return SparkExitMath.canFundFromSavings(
             spendableSats: UInt64(max(0, wallet.spendableOnchainBalanceSats)),
-            fundingSats: fundingSats,
+            fundingSats: savingsSats,
             paymentFeeSats: savingsFeeSats
         )
     }
@@ -258,7 +263,7 @@ struct SparkExitFundingView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
-        .task {
+        .task(id: savingsSats) {
             await estimateSavingsFee()
         }
         .task(id: showsAddress) {
@@ -272,7 +277,7 @@ struct SparkExitFundingView: View {
         let feeEstimatesManager = feeEstimatesManager
         let priced = await Self.priceSavingsFee(
             address: exit.fundingAddress,
-            fundingSats: fundingSats,
+            fundingSats: savingsSats,
             refusedFeeSats: exit.savingsFundingRefusedFeeSats,
             estimates: { await feeEstimatesManager.getEstimates(refresh: true) },
             calculate: { try await wallet.calculateTotalFee(address: $0, amountSats: $1, satsPerVByte: $2) }

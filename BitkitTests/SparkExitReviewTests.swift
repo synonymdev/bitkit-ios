@@ -20,6 +20,15 @@ final class SparkExitReviewTests: XCTestCase {
         SparkExitDriver(chain: chain, recovering: withSdk ? sdk : nil, makeSigner: { _ in StubCpfpSigner() }, save: { _ in })
     }
 
+    // MARK: Review 518bf31e5
+
+    /// Funding sent from another wallet before the user picked savings is not paid twice.
+    func testSavingsPaysOnlyWhatTheFundingAddressDoesNotHoldYet() {
+        let quote = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 20000))
+        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: quote, fresh: quote, seenSats: 8000), 12000)
+        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: quote, fresh: quote, seenSats: 25000), 0)
+    }
+
     // MARK: H1 cancel
 
     func testCancelIsOffAfterAPaymentFromSavings() {
@@ -895,8 +904,8 @@ final class SparkExitReviewTests: XCTestCase {
         let confirmed = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 20000))
         let higher = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 35000, leaves: ["leaf-1", "leaf-2"]))
         let lower = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 15000, leaves: ["leaf-2"]))
-        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: confirmed, fresh: higher), 20000)
-        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: confirmed, fresh: lower), 15000)
+        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: confirmed, fresh: higher, seenSats: 0), 20000)
+        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: confirmed, fresh: lower, seenSats: 0), 15000)
 
         var record = try XCTUnwrap(SparkExitManager.requoted(SparkExitFixtures.record(), fresh: higher, sparkBalanceSats: 0))
         record.fundingPaymentTxid = "paid"
