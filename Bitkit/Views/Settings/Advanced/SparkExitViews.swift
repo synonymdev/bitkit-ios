@@ -910,12 +910,17 @@ struct SparkExitFeeBumpView: View {
     }
 
     private func canPay(_ option: SparkExitFeeBumpOption) -> Bool {
-        guard let total = option.totalSats else { return false }
-        return total == 0 || UInt64(max(0, wallet.spendableOnchainBalanceSats)) >= total
+        SparkExitMath.canPayFeeBump(
+            totalSats: option.totalSats,
+            spendableSats: UInt64(max(0, wallet.spendableOnchainBalanceSats)),
+            readsBitkitChain: SparkManager.shared.canFundFromChain
+        )
     }
 
-    /// Savings can't pay the selected rate, or, with none selected, any rate priced so far.
+    /// Savings can't pay the selected rate, or, with none selected, any rate priced so far. Savings on a chain Spark
+    /// does not read is off without a balance line, as on the start's funding screen.
     private var isInsufficient: Bool {
+        guard SparkManager.shared.canFundFromChain else { return false }
         if let selected {
             return selected.totalSats != nil && !canPay(selected)
         }

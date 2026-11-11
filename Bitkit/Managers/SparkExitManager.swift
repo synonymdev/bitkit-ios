@@ -834,6 +834,10 @@ final class SparkExitManager {
         }
         var txid: String?
         if extraSats > 0 {
+            // The payment goes out on Bitkit's chain: while Spark reads another, the exit would never see it.
+            guard SparkManager.shared.canFundFromChain else {
+                throw AppError(message: t("lightning__spark_exit__fee_bump_error"), debugMessage: "Spark does not read Bitkit's chain")
+            }
             guard let paymentFeeSats = option.paymentFeeSats else {
                 throw AppError(message: t("lightning__spark_exit__fee_bump_error"), debugMessage: "Fee bump payment not priced")
             }

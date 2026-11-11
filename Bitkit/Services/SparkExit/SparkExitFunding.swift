@@ -697,6 +697,13 @@ enum SparkExitMath {
     static func canFundFromSavings(spendableSats: UInt64, fundingSats: UInt64, paymentFeeSats: UInt64, readsBitkitChain: Bool) -> Bool {
         readsBitkitChain && fundingSats > 0 && spendableSats >= fundingSats.saturatingAdd(paymentFeeSats)
     }
+
+    /// Savings can pay a higher fee's `totalSats` (its extra funding and that payment's fee) on the same terms: Spark
+    /// reads Bitkit's chain and the spendable balance covers it. A rate with nothing to pay needs no payment.
+    static func canPayFeeBump(totalSats: UInt64?, spendableSats: UInt64, readsBitkitChain: Bool) -> Bool {
+        guard let totalSats else { return false }
+        return totalSats == 0 || (readsBitkitChain && spendableSats >= totalSats)
+    }
 }
 
 /// Each wallet's next exit funding index in the metadata backup, keyed `<network>/wallet<n>` as bitkit-android keys its

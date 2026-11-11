@@ -3084,6 +3084,16 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertFalse(SparkExitMath.canFundFromSavings(spendableSats: 10500, fundingSats: 10000, paymentFeeSats: 500, readsBitkitChain: false))
     }
 
+    /// A higher fee's extra funding goes out from savings on Bitkit's chain too: off while Spark reads another chain.
+    /// A rate with nothing to pay needs no payment.
+    func testSavingsPaysAHigherFeeOnlyOnAChainSparkReads() {
+        XCTAssertTrue(SparkExitMath.canPayFeeBump(totalSats: 5980, spendableSats: 5980, readsBitkitChain: true))
+        XCTAssertFalse(SparkExitMath.canPayFeeBump(totalSats: 5980, spendableSats: 5979, readsBitkitChain: true))
+        XCTAssertFalse(SparkExitMath.canPayFeeBump(totalSats: nil, spendableSats: 5980, readsBitkitChain: true), "not priced")
+        XCTAssertFalse(SparkExitMath.canPayFeeBump(totalSats: 5980, spendableSats: 5980, readsBitkitChain: false))
+        XCTAssertTrue(SparkExitMath.canPayFeeBump(totalSats: 0, spendableSats: 0, readsBitkitChain: false))
+    }
+
     func testEtaUsesTheNetworksBlockTime() {
         XCTAssertEqual(SparkExitMath.secondsUntil(height: 110, tip: 100, network: .bitcoin), 6000)
         XCTAssertEqual(SparkExitMath.secondsUntil(height: 110, tip: 100, network: .regtest), 300)
