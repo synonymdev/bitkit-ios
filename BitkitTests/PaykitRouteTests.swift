@@ -565,6 +565,39 @@ final class PaykitRouteTests: XCTestCase {
         XCTAssertEqual(within.contactEndpoints, [lightning, onchain])
     }
 
+    /// A route built after the scan, once Spark became ready, holds a contact's LNURL that was never decoded; the router
+    /// can still pick it, so the pick decodes it.
+    @MainActor
+    func testAnLnurlTheRouterPicksWithoutDecodedDataIsDecoded() async {
+        snapshotAppDefaultsDomain()
+        let app = AppViewModel()
+        let route = PaykitRouteUi(endpoints: [lightning, onchain], offersSparkLeg: true)
+        let decoded = lnurlData(minSendableMsats: 1000)
+        app.contactPaymentContext = ContactPaymentContext(publicKey: "contact", privatePaymentContext: nil, endpoints: [])
+        app.selectedWalletToPayFrom = .lightning
+        let lightning = lightning
+        var decodedValues: [String] = []
+
+        let outcome = await app.routeContactPayment(
+            route,
+            amountSats: 2000,
+            source: .spending,
+            lightningSpendableSats: 10000,
+            onchainSpendableSats: 0,
+            request: nil,
+            router: { _, _, _, _, _ in .direct(endpoint: lightning) },
+            decodeEndpoint: { value in
+                decodedValues.append(value)
+                return .lnurlPay(data: decoded)
+            }
+        )
+
+        XCTAssertEqual(outcome, .direct)
+        XCTAssertEqual(decodedValues, [lightning.value])
+        XCTAssertEqual(app.lnurlPayData, decoded)
+        XCTAssertEqual(app.paykitRoute?.lnurl, decoded, "a later pick reuses the decoded LNURL")
+    }
+
     @MainActor
     func testTheRouterIsAskedWithTheLnurlItsLimitsComeFrom() async {
         snapshotAppDefaultsDomain()

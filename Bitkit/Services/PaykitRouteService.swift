@@ -290,7 +290,8 @@ extension AppViewModel {
         request: PaykitPaymentRequest?,
         router: (PaykitRouteUi, UInt64, PaykitRouteService.Source, UInt64, UInt64) async throws -> PaykitRoute = {
             try await PaykitRouteService.route($0, amountSats: $1, source: $2, lightningSpendableSats: $3, onchainSpendableSats: $4)
-        }
+        },
+        decodeEndpoint: (String) async throws -> BitkitCore.Scanner = { try await decode(invoice: $0) }
     ) async -> PaykitRouteOutcome {
         var unrouted = route
         unrouted.serviceLeg = nil
@@ -327,7 +328,7 @@ extension AppViewModel {
             switch picked {
             case let .direct(endpoint):
                 paykitRoute = unrouted
-                guard await payDirectly(endpoint, route: unrouted) else { return .refused }
+                guard await payDirectly(endpoint, route: unrouted, decode: decodeEndpoint) else { return .refused }
                 if let request {
                     paykitPaymentTerms = try request.payment(using: paykitPaymentMethod)
                 }
@@ -375,8 +376,12 @@ extension AppViewModel {
     }
 
     /// Switches the send to exactly the endpoint the router picked, clearing the other Lightning one. An earlier pick may
-    /// have cleared the picked one, so it comes back from `route`.
-    private func payDirectly(_ endpoint: PaykitEndpoint, route: PaykitRouteUi) async -> Bool {
+    /// have cleared the picked one, so it comes back from `route`; one never decoded is decoded here.
+    private func payDirectly(
+        _ endpoint: PaykitEndpoint,
+        route: PaykitRouteUi,
+        decode: (String) async throws -> BitkitCore.Scanner
+    ) async -> Bool {
         if endpoint.isOnchain {
             selectedWalletToPayFrom = .onchain
             if scannedOnchainInvoice?.address != endpoint.value {
@@ -386,12 +391,18 @@ extension AppViewModel {
         }
         selectedWalletToPayFrom = .lightning
         if endpoint.isLnurl {
-            guard let lnurl = lnurlPayData ?? route.lnurl else {
-                Logger.warn("Found no LNURL for the endpoint the router picked", context: "PaykitRoute")
-                showNoPaykitRouteToast(isBalanceShort: false)
-                return false
+            if let lnurl = lnurlPayData ?? route.lnurl {
+                lnurlPayData = lnurl
+            } else {
+                // A route built once Spark became ready after the scan holds the contact's LNURL undecoded.
+                guard case let .lnurlPay(data) = try? await decode(endpoint.value) else {
+                    Logger.warn("Failed to decode the LNURL endpoint the router picked", context: "PaykitRoute")
+                    showNoPaykitRouteToast(isBalanceShort: false)
+                    return false
+                }
+                lnurlPayData = data
+                paykitRoute?.lnurl = data
             }
-            lnurlPayData = lnurl
             scannedLightningInvoice = nil
             return true
         }
@@ -400,7 +411,7 @@ extension AppViewModel {
         if let known {
             scannedLightningInvoice = known
         } else {
-            guard case let .lightning(invoice) = try? await decode(invoice: endpoint.value) else {
+            guard case let .lightning(invoice) = try? await decode(endpoint.value) else {
                 Logger.warn("Failed to decode the Lightning endpoint the router picked", context: "PaykitRoute")
                 showNoPaykitRouteToast(isBalanceShort: false)
                 return false
