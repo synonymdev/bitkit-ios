@@ -150,8 +150,7 @@ struct SparkExitDriver {
                     var valid = record
                     valid.phase = .running
                     valid.isUnverifiedAsk = nil
-                    try await build(&record, recovering: recovering)
-                    keepValidGeneration(&record, over: valid)
+                    try await build(&record, recovering: recovering, keeping: valid)
                     keepRetryClock(&record, from: valid)
                 } else {
                     try await build(&record, recovering: recovering)
@@ -347,7 +346,9 @@ struct SparkExitDriver {
 
     // MARK: Build
 
-    private func build(_ record: inout SparkExitRecord, recovering: SparkExitRecovering) async throws {
+    /// With `valid`, an unverified rebuild's: the valid generation stays over a rebuild that leaves waiting a leaf it
+    /// recovers, before that rebuild is saved or any of it broadcast.
+    private func build(_ record: inout SparkExitRecord, recovering: SparkExitRecovering, keeping valid: SparkExitRecord? = nil) async throws {
         let tip = try? await chain.tipHeight()
         // Waiting for a leaf that may still move: tried again at growing gaps of blocks, not every tick.
         if let since = record.retrySince {
@@ -411,6 +412,9 @@ struct SparkExitDriver {
             if !built.failed.isEmpty {
                 record.adopt(built, at: now())
                 record.waitingLeafIds = waitingLeafIds.isEmpty ? nil : waitingLeafIds
+                if let valid {
+                    keepValidGeneration(&record, over: valid)
+                }
                 return
             }
             await finish(&record, phase: .failed(reason: "Nothing to recover"))
@@ -436,6 +440,9 @@ struct SparkExitDriver {
         }
         record.adopt(built, at: now())
         record.waitingLeafIds = waitingLeafIds.isEmpty ? nil : waitingLeafIds
+        if let valid, keepValidGeneration(&record, over: valid) {
+            return
+        }
         record.spentStepStrikes = strikes.isEmpty ? nil : strikes
         // Saved before any of it is broadcast, so a crash never leaves broadcast transactions without their record.
         try save(record)
@@ -593,9 +600,9 @@ struct SparkExitDriver {
                 record.unverifiedRebuiltAtHeight = tip
                 try save(record)
                 let valid = record
-                try await build(&record, recovering: recovering)
+                try await build(&record, recovering: recovering, keeping: valid)
                 keepRetryClock(&record, from: valid)
-                if !keepValidGeneration(&record, over: valid), case .needsFunding = record.phase {
+                if case .needsFunding = record.phase {
                     // Like a fee bump's, the valid generation keeps going while the funding it asks for comes.
                     record.isUnverifiedAsk = true
                 }

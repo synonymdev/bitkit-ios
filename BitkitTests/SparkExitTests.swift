@@ -1655,6 +1655,64 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2"], "leaf-1's matured step n2 was not sent")
     }
 
+    /// The adopted rebuild without leaf-1 never reaches the store, even for the moment before the guard restores it:
+    /// a process killed in that window relaunches from what was saved.
+    func testAnUnverifiedRebuildBesideAnotherUnilateralLeafNeverSavesTheRebuild() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.leafIds = ["leaf-1", "leaf-2"]
+        let unread = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("n2", dependsOn: ["n1"], status: .unverified),
+            SparkExitFixtures.tx("m1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("m2", dependsOn: ["m1"], status: .waitingForTimelock(spendableAtHeight: 2000)),
+        ])
+        record.adopt(unread, at: clock)
+        sdk.checks = [CheckRecoverFundsResponse(recovery: unread, verdict: .valid)]
+        var prepared = SparkExitFixtures.prepared(funding: nil, leaves: ["leaf-2"])
+        prepared.skipped = [SkippedLeaf(leafId: "leaf-1", valueSats: 100_000, reason: .unverified)]
+        sdk.preparedResponse = prepared
+        sdk.builds = [SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("m1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("m2b", dependsOn: ["m1"], status: .waitingForTimelock(spendableAtHeight: 2000)),
+        ])]
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.generation, 1)
+        let rebuilt = saved.filter { $0.generation != 1 }
+        XCTAssertTrue(
+            rebuilt.isEmpty,
+            "saved generation \(rebuilt.map(\.generation)) without leaf-1's steps: \(rebuilt.first?.recovery?.response.transactions.map(\.txid) ?? [])"
+        )
+    }
+
+    /// Funding for an unverified rebuild's ask: a rebuild without leaf-1 is neither saved nor broadcast.
+    func testFundingAnUnverifiedRebuildsAskNeverSavesNorSendsARebuildWithoutTheUnreadLeaf() async throws {
+        var (record, _, _) = try await unverifiedAsk()
+        let unread = try XCTUnwrap(record.recovery?.response)
+        sdk.checks = [CheckRecoverFundsResponse(recovery: unread, verdict: .valid)]
+        chain.utxosByAddress[record.funding[0].address] = [SparkExitFixtures.utxo(String(repeating: "f", count: 64), value: 50000)]
+        var prepared = SparkExitFixtures.prepared(funding: nil, leaves: ["leaf-2"])
+        prepared.skipped = [SkippedLeaf(leafId: "leaf-1", valueSats: 100_000, reason: .unverified)]
+        sdk.preparedResponse = prepared
+        sdk.builds = [SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("m1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("m2b", cpfp: "03c1", dependsOn: ["m1"]),
+        ])]
+        chain.tip = 1001
+        saved = []
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.generation, 1, "funding adopted a rebuild without leaf-1's signed steps")
+        let rebuilt = saved.filter { $0.generation != 1 }
+        XCTAssertTrue(rebuilt.isEmpty, "saved generation \(rebuilt.map(\.generation)) without leaf-1's steps")
+        XCTAssertFalse(
+            chain.broadcasts.map(\.txid).contains("m2b"),
+            "broadcast m2b of a generation the record does not keep: \(chain.broadcasts.map(\.txid))"
+        )
+    }
+
     /// The valid generation beside a step the SDK could not read, whose rebuild of only failed cooperative leaves asks
     /// for fee funding first.
     private func unverifiedAsk() async throws -> (record: SparkExitRecord, readable: RecoverFundsResponse, failure: CooperativeRecoveryFailure) {
