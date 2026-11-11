@@ -1149,7 +1149,7 @@ extension ChannelFreeRailTests {
     private func assertRefusedUntilSparkLists(file: StaticString = #filePath, line: UInt = #line) async {
         do {
             _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
-            XCTFail("A node send of an invoice made before the restore went out before Spark listed its sends", file: file, line: line)
+            XCTFail("A send of an invoice made before the restore went out before Spark listed its sends", file: file, line: line)
         } catch {
             XCTAssertTrue(error is Bitkit.ChannelFreeRailSendRefused, "\(error)", file: file, line: line)
         }
@@ -1190,6 +1190,36 @@ extension ChannelFreeRailTests {
 
         XCTAssertNil(Bitkit.LightningService.shared.sparkHistoryUnseededSince)
         await assertReachesTheNode()
+    }
+
+    func testAnInvoiceSparkListedAsPaidAfterARestoreStaysHeldOverTheNodeAfterARelaunch() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        try restore(secondsAfterTheInvoice: 60)
+        leaveSparkUnsyncedAndEmpty()
+        // Spark's first sync since the restore lists the send the other device made.
+        rail.syncedAfter = { _ in true }
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .succeeded, preimage: nil)]
+        await Bitkit.LightningService.shared.listRailSendsIfUnseeded()
+        XCTAssertNil(Bitkit.LightningService.shared.sparkHistoryUnseededSince)
+
+        // A relaunch: Spark hasn't synced this run.
+        rail.syncedAfter = { _ in false }
+
+        do {
+            _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+            XCTFail("A node send of an invoice Spark listed as paid went out after a relaunch")
+        } catch {
+            XCTAssertFalse("\(error)".contains("nodeNotSetup"), "Reached the node: \(error)")
+        }
+    }
+
+    func testAnInvoiceMadeBeforeARestoreIsRefusedOverAFundedSparkUntilSparkSyncs() async throws {
+        try restore(secondsAfterTheInvoice: 60)
+        // Spark is ready and funded, but no sync since the restore has listed its sends.
+        rail.syncedAfter = { _ in false }
+        rail.balanceSats = 100_000
+
+        await assertRefusedUntilSparkLists()
     }
 
     private func sendOverSpark() async throws {
@@ -1352,7 +1382,13 @@ extension ChannelFreeRailTests {
         Bitkit.LightningService.shared.setEventCallback { wallet.notifyEventHandlers($0) }
 
         let wait = Task { try await wallet.waitForLightningPayment(hash: hash, timeoutSeconds: 5) }
-        try await Task.sleep(nanoseconds: 200_000_000)
+        // The event must reach the watcher, so it is emitted only once the watch has started.
+        var waited = 0
+        while wallet.watchSendContinuations[hash] == nil, waited < 500 {
+            try await Task.sleep(nanoseconds: 10_000_000)
+            waited += 1
+        }
+        XCTAssertNotNil(wallet.watchSendContinuations[hash], "The send watch never started")
         Bitkit.LightningService.shared.emitChannelFreeRailEvent(.paymentFailed(paymentId: hash, paymentHash: hash, reason: .unexpectedError))
         wallet.notifyEventHandlers(.paymentSuccessful(paymentId: hash, paymentHash: hash, paymentPreimage: "pp", feePaidMsat: 2000))
         let settled = try await wait.value
