@@ -1079,7 +1079,7 @@ class LightningService: NodeLifecycleService {
                 }
             }
             do {
-                return try await rail.send(
+                let sent = try await rail.send(
                     bolt11: bolt11,
                     sats: sats,
                     maxFeeSats: params?.maxTotalRoutingFeeMsat.map { $0 / 1000 }
@@ -1090,11 +1090,20 @@ class LightningService: NodeLifecycleService {
                         // Noted once admitted, so a refused attempt never takes the place of the one that went out.
                         self?.noteAttempt(on: .channelFree, bolt11: bolt11)
                         self?.recordRailAttempt(paymentHash: paymentHash, expiresAt: expiresAt)
+                        // Kept until the call returns, so a send cut off by process death stays held after a relaunch.
+                        if let paymentHash {
+                            self?.markRailSendUncertain(paymentHash: paymentHash, since: mark)
+                        }
                     }
                 )
+                if let paymentHash {
+                    endRailSendUncertainty(paymentHash: paymentHash)
+                }
+                return sent
             } catch let refusal as ChannelFreeRailSendRefused {
                 // Nothing left the wallet, and the checks above leave no earlier live attempt under this hash.
                 if let paymentHash {
+                    endRailSendUncertainty(paymentHash: paymentHash)
                     releaseRailAttempt(paymentHash: paymentHash, unlessInFlight: false)
                 }
                 throw refusal
@@ -1153,8 +1162,9 @@ class LightningService: NodeLifecycleService {
     /// The clock a trim checks invoice expiries against; tests set it.
     var now: () -> Date = Date.init
     private static let railAttemptsKey = "channelFreeRailAttemptedPaymentHashes"
-    /// Rail sends that failed after they were submitted, by hash, with the time they failed in seconds since 1970. Kept
-    /// across launches, as Spark may still resume one after a relaunch while its list shows an earlier failed attempt.
+    /// Rail sends submitted but not returned, or that failed after they were submitted, by hash, with the time they
+    /// were submitted or failed in seconds since 1970. Kept across launches, as Spark may still resume one after a
+    /// relaunch while its list shows an earlier failed attempt.
     private static let uncertainRailSendsKey = "channelFreeRailUncertainSendFailedAt"
     /// A listing drops the hashes it shows failed only, or paid once the invoice has expired, so the other rail can't
     /// pay it again, and ones it doesn't show once the invoice expired `unlistedAttemptSettleSeconds` ago. Paid or
@@ -1424,7 +1434,8 @@ class LightningService: NodeLifecycleService {
                     } else {
                         releaseRailAttempt(paymentHash: paymentHash)
                     }
-                } else {
+                } else if payment?.status == .succeeded {
+                    // Only a settled row ends the unknown send: a pending one may be the synthetic row it is listed as.
                     endRailSendUncertainty(paymentHash: paymentHash)
                 }
             } else if hasRailAttempt(paymentHash: paymentHash) {
@@ -1453,8 +1464,8 @@ class LightningService: NodeLifecycleService {
         railAttemptsStore.dictionary(forKey: Self.uncertainRailSendsKey) as? [String: Int] ?? [:]
     }
 
-    /// A rail send that failed after it was submitted, until a sync after it and its invoice's expiry settle it. The
-    /// expiry is the one kept beside the hash.
+    /// A rail send about to be submitted, or that failed after it was, until a sync after it and its invoice's expiry
+    /// settle it. The expiry is the one kept beside the hash.
     private func markRailSendUncertain(paymentHash: String, since mark: AttemptMark) {
         let hash = paymentHash.lowercased()
         let failedAt = Int(max(0, now().timeIntervalSince1970))

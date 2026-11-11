@@ -755,6 +755,45 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(status, .pending, "an earlier attempt's failure ended a send Spark may still finish")
     }
 
+    func testARefusedRetryKeepsAnUnknownSparkSendHeldPastAnOlderFailedAttempt() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: 1000) }
+        rail.balanceSats = 100_000
+        rail.errorAfterSubmission = NSError(domain: "spark", code: 2)
+        _ = try? await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+        rail.errorAfterSubmission = nil
+        // Spark lists only an earlier attempt that failed, and has not synced since this send failed.
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil)]
+        rail.syncedAfter = { ($0 ?? 0) < 1000 }
+        rail.balanceSats = 0
+
+        await assertRefusedAsDuplicate()
+        // A refused retry must not end the hold: Spark may still finish the unknown send.
+        await assertRefusedAsDuplicate()
+    }
+
+    func testASparkSendCutOffByTheProcessEndingStaysHeldPastAnOlderFailedAttempt() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        service.now = { Date(timeIntervalSince1970: 1000) }
+        rail.balanceSats = 100_000
+        // The process ends inside Spark's send, after submission: only what was stored by then survives.
+        var stored: [String: Any] = [:]
+        let store = service.railAttemptsStore
+        rail.sendGate = { stored = store.dictionaryRepresentation().filter { $0.key.hasPrefix("channelFreeRail") } }
+        _ = try? await service.send(bolt11: Self.invoice)
+        rail.sendGate = nil
+        rail.sentBolt11 = nil
+        service.forgetRailAttempts()
+        stored.forEach { service.railAttemptsStore.set($0.value, forKey: $0.key) }
+        // After the relaunch Spark has synced and lists only an earlier attempt of the invoice that failed.
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil)]
+        rail.syncedAfter = { _ in true }
+        rail.balanceSats = 0
+
+        await assertRefusedAsDuplicate()
+    }
+
     func testASparkFailureEventOfAnUnknownSendLetsTheNodeRetry() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: 1000) }
@@ -791,6 +830,18 @@ extension ChannelFreeRailTests {
         rail.syncedAfter = { ($0 ?? 0) < 1000 }
         rail.balanceSats = 0
         await assertRefusedAsDuplicate()
+    }
+
+    func testASparkSendThatReturnedLetsTheNodeRetryOnceSparkListsItFailed() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: 1000) }
+        rail.balanceSats = 100_000
+        _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+        // Spark returned the send, then reports that it failed.
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil)]
+        rail.balanceSats = 0
+
+        await assertReachesTheNode()
     }
 
     /// Keeps only what the service stores across launches: the rail's kept keys survive, everything in memory goes.
@@ -1192,6 +1243,39 @@ extension ChannelFreeRailTests {
     func testTheSendSheetWaitsForTheChannelWhenSparkCanCoverOnlyTheAmountNotItsFee() {
         XCTAssertFalse(SendSheet.sparkCanPay(amountSats: 100_000, isReady: true, balanceSats: 100_000))
         XCTAssertTrue(SendSheet.sparkCanPay(amountSats: 99750, isReady: true, balanceSats: 100_000))
+    }
+
+    func testTheSendSheetLetsSparkPayWhileTheNodeIsDown() {
+        let payable = SendSheet.sparkCanPay(amountSats: 99750, isReady: true, balanceSats: 100_000)
+        XCTAssertFalse(
+            SendSheet.waitsForNode(
+                isNodeRunning: false, isLightningPayment: true, hasAnyChannels: true, hasUsableChannels: false, sparkCanPay: payable
+            ),
+            "A Lightning payment Spark can pay waited for the node to start"
+        )
+        XCTAssertFalse(SendSheet.waitsForNode(
+            isNodeRunning: false, isLightningPayment: true, hasAnyChannels: false, hasUsableChannels: false, sparkCanPay: payable
+        ))
+
+        let unpayable = [
+            SendSheet.sparkCanPay(amountSats: 99750, isReady: false, balanceSats: 100_000),
+            SendSheet.sparkCanPay(amountSats: 100_000, isReady: true, balanceSats: 100_000),
+            SendSheet.sparkCanPay(amountSats: 0, isReady: true, balanceSats: 100_000),
+        ]
+        for sparkCanPay in unpayable {
+            XCTAssertTrue(SendSheet.waitsForNode(
+                isNodeRunning: false, isLightningPayment: true, hasAnyChannels: true, hasUsableChannels: false, sparkCanPay: sparkCanPay
+            ))
+        }
+        XCTAssertTrue(SendSheet.waitsForNode(
+            isNodeRunning: false, isLightningPayment: false, hasAnyChannels: true, hasUsableChannels: false, sparkCanPay: payable
+        ), "An on-chain payment went ahead without the node")
+        XCTAssertTrue(SendSheet.waitsForNode(
+            isNodeRunning: true, isLightningPayment: true, hasAnyChannels: true, hasUsableChannels: false, sparkCanPay: false
+        ))
+        XCTAssertFalse(SendSheet.waitsForNode(
+            isNodeRunning: true, isLightningPayment: true, hasAnyChannels: true, hasUsableChannels: false, sparkCanPay: payable
+        ))
     }
 
     func testInsufficientFundsInsideTheSparkSendIsARefusal() {

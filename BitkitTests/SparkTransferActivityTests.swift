@@ -59,16 +59,17 @@ final class SparkTransferActivityTests: XCTestCase {
 
     func testAZeroReadAfterAFailedWithdrawalOrSyncKeepsTheLastKnownBalance() {
         XCTAssertEqual(
-            SparkManager.keptBalanceSats(read: 0, lastShown: 9000, isStale: true, isExiting: false), 9000, "The balance read 0 while stale"
+            SparkManager.keptBalanceSats(read: 0, lastShown: 9000, isStale: true, withdrewAll: false, isExiting: false), 9000,
+            "The balance read 0 while stale"
         )
-        XCTAssertNil(SparkManager.keptBalanceSats(read: 0, lastShown: 9000, isStale: false, isExiting: false))
-        XCTAssertNil(SparkManager.keptBalanceSats(read: 4000, lastShown: 9000, isStale: true, isExiting: false))
-        XCTAssertNil(SparkManager.keptBalanceSats(read: 0, lastShown: 0, isStale: true, isExiting: false))
+        XCTAssertNil(SparkManager.keptBalanceSats(read: 0, lastShown: 9000, isStale: false, withdrewAll: false, isExiting: false))
+        XCTAssertNil(SparkManager.keptBalanceSats(read: 4000, lastShown: 9000, isStale: true, withdrewAll: false, isExiting: false))
+        XCTAssertNil(SparkManager.keptBalanceSats(read: 0, lastShown: 0, isStale: true, withdrewAll: false, isExiting: false))
     }
 
     func testAZeroReadDuringAnEmergencyExitKeepsNoBalance() {
         XCTAssertNil(
-            SparkManager.keptBalanceSats(read: 0, lastShown: 9000, isStale: true, isExiting: true),
+            SparkManager.keptBalanceSats(read: 0, lastShown: 9000, isStale: true, withdrewAll: false, isExiting: true),
             "The balance the exit moves to savings stayed shown in Spending"
         )
     }
@@ -78,6 +79,13 @@ final class SparkTransferActivityTests: XCTestCase {
         XCTAssertNil(SparkManager.keptBalanceSats(afterExitKept: 10000, read: 0, isCancel: false), "The exit's balance came back after it ended")
         XCTAssertNil(SparkManager.keptBalanceSats(afterExitKept: 10000, read: 4000, isCancel: true))
         XCTAssertNil(SparkManager.keptBalanceSats(afterExitKept: nil, read: 0, isCancel: true))
+    }
+
+    func testAZeroReadAfterASuccessfulWithdrawalDropsTheLastShownBalance() {
+        XCTAssertNil(
+            SparkManager.keptBalanceSats(read: 0, lastShown: 9000, isStale: true, withdrewAll: true, isExiting: false),
+            "The withdrawn balance stayed shown while Spark's last sync had failed"
+        )
     }
 
     func testASyncedZeroReadAfterAFailedWithdrawalClearsTheKeptBalance() {
