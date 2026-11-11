@@ -37,6 +37,12 @@ struct ContactPaymentContext: Equatable {
             incomingPaymentRequest.map { $0.amount.asset != .btc || $0.pricing.conversion != nil } == true
     }
 
+    /// An on-chain and a Lightning endpoint, between which the router picks, Spark's leg to the on-chain one included.
+    var hasMixedBitcoinEndpoints: Bool {
+        endpoints.contains { $0.methodId.onchainNetwork != nil } &&
+            endpoints.contains { $0.methodId == .bitcoinLightningLnurl || $0.methodId == .bitcoinLightningBolt11 }
+    }
+
     func initialUsdtSubscriptionPayment(at date: Date = Date()) -> PaykitRequestPricing.Payment? {
         guard isInitialSubscriptionPayment, let request = incomingPaymentRequest, request.billingPeriod != nil,
               Set(request.acceptedPaymentEndpointIdentifiers) == [PublicPaykitService.MethodId.usdtArbitrum.rawValue],
@@ -769,6 +775,13 @@ extension AppViewModel {
 
     /// The method a send prices with. Spending with no Lightning payment to make funds the Spark leg to the on-chain
     /// endpoint, so it takes that endpoint's price, the one the leg and its proof pay.
+    /// Amount picks the source and the asset: for a contact that lists USDT or is priced in another asset, and for a mixed
+    /// Bitcoin contact while Spark can carry a leg, so an amount no Lightning endpoint takes still reaches the router.
+    var contactPaymentPicksSource: Bool {
+        guard let context = contactPaymentContext else { return false }
+        return context.requiresAssetSelection || (context.hasMixedBitcoinEndpoints && paykitRoute?.offersSparkLeg == true)
+    }
+
     func paykitBitcoinMethod(for wallet: WalletType) -> PublicPaykitService.MethodId {
         if wallet == .lightning {
             // A routed Spark leg pays its on-chain endpoint, whatever Lightning endpoint the contact also has.
@@ -817,7 +830,9 @@ extension AppViewModel {
             }
         }
 
-        if let context = claimedContactPaymentContext, context.requiresAssetSelection, scope != .onchainPayments {
+        if let context = claimedContactPaymentContext, scope != .onchainPayments,
+           context.requiresAssetSelection || context.hasMixedBitcoinEndpoints && scanPaymentOperations.canRouteThroughSpark()
+        {
             resetSendState(preservingContactPaymentContext: true, ownerID: sendPresentationID)
             expectedGeneration = sendStateGeneration
             for endpoint in context.endpoints where endpoint.methodId != .usdtArbitrum {

@@ -703,6 +703,55 @@ final class PaykitRouteTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testAMixedBitcoinContactWithoutUsdtOpensOnAmountWithTheSparkLeg() async throws {
+        snapshotAppDefaultsDomain()
+        let lnurl = lnurlData(minSendableMsats: 5_000_000)
+        let address = onchain.value
+        let sheets = SheetViewModel()
+        let app = AppViewModel(
+            sheetViewModel: sheets,
+            navigationViewModel: NavigationViewModel(),
+            scanPaymentOperations: ScanPaymentOperations(
+                state: {
+                    ScanPaymentState(
+                        isNodeRunning: true,
+                        spendableOnchainBalanceSats: 0,
+                        totalLightningBalanceSats: 10000,
+                        hasChannels: false,
+                        hasUsableChannels: false
+                    )
+                },
+                canSendLightning: { $0 <= 10000 },
+                decodeInvoice: { value in
+                    value == address
+                        ? .onChain(invoice: OnChainInvoice(address: address, amountSatoshis: 0, label: nil, message: nil, params: nil))
+                        : .lnurlPay(data: lnurl)
+                },
+                canRouteThroughSpark: { true }
+            )
+        )
+        let context = ContactPaymentContext(
+            publicKey: "contact",
+            privatePaymentContext: nil,
+            endpoints: [Self.endpoint(.bitcoinLightningLnurl, lightning.value), Self.endpoint(.regtestOnchainP2wpkh, address)]
+        )
+        XCTAssertFalse(context.requiresAssetSelection)
+        XCTAssertTrue(app.claimContactPaymentContext(context))
+
+        try await app.handleScannedData(lightning.value, claimedContactPaymentContext: context)
+        PaymentNavigationHelper.openPaymentSheet(
+            app: app,
+            currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared,
+            sheetViewModel: sheets
+        )
+
+        XCTAssertEqual(app.paykitRoute?.offersSparkLeg, true, "2,000 sats below the LNURL's 5,000 minimum can still go through Spark")
+        XCTAssertEqual(app.scannedOnchainInvoice?.address, address)
+        XCTAssertEqual(sheets.sendSheetItem?.initialRoute, .amount, "Amount picks the source, so the amount reaches the router")
+    }
+
     private func lnurlData(minSendableMsats: UInt64) -> LnurlPayData {
         LnurlPayData(
             uri: lightning.value,
