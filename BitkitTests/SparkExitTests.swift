@@ -144,6 +144,23 @@ final class FakeSparkExitChain: SparkExitChain, @unchecked Sendable {
         return lock.withLock { utxosByAddress[address] ?? [] }
     }
 
+    /// Addresses with a transaction though they hold nothing now.
+    var usedAddresses: Set<String> = []
+    /// Every address read for its transactions, in order.
+    private(set) var addressReads: [String] = []
+    /// The address read fails, as on a host timeout.
+    var isAddressReadUnreadable = false
+
+    func isAddressUsed(address: String) async throws -> Bool {
+        if isAddressReadUnreadable {
+            throw URLError(.timedOut)
+        }
+        return lock.withLock {
+            addressReads.append(address)
+            return usedAddresses.contains(address) || !(utxosByAddress[address] ?? []).isEmpty
+        }
+    }
+
     /// Transactions every host answers not found for, as for one a node dropped.
     var droppedTxids: Set<String> = []
     /// Block heights of confirmed transactions; 900 for any other.

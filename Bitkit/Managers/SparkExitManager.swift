@@ -881,7 +881,11 @@ final class SparkExitManager {
                 destination: destination,
                 lostLeafIds: (try? lostLeafStore.load()) ?? []
             )
-            let fundingIndex = pendingFundingIndex ?? nextFundingIndex()
+            let fundingIndex = if let pendingFundingIndex {
+                pendingFundingIndex
+            } else {
+                try await nextFundingIndex()
+            }
             let fundingAddress = try Self.fundingKey(walletIndex: walletIndex, index: fundingIndex).address
             useQuote(newQuote, destination: destination, feeRate: feeRate, fundingIndex: fundingIndex, fundingAddress: fundingAddress)
         } catch {
@@ -1172,10 +1176,37 @@ final class SparkExitManager {
 
     /// Keeps the savings payment in the record, so the exit waits for it instead of asking for the funding again.
     /// Written between ticks, so a tick in flight never saves over it.
-    /// The funding key index of the next exit: one no exit of this wallet used, from the counter the last start
-    /// left and the stored record, so leftover of an earlier exit never mixes into a new one.
-    private func nextFundingIndex() -> UInt32 {
-        SparkExitMath.nextFundingIndex(counter: UserDefaults.standard.integer(forKey: fundingIndexKey), record: record)
+    /// The funding key index of the next exit: one no exit of this wallet used, so leftover of an earlier exit never
+    /// mixes into a new one. A scan's result rides the next metadata backup.
+    private func nextFundingIndex() async throws -> UInt32 {
+        let wasKept = UserDefaults.standard.object(forKey: fundingIndexKey) != nil
+        let walletIndex = walletIndex
+        let index = try await Self.nextFundingIndex(defaults: .standard, key: fundingIndexKey, record: record, chain: chain) {
+            try Self.fundingKey(walletIndex: walletIndex, index: $0).address
+        }
+        if !wasKept {
+            SettingsViewModel.shared.notifyAppStateChanged()
+        }
+        return index
+    }
+
+    /// From the counter the last start left at `key` and the stored record. With neither, as after a restore from the
+    /// phrase or from a backup older than the counter, from a scan of the funding addresses at `address` on `chain`,
+    /// kept as the counter so it runs once. A scan the chain fails keeps nothing.
+    static func nextFundingIndex(
+        defaults: UserDefaults,
+        key: String,
+        record: SparkExitRecord?,
+        chain: SparkExitChain?,
+        address: (UInt32) throws -> String
+    ) async throws -> UInt32 {
+        if defaults.object(forKey: key) != nil || record != nil {
+            return SparkExitMath.nextFundingIndex(counter: defaults.integer(forKey: key), record: record)
+        }
+        guard let chain else { return 0 }
+        let next = try await SparkExitMath.scanNextFundingIndex { try await chain.isAddressUsed(address: address($0)) }
+        defaults.set(Int(next), forKey: key)
+        return next
     }
 
     private var fundingIndexKey: String {

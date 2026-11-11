@@ -158,6 +158,10 @@ struct TimedSparkExitChain: SparkExitChain {
         try await base.utxos(address: address)
     }
 
+    func isAddressUsed(address: String) async throws -> Bool {
+        try await base.isAddressUsed(address: address)
+    }
+
     func txStatus(txid: String) async throws -> EsploraTxStatus {
         try await base.txStatus(txid: txid)
     }

@@ -90,6 +90,8 @@ enum SparkExitFeeEstimates {
 protocol SparkExitChain: Sendable {
     func tipHeight() async throws -> UInt32
     func utxos(address: String) async throws -> [EsploraUtxo]
+    /// Whether the address has any transaction, in a block or the mempool, from `/address/{address}`.
+    func isAddressUsed(address: String) async throws -> Bool
     func txStatus(txid: String) async throws -> EsploraTxStatus
     /// Whether the transaction is in a block or in the mempool; false once every host answers it has no such
     /// transaction.
@@ -182,6 +184,27 @@ struct EsploraSparkExitChain: SparkExitChain {
 
     func utxos(address: String) async throws -> [EsploraUtxo] {
         try await JSONDecoder().decode([EsploraUtxo].self, from: get("/address/\(address)/utxo"))
+    }
+
+    func isAddressUsed(address: String) async throws -> Bool {
+        struct Stats: Decodable {
+            let txCount: Int
+
+            enum CodingKeys: String, CodingKey {
+                case txCount = "tx_count"
+            }
+        }
+        struct Address: Decodable {
+            let chainStats: Stats
+            let mempoolStats: Stats
+
+            enum CodingKeys: String, CodingKey {
+                case chainStats = "chain_stats"
+                case mempoolStats = "mempool_stats"
+            }
+        }
+        let stats = try await JSONDecoder().decode(Address.self, from: get("/address/\(address)"))
+        return stats.chainStats.txCount + stats.mempoolStats.txCount > 0
     }
 
     func txStatus(txid: String) async throws -> EsploraTxStatus {
