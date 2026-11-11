@@ -304,10 +304,10 @@ struct SparkExitRecord: Codable, Equatable {
         return false
     }
 
-    /// An ended exit that failed, lost leaves or kept change at the funding address, whose result the user has not
-    /// opened yet.
+    /// An ended exit that failed, lost leaves or kept its leftover at the funding address, whose result the user has
+    /// not opened yet.
     var hasUnseenResult: Bool {
-        !isActive && (isFailed || lostSats > 0 || isChangeKept) && isResultSeen != true
+        !isActive && (isFailed || lostSats > 0 || isLeftoverKept) && isResultSeen != true
     }
 
     /// The fee change stays at the funding address for good, shown with the path that spends it.
@@ -315,12 +315,18 @@ struct SparkExitRecord: Codable, Equatable {
         !leftover.isEmpty && leftoverSweep?.isDustKept == true
     }
 
+    /// The leftover stays at the funding address for good: change too small to send, or a sweep refused for a reason
+    /// other than its fee, which nothing retries.
+    var isLeftoverKept: Bool {
+        isChangeKept || (!leftover.isEmpty && leftoverSweep?.rejection != nil && !isLeftoverSweepPending)
+    }
+
     /// Whether Emergency exit opens this exit rather than a new one: it runs, its leftover is still on its way to
-    /// savings, the leftover sweep was refused and the leftover waits at the funding address, or it failed, lost leaves
-    /// or kept change and the user has not seen that yet. Kept change's address and path stay in the earlier exit
-    /// addresses (`SparkExitEarlierAddress`), so a later exit may replace this record.
+    /// savings, or it failed, lost leaves or kept its leftover at the funding address and the user has not seen that
+    /// yet. A kept leftover's address and path stay in the earlier exit addresses (`SparkExitEarlierAddress`), so a
+    /// later exit may replace this record.
     var showsResult: Bool {
-        needsDriving || (!leftover.isEmpty && leftoverSweep?.rejection != nil) || hasUnseenResult
+        needsDriving || hasUnseenResult
     }
 
     /// The leaves builds select: the quote's, less those an older state claimed and those left behind.

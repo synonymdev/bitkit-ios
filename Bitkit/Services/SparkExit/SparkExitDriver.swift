@@ -1110,6 +1110,8 @@ struct SparkExitDriver {
                 }
             } else {
                 record.leftoverSweep?.rejection = reason
+                // Final: shown once more with its address, even after the result was opened, as kept change is.
+                record.isResultSeen = nil
             }
         // Once accepted, a later refusal is mostly a node that already has it or a conflict with it confirming. A fee
         // refusal of one no host holds any more means it was evicted when the mempool's floor rose: it waits and is

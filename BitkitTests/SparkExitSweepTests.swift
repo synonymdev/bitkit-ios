@@ -713,6 +713,22 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertEqual(listed.first?.path, SparkExitFundingKey.path(index: 0, network: Env.bitkitCoreNetwork))
     }
 
+    /// A leftover sweep refused for good shows its result once, then lets a later exit start: the funding address and
+    /// its path stay in the earlier exit addresses.
+    func testARefusedLeftoverSweepShowsOnceAndItsAddressStaysListed() throws {
+        var record = endedRecord()
+        record.leftoverSweep = .init(txid: "t", txHex: "02", valueSats: 4000, rejection: "non-mandatory-script-verify-flag")
+        XCTAssertTrue(record.showsResult, "the leftover's address and path were out of reach")
+        XCTAssertTrue(record.hasUnseenResult, "opening the result never lets the refused sweep go")
+        record.isResultSeen = true
+        XCTAssertFalse(record.showsResult, "the refused sweep blocked every later exit")
+
+        let listed = try XCTUnwrap(SparkExitEarlierAddress.keptChange(record, network: .regtest, at: Date()), "the leftover's address is in no list")
+        XCTAssertEqual(listed.address, key.address)
+        XCTAssertEqual(listed.kind, .keptChange)
+        XCTAssertEqual(listed.sats, 5035)
+    }
+
     /// After about four weeks (4,032 blocks) the change stays at the funding address and the exit is let go.
     func testChangeTooSmallForFourWeeksIsKept() async throws {
         var record = endedRecord()

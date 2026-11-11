@@ -5,7 +5,7 @@ import Foundation
 /// apart from the record, so a later exit can start and replace the record while the address stays reachable.
 struct SparkExitEarlierAddress: Codable, Equatable, Identifiable {
     enum Kind: String, Codable {
-        /// Fee change too small to send, kept at the funding address for good.
+        /// Fee funding left at the funding address for good: change too small to send, or a refused sweep's.
         case keptChange
         /// The funding address of a cancelled exit that was forgotten: a late payment can still land there.
         case cancelledFunding
@@ -30,9 +30,9 @@ struct SparkExitEarlierAddress: Codable, Equatable, Identifiable {
         kind == .cancelledFunding && now.timeIntervalSince(date) < Self.watchSeconds
     }
 
-    /// The kept fee change of an ended exit.
+    /// The leftover an ended exit kept at its funding address.
     static func keptChange(_ record: SparkExitRecord, network: BitkitCore.Network, at date: Date) -> SparkExitEarlierAddress? {
-        guard record.isChangeKept, let address = record.funding.first?.address else { return nil }
+        guard record.isLeftoverKept, let address = record.funding.first?.address else { return nil }
         return SparkExitEarlierAddress(
             address: address,
             path: SparkExitFundingKey.path(index: record.fundingIndex, network: network),
