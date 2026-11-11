@@ -612,7 +612,8 @@ enum SparkExitMath {
 
     /// What the exit still brings to savings: what it expects, less what already reached savings, less the first fee
     /// funding nobody paid yet (the expected amount counts it as coming back), less leaves an older state claimed,
-    /// which never arrive. Only confirmed steps count as reached: the sweep is in the plan from its first build.
+    /// which never arrive, and leaves the exit left behind, which stay on Spark. Only confirmed steps count as reached: the sweep is in the plan from
+    /// its first build.
     static func inTransferSats(_ record: SparkExitRecord, fundingSeenSats: UInt64) -> UInt64 {
         let confirmed = (record.recovery?.response.transactions ?? []).filter {
             guard case .confirmed = $0.status else { return false }
@@ -625,6 +626,7 @@ enum SparkExitMath {
             unpaid = requiredSats.saturatingSub(max(record.fundedSats, fundingSeenSats))
         }
         return record.expectedSats.saturatingSub(received).saturatingSub(unpaid).saturatingSub(record.lostSats)
+            .saturatingSub(record.leftBehindSats)
     }
 
     /// What stays on Spark while the exit runs: the Spark balance beyond the exit's leaves, such as a counter-swap

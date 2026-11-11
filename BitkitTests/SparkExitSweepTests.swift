@@ -919,6 +919,13 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.inTransferSats(record, fundingSeenSats: 0), 10000)
     }
 
+    /// A leaf the exit left behind stays on Spark: it leaves the transfer to savings.
+    func testInTransferLeavesOutALeafLeftBehind() {
+        var record = endedRecord(phase: .running)
+        record.leftBehindLeaves = [.init(leafId: "leaf-2", valueSats: 30000, reason: "fee rate")]
+        XCTAssertEqual(SparkExitMath.inTransferSats(record, fundingSeenSats: 0), 60000, "the left-behind leaf is still counted in transfer")
+    }
+
     /// The first fee funding nobody paid yet is not in transfer; once paid, or once the exit pays it, it is.
     func testInTransferLeavesOutUnpaidFirstFunding() {
         var record = endedRecord(phase: .awaitingFunding(requiredSats: 20000))
