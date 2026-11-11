@@ -90,6 +90,8 @@ final class SparkManager: ChannelFreeLightningRail {
     @ObservationIgnored private var connectTask: Task<Void, Error>?
     /// A leaf optimization is running, as its events tell.
     @ObservationIgnored private var isOptimizing = false
+    /// Sends and withdrawals past their exit check, which an exit starting waits for.
+    let spends = SparkSpends { SparkExitManager.shared.isExiting }
     /// Waiting before an exit quote for value an interrupted leaf optimization still owes the wallet.
     private(set) var isSettlingForExit = false
     /// When a leaf optimization last moved without completing, so a counter-swap it left may still be unclaimed.
@@ -259,6 +261,12 @@ final class SparkManager: ChannelFreeLightningRail {
         while isOptimizing, !Task.isCancelled, Date() < deadline {
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
+    }
+
+    /// Waits for the sends and withdrawals that passed their exit check before the exit held Spark, for up to two
+    /// minutes, so the exit quotes the leaves they leave.
+    func waitForSpends() async {
+        await spends.waitUntilIdle(timeout: Self.optimizationWaitSeconds)
     }
 
     private func noteOptimization(_ event: AutoOptimizationEvent) {
@@ -577,16 +585,18 @@ final class SparkManager: ChannelFreeLightningRail {
         }
         // The fee limit is checked on the quote that is sent, not only on the earlier estimate.
         try Self.checkSendFee(feeSats, maxFeeSats: maxFeeSats)
-        // A deadline that passed while the quote was prepared stops the payment here, before anything leaves.
-        try beforeSubmission()
-        let response: SendPaymentResponse
-        do {
-            response = try await sdk.sendPayment(request: SendPaymentRequest(
-                prepareResponse: prepared,
-                options: Self.bolt11SendOptions
-            ))
-        } catch {
-            throw Self.sendPaymentFailure(error)
+        // An exit that started while the quote was prepared refuses it here, before its hash is recorded.
+        let response: SendPaymentResponse = try await spends.run {
+            // A deadline that passed while the quote was prepared stops the payment here, before anything leaves.
+            try beforeSubmission()
+            do {
+                return try await sdk.sendPayment(request: SendPaymentRequest(
+                    prepareResponse: prepared,
+                    options: Self.bolt11SendOptions
+                ))
+            } catch {
+                throw Self.sendPaymentFailure(error)
+            }
         }
         Logger.info("Sent Spark payment '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
         return invoiceDetails.paymentHash
@@ -750,10 +760,14 @@ final class SparkManager: ChannelFreeLightningRail {
         do {
             let prepared = try await prepareWithdrawAll(to: address)
             try Self.checkWithdrawalFee(Self.withdrawalFeeSats(prepared), shownFeeSats: maxFeeSats)
-            let response = try await requireSdk().sendPayment(request: SendPaymentRequest(
-                prepareResponse: prepared,
-                options: .bitcoinAddress(confirmationSpeed: .medium)
-            ))
+            let sdk = try await requireSdk()
+            // Preparing suspends, so an exit can start meanwhile.
+            let response = try await spends.run {
+                try await sdk.sendPayment(request: SendPaymentRequest(
+                    prepareResponse: prepared,
+                    options: .bitcoinAddress(confirmationSpeed: .medium)
+                ))
+            }
             preparedWithdrawal = nil
             if case let .withdraw(txId, _, _) = response.payment.details {
                 sentWithdrawalTxIds.insert(txId)
@@ -1460,6 +1474,41 @@ private final class SparkEventListener: BreezSdkSpark.EventListener, @unchecked 
 
     func onEvent(event: SdkEvent) async {
         await handler(event)
+    }
+}
+
+/// The Spark sends and withdrawals past their exit check. An exit holds Spark before it waits for them, so every later
+/// one refuses, and it quotes the leaves they leave once they end.
+@MainActor
+final class SparkSpends {
+    private let isExiting: () -> Bool
+    private(set) var inFlight = 0
+
+    init(isExiting: @escaping () -> Bool) {
+        self.isExiting = isExiting
+    }
+
+    /// Runs `send` counted, unless an exit holds Spark. Called after the send's last await but the one inside `send`,
+    /// so an exit starting meanwhile either refuses it here or waits for it.
+    func run<T>(_ send: () async throws -> T) async throws -> T {
+        guard !isExiting() else {
+            Logger.info("Refused a Spark send: an emergency exit holds Spark", context: "SparkManager")
+            throw ChannelFreeRailSendRefused(reason: t("wallet__payment_failed_description"))
+        }
+        inFlight += 1
+        defer { inFlight -= 1 }
+        return try await send()
+    }
+
+    /// Waits for the counted sends to end, for up to `timeout`.
+    func waitUntilIdle(timeout: TimeInterval) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while inFlight > 0, !Task.isCancelled, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        if inFlight > 0 {
+            Logger.warn("Gave up waiting for Spark sends in flight to end", context: "SparkManager")
+        }
     }
 }
 

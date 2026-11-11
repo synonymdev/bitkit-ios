@@ -381,3 +381,53 @@ extension SparkPaymentSafetyTests {
         )
     }
 }
+
+// MARK: - Exit hold
+
+extension SparkPaymentSafetyTests {
+    func testAnExitStartingWhileASendPreparesSendsNothing() async {
+        var isExiting = false
+        let spends = SparkSpends { isExiting }
+        var sent = false
+
+        // The exit starts while the send prepares, after any check the send made before it.
+        isExiting = true
+        do {
+            try await spends.run { sent = true }
+            XCTFail("a send went out once an exit held Spark")
+        } catch {
+            XCTAssertTrue(error is Bitkit.ChannelFreeRailSendRefused)
+        }
+
+        XCTAssertFalse(sent)
+        XCTAssertEqual(spends.inFlight, 0)
+    }
+
+    func testAnExitStartWaitsForASendAlreadyPastItsExitCheck() async throws {
+        var isExiting = false
+        let spends = SparkSpends { isExiting }
+        var release: CheckedContinuation<Void, Never>?
+        let send = Task { @MainActor in
+            try await spends.run {
+                await withCheckedContinuation { release = $0 }
+            }
+        }
+        while release == nil {
+            await Task.yield()
+        }
+
+        isExiting = true
+        var isIdle = false
+        let idle = Task { @MainActor in
+            await spends.waitUntilIdle(timeout: 120)
+            isIdle = true
+        }
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        XCTAssertFalse(isIdle, "the exit start went on while a send past its check still spent leaves")
+        release?.resume()
+        try await send.value
+        await idle.value
+        XCTAssertTrue(isIdle)
+    }
+}
