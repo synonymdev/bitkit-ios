@@ -43,6 +43,14 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: quote, fresh: quote, seenSats: 0, seenCount: 0, feeRate: 2), 20000)
     }
 
+    /// Savings never pays under the 294-sat dust limit, which the onchain wallet refuses: a 20,000 quote at 2 sat/vB
+    /// with 19,900 received misses 236 sats and pays 294.
+    func testSavingsCompletingAlmostFullFundingPaysAtLeastTheDustLimit() {
+        let quote = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 20000))
+        let sats = SparkExitManager.savingsFundingSats(confirmed: quote, fresh: quote, seenSats: 19900, seenCount: 1, feeRate: 2)
+        XCTAssertEqual(sats, SparkExitMath.fundingDustSats, "savings paid a dust amount")
+    }
+
     /// A tapped notification for an exit whose result was seen already is let go once the record loaded, so a later
     /// exit's result never jumps to Progress.
     func testATappedNotificationIsLetGoOnceTheLoadedExitShowsNoResult() {

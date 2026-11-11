@@ -1107,7 +1107,8 @@ final class SparkExitManager {
 
     /// Savings pays at most the funding the user confirmed: a higher fresh amount goes through the shortfall flow on
     /// Progress, which asks for the rest.
-    /// Funding another wallet already sent to the address (`seenSats`) is not paid again.
+    /// Funding another wallet already sent to the address (`seenSats`) is not paid again. What is still missing is
+    /// paid at least at the dust limit, as the Progress top-up asks for it: the onchain wallet refuses less.
     nonisolated static func savingsFundingSats(
         confirmed: SparkExitQuote,
         fresh: SparkExitQuote,
@@ -1121,7 +1122,8 @@ final class SparkExitManager {
             receivedSats: seenSats,
             feeRate: feeRate
         ).toSend
-        return total.saturatingSub(seenSats)
+        let missing = total.saturatingSub(seenSats)
+        return missing > 0 ? max(missing, SparkExitMath.fundingDustSats) : 0
     }
 
     /// The exit a start began, still stored and active (not cancelled meanwhile); nil otherwise. The store keeps
