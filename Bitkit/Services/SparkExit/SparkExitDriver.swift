@@ -144,6 +144,14 @@ struct SparkExitDriver {
                     if try await !retryWaitingLeaves(&record, recovering: recovering, tip: tip, isFunded: true) {
                         await finish(&record, phase: .done)
                     }
+                } else if record.isUnverifiedAsk == true, !record.isRebuilding {
+                    // Funding an unverified rebuild asked for resumes that rebuild, with its guard: the valid
+                    // generation stays over a failed-only build, running again with the funding adopted.
+                    var valid = record
+                    valid.phase = .running
+                    valid.isUnverifiedAsk = nil
+                    try await build(&record, recovering: recovering)
+                    keepValidGeneration(&record, over: valid)
                 } else {
                     try await build(&record, recovering: recovering)
                     // Held funding that pays for less: the awaited top-up is still followed, as while waiting for it.
@@ -295,11 +303,13 @@ struct SparkExitDriver {
             // Nothing is left to pay more for: back to running, whose next check finishes it (failed leaves included).
             // A payment still on its way is followed after the end and swept back with the leftover.
             record.phase = .running
+            record.isUnverifiedAsk = nil
         case .redo:
             // The diverged generation is never sent again: its rebuild, a Redo one, waits for the top-up.
             Logger.warn("Spark exit diverged on-chain while a top-up is awaited; rebuilding once it confirms", context: "SparkExitDriver")
             record.isRebuilding = true
             record.isRedoRebuild = true
+            record.isUnverifiedAsk = nil
         }
     }
 
@@ -574,14 +584,9 @@ struct SparkExitDriver {
                 try save(record)
                 let valid = record
                 try await build(&record, recovering: recovering)
-                // A rebuild of only failed cooperative leaves beside the leaf it could not read drops that leaf's signed
-                // steps, which a matured step needs sent within the operators' window: the valid generation stays, as
-                // it was before the build, and is what the tick saves.
-                if record.generation != valid.generation, record.recovery?.response.transactions.isEmpty == true,
-                   !(record.waitingLeafIds ?? []).isEmpty
-                {
-                    Logger.warn("Spark exit keeps its generation: the rebuild built only failed leaves", context: "SparkExitDriver")
-                    record = valid
+                if !keepValidGeneration(&record, over: valid), case .needsFunding = record.phase {
+                    // Like a fee bump's, the valid generation keeps going while the funding it asks for comes.
+                    record.isUnverifiedAsk = true
                 }
                 return
             }
@@ -898,6 +903,19 @@ struct SparkExitDriver {
             }
             return results
         }
+    }
+
+    /// A rebuild of only failed cooperative leaves beside the leaf it could not read drops that leaf's signed steps,
+    /// which a matured step needs sent within the operators' window: the valid generation stays, as `valid` holds it,
+    /// and is what the tick saves. True when it stayed.
+    @discardableResult
+    private func keepValidGeneration(_ record: inout SparkExitRecord, over valid: SparkExitRecord) -> Bool {
+        guard record.generation != valid.generation, record.recovery?.response.transactions.isEmpty == true,
+              !(record.waitingLeafIds ?? []).isEmpty
+        else { return false }
+        Logger.warn("Spark exit keeps its generation: the rebuild built only failed leaves", context: "SparkExitDriver")
+        record = valid
+        return true
     }
 
     private func isRebuildDue(_ record: SparkExitRecord) -> Bool {

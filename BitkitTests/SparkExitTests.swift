@@ -1616,6 +1616,55 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2"], "leaf-1's matured step n2 was not sent")
     }
 
+    /// The valid generation beside a step the SDK could not read, whose rebuild of only failed cooperative leaves asks
+    /// for fee funding first.
+    private func unverifiedAsk() async throws -> (record: SparkExitRecord, readable: RecoverFundsResponse, failure: CooperativeRecoveryFailure) {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.leafIds = ["leaf-1", "coop-1"]
+        let failure = CooperativeRecoveryFailure(leafId: "coop-1", outputTxid: "o", outputVout: 0, error: .operatorsUnavailable(message: "down"))
+        let unread = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("n2", dependsOn: ["n1"], status: .unverified),
+        ], failed: [failure])
+        let readable = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("n2", dependsOn: ["n1"]),
+        ], failed: [failure])
+        record.adopt(unread, at: clock)
+        sdk.checks = [CheckRecoverFundsResponse(recovery: unread, verdict: .valid)]
+        var prepared = SparkExitFixtures.prepared(funding: nil, leaves: ["coop-1"])
+        prepared.skipped = [SkippedLeaf(leafId: "leaf-1", valueSats: 100_000, reason: .unverified)]
+        sdk.preparedResponse = prepared
+        sdk.recoverError = SdkError.InsufficientCpfpFunds(requiredSats: 3000, docsUrl: "")
+
+        record = try await driver().tick(record)
+        guard case .needsFunding = record.phase else {
+            XCTFail("the unverified rebuild asked for no funding: \(record.phase)")
+            return (record, readable, failure)
+        }
+        XCTAssertEqual(record.generation, 1)
+        sdk.recoverError = nil
+        return (record, readable, failure)
+    }
+
+    /// Confirmed funding for an unverified rebuild's fee ask resumes that rebuild with its guard: a build of only failed
+    /// cooperative leaves beside the waiting leaf is never adopted, and the exit runs on with the valid generation.
+    func testFundingAnUnverifiedRebuildsAskKeepsTheValidGenerationOverAFailedOnlyBuild() async throws {
+        var (record, _, failure) = try await unverifiedAsk()
+        XCTAssertEqual(record.isUnverifiedAsk, true)
+        let unread = try XCTUnwrap(record.recovery?.response)
+        sdk.checks = [CheckRecoverFundsResponse(recovery: unread, verdict: .valid)]
+        chain.utxosByAddress[record.funding[0].address] = [SparkExitFixtures.utxo(String(repeating: "f", count: 64), value: 50000)]
+        sdk.builds = [SparkExitFixtures.recovery([], failed: [failure])]
+        chain.tip = 1001
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.generation, 1, "funding adopted a failed-only build without leaf-1's signed steps")
+        XCTAssertEqual(record.phase, .running)
+        XCTAssertNil(record.isUnverifiedAsk)
+    }
+
     /// R2: while a unilateral step is ready, a rebuild would conflict with it, so nothing rebuilds; a cooperative step
     /// the SDK could not read is still sent.
     func testAReadyStepHoldsTheUnverifiedRebuildAndCooperativeStepsAreStillSent() async throws {

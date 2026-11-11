@@ -247,6 +247,9 @@ struct SparkExitRecord: Codable, Equatable {
     /// The pending rebuild answers a divergence the SDK reported (`Redo`). Only such a rebuild adds lost-leaf strikes,
     /// so rebuilds over a stalled chain or an unverified step never make a leaf lost.
     var isRedoRebuild: Bool?
+    /// The fee funding asked for came from a rebuild over a step the SDK could not read, while the generation out there
+    /// is valid: funding it resumes that rebuild with its guard, and the ask ends once every step reads again.
+    var isUnverifiedAsk: Bool?
     /// The tip of the last rebuild over a step the SDK could not read, so it rebuilds at most once a block.
     var unverifiedRebuiltAtHeight: UInt32?
     /// The tip at which each of the exit's leaves was first seen stopped (`exitChainState.stoppedLeafIds`).
@@ -414,6 +417,7 @@ struct SparkExitRecord: Codable, Equatable {
             rebuiltFromChainConfirmedCount = SparkExitMath.confirmedCount(built)
         }
         isRedoRebuild = nil
+        isUnverifiedAsk = nil
     }
 
     /// Ends the rebuilt-from-chain note once the rebuilt exit moved: a step confirmed beyond those already in a block.
