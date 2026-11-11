@@ -962,9 +962,7 @@ final class SparkManager: ChannelFreeLightningRail {
                 return await (try? CoreService.shared.activity.appendTags(toActivity: txId, tags)) != nil
             }
         )
-        if payment.status == .completed {
-            await CoreService.shared.activity.markOnchainActivityAsConfirmed(txId: txId)
-        }
+        Self.confirmMinedContactPayouts(Self.completedContactPayouts([payment], contactWithdrawals: [txId]))
         if isDurable {
             if let request = pending.request {
                 await PaykitAllowanceExecutor.shared.settleManualPayment(requestId: request.id, outcome: .succeeded, transactionId: txId)
@@ -1248,9 +1246,65 @@ final class SparkManager: ChannelFreeLightningRail {
         for txId in Self.savingsTransferTxIds(unclaimed: unclaimed, payments: payments, contactWithdrawals: contactWithdrawals) {
             await CoreService.shared.activity.markOnchainActivityAsTransfer(txId: txId)
         }
-        for payment in payments where payment.status == .completed {
-            if case let .withdraw(txId, _, _) = payment.details, contactWithdrawals.contains(txId) {
-                await CoreService.shared.activity.markOnchainActivityAsConfirmed(txId: txId)
+        Self.confirmMinedContactPayouts(Self.completedContactPayouts(payments, contactWithdrawals: contactWithdrawals))
+    }
+
+    /// The output of a contact withdrawal's transaction that pays the contact.
+    struct ContactPayout: Equatable {
+        let txId: String
+        let vout: UInt32
+        let address: String
+    }
+
+    /// The payouts of the contact withdrawals Spark lists as completed.
+    nonisolated static func completedContactPayouts(_ payments: [Payment], contactWithdrawals: Set<String>) -> [ContactPayout] {
+        payments.compactMap { payment in
+            guard payment.status == .completed, case let .withdraw(txId, vout, address) = payment.details,
+                  contactWithdrawals.contains(txId)
+            else { return nil }
+            return ContactPayout(txId: txId, vout: vout, address: address)
+        }
+    }
+
+    /// Looks the payouts up on chain off the refresh, so a slow Electrum server never holds a send that waits for it.
+    private static func confirmMinedContactPayouts(_ payouts: [ContactPayout]) {
+        guard !payouts.isEmpty else { return }
+        Task {
+            await confirmMinedPayouts(
+                payouts,
+                needsConfirmation: { txId in
+                    await (try? CoreService.shared.activity.getOnchainActivityByTxId(txid: txId))?.confirmed == false
+                },
+                unspentOutputs: { address in
+                    try await OnChainHwService.shared.getAddressInfo(
+                        address: address,
+                        electrumUrl: OnChainHwService.getElectrumUrl(),
+                        network: OnChainHwService.appDefaultCoinType
+                    ).utxos
+                },
+                markConfirmed: { await CoreService.shared.activity.markOnchainActivityAsConfirmed(txId: $0) }
+            )
+        }
+    }
+
+    /// Spark lists a withdrawal completed once its provider took the payout on, which can be before the payout transaction
+    /// is broadcast or mined, so a payout's activity is confirmed only once the chain lists its output in a block. An
+    /// output the contact already spent drops out of that list, so its activity then stays unconfirmed.
+    nonisolated static func confirmMinedPayouts(
+        _ payouts: [ContactPayout],
+        needsConfirmation: (String) async -> Bool,
+        unspentOutputs: (String) async throws -> [AccountUtxo],
+        markConfirmed: (String) async -> Void
+    ) async {
+        for payout in payouts {
+            guard await needsConfirmation(payout.txId) else { continue }
+            do {
+                let outputs = try await unspentOutputs(payout.address)
+                if outputs.contains(where: { $0.txid == payout.txId && $0.vout == payout.vout && $0.confirmations > 0 }) {
+                    await markConfirmed(payout.txId)
+                }
+            } catch {
+                Logger.warn("Failed to look up the payout of Spark withdrawal '\(payout.txId)': \(error)", context: "SparkManager")
             }
         }
     }
