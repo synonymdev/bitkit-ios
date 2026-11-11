@@ -1382,7 +1382,13 @@ extension ChannelFreeRailTests {
         Bitkit.LightningService.shared.setEventCallback { wallet.notifyEventHandlers($0) }
 
         let wait = Task { try await wallet.waitForLightningPayment(hash: hash, timeoutSeconds: 5) }
-        try await Task.sleep(nanoseconds: 200_000_000)
+        // The event must reach the watcher, so it is emitted only once the watch has started.
+        var waited = 0
+        while wallet.watchSendContinuations[hash] == nil, waited < 500 {
+            try await Task.sleep(nanoseconds: 10_000_000)
+            waited += 1
+        }
+        XCTAssertNotNil(wallet.watchSendContinuations[hash], "The send watch never started")
         Bitkit.LightningService.shared.emitChannelFreeRailEvent(.paymentFailed(paymentId: hash, paymentHash: hash, reason: .unexpectedError))
         wallet.notifyEventHandlers(.paymentSuccessful(paymentId: hash, paymentHash: hash, paymentPreimage: "pp", feePaidMsat: 2000))
         let settled = try await wait.value
