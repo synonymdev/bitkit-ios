@@ -356,6 +356,12 @@ final class SparkExitManager {
         return hasLoadedRecord ? .drop : .wait
     }
 
+    /// The funding index counter once an exit using `index` is forgotten.
+    /// Given back when it is the last one used, so the next exit watches that address again.
+    nonisolated static func fundingCounterAfterForget(_ counter: Int, index: UInt32) -> Int {
+        counter == Int(index) + 1 ? Int(index) : counter
+    }
+
     nonisolated static func cancelOutcome(utxos: [EsploraUtxo]?) -> CancelOutcome {
         guard let utxos else { return .keep }
         guard !utxos.isEmpty else { return .forget }
@@ -425,6 +431,9 @@ final class SparkExitManager {
         try? store.delete()
         self.record = nil
         Self.clearReminders()
+        // A payment that lands at the forgotten address late is then seen by the next exit, which uses it again.
+        let counter = UserDefaults.standard.integer(forKey: fundingIndexKey)
+        UserDefaults.standard.set(Self.fundingCounterAfterForget(counter, index: record.fundingIndex), forKey: fundingIndexKey)
         if let transferId = record.transferId {
             try? await TransferService(lightningService: .shared).markSettled(id: transferId)
         }

@@ -44,6 +44,12 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(outcome, .notCancellable)
     }
 
+    /// A forgotten exit gives its funding address back, so a payment that lands there late is seen by the next exit.
+    func testAForgottenExitGivesItsFundingAddressBack() {
+        XCTAssertEqual(SparkExitManager.fundingCounterAfterForget(4, index: 3), 3)
+        XCTAssertEqual(SparkExitManager.fundingCounterAfterForget(6, index: 3), 6, "a later address is in use")
+    }
+
     // MARK: H1 cancel
 
     func testCancelIsOffAfterAPaymentFromSavings() {
