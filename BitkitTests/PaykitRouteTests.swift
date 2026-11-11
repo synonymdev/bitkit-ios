@@ -685,6 +685,24 @@ final class PaykitRouteTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testAPendingWithdrawalSendIsHeldUntilItsJournalSettles() {
+        var pending = Self.withdrawal(id: "sent", to: onchain.value, amountSats: 20000, timestamp: 1001)
+        pending.status = .pending
+
+        XCTAssertThrowsError(try SparkManager.sentWithdrawalId(pending), "A pending withdrawal can still fail, so it never shows success") {
+            XCTAssertFalse($0 is SparkWithdrawalNotSent, "It may still pay, so its proof and allowance attempt stay")
+            XCTAssertEqual(
+                SendConfirmationView.serviceLegFailureRoute(
+                    $0,
+                    attempt: SparkWithdrawalAttempt(address: self.onchain.value, amountSats: 20000, requestId: nil),
+                    routingCacheResetAttempted: false
+                ),
+                .sparkWithdrawalPending(SparkWithdrawalAttempt(address: self.onchain.value, amountSats: 20000, requestId: nil))
+            )
+        }
+    }
+
     private func lnurlData(minSendableMsats: UInt64) -> LnurlPayData {
         LnurlPayData(
             uri: lightning.value,

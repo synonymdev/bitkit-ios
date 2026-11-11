@@ -758,13 +758,17 @@ final class SparkManager: ChannelFreeLightningRail {
 
     /// What `withdraw` returns for the payment Spark sent: its txid, or its id while Spark gives none yet. A withdrawal
     /// Spark returned as failed paid nothing, so the call ends as a refusal: the caller releases the request's proof,
-    /// private list and allowance attempt and shows a failure, never a success.
+    /// private list and allowance attempt and shows a failure, never a success. One still pending can fail until the
+    /// provider accepts its payout, so the caller holds it as unknown, on the pending screen, until its journal settles.
     nonisolated static func sentWithdrawalId(_ payment: Payment) throws -> String {
         guard payment.status != .failed else {
             throw SparkWithdrawalNotSent(underlying: AppError(
                 message: "wallet__payment_failed_description",
                 debugMessage: "Spark returned withdrawal '\(payment.id)' as failed"
             ))
+        }
+        guard payment.status == .completed else {
+            throw AppError(message: "wallet__payment_failed_description", debugMessage: "Spark withdrawal '\(payment.id)' is still pending")
         }
         guard case let .withdraw(txId, _, _) = payment.details else { return payment.id }
         return txId
