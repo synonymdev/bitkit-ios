@@ -336,6 +336,8 @@ final class SparkExitManager {
         case sweepFunding([SparkExitRecord.Leftover])
         /// The address could not be read: nothing changes.
         case keep
+        /// The exit can no longer be cancelled, such as once a tick adopted its funding: nothing changes.
+        case notCancellable
     }
 
     /// What cancelling does, given what the funding address holds now (nil when it could not be read).
@@ -388,12 +390,14 @@ final class SparkExitManager {
             record = stored
         }
         unresolvedSendAddress = await OnchainSendAttemptService.shared.unresolvedSendAddress()
-        guard canCancel, var record, let address = record.funding.first?.address else { return .keep }
+        guard canCancel, var record, let address = record.funding.first?.address else { return .notCancellable }
         let utxos = try? await chain?.utxos(address: address)
         let outcome = Self.cancelOutcome(utxos: utxos)
         switch outcome {
         case .keep:
             Logger.warn("Spark exit not cancelled: its funding address could not be read", context: "SparkExitManager")
+            return outcome
+        case .notCancellable:
             return outcome
         case let .sweepFunding(leftover):
             record.phase = .failed(reason: SparkExitRecord.cancelledReason)

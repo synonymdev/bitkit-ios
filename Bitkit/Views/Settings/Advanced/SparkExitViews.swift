@@ -867,6 +867,7 @@ struct SparkExitProgressView: View {
                     // Funding that reached the address is swept back on this screen, as the exit's leftover.
                     case .sweepFunding: break
                     case .forget: navigation.reset()
+                    case .notCancellable: break
                     }
                 }
             }

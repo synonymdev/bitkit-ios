@@ -37,6 +37,13 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(SparkExitManager.notificationOpen(opensProgress: true, showsResult: false, hasLoadedRecord: true), .drop)
     }
 
+    /// A cancel of an exit that can no longer be cancelled says so, not that the address could not be read.
+    @MainActor func testACancelOfAnExitNoLongerCancellableIsNotAFailedRead() async {
+        let exit = SparkExitManager(walletIndex: 9999)
+        let outcome = await exit.cancel()
+        XCTAssertEqual(outcome, .notCancellable)
+    }
+
     // MARK: H1 cancel
 
     func testCancelIsOffAfterAPaymentFromSavings() {
