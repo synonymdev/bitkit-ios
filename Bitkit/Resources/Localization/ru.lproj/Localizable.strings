@@ -703,6 +703,8 @@
 "pubky_auth__homeserver" = "Домашний сервер";
 "pubky_auth__signup_description" = "Создайте новый идентификатор Pubky на этом домашнем сервере. Продолжайте, только если доверяете ему.";
 "pubky_auth__approval_failed" = "Ошибка Авторизации";
+"pubky_auth__identity_unavailable_desc" = "Проверьте подключение и попробуйте снова.";
+"profile__auth_error_signup_code_rejected" = "Домашний сервер не принял этот код регистрации. Попробуйте снова или используйте другую ссылку для регистрации.";
 "wallet__onchain_abandon_transfer_note" = "Переводы на баланс расходов больше недоступны. Bitkit сначала проверяет сеть, а затем возвращает монеты этого перевода в ваш кошелёк, чтобы исходный перевод никогда не подтвердился. За это взимается сетевая комиссия.";
 "watch_only_accounts__active_section" = "Активные аккаунты";
 "watch_only_accounts__copy_xpub" = "Копировать xpub";
@@ -1435,6 +1437,7 @@
 "wallet__payment_received" = "Получен Биткоин";
 "wallet__payment_request" = "Запрос на оплату";
 "wallet__payment_request_unavailable" = "Запрос на оплату больше недоступен.";
+"wallet__payment_request_note_too_long" = "Сократите заметку и попробуйте снова.";
 "wallet__payment_request_expired" = "Срок действия запроса на оплату истёк.";
 "wallet__payment_request_waiting_for_details" = "Платёжные данные ещё восстанавливаются. Попробуйте чуть позже.";
 "wallet__payment_request_in_progress" = "Запрос на оплату уже обрабатывается.";
@@ -1771,6 +1774,7 @@
 "wallet__payment_request_payment_verified" = "Платёж подтверждён";
 "wallet__payment_request_underpaid" = "Получено · Недоплата";
 "wallet__payment_request_after_expiry" = "Получено · После истечения";
+"wallet__payment_request_before_request" = "Получено · До запроса";
 "pubky_auth__usdt_intro_description" = "Чтобы зарабатывать, нужно предоставить Paykit ваш адрес USDT. Paykit может видеть активность продаж, но не может тратить средства.";
 "pubky_auth__usdt_intro_optional" = "Вы можете предоставить Paykit ваш адрес USDT, чтобы получать заработок. Paykit может видеть активность продаж, но не может тратить средства.";
 "pubky_auth__usdt_unavailable" = "Ваш адрес USDT недоступен. Попробуйте ещё раз.";

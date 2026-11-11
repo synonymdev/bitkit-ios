@@ -97,6 +97,22 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(isHandling)
     }
 
+    func testRequestWhoseProofCannotFitOneMessageStaysManualWithoutAcceptance() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest(paymentReference: String(repeating: "💜", count: 256))
+
+        let result = await harness.executor.autoPay(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(result, .manual)
+        let log = harness.log.entries
+        XCTAssertTrue(log.contains("resolve"))
+        XCTAssertFalse(log.contains("claimForExecution"))
+        XCTAssertFalse(log.contains("acceptPaymentRequestAutomatically"))
+        XCTAssertFalse(log.contains("payLightning"))
+        let intents = await harness.payer.acceptanceIntents
+        XCTAssertTrue(intents.isEmpty)
+    }
+
     func testRequestWaitsWithoutAcceptanceWhileThePayeesPaymentListIsPending() async throws {
         let harness = AllowanceHarness()
         await harness.payer.setResolveError(PaykitAllowanceError.paymentListPending)

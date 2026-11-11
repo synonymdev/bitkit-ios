@@ -655,6 +655,8 @@
 "pubky_auth__homeserver" = "Servidor principal";
 "pubky_auth__signup_description" = "Cree una nueva identidad Pubky en este servidor principal. Continúe solo si confía en él.";
 "pubky_auth__approval_failed" = "Error de autorización";
+"pubky_auth__identity_unavailable_desc" = "Compruebe su conexión e inténtelo de nuevo.";
+"profile__auth_error_signup_code_rejected" = "El servidor principal no ha aceptado este código de registro. Inténtelo de nuevo o use otro enlace de registro.";
 "wallet__onchain_abandon_transfer_note" = "Las transferencias al saldo de gasto ya no están disponibles. Bitkit primero comprueba la red y después devuelve las monedas de esta transferencia a tu billetera para que la transferencia original nunca se confirme. Esto tiene una comisión de red.";
 "watch_only_accounts__active_section" = "Cuentas activas";
 "watch_only_accounts__copy_xpub" = "Copiar xpub";
@@ -1336,6 +1338,7 @@
 "wallet__payment_received" = "Bitcoin recibido";
 "wallet__payment_request" = "Solicitud de pago";
 "wallet__payment_request_unavailable" = "La solicitud de pago ya no está disponible.";
+"wallet__payment_request_note_too_long" = "Acorte la nota e inténtelo de nuevo.";
 "wallet__payment_request_expired" = "La solicitud de pago ha caducado.";
 "wallet__payment_request_waiting_for_details" = "Los datos de pago aún se están recuperando. Inténtelo de nuevo en breve.";
 "wallet__payment_request_in_progress" = "La solicitud de pago ya se está procesando.";
@@ -1660,6 +1663,7 @@
 "wallet__payment_request_payment_verified" = "Pago verificado";
 "wallet__payment_request_underpaid" = "Recibido · Pago insuficiente";
 "wallet__payment_request_after_expiry" = "Recibido · Tras caducar";
+"wallet__payment_request_before_request" = "Recibido · Antes de la solicitud";
 "pubky_auth__usdt_intro_description" = "Para ganar, necesita compartir con Paykit su dirección USDT. Puede ver la actividad de ventas, pero no puede gastar fondos.";
 "pubky_auth__usdt_intro_optional" = "Puede compartir con Paykit su dirección USDT para recibir sus ganancias. Paykit podrá ver la actividad de ventas, pero no gastar fondos.";
 "pubky_auth__usdt_unavailable" = "Su dirección USDT no está disponible. Inténtelo de nuevo.";

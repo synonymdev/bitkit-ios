@@ -152,6 +152,10 @@ check uses a supported 375-point-wide device with enlarged Dynamic Type, while A
 `contact-request-or-pay.xml` also needs a third linked contact that publishes no payment endpoints,
 so the failure and retry steps are reproducible.
 
+`request-note-too-long.xml` checks that a request whose note does not fit one Paykit message is
+refused with "Shorten the note and try again." before anything is sent, and sends after the note is
+shortened. It uses the same two-instance setup.
+
 `success-dismissal.xml` matches Android's journey: after paying a Lightning request, closing success
 must leave no error toast or duplicate payment; closing a later unpaid request must not send it.
 Use two linked disposable regtest wallets and observe or record dismissal to catch short-lived toasts.
