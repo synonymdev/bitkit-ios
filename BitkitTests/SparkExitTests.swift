@@ -1908,6 +1908,31 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(record.recovery?.response.transactions.map(\.txid), ["n1", "n2"])
     }
 
+    /// Funding an unverified rebuild's ask resumes a rebuild that waits for the unread leaf once a block, as the
+    /// check's rebuild does: a second tick at the same tip prepares nothing.
+    func testAFundedUnverifiedRebuildWaitingForTheUnreadLeafPreparesOnceABlock() async throws {
+        let unread = leafOneSteps(.unverified)
+        var record = SparkExitFixtures.record(phase: .running)
+        record.adopt(unread, at: clock)
+        sdk.recoverError = SdkError.InsufficientCpfpFunds(requiredSats: 30000, docsUrl: "")
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.isUnverifiedAsk, true)
+        sdk.recoverError = nil
+        sdk.preparedResponse = skipsUnreadLeaf
+        chain.utxosByAddress[record.funding[0].address] = [SparkExitFixtures.utxo(String(repeating: "f", count: 64), value: 100_000)]
+
+        chain.tip = 1001
+        record = try await driver().tick(record)
+        XCTAssertEqual(sdk.prepareRequests.count, 2)
+        record = try await driver().tick(record)
+        XCTAssertEqual(sdk.prepareRequests.count, 2, "the funded resume prepared again at the same tip")
+
+        chain.tip = 1002
+        record = try await driver().tick(record)
+        XCTAssertEqual(sdk.prepareRequests.count, 3, "the funded resume stopped trying at the next block")
+        XCTAssertEqual(record.isUnverifiedAsk, true)
+    }
+
     /// Leaf-1 reads as waiting for its timelock, unread again a week later, then ready: n2 goes out.
     private func runsUntilLeafOneMatures(_ record: inout SparkExitRecord) async throws {
         sdk.checks = [CheckRecoverFundsResponse(recovery: leafOneSteps(.waitingForTimelock(spendableAtHeight: 3000)), verdict: .valid)]

@@ -146,12 +146,17 @@ struct SparkExitDriver {
                     }
                 } else if record.isUnverifiedAsk == true, !record.isRebuilding {
                     // Funding an unverified rebuild asked for resumes that rebuild, with its guard: the valid
-                    // generation stays over a failed-only build, running again with the funding adopted.
-                    var valid = record
-                    valid.phase = .running
-                    valid.isUnverifiedAsk = nil
-                    try await build(&record, recovering: recovering)
-                    keepRetryClock(&record, from: valid)
+                    // generation stays over a failed-only build, running again with the funding adopted. Once a
+                    // block, like the check's rebuild: the valid generation's retry clock does not pace it.
+                    let tip = try? await chain.tipHeight()
+                    if tip == nil || record.unverifiedRebuiltAtHeight != tip {
+                        record.unverifiedRebuiltAtHeight = tip
+                        var valid = record
+                        valid.phase = .running
+                        valid.isUnverifiedAsk = nil
+                        try await build(&record, recovering: recovering)
+                        keepRetryClock(&record, from: valid)
+                    }
                 } else {
                     try await build(&record, recovering: recovering)
                     // Held funding that pays for less: the awaited top-up is still followed, as while waiting for it.
