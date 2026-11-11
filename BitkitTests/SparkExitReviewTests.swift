@@ -837,6 +837,27 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(refreshed?.map(\.address), [first.address, added.address])
     }
 
+    /// Kept change at a cancelled exit's address, which a later exit reused, is read for good: it replaces the
+    /// cancel's entry, which is read only for about four weeks.
+    func testKeptChangeAtACancelledExitsReusedAddressIsReadPastTheCancelsFourWeeks() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = SparkExitEarlierAddressStore(url: dir.appendingPathComponent("earlier.json"))
+        let cancelledAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let keptAt = cancelledAt.addingTimeInterval(20 * 24 * 3600)
+        let path = "m/84'/1'/7797'/0/0"
+        try store.add(SparkExitEarlierAddress(address: "bcrt1qreused", path: path, kind: .cancelledFunding, sats: nil, date: cancelledAt))
+
+        try store.add(SparkExitEarlierAddress(address: "bcrt1qreused", path: path, kind: .keptChange, sats: 600, date: keptAt))
+
+        let listed = try XCTUnwrap(store.load().first)
+        XCTAssertEqual(try store.load().count, 1)
+        XCTAssertEqual(listed.kind, .keptChange, "the kept change stays a cancel's entry")
+        XCTAssertEqual(listed.date, keptAt)
+        XCTAssertEqual(listed.sats, 600)
+        XCTAssertTrue(listed.isWatched(now: cancelledAt.addingTimeInterval(60 * 24 * 3600)), "the kept change is no longer read")
+    }
+
     /// The foreground tick keeps the driver's reset of a seen result: change kept after the result was opened shows
     /// that result again with its path.
     @MainActor func testTheForegroundTickKeepsTheDriversResetOfASeenResult() async throws {

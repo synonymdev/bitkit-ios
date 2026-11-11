@@ -108,11 +108,18 @@ struct SparkExitEarlierAddressStore {
         return try decoder.decode([SparkExitEarlierAddress].self, from: Data(contentsOf: url))
     }
 
-    /// Adds `entry` unless its address is listed already.
+    /// Adds `entry` unless its address is listed already. Kept change at a cancelled exit's address, which a later exit
+    /// reused, replaces that entry, so it is read for good.
     @discardableResult
     func add(_ entry: SparkExitEarlierAddress) throws -> [SparkExitEarlierAddress] {
         let stored = (try? load()) ?? []
-        guard !stored.contains(where: { $0.address == entry.address }) else { return stored }
+        if let index = stored.firstIndex(where: { $0.address == entry.address }) {
+            guard entry.kind == .keptChange, stored[index].kind != .keptChange else { return stored }
+            var entries = stored
+            entries[index] = entry
+            try save(entries)
+            return entries
+        }
         let entries = stored + [entry]
         try save(entries)
         return entries
