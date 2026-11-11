@@ -923,6 +923,39 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
             lastEventAt: "2026-10-20T12:00:00Z", invalidReason: nil
         )
     }
+
+    func testReauthenticationSignsInOnlyWhileTheExpectedIdentityIsSignedInWithItsOwnKey() async throws {
+        let ownKey = String(repeating: "1", count: 64)
+        let ownIdentity = try PubkyProfileManager.publicKeyFromSecretKey(ownKey)
+        let otherKey = String(repeating: "2", count: 64)
+        let signInReached = PubkyServiceError.authFailed("sign-in reached")
+        let cases: [(signedIn: String?, key: String?, signsIn: Bool)] = [
+            (nil, ownKey, false),
+            (identityB, ownKey, false),
+            (ownIdentity, otherKey, false),
+            (ownIdentity, nil, false),
+            (ownIdentity, ownKey, true),
+        ]
+        for testCase in cases {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = testCase.signedIn
+            var bootstraps = 0
+            let service = PaykitSdkService(sdkFactory: { sdk }, bootstrapFactory: { _, _ in
+                bootstraps += 1
+                throw signInReached
+            })
+
+            do {
+                _ = try await service.reauthenticate(expectedIdentity: ownIdentity, secretKeyHex: { testCase.key })
+                XCTFail("Expected reauthentication to stop")
+            } catch PubkyServiceError.identityChanged {
+                XCTAssertFalse(testCase.signsIn, "\(testCase)")
+            } catch {
+                XCTAssertTrue(testCase.signsIn, "\(testCase): \(error)")
+            }
+            XCTAssertEqual(bootstraps, testCase.signsIn ? 1 : 0, "\(testCase)")
+        }
+    }
 }
 
 private let identityA = "pubky8qd4tbz3hyafi7h7hoqwd5hm7tsaz1n7txcyojmd4kxf9xp7mgro"
