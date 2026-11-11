@@ -587,6 +587,13 @@ enum SparkExitMath {
         return max(UInt32(clamping: max(0, counter)), afterRecord)
     }
 
+    /// What stays on Spark once a quote's exit took its leaves: the balance beyond them, skipped leaves included, less
+    /// the lost leaves it still counts until a sync drops them. Nil when nothing.
+    static func outsideSats(sparkBalanceSats: UInt64, quote: SparkExitQuote) -> UInt64? {
+        let outside = beyondLostLeaves(sparkBalanceSats.saturatingSub(quote.leafTotalSats), lostLeafSats: quote.lostLeafSats)
+        return outside > 0 ? outside : nil
+    }
+
     /// The Spark balance a quote cannot exit: the leaves it skips, and what the balance holds beyond every leaf the
     /// SDK lists, such as a counter-swap still unclaimed. Nil when there is none.
     static func unexitableSats(sparkBalanceSats: UInt64, quote: SparkExitQuote) -> UInt64? {

@@ -663,6 +663,21 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(exit.fundingSeenCount, 0)
     }
 
+    // MARK: What stays on Spark (Android 124d66170, caa349d4b)
+
+    /// The start and the requote save what stays on Spark without the lost leaves Spark still counts: 100,000 sats
+    /// selected, 32,768 lost and 1,696 skipped save 1,696.
+    func testAStartSavesWhatStaysOnSparkWithoutTheLostLeavesSparkStillCounts() throws {
+        var prepared = SparkExitFixtures.prepared()
+        prepared.skipped = [SkippedLeaf(leafId: "dust", valueSats: 1696, reason: .feeExceedsValue)]
+        let quote = SparkExitQuote(prepared: prepared, lostLeafSats: [32768])
+        XCTAssertEqual(quote.leafTotalSats, 100_000)
+
+        let record = try XCTUnwrap(SparkExitManager.requoted(SparkExitFixtures.record(), fresh: quote, sparkBalanceSats: 134_464))
+
+        XCTAssertEqual(record.outsideSats, 1696, "the lost leaf was kept as staying on Spark")
+    }
+
     // MARK: Requote at the start (review 1ac10966a, Android 64004d7)
 
     /// An optimization swapped the leaves while the start waited: the exit is quoted again over the leaves Spark holds now.
