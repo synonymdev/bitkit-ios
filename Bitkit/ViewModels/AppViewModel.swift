@@ -117,6 +117,7 @@ struct ScanPaymentOperations {
     let state: () -> ScanPaymentState
     let canSendLightning: (_ amountSats: UInt64) -> Bool
     var decodeInvoice: (String) async throws -> BitkitCore.Scanner = { try await decode(invoice: $0) }
+    var canRouteThroughSpark: @MainActor () -> Bool = { PaykitRouteService.canRouteThroughSpark }
 
     @MainActor
     static func live(lightningService: LightningService) -> ScanPaymentOperations {
@@ -842,13 +843,11 @@ extension AppViewModel {
                 isUsdtEnabled: SettingsViewModel.shared.isUsdtEnabled
             ) || context.incomingPaymentRequest.map { PaykitUsdtPaymentService.shared.hasBinding(for: $0.id) } == true
             selectedWalletToPayFrom = canUseLightning || (hasLightning && scannedOnchainInvoice == nil) ? .lightning : .onchain
-            // A Spark leg can pay the on-chain endpoint from Spending here too, when Lightning can't pay directly.
-            if !canUseLightning, scannedOnchainInvoice != nil,
-               let route = PaykitRouteService.routeUi(
-                   for: context,
-                   canRouteThroughSpark: PaykitRouteService.canRouteThroughSpark,
-                   canPayDirectly: false
-               ), route.offersSparkLeg
+            // A Spark leg can pay the on-chain endpoint from Spending here too, whatever Lightning can pay now: an amount
+            // entered later can pass Lightning's limit, and the router still picks a direct payment that works.
+            if scannedOnchainInvoice != nil,
+               let route = PaykitRouteService.routeUi(for: context, canRouteThroughSpark: scanPaymentOperations.canRouteThroughSpark()),
+               route.offersSparkLeg
             {
                 paykitRoute = route
                 // A request keeps its source here; its Confirm asks the router.
@@ -1075,11 +1074,8 @@ extension AppViewModel {
             // An on-chain contact payment opens with Spending as a source while Spark can carry it there, whether or
             // not Savings covers it; Spending is the default when Savings holds no more than dust.
             if let context = contactPaymentContext, scope != .onchainPayments,
-               let route = PaykitRouteService.routeUi(
-                   for: context,
-                   canRouteThroughSpark: PaykitRouteService.canRouteThroughSpark,
-                   canPayDirectly: false
-               ), route.offersSparkLeg
+               let route = PaykitRouteService.routeUi(for: context, canRouteThroughSpark: scanPaymentOperations.canRouteThroughSpark()),
+               route.offersSparkLeg
             {
                 handleScannedOnchainInvoice(invoice)
                 paykitRoute = route

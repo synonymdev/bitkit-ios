@@ -1443,7 +1443,7 @@ struct SendConfirmationView: View {
         if !sourceChanged {
             guard let request, routedIncomingRequestId != request.id else { return }
         }
-        guard let route = app.paykitRoute ?? PaykitRouteService.routeUi(for: context, canRouteThroughSpark: false, canPayDirectly: true)
+        guard let route = app.paykitRoute ?? PaykitRouteService.routeUi(for: context, canRouteThroughSpark: PaykitRouteService.canRouteThroughSpark)
         else { return }
         let amountSats: UInt64
         if let request {

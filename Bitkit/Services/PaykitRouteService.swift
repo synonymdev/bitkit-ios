@@ -51,18 +51,14 @@ enum PaykitRouteService {
     }
 
     /// The route for a contact payment, or nil without bitcoin endpoints. A Spark leg is offered to a contact with an
-    /// on-chain endpoint while Spark can route and the payment can't go directly over Lightning; a request it pays gets
-    /// its on-chain proof from the withdrawal's txid.
-    static func routeUi(
-        for context: ContactPaymentContext,
-        canRouteThroughSpark: Bool,
-        canPayDirectly: Bool
-    ) -> PaykitRouteUi? {
+    /// on-chain endpoint while Spark can route, whatever Lightning can pay, since the router still picks a direct payment
+    /// that works; a request it pays gets its on-chain proof from the withdrawal's txid.
+    static func routeUi(for context: ContactPaymentContext, canRouteThroughSpark: Bool) -> PaykitRouteUi? {
         let endpoints = context.endpoints
             .filter { $0.methodId != .usdtArbitrum }
             .map { PaykitEndpoint(methodId: $0.methodId.rawValue, value: $0.value) }
         guard !endpoints.isEmpty else { return nil }
-        let offersSparkLeg = canRouteThroughSpark && !canPayDirectly && endpoints.contains(where: \.isOnchain)
+        let offersSparkLeg = canRouteThroughSpark && endpoints.contains(where: \.isOnchain)
         return PaykitRouteUi(endpoints: endpoints, offersSparkLeg: offersSparkLeg)
     }
 

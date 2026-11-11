@@ -415,7 +415,7 @@ struct SendAmountView: View {
             }
 
             if !app.paykitUsesUsdt, let context = app.contactPaymentContext,
-               let route = app.paykitRoute ?? PaykitRouteService.routeUi(for: context, canRouteThroughSpark: false, canPayDirectly: true)
+               let route = app.paykitRoute ?? PaykitRouteService.routeUi(for: context, canRouteThroughSpark: PaykitRouteService.canRouteThroughSpark)
             {
                 switch await routePaykitPayment(route, request: context.incomingPaymentRequest) {
                 case .leg:

@@ -114,7 +114,7 @@ final class PaykitRouteTests: XCTestCase {
 
     // MARK: - Spark leg offer
 
-    func testSparkLegIsOfferedForAnOnchainContactLightningCantPay() {
+    func testSparkLegIsOfferedForAnOnchainContactWhileSparkCanRoute() {
         let onchainOnly = ContactPaymentContext(
             publicKey: "contact",
             privatePaymentContext: nil,
@@ -122,21 +122,17 @@ final class PaykitRouteTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            PaykitRouteService.routeUi(for: onchainOnly, canRouteThroughSpark: true, canPayDirectly: false)?.offersSparkLeg,
+            PaykitRouteService.routeUi(for: onchainOnly, canRouteThroughSpark: true)?.offersSparkLeg,
             true
         )
         XCTAssertEqual(
-            PaykitRouteService.routeUi(for: onchainOnly, canRouteThroughSpark: false, canPayDirectly: false)?.offersSparkLeg,
-            false
-        )
-        XCTAssertEqual(
-            PaykitRouteService.routeUi(for: onchainOnly, canRouteThroughSpark: true, canPayDirectly: true)?.offersSparkLeg,
+            PaykitRouteService.routeUi(for: onchainOnly, canRouteThroughSpark: false)?.offersSparkLeg,
             false
         )
         let usdtOnly = ContactPaymentContext(publicKey: "contact", privatePaymentContext: nil, endpoints: [
             Self.endpoint(.usdtArbitrum, "0x0000000000000000000000000000000000000001"),
         ])
-        XCTAssertNil(PaykitRouteService.routeUi(for: usdtOnly, canRouteThroughSpark: true, canPayDirectly: false))
+        XCTAssertNil(PaykitRouteService.routeUi(for: usdtOnly, canRouteThroughSpark: true))
     }
 
     func testASparkWithdrawalIsWeighedAgainstSparksBalanceNotTheLightningLimit() {
@@ -505,8 +501,8 @@ final class PaykitRouteTests: XCTestCase {
             privatePaymentContext: nil,
             endpoints: [Self.endpoint(.regtestOnchainP2wpkh, onchain.value)]
         )
-        let offered = try XCTUnwrap(PaykitRouteService.routeUi(for: context, canRouteThroughSpark: true, canPayDirectly: false))
-        let direct = try XCTUnwrap(PaykitRouteService.routeUi(for: context, canRouteThroughSpark: false, canPayDirectly: false))
+        let offered = try XCTUnwrap(PaykitRouteService.routeUi(for: context, canRouteThroughSpark: true))
+        let direct = try XCTUnwrap(PaykitRouteService.routeUi(for: context, canRouteThroughSpark: false))
 
         XCTAssertFalse(SendSheet.rejectsUnfundedOnchainRequest(route: offered), "Confirm routes it from Spending through Spark")
         XCTAssertTrue(SendSheet.rejectsUnfundedOnchainRequest(route: direct))
@@ -581,6 +577,63 @@ final class PaykitRouteTests: XCTestCase {
         }
 
         XCTAssertEqual(asked?.lnurl, app.lnurlPayData, "The router must see the LNURL's limits")
+    }
+
+    @MainActor
+    func testAContactWhoseLnurlMinimumLightningPaysStillOffersSparkPastTheLightningLimit() async throws {
+        snapshotAppDefaultsDomain()
+        let lnurl = LnurlPayData(
+            uri: lightning.value,
+            callback: "https://example.com/pay",
+            minSendable: 1_000_000,
+            maxSendable: 2_000_000_000,
+            metadataStr: "[]",
+            commentAllowed: nil,
+            allowsNostr: false,
+            nostrPubkey: nil
+        )
+        let address = onchain.value
+        let app = AppViewModel(
+            sheetViewModel: SheetViewModel(),
+            navigationViewModel: NavigationViewModel(),
+            scanPaymentOperations: ScanPaymentOperations(
+                state: {
+                    ScanPaymentState(
+                        isNodeRunning: true,
+                        spendableOnchainBalanceSats: 0,
+                        totalLightningBalanceSats: 997_506,
+                        hasChannels: false,
+                        hasUsableChannels: false
+                    )
+                },
+                canSendLightning: { $0 <= 997_506 },
+                decodeInvoice: { value in
+                    value == address
+                        ? .onChain(invoice: OnChainInvoice(address: address, amountSatoshis: 0, label: nil, message: nil, params: nil))
+                        : .lnurlPay(data: lnurl)
+                },
+                canRouteThroughSpark: { true }
+            )
+        )
+        let context = ContactPaymentContext(
+            publicKey: "contact",
+            privatePaymentContext: nil,
+            endpoints: [
+                Self.endpoint(.bitcoinLightningLnurl, lightning.value),
+                Self.endpoint(.regtestOnchainP2wpkh, address),
+                Self.endpoint(.usdtArbitrum, "0x1111111111111111111111111111111111111111"),
+            ]
+        )
+        XCTAssertTrue(app.claimContactPaymentContext(context))
+
+        try await app.handleScannedData(lightning.value, claimedContactPaymentContext: context)
+
+        XCTAssertEqual(app.lnurlPayData, lnurl)
+        XCTAssertEqual(
+            app.paykitRoute?.offersSparkLeg,
+            true,
+            "Lightning pays the LNURL's minimum, but a 999,000-sat payment past its 997,506 limit still needs Spark"
+        )
     }
 
     private func lnurlData(minSendableMsats: UInt64) -> LnurlPayData {
@@ -930,7 +983,7 @@ final class PaykitRouteTests: XCTestCase {
             privatePaymentContext: nil,
             endpoints: [Self.endpoint(.regtestOnchainP2wpkh, onchain.value)]
         )
-        let offered = try XCTUnwrap(PaykitRouteService.routeUi(for: context, canRouteThroughSpark: true, canPayDirectly: false))
+        let offered = try XCTUnwrap(PaykitRouteService.routeUi(for: context, canRouteThroughSpark: true))
         var routed = offered
         routed.serviceLeg = sparkLeg(amountSats: 20000, feeSats: 2190)
 
@@ -948,7 +1001,7 @@ final class PaykitRouteTests: XCTestCase {
             privatePaymentContext: nil,
             endpoints: [Self.endpoint(.regtestOnchainP2wpkh, onchain.value)]
         )
-        var routed = try XCTUnwrap(PaykitRouteService.routeUi(for: context, canRouteThroughSpark: true, canPayDirectly: false))
+        var routed = try XCTUnwrap(PaykitRouteService.routeUi(for: context, canRouteThroughSpark: true))
         routed.serviceLeg = sparkLeg(amountSats: 20000, feeSats: 2190)
 
         XCTAssertEqual(
