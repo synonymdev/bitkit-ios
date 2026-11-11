@@ -189,6 +189,8 @@ struct SparkExitRecord: Codable, Equatable {
     /// Spark's balance beyond the quote's leaves when the exit started: what stays on Spark, also once published leaves
     /// left the balance.
     var outsideSats: UInt64?
+    /// Each quoted leaf's value, so a leaf the first build leaves behind, before any recovery lists it, keeps its value.
+    var leafSats: [String: UInt64]?
     var funding: [Funding]
     /// Bumped on every rebuild. Broadcasts are logged per generation and a rebuilt recovery replaces the old one
     /// entirely, so older hex is never sent again.

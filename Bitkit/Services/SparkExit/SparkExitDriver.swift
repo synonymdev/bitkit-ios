@@ -442,7 +442,9 @@ struct SparkExitDriver {
 
     private func leaveBehind(_ leafIds: [String], reason: String, in record: inout SparkExitRecord) {
         guard !leafIds.isEmpty else { return }
+        // The first build has no recovery yet: the quote's values price its leaves.
         let values = Dictionary((record.recovery?.response.leaves ?? []).map { ($0.leafId, $0.valueSats) }, uniquingKeysWith: { first, _ in first })
+            .merging(record.leafSats ?? [:]) { recovered, _ in recovered }
         Logger.warn("Spark exit leaves left behind: \(leafIds): \(reason)", context: "SparkExitDriver")
         record.leftBehindLeaves = (record.leftBehindLeaves ?? []) + leafIds.map {
             SparkExitRecord.LeftBehindLeaf(leafId: $0, valueSats: values[$0] ?? 0, reason: reason)

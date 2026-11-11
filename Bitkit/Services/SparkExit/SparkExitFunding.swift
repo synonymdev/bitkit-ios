@@ -160,6 +160,11 @@ struct SparkExitQuote: Equatable {
         prepared.leaves.reduce(0) { $0 + $1.valueSats }
     }
 
+    /// Each leaf's value, kept with the exit for a leaf its first build leaves behind.
+    var leafSats: [String: UInt64] {
+        Dictionary(prepared.leaves.map { ($0.leafId, $0.valueSats) }, uniquingKeysWith: { first, _ in first })
+    }
+
     /// Breez's rule: only exit when the value is more than its fees.
     var isWorthExiting: Bool {
         !prepared.leaves.isEmpty && exitSats > networkFeeSats

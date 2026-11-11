@@ -636,6 +636,7 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(record.expectedSats, fresh.incomingSats)
         XCTAssertEqual(record.leafTotalSats, 200_000)
         XCTAssertEqual(record.outsideSats, 14167, "what stays on Spark beyond the fresh leaves")
+        XCTAssertEqual(record.leafSats?.keys.sorted(), ["leaf-2", "leaf-3"])
         XCTAssertEqual(sdk.prepareRequests.last?.destination, "bcrt1qdestination")
     }
 

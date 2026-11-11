@@ -1397,6 +1397,20 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(record.exitLeafIds, ["leaf-2"])
     }
 
+    /// The first build has no recovery to price a leaf it leaves behind from: the quote's value is kept.
+    func testALeafTheFirstBuildLeavesBehindKeepsItsValue() async throws {
+        var record = twoLeafRecord()
+        record.leafSats = ["leaf-1": 100_000, "leaf-2": 50000]
+        record.isRebuilding = true
+        sdk.prepareErrors = [SdkError.SparkError("Leaf leaf-1 cannot be exited: its refund cannot pay its own fee at this fee rate")]
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("new")])]
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.leftBehindLeaves?.map(\.leafId), ["leaf-1"])
+        XCTAssertEqual(record.leftBehindSats, 100_000, "the leaf left behind counted as 0 sats")
+    }
+
     /// An error that names no leaf falls back to `RecoverableOnly`, and what it leaves out stays behind.
     func testARebuildFallsBackToRecoverableOnlyWhenTheErrorNamesNoLeaf() async throws {
         var record = twoLeafRecord()

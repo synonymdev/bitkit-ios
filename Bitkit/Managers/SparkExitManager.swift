@@ -779,6 +779,7 @@ final class SparkExitManager {
         )
         record.fundingStrategy = SparkExitRecord.perNodeStrategy
         record.outsideSats = SparkExitMath.staysOnSparkSats(sparkBalanceSats: SparkManager.shared.balanceSats, record: record)
+        record.leafSats = quote.leafSats
         let transfers = TransferService(lightningService: .shared)
         let store = store
         record = try await Self.writeStart(
@@ -897,6 +898,7 @@ final class SparkExitManager {
         record.leafTotalSats = fresh.leafTotalSats
         record.expectedSats = fresh.incomingSats
         record.skippedLeafCount = fresh.prepared.skipped.count
+        record.leafSats = fresh.leafSats
         record.outsideSats = SparkExitMath.staysOnSparkSats(sparkBalanceSats: sparkBalanceSats, record: record)
         return record
     }
