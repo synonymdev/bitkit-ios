@@ -165,16 +165,18 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertTrue(reminders.contains { $0.id.hasPrefix("1-") }, "the live steps keep their reminders")
     }
 
-    /// A Redo while a higher fee's top-up is awaited: the diverged generation is never sent again, and its rebuild
-    /// waits for the top-up as a Redo rebuild.
+    /// A Redo while a higher fee's top-up is awaited: the diverged generation is never sent again, and when the funding
+    /// held pays for less, its rebuild waits for the top-up as a Redo rebuild.
     func testARedoWhileAHigherFeesTopUpIsAwaitedStopsDrivingTheDivergedGeneration() async throws {
         var record = bumpedRecord()
         chain.mempoolTxids = ["bump"]
         sdk.checks = try [CheckRecoverFundsResponse(recovery: XCTUnwrap(record.recovery?.response), verdict: .redo(reason: .onChainStateDiverged))]
+        sdk.recoverError = SdkError.InsufficientCpfpFunds(requiredSats: 25680, docsUrl: "")
 
         record = try await driver().tick(record)
 
-        XCTAssertEqual(record.phase, .needsFunding(requiredSats: 25680))
+        XCTAssertEqual(record.phase, .needsFunding(requiredSats: 46360))
+        XCTAssertEqual(record.fundingPaymentTxid, "bump", "the awaited top-up was dropped")
         XCTAssertTrue(record.isRebuilding)
         XCTAssertEqual(record.isRedoRebuild, true)
         XCTAssertFalse(record.isDrivingWhileFunding, "the diverged generation would be sent again")
@@ -737,6 +739,38 @@ final class SparkExitReviewTests: XCTestCase {
         record.leftBehindLeaves = [.init(leafId: "B", valueSats: 32768, reason: "its refund cannot pay")]
 
         XCTAssertEqual(SparkExitMath.outsideExitSats(sparkBalanceSats: 34464, record: record), 34464, "B was in neither total")
+    }
+
+    /// A Redo while a top-up is awaited rebuilds from the funding the exit already has, so a top-up that is dropped
+    /// never leaves it waiting.
+    func testARedoWhileATopUpIsAwaitedRebuildsWithoutWaitingForADroppedTopUp() async throws {
+        var record = bumpedRecord()
+        sdk.checks = try [CheckRecoverFundsResponse(recovery: XCTUnwrap(record.recovery?.response), verdict: .redo(reason: .onChainStateDiverged))]
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("m1")])]
+
+        record = try await driver().tick(record)
+
+        XCTAssertFalse(sdk.recoverRequests.isEmpty, "the rebuild waited for a top-up that was dropped")
+        XCTAssertEqual(record.phase, .running)
+        XCTAssertFalse(record.isRebuilding)
+    }
+
+    /// A Redo rebuild the held funding pays too little for still follows the awaited top-up: one that confirmed short
+    /// asks for the rest, as while waiting for it.
+    func testARedoRebuildShortOfFundingAsksForTheRestOfAShortTopUp() async throws {
+        var record = bumpedRecord()
+        chain.utxosByAddress["bcrt1qfunding"] = [
+            SparkExitFixtures.utxo("f0", vout: 1, value: 20000),
+            SparkExitFixtures.utxo("bump", value: 3000),
+        ]
+        sdk.checks = try [CheckRecoverFundsResponse(recovery: XCTUnwrap(record.recovery?.response), verdict: .redo(reason: .onChainStateDiverged))]
+        sdk.recoverError = SdkError.InsufficientCpfpFunds(requiredSats: 25680, docsUrl: "")
+
+        record = try await driver().tick(record)
+
+        XCTAssertFalse(sdk.recoverRequests.isEmpty)
+        XCTAssertNil(record.fundingPaymentTxid, "the short top-up was still awaited")
+        XCTAssertEqual(record.isFundingPaymentShort, true)
     }
 
     // MARK: What stays on Spark (Android 124d66170, caa349d4b)

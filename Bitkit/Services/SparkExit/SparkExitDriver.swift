@@ -120,8 +120,17 @@ struct SparkExitDriver {
                     return try saveIfChanged(record, from: before)
                 }
                 // Nothing to fund when every leaf is recovered cooperatively.
+                var isRedoFromHeldFunding = false
                 if let shortfall = record.fundingShortfallSats {
-                    guard try await adoptFunding(&record, requiredSats: shortfall) else {
+                    let isAdopted = try await adoptFunding(&record, requiredSats: shortfall)
+                    // A Redo while a top-up is awaited rebuilds from the funding the exit has: a top-up that is dropped
+                    // never leaves it waiting, and one the rebuild needs is asked for again. Paced like any rebuild.
+                    isRedoFromHeldFunding = !isAdopted && record.isRebuilding && record.isRedoRebuild == true
+                        && !record.isFundingWaitingLeaves && isRebuildDue(record)
+                    if isRedoFromHeldFunding {
+                        record.lastBuildAt = now()
+                    }
+                    guard isAdopted || isRedoFromHeldFunding else {
                         await countShortOwnPayment(&record)
                         // The steps already out keep their countdown while the top-up is awaited.
                         await updateClaimableHeight(&record)
@@ -137,6 +146,10 @@ struct SparkExitDriver {
                     }
                 } else {
                     try await build(&record, recovering: recovering)
+                    // Held funding that pays for less: the awaited top-up is still followed, as while waiting for it.
+                    if isRedoFromHeldFunding, case .needsFunding = record.phase {
+                        await countShortOwnPayment(&record)
+                    }
                 }
             }
         case .running where record.isRebuilding:
