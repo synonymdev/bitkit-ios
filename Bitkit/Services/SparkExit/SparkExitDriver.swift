@@ -150,7 +150,7 @@ struct SparkExitDriver {
                     var valid = record
                     valid.phase = .running
                     valid.isUnverifiedAsk = nil
-                    try await build(&record, recovering: recovering, keeping: valid)
+                    try await build(&record, recovering: recovering)
                     keepRetryClock(&record, from: valid)
                 } else {
                     try await build(&record, recovering: recovering)
@@ -346,9 +346,11 @@ struct SparkExitDriver {
 
     // MARK: Build
 
-    /// With `valid`, an unverified rebuild's: the valid generation stays over a rebuild that leaves waiting a leaf it
+    /// Over a generation that did not diverge, however the build was reached (an unverified rebuild, a fee bump, a
+    /// rebuild after a leaf was left behind), that generation stays over a rebuild that leaves waiting a leaf it
     /// recovers, before that rebuild is saved or any of it broadcast.
-    private func build(_ record: inout SparkExitRecord, recovering: SparkExitRecovering, keeping valid: SparkExitRecord? = nil) async throws {
+    private func build(_ record: inout SparkExitRecord, recovering: SparkExitRecovering) async throws {
+        let valid = record.validGeneration
         let tip = try? await chain.tipHeight()
         // Waiting for a leaf that may still move: tried again at growing gaps of blocks, not every tick.
         if let since = record.retrySince {
@@ -600,7 +602,7 @@ struct SparkExitDriver {
                 record.unverifiedRebuiltAtHeight = tip
                 try save(record)
                 let valid = record
-                try await build(&record, recovering: recovering, keeping: valid)
+                try await build(&record, recovering: recovering)
                 keepRetryClock(&record, from: valid)
                 if case .needsFunding = record.phase {
                     // Like a fee bump's, the valid generation keeps going while the funding it asks for comes.
@@ -1462,6 +1464,17 @@ private extension RecoveryTransaction {
 }
 
 extension SparkExitRecord {
+    /// The exit running its current generation, when that generation did not diverge: what a rebuild that would drop a
+    /// waiting leaf's signed steps keeps. Funding adopted for the rebuild and a bumped rate stay the exit's.
+    var validGeneration: SparkExitRecord? {
+        guard recovery != nil, isRedoRebuild != true else { return nil }
+        var valid = self
+        valid.phase = .running
+        valid.isRebuilding = false
+        valid.isUnverifiedAsk = nil
+        return valid
+    }
+
     /// What keeps the exit from moving, once rebuilding over its stuck steps stopped helping.
     var surfacedRejection: String? {
         isStalled ? stuckStep?.lastOutcome : nil

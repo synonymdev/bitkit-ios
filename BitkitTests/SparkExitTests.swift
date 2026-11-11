@@ -1830,6 +1830,56 @@ final class SparkExitDriverTests: XCTestCase {
         try await runsUntilLeafOneMatures(&record)
     }
 
+    /// A paid fee bump whose build skips leaf-1 as unread and builds only failed cooperative leaves keeps the valid
+    /// generation: adopted, the build would drop leaf-1's signed refund n2.
+    func testAPaidFeeBumpKeepsTheValidGenerationOverABuildThatDropsLeafOnesRefund() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.leafIds = ["leaf-1", "coop-1"]
+        record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 20000)
+        record.adopt(leafOneSteps(.unverified), at: clock)
+        record.applyFeeBump(rate: 10, extraSats: 5680, paymentTxid: "bump")
+        chain.utxosByAddress["bcrt1qfunding"] = [SparkExitFixtures.utxo("bump", value: 5680)]
+        let failure = CooperativeRecoveryFailure(leafId: "coop-1", outputTxid: "o", outputVout: 0, error: .operatorsUnavailable(message: "down"))
+        var prepared = SparkExitFixtures.prepared(funding: nil, leaves: ["coop-1"])
+        prepared.skipped = [SkippedLeaf(leafId: "leaf-1", valueSats: 100_000, reason: .unverified)]
+        sdk.preparedResponse = prepared
+        sdk.builds = [SparkExitFixtures.recovery([], failed: [failure])]
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.generation, 1, "the paid bump adopted a recovery without leaf-1's refund n2")
+        XCTAssertTrue(saved.allSatisfy { $0.generation == 1 }, "a killed run would resume the recovery without leaf-1")
+        XCTAssertEqual(record.phase, .running)
+        XCTAssertFalse(record.isRebuilding)
+        XCTAssertEqual(record.recovery?.response.transactions.map(\.txid), ["n1", "n2"])
+    }
+
+    /// A fee bump with nothing to pay whose build skips leaf-1 as unread and builds leaf-2 keeps the valid generation,
+    /// which goes on being checked and sends leaf-1's refund n2 once the chain reads it.
+    func testAFeeBumpWithNothingToPayKeepsTheValidGenerationOverABuildThatDropsLeafOnesRefund() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.leafIds = ["leaf-1", "leaf-2"]
+        record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 20000)
+        record.adopt(leafOneSteps(.unverified), at: clock)
+        record.applyFeeBump(rate: 10, extraSats: 0, paymentTxid: nil)
+        var prepared = SparkExitFixtures.prepared(funding: nil, leaves: ["leaf-2"])
+        prepared.skipped = [SkippedLeaf(leafId: "leaf-1", valueSats: 100_000, reason: .unverified)]
+        sdk.preparedResponse = prepared
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("m1", cpfp: "03c1")])]
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.generation, 1, "the bump adopted a recovery without leaf-1's refund n2")
+        XCTAssertTrue(saved.allSatisfy { $0.generation == 1 }, "a killed run would resume the recovery without leaf-1")
+        XCTAssertEqual(record.phase, .running)
+        XCTAssertFalse(record.isRebuilding, "the valid generation is no longer checked or sent")
+
+        sdk.checks = [CheckRecoverFundsResponse(recovery: leafOneSteps(.ready), verdict: .valid)]
+        chain.tip = 1001
+        record = try await driver().tick(record)
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2"], "leaf-1's refund n2 was not sent")
+    }
+
     /// Leaf-1 reads as waiting for its timelock, unread again a week later, then ready: n2 goes out.
     private func runsUntilLeafOneMatures(_ record: inout SparkExitRecord) async throws {
         sdk.checks = [CheckRecoverFundsResponse(recovery: leafOneSteps(.waitingForTimelock(spendableAtHeight: 3000)), verdict: .valid)]
