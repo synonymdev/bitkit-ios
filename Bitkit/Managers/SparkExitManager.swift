@@ -141,10 +141,15 @@ final class SparkExitManager {
         record?.showsResult == true
     }
 
-    /// The earlier exits' addresses to show: one the current exit uses again is that exit's, shown on its progress.
+    /// The earlier exits' addresses to show: one the current exit uses again is that exit's while Emergency exit opens
+    /// its progress or result, which shows it there.
     var shownEarlierAddresses: [SparkExitEarlierAddress] {
-        let current = record?.funding.first?.address
-        return earlierAddresses.filter { $0.address != current }
+        Self.shownEarlierAddresses(earlierAddresses, record: record)
+    }
+
+    nonisolated static func shownEarlierAddresses(_ entries: [SparkExitEarlierAddress], record: SparkExitRecord?) -> [SparkExitEarlierAddress] {
+        guard let record, record.showsResult, let current = record.funding.first?.address else { return entries }
+        return entries.filter { $0.address != current }
     }
 
     private var earlierAddressStore: SparkExitEarlierAddressStore {

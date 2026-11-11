@@ -801,6 +801,22 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(refreshed.map(\.sats), [5000, nil, 9], "a late payment, or kept change spent by hand, showed nowhere")
     }
 
+    /// Kept change whose result was seen stays listed with its address and path: the ended record still holding that
+    /// address hides it only while its result is what Emergency exit opens.
+    func testASeenKeptChangeResultStillListsItsAddress() throws {
+        var record = SparkExitFixtures.record(phase: .done)
+        record.leftover = [.init(txid: String(repeating: "a", count: 64), vout: 0, valueSats: 600)]
+        record.leftoverSweep = .init()
+        record.leftoverSweep?.isDustKept = true
+        record.isResultSeen = true
+        let kept = try XCTUnwrap(SparkExitEarlierAddress.keptChange(record, network: .regtest, at: clock))
+        XCTAssertFalse(record.showsResult)
+
+        XCTAssertEqual(SparkExitManager.shownEarlierAddresses([kept], record: record), [kept], "the kept change's address and path are out of reach")
+        record.isResultSeen = nil
+        XCTAssertEqual(SparkExitManager.shownEarlierAddresses([kept], record: record), [], "shown twice, on the result and in the list")
+    }
+
     // MARK: What stays on Spark (Android 124d66170, caa349d4b)
 
     /// The start and the requote save what stays on Spark without the lost leaves Spark still counts: 100,000 sats
