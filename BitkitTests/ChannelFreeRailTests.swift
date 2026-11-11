@@ -1217,6 +1217,33 @@ extension ChannelFreeRailTests {
         await assertRefusedUntilSparkLists()
     }
 
+    func testAPreRestoreInvoiceTheNodeAlreadyPaidReadsAsPaidInsteadOfRefused() async throws {
+        let invoice = try Bolt11Invoice.fromStr(invoiceStr: Self.invoice)
+        let hash = String(invoice.paymentHash())
+        let createdAt = TimeInterval(invoice.secondsSinceEpoch())
+        let paid = LDKNode.PaymentDetails(
+            id: hash, kind: .bolt11(hash: hash, preimage: nil, secret: nil, description: nil, bolt11: Self.invoice),
+            amountMsat: 20_000_000, feePaidMsat: 0, direction: .outbound, status: .succeeded, latestUpdateTimestamp: 0
+        )
+        let service = Bitkit.LightningService.shared
+        let nodePayments = service.nodePayments
+        service.nodePayments = { [paid] }
+        defer { service.nodePayments = nodePayments }
+        try restore(secondsAfterTheInvoice: 60)
+        service.now = { Date(timeIntervalSince1970: createdAt + 120) }
+        rail.syncedAfter = { _ in true }
+        await service.listRailSendsIfUnseeded()
+        rail.balanceSats = 100_000
+
+        // Spark's list lacks the invoice, then Spark can't list at all: the node's paid row answers both.
+        for listError in [nil, NSError(domain: "spark", code: 1)] {
+            rail.listError = listError
+            let sent = try await service.send(bolt11: Self.invoice)
+            XCTAssertEqual(sent, hash)
+            XCTAssertNil(rail.sentBolt11, "Spark paid an invoice the node already paid")
+        }
+    }
+
     func testAPreRestoreInvoiceThatOutlastsAWeekIsStillHeldOnDayEight() {
         let restoredAt = 1_000_000
         let day = 24 * 60 * 60

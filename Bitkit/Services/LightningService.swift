@@ -1478,6 +1478,8 @@ class LightningService: NodeLifecycleService {
                 throw AppError(serviceError: .nodeNotStarted)
             }
         }
+        // The node's paid row is final, so no uncertainty about Spark's pre-restore sends refuses it.
+        let isPaidOverTheNode = statuses.contains(.succeeded)
         if rails.contains(.channelFree) {
             let mark = attemptMark
             if let payments = await readableRailPayments() {
@@ -1494,9 +1496,11 @@ class LightningService: NodeLifecycleService {
                         statuses.append(.pending)
                     } else {
                         releaseRailAttempt(paymentHash: paymentHash)
-                        try await refuseUnverifiedRestoredInvoice(
-                            paymentHash: paymentHash, invoiceCreatedAt: invoiceCreatedAt, invoiceExpiresAt: invoiceExpiresAt
-                        )
+                        if !isPaidOverTheNode {
+                            try await refuseUnverifiedRestoredInvoice(
+                                paymentHash: paymentHash, invoiceCreatedAt: invoiceCreatedAt, invoiceExpiresAt: invoiceExpiresAt
+                            )
+                        }
                     }
                 } else if payment?.status == .succeeded {
                     // Only a settled row ends the unknown send: a pending one may be the synthetic row it is listed as.
@@ -1505,6 +1509,8 @@ class LightningService: NodeLifecycleService {
             } else if hasRailAttempt(paymentHash: paymentHash) {
                 Logger.warn("Refused paying '\(paymentHash)', Spark can't list the earlier attempt now", context: "LightningService")
                 throw Self.pendingDuplicate(paymentHash: paymentHash)
+            } else if isPaidOverTheNode {
+                Logger.info("Skipped Spark's restore checks of '\(paymentHash)', the node already paid it", context: "LightningService")
             } else if let invoiceCreatedAt, let since = sparkHistoryUnseededSince, Int(clamping: invoiceCreatedAt) < since {
                 // Nothing left the wallet, and an invoice made after the restore can't be one Spark paid before it.
                 Logger.warn("Refused paying '\(paymentHash)' until Spark lists its sends since the restore", context: "LightningService")
