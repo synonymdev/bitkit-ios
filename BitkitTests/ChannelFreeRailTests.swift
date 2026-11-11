@@ -25,7 +25,7 @@ final class ChannelFreeRailTests: XCTestCase {
         service.railAttemptsStore = UserDefaults(suiteName: "ChannelFreeRailTests")!
         service.forgetRailAttempts()
         service.forgetLdkAttempts()
-        service.clearSparkHistoryUnseeded()
+        service.clearSparkRestore()
         previousRailSupported = service.channelFreeRailSupported
         service.channelFreeRailSupported = { true }
         previousNow = service.now
@@ -35,7 +35,7 @@ final class ChannelFreeRailTests: XCTestCase {
         let service = Bitkit.LightningService.shared
         service.forgetRailAttempts()
         service.forgetLdkAttempts()
-        service.clearSparkHistoryUnseeded()
+        service.clearSparkRestore()
         service.railAttemptsStore = previousAttemptsStore
         service.channelFreeRailSupported = previousRailSupported
         service.now = previousNow
@@ -1151,9 +1151,109 @@ extension ChannelFreeRailTests {
             _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
             XCTFail("A send of an invoice made before the restore went out before Spark listed its sends", file: file, line: line)
         } catch {
-            XCTAssertTrue(error is Bitkit.ChannelFreeRailSendRefused, "\(error)", file: file, line: line)
+            XCTAssertTrue((error as? Bitkit.ChannelFreeRailSendRefused)?.isRestoredInvoiceUnverified == true, "\(error)", file: file, line: line)
         }
         XCTAssertNil(rail.sentBolt11, file: file, line: line)
+    }
+
+    func testARestoreKeepsWhenItHappened() throws {
+        let createdAt = try Int(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).secondsSinceEpoch())
+
+        try restore(secondsAfterTheInvoice: 60)
+
+        XCTAssertEqual(Bitkit.LightningService.shared.sparkRestoredAt, createdAt + 60)
+    }
+
+    func testAPreRestoreInvoiceSparksSyncedListLacksIsRefusedOverTheNodeUntilItExpires() async throws {
+        let invoice = try Bolt11Invoice.fromStr(invoiceStr: Self.invoice)
+        let createdAt = TimeInterval(invoice.secondsSinceEpoch())
+        let service = Bitkit.LightningService.shared
+        try restore(secondsAfterTheInvoice: 60)
+        rail.balanceSats = 0
+        service.now = { Date(timeIntervalSince1970: createdAt + 120) }
+        // Spark reports a sync while its payment history failed to sync, so its list lacks the pre-restore send.
+        rail.syncedAfter = { _ in true }
+        await service.listRailSendsIfUnseeded()
+        XCTAssertNil(service.sparkHistoryUnseededSince, "Spark's own list still ends the unseeded hold")
+
+        await assertRefusedUntilSparkLists()
+        // A relaunch, before Spark syncs that run.
+        rail.syncedAfter = { _ in false }
+        await assertRefusedUntilSparkLists()
+
+        service.now = { Date(timeIntervalSince1970: createdAt + TimeInterval(invoice.expiryTimeSeconds())) }
+        await assertReachesTheNode()
+    }
+
+    func testASyncedSparkWhoseListLacksAPreRestoreInvoiceRefusesToSendItUntilItExpires() async throws {
+        let invoice = try Bolt11Invoice.fromStr(invoiceStr: Self.invoice)
+        let createdAt = TimeInterval(invoice.secondsSinceEpoch())
+        let service = Bitkit.LightningService.shared
+        try restore(secondsAfterTheInvoice: 60)
+        service.now = { Date(timeIntervalSince1970: createdAt + 120) }
+        // Spark reports a sync while its payment history failed to sync, so its list lacks the pre-restore send.
+        rail.syncedAfter = { _ in true }
+        await service.listRailSendsIfUnseeded()
+        rail.balanceSats = 100_000
+
+        await assertRefusedUntilSparkLists()
+
+        service.now = { Date(timeIntervalSince1970: createdAt + TimeInterval(invoice.expiryTimeSeconds())) }
+        _ = try await service.send(bolt11: Self.invoice)
+        XCTAssertEqual(rail.sentBolt11, Self.invoice, "Spark stayed held after the invoice expired")
+    }
+
+    func testASparkThatCantListItsSendsAfterARestoreRefusesToSendAPreRestoreInvoice() async throws {
+        let createdAt = try TimeInterval(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).secondsSinceEpoch())
+        let service = Bitkit.LightningService.shared
+        try restore(secondsAfterTheInvoice: 60)
+        service.now = { Date(timeIntervalSince1970: createdAt + 120) }
+        rail.syncedAfter = { _ in true }
+        await service.listRailSendsIfUnseeded()
+        XCTAssertNil(service.sparkHistoryUnseededSince)
+        rail.listError = NSError(domain: "spark", code: 1)
+        rail.balanceSats = 100_000
+
+        await assertRefusedUntilSparkLists()
+    }
+
+    func testAPreRestoreInvoiceThatOutlastsAWeekIsStillHeldOnDayEight() {
+        let restoredAt = 1_000_000
+        let day = 24 * 60 * 60
+        let createdAt = UInt64(restoredAt - 60)
+        let dayEight = restoredAt + 8 * day
+
+        XCTAssertTrue(
+            Bitkit.LightningService.holdsRestoredInvoice(
+                restoredAt: restoredAt, invoiceCreatedAt: createdAt, invoiceExpiresAt: restoredAt + 30 * day, now: dayEight
+            ),
+            "A pre-restore invoice valid for 30 days stopped being held after a week"
+        )
+        XCTAssertFalse(
+            Bitkit.LightningService.holdsRestoredInvoice(
+                restoredAt: restoredAt, invoiceCreatedAt: createdAt, invoiceExpiresAt: restoredAt + 30 * day, now: restoredAt + 30 * day
+            )
+        )
+        XCTAssertTrue(Bitkit.LightningService.holdsRestoredInvoice(
+            restoredAt: restoredAt,
+            invoiceCreatedAt: nil,
+            invoiceExpiresAt: nil,
+            now: dayEight
+        ))
+        XCTAssertFalse(
+            Bitkit.LightningService.holdsRestoredInvoice(
+                restoredAt: restoredAt, invoiceCreatedAt: UInt64(restoredAt + 60), invoiceExpiresAt: nil, now: dayEight
+            )
+        )
+    }
+
+    func testARefusedPreRestoreInvoiceAsksForANewInvoice() {
+        let refusal = Bitkit.ChannelFreeRailSendRefused.restoredInvoiceUnverified()
+        // The test target compiles its own `AppError`, so the app's is named.
+        let wrapped = Bitkit.AppError(message: "wallet__payment_failed_description", debugMessage: nil, underlyingError: refusal)
+
+        XCTAssertEqual(sendFailureMessage(for: refusal), t("wallet__payment_restored_invoice"))
+        XCTAssertEqual(sendFailureMessage(for: wrapped), t("wallet__payment_restored_invoice"))
     }
 
     func testAnInvoiceMadeBeforeARestoreIsRefusedOverTheNodeUntilSparkSyncs() async throws {
@@ -1185,7 +1285,7 @@ extension ChannelFreeRailTests {
         // What Spark's synced event does once its sync reached it.
         rail.syncedAfter = { _ in true }
         await Bitkit.LightningService.shared.listRailSendsIfUnseeded()
-        // A later outage no longer holds the invoice, as Spark's list showed no send of it.
+        // A later outage no longer holds the invoice: Spark's list showed no send of it, and it has expired.
         rail.syncedAfter = { _ in false }
 
         XCTAssertNil(Bitkit.LightningService.shared.sparkHistoryUnseededSince)
