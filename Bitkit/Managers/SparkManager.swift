@@ -716,7 +716,8 @@ final class SparkManager: ChannelFreeLightningRail {
             startedAt: UInt64(Date().timeIntervalSince1970),
             request: request,
             tags: tags,
-            earlierPaymentIds: Self.withdrawalIds(to: address, amountSats: amountSats, in: earlierPayments)
+            earlierPaymentIds: Self.withdrawalIds(to: address, amountSats: amountSats, in: earlierPayments),
+            idempotencyKey: UUID().uuidString.lowercased()
         )
         let journaled = pending
         try await Self.startJournaledWithdrawal(
@@ -734,7 +735,8 @@ final class SparkManager: ChannelFreeLightningRail {
         do {
             response = try await sdk.sendPayment(request: SendPaymentRequest(
                 prepareResponse: prepared,
-                options: .bitcoinAddress(confirmationSpeed: .medium)
+                options: .bitcoinAddress(confirmationSpeed: .medium),
+                idempotencyKey: pending.idempotencyKey
             ))
         } catch {
             throw await Self.withdrawalSendFailure(
@@ -834,9 +836,10 @@ final class SparkManager: ChannelFreeLightningRail {
         guard let pending = Self.pendingContactWithdrawal, !isWithdrawingToContact,
               let payments = try? await requireSdk().listPayments(request: ListPaymentsRequest(sortAscending: false)).payments
         else { return }
-        if let payment = Self.matchingWithdrawal(pending, in: payments), case let .withdraw(txId, _, _) = payment.details {
+        let payment = Self.matchingWithdrawal(pending, in: payments)
+        if let payment, case let .withdraw(txId, _, _) = payment.details {
             await recordContactWithdrawal(payment, txId: txId, pending: pending)
-        } else if allowClear, Self.canCloseUnlisted(pending, now: now) {
+        } else if allowClear, Self.canCloseUnlisted(pending, listed: payment, now: now) {
             Logger.info("Closed a Spark contact withdrawal Spark never listed", context: "SparkManager")
             await Self.closeUnsentWithdrawal(pending, releaseProof: Self.releaseUnsentProof, failAllowance: Self.failAllowance)
         }
@@ -888,15 +891,19 @@ final class SparkManager: ChannelFreeLightningRail {
 
     nonisolated static let contactWithdrawalExpirySecs: UInt64 = 600
 
-    /// An attempt Spark never returned nor listed is taken as unsent only after the expiry.
-    nonisolated static func canCloseUnlisted(_ pending: SparkContactWithdrawal, now: UInt64) -> Bool {
-        pending.paymentId == nil && now >= pending.startedAt + contactWithdrawalExpirySecs
+    /// An attempt Spark never returned nor listed is taken as unsent only after the expiry. Spark can list its payment
+    /// without withdrawal details while the payout may still go out, so only one it failed is unsent too.
+    nonisolated static func canCloseUnlisted(_ pending: SparkContactWithdrawal, listed: Payment? = nil, now: UInt64) -> Bool {
+        pending.paymentId == nil && (listed?.status ?? .failed) == .failed && now >= pending.startedAt + contactWithdrawalExpirySecs
     }
 
+    /// The attempt's own payment, by the id Spark returned or the idempotency key it keeps as the id, also while Spark
+    /// lists it without withdrawal details; else, for one Spark never returned, a new withdrawal to its address and amount.
     nonisolated static func matchingWithdrawal(_ pending: SparkContactWithdrawal, in payments: [Payment]) -> Payment? {
-        if let paymentId = pending.paymentId {
-            return payments.first { $0.id == paymentId }
+        if let ownId = pending.paymentId ?? pending.idempotencyKey, let own = payments.first(where: { $0.id == ownId }) {
+            return own
         }
+        guard pending.paymentId == nil else { return nil }
         let earlier = Set(pending.earlierPaymentIds ?? [])
         return payments.first { payment in
             !earlier.contains(payment.id) && withdrawalIds(to: pending.address, amountSats: pending.amountSats, in: [payment]) == [payment.id]
@@ -1778,6 +1785,8 @@ struct SparkContactWithdrawal: Codable, Equatable {
     var earlierPaymentIds: [String]?
     /// This attempt's Spark payment, once Spark returned it.
     var paymentId: String?
+    /// The UUID the send passed as its idempotency key, which Spark keeps as the payment's id.
+    var idempotencyKey: String?
 }
 
 /// One contact withdrawal, which a pending send screen follows until its journal closes.

@@ -213,6 +213,33 @@ final class PaykitRouteTests: XCTestCase {
         )
     }
 
+    func testAWithdrawalSparkListsWithoutDetailsIsMatchedByItsKeyAndKeptOpen() {
+        let pending = SparkContactWithdrawal(
+            address: onchain.value,
+            amountSats: 20000,
+            contact: "contact",
+            startedAt: 1000,
+            idempotencyKey: "key"
+        )
+        var listed = Self.withdrawal(id: "key", to: onchain.value, amountSats: 20000, timestamp: 1001)
+        listed.status = .pending
+        listed.details = nil
+        let past = 1000 + SparkManager.contactWithdrawalExpirySecs * 10
+
+        let matched = SparkManager.matchingWithdrawal(pending, in: [listed])
+        XCTAssertEqual(matched?.id, "key", "Spark keeps the send's idempotency key as the payment's id")
+        XCTAssertFalse(
+            SparkManager.canCloseUnlisted(pending, listed: matched, now: past),
+            "A withdrawal Spark lists without its details may still pay out, so its journal stays open"
+        )
+
+        listed.status = .failed
+        XCTAssertTrue(
+            SparkManager.canCloseUnlisted(pending, listed: SparkManager.matchingWithdrawal(pending, in: [listed]), now: past),
+            "One Spark failed before it had withdrawal details never pays out"
+        )
+    }
+
     func testAFailedWithdrawalStaysOpenAfterASyncThatNeverReachedSpark() async {
         var allowedClears: [Bool] = []
         // The sync call returns, but Spark keeps its failed sync in `lastSyncError`, so it never synced after the failure.
