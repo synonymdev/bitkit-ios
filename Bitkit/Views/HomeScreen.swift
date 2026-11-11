@@ -117,12 +117,7 @@ struct HomeScreen: View {
         }
 
         if wallet.nodeLifecycleState == .running {
-            do {
-                try await wallet.sync()
-                try await activity.syncLdkNodePayments()
-            } catch {
-                app.toast(error)
-            }
+            await WalletPullRefresh.sync(wallet: wallet, activity: activity, app: app)
         }
 
         await currencyRefreshFeedback
@@ -298,5 +293,27 @@ private final class HomePullRefreshObserverView: UIView {
         let pullDistance = -(scrollView.contentOffset.y + scrollView.adjustedContentInset.top)
         guard pullDistance >= Self.threshold else { return }
         onRefresh?()
+    }
+}
+
+/// Pull-to-refresh on the wallet screens. The activity list sync runs even when the node sync fails, so a payment
+/// LDK already knows about still reaches the list; the first failure is shown.
+enum WalletPullRefresh {
+    @MainActor
+    static func sync(wallet: WalletViewModel, activity: ActivityListViewModel, app: AppViewModel) async {
+        var firstError: Error?
+        do {
+            try await wallet.sync()
+        } catch {
+            firstError = error
+        }
+        do {
+            try await activity.syncLdkNodePayments()
+        } catch {
+            firstError = firstError ?? error
+        }
+        if let firstError {
+            app.toast(firstError)
+        }
     }
 }

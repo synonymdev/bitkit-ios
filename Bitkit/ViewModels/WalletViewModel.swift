@@ -473,6 +473,7 @@ class WalletViewModel: ObservableObject {
 
     func closeStartAdmissionForWipe() {
         isStartAdmissionClosedForWipe = true
+        cancelPaykitPostSync()
     }
 
     private func stopNodeLocked(clearEventCallback: Bool, swapUpdatesStopped: Bool = false) async throws {
@@ -556,6 +557,8 @@ class WalletViewModel: ObservableObject {
     nonisolated static let swapUpdatesWipeStopTimeout: Duration = .seconds(30)
 
     private var swapUpdatesTask: Task<Void, Never>?
+    private var paykitPostSyncTask: Task<Void, Never>?
+    private var pendingPaykitPostSyncSession: (@MainActor () -> Bool)?
     private var swapEventsTask: Task<Void, Never>?
     private var swapUpdatesRunning = false
 
@@ -706,11 +709,37 @@ class WalletViewModel: ObservableObject {
         isSyncingWallet = false
         syncState()
         QuickPayPaymentCoordinator.shared.reconcileAgainstLdk()
-        await refreshPublicPaykitAddressIfNeeded(isSessionCurrent: isSessionCurrent)
-        if isPaykitUIActive {
-            await PrivatePaykitService.shared.reconcileReceivedPayments(wallet: self)
-            await PrivatePaykitService.shared.handleOnchainActivity(wallet: self)
+        schedulePaykitPostSync(isSessionCurrent: isSessionCurrent)
+    }
+
+    /// Runs the Paykit follow-up of a node sync off the caller's path: each step can wait on a homeserver write lock,
+    /// so a caller such as pull-to-refresh must not wait for it. A sync that lands while one runs queues one more pass.
+    private func schedulePaykitPostSync(isSessionCurrent: @escaping @MainActor () -> Bool) {
+        pendingPaykitPostSyncSession = isSessionCurrent
+        guard paykitPostSyncTask == nil else { return }
+        paykitPostSyncTask = Task { [weak self] in
+            while let self, !Task.isCancelled, let session = pendingPaykitPostSyncSession {
+                pendingPaykitPostSyncSession = nil
+                await runPaykitPostSync(isSessionCurrent: session)
+            }
+            if !Task.isCancelled {
+                self?.paykitPostSyncTask = nil
+            }
         }
+    }
+
+    private func runPaykitPostSync(isSessionCurrent: @escaping @MainActor () -> Bool) async {
+        await refreshPublicPaykitAddressIfNeeded(isSessionCurrent: isSessionCurrent)
+        guard !Task.isCancelled, isPaykitUIActive else { return }
+        await PrivatePaykitService.shared.reconcileReceivedPayments(wallet: self)
+        guard !Task.isCancelled, isPaykitUIActive else { return }
+        await PrivatePaykitService.shared.handleOnchainActivity(wallet: self)
+    }
+
+    private func cancelPaykitPostSync() {
+        pendingPaykitPostSyncSession = nil
+        paykitPostSyncTask?.cancel()
+        paykitPostSyncTask = nil
     }
 
     /// Sends bitcoin to an on-chain address
