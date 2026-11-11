@@ -25,9 +25,10 @@ struct SparkExitEarlierAddress: Codable, Equatable, Identifiable {
     /// About four weeks: how long a cancelled exit's address is still read for a late payment.
     static let watchSeconds: TimeInterval = 28 * 24 * 3600
 
-    /// A cancelled exit's address younger than `watchSeconds`, read in the foreground for a late payment.
+    /// Read in the foreground for what it holds: kept change always, so change spent by hand shows as spent, and a
+    /// cancelled exit's address younger than `watchSeconds`, for a late payment.
     func isWatched(now: Date) -> Bool {
-        kind == .cancelledFunding && now.timeIntervalSince(date) < Self.watchSeconds
+        kind == .keptChange || now.timeIntervalSince(date) < Self.watchSeconds
     }
 
     /// The leftover an ended exit kept at its funding address.

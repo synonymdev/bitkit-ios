@@ -782,7 +782,7 @@ final class SparkExitReviewTests: XCTestCase {
     }
 
     /// A cancelled exit's funding address stays listed, and for four weeks the foreground reads it: a late payment
-    /// shows there with its balance.
+    /// shows there with its balance. Kept change is read every time, so change the user spent by hand shows as spent.
     func testACancelledExitsAddressShowsALatePaymentForFourWeeks() async throws {
         let record = SparkExitFixtures.record()
         let cancelled = try XCTUnwrap(SparkExitEarlierAddress.cancelledFunding(record, network: .regtest, at: clock.addingTimeInterval(-86400)))
@@ -798,7 +798,7 @@ final class SparkExitReviewTests: XCTestCase {
                 : [SparkExitFixtures.utxo(String(repeating: "b", count: 64), value: 9)]
         }
 
-        XCTAssertEqual(refreshed.map(\.sats), [5000, nil, 600], "a late payment at a cancelled exit's address showed nowhere")
+        XCTAssertEqual(refreshed.map(\.sats), [5000, nil, 9], "a late payment, or kept change spent by hand, showed nowhere")
     }
 
     // MARK: What stays on Spark (Android 124d66170, caa349d4b)

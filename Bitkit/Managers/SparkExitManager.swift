@@ -151,7 +151,8 @@ final class SparkExitManager {
         SparkExitEarlierAddressStore(walletIndex: walletIndex)
     }
 
-    /// Reads the cancelled exits' addresses still watched for a late payment, and shows what each holds.
+    /// Reads the watched earlier exit addresses, kept change and cancelled exits' for a late payment, and shows what
+    /// each holds.
     func refreshEarlierAddresses() async {
         let store = earlierAddressStore
         let stored = (try? store.load()) ?? earlierAddresses
