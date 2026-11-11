@@ -811,6 +811,11 @@ final class SparkExitManager {
             throw AppError(message: t("lightning__spark_exit__quote_error"), debugMessage: "No quote to start from")
         }
         let key = try Self.fundingKey(walletIndex: walletIndex, index: fundingIndex)
+        // A send that passed its exit check before the hold may still spend leaves. One still sending after the wait
+        // refuses the start before anything is saved, so the quote stays and the user starts again once it ended.
+        // The record holds Spark from its save on.
+        defer { SparkManager.shared.releaseSpendsHold() }
+        try await SparkManager.shared.holdSpendsForExit()
         var record = SparkExitRecord(
             network: "\(network)",
             createdAt: Date(),
@@ -846,8 +851,6 @@ final class SparkExitManager {
         SparkManager.shared.detachForExit()
         // Reconnecting cuts an optimization short, which would leave its counter-swap unclaimed for a while.
         await SparkManager.shared.waitForOptimization()
-        // A send that passed its exit check before the hold may still spend leaves: the requote comes after it.
-        await SparkManager.shared.waitForSpends()
         // The rest runs under the ticks' lock, on this exit as stored: one cancelled during the wait above is never
         // reconnected for or paid to.
         while isTicking {

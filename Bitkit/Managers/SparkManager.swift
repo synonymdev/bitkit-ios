@@ -279,8 +279,12 @@ final class SparkManager: ChannelFreeLightningRail {
 
     /// Waits for the sends and withdrawals that passed their exit check before the exit held Spark, for up to two
     /// minutes, so the exit quotes the leaves they leave.
-    func waitForSpends() async {
-        await spends.waitUntilIdle(timeout: Self.optimizationWaitSeconds)
+    func holdSpendsForExit() async throws {
+        try await spends.holdForExit(timeout: Self.optimizationWaitSeconds)
+    }
+
+    func releaseSpendsHold() {
+        spends.release()
     }
 
     private func noteOptimization(_ event: AutoOptimizationEvent) {
@@ -1506,6 +1510,8 @@ private final class SparkEventListener: BreezSdkSpark.EventListener, @unchecked 
 final class SparkSpends {
     private let isExiting: () -> Bool
     private(set) var inFlight = 0
+    /// An exit start holds Spark while it waits for the sends, before its record exists.
+    private(set) var isHeld = false
 
     init(isExiting: @escaping () -> Bool) {
         self.isExiting = isExiting
@@ -1514,7 +1520,7 @@ final class SparkSpends {
     /// Runs `send` counted, unless an exit holds Spark. Called after the send's last await but the one inside `send`,
     /// so an exit starting meanwhile either refuses it here or waits for it.
     func run<T>(_ send: () async throws -> T) async throws -> T {
-        guard !isExiting() else {
+        guard !isExiting(), !isHeld else {
             Logger.info("Refused a Spark send: an emergency exit holds Spark", context: "SparkManager")
             throw ChannelFreeRailSendRefused(reason: t("wallet__payment_failed_description"))
         }
@@ -1523,15 +1529,24 @@ final class SparkSpends {
         return try await send()
     }
 
-    /// Waits for the counted sends to end, for up to `timeout`.
-    func waitUntilIdle(timeout: TimeInterval) async {
+    /// Holds Spark for an exit start and waits for the counted sends to end, for up to `timeout`. Throws, and lets go,
+    /// when one is still sending then: the exit must not start while a send can spend its leaves, and the user starts
+    /// it again once the send ended. The start lets go (`release`) once its record holds Spark.
+    func holdForExit(timeout: TimeInterval) async throws {
+        isHeld = true
         let deadline = Date().addingTimeInterval(timeout)
         while inFlight > 0, !Task.isCancelled, Date() < deadline {
             try? await Task.sleep(nanoseconds: 100_000_000)
         }
         if inFlight > 0 {
             Logger.warn("Gave up waiting for Spark sends in flight to end", context: "SparkManager")
+            isHeld = false
+            throw AppError(message: t("other__try_again"), debugMessage: "A Spark payment is still sending")
         }
+    }
+
+    func release() {
+        isHeld = false
     }
 }
 

@@ -419,7 +419,7 @@ extension SparkPaymentSafetyTests {
         isExiting = true
         var isIdle = false
         let idle = Task { @MainActor in
-            await spends.waitUntilIdle(timeout: 120)
+            try await spends.holdForExit(timeout: 120)
             isIdle = true
         }
         try await Task.sleep(nanoseconds: 300_000_000)
@@ -427,7 +427,36 @@ extension SparkPaymentSafetyTests {
         XCTAssertFalse(isIdle, "the exit start went on while a send past its check still spent leaves")
         release?.resume()
         try await send.value
-        await idle.value
+        try await idle.value
         XCTAssertTrue(isIdle)
+    }
+
+    /// A send still sending after the wait refuses the exit start before its record exists; Spark is let go, so the
+    /// user can start again once the send ended.
+    func testAnExitStartIsRefusedWhileASendStaysActivePastTheWait() async throws {
+        let spends = SparkSpends { false }
+        var release: CheckedContinuation<Void, Never>?
+        let send = Task { @MainActor in
+            try await spends.run {
+                await withCheckedContinuation { release = $0 }
+            }
+        }
+        while release == nil {
+            await Task.yield()
+        }
+
+        var isRefused = false
+        do {
+            try await spends.holdForExit(timeout: 0.3)
+        } catch {
+            isRefused = true
+        }
+
+        XCTAssertTrue(isRefused, "the exit start went on while a send could still spend its leaves")
+        XCTAssertFalse(spends.isHeld, "Spark stayed held after the refused start")
+        release?.resume()
+        try await send.value
+        try await spends.holdForExit(timeout: 1)
+        XCTAssertTrue(spends.isHeld)
     }
 }
