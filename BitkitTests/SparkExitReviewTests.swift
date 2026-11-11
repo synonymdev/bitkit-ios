@@ -817,6 +817,26 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(SparkExitManager.shownEarlierAddresses([kept], record: record), [], "shown twice, on the result and in the list")
     }
 
+    /// An address added while a refresh reads another stays listed: the refresh writes only the balances it read.
+    func testAnAddressRefreshKeepsAnAddressAddedDuringItsReads() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = SparkExitEarlierAddressStore(url: dir.appendingPathComponent("earlier.json"))
+        let now = Date()
+        let first = SparkExitEarlierAddress(address: "bcrt1qfirst", path: "m/84'/1'/7797'/0/1", kind: .cancelledFunding, sats: nil, date: now)
+        let added = SparkExitEarlierAddress(address: "bcrt1qadded", path: "m/84'/1'/7797'/0/2", kind: .cancelledFunding, sats: nil, date: now)
+        try store.add(first)
+
+        let refreshed = await SparkExitManager.refreshEarlierAddresses(store: store, fallback: [], now: now) { _ in
+            try store.add(added)
+            return [SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 5000)]
+        }
+
+        XCTAssertEqual(try store.load().map(\.address), [first.address, added.address], "the refresh erased the address added meanwhile")
+        XCTAssertEqual(try store.load().map(\.sats), [5000, nil])
+        XCTAssertEqual(refreshed?.map(\.address), [first.address, added.address])
+    }
+
     // MARK: What stays on Spark (Android 124d66170, caa349d4b)
 
     /// The start and the requote save what stays on Spark without the lost leaves Spark still counts: 100,000 sats

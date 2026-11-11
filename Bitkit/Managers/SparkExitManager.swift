@@ -160,17 +160,36 @@ final class SparkExitManager {
     /// each holds.
     func refreshEarlierAddresses() async {
         let store = earlierAddressStore
-        let stored = (try? store.load()) ?? earlierAddresses
-        earlierAddresses = stored
-        guard let chain, stored.contains(where: { $0.isWatched(now: Date()) }) else { return }
-        let refreshed = await SparkExitEarlierAddress.refreshed(stored, now: Date()) { try await chain.utxos(address: $0) }
-        guard refreshed != stored else { return }
+        earlierAddresses = (try? store.load()) ?? earlierAddresses
+        guard let chain else { return }
+        let refreshed = await Self.refreshEarlierAddresses(store: store, fallback: earlierAddresses, now: Date()) {
+            try await chain.utxos(address: $0)
+        }
+        if let refreshed {
+            earlierAddresses = refreshed
+        }
+    }
+
+    /// The store's entries with what each watched address holds, saved; nil when nothing changed. The balances read
+    /// go into the store as it is once the reads are done, so an address added meanwhile stays.
+    nonisolated static func refreshEarlierAddresses(
+        store: SparkExitEarlierAddressStore,
+        fallback: [SparkExitEarlierAddress],
+        now: Date,
+        utxos: (String) async throws -> [EsploraUtxo]
+    ) async -> [SparkExitEarlierAddress]? {
+        let stored = (try? store.load()) ?? fallback
+        guard stored.contains(where: { $0.isWatched(now: now) }) else { return nil }
+        let balances = await SparkExitEarlierAddress.balances(stored, now: now, utxos: utxos)
+        let current = (try? store.load()) ?? stored
+        let refreshed = SparkExitEarlierAddress.updating(current, balances: balances)
+        guard refreshed != current else { return nil }
         do {
             try store.save(refreshed)
         } catch {
             Logger.warn("Failed to save the earlier Spark exit addresses: \(error)", context: "SparkExitManager")
         }
-        earlierAddresses = refreshed
+        return refreshed
     }
 
     private var store: SparkExitStore {

@@ -61,13 +61,31 @@ struct SparkExitEarlierAddress: Codable, Equatable, Identifiable {
         now: Date,
         utxos: (String) async throws -> [EsploraUtxo]
     ) async -> [SparkExitEarlierAddress] {
-        var refreshed = entries
-        for i in refreshed.indices where refreshed[i].isWatched(now: now) {
-            guard let held = try? await utxos(refreshed[i].address) else { continue }
-            let sats = held.reduce(0) { $0 + $1.value }
-            refreshed[i].sats = sats > 0 ? sats : nil
+        await updating(entries, balances: balances(entries, now: now, utxos: utxos))
+    }
+
+    /// What each watched address that could be read holds now, by address.
+    static func balances(
+        _ entries: [SparkExitEarlierAddress],
+        now: Date,
+        utxos: (String) async throws -> [EsploraUtxo]
+    ) async -> [String: UInt64] {
+        var balances: [String: UInt64] = [:]
+        for entry in entries where entry.isWatched(now: now) {
+            guard let held = try? await utxos(entry.address) else { continue }
+            balances[entry.address] = held.reduce(0) { $0 + $1.value }
         }
-        return refreshed
+        return balances
+    }
+
+    /// The entries with the `balances` read; the others keep what they showed.
+    static func updating(_ entries: [SparkExitEarlierAddress], balances: [String: UInt64]) -> [SparkExitEarlierAddress] {
+        entries.map { entry in
+            guard let sats = balances[entry.address] else { return entry }
+            var updated = entry
+            updated.sats = sats > 0 ? sats : nil
+            return updated
+        }
     }
 }
 
