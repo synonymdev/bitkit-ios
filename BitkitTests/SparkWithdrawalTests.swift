@@ -1,4 +1,5 @@
 @testable import Bitkit
+import BitkitCore
 import BreezSdkSpark
 import XCTest
 
@@ -330,6 +331,108 @@ final class SparkWithdrawalTests: XCTestCase {
         XCTAssertFalse(SparkManager.isWithdrawal(txid: "payment", sent: ["sent"], withdrawals: listed))
     }
 
+    func testASparkWithdrawalIsNeverBoosted() {
+        let pending = Payment(
+            id: "pending",
+            paymentType: .send,
+            status: .pending,
+            amount: 20000,
+            fees: 300,
+            timestamp: 1,
+            method: .withdraw,
+            details: .withdraw(txId: "listed", vout: 0, destinationAddress: "bcrt1qcontact"),
+            conversionDetails: nil
+        )
+
+        XCTAssertTrue(SparkManager.isSparkWithdrawal(txid: "contact", isSent: true, known: ["contact"], payments: []))
+        XCTAssertTrue(
+            SparkManager.isSparkWithdrawal(txid: "listed", isSent: true, known: [], payments: [pending]),
+            "a pending withdrawal Spark lists can't be boosted"
+        )
+        XCTAssertFalse(SparkManager.isSparkWithdrawal(txid: "savings", isSent: true, known: ["contact"], payments: [pending]))
+    }
+
+    func testASparkWithdrawalsSavingsReceiptCanStillBeBoosted() {
+        XCTAssertFalse(
+            SparkManager.isSparkWithdrawal(txid: "transfer", isSent: false, known: ["transfer"], payments: []),
+            "Savings owns the output a Spark withdrawal pays it, so its receipt keeps CPFP"
+        )
+    }
+
+    // MARK: - Payout confirmation
+
+    /// Spark lists a withdrawal completed once its provider took the payout on, before it is mined, so only a payout
+    /// output the chain lists in a block confirms its activity.
+    func testACompletedContactWithdrawalIsConfirmedOnlyOnceThePayoutIsMined() async {
+        let payouts = SparkManager.completedContactPayouts(
+            [
+                withdrawal(txId: "mined", status: .completed),
+                withdrawal(txId: "mempool", status: .completed),
+                withdrawal(txId: "unlisted", status: .completed),
+                withdrawal(txId: "pending", status: .pending),
+                withdrawal(txId: "savings", status: .completed),
+            ],
+            contactWithdrawals: ["mined", "mempool", "unlisted", "pending"]
+        )
+        let marked = TxIds()
+
+        await SparkManager.confirmMinedPayouts(
+            payouts,
+            needsConfirmation: { _ in true },
+            unspentOutputs: { _ in [Self.output(txId: "mined", confirmations: 1), Self.output(txId: "mempool", confirmations: 0)] },
+            markConfirmed: { await marked.insert($0) }
+        )
+
+        let confirmed = await marked.ids
+        XCTAssertEqual(confirmed, ["mined"], "a payout still in the mempool or not yet broadcast stays unconfirmed")
+    }
+
+    func testAConfirmedContactWithdrawalIsNotLookedUpAgain() async {
+        let lookups = TxIds()
+
+        await SparkManager.confirmMinedPayouts(
+            [SparkManager.ContactPayout(txId: "mined", vout: 0, address: "bcrt1qcontact")],
+            needsConfirmation: { _ in false },
+            unspentOutputs: { address in
+                await lookups.insert(address)
+                return []
+            },
+            markConfirmed: { _ in }
+        )
+
+        let looked = await lookups.ids
+        XCTAssertTrue(looked.isEmpty)
+    }
+
+    private func withdrawal(txId: String, status: BreezSdkSpark.PaymentStatus) -> BreezSdkSpark.Payment {
+        Payment(
+            id: txId,
+            paymentType: .send,
+            status: status,
+            amount: 20000,
+            fees: 300,
+            timestamp: 1,
+            method: .withdraw,
+            details: .withdraw(txId: txId, vout: 1, destinationAddress: "bcrt1qcontact"),
+            conversionDetails: nil
+        )
+    }
+
+    private static func output(txId: String, confirmations: UInt32) -> AccountUtxo {
+        AccountUtxo(
+            txid: txId,
+            vout: 1,
+            amount: 20000,
+            blockHeight: confirmations > 0 ? 100 : 0,
+            address: "bcrt1qcontact",
+            path: "",
+            confirmations: confirmations,
+            coinbase: false,
+            own: false,
+            required: nil
+        )
+    }
+
     @MainActor
     private func waitUntilPriced(_ transfer: TransferViewModel) async {
         for _ in 0 ..< 100 where transfer.isPricingSparkWithdrawal {
@@ -365,4 +468,12 @@ private actor PriceGate {
 @MainActor
 private final class WithdrawnFee {
     var feeSats: UInt64?
+}
+
+private actor TxIds {
+    private(set) var ids: [String] = []
+
+    func insert(_ id: String) {
+        ids.append(id)
+    }
 }

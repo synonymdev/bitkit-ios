@@ -69,6 +69,7 @@ enum SendRoute: Hashable {
         paykitPaymentRequestId: PaykitPaymentRequest.ID? = nil
     )
     case onchainPending(OnchainSendPendingContext)
+    case sparkWithdrawalPending(SparkWithdrawalAttempt)
     case onchainOperationPending(OnchainSendPendingContext, requestId: PaykitPaymentRequest.ID?)
     case hardwarePending(requestId: PaykitPaymentRequest.ID, walletId: String, transactionId: String, paymentIdentity: String?)
     case success(paymentId: String, walletId: String = WalletScope.default)
@@ -299,7 +300,7 @@ struct SendSheet: View {
     /// For onchain: only need node running.
     private var shouldShowSyncOverlay: Bool {
         if isPreparingRequest || hwSend.isActive || flow.isResumingAcceptedOrdinarySend || app.paykitUsesUsdt ||
-            (app.contactPaymentContext?.requiresAssetSelection == true && currentRoot == .amount && flow.navigationPath.isEmpty)
+            (app.contactPaymentPicksSource && currentRoot == .amount && flow.navigationPath.isEmpty)
         {
             return false
         }
@@ -764,7 +765,7 @@ struct SendSheet: View {
             return .ready
         }
         if app
-            .paykitUsesUsdt || (app.contactPaymentContext?.requiresAssetSelection == true && currentRoot == .amount && flow.navigationPath.isEmpty)
+            .paykitUsesUsdt || (app.contactPaymentPicksSource && currentRoot == .amount && flow.navigationPath.isEmpty)
         {
             flow.hasValidatedAfterSync = true
             return .ready
@@ -776,7 +777,7 @@ struct SendSheet: View {
             return .failed
         }
 
-        if let lnurlPayData = app.lnurlPayData, let requestedAmount {
+        if let lnurlPayData = app.lnurlPayData, app.paykitRoute?.serviceLeg == nil, let requestedAmount {
             let minimumAmount = max(1, lnurlPayData.minSendableSat)
             guard requestedAmount >= minimumAmount else {
                 showPaymentSetupFailure(
@@ -881,8 +882,8 @@ struct SendSheet: View {
             }
         }
 
-        // Validate onchain payment balance (for pure onchain invoices)
-        if let onchainInvoice = app.scannedOnchainInvoice {
+        // Validate onchain payment balance (for pure onchain invoices); a Spark route can pay it from spending
+        if app.paykitRoute?.offersSparkLeg != true, let onchainInvoice = app.scannedOnchainInvoice {
             let onchainBalance = max(
                 LightningService.shared.balances?.spendableOnchainBalanceSats ?? 0,
                 hwWalletManager.maximumFundingBalanceSats
@@ -935,6 +936,12 @@ struct SendSheet: View {
             _ = await selectHardwareFundingSourceIfNeeded(amountSats: amountSats, requestId: request.id)
             flow.isFallbackFundingPending = false
         }
+    }
+
+    /// Whether a request Savings and the hardware wallets can't cover is rejected before Confirm. One Spark can carry
+    /// reaches Confirm, which routes it from Spending, as a pure on-chain payment's check does.
+    static func rejectsUnfundedOnchainRequest(route: PaykitRouteUi?) -> Bool {
+        route?.offersSparkLeg != true
     }
 
     private func selectHardwareFundingSourceIfNeeded(
@@ -1048,7 +1055,7 @@ struct SendSheet: View {
 
         // A failed estimate is not proof of insufficient funds. Keep the sheet open so the normal
         // confirmation path can retry instead of rejecting a payable request.
-        guard !hasUnavailableSource else { return true }
+        guard !hasUnavailableSource, Self.rejectsUnfundedOnchainRequest(route: app.paykitRoute) else { return true }
         let maximumAvailable = max(savingsAvailable ?? 0, hardwareSources.map(\.available).max() ?? 0)
         _ = validateOnchainBalanceAndDismissIfInsufficient(
             invoiceAmount: amountSats,
@@ -1178,6 +1185,12 @@ struct SendSheet: View {
                 paymentRequest: paymentRequest,
                 paykitPaymentRequestId: paykitPaymentRequestId,
                 routingCacheResetAttempted: flow.routingCacheResetAttempted,
+                navigationPath: $flow.navigationPath
+            )
+        case let .sparkWithdrawalPending(attempt):
+            SendPendingScreen(
+                paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: attempt.requestId,
+                routingCacheResetAttempted: flow.routingCacheResetAttempted, sparkWithdrawal: attempt,
                 navigationPath: $flow.navigationPath
             )
         case let .onchainPending(context):

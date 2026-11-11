@@ -894,10 +894,12 @@ extension PrivatePaykitService {
                 updates.removeAll { !knownSavedContactKeys.contains($0.counterparty) }
                 guard generation == preparationGeneration else { throw PrivatePaykitError.privateUnavailable }
                 guard !updates.isEmpty else {
+                    Logger.debug("Skipped private payment list publication during \(reason): no list changed", context: "PrivatePaykit")
                     schedulePendingPrivateMessageDrainRetries(reason: reason, retryKeys: linkRetryKeys)
                     return
                 }
                 let report = try await operations.syncPaymentLists(updates)
+                Logger.debug("Published private payment lists to \(updates.count) contacts during \(reason)", context: "PrivatePaykit")
                 let deliveryError = applyPrivatePaymentListDeliveryReport(report, reason: reason)
                 firstError = firstError ?? deliveryError
                 let retryKeys = linkRetryKeys + privatePaymentListDeliveryRetryKeys(from: report)
