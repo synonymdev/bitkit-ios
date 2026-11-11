@@ -625,7 +625,8 @@ struct SendConfirmationView: View {
             shouldAutomaticallyPay: shouldAutomaticallyPay,
             hasStartedAutomaticPayment: hasStartedAutomaticPayment,
             isSetupPending: isSetupPending,
-            isPreparingWallet: walletSwitchContext != nil
+            isPreparingWallet: walletSwitchContext != nil,
+            isRouteRefused: refusedRouteSource == app.selectedWalletToPayFrom
         ) else { return }
         hasStartedAutomaticPayment = true
         do {
@@ -1002,6 +1003,7 @@ struct SendConfirmationView: View {
     private func submitPayment(isAutomatic: Bool = false) async throws {
         guard !isSubmittingPayment else { return }
         guard !requiresAmountReview, preparingRequest == nil, !isRequestSetupPending, walletSwitchContext == nil,
+              refusedRouteSource != app.selectedWalletToPayFrom,
               isAutomatic || !prepareRequestCoinsIfNeeded() else { throw CancellationError() }
         // An automatic payment settles the fee itself below.
         if !isAutomatic, isPreparingOnchainSend {
@@ -1118,14 +1120,16 @@ struct SendConfirmationView: View {
         return walletType == .lightning && !hasLightningPayment && route.offersSparkLeg
     }
 
-    /// The wallet switch chooses coins separately from send setup, so the automatic start waits for both.
+    /// The wallet switch chooses coins separately from send setup, so the automatic start waits for both. A source the
+    /// router refused has nothing to pay, so it never starts.
     static func canStartAutomaticPayment(
         shouldAutomaticallyPay: Bool,
         hasStartedAutomaticPayment: Bool,
         isSetupPending: Bool,
-        isPreparingWallet: Bool
+        isPreparingWallet: Bool,
+        isRouteRefused: Bool = false
     ) -> Bool {
-        shouldAutomaticallyPay && !hasStartedAutomaticPayment && !isSetupPending && !isPreparingWallet
+        shouldAutomaticallyPay && !hasStartedAutomaticPayment && !isSetupPending && !isPreparingWallet && !isRouteRefused
     }
 
     static func requiresManualConfirmation(isAutomatic: Bool, isHardwarePayment: Bool) -> Bool {
@@ -1479,9 +1483,8 @@ struct SendConfirmationView: View {
             onchainSpendableSats: source == .savings ? UInt64(max(0, wallet.spendableOnchainBalanceSats)) : 0,
             request: request
         )
-        if sourceChanged {
-            refusedRouteSource = Self.refusedRouteSource(after: outcome, on: walletType, previous: refusedRouteSource)
-        }
+        // The first call when Confirm opens keeps a refusal too, so a request with no route offers no swipe.
+        refusedRouteSource = Self.refusedRouteSource(after: outcome, on: walletType, previous: refusedRouteSource)
     }
 
     /// A source the router refused on Confirm keeps the swipe off while it's selected, so nothing consumes the contact's

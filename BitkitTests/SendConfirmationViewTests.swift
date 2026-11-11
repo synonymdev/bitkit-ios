@@ -68,6 +68,26 @@ final class SendConfirmationViewTests: XCTestCase {
         ))
     }
 
+    func testARouteRefusedWhenConfirmOpensKeepsTheSwipeAndTheAutomaticPaymentOff() {
+        // Confirm's first routing call keeps a refusal the way a source switch does.
+        let refused = SendConfirmationView.refusedRouteSource(after: .refused, on: .lightning, previous: nil)
+
+        XCTAssertFalse(SendConfirmationView.canStartAutomaticPayment(
+            shouldAutomaticallyPay: true,
+            hasStartedAutomaticPayment: false,
+            isSetupPending: false,
+            isPreparingWallet: false,
+            isRouteRefused: refused == .lightning
+        ), "an automatic attempt must not pay a source the router refused")
+        XCTAssertTrue(SendConfirmationView.isSwipeDisabled(
+            walletType: .lightning,
+            isHardwarePayment: false,
+            isHardwareConfirmationUnavailable: false,
+            feeRate: 5,
+            isRouteRefused: refused == .lightning
+        ))
+    }
+
     func testAutomaticPaymentAwaitsFeeRateOnlyWhileItIsLoading() {
         XCTAssertTrue(SendConfirmationView.automaticPaymentAwaitsFeeRate(isFeeRateMissing: true, feeRateLoadFailed: false))
         XCTAssertFalse(SendConfirmationView.automaticPaymentAwaitsFeeRate(isFeeRateMissing: true, feeRateLoadFailed: true))
