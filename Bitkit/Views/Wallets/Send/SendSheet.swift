@@ -934,6 +934,12 @@ struct SendSheet: View {
         }
     }
 
+    /// Whether a request Savings and the hardware wallets can't cover is rejected before Confirm. One Spark can carry
+    /// reaches Confirm, which routes it from Spending, as a pure on-chain payment's check does.
+    static func rejectsUnfundedOnchainRequest(route: PaykitRouteUi?) -> Bool {
+        route?.offersSparkLeg != true
+    }
+
     private func selectHardwareFundingSourceIfNeeded(
         amountSats: UInt64,
         requestId: PaykitPaymentRequest.ID
@@ -1045,7 +1051,7 @@ struct SendSheet: View {
 
         // A failed estimate is not proof of insufficient funds. Keep the sheet open so the normal
         // confirmation path can retry instead of rejecting a payable request.
-        guard !hasUnavailableSource else { return true }
+        guard !hasUnavailableSource, Self.rejectsUnfundedOnchainRequest(route: app.paykitRoute) else { return true }
         let maximumAvailable = max(savingsAvailable ?? 0, hardwareSources.map(\.available).max() ?? 0)
         _ = validateOnchainBalanceAndDismissIfInsufficient(
             invoiceAmount: amountSats,

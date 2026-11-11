@@ -259,7 +259,7 @@ struct ActivityItemView: View {
             // Check if this is a CPFP child transaction
             if case let .onchain(activity) = viewModel.activity {
                 isCpfpChild = await CoreService.shared.activity.isCpfpChildTransaction(txId: activity.txId, walletId: activity.walletId)
-                isSparkWithdrawal = await SparkManager.shared.isSparkWithdrawal(txid: activity.txId)
+                isSparkWithdrawal = await SparkManager.shared.isSparkWithdrawal(txid: activity.txId, isSent: activity.txType == .sent)
             }
 
             // Load boostTxIds doesExist status to determine RBF vs CPFP

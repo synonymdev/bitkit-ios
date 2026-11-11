@@ -455,6 +455,147 @@ final class PaykitRouteTests: XCTestCase {
         XCTAssertEqual(steps, ["journal", "proof started", "closed"], "The refusal closes the journal, releasing the started proof")
     }
 
+    func testAPendingWithdrawalStaysOpenUntilSparkAcceptsItsPayout() {
+        XCTAssertEqual(
+            SparkManager.settlement(of: .pending),
+            .wait,
+            "Spark keeps a withdrawal pending until the provider accepts its payout, and it can still fail"
+        )
+        XCTAssertEqual(SparkManager.settlement(of: .completed), .record)
+        XCTAssertEqual(SparkManager.settlement(of: .failed), .closeUnsent)
+    }
+
+    @MainActor
+    func testADefiniteSparkRefusalClosesTheWithdrawalAtOnce() async {
+        var steps: [String] = []
+        let refused = await SparkManager.withdrawalSendFailure(
+            SdkError.InsufficientFunds(tokenIdentifier: nil),
+            closeUnsent: { steps.append("closed") },
+            settleLater: { steps.append("settle later") }
+        )
+        XCTAssertTrue(refused is SparkWithdrawalNotSent, "Spark picks leaves before anything reaches the operators")
+        XCTAssertEqual(steps, ["closed"], "A refusal releases the journal at once instead of after the expiry")
+
+        steps = []
+        let unknown = await SparkManager.withdrawalSendFailure(
+            SdkError.SparkError("operators"),
+            closeUnsent: { steps.append("closed") },
+            settleLater: { steps.append("settle later") }
+        )
+        XCTAssertFalse(unknown is SparkWithdrawalNotSent)
+        XCTAssertEqual(steps, ["settle later"], "An outcome that may have sent it settles from the sync after it")
+    }
+
+    @MainActor
+    func testASecondContactWithdrawalIsRefusedWhileTheFirstPrepares() throws {
+        snapshotAppDefaultsDomain()
+        SparkManager.pendingContactWithdrawal = nil
+        let spark = SparkManager.shared
+        try spark.claimContactWithdrawal()
+        defer { spark.releaseContactWithdrawalClaim() }
+
+        XCTAssertThrowsError(try spark.claimContactWithdrawal(), "A second send must never overwrite the first one's journal")
+        spark.releaseContactWithdrawalClaim()
+        XCTAssertNoThrow(try spark.claimContactWithdrawal())
+    }
+
+    func testAnUnfundedRequestReachesConfirmWhileSparkCanCarryIt() throws {
+        let context = ContactPaymentContext(
+            publicKey: "contact",
+            privatePaymentContext: nil,
+            endpoints: [Self.endpoint(.regtestOnchainP2wpkh, onchain.value)]
+        )
+        let offered = try XCTUnwrap(PaykitRouteService.routeUi(for: context, canRouteThroughSpark: true, canPayDirectly: false))
+        let direct = try XCTUnwrap(PaykitRouteService.routeUi(for: context, canRouteThroughSpark: false, canPayDirectly: false))
+
+        XCTAssertFalse(SendSheet.rejectsUnfundedOnchainRequest(route: offered), "Confirm routes it from Spending through Spark")
+        XCTAssertTrue(SendSheet.rejectsUnfundedOnchainRequest(route: direct))
+        XCTAssertTrue(SendSheet.rejectsUnfundedOnchainRequest(route: nil))
+    }
+
+    @MainActor
+    func testAHardwareWalletPickOnAmountDropsTheSparkLeg() {
+        snapshotAppDefaultsDomain()
+        let app = AppViewModel()
+        var routed = PaykitRouteUi(endpoints: [onchain], offersSparkLeg: true)
+        routed.serviceLeg = sparkLeg(amountSats: 20000, feeSats: 2190)
+        app.paykitRoute = routed
+        app.selectedWalletToPayFrom = .lightning
+
+        SendAmountView.selectWallet(of: .hardware(walletId: "trezor"), app: app)
+
+        XCTAssertEqual(app.selectedWalletToPayFrom, .onchain)
+        XCTAssertNil(app.paykitRoute?.serviceLeg, "Confirm must never describe the Spark leg for a hardware wallet's send")
+        XCTAssertEqual(app.paykitRoute?.endpoints, routed.endpoints)
+
+        app.paykitRoute = routed
+        SendAmountView.selectWallet(of: .savings, app: app)
+        XCTAssertEqual(app.paykitRoute, routed, "Savings asks the router again on Continue")
+    }
+
+    func testAnLnurlOutsideItsLimitsLeavesTheSparkLegToTheRouter() {
+        let route = PaykitRouteUi(endpoints: [lightning, onchain], offersSparkLeg: true, lnurl: lnurlData(minSendableMsats: 5_000_000))
+        let leg = sparkLeg(amountSats: 1000, feeSats: 2190)
+
+        let below = PaykitRouteService.request(
+            route: route,
+            amountSats: 1000,
+            source: .spending,
+            lightningSpendableSats: 4000,
+            onchainSpendableSats: 0,
+            serviceLegs: [leg]
+        )
+        XCTAssertEqual(below.contactEndpoints, [onchain], "An LNURL that refuses the amount must never win over the Spark leg")
+
+        let within = PaykitRouteService.request(
+            route: route,
+            amountSats: 6000,
+            source: .spending,
+            lightningSpendableSats: 10000,
+            onchainSpendableSats: 0,
+            serviceLegs: []
+        )
+        XCTAssertEqual(within.contactEndpoints, [lightning, onchain])
+    }
+
+    @MainActor
+    func testTheRouterIsAskedWithTheLnurlItsLimitsComeFrom() async {
+        snapshotAppDefaultsDomain()
+        let app = AppViewModel()
+        let route = PaykitRouteUi(endpoints: [lightning, onchain], offersSparkLeg: true)
+        app.contactPaymentContext = ContactPaymentContext(publicKey: "contact", privatePaymentContext: nil, endpoints: [])
+        app.lnurlPayData = lnurlData(minSendableMsats: 5_000_000)
+        app.selectedWalletToPayFrom = .lightning
+        var asked: PaykitRouteUi?
+
+        _ = await app.routeContactPayment(
+            route,
+            amountSats: 1000,
+            source: .spending,
+            lightningSpendableSats: 4000,
+            onchainSpendableSats: 0,
+            request: nil
+        ) { route, _, _, _, _ in
+            asked = route
+            return .service(leg: self.sparkLeg(amountSats: 1000, feeSats: 2190))
+        }
+
+        XCTAssertEqual(asked?.lnurl, app.lnurlPayData, "The router must see the LNURL's limits")
+    }
+
+    private func lnurlData(minSendableMsats: UInt64) -> LnurlPayData {
+        LnurlPayData(
+            uri: lightning.value,
+            callback: "https://example.com/pay",
+            minSendable: minSendableMsats,
+            maxSendable: 100_000_000,
+            metadataStr: "[]",
+            commentAllowed: nil,
+            allowsNostr: false,
+            nostrPubkey: nil
+        )
+    }
+
     @MainActor
     func testARouteThatReturnsAfterItsPaymentChangedNeverLandsOnTheNextOne() async {
         snapshotAppDefaultsDomain()

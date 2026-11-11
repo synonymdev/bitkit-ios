@@ -624,14 +624,8 @@ struct SendAmountView: View {
         conversionError = nil
         app.paykitUsesUsdt = source == .usdt
         switch source {
-        case .usdt:
+        case .usdt, .spending, .savings:
             hwSend.selectWallet(nil)
-        case .spending:
-            hwSend.selectWallet(nil)
-            app.selectedWalletToPayFrom = .lightning
-        case .savings:
-            hwSend.selectWallet(nil)
-            app.selectedWalletToPayFrom = .onchain
         case let .hardware(walletId):
             let balance = hwWalletManager.fundingBalance(walletId: walletId)
             let reserve = HwFundingSigner.feeReserve(
@@ -643,9 +637,25 @@ struct SendAmountView: View {
                 initialAvailableSats: balance > reserve ? balance - reserve : 0,
                 showsLoading: true
             )
+        }
+        Self.selectWallet(of: source, app: app)
+        updateFixedLightningAmount()
+    }
+
+    /// Points the send at the wallet `source` pays from. A hardware wallet skips the router on Continue, so a Spark leg
+    /// routed for Spending is dropped here, as Confirm's own switch does.
+    static func selectWallet(of source: SendFundingSource, app: AppViewModel) {
+        switch source {
+        case .usdt:
+            break
+        case .spending:
+            app.selectedWalletToPayFrom = .lightning
+        case .savings:
+            app.selectedWalletToPayFrom = .onchain
+        case .hardware:
+            app.paykitRoute = SendConfirmationView.route(app.paykitRoute, afterSelecting: source)
             app.selectedWalletToPayFrom = .onchain
         }
-        updateFixedLightningAmount()
     }
 
     private func updateFixedLightningAmount() {

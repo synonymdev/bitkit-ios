@@ -577,23 +577,25 @@ final class SparkManager: ChannelFreeLightningRail {
 
     /// Whether `txid` is a Spark withdrawal, which LDK never held and so can't boost: one this app sent, to Savings or a
     /// contact, or one Spark lists.
-    func isSparkWithdrawal(txid: String) async -> Bool {
+    func isSparkWithdrawal(txid: String, isSent: Bool) async -> Bool {
         let known = sentWithdrawalTxIds.union(Self.contactWithdrawalTxIds).union(withdrawals.map(\.txid))
-        if Self.isSparkWithdrawal(txid: txid, known: known, payments: []) {
+        if Self.isSparkWithdrawal(txid: txid, isSent: isSent, known: known, payments: []) {
             return true
         }
         guard isReady else { return false }
         do {
             let payments = try await requireSdk().listPayments(request: ListPaymentsRequest(sortAscending: false)).payments
-            return Self.isSparkWithdrawal(txid: txid, known: known, payments: payments)
+            return Self.isSparkWithdrawal(txid: txid, isSent: isSent, known: known, payments: payments)
         } catch {
             Logger.warn("Failed to list Spark payments for \(txid): \(error)", context: "SparkManager")
             return false
         }
     }
 
-    nonisolated static func isSparkWithdrawal(txid: String, known: Set<String>, payments: [Payment]) -> Bool {
-        known.contains(txid) || payments.contains { payment in
+    nonisolated static func isSparkWithdrawal(txid: String, isSent: Bool, known: Set<String>, payments: [Payment]) -> Bool {
+        // Only the sent side was Spark's; Savings owns the output a withdrawal to it pays, so its receipt can be boosted.
+        guard isSent else { return false }
+        return known.contains(txid) || payments.contains { payment in
             guard case let .withdraw(txId, _, _) = payment.details else { return false }
             return txId == txid
         }
@@ -661,9 +663,12 @@ final class SparkManager: ChannelFreeLightningRail {
         let prepared: PrepareSendPaymentResponse
         let earlierPayments: [Payment]
         do {
-            guard Self.pendingContactWithdrawal == nil else {
-                throw AppError(message: "wallet__payment_failed_description", debugMessage: "A Spark withdrawal to a contact is still settling")
-            }
+            try claimContactWithdrawal()
+        } catch {
+            throw SparkWithdrawalNotSent(underlying: error)
+        }
+        defer { releaseContactWithdrawalClaim() }
+        do {
             sdk = try await requireSdk()
             prepared = try await prepareSend(paymentRequest: address, amountSats: amountSats)
             if let maxFeeSats, case let .bitcoinAddress(_, feeQuote) = prepared.paymentMethod {
@@ -688,8 +693,6 @@ final class SparkManager: ChannelFreeLightningRail {
             tags: tags,
             earlierPaymentIds: Self.withdrawalIds(to: address, amountSats: amountSats, in: earlierPayments)
         )
-        isWithdrawingToContact = true
-        defer { isWithdrawingToContact = false }
         let journaled = pending
         try await Self.startJournaledWithdrawal(
             writeJournal: {
@@ -709,20 +712,26 @@ final class SparkManager: ChannelFreeLightningRail {
                 options: .bitcoinAddress(confirmationSpeed: .medium)
             ))
         } catch {
-            Logger.warn("Spark withdrawal to a contact failed or its outcome is unknown: \(error)", context: "SparkManager")
-            let failedAt = UInt64(Date().timeIntervalSince1970)
-            Task {
-                await Self.settleAfterFailedWithdrawal(
-                    failedAt: failedAt,
-                    syncWallet: {
-                        _ = try await self.requireSdk().syncWallet(request: SyncWalletRequest())
-                        self.syncedThisRun = true
-                    },
-                    hasSynced: { await self.hasSynced(after: $0) },
-                    settle: { await self.settleContactWithdrawal(allowClear: $0) }
-                )
-            }
-            throw error
+            throw await Self.withdrawalSendFailure(
+                error,
+                closeUnsent: {
+                    await Self.closeUnsentWithdrawal(journaled, releaseProof: Self.releaseUnsentProof, failAllowance: Self.failAllowance)
+                },
+                settleLater: {
+                    let failedAt = UInt64(Date().timeIntervalSince1970)
+                    Task {
+                        await Self.settleAfterFailedWithdrawal(
+                            failedAt: failedAt,
+                            syncWallet: {
+                                _ = try await self.requireSdk().syncWallet(request: SyncWalletRequest())
+                                self.syncedThisRun = true
+                            },
+                            hasSynced: { await self.hasSynced(after: $0) },
+                            settle: { await self.settleContactWithdrawal(allowClear: $0) }
+                        )
+                    }
+                }
+            )
         }
         Logger.info("Sent Spark withdrawal '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
         pending.paymentId = response.payment.id
@@ -732,6 +741,19 @@ final class SparkManager: ChannelFreeLightningRail {
         }
         await refreshState()
         return try Self.sentWithdrawalId(response.payment)
+    }
+
+    /// Claims the one contact withdrawal slot before anything awaits, so a second send started meanwhile is refused
+    /// instead of overwriting the first one's journal.
+    func claimContactWithdrawal() throws {
+        guard Self.pendingContactWithdrawal == nil, !isWithdrawingToContact else {
+            throw AppError(message: "wallet__payment_failed_description", debugMessage: "A Spark withdrawal to a contact is still settling")
+        }
+        isWithdrawingToContact = true
+    }
+
+    func releaseContactWithdrawalClaim() {
+        isWithdrawingToContact = false
     }
 
     /// What `withdraw` returns for the payment Spark sent: its txid, or its id while Spark gives none yet. A withdrawal
@@ -746,6 +768,25 @@ final class SparkManager: ChannelFreeLightningRail {
         }
         guard case let .withdraw(txId, _, _) = payment.details else { return payment.id }
         return txId
+    }
+
+    /// What a failed `sendPayment` of a journaled withdrawal means. A refusal Spark makes before anything reaches the
+    /// operators, as on the Lightning rail, closes the journal at once; an outcome that may have sent it stays journaled
+    /// and settles from the sync after it.
+    static func withdrawalSendFailure(
+        _ error: Error,
+        closeUnsent: () async -> Void,
+        settleLater: () -> Void
+    ) async -> Error {
+        let failure = sendPaymentFailure(error)
+        if failure is ChannelFreeRailSendRefused {
+            Logger.warn("Spark refused a withdrawal to a contact before sending it: \(error)", context: "SparkManager")
+            await closeUnsent()
+            return SparkWithdrawalNotSent(underlying: failure)
+        }
+        Logger.warn("Spark withdrawal to a contact failed or its outcome is unknown: \(error)", context: "SparkManager")
+        settleLater()
+        return error
     }
 
     /// Settles the open contact withdrawal from Spark's payments: its own payment, once Spark returned it, or else a
@@ -835,14 +876,29 @@ final class SparkManager: ChannelFreeLightningRail {
         }
     }
 
+    /// What an open withdrawal's journal does with the payment Spark returned or lists for it. Spark keeps a withdrawal
+    /// pending until the provider accepts its payout, and one it never accepts still fails, so only a completed one paid.
+    nonisolated static func settlement(of status: BreezSdkSpark.PaymentStatus) -> SparkWithdrawalSettlement {
+        switch status {
+        case .completed: .record
+        case .failed: .closeUnsent
+        case .pending: .wait
+        }
+    }
+
     /// Writes the withdrawal's sent activity, tags and request proof, and closes the journal only once all of them are
     /// saved, so a failed or interrupted write is retried from the journal.
     private func recordContactWithdrawal(_ payment: Payment, txId: String, pending: SparkContactWithdrawal) async {
         // A settle that raced this one already saved everything; its request's proof and allowance may be a retry's now.
         guard Self.isOpenJournal(pending) else { return }
-        guard payment.status != .failed else {
+        switch Self.settlement(of: payment.status) {
+        case .wait:
+            return
+        case .closeUnsent:
             await Self.closeUnsentWithdrawal(pending, releaseProof: Self.releaseUnsentProof, failAllowance: Self.failAllowance)
             return
+        case .record:
+            break
         }
         Self.contactWithdrawalTxIds.insert(txId)
         let isDurable = await Self.recordWithdrawalLocally(
@@ -1572,6 +1628,15 @@ enum SparkErrorCopy {
 
 /// A Spark withdrawal to a contact's on-chain address, journaled before it is sent.
 /// A contact withdrawal refused before its journal was written: nothing was sent.
+enum SparkWithdrawalSettlement: Equatable {
+    /// Paid: its records are saved and its journal closes.
+    case record
+    /// Never paid: its journal closes as unsent, releasing what it started.
+    case closeUnsent
+    /// Still in flight: its journal stays open until Spark settles it.
+    case wait
+}
+
 struct SparkWithdrawalNotSent: Error {
     let underlying: Error
 }

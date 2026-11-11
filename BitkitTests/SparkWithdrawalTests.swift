@@ -308,12 +308,19 @@ final class SparkWithdrawalTests: XCTestCase {
             conversionDetails: nil
         )
 
-        XCTAssertTrue(SparkManager.isSparkWithdrawal(txid: "contact", known: ["contact"], payments: []))
+        XCTAssertTrue(SparkManager.isSparkWithdrawal(txid: "contact", isSent: true, known: ["contact"], payments: []))
         XCTAssertTrue(
-            SparkManager.isSparkWithdrawal(txid: "listed", known: [], payments: [pending]),
+            SparkManager.isSparkWithdrawal(txid: "listed", isSent: true, known: [], payments: [pending]),
             "a pending withdrawal Spark lists can't be boosted"
         )
-        XCTAssertFalse(SparkManager.isSparkWithdrawal(txid: "savings", known: ["contact"], payments: [pending]))
+        XCTAssertFalse(SparkManager.isSparkWithdrawal(txid: "savings", isSent: true, known: ["contact"], payments: [pending]))
+    }
+
+    func testASparkWithdrawalsSavingsReceiptCanStillBeBoosted() {
+        XCTAssertFalse(
+            SparkManager.isSparkWithdrawal(txid: "transfer", isSent: false, known: ["transfer"], payments: []),
+            "Savings owns the output a Spark withdrawal pays it, so its receipt keeps CPFP"
+        )
     }
 
     @MainActor

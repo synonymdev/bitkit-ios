@@ -66,7 +66,8 @@ enum PaykitRouteService {
         return PaykitRouteUi(endpoints: endpoints, offersSparkLeg: offersSparkLeg)
     }
 
-    /// What the router is asked from `source`: Spending offers every endpoint, Savings only the on-chain ones.
+    /// What the router is asked from `source`: Spending offers every endpoint but an LNURL whose limits refuse the amount,
+    /// Savings only the on-chain ones.
     static func request(
         route: PaykitRouteUi,
         amountSats: UInt64,
@@ -79,7 +80,7 @@ enum PaykitRouteService {
         case .spending:
             PaykitRouteRequest(
                 amountSat: amountSats,
-                contactEndpoints: route.endpoints,
+                contactEndpoints: route.endpoints.filter { !$0.isLnurl || route.lnurl?.accepts(amountSats: amountSats) != false },
                 lightningSpendableSat: lightningSpendableSats,
                 onchainSpendableSat: 0,
                 serviceLegs: serviceLegs
@@ -285,7 +286,8 @@ extension AppViewModel {
                 (self.paykitRoute.map { $0.endpoints == route.endpoints } ?? true)
         }
         do {
-            let picked = try await router(route, amountSats, source, lightningSpendableSats, onchainSpendableSats)
+            // The known invoice and LNURL go to the router too, so it never picks an LNURL whose limits refuse the amount.
+            let picked = try await router(unrouted, amountSats, source, lightningSpendableSats, onchainSpendableSats)
             guard isCurrent() else { return .stale }
             switch picked {
             case let .direct(endpoint):
