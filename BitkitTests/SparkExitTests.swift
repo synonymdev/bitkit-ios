@@ -1887,7 +1887,8 @@ final class SparkExitDriverTests: XCTestCase {
         var prepared = SparkExitFixtures.prepared(funding: nil, leaves: ["leaf-2"])
         prepared.skipped = [SkippedLeaf(leafId: "leaf-1", valueSats: 100_000, reason: .unverified)]
         sdk.preparedResponse = prepared
-        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("m1", cpfp: "03c1")])]
+        // The second build is the bump's again, at the next block.
+        sdk.builds = Array(repeating: SparkExitFixtures.recovery([SparkExitFixtures.tx("m1", cpfp: "03c1")]), count: 2)
 
         record = try await driver().tick(record)
 
@@ -1900,6 +1901,95 @@ final class SparkExitDriverTests: XCTestCase {
         chain.tip = 1001
         record = try await driver().tick(record)
         XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2"], "leaf-1's refund n2 was not sent")
+    }
+
+    /// A fee bump kept over a waiting leaf stays to be built: once a block it rebuilds at the bumped rate, the valid
+    /// generation sending leaf-1's refund n2 meanwhile, and once leaf-1 reads that rebuild is adopted.
+    func testAFeeBumpKeptOverAWaitingLeafBuildsAtTheBumpedRateOnceTheLeafReads() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.leafIds = ["leaf-1", "leaf-2"]
+        record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 20000)
+        record.adopt(leafOneSteps(.unverified), at: clock)
+        record.applyFeeBump(rate: 10, extraSats: 0, paymentTxid: nil)
+        var skipsLeafOne = SparkExitFixtures.prepared(funding: nil, leaves: ["leaf-2"])
+        skipsLeafOne.skipped = [SkippedLeaf(leafId: "leaf-1", valueSats: 100_000, reason: .unverified)]
+        sdk.preparedResponse = skipsLeafOne
+        sdk.builds = Array(repeating: SparkExitFixtures.recovery([SparkExitFixtures.tx("m1", cpfp: "03c1")]), count: 2)
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.generation, 1)
+
+        sdk.checks = [CheckRecoverFundsResponse(recovery: leafOneSteps(.ready), verdict: .valid)]
+        chain.tip = 1001
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.generation, 1, "the rebuild that drops leaf-1's refund n2 was adopted")
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2"], "leaf-1's refund n2 was not sent while the bump waits")
+
+        sdk.preparedResponse = SparkExitFixtures.prepared(funding: nil, leaves: ["leaf-1", "leaf-2"])
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("b1"), SparkExitFixtures.tx("b2")])]
+        let preparesBefore = sdk.prepareRequests.count
+        chain.tip = 1002
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.generation, 2, "the bump was never built at its rate")
+        XCTAssertEqual(sdk.prepareRequests.dropFirst(preparesBefore).map(\.feeRateSatPerVbyte), [10])
+        XCTAssertEqual(record.recovery?.response.transactions.map(\.txid), ["b1", "b2"])
+    }
+
+    /// A fee chain that lost a race beside a leaf the rebuild leaves waiting: the valid generation stays, so leaf-1's
+    /// signed steps are not dropped, its rebuilds stop once stalled, and once leaf-1's step confirms the exit rebuilds
+    /// without the dead chain.
+    func testADeadFeeChainBesideAWaitingLeafRebuildsOnceTheLeafsStepConfirms() async throws {
+        let funding = String(repeating: "f0", count: 32)
+        let ourChild = SparkExitFixtures.rawTx(spending: [funding])
+        let chained = try SparkExitFixtures.rawTx(spending: [XCTUnwrap(SparkExitTxid.txid(hex: ourChild))])
+        let bothLeaves = [
+            RecoverFundsLeaf(leafId: "leaf-1", valueSats: 100_000, method: .unilateral),
+            RecoverFundsLeaf(leafId: "leaf-2", valueSats: 100_000, method: .unilateral),
+        ]
+        func steps(_ l1: ExitTransactionStatus, n1: ExitTransactionStatus = .confirmed(blockHeight: 10)) -> RecoverFundsResponse {
+            var recovery = SparkExitFixtures.recovery([
+                SparkExitFixtures.tx("n1", cpfp: ourChild, status: n1),
+                SparkExitFixtures.tx("n2", cpfp: chained, dependsOn: ["n1"]),
+                SparkExitFixtures.tx("l1", status: l1),
+            ])
+            recovery.leaves = bothLeaves
+            return recovery
+        }
+        var record = SparkExitFixtures.record(phase: .running)
+        record.leafIds = ["leaf-1", "leaf-2"]
+        record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: funding, vout: 0, valueSats: 20000)
+        record.adopt(steps(.unverified, n1: .ready), at: Date(timeIntervalSince1970: 1_700_000_050))
+        chain.confirmedTxids = ["n1"]
+        var skipsLeafOne = SparkExitFixtures.prepared(funding: nil, leaves: ["leaf-2"])
+        skipsLeafOne.skipped = [SkippedLeaf(leafId: "leaf-1", valueSats: 100_000, reason: .unverified)]
+        sdk.preparedResponse = skipsLeafOne
+        let fresh = SparkExitFixtures.rawTx(spending: [funding])
+        var rebuilt = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 10)),
+            SparkExitFixtures.tx("n2", cpfp: fresh, dependsOn: ["n1"]),
+        ])
+        rebuilt.leaves = [bothLeaves[1]]
+        sdk.builds = Array(repeating: rebuilt, count: SparkExitDriver.stallRebuildsToSurface + 1)
+
+        for i in 0 ... SparkExitDriver.stallRebuildsToSurface {
+            sdk.checks = [CheckRecoverFundsResponse(recovery: steps(.unverified), verdict: .valid)]
+            chain.tip = 1000 + UInt32(i)
+            record = try await driver().tick(record)
+            XCTAssertEqual(record.generation, 1, "a rebuild dropped leaf-1's signed step l1")
+        }
+        XCTAssertTrue(record.isStalled)
+        let rebuildsWhileStalled = sdk.recoverRequests.count
+
+        // leaf-1 reads again and its step confirms: the exit moves, so the dead chain is rebuilt over.
+        sdk.preparedResponse = SparkExitFixtures.prepared(funding: nil, leaves: ["leaf-2"])
+        chain.confirmedTxids.insert("l1")
+        sdk.checks = [CheckRecoverFundsResponse(recovery: steps(.confirmed(blockHeight: 1004)), verdict: .valid)]
+        chain.tip = 1005
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(sdk.recoverRequests.count, rebuildsWhileStalled + 1)
+        XCTAssertEqual(record.generation, 2, "the dead fee chain was never rebuilt over")
+        XCTAssertEqual(chain.broadcasts.last?.cpfpTxHex, fresh)
     }
 
     /// An unverified rebuild that cannot exit leaf-3 leaves it behind and rebuilds on the next tick: with leaf-1 still

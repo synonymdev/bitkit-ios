@@ -355,8 +355,11 @@ struct SparkExitDriver {
     /// rebuild after a leaf was left behind), that generation stays over a rebuild that leaves waiting a leaf it
     /// recovers, before that rebuild is saved or any of it broadcast.
     private func build(_ record: inout SparkExitRecord, recovering: SparkExitRecovering) async throws {
-        let valid = record.validGeneration
         let tip = try? await chain.tipHeight()
+        if record.isFeeBumpPending == true {
+            record.feeBumpBuiltAtHeight = tip
+        }
+        let valid = record.validGeneration
         // Waiting for a leaf that may still move: tried again at growing gaps of blocks, not every tick.
         if let since = record.retrySince {
             guard let tip, Self.isRetryDue(since: since, retriedAt: record.retriedAt ?? since, tip: tip) else { return }
@@ -607,6 +610,20 @@ struct SparkExitDriver {
         }
         switch checked.verdict {
         case .valid:
+            // A fee bump whose build kept this generation over a waiting leaf is built at its rate again once a block,
+            // whatever the leaf waits for, until a build at it is adopted. That build also settles any unread step.
+            // A generation it keeps is still sent.
+            if record.isFeeBumpPending == true, let tip, record.feeBumpBuiltAtHeight != tip {
+                Logger.info("Spark exit builds again at its higher fee rate \(record.feeRateSatPerVbyte) sat/vB", context: "SparkExitDriver")
+                record.unverifiedRebuiltAtHeight = tip
+                let valid = record
+                try await build(&record, recovering: recovering)
+                keepRetryClock(&record, from: valid)
+                if record.generation == valid.generation, record.phase == .running, !record.isRebuilding {
+                    try await broadcastReady(&record, tip: tip)
+                }
+                return
+            }
             // A step the SDK could not read is settled by a fresh build, once a block, unless a step is still to send:
             // a build now would conflict with it at the same fee.
             if let tip, isUnverifiedRebuildDue(checked.recovery, record: record, tip: tip) {

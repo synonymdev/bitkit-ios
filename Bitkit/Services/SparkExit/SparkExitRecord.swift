@@ -252,6 +252,11 @@ struct SparkExitRecord: Codable, Equatable {
     var isUnverifiedAsk: Bool?
     /// The tip of the last rebuild over a step the SDK could not read, so it rebuilds at most once a block.
     var unverifiedRebuiltAtHeight: UInt32?
+    /// A higher fee rate the steps out there are not built at yet: a fee bump whose build kept the valid generation
+    /// over a leaf it would leave waiting. Built at that rate again until a build at it is adopted.
+    var isFeeBumpPending: Bool?
+    /// The tip of the last build at a pending fee bump's rate, so it builds at most once a block.
+    var feeBumpBuiltAtHeight: UInt32?
     /// The tip at which each of the exit's leaves was first seen stopped (`exitChainState.stoppedLeafIds`).
     var stoppedLeafSince: [String: UInt32]?
     /// The tip at which a build first found nothing to build while a leaf may still move, and of its last try.
@@ -424,6 +429,8 @@ struct SparkExitRecord: Codable, Equatable {
         }
         isRedoRebuild = nil
         isUnverifiedAsk = nil
+        isFeeBumpPending = nil
+        feeBumpBuiltAtHeight = nil
     }
 
     /// Ends the rebuilt-from-chain note once the rebuilt exit moved: a step confirmed beyond those already in a block.
@@ -476,9 +483,12 @@ struct SparkExitRecord: Codable, Equatable {
 
     /// Takes a higher fee rate for the steps still to confirm. With `extraSats` to come at the funding address the
     /// exit waits for it as for a top-up; with none it rebuilds at once at the new rate, replacing what is unconfirmed.
+    /// The bump stays pending until a build at the new rate is adopted.
     mutating func applyFeeBump(rate: UInt64, extraSats: UInt64, paymentTxid: String?) {
         feeRateSatPerVbyte = rate
         isRedoRebuild = nil
+        isFeeBumpPending = true
+        feeBumpBuiltAtHeight = nil
         fundingPaymentSeenAtHeight = nil
         fundingPaymentMissingSince = nil
         if extraSats > 0 {
