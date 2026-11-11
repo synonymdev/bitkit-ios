@@ -473,6 +473,17 @@ final class PaykitRouteTests: XCTestCase {
         XCTAssertEqual(steps, ["closed"], "A refusal releases the journal at once instead of after the expiry")
 
         steps = []
+        let feeRose = await SparkManager.withdrawalSendFailure(
+            SdkError.InvalidInput(
+                "The onchain fee rose to 900 sats at the slowest speed, above the 500 sats quoted for this payment. Please re-prepare the payment."
+            ),
+            closeUnsent: { steps.append("closed") },
+            settleLater: { steps.append("settle later") }
+        )
+        XCTAssertTrue(feeRose is SparkWithdrawalNotSent, "Spark checks a refreshed quote's fee before it withdraws")
+        XCTAssertEqual(steps, ["closed"])
+
+        steps = []
         let unknown = await SparkManager.withdrawalSendFailure(
             SdkError.SparkError("operators"),
             closeUnsent: { steps.append("closed") },

@@ -807,7 +807,7 @@ final class SparkManager: ChannelFreeLightningRail {
         settleLater: () -> Void
     ) async -> Error {
         let failure = sendPaymentFailure(error)
-        if failure is ChannelFreeRailSendRefused {
+        if failure is ChannelFreeRailSendRefused || isWithdrawalFeeRise(error) {
             Logger.warn("Spark refused a withdrawal to a contact before sending it: \(error)", context: "SparkManager")
             await closeUnsent()
             return SparkWithdrawalNotSent(underlying: failure)
@@ -815,6 +815,13 @@ final class SparkManager: ChannelFreeLightningRail {
         Logger.warn("Spark withdrawal to a contact failed or its outcome is unknown: \(error)", context: "SparkManager")
         settleLater()
         return error
+    }
+
+    /// Spark refetches a withdrawal's quote near its expiry and refuses one whose fee rose past the prepared one at every
+    /// speed with this input error, before it withdraws (`affordable_speed` in the 0.28.0 SDK's `send/bitcoin_address.rs`).
+    nonisolated static func isWithdrawalFeeRise(_ error: Error) -> Bool {
+        guard case let SdkError.InvalidInput(message) = error else { return false }
+        return message.localizedCaseInsensitiveContains("onchain fee rose to")
     }
 
     /// Settles the open contact withdrawal from Spark's payments: its own payment, once Spark returned it, or else a
