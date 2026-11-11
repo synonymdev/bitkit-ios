@@ -29,6 +29,14 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: quote, fresh: quote, seenSats: 25000), 0)
     }
 
+    /// A tapped notification for an exit whose result was seen already is let go once the record loaded, so a later
+    /// exit's result never jumps to Progress.
+    func testATappedNotificationIsLetGoOnceTheLoadedExitShowsNoResult() {
+        XCTAssertEqual(SparkExitManager.notificationOpen(opensProgress: true, showsResult: false, hasLoadedRecord: false), .wait)
+        XCTAssertEqual(SparkExitManager.notificationOpen(opensProgress: true, showsResult: true, hasLoadedRecord: true), .open)
+        XCTAssertEqual(SparkExitManager.notificationOpen(opensProgress: true, showsResult: false, hasLoadedRecord: true), .drop)
+    }
+
     // MARK: H1 cancel
 
     func testCancelIsOffAfterAPaymentFromSavings() {

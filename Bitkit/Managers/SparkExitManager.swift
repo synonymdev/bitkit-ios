@@ -58,8 +58,10 @@ final class SparkExitManager {
     private var fundingExitCreatedAt: Date?
     private(set) var fundingAddress: String?
     private(set) var lastError: String?
-    /// Set when the user tapped an exit notification, until the app shows the exit.
+    /// Set when the user tapped an exit notification, until the app shows the exit or the loaded record shows none.
     var opensProgress = false
+    /// The record of this wallet was read (there may be none), so a tapped notification no longer waits for it.
+    private(set) var hasLoadedRecord = false
 
     /// The funding choice made on the funding screen, used when the exit starts.
     @ObservationIgnored var fundFromSavings = false
@@ -156,6 +158,7 @@ final class SparkExitManager {
         self.walletIndex = walletIndex
         do {
             record = try Self.loadRecord(store: store, lostLeafStore: lostLeafStore)
+            hasLoadedRecord = true
         } catch is SparkExitStore.Unavailable {
             // Before the first unlock the file is there but cannot be read yet: it is read again on the next load.
             Logger.warn("The Spark exit record cannot be read yet", context: "SparkExitManager")
@@ -165,6 +168,7 @@ final class SparkExitManager {
             Logger.error("Failed to read the Spark exit record: \(error)", context: "SparkExitManager")
             try? store.setAside()
             record = nil
+            hasLoadedRecord = true
         }
         if isExiting {
             SparkManager.shared.detachForExit()
@@ -210,6 +214,7 @@ final class SparkExitManager {
         try? store.delete()
         try? lostLeafStore.delete()
         record = nil
+        hasLoadedRecord = false
         quote = nil
         // The quote's destination and funding belong to the wiped wallet: the next wallet's exit never pays to them.
         pendingDestination = nil
@@ -334,6 +339,21 @@ final class SparkExitManager {
     }
 
     /// What cancelling does, given what the funding address holds now (nil when it could not be read).
+    /// What a tapped exit notification does now.
+    enum NotificationOpen: Equatable {
+        case wait, open, drop
+    }
+
+    /// It waits for the record to load, opens the exit while it shows a result, and is let go once the loaded record
+    /// shows none, so a later result never jumps to Progress.
+    nonisolated static func notificationOpen(opensProgress: Bool, showsResult: Bool, hasLoadedRecord: Bool) -> NotificationOpen {
+        guard opensProgress else { return .drop }
+        if showsResult {
+            return .open
+        }
+        return hasLoadedRecord ? .drop : .wait
+    }
+
     nonisolated static func cancelOutcome(utxos: [EsploraUtxo]?) -> CancelOutcome {
         guard let utxos else { return .keep }
         guard !utxos.isEmpty else { return .forget }
