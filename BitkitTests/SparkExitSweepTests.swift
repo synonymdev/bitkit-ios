@@ -652,6 +652,17 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertEqual(SparkExitFeeEstimates.rate(["1": 0.2], target: 1), 1)
     }
 
+    /// A host's rate out of range is never converted: such a rate is skipped, and an answer with nothing usable is
+    /// unavailable.
+    func testAnOutOfRangeFeeEstimateIsUnavailable() {
+        XCTAssertThrowsError(try SparkExitFeeEstimates.validated(["1": 1e30]), "an out-of-range rate was taken as an estimate")
+        XCTAssertThrowsError(try SparkExitFeeEstimates.validated(["1": .nan, "3": -2, "6": 0]))
+        XCTAssertEqual(try SparkExitFeeEstimates.validated(["1": 1e30, "6": 4]), ["6": 4])
+        XCTAssertEqual(try SparkExitFeeEstimates.validated([:]), [:], "an empty answer still falls back to the floor")
+        XCTAssertEqual(SparkExitFeeEstimates.rate(["1": 1e30, "6": 4], target: 1), 4)
+        XCTAssertEqual(SparkExitFeeEstimates.economy(["1": 4, "144": .infinity]), 4)
+    }
+
     func testAnEmptyEstimateMapStillPricesEveryStep() async throws {
         let http = SparkExitBroadcasterTests.FakeHTTP()
         http.responses = [("a.example/api/fee-estimates", 200, "{}"), ("a.example/api/fee-estimates", 200, "{}")]

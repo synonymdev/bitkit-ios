@@ -45,6 +45,25 @@ enum SparkExitBroadcastOutcome: Equatable {
 /// regtest mempool does: a missing target falls back to the next one estimated, the nearest longer one first, and
 /// with none at all to the 1 sat/vB relay floor, so no step fails for want of an estimate.
 enum SparkExitFeeEstimates {
+    /// A host's answer with rates but none usable: the estimate is unavailable, as when the host can't be read.
+    struct Unusable: Error {}
+
+    /// The estimates a host answered, less any rate that is not finite, not above 0 or above `maxRate`; throws when
+    /// it answered rates and none is usable.
+    static func validated(_ estimates: [String: Double]) throws -> [String: Double] {
+        let usable = estimates.filter { isUsable($0.value) }
+        guard usable.isEmpty, !estimates.isEmpty else { return usable }
+        Logger.warn("Spark exit fee estimates had no usable rate: \(estimates)", context: "SparkExitFeeEstimates")
+        throw Unusable()
+    }
+
+    /// The most a rate may be, in sat/vB: anything above is a faulty host, never converted.
+    static let maxRate: Double = 10000
+
+    private static func isUsable(_ rate: Double) -> Bool {
+        rate.isFinite && rate > 0 && rate <= maxRate
+    }
+
     static func rate(_ estimates: [String: Double], target: Int) -> UInt64 {
         let targets = parsed(estimates)
         guard let value = (targets.first { $0.target >= target } ?? targets.last)?.rate else { return SparkExitMath.minRelayFeeRate }
@@ -57,7 +76,9 @@ enum SparkExitFeeEstimates {
     }
 
     private static func parsed(_ estimates: [String: Double]) -> [(target: Int, rate: Double)] {
-        estimates.compactMap { key, value in Int(key).map { (target: $0, rate: value) } }.sorted { $0.target < $1.target }
+        estimates.filter { isUsable($0.value) }
+            .compactMap { key, value in Int(key).map { (target: $0, rate: value) } }
+            .sorted { $0.target < $1.target }
     }
 
     private static func rounded(_ rate: Double) -> UInt64 {
@@ -168,7 +189,7 @@ struct EsploraSparkExitChain: SparkExitChain {
     }
 
     private func estimates() async throws -> [String: Double] {
-        try await JSONDecoder().decode([String: Double].self, from: get("/fee-estimates"))
+        try await SparkExitFeeEstimates.validated(JSONDecoder().decode([String: Double].self, from: get("/fee-estimates")))
     }
 
     /// esplora's targets of one and three blocks, mempool's `fastestFee` and `halfHourFee`.
