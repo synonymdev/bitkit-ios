@@ -603,6 +603,8 @@
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Δημιούργησε μια νέα ταυτότητα Pubky σε αυτόν τον homeserver. Συνέχισε μόνο αν τον εμπιστεύεσαι.";
 "pubky_auth__approval_failed" = "Η Εξουσιοδότηση Απέτυχε";
+"pubky_auth__identity_unavailable_desc" = "Έλεγξε τη σύνδεσή σου και δοκίμασε ξανά.";
+"profile__auth_error_signup_code_rejected" = "Ο homeserver δεν αποδέχτηκε αυτόν τον κωδικό εγγραφής. Δοκίμασε ξανά ή χρησιμοποίησε άλλο σύνδεσμο εγγραφής.";
 "wallet__onchain_abandon_transfer_note" = "Οι μεταφορές στο υπόλοιπο δαπανών δεν είναι πλέον διαθέσιμες. Το Bitkit ελέγχει πρώτα το δίκτυο και μετά επιστρέφει τα νομίσματα αυτής της μεταφοράς στο πορτοφόλι σας, ώστε η αρχική μεταφορά να μην επιβεβαιωθεί ποτέ. Αυτό έχει χρέωση δικτύου.";
 "watch_only_accounts__active_section" = "Ενεργοί λογαριασμοί";
 "watch_only_accounts__copy_xpub" = "Αντιγραφή xpub";
@@ -1201,6 +1203,7 @@
 "wallet__payment_received" = "Bitcoin Λήφθηκε";
 "wallet__payment_request" = "Αίτημα πληρωμής";
 "wallet__payment_request_unavailable" = "Το αίτημα πληρωμής δεν είναι πλέον διαθέσιμο.";
+"wallet__payment_request_note_too_long" = "Συντόμευσε τη σημείωση και δοκίμασε ξανά.";
 "wallet__payment_request_expired" = "Το αίτημα πληρωμής έληξε.";
 "wallet__payment_request_waiting_for_details" = "Τα στοιχεία πληρωμής ανακτώνται ακόμα. Δοκιμάστε ξανά σε λίγο.";
 "wallet__payment_request_in_progress" = "Το αίτημα πληρωμής βρίσκεται ήδη σε επεξεργασία.";
@@ -1522,6 +1525,7 @@
 "wallet__payment_request_payment_verified" = "Η πληρωμή επαληθεύτηκε";
 "wallet__payment_request_underpaid" = "Ελήφθη · Ελλιπής πληρωμή";
 "wallet__payment_request_after_expiry" = "Ελήφθη · Μετά τη λήξη";
+"wallet__payment_request_before_request" = "Ελήφθη · Πριν από το αίτημα";
 "pubky_auth__usdt_intro_description" = "Για να κερδίζετε, πρέπει να μοιραστείτε τη διεύθυνση USDT σας με το Paykit. Μπορεί να βλέπει τη δραστηριότητα πωλήσεων, αλλά δεν μπορεί να ξοδέψει κεφάλαια.";
 "pubky_auth__usdt_intro_optional" = "Μπορείτε να μοιραστείτε τη διεύθυνση USDT σας με το Paykit για να λαμβάνετε τα κέρδη σας. Μπορεί να βλέπει τη δραστηριότητα πωλήσεων, αλλά δεν μπορεί να ξοδέψει κεφάλαια.";
 "pubky_auth__usdt_unavailable" = "Η διεύθυνση USDT σας δεν είναι διαθέσιμη. Δοκιμάστε ξανά.";

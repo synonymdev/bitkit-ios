@@ -915,8 +915,7 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
                 paymentEndpoints: nil, requiredAppId: "bitkit", conversion: nil, paymentDeadline: nil,
                 metadata: PrivateJsonObject(text: "{}")
             ),
-            acceptedEventId: nil, acceptedOutboundStatus: nil,
-            acceptanceRecordedAt: nil,
+            acceptedEventId: nil, acceptedOutboundStatus: nil, acceptanceRecordedAt: nil,
             rejectedEventId: nil, rejectedOutboundStatus: nil,
             canceledEventId: nil, canceledOutboundStatus: nil,
             conversionQuotes: [], paymentProofs: [], lastStreamItemId: 42,

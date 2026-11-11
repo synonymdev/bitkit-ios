@@ -236,6 +236,28 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         }
     }
 
+    func testApprovalFailureExplainsARejectedSignupCodeAndAFailedConnection() {
+        XCTAssertEqual(
+            pubkyAuthApprovalFailureDescription(PaykitError.Identity(code: "signup_code_rejected", context: "Token already used")),
+            t("profile__auth_error_signup_code_rejected")
+        )
+        XCTAssertEqual(
+            pubkyAuthApprovalFailureDescription(PaykitError.Transport(code: "transport_error", context: "homeserver answered 503")),
+            t("pubky_auth__identity_unavailable_desc")
+        )
+    }
+
+    func testOtherApprovalFailuresKeepTheirOwnDescription() {
+        let errors: [Error] = [
+            PaykitError.Identity(code: "identity_error", context: "Clock skew"),
+            PaykitError.Policy(code: "policy_error", context: "Identity uses another homeserver"),
+            PubkyAuthRequestError.invalidPaymentDetails,
+        ]
+        for error in errors {
+            XCTAssertEqual(pubkyAuthApprovalFailureDescription(error), error.localizedDescription)
+        }
+    }
+
     func testAuthDisplayPublicKeyOmitsPubkyPrefix() {
         XCTAssertEqual(pubkyAuthDisplayPublicKey("pubky3rsd123456789w5xg"), "3rsd...w5xg")
         XCTAssertEqual(pubkyAuthDisplayPublicKey("3rsd123456789w5xg"), "3rsd...w5xg")

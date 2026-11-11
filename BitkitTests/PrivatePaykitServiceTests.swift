@@ -4097,13 +4097,10 @@ final class PrivatePaykitServiceTests: XCTestCase {
                     throw PaykitError.Transport(code: "offline", context: "Unavailable homeserver")
                 },
                 buildEndpoints: { _ in XCTFail("No prepared link"); return [] },
-                syncPaymentLists: { _ in XCTFail("No prepared link"); return .init(
-                    queued: [],
-                    cleared: [],
-                    acknowledged: [],
-                    failedToQueue: [],
-                    failedToDeliver: []
-                ) },
+                syncPaymentLists: { _ in
+                    XCTFail("No prepared link")
+                    return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
+                },
                 linkedPeers: { reads += 1; return [] }
             )
             let task = Task {

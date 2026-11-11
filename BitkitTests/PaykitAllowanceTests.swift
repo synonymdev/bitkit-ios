@@ -695,8 +695,8 @@ enum PaykitAllowanceFixtures {
     static let identityKey = "pubky\(String(repeating: "z", count: 52))"
     static let counterpartyKey = "pubky\(String(repeating: "y", count: 52))"
     static let otherCounterpartyKey = "pubky\(String(repeating: "x", count: 52))"
-    static let walletAllowanceId = "allowance-wallet"
-    static let otherAllowanceId = "allowance-other"
+    static let walletAllowanceId = "30000000-0000-4000-8000-000000000000"
+    static let otherAllowanceId = "20000000-0000-4000-8000-000000000000"
     static let lightningIdentifier = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
     static let onchainIdentifier = PublicPaykitService.MethodId.bitcoinOnchainP2wpkh.rawValue
     static let now = utc("2026-09-24T12:00:00Z")
@@ -921,7 +921,8 @@ enum PaykitAllowanceFixtures {
         asset: String = PaykitIssuerInterop.bitcoinAsset,
         conversion: Paykit.PaymentConversion? = nil,
         createdAt: String = "2026-09-24T11:00:00Z",
-        acceptedEndpoints: [String] = [lightningIdentifier]
+        acceptedEndpoints: [String] = [lightningIdentifier],
+        paymentReference: String = "invoice-123"
     ) throws -> PaykitPaymentRequest {
         let record = try Paykit.PaymentRequestRecord(
             counterparty: counterparty,
@@ -938,7 +939,7 @@ enum PaykitAllowanceFixtures {
             executionClaimAppId: nil,
             terms: Paykit.PaymentRequestTerms(
                 amount: Paykit.PaymentRequestAmount(value: amount, asset: asset),
-                paymentReference: Paykit.PaymentReference(text: "invoice-123"),
+                paymentReference: Paykit.PaymentReference(text: paymentReference),
                 proposalExpiresAt: nil,
                 recurrence: nil,
                 acceptedPaymentEndpointIdentifiers: acceptedEndpoints,

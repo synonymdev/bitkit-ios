@@ -572,6 +572,8 @@
 "pubky_auth__homeserver" = "الخادم الرئيسي";
 "pubky_auth__signup_description" = "أنشئ هوية Pubky جديدة على هذا الخادم الرئيسي. تابع فقط إذا كنت تثق به.";
 "pubky_auth__approval_failed" = "فشل التفويض";
+"pubky_auth__identity_unavailable_desc" = "تحقق من اتصالك وحاول مرة أخرى.";
+"profile__auth_error_signup_code_rejected" = "لم يقبل الخادم الرئيسي رمز التسجيل هذا. حاول مرة أخرى أو استخدم رابط تسجيل آخر.";
 "wallet__onchain_abandon_transfer_note" = "لم تعد التحويلات إلى رصيد الإنفاق متاحة. يتحقق Bitkit أولًا من الشبكة، ثم يعيد عملات هذا التحويل إلى محفظتك حتى لا يتأكد التحويل الأصلي أبدًا. يكلّف ذلك رسوم شبكة.";
 "watch_only_accounts__active_section" = "الحسابات النشطة";
 "watch_only_accounts__copy_xpub" = "نسخ xpub";
@@ -1231,6 +1233,7 @@
 "wallet__payment_request_payment_verified" = "تم التحقق من الدفع";
 "wallet__payment_request_underpaid" = "مستلم · دفع ناقص";
 "wallet__payment_request_after_expiry" = "مستلم · بعد انتهاء الصلاحية";
+"wallet__payment_request_before_request" = "مستلم · قبل الطلب";
 "pubky_auth__usdt_intro_description" = "لتربح، تحتاج إلى مشاركة عنوان USDT الخاص بك مع Paykit. يمكنه عرض نشاط المبيعات، لكنه لا يستطيع إنفاق الأموال.";
 "pubky_auth__usdt_intro_optional" = "يمكنك مشاركة عنوان USDT الخاص بك مع Paykit لاستلام الأرباح. يمكنه عرض نشاط المبيعات، لكنه لا يستطيع إنفاق الأموال.";
 "pubky_auth__usdt_unavailable" = "عنوان USDT الخاص بك غير متاح. يرجى المحاولة مرة أخرى.";
@@ -1290,6 +1293,7 @@
 "usdt__deposit_refund_address_network" = "عنوان USDT على {network}";
 "wallet__payment_request" = "طلب دفع";
 "wallet__payment_request_unavailable" = "لم يعد طلب الدفع متاحًا.";
+"wallet__payment_request_note_too_long" = "اختصر الملاحظة وحاول مرة أخرى.";
 "wallet__payment_request_expired" = "انتهت صلاحية طلب الدفع.";
 "wallet__payment_request_waiting_for_details" = "لا تزال تفاصيل الدفع قيد الاستعادة. حاول مرة أخرى قريبًا.";
 "wallet__payment_request_in_progress" = "طلب الدفع قيد المعالجة بالفعل.";
