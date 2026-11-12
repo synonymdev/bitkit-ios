@@ -362,6 +362,14 @@ final class SparkTransferFlow {
         onBroadcast(txid: txid, ceilingSats: approved.ceilingSats)
     }
 
+    /// Shows the progress of the deposit in `txid`, as when the transfer banner opens it. A deposit this flow doesn't
+    /// follow, as after a relaunch, is added by Spark at 3 confirmations.
+    func showDeposit(txid: String) {
+        guard self.txid?.caseInsensitiveCompare(txid) != .orderedSame else { return }
+        self.txid = txid
+        claimState = .later
+    }
+
     /// Ends the transfer on screen once Spark lists its deposit as claimed, whatever the speed, so Later or Wait
     /// doesn't stay in progress after the deposit reached spending.
     func noteSettled(_ deposits: [SparkDeposit]) {

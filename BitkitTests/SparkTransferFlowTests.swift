@@ -269,6 +269,38 @@ final class SparkTransferFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testTheTransferBannerOpensTheFollowedDepositAtItsStep() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.submitted])
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+
+        flow.showDeposit(txid: "TXID")
+
+        XCTAssertEqual(flow.claimState, .adding, "The banner lost the followed transfer's step")
+    }
+
+    @MainActor
+    func testTheTransferBannerOpensADepositNoClaimFollowsAsAddedAtMaturity() {
+        let flow = SparkTransferFlow()
+
+        flow.showDeposit(txid: "txid")
+        XCTAssertEqual(flow.claimState, .later)
+        XCTAssertEqual(SettingUpView.currentStep(for: flow.claimState), 1)
+
+        flow.noteSettled([SparkDeposit(txid: "txid", amountSats: 100_000, isClaimed: true)])
+        XCTAssertEqual(flow.claimState, .added, "The opened deposit stayed in progress after Spark claimed it")
+    }
+
+    func testTheTransferBannerPicksTheFirstUnclaimedDeposit() {
+        let deposits = [
+            SparkDeposit(txid: "claimed", amountSats: 1, isClaimed: true),
+            SparkDeposit(txid: "pending", amountSats: 1, isClaimed: false),
+        ]
+        XCTAssertEqual(deposits.inProgressTxid, "pending")
+        XCTAssertNil([SparkDeposit(txid: "claimed", amountSats: 1, isClaimed: true)].inProgressTxid)
+    }
+
+    @MainActor
     func testARecoveredFundingClaimsEarlyOnlyUpToTheSwipedCeiling() async {
         let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
         flow.quote = quote(instantMax: 337)
