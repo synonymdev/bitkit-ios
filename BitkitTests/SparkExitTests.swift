@@ -1870,6 +1870,7 @@ final class SparkExitDriverTests: XCTestCase {
 
         record = try await driver().tick(record)
 
+        XCTAssertTrue(record.funding.contains { $0.txid == paid }, "the payment was not adopted, so the hold never ran")
         XCTAssertEqual(sdk.recoverRequests.count, builds, "rebuilt over n2, sent on the previous tick")
         XCTAssertEqual(record.isUnverifiedAsk, true)
         XCTAssertEqual(record.generation, 1)
