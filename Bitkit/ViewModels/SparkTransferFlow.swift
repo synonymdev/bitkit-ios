@@ -174,6 +174,10 @@ final class SparkTransferFlow {
 
     private(set) var txid: String?
     var claimState: SparkClaimState = .looking
+    /// Whether the user approved the changed fast transfer fee, kept here so a reopened status screen keeps its step.
+    private(set) var isFeeApproved = false
+    /// Whether the user chose Wait over the changed fast transfer fee, kept here so a reopened status screen keeps its step.
+    private(set) var hasWaited = false
     /// Each broadcast deposit keeps its own claim: a later transfer neither stops an earlier one's early claim nor takes
     /// its results, which only the current transfer's screen shows.
     @ObservationIgnored private var offers: [String: SparkClaimOffer] = [:]
@@ -309,6 +313,8 @@ final class SparkTransferFlow {
         ceilings[txid] = ceilingSats ?? quote?.claimFees.instantMaxSats ?? 0
         offers[txid] = nil
         claimState = speed == .instant ? .looking : .later
+        isFeeApproved = false
+        hasWaited = false
         watchTasks[txid]?.cancel()
         watchTasks[txid] = nil
         if speed == .instant {
@@ -368,6 +374,8 @@ final class SparkTransferFlow {
         guard self.txid?.caseInsensitiveCompare(txid) != .orderedSame else { return }
         self.txid = txid
         claimState = .later
+        isFeeApproved = false
+        hasWaited = false
     }
 
     /// Ends the transfer on screen once Spark lists its deposit as claimed, whatever the speed, so Later or Wait
@@ -386,12 +394,16 @@ final class SparkTransferFlow {
         guard case let .repriced(feeSats) = claimState, let txid else { return }
         ceilings[txid] = feeSats
         claimState = .claiming
+        isFeeApproved = true
         watch(txid: txid)
     }
 
     /// Leaves the deposit to the claim after 3 confirmations, clearing the fee cap an early claim attempt left on it, so
     /// Spark doesn't still claim it early.
     func waitForConfirmations() {
+        if case .repriced = claimState {
+            hasWaited = true
+        }
         if let txid {
             watchTasks[txid]?.cancel()
             watchTasks[txid] = nil

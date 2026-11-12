@@ -83,11 +83,8 @@ struct SettingUpView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @Environment(SparkTransferFlow.self) private var flow
 
-    @State private var approvedFee = false
-    @State private var hasWaited = false
-
     private var stage: SettingUpStage {
-        SettingUpStage(state: flow.claimState, isSeen: isDepositSeen, approvedFee: approvedFee, hasWaited: hasWaited)
+        SettingUpStage(state: flow.claimState, isSeen: isDepositSeen, approvedFee: flow.isFeeApproved, hasWaited: flow.hasWaited)
     }
 
     private var isDepositSeen: Bool {
@@ -169,13 +166,11 @@ struct SettingUpView: View {
     private var feeChangedButtons: some View {
         HStack(spacing: 16) {
             CustomButton(title: t("lightning__spark_deposit__wait_button"), variant: .secondary) {
-                hasWaited = true
                 flow.waitForConfirmations()
             }
             .accessibilityIdentifier("SparkDepositWait")
 
             CustomButton(title: t("lightning__setting_up__approve")) {
-                approvedFee = true
                 flow.payRepriced()
             }
             .accessibilityIdentifier("SparkDepositPay")

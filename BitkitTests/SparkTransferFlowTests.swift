@@ -64,6 +64,7 @@ final class SparkTransferFlowTests: XCTestCase {
         let flow = SparkTransferFlow(amountSats: 100_000, claimState: .repriced(feeSats: 1500))
         flow.waitForConfirmations()
         XCTAssertEqual(flow.claimState, .later)
+        XCTAssertTrue(flow.hasWaited)
     }
 
     @MainActor
@@ -193,6 +194,7 @@ final class SparkTransferFlowTests: XCTestCase {
 
         flow.payRepriced()
         XCTAssertEqual(flow.claimState, .claiming)
+        XCTAssertTrue(flow.isFeeApproved)
         await flow.waitForClaim()
         XCTAssertEqual(flow.claimState, .added)
     }
@@ -277,6 +279,21 @@ final class SparkTransferFlowTests: XCTestCase {
         flow.showDeposit(txid: "TXID")
 
         XCTAssertEqual(flow.claimState, .adding, "The banner lost the followed transfer's step")
+    }
+
+    @MainActor
+    func testTheTransferBannerReopensAWaitedDepositAtTheNormalSpeedOnTheLastStep() {
+        let flow = SparkTransferFlow(amountSats: 100_000, speed: .later, quote: quote)
+        flow.onBroadcast(txid: "txid")
+        flow.claimState = .repriced(feeSats: 1500)
+        flow.waitForConfirmations()
+
+        flow.showDeposit(txid: "TXID")
+
+        let stage = SettingUpStage(
+            state: flow.claimState, isSeen: true, approvedFee: flow.isFeeApproved, hasWaited: flow.hasWaited
+        )
+        XCTAssertEqual(stage, .adding(normalSpeed: true), "The banner lost the Wait over the changed fee")
     }
 
     @MainActor
