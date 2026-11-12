@@ -864,6 +864,8 @@
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Vytvořte si na tomto homeserveru novou identitu Pubky. Pokračujte, jen pokud mu důvěřujete.";
 "pubky_auth__approval_failed" = "Autorizace se nezdařila";
+"pubky_auth__identity_unavailable_desc" = "Zkontrolujte připojení a zkuste to znovu.";
+"profile__auth_error_signup_code_rejected" = "Homeserver tento registrační kód nepřijal. Zkuste to znovu nebo použijte jiný registrační odkaz.";
 "wallet__onchain_abandon_transfer_note" = "Převody na útratový zůstatek už nejsou dostupné. Bitkit nejprve zkontroluje síť a pak vrátí mince tohoto převodu do vaší peněženky, aby se původní převod nikdy nepotvrdil. Stojí to síťový poplatek.";
 "watch_only_accounts__active_section" = "Aktivní účty";
 "watch_only_accounts__copy_xpub" = "Kopírovat xpub";
@@ -1333,7 +1335,9 @@
 "profile__pubky_copied" = "pubky zkopírován do schránky";
 "profile__edit_delete_section" = "SMAZAT";
 "profile__edit_unlink_section" = "ZRUŠIT PROPOJENÍ";
-"profile__edit_public_note" = "Upozorňujeme, že informace o profilu jsou uloženy ve veřejných souborech.";
+"profile__edit_changed_error" = "Tvůj profil se v pubky.app změnil. Bitkit načetl nejnovější verzi, proveď proto úpravu znovu.";
+"profile__edit_public_note" = "Toto je tvůj profil na pubky.app. Je veřejný a změny, které zde provedeš, se zobrazí i na pubky.app.";
+"profile__edit_tags_error" = "Bitkit nemohl uložit vaše štítky. Ostatní změny byly uloženy, tak zkuste štítky znovu.";
 "profile__delete_title" = "Smazat profil?";
 "profile__delete_description" = "Smazáním profilu ho odstraníte z Pubky. Kontakty si mohou ponechat informace o profilu a platbách, které jste s nimi dříve sdíleli.";
 "profile__delete_confirm" = "Ano, smazat";
@@ -1610,6 +1614,7 @@
 "wallet__payment_received" = "bitcoin přijatý";
 "wallet__payment_request" = "Žádost o platbu";
 "wallet__payment_request_unavailable" = "Žádost o platbu již není k dispozici.";
+"wallet__payment_request_note_too_long" = "Zkraťte poznámku a zkuste to znovu.";
 "wallet__payment_request_expired" = "Platnost žádosti o platbu vypršela.";
 "wallet__payment_request_waiting_for_details" = "Platební údaje se stále obnovují. Zkuste to za chvíli znovu.";
 "wallet__payment_request_in_progress" = "Žádost o platbu se již zpracovává.";
@@ -1949,6 +1954,7 @@
 "wallet__payment_request_payment_verified" = "Platba ověřena";
 "wallet__payment_request_underpaid" = "Přijato · Nedoplatek";
 "wallet__payment_request_after_expiry" = "Přijato · Po vypršení";
+"wallet__payment_request_before_request" = "Přijato · Před žádostí";
 "pubky_auth__usdt_intro_description" = "Abyste mohli vydělávat, musíte s Paykit sdílet svou adresu USDT. Může zobrazovat prodejní aktivitu, ale nemůže utrácet prostředky.";
 "pubky_auth__usdt_intro_optional" = "Svou adresu USDT můžete sdílet s Paykit a přijímat tak výdělky. Může zobrazovat prodejní aktivitu, ale nemůže utrácet prostředky.";
 "pubky_auth__usdt_unavailable" = "Vaše adresa USDT není k dispozici. Zkuste to prosím znovu.";

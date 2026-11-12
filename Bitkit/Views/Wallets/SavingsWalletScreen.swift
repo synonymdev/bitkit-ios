@@ -65,12 +65,7 @@ struct SavingsWalletScreen: View {
                 .contentMargins(.bottom, ScreenLayout.bottomPaddingWithSafeArea)
                 .accessibilityIdentifier("HomeScrollView")
                 .refreshable {
-                    do {
-                        try await wallet.sync()
-                        try await activity.syncLdkNodePayments()
-                    } catch {
-                        app.toast(error)
-                    }
+                    await WalletPullRefresh.sync(wallet: wallet, activity: activity, app: app)
                 }
                 .frame(maxWidth: .infinity, minHeight: 400)
                 .transition(.move(edge: .leading).combined(with: .opacity))

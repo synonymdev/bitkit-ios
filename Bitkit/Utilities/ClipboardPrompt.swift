@@ -45,7 +45,7 @@ struct ClipboardPromptHistory {
 enum ClipboardPromptValidator {
     // Mirrors bitkit-core's LNURL_ADDRESS_REGEX and Scanner::find_lnurl, whose matches can trigger network resolution.
     private static let lightningAddressPattern = #"^[a-z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"#
-    private static let lnurlPattern = #"^(?:(http.*|bitcoin:.*)[&?]lightning=|lightning:)?(lnurl1[02-9ac-hj-np-z]+)"#
+    private static let lnurlPattern = #"^(?:(http[^\n]*|bitcoin:[^\n]*)[&?]lightning=|lightning:)?(lnurl1[02-9ac-hj-np-z]+)"#
 
     static func isSupportedURI(
         _ uri: String,
@@ -78,7 +78,6 @@ enum ClipboardPromptValidator {
         }
 
         let normalized = uri.removingLightningSchemes()
-        guard !Bip21Utils.isDuplicatedBip21(normalized) else { return false }
         // Only recognize these shapes here: fetching remote metadata must wait for the user's OK tap.
         if requiresNetworkResolution(normalized) {
             return true
@@ -87,13 +86,21 @@ enum ClipboardPromptValidator {
     }
 
     private static func requiresNetworkResolution(_ uri: String) -> Bool {
-        var payload = uri
-        if payload.hasPrefix("bitkit://") {
-            // The core scanner removes all Bitkit wrappers, then recursively decodes the remaining payload.
+        var payload = uri.trimmingCharacters(in: .whitespacesAndNewlines)
+        if payload.hasPrefix("lightning:") {
+            payload.removeFirst("lightning:".count)
+        }
+        while payload.hasPrefix("bitkit://") {
             payload = payload.replacingOccurrences(of: "bitkit://", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             if payload.hasPrefix("lightning:") {
                 payload.removeFirst("lightning:".count)
             }
+        }
+        payload = payload.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Core validates BIP21 locally, including any optional Lightning metadata.
+        if payload.lowercased().hasPrefix("bitcoin:") {
+            return false
         }
         return payload.lowercased().range(of: lnurlPattern, options: .regularExpression) != nil
             || payload.range(of: lightningAddressPattern, options: .regularExpression) != nil

@@ -1329,7 +1329,11 @@ struct AppScene: View {
 
     private func restoreFromMostRecentBackup() async -> Bool {
         BackupService.shared.setRestoring(true)
-        defer { BackupService.shared.setRestoring(false) }
+        wallet.usdtWallet.startRestoreReceiptWindow()
+        defer {
+            BackupService.shared.setRestoring(false)
+            wallet.usdtWallet.endRestoreReceiptWindow()
+        }
 
         guard let mnemonicData = try? Keychain.load(key: .bip39Mnemonic(index: 0)),
               let mnemonic = String(data: mnemonicData, encoding: .utf8)
@@ -1462,6 +1466,7 @@ struct AppScene: View {
                     await clearDeliveredNotifications()
                     await LightningService.shared.reconnectPeers()
                     try? await wallet.sync()
+                    await wallet.waitForPaykitPostSync()
                     await sessionRecovery
                     await retryPendingPaykitEndpointRemoval()
                 }

@@ -1,6 +1,7 @@
 import BitkitCore
 import Combine
 import LDKNode
+import enum Paykit.PaykitError
 import SwiftUI
 
 /// Published when a payment shown on the pending screen succeeds or fails.
@@ -633,7 +634,21 @@ extension AppViewModel {
         if error is CancellationError || error.isHwUserCancellation() {
             return
         }
-        toast(type: .error, title: "Error", description: HwErrorPresenter.jadeMessage(from: error) ?? error.localizedDescription)
+        toast(type: .error, title: t("common__error"), description: Self.toastDescription(for: error))
+    }
+
+    /// Paykit errors describe themselves as the raw Swift enum (`Paykit.PaykitError.Transport(code: ..., context: ...)`),
+    /// so they are logged and shown as a retry hint instead.
+    static func toastDescription(for error: Error) -> String {
+        if let jadeMessage = HwErrorPresenter.jadeMessage(from: error) {
+            return jadeMessage
+        }
+        let underlyingError = (error as? AppError)?.underlyingError ?? error
+        if underlyingError is PaykitError {
+            Logger.error("Paykit error shown as toast: \(underlyingError)", context: "AppViewModel")
+            return t("other__try_again")
+        }
+        return error.localizedDescription
     }
 
     func toast(_ error: HwTransferError) {
@@ -917,15 +932,6 @@ extension AppViewModel {
             else {
                 throw ScanHandlingError.unsupportedRequest
             }
-            if Bip21Utils.isDuplicatedBip21(uri) {
-                toast(
-                    type: .error,
-                    title: t("other__scan_err_decoding"),
-                    description: t("other__scan__error__generic"),
-                    accessibilityIdentifier: "InvalidAddressToast"
-                )
-                return
-            }
             let data = try await scanPaymentOperations.decodeInvoice(uri)
             try ensureScannedDataHandlingOwnership(
                 handlingId,
@@ -949,17 +955,6 @@ extension AppViewModel {
 
         if scope == .unrestricted, SamRockSetupRequest.isProtocolURL(uri) {
             handleInvalidBTCPayConnection(uri)
-            return
-        }
-
-        // Workaround for duplicated BIP21 URIs (bitkit-core#63)
-        if scope == .unrestricted, Bip21Utils.isDuplicatedBip21(uri) {
-            toast(
-                type: .error,
-                title: t("other__scan_err_decoding"),
-                description: t("other__scan__error__generic"),
-                accessibilityIdentifier: "InvalidAddressToast"
-            )
             return
         }
 
@@ -1518,15 +1513,6 @@ extension AppViewModel {
         guard !normalized.isEmpty else {
             manualEntryValidationResult = .empty
             isManualEntryInputValid = false
-            return
-        }
-
-        // Workaround for duplicated BIP21 URIs (bitkit-core#63)
-        if Bip21Utils.isDuplicatedBip21(normalized) {
-            guard currentSequence == manualEntryValidationSequence else { return }
-            manualEntryValidationResult = .invalid
-            isManualEntryInputValid = false
-            showValidationErrorToast(for: .invalid)
             return
         }
 

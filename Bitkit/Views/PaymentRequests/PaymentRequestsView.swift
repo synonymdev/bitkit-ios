@@ -774,6 +774,7 @@ private extension PaykitPaymentRequest {
 private extension PaykitUsdtPaymentService.Receipt {
     var statusText: String {
         let key = !verified ? "wallet__payment_request_status_pending" :
+            beforeRequest == true ? "wallet__payment_request_before_request" :
             underpaid ? "wallet__payment_request_underpaid" :
             afterExpiry ? "wallet__payment_request_after_expiry" : "wallet__payment_request_payment_verified"
         return t(key) + " · " + usdtExactAmount(amount.atomic) + " USDT"

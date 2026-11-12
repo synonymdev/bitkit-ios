@@ -595,6 +595,7 @@ enum PaykitPaymentRequestError: LocalizedError, Equatable {
     case operationInProgress
     case amountMismatch
     case subscriptionTooLong
+    case noteTooLong
 
     var errorDescription: String? {
         switch self {
@@ -608,6 +609,8 @@ enum PaykitPaymentRequestError: LocalizedError, Equatable {
             t("wallet__payment_request_mismatch")
         case .subscriptionTooLong:
             t("subscriptions__content_too_long")
+        case .noteTooLong:
+            t("wallet__payment_request_note_too_long")
         }
     }
 }
@@ -907,10 +910,11 @@ struct PaykitPaymentRequestService {
             paymentDeadline: .at(timestamp: Self.timestamp(draft.expiresAt)),
             metadata: Paykit.PrivateJsonObject(text: metadataText)
         )
-        let record = try await sdk.proposePaymentRequest(
-            counterparty: target.publicKey,
+        let record = try await proposePaymentRequest(
+            to: target,
             terms: terms,
-            expectedIdentity: expectedIdentity
+            expectedIdentity: expectedIdentity,
+            tooLarge: .noteTooLong
         )
         let wasSent = await proposalWasSent(record, to: target.publicKey, expectedIdentity: expectedIdentity)
         let deliveryStatus = wasSent ? PaykitPaymentRequest.DeliveryStatus.sent : .queued
@@ -991,10 +995,11 @@ struct PaykitPaymentRequestService {
             proposalDate: proposalDate
         )
         try PaykitSubscriptionProposal.validate(terms)
-        let record = try await sdk.proposePaymentRequest(
-            counterparty: target.publicKey,
+        let record = try await proposePaymentRequest(
+            to: target,
             terms: terms,
-            expectedIdentity: expectedIdentity
+            expectedIdentity: expectedIdentity,
+            tooLarge: .subscriptionTooLong
         )
         let deliveryStatus = await proposalWasSent(record, to: target.publicKey, expectedIdentity: expectedIdentity)
             ? PaykitPaymentRequest.DeliveryStatus.sent
@@ -1004,6 +1009,22 @@ struct PaykitPaymentRequestService {
         }
         return subscription
     }
+
+    /// The SDK refuses a proposal that does not fit one Paykit message before queueing anything.
+    private func proposePaymentRequest(
+        to target: PaykitPaymentRequestTarget,
+        terms: Paykit.PaymentRequestTerms,
+        expectedIdentity: String,
+        tooLarge: PaykitPaymentRequestError
+    ) async throws -> Paykit.PaymentRequestRecord {
+        do {
+            return try await sdk.proposePaymentRequest(counterparty: target.publicKey, terms: terms, expectedIdentity: expectedIdentity)
+        } catch let PaykitError.Protocol(code, _) where code == Self.messageTooLargeCode {
+            throw tooLarge
+        }
+    }
+
+    static let messageTooLargeCode = "message_too_large"
 
     private func subscriptionTerms(
         _ draft: PaykitSubscriptionDraft,

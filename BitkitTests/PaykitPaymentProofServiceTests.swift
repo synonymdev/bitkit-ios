@@ -1550,6 +1550,61 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertEqual(priorities.delivery, [.background])
     }
 
+    func testPreparationAcceptsAProofThatFillsOneMessageExactly() async throws {
+        for (kind, endpoint) in proofSizeCases {
+            let reference = try paymentReference(fillingProofOf: kind, endpoint: endpoint, extraBytes: 0)
+            let record = try paymentRequestRecord(endpoints: [endpoint], paymentReference: reference)
+            let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+            let store = PaymentProofMemoryStore()
+            let service = paymentProofService(sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store)
+
+            try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: kind)
+
+            let prepared = await store.snapshot()
+            XCTAssertEqual(prepared.map(\.requestId), [request.id], "\(kind)")
+        }
+    }
+
+    func testPreparationRefusesARequestWhoseProofCannotFitOneMessage() async throws {
+        for (kind, endpoint) in proofSizeCases {
+            let reference = try paymentReference(fillingProofOf: kind, endpoint: endpoint, extraBytes: 1)
+            let record = try paymentRequestRecord(endpoints: [endpoint], paymentReference: reference)
+            let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+            let store = PaymentProofMemoryStore()
+            let service = paymentProofService(sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store)
+
+            do {
+                try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: kind)
+                XCTFail("A request whose proof cannot be delivered must not be paid: \(kind)")
+            } catch {
+                XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+            }
+
+            let prepared = await store.snapshot()
+            XCTAssertTrue(prepared.isEmpty, "\(kind)")
+        }
+    }
+
+    func testPreparationMeasuresTheAllowanceIdTheProofWillCarry() async throws {
+        let endpoint = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
+        let reference = try paymentReference(fillingProofOf: .lightning, endpoint: endpoint, extraBytes: 0)
+        let record = try paymentRequestRecord(endpoints: [endpoint], paymentReference: reference)
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let store = PaymentProofMemoryStore()
+        let service = paymentProofService(sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store)
+
+        do {
+            try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .lightning,
+                                      allowanceId: "30000000-0000-4000-8000-000000000000")
+            XCTFail("The Allowance ID makes this proof too long for one message")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
+
+        let prepared = await store.snapshot()
+        XCTAssertTrue(prepared.isEmpty)
+    }
+
     func testMismatchedLightningPreimageIsNotSubmitted() async throws {
         let record = try paymentRequestRecord()
         let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
@@ -3626,12 +3681,35 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         return service
     }
 
+    private var proofSizeCases: [(PaykitPaymentProofKind, String)] {
+        [
+            (.lightning, PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue),
+            (.onchain, PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue),
+        ]
+    }
+
+    /// A Payment Reference that makes the Payment Proof Event Message of `kind` exactly `1000 + extraBytes` bytes long.
+    private func paymentReference(fillingProofOf kind: PaykitPaymentProofKind, endpoint: String, extraBytes: Int) throws -> String {
+        let baseLength = try Paykit.paymentProofEventLen(
+            localAppId: "bitkit",
+            paymentReference: PaymentReference(text: "a"),
+            submission: PaymentProofSubmission(
+                billingPeriod: nil, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, allowanceId: nil,
+                conversionQuoteId: nil, proof: PrivateJsonObject(text: PaykitPaymentProofSize.placeholderProof(for: kind))
+            )
+        )
+        let referenceBytes = PaykitSdkService.maximumMessageBytes - (Int(baseLength) - 1) + extraBytes
+        let wideCharacters = referenceBytes / 4
+        return String(repeating: "💜", count: wideCharacters) + String(repeating: "a", count: referenceBytes - wideCharacters * 4)
+    }
+
     private func paymentRequestRecord(
         endpoints: [String] = [PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue],
         paymentProofs: [PaymentProofRecord] = [],
         paymentRequestId: String = "550e8400-e29b-41d4-a716-446655440000",
         state: PaymentRequestLifecycleState = .proposed,
-        recurrence: PaymentRequestRecurrence? = nil
+        recurrence: PaymentRequestRecurrence? = nil,
+        paymentReference: String = "invoice-123"
     ) throws -> PaymentRequestRecord {
         try PaymentRequestRecord(
             counterparty: counterparty,
@@ -3643,11 +3721,12 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             proposalOutboundStatus: nil,
             proposalEventId: "650e8400-e29b-41d4-a716-446655440000",
             proposalAppId: "bitkit",
+            proposalRecordedAt: nil,
             payerAppId: nil,
             executionClaimAppId: nil,
             terms: PaymentRequestTerms(
                 amount: PaymentRequestAmount(value: "0.00001", asset: "btc"),
-                paymentReference: PaymentReference(text: "invoice-123"),
+                paymentReference: PaymentReference(text: paymentReference),
                 proposalExpiresAt: nil,
                 recurrence: recurrence,
                 acceptedPaymentEndpointIdentifiers: endpoints,
@@ -3659,6 +3738,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             ),
             acceptedEventId: nil,
             acceptedOutboundStatus: nil,
+            acceptanceRecordedAt: nil,
             rejectedEventId: nil,
             rejectedOutboundStatus: nil,
             canceledEventId: nil,
