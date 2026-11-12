@@ -824,7 +824,7 @@
 "settings__security__hide_balance_on_open" = "Hide balance on open";
 "settings__security__clipboard" = "Read clipboard for ease of use";
 "settings__security__nearby_payments" = "Nearby payments";
-"settings__security__nearby_payments_text" = "Offer your Receive request to phones nearby over Bluetooth";
+"settings__security__nearby_payments_text" = "Offer Receive over Bluetooth";
 "settings__security__warn_100" = "Warn when sending over $100";
 "settings__security__pin" = "PIN Code";
 "settings__security__pin_change" = "Change PIN Code";
