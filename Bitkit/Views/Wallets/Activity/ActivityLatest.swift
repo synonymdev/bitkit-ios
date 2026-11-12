@@ -58,11 +58,18 @@ struct ActivityLatest: View {
         return Array(items.prefix(maxActivityItemsOnHome))
     }
 
-    /// Opens the progress of the transfer to spending the banner shows, at its current step.
+    /// Opens the progress of the transfer the banner shows, at its current step: a deposit into Spark, or Spark's
+    /// emergency exit to savings.
     private func openTransferProgress() {
-        guard bannerType == .spending, let txid = SparkManager.shared.deposits.inProgressTxid else { return }
-        sparkTransfer.showDeposit(txid: txid)
-        navigation.navigate(.settingUp)
+        switch bannerType {
+        case .spending:
+            guard let txid = SparkManager.shared.deposits.inProgressTxid else { return }
+            sparkTransfer.showDeposit(txid: txid)
+            navigation.navigate(.settingUp)
+        case .savings:
+            guard SparkExitManager.shared.isExiting else { return }
+            navigation.navigate(.sparkExitProgress)
+        }
     }
 
     var body: some View {
