@@ -69,8 +69,22 @@ final class QuickPayPaymentCoordinator {
             try await String(LightningService.shared.send(bolt11: bolt11))
         }
         self.listRows = listRows ?? {
-            await LightningService.shared.listPayments()?.map(QuickPayReconcileRow.init)
+            try await Self.reconcileRows(
+                railPayments: { try await LightningService.shared.channelFreeRailPayments() },
+                nodePayments: { await LightningService.shared.listPayments() }
+            )
         }
+    }
+
+    /// Both rails' payments, nil while the node can't list its own, so reconciling waits rather than reading them as none.
+    static func reconcileRows(
+        railPayments: () async throws -> [ChannelFreeRailPayment],
+        nodePayments: () async -> [PaymentDetails]?
+    ) async throws -> [QuickPayReconcileRow]? {
+        // A Spark list failure throws, so reconciling waits rather than reading Spark's payments as none.
+        let railRows = try await railPayments().map(QuickPayReconcileRow.init(railPayment:))
+        guard let ldkRows = await nodePayments()?.map(QuickPayReconcileRow.init) else { return nil }
+        return ldkRows + railRows
     }
 
     func hasOpen(_ paymentHash: String) -> Bool {
@@ -184,6 +198,10 @@ final class QuickPayPaymentCoordinator {
     }
 
     static func isHardReject(_ error: Error) -> Bool {
+        // Spark refuses only before anything leaves the wallet.
+        if error is ChannelFreeRailSendRefused || (error as? AppError)?.underlyingError is ChannelFreeRailSendRefused {
+            return true
+        }
         guard let nodeError = nodeError(from: error) else {
             return false
         }

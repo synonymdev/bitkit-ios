@@ -69,6 +69,7 @@ enum SendRoute: Hashable {
         paykitPaymentRequestId: PaykitPaymentRequest.ID? = nil
     )
     case onchainPending(OnchainSendPendingContext)
+    case sparkWithdrawalPending(SparkWithdrawalAttempt)
     case onchainOperationPending(OnchainSendPendingContext, requestId: PaykitPaymentRequest.ID?)
     case hardwarePending(requestId: PaykitPaymentRequest.ID, walletId: String, transactionId: String, paymentIdentity: String?)
     case success(paymentId: String, walletId: String = WalletScope.default)
@@ -144,7 +145,12 @@ final class SendPresentationState {
         hardwareAvailableSats: UInt64 = 0
     ) {
         guard !isSubmittingPayment, !isSetupPending, let request = app.contactPaymentContext?.incomingPaymentRequest else { return }
+        app.paykitRoutingGeneration += 1
         app.paykitUsesUsdt = source == .usdt
+        if source == .usdt {
+            app.paykitRoute?.serviceLeg = nil
+        }
+        app.paykitRoute = SendConfirmationView.route(app.paykitRoute, afterSelecting: source)
         switch source {
         case .usdt, .spending, .savings:
             hwSend.selectWallet(nil)
@@ -166,8 +172,7 @@ final class SendPresentationState {
             wallet.sendAmountSats = terms.amount.asset == .btc ? terms.amount.atomic : nil
             wallet.isMaxAmountSend = false
             let route = PaymentNavigationHelper.requestConfirmationRoute(app: app) ?? .amount
-            let minimumAmount = source == .spending ? (app.lnurlPayData?.minSendableSat ?? 1) : UInt64(Env.dustLimit)
-            guard route != .amount, terms.amount.asset != .btc || terms.amount.atomic >= minimumAmount else {
+            guard route != .amount, terms.amount.asset != .btc || terms.amount.atomic >= app.paykitMinimumBitcoinAmount else {
                 returnToRequestAmountReview(app: app)
                 return
             }
@@ -387,27 +392,51 @@ struct SendSheet: View {
     /// For onchain: only need node running.
     private var shouldShowSyncOverlay: Bool {
         if isPreparingRequest || hwSend.isActive || flow.isResumingAcceptedOrdinarySend || app.paykitUsesUsdt ||
-            (app.contactPaymentContext?.requiresAssetSelection == true && currentRoot == .amount && flow.navigationPath.isEmpty)
+            Self.defersLightningValidationToRequestRouter(app: app) ||
+            (app.contactPaymentPicksSource && currentRoot == .amount && flow.navigationPath.isEmpty)
         {
             return false
         }
 
-        // Node must be running
-        guard wallet.nodeLifecycleState == .running else { return true }
+        let isLightningPayment = Self.requiresLightningReadiness(app: app)
+        return Self.waitsForNode(
+            isNodeRunning: wallet.nodeLifecycleState == .running,
+            isLightningPayment: isLightningPayment,
+            hasAnyChannels: (wallet.channels?.isEmpty == false) || wallet.channelCount > 0,
+            hasUsableChannels: wallet.hasUsableChannels,
+            sparkCanPay: sparkCanPayScannedInvoice
+        )
+    }
 
-        // For lightning payments, also need usable channels (peer connected)
-        if Self.requiresLightningReadiness(app: app) {
-            // If there are no channels at all, don't show the sync overlay –
-            // there is nothing to \"sync into\". Let validation/UX handle this as
-            // an \"insufficient capacity / no channels\" case instead of a sync wait.
-            let hasAnyChannels = (wallet.channels?.isEmpty == false) || wallet.channelCount > 0
-            guard hasAnyChannels else { return false }
-
-            // We have channels but none are usable yet → show sync overlay
-            return !wallet.hasUsableChannels
+    /// A Lightning payment Spark can pay goes ahead without the node. Otherwise the node must run, and a Lightning
+    /// payment over channels waits for a usable one. With no channels at all there is nothing to sync into, so
+    /// validation reports the missing capacity instead.
+    static func waitsForNode(
+        isNodeRunning: Bool, isLightningPayment: Bool, hasAnyChannels: Bool, hasUsableChannels: Bool, sparkCanPay: Bool
+    ) -> Bool {
+        if isLightningPayment, sparkCanPay {
+            return false
         }
+        guard isNodeRunning else { return true }
+        guard isLightningPayment, hasAnyChannels, !sparkCanPay else { return false }
+        return !hasUsableChannels
+    }
 
-        return false
+    /// Spark pays without channels, so a channel that is still reconnecting is no reason to wait.
+    private var sparkCanPayScannedInvoice: Bool {
+        let spark = SparkManager.shared
+        let amountSats = wallet.sendAmountSats ?? app.scannedLightningInvoice?.amountSatoshis ?? 0
+        return !spark.isExiting && Self.sparkCanPay(amountSats: amountSats, isReady: spark.isReady, balanceSats: spark.balanceSats)
+    }
+
+    /// Leaves room for Spark's fee, as `LightningService.canSend` does.
+    static func sparkCanPay(amountSats: UInt64, isReady: Bool, balanceSats: UInt64) -> Bool {
+        isReady && amountSats > 0 && ChannelFreeRailFees.sendableSats(balanceSats: balanceSats) >= amountSats
+    }
+
+    static func defersLightningValidationToRequestRouter(app: AppViewModel) -> Bool {
+        app.contactPaymentContext?.incomingPaymentRequest != nil && !app.paykitUsesUsdt
+            && app.selectedWalletToPayFrom == .lightning && app.paykitRoute?.offersSparkLeg == true
     }
 
     static func requiresLightningReadiness(app: AppViewModel) -> Bool {
@@ -841,7 +870,7 @@ struct SendSheet: View {
             return .ready
         }
         if app
-            .paykitUsesUsdt || (app.contactPaymentContext?.requiresAssetSelection == true && currentRoot == .amount && flow.navigationPath.isEmpty)
+            .paykitUsesUsdt || (app.contactPaymentPicksSource && currentRoot == .amount && flow.navigationPath.isEmpty)
         {
             flow.hasValidatedAfterSync = true
             return .ready
@@ -853,7 +882,12 @@ struct SendSheet: View {
             return .failed
         }
 
-        if Self.requiresLightningReadiness(app: app), let lnurlPayData = app.lnurlPayData, let requestedAmount {
+        if Self.defersLightningValidationToRequestRouter(app: app) {
+            flow.hasValidatedAfterSync = true
+            return .ready
+        }
+
+        if Self.requiresLightningReadiness(app: app), app.paykitRoute?.serviceLeg == nil, let lnurlPayData = app.lnurlPayData, let requestedAmount {
             let minimumAmount = max(1, lnurlPayData.minSendableSat)
             guard requestedAmount >= minimumAmount else {
                 showPaymentSetupFailure(
@@ -877,7 +911,8 @@ struct SendSheet: View {
                 return .failed
             }
             guard LightningService.shared.canSend(amountSats: requestedAmount) else {
-                let spendingBalance = LightningService.shared.balances?.totalLightningBalanceSats ?? 0
+                let spendingBalance = (LightningService.shared.balances?.totalLightningBalanceSats ?? 0)
+                    + (LightningService.shared.channelFreeRail?.balanceSats ?? 0)
                 showInsufficientSpendingToast(invoiceAmount: requestedAmount, spendingBalance: spendingBalance)
                 flow.hasValidatedAfterSync = true
                 return .failed
@@ -894,7 +929,7 @@ struct SendSheet: View {
             // usable, proceed with validation/fallback.
             // Use channelCount as fallback in case channels array is nil but count is cached
             let hasAnyChannels = (wallet.channels?.isEmpty == false) || wallet.channelCount > 0
-            if hasAnyChannels, !wallet.hasUsableChannels, !ignoreChannelWait {
+            if hasAnyChannels, !wallet.hasUsableChannels, !ignoreChannelWait, !sparkCanPayScannedInvoice {
                 // We have channels but none usable yet → wait
                 return .waiting
             }
@@ -944,7 +979,8 @@ struct SendSheet: View {
                     return .ready
                 } else {
                     // For pure lightning invoices, show error toast and dismiss sheet
-                    let spendingBalance = LightningService.shared.balances?.totalLightningBalanceSats ?? 0
+                    let spendingBalance = (LightningService.shared.balances?.totalLightningBalanceSats ?? 0)
+                        + (LightningService.shared.channelFreeRail?.balanceSats ?? 0)
                     showInsufficientSpendingToast(invoiceAmount: paymentAmount, spendingBalance: spendingBalance)
                     flow.hasValidatedAfterSync = true
                     return .failed
@@ -956,8 +992,8 @@ struct SendSheet: View {
             }
         }
 
-        // Validate onchain payment balance (for pure onchain invoices)
-        if let onchainInvoice = app.scannedOnchainInvoice {
+        // Validate onchain payment balance (for pure onchain invoices); a Spark route can pay it from spending
+        if app.paykitRoute?.offersSparkLeg != true, let onchainInvoice = app.scannedOnchainInvoice {
             let onchainBalance = max(
                 LightningService.shared.balances?.spendableOnchainBalanceSats ?? 0,
                 hwWalletManager.maximumFundingBalanceSats
@@ -1010,6 +1046,12 @@ struct SendSheet: View {
             _ = await selectHardwareFundingSourceIfNeeded(amountSats: amountSats, requestId: request.id)
             flow.isFallbackFundingPending = false
         }
+    }
+
+    /// Whether a request Savings and the hardware wallets can't cover is rejected before Confirm. One Spark can carry
+    /// reaches Confirm, which routes it from Spending, as a pure on-chain payment's check does.
+    static func rejectsUnfundedOnchainRequest(route: PaykitRouteUi?) -> Bool {
+        route?.offersSparkLeg != true
     }
 
     private func selectHardwareFundingSourceIfNeeded(
@@ -1123,7 +1165,7 @@ struct SendSheet: View {
 
         // A failed estimate is not proof of insufficient funds. Keep the sheet open so the normal
         // confirmation path can retry instead of rejecting a payable request.
-        guard !hasUnavailableSource else { return true }
+        guard !hasUnavailableSource, Self.rejectsUnfundedOnchainRequest(route: app.paykitRoute) else { return true }
         let maximumAvailable = max(savingsAvailable ?? 0, hardwareSources.map(\.available).max() ?? 0)
         _ = validateOnchainBalanceAndDismissIfInsufficient(
             invoiceAmount: amountSats,
@@ -1275,6 +1317,12 @@ struct SendSheet: View {
                 paymentRequest: paymentRequest,
                 paykitPaymentRequestId: paykitPaymentRequestId,
                 routingCacheResetAttempted: flow.routingCacheResetAttempted,
+                navigationPath: $flow.navigationPath
+            )
+        case let .sparkWithdrawalPending(attempt):
+            SendPendingScreen(
+                paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: attempt.requestId,
+                routingCacheResetAttempted: flow.routingCacheResetAttempted, sparkWithdrawal: attempt,
                 navigationPath: $flow.navigationPath
             )
         case let .onchainPending(context):

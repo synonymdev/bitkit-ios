@@ -69,7 +69,7 @@ final class PaykitAllowanceManager {
     @ObservationIgnored private let sdk: any PaykitAllowanceSdkHandling
     @ObservationIgnored private let executor: PaykitAllowanceExecutor
     @ObservationIgnored private let now: () -> Date
-    @ObservationIgnored private let canPayNow: @MainActor () -> Bool
+    @ObservationIgnored private let payableNow: @MainActor ([PaykitPaymentRequest]) -> [PaykitPaymentRequest]
     @ObservationIgnored private var identity: String?
     /// Changes on every activation and deactivation, so work started under an earlier one drops its results.
     @ObservationIgnored private var activation = 0
@@ -101,20 +101,36 @@ final class PaykitAllowanceManager {
         sdk: any PaykitAllowanceSdkHandling = PaykitSdkService.shared,
         executor: PaykitAllowanceExecutor = .shared,
         now: @escaping () -> Date = { Date() },
-        canPayNow: @escaping @MainActor () -> Bool = PaykitAllowanceManager.lightningReady
+        payableNow: @escaping @MainActor ([PaykitPaymentRequest]) -> [PaykitPaymentRequest] = PaykitAllowanceManager.payableNow
     ) {
         self.sdk = sdk
         self.executor = executor
         self.now = now
-        self.canPayNow = canPayNow
+        self.payableNow = payableNow
+    }
+
+    /// The covered requests that can be paid right now.
+    static func payableNow(_ covered: [PaykitPaymentRequest]) -> [PaykitPaymentRequest] {
+        let rail = LightningService.shared.channelFreeRail
+        return payable(covered, nodeCanPay: nodeCanPay(), sparkSendableSats: rail?.isReady == true ? rail?.sendableSats : nil)
     }
 
     /// A node that just started lists its channels before they reconnect, and a payment sent then finds no route.
-    static func lightningReady() -> Bool {
+    static func nodeCanPay() -> Bool {
         guard LightningService.shared.status?.isRunning == true,
               let channels = LightningService.shared.channels
         else { return false }
         return channels.isEmpty || channels.contains(where: \.isUsable)
+    }
+
+    /// Everything covered pays while the node can; otherwise Spark pays what it can cover, without the node, and the
+    /// rest waits for the next refresh.
+    static func payable(_ covered: [PaykitPaymentRequest], nodeCanPay: Bool, sparkSendableSats: UInt64?) -> [PaykitPaymentRequest] {
+        if nodeCanPay {
+            return covered
+        }
+        guard let sparkSendableSats else { return [] }
+        return covered.filter { $0.allowanceAmountSats <= sparkSendableSats }
     }
 
     var entries: [PaykitAllowanceEntry] {
@@ -460,21 +476,26 @@ final class PaykitAllowanceManager {
         let signature = allowancesSignature
         let covered = requests.filter(isAwaitingAutomaticPayment)
         guard !covered.isEmpty else { return false }
-        guard canPayNow() else {
-            // A request over the limits needs the user anyway, so it is handed back before waiting for a channel.
-            var handedBack = false
-            for request in covered where await executor.exceedsLimits(request, allowances: allowances, identity: identity) {
-                manualRequestIds[request.id] = signature
-                handedBack = true
-            }
-            Logger.info("Holding covered requests until the node has a usable channel", context: "PaykitAllowance")
+        let payable = payableNow(covered)
+        let payableIds = Set(payable.map(\.id))
+        let waiting = covered.filter { !payableIds.contains($0.id) }
+        // A request over the limits needs the user anyway, so it is handed back before waiting for a channel.
+        var handedBack = false
+        for request in waiting where await executor.exceedsLimits(request, allowances: allowances, identity: identity) {
+            manualRequestIds[request.id] = signature
+            handedBack = true
+        }
+        if !waiting.isEmpty {
+            Logger.info("Holding '\(waiting.count)' covered requests until the node or Spark can pay them", context: "PaykitAllowance")
+        }
+        guard !payable.isEmpty else {
             return handedBack
         }
 
         isProcessingRequests = true
         defer { isProcessingRequests = false }
         var handledAny = false
-        for request in covered {
+        for request in payable {
             guard activation == passActivation else { break }
             let result = await executor.autoPay(request, allowances: allowances, identity: identity)
             Logger.info("Automatic payment pass for a covered request ended as \(result)", context: "PaykitAllowance")
@@ -490,7 +511,7 @@ final class PaykitAllowanceManager {
         if handledAny {
             await refresh()
         }
-        return handledAny
+        return handledAny || handedBack
     }
 
     /// Whether the allowance flow owns the request, so no sheet may open for it. A covered request belongs to the flow

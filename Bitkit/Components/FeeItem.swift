@@ -2,57 +2,89 @@ import BitkitCore
 import SwiftUI
 
 struct FeeItem: View {
-    let speed: TransactionSpeed
+    let title: String
+    let subtitle: String
+    let iconName: String
+    let iconColor: Color
     let amount: UInt64
+    /// Shown before the amount when it is a bound or an estimate ("±").
+    var amountPrefix: String?
     let isSelected: Bool
     let isDisabled: Bool
-    /// When set (e.g. for custom speed with fee estimates), shown instead of `speed.range` as the subtitle.
-    var rangeOverride: String?
+    /// Draws the row's divider under it instead of above it, so a selected row's fill touches nothing above.
+    var dividerAtBottom = false
     let onPress: () -> Void
 
     @EnvironmentObject var currency: CurrencyViewModel
 
-    private var rangeText: String {
-        rangeOverride ?? speed.range
+    /// - Parameter rangeOverride: When set (e.g. for custom speed with fee estimates), shown instead of `speed.range`.
+    init(
+        speed: TransactionSpeed,
+        amount: UInt64,
+        isSelected: Bool,
+        isDisabled: Bool,
+        rangeOverride: String? = nil,
+        onPress: @escaping () -> Void
+    ) {
+        self.init(
+            title: speed.title,
+            subtitle: rangeOverride ?? speed.range,
+            iconName: speed.iconName,
+            iconColor: speed.iconColor,
+            amount: amount,
+            isSelected: isSelected,
+            isDisabled: isDisabled,
+            onPress: onPress
+        )
+    }
+
+    init(
+        title: String,
+        subtitle: String,
+        iconName: String,
+        iconColor: Color,
+        amount: UInt64,
+        amountPrefix: String? = nil,
+        isSelected: Bool,
+        isDisabled: Bool,
+        dividerAtBottom: Bool = false,
+        onPress: @escaping () -> Void
+    ) {
+        self.dividerAtBottom = dividerAtBottom
+        self.title = title
+        self.subtitle = subtitle
+        self.iconName = iconName
+        self.iconColor = iconColor
+        self.amount = amount
+        self.amountPrefix = amountPrefix
+        self.isSelected = isSelected
+        self.isDisabled = isDisabled
+        self.onPress = onPress
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            Divider()
-                .padding(.horizontal, 16)
+            if !dividerAtBottom {
+                Divider()
+                    .padding(.horizontal, 16)
+            }
 
             Button(action: onPress) {
                 HStack(spacing: 16) {
-                    Image(speed.iconName)
-                        .foregroundColor(isDisabled ? .gray : speed.iconColor)
+                    Image(iconName)
+                        .foregroundColor(isDisabled ? .gray : iconColor)
                         .frame(width: 32, height: 32)
 
                     HStack {
                         VStack(alignment: .leading, spacing: 0) {
-                            BodyMSBText(speed.title, textColor: isDisabled ? .gray3 : .textPrimary)
-                            BodySSBText(rangeText, textColor: isDisabled ? .gray3 : .textSecondary)
+                            BodyMSBText(title, textColor: isDisabled ? .gray3 : .textPrimary)
+                            BodySSBText(subtitle, textColor: isDisabled ? .gray3 : .textSecondary)
                         }
 
                         Spacer()
 
                         if amount > 0 {
-                            VStack(alignment: .trailing, spacing: 0) {
-                                MoneyText(
-                                    sats: Int(amount),
-                                    unitType: .primary,
-                                    size: .bodyMSB,
-                                    symbol: true,
-                                    color: isDisabled ? .gray3 : .textPrimary
-                                )
-
-                                MoneyText(
-                                    sats: Int(amount),
-                                    unitType: .secondary,
-                                    size: .bodySSB,
-                                    symbol: true,
-                                    color: isDisabled ? .gray3 : .textSecondary
-                                )
-                            }
+                            FeeItemAmount(amount: amount, prefix: amountPrefix, isDisabled: isDisabled)
                         }
                     }
                 }
@@ -65,6 +97,41 @@ struct FeeItem: View {
             }
             .disabled(isDisabled)
             .buttonStyle(PlainButtonStyle())
+
+            if dividerAtBottom {
+                Divider()
+                    .padding(.horizontal, 16)
+            }
         }
+    }
+}
+
+/// The fee in both units, kept whole beside a long subtitle.
+struct FeeItemAmount: View {
+    let amount: UInt64
+    var prefix: String?
+    var isDisabled = false
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 0) {
+            MoneyText(
+                sats: Int(amount),
+                unitType: .primary,
+                size: .bodyMSB,
+                symbol: true,
+                prefix: prefix,
+                color: isDisabled ? .gray3 : .textPrimary
+            )
+
+            MoneyText(
+                sats: Int(amount),
+                unitType: .secondary,
+                size: .bodySSB,
+                symbol: true,
+                prefix: prefix,
+                color: isDisabled ? .gray3 : .textSecondary
+            )
+        }
+        .fixedSize()
     }
 }

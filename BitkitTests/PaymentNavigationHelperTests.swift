@@ -274,6 +274,50 @@ final class PaymentNavigationHelperTests: XCTestCase {
         }
     }
 
+    func testMixedRequestRoutesBeforeOpeningLnurlConfirmation() throws {
+        let lightning = PublicPaykitService.MethodId.bitcoinLightningLnurl
+        let onchain = PublicPaykitService.MethodId.regtestOnchainP2wpkh
+        let request = try incomingPaymentRequest(
+            endpointIdentifier: lightning.rawValue, additionalEndpointIdentifiers: [onchain.rawValue],
+            amount: PaymentRequestAmount(value: "0.00005", asset: "btc")
+        )
+        let app = AppViewModel()
+        app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+        app.scannedOnchainInvoice = OnChainInvoice(address: "bcrt1qexample", amountSatoshis: 0, label: nil, message: nil, params: nil)
+        app.lnurlPayData = LnurlPayData(
+            uri: "https://example.com/pay", callback: "https://example.com/callback", minSendable: 10_000_000, maxSendable: 100_000_000,
+            metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
+        )
+        app.paykitRoute = PaykitRouteUi(
+            endpoints: [PaykitEndpoint(methodId: onchain.rawValue, value: "bcrt1qexample")], offersSparkLeg: true
+        )
+        app.paykitPaymentTerms = try request.payment(using: lightning)
+        app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
+        let wallet = WalletViewModel()
+        let hwSend = HwSendCoordinator()
+        let flow = SendPresentationState(initialRoute: .confirm)
+        flow.isSetupPending = false
+
+        flow.selectRequestFundingSource(.spending, app: app, wallet: wallet, hwSend: hwSend)
+
+        XCTAssertEqual(flow.rootRoute, .confirm, "Confirm must ask the router before a direct LNURL can preempt the Spark leg")
+        XCTAssertTrue(flow.navigationPath.isEmpty)
+        XCTAssertEqual(contactPaymentRoute(for: app), .confirm)
+        XCTAssertEqual(wallet.sendAmountSats, 5000)
+        XCTAssertEqual(app.paykitMinimumBitcoinAmount, UInt64(Env.dustLimit))
+        XCTAssertTrue(
+            SendSheet.defersLightningValidationToRequestRouter(app: app),
+            "LNURL range, balance and channel sync must not preempt the router"
+        )
+        app.paykitUsesUsdt = true
+        XCTAssertFalse(SendSheet.defersLightningValidationToRequestRouter(app: app))
+        app.paykitUsesUsdt = false
+        app.paykitRoute = nil
+        XCTAssertFalse(SendSheet.defersLightningValidationToRequestRouter(app: app))
+        XCTAssertEqual(app.paykitMinimumBitcoinAmount, 10000)
+        XCTAssertEqual(contactPaymentRoute(for: app), .amount, "Without Spark the LNURL minimum still applies")
+    }
+
     func testNativeBitcoinLnurlRequestConfirmsWithoutCachedTerms() throws {
         let request = try incomingPaymentRequest(
             endpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningLnurl.rawValue

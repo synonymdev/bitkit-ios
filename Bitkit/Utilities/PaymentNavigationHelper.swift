@@ -50,7 +50,7 @@ struct PaymentNavigationHelper {
             sheetViewModel.showSheet(.send, data: SendConfig(view: route))
             return
         }
-        if app.contactPaymentContext?.requiresAssetSelection == true {
+        if app.contactPaymentPicksSource {
             sheetViewModel.showSheet(.send, data: SendConfig(view: .amount))
             return
         }
@@ -117,7 +117,7 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore = .shared,
         coordinator: QuickPayPaymentCoordinator? = nil
     ) -> SendRoute? {
-        if app.contactPaymentContext?.requiresAssetSelection == true, app.paykitPaymentTerms == nil {
+        if app.contactPaymentPicksSource, app.paykitPaymentTerms == nil {
             return .amount
         }
         if let lnurlWithdrawData = app.lnurlWithdrawData {
@@ -221,7 +221,7 @@ struct PaymentNavigationHelper {
         if let route = requestConfirmationRoute(app: app) {
             return route
         }
-        if app.contactPaymentContext?.requiresAssetSelection == true {
+        if app.contactPaymentPicksSource {
             return .amount
         }
         guard let route = appropriateSendRoute(
@@ -252,6 +252,9 @@ struct PaymentNavigationHelper {
                   let recipient = context.endpoints.first(where: { $0.methodId == .usdtArbitrum })?.value
             else { return .amount }
             return .usdt(recipient: recipient, amount: terms.amount.inputValue)
+        }
+        if app.paykitRoute?.offersSparkLeg == true {
+            return .confirm
         }
         if app.selectedWalletToPayFrom == .lightning, let lnurl = app.lnurlPayData {
             let amount = app.paykitPaymentTerms?.amount.atomic

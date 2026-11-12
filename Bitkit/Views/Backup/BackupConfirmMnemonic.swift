@@ -28,7 +28,7 @@ struct BackupConfirmMnemonic: View {
                         CustomButton(title: word, size: .small, background: isPressed ? Color.white32 : nil) {
                             handleWordPress(word: word, index: index)
                         }
-                        .accessibilityIdentifier("Word-\(word)")
+                        .accessibilityIdentifier("ShuffledWord-\(index)")
                     }
                 }
 

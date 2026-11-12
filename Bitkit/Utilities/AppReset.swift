@@ -80,6 +80,7 @@ final class AppReset: WipeStepExecutor {
             await VssBackupClient.shared.reset()
             VssStoreIdProvider.shared.clearCache()
             OnChainHwService.shared.stopAllWatchers()
+            MoveToSparkManager.shared.resetForWipe()
             // Before the paired devices are wiped, so a reconnect still running cannot save one back.
             try await Self.bounded("hardware wallets") { await Self.hardwareWallets?.resetForWipe() }
             do {

@@ -22,23 +22,36 @@ struct SendFundingSourceButton: View {
         {
             return [.usdt]
         }
-        var sources: [SendFundingSource] = []
-        if app.scannedLightningInvoice != nil || app.lnurlPayData != nil {
-            sources.append(.spending)
-        }
-        if app.scannedOnchainInvoice != nil {
-            sources.append(.savings)
-            sources.append(contentsOf: hwWalletManager.wallets.compactMap { hardwareWallet in
-                guard hardwareWallet.fundingBalanceSats > 0 || hardwareWallet.walletId == hwSend.walletId else {
-                    return nil
-                }
-                return .hardware(walletId: hardwareWallet.walletId)
-            })
-        }
+        var sources = Self.fundingSources(
+            hasLightningInvoice: app.scannedLightningInvoice != nil || app.lnurlPayData != nil,
+            hasOnchainInvoice: app.scannedOnchainInvoice != nil,
+            offersSparkLeg: app.paykitRoute?.offersSparkLeg == true,
+            hardwareWalletIds: hwWalletManager.wallets.compactMap { hardwareWallet in
+                guard hardwareWallet.fundingBalanceSats > 0 || hardwareWallet.walletId == hwSend.walletId else { return nil }
+                return hardwareWallet.walletId
+            }
+        )
         if allowsUsdt, settings.isUsdtEnabled,
            app.contactPaymentContext?.endpoints.contains(where: { $0.methodId == .usdtArbitrum }) == true
         {
             sources.append(.usdt)
+        }
+        return sources
+    }
+
+    static func fundingSources(
+        hasLightningInvoice: Bool,
+        hasOnchainInvoice: Bool,
+        offersSparkLeg: Bool,
+        hardwareWalletIds: [String]
+    ) -> [SendFundingSource] {
+        var sources: [SendFundingSource] = []
+        if hasLightningInvoice || offersSparkLeg {
+            sources.append(.spending)
+        }
+        if hasOnchainInvoice {
+            sources.append(.savings)
+            sources.append(contentsOf: hardwareWalletIds.map { .hardware(walletId: $0) })
         }
         return sources
     }

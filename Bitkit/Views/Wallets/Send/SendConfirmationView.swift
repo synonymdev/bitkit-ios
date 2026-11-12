@@ -29,6 +29,10 @@ struct SendConfirmationView: View {
     var onSelectRequestFundingSource: ((SendFundingSource) -> Void)?
 
     @State private var showDetails = false
+    @State private var routedIncomingRequestId: PaykitPaymentRequest.ID?
+    /// Set when Confirm picks a request's source itself, so that switch isn't routed twice.
+    @State private var skipNextSourceReroute = false
+    @State private var refusedRouteSource: WalletType?
     @State private var hasShownAmountReview = false
     @State private var showingBiometricError = false
     @State private var biometricErrorMessage = ""
@@ -71,6 +75,9 @@ struct SendConfirmationView: View {
 
     private var hasSufficientLightningRequestFunds: Bool {
         guard app.contactPaymentContext?.incomingPaymentRequest != nil, app.selectedWalletToPayFrom == .lightning else { return true }
+        if let leg = app.paykitRoute?.serviceLeg {
+            return leg.deliveredSat > 0 && leg.debitSat <= SparkManager.shared.balanceSats
+        }
         guard let routingFee = wallet.routingFeeEstimateSats else { return false }
         let amount = wallet.sendAmountSats ?? app.scannedLightningInvoice?.amountSatoshis ?? 0
         let available = UInt64(clamping: wallet.maxSendLightningSats)
@@ -79,7 +86,7 @@ struct SendConfirmationView: View {
 
     private var isLightningRequestFeeFailed: Bool {
         app.contactPaymentContext?.incomingPaymentRequest != nil
-            && app.selectedWalletToPayFrom == .lightning && wallet.routingFeeEstimateFailed
+            && app.selectedWalletToPayFrom == .lightning && app.paykitRoute?.serviceLeg == nil && wallet.routingFeeEstimateFailed
     }
 
     private var requiresAmountReview: Bool {
@@ -326,6 +333,13 @@ struct SendConfirmationView: View {
                         PaykitAmountText(amount: preparingRequest.amount, size: .display)
                             .accessibilityIdentifier("ReviewAmount")
                     }
+                } else if let deliveredSat = app.paykitRoute?.deliveredSat {
+                    MoneyStack(
+                        sats: Int(wallet.sendAmountSats ?? deliveredSat),
+                        showSymbol: true,
+                        testIdPrefix: "ReviewAmount",
+                        onTap: navigateToAmount
+                    )
                 } else if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                     MoneyStack(
                         sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis),
@@ -353,7 +367,9 @@ struct SendConfirmationView: View {
             }
 
             if showDetails {
-                if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
+                if let route = app.paykitRoute, let totalFeeSat = route.totalFeeSat {
+                    paykitRouteView(route, totalFeeSat: totalFeeSat, note: confirmationRequestNote)
+                } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                     onchainView(invoice)
                 } else if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                     lightningView(invoice)
@@ -449,6 +465,7 @@ struct SendConfirmationView: View {
                 }
                 guard preparingRequest == nil, !isRequestSetupPending, !returnToAmountReviewIfNeeded() else { return }
                 ensureSendAmountFromScannedInvoicesIfNeeded()
+                await routeContactPaymentOnConfirm()
                 if app.contactPaymentContext?.isInitialSubscriptionPayment == true, !shouldAutomaticallyPay {
                     showManualConfirmation(reason: "not automatic when opened")
                 }
@@ -488,6 +505,11 @@ struct SendConfirmationView: View {
                       !returnToAmountReviewIfNeeded(rebindMethod: !hwSend.isActive) else { return }
                 ensureSendAmountFromScannedInvoicesIfNeeded()
                 walletSwitchContext = sendContext
+                if skipNextSourceReroute {
+                    skipNextSourceReroute = false
+                } else if Self.sourceSwitchNeedsReroute(route: app.paykitRoute, walletType: app.selectedWalletToPayFrom) {
+                    Task { await routeContactPaymentOnConfirm(sourceChanged: true) }
+                }
             }
             .onChange(of: navigationPath) { previous, path in
                 guard preparingRequest == nil, previous.last == .amount, path.isEmpty, requiresAmountReview, !amountIsRoot else { return }
@@ -564,7 +586,8 @@ struct SendConfirmationView: View {
             shouldAutomaticallyPay: shouldAutomaticallyPay,
             hasStartedAutomaticPayment: hasStartedAutomaticPayment,
             isSetupPending: isSetupPending,
-            isPreparingWallet: walletSwitchContext != nil
+            isPreparingWallet: walletSwitchContext != nil,
+            isRouteRefused: refusedRouteSource == app.selectedWalletToPayFrom
         ) else { return }
         hasStartedAutomaticPayment = true
         do {
@@ -701,6 +724,64 @@ struct SendConfirmationView: View {
         }
     }
 
+    func paykitRouteView(_ route: PaykitRouteUi, totalFeeSat: UInt64, note: String?) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                SendSectionView(t("wallet__send_from")) {
+                    fundingSourceButton
+                }
+
+                Spacer(minLength: 16)
+
+                if let contact = contactPaymentContact {
+                    SendSectionView(contactSectionTitle) {
+                        contactRecipient(contact)
+                    }
+                }
+            }
+
+            HStack(alignment: .top, spacing: 16) {
+                SendSectionView(t("wallet__send_fee_and_speed")) {
+                    HStack(spacing: 0) {
+                        Image("bolt-hollow")
+                            .foregroundColor(.purpleAccent)
+                            .frame(width: 16, height: 16)
+                            .padding(.trailing, 4)
+                        BodySSBText("\(t("fee__instant__title")) (")
+                        MoneyText(sats: Int(totalFeeSat), size: .bodySSB, symbol: true, symbolColor: .textPrimary)
+                        BodySSBText(")")
+                    }
+                }
+
+                SendSectionView(t("wallet__send_swap_route")) {
+                    BodySSBText(Self.routeName(route))
+                        .lineLimit(2)
+                        .accessibilityIdentifier("ReviewSwapRoute")
+                }
+            }
+
+            SendSectionView(t("wallet__tags")) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(tagManager.selectedTagsArray, id: \.self) { tag in
+                            Tag(tag, icon: .close, onDelete: { tagManager.removeTagFromSelection(tag) })
+                        }
+                        AddTagButton(onPress: { navigationPath.append(.tag) })
+                            .accessibilityIdentifier("TagsAddSend")
+                    }
+                }
+            }
+
+            if let note {
+                PaymentRequestInvoiceNote(note: note)
+            }
+        }
+    }
+
+    private static func routeName(_ route: PaykitRouteUi) -> String {
+        route.serviceLeg?.service == SparkManager.routeService ? "Spark" : route.serviceLeg?.service ?? ""
+    }
+
     func lightningView(_ invoice: LightningInvoice) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
@@ -829,6 +910,14 @@ struct SendConfirmationView: View {
         .accessibilityIdentifier("SendConfirmAssetButton")
     }
 
+    /// A hardware wallet signs the on-chain send itself and the router never runs for it, so picking one drops the Spark
+    /// leg; Savings and Spending ask the router again, which settles the leg.
+    static func route(_ route: PaykitRouteUi?, afterSelecting source: SendFundingSource) -> PaykitRouteUi? {
+        guard case .hardware = source, var route else { return route }
+        route.serviceLeg = nil
+        return route
+    }
+
     private func selectFundingSource(_ source: SendFundingSource) {
         savingsFallbackWalletId = nil
         switch source {
@@ -841,6 +930,7 @@ struct SendConfirmationView: View {
             hwSend.selectWallet(nil)
             app.selectedWalletToPayFrom = .onchain
         case let .hardware(walletId):
+            app.paykitRoute = Self.route(app.paykitRoute, afterSelecting: source)
             let balance = hwWalletManager.fundingBalance(walletId: walletId)
             let reserve = HwFundingSigner.feeReserve(
                 balanceSats: balance,
@@ -858,13 +948,14 @@ struct SendConfirmationView: View {
     private func submitPayment(isAutomatic: Bool = false) async throws {
         guard !isSubmittingPayment, !isAuthorizingPayment else { return }
         if isAutomatic, app.contactPaymentContext?.incomingPaymentRequest != nil,
-           app.selectedWalletToPayFrom == .lightning, wallet.routingFeeEstimateSats == nil
+           app.selectedWalletToPayFrom == .lightning, app.paykitRoute?.serviceLeg == nil, wallet.routingFeeEstimateSats == nil
         {
             showManualConfirmation(reason: "routing fee unknown")
             return
         }
         guard hasSufficientLightningRequestFunds else { throw NodeError.InsufficientFunds(message: "Insufficient spendable Lightning balance") }
         guard !requiresAmountReview, preparingRequest == nil, !isRequestSetupPending, walletSwitchContext == nil,
+              refusedRouteSource != app.selectedWalletToPayFrom,
               isAutomatic || !prepareRequestCoinsIfNeeded() else { throw CancellationError() }
         // An automatic payment settles the fee itself below.
         if !isAutomatic, isPreparingOnchainSend {
@@ -968,19 +1059,34 @@ struct SendConfirmationView: View {
         guard hasSufficientLightningRequestFunds else { throw NodeError.InsufficientFunds(message: "Insufficient spendable Lightning balance") }
         if hwSend.isActive {
             navigationPath.append(.hardwareSign)
+        } else if !app.paykitUsesUsdt, let leg = app.paykitRoute?.serviceLeg {
+            await performServiceRoutedPayment(leg)
         } else {
             try await performPayment(isAutomatic: isAutomatic)
         }
     }
 
-    /// The wallet switch chooses coins separately from send setup, so the automatic start waits for both.
+    /// A source switch on Confirm needs the router only when it moves a Spark leg's send to Savings, or any send to
+    /// Spending, where a Spark leg can carry it: a mixed contact paid from Savings keeps its decoded Lightning payment,
+    /// which can't pay past Lightning's limit. The app's own switch to a leg's source asks nothing.
+    static func sourceSwitchNeedsReroute(route: PaykitRouteUi?, walletType: WalletType) -> Bool {
+        guard let route else { return false }
+        if route.serviceLeg != nil {
+            return walletType != .lightning
+        }
+        return walletType == .lightning && route.offersSparkLeg
+    }
+
+    /// The wallet switch chooses coins separately from send setup, so the automatic start waits for both. A source the
+    /// router refused has nothing to pay, so it never starts.
     static func canStartAutomaticPayment(
         shouldAutomaticallyPay: Bool,
         hasStartedAutomaticPayment: Bool,
         isSetupPending: Bool,
-        isPreparingWallet: Bool
+        isPreparingWallet: Bool,
+        isRouteRefused: Bool = false
     ) -> Bool {
-        shouldAutomaticallyPay && !hasStartedAutomaticPayment && !isSetupPending && !isPreparingWallet
+        shouldAutomaticallyPay && !hasStartedAutomaticPayment && !isSetupPending && !isPreparingWallet && !isRouteRefused
     }
 
     static func requiresManualConfirmation(isAutomatic: Bool, isHardwarePayment: Bool) -> Bool {
@@ -1161,9 +1267,10 @@ struct SendConfirmationView: View {
         isSetupPending: Bool = false,
         isPreparingWallet: Bool = false,
         isAmountReviewRequired: Bool = false,
-        isPreparingOnchainSend: Bool = false
+        isPreparingOnchainSend: Bool = false,
+        isRouteRefused: Bool = false
     ) -> Bool {
-        isAmountReviewRequired || isPreparingRequest || isSetupPending || isPreparingWallet || isPreparingOnchainSend
+        isAmountReviewRequired || isPreparingRequest || isSetupPending || isPreparingWallet || isPreparingOnchainSend || isRouteRefused
             || isHardwareConfirmationUnavailable
             || isFeeRateMissing(walletType: walletType, isHardwarePayment: isHardwarePayment, feeRate: feeRate)
     }
@@ -1186,7 +1293,8 @@ struct SendConfirmationView: View {
             isSetupPending: isRequestSetupPending,
             isPreparingWallet: walletSwitchContext != nil,
             isAmountReviewRequired: requiresAmountReview,
-            isPreparingOnchainSend: isPreparingOnchainSend
+            isPreparingOnchainSend: isPreparingOnchainSend,
+            isRouteRefused: refusedRouteSource == app.selectedWalletToPayFrom
         )
     }
 
@@ -1287,6 +1395,238 @@ struct SendConfirmationView: View {
         return note
     }
 
+    /// A request's Confirm opens with fixed terms and no amount screen, so the router is asked here: Direct switches the
+    /// send to the endpoint it picks, and a Spark leg pays an on-chain request from Spending. A source switch on Confirm
+    /// asks it again for any contact payment, so a leg never pays a send the payer moved to Savings.
+    private func routeContactPaymentOnConfirm(sourceChanged: Bool = false) async {
+        guard let context = app.contactPaymentContext, !app.paykitUsesUsdt, !hwSend.isActive, !isSubmittingPayment else { return }
+        let request = context.incomingPaymentRequest
+        if !sourceChanged {
+            guard let request, routedIncomingRequestId != request.id else { return }
+        }
+        guard let route = app.paykitRoute ?? PaykitRouteService.routeUi(for: context, canRouteThroughSpark: PaykitRouteService.canRouteThroughSpark)
+        else { return }
+        let amountSats: UInt64
+        if let request {
+            let amount = app.paykitPaymentTerms?.amount ?? request.amount
+            guard amount.asset == .btc else { return }
+            amountSats = amount.atomic
+        } else {
+            amountSats = route.deliveredSat ?? wallet.sendAmountSats ?? 0
+        }
+        guard amountSats > 0 else { return }
+        if let request {
+            routedIncomingRequestId = request.id
+            // A request has no amount screen to pick its source, so pick it as that screen would: Savings when it covers
+            // the amount and fee, otherwise Spending, where the Spark leg can carry it.
+            if !sourceChanged, app.selectedWalletToPayFrom == .onchain, app.scannedLightningInvoice == nil, app.lnurlPayData == nil,
+               await Self.requestStartsOnSpending(
+                   savingsSendableSats: savingsSendableSats(),
+                   amountSats: amountSats,
+                   offersSparkLeg: route.offersSparkLeg
+               )
+            {
+                skipNextSourceReroute = true
+                app.selectedWalletToPayFrom = .lightning
+            }
+        }
+        let walletType = app.selectedWalletToPayFrom
+        let source: PaykitRouteService.Source = walletType == .lightning ? .spending : .savings
+        let outcome = await app.routeContactPayment(
+            route,
+            amountSats: amountSats,
+            source: source,
+            lightningSpendableSats: source == .spending ? UInt64(max(0, wallet.maxSendLightningSats)) : 0,
+            onchainSpendableSats: source == .savings ? UInt64(max(0, wallet.spendableOnchainBalanceSats)) : 0,
+            request: request
+        )
+        // The first call when Confirm opens keeps a refusal too, so a request with no route offers no swipe.
+        refusedRouteSource = Self.refusedRouteSource(after: outcome, on: walletType, previous: refusedRouteSource)
+        if Self.reroutePaysLnurl(
+            outcome: outcome,
+            walletType: app.selectedWalletToPayFrom,
+            hasInvoice: app.scannedLightningInvoice != nil,
+            hasLnurl: app.lnurlPayData != nil
+        ) {
+            navigationPath.append(.lnurlPayConfirm)
+        }
+    }
+
+    /// Confirm has no LNURL send, so a Direct LNURL pick from Spending pays on the LNURL's own confirm, as one picked on
+    /// Continue does.
+    static func reroutePaysLnurl(outcome: PaykitRouteOutcome, walletType: WalletType, hasInvoice: Bool, hasLnurl: Bool) -> Bool {
+        outcome == .direct && walletType == .lightning && hasLnurl && !hasInvoice
+    }
+
+    /// A source the router refused on Confirm keeps the swipe off while it's selected, so nothing consumes the contact's
+    /// private list for a send with nothing to pay; another source is still payable. A late outcome for a source never
+    /// clears another one's refusal.
+    static func refusedRouteSource(after outcome: PaykitRouteOutcome, on walletType: WalletType, previous: WalletType?) -> WalletType? {
+        if outcome == .refused {
+            return walletType
+        }
+        if outcome == .stale {
+            return previous
+        }
+        return previous == walletType ? nil : previous
+    }
+
+    /// What Savings can send to the request's address after the on-chain fee; its balance while no fee rate is known.
+    private func savingsSendableSats() async -> UInt64 {
+        let balance = UInt64(max(0, wallet.spendableOnchainBalanceSats))
+        guard let address = app.scannedOnchainInvoice?.address, let rate = wallet.selectedFeeRateSatsPerVByte else { return balance }
+        return await (try? wallet.calculateMaxSendableAmount(address: address, satsPerVByte: rate)) ?? balance
+    }
+
+    static func requestStartsOnSpending(savingsSendableSats: UInt64, amountSats: UInt64, offersSparkLeg: Bool) -> Bool {
+        offersSparkLeg && savingsSendableSats < amountSats
+    }
+
+    /// Where a failed leg goes: a leg Spark refused before sending paid nothing, so its failure offers Try Again; any
+    /// other failure may have sent it, so it stays pending until Spark's journal settles it.
+    static func serviceLegFailureRoute(
+        _ error: Error,
+        attempt: SparkWithdrawalAttempt,
+        routingCacheResetAttempted: Bool
+    ) -> SendRoute {
+        guard let refusal = error as? SparkWithdrawalNotSent else {
+            return .sparkWithdrawalPending(attempt)
+        }
+        return .failure(SendFailureContext(
+            error: refusal.underlying,
+            retryRoute: .confirm,
+            routingCacheResetAttempted: routingCacheResetAttempted,
+            paymentRequest: nil
+        ))
+    }
+
+    /// Withdraws from Spark to the contact's on-chain address. A request it pays gets an on-chain proof with the
+    /// withdrawal's txid; the proof is started before the send, and Spark's journal settles it if the app stops mid-send.
+    private func performServiceRoutedPayment(_ leg: ServiceRouteLeg) async {
+        let paymentActivity = PaykitPaymentActivity.shared.begin()
+        defer { PaykitPaymentActivity.shared.end(paymentActivity) }
+        isSubmittingPayment = true
+        defer { isSubmittingPayment = false }
+        let context = app.contactPaymentContext
+        let request = context?.incomingPaymentRequest
+        var proofRequest: SparkContactWithdrawal.PaykitRequest?
+        var markProofStarted: (() async throws -> Void)?
+        do {
+            // The selected conversion quote's expiry bounds the send too, as on a direct send.
+            let paymentDeadline = try request?.submissionDeadline(quoteId: app.paykitPaymentTerms?.quoteId)
+            if let request {
+                guard let privateContext = context?.privatePaymentContext else { throw PaykitPaymentRequestError.requestUnavailable }
+                let identity = try await PaykitRouteService.startLegRequestProof(
+                    prepareProof: {
+                        try await PaykitPaymentProofService.shared.prepare(
+                            request: request,
+                            paymentAppId: privateContext.paymentAppId(for: leg.endpoint.methodId),
+                            paymentEndpointIdentifier: leg.endpoint.methodId,
+                            kind: .onchain,
+                            paymentTerms: app.paykitPaymentTerms
+                        )
+                    },
+                    prepareRequest: { try await prepareIncomingPaymentRequest() },
+                    paymentIdentity: { try await PaykitPaymentProofService.shared.onchainPaymentIdentity(requestId: request.id) },
+                    cancelProof: { await PaykitPaymentProofService.shared.cancelPreparation(request) },
+                    releasePaymentList: { await context?.resolvePrivatePaymentListConsumption(.definitePreBroadcastFailure) }
+                )
+                // The proof and the journal keep the list version this send consumed, so dropping the withdrawal as
+                // unsent gives the list back, also after a kill before the proof started.
+                let previousVersion = await PrivatePaykitService.shared.consumedPaymentListVersion(
+                    publicKey: request.counterparty,
+                    attemptId: context?.id
+                )
+                proofRequest = SparkContactWithdrawal.PaykitRequest(
+                    id: request.id,
+                    identity: identity,
+                    paymentList: privateContext.paymentListVersion.map {
+                        SparkContactWithdrawal.PaymentList(version: $0, previousVersion: previousVersion)
+                    }
+                )
+                // Spark's withdrawal runs this once its journal is written, so recovery owns the started proof.
+                markProofStarted = {
+                    try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(
+                        request,
+                        address: leg.endpoint.value,
+                        paymentIdentity: identity,
+                        privatePaymentListVersion: privateContext.paymentListVersion,
+                        previousPrivatePaymentListVersion: previousVersion,
+                        sparkWithdrawal: true
+                    )
+                }
+            }
+            let txid: String
+            do {
+                txid = try await PaykitRouteService.payReportingAllowance(
+                    beginAllowance: {
+                        guard let request else { return nil }
+                        return try await PaykitAllowanceExecutor.shared.beginManualPayment(
+                            request,
+                            paymentEndpointIdentifier: leg.endpoint.methodId
+                        )
+                    },
+                    authorize: {
+                        if let request {
+                            try await paykitPaymentRequestManager.ensurePaymentAllowed(request)
+                        }
+                    },
+                    markSending: { await PaykitAllowanceExecutor.shared.manualOnchainPaymentSending(attemptId: $0) },
+                    finishAllowance: {
+                        await PaykitAllowanceExecutor.shared.finishManualPayment(attemptId: $0, outcome: $1, transactionId: $2)
+                    }
+                ) { beforeSend in
+                    try await withoutActuallyEscaping(beforeSend) { beforeSend in
+                        try await PaykitRouteService.pay(
+                            leg,
+                            contact: context?.publicKey,
+                            request: proofRequest,
+                            tags: tagManager.selectedTagsArray,
+                            paymentDeadline: paymentDeadline,
+                            beforeSend: {
+                                try await markProofStarted?()
+                                try await beforeSend()
+                            }
+                        )
+                    }
+                }
+            } catch {
+                // Refused before Spark's send: nothing left, so this call's started proof goes. After it, the journal settles it.
+                let refusedBeforeSend = error is SparkWithdrawalNotSent
+                if let proofRequest, PaykitRouteService.legFailureReleasesProof(
+                    error,
+                    openJournalRequest: SparkManager.pendingContactWithdrawal?.request,
+                    proofRequest: proofRequest
+                ) {
+                    await PaykitPaymentProofService.shared.failSparkOnchainPayment(requestId: proofRequest.id, identity: proofRequest.identity)
+                }
+                if refusedBeforeSend, let request {
+                    // A refusal before the proof was marked started leaves it prepared; started proofs stay as they are.
+                    await PaykitPaymentProofService.shared.cancelPreparation(request)
+                }
+                await context?.resolvePrivatePaymentListConsumption(refusedBeforeSend ? .definitePreBroadcastFailure : .uncertain)
+                Logger.error("Service route payment failed: \(error)", context: "SendConfirmation")
+                navigationPath.append(Self.serviceLegFailureRoute(
+                    error,
+                    attempt: SparkWithdrawalAttempt(address: leg.endpoint.value, amountSats: leg.deliveredSat, requestId: request?.id),
+                    routingCacheResetAttempted: routingCacheResetAttempted
+                ))
+                return
+            }
+            await context?.resolvePrivatePaymentListConsumption(.succeeded)
+            Logger.info("Paid Paykit contact through \(leg.service) in \(txid)", context: "SendConfirmation")
+            navigationPath.append(.success(paymentId: txid))
+        } catch {
+            Logger.error("Service route payment failed: \(error)", context: "SendConfirmation")
+            navigationPath.append(.failure(SendFailureContext(
+                error: error,
+                retryRoute: .confirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: nil
+            )))
+        }
+    }
+
     private func performPayment(isAutomatic: Bool) async throws {
         let paymentActivity = PaykitPaymentActivity.shared.begin()
         defer { PaykitPaymentActivity.shared.end(paymentActivity) }
@@ -1364,6 +1704,10 @@ struct SendConfirmationView: View {
                 }
                 createdMetadataPaymentId = paymentHash
                 await createPreActivityMetadata(paymentId: paymentHash, paymentHash: paymentHash)
+                // Kept before the payment goes out, so a send recorded after the app was killed still names its contact.
+                if let contactPublicKey {
+                    ActivityService.sentPaymentContacts.remember(contactPublicKey, forPaymentHash: paymentHash)
+                }
 
                 // Perform the Lightning payment (10s timeout → navigate to pending for hold invoices)
                 // For invoices with a built-in amount, pass sats: nil so LDK uses the invoice's
@@ -1713,7 +2057,11 @@ struct SendConfirmationView: View {
     private func validatePayment() async -> [WarningType] {
         var warnings: [WarningType] = []
 
-        let amount: UInt64 = if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
+        // A Spark leg delivers its amount on-chain from Spending, so its amount and fee get the on-chain checks.
+        let leg = app.paykitRoute?.serviceLeg
+        let amount: UInt64 = if let leg {
+            leg.deliveredSat
+        } else if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
             wallet.sendAmountSats ?? invoice.amountSatoshis
         } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
             wallet.sendAmountSats ?? invoice.amountSatoshis
@@ -1740,13 +2088,14 @@ struct SendConfirmationView: View {
         }
 
         // Check if fee > $10 (only for onchain)
-        if app.selectedWalletToPayFrom == .onchain {
-            if let feeUsd = currency.convert(sats: UInt64(transactionFee), to: "USD"), feeUsd.value > 10.0 {
+        if leg != nil || app.selectedWalletToPayFrom == .onchain {
+            let fee = leg.map { $0.debitSat.saturatingSub($0.deliveredSat) } ?? UInt64(max(0, transactionFee))
+            if let feeUsd = currency.convert(sats: fee, to: "USD"), feeUsd.value > 10.0 {
                 warnings.append(.fee)
             }
 
             // Check if fee > 50% of send amount
-            if transactionFee > 0 && UInt64(transactionFee) > amount / 2 {
+            if fee > 0 && fee > amount / 2 {
                 warnings.append(.feePercentage)
             }
 
@@ -1867,8 +2216,7 @@ struct SendConfirmationView: View {
         }
         guard request.pricing.conversion != nil else { return false }
         let terms = try? request.payment(using: app.paykitPaymentMethod, quoteId: app.paykitPaymentTerms?.quoteId)
-        let minimumAmount = app.selectedWalletToPayFrom == .lightning ? (app.lnurlPayData?.minSendableSat ?? 1) : UInt64(Env.dustLimit)
-        let meetsMinimum = terms.map { $0.amount.atomic >= minimumAmount } == true
+        let meetsMinimum = terms.map { $0.amount.atomic >= app.paykitMinimumBitcoinAmount } == true
         if rebindMethod, !app.paykitUsesUsdt, !isSubmittingPayment,
            let previous = app.paykitPaymentTerms, previous.amount.asset == .btc, app.paykitReviewedAmount == previous.amount,
            let terms, terms.amount.asset == .btc, terms.isValid(at: Date()), meetsMinimum
@@ -2230,7 +2578,7 @@ struct SendConfirmationView: View {
     @MainActor
     private func calculateRoutingFee() async {
         guard !Task.isCancelled, !isAuthorizingPayment, !isSubmittingPayment, confirmationContext != nil else { return }
-        guard let bolt11 = app.scannedLightningInvoice?.bolt11 else {
+        guard app.paykitRoute?.serviceLeg == nil, let bolt11 = app.scannedLightningInvoice?.bolt11 else {
             wallet.resetRoutingFeeEstimate()
             return
         }
@@ -2243,4 +2591,45 @@ struct SendConfirmationView: View {
             wallet.resetRoutingFeeEstimate()
         }
     }
+}
+
+#Preview("Spark leg with a request note") {
+    let onchain = PaykitEndpoint(methodId: "btc-regtest-p2wpkh", value: "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x")
+    let leg = ServiceRouteLeg(
+        service: SparkManager.routeService,
+        endpoint: onchain,
+        deliveredSat: 20000,
+        debitSat: 22190,
+        atomicity: "trusted",
+        validUntilUnix: 0
+    )
+    ScrollView {
+        SendConfirmationView(
+            navigationPath: .constant([]),
+            isSubmittingPayment: .constant(false),
+            hwSend: HwSendCoordinator(walletId: nil),
+            requestPinCheck: { true },
+            prepareIncomingPaymentRequest: {},
+            routingCacheResetAttempted: false,
+            isAmountReviewRequired: .constant(false)
+        )
+        .paykitRouteView(
+            PaykitRouteUi(endpoints: [onchain], offersSparkLeg: true, serviceLeg: leg),
+            totalFeeSat: 2190,
+            note: "Dinner on Friday"
+        )
+        .padding(16)
+    }
+    .background(Color.black)
+    .environmentObject(AppViewModel())
+    .environmentObject(ActivityListViewModel())
+    .environmentObject(ContactsManager())
+    .environmentObject(CurrencyViewModel())
+    .environmentObject(FeeEstimatesManager())
+    .environmentObject(SettingsViewModel.shared)
+    .environmentObject(SheetViewModel())
+    .environmentObject(WalletViewModel())
+    .environmentObject(TagManager())
+    .environment(HwWalletManager())
+    .preferredColorScheme(.dark)
 }
