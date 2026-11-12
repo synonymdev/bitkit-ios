@@ -585,11 +585,12 @@ enum SparkExitMath {
     /// The most funding addresses one scan reads, even when a host reports every one used.
     static let fundingScanMaxAddresses: UInt32 = 1000
 
-    /// The funding index past the last one `isUsed` reports used, read from 0 until `fundingScanGapLimit` unused ones
-    /// follow it, for a wallet that kept no index, such as one restored from the phrase or an older backup.
-    static func scanNextFundingIndex(isUsed: (UInt32) async throws -> Bool) async rethrows -> UInt32 {
-        var next: UInt32 = 0
-        var index: UInt32 = 0
+    /// The funding index past the last one `isUsed` reports used, read from `start` until `fundingScanGapLimit` unused
+    /// ones follow it: from 0 for a wallet that kept no index, such as one restored from the phrase or an older backup,
+    /// and from a restored index, which can predate the last exit's funding.
+    static func scanNextFundingIndex(from start: UInt32 = 0, isUsed: (UInt32) async throws -> Bool) async rethrows -> UInt32 {
+        var next = start
+        var index = start
         while index < next + fundingScanGapLimit, index < fundingScanMaxAddresses {
             if try await isUsed(index) {
                 next = index + 1

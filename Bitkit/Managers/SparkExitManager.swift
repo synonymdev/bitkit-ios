@@ -1235,12 +1235,13 @@ final class SparkExitManager {
         return try await recoverFunding(recovery, now: now) ?? 0
     }
 
-    /// Finds earlier exits' funding after a restore. With no counter kept and no record, scans for the next index and
-    /// keeps it; with a counter a restore brought back, reads each funding address below it, once. Each funding address
-    /// that still holds coins and nothing watches is listed as kept change, so it is watched for good. Throws when a
-    /// read fails, keeping no counter and the restore pending, so it runs again on the next start.
+    /// Finds earlier exits' funding after a restore. Scans for the next index and keeps it: from 0 with no counter kept
+    /// and no record, else from the counter a restore brought back, reading each funding address below it once too.
+    /// Each funding address that still holds coins and nothing watches is listed as kept change, so it is watched for
+    /// good. Throws when a read or that listing fails, keeping no counter and the restore pending, so it runs again on
+    /// the next start.
     ///
-    /// Returns the index a scan found, nil when there was nothing to scan.
+    /// Returns the index the scan found, nil when no restore was pending.
     @discardableResult
     static func recoverFunding(_ recovery: FundingRecovery, now: Date) async throws -> UInt32? {
         let defaults = recovery.defaults
@@ -1257,17 +1258,16 @@ final class SparkExitManager {
             return found
         }
         var used: [UInt32] = []
-        var scanned: UInt32?
-        if kept == nil {
-            scanned = try await SparkExitMath.scanNextFundingIndex { index in
-                let isUsed = try await chain.isAddressUsed(address: funding(index).address)
-                if isUsed {
-                    used.append(index)
-                }
-                return isUsed
+        let restored = kept.map { UInt32(clamping: max(0, $0)) }
+        // A restored index can predate the last exit's funding, when its backup didn't land, so the scan goes on from it.
+        let scanned = try await SparkExitMath.scanNextFundingIndex(from: restored ?? 0) { index in
+            let isUsed = try await chain.isAddressUsed(address: funding(index).address)
+            if isUsed {
+                used.append(index)
             }
+            return isUsed
         }
-        let candidates = kept.map { Array(0 ..< UInt32(clamping: max(0, $0))) } ?? used
+        let candidates = restored.map { Array(0 ..< $0) + used } ?? used
         let watched = Set(((try? recovery.earlierAddressStore.load()) ?? []).map(\.address) + (recovery.record?.funding.map(\.address) ?? []))
         for index in candidates {
             let (address, path) = try funding(index)
@@ -1276,9 +1276,7 @@ final class SparkExitManager {
             guard sats > 0 else { continue }
             try recovery.earlierAddressStore.add(SparkExitEarlierAddress(address: address, path: path, kind: .keptChange, sats: sats, date: now))
         }
-        if let scanned {
-            defaults.set(max(defaults.integer(forKey: recovery.key), Int(scanned)), forKey: recovery.key)
-        }
+        defaults.set(max(defaults.integer(forKey: recovery.key), Int(scanned)), forKey: recovery.key)
         defaults.removeObject(forKey: recovery.pendingKey)
         return scanned
     }

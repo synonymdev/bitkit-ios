@@ -220,9 +220,22 @@ final class SparkExitFundingIndexTests: XCTestCase {
         try await SparkExitManager.recoverFunding(recovery, now: now)
 
         XCTAssertEqual(try earlierAddressStore.load(), [keptCoins(2, sats: 5000)], "the lost funding goes unwatched")
-        XCTAssertTrue(chain.addressReads.isEmpty, "a restored counter needs no scan for the next index")
+        XCTAssertEqual(chain.addressReads, (3 ..< 23).map(address), "a restored counter is scanned forward from, once")
         XCTAssertNil(defaults.object(forKey: pendingKey), "every start reads the funding addresses again")
         XCTAssertEqual(defaults.integer(forKey: key), 3)
+    }
+
+    func testARestoredCounterThatPredatesTheLastExitsFundingFindsItsCoins() async throws {
+        // The backup carrying counter 4 never landed: the exit that funded address 3 is lost with it.
+        SparkExitFundingIndexes.restore(["regtest/wallet0": 3], into: defaults)
+        chain.usedAddresses = [address(0), address(1), address(2), address(3)]
+        chain.utxosByAddress[address(3)] = [SparkExitFixtures.utxo("lost", value: 7000)]
+
+        let next = try await SparkExitManager.recoverFunding(recovery, now: now)
+
+        XCTAssertEqual(next, 4)
+        XCTAssertEqual(try earlierAddressStore.load(), [keptCoins(3, sats: 7000)], "address 3's coins stay hidden")
+        XCTAssertEqual(defaults.integer(forKey: key), 4, "the next exit reuses address 3")
     }
 
     func testAKeptCounterWithNoRestorePendingReadsNoFundingAddress() async throws {
