@@ -4,8 +4,8 @@ import SwiftUI
 enum SettingUpStage: Equatable {
     /// Spark has not seen the deposit yet; `normalSpeed` when it is added after 3 confirmations.
     case processing(normalSpeed: Bool)
-    /// Spark has seen the deposit.
-    case received
+    /// Spark has seen the deposit; `normalSpeed` when it is added after 3 confirmations.
+    case received(normalSpeed: Bool)
     /// The fast transfer fee rose above what the user approved.
     case feeChanged(feeSats: UInt64)
     /// No fast transfer for this deposit, so it is added at normal speed.
@@ -15,13 +15,17 @@ enum SettingUpStage: Equatable {
     /// The deposit reached the spending balance.
     case done
 
-    /// `approvedFee` once the user approved a changed fee, so the claim that follows doesn't step back to Received.
-    init(state: SparkClaimState, speed: SparkTransferSpeed, approvedFee: Bool = false) {
+    /// `isSeen` once Spark lists the deposit. `approvedFee` once the user approved a changed fee, so the claim that
+    /// follows doesn't step back to Received, and `hasWaited` once the user chose Wait over it.
+    init(state: SparkClaimState, isSeen: Bool = false, approvedFee: Bool = false, hasWaited: Bool = false) {
+        func seenOrProcessing(normalSpeed: Bool) -> SettingUpStage {
+            isSeen ? .received(normalSpeed: normalSpeed) : .processing(normalSpeed: normalSpeed)
+        }
         self = switch state {
-        case .looking: .processing(normalSpeed: speed == .later)
-        case .notSeen: .processing(normalSpeed: true)
-        case .later: speed == .later ? .processing(normalSpeed: true) : .adding(normalSpeed: true)
-        case .claiming: approvedFee ? .adding(normalSpeed: false) : .received
+        case .looking: approvedFee ? .adding(normalSpeed: false) : seenOrProcessing(normalSpeed: false)
+        case .notSeen: seenOrProcessing(normalSpeed: true)
+        case .later: hasWaited ? .adding(normalSpeed: true) : seenOrProcessing(normalSpeed: true)
+        case .claiming: approvedFee ? .adding(normalSpeed: false) : .received(normalSpeed: false)
         case .adding: .adding(normalSpeed: false)
         case let .repriced(feeSats): .feeChanged(feeSats: feeSats)
         case .unavailable: .fastUnavailable
@@ -60,7 +64,7 @@ enum SettingUpStage: Equatable {
     /// Whether the text says about 30 minutes rather than a few minutes.
     var isNormalSpeed: Bool {
         switch self {
-        case .processing(normalSpeed: true), .adding(normalSpeed: true), .fastUnavailable: true
+        case .processing(normalSpeed: true), .received(normalSpeed: true), .adding(normalSpeed: true), .fastUnavailable: true
         default: false
         }
     }
@@ -80,9 +84,15 @@ struct SettingUpView: View {
     @Environment(SparkTransferFlow.self) private var flow
 
     @State private var approvedFee = false
+    @State private var hasWaited = false
 
     private var stage: SettingUpStage {
-        SettingUpStage(state: flow.claimState, speed: flow.speed, approvedFee: approvedFee)
+        SettingUpStage(state: flow.claimState, isSeen: isDepositSeen, approvedFee: approvedFee, hasWaited: hasWaited)
+    }
+
+    private var isDepositSeen: Bool {
+        guard let txid = flow.txid else { return false }
+        return SparkManager.shared.deposits.contains { $0.isListed && $0.txid.caseInsensitiveCompare(txid) == .orderedSame }
     }
 
     var text: String {
@@ -159,6 +169,7 @@ struct SettingUpView: View {
     private var feeChangedButtons: some View {
         HStack(spacing: 16) {
             CustomButton(title: t("lightning__spark_deposit__wait_button"), variant: .secondary) {
+                hasWaited = true
                 flow.waitForConfirmations()
             }
             .accessibilityIdentifier("SparkDepositWait")

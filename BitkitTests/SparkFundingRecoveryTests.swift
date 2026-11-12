@@ -58,32 +58,39 @@ final class SparkFundingRecoveryTests: XCTestCase {
 
     /// Every deposit state shows one frame of the Funds In Transfer (spark) design, at the step that frame shows.
     func testSettingUpShowsTheDesignFrameForEveryState() {
-        let expected: [(SparkClaimState, SparkTransferSpeed, SettingUpStage, Int)] = [
-            (.looking, .instant, .processing(normalSpeed: false), 0),
-            (.later, .later, .processing(normalSpeed: true), 0),
-            (.notSeen, .instant, .processing(normalSpeed: true), 0),
-            (.claiming, .instant, .received, 1),
-            (.repriced(feeSats: 2134), .instant, .feeChanged(feeSats: 2134), 2),
-            (.unavailable, .instant, .fastUnavailable, 2),
-            (.later, .instant, .adding(normalSpeed: true), 2),
-            (.adding, .instant, .adding(normalSpeed: false), 2),
-            (.added, .instant, .done, 2),
+        let expected: [(SparkClaimState, Bool, SettingUpStage, Int)] = [
+            (.looking, false, .processing(normalSpeed: false), 0),
+            (.looking, true, .received(normalSpeed: false), 1),
+            (.later, false, .processing(normalSpeed: true), 0),
+            (.later, true, .received(normalSpeed: true), 1),
+            (.notSeen, false, .processing(normalSpeed: true), 0),
+            (.claiming, false, .received(normalSpeed: false), 1),
+            (.repriced(feeSats: 2134), true, .feeChanged(feeSats: 2134), 2),
+            (.unavailable, true, .fastUnavailable, 2),
+            (.adding, true, .adding(normalSpeed: false), 2),
+            (.added, true, .done, 2),
         ]
-        for (state, speed, stage, step) in expected {
-            let shown = SettingUpStage(state: state, speed: speed)
-            XCTAssertEqual(shown, stage, "\(state) at \(speed)")
-            XCTAssertEqual(shown.currentStep, step, "\(state) at \(speed)")
+        for (state, isSeen, stage, step) in expected {
+            let shown = SettingUpStage(state: state, isSeen: isSeen)
+            XCTAssertEqual(shown, stage, "\(state), seen \(isSeen)")
+            XCTAssertEqual(shown.currentStep, step, "\(state), seen \(isSeen)")
             XCTAssertEqual(shown.steps.count, 3, "\(state) shows three steps")
         }
     }
 
+    func testWaitingOverAChangedFeeShowsTheNormalSpeedOnTheLastStep() {
+        XCTAssertEqual(SettingUpStage(state: .later, isSeen: true, hasWaited: true), .adding(normalSpeed: true))
+    }
+
     func testApprovingAChangedFeeNeverStepsBackToPaymentSuccessful() {
-        XCTAssertEqual(SettingUpStage(state: .claiming, speed: .instant, approvedFee: true), .adding(normalSpeed: false))
+        XCTAssertEqual(SettingUpStage(state: .claiming, approvedFee: true), .adding(normalSpeed: false))
     }
 
     func testSettingUpSaysAboutThirtyMinutesOnlyAtNormalSpeed() {
-        let normal: [SettingUpStage] = [.processing(normalSpeed: true), .fastUnavailable, .adding(normalSpeed: true)]
-        let fast: [SettingUpStage] = [.processing(normalSpeed: false), .received, .adding(normalSpeed: false)]
+        let normal: [SettingUpStage] = [
+            .processing(normalSpeed: true), .received(normalSpeed: true), .fastUnavailable, .adding(normalSpeed: true),
+        ]
+        let fast: [SettingUpStage] = [.processing(normalSpeed: false), .received(normalSpeed: false), .adding(normalSpeed: false)]
         normal.forEach { XCTAssertTrue($0.isNormalSpeed, "\($0)") }
         fast.forEach { XCTAssertFalse($0.isNormalSpeed, "\($0)") }
     }

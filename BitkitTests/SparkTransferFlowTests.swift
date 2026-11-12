@@ -285,7 +285,7 @@ final class SparkTransferFlowTests: XCTestCase {
 
         flow.showDeposit(txid: "txid")
         XCTAssertEqual(flow.claimState, .later)
-        XCTAssertEqual(SettingUpStage(state: flow.claimState, speed: flow.speed), .adding(normalSpeed: true))
+        XCTAssertEqual(SettingUpStage(state: flow.claimState), .processing(normalSpeed: true))
 
         flow.noteSettled([SparkDeposit(txid: "txid", amountSats: 100_000, isClaimed: true)])
         XCTAssertEqual(flow.claimState, .added, "The opened deposit stayed in progress after Spark claimed it")

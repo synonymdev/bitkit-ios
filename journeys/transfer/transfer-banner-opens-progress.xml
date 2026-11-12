@@ -14,7 +14,7 @@
     <action>Tap "Later" (id "SpendingConfirmLater") and swipe the "Swipe To Transfer" handle (id "GRAB") fully to the right</action>
     <action>Verify the "Funds in transfer" screen (id "LightningSettingUp") opens, then tap "Continue Using Bitkit" (id "TransferSuccess-button")</action>
     <action>Verify Home shows the "TRANSFER IN PROGRESS" banner (id "ActivityBanner")</action>
-    <action>Tap the banner and verify "Funds in transfer" (id "LightningSettingUp") opens with "Payment Successful" as the current step and the speed (id "SettingUpSpeed") reading Later</action>
+    <action>Tap the banner and verify "Funds in transfer" (id "LightningSettingUp") opens at its current step: "Processing Payment", or "Payment Successful" once Spark lists the deposit, with "This should take about 30 minutes." (id "SettingUpText")</action>
     <action>Go back and verify the wallet home screen shows with the banner still visible</action>
     <action>Relaunch the app, tap the banner and verify the same screen and step open again</action>
     <action>Mine 3 blocks on the regtest and wait until the screen shows the transfer as done (id "TransferSuccess"); tap its button and verify Home no longer shows the banner</action>
