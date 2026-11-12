@@ -1057,6 +1057,9 @@
 "settings__status__spark__ready" = "Connected";
 "settings__status__spark__pending" = "Connecting...";
 "settings__status__spark__error" = "Offline";
+"settings__status__exit__title" = "Emergency Exit";
+"settings__status__exit__pending" = "In progress";
+"settings__status__exit__funding" = "Fee funding needed";
 "settings__status__backup__title" = "Latest Full Data Backup";
 "settings__status__backup__ready" = "Backed up";
 "settings__status__backup__pending" = "Backing up...";

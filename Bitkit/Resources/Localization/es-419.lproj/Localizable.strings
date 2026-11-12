@@ -1044,6 +1044,9 @@
 "settings__status__spark__ready" = "Conectado";
 "settings__status__spark__pending" = "Conectando...";
 "settings__status__spark__error" = "Sin conexión";
+"settings__status__exit__title" = "Salida de emergencia";
+"settings__status__exit__pending" = "En curso";
+"settings__status__exit__funding" = "Fondos para comisiones necesarios";
 "settings__status__backup__title" = "Última copia de seguridad completa de los datos";
 "settings__status__backup__ready" = "Copia de seguridad";
 "settings__status__backup__pending" = "Respaldando...";

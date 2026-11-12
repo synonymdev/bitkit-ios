@@ -980,6 +980,9 @@
 "settings__status__spark__ready" = "Connectat";
 "settings__status__spark__pending" = "Conectant ...";
 "settings__status__spark__error" = "Fora de línia";
+"settings__status__exit__title" = "Sortida d'emergència";
+"settings__status__exit__pending" = "En curs";
+"settings__status__exit__funding" = "Finançament de comissions necessari";
 "settings__status__backup__title" = "Última còpia de seguretat completa de dades";
 "settings__status__backup__error" = "No s\'ha pogut completar una còpia de seguretat completa";
 "settings__adv__section_debug" = "Debug";

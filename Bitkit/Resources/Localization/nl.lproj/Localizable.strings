@@ -1041,6 +1041,9 @@
 "settings__status__spark__ready" = "Aangesloten";
 "settings__status__spark__pending" = "Aansluiten...";
 "settings__status__spark__error" = "Offline";
+"settings__status__exit__title" = "Nooduitgang";
+"settings__status__exit__pending" = "Bezig";
+"settings__status__exit__funding" = "Benodigde vergoedingsdekking";
 "settings__status__backup__title" = "Laatste volledige gegevensback-up";
 "settings__status__backup__ready" = "Back-up klaar";
 "settings__status__backup__pending" = "Een back-up maken...";

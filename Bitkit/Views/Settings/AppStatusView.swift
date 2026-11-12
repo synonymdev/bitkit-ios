@@ -20,6 +20,7 @@ struct AppStatusView: View {
                     nodeStatusRow
                     channelsStatusRow
                     sparkStatusRow
+                    exitStatusRow
                     backupStatusRow
                 }
             }
@@ -151,6 +152,23 @@ struct AppStatusView: View {
             )
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("Status-spark")
+        }
+    }
+
+    @ViewBuilder
+    private var exitStatusRow: some View {
+        if let step = AppStatusHelper.exitStep(record: SparkExitManager.shared.record, fundingState: SparkExitManager.shared.fundingState) {
+            StatusRow(
+                imageName: "warning",
+                title: t("settings__status__exit__title"),
+                description: t("settings__status__exit__\(step.rawValue)"),
+                status: .pending,
+                onTap: {
+                    navigation.navigate(.sparkExitProgress)
+                }
+            )
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("Status-spark_exit")
         }
     }
 

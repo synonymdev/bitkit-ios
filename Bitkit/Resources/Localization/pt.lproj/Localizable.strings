@@ -928,6 +928,9 @@
 "settings__status__spark__ready" = "Conectado";
 "settings__status__spark__pending" = "Conectando...";
 "settings__status__spark__error" = "Offline";
+"settings__status__exit__title" = "Saída de Emergência";
+"settings__status__exit__pending" = "Em curso";
+"settings__status__exit__funding" = "Fundos para taxas necessários";
 "settings__status__backup__title" = "Último Backup Completo";
 "settings__status__backup__error" = "Falha ao concluir backup";
 "settings__adv__section_debug" = "Debug";
