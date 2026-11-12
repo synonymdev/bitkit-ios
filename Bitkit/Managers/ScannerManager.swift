@@ -316,8 +316,9 @@ class ScannerManager: ObservableObject {
     /// - Returns: false when the request was not taken (refused, or another scan is being handled), so the caller
     ///   can keep listening.
     @discardableResult
-    func handleNearbyRequest(_ uri: String, context: ScannerContext, isCurrent: () -> Bool = { true }) async -> Bool {
+    func handleNearbyRequest(_ request: String, context: ScannerContext, isCurrent: () -> Bool = { true }) async -> Bool {
         guard let app, context == .main || context == .send else { return false }
+        let uri = ScannedPaymentRequest.normalized(request)
         guard Self.isNearbyPaymentRequest(uri) else {
             showUnsupportedQRCodeError()
             return false
@@ -341,11 +342,12 @@ class ScannerManager: ObservableObject {
     /// Send-sheet variant of `handleNearbyRequest`.
     @discardableResult
     func handleSendNearbyRequest(
-        _ uri: String,
+        _ request: String,
         scope: ScanHandlingScope = .unrestricted,
         isCurrent: () -> Bool = { true },
         completion: @escaping (SendRoute?) -> Void
     ) async -> Bool {
+        let uri = ScannedPaymentRequest.normalized(request)
         guard let app, Self.isNearbyPaymentRequest(uri) else {
             showUnsupportedQRCodeError()
             completion(nil)
@@ -370,7 +372,8 @@ class ScannerManager: ObservableObject {
 
     private func readNfcPaymentRequest() async -> String? {
         do {
-            return try await nfcReader.readPaymentRequest(alertMessage: t("other__nfc_alert"))
+            let request = try await nfcReader.readPaymentRequest(alertMessage: t("other__nfc_alert"))
+            return ScannedPaymentRequest.normalized(request)
         } catch let error as NfcReadError {
             Logger.warn("NFC read failed: \(error)", context: "ScannerManager")
             showNfcReadError(error)

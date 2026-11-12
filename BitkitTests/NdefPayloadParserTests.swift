@@ -9,6 +9,17 @@ final class NdefPayloadParserTests: XCTestCase {
         XCTAssertEqual(NdefPayloadParser.paymentRequest(from: [record]), .success("lightning:\(invoice)"))
     }
 
+    func testSquareRegisterUriRecordIsReadAsIs() {
+        let record = uriRecord(code: 0x00, PosNfcFixtures.squareUri)
+        XCTAssertEqual(record.payload.count, 0x1CA)
+        XCTAssertEqual(NdefPayloadParser.paymentRequest(from: [record]), .success(PosNfcFixtures.squareUri))
+    }
+
+    func testNumoBip321UriRecordIsReadAsIs() {
+        let record = uriRecord(code: 0x00, PosNfcFixtures.bip321Uri)
+        XCTAssertEqual(NdefPayloadParser.paymentRequest(from: [record]), .success(PosNfcFixtures.bip321Uri))
+    }
+
     func testUriRecordExpandsPrefixCode() {
         let record = uriRecord(code: 0x04, "example.com/lnurlp/alice")
         XCTAssertEqual(NdefPayloadParser.decode(record), "https://example.com/lnurlp/alice")

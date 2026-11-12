@@ -464,7 +464,8 @@ extension ScannerManagerTests {
 
     func testNearbyAllowlistAcceptsPaymentSchemesOnly() {
         for uri in ["bitcoin:bcrt1qexample", "BITCOIN:BCRT1Q", "lightning:lnbcrt1", "LIGHTNING:LNURL1DP68", "ethereum:0xabc@42161",
-                    "lnurlp://example.com/pay", " bitcoin:bcrt1q?lightning=lnbcrt1 "]
+                    "lnurlp://example.com/pay", " bitcoin:bcrt1q?lightning=lnbcrt1 ",
+                    PosNfcFixtures.squareUri, PosNfcFixtures.bip321Uri]
         {
             XCTAssertTrue(ScannerManager.isNearbyPaymentRequest(uri), uri)
         }
