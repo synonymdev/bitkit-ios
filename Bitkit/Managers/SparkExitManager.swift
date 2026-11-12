@@ -976,7 +976,8 @@ final class SparkExitManager {
             markSettled: { try? await transfers.markSettled(id: $0) }
         )
         UserDefaults.standard.set(walletIndex, forKey: Self.walletIndexKey)
-        UserDefaults.standard.set(Int(fundingIndex) + 1, forKey: fundingIndexKey)
+        // Never lowers a counter a restore's scan moved past this quote's index.
+        UserDefaults.standard.set(max(UserDefaults.standard.integer(forKey: fundingIndexKey), Int(fundingIndex) + 1), forKey: fundingIndexKey)
         SettingsViewModel.shared.notifyAppStateChanged()
         pendingFundingIndex = nil
         startingCreatedAt = record.createdAt
@@ -1188,8 +1189,9 @@ final class SparkExitManager {
     /// The funding key index of the next exit: one no exit of this wallet used, so leftover of an earlier exit never
     /// mixes into a new one. A scan's result rides the next metadata backup.
     private func nextFundingIndex() async throws -> UInt32 {
-        let wasKept = UserDefaults.standard.object(forKey: fundingIndexKey) != nil
-        let index = try await Self.nextFundingIndex(fundingRecovery, now: Date())
+        let recovery = fundingRecovery
+        let wasKept = recovery.defaults.object(forKey: recovery.key) != nil && !recovery.defaults.bool(forKey: recovery.pendingKey)
+        let index = try await Self.nextFundingIndex(recovery, now: Date())
         if !wasKept {
             SettingsViewModel.shared.notifyAppStateChanged()
         }
@@ -1224,15 +1226,12 @@ final class SparkExitManager {
         )
     }
 
-    /// From the counter the last start left and the stored record. With neither, as after a restore from the phrase or
-    /// from a backup older than the counter, from a scan of the funding addresses first. A scan the chain fails keeps
-    /// nothing.
+    /// From the counter the last start left and the stored record. While a restore is pending, as after a restore from
+    /// the phrase or from a backup, from a scan of the funding addresses first: a restored counter can predate the last
+    /// exit's funding. A scan the chain fails throws and keeps nothing, so no quote reuses that funding address.
     static func nextFundingIndex(_ recovery: FundingRecovery, now: Date) async throws -> UInt32 {
-        let defaults = recovery.defaults
-        if defaults.object(forKey: recovery.key) != nil || recovery.record != nil {
-            return SparkExitMath.nextFundingIndex(counter: defaults.integer(forKey: recovery.key), record: recovery.record)
-        }
-        return try await recoverFunding(recovery, now: now) ?? 0
+        try await recoverFunding(recovery, now: now)
+        return SparkExitMath.nextFundingIndex(counter: recovery.defaults.integer(forKey: recovery.key), record: recovery.record)
     }
 
     /// Finds earlier exits' funding after a restore. Scans for the next index and keeps it: from 0 with no counter kept
@@ -1268,7 +1267,10 @@ final class SparkExitManager {
             return isUsed
         }
         let candidates = restored.map { Array(0 ..< $0) + used } ?? used
-        let watched = Set(((try? recovery.earlierAddressStore.load()) ?? []).map(\.address) + (recovery.record?.funding.map(\.address) ?? []))
+        // A forgotten exit's funding address is no longer watched once the scan moves the counter past it, so one that
+        // holds coins is listed again, as kept change.
+        let listed = ((try? recovery.earlierAddressStore.load()) ?? []).filter { $0.kind != .cancelledFunding }
+        let watched = Set(listed.map(\.address) + (recovery.record?.funding.map(\.address) ?? []))
         for index in candidates {
             let (address, path) = try funding(index)
             guard !watched.contains(address) else { continue }

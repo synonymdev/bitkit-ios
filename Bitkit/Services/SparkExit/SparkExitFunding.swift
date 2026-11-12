@@ -582,7 +582,7 @@ enum SparkExitMath {
 
     /// Unused funding addresses a scan reads past the last used one before it stops.
     static let fundingScanGapLimit: UInt32 = 20
-    /// The most funding addresses one scan reads, even when a host reports every one used.
+    /// The most funding addresses one scan reads from where it starts, even when a host reports every one used.
     static let fundingScanMaxAddresses: UInt32 = 1000
 
     /// The funding index past the last one `isUsed` reports used, read from `start` until `fundingScanGapLimit` unused
@@ -591,7 +591,9 @@ enum SparkExitMath {
     static func scanNextFundingIndex(from start: UInt32 = 0, isUsed: (UInt32) async throws -> Bool) async rethrows -> UInt32 {
         var next = start
         var index = start
-        while index < next + fundingScanGapLimit, index < fundingScanMaxAddresses {
+        let end = start.addingReportingOverflow(fundingScanMaxAddresses)
+        let limit = end.overflow ? UInt32.max : end.partialValue
+        while index < next + fundingScanGapLimit, index < limit {
             if try await isUsed(index) {
                 next = index + 1
             }
@@ -746,7 +748,8 @@ enum SparkExitFundingIndexes {
             let defaultsKey = defaultsKey(network: String(parts[0]), walletIndex: wallet)
             let local = defaults.object(forKey: defaultsKey) as? Int ?? 0
             defaults.set(max(local, index), forKey: defaultsKey)
-            // The exit then looks once for funding addresses below it that still hold coins and nothing watches.
+            // The exit then looks once for funding addresses that still hold coins and nothing watches: each one below
+            // it, and those a scan forward from it finds used, which also moves the counter past them.
             defaults.set(true, forKey: recoveryPendingKey(network: String(parts[0]), walletIndex: wallet))
         }
     }
