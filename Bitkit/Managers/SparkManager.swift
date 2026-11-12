@@ -1966,6 +1966,13 @@ struct SparkDeposit: Identifiable, Equatable {
     }
 }
 
+extension [SparkDeposit] {
+    /// The deposit whose progress the transfer banner opens: the first one Spark has not claimed yet.
+    var inProgressTxid: String? {
+        first { !$0.isClaimed }?.txid
+    }
+}
+
 /// How a deposit into Spark can be claimed. The provider decides per deposit whether to credit it early, at 0
 /// confirmations or 1-2, for a fee above the standard claim's at 3 confirmations.
 struct SparkClaimOffer: Equatable {
