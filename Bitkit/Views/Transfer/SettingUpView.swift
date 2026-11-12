@@ -25,9 +25,10 @@ struct SettingUpView: View {
     }
 
     var text: String {
-        switch state {
+        guard isTransferring else { return t("lightning__transfer_success__text_spending") }
+        return switch state {
         case .looking: t("lightning__spark_deposit__looking")
-        case .claiming, .adding: t("lightning__spark_deposit__claimed")
+        case .claiming, .adding, .added: t("lightning__spark_deposit__claimed")
         case let .repriced(feeSats): t("lightning__spark_deposit__repriced", variables: ["fee": currency.primaryAmountText(sats: feeSats)])
         case .unavailable: t("lightning__spark_deposit__instant_unavailable")
         case .later: t("lightning__spark_deposit__standard", variables: [
@@ -61,11 +62,12 @@ struct SettingUpView: View {
         t("lightning__setting_up_step_spark"),
     ]
 
-    private var currentStep: Int {
+    /// The index of the step in progress; every step is done once the deposit is added.
+    static func currentStep(for state: SparkClaimState) -> Int {
         switch state {
-        case .looking, .notSeen: 1
-        case .claiming, .repriced, .unavailable, .later: 2
-        case .adding: 3
+        case .looking, .notSeen, .later: 1
+        case .claiming, .adding, .repriced, .unavailable: 2
+        case .added: 3
         }
     }
 
@@ -76,7 +78,7 @@ struct SettingUpView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 DisplayText(title, accentColor: .purpleAccent)
-                    .padding(.bottom, 14)
+                    .padding(.bottom, 8)
                     .layoutPriority(1)
 
                 BodyMText(text, accentColor: .white, accentFont: Fonts.bold)
@@ -107,7 +109,7 @@ struct SettingUpView: View {
                 Spacer()
 
                 if isTransferring {
-                    ProgressSteps(steps: steps, currentStep: currentStep)
+                    ProgressSteps(steps: steps, currentStep: Self.currentStep(for: state))
                         .padding(.vertical, 16)
                 }
 
@@ -150,12 +152,16 @@ struct SettingUpView: View {
     settingUpPreview(.looking)
 }
 
-#Preview("Adding") {
+#Preview("Claiming") {
     settingUpPreview(.claiming)
 }
 
-#Preview("Done") {
+#Preview("Adding") {
     settingUpPreview(.adding)
+}
+
+#Preview("Done") {
+    settingUpPreview(.added)
 }
 
 #Preview("Repriced") {

@@ -241,7 +241,6 @@
 "lightning__spending_confirm__amount" = "Do výdajů";
 "lightning__spending_confirm__total" = "Celkem";
 "lightning__spending_confirm__spending_fee" = "Spending fee";
-"lightning__spending_confirm__up_to" = "up to";
 "lightning__spending_confirm__instant_text" = "Ready in a few minutes";
 "lightning__spending_confirm__later" = "Later";
 "lightning__spending_confirm__later_text" = "After 3 confirmations, about 30 minutes";
@@ -278,6 +277,7 @@
 "lightning__savings_spark_failed__toast" = "Převod Spark selhal";
 "lightning__transfer_success__nav_title" = "Přenos úspěšný";
 "lightning__transfer_success__title_spending" = "Prostředky převedeny\n<accent>do výdajů</accent>";
+"lightning__transfer_success__text_spending" = "Vaše prostředky byly převedeny a disponibilní zůstatek je připraven k použití.";
 "lightning__transfer_success__title_savings" = "Prostředky převedeny\n<accent>do úspor</accent>";
 "lightning__transfer_success__text_savings" = "Vaše prostředky byly převedeny. Tyto prostředky můžete okamžitě použít.";
 "lightning__external__nav_title" = "Připojení lightning";
@@ -362,7 +362,7 @@
 "lightning__spark_deposit__wait_button" = "Počkat";
 "lightning__spark_deposit__waiting" = "Spark ji připíše na váš zůstatek k utrácení {when}.";
 "lightning__spark_deposit__waiting_next" = "Spark ji připíše na váš zůstatek k utrácení po dalším potvrzení.";
-"lightning__spark_deposit__repriced" = "Instant now costs {fee}. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
+"lightning__spark_deposit__repriced" = "Instant now costs <accent>{fee}</accent>. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__pay" = "Pay {fee}";
 "lightning__spark_deposit__instant_unavailable" = "Instant isn't available for this transfer. Spark adds it to your spending balance after 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__not_seen" = "Spark hasn't seen your transfer yet. It's added after 3 confirmations; you can leave this screen.";
@@ -417,10 +417,8 @@
 "lightning__spark_exit__leftover_swept" = "{amount} zbývajícího krytí poplatků bylo odesláno do úspor.";
 "lightning__spark_exit__leftover_sending" = "Odesíláme {amount} zbývajícího krytí poplatků do úspor.";
 "lightning__spark_exit__leftover_dust" = "{amount} zbývajícího krytí poplatků je příliš málo k odeslání a zůstává na adrese {address}, derivační cesta {path}.";
-"lightning__spark_exit__leftover_txid" = "ID transakce: {txid}";
 "lightning__spark_exit__fund_paid" = "Zaplaceno z úspor, čeká se na potvrzení.";
 "lightning__spark_exit__fund_pending" = "Platba zaznamenána, čeká se na potvrzení.";
-"lightning__spark_exit__funding_txid" = "ID transakce: {txid}";
 "lightning__spark_exit__lost_leaves" = "{amount} si on-chain nárokoval dřívější vlastník těchto prostředků a nelze to získat zpět.";
 "lightning__spark_exit__notification_lost" = "{amount} z vašeho výstupu nelze získat zpět. Otevřete Bitkit a zjistěte proč.";
 "lightning__spark_exit__notification_failed" = "Váš nouzový výstup se zastavil. Otevřete Bitkit a zjistěte proč.";
@@ -443,7 +441,6 @@
 "lightning__spark_exit__waiting_leaves" = "Část tohoto výstupu teď nelze na blockchainu načíst. Bitkit to bude zkoušet znovu až týden.";
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit nedokázal načíst uložený postup tohoto výstupu, proto ho obnovuje z blockchainu.";
 "lightning__spark_exit__done_received" = "{amount} dorazilo do vašich úspor.";
-"lightning__spark_exit__sweep_txid" = "ID transakce: {txid}";
 "lightning__spark_exit__leftover_rejected" = "{amount} zbývajícího krytí poplatků se nepodařilo odeslat a zůstává na adrese {address}, derivační cesta {path}.";
 "lightning__spark_exit__notification_not_moving" = "Váš nouzový výstup nepostupuje. Otevřete Bitkit a zjistěte proč.";
 "lightning__spark_exit__funding_split" = "Bitkit ji rozdělí na {count} částí, jednu pro každý krok, aby jeden zaseknutý krok nezdržel ostatní.";
@@ -452,7 +449,6 @@
 "lightning__spark_exit__fee_bump_button" = "Zaplatit vyšší poplatek";
 "lightning__spark_exit__fee_bump_title" = "Zaplatit\n<accent>vyšší poplatek</accent>";
 "lightning__spark_exit__fee_bump_text" = "Tento výstup platí <accent>{rate} sat/vB</accent>, méně, než síť nyní požaduje. Zvolte vyšší sazbu a Bitkit čekající kroky odešle znovu. Rozdíl zaplatí z úspor: částku uvedenou u každé rychlosti.";
-"lightning__spark_exit__fee_bump_loading" = "Zjišťujeme, kolik stojí vyšší poplatek…";
 "lightning__spark_exit__fee_bump_error" = "Cenu vyššího poplatku se nepodařilo zjistit. Zkuste to znovu.";
 "lightning__spark_exit__fee_bump_confirm" = "Použít tento poplatek";
 "lightning__spark_exit__leftover_waiting" = "{amount} vrácených poplatků dorazí do vašich úspor, až síťové poplatky klesnou.";
@@ -1386,6 +1382,9 @@
 "wallet__send_sync_long_title" = "<accent>Problémy</accent>\ns připojením";
 "wallet__send_sync_long_description" = "Zdá se, že jste odpojeni. Zkontrolujte prosím připojení. Bitkit se bude každých několik sekund pokoušet znovu připojit.";
 "wallet__send_to" = "Komu";
+"wallet__send_swap_route" = "Trasa";
+"wallet__send_paykit_no_route__title" = "Tomuto kontaktu nelze zaplatit";
+"wallet__send_paykit_no_route__description" = "Tento kontakt teď nemá žádný platební způsob, který by Bitkit mohl použít.";
 "wallet__recipient_contact" = "Kontakt";
 "wallet__recipient_invoice" = "Vložit fakturu";
 "wallet__recipient_manual" = "Zadat ručně";

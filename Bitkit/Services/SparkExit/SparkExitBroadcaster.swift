@@ -45,6 +45,25 @@ enum SparkExitBroadcastOutcome: Equatable {
 /// regtest mempool does: a missing target falls back to the next one estimated, the nearest longer one first, and
 /// with none at all to the 1 sat/vB relay floor, so no step fails for want of an estimate.
 enum SparkExitFeeEstimates {
+    /// A host's answer with rates but none usable: the estimate is unavailable, as when the host can't be read.
+    struct Unusable: Error {}
+
+    /// The estimates a host answered, less any rate that is not finite, not above 0 or above `maxRate`; throws when
+    /// it answered rates and none is usable.
+    static func validated(_ estimates: [String: Double]) throws -> [String: Double] {
+        let usable = estimates.filter { isUsable($0.value) }
+        guard usable.isEmpty, !estimates.isEmpty else { return usable }
+        Logger.warn("Spark exit fee estimates had no usable rate: \(estimates)", context: "SparkExitFeeEstimates")
+        throw Unusable()
+    }
+
+    /// The most a rate may be, in sat/vB: anything above is a faulty host, never converted.
+    static let maxRate: Double = 10000
+
+    private static func isUsable(_ rate: Double) -> Bool {
+        rate.isFinite && rate > 0 && rate <= maxRate
+    }
+
     static func rate(_ estimates: [String: Double], target: Int) -> UInt64 {
         let targets = parsed(estimates)
         guard let value = (targets.first { $0.target >= target } ?? targets.last)?.rate else { return SparkExitMath.minRelayFeeRate }
@@ -57,7 +76,9 @@ enum SparkExitFeeEstimates {
     }
 
     private static func parsed(_ estimates: [String: Double]) -> [(target: Int, rate: Double)] {
-        estimates.compactMap { key, value in Int(key).map { (target: $0, rate: value) } }.sorted { $0.target < $1.target }
+        estimates.filter { isUsable($0.value) }
+            .compactMap { key, value in Int(key).map { (target: $0, rate: value) } }
+            .sorted { $0.target < $1.target }
     }
 
     private static func rounded(_ rate: Double) -> UInt64 {
@@ -69,6 +90,8 @@ enum SparkExitFeeEstimates {
 protocol SparkExitChain: Sendable {
     func tipHeight() async throws -> UInt32
     func utxos(address: String) async throws -> [EsploraUtxo]
+    /// Whether the address has any transaction, in a block or the mempool, from `/address/{address}`.
+    func isAddressUsed(address: String) async throws -> Bool
     func txStatus(txid: String) async throws -> EsploraTxStatus
     /// Whether the transaction is in a block or in the mempool; false once every host answers it has no such
     /// transaction.
@@ -126,8 +149,12 @@ struct EsploraSparkExitChain: SparkExitChain {
 
     /// On mainnet the chain service Spark connects with (`Env.sparkChainServiceUrl`) answers every read and takes
     /// broadcasts first, on its `/txs/package` (no `/v1`); the SDK's default hosts stay as broadcast fallbacks. On
-    /// regtest the SDK's default host (breez spark-sdk `default_rest_chain_services`) does both.
-    static func network(_ network: BreezSdkSpark.Network) -> EsploraSparkExitChain {
+    /// regtest the chain service Spark connects with, `regtestChainServiceUrl` (`SPARK_CHAIN_SERVICE_URL`), does both,
+    /// else the SDK's default host (breez spark-sdk `default_rest_chain_services`).
+    static func network(
+        _ network: BreezSdkSpark.Network,
+        regtestChainServiceUrl: String? = Env.sparkChainServiceUrl(for: .regtest)
+    ) -> EsploraSparkExitChain {
         switch network {
         case .mainnet:
             let electrs = URL(string: Env.sparkChainServiceUrl(for: .bitcoin)!)!
@@ -140,7 +167,8 @@ struct EsploraSparkExitChain: SparkExitChain {
                 ]
             )
         case .regtest:
-            return EsploraSparkExitChain(hosts: [URL(string: "https://regtest-mempool.us-west-2.sparkinfra.net/api")!])
+            let configured = regtestChainServiceUrl.flatMap(URL.init(string:))
+            return EsploraSparkExitChain(hosts: [configured ?? URL(string: "https://regtest-mempool.us-west-2.sparkinfra.net/api")!])
         default:
             return EsploraSparkExitChain(hosts: [])
         }
@@ -158,6 +186,27 @@ struct EsploraSparkExitChain: SparkExitChain {
         try await JSONDecoder().decode([EsploraUtxo].self, from: get("/address/\(address)/utxo"))
     }
 
+    func isAddressUsed(address: String) async throws -> Bool {
+        struct Stats: Decodable {
+            let txCount: Int
+
+            enum CodingKeys: String, CodingKey {
+                case txCount = "tx_count"
+            }
+        }
+        struct Address: Decodable {
+            let chainStats: Stats
+            let mempoolStats: Stats
+
+            enum CodingKeys: String, CodingKey {
+                case chainStats = "chain_stats"
+                case mempoolStats = "mempool_stats"
+            }
+        }
+        let stats = try await JSONDecoder().decode(Address.self, from: get("/address/\(address)"))
+        return stats.chainStats.txCount + stats.mempoolStats.txCount > 0
+    }
+
     func txStatus(txid: String) async throws -> EsploraTxStatus {
         try await JSONDecoder().decode(EsploraTxStatus.self, from: get("/tx/\(txid)/status"))
     }
@@ -168,7 +217,7 @@ struct EsploraSparkExitChain: SparkExitChain {
     }
 
     private func estimates() async throws -> [String: Double] {
-        try await JSONDecoder().decode([String: Double].self, from: get("/fee-estimates"))
+        try await SparkExitFeeEstimates.validated(JSONDecoder().decode([String: Double].self, from: get("/fee-estimates")))
     }
 
     /// esplora's targets of one and three blocks, mempool's `fastestFee` and `halfHourFee`.
@@ -286,6 +335,8 @@ enum SparkExitBroadcastClassifier {
         "txn-already-known",
         "txn-same-nonwitness-data-in-mempool",
         "already in block chain",
+        // Core's newer wording, which esplora hosts pass on as plain text.
+        "already in utxo set",
     ]
     private static let notMatureMessages = ["non-BIP68-final", "non-final"]
     private static let missingInputMessages = ["bad-txns-inputs-missingorspent", "missing-inputs", "missingorspent"]
@@ -393,8 +444,9 @@ enum SparkExitBroadcastClassifier {
         return .rejected(text)
     }
 
-    /// The RPC code, also when the node's error sits JSON-escaped inside mempool's own error object.
+    /// The RPC code, also when the node's error sits JSON-escaped inside mempool's own error object, or as esplora's
+    /// plain text (`sendrawtransaction RPC error -27: …`).
     private static func hasRpcCode(_ code: Int, in text: String) -> Bool {
-        text.range(of: #"code\\?"\s*:\s*\#(code)\b"#, options: .regularExpression) != nil
+        text.range(of: #"(code\\?"\s*:\s*|RPC error )\#(code)\b"#, options: .regularExpression) != nil
     }
 }

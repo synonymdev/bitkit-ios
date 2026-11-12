@@ -118,6 +118,46 @@ final class SparkExitBackupTests: XCTestCase {
         XCTAssertEqual(uploads, ["SPARK_EXIT"])
     }
 
+    func testAnExitStateSparkHasNotImportedYetBlocksReplacingTheRemoteBackup() async throws {
+        let suite = "SparkExitBackupTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let staged = Env.sparkExitRestore(walletIndex: LightningService.shared.currentWalletIndex)
+        try FileManager.default.createDirectory(at: staged.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("restored".utf8).write(to: staged)
+        defer { try? FileManager.default.removeItem(at: staged) }
+        let export = try JSONEncoder().encode(SparkExitBackupV1(version: 1, createdAt: 1000, network: "regtest", exitState: "fresh"))
+        var uploads: [String] = []
+        let service = BackupService(defaults: defaults, backupData: { _ in export }, uploadBackup: { key, _ in uploads.append(key) })
+
+        _ = await service.triggerBackup(category: .sparkExit)
+
+        XCTAssertTrue(uploads.isEmpty, "A fresh export replaced the remote backup whose exit data Spark hasn't imported")
+    }
+
+    func testAnUnreadableRemoteExitBackupBacksOffInsteadOfRetryingEveryFewSeconds() async throws {
+        let suite = "SparkExitBackupTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let export = try JSONEncoder().encode(SparkExitBackupV1(version: 1, createdAt: 1000, network: "regtest", exitState: "fresh"))
+        let service = BackupService(
+            defaults: defaults,
+            backupData: { _ in export },
+            uploadBackup: { _, _ in },
+            fetchBackup: { _ in Data("not an exit backup".utf8) }
+        )
+
+        await service.restoreSparkExit()
+        let outcome = await service.triggerBackup(category: .sparkExit)
+
+        XCTAssertEqual(outcome, .temporarilyUnavailable)
+    }
+
+    func testTheLatestBackupTimeSkipsTheExitData() {
+        XCTAssertFalse(BackupService.latestBackupTimeCategories.contains(.sparkExit), "Reading the time downloads the exit data")
+        XCTAssertTrue(BackupService.latestBackupTimeCategories.contains(.wallet))
+    }
+
     func testStagesARestoredExitStateUntilSparkConnects() async throws {
         guard Env.network == .regtest else { throw XCTSkip("Spark's test network is regtest") }
         let backup = SparkExitBackupV1(version: 1, createdAt: 1000, network: "regtest", exitState: "state")

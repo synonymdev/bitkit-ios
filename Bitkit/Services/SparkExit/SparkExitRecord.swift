@@ -186,6 +186,11 @@ struct SparkExitRecord: Codable, Equatable {
     var leafIds: [String]
     /// What the quote's leaves hold together, for telling how much of the Spark balance is outside the exit.
     var leafTotalSats: UInt64?
+    /// Spark's balance beyond the quote's leaves when the exit started: what stays on Spark, also once published leaves
+    /// left the balance.
+    var outsideSats: UInt64?
+    /// Each quoted leaf's value, so a leaf the first build leaves behind, before any recovery lists it, keeps its value.
+    var leafSats: [String: UInt64]?
     var funding: [Funding]
     /// Bumped on every rebuild. Broadcasts are logged per generation and a rebuilt recovery replaces the old one
     /// entirely, so older hex is never sent again.
@@ -242,8 +247,16 @@ struct SparkExitRecord: Codable, Equatable {
     /// The pending rebuild answers a divergence the SDK reported (`Redo`). Only such a rebuild adds lost-leaf strikes,
     /// so rebuilds over a stalled chain or an unverified step never make a leaf lost.
     var isRedoRebuild: Bool?
+    /// The fee funding asked for came from a rebuild over a step the SDK could not read, while the generation out there
+    /// is valid: funding it resumes that rebuild with its guard, and the ask ends once every step reads again.
+    var isUnverifiedAsk: Bool?
     /// The tip of the last rebuild over a step the SDK could not read, so it rebuilds at most once a block.
     var unverifiedRebuiltAtHeight: UInt32?
+    /// A higher fee rate the steps out there are not built at yet: a fee bump whose build kept the valid generation
+    /// over a leaf it would leave waiting. Built at that rate again until a build at it is adopted.
+    var isFeeBumpPending: Bool?
+    /// The tip of the last build at a pending fee bump's rate, so it builds at most once a block.
+    var feeBumpBuiltAtHeight: UInt32?
     /// The tip at which each of the exit's leaves was first seen stopped (`exitChainState.stoppedLeafIds`).
     var stoppedLeafSince: [String: UInt32]?
     /// The tip at which a build first found nothing to build while a leaf may still move, and of its last try.
@@ -296,16 +309,29 @@ struct SparkExitRecord: Codable, Equatable {
         return false
     }
 
-    /// An ended exit that failed or lost leaves, whose result the user has not opened yet.
+    /// An ended exit that failed, lost leaves or kept its leftover at the funding address, whose result the user has
+    /// not opened yet.
     var hasUnseenResult: Bool {
-        !isActive && (isFailed || lostSats > 0) && isResultSeen != true
+        !isActive && (isFailed || lostSats > 0 || isLeftoverKept) && isResultSeen != true
+    }
+
+    /// The fee change stays at the funding address for good, shown with the path that spends it.
+    var isChangeKept: Bool {
+        !leftover.isEmpty && leftoverSweep?.isDustKept == true
+    }
+
+    /// The leftover stays at the funding address for good: change too small to send, or a sweep refused for a reason
+    /// other than its fee, which nothing retries.
+    var isLeftoverKept: Bool {
+        isChangeKept || (!leftover.isEmpty && leftoverSweep?.rejection != nil && !isLeftoverSweepPending)
     }
 
     /// Whether Emergency exit opens this exit rather than a new one: it runs, its leftover is still on its way to
-    /// savings, the leftover sweep was refused and the leftover waits at the funding address, or it failed or lost
-    /// leaves and the user has not seen that yet.
+    /// savings, or it failed, lost leaves or kept its leftover at the funding address and the user has not seen that
+    /// yet. A kept leftover's address and path stay in the earlier exit addresses (`SparkExitEarlierAddress`), so a
+    /// later exit may replace this record.
     var showsResult: Bool {
-        needsDriving || (!leftover.isEmpty && leftoverSweep?.rejection != nil) || hasUnseenResult
+        needsDriving || hasUnseenResult
     }
 
     /// The leaves builds select: the quote's, less those an older state claimed and those left behind.
@@ -402,6 +428,9 @@ struct SparkExitRecord: Codable, Equatable {
             rebuiltFromChainConfirmedCount = SparkExitMath.confirmedCount(built)
         }
         isRedoRebuild = nil
+        isUnverifiedAsk = nil
+        isFeeBumpPending = nil
+        feeBumpBuiltAtHeight = nil
     }
 
     /// Ends the rebuilt-from-chain note once the rebuilt exit moved: a step confirmed beyond those already in a block.
@@ -454,9 +483,12 @@ struct SparkExitRecord: Codable, Equatable {
 
     /// Takes a higher fee rate for the steps still to confirm. With `extraSats` to come at the funding address the
     /// exit waits for it as for a top-up; with none it rebuilds at once at the new rate, replacing what is unconfirmed.
+    /// The bump stays pending until a build at the new rate is adopted.
     mutating func applyFeeBump(rate: UInt64, extraSats: UInt64, paymentTxid: String?) {
         feeRateSatPerVbyte = rate
         isRedoRebuild = nil
+        isFeeBumpPending = true
+        feeBumpBuiltAtHeight = nil
         fundingPaymentSeenAtHeight = nil
         fundingPaymentMissingSince = nil
         if extraSats > 0 {
@@ -598,6 +630,18 @@ struct SparkExitStore {
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         try FileManager.default.removeItem(at: url)
     }
+
+    /// Deletes the record and the copies kept aside for support (`keepCopyAside`, `setAside`), for a wallet being
+    /// wiped: they hold its addresses and signed transactions.
+    func deleteWithCopies() throws {
+        try delete()
+        let dir = url.deletingLastPathComponent()
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return }
+        let prefix = url.deletingPathExtension().lastPathComponent + ".unreadable-"
+        for name in names where name.hasPrefix(prefix) {
+            try FileManager.default.removeItem(at: dir.appendingPathComponent(name))
+        }
+    }
 }
 
 /// The ids of the leaves an older state of the wallet claimed on-chain, across exits. The operators keep listing such
@@ -697,6 +741,7 @@ enum SparkExitRecordCoder {
         record.exitStateSnapshot = kept.exitStateSnapshot
         record.fundingStrategy = kept.fundingStrategy
         record.earlierReceivedSats = kept.earlierReceivedSats
+        record.outsideSats = kept.outsideSats
         // Change and fan-out outputs of earlier generations at the funding address stay the exit's own, not new funding.
         let chained = (kept.earlierCpfpTxids ?? []) + (kept.recovery.map { SparkExitTxid.chainedTxids($0.response) } ?? [])
         record.earlierCpfpTxids = chained.isEmpty ? nil : chained
@@ -722,10 +767,12 @@ enum SparkExitRecordCoder {
         let recovery: StoredRecovery?
         let fundingStrategy: String?
         let earlierReceivedSats: [String: UInt64]?
+        let outsideSats: UInt64?
 
         private enum CodingKeys: String, CodingKey {
             case network, createdAt, phase, feeRateSatPerVbyte, destination, leafIds, leafTotalSats, funding, transferId, expectedSats
             case lostLeaves, leftBehindLeaves, exitStateSnapshot, earlierCpfpTxids, recovery, fundingStrategy, earlierReceivedSats
+            case outsideSats
         }
 
         init(from decoder: Decoder) throws {
@@ -747,6 +794,7 @@ enum SparkExitRecordCoder {
             recovery = try? c.decodeIfPresent(StoredRecovery.self, forKey: .recovery)
             fundingStrategy = try? c.decodeIfPresent(String.self, forKey: .fundingStrategy)
             earlierReceivedSats = try? c.decodeIfPresent([String: UInt64].self, forKey: .earlierReceivedSats)
+            outsideSats = try? c.decodeIfPresent(UInt64.self, forKey: .outsideSats)
         }
     }
 }

@@ -5,12 +5,16 @@ struct SpendingConfirm: View {
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var transfer: TransferViewModel
     @EnvironmentObject var wallet: WalletViewModel
     @Environment(SparkTransferFlow.self) private var flow
 
     @State private var isPaying = false
     @State private var hideSwipeButton = false
+
+    /// The coin drawing fills 72% of its square image, so this draws it about 134 pt wide, Android's third of the screen.
+    private static let coinsSize: CGFloat = 186
 
     /// Fee rates move while the screen is open, so the quote is redone this often as well as on every change.
     private static let requoteInterval: Duration = .seconds(60)
@@ -27,36 +31,47 @@ struct SpendingConfirm: View {
                 .disabled(isPaying)
                 .padding(.bottom, 16)
 
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    DisplayText(t("lightning__transfer__confirm"), accentColor: .purpleAccent)
+            // The coins sit in the space left above the swipe, as on Android; on a short screen the content scrolls.
+            GeometryReader { geo in
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        DisplayText(t("lightning__transfer__confirm"), accentColor: .purpleAccent)
 
-                    SpendingConfirmFees(quote: flow.quote, speed: flow.speed, isLoading: flow.quote == nil && flow.quoteError == nil)
-                        .padding(.top, 32)
+                        SpendingConfirmFees(quote: flow.quote, speed: flow.speed, isLoading: flow.quote == nil && flow.quoteError == nil)
+                            .padding(.top, 16)
 
-                    if let error = flow.quoteError {
-                        quoteError(error)
-                            .padding(.bottom, 16)
-                    } else if let quote = flow.quote, !quote.coversClaimFee {
-                        BodyMText(quote.belowClaimFeeMessage, textColor: .redAccent)
-                            .padding(.bottom, 16)
-                            .accessibilityIdentifier("SpendingConfirmBelowMinimum")
-                    }
+                        if let error = flow.quoteError {
+                            quoteError(error)
+                                .padding(.bottom, 16)
+                        }
 
-                    SpendingSpeedPicker(quote: flow.quote, speed: Bindable(flow).speed)
+                        SpendingSpeedPicker(quote: flow.quote, speed: Bindable(flow).speed)
+                            .disabled(isPaying)
+                            .padding(.top, 8)
+                            .padding(.horizontal, -16)
+                            .padding(.bottom, 10)
+
+                        CustomButton(title: t("common__learn_more"), size: .small) {
+                            navigation.navigate(.transferLearnMore)
+                        }
                         .disabled(isPaying)
-                        .padding(.horizontal, -16)
-                        .padding(.bottom, 16)
+                        .accessibilityIdentifier("SpendingConfirmMore")
 
-                    CustomButton(title: t("common__learn_more"), size: .small) {
-                        navigation.navigate(.transferLearnMore)
+                        Spacer(minLength: 0)
+
+                        Image("coin-stack-x")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: Self.coinsSize, height: Self.coinsSize)
+                            .frame(maxWidth: .infinity)
+
+                        Spacer(minLength: 0)
                     }
-                    .disabled(isPaying)
-                    .accessibilityIdentifier("SpendingConfirmMore")
+                    // The speed rows run edge to edge, so the scroll spans the screen and pads its own content.
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+                    .frame(minHeight: geo.size.height)
                 }
-                // The speed rows run edge to edge, so the scroll spans the screen and pads its own content.
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
             }
             .padding(.horizontal, -16)
 
@@ -81,8 +96,11 @@ struct SpendingConfirm: View {
         .onDisappear { SparkFundingRecovery.confirmScreenOpen = false }
         .onReceive(OnchainSendAttemptService.localResolutionPublisher.receive(on: DispatchQueue.main)) { resolution in
             guard Self.followsRecovered(resolution, isPaying: isPaying), !hideSwipeButton else { return }
-            // This screen owns the recovered funding: follow it at the chosen speed, as a swipe would have.
-            flow.onRecoveredBroadcast(txid: resolution.txid)
+            // This screen owns the recovered funding: follow it at the chosen speed, as a swipe would have, unless the
+            // flow already follows it.
+            if flow.txid != resolution.txid {
+                flow.onRecoveredBroadcast(txid: resolution.txid, attemptId: resolution.attemptId)
+            }
             hideSwipeButton = true
             navigation.navigate(.settingUp)
         }
@@ -99,7 +117,7 @@ struct SpendingConfirm: View {
 
     private var canConfirm: Bool {
         guard let quote = flow.quote, !isPaying, !flow.isQuoting else { return false }
-        return quote.networkFeeSats > 0 && quote.coversClaimFee && quote.toSpendingSats(for: flow.speed) > 0
+        return quote.networkFeeSats > 0 && quote.toSpendingSats(for: flow.speed) > 0
     }
 
     private func quoteError(_ message: String) -> some View {
@@ -115,6 +133,11 @@ struct SpendingConfirm: View {
     }
 
     private func onConfirm() async throws {
+        // A funding of this transfer resolved while another screen showed, so it is followed, not sent again.
+        if flow.txid != nil {
+            navigation.navigate(.settingUp)
+            return
+        }
         guard let shown = flow.quote, !isPaying else { return }
         isPaying = true
         defer { isPaying = false }
@@ -123,11 +146,7 @@ struct SpendingConfirm: View {
             throw AppError(message: t("lightning__spending_confirm__error_quote"), debugMessage: "Re-quote before sending failed")
         }
         guard fresh.coversClaimFee else {
-            app.toast(
-                type: .warning,
-                title: t("lightning__spending_amount__error_min__title"),
-                description: fresh.belowClaimFeeMessage
-            )
+            app.toastBelowClaimFee(fresh)
             throw SpendingFeesIncreasedError()
         }
         let increase = fresh.increase(over: shown, speed: flow.speed)
@@ -158,7 +177,56 @@ struct SpendingConfirm: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 hideSwipeButton = true
             }
+        } catch let OnchainSendAttemptError.preDispatch(error) where error is SparkFundingChanged {
+            // The max quote reads the cached savings balance, so it is read again before pricing the new transfer.
+            await wallet.syncStateAsync()
+            // The next swipe approves the fee this one was refused for.
+            flow.onFundingChanged(preparedFeeSats: (error as? SparkFundingChanged)?.preparedFeeSats)
+            guard let repriced = await flow.refreshQuote(wallet: wallet, feeEstimatesManager: feeEstimatesManager) else {
+                throw AppError(message: t("lightning__spending_confirm__error_quote"), debugMessage: "Re-quote after refusal failed")
+            }
+            let toSpendingSats = repriced.toSpendingSats(for: flow.speed)
+            if flow.isMaxAmount, toSpendingSats != fresh.toSpendingSats(for: flow.speed) {
+                // A max transfer's amount moves with the balance and fees, so a fee increase would mostly be that move.
+                app.toast(
+                    type: .info,
+                    title: t("lightning__spending_confirm__max_changed_title"),
+                    description: t(
+                        "lightning__spending_confirm__max_changed",
+                        variables: ["amount": currency.primaryAmountText(sats: toSpendingSats)]
+                    )
+                )
+            } else {
+                app.toast(
+                    type: .info,
+                    title: t("lightning__spending_confirm__fees_changed_title"),
+                    description: t(
+                        "lightning__spending_confirm__fees_changed_network",
+                        variables: ["amount": currency.primaryAmountText(sats: repriced.increase(over: fresh, speed: flow.speed))]
+                    )
+                )
+            }
+            throw SpendingFeesIncreasedError()
+        } catch let unresolved as SparkFundingUnresolved {
+            // The funding may be on the network and is kept, so Payment Pending shows it, as for any on-chain send.
+            if let attemptId = await OnchainSendAttemptService.shared.unresolvedSparkFundingAttemptId() {
+                flow.bindApproval(to: attemptId)
+            }
+            Logger.warn("Spark funding \(unresolved.txid) is unresolved", context: "SpendingConfirm")
+            if let reason = unresolved.rejectionReason {
+                app.toast(type: .error, title: t("wallet__onchain_broadcast_rejected"),
+                          description: t("wallet__onchain_broadcast_rejected_note", variables: ["reason": reason]))
+            } else {
+                app.toast(type: .warning, title: t("wallet__onchain_broadcast_unconfirmed"),
+                          description: t("wallet__onchain_broadcast_unconfirmed_note"))
+            }
+            let route = await SendConfirmationView.onchainPendingRoute(txid: unresolved.txid, requestId: nil)
+            sheets.showSheet(.send, data: SendConfig(view: route))
+            throw unresolved
         } catch {
+            if let attemptId = await OnchainSendAttemptService.shared.unresolvedSparkFundingAttemptId() {
+                flow.bindApproval(to: attemptId, after: error)
+            }
             Logger.error("Failed to transfer to spending: \(error)", context: "SpendingConfirm")
             app.toast(
                 type: .error,
@@ -210,6 +278,8 @@ struct SpendingConfirmFees: View {
                 FeeDisplayRow(
                     label: t("lightning__spending_confirm__amount"),
                     amount: quote?.toSpendingSats(for: speed) ?? 0,
+                    // What reaches spending is net of the estimated claim fee, so it is an estimate too.
+                    prefix: SpendingSpeedPicker.feePrefix(for: speed),
                     isLoading: isLoading
                 )
                 .frame(maxWidth: .infinity)
@@ -232,11 +302,9 @@ struct SpendingSpeedPicker: View {
     let quote: SparkTransferQuote?
     @Binding var speed: SparkTransferSpeed
 
-    static func feePrefix(for speed: SparkTransferSpeed) -> String {
-        switch speed {
-        case .instant: t("lightning__spending_confirm__up_to")
-        case .later: "≈"
-        }
+    /// Both claim fees are estimates: Instant's is its ceiling, Later's the current rate.
+    static func feePrefix(for _: SparkTransferSpeed) -> String {
+        "±"
     }
 
     var body: some View {
@@ -249,7 +317,8 @@ struct SpendingSpeedPicker: View {
                 amount: quote?.claimFees.instantMaxSats ?? 0,
                 amountPrefix: Self.feePrefix(for: .instant),
                 isSelected: speed == .instant,
-                isDisabled: false
+                isDisabled: false,
+                dividerAtBottom: true
             ) {
                 speed = .instant
             }
@@ -258,19 +327,17 @@ struct SpendingSpeedPicker: View {
             FeeItem(
                 title: t("lightning__spending_confirm__later"),
                 subtitle: t("lightning__spending_confirm__later_text"),
-                iconName: TransactionSpeed.slow.iconName,
+                iconName: TransactionSpeed.normal.iconName,
                 iconColor: .purpleAccent,
                 amount: quote?.claimFees.laterSats ?? 0,
                 amountPrefix: Self.feePrefix(for: .later),
                 isSelected: speed == .later,
-                isDisabled: false
+                isDisabled: false,
+                dividerAtBottom: true
             ) {
                 speed = .later
             }
             .accessibilityIdentifier("SpendingConfirmLater")
-
-            Divider()
-                .padding(.horizontal, 16)
         }
     }
 }
@@ -306,6 +373,7 @@ private func spendingConfirmPreview(_ flow: SparkTransferFlow) -> some View {
             .environmentObject(FeeEstimatesManager())
             .environmentObject(NavigationViewModel())
             .environmentObject(SettingsViewModel.shared)
+            .environmentObject(SheetViewModel())
             .environmentObject(TransferViewModel())
             .environmentObject(WalletViewModel())
             .environment(flow)

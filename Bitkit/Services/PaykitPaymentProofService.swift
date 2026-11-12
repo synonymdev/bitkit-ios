@@ -76,6 +76,8 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
     var onchainLocalFollowupComplete: Bool?
     /// Retain the bounded original proof until its payer consumes the local resolution.
     var onchainResolutionAwaitingConsumption: Bool? = false
+    /// A Spark withdrawal pays this proof, so only that withdrawal's journal may complete or drop it.
+    var sparkWithdrawal: Bool?
 
     var hasUnsupportedOnchainWallet: Bool {
         kind == .onchain && onchainWalletId != nil && onchainWalletId != WalletScope.default
@@ -818,7 +820,8 @@ actor PaykitPaymentProofService {
         paymentIdentity: String? = nil,
         signedTx: HwFundingSignedTx? = nil,
         privatePaymentListVersion: UInt64? = nil,
-        previousPrivatePaymentListVersion: UInt64? = nil
+        previousPrivatePaymentListVersion: UInt64? = nil,
+        sparkWithdrawal: Bool = false
     ) async throws {
         let identity = try await currentIdentity()
         try await mutationLock.withLock {
@@ -831,7 +834,8 @@ actor PaykitPaymentProofService {
                 serializedTx: signedTx?.serializedTx,
                 signedTx: signedTx,
                 privatePaymentListVersion: privatePaymentListVersion,
-                previousPrivatePaymentListVersion: previousPrivatePaymentListVersion
+                previousPrivatePaymentListVersion: previousPrivatePaymentListVersion,
+                sparkWithdrawal: sparkWithdrawal
             )
         }
     }
@@ -845,7 +849,8 @@ actor PaykitPaymentProofService {
         serializedTx: String?,
         signedTx: HwFundingSignedTx?,
         privatePaymentListVersion: UInt64?,
-        previousPrivatePaymentListVersion: UInt64?
+        previousPrivatePaymentListVersion: UInt64?,
+        sparkWithdrawal: Bool = false
     ) async throws {
         if let hardwareWalletId {
             guard hardwareWalletId != WalletScope.default, hardwareTransactionLookup.hasWallet(walletId: hardwareWalletId)
@@ -887,6 +892,7 @@ actor PaykitPaymentProofService {
         pendingProofs[index].hardwareDispatchAttempted = signedTx.map { _ in false }
         pendingProofs[index].privatePaymentListVersion = privatePaymentListVersion
         pendingProofs[index].previousPrivatePaymentListVersion = privatePaymentListVersion == nil ? nil : previousPrivatePaymentListVersion
+        pendingProofs[index].sparkWithdrawal = sparkWithdrawal ? true : nil
         try await persist(pendingProofs)
     }
 
@@ -1327,6 +1333,95 @@ actor PaykitPaymentProofService {
         }
         await failLightningPayment(paymentHash: paymentHash)
         return true
+    }
+
+    /// Completes the on-chain proof of a request Spark paid by withdrawing to the payee's address. Spark's withdrawal
+    /// isn't one of the node's send attempts, so its txid is the proof as soon as Spark returns it.
+    func completeSparkOnchainPayment(requestId: PaykitPaymentRequest.ID, identity: String, txid: String) async -> Bool {
+        guard Self.isHex(txid, byteCount: 32) else { return false }
+        do {
+            let completed: PendingPaykitPaymentProof? = try await mutationLock.withLock {
+                var proofs = try await loadProofs()
+                guard let index = proofs.lastIndex(where: {
+                    PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId && $0.kind == .onchain &&
+                        $0.paymentStarted && $0.onchainWalletId == nil && $0.sparkWithdrawal == true &&
+                        ($0.paymentIdentifier == nil || $0.paymentIdentifier?.caseInsensitiveCompare(txid) == .orderedSame)
+                }) else { return nil }
+                proofs[index].paymentIdentifier = txid.lowercased()
+                proofs[index].proofData = txid.lowercased()
+                proofs[index].onchainAcceptanceVerified = true
+                proofs[index].onchainLocalFollowupComplete = true
+                try await persist(proofs)
+                return proofs[index]
+            }
+            // No started proof left means an earlier pass already saved it, or the request no longer waits on one.
+            if let completed {
+                submitInBackground(completed, priority: .interactive)
+            }
+            return true
+        } catch {
+            logWarning("Failed to retain a Spark on-chain proof for retry: \(error)")
+            return false
+        }
+    }
+
+    /// Drops the started on-chain proof of a request whose Spark withdrawal never went out, giving back the private list
+    /// version it consumed when the contact's list is still at exactly that version. Only a proof the withdrawal started
+    /// goes, never a direct on-chain send's for the same request. `.failed` when it could not be dropped, so the
+    /// withdrawal's journal stays open for a retry.
+    @discardableResult
+    func failSparkOnchainPayment(
+        requestId: PaykitPaymentRequest.ID,
+        identity: String,
+        unstartedPaymentList: SparkContactWithdrawal.PaymentList? = nil,
+        privatePaykitService: PrivatePaykitService = .shared,
+        settleAllowance: () async -> Bool = { true }
+    ) async -> SparkProofRelease {
+        do {
+            return try await mutationLock.withLock {
+                let proofs = try await loadProofs()
+                let unsent = proofs.filter {
+                    PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId && $0.kind == .onchain &&
+                        $0.paymentStarted && $0.onchainWalletId == nil && $0.sparkWithdrawal == true &&
+                        $0.paymentIdentifier == nil && $0.proofData == nil
+                }
+                guard !unsent.isEmpty else {
+                    // A kill before the proof started leaves the list the request consumed only in the journal.
+                    if let list = unstartedPaymentList {
+                        try await privatePaykitService.releaseUnsentPaymentListVersion(
+                            publicKey: requestId.counterparty,
+                            version: list.version,
+                            previousVersion: list.previousVersion
+                        )
+                    }
+                    return .nothingStarted
+                }
+                // The allowance attempt is settled before the proof goes: a restart in between, or a failed ledger
+                // write, leaves the proof and so the journal, which retry the settlement.
+                guard await settleAllowance() else { return .failed }
+                for proof in unsent {
+                    guard let version = proof.privatePaymentListVersion else { continue }
+                    try await privatePaykitService.releaseUnsentPaymentListVersion(
+                        publicKey: proof.requestId.counterparty,
+                        version: version,
+                        previousVersion: proof.previousPrivatePaymentListVersion
+                    )
+                }
+                do {
+                    try await persist(proofs.filter { !unsent.contains($0) })
+                } catch {
+                    for proof in unsent {
+                        guard let version = proof.privatePaymentListVersion else { continue }
+                        try await privatePaykitService.retainOriginalPaymentListVersion(publicKey: proof.requestId.counterparty, version: version)
+                    }
+                    throw error
+                }
+                return .released
+            }
+        } catch {
+            logWarning("Failed to clear an unsent Spark on-chain proof: \(error)")
+            return .failed
+        }
     }
 
     @discardableResult
@@ -1959,4 +2054,14 @@ actor PaykitPaymentProofService {
             false
         }
     }
+}
+
+/// What dropping a Spark withdrawal's started proof did.
+enum SparkProofRelease: Equatable {
+    /// The withdrawal's started proof is gone.
+    case released
+    /// The withdrawal never started a proof: a kill came before it, or a direct send owns the request's proof.
+    case nothingStarted
+    /// The proof could not be dropped, so it stays for a retry.
+    case failed
 }

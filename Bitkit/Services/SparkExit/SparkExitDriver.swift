@@ -31,6 +31,9 @@ struct SparkExitDriver {
     let makeSigner: (UInt32) throws -> CpfpSigner
     let save: (SparkExitRecord) throws -> Void
     var now: () -> Date = Date.init
+    /// The fast rate of Bitkit's own fee source, nil when it cannot be read: with the exit's own rate, the most a
+    /// leftover sweep pays, whatever the chain host asks.
+    var trustedFeeRate: () async -> UInt64? = { nil }
 
     /// A ready transaction accepted in this generation is sent again after this long, in case a node dropped it.
     static let rebroadcastInterval: TimeInterval = 600
@@ -64,8 +67,9 @@ struct SparkExitDriver {
     /// About four weeks: then the change too small to send stays at the funding address.
     static let sweepWaitBlocks: UInt32 = 4032
     /// A savings payment Bitkit sent that no host knows for this many blocks, or that the exit did not adopt within
-    /// `ownPaymentTimeoutBlocks`, is forgotten: the exit asks for the funding, and reminds, again.
-    static let ownPaymentMissingBlocks: UInt32 = 1
+    /// `ownPaymentTimeoutBlocks`, is forgotten: the exit asks for the funding, and reminds, again. Long enough that a
+    /// host still indexing it, or one false miss, never asks for the funding twice.
+    static let ownPaymentMissingBlocks: UInt32 = 3
     static let ownPaymentTimeoutBlocks: UInt32 = 144
 
     @discardableResult
@@ -111,11 +115,25 @@ struct SparkExitDriver {
                     try save(record)
                     return record
                 }
-                guard let recovering else { return try saveIfChanged(record, from: before) }
+                guard let recovering else {
+                    await updateClaimableHeight(&record)
+                    return try saveIfChanged(record, from: before)
+                }
                 // Nothing to fund when every leaf is recovered cooperatively.
+                var isRedoFromHeldFunding = false
                 if let shortfall = record.fundingShortfallSats {
-                    guard try await adoptFunding(&record, requiredSats: shortfall) else {
+                    let isAdopted = try await adoptFunding(&record, requiredSats: shortfall)
+                    // A Redo while a top-up is awaited rebuilds from the funding the exit has: a top-up that is dropped
+                    // never leaves it waiting, and one the rebuild needs is asked for again. Paced like any rebuild.
+                    isRedoFromHeldFunding = !isAdopted && record.isRebuilding && record.isRedoRebuild == true
+                        && !record.isFundingWaitingLeaves && isRebuildDue(record)
+                    if isRedoFromHeldFunding {
+                        record.lastBuildAt = now()
+                    }
+                    guard isAdopted || isRedoFromHeldFunding else {
                         await countShortOwnPayment(&record)
+                        // The steps already out keep their countdown while the top-up is awaited.
+                        await updateClaimableHeight(&record)
                         return try saveIfChanged(record, from: before)
                     }
                 }
@@ -126,8 +144,25 @@ struct SparkExitDriver {
                     if try await !retryWaitingLeaves(&record, recovering: recovering, tip: tip, isFunded: true) {
                         await finish(&record, phase: .done)
                     }
+                } else if record.isUnverifiedAsk == true, !record.isRebuilding {
+                    // Funding an unverified rebuild asked for resumes that rebuild, with its guard: the valid
+                    // generation stays over a failed-only build, running again with the funding adopted. Once a
+                    // block, like the check's rebuild: the valid generation's retry clock does not pace it.
+                    let tip = try? await chain.tipHeight()
+                    if tip == nil || record.unverifiedRebuiltAtHeight != tip {
+                        record.unverifiedRebuiltAtHeight = tip
+                        var valid = record
+                        valid.phase = .running
+                        valid.isUnverifiedAsk = nil
+                        try await build(&record, recovering: recovering)
+                        keepRetryClock(&record, from: valid)
+                    }
                 } else {
                     try await build(&record, recovering: recovering)
+                    // Held funding that pays for less: the awaited top-up is still followed, as while waiting for it.
+                    if isRedoFromHeldFunding, case .needsFunding = record.phase {
+                        await countShortOwnPayment(&record)
+                    }
                 }
             }
         case .running where record.isRebuilding:
@@ -151,14 +186,18 @@ struct SparkExitDriver {
                 }
             }
         }
-        // Without the tip the countdown keeps its last target rather than jump to another measure.
+        await updateClaimableHeight(&record)
+        try save(record)
+        return record
+    }
+
+    /// Without the tip the countdown keeps its last target rather than jump to another measure.
+    private func updateClaimableHeight(_ record: inout SparkExitRecord) async {
         if let tip = try? await chain.tipHeight() {
             record.claimableAtHeight = record.recovery.flatMap { SparkExitMath.claimableAtHeight($0.response, tip: tip) }
         } else if record.claimableAtHeight == nil {
             record.claimableAtHeight = record.recovery.flatMap { SparkExitMath.claimableAtHeight($0.response) }
         }
-        try save(record)
-        return record
     }
 
     private func saveIfChanged(_ record: SparkExitRecord, from before: SparkExitRecord) throws -> SparkExitRecord {
@@ -263,14 +302,28 @@ struct SparkExitDriver {
         record.noteProgressAfterRebuildFromChain(checked.recovery)
         switch checked.verdict {
         case .valid:
+            // An unverified rebuild's ask ends once every step reads again: the valid generation needs nothing more.
+            // Funding that reached the address meanwhile stays there, for a later rebuild or the leftover sweep.
+            if record.isUnverifiedAsk == true, record.fundingPaymentTxid == nil,
+               !checked.recovery.transactions.contains(where: { $0.status == .unverified })
+            {
+                Logger.info("Spark exit steps read again: the unverified rebuild's fee ask is withdrawn", context: "SparkExitDriver")
+                record.phase = .running
+                record.isUnverifiedAsk = nil
+            }
             let tip = try? await chain.tipHeight()
             try await broadcastReady(&record, tip: tip)
         case .done:
             // Nothing is left to pay more for: back to running, whose next check finishes it (failed leaves included).
             // A payment still on its way is followed after the end and swept back with the leftover.
             record.phase = .running
+            record.isUnverifiedAsk = nil
         case .redo:
-            break
+            // The diverged generation is never sent again: its rebuild, a Redo one, waits for the top-up.
+            Logger.warn("Spark exit diverged on-chain while a top-up is awaited; rebuilding once it confirms", context: "SparkExitDriver")
+            record.isRebuilding = true
+            record.isRedoRebuild = true
+            record.isUnverifiedAsk = nil
         }
     }
 
@@ -298,8 +351,15 @@ struct SparkExitDriver {
 
     // MARK: Build
 
+    /// Over a generation that did not diverge, however the build was reached (an unverified rebuild, a fee bump, a
+    /// rebuild after a leaf was left behind), that generation stays over a rebuild that leaves waiting a leaf it
+    /// recovers, before that rebuild is saved or any of it broadcast.
     private func build(_ record: inout SparkExitRecord, recovering: SparkExitRecovering) async throws {
         let tip = try? await chain.tipHeight()
+        if record.isFeeBumpPending == true {
+            record.feeBumpBuiltAtHeight = tip
+        }
+        let valid = record.validGeneration
         // Waiting for a leaf that may still move: tried again at growing gaps of blocks, not every tick.
         if let since = record.retrySince {
             guard let tip, Self.isRetryDue(since: since, retriedAt: record.retriedAt ?? since, tip: tip) else { return }
@@ -349,6 +409,13 @@ struct SparkExitDriver {
             if let leafId = SparkExitMath.unexitableLeafId(message), record.exitLeafIds.contains(leafId) {
                 leaveBehind([leafId], reason: message, in: &record)
             }
+            // Over a valid generation that recovers a leaf this build left waiting, that generation stays, rebuilt over
+            // again under its guard once a block.
+            if var valid, valid.recovery?.response.leaves.contains(where: { waitingLeafIds.contains($0.leafId) }) == true {
+                valid.leftBehindLeaves = record.leftBehindLeaves
+                record = valid
+                return
+            }
             record.isRebuilding = record.recovery != nil
             record.lastBuildAt = nil
             return
@@ -362,6 +429,9 @@ struct SparkExitDriver {
             if !built.failed.isEmpty {
                 record.adopt(built, at: now())
                 record.waitingLeafIds = waitingLeafIds.isEmpty ? nil : waitingLeafIds
+                if let valid {
+                    keepValidGeneration(&record, over: valid)
+                }
                 return
             }
             await finish(&record, phase: .failed(reason: "Nothing to recover"))
@@ -387,6 +457,9 @@ struct SparkExitDriver {
         }
         record.adopt(built, at: now())
         record.waitingLeafIds = waitingLeafIds.isEmpty ? nil : waitingLeafIds
+        if let valid, keepValidGeneration(&record, over: valid) {
+            return
+        }
         record.spentStepStrikes = strikes.isEmpty ? nil : strikes
         // Saved before any of it is broadcast, so a crash never leaves broadcast transactions without their record.
         try save(record)
@@ -426,7 +499,9 @@ struct SparkExitDriver {
 
     private func leaveBehind(_ leafIds: [String], reason: String, in record: inout SparkExitRecord) {
         guard !leafIds.isEmpty else { return }
+        // The first build has no recovery yet: the quote's values price its leaves.
         let values = Dictionary((record.recovery?.response.leaves ?? []).map { ($0.leafId, $0.valueSats) }, uniquingKeysWith: { first, _ in first })
+            .merging(record.leafSats ?? [:]) { recovered, _ in recovered }
         Logger.warn("Spark exit leaves left behind: \(leafIds): \(reason)", context: "SparkExitDriver")
         record.leftBehindLeaves = (record.leftBehindLeaves ?? []) + leafIds.map {
             SparkExitRecord.LeftBehindLeaf(leafId: $0, valueSats: values[$0] ?? 0, reason: reason)
@@ -443,7 +518,8 @@ struct SparkExitDriver {
             } catch {
                 Logger.warn("Failed to export the Spark exit data before the first build: \(error)", context: "SparkExitDriver")
             }
-        } else if let snapshot = record.exitStateSnapshot, record.recovery != nil || record.generation > 0 {
+        } else if let snapshot = record.exitStateSnapshot {
+            // Also a salvaged exit's, before its first rebuild: the SDK may no longer hold a leaf being exited.
             do {
                 try await recovering.importExitState(snapshot)
             } catch {
@@ -534,13 +610,33 @@ struct SparkExitDriver {
         }
         switch checked.verdict {
         case .valid:
+            // A fee bump whose build kept this generation over a waiting leaf is built at its rate again once a block,
+            // whatever the leaf waits for, until a build at it is adopted. That build also settles any unread step.
+            // A generation it keeps is still sent.
+            if record.isFeeBumpPending == true, let tip, record.feeBumpBuiltAtHeight != tip {
+                Logger.info("Spark exit builds again at its higher fee rate \(record.feeRateSatPerVbyte) sat/vB", context: "SparkExitDriver")
+                record.unverifiedRebuiltAtHeight = tip
+                let valid = record
+                try await build(&record, recovering: recovering)
+                keepRetryClock(&record, from: valid)
+                if record.generation == valid.generation, record.phase == .running, !record.isRebuilding {
+                    try await broadcastReady(&record, tip: tip)
+                }
+                return
+            }
             // A step the SDK could not read is settled by a fresh build, once a block, unless a step is still to send:
             // a build now would conflict with it at the same fee.
             if let tip, isUnverifiedRebuildDue(checked.recovery, record: record, tip: tip) {
                 Logger.warn("Spark exit has a step the SDK could not read, rebuilding over it", context: "SparkExitDriver")
                 record.unverifiedRebuiltAtHeight = tip
                 try save(record)
+                let valid = record
                 try await build(&record, recovering: recovering)
+                keepRetryClock(&record, from: valid)
+                if case .needsFunding = record.phase {
+                    // Like a fee bump's, the valid generation keeps going while the funding it asks for comes.
+                    record.isUnverifiedAsk = true
+                }
                 return
             }
             // The SDK sees no divergence when another wallet's CPFP child confirmed a node our leaves share.
@@ -858,6 +954,28 @@ struct SparkExitDriver {
         }
     }
 
+    /// A rebuild that leaves waiting a leaf the valid generation recovers drops that leaf's signed steps, which a
+    /// matured step needs sent within the operators' window, whether it built only failed cooperative leaves or other
+    /// leaves: the valid generation stays, as `valid` holds it, and is what the tick saves. While the leaf stays
+    /// unreadable the rebuild repeats once a block. True when it stayed.
+    @discardableResult
+    private func keepValidGeneration(_ record: inout SparkExitRecord, over valid: SparkExitRecord) -> Bool {
+        guard record.generation != valid.generation, let waiting = record.waitingLeafIds,
+              valid.recovery?.response.leaves.contains(where: { waiting.contains($0.leafId) }) == true
+        else { return false }
+        Logger.warn("Spark exit keeps its generation: the rebuild left waiting a leaf it recovers", context: "SparkExitDriver")
+        record = valid
+        return true
+    }
+
+    /// An unverified rebuild that adopted nothing keeps the valid generation's retry clock: one it set while waiting
+    /// for the unread leaf would let that leaf go after about a week, ending the exit before its signed steps are sent.
+    private func keepRetryClock(_ record: inout SparkExitRecord, from valid: SparkExitRecord) {
+        guard record.generation == valid.generation, record.isActive else { return }
+        record.retrySince = valid.retrySince
+        record.retriedAt = valid.retriedAt
+    }
+
     private func isRebuildDue(_ record: SparkExitRecord) -> Bool {
         guard let last = record.lastBuildAt else { return true }
         return now().timeIntervalSince(last) >= Self.rebuildInterval
@@ -922,10 +1040,12 @@ struct SparkExitDriver {
                 // A node that dropped it answers not found: that is unconfirmed too.
                 isReplaceDue = await (try? chain.txStatus(txid: oldTxid))?.confirmed != true
             }
-            if isReplaceDue {
+            // At the ceiling already: sent again as it is until it confirms.
+            let ceiling = isReplaceDue ? await sweepFeeCeiling(record) : 0
+            if isReplaceDue, oldRate < ceiling {
                 // A host with no fee estimates still gets a replacement one sat/vB over the old rate.
                 let fastest = try? await chain.fastestFeeRate()
-                let rate = max(fastest ?? 0, oldRate + 1)
+                let rate = min(max(fastest ?? 0, oldRate + 1), ceiling)
                 let utxos = SparkExitMath.economicalUtxos(record.leftover.map {
                     EsploraUtxo(txid: $0.txid, vout: $0.vout, value: $0.valueSats, status: EsploraTxStatus(confirmed: true, blockHeight: nil))
                 }, rate: rate)
@@ -1021,6 +1141,8 @@ struct SparkExitDriver {
                 }
             } else {
                 record.leftoverSweep?.rejection = reason
+                // Final: shown once more with its address, even after the result was opened, as kept change is.
+                record.isResultSeen = nil
             }
         // Once accepted, a later refusal is mostly a node that already has it or a conflict with it confirming. A fee
         // refusal of one no host holds any more means it was evicted when the mempool's floor rose: it waits and is
@@ -1115,6 +1237,9 @@ struct SparkExitDriver {
             if tip.saturatingSub(since) >= Self.sweepWaitBlocks {
                 Logger.info("Spark exit keeps its fee change at the funding address after waiting for fees", context: "SparkExitDriver")
                 record.leftoverSweep?.isDustKept = true
+                // Shown once more with its path, even after the result was opened; the earlier exit addresses keep
+                // listing it after that.
+                record.isResultSeen = nil
                 try save(record)
                 return
             }
@@ -1144,9 +1269,10 @@ struct SparkExitDriver {
         let fees = try? await chain.networkFees()
         // A rate a node refused stays refused: the least it asked for lifts the economy rate, up to the next block's or
         // the exit's rate. A node asking more refuses again, and the sweep waits a block for fees to drop.
+        let ceiling = await sweepFeeCeiling(record)
         let refusedFloor = SparkExitMath.refusedSweepFloor(
             waiting?.refusedFeeRate ?? 0,
-            nextBlock: fees?.fastest,
+            nextBlock: fees.map { min($0.fastest, ceiling) },
             exitRate: record.feeRateSatPerVbyte
         )
         let rate = max(SparkExitMath.sweepFeeRate(economy: fees?.economy, exitRate: record.feeRateSatPerVbyte), refusedFloor)
@@ -1182,6 +1308,12 @@ struct SparkExitDriver {
         try save(record)
     }
 
+    /// The most a leftover sweep pays per vbyte: the exit's own rate, which the user confirmed, or Bitkit's own fast rate
+    /// when higher. The chain host's estimates and refusals are not trusted past it.
+    private func sweepFeeCeiling(_ record: SparkExitRecord) async -> UInt64 {
+        await max(record.feeRateSatPerVbyte, trustedFeeRate() ?? 0)
+    }
+
     // MARK: Broadcast
 
     /// A unilateral step the SDK could not read is never sent: a rebuild settles it. A cooperative one is, since nodes
@@ -1210,27 +1342,38 @@ struct SparkExitDriver {
         guard var recovery = record.recovery?.response else { return }
         let tip = try await chain.tipHeight()
         let listed = Set(recovery.transactions.map(\.txid))
-        var confirmed = Set(recovery.transactions.filter(\.isConfirmed).map(\.txid))
+        let saved = Set(recovery.transactions.filter(\.isConfirmed).map(\.txid))
+        var confirmed = saved
         var heights: [String: UInt32] = [:]
         for tx in recovery.transactions {
             if case let .confirmed(height?) = tx.status {
                 heights[tx.txid] = height
             }
         }
-        let unknown = recovery.transactions.filter { !$0.isConfirmed }.map(\.txid)
-            + Set(recovery.transactions.flatMap(\.dependsOn)).subtracting(listed).subtracting(confirmed)
+        // A saved confirmation is asked again, since a reorg can undo it; it stands only while no host answers.
+        let unknown = recovery.transactions.map(\.txid) + Set(recovery.transactions.flatMap(\.dependsOn)).subtracting(listed)
         let statuses = await statuses(unknown)
+        let reorged = saved.filter { statuses[$0]?.confirmed == false }
+        for txid in reorged {
+            confirmed.remove(txid)
+            heights[txid] = nil
+        }
+        if !reorged.isEmpty {
+            Self.undoReorg(reorged, in: recovery, record: &record)
+        }
         for (txid, status) in statuses where status.confirmed {
             confirmed.insert(txid)
-            heights[txid] = status.blockHeight
+            heights[txid] = status.blockHeight ?? heights[txid]
         }
         for (i, tx) in recovery.transactions.enumerated() {
             guard !Task.isCancelled else { break }
-            if tx.isConfirmed {
+            if let status = statuses[tx.txid], status.confirmed {
+                recovery.transactions[i].status = .confirmed(blockHeight: status.blockHeight ?? heights[tx.txid])
                 continue
             }
-            if let status = statuses[tx.txid], status.confirmed {
-                recovery.transactions[i].status = .confirmed(blockHeight: status.blockHeight)
+            if reorged.contains(tx.txid) {
+                recovery.transactions[i].status = .waitingForDependencies
+            } else if tx.isConfirmed {
                 continue
             }
             guard tx.dependsOn.allSatisfy(confirmed.contains), isDue(tx.txid, in: record, withoutSdk: true) else { continue }
@@ -1257,6 +1400,28 @@ struct SparkExitDriver {
             try save(record)
         }
         record.recovery = StoredRecovery(recovery)
+    }
+
+    /// What was concluded from confirmations a reorg undid, a spent input or a failed fee chain of a step or of a step
+    /// after it, no longer holds.
+    private static func undoReorg(_ reorged: Set<String>, in recovery: RecoverFundsResponse, record: inout SparkExitRecord) {
+        Logger.warn("Spark exit steps \(reorged.sorted()) lost their confirmation; asking again", context: "SparkExitDriver")
+        var undone = reorged
+        while true {
+            let added = recovery.transactions
+                .filter { !undone.contains($0.txid) && $0.dependsOn.contains(where: undone.contains) }
+                .map(\.txid)
+            if added.isEmpty {
+                break
+            }
+            undone.formUnion(added)
+        }
+        for i in record.broadcastLog.indices where record.broadcastLog[i].generation == record.generation
+            && undone.contains(record.broadcastLog[i].txid)
+        {
+            record.broadcastLog[i].isInputSpent = nil
+            record.broadcastLog[i].feeChainFailures = nil
+        }
     }
 
     /// Without the SDK, a step whose input someone else spent is never due: only a rebuild moves on from it.
@@ -1328,6 +1493,17 @@ private extension RecoveryTransaction {
 }
 
 extension SparkExitRecord {
+    /// The exit running its current generation, when that generation did not diverge: what a rebuild that would drop a
+    /// waiting leaf's signed steps keeps. Funding adopted for the rebuild and a bumped rate stay the exit's.
+    var validGeneration: SparkExitRecord? {
+        guard recovery != nil, isRedoRebuild != true else { return nil }
+        var valid = self
+        valid.phase = .running
+        valid.isRebuilding = false
+        valid.isUnverifiedAsk = nil
+        return valid
+    }
+
     /// What keeps the exit from moving, once rebuilding over its stuck steps stopped helping.
     var surfacedRejection: String? {
         isStalled ? stuckStep?.lastOutcome : nil

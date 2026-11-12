@@ -206,7 +206,6 @@
 "lightning__spending_confirm__amount" = "إلى الإنفاق";
 "lightning__spending_confirm__total" = "الإجمالي";
 "lightning__spending_confirm__spending_fee" = "Spending fee";
-"lightning__spending_confirm__up_to" = "up to";
 "lightning__spending_confirm__instant_text" = "Ready in a few minutes";
 "lightning__spending_confirm__later" = "Later";
 "lightning__spending_confirm__later_text" = "After 3 confirmations, about 30 minutes";
@@ -243,6 +242,7 @@
 "lightning__savings_spark_failed__toast" = "فشل تحويل Spark";
 "lightning__transfer_success__nav_title" = "نجح التحويل";
 "lightning__transfer_success__title_spending" = "انتقلت الأموال\n<accent>إلى الإنفاق</accent>";
+"lightning__transfer_success__text_spending" = "تم تحويل أموالك ورصيد إنفاقك جاهز للاستخدام.";
 "lightning__transfer_success__title_savings" = "انتقلت الأموال\n<accent>إلى المدخرات</accent>";
 "lightning__transfer_success__text_savings" = "تم تحويل أموالك. يمكنك استخدام هذه الأموال فورًا.";
 "lightning__external__nav_title" = "اتصال Lightning";
@@ -309,7 +309,7 @@
 "lightning__spark_deposit__wait_button" = "انتظر";
 "lightning__spark_deposit__waiting" = "يضيفه Spark إلى رصيد الإنفاق {when}.";
 "lightning__spark_deposit__waiting_next" = "يضيفه Spark إلى رصيد الإنفاق بعد التأكيد التالي.";
-"lightning__spark_deposit__repriced" = "Instant now costs {fee}. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
+"lightning__spark_deposit__repriced" = "Instant now costs <accent>{fee}</accent>. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__pay" = "Pay {fee}";
 "lightning__spark_deposit__instant_unavailable" = "Instant isn't available for this transfer. Spark adds it to your spending balance after 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__not_seen" = "Spark hasn't seen your transfer yet. It's added after 3 confirmations; you can leave this screen.";
@@ -364,10 +364,8 @@
 "lightning__spark_exit__leftover_swept" = "أُرسل {amount} من تمويل الرسوم المتبقي إلى المدخرات.";
 "lightning__spark_exit__leftover_sending" = "جارٍ إرسال {amount} من تمويل الرسوم المتبقي إلى المدخرات.";
 "lightning__spark_exit__leftover_dust" = "{amount} من تمويل الرسوم المتبقي صغير جدًا بحيث لا يمكن إرساله ويبقى في {address}، مسار الاشتقاق {path}.";
-"lightning__spark_exit__leftover_txid" = "معرّف المعاملة: {txid}";
 "lightning__spark_exit__fund_paid" = "تم الدفع من المدخرات، بانتظار التأكيد.";
 "lightning__spark_exit__fund_pending" = "تم رصد الدفعة، بانتظار التأكيد.";
-"lightning__spark_exit__funding_txid" = "معرّف المعاملة: {txid}";
 "lightning__spark_exit__lost_leaves" = "طالب مالك سابق لهذه الأموال بمبلغ {amount} على السلسلة ولا يمكن استرداده.";
 "lightning__spark_exit__notification_lost" = "لا يمكن استرداد {amount} من خروجك. افتح Bitkit لمعرفة السبب.";
 "lightning__spark_exit__notification_failed" = "توقف خروجك الطارئ. افتح Bitkit لمعرفة السبب.";
@@ -390,7 +388,6 @@
 "lightning__spark_exit__waiting_leaves" = "تتعذّر قراءة جزء من هذا الخروج على السلسلة الآن. يحاول Bitkit مجددًا لمدة تصل إلى أسبوع.";
 "lightning__spark_exit__rebuilt_from_chain" = "تعذّر على Bitkit قراءة التقدم المحفوظ لهذا الخروج، لذا يعيد بناءه من السلسلة.";
 "lightning__spark_exit__done_received" = "وصل {amount} إلى مدخراتك.";
-"lightning__spark_exit__sweep_txid" = "معرّف المعاملة: {txid}";
 "lightning__spark_exit__leftover_rejected" = "تعذّر إرسال {amount} من تمويل الرسوم المتبقي ويبقى في {address}، مسار الاشتقاق {path}.";
 "lightning__spark_exit__notification_not_moving" = "خروجك الطارئ لا يتقدم. افتح Bitkit لمعرفة السبب.";
 "lightning__spark_exit__funding_split" = "يقسّمه Bitkit إلى {count} أجزاء، جزء لكل خطوة، حتى لا تعطّل خطوة عالقة الخطوات الأخرى.";
@@ -399,7 +396,6 @@
 "lightning__spark_exit__fee_bump_button" = "ادفع رسومًا أعلى";
 "lightning__spark_exit__fee_bump_title" = "ادفع\n<accent>رسومًا أعلى</accent>";
 "lightning__spark_exit__fee_bump_text" = "يدفع هذا الخروج <accent>{rate} sat/vB</accent>، وهو أقل مما تطلبه الشبكة الآن. اختر معدلًا أعلى وسيعيد Bitkit إرسال الخطوات المنتظرة. يدفع الفرق من المدخرات: المبلغ الظاهر بجانب كل سرعة.";
-"lightning__spark_exit__fee_bump_loading" = "جارٍ حساب تكلفة رسوم أعلى…";
 "lightning__spark_exit__fee_bump_error" = "تعذّر تسعير رسوم أعلى. حاول مرة أخرى.";
 "lightning__spark_exit__fee_bump_confirm" = "استخدم هذه الرسوم";
 "lightning__spark_exit__leftover_waiting" = "سيصل {amount} من فكة الرسوم إلى مدخراتك عند انخفاض رسوم الشبكة.";
@@ -1160,6 +1156,9 @@
 "wallet__send_sync_long_title" = "مشاكل\n<accent>الاتصال</accent>";
 "wallet__send_sync_long_description" = "يبدو أنك غير متصل. يرجى التحقق من اتصالك. سيحاول Bitkit إعادة الاتصال كل بضع ثوانٍ.";
 "wallet__send_to" = "إلى";
+"wallet__send_swap_route" = "المسار";
+"wallet__send_paykit_no_route__title" = "تعذّر الدفع لجهة الاتصال هذه";
+"wallet__send_paykit_no_route__description" = "ليس لدى جهة الاتصال هذه طريقة دفع يمكن لـ Bitkit استخدامها حاليًا.";
 "wallet__recipient_contact" = "جهة الاتصال";
 "wallet__recipient_invoice" = "لصق فاتورة";
 "wallet__recipient_manual" = "إدخال يدوي";

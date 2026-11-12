@@ -41,7 +41,7 @@ struct SpendingWalletScreen: View {
                     }
 
                     if !shouldShowOnboarding {
-                        if wallet.channels?.isEmpty == false || SparkManager.shared.balanceSats > 0 {
+                        if wallet.totalLightningSats > 0, wallet.channels?.isEmpty == false || SparkManager.shared.shownSpendingSats > 0 {
                             transferButton
                                 .transition(.move(edge: .leading).combined(with: .opacity))
                                 .padding(.top, 28)
@@ -107,7 +107,7 @@ struct SpendingWalletScreen: View {
 
     var transferFromSavingsButton: some View {
         CustomButton(
-            title: t("lightning__transfer_to_spending_button"),
+            title: t("lightning__funding__button1"),
             variant: .secondary,
             icon: Image("arrow-up-down")
                 .resizable()

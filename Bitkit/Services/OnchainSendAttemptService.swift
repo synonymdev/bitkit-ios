@@ -350,6 +350,13 @@ struct OnchainSendFollowupContext: Codable, Equatable {
     var channelId: String? = nil
 }
 
+/// A Spark funding refused before broadcast because it would send another amount, or pay a higher mining fee, than the
+/// user approved, as after the balance grew. A fixed amount's fee is bound too, as its coin selection can vary.
+struct SparkFundingChanged: Error {
+    /// The mining fee of the refused prepared send, nil when it was unknown.
+    var preparedFeeSats: UInt64?
+}
+
 struct OnchainSendTransferContext: Codable, Equatable {
     let clientBalanceSats: UInt64
     let txTotalSats: UInt64
@@ -600,6 +607,7 @@ actor OnchainSendAttemptService {
         followupContext: OnchainSendFollowupContext? = nil,
         transferContext: OnchainSendTransferContext? = nil,
         isSparkFunding: Bool = false,
+        approvedMiningFeeSats: UInt64? = nil,
         paymentDeadline: PaykitPreciseInstant? = nil,
         beforeBroadcastAttempt: () async throws -> Void = {},
         onPreDispatchFailure: (Error) async throws -> Void = { _ in throw OnchainSendAttemptError.preDispatchCleanupFailed }
@@ -647,6 +655,12 @@ actor OnchainSendAttemptService {
                           prepared.recipientAmountSats >= originalFee,
                           prepared.recipientAmountSats <= context.txTotalSats - miningFee
                     else { throw OnchainSendAttemptError.unresolved }
+                }
+                // Savings never pay more than the Total the user confirmed, so a higher fee asks for another swipe.
+                if isSparkFunding || approvedMiningFeeSats != nil {
+                    guard prepared.recipientAmountSats == amountSats, let miningFee = prepared.miningFeeSats,
+                          let approvedFee = approvedMiningFeeSats ?? followupContext?.feeSats, miningFee <= approvedFee
+                    else { throw SparkFundingChanged(preparedFeeSats: prepared.miningFeeSats) }
                 }
                 attempt.amountSats = prepared.recipientAmountSats
                 attempt.txid = prepared.txid
@@ -939,6 +953,12 @@ actor OnchainSendAttemptService {
         knownAttempt = attempt
         guard try store.load().first?.id == attemptId else { throw OnchainSendAttemptError.outcomeNotSaved }
         try store.save([attempt])
+    }
+
+    /// The Spark funding still waiting on its outcome, so the confirm screen can keep the approval its swipe gave.
+    func unresolvedSparkFundingAttemptId() -> UUID? {
+        guard let attempt = try? currentAttempt(), attempt.isSparkFunding, attempt.status != .accepted else { return nil }
+        return attempt.id
     }
 
     private func currentAdmissionAttempt() throws -> OnchainSendAttempt? {

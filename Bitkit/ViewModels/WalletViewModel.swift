@@ -78,7 +78,7 @@ class WalletViewModel: ObservableObject {
     @Published var peers: [PeerDetails]?
     @Published var channels: [ChannelDetails]?
     private var eventHandlers: [String: (Event) -> Void] = [:]
-    private var watchSendContinuations: [String: CheckedContinuation<SettledLightningPayment, Error>] = [:]
+    private(set) var watchSendContinuations: [String: CheckedContinuation<SettledLightningPayment, Error>] = [:]
     private var probeOutcomes: [PaymentId: ProbeOutcome] = [:]
 
     @AppStorage("legacyNetworkGraphCleanupDone") private var legacyNetworkGraphCleanupDone = false
@@ -1440,7 +1440,7 @@ class WalletViewModel: ObservableObject {
             }
             let sparkBalanceSats = Self.spendingSparkSats(
                 isExiting: spark.isExiting,
-                balanceSats: spark.balanceSats,
+                balanceSats: spark.shownBalanceSats,
                 outsideExitSats: outsideExitSats
             )
 

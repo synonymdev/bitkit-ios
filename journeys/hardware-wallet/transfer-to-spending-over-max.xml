@@ -13,7 +13,8 @@
     999 999 999 against an AVAILABLE of 610 015, with no toast and no snap. Continue stayed disabled,
     so nothing unaffordable could be ordered — the gap was in the input, not in the order.
 
-    Precondition: Spark connected (a dev build reaches Spark's regtest with no key) and a paired Bridge
+    Precondition: Spark connected on a regtest build launched with SPARK_CHAIN_SERVICE_URL set to the
+    regtest's Esplora URL (otherwise the Transfer Unavailable sheet opens), and a paired Bridge
     emulator whose native-segwit account holds spendable regtest funds. Start on the wallet home screen.
 
     The screen is entered twice on purpose. A first entry that computes the limits from zero fires

@@ -24,12 +24,13 @@ final class SparkExitSweepTests: XCTestCase {
         try singleKeyCpfpSigner(secretKeyBytes: key.secretKey)
     }
 
-    private func driver() -> SparkExitDriver {
+    private func driver(trustedFeeRate: UInt64? = 10) -> SparkExitDriver {
         SparkExitDriver(
             chain: chain,
             recovering: nil,
             makeSigner: { [unowned self] _ in try signer() },
-            save: { [unowned self] in saved.append($0) }
+            save: { [unowned self] in saved.append($0) },
+            trustedFeeRate: { trustedFeeRate }
         )
     }
 
@@ -281,7 +282,7 @@ final class SparkExitSweepTests: XCTestCase {
         accepted.leftoverSweep = .init(txid: "s", txHex: "02", valueSats: 4800, isAccepted: true, feeRateSatPerVbyte: 2, sentAtHeight: 1000)
         chain.confirmedTxids = []
         chain.fastestFee = 50
-        accepted = try await driver().tick(accepted)
+        accepted = try await driver(trustedFeeRate: 50).tick(accepted)
         XCTAssertEqual(accepted.leftoverSweep?.txid, "s")
         XCTAssertTrue(accepted.needsDriving)
     }
@@ -566,6 +567,8 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.refusedSweepRate("min relay fee not met, 450 < 674", paidRate: 1), 2)
         XCTAssertEqual(SparkExitMath.refusedSweepRate("mempool min fee not met, 900 < 2700", paidRate: 2), 6)
         XCTAssertEqual(SparkExitMath.refusedSweepRate("insufficient fee", paidRate: 3), 4, "no numbers: one sat/vB more")
+        // A host's number past any real rate asks for more than every cap, and never traps.
+        XCTAssertEqual(SparkExitMath.refusedSweepRate("mempool min fee not met, 450 < 10000000000000000000", paidRate: 2), .max)
         let absurd = SparkExitMath.refusedSweepRate("min relay fee not met, 110 < 22000", paidRate: 1)
         XCTAssertEqual(absurd, 200)
         XCTAssertEqual(SparkExitMath.refusedSweepFloor(absurd, nextBlock: 5, exitRate: 2), 5, "capped at the next block's rate")
@@ -597,6 +600,33 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertEqual(sweep.feeRateSatPerVbyte, 5)
     }
 
+    /// The host's next block asks 5,000 sat/vB and its refusal 550,000 sats for ~110 vB of a 2M-sat leftover: the sweep
+    /// pays Bitkit's own fast rate at most, and is not replaced above it.
+    func testAHostQuotingAnAbsurdFeeRateCannotPushTheSweepPastBitkitsOwnRate() async throws {
+        var record = endedRecord()
+        let utxo = SparkExitFixtures.utxo(String(repeating: "1", count: 64), value: 2_000_000)
+        record.leftover = [.init(txid: utxo.txid, vout: 0, valueSats: 2_000_000)]
+        chain.utxosByAddress[key.address] = [utxo]
+        chain.economyFee = 1
+        chain.fastestFee = 5000
+        chain.outcome = .rejected("min relay fee not met, 110 < 550000")
+
+        record = try await driver().tick(record)
+        chain.tip = 1001
+        chain.outcome = .accepted
+        record = try await driver().tick(record)
+
+        let sweep = try XCTUnwrap(record.leftoverSweep)
+        XCTAssertEqual(sweep.isAccepted, true)
+        XCTAssertEqual(sweep.feeRateSatPerVbyte, 10, "the refused sweep went out at the host's rate")
+
+        // A day unconfirmed: no replacement above the ceiling, the same sweep is sent again.
+        chain.tip = 1145
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.leftoverSweep?.txid, sweep.txid)
+        XCTAssertEqual(record.leftoverSweep?.feeRateSatPerVbyte, 10)
+    }
+
     /// The result names the leftover once, with its total, whatever state it is in.
     func testTheLeftoverIsOneLineWithTheTotal() {
         var record = endedRecord()
@@ -622,6 +652,17 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertEqual(SparkExitFeeEstimates.rate(["1": 0.2], target: 1), 1)
     }
 
+    /// A host's rate out of range is never converted: such a rate is skipped, and an answer with nothing usable is
+    /// unavailable.
+    func testAnOutOfRangeFeeEstimateIsUnavailable() {
+        XCTAssertThrowsError(try SparkExitFeeEstimates.validated(["1": 1e30]), "an out-of-range rate was taken as an estimate")
+        XCTAssertThrowsError(try SparkExitFeeEstimates.validated(["1": .nan, "3": -2, "6": 0]))
+        XCTAssertEqual(try SparkExitFeeEstimates.validated(["1": 1e30, "6": 4]), ["6": 4])
+        XCTAssertEqual(try SparkExitFeeEstimates.validated([:]), [:], "an empty answer still falls back to the floor")
+        XCTAssertEqual(SparkExitFeeEstimates.rate(["1": 1e30, "6": 4], target: 1), 4)
+        XCTAssertEqual(SparkExitFeeEstimates.economy(["1": 4, "144": .infinity]), 4)
+    }
+
     func testAnEmptyEstimateMapStillPricesEveryStep() async throws {
         let http = SparkExitBroadcasterTests.FakeHTTP()
         http.responses = [("a.example/api/fee-estimates", 200, "{}"), ("a.example/api/fee-estimates", 200, "{}")]
@@ -633,6 +674,59 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertEqual(fees, SparkExitNetworkFees(fastest: 1, halfHour: 1, economy: 1))
         XCTAssertEqual(fastest, 1)
         XCTAssertEqual(SparkExitFeeBumpOption.options(exitRate: 2, fees: fees).map(\.rate), [3], "a bump still offers a higher rate")
+    }
+
+    /// Change kept at the funding address shows its result once, then lets a later exit start: its address and path
+    /// stay in the earlier exit addresses, which no new exit replaces.
+    func testKeptChangeShowsOnceAndItsAddressStaysListed() async throws {
+        var record = endedRecord()
+        record.isResultSeen = true
+        record.feeRateSatPerVbyte = 20
+        chain.economyFee = 20
+        chain.utxosByAddress[key.address] = [SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 600)]
+        record = try await driver().tick(record)
+        chain.tip = 1000 + SparkExitDriver.sweepWaitBlocks
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.leftoverLine, .kept(sats: 600))
+        XCTAssertTrue(record.showsResult, "the funding address and its path were out of reach")
+        record.isResultSeen = true
+        XCTAssertFalse(record.showsResult, "the kept change blocked every later exit")
+
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let earlier = SparkExitEarlierAddressStore(url: dir.appendingPathComponent("earlier.json"))
+        let save = SparkExitManager.gatedSave(
+            store: SparkExitStore(url: dir.appendingPathComponent("spark-exit.json")),
+            lostLeafStore: SparkExitLostLeafStore(url: dir.appendingPathComponent("lost.json")),
+            earlierAddressStore: earlier,
+            gate: SparkExitWriteGate()
+        )
+        try save(record)
+        try save(record)
+
+        let listed = try earlier.load()
+        XCTAssertEqual(listed.map(\.address), [key.address], "the kept change's address is in no list")
+        XCTAssertEqual(listed.first?.kind, .keptChange)
+        XCTAssertEqual(listed.first?.sats, 600)
+        XCTAssertEqual(listed.first?.path, SparkExitFundingKey.path(index: 0, network: Env.bitkitCoreNetwork))
+    }
+
+    /// A leftover sweep refused for good shows its result once, then lets a later exit start: the funding address and
+    /// its path stay in the earlier exit addresses.
+    func testARefusedLeftoverSweepShowsOnceAndItsAddressStaysListed() throws {
+        var record = endedRecord()
+        record.leftoverSweep = .init(txid: "t", txHex: "02", valueSats: 4000, rejection: "non-mandatory-script-verify-flag")
+        XCTAssertTrue(record.showsResult, "the leftover's address and path were out of reach")
+        XCTAssertTrue(record.hasUnseenResult, "opening the result never lets the refused sweep go")
+        record.isResultSeen = true
+        XCTAssertFalse(record.showsResult, "the refused sweep blocked every later exit")
+
+        let listed = try XCTUnwrap(SparkExitEarlierAddress.keptChange(record, network: .regtest, at: Date()), "the leftover's address is in no list")
+        XCTAssertEqual(listed.address, key.address)
+        XCTAssertEqual(listed.kind, .keptChange)
+        XCTAssertEqual(listed.sats, 5035)
     }
 
     /// After about four weeks (4,032 blocks) the change stays at the funding address and the exit is let go.
@@ -824,7 +918,7 @@ final class SparkExitSweepTests: XCTestCase {
 
         record = try await driver().tick(record)
         XCTAssertNotNil(record.fundingPaymentTxid)
-        chain.tip = 1001
+        chain.tip = 1003
         record = try await driver().tick(record)
         XCTAssertNil(record.fundingPaymentTxid)
         XCTAssertFalse(record.needsDriving)
@@ -891,6 +985,13 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.inTransferSats(record, fundingSeenSats: 0), 10000)
     }
 
+    /// A leaf the exit left behind stays on Spark: it leaves the transfer to savings.
+    func testInTransferLeavesOutALeafLeftBehind() {
+        var record = endedRecord(phase: .running)
+        record.leftBehindLeaves = [.init(leafId: "leaf-2", valueSats: 30000, reason: "fee rate")]
+        XCTAssertEqual(SparkExitMath.inTransferSats(record, fundingSeenSats: 0), 60000, "the left-behind leaf is still counted in transfer")
+    }
+
     /// The first fee funding nobody paid yet is not in transfer; once paid, or once the exit pays it, it is.
     func testInTransferLeavesOutUnpaidFirstFunding() {
         var record = endedRecord(phase: .awaitingFunding(requiredSats: 20000))
@@ -921,6 +1022,12 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertEqual(WalletViewModel.spendingSparkSats(isExiting: false, balanceSats: 50000, outsideExitSats: nil), 50000)
         XCTAssertEqual(WalletViewModel.spendingSparkSats(isExiting: true, balanceSats: 50000, outsideExitSats: 32768), 32768)
         XCTAssertEqual(WalletViewModel.spendingSparkSats(isExiting: true, balanceSats: 50000, outsideExitSats: nil), 0)
+    }
+
+    /// While an exit runs, Spark counts as 0 where Spending and its connections show it, as on Android.
+    func testSparkShowsZeroInSpendingDuringAnExit() {
+        XCTAssertEqual(SparkManager.shownSpendingSats(isExiting: false, shownBalanceSats: 50000), 50000)
+        XCTAssertEqual(SparkManager.shownSpendingSats(isExiting: true, shownBalanceSats: 50000), 0, "Spending showed Spark during an exit")
     }
 
     /// A start goes on only with its own exit still stored and active: one cancelled while it waited stops it.

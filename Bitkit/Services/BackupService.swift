@@ -434,6 +434,10 @@ class BackupService {
                     await restoreSparkExit()
                 }
                 guard !defaults.bool(forKey: Self.sparkExitRestorePendingKey) else { throw SparkExitBackupError.restorePending }
+                // Restored exit data Spark couldn't import yet lives only in the remote backup, so nothing replaces it.
+                guard await !SparkManager.shared.hasStagedExitState(walletIndex: LightningService.shared.currentWalletIndex) else {
+                    throw SparkExitBackupError.restorePending
+                }
                 // Nothing to back up until Spark connects, which marks this category required again.
                 if let data = try await sparkExitBackupData() {
                     try await uploadBackup(category.rawValue, data)
@@ -478,7 +482,8 @@ class BackupService {
                 outcome = .busy
                 Logger.debug("Metadata backup deferred until wallet restoration and backup complete", context: "BackupService")
             } else if error is SparkExitBackupError {
-                outcome = .busy
+                // Backs off like an unreachable server: retrying every few seconds refetches several MB each time.
+                outcome = .temporarilyUnavailable
                 Logger.warn("Spark exit backup deferred until its restore reads the remote backup", context: "BackupService")
             } else if error is WalletBackupSnapshotError {
                 outcome = .snapshotChanged
@@ -787,6 +792,9 @@ class BackupService {
                 // App-owned, so it takes no part in the core field migration above and never sets
                 // needsRewrite. Restored names wait as pending ones until each wallet is paired again.
                 HwKnownDeviceStorage.restoreNames(payload.hwWalletNames ?? [:])
+                SparkExitEarlierAddressBackup.restore(payload.sparkExitEarlierAddresses, network: "\(Env.network)") {
+                    SparkExitEarlierAddressStore(walletIndex: $0)
+                }
 
                 // Force address rotation by clearing onchain address
                 UserDefaults.standard.set("", forKey: "onchainAddress")
@@ -944,6 +952,15 @@ class BackupService {
         // METADATA (hardware wallet names). Scoped to the names alone: the known-device store is also
         // rewritten by every connect, and reconnect traffic must not re-upload the whole envelope.
         HwKnownDeviceStorage.namesChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { @Sendable [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .metadata)
+            }
+            .store(in: cancellables)
+
+        // METADATA (earlier Spark exit addresses)
+        SparkExitEarlierAddressStore.savedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
@@ -1150,9 +1167,15 @@ class BackupService {
         return statuses[category] ?? BackupItemStatus()
     }
 
+    /// The categories whose remote timestamp tells when the wallet was last backed up.
+    /// The Spark exit data is left out: reading its time downloads data that can reach several MB.
+    static let latestBackupTimeCategories = BackupCategory.allCases.filter {
+        $0 != .lightningConnections && $0 != .usdt && $0 != .sparkExit
+    }
+
     func getLatestBackupTime() async -> UInt64? {
         let timestamps = await withTaskGroup(of: UInt64?.self) { group in
-            for category in BackupCategory.allCases where category != .lightningConnections && category != .usdt {
+            for category in Self.latestBackupTimeCategories {
                 group.addTask {
                     await self.getRemoteBackupTimestamp(category: category)
                 }
@@ -1372,7 +1395,11 @@ class BackupService {
                 cache: cache,
                 pubkySession: pubkySession,
                 pubkyContactProfileOverrides: pubkyContactProfileOverrides,
-                hwWalletNames: hwWalletNames.isEmpty ? nil : hwWalletNames
+                hwWalletNames: hwWalletNames.isEmpty ? nil : hwWalletNames,
+                sparkExitEarlierAddresses: SparkExitEarlierAddressBackup.backup(
+                    SparkExitEarlierAddressStore(walletIndex: LightningService.shared.currentWalletIndex),
+                    walletKey: SparkExitFundingIndexes.walletKey(network: "\(Env.network)", walletIndex: LightningService.shared.currentWalletIndex)
+                )
             )
             return try JSONEncoder().encode(payload)
 
@@ -1687,7 +1714,7 @@ struct BackupFailureNotificationGate {
 }
 
 enum SparkExitBackupError: Error {
-    /// The restore couldn't read the remote backup yet, so a fresh export must not replace it.
+    /// The restore couldn't read the remote backup or import it yet, so a fresh export must not replace it.
     case restorePending
 }
 

@@ -160,6 +160,11 @@ struct SparkExitQuote: Equatable {
         prepared.leaves.reduce(0) { $0 + $1.valueSats }
     }
 
+    /// Each leaf's value, kept with the exit for a leaf its first build leaves behind.
+    var leafSats: [String: UInt64] {
+        Dictionary(prepared.leaves.map { ($0.leafId, $0.valueSats) }, uniquingKeysWith: { first, _ in first })
+    }
+
     /// Breez's rule: only exit when the value is more than its fees.
     var isWorthExiting: Bool {
         !prepared.leaves.isEmpty && exitSats > networkFeeSats
@@ -214,6 +219,8 @@ struct SparkExitReminder: Equatable {
     var isLostLeaves = false
     var isFailed = false
     var isNotMoving = false
+    /// Planned without the chain tip, so its date is a guess that never takes the place of one planned with it.
+    var isEstimated = false
 }
 
 /// What the exit shows about its fee funding while it lacks some.
@@ -347,7 +354,7 @@ enum SparkExitMath {
         }
         for height in heights.sorted().prefix(maxTimelockReminders) {
             let wait = tip.map { secondsUntil(height: height, tip: $0, network: network) } ?? reminderSeconds(network: network)
-            reminders.append(SparkExitReminder(id: "\(generation)-h\(height)", fireAt: now.addingTimeInterval(wait + grace)))
+            reminders.append(SparkExitReminder(id: "\(generation)-h\(height)", fireAt: now.addingTimeInterval(wait + grace), isEstimated: tip == nil))
         }
         if let readyTxid {
             reminders.append(SparkExitReminder(id: "\(generation)-ready-\(readyTxid)", fireAt: now.addingTimeInterval(grace)))
@@ -533,8 +540,11 @@ enum SparkExitMath {
         guard let match = refusal.firstMatch(of: #/(?:min relay fee|mempool min fee) not met[^0-9]*(\d+)\s*<\s*(\d+)/#),
               let paid = UInt64(match.1), let least = UInt64(match.2), paid > 0
         else { return bumped }
-        let leastRate = (least * max(paidRate, 1) + paid - 1) / paid
-        return max(leastRate, bumped)
+        // A host's number can be anything: one too big asks for more than any cap, which the caller applies.
+        let (scaled, isScaledOver) = least.multipliedReportingOverflow(by: max(paidRate, 1))
+        let (rounded, isRoundedOver) = scaled.addingReportingOverflow(paid - 1)
+        guard !isScaledOver, !isRoundedOver else { return .max }
+        return max(rounded / paid, bumped)
     }
 
     /// What a refused rate lifts the sweep to: never above the next block's rate or the exit's own, whichever is higher,
@@ -570,11 +580,37 @@ enum SparkExitMath {
         receivedSats > 0 && receivedSats < requiredSats ? max(requiredSats - receivedSats, fundingDustSats) : nil
     }
 
+    /// Unused funding addresses a scan reads past the last used one before it stops.
+    static let fundingScanGapLimit: UInt32 = 20
+    /// The most funding addresses one scan reads, even when a host reports every one used.
+    static let fundingScanMaxAddresses: UInt32 = 1000
+
+    /// The funding index past the last one `isUsed` reports used, read from 0 until `fundingScanGapLimit` unused ones
+    /// follow it, for a wallet that kept no index, such as one restored from the phrase or an older backup.
+    static func scanNextFundingIndex(isUsed: (UInt32) async throws -> Bool) async rethrows -> UInt32 {
+        var next: UInt32 = 0
+        var index: UInt32 = 0
+        while index < next + fundingScanGapLimit, index < fundingScanMaxAddresses {
+            if try await isUsed(index) {
+                next = index + 1
+            }
+            index += 1
+        }
+        return next
+    }
+
     /// The funding key index of a new exit: past the counter the last start left and every index the stored record
     /// used. Records from before per-exit indexes used 0.
     static func nextFundingIndex(counter: Int, record: SparkExitRecord?) -> UInt32 {
         let afterRecord = record?.funding.map(\.index).max().map { $0 + 1 } ?? 0
         return max(UInt32(clamping: max(0, counter)), afterRecord)
+    }
+
+    /// What stays on Spark once a quote's exit took its leaves: the balance beyond them, skipped leaves included, less
+    /// the lost leaves it still counts until a sync drops them. Nil when nothing.
+    static func outsideSats(sparkBalanceSats: UInt64, quote: SparkExitQuote) -> UInt64? {
+        let outside = beyondLostLeaves(sparkBalanceSats.saturatingSub(quote.leafTotalSats), lostLeafSats: quote.lostLeafSats)
+        return outside > 0 ? outside : nil
     }
 
     /// The Spark balance a quote cannot exit: the leaves it skips, and what the balance holds beyond every leaf the
@@ -605,7 +641,8 @@ enum SparkExitMath {
 
     /// What the exit still brings to savings: what it expects, less what already reached savings, less the first fee
     /// funding nobody paid yet (the expected amount counts it as coming back), less leaves an older state claimed,
-    /// which never arrive. Only confirmed steps count as reached: the sweep is in the plan from its first build.
+    /// which never arrive, and leaves the exit left behind, which stay on Spark. Only confirmed steps count as reached: the sweep is in the plan from
+    /// its first build.
     static func inTransferSats(_ record: SparkExitRecord, fundingSeenSats: UInt64) -> UInt64 {
         let confirmed = (record.recovery?.response.transactions ?? []).filter {
             guard case .confirmed = $0.status else { return false }
@@ -618,20 +655,26 @@ enum SparkExitMath {
             unpaid = requiredSats.saturatingSub(max(record.fundedSats, fundingSeenSats))
         }
         return record.expectedSats.saturatingSub(received).saturatingSub(unpaid).saturatingSub(record.lostSats)
+            .saturatingSub(record.leftBehindSats)
     }
 
-    /// What the Spark balance holds beyond the exit's leaves: value that reached Spark after the quote, such as a
-    /// counter-swap claimed late, which this exit leaves on Spark. Nil when nothing is beyond them.
+    /// What stays on Spark while the exit runs: the Spark balance beyond the exit's leaves, such as a counter-swap
+    /// claimed late, or, once published leaves left the balance, what the start saw beyond them (`outsideSats`),
+    /// whichever is more. Nil when nothing is beyond them.
     static func outsideExitSats(sparkBalanceSats: UInt64, record: SparkExitRecord) -> UInt64? {
         guard record.isActive else { return nil }
-        return staysOnSparkSats(sparkBalanceSats: sparkBalanceSats, record: record)
+        let live = staysOnSparkSats(sparkBalanceSats: sparkBalanceSats, record: record) ?? 0
+        // The start's snapshot predates any leaf the exit left behind, which stays on Spark too.
+        let outside = max(live, (record.outsideSats ?? 0) + record.leftBehindSats)
+        return outside > 0 ? outside : nil
     }
 
     /// What the Spark balance holds beyond the exit's leaves, in any phase: what a failed exit leaves on Spark. Lost
-    /// leaves count only while the balance still holds them (`beyondLostLeaves`).
+    /// leaves count only while the balance still holds them (`beyondLostLeaves`); a leaf the exit left behind stays on
+    /// Spark, so it counts here, not in the transfer.
     static func staysOnSparkSats(sparkBalanceSats: UInt64, record: SparkExitRecord) -> UInt64? {
         guard let leafTotal = record.leafTotalSats else { return nil }
-        let liveLeafTotal = leafTotal.saturatingSub(record.lostSats)
+        let liveLeafTotal = leafTotal.saturatingSub(record.lostSats).saturatingSub(record.leftBehindSats)
         guard sparkBalanceSats > liveLeafTotal else { return nil }
         let stays = beyondLostLeaves(sparkBalanceSats - liveLeafTotal, lostLeafSats: (record.lostLeaves ?? []).map(\.valueSats))
         return stays > 0 ? stays : nil
@@ -649,8 +692,61 @@ enum SparkExitMath {
         network == .regtest ? 10 * 60 : 4 * 60 * 60
     }
 
-    /// Savings can pay the fee funding when its spendable balance covers the funding and the payment's own fee.
-    static func canFundFromSavings(spendableSats: UInt64, fundingSats: UInt64, paymentFeeSats: UInt64) -> Bool {
-        fundingSats > 0 && spendableSats >= fundingSats.saturatingAdd(paymentFeeSats)
+    /// Savings can pay the fee funding when Spark reads Bitkit's chain, which the payment goes out on
+    /// (`readsBitkitChain`), and its spendable balance covers the funding and the payment's own fee.
+    static func canFundFromSavings(spendableSats: UInt64, fundingSats: UInt64, paymentFeeSats: UInt64, readsBitkitChain: Bool) -> Bool {
+        readsBitkitChain && fundingSats > 0 && spendableSats >= fundingSats.saturatingAdd(paymentFeeSats)
+    }
+
+    /// Savings can pay a higher fee's `totalSats` (its extra funding and that payment's fee) on the same terms: Spark
+    /// reads Bitkit's chain and the spendable balance covers it. A rate with nothing to pay needs no payment.
+    static func canPayFeeBump(totalSats: UInt64?, spendableSats: UInt64, readsBitkitChain: Bool) -> Bool {
+        guard let totalSats else { return false }
+        return totalSats == 0 || (readsBitkitChain && spendableSats >= totalSats)
+    }
+}
+
+/// Each wallet's next exit funding index in the metadata backup, keyed `<network>/wallet<n>` as bitkit-android keys its
+/// `sparkExitNextFundingIndexes`, so a backup from either app restores on the other.
+enum SparkExitFundingIndexes {
+    private static let defaultsPrefix = "sparkExitNextFundingIndex-"
+
+    /// How the metadata backup keys a wallet's exit state, as bitkit-android does.
+    static func walletKey(network: String, walletIndex: Int) -> String {
+        "\(network)/wallet\(walletIndex)"
+    }
+
+    /// Set when a restore brought the counter back, so the exit looks once for funding addresses that still hold coins.
+    static func recoveryPendingKey(network: String, walletIndex: Int) -> String {
+        "sparkExitFundingRecoveryPending-\(network)-\(walletIndex)"
+    }
+
+    /// The counter the last exit start left, per network and wallet.
+    static func defaultsKey(network: String, walletIndex: Int) -> String {
+        "\(defaultsPrefix)\(network)-\(walletIndex)"
+    }
+
+    /// The counters kept in `defaults`, nil with none.
+    static func backup(_ defaults: UserDefaults) -> [String: Int]? {
+        let kept = defaults.dictionaryRepresentation().reduce(into: [String: Int]()) { kept, entry in
+            guard entry.key.hasPrefix(defaultsPrefix), let index = entry.value as? Int else { return }
+            let rest = entry.key.dropFirst(defaultsPrefix.count)
+            guard let dash = rest.lastIndex(of: "-"), let wallet = Int(rest[rest.index(after: dash)...]) else { return }
+            kept["\(rest[..<dash])/wallet\(wallet)"] = index
+        }
+        return kept.isEmpty ? nil : kept
+    }
+
+    /// Writes `backedUp` into `defaults`, keeping the higher of it and a counter already there.
+    static func restore(_ backedUp: [String: Int]?, into defaults: UserDefaults) {
+        for (key, index) in backedUp ?? [:] {
+            let parts = key.split(separator: "/")
+            guard parts.count == 2, parts[1].hasPrefix("wallet"), let wallet = Int(parts[1].dropFirst("wallet".count)) else { continue }
+            let defaultsKey = defaultsKey(network: String(parts[0]), walletIndex: wallet)
+            let local = defaults.object(forKey: defaultsKey) as? Int ?? 0
+            defaults.set(max(local, index), forKey: defaultsKey)
+            // The exit then looks once for funding addresses below it that still hold coins and nothing watches.
+            defaults.set(true, forKey: recoveryPendingKey(network: String(parts[0]), walletIndex: wallet))
+        }
     }
 }

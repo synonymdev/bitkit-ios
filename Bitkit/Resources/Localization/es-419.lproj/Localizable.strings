@@ -242,7 +242,6 @@
 "lightning__spending_confirm__amount" = "Hacia Gastos";
 "lightning__spending_confirm__total" = "Total";
 "lightning__spending_confirm__spending_fee" = "Spending fee";
-"lightning__spending_confirm__up_to" = "up to";
 "lightning__spending_confirm__instant_text" = "Ready in a few minutes";
 "lightning__spending_confirm__later" = "Later";
 "lightning__spending_confirm__later_text" = "After 3 confirmations, about 30 minutes";
@@ -279,6 +278,7 @@
 "lightning__savings_spark_failed__toast" = "Transferencia de Spark fallida";
 "lightning__transfer_success__nav_title" = "Transferencia exitosa";
 "lightning__transfer_success__title_spending" = "Fondos movidos\n<accent>a gastos</accent>";
+"lightning__transfer_success__text_spending" = "Tus fondos han sido transferidos y tu saldo para gastar está listo para usarse.";
 "lightning__transfer_success__title_savings" = "Fondos movidos\n<accent>a gastos</accent>";
 "lightning__transfer_success__text_savings" = "Sus fondos han sido transferidos. Podrá utilizar estos fondos inmediatamente.";
 "lightning__external__nav_title" = "Conexión Lightning";
@@ -363,7 +363,7 @@
 "lightning__spark_deposit__wait_button" = "Esperar";
 "lightning__spark_deposit__waiting" = "Spark lo agrega a tu saldo de gastos {when}.";
 "lightning__spark_deposit__waiting_next" = "Spark lo agrega a tu saldo de gastos después de la próxima confirmación.";
-"lightning__spark_deposit__repriced" = "Instant now costs {fee}. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
+"lightning__spark_deposit__repriced" = "Instant now costs <accent>{fee}</accent>. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__pay" = "Pay {fee}";
 "lightning__spark_deposit__instant_unavailable" = "Instant isn't available for this transfer. Spark adds it to your spending balance after 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__not_seen" = "Spark hasn't seen your transfer yet. It's added after 3 confirmations; you can leave this screen.";
@@ -418,10 +418,8 @@
 "lightning__spark_exit__leftover_swept" = "{amount} sobrante de los fondos para comisiones se envió a ahorros.";
 "lightning__spark_exit__leftover_sending" = "Enviando a ahorros {amount} sobrante de los fondos para comisiones.";
 "lightning__spark_exit__leftover_dust" = "{amount} sobrante de los fondos para comisiones es demasiado pequeño para enviarlo y se queda en {address}, ruta de derivación {path}.";
-"lightning__spark_exit__leftover_txid" = "ID de la transacción: {txid}";
 "lightning__spark_exit__fund_paid" = "Pagado desde ahorros, esperando confirmación.";
 "lightning__spark_exit__fund_pending" = "Pago detectado, esperando confirmación.";
-"lightning__spark_exit__funding_txid" = "ID de la transacción: {txid}";
 "lightning__spark_exit__lost_leaves" = "Un propietario anterior de estos fondos reclamó {amount} on-chain y no se puede recuperar.";
 "lightning__spark_exit__notification_lost" = "{amount} de tu salida no se puede recuperar. Abre Bitkit para ver por qué.";
 "lightning__spark_exit__notification_failed" = "Tu salida de emergencia se detuvo. Abre Bitkit para ver por qué.";
@@ -444,7 +442,6 @@
 "lightning__spark_exit__waiting_leaves" = "En este momento no se puede leer on-chain una parte de esta salida. Bitkit lo vuelve a intentar durante hasta una semana.";
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit no pudo leer el progreso guardado de esta salida, así que lo reconstruye a partir de la cadena.";
 "lightning__spark_exit__done_received" = "{amount} llegó a tus ahorros.";
-"lightning__spark_exit__sweep_txid" = "ID de la transacción: {txid}";
 "lightning__spark_exit__leftover_rejected" = "{amount} sobrante de los fondos para comisiones no se pudo enviar y se queda en {address}, ruta de derivación {path}.";
 "lightning__spark_exit__notification_not_moving" = "Tu salida de emergencia no avanza. Abre Bitkit para ver por qué.";
 "lightning__spark_exit__funding_split" = "Bitkit lo divide en {count} partes, una para cada paso, para que un paso atascado no retrase a los demás.";
@@ -453,7 +450,6 @@
 "lightning__spark_exit__fee_bump_button" = "Pagar una comisión más alta";
 "lightning__spark_exit__fee_bump_title" = "Paga una\n<accent>comisión más alta</accent>";
 "lightning__spark_exit__fee_bump_text" = "Esta salida paga <accent>{rate} sat/vB</accent>, menos de lo que pide la red ahora. Elige una tasa más alta y Bitkit vuelve a enviar los pasos pendientes. Paga la diferencia desde ahorros: la cantidad junto a cada velocidad.";
-"lightning__spark_exit__fee_bump_loading" = "Calculando cuánto cuesta una comisión más alta…";
 "lightning__spark_exit__fee_bump_error" = "No se pudo calcular una comisión más alta. Vuelve a intentarlo.";
 "lightning__spark_exit__fee_bump_confirm" = "Usar esta comisión";
 "lightning__spark_exit__leftover_waiting" = "{amount} de cambio de comisiones llegará a tus ahorros cuando bajen las comisiones de red.";
@@ -1389,6 +1385,9 @@
 "wallet__send_sync_long_title" = "Problemas de\n<accent>conexión</accent>";
 "wallet__send_sync_long_description" = "Parece que está desconectado. Revise su conexión. Bitkit intentará reconectarse cada pocos segundos.";
 "wallet__send_to" = "Para";
+"wallet__send_swap_route" = "Ruta";
+"wallet__send_paykit_no_route__title" = "No se puede pagar a este contacto";
+"wallet__send_paykit_no_route__description" = "Este contacto no tiene ningún método de pago que Bitkit pueda usar en este momento.";
 "wallet__recipient_contact" = "Contacto";
 "wallet__recipient_invoice" = "Pegar factura";
 "wallet__recipient_manual" = "Introducir manualmente";

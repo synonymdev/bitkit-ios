@@ -20,6 +20,71 @@ final class SparkExitReviewTests: XCTestCase {
         SparkExitDriver(chain: chain, recovering: withSdk ? sdk : nil, makeSigner: { _ in StubCpfpSigner() }, save: { _ in })
     }
 
+    // MARK: Review 518bf31e5
+
+    /// Funding sent from another wallet before the user picked savings is not paid twice.
+    func testSavingsPaysOnlyWhatTheFundingAddressDoesNotHoldYet() {
+        let quote = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 20000))
+        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: quote, fresh: quote, seenSats: 25000, seenCount: 1, feeRate: 2), 0)
+    }
+
+    /// Savings completing a partial payment from another wallet is one more funding input: it pays that input's fee
+    /// too, so both payments together are adopted. A 20,000 quote at 2 sat/vB with 8,000 received needs 20,136.
+    func testSavingsCompletingPartialFundingPaysTheExtraInputsFee() {
+        let quote = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 20000))
+        let sats = SparkExitManager.savingsFundingSats(confirmed: quote, fresh: quote, seenSats: 8000, seenCount: 1, feeRate: 2)
+
+        XCTAssertEqual(sats, 12136, "savings left the exit short of the second input's fee")
+        let paid = [
+            SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 8000),
+            SparkExitFixtures.utxo(String(repeating: "b", count: 64), value: sats),
+        ]
+        XCTAssertNotNil(SparkExitMath.fundingTopUp(paid, requiredSats: 20000, inputFeeSats: SparkExitMath.inputVbytes * 2))
+        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: quote, fresh: quote, seenSats: 0, seenCount: 0, feeRate: 2), 20000)
+    }
+
+    /// Savings never pays under the 294-sat dust limit, which the onchain wallet refuses: a 20,000 quote at 2 sat/vB
+    /// with 19,900 received misses 236 sats and pays 294.
+    func testSavingsCompletingAlmostFullFundingPaysAtLeastTheDustLimit() {
+        let quote = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 20000))
+        let sats = SparkExitManager.savingsFundingSats(confirmed: quote, fresh: quote, seenSats: 19900, seenCount: 1, feeRate: 2)
+        XCTAssertEqual(sats, SparkExitMath.fundingDustSats, "savings paid a dust amount")
+    }
+
+    /// A tapped notification for an exit whose result was seen already is let go once the record loaded, so a later
+    /// exit's result never jumps to Progress.
+    func testATappedNotificationIsLetGoOnceTheLoadedExitShowsNoResult() {
+        XCTAssertEqual(SparkExitManager.notificationOpen(opensProgress: true, showsResult: false, hasLoadedRecord: false), .wait)
+        XCTAssertEqual(SparkExitManager.notificationOpen(opensProgress: true, showsResult: true, hasLoadedRecord: true), .open)
+        XCTAssertEqual(SparkExitManager.notificationOpen(opensProgress: true, showsResult: false, hasLoadedRecord: true), .drop)
+    }
+
+    /// A cancel of an exit that can no longer be cancelled says so, not that the address could not be read.
+    @MainActor func testACancelOfAnExitNoLongerCancellableIsNotAFailedRead() async {
+        let exit = SparkExitManager(walletIndex: 9999)
+        let outcome = await exit.cancel()
+        XCTAssertEqual(outcome, .notCancellable)
+    }
+
+    /// A forgotten exit gives its funding address back, so a payment that lands there late is seen by the next exit.
+    func testAForgottenExitGivesItsFundingAddressBack() {
+        XCTAssertEqual(SparkExitManager.fundingCounterAfterForget(4, index: 3), 3)
+        XCTAssertEqual(SparkExitManager.fundingCounterAfterForget(6, index: 3), 6, "a later address is in use")
+    }
+
+    /// A wipe deletes the copies of an unreadable record kept aside, which hold the wiped wallet's addresses.
+    func testAWipeDeletesTheRecordsCopiesKeptAside() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = SparkExitStore(url: dir.appendingPathComponent("spark-exit.json"))
+        try store.save(SparkExitFixtures.record())
+        try store.keepCopyAside()
+
+        try store.deleteWithCopies()
+
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path), [])
+    }
+
     // MARK: H1 cancel
 
     func testCancelIsOffAfterAPaymentFromSavings() {
@@ -108,7 +173,24 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertTrue(reminders.contains { $0.id.hasPrefix("1-") }, "the live steps keep their reminders")
     }
 
-    /// A payment no host knows for a block is forgotten: the ask and the funding reminder come back.
+    /// A Redo while a higher fee's top-up is awaited: the diverged generation is never sent again, and when the funding
+    /// held pays for less, its rebuild waits for the top-up as a Redo rebuild.
+    func testARedoWhileAHigherFeesTopUpIsAwaitedStopsDrivingTheDivergedGeneration() async throws {
+        var record = bumpedRecord()
+        chain.mempoolTxids = ["bump"]
+        sdk.checks = try [CheckRecoverFundsResponse(recovery: XCTUnwrap(record.recovery?.response), verdict: .redo(reason: .onChainStateDiverged))]
+        sdk.recoverError = SdkError.InsufficientCpfpFunds(requiredSats: 25680, docsUrl: "")
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(record.phase, .needsFunding(requiredSats: 46360))
+        XCTAssertEqual(record.fundingPaymentTxid, "bump", "the awaited top-up was dropped")
+        XCTAssertTrue(record.isRebuilding)
+        XCTAssertEqual(record.isRedoRebuild, true)
+        XCTAssertFalse(record.isDrivingWhileFunding, "the diverged generation would be sent again")
+    }
+
+    /// A payment no host knows for three blocks is forgotten: the ask and the funding reminder come back.
     func testADroppedSavingsPaymentBringsTheAskBack() async throws {
         var record = bumpedRecord()
         sdk.checks = try Array(repeating: CheckRecoverFundsResponse(recovery: XCTUnwrap(record.recovery?.response), verdict: .valid), count: 3)
@@ -117,11 +199,36 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(record.fundingPaymentMissingSince, 1000)
         XCTAssertEqual(record.fundingPaymentTxid, "bump", "one read is not enough")
 
-        chain.tip = 1001
+        chain.tip = 1003
         record = try await driver().tick(record)
         XCTAssertNil(record.fundingPaymentTxid)
         XCTAssertFalse(record.isAwaitingOwnPayment)
-        XCTAssertTrue(SparkExitMath.reminders(record, tip: 1001, now: clock, network: .regtest).contains { $0.isFunding })
+        XCTAssertTrue(SparkExitMath.reminders(record, tip: 1003, now: clock, network: .regtest).contains { $0.isFunding })
+    }
+
+    /// A payment one host misses just before a block and just after it, seconds apart, may still be indexing: it is
+    /// kept. A read that finds it starts the count over; only a miss that lasts three blocks forgets it.
+    func testASavingsPaymentMissedForABlockOrASingleReadIsKept() async throws {
+        var record = bumpedRecord()
+        sdk.checks = try Array(repeating: CheckRecoverFundsResponse(recovery: XCTUnwrap(record.recovery?.response), verdict: .valid), count: 6)
+
+        record = try await driver().tick(record)
+        chain.tip = 1001
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.fundingPaymentTxid, "bump", "a one-block miss asked for the funding again")
+
+        chain.mempoolTxids = ["bump"]
+        chain.tip = 1002
+        record = try await driver().tick(record)
+        chain.mempoolTxids = []
+        chain.tip = 1003
+        record = try await driver().tick(record)
+        chain.tip = 1005
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.fundingPaymentTxid, "bump")
+        chain.tip = 1006
+        record = try await driver().tick(record)
+        XCTAssertNil(record.fundingPaymentTxid)
     }
 
     /// One still unadopted after a day is forgotten too, known or not.
@@ -422,7 +529,7 @@ final class SparkExitReviewTests: XCTestCase {
             SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 990)),
             SparkExitFixtures.tx("s", kind: .sweep, dependsOn: ["n1"]),
         ]))
-        chain.confirmedTxids = ["s"]
+        chain.confirmedTxids = ["n1", "s"]
         chain.utxosByAddress["bcrt1qfunding"] = []
 
         record = try await driver(withSdk: false).tick(record)
@@ -470,9 +577,33 @@ final class SparkExitReviewTests: XCTestCase {
         record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 20000)
         record.fundingStrategy = SparkExitRecord.perNodeStrategy
         record.earlierReceivedSats = ["sweep-1": 40000]
+        record.outsideSats = 14167
         let salvaged = try XCTUnwrap(SparkExitRecordCoder.salvage(SparkExitRecordCoder.encode(record)))
         XCTAssertEqual(salvaged.fundingStrategy, SparkExitRecord.perNodeStrategy)
         XCTAssertEqual(salvaged.earlierReceivedSats, ["sweep-1": 40000])
+        XCTAssertEqual(salvaged.outsideSats, 14167)
+    }
+
+    /// A salvaged exit imports the exit data it kept before it is prepared again: the SDK may no longer hold a leaf
+    /// being exited.
+    func testASalvagedExitImportsItsSnapshotBeforeItsFirstRebuild() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 25000)
+        record.exitStateSnapshot = "snapshot-1"
+        let salvaged = try XCTUnwrap(SparkExitRecordCoder.salvage(SparkExitRecordCoder.encode(record)))
+        chain.utxosByAddress["bcrt1qfunding"] = [SparkExitFixtures.utxo("f0", vout: 1, value: 25000)]
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1")])]
+        var importsAtPrepare: [[String]] = []
+        sdk.preparedByRequest = { [sdk] _ in
+            importsAtPrepare.append(sdk?.imports ?? [])
+            return SparkExitFixtures.prepared()
+        }
+
+        _ = try await driver().tick(salvaged)
+
+        XCTAssertFalse(importsAtPrepare.isEmpty, "the salvaged exit is prepared again")
+        XCTAssertEqual(importsAtPrepare.first, ["snapshot-1"], "its kept exit data is imported before it is prepared")
+        XCTAssertEqual(sdk.exports, 0)
     }
 
     /// Background runs wrap the chain to time it: the wrapper forwards the economy tier, so their sweeps pay it.
@@ -556,6 +687,232 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(exit.fundingSeenCount, 0)
     }
 
+    // MARK: Wallet totals (pwltr, android#1782)
+
+    /// Funding seen at the address changes what is in transfer to savings: the wallet recomputes its totals.
+    @MainActor func testAFundingSeenOnlyChangeRefreshesTheWalletBalance() {
+        var refreshes = 0
+        let watch = SparkExitBalanceWatch { refreshes += 1 }
+        var record = SparkExitFixtures.record(phase: .awaitingFunding(requiredSats: 20000))
+        record.transferId = "transfer-1"
+        watch.update(record: record, fundingSeenSats: 0, sparkBalanceSats: 0)
+        let before = refreshes
+
+        watch.update(record: record, fundingSeenSats: 5000, sparkBalanceSats: 0)
+
+        XCTAssertEqual(refreshes, before + 1, "the wallet kept the in-transfer amount from before the funding was seen")
+    }
+
+    /// A record write that leaves the totals' amounts alone does not recompute them.
+    @MainActor func testAnExitWriteThatLeavesTheTotalsAloneDoesNotRefreshTheWalletBalance() {
+        var refreshes = 0
+        let watch = SparkExitBalanceWatch { refreshes += 1 }
+        var record = SparkExitFixtures.record(phase: .awaitingFunding(requiredSats: 20000))
+        record.transferId = "transfer-1"
+        watch.update(record: record, fundingSeenSats: 0, sparkBalanceSats: 0)
+        let before = refreshes
+
+        record.isResultSeen = true
+        record.lastBuildAt = Date(timeIntervalSince1970: 1_800_000_000)
+        watch.update(record: record, fundingSeenSats: 0, sparkBalanceSats: 0)
+
+        XCTAssertEqual(refreshes, before)
+    }
+
+    // MARK: Round 3 (Corey 5859257501)
+
+    /// A quote for a new funding address starts with nothing seen there: an earlier exit's funding never lowers what
+    /// savings pays.
+    @MainActor func testAQuoteForANewFundingAddressStartsWithNothingSeen() {
+        let exit = SparkExitManager(walletIndex: 9999)
+        let quote = SparkExitQuote(prepared: SparkExitFixtures.prepared())
+        exit.useQuote(quote, destination: "bcrt1qdestination", feeRate: 2, fundingIndex: 3, fundingAddress: "bcrt1qearlier")
+        exit.noteFundingSeen([SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 8000)])
+        exit.useQuote(quote, destination: "bcrt1qdestination", feeRate: 2, fundingIndex: 3, fundingAddress: "bcrt1qearlier")
+        XCTAssertEqual(exit.fundingSeenSats, 8000, "a quote again for the same address keeps what reached it")
+
+        exit.useQuote(quote, destination: "bcrt1qdestination", feeRate: 2, fundingIndex: 4, fundingAddress: "bcrt1qnext")
+
+        XCTAssertEqual(exit.fundingSeenSats, 0, "the earlier exit's funding was taken as already sent")
+        XCTAssertEqual(exit.fundingSeenCount, 0)
+    }
+
+    /// Quoted leaves A (65,536) and B (32,768) and C (1,696) outside; the first build leaves B behind. Once A is
+    /// published and leaves the balance (34,464), Spending still holds B and C.
+    func testALeafLeftBehindStaysInSpendingOnceThePublishedLeavesLeftTheBalance() {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.leafIds = ["A", "B"]
+        record.leafTotalSats = 98304
+        record.outsideSats = 1696
+        record.leftBehindLeaves = [.init(leafId: "B", valueSats: 32768, reason: "its refund cannot pay")]
+
+        XCTAssertEqual(SparkExitMath.outsideExitSats(sparkBalanceSats: 34464, record: record), 34464, "B was in neither total")
+    }
+
+    /// A Redo while a top-up is awaited rebuilds from the funding the exit already has, so a top-up that is dropped
+    /// never leaves it waiting.
+    func testARedoWhileATopUpIsAwaitedRebuildsWithoutWaitingForADroppedTopUp() async throws {
+        var record = bumpedRecord()
+        sdk.checks = try [CheckRecoverFundsResponse(recovery: XCTUnwrap(record.recovery?.response), verdict: .redo(reason: .onChainStateDiverged))]
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("m1")])]
+
+        record = try await driver().tick(record)
+
+        XCTAssertFalse(sdk.recoverRequests.isEmpty, "the rebuild waited for a top-up that was dropped")
+        XCTAssertEqual(record.phase, .running)
+        XCTAssertFalse(record.isRebuilding)
+    }
+
+    /// A Redo rebuild the held funding pays too little for still follows the awaited top-up: one that confirmed short
+    /// asks for the rest, as while waiting for it.
+    func testARedoRebuildShortOfFundingAsksForTheRestOfAShortTopUp() async throws {
+        var record = bumpedRecord()
+        chain.utxosByAddress["bcrt1qfunding"] = [
+            SparkExitFixtures.utxo("f0", vout: 1, value: 20000),
+            SparkExitFixtures.utxo("bump", value: 3000),
+        ]
+        sdk.checks = try [CheckRecoverFundsResponse(recovery: XCTUnwrap(record.recovery?.response), verdict: .redo(reason: .onChainStateDiverged))]
+        sdk.recoverError = SdkError.InsufficientCpfpFunds(requiredSats: 25680, docsUrl: "")
+
+        record = try await driver().tick(record)
+
+        XCTAssertFalse(sdk.recoverRequests.isEmpty)
+        XCTAssertNil(record.fundingPaymentTxid, "the short top-up was still awaited")
+        XCTAssertEqual(record.isFundingPaymentShort, true)
+    }
+
+    /// A cancelled exit's funding address stays listed, and for four weeks the foreground reads it: a late payment
+    /// shows there with its balance. Kept change is read every time, so change the user spent by hand shows as spent.
+    func testACancelledExitsAddressShowsALatePaymentForFourWeeks() async throws {
+        let record = SparkExitFixtures.record()
+        let cancelled = try XCTUnwrap(SparkExitEarlierAddress.cancelledFunding(record, network: .regtest, at: clock.addingTimeInterval(-86400)))
+        XCTAssertEqual(cancelled.address, record.funding[0].address)
+        XCTAssertEqual(cancelled.kind, .cancelledFunding)
+        let old = SparkExitEarlierAddress(address: "bcrt1qold", path: "m/84'/1'/7797'/0/1", kind: .cancelledFunding, sats: nil,
+                                          date: clock.addingTimeInterval(-29 * 86400))
+        let kept = SparkExitEarlierAddress(address: "bcrt1qkept", path: "m/84'/1'/7797'/0/2", kind: .keptChange, sats: 600,
+                                           date: clock.addingTimeInterval(-86400))
+
+        let refreshed = await SparkExitEarlierAddress.refreshed([cancelled, old, kept], now: clock) { address in
+            address == cancelled.address ? [SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 5000, confirmed: false)]
+                : [SparkExitFixtures.utxo(String(repeating: "b", count: 64), value: 9)]
+        }
+
+        XCTAssertEqual(refreshed.map(\.sats), [5000, nil, 9], "a late payment, or kept change spent by hand, showed nowhere")
+    }
+
+    /// Kept change whose result was seen stays listed with its address and path: the ended record still holding that
+    /// address hides it only while its result is what Emergency exit opens.
+    func testASeenKeptChangeResultStillListsItsAddress() throws {
+        var record = SparkExitFixtures.record(phase: .done)
+        record.leftover = [.init(txid: String(repeating: "a", count: 64), vout: 0, valueSats: 600)]
+        record.leftoverSweep = .init()
+        record.leftoverSweep?.isDustKept = true
+        record.isResultSeen = true
+        let kept = try XCTUnwrap(SparkExitEarlierAddress.keptChange(record, network: .regtest, at: clock))
+        XCTAssertFalse(record.showsResult)
+
+        XCTAssertEqual(SparkExitManager.shownEarlierAddresses([kept], record: record), [kept], "the kept change's address and path are out of reach")
+        record.isResultSeen = nil
+        XCTAssertEqual(SparkExitManager.shownEarlierAddresses([kept], record: record), [], "shown twice, on the result and in the list")
+    }
+
+    /// An address added while a refresh reads another stays listed: the refresh writes only the balances it read.
+    func testAnAddressRefreshKeepsAnAddressAddedDuringItsReads() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = SparkExitEarlierAddressStore(url: dir.appendingPathComponent("earlier.json"))
+        let now = Date()
+        let first = SparkExitEarlierAddress(address: "bcrt1qfirst", path: "m/84'/1'/7797'/0/1", kind: .cancelledFunding, sats: nil, date: now)
+        let added = SparkExitEarlierAddress(address: "bcrt1qadded", path: "m/84'/1'/7797'/0/2", kind: .cancelledFunding, sats: nil, date: now)
+        try store.add(first)
+
+        let refreshed = await SparkExitManager.refreshEarlierAddresses(store: store, fallback: [], now: now) { _ in
+            try store.add(added)
+            return [SparkExitFixtures.utxo(String(repeating: "a", count: 64), value: 5000)]
+        }
+
+        XCTAssertEqual(try store.load().map(\.address), [first.address, added.address], "the refresh erased the address added meanwhile")
+        XCTAssertEqual(try store.load().map(\.sats), [5000, nil])
+        XCTAssertEqual(refreshed?.map(\.address), [first.address, added.address])
+    }
+
+    /// Kept change at a cancelled exit's address, which a later exit reused, is read for good: it replaces the
+    /// cancel's entry, which is read only for about four weeks.
+    func testKeptChangeAtACancelledExitsReusedAddressIsReadPastTheCancelsFourWeeks() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = SparkExitEarlierAddressStore(url: dir.appendingPathComponent("earlier.json"))
+        let cancelledAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let keptAt = cancelledAt.addingTimeInterval(20 * 24 * 3600)
+        let path = "m/84'/1'/7797'/0/0"
+        try store.add(SparkExitEarlierAddress(address: "bcrt1qreused", path: path, kind: .cancelledFunding, sats: nil, date: cancelledAt))
+
+        try store.add(SparkExitEarlierAddress(address: "bcrt1qreused", path: path, kind: .keptChange, sats: 600, date: keptAt))
+
+        let listed = try XCTUnwrap(store.load().first)
+        XCTAssertEqual(try store.load().count, 1)
+        XCTAssertEqual(listed.kind, .keptChange, "the kept change stays a cancel's entry")
+        XCTAssertEqual(listed.date, keptAt)
+        XCTAssertEqual(listed.sats, 600)
+        XCTAssertTrue(listed.isWatched(now: cancelledAt.addingTimeInterval(60 * 24 * 3600)), "the kept change is no longer read")
+    }
+
+    /// The foreground tick keeps the driver's reset of a seen result: change kept after the result was opened shows
+    /// that result again with its path.
+    @MainActor func testTheForegroundTickKeepsTheDriversResetOfASeenResult() async throws {
+        let walletIndex = 9996
+        let store = SparkExitStore(walletIndex: walletIndex)
+        defer {
+            try? store.delete()
+            try? SparkExitEarlierAddressStore(walletIndex: walletIndex).delete()
+            try? SparkExitLostLeafStore(walletIndex: walletIndex).delete()
+        }
+        var record = SparkExitFixtures.record(phase: .failed(reason: "Nothing could be recovered"))
+        record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 9000)
+        record.leftover = [.init(txid: String(repeating: "a", count: 64), vout: 0, valueSats: 600)]
+        record.leftoverSweep = SparkExitRecord.LeftoverSweep(waitingSince: 1000, checkedAtHeight: 1000)
+        record.isResultSeen = true
+        XCTAssertTrue(record.needsDriving)
+        XCTAssertFalse(record.hasUnseenResult)
+        try store.save(record)
+        chain.tip = 1000 + SparkExitDriver.sweepWaitBlocks
+        let exit = SparkExitManager(walletIndex: walletIndex, chain: chain)
+        exit.load(walletIndex: walletIndex)
+
+        await exit.tick()
+
+        XCTAssertEqual(exit.record?.isChangeKept, true)
+        XCTAssertEqual(exit.record?.hasUnseenResult, true, "the tick hid the kept change's result again")
+        XCTAssertEqual(try store.load()?.hasUnseenResult, true, "the stored record hid the kept change's result again")
+    }
+
+    // MARK: What stays on Spark (Android 124d66170, caa349d4b)
+
+    /// The start and the requote save what stays on Spark without the lost leaves Spark still counts: 100,000 sats
+    /// selected, 32,768 lost and 1,696 skipped save 1,696.
+    func testAStartSavesWhatStaysOnSparkWithoutTheLostLeavesSparkStillCounts() throws {
+        var prepared = SparkExitFixtures.prepared()
+        prepared.skipped = [SkippedLeaf(leafId: "dust", valueSats: 1696, reason: .feeExceedsValue)]
+        let quote = SparkExitQuote(prepared: prepared, lostLeafSats: [32768])
+        XCTAssertEqual(quote.leafTotalSats, 100_000)
+
+        let record = try XCTUnwrap(SparkExitManager.requoted(SparkExitFixtures.record(), fresh: quote, sparkBalanceSats: 134_464))
+
+        XCTAssertEqual(record.outsideSats, 1696, "the lost leaf was kept as staying on Spark")
+    }
+
+    /// A leaf the exit left behind stays on Spark: Spending counts it while it is out of the transfer.
+    func testALeafTheExitLeftBehindCountsOnSpark() {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.leafIds = ["leaf-1", "leaf-2"]
+        record.leafTotalSats = 108_192
+        record.leftBehindLeaves = [.init(leafId: "leaf-2", valueSats: 8192, reason: "its refund cannot pay")]
+
+        XCTAssertEqual(SparkExitMath.staysOnSparkSats(sparkBalanceSats: 108_192, record: record), 8192, "the leaf is in neither total")
+        XCTAssertEqual(SparkExitMath.outsideExitSats(sparkBalanceSats: 108_192, record: record), 8192)
+    }
+
     // MARK: Requote at the start (review 1ac10966a, Android 64004d7)
 
     /// An optimization swapped the leaves while the start waited: the exit is quoted again over the leaves Spark holds now.
@@ -565,12 +922,14 @@ final class SparkExitReviewTests: XCTestCase {
 
         let requote = await SparkExitManager.requote(sdk, confirmed: confirmed, feeRate: 2, destination: "bcrt1qdestination", lostLeafIds: [])
         let fresh = try XCTUnwrap(requote)
-        let record = try XCTUnwrap(SparkExitManager.requoted(SparkExitFixtures.record(), fresh: fresh))
+        let record = try XCTUnwrap(SparkExitManager.requoted(SparkExitFixtures.record(), fresh: fresh, sparkBalanceSats: 214_167))
 
         XCTAssertEqual(record.leafIds, ["leaf-2", "leaf-3"])
         XCTAssertEqual(record.phase, .awaitingFunding(requiredSats: 35000))
         XCTAssertEqual(record.expectedSats, fresh.incomingSats)
         XCTAssertEqual(record.leafTotalSats, 200_000)
+        XCTAssertEqual(record.outsideSats, 14167, "what stays on Spark beyond the fresh leaves")
+        XCTAssertEqual(record.leafSats?.keys.sorted(), ["leaf-2", "leaf-3"])
         XCTAssertEqual(sdk.prepareRequests.last?.destination, "bcrt1qdestination")
     }
 
@@ -598,7 +957,7 @@ final class SparkExitReviewTests: XCTestCase {
         struct WriteFailed: Error {}
         let started = SparkExitFixtures.record()
         let fresh = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 25000, leaves: ["leaf-2"]))
-        let requoted = try XCTUnwrap(SparkExitManager.requoted(started, fresh: fresh))
+        let requoted = try XCTUnwrap(SparkExitManager.requoted(started, fresh: fresh, sparkBalanceSats: 0))
         var settled: [String] = []
 
         let noTransfer = await SparkExitManager.writeRequote(
@@ -633,6 +992,55 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(written?.transferId, "transfer-3")
         XCTAssertEqual(written?.leafIds, ["leaf-2"])
         XCTAssertEqual(settled, ["transfer-2", "transfer-1"])
+    }
+
+    /// A start killed before its transfer is written stores no exit: none runs on without the transfer counting it.
+    func testAStartCutShortBeforeItsTransferStoresNoExit() async {
+        struct WriteFailed: Error {}
+        var record = SparkExitFixtures.record()
+        record.transferId = nil
+        var saved: [SparkExitRecord] = []
+
+        let started = try? await SparkExitManager.writeStart(
+            record,
+            incomingSats: 111_000,
+            createTransfer: { _ in throw WriteFailed() },
+            save: { saved.append($0) },
+            markSettled: { _ in }
+        )
+
+        XCTAssertNil(started)
+        XCTAssertTrue(saved.isEmpty, "no exit is stored before its transfer exists")
+    }
+
+    /// A start killed after its transfer is written leaves only that transfer, settled as an orphan on the next load;
+    /// a failed save settles it at once. Every exit stored carries its transfer.
+    func testAStartCutShortAfterItsTransferLeavesOnlyAnOrphanToSettle() async throws {
+        struct WriteFailed: Error {}
+        var record = SparkExitFixtures.record()
+        record.transferId = nil
+        var saved: [SparkExitRecord] = []
+        var settled: [String] = []
+
+        let notSaved = try? await SparkExitManager.writeStart(
+            record,
+            incomingSats: 111_000,
+            createTransfer: { _ in "transfer-1" },
+            save: { _ in throw WriteFailed() },
+            markSettled: { settled.append($0) }
+        )
+        XCTAssertNil(notSaved)
+        XCTAssertEqual(settled, ["transfer-1"])
+
+        let started = try await SparkExitManager.writeStart(
+            record,
+            incomingSats: 111_000,
+            createTransfer: { _ in "transfer-2" },
+            save: { saved.append($0) },
+            markSettled: { settled.append($0) }
+        )
+        XCTAssertEqual(started.transferId, "transfer-2")
+        XCTAssertEqual(saved.map(\.transferId), ["transfer-2"], "every exit stored carries its transfer")
     }
 
     /// No tick drives an exit while its start still settles its leaves: the optimization wait, the requote and the
@@ -748,16 +1156,42 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(priced, .priced(rate: TransactionSpeed.fast.getFeeRate(from: rates), feeSats: 300))
     }
 
+    /// A start whose savings payment was refused for a higher prepared fee: the next funding prices at least that fee,
+    /// so Funding shows it and the next swipe approves it.
+    @MainActor
+    func testTheNextFundingAfterAStartRefusedForAHigherSavingsFeePricesAtLeastThatFee() async {
+        let rates = FeeRates(fast: 9, mid: 6, slow: 1)
+        let exit = SparkExitManager(walletIndex: 9999)
+        func price() async -> SparkExitFundingView.SavingsFee {
+            await SparkExitFundingView.priceSavingsFee(
+                address: "bcrt1qfunding",
+                fundingSats: 20000,
+                refusedFeeSats: exit.savingsFundingRefusedFeeSats,
+                estimates: { rates },
+                calculate: { _, _, _ in 420 }
+            )
+        }
+        let rate = TransactionSpeed.fast.getFeeRate(from: rates)
+        let first = await price()
+        XCTAssertEqual(first, .priced(rate: rate, feeSats: 420))
+
+        exit.noteSavingsFundingRefused(preparedFeeSats: 600)
+        let next = await price()
+
+        // Savings' coin selection needs 600 sats where the estimate says 420.
+        XCTAssertEqual(next, .priced(rate: rate, feeSats: 600), "the same refused estimate was confirmed again")
+    }
+
     /// Savings never pays more than the funding the user confirmed; the rest is asked for on Progress once the payment
     /// confirms.
     func testSavingsPaysAtMostTheConfirmedFundingAndProgressAsksForTheRest() throws {
         let confirmed = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 20000))
         let higher = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 35000, leaves: ["leaf-1", "leaf-2"]))
         let lower = SparkExitQuote(prepared: SparkExitFixtures.prepared(funding: 15000, leaves: ["leaf-2"]))
-        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: confirmed, fresh: higher), 20000)
-        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: confirmed, fresh: lower), 15000)
+        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: confirmed, fresh: higher, seenSats: 0, seenCount: 0, feeRate: 2), 20000)
+        XCTAssertEqual(SparkExitManager.savingsFundingSats(confirmed: confirmed, fresh: lower, seenSats: 0, seenCount: 0, feeRate: 2), 15000)
 
-        var record = try XCTUnwrap(SparkExitManager.requoted(SparkExitFixtures.record(), fresh: higher))
+        var record = try XCTUnwrap(SparkExitManager.requoted(SparkExitFixtures.record(), fresh: higher, sparkBalanceSats: 0))
         record.fundingPaymentTxid = "paid"
         let paid = [SparkExitFixtures.utxo("paid", value: 20000)]
         guard case let .ask(sats, receivedSats) = SparkExitMath.fundingState(record, utxos: paid) else {

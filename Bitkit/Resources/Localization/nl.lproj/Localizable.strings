@@ -239,7 +239,6 @@
 "lightning__spending_confirm__amount" = "Naar bestedingssaldo";
 "lightning__spending_confirm__total" = "Totaal";
 "lightning__spending_confirm__spending_fee" = "Spending fee";
-"lightning__spending_confirm__up_to" = "up to";
 "lightning__spending_confirm__instant_text" = "Ready in a few minutes";
 "lightning__spending_confirm__later" = "Later";
 "lightning__spending_confirm__later_text" = "After 3 confirmations, about 30 minutes";
@@ -276,6 +275,7 @@
 "lightning__savings_spark_failed__toast" = "Spark-overboeking mislukt";
 "lightning__transfer_success__nav_title" = "Overboeking Voltooid";
 "lightning__transfer_success__title_spending" = "Geld verplaatst\n<accent>naar bestedingssaldo</accent>";
+"lightning__transfer_success__text_spending" = "Uw geld is overgeboekt en uw bestedingssaldo is klaar voor gebruik.";
 "lightning__transfer_success__title_savings" = "Geld verplaatst\n<accent>naar spaargeld</accent>";
 "lightning__transfer_success__text_savings" = "Uw geld is overgeboekt. U kunt dit geld direct gebruiken.";
 "lightning__external__nav_title" = "Lightning-verbinding";
@@ -360,7 +360,7 @@
 "lightning__spark_deposit__wait_button" = "Wachten";
 "lightning__spark_deposit__waiting" = "Spark voegt het {when} toe aan je bestedingssaldo.";
 "lightning__spark_deposit__waiting_next" = "Spark voegt het na de volgende bevestiging toe aan je bestedingssaldo.";
-"lightning__spark_deposit__repriced" = "Instant now costs {fee}. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
+"lightning__spark_deposit__repriced" = "Instant now costs <accent>{fee}</accent>. Pay it to add your transfer now, or wait for 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__pay" = "Pay {fee}";
 "lightning__spark_deposit__instant_unavailable" = "Instant isn't available for this transfer. Spark adds it to your spending balance after 3 confirmations, about 30 minutes.";
 "lightning__spark_deposit__not_seen" = "Spark hasn't seen your transfer yet. It's added after 3 confirmations; you can leave this screen.";
@@ -415,10 +415,8 @@
 "lightning__spark_exit__leftover_swept" = "{amount} aan overgebleven vergoedingsdekking is naar je spaargeld gestuurd.";
 "lightning__spark_exit__leftover_sending" = "{amount} aan overgebleven vergoedingsdekking wordt naar je spaargeld gestuurd.";
 "lightning__spark_exit__leftover_dust" = "{amount} aan overgebleven vergoedingsdekking is te klein om te versturen en blijft op {address}, afleidingspad {path}.";
-"lightning__spark_exit__leftover_txid" = "Transactie-ID: {txid}";
 "lightning__spark_exit__fund_paid" = "Betaald uit spaargeld, wachten op bevestiging.";
 "lightning__spark_exit__fund_pending" = "Betaling gezien, wachten op bevestiging.";
-"lightning__spark_exit__funding_txid" = "Transactie-ID: {txid}";
 "lightning__spark_exit__lost_leaves" = "{amount} is on-chain geclaimd door een eerdere eigenaar van dit geld en kan niet worden teruggehaald.";
 "lightning__spark_exit__notification_lost" = "{amount} van je exit kan niet worden teruggehaald. Open Bitkit om te zien waarom.";
 "lightning__spark_exit__notification_failed" = "Je nooduitgang is gestopt. Open Bitkit om te zien waarom.";
@@ -441,7 +439,6 @@
 "lightning__spark_exit__waiting_leaves" = "Een deel van deze exit kan nu niet on-chain worden gelezen. Bitkit probeert het tot een week lang opnieuw.";
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit kon de opgeslagen voortgang van deze exit niet lezen, dus bouwt het die opnieuw op vanuit de blockchain.";
 "lightning__spark_exit__done_received" = "{amount} is aangekomen in je spaargeld.";
-"lightning__spark_exit__sweep_txid" = "Transactie-ID: {txid}";
 "lightning__spark_exit__leftover_rejected" = "{amount} aan overgebleven vergoedingsdekking kon niet worden verstuurd en blijft op {address}, afleidingspad {path}.";
 "lightning__spark_exit__notification_not_moving" = "Je nooduitgang komt niet verder. Open Bitkit om te zien waarom.";
 "lightning__spark_exit__funding_split" = "Bitkit splitst het in {count} delen, één per stap, zodat één vastgelopen stap de andere niet ophoudt.";
@@ -450,7 +447,6 @@
 "lightning__spark_exit__fee_bump_button" = "Hogere vergoeding betalen";
 "lightning__spark_exit__fee_bump_title" = "Betaal een\n<accent>hogere vergoeding</accent>";
 "lightning__spark_exit__fee_bump_text" = "Deze exit betaalt <accent>{rate} sat/vB</accent>, minder dan het netwerk nu vraagt. Kies een hoger tarief en Bitkit verstuurt de wachtende stappen opnieuw. Het verschil wordt uit je spaargeld betaald: het bedrag naast elke snelheid.";
-"lightning__spark_exit__fee_bump_loading" = "Berekenen wat een hogere vergoeding kost…";
 "lightning__spark_exit__fee_bump_error" = "Kon de prijs van een hogere vergoeding niet berekenen. Probeer het opnieuw.";
 "lightning__spark_exit__fee_bump_confirm" = "Deze vergoeding gebruiken";
 "lightning__spark_exit__leftover_waiting" = "{amount} aan wisselgeld van de vergoeding komt in je spaargeld wanneer de netwerkkosten dalen.";
@@ -1392,6 +1388,9 @@
 "wallet__send_sync_long_title" = "<accent>Verbindings</accent>\nproblemen";
 "wallet__send_sync_long_description" = "Het lijkt erop dat u niet verbonden bent. Controleer uw verbinding. Bitkit probeert om de paar seconden opnieuw verbinding te maken.";
 "wallet__send_to" = "Naar";
+"wallet__send_swap_route" = "Route";
+"wallet__send_paykit_no_route__title" = "Kan dit contact niet betalen";
+"wallet__send_paykit_no_route__description" = "Dit contact heeft op dit moment geen betaalmethode die Bitkit kan gebruiken.";
 "wallet__recipient_contact" = "Contact";
 "wallet__recipient_invoice" = "Factuur Plakken";
 "wallet__recipient_manual" = "Handmatig Invoeren";

@@ -9,10 +9,17 @@ final class SparkConfigTests: XCTestCase {
 
             XCTAssertNil(config.realTimeSyncServerUrl, "\(network)")
             XCTAssertNil(config.lnurlDomain, "\(network)")
+            XCTAssertFalse(config.useDefaultExternalInputParsers, "Parsing input must not look it up with a third party")
             XCTAssertEqual(config.apiKey, "test-key")
             XCTAssertTrue(config.leafOptimizationConfig.autoEnabled)
         }
         XCTAssertFalse(SparkManager.sdkConfig(network: .regtest, apiKey: nil, isExiting: true).leafOptimizationConfig.autoEnabled)
+    }
+
+    func testInvoicesCarryNoSparkAddressOnAnyNetworkSoEveryPaymentIsALightningPaymentBitkitRecords() {
+        for network in [BreezSdkSpark.Network.mainnet, .regtest] {
+            XCTAssertFalse(SparkManager.sdkConfig(network: network, apiKey: nil, isExiting: false).preferSparkOverLightning, "\(network)")
+        }
     }
 
     func testChainServiceIsBitkitElectrsOnMainnetOnly() {
