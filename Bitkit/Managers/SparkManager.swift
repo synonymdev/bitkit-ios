@@ -1608,25 +1608,41 @@ final class SparkManager: ChannelFreeLightningRail {
                         network: OnChainHwService.appDefaultCoinType
                     ).utxos
                 },
+                isMined: { txId in
+                    guard let network = Self.exitNetwork else { return false }
+                    do {
+                        return try await EsploraSparkExitChain.network(network).txStatus(txid: txId).confirmed
+                    } catch let error as URLError where error.code == .fileDoesNotExist {
+                        // Spark can list a payout before it is broadcast, and the chain then knows no such transaction.
+                        return false
+                    }
+                },
                 markConfirmed: { await CoreService.shared.activity.markOnchainActivityAsConfirmed(txId: $0) }
             )
         }
     }
 
     /// Spark lists a withdrawal completed once its provider took the payout on, which can be before the payout transaction
-    /// is broadcast or mined, so a payout's activity is confirmed only once the chain lists its output in a block. An
-    /// output the contact already spent drops out of that list, so its activity then stays unconfirmed.
+    /// is broadcast or mined, so a payout's activity is confirmed only once the payout is in a block. The payout address's
+    /// unspent outputs show that first; an output missing there, such as one the contact spent before Bitkit saw it mined,
+    /// is looked up by its transaction (`isMined`) instead.
     nonisolated static func confirmMinedPayouts(
         _ payouts: [ContactPayout],
         needsConfirmation: (String) async -> Bool,
         unspentOutputs: (String) async throws -> [AccountUtxo],
+        isMined: (String) async throws -> Bool,
         markConfirmed: (String) async -> Void
     ) async {
         for payout in payouts {
             guard await needsConfirmation(payout.txId) else { continue }
             do {
                 let outputs = try await unspentOutputs(payout.address)
-                if outputs.contains(where: { $0.txid == payout.txId && $0.vout == payout.vout && $0.confirmations > 0 }) {
+                let isPayoutMined: Bool = if let output = outputs.first(where: { $0.txid == payout.txId && $0.vout == payout.vout }) {
+                    output.confirmations > 0
+                } else {
+                    try await isMined(payout.txId)
+                }
+                if isPayoutMined {
                     await markConfirmed(payout.txId)
                 }
             } catch {

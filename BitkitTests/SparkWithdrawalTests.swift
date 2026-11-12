@@ -380,11 +380,46 @@ final class SparkWithdrawalTests: XCTestCase {
             payouts,
             needsConfirmation: { _ in true },
             unspentOutputs: { _ in [Self.output(txId: "mined", confirmations: 1), Self.output(txId: "mempool", confirmations: 0)] },
+            isMined: { _ in false },
             markConfirmed: { await marked.insert($0) }
         )
 
         let confirmed = await marked.ids
         XCTAssertEqual(confirmed, ["mined"], "a payout still in the mempool or not yet broadcast stays unconfirmed")
+    }
+
+    /// A payout the contact spent before Bitkit saw it mined no longer lists as unspent, so its transaction is asked.
+    func testAPayoutTheContactAlreadySpentIsConfirmedFromItsTransaction() async {
+        let marked = TxIds()
+
+        await SparkManager.confirmMinedPayouts(
+            [SparkManager.ContactPayout(txId: "spent", vout: 1, address: "bcrt1qcontact")],
+            needsConfirmation: { _ in true },
+            unspentOutputs: { _ in [] },
+            isMined: { $0 == "spent" },
+            markConfirmed: { await marked.insert($0) }
+        )
+
+        let confirmed = await marked.ids
+        XCTAssertEqual(confirmed, ["spent"])
+    }
+
+    func testAPayoutListedUnspentIsNotAskedAboutByItsTransaction() async {
+        let asked = TxIds()
+
+        await SparkManager.confirmMinedPayouts(
+            [SparkManager.ContactPayout(txId: "mempool", vout: 1, address: "bcrt1qcontact")],
+            needsConfirmation: { _ in true },
+            unspentOutputs: { _ in [Self.output(txId: "mempool", confirmations: 0)] },
+            isMined: { txId in
+                await asked.insert(txId)
+                return true
+            },
+            markConfirmed: { _ in }
+        )
+
+        let lookedUp = await asked.ids
+        XCTAssertTrue(lookedUp.isEmpty, "the unspent list already says the payout is in the mempool")
     }
 
     func testAConfirmedContactWithdrawalIsNotLookedUpAgain() async {
@@ -396,6 +431,10 @@ final class SparkWithdrawalTests: XCTestCase {
             unspentOutputs: { address in
                 await lookups.insert(address)
                 return []
+            },
+            isMined: { txId in
+                await lookups.insert(txId)
+                return true
             },
             markConfirmed: { _ in }
         )
