@@ -1038,6 +1038,11 @@
 "settings__status__lightning_connection__ready" = "Otevřít";
 "settings__status__lightning_connection__pending" = "Otevírání...";
 "settings__status__lightning_connection__error" = "Žádná otevřená spojení";
+"settings__status__lightning_connection__spark" = "Používá Spark";
+"settings__status__spark__title" = "Spark";
+"settings__status__spark__ready" = "Připojeno";
+"settings__status__spark__pending" = "Připojování...";
+"settings__status__spark__error" = "Offline";
 "settings__status__backup__title" = "Nejnovější úplná záloha dat";
 "settings__status__backup__ready" = "Zálohováno";
 "settings__status__backup__pending" = "Zálohování...";

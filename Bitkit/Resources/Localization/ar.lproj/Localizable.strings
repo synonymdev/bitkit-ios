@@ -908,6 +908,11 @@
 "settings__status__lightning_connection__ready" = "مفتوح";
 "settings__status__lightning_connection__pending" = "جارٍ الفتح...";
 "settings__status__lightning_connection__error" = "لا توجد اتصالات مفتوحة";
+"settings__status__lightning_connection__spark" = "يستخدم Spark";
+"settings__status__spark__title" = "Spark";
+"settings__status__spark__ready" = "متصل";
+"settings__status__spark__pending" = "جارٍ الاتصال...";
+"settings__status__spark__error" = "غير متصل";
 "settings__status__backup__title" = "آخر نسخة احتياطية كاملة للبيانات";
 "settings__status__backup__error" = "فشل إكمال نسخة احتياطية كاملة";
 "settings__adv__section_debug" = "تصحيح";

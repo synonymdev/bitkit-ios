@@ -1038,6 +1038,11 @@
 "settings__status__lightning_connection__ready" = "Otwarte";
 "settings__status__lightning_connection__pending" = "Otwieranie...";
 "settings__status__lightning_connection__error" = "Brak otwartych połączeń";
+"settings__status__lightning_connection__spark" = "Przez Spark";
+"settings__status__spark__title" = "Spark";
+"settings__status__spark__ready" = "Połączono";
+"settings__status__spark__pending" = "Łączenie...";
+"settings__status__spark__error" = "Offline";
 "settings__status__backup__title" = "Ostatnia kopia zapasowa";
 "settings__status__backup__ready" = "Zapisano";
 "settings__status__backup__pending" = "Zapisywanie...";

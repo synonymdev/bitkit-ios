@@ -923,6 +923,11 @@
 "settings__status__lightning_connection__ready" = "Ativa";
 "settings__status__lightning_connection__pending" = "Ativando...";
 "settings__status__lightning_connection__error" = "Nenhuma conexão ativa";
+"settings__status__lightning_connection__spark" = "Usando o Spark";
+"settings__status__spark__title" = "Spark";
+"settings__status__spark__ready" = "Conectado";
+"settings__status__spark__pending" = "Conectando...";
+"settings__status__spark__error" = "Offline";
 "settings__status__backup__title" = "Último Backup Completo";
 "settings__status__backup__error" = "Falha ao concluir backup";
 "settings__adv__section_debug" = "Debug";

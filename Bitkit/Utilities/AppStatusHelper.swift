@@ -63,21 +63,65 @@ struct AppStatusHelper {
     }
 
     static func channelsStatus(from wallet: WalletViewModel, network: NetworkMonitor) -> HealthStatus {
-        let isOnline = network.isConnected
-        let hasChannels = wallet.channelCount > 0
+        channelsStatus(
+            isOnline: network.isConnected,
+            hasUsableChannels: wallet.hasUsableChannels,
+            hasChannels: wallet.channelCount > 0,
+            isSparkReady: SparkManager.shared.isReady
+        )
+    }
 
+    static func isLightningViaSpark(from wallet: WalletViewModel, network: NetworkMonitor) -> Bool {
+        isLightningViaSpark(
+            isOnline: network.isConnected,
+            hasUsableChannels: wallet.hasUsableChannels,
+            isSparkReady: SparkManager.shared.isReady
+        )
+    }
+
+    /// Nil where Spark is unsupported.
+    static func sparkStatus(network: NetworkMonitor) -> HealthStatus? {
+        let spark = SparkManager.shared
+        return sparkStatus(
+            isOnline: network.isConnected,
+            isSupported: spark.isSupported,
+            isReady: spark.isReady,
+            hasStartFailed: spark.hasStartFailed
+        )
+    }
+
+    /// Spark carries Lightning when no channel can, so the connection is ready through it; red only when neither can pay.
+    nonisolated static func channelsStatus(
+        isOnline: Bool,
+        hasUsableChannels: Bool,
+        hasChannels: Bool,
+        isSparkReady: Bool
+    ) -> HealthStatus {
         if !isOnline {
             return .error
         }
 
-        // Spark carries Lightning without channels, so a Spark wallet's connection is ready.
-        if wallet.hasUsableChannels || SparkManager.shared.isReady {
+        if hasUsableChannels || isSparkReady {
             return .ready
         } else if !hasChannels {
             return .error
         } else {
             return .pending
         }
+    }
+
+    /// No channel is usable, so Spark carries Lightning payments.
+    nonisolated static func isLightningViaSpark(isOnline: Bool, hasUsableChannels: Bool, isSparkReady: Bool) -> Bool {
+        isOnline && !hasUsableChannels && isSparkReady
+    }
+
+    nonisolated static func sparkStatus(isOnline: Bool, isSupported: Bool, isReady: Bool, hasStartFailed: Bool) -> HealthStatus? {
+        guard isSupported else { return nil }
+        guard isOnline else { return .error }
+        if isReady {
+            return .ready
+        }
+        return hasStartFailed ? .error : .pending
     }
 
     static func combinedAppStatus(from wallet: WalletViewModel, network: NetworkMonitor) -> HealthStatus {
