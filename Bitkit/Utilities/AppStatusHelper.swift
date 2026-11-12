@@ -83,7 +83,7 @@ struct AppStatusHelper {
             isOnline: network.isConnected,
             hasUsableChannels: wallet.hasUsableChannels,
             hasChannels: wallet.channelCount > 0,
-            isSparkReady: canSparkPay(isReady: SparkManager.shared.isReady, isExiting: SparkManager.shared.isExiting)
+            isSparkReady: MoveToSparkMath.isSparkUsable(SparkManager.shared)
         )
     }
 
@@ -91,7 +91,7 @@ struct AppStatusHelper {
         isLightningViaSpark(
             isOnline: network.isConnected,
             hasUsableChannels: wallet.hasUsableChannels,
-            isSparkReady: canSparkPay(isReady: SparkManager.shared.isReady, isExiting: SparkManager.shared.isExiting)
+            isSparkReady: MoveToSparkMath.isSparkUsable(SparkManager.shared)
         )
     }
 
@@ -124,11 +124,6 @@ struct AppStatusHelper {
         } else {
             return .pending
         }
-    }
-
-    /// Spark carries Lightning only while ready and out of an emergency exit, which takes it off the Lightning rail.
-    nonisolated static func canSparkPay(isReady: Bool, isExiting: Bool) -> Bool {
-        isReady && !isExiting
     }
 
     /// No channel is usable, so Spark carries Lightning payments.
