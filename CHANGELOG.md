@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.1] - 2026-11-12
+
+### Added
+- Bitkit now uses your pubky.app profile, so edits in Bitkit and on pubky.app show in both. #1235
+
+### Fixed
+- Payment requests that cannot fit one Paykit message are now refused before anything is sent or paid, a note that is too long asks to be shortened, Pubky authorization explains a refused signup code or a failed connection, and USDT received before a request was made no longer counts as paying it. #1237
+
+### Security
+- Updated the Lightning node with upstream security fixes. #1290
+
+
+
+
+
 ## [3.1.0] - 2026-11-02
 
 ### Added
@@ -327,7 +342,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix keyboard and UI issues in the calculator widget #513
 - Preserve msat precision for LNURL pay, withdraw callbacks and bolt11 #512
 
-[Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v3.1.0...HEAD
+[Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v3.1.1...HEAD
+[3.1.1]: https://github.com/synonymdev/bitkit-ios/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/synonymdev/bitkit-ios/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/synonymdev/bitkit-ios/compare/v3.0.0..v3.0.1
 [3.0.0]: https://github.com/synonymdev/bitkit-ios/compare/v2.5.1..v3.0.0
