@@ -150,6 +150,7 @@ struct SparkExitDriver {
                     // block, like the check's rebuild: the valid generation's retry clock does not pace it.
                     let tip = try? await chain.tipHeight()
                     let unilateral = (record.recovery?.response.transactions ?? []).filter { $0.kind != .cooperative }
+                    let unreadBefore = Set((before.recovery?.response.transactions ?? []).filter { $0.status == .unverified }.map(\.txid))
                     if unilateral.contains(where: { $0.status == .ready }) || !unilateral.contains(where: { $0.status == .unverified }) {
                         // A clean check while the payment came can read the unread step again, and it is then sent:
                         // a rebuild now would conflict with it at the same fee. The ask ends, and the funding it
@@ -157,6 +158,9 @@ struct SparkExitDriver {
                         Logger.info("Spark exit steps read again: the funded unverified rebuild is not needed", context: "SparkExitDriver")
                         record.phase = .running
                         record.isUnverifiedAsk = nil
+                    } else if unilateral.contains(where: { step in step.status == .unverified && !unreadBefore.contains(step.txid) }) {
+                        // A step this check just turned unverified may have been sent on an earlier clean check: the
+                        // resume waits for the next check, as the check's own rebuild does.
                     } else if tip == nil || record.unverifiedRebuiltAtHeight != tip {
                         record.unverifiedRebuiltAtHeight = tip
                         var valid = record
