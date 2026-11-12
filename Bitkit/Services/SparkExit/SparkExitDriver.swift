@@ -149,7 +149,19 @@ struct SparkExitDriver {
                     // generation stays over a failed-only build, running again with the funding adopted. Once a
                     // block, like the check's rebuild: the valid generation's retry clock does not pace it.
                     let tip = try? await chain.tipHeight()
-                    if tip == nil || record.unverifiedRebuiltAtHeight != tip {
+                    let unilateral = (record.recovery?.response.transactions ?? []).filter { $0.kind != .cooperative }
+                    let unreadBefore = Set((before.recovery?.response.transactions ?? []).filter { $0.status == .unverified }.map(\.txid))
+                    if unilateral.contains(where: { $0.status == .ready }) || !unilateral.contains(where: { $0.status == .unverified }) {
+                        // A clean check while the payment came can read the unread step again, and it is then sent:
+                        // a rebuild now would conflict with it at the same fee. The ask ends, and the funding it
+                        // adopted stays for a later rebuild or the leftover sweep.
+                        Logger.info("Spark exit steps read again: the funded unverified rebuild is not needed", context: "SparkExitDriver")
+                        record.phase = .running
+                        record.isUnverifiedAsk = nil
+                    } else if unilateral.contains(where: { step in step.status == .unverified && !unreadBefore.contains(step.txid) }) {
+                        // A step this check just turned unverified may have been sent on an earlier clean check: the
+                        // resume waits for the next check, as the check's own rebuild does.
+                    } else if tip == nil || record.unverifiedRebuiltAtHeight != tip {
                         record.unverifiedRebuiltAtHeight = tip
                         var valid = record
                         valid.phase = .running
@@ -625,8 +637,11 @@ struct SparkExitDriver {
                 return
             }
             // A step the SDK could not read is settled by a fresh build, once a block, unless a step is still to send:
-            // a build now would conflict with it at the same fee.
-            if let tip, isUnverifiedRebuildDue(checked.recovery, record: record, tip: tip) {
+            // a build now would conflict with it at the same fee. A check marks a step unverified when one chain read
+            // fails and clears it on the next clean check, so only a step that was already unverified before this check
+            // rebuilds, and one this check just turned unverified holds it, as it may be in flight. A step that stays
+            // unread rebuilds at the first check, once a block at most, where no other step just turned unverified.
+            if let tip, isUnverifiedRebuildDue(checked.recovery, stored: stored, record: record, tip: tip) {
                 Logger.warn("Spark exit has a step the SDK could not read, rebuilding over it", context: "SparkExitDriver")
                 record.unverifiedRebuiltAtHeight = tip
                 try save(record)
@@ -867,10 +882,20 @@ struct SparkExitDriver {
         try await rebuild(&record, recovering: recovering)
     }
 
-    /// A unilateral step the SDK could not read, nothing unilateral ready to send, and no such rebuild at this tip yet.
-    private func isUnverifiedRebuildDue(_ recovery: RecoverFundsResponse, record: SparkExitRecord, tip: UInt32) -> Bool {
+    /// Unilateral steps the SDK could not read, each one at this check and the one before, nothing unilateral ready to
+    /// send, and no such rebuild at this tip yet. A step this check just turned unverified may be in flight, so it holds
+    /// the rebuild as a ready one does.
+    private func isUnverifiedRebuildDue(
+        _ recovery: RecoverFundsResponse,
+        stored: RecoverFundsResponse,
+        record: SparkExitRecord,
+        tip: UInt32
+    ) -> Bool {
         let unilateral = recovery.transactions.filter { $0.kind != .cooperative }
-        return unilateral.contains { $0.status == .unverified } && !unilateral.contains { $0.status == .ready }
+        let unreadBefore = Set(stored.transactions.filter { $0.status == .unverified }.map(\.txid))
+        let unread = unilateral.filter { $0.status == .unverified }
+        return !unread.isEmpty && unread.allSatisfy { unreadBefore.contains($0.txid) }
+            && !unilateral.contains { $0.status == .ready }
             && record.unverifiedRebuiltAtHeight != tip
     }
 
@@ -1316,8 +1341,8 @@ struct SparkExitDriver {
 
     // MARK: Broadcast
 
-    /// A unilateral step the SDK could not read is never sent: a rebuild settles it. A cooperative one is, since nodes
-    /// refuse it if its funds already moved.
+    /// A unilateral step the SDK could not read is never sent: the next clean check, or a rebuild once it stays unread,
+    /// settles it. A cooperative one is, since nodes refuse it if its funds already moved.
     private func broadcastReady(_ record: inout SparkExitRecord, tip: UInt32? = nil) async throws {
         guard let recovery = record.recovery?.response else { return }
         let confirmed = Set(recovery.transactions.filter(\.isConfirmed).map(\.txid))

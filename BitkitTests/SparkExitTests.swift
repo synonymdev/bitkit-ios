@@ -1606,6 +1606,69 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2b"], "the unverified step is still not sent")
     }
 
+    /// A ready step that one failed chain read turns unverified may already be sent, so it is not rebuilt over: the
+    /// exit waits for the next check, which reads it again, and rebuilds only if it stays unread.
+    func testAStepAFailedReadTurnsUnverifiedWaitsForTheNextCheckInsteadOfRebuilding() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        let ready = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 10)),
+            SparkExitFixtures.tx("n2", cpfp: "03c", dependsOn: ["n1"]),
+        ])
+        let unread = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 10)),
+            SparkExitFixtures.tx("n2", cpfp: "03c", dependsOn: ["n1"], status: .unverified),
+        ])
+        record.adopt(ready, at: clock)
+        sdk.checks = [CheckRecoverFundsResponse(recovery: unread, verdict: .valid)]
+
+        record = try await driver().tick(record)
+
+        XCTAssertTrue(sdk.recoverRequests.isEmpty, "rebuilt over a step one failed read turned unverified")
+        XCTAssertNil(record.unverifiedRebuiltAtHeight)
+        XCTAssertNil(record.isUnverifiedAsk)
+        XCTAssertEqual(record.generation, 1)
+        XCTAssertTrue(chain.broadcasts.isEmpty, "the unverified step was sent")
+
+        // Still unread at the next check: now it rebuilds.
+        sdk.checks = [CheckRecoverFundsResponse(recovery: unread, verdict: .valid)]
+        sdk.builds = [SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 10)),
+            SparkExitFixtures.tx("n2b", cpfp: "03d", dependsOn: ["n1"]),
+        ])]
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(sdk.recoverRequests.count, 1)
+        XCTAssertEqual(record.unverifiedRebuiltAtHeight, 1000)
+        XCTAssertEqual(record.generation, 2)
+    }
+
+    /// A step one failed read turns unverified holds the rebuild over another leaf's step that was already unread: the
+    /// rebuild would replace it while it may be in flight.
+    func testAStepAFailedReadTurnsUnverifiedHoldsTheRebuildOverAnotherUnreadLeaf() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.leafIds = ["leaf-1", "leaf-2"]
+        let stored = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("n2", dependsOn: ["n1"], status: .unverified),
+            SparkExitFixtures.tx("m1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("m2", dependsOn: ["m1"]),
+        ])
+        let checked = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("n2", dependsOn: ["n1"], status: .unverified),
+            SparkExitFixtures.tx("m1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("m2", dependsOn: ["m1"], status: .unverified),
+        ])
+        record.adopt(stored, at: clock)
+        sdk.checks = [CheckRecoverFundsResponse(recovery: checked, verdict: .valid)]
+
+        record = try await driver().tick(record)
+
+        XCTAssertTrue(sdk.recoverRequests.isEmpty, "rebuilt over m2, which one failed read turned unverified")
+        XCTAssertNil(record.unverifiedRebuiltAtHeight)
+        XCTAssertEqual(record.generation, 1)
+    }
+
     /// An unverified rebuild that builds only failed cooperative leaves, beside the leaf it could not read, keeps the
     /// valid generation: its signed steps are still sent once the chain reads again.
     func testAnUnverifiedRebuildOfOnlyFailedLeavesKeepsTheValidGeneration() async throws {
@@ -1764,6 +1827,53 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(record.generation, 1)
         sdk.recoverError = nil
         return (record, readable, failure)
+    }
+
+    /// A savings payment keeps an unverified rebuild's ask open; a clean check while it confirms reads the unread step
+    /// as ready, and it is sent. The funded rebuild then never runs: it would conflict with that step at the same fee.
+    func testAFundedUnverifiedAskWhoseStepReadsAgainEndsWithoutARebuild() async throws {
+        var (record, readable, _) = try await unverifiedAsk()
+        let paid = String(repeating: "f", count: 64)
+        record.fundingPaymentTxid = paid
+        let builds = sdk.recoverRequests.count
+        sdk.checks = [CheckRecoverFundsResponse(recovery: readable, verdict: .valid)]
+        chain.utxosByAddress[record.funding[0].address] = [SparkExitFixtures.utxo(paid, value: 50000)]
+        chain.tip = 1001
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(sdk.recoverRequests.count, builds, "rebuilt over n2, which the clean check made ready and sent")
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2"])
+        XCTAssertEqual(record.phase, .running)
+        XCTAssertNil(record.isUnverifiedAsk)
+        XCTAssertEqual(record.generation, 1)
+    }
+
+    /// A step that a clean check sent while the payment was unconfirmed holds the funded rebuild when the tick that adopts
+    /// the payment fails to read it again: the resume waits for the next check.
+    func testAFundedUnverifiedAskHoldsItsRebuildOverAStepSentOnAnEarlierCleanCheck() async throws {
+        var (record, readable, _) = try await unverifiedAsk()
+        let unread = try XCTUnwrap(record.recovery?.response)
+        let paid = String(repeating: "f", count: 64)
+        record.fundingPaymentTxid = paid
+        let builds = sdk.recoverRequests.count
+        sdk.checks = [CheckRecoverFundsResponse(recovery: readable, verdict: .valid)]
+        chain.utxosByAddress[record.funding[0].address] = [SparkExitFixtures.utxo(paid, value: 50000, confirmed: false)]
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2"])
+        XCTAssertEqual(record.isUnverifiedAsk, true)
+
+        sdk.checks = [CheckRecoverFundsResponse(recovery: unread, verdict: .valid)]
+        chain.utxosByAddress[record.funding[0].address] = [SparkExitFixtures.utxo(paid, value: 50000)]
+        chain.tip = 1001
+
+        record = try await driver().tick(record)
+
+        XCTAssertTrue(record.funding.contains { $0.txid == paid }, "the payment was not adopted, so the hold never ran")
+        XCTAssertEqual(sdk.recoverRequests.count, builds, "rebuilt over n2, sent on the previous tick")
+        XCTAssertEqual(record.isUnverifiedAsk, true)
+        XCTAssertEqual(record.generation, 1)
     }
 
     /// Confirmed funding for an unverified rebuild's fee ask resumes that rebuild with its guard: a build of only failed
