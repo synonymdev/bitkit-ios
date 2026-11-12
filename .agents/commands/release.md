@@ -289,7 +289,7 @@ Print the path to the local draft. Store it for the summary. Slack posting is de
 
 ### 7. Build & Upload to TestFlight (optional)
 
-Before archiving, the Breez API key must be available: either the macOS keychain item `BREEZ_API_KEY` exists, or `Secrets.xcconfig` exists at the repo root with `BREEZ_API_KEY` set (copy `Secrets.xcconfig.template`). Release builds fail without either. Check with `security find-generic-password -a "$USER" -s BREEZ_API_KEY >/dev/null 2>&1 || grep -q '^BREEZ_API_KEY = .\+' Secrets.xcconfig`; if it fails, stop and ask the releaser to copy the key and store it with `security add-generic-password -U -a "$USER" -s BREEZ_API_KEY -w "$(pbpaste)"` (the bare `-w` prompt keeps only 128 characters). Never print the key.
+Before archiving, the Breez API key must be available: either the macOS keychain item `BREEZ_API_KEY` exists, or `Secrets.xcconfig` exists at the repo root with `BREEZ_API_KEY` set (copy `Secrets.xcconfig.template`). Release builds fail without either. Check with `security find-generic-password -a "$USER" -s BREEZ_API_KEY >/dev/null 2>&1 || grep -q '^BREEZ_API_KEY = .\+' Secrets.xcconfig`; if it fails, stop and ask the releaser to copy the key and store it with `printf 'add-generic-password -U -a %s -s BREEZ_API_KEY -w %s\n' "$USER" "$(pbpaste)" | security -i && pbcopy </dev/null` (stdin keeps it out of the process list; the bare `-w` prompt keeps only 128 characters). Never print the key.
 
 Use `AskUserQuestion`:
 
