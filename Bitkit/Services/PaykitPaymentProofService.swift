@@ -353,11 +353,14 @@ actor PaykitPaymentProofService {
                 }
             }
             guard try await store.load() == proofs else { throw OnchainSendAttemptError.unresolved }
+            let heldInvoices = await attemptService.lightningHoldsBackup() ?? []
             return try PaykitPaymentStateBackup(subscriptions: PaykitSubscriptionStateStore().backupSnapshot(),
                                                 pendingProofs: proofs.map(PaykitPaymentStateBackup.Proof.init), activeOnchainAttempt: active,
                                                 acceptedOneTimeRequests: PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests)
                                                     .backupSnapshot(),
-                                                allowances: PaykitAllowanceKeychainStore().backupSnapshot())
+                                                allowances: PaykitAllowanceKeychainStore().backupSnapshot(),
+                                                onchainPaidInvoices: heldInvoices.isEmpty ? nil : heldInvoices
+                                                    .map(PaykitPaymentStateBackup.OnchainPaidInvoice.init))
         }
     }
 
@@ -369,6 +372,7 @@ actor PaykitPaymentProofService {
         let proofs = try state.pendingProofs.map { try $0.restored() }
         let restored = try state.activeOnchainAttempt.map { try $0.restored(wallet: wallet, proofs: proofs) }
         // Persist the block first. A later proof/SDK restore failure leaves the original guard intact.
+        await attemptService.restoreLightningHolds(state.restoredOnchainPaidInvoices())
         try await attemptService.restoreBackup(restored?.0)
         try await mutationLock.withLock { try await persist(restored?.1 ?? proofs) }
         try PaykitSubscriptionStateStore().restoreBackup(state.subscriptions)

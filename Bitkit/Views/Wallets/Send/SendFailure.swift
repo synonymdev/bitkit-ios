@@ -8,6 +8,14 @@ func sendFailureMessage(for error: Error) -> String {
         return t("wallet__send_quickpay__currency_conversion")
     }
 
+    if let refusal = error as? LightningPaymentHeldRefusal {
+        return refusal.description
+    }
+
+    if let refusal = error as? OnchainPaymentRefusal {
+        return refusal.description
+    }
+
     if let reason = (error as? AppError)?.paymentFailureReason {
         return PaymentFailureReason.userMessage(for: reason)
     }

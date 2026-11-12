@@ -1275,6 +1275,11 @@
 "wallet__send_quickpay__nav_title" = "QuickPay";
 "wallet__send_quickpay__title" = "Betalen\n<accent>factuur...</accent>";
 "wallet__send_pending_note" = "Deze betaling duurt iets anger dan verwacht. U kunt Bitkit blijven gebruiken.";
+"wallet__send_onchain_lightning_pending" = "Een Lightning-betaling van deze factuur kan nog worden voltooid. Om dubbel betalen te voorkomen, betaalt Bitkit deze niet on-chain tenzij die betaling mislukt.";
+"wallet__send_onchain_lightning_paid" = "Een Lightning-betaling van deze factuur is al gelukt, dus Bitkit betaalt deze niet opnieuw on-chain.";
+"wallet__send_onchain_lightning_unknown" = "Bitkit moet de Lightning-betaling van deze factuur controleren voordat deze on-chain wordt betaald. Probeer het opnieuw zodra de wallet is gestart, of betaal alleen het adres.";
+"wallet__send_lightning_onchain_pending" = "Een on-chain betaling naar het adres van deze factuur kan nog worden bevestigd. Om dubbel betalen te voorkomen, betaalt Bitkit de factuur niet via Lightning.";
+"wallet__send_lightning_onchain_unreadable" = "Bitkit kan zijn on-chain betalingsgegevens niet lezen en kan dus niet zien of het adres van deze factuur al is betaald. Probeer het later opnieuw of betaal een factuur zonder adres.";
 "wallet__send_instant_failed" = "Directe Betaling Mislukt";
 "wallet__send_regular" = "Normale Betaling";
 "wallet__send_error_slash_ln" = "Helaas kon het contact niet direct worden betaald. U kunt proberen een normale betaling te doen (deze is langzamer en duurder). ";

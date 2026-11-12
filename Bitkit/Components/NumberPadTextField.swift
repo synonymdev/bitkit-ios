@@ -18,7 +18,7 @@ struct NumberPadTextField: View {
                 if showConversion {
                     // Secondary display (fiat)
                     MoneyText(
-                        sats: Int(viewModel.amountSats),
+                        sats: Int(clamping: viewModel.amountSats),
                         unitType: .secondary,
                         size: .caption,
                         symbol: true,
@@ -53,7 +53,7 @@ struct NumberPadTextField: View {
                 if showConversion {
                     // Secondary display (bitcoin)
                     MoneyText(
-                        sats: Int(viewModel.amountSats),
+                        sats: Int(clamping: viewModel.amountSats),
                         unitType: .secondary,
                         size: .caption,
                         symbol: true,

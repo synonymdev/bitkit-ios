@@ -195,6 +195,14 @@ class SheetViewModel: ObservableObject {
         return activeSheetConfiguration != nil
     }
 
+    /// Whether the open sheet renders the app's send state, which handling scanned data resets.
+    var isShowingSendState: Bool {
+        switch activeSheetConfiguration?.id {
+        case .send, .subscription, .lnurlWithdraw: true
+        default: false
+        }
+    }
+
     var canPresentReceivedTx: Bool {
         !isReplacingSheet && (activeSheetConfiguration == nil || activeSheetConfiguration?.id == .receive)
     }

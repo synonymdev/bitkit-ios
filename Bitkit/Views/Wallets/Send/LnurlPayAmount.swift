@@ -25,7 +25,7 @@ struct LnurlPayAmount: View {
     }
 
     var isValid: Bool {
-        app.lnurlPayData != nil && amount >= 0 && amount <= maxAmount
+        app.lnurlPayData != nil && amount > 0 && amount <= maxAmount
     }
 
     var body: some View {

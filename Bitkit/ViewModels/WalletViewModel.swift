@@ -101,6 +101,7 @@ class WalletViewModel: ObservableObject {
     private let transferService: TransferService
     private let sheetViewModel: SheetViewModel
     private let feeEstimatesManager: FeeEstimatesManager
+    private let onchainAttemptService: OnchainSendAttemptService
     private let pubkyProfile: PubkyProfileManager?
 
     @Published var isRestoringWallet = false
@@ -144,6 +145,7 @@ class WalletViewModel: ObservableObject {
         self.transferService = transferService
         self.sheetViewModel = sheetViewModel
         self.feeEstimatesManager = feeEstimatesManager
+        self.onchainAttemptService = onchainAttemptService
         self.pubkyProfile = pubkyProfile
         BackupService.shared.usdtWallet = self.usdtWallet
         balanceManager = BalanceManager(
@@ -766,6 +768,8 @@ class WalletViewModel: ObservableObject {
     ///   - address: The bitcoin address to send to
     ///   - sats: The amount in satoshis to send
     ///   - isMaxAmount: Whether this is a max amount send (uses sendAllToAddress)
+    ///   - lightningPaymentHash: The hash of the Lightning invoice the address came with, which a re-send checks again
+    ///   - lightningInvoiceExpiresAt: When that invoice expires, in seconds since 1970
     /// - Returns: The backend's broadcast result and the attempted transaction ID
     /// - Throws: An error if the transaction fails or if fee rates cannot be retrieved
     func send(
@@ -774,6 +778,8 @@ class WalletViewModel: ObservableObject {
         isMaxAmount: Bool = false,
         requestId: PaykitPaymentRequest.ID? = nil,
         paymentIdentity: String? = nil,
+        lightningPaymentHash: String? = nil,
+        lightningInvoiceExpiresAt: UInt64? = nil,
         followupContext: OnchainSendFollowupContext? = nil,
         paymentDeadline: PaykitPreciseInstant? = nil,
         beforeBroadcastAttempt: () async throws -> Void = {},
@@ -789,7 +795,7 @@ class WalletViewModel: ObservableObject {
             Logger.warn("No UTXO selected, using default selection algorithm.")
         }
 
-        let result = try await OnchainSendAttemptService.shared.send(
+        let result = try await onchainAttemptService.send(
             using: lightningService,
             address: address,
             amountSats: sats,
@@ -798,6 +804,8 @@ class WalletViewModel: ObservableObject {
             isMaxAmount: isMaxAmount,
             requestId: requestId,
             paymentIdentity: paymentIdentity,
+            lightningPaymentHash: lightningPaymentHash,
+            lightningInvoiceExpiresAt: lightningInvoiceExpiresAt,
             followupContext: followupContext,
             paymentDeadline: paymentDeadline,
             beforeBroadcastAttempt: beforeBroadcastAttempt,
