@@ -891,6 +891,47 @@ final class PaykitRouteTests: XCTestCase {
         )
     }
 
+    /// Contact A's LNURL decode (a network fetch) is slow; the user dismisses A and opens contact B before it returns.
+    @MainActor
+    func testAnLnurlDecodeThatReturnsAfterThePaymentChangedNeverLandsOnTheNextOne() async {
+        snapshotAppDefaultsDomain()
+        let app = AppViewModel()
+        let contactA = ContactPaymentContext(publicKey: "contacta", privatePaymentContext: nil, endpoints: [])
+        let contactB = ContactPaymentContext(publicKey: "contactb", privatePaymentContext: nil, endpoints: [])
+        let routeA = PaykitRouteUi(endpoints: [lightning, onchain], offersSparkLeg: true)
+        let routeB = PaykitRouteUi(endpoints: [lightning], offersSparkLeg: false)
+        var lnurlA = lnurlData(minSendableMsats: 1000)
+        lnurlA.callback = "https://contact-a.example/pay"
+        var lnurlB = lnurlData(minSendableMsats: 1000)
+        lnurlB.callback = "https://contact-b.example/pay"
+        app.contactPaymentContext = contactA
+        app.selectedWalletToPayFrom = .lightning
+        let lightning = lightning
+
+        let outcome = await app.routeContactPayment(
+            routeA,
+            amountSats: 2000,
+            source: .spending,
+            lightningSpendableSats: 10000,
+            onchainSpendableSats: 0,
+            request: nil,
+            router: { _, _, _, _, _ in .direct(endpoint: lightning) },
+            decodeEndpoint: { _ in
+                // While A's LNURL is fetched, A's sheet is dismissed and contact B's send opens with B's LNURL.
+                app.resetSendState()
+                app.contactPaymentContext = contactB
+                app.paykitRoute = routeB
+                app.selectedWalletToPayFrom = .lightning
+                app.lnurlPayData = lnurlB
+                return .lnurlPay(data: lnurlA)
+            }
+        )
+
+        XCTAssertEqual(outcome, .stale)
+        XCTAssertEqual(app.lnurlPayData?.callback, lnurlB.callback, "contact B's send must never pay contact A's LNURL")
+        XCTAssertNil(app.paykitRoute?.lnurl, "contact A's LNURL must not land on contact B's route")
+    }
+
     @MainActor
     func testARouteThatReturnsAfterItsPaymentChangedNeverLandsOnTheNextOne() async {
         snapshotAppDefaultsDomain()
