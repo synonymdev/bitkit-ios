@@ -43,6 +43,8 @@ struct SendConfirmationView: View {
     @State private var walletSwitchRun: WalletSwitchRun?
     @State private var manualCoinsRequestedContext: ConfirmationContext?
     @State private var isPreparingDirectOnchainSend = false
+    /// The hardware wallet Confirm switched to because Savings could not pay the fixed amount.
+    @State private var savingsFallbackWalletId: String?
     @State private var onchainFeeCalculationId: Int?
     @State private var presentationID: UUID?
     @State private var retainedOrdinarySignedTx: HwFundingSignedTx?
@@ -853,6 +855,7 @@ struct SendConfirmationView: View {
     }
 
     private func selectFundingSource(_ source: SendFundingSource) {
+        savingsFallbackWalletId = nil
         switch source {
         case .usdt:
             navigationPath = amountIsRoot ? [] : [.amount]
@@ -1246,15 +1249,36 @@ struct SendConfirmationView: View {
         isHardwarePayment && !isContactPayment && !afterFundingSwitch
     }
 
-    /// The first hardware wallet whose balance covers the amount, used only when Savings is short of it, so any
-    /// other coin-selection failure is reported instead. The wallet's fee preview decides whether it can pay.
+    /// The hardware wallet with the largest balance, when it covers the amount, used only when Savings is short of it, so
+    /// any other coin-selection failure is reported instead. The wallet's fee preview decides whether it can pay; a smaller
+    /// wallet cannot pay what the largest cannot.
     static func hardwareWalletCovering(
         amount: UInt64,
         savingsBalanceSats: UInt64,
         balances: [(walletId: String, balanceSats: UInt64)]
     ) -> String? {
-        guard savingsBalanceSats < amount else { return nil }
-        return balances.first { $0.balanceSats >= amount }?.walletId
+        guard savingsBalanceSats < amount, let largest = balances.max(by: { $0.balanceSats < $1.balanceSats }),
+              largest.balanceSats >= amount
+        else { return nil }
+        return largest.walletId
+    }
+
+    /// A failed preview of the Savings fallback wallet is insufficient funds when the compose reports it, or when the amount
+    /// leaves less than the fee reserve; any other failure, such as Electrum being unreachable, keeps Try again.
+    static func isSavingsFallbackShortOfFee(
+        fallbackWalletId: String?,
+        walletId: String?,
+        previewErrorDetail: String?,
+        amountSats: UInt64,
+        balanceSats: UInt64,
+        feeReserveSats: UInt64
+    ) -> Bool {
+        guard fallbackWalletId != nil, fallbackWalletId == walletId else { return false }
+        // The compose's coin selection names the shortfall, which can exceed the reserve when many inputs are spent.
+        if previewErrorDetail?.localizedCaseInsensitiveContains("insufficient funds") == true {
+            return true
+        }
+        return balanceSats < feeReserveSats || amountSats > balanceSats - feeReserveSats
     }
 
     /// Only the newest fee calculation can hold the swipe, so a calculation superseded by a funding switch never leaves it disabled.
@@ -2096,6 +2120,7 @@ struct SendConfirmationView: View {
                )
             {
                 selectFundingSource(.hardware(walletId: walletId))
+                savingsFallbackWalletId = walletId
                 return
             }
             app.toast(type: .error, title: t("other__try_again"), description: error.localizedDescription)
@@ -2205,6 +2230,7 @@ struct SendConfirmationView: View {
                     hasIncomingRequest: app.contactPaymentContext?.incomingPaymentRequest != nil
                 ) else { return }
                 apply(fee)
+                savingsFallbackWalletId = nil
                 return
             }
 
@@ -2241,6 +2267,25 @@ struct SendConfirmationView: View {
             Logger.error("Failed to calculate actual fee: \(error)")
             transactionFee = 0
             if hwSend.isActive, app.contactPaymentContext == nil {
+                let balanceSats = hwSend.walletId.map { hwWalletManager.fundingBalance(walletId: $0) } ?? 0
+                if Self.isSavingsFallbackShortOfFee(
+                    fallbackWalletId: savingsFallbackWalletId,
+                    walletId: hwSend.walletId,
+                    previewErrorDetail: (error as? AppError)?.debugMessage,
+                    amountSats: amountSats,
+                    balanceSats: balanceSats,
+                    feeReserveSats: HwFundingSigner.feeReserve(balanceSats: balanceSats, satsPerVByte: UInt64(feeRate))
+                ) {
+                    savingsFallbackWalletId = nil
+                    app.toast(
+                        type: .error,
+                        title: t("other__pay_insufficient_savings"),
+                        description: t("other__pay_insufficient_savings_description"),
+                        accessibilityIdentifier: "InsufficientSavingsToast"
+                    )
+                    leaveAfterPreparationFailure()
+                    return
+                }
                 app.toast(type: .error, title: t("other__try_again"), description: error.localizedDescription)
                 if Self.leavesConfirmAfterFeeFailure(
                     isHardwarePayment: true,

@@ -16,6 +16,61 @@ enum PaykitPaymentProofKind: String, Codable {
     }
 }
 
+/// Checks that the Payment Proof Event Message a payment would send fits one Paykit message, so a request whose proof
+/// could never be delivered is refused before anything is paid.
+enum PaykitPaymentProofSize {
+    /// The largest log index an ERC-20 receipt can carry, the 78-digit maximum of a uint256.
+    static let longestUsdtLogIndex = "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+
+    /// The longest proof each rail produces: a 32-byte preimage or txid, or an ERC-20 proof with the largest log index.
+    static func placeholderProof(for kind: PaykitPaymentProofKind) throws -> String {
+        let values: [String: String] = switch kind {
+        case .lightning, .onchain:
+            ["data": String(repeating: "0", count: 64), "type": kind.rawValue]
+        case .usdt:
+            [
+                "type": kind.rawValue,
+                "chain_id": PaykitUsdt.chainId,
+                "transaction_hash": "0x" + String(repeating: "0", count: 64),
+                "receipt_log_index": longestUsdtLogIndex,
+                "signature": "0x" + String(repeating: "0", count: 130),
+            ]
+        }
+        return try String(decoding: JSONSerialization.data(withJSONObject: values, options: [.sortedKeys]), as: UTF8.self)
+    }
+
+    static func validate(
+        paymentReference: String,
+        paymentAppId: String,
+        paymentEndpointIdentifier: String,
+        billingPeriod: Paykit.BillingPeriod?,
+        allowanceId: String?,
+        conversionQuoteId: String?,
+        kind: PaykitPaymentProofKind
+    ) throws {
+        let length: UInt32
+        do {
+            length = try Paykit.paymentProofEventLen(
+                localAppId: PaykitSdkService.appId,
+                paymentReference: Paykit.PaymentReference(text: paymentReference),
+                submission: Paykit.PaymentProofSubmission(
+                    billingPeriod: billingPeriod,
+                    paymentAppId: paymentAppId,
+                    paymentEndpointIdentifier: paymentEndpointIdentifier,
+                    allowanceId: allowanceId,
+                    conversionQuoteId: conversionQuoteId,
+                    proof: Paykit.PrivateJsonObject(text: placeholderProof(for: kind))
+                )
+            )
+        } catch {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+        guard Int(length) <= PaykitSdkService.maximumMessageBytes else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+    }
+}
+
 struct PaykitOnchainPaymentResolution: Hashable {
     let identity: String
     let requestId: PaykitPaymentRequest.ID
@@ -394,6 +449,15 @@ actor PaykitPaymentProofService {
             proof.onchainAmountSats = payment.amount.atomic
         }
         proof.allowanceId = allowanceId
+        try PaykitPaymentProofSize.validate(
+            paymentReference: request.paymentReference,
+            paymentAppId: proof.paymentAppId,
+            paymentEndpointIdentifier: proof.paymentEndpointIdentifier,
+            billingPeriod: proof.billingPeriod?.sdkValue,
+            allowanceId: proof.allowanceId,
+            conversionQuoteId: proof.conversionQuoteId,
+            kind: kind
+        )
         try await mutationLock.withLock { try await prepareLocked(request: request, proof: proof) }
     }
 
@@ -851,11 +915,11 @@ actor PaykitPaymentProofService {
             }
             let proofs = try await loadProofs()
             guard let proof = proofs.first(where: {
-                PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId &&
-                    $0.kind == .onchain && $0.paymentStarted && $0.onchainWalletId == walletId &&
-                    $0.onchainAddress == address && $0.onchainAmountSats == amountSats &&
-                    $0.proofData == nil && $0.onchainAcceptanceVerified != true
-            }), let raw = proof.hardwareSignedTransaction,
+                      PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId &&
+                          $0.kind == .onchain && $0.paymentStarted && $0.onchainWalletId == walletId &&
+                          $0.onchainAddress == address && $0.onchainAmountSats == amountSats &&
+                          $0.proofData == nil && $0.onchainAcceptanceVerified != true
+                  }), let raw = proof.hardwareSignedTransaction,
                   try SignedTransactionId.fromHex(raw) == proof.paymentIdentifier,
                   let fee = proof.hardwareMiningFeeSats, let rate = proof.hardwareFeeRate,
                   let spent = proof.hardwareTotalSpent

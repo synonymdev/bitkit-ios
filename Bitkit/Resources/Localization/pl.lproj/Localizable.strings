@@ -716,6 +716,8 @@
 "pubky_auth__homeserver" = "Serwer domowy";
 "pubky_auth__signup_description" = "Utwórz nową tożsamość Pubky na tym serwerze domowym. Kontynuuj tylko, jeśli mu ufasz.";
 "pubky_auth__approval_failed" = "Autoryzacja nie powiodła się";
+"pubky_auth__identity_unavailable_desc" = "Sprawdź połączenie i spróbuj ponownie.";
+"profile__auth_error_signup_code_rejected" = "Serwer domowy nie zaakceptował tego kodu rejestracyjnego. Spróbuj ponownie lub użyj innego linku rejestracyjnego.";
 "wallet__onchain_abandon_transfer_note" = "Przelewy na saldo wydatków nie są już dostępne. Bitkit najpierw sprawdza sieć, a potem odsyła monety z tego przelewu do Twojego portfela, aby pierwotny przelew nigdy nie został potwierdzony. Wiąże się to z opłatą sieciową.";
 "watch_only_accounts__active_section" = "Aktywne konta";
 "watch_only_accounts__copy_xpub" = "Kopiuj xpub";
@@ -1186,7 +1188,9 @@
 "profile__pubky_copied" = "pubky skopiowany do schowka";
 "profile__edit_delete_section" = "USUWANIE";
 "profile__edit_unlink_section" = "ODŁĄCZANIE";
-"profile__edit_public_note" = "Pamiętaj, że dane profilu są przechowywane w publicznych plikach.";
+"profile__edit_changed_error" = "Twój profil zmienił się w pubky.app. Bitkit wczytał najnowszą wersję, więc wprowadź zmianę ponownie.";
+"profile__edit_public_note" = "To jest Twój profil pubky.app. Jest publiczny, a zmiany wprowadzone tutaj pojawią się też w pubky.app.";
+"profile__edit_tags_error" = "Bitkit nie mógł zapisać Twoich tagów. Pozostałe zmiany zostały zapisane, więc spróbuj ponownie z tagami.";
 "profile__delete_title" = "Usunąć profil?";
 "profile__delete_description" = "Usunięcie profilu usuwa go z Pubky. Kontakty mogą nadal przechowywać udostępnione im wcześniej dane profilu i płatności.";
 "profile__delete_confirm" = "Tak, usuń";
@@ -1460,6 +1464,7 @@
 "wallet__payment_received" = "Otrzymano Bitcoinów";
 "wallet__payment_request" = "Żądanie płatności";
 "wallet__payment_request_unavailable" = "Żądanie płatności nie jest już dostępne.";
+"wallet__payment_request_note_too_long" = "Skróć notatkę i spróbuj ponownie.";
 "wallet__payment_request_expired" = "Żądanie płatności wygasło.";
 "wallet__payment_request_waiting_for_details" = "Dane płatności są wciąż odzyskiwane. Spróbuj ponownie za chwilę.";
 "wallet__payment_request_in_progress" = "Żądanie płatności jest już przetwarzane.";
@@ -1799,6 +1804,7 @@
 "wallet__payment_request_payment_verified" = "Płatność zweryfikowana";
 "wallet__payment_request_underpaid" = "Otrzymano · Niedopłata";
 "wallet__payment_request_after_expiry" = "Otrzymano · Po terminie";
+"wallet__payment_request_before_request" = "Otrzymano · Przed żądaniem";
 "pubky_auth__usdt_intro_description" = "Aby zarabiać, musisz udostępnić Paykit swój adres USDT. Paykit może wyświetlać aktywność sprzedaży, ale nie może wydawać środków.";
 "pubky_auth__usdt_intro_optional" = "Możesz udostępnić Paykit swój adres USDT, aby otrzymywać zarobki. Paykit może wyświetlać aktywność sprzedaży, ale nie może wydawać środków.";
 "pubky_auth__usdt_unavailable" = "Twój adres USDT jest niedostępny. Spróbuj ponownie.";

@@ -714,6 +714,8 @@
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Maak een nieuwe Pubky-identiteit aan op deze homeserver. Ga alleen verder als u deze vertrouwt.";
 "pubky_auth__approval_failed" = "Autorisatie mislukt";
+"pubky_auth__identity_unavailable_desc" = "Controleer uw verbinding en probeer het opnieuw.";
+"profile__auth_error_signup_code_rejected" = "De homeserver heeft deze aanmeldcode niet geaccepteerd. Probeer het opnieuw of gebruik een andere aanmeldlink.";
 "wallet__onchain_abandon_transfer_note" = "Overboekingen naar je bestedingssaldo zijn niet meer beschikbaar. Bitkit controleert eerst het netwerk en stuurt de munten van deze overboeking dan terug naar je wallet, zodat de oorspronkelijke overboeking nooit bevestigd wordt. Dit kost netwerkkosten.";
 "watch_only_accounts__active_section" = "Actieve accounts";
 "watch_only_accounts__copy_xpub" = "xpub kopiëren";
@@ -1182,7 +1184,9 @@
 "profile__pubky_copied" = "pubky gekopieerd naar klembord";
 "profile__edit_delete_section" = "VERWIJDEREN";
 "profile__edit_unlink_section" = "ONTKOPPELEN";
-"profile__edit_public_note" = "Let op: profielgegevens worden opgeslagen in openbare bestanden.";
+"profile__edit_changed_error" = "Je profiel is gewijzigd in pubky.app. Bitkit heeft de nieuwste versie geladen, dus voer je wijziging opnieuw uit.";
+"profile__edit_public_note" = "Dit is je pubky.app-profiel. Het is openbaar, en wijzigingen die je hier maakt, verschijnen ook op pubky.app.";
+"profile__edit_tags_error" = "Bitkit kon je tags niet opslaan. Je andere wijzigingen zijn opgeslagen, dus probeer de tags opnieuw.";
 "profile__delete_title" = "Profiel verwijderen?";
 "profile__delete_description" = "Als u uw profiel verwijdert, wordt het van Pubky verwijderd. Contacten kunnen eerder gedeelde profiel- en betaalgegevens nog bewaren.";
 "profile__delete_confirm" = "Ja, verwijderen";
@@ -1456,6 +1460,7 @@
 "wallet__payment_received" = "Bitcoin Ontvangen";
 "wallet__payment_request" = "Betaalverzoek";
 "wallet__payment_request_unavailable" = "Het betaalverzoek is niet meer beschikbaar.";
+"wallet__payment_request_note_too_long" = "Maak de opmerking korter en probeer het opnieuw.";
 "wallet__payment_request_expired" = "Het betaalverzoek is verlopen.";
 "wallet__payment_request_waiting_for_details" = "Betaalgegevens worden nog hersteld. Probeer het zo opnieuw.";
 "wallet__payment_request_in_progress" = "Het betaalverzoek wordt al verwerkt.";
@@ -1794,6 +1799,7 @@
 "wallet__payment_request_payment_verified" = "Betaling geverifieerd";
 "wallet__payment_request_underpaid" = "Ontvangen · Onderbetaald";
 "wallet__payment_request_after_expiry" = "Ontvangen · Na vervaldatum";
+"wallet__payment_request_before_request" = "Ontvangen · Vóór het verzoek";
 "pubky_auth__usdt_intro_description" = "Om te verdienen, moet u uw USDT-adres delen met Paykit. Dit kan verkoopactiviteit zien, maar kan geen geld uitgeven.";
 "pubky_auth__usdt_intro_optional" = "U kunt uw USDT-adres delen met Paykit om inkomsten te ontvangen. Dit kan verkoopactiviteit zien, maar kan geen geld uitgeven.";
 "pubky_auth__usdt_unavailable" = "Uw USDT-adres is niet beschikbaar. Probeer het opnieuw.";

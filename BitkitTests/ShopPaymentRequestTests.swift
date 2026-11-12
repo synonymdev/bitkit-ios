@@ -4,6 +4,22 @@ import XCTest
 
 @MainActor
 final class ShopPaymentRequestTests: XCTestCase {
+    func testDecodingErrorsUseLocalizedScanToast() throws {
+        for error: DecodingError in [.InvalidFormat, .InvalidAmount, .InvalidAddress, .RequestFailed] {
+            let toast = try XCTUnwrap(ShopPaymentRequest.decodingErrorToast(for: error))
+            XCTAssertEqual(toast.type, .error)
+            XCTAssertEqual(toast.title, t("other__scan_err_decoding"))
+            XCTAssertEqual(toast.description, t("other__scan__error__generic"))
+            XCTAssertEqual(toast.accessibilityIdentifier, "InvalidAddressToast")
+        }
+    }
+
+    func testNonDecodingErrorsKeepExistingErrorHandling() {
+        for error in [CancellationError(), ScanHandlingError.unsupportedRequest, ScanHandlingError.pubkyAuthRequest] as [Error] {
+            XCTAssertNil(ShopPaymentRequest.decodingErrorToast(for: error))
+        }
+    }
+
     func testLightningInvoiceIsSupported() {
         XCTAssertTrue(ShopPaymentRequest.isSupported(.lightning(invoice: lightningInvoice)))
     }

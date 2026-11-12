@@ -111,6 +111,10 @@ maximum and the journeys pass for the wrong reason:
 exit status, so an empty response there is not a failure. Give the wallet ~20s to sync before
 reading the balance.
 
+Staging's `/regtest/*` routes need basic auth. Export `BLOCKTANK_REGTEST_AUTH=user:password` for the
+`lsp` helper, and pass the same variable to the app (process environment or launch argument) so
+Settings > Blocktank Regtest can deposit and mine; Debug and E2E builds read it, release builds never do.
+
 **The `lsp` helper is borrowed from the sibling Android checkout.** It is the `blocktank-api` plugin's
 script, and there is no iOS copy yet — #694 tracks porting it. The relative path assumes
 `bitkit-android` is cloned next to this repo, which is the usual layout here; the hardware-wallet

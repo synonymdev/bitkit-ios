@@ -37,6 +37,11 @@ struct CreateProfileView: View {
         .task {
             await loadInitialData()
         }
+        .onChange(of: username) { _, value in
+            if let capped = PubkyAppProfileLimits.capped(value, to: PubkyAppProfileLimits.nameLength.upperBound) {
+                username = capped
+            }
+        }
     }
 
     // MARK: - Form Content
@@ -64,7 +69,7 @@ struct CreateProfileView: View {
         ) {
             await saveProfile()
         }
-        .disabled(username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .disabled(!PubkyAppProfileLimits.isValidName(username))
         .accessibilityIdentifier("CreateProfileSave")
         .padding(.top, 16)
         .padding(.horizontal, 16)
@@ -169,6 +174,9 @@ struct CreateProfileView: View {
                 username = remote.name
                 existingProfile = remote
                 isRestoring = true
+            } else {
+                existingProfile = nil
+                isRestoring = false
             }
         } catch is CancellationError {
             return
@@ -187,7 +195,7 @@ struct CreateProfileView: View {
         }
 
         do {
-            let profile = try await PubkyProfileManager.resolveRemoteProfile(publicKey: publicKey)
+            let profile = try await PubkyAppProfileStore.shared.load(publicKey: publicKey)
             remoteLookupFailed = false
             return profile
         } catch PubkyServiceError.profileNotFound {
@@ -213,7 +221,7 @@ struct CreateProfileView: View {
         }
 
         let trimmedName = username.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty else { return }
+        guard PubkyAppProfileLimits.isValidName(trimmedName) else { return }
 
         isSaving = true
         defer { isSaving = false }
@@ -225,11 +233,15 @@ struct CreateProfileView: View {
                 links: existingProfile?.links ?? [],
                 tags: existingProfile?.tags ?? [],
                 existingImageUrl: existingProfile?.imageUrl,
+                baseRevision: existingProfile?.revision,
                 avatarImage: avatarImage
             )
             navigation.navigate(.payContacts)
         } catch is CancellationError {
             return
+        } catch PubkyAppProfileError.changedElsewhere {
+            app.toast(type: .error, title: t("profile__create_error_title"), description: PubkyAppProfileError.changedElsewhere.localizedDescription)
+            await loadInitialData()
         } catch {
             Logger.error("Failed to save profile: \(error)", context: "CreateProfileView")
             app.toast(type: .error, title: t("profile__create_error_title"), description: error.localizedDescription)

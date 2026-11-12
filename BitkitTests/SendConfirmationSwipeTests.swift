@@ -193,6 +193,48 @@ final class SendConfirmationSwipeTests: XCTestCase {
         XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 300_000, savingsBalanceSats: 209_714, balances: []))
     }
 
+    func testAFixedAmountSavingsCannotPayMovesToTheLargestHardwareWallet() {
+        // The first wallet also covers the amount, but has less room for the fee.
+        let balances: [(walletId: String, balanceSats: UInt64)] = [("smaller", 300_100), ("larger", 549_577)]
+        XCTAssertEqual(
+            SendConfirmationView.hardwareWalletCovering(amount: 300_000, savingsBalanceSats: 0, balances: balances),
+            "larger"
+        )
+    }
+
+    func testAFailedPreviewOfTheSavingsFallbackWalletIsInsufficientSavingsOnlyWhenTheFeeDoesNotFit() {
+        func isShort(
+            fallback: String?,
+            wallet: String?,
+            amount: UInt64,
+            balance: UInt64 = 100_000,
+            reserve: UInt64 = 1200,
+            errorDetail: String? = "Electrum connection failed: Failed to connect to Electrum: Connection refused (os error 61)"
+        ) -> Bool {
+            SendConfirmationView.isSavingsFallbackShortOfFee(
+                fallbackWalletId: fallback,
+                walletId: wallet,
+                previewErrorDetail: errorDetail,
+                amountSats: amount,
+                balanceSats: balance,
+                feeReserveSats: reserve
+            )
+        }
+        XCTAssertTrue(isShort(fallback: "trezor", wallet: "trezor", amount: 99970))
+        XCTAssertTrue(isShort(fallback: "trezor", wallet: "trezor", amount: 1000, balance: 1100))
+        // The fee fits, so the preview failed for another reason, such as Electrum being unreachable.
+        XCTAssertFalse(isShort(fallback: "trezor", wallet: "trezor", amount: 50000))
+        XCTAssertFalse(isShort(fallback: "trezor", wallet: "trezor", amount: 98800))
+        // Many inputs can need more than the reserve; the compose then reports the shortfall itself.
+        let shortfall = "Insufficient funds: 100000 sat available of 101310 sat needed"
+        XCTAssertTrue(isShort(fallback: "trezor", wallet: "trezor", amount: 98000, errorDetail: shortfall))
+        XCTAssertFalse(isShort(fallback: nil, wallet: "trezor", amount: 98000, errorDetail: shortfall))
+        // A source the user picked, or none, keeps the Try again handling.
+        XCTAssertFalse(isShort(fallback: nil, wallet: "trezor", amount: 99970))
+        XCTAssertFalse(isShort(fallback: "trezor", wallet: "jade", amount: 99970))
+        XCTAssertFalse(isShort(fallback: nil, wallet: nil, amount: 99970))
+    }
+
     func testACoinSelectionFailureWithEnoughSavingsDoesNotMoveToAHardwareWallet() {
         let balances: [(walletId: String, balanceSats: UInt64)] = [("large", 549_577)]
         XCTAssertNil(SendConfirmationView.hardwareWalletCovering(amount: 10000, savingsBalanceSats: 209_714, balances: balances))

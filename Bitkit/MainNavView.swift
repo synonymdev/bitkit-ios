@@ -944,7 +944,12 @@ struct MainNavView: View {
             return
         } catch {
             Logger.error(error, context: "Failed to handle deeplink")
-            showScanError()
+            app.toast(
+                type: .error,
+                title: t("other__scan_err_decoding"),
+                description: t("other__scan__error__generic"),
+                accessibilityIdentifier: "InvalidAddressToast"
+            )
         }
     }
 
