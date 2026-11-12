@@ -9,6 +9,16 @@ struct PubkyProfileData: Codable, Equatable {
     var image: String?
     var links: [Link]
     var tags: [String]
+    /// The pubky.app revision an edit started from; never part of the published copy.
+    var baseRevision: String?
+    /// Whether the profile the edit started from lacked the stored tags, as the copy could not be read; never published.
+    var baseTagsUnread = false
+    /// Identifies the save, so its caller can read back the profile it stored; never part of the published copy.
+    var saveId: UUID?
+
+    private enum CodingKeys: String, CodingKey {
+        case name, bio, image, links, tags
+    }
 
     struct Link: Codable, Equatable {
         let label: String
@@ -115,6 +125,17 @@ struct PubkyProfile {
     let links: [PubkyProfileLink]
     let tags: [String]
     let status: String?
+    /// The pubky.app revision this profile was read or saved at, for a save to check against.
+    var revision: String?
+    /// Set when Bitkit's copy could not be read, so `tags` are not the stored ones and a save keeps those.
+    var tagsUnread = false
+
+    func withImageUrl(_ imageUrl: String?) -> PubkyProfile {
+        var profile = PubkyProfile(publicKey: publicKey, name: name, bio: bio, imageUrl: imageUrl, links: links, tags: tags, status: status)
+        profile.revision = revision
+        profile.tagsUnread = tagsUnread
+        return profile
+    }
 
     var truncatedPublicKey: String {
         Self.truncate(publicKey)
@@ -185,7 +206,10 @@ struct PubkyProfile {
     }
 
     func withTags(_ tags: [String]) -> PubkyProfile {
-        PubkyProfile(publicKey: publicKey, name: name, bio: bio, imageUrl: imageUrl, links: links, tags: tags, status: status)
+        var profile = PubkyProfile(publicKey: publicKey, name: name, bio: bio, imageUrl: imageUrl, links: links, tags: tags, status: status)
+        profile.revision = revision
+        profile.tagsUnread = tagsUnread
+        return profile
     }
 
     func withNameFallback(_ fallbackName: String?) -> PubkyProfile {
@@ -211,5 +235,25 @@ struct PubkyProfile {
     private static func normalizedPublicKey(_ key: String) -> String {
         let trimmedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
         return PubkyPublicKeyFormat.normalized(trimmedKey) ?? (trimmedKey.hasPrefix("pubky") ? trimmedKey : "pubky\(trimmedKey)")
+    }
+}
+
+// MARK: - pubky.app profile limits
+
+/// Limits pubky-app-specs sets on the pubky.app profile.
+enum PubkyAppProfileLimits {
+    static let nameLength = 3 ... 50
+    static let bioMaxLength = 160
+    static let maxLinks = 5
+
+    /// pubky.app counts Unicode scalars, not characters.
+    static func isValidName(_ name: String) -> Bool {
+        nameLength.contains(name.trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.count)
+    }
+
+    /// `text` cut to `maxLength` Unicode scalars, or nil when it already fits.
+    static func capped(_ text: String, to maxLength: Int) -> String? {
+        guard text.unicodeScalars.count > maxLength else { return nil }
+        return String(String.UnicodeScalarView(text.unicodeScalars.prefix(maxLength)))
     }
 }

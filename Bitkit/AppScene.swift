@@ -1458,6 +1458,7 @@ struct AppScene: View {
                     await clearDeliveredNotifications()
                     await LightningService.shared.reconnectPeers()
                     try? await wallet.sync()
+                    await wallet.waitForPaykitPostSync()
                     await sessionRecovery
                     await retryPendingPaykitEndpointRemoval()
                 }
