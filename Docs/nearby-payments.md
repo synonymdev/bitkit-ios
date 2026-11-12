@@ -23,6 +23,13 @@ formats so Android and iOS interoperate.
 
 ## Bluetooth LE (v1)
 
+| Role | Android | iOS |
+| --- | --- | --- |
+| Read a request (pay) | GATT client while a payment scanner is open | CoreBluetooth central while a payment scanner is open |
+| Serve a request (receive) | GATT server and advertiser while Receive is in the foreground | CoreBluetooth peripheral while Receive is in the foreground |
+
+Android and iOS interoperate in both directions; the iOS simulator has no Bluetooth, so iOS needs a device.
+
 The receiving phone is a GATT server; the paying phone is a central that connects to the closest
 advertiser and reads the request.
 
