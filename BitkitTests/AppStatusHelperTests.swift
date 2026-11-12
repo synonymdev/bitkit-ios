@@ -39,4 +39,10 @@ final class AppStatusHelperTests: XCTestCase {
         XCTAssertEqual(status, .error)
         XCTAssertFalse(AppStatusHelper.isLightningViaSpark(isOnline: false, hasUsableChannels: false, isSparkReady: true))
     }
+
+    func testSparkCannotPayDuringAnEmergencyExit() {
+        XCTAssertTrue(AppStatusHelper.canSparkPay(isReady: true, isExiting: false))
+        XCTAssertFalse(AppStatusHelper.canSparkPay(isReady: true, isExiting: true))
+        XCTAssertFalse(AppStatusHelper.canSparkPay(isReady: false, isExiting: false))
+    }
 }
