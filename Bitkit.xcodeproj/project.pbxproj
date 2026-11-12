@@ -620,7 +620,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# When no build setting (Secrets.xcconfig, xcodebuild NAME=value) sets BREEZ_API_KEY, read it from the macOS\n# keychain item BREEZ_API_KEY and write it into the built Info.plist before signing. Never printed.\n[ -n \"$(echo \"${BREEZ_API_KEY}\" | tr -d ' ')\" ] && exit 0\n[ -x /usr/bin/security ] || exit 0\nkey=$(/usr/bin/security find-generic-password -a \"$USER\" -s BREEZ_API_KEY -w 2>/dev/null) || exit 0\n[ -n \"$key\" ] || exit 0\n/usr/libexec/PlistBuddy -c \"Set :BREEZ_API_KEY $key\" \"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n";
+			shellScript = "# When no build setting (Secrets.xcconfig, xcodebuild NAME=value) sets BREEZ_API_KEY, read it from the macOS\n# keychain item BREEZ_API_KEY and write it into the built Info.plist before signing. Never printed.\n# Release builds fail when the item cannot be read or is blank; other builds keep Spark off on mainnet.\n[ -n \"$(echo \"${BREEZ_API_KEY}\" | tr -d ' ')\" ] && exit 0\nfail() {\n  [ \"$CONFIGURATION\" = \"Release\" ] || exit 0\n  echo \"error: $1. Store the key in the keychain item BREEZ_API_KEY or set it in Secrets.xcconfig (Docs/RELEASE.md).\"\n  exit 1\n}\n[ -x /usr/bin/security ] || fail \"BREEZ_API_KEY is empty and /usr/bin/security is missing\"\nkey=$(/usr/bin/security find-generic-password -a \"$USER\" -s BREEZ_API_KEY -w 2>/dev/null) || fail \"Could not read the keychain item BREEZ_API_KEY\"\n[ -n \"$(echo \"$key\" | tr -d ' ')\" ] || fail \"The keychain item BREEZ_API_KEY is empty\"\n/usr/libexec/PlistBuddy -c \"Set :BREEZ_API_KEY $key\" \"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n";
 			showEnvVarsInLog = 0;
 		};
 		751000000000000000000001 /* Generate Plural Localizations */ = {
