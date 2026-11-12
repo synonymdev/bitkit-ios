@@ -7,6 +7,8 @@ struct QrArea: View {
     var copyValue: String?
     var shareText: String?
     var copyMessage: String?
+    /// Shown while the request is offered to nearby phones over Bluetooth.
+    var showsTapToPay = false
     var onEdit: (() -> Void)?
 
     @State private var showCopyTooltip = false
@@ -79,6 +81,10 @@ struct QrArea: View {
             // Generate the QR image for sharing
             shareQRImage = QR.shareImage(content: uri)
         }
+
+        if showsTapToPay {
+            ReceiveTapToPayLabel()
+        }
     }
 
     private func onCopy() {
@@ -96,5 +102,22 @@ struct QrArea: View {
                 showCopyTooltip = false
             }
         }
+    }
+}
+
+/// "Scan or tap to pay" under the receive actions, shown while nearby phones can read the request.
+struct ReceiveTapToPayLabel: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Image("broadcast")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 16, height: 16)
+                .foregroundColor(.textSecondary)
+            CaptionMText(t("wallet__receive_scan_or_tap"), textColor: .textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("ReceiveTapToPay")
     }
 }

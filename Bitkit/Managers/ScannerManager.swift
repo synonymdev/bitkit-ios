@@ -291,6 +291,31 @@ class ScannerManager: ObservableObject {
         await handleSendScan(uri, scope: scope, isCurrent: isCurrent, completion: completion)
     }
 
+    /// Handles a request read over Bluetooth. Bluetooth range lets a device that is not the merchant's
+    /// answer, so the request always opens the normal review and QuickPay does not apply.
+    func handleNearbyRequest(_ uri: String, context: ScannerContext, isCurrent: () -> Bool = { true }) async {
+        guard let app else { return }
+        await app.withQuickPaySuppressed {
+            await handleScan(uri, context: context, isCurrent: isCurrent)
+        }
+    }
+
+    /// Send-sheet variant of `handleNearbyRequest`.
+    func handleSendNearbyRequest(
+        _ uri: String,
+        scope: ScanHandlingScope = .unrestricted,
+        isCurrent: () -> Bool = { true },
+        completion: @escaping (SendRoute?) -> Void
+    ) async {
+        guard let app else {
+            completion(nil)
+            return
+        }
+        await app.withQuickPaySuppressed {
+            await handleSendScan(uri, scope: scope, isCurrent: isCurrent, completion: completion)
+        }
+    }
+
     private func readNfcPaymentRequest() async -> String? {
         do {
             return try await nfcReader.readPaymentRequest(alertMessage: t("other__nfc_alert"))

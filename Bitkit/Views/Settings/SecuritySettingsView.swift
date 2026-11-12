@@ -132,6 +132,14 @@ struct SecuritySettingsView: View {
                         toggle: $settings.readClipboard,
                         testIdentifier: "AutoReadClipboard"
                     )
+
+                    SettingsRow(
+                        title: t("settings__security__nearby_payments"),
+                        subtitle: t("settings__security__nearby_payments_text"),
+                        iconName: "broadcast",
+                        toggle: $settings.enableNearbyPayments,
+                        testIdentifier: "NearbyPayments"
+                    )
                 }
                 .padding(.top, 16)
                 .padding(.horizontal, 16)

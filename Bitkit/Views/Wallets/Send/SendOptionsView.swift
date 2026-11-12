@@ -60,7 +60,14 @@ struct SendOptionsView: View {
                                     }
                                 }
                             }
-                            : nil
+                            : nil,
+                        onNearbyRequest: { request in
+                            await scanner.handleSendNearbyRequest(request, scope: scanScope) { route in
+                                if let route {
+                                    handleRoute(route)
+                                }
+                            }
+                        }
                     )
 
                     RectangleButton(

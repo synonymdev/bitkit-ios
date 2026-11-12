@@ -39,6 +39,9 @@ struct ScannerScreen: View {
                 },
                 onNfcRead: scannerContext == .main && scanner.isNfcReadingAvailable
                     ? { await scanner.handleNfcRead(context: scannerContext) }
+                    : nil,
+                onNearbyRequest: scannerContext == .main
+                    ? { await scanner.handleNearbyRequest($0, context: scannerContext) }
                     : nil
             )
             .padding(.bottom, 16)

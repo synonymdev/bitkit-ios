@@ -417,7 +417,12 @@
 "onboarding__multiple_header" = "<accent>Caution:</accent>\nmultiple devices";
 "onboarding__multiple_text" = "Don\'t install your Bitkit recovery phrase into multiple phones simultaneously, as this can corrupt your data.";
 "other__qr_scan" = "Scan QR Code";
-"other__nfc_scan_status" = "Scanning QR & NFC";
+"other__scan_status_qr" = "Scanning QR";
+"other__scan_status_qr_nfc" = "Scanning QR & NFC";
+"other__scan_status_qr_bluetooth" = "Scanning QR & Bluetooth";
+"other__scan_status_qr_nfc_bluetooth" = "Scanning QR, NFC & Bluetooth";
+"other__scan_to_pay_title" = "Scan\n<accent>to pay</accent>";
+"other__scan_to_pay_text" = "Allow Camera, Bluetooth, and NFC access to scan bitcoin invoices and pay more quickly.";
 "other__nfc_alert" = "Tap payment terminal or phone";
 "other__nfc_error_header" = "NFC Read Failed";
 "other__nfc_error_text" = "This tag does not contain a payment request Bitkit can read.";
@@ -818,6 +823,8 @@
 "settings__security__swipe_balance_to_hide" = "Swipe balance to hide";
 "settings__security__hide_balance_on_open" = "Hide balance on open";
 "settings__security__clipboard" = "Read clipboard for ease of use";
+"settings__security__nearby_payments" = "Nearby payments";
+"settings__security__nearby_payments_text" = "Offer your Receive request to phones nearby over Bluetooth";
 "settings__security__warn_100" = "Warn when sending over $100";
 "settings__security__pin" = "PIN Code";
 "settings__security__pin_change" = "Change PIN Code";
@@ -1375,6 +1382,7 @@
 "wallet__receive_bitcoin_invoice" = "Bitcoin invoice";
 "wallet__receive_lightning_invoice" = "Lightning invoice";
 "wallet__receive_note_placeholder" = "Optional note to payer";
+"wallet__receive_scan_or_tap" = "Scan or tap to pay";
 "wallet__receive_show_qr" = "QR Code";
 "wallet__receive_text_lnfunds" = "Want to receive <accent>Lightning</accent> funds?";
 "wallet__receive_spending" = "Receive Lightning Funds";

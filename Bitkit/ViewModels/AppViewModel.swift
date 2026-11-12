@@ -192,6 +192,18 @@ class AppViewModel: ObservableObject {
         lockedDeepLinkRoutesInFlight > 0
     }
 
+    private var quickPaySuppressedScansInFlight = 0
+    /// True while a payment request that must always be reviewed (for example one read over Bluetooth) routes.
+    var isQuickPaySuppressed: Bool {
+        quickPaySuppressedScansInFlight > 0
+    }
+
+    func withQuickPaySuppressed(_ operation: () async -> Void) async {
+        quickPaySuppressedScansInFlight += 1
+        defer { quickPaySuppressedScansInFlight -= 1 }
+        await operation()
+    }
+
     /// The last routed deep link. On a cold start the same link reaches the app twice (`onOpenURL` and the scene
     /// delegate replay), and the startup gates can route the first delivery before the second arrives.
     private var lastRoutedDeepLink: (url: URL, date: Date)?

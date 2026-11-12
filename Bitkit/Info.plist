@@ -56,9 +56,9 @@
 		<true/>
 	</dict>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Bitkit uses Bluetooth to connect to your hardware wallet for signing transactions.</string>
+	<string>Bitkit uses Bluetooth to connect to your hardware wallet and to exchange payment requests with phones nearby.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>Bitkit uses Bluetooth to connect to your hardware wallet for signing transactions.</string>
+	<string>Bitkit uses Bluetooth to connect to your hardware wallet and to exchange payment requests with phones nearby.</string>
 	<key>NFCReaderUsageDescription</key>
 	<string>Bitkit uses NFC to read payment requests from payment terminals and other phones.</string>
 	<key>com.apple.developer.nfc.readersession.iso7816.select-identifiers</key>

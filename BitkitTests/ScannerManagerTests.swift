@@ -438,6 +438,30 @@ extension ScannerManagerTests {
         }
     }
 
+    func testNearbyRequestRoutesWithQuickPaySuppressed() async {
+        var hapticCount = 0
+        let scanner = ScannerManager { hapticCount += 1 }
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        let app = configure(scanner, sheets: sheets)
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        var suppressedAtRoute: [Bool] = []
+        var routes: [SendRoute?] = []
+
+        await scanner.handleSendNearbyRequest(paymentURI) { route in
+            routes.append(route)
+            suppressedAtRoute.append(app.isQuickPaySuppressed)
+        }
+
+        XCTAssertEqual(routes, [.amount])
+        XCTAssertEqual(suppressedAtRoute, [true])
+        XCTAssertFalse(app.isQuickPaySuppressed)
+        XCTAssertEqual(hapticCount, 1)
+    }
+
     func testCancelledAndTimedOutNfcReadsAreSilent() {
         XCTAssertTrue(NfcReadError.cancelled.isSilent)
         XCTAssertTrue(NfcReadError.timedOut.isSilent)
