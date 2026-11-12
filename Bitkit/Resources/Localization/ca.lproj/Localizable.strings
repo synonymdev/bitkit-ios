@@ -975,6 +975,11 @@
 "settings__status__lightning_connection__ready" = "Obrir";
 "settings__status__lightning_connection__pending" = "Obrint ...";
 "settings__status__lightning_connection__error" = "No hi ha connexions obertes";
+"settings__status__lightning_connection__spark" = "Utilitzant Spark";
+"settings__status__spark__title" = "Spark";
+"settings__status__spark__ready" = "Connectat";
+"settings__status__spark__pending" = "Conectant ...";
+"settings__status__spark__error" = "Fora de línia";
 "settings__status__exit__title" = "Sortida d'emergència";
 "settings__status__exit__pending" = "En curs";
 "settings__status__exit__funding" = "Finançament de comissions necessari";

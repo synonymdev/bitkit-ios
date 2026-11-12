@@ -908,6 +908,11 @@
 "settings__status__lightning_connection__ready" = "مفتوح";
 "settings__status__lightning_connection__pending" = "جارٍ الفتح...";
 "settings__status__lightning_connection__error" = "لا توجد اتصالات مفتوحة";
+"settings__status__lightning_connection__spark" = "يستخدم Spark";
+"settings__status__spark__title" = "Spark";
+"settings__status__spark__ready" = "متصل";
+"settings__status__spark__pending" = "جارٍ الاتصال...";
+"settings__status__spark__error" = "غير متصل";
 "settings__status__exit__title" = "الخروج الطارئ";
 "settings__status__exit__pending" = "قيد التنفيذ";
 "settings__status__exit__funding" = "تمويل الرسوم المطلوب";

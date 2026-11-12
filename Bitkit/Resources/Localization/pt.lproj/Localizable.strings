@@ -923,6 +923,11 @@
 "settings__status__lightning_connection__ready" = "Ativa";
 "settings__status__lightning_connection__pending" = "Ativando...";
 "settings__status__lightning_connection__error" = "Nenhuma conexão ativa";
+"settings__status__lightning_connection__spark" = "Usando o Spark";
+"settings__status__spark__title" = "Spark";
+"settings__status__spark__ready" = "Conectado";
+"settings__status__spark__pending" = "Conectando...";
+"settings__status__spark__error" = "Offline";
 "settings__status__exit__title" = "Saída de Emergência";
 "settings__status__exit__pending" = "Em curso";
 "settings__status__exit__funding" = "Fundos para taxas necessários";

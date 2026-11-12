@@ -49,6 +49,8 @@ final class SparkManager: ChannelFreeLightningRail {
     private nonisolated static let depositClaimFeePpm: UInt32 = 2000
 
     private(set) var isReady = false
+    /// The last start failed; the next start clears it when it begins.
+    private(set) var hasStartFailed = false
     private(set) var walletIndex = 0
     /// What Spark read, which sends and withdrawals use.
     private(set) var balanceSats: UInt64 = 0
@@ -375,6 +377,8 @@ final class SparkManager: ChannelFreeLightningRail {
 
     func start(walletIndex: Int) async {
         guard let network = Self.sparkNetwork, !isWiping else { return }
+        // A retry reads as connecting until it fails again.
+        hasStartFailed = false
         self.walletIndex = walletIndex
         SparkExitManager.shared.load(walletIndex: walletIndex)
         do {
@@ -409,6 +413,7 @@ final class SparkManager: ChannelFreeLightningRail {
             )
             await settleContactWithdrawal(allowClear: false)
         } catch {
+            hasStartFailed = true
             Logger.error("Failed to start Spark wallet: \(error)", context: "SparkManager")
         }
     }
@@ -550,6 +555,7 @@ final class SparkManager: ChannelFreeLightningRail {
         refreshAgain = false
         activitiesSynced = false
         isReady = false
+        hasStartFailed = false
         return disconnectError
     }
 

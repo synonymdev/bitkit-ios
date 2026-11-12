@@ -1036,6 +1036,11 @@
 "settings__status__lightning_connection__ready" = "Open";
 "settings__status__lightning_connection__pending" = "Openen...";
 "settings__status__lightning_connection__error" = "Geen open verbindingen";
+"settings__status__lightning_connection__spark" = "Via Spark";
+"settings__status__spark__title" = "Spark";
+"settings__status__spark__ready" = "Aangesloten";
+"settings__status__spark__pending" = "Aansluiten...";
+"settings__status__spark__error" = "Offline";
 "settings__status__exit__title" = "Nooduitgang";
 "settings__status__exit__pending" = "Bezig";
 "settings__status__exit__funding" = "Benodigde vergoedingsdekking";

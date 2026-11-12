@@ -1019,6 +1019,11 @@
 "settings__status__lightning_connection__ready" = "Aperta";
 "settings__status__lightning_connection__pending" = "In apertura...";
 "settings__status__lightning_connection__error" = "Nessuna connessione aperta";
+"settings__status__lightning_connection__spark" = "Tramite Spark";
+"settings__status__spark__title" = "Spark";
+"settings__status__spark__ready" = "Connesso";
+"settings__status__spark__pending" = "In connessione...";
+"settings__status__spark__error" = "Offline";
 "settings__status__exit__title" = "Uscita di emergenza";
 "settings__status__exit__pending" = "In corso";
 "settings__status__exit__funding" = "Finanziamento commissioni necessario";

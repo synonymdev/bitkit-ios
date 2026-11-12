@@ -1039,6 +1039,11 @@
 "settings__status__lightning_connection__ready" = "Abierta";
 "settings__status__lightning_connection__pending" = "Abriendo...";
 "settings__status__lightning_connection__error" = "No hay conexiones abiertas";
+"settings__status__lightning_connection__spark" = "Usando Spark";
+"settings__status__spark__title" = "Spark";
+"settings__status__spark__ready" = "Conectado";
+"settings__status__spark__pending" = "Conectando...";
+"settings__status__spark__error" = "Sin conexión";
 "settings__status__exit__title" = "Salida de emergencia";
 "settings__status__exit__pending" = "En curso";
 "settings__status__exit__funding" = "Fondos para comisiones necesarios";
