@@ -1,3 +1,4 @@
+import BitkitCore
 import SwiftUI
 
 enum SendFundingSource: Equatable {
@@ -45,7 +46,8 @@ struct SendAmountView: View {
             return [.usdt]
         }
         var sources: [SendFundingSource] = []
-        if app.scannedLightningInvoice != nil || app.lnurlPayData != nil {
+        // A Spark leg can carry an on-chain contact payment from Spending.
+        if app.scannedLightningInvoice != nil || app.lnurlPayData != nil || app.paykitRoute?.offersSparkLeg == true {
             sources.append(.spending)
         }
         if app.scannedOnchainInvoice != nil {
@@ -120,6 +122,9 @@ struct SendAmountView: View {
         }
         let minAmount = app.selectedWalletToPayFrom == .lightning ? 1 : Env.dustLimit
 
+        if !hwSend.isActive, app.selectedWalletToPayFrom == .lightning, let valid = sparkWithdrawalValidity {
+            return valid
+        }
         if app.selectedWalletToPayFrom == .lightning, let data = app.lnurlPayData,
            !data.accepts(amountSats: amountSats)
         {
@@ -140,6 +145,26 @@ struct SendAmountView: View {
     static func amountInputCap(availableSats: UInt64, retainedRetrySats: UInt64?) -> UInt64? {
         let cap = max(availableSats, retainedRetrySats ?? 0)
         return cap > 0 ? cap : nil
+    }
+
+    /// Spark's whole balance pays a withdrawal to the contact, so Lightning's limit never caps it.
+    private var sparkWithdrawalBalanceSats: UInt64 {
+        guard app.contactPaymentContext != nil, app.paykitRoute?.offersSparkLeg == true, SparkManager.shared.isReady else { return 0 }
+        return SparkManager.shared.balanceSats
+    }
+
+    private var sparkWithdrawalValidity: Bool? {
+        PaykitRouteService.sparkWithdrawalValidity(
+            route: app.paykitRoute,
+            amountSats: amountSats,
+            sparkBalanceSats: sparkWithdrawalBalanceSats
+        )
+    }
+
+    /// The pad's cap: what Spending can send, or Spark's whole balance when a withdrawal can carry more.
+    private var inputCapSats: UInt64 {
+        guard !hwSend.isActive, app.selectedWalletToPayFrom == .lightning else { return availableAmount }
+        return max(availableAmount, sparkWithdrawalBalanceSats)
     }
 
     /// Determines if the current amount is a max amount send
@@ -355,7 +380,7 @@ struct SendAmountView: View {
         .task(id: [hwSend.walletId, app.scannedOnchainInvoice?.address]) {
             await loadRetainedRetrySats()
         }
-        .onChange(of: availableAmount, initial: true) { updateInputCap() }
+        .onChange(of: inputCapSats, initial: true) { updateInputCap() }
         .onChange(of: retainedRetrySats) { updateInputCap() }
         .onChange(of: amountViewModel.maxExceededCount) { showMaxExceededToast() }
     }
@@ -418,6 +443,20 @@ struct SendAmountView: View {
                 return
             }
 
+            if !app.paykitUsesUsdt, let context = app.contactPaymentContext,
+               let route = app.paykitRoute ?? PaykitRouteService.routeUi(for: context, canRouteThroughSpark: PaykitRouteService.canRouteThroughSpark)
+            {
+                switch await routePaykitPayment(route, request: context.incomingPaymentRequest) {
+                case .leg:
+                    navigationPath.append(.confirm)
+                    return
+                case .refused, .stale:
+                    return
+                case .direct:
+                    break
+                }
+            }
+
             // Lightning payment
             if app.selectedWalletToPayFrom == .lightning {
                 if UInt64(wallet.maxSendLightningSats) < amountSats {
@@ -429,7 +468,9 @@ struct SendAmountView: View {
                     return
                 }
 
-                navigationPath.append(app.lnurlPayData != nil && app.scannedLightningInvoice == nil ? .lnurlPayConfirm : .confirm)
+                let paysLnurl = app.lnurlPayData != nil && app.scannedLightningInvoice == nil
+                guard !paysLnurl || app.validateRoutedLnurlAmount(amountSats: amountSats) else { return }
+                navigationPath.append(paysLnurl ? .lnurlPayConfirm : .confirm)
                 return
             }
 
@@ -477,8 +518,20 @@ struct SendAmountView: View {
         }
     }
 
+    private func routePaykitPayment(_ route: PaykitRouteUi, request: PaykitPaymentRequest?) async -> PaykitRouteOutcome {
+        let source: PaykitRouteService.Source = app.selectedWalletToPayFrom == .lightning ? .spending : .savings
+        return await app.routeContactPayment(
+            route,
+            amountSats: amountSats,
+            source: source,
+            lightningSpendableSats: source == .spending ? UInt64(max(0, wallet.maxSendLightningSats)) : 0,
+            onchainSpendableSats: source == .savings ? maxSendableAmount ?? UInt64(max(0, wallet.spendableOnchainBalanceSats)) : 0,
+            request: request
+        )
+    }
+
     private func updateInputCap() {
-        amountViewModel.maxAmountOverride = Self.amountInputCap(availableSats: availableAmount, retainedRetrySats: retainedRetrySats)
+        amountViewModel.maxAmountOverride = Self.amountInputCap(availableSats: inputCapSats, retainedRetrySats: retainedRetrySats)
     }
 
     private func loadRetainedRetrySats() async {
@@ -612,14 +665,8 @@ struct SendAmountView: View {
         conversionError = nil
         app.paykitUsesUsdt = source == .usdt
         switch source {
-        case .usdt:
+        case .usdt, .spending, .savings:
             hwSend.selectWallet(nil)
-        case .spending:
-            hwSend.selectWallet(nil)
-            app.selectedWalletToPayFrom = .lightning
-        case .savings:
-            hwSend.selectWallet(nil)
-            app.selectedWalletToPayFrom = .onchain
         case let .hardware(walletId):
             let balance = hwWalletManager.fundingBalance(walletId: walletId)
             let reserve = HwFundingSigner.feeReserve(
@@ -631,9 +678,25 @@ struct SendAmountView: View {
                 initialAvailableSats: balance > reserve ? balance - reserve : 0,
                 showsLoading: true
             )
+        }
+        Self.selectWallet(of: source, app: app)
+        updateFixedLightningAmount()
+    }
+
+    /// Points the send at the wallet `source` pays from. A hardware wallet skips the router on Continue, so a Spark leg
+    /// routed for Spending is dropped here, as Confirm's own switch does.
+    static func selectWallet(of source: SendFundingSource, app: AppViewModel) {
+        switch source {
+        case .usdt:
+            break
+        case .spending:
+            app.selectedWalletToPayFrom = .lightning
+        case .savings:
+            app.selectedWalletToPayFrom = .onchain
+        case .hardware:
+            app.paykitRoute = SendConfirmationView.route(app.paykitRoute, afterSelecting: source)
             app.selectedWalletToPayFrom = .onchain
         }
-        updateFixedLightningAmount()
     }
 
     private func updateFixedLightningAmount() {

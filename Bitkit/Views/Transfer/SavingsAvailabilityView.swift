@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SavingsAvailabilityView: View {
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var transfer: TransferViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -11,7 +12,7 @@ struct SavingsAvailabilityView: View {
             DisplayText(t("lightning__availability__title"), accentColor: .brandAccent)
 
             BodyMText(t("lightning__availability__text"), accentFont: Fonts.bold)
-                .padding(.top, 16)
+                .padding(.top, 8)
 
             Spacer()
 
@@ -31,6 +32,7 @@ struct SavingsAvailabilityView: View {
                 }
 
                 CustomButton(title: t("common__continue")) {
+                    transfer.beginSavingsTransfer()
                     navigation.navigate(.savingsConfirm)
                 }
                 .accessibilityIdentifier("AvailabilityContinue")

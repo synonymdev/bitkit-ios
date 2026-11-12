@@ -1,7 +1,9 @@
 # Hardware wallet journeys
 
 Cover pairing a Trezor, the home tile and detail screen, the Hardware Wallets settings surface,
-passphrase (hidden) wallets, wallet-scoped activity, and the Transfer To Spending button, which opens the Transfer Unavailable sheet.
+passphrase (hidden) wallets, wallet-scoped activity, and the watch-only Transfer To Spending flow,
+which pays the Spark deposit address from the device. It needs Spark connected on a regtest build launched with
+`SPARK_CHAIN_SERVICE_URL` set to the regtest's Esplora URL; otherwise it shows the Transfer Unavailable sheet.
 
 ## Transport: Bridge, not USB
 
@@ -51,9 +53,10 @@ Several journeys mutate pairing state. Run them in this order, or re-pair betwee
 1. `connect-home-tile.xml` — pairs the emulator; every other journey assumes it ran.
 2. `settings-hardware-wallets.xml`, `connect-flow.xml`, `suggestion-intro-sheet.xml` — each forgets
    and re-pairs the device, ending paired.
-3. `activity-blue-icons.xml`, `activity-detail-hw-tags.xml`, `reconnect.xml`, `send-onchain.xml`,
-   `scan-onchain-amount-over-spendable.xml`.
-4. `passphrase-pairing.xml` → `passphrase-duplicate.xml` → `passphrase-settings-remove.xml`.
+3. `activity-blue-icons.xml`, `activity-detail-hw-tags.xml`, `transfer-to-spending*.xml`, `reconnect.xml`,
+   `send-onchain.xml`, `scan-onchain-amount-over-spendable.xml`.
+4. `passphrase-pairing.xml` → `passphrase-duplicate.xml` → `passphrase-transfer-to-spending.xml` →
+   `passphrase-settings-remove.xml`.
 5. `detail-overview.xml` **last** — its final step forgets the device.
 
 ## Approving prompts on the emulator
@@ -108,8 +111,9 @@ Walked as far as a simulator allows, against a wallet with two Trezor identities
   `HardwareWalletRowName<id>` has **no** separator, while `HardwareWalletRowDelete_<id>` and
   `HardwareWalletRow_<id>` use an underscore. The `<id>` is the full `trezor:<hex>` device id.
 - Confirmed resolving without the emulator: `HardwareWalletsSettings`, `HardwareWalletsScreen`,
-  `AddHardwareWallet`, `HardwareWalletIntroScreen`/`Continue`/`Cancel`, `HardwareWalletScreen` and
-  `HardwareTransferToSpending`.
+  `AddHardwareWallet`, `HardwareWalletIntroScreen`/`Continue`/`Cancel`, `HardwareWalletScreen`,
+  `HardwareTransferToSpending`, `HardwareTransferAmount` and its Available/25%/MAX/Continue controls,
+  and the number pad keys.
 
 ## Identifiers used
 - Dev Trezor screen: `TrezorScanButton`, `TrezorDevice-bridge`, `TrezorKnownDeviceConnect-bridge`,
@@ -127,7 +131,12 @@ Walked as far as a simulator allows, against a wallet with two Trezor identities
   `RenameHardwareWalletInput`, `RenameHardwareWalletSave`.
 - Home and detail: tile `ActivityHardware`, screen `HardwareWalletScreen`, `RemoveHardwareWallet`,
   `RemoveHwWalletDialog`, `HwRemoveKeepBackupToggle`.
-- Transfer: `HardwareTransferToSpending` (opens the Transfer Unavailable sheet).
+- Transfer: `HardwareTransferToSpending`, `HardwareTransferAmount`,
+  `HardwareTransferAmountAvailable`/`Quarter`/`Max`/`Continue`/`Retry`,
+  over-max toast `HardwareTransferAmountExceededToast`, `HardwareTransferSign`,
+  `HardwareTransferSignLearnMore`, speed rows `SpendingConfirmInstant`/`SpendingConfirmLater`,
+  `HardwareTransferOpenTrezorConnect`, `HardwareTransferSigned`,
+  `HwTransferPassphraseSheet`/`Input`/`Continue`/`Cancel`.
 - Activity: `ActivityShowAll` (home only). Rows use **two different schemes** — `ActivityShort-<index>`
   in the home recent list, `Activity-<index>` in All Activity and on the hardware wallet screen.
   Tabs `Tab-all`/`Tab-sent`/`Tab-received`/`Tab-other`,

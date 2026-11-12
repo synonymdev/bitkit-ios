@@ -1,0 +1,24 @@
+<journey name="app status emergency exit">
+  <description>
+    While an emergency exit is active, App Status shows an "Emergency Exit" row under Lightning Connection.
+    It reads "Fee funding needed" while the exit asks for fee funding and "In progress" otherwise, including
+    while a payment that covers the funding waits to confirm. The row opens the exit's progress screen. With
+    no active exit the row is absent. An exit paid from savings cannot be cancelled and runs for days,
+    so the row's removal once an exit ends is covered by unit tests, not here. On iOS, OK on the progress
+    screen returns to the wallet home screen from any entry point, App Status included. An exit takes Spark off the
+    Lightning rail, so with no usable channel Lightning Connection stops reading "Using Spark" while it runs.
+
+    Precondition: Debug build on regtest with Spark connected, a Spark balance and savings that can pay the
+    exit's fee funding. The wallet has no Lightning channel. Start an emergency exit from Spark (spark emergency exit journey), pick "Pay from
+    savings" (id "SparkExitFundSavings") and swipe to start it. Starting an exit takes the Spark balance out of
+    Spending for days, so use a throwaway wallet. Start on the wallet home screen.
+  </description>
+  <actions>
+    <action>Tap the menu button (id "HeaderMenu") and tap App Status (id "DrawerAppStatus")</action>
+    <action>Verify a row titled "Emergency Exit" (id "Status-spark_exit") sits under Lightning Connection (id "Status-lightning_connection") and reads "In progress", since savings paid the funding</action>
+    <action>Verify Lightning Connection (id "Status-lightning_connection") reads "No open connections", not "Using Spark"</action>
+    <action>Tap the row and verify the exit's progress screen opens</action>
+    <action>Tap "OK" (id "SparkExitProgressOk") and verify the wallet home screen shows</action>
+    <action>Open App Status again from the menu and verify the "Emergency Exit" row is still there</action>
+  </actions>
+</journey>

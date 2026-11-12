@@ -374,7 +374,11 @@ struct Suggestions: View {
         case .hardware:
             sheets.showSheet(.hardwareConnect)
         case .transferToSpending:
-            sheets.showSheet(.transferUnavailable)
+            if SparkManager.shared.isReady {
+                route = app.hasSeenTransferIntro ? .fundingOptions : .transferIntro
+            } else {
+                sheets.showSheet(.transferUnavailable)
+            }
         }
 
         if let route {
