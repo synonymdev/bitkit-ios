@@ -79,7 +79,10 @@ enum PaykitRouteService {
                 contactEndpoints: route.endpoints.filter { !$0.isLnurl || route.lnurl?.accepts(amountSats: amountSats) != false },
                 lightningSpendableSat: lightningSpendableSats,
                 onchainSpendableSat: 0,
-                serviceLegs: serviceLegs
+                serviceLegs: serviceLegs,
+                // Only bitkit-core's Pubky Swaps route reads these, and the app never asks it, so no swap comes back.
+                providers: [],
+                feeRateSatVb: 0
             )
         case .savings:
             PaykitRouteRequest(
@@ -87,7 +90,9 @@ enum PaykitRouteService {
                 contactEndpoints: route.onchainEndpoints,
                 lightningSpendableSat: 0,
                 onchainSpendableSat: onchainSpendableSats,
-                serviceLegs: []
+                serviceLegs: [],
+                providers: [],
+                feeRateSatVb: 0
             )
         }
     }
@@ -341,6 +346,10 @@ extension AppViewModel {
                 return .leg
             case let .none(reason):
                 Logger.warn("Found no Paykit route: '\(reason)'", context: "PaykitRoute")
+                return refuse(sparkLegShort: false)
+            case .swap:
+                // The app never offers Pubky Swaps providers, so a swap route can't come back; it pays nothing either.
+                Logger.warn("Found no Paykit route: 'Swap routes are unsupported'", context: "PaykitRoute")
                 return refuse(sparkLegShort: false)
             }
         } catch is SparkWithdrawalSettling {
