@@ -1642,6 +1642,33 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(record.generation, 2)
     }
 
+    /// A step one failed read turns unverified holds the rebuild over another leaf's step that was already unread: the
+    /// rebuild would replace it while it may be in flight.
+    func testAStepAFailedReadTurnsUnverifiedHoldsTheRebuildOverAnotherUnreadLeaf() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.leafIds = ["leaf-1", "leaf-2"]
+        let stored = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("n2", dependsOn: ["n1"], status: .unverified),
+            SparkExitFixtures.tx("m1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("m2", dependsOn: ["m1"]),
+        ])
+        let checked = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("n2", dependsOn: ["n1"], status: .unverified),
+            SparkExitFixtures.tx("m1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.tx("m2", dependsOn: ["m1"], status: .unverified),
+        ])
+        record.adopt(stored, at: clock)
+        sdk.checks = [CheckRecoverFundsResponse(recovery: checked, verdict: .valid)]
+
+        record = try await driver().tick(record)
+
+        XCTAssertTrue(sdk.recoverRequests.isEmpty, "rebuilt over m2, which one failed read turned unverified")
+        XCTAssertNil(record.unverifiedRebuiltAtHeight)
+        XCTAssertEqual(record.generation, 1)
+    }
+
     /// An unverified rebuild that builds only failed cooperative leaves, beside the leaf it could not read, keeps the
     /// valid generation: its signed steps are still sent once the chain reads again.
     func testAnUnverifiedRebuildOfOnlyFailedLeavesKeepsTheValidGeneration() async throws {
