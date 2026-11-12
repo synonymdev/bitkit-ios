@@ -424,7 +424,12 @@ struct SendAmountView: View {
                let route = app.paykitRoute ?? PaykitRouteService.routeUi(for: context, canRouteThroughSpark: PaykitRouteService.canRouteThroughSpark)
             {
                 let swapFallback = route.offersSparkLeg && app.selectedWalletToPayFrom == .lightning ? swapRouteFallback(context) : nil
-                switch await routePaykitPayment(route, request: context.incomingPaymentRequest, hasSwapFallback: swapFallback != nil) {
+                let routedAmountSats = amountSats
+                let outcome = await routePaykitPayment(route, request: context.incomingPaymentRequest, hasSwapFallback: swapFallback != nil)
+                // An amount edited while the router answered no longer matches the saved send amount, so the answer is
+                // dropped and the next Continue routes the new amount.
+                guard amountSats == routedAmountSats else { return }
+                switch outcome {
                 case .leg:
                     app.paykitSwapRoute = nil
                     navigationPath.append(.confirm)
