@@ -1625,7 +1625,7 @@ final class SparkManager: ChannelFreeLightningRail {
     /// Spark lists a withdrawal completed once its provider took the payout on, which can be before the payout transaction
     /// is broadcast or mined, so a payout's activity is confirmed only once the payout is in a block. The payout address's
     /// unspent outputs show that first; an output missing there, such as one the contact spent before Bitkit saw it mined,
-    /// is looked up by its transaction (`isMined`) instead.
+    /// or a failed read of them, is looked up by its transaction (`isMined`) instead.
     nonisolated static func confirmMinedPayouts(
         _ payouts: [ContactPayout],
         needsConfirmation: (String) async -> Bool,
@@ -1636,7 +1636,14 @@ final class SparkManager: ChannelFreeLightningRail {
         for payout in payouts {
             guard await needsConfirmation(payout.txId) else { continue }
             do {
-                let outputs = try await unspentOutputs(payout.address)
+                let outputs: [AccountUtxo]
+                do {
+                    outputs = try await unspentOutputs(payout.address)
+                } catch {
+                    // A failed Electrum lookup falls through to the transaction's status, as a missing output does.
+                    Logger.warn("Failed to read the payout address of Spark withdrawal '\(payout.txId)': \(error)", context: "SparkManager")
+                    outputs = []
+                }
                 let isPayoutMined: Bool = if let output = outputs.first(where: { $0.txid == payout.txId && $0.vout == payout.vout }) {
                     output.confirmations > 0
                 } else {

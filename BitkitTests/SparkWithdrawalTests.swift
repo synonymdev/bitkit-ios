@@ -404,6 +404,21 @@ final class SparkWithdrawalTests: XCTestCase {
         XCTAssertEqual(confirmed, ["spent"])
     }
 
+    func testAPayoutIsConfirmedFromItsTransactionWhenElectrumFails() async {
+        let marked = TxIds()
+
+        await SparkManager.confirmMinedPayouts(
+            [SparkManager.ContactPayout(txId: "mined", vout: 1, address: "bcrt1qcontact")],
+            needsConfirmation: { _ in true },
+            unspentOutputs: { _ in throw URLError(.timedOut) },
+            isMined: { $0 == "mined" },
+            markConfirmed: { await marked.insert($0) }
+        )
+
+        let confirmed = await marked.ids
+        XCTAssertEqual(confirmed, ["mined"], "a failed Electrum read should fall back to the payout transaction's status")
+    }
+
     func testAPayoutListedUnspentIsNotAskedAboutByItsTransaction() async {
         let asked = TxIds()
 
