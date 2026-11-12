@@ -36,7 +36,10 @@ struct ScannerScreen: View {
                 },
                 onImageSelection: { item in
                     await scanner.handleImageSelection(item, context: scannerContext)
-                }
+                },
+                onNfcRead: scannerContext == .main && scanner.isNfcReadingAvailable
+                    ? { await scanner.handleNfcRead(context: scannerContext) }
+                    : nil
             )
             .padding(.bottom, 16)
 

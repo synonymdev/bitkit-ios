@@ -204,6 +204,7 @@ class AppViewModel: ObservableObject {
     @AppStorage("hasSeenProfileIntro") var hasSeenProfileIntro: Bool = false
     @AppStorage("hasSeenNotificationsIntro") var hasSeenNotificationsIntro: Bool = false
     @AppStorage("hasSeenQuickpayIntro") var hasSeenQuickpayIntro: Bool = false
+    @AppStorage("hasSeenNfcIntro") var hasSeenNfcIntro: Bool = false
     @AppStorage("hasSeenShopIntro") var hasSeenShopIntro: Bool = false
     @AppStorage("hasSeenTransferToSavingsIntro") var hasSeenTransferToSavingsIntro: Bool = false
     @AppStorage("hasSeenWidgetsIntro") var hasSeenWidgetsIntro: Bool = false
@@ -557,6 +558,7 @@ class AppViewModel: ObservableObject {
         hasSeenProfileIntro = false
         hasSeenNotificationsIntro = false
         hasSeenQuickpayIntro = false
+        hasSeenNfcIntro = false
         hasSeenShopIntro = false
         hasSeenTransferToSavingsIntro = false
         hasSeenWidgetsIntro = false

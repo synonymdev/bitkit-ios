@@ -51,7 +51,16 @@ struct SendOptionsView: View {
                                     handleRoute(route)
                                 }
                             }
-                        }
+                        },
+                        onNfcRead: scanner.isNfcReadingAvailable
+                            ? {
+                                await scanner.handleSendNfcRead(scope: scanScope) { route in
+                                    if let route {
+                                        handleRoute(route)
+                                    }
+                                }
+                            }
+                            : nil
                     )
 
                     RectangleButton(

@@ -20,10 +20,20 @@ class ScannerManager: ObservableObject {
     private var sheets: SheetViewModel?
     private var wallet: WalletViewModel?
     private weak var hwWalletManager: HwWalletManager?
+    private let nfcReader: NfcPaymentReading
     private var isHandlingScan = false
 
-    init(playScanSuccess: @escaping () -> Void = { Haptics.play(.scanSuccess) }) {
+    init(
+        nfcReader: NfcPaymentReading? = nil,
+        playScanSuccess: @escaping () -> Void = { Haptics.play(.scanSuccess) }
+    ) {
+        self.nfcReader = nfcReader ?? NfcReader.shared
         self.playScanSuccess = playScanSuccess
+    }
+
+    /// Whether this device can read NFC tags; NFC controls are hidden otherwise.
+    var isNfcReadingAvailable: Bool {
+        nfcReader.isAvailable
     }
 
     func configure(
@@ -260,6 +270,49 @@ class ScannerManager: ObservableObject {
             return
         }
         await handleSendScan(uri, scope: scope, isCurrent: isCurrent, completion: completion)
+    }
+
+    /// Reads a payment request over NFC and handles it exactly like a scanned QR code.
+    func handleNfcRead(context: ScannerContext, isCurrent: () -> Bool = { true }) async {
+        guard let uri = await readNfcPaymentRequest() else { return }
+        await handleScan(uri, context: context, isCurrent: isCurrent)
+    }
+
+    /// Reads a payment request over NFC from the Send sheet and resolves it like a scanned QR code.
+    func handleSendNfcRead(
+        scope: ScanHandlingScope = .unrestricted,
+        isCurrent: () -> Bool = { true },
+        completion: @escaping (SendRoute?) -> Void
+    ) async {
+        guard let uri = await readNfcPaymentRequest() else {
+            completion(nil)
+            return
+        }
+        await handleSendScan(uri, scope: scope, isCurrent: isCurrent, completion: completion)
+    }
+
+    private func readNfcPaymentRequest() async -> String? {
+        do {
+            return try await nfcReader.readPaymentRequest(alertMessage: t("other__nfc_alert"))
+        } catch let error as NfcReadError {
+            Logger.warn("NFC read failed: \(error)", context: "ScannerManager")
+            showNfcReadError(error)
+            return nil
+        } catch {
+            Logger.error(error, context: "ScannerManager NFC read")
+            app?.toast(error)
+            return nil
+        }
+    }
+
+    private func showNfcReadError(_ error: NfcReadError) {
+        guard !error.isSilent, error != .busy else { return }
+        let description = switch error {
+        case .unavailable: t("other__nfc_error_unavailable")
+        case .multiplePaymentRequests: t("other__nfc_error_multiple")
+        default: t("other__nfc_error_text")
+        }
+        app?.toast(type: .error, title: t("other__nfc_error_header"), description: description)
     }
 
     private func shouldOpenPaymentFlow(for uri: String) -> Bool {

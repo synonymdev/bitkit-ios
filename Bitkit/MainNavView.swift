@@ -245,6 +245,15 @@ struct MainNavView: View {
                 config in QuickpaySheet(config: config)
             }
             .sheet(
+                item: $sheets.nfcIntroSheetItem,
+                onDismiss: {
+                    sheets.hideSheetIfActive(.nfcIntro, reason: "NFC intro sheet dismissed")
+                    app.hasSeenNfcIntro = true
+                }
+            ) {
+                config in NfcIntroSheet(config: config)
+            }
+            .sheet(
                 item: $sheets.sendSheetItem,
                 onDismiss: {
                     sheets.hideSheetIfActive(.send, reason: "Send sheet dismissed")

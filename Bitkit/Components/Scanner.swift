@@ -223,6 +223,38 @@ private struct ScannerCornerButtons: View {
     }
 }
 
+// MARK: - Scanner NFC Button Component
+
+/// Status pill at the bottom of the camera preview. iOS cannot detect NFC tags passively, so tapping the
+/// pill starts an NFC read through the system sheet.
+private struct ScannerNfcButton: View {
+    let onTap: () async -> Void
+
+    var body: some View {
+        Button {
+            Task { await onTap() }
+        } label: {
+            HStack(spacing: 8) {
+                Image("broadcast")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 16, height: 16)
+                    .foregroundColor(.white64)
+                CaptionMText(t("other__nfc_scan_status"), textColor: .white64)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color.black50)
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .padding(16)
+        .frame(maxHeight: .infinity, alignment: .bottom)
+        .accessibilityIdentifier("ScannerNfcButton")
+    }
+}
+
 // MARK: - Scanner Component
 
 struct Scanner: View {
@@ -232,6 +264,8 @@ struct Scanner: View {
 
     let onScan: (QRCodePayload) async -> Void
     let onImageSelection: (PhotosPickerItem?) async -> Void
+    /// Starts an NFC read; nil hides the NFC control (non-payment scanners, devices without NFC).
+    var onNfcRead: (() async -> Void)?
 
     @State private var isTorchOn = false
 
@@ -256,6 +290,10 @@ struct Scanner: View {
                         await onImageSelection(item)
                     }
                 )
+
+                if let onNfcRead {
+                    ScannerNfcButton(onTap: onNfcRead)
+                }
             } else {
                 ScannerPermissionRequest(
                     accentColor: accentColor,

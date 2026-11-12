@@ -16,6 +16,7 @@ enum SheetID: String, CaseIterable {
     case paymentRequests
     case subscription
     case quickpay
+    case nfcIntro
     case usdtIntro
     case receive
     case receivedTx
@@ -399,6 +400,18 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .quickpay else { return nil }
             return QuickpaySheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var nfcIntroSheetItem: NfcIntroSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .nfcIntro else { return nil }
+            return NfcIntroSheetItem()
         }
         set {
             if newValue == nil {

@@ -379,3 +379,85 @@ final class ScannerManagerTests: XCTestCase {
         return app
     }
 }
+
+// MARK: - NFC
+
+extension ScannerManagerTests {
+    func testNfcAvailabilityFollowsReader() {
+        let reader = FakeNfcReader(.success(""))
+        reader.isAvailable = false
+        XCTAssertFalse(ScannerManager(nfcReader: reader) {}.isNfcReadingAvailable)
+        reader.isAvailable = true
+        XCTAssertTrue(ScannerManager(nfcReader: reader) {}.isNfcReadingAvailable)
+    }
+
+    func testNfcSendReadRoutesLikeAScannedQrCode() async {
+        var hapticCount = 0
+        let reader = FakeNfcReader(.success(paymentURI))
+        let scanner = ScannerManager(nfcReader: reader) { hapticCount += 1 }
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        let app = configure(scanner, sheets: sheets)
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        var routes: [SendRoute?] = []
+
+        await scanner.handleSendNfcRead { routes.append($0) }
+
+        XCTAssertEqual(reader.alertMessages, [t("other__nfc_alert")])
+        XCTAssertEqual(routes, [.amount])
+        XCTAssertEqual(hapticCount, 1)
+        XCTAssertNotNil(app.scannedOnchainInvoice)
+    }
+
+    func testNfcGenericReadRoutesLikeAScannedQrCode() async {
+        var hapticCount = 0
+        let scanner = ScannerManager(nfcReader: FakeNfcReader(.success(paymentURI))) { hapticCount += 1 }
+        let app = configure(scanner)
+
+        await scanner.handleNfcRead(context: .send)
+
+        XCTAssertEqual(hapticCount, 1)
+        XCTAssertNotNil(app.scannedOnchainInvoice)
+    }
+
+    func testFailedNfcReadCompletesWithoutRoute() async {
+        for error in [NfcReadError.cancelled, .timedOut, .noPaymentRequest, .multiplePaymentRequests, .unavailable] {
+            let scanner = ScannerManager(nfcReader: FakeNfcReader(.failure(error))) {
+                XCTFail("A failed NFC read must not play a success haptic")
+            }
+            let app = configure(scanner)
+            var routes: [SendRoute?] = []
+
+            await scanner.handleSendNfcRead { routes.append($0) }
+
+            XCTAssertEqual(routes, [nil], "\(error)")
+            XCTAssertNil(app.scannedOnchainInvoice, "\(error)")
+        }
+    }
+
+    func testCancelledAndTimedOutNfcReadsAreSilent() {
+        XCTAssertTrue(NfcReadError.cancelled.isSilent)
+        XCTAssertTrue(NfcReadError.timedOut.isSilent)
+        XCTAssertFalse(NfcReadError.noPaymentRequest.isSilent)
+        XCTAssertFalse(NfcReadError.failed("x").isSilent)
+    }
+}
+
+@MainActor
+private final class FakeNfcReader: NfcPaymentReading {
+    var isAvailable = true
+    private let result: Result<String, NfcReadError>
+    private(set) var alertMessages: [String] = []
+
+    init(_ result: Result<String, NfcReadError>) {
+        self.result = result
+    }
+
+    func readPaymentRequest(alertMessage: String) async throws -> String {
+        alertMessages.append(alertMessage)
+        return try result.get()
+    }
+}
