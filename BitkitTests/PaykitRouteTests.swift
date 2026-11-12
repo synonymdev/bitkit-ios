@@ -776,6 +776,41 @@ final class PaykitRouteTests: XCTestCase {
     }
 
     @MainActor
+    func testASparkBalanceTooSmallForTheAmountLeavesItToTheSwapFallback() async {
+        snapshotAppDefaultsDomain()
+        let app = AppViewModel()
+        defer { ToastWindowManager.shared.hideToast() }
+        ToastWindowManager.shared.hideToast()
+        app.contactPaymentContext = ContactPaymentContext(publicKey: "contact", privatePaymentContext: nil, endpoints: [])
+        app.selectedWalletToPayFrom = .lightning
+        let fee = SendOnchainSpeedFeeQuote(userFeeSat: 750, l1BroadcastFeeSat: 1440)
+
+        let outcome = await app.routeContactPayment(
+            PaykitRouteUi(endpoints: [onchain], offersSparkLeg: true),
+            amountSats: 20000,
+            source: .spending,
+            lightningSpendableSats: 500_000,
+            onchainSpendableSats: 0,
+            request: nil,
+            hasSwapFallback: true
+        ) { route, amountSats, source, lightningSats, onchainSats in
+            try await PaykitRouteService.route(
+                route, amountSats: amountSats, source: source, lightningSpendableSats: lightningSats, onchainSpendableSats: onchainSats
+            ) { endpoints, amountSats in
+                try await PaykitRouteService.sparkLegs(to: endpoints, amountSats: amountSats) { endpoint, amountSats in
+                    try SparkManager.withdrawalRouteLeg(
+                        endpoint: endpoint, amountSats: amountSats, fee: fee, validUntilUnix: 0, balanceSats: 1000
+                    )
+                }
+            }
+        }
+
+        XCTAssertEqual(outcome, .swapFallback, "Spark's 1,000 sats can't carry 20,000, so a swap provider pays it from Lightning")
+        XCTAssertNil(ToastWindowManager.shared.currentToast, "The swap quote follows, so no refusal shows")
+        XCTAssertNil(app.paykitRoute?.serviceLeg)
+    }
+
+    @MainActor
     func testASparkLegItsFeeTakesPastTheBalanceShowsTheBalanceCopy() async {
         snapshotAppDefaultsDomain()
         let app = AppViewModel()
