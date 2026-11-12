@@ -83,7 +83,7 @@ struct AppStatusHelper {
             isOnline: network.isConnected,
             hasUsableChannels: wallet.hasUsableChannels,
             hasChannels: wallet.channelCount > 0,
-            isSparkReady: SparkManager.shared.isReady
+            isSparkUsable: MoveToSparkMath.isSparkUsable(SparkManager.shared)
         )
     }
 
@@ -91,7 +91,7 @@ struct AppStatusHelper {
         isLightningViaSpark(
             isOnline: network.isConnected,
             hasUsableChannels: wallet.hasUsableChannels,
-            isSparkReady: SparkManager.shared.isReady
+            isSparkUsable: MoveToSparkMath.isSparkUsable(SparkManager.shared)
         )
     }
 
@@ -111,13 +111,13 @@ struct AppStatusHelper {
         isOnline: Bool,
         hasUsableChannels: Bool,
         hasChannels: Bool,
-        isSparkReady: Bool
+        isSparkUsable: Bool
     ) -> HealthStatus {
         if !isOnline {
             return .error
         }
 
-        if hasUsableChannels || isSparkReady {
+        if hasUsableChannels || isSparkUsable {
             return .ready
         } else if !hasChannels {
             return .error
@@ -127,8 +127,8 @@ struct AppStatusHelper {
     }
 
     /// No channel is usable, so Spark carries Lightning payments.
-    nonisolated static func isLightningViaSpark(isOnline: Bool, hasUsableChannels: Bool, isSparkReady: Bool) -> Bool {
-        isOnline && !hasUsableChannels && isSparkReady
+    nonisolated static func isLightningViaSpark(isOnline: Bool, hasUsableChannels: Bool, isSparkUsable: Bool) -> Bool {
+        isOnline && !hasUsableChannels && isSparkUsable
     }
 
     nonisolated static func sparkStatus(isOnline: Bool, isSupported: Bool, isReady: Bool, hasStartFailed: Bool) -> HealthStatus? {
