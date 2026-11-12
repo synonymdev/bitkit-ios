@@ -105,6 +105,7 @@ class SettingsViewModel: NSObject, ObservableObject {
     @AppStorage("readClipboard") var readClipboard: Bool = false
     @AppStorage("warnWhenSendingOver100") var warnWhenSendingOver100: Bool = false
     @AppStorage("enableQuickpay") var enableQuickpay: Bool = false
+    @AppStorage("enableNearbyPayments") var enableNearbyPayments: Bool = true
     @AppStorage("quickpayAmount") var quickpayAmount: Double = 5
     @AppStorage("quickpayDailyLimitMultiplier") var quickpayDailyLimitMultiplier: Double = 5
     @AppStorage("enableNotifications") var enableNotifications: Bool = false
@@ -222,6 +223,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         readClipboard = false
         warnWhenSendingOver100 = false
         enableQuickpay = false
+        enableNearbyPayments = true
         quickpayAmount = 5
         quickpayDailyLimitMultiplier = 5
         enableNotifications = false

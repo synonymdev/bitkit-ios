@@ -20,10 +20,22 @@ class ScannerManager: ObservableObject {
     private var sheets: SheetViewModel?
     private var wallet: WalletViewModel?
     private weak var hwWalletManager: HwWalletManager?
+    private let nfcReader: NfcPaymentReading
     private var isHandlingScan = false
+    /// Whether the last main scan opened a payment flow, so a Bluetooth read knows the request was taken.
+    private var didOpenScanFlow = false
 
-    init(playScanSuccess: @escaping () -> Void = { Haptics.play(.scanSuccess) }) {
+    init(
+        nfcReader: NfcPaymentReading? = nil,
+        playScanSuccess: @escaping () -> Void = { Haptics.play(.scanSuccess) }
+    ) {
+        self.nfcReader = nfcReader ?? NfcReader.shared
         self.playScanSuccess = playScanSuccess
+    }
+
+    /// Whether this device can read NFC tags; NFC controls are hidden otherwise.
+    var isNfcReadingAvailable: Bool {
+        nfcReader.isAvailable
     }
 
     func configure(
@@ -56,7 +68,12 @@ class ScannerManager: ObservableObject {
         await processScan(uri, context: context, isCurrent: isCurrent)
     }
 
-    private func processScan(_ uri: String, context: ScannerContext, isCurrent: () -> Bool) async {
+    private func processScan(
+        _ uri: String,
+        context: ScannerContext,
+        scope: ScanHandlingScope = .unrestricted,
+        isCurrent: () -> Bool
+    ) async {
         let uri = uri.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !uri.isEmpty else { return }
 
@@ -66,9 +83,9 @@ class ScannerManager: ObservableObject {
             handleAddContactScan(uri)
         case .main:
             playScanSuccess()
-            await handleMainScan(uri, isCurrent: isCurrent)
+            await handleMainScan(uri, scope: scope, isCurrent: isCurrent)
         case .send:
-            await processSendScan(uri, isCurrent: isCurrent) { _ in }
+            await processSendScan(uri, scope: scope, isCurrent: isCurrent) { _ in }
         case .electrum:
             playScanSuccess()
             await handleElectrumScan(uri)
@@ -93,7 +110,8 @@ class ScannerManager: ObservableObject {
         navigation?.navigate(.addContact(publicKey: input))
     }
 
-    private func handleMainScan(_ uri: String, isCurrent: () -> Bool) async {
+    private func handleMainScan(_ uri: String, scope: ScanHandlingScope = .unrestricted, isCurrent: () -> Bool) async {
+        didOpenScanFlow = false
         guard let app else { return }
 
         do {
@@ -105,6 +123,7 @@ class ScannerManager: ObservableObject {
                           navigation?.path == path else { return }
                     navigation?.navigate(route)
                 }
+                didOpenScanFlow = true
                 return
             }
             if handlePubkyRouteIfNeeded(uri) {
@@ -113,6 +132,7 @@ class ScannerManager: ObservableObject {
 
             try await app.handleScannedData(
                 uri,
+                scope: scope,
                 alternativeOnchainBalanceSats: hwWalletManager?.maximumFundingBalanceSats ?? 0,
                 isCurrentScan: isCurrent
             )
@@ -125,6 +145,7 @@ class ScannerManager: ObservableObject {
                     settings: settings,
                     sheetViewModel: sheets
                 )
+                didOpenScanFlow = !app.didRejectScannedPayment
             }
         } catch {
             guard isCurrent(), !(error is CancellationError) else { return }
@@ -200,7 +221,7 @@ class ScannerManager: ObservableObject {
         playScanSuccess()
 
         do {
-            if scope == .unrestricted, case let .usdtPayment(recipient, amount)? = try resolveUsdtPaymentRoute(input: uri) {
+            if scope != .onchainPayments, case let .usdtPayment(recipient, amount)? = try resolveUsdtPaymentRoute(input: uri) {
                 guard app.contactPaymentContext == nil, wallet?.usdtWallet.isSendPresented == false else {
                     completion(nil)
                     return
@@ -260,6 +281,110 @@ class ScannerManager: ObservableObject {
             return
         }
         await handleSendScan(uri, scope: scope, isCurrent: isCurrent, completion: completion)
+    }
+
+    /// Reads a payment request over NFC and handles it exactly like a scanned QR code.
+    func handleNfcRead(context: ScannerContext, isCurrent: () -> Bool = { true }) async {
+        guard let uri = await readNfcPaymentRequest() else { return }
+        await handleScan(uri, context: context, isCurrent: isCurrent)
+    }
+
+    /// Reads a payment request over NFC from the Send sheet and resolves it like a scanned QR code.
+    func handleSendNfcRead(
+        scope: ScanHandlingScope = .unrestricted,
+        isCurrent: () -> Bool = { true },
+        completion: @escaping (SendRoute?) -> Void
+    ) async {
+        guard let uri = await readNfcPaymentRequest() else {
+            completion(nil)
+            return
+        }
+        await handleSendScan(uri, scope: scope, isCurrent: isCurrent, completion: completion)
+    }
+
+    /// Schemes accepted from Bluetooth: payment requests only. Unlike a camera or NFC read, a Bluetooth request can
+    /// come from any nearby device, so sign-in, setup, withdraw and contact links are refused.
+    nonisolated static let nearbyPaymentSchemes = ["bitcoin:", "lightning:", "ethereum:", "lnurlp:"]
+
+    nonisolated static func isNearbyPaymentRequest(_ uri: String) -> Bool {
+        let lowercase = uri.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return nearbyPaymentSchemes.contains { lowercase.hasPrefix($0) }
+    }
+
+    /// Handles a request read over Bluetooth. It always opens the normal review (QuickPay does not apply) and is
+    /// limited to on-chain, Lightning, LNURL-pay and USDT requests.
+    /// - Returns: false when the request was not taken (refused, or another scan is being handled), so the caller
+    ///   can keep listening.
+    @discardableResult
+    func handleNearbyRequest(_ uri: String, context: ScannerContext, isCurrent: () -> Bool = { true }) async -> Bool {
+        guard let app, context == .main || context == .send else { return false }
+        guard Self.isNearbyPaymentRequest(uri) else {
+            showUnsupportedQRCodeError()
+            return false
+        }
+        guard !isHandlingScan, isCurrent() else { return false }
+        isHandlingScan = true
+        defer { isHandlingScan = false }
+        if context == .send {
+            var routed = false
+            await app.withQuickPaySuppressed {
+                await processSendScan(uri, scope: .paymentRequests, isCurrent: isCurrent) { routed = $0 != nil }
+            }
+            return routed
+        }
+        await app.withQuickPaySuppressed {
+            await processScan(uri, context: .main, scope: .paymentRequests, isCurrent: isCurrent)
+        }
+        return didOpenScanFlow
+    }
+
+    /// Send-sheet variant of `handleNearbyRequest`.
+    @discardableResult
+    func handleSendNearbyRequest(
+        _ uri: String,
+        scope: ScanHandlingScope = .unrestricted,
+        isCurrent: () -> Bool = { true },
+        completion: @escaping (SendRoute?) -> Void
+    ) async -> Bool {
+        guard let app, Self.isNearbyPaymentRequest(uri) else {
+            showUnsupportedQRCodeError()
+            completion(nil)
+            return false
+        }
+        guard !isHandlingScan, isCurrent() else { return false }
+        isHandlingScan = true
+        defer { isHandlingScan = false }
+        var routed = false
+        await app.withQuickPaySuppressed {
+            await processSendScan(
+                uri,
+                scope: scope == .onchainPayments ? .onchainPayments : .paymentRequests,
+                isCurrent: isCurrent
+            ) { route in
+                routed = route != nil
+                completion(route)
+            }
+        }
+        return routed
+    }
+
+    private func readNfcPaymentRequest() async -> String? {
+        do {
+            return try await nfcReader.readPaymentRequest(alertMessage: t("other__nfc_alert"))
+        } catch let error as NfcReadError {
+            Logger.warn("NFC read failed: \(error)", context: "ScannerManager")
+            showNfcReadError(error)
+            return nil
+        } catch {
+            Logger.error(error, context: "ScannerManager NFC read")
+            app?.toast(error)
+            return nil
+        }
+    }
+
+    private func showNfcReadError(_ error: NfcReadError) {
+        guard !error.isSilent, error != .busy else { return }
+        app?.toast(type: .error, title: t("other__nfc_error_header"), description: error.message)
     }
 
     private func shouldOpenPaymentFlow(for uri: String) -> Bool {

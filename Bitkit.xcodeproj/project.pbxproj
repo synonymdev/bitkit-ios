@@ -968,7 +968,7 @@
 				INFOPLIST_FILE = Bitkit/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Bitkit;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Bitkit uses Bluetooth to connect to your hardware wallet for signing transactions.";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Bitkit uses Bluetooth to connect to your hardware wallet and to exchange payment requests with phones nearby.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Bitkit needs access to the camera to scan QR codes";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -1021,7 +1021,7 @@
 				INFOPLIST_FILE = Bitkit/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Bitkit;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Bitkit uses Bluetooth to connect to your hardware wallet for signing transactions.";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Bitkit uses Bluetooth to connect to your hardware wallet and to exchange payment requests with phones nearby.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Bitkit needs access to the camera to scan QR codes";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;

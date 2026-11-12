@@ -9,6 +9,8 @@ struct UsdtReceiveView: View {
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @Environment(\.scenePhase) private var scenePhase
+    @EnvironmentObject private var settings: SettingsViewModel
+    @State private var nearbyAdvertiser = NearbyPaymentAdvertiser()
     @State private var networks: [UsdtDepositNetwork] = []
     @State private var network: UsdtDepositNetwork?
     @State private var page = Page.address
@@ -70,6 +72,25 @@ struct UsdtReceiveView: View {
             do { networks = try await usdt.depositNetworks() }
             catch is CancellationError {} catch { self.error = t("usdt__deposit_unavailable") }
         }
+        .onAppear { updateNearbyAdvertising() }
+        .onChange(of: nearbyRequest) { updateNearbyAdvertising() }
+        .onChange(of: scenePhase) { updateNearbyAdvertising() }
+        .onDisappear { nearbyAdvertiser.stop() }
+    }
+
+    /// The Arbitrum EIP-681 request offered to nearby phones over Bluetooth. Deposit addresses on other networks
+    /// are not offered, because nearby phones pay USDT on Arbitrum only.
+    private var nearbyRequest: String? {
+        guard settings.enableNearbyPayments, page == .address, deposit == nil, !receiveUri.isEmpty else { return nil }
+        return NearbyPaymentUri.from(receiveUri)
+    }
+
+    private func updateNearbyAdvertising() {
+        if scenePhase == .active, let nearbyRequest {
+            nearbyAdvertiser.start(request: nearbyRequest)
+        } else {
+            nearbyAdvertiser.stop()
+        }
     }
 
     private var pageContent: some View {
@@ -88,6 +109,7 @@ struct UsdtReceiveView: View {
                         network: networkName,
                         amount: amount,
                         error: error ?? usdt.errorMessage,
+                        showsTapToPay: nearbyAdvertiser.isAdvertising,
                         onEdit: { draftAmount = amount; show(.amount) },
                         onNetwork: { show(.networks) }
                     )
@@ -227,6 +249,7 @@ struct UsdtReceiveAddressContent: View {
     let network: String
     var amount = ""
     var error: String?
+    var showsTapToPay = false
     let onEdit: () -> Void
     let onNetwork: () -> Void
     @State private var showDetails = false
@@ -243,7 +266,8 @@ struct UsdtReceiveAddressContent: View {
     var body: some View {
         if !uri.isEmpty, !showDetails {
             QrArea(uri: uri, imageAsset: "tether-circle", accentColor: .usdtAccent,
-                   copyValue: address, shareText: shareText, copyMessage: t("usdt__receive_copied"), onEdit: onEdit)
+                   copyValue: address, shareText: shareText, copyMessage: t("usdt__receive_copied"),
+                   showsTapToPay: showsTapToPay, onEdit: onEdit)
         } else {
             ScrollView(showsIndicators: false) {
                 if !uri.isEmpty {

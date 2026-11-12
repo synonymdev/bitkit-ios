@@ -30,6 +30,8 @@ struct ReceiveQr: View {
     @State private var verifyTask: Task<Void, Never>?
     @State private var passphraseTask: Task<Void, Never>?
     @State private var engagedSession = HwEngagedSession()
+    @State private var nearbyAdvertiser = NearbyPaymentAdvertiser()
+    @Environment(\.scenePhase) private var scenePhase
 
     init(
         navigationPath: Binding<[ReceiveRoute]>,
@@ -280,6 +282,10 @@ struct ReceiveQr: View {
         .sheetBackground()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("ReceiveScreen")
+        .onAppear { updateNearbyAdvertising() }
+        .onChange(of: nearbyRequest) { updateNearbyAdvertising() }
+        .onChange(of: scenePhase) { updateNearbyAdvertising() }
+        .onDisappear { nearbyAdvertiser.stop() }
         .sheet(isPresented: passphrasePromptBinding) {
             HwPassphrasePromptSheet(
                 isVerifying: isVerifyingPassphrase,
@@ -420,6 +426,7 @@ struct ReceiveQr: View {
                     imageAsset: "btc-circle-blue",
                     accentColor: .blueAccent,
                     copyValue: uri.contains("?") ? uri : hardwareAddress.address,
+                    showsTapToPay: nearbyAdvertiser.isAdvertising,
                     onEdit: { navigationPath.append(.edit(tab: .hardware, onchainOnly: true)) }
                 )
             } else if hardwareAddressLoadFailed {
@@ -443,6 +450,7 @@ struct ReceiveQr: View {
                     uri: config.uri,
                     imageAsset: config.imageAsset,
                     accentColor: config.accentColor,
+                    showsTapToPay: nearbyAdvertiser.isAdvertising,
                     onEdit: editRoute(for: tab).map { route in
                         { navigationPath.append(route) }
                     }
@@ -451,6 +459,33 @@ struct ReceiveQr: View {
             } else {
                 ProgressView()
             }
+        }
+    }
+
+    /// The request offered to nearby phones over Bluetooth, or nil when nothing should be advertised.
+    private var nearbyRequest: String? {
+        guard settings.enableNearbyPayments, !showingSpendingOnboarding else { return nil }
+        switch selectedTab {
+        case .usdt:
+            return nil
+        case .hardware:
+            guard let address = displayedHardwareAddress?.address else { return nil }
+            return NearbyPaymentUri.from(Bip21Utils.hardwareInvoice(
+                address: address,
+                amountSats: wallet.invoiceAmountSats,
+                message: wallet.invoiceNote
+            ))
+        default:
+            guard !receiveUnavailable(for: selectedTab) else { return nil }
+            return NearbyPaymentUri.from(qrConfig(for: selectedTab).uri)
+        }
+    }
+
+    private func updateNearbyAdvertising() {
+        if scenePhase == .active, let nearbyRequest {
+            nearbyAdvertiser.start(request: nearbyRequest)
+        } else {
+            nearbyAdvertiser.stop()
         }
     }
 

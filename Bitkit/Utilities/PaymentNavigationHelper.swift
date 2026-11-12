@@ -17,7 +17,9 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore = .shared,
         coordinator: QuickPayPaymentCoordinator? = nil
     ) -> Bool {
-        guard !app.isRoutingDeepLinkFromLock, let amountSats = QuickPayLimits.paymentAmountSats(app: app), amountSats > 0 else {
+        guard !app.isRoutingDeepLinkFromLock, !app.isQuickPaySuppressed, let amountSats = QuickPayLimits.paymentAmountSats(app: app),
+              amountSats > 0
+        else {
             return false
         }
 

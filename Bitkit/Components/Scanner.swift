@@ -223,17 +223,141 @@ private struct ScannerCornerButtons: View {
     }
 }
 
+// MARK: - Scanner Sources
+
+/// Which nearby sources a payment scanner is listening to, for its status pill.
+struct ScannerSources: Equatable {
+    var nfc: Bool
+    var bluetooth: Bool
+
+    var statusKey: String {
+        switch (nfc, bluetooth) {
+        case (true, true): "other__scan_status_qr_nfc_bluetooth"
+        case (true, false): "other__scan_status_qr_nfc"
+        case (false, true): "other__scan_status_qr_bluetooth"
+        case (false, false): "other__scan_status_qr"
+        }
+    }
+}
+
+// MARK: - Scanner Status Overlay Component
+
+/// Status pill at the bottom of the camera preview, with buttons for sources that still need the user.
+///
+/// iOS cannot detect NFC tags passively, so the NFC button (or the pill, when no buttons are shown) starts
+/// an NFC read through the system sheet. The Bluetooth button asks for Bluetooth permission.
+private struct ScannerStatusOverlay: View {
+    let isNfcAvailable: Bool
+    let showsBluetoothButton: Bool
+    let isBluetoothScanning: Bool
+    let onNfcRead: (() async -> Void)?
+    let onBluetooth: () -> Void
+
+    private var showsButtons: Bool {
+        showsBluetoothButton
+    }
+
+    private var sources: ScannerSources {
+        ScannerSources(nfc: isNfcAvailable && !showsButtons, bluetooth: isBluetoothScanning)
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            if showsButtons {
+                HStack(spacing: 8) {
+                    ScannerSourceButton(icon: "bluetooth-connected", testID: "ScannerBluetoothButton") {
+                        onBluetooth()
+                    }
+                    if isNfcAvailable, let onNfcRead {
+                        ScannerSourceButton(icon: "broadcast", testID: "ScannerNfcButton") {
+                            Task { await onNfcRead() }
+                        }
+                    }
+                }
+            }
+
+            Button {
+                guard sources.nfc, let onNfcRead else { return }
+                Task { await onNfcRead() }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(sources.nfc || sources.bluetooth ? "broadcast" : "scan")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 16, height: 16)
+                        .foregroundColor(.white64)
+                    CaptionMText(t(sources.statusKey), textColor: .white64)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.black50)
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("ScannerStatus")
+        }
+        .padding(16)
+        .frame(maxHeight: .infinity, alignment: .bottom)
+    }
+}
+
+private struct ScannerSourceButton: View {
+    let icon: String
+    let testID: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(icon)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 16, height: 16)
+                .foregroundColor(.textPrimary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .background(Color.gray5)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(testID)
+    }
+}
+
 // MARK: - Scanner Component
 
 struct Scanner: View {
     var accentColor: Color = .brandAccent
     var permissionDescription: String = t("other__camera_no_text")
     @Environment(CameraManager.self) private var cameraManager
+    @Environment(\.scenePhase) private var scenePhase
 
     let onScan: (QRCodePayload) async -> Void
     let onImageSelection: (PhotosPickerItem?) async -> Void
+    /// Starts an NFC read; nil hides the NFC control (non-payment scanners, devices without NFC).
+    var onNfcRead: (() async -> Void)?
+    /// Receives a request read over Bluetooth from a nearby phone and returns whether it was taken; nil turns
+    /// Bluetooth scanning off.
+    var onNearbyRequest: ((String) async -> Bool)?
+    /// Pauses Bluetooth scanning while something covers the scanner (for example the payment sheet it opened).
+    var isNearbyPaused = false
 
     @State private var isTorchOn = false
+    @State private var nearby = NearbyPaymentScanner()
+
+    private var isPaymentScanner: Bool {
+        onNfcRead != nil || onNearbyRequest != nil
+    }
+
+    private var needsBluetoothPermission: Bool {
+        onNearbyRequest != nil && !nearby.isAuthorized
+    }
+
+    private var bluetoothPermissionAction: (() -> Void)? {
+        guard needsBluetoothPermission else { return nil }
+        let nearby = nearby
+        return { nearby.requestAuthorization() }
+    }
 
     var body: some View {
         ZStack {
@@ -256,6 +380,25 @@ struct Scanner: View {
                         await onImageSelection(item)
                     }
                 )
+
+                if isPaymentScanner {
+                    ScannerStatusOverlay(
+                        isNfcAvailable: onNfcRead != nil,
+                        showsBluetoothButton: needsBluetoothPermission,
+                        isBluetoothScanning: nearby.isScanning,
+                        onNfcRead: onNfcRead,
+                        onBluetooth: { nearby.requestAuthorization() }
+                    )
+                }
+            } else if isPaymentScanner {
+                ScannerPermissionRequest(
+                    accentColor: accentColor,
+                    title: t("other__scan_to_pay_title"),
+                    description: t("other__scan_to_pay_text"),
+                    onRequestPermission: cameraManager.requestPermission,
+                    onBluetooth: bluetoothPermissionAction,
+                    onNfcRead: onNfcRead
+                )
             } else {
                 ScannerPermissionRequest(
                     accentColor: accentColor,
@@ -267,28 +410,73 @@ struct Scanner: View {
         .cornerRadius(16)
         .contentShape(Rectangle())
         .onAppear {
+            startNearbyScanning()
             guard !cameraManager.hasPermission else { return }
             cameraManager.requestPermissionIfNeeded()
         }
+        .onDisappear {
+            nearby.stop()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                startNearbyScanning()
+            } else {
+                nearby.stop()
+            }
+        }
+        .onChange(of: isNearbyPaused) { _, isPaused in
+            if isPaused {
+                nearby.stop()
+            } else {
+                startNearbyScanning()
+            }
+        }
+    }
+
+    private func startNearbyScanning() {
+        guard let onNearbyRequest, !isNearbyPaused, scenePhase == .active else { return }
+        nearby.start(onRequest: onNearbyRequest)
     }
 }
 
 struct ScannerPermissionRequest: View {
     var accentColor: Color = .brandAccent
+    var title: String = t("other__camera_no_title")
     var description: String = t("other__camera_no_text")
     let onRequestPermission: () -> Void
+    /// Payment scanners also offer Bluetooth and NFC, which work without the camera.
+    var onBluetooth: (() -> Void)?
+    var onNfcRead: (() async -> Void)?
+
+    private var showsSourceButtons: Bool {
+        onBluetooth != nil || onNfcRead != nil
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            DisplayText(t("other__camera_no_title"), accentColor: accentColor)
+        VStack(alignment: showsSourceButtons ? .leading : .center, spacing: 0) {
+            DisplayText(title, accentColor: accentColor)
                 .padding(.bottom, 8)
             BodyMText(description)
                 .padding(.bottom, 32)
-            CustomButton(
-                title: t("other__camera_no_button"),
-                icon: Image("camera").foregroundColor(.textPrimary)
-            ) {
-                onRequestPermission()
+            if showsSourceButtons {
+                HStack(spacing: 8) {
+                    ScannerSourceButton(icon: "camera", testID: "ScannerCameraButton", action: onRequestPermission)
+                    if let onBluetooth {
+                        ScannerSourceButton(icon: "bluetooth-connected", testID: "ScannerBluetoothButton", action: onBluetooth)
+                    }
+                    if let onNfcRead {
+                        ScannerSourceButton(icon: "broadcast", testID: "ScannerNfcButton") {
+                            Task { await onNfcRead() }
+                        }
+                    }
+                }
+            } else {
+                CustomButton(
+                    title: t("other__camera_no_button"),
+                    icon: Image("camera").foregroundColor(.textPrimary)
+                ) {
+                    onRequestPermission()
+                }
             }
         }
         .padding(.horizontal, 32)
