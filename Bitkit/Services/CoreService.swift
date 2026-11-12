@@ -1495,6 +1495,24 @@ class ActivityService {
         }
     }
 
+    /// Marks a sent on-chain activity the node doesn't watch, such as a Spark withdrawal to a contact, as confirmed once
+    /// its sender reports it complete.
+    func markOnchainActivityAsConfirmed(txId: String) async {
+        do {
+            try await ServiceQueue.background(.core) {
+                guard let existing = try BitkitCore.getActivityByTxId(walletId: WalletScope.default, txId: txId),
+                      !existing.confirmed
+                else { return }
+                var updated = existing
+                updated.confirmed = true
+                try updateActivity(activityId: existing.id, activity: .onchain(updated))
+                self.activitiesChangedSubject.send()
+            }
+        } catch {
+            Logger.error("Failed to mark activity as confirmed for \(txId): \(error)", context: "ActivityService")
+        }
+    }
+
     /// Marks the on-chain activity for `txId` as a transfer between Savings and Spending that has no channel,
     /// such as a Spark deposit or withdrawal. No-op until the activity exists or once it is marked.
     func markOnchainActivityAsTransfer(txId: String) async {

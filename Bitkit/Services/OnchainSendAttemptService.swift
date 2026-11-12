@@ -350,8 +350,8 @@ struct OnchainSendFollowupContext: Codable, Equatable {
     var channelId: String? = nil
 }
 
-/// A max Spark funding refused before broadcast because it would send another amount, or pay a higher mining fee, than
-/// the user approved, as after the balance grew. A fixed amount's fee isn't bound: its coin selection can vary.
+/// A Spark funding refused before broadcast because it would send another amount, or pay a higher mining fee, than the
+/// user approved, as after the balance grew. A fixed amount's fee is bound too, as its coin selection can vary.
 struct SparkFundingChanged: Error {
     /// The mining fee of the refused prepared send, nil when it was unknown.
     var preparedFeeSats: UInt64?
@@ -607,6 +607,7 @@ actor OnchainSendAttemptService {
         followupContext: OnchainSendFollowupContext? = nil,
         transferContext: OnchainSendTransferContext? = nil,
         isSparkFunding: Bool = false,
+        approvedMiningFeeSats: UInt64? = nil,
         paymentDeadline: PaykitPreciseInstant? = nil,
         beforeBroadcastAttempt: () async throws -> Void = {},
         onPreDispatchFailure: (Error) async throws -> Void = { _ in throw OnchainSendAttemptError.preDispatchCleanupFailed }
@@ -656,9 +657,9 @@ actor OnchainSendAttemptService {
                     else { throw OnchainSendAttemptError.unresolved }
                 }
                 // Savings never pay more than the Total the user confirmed, so a higher fee asks for another swipe.
-                if isSparkFunding {
+                if isSparkFunding || approvedMiningFeeSats != nil {
                     guard prepared.recipientAmountSats == amountSats, let miningFee = prepared.miningFeeSats,
-                          let approvedFee = followupContext?.feeSats, miningFee <= approvedFee
+                          let approvedFee = approvedMiningFeeSats ?? followupContext?.feeSats, miningFee <= approvedFee
                     else { throw SparkFundingChanged(preparedFeeSats: prepared.miningFeeSats) }
                 }
                 attempt.amountSats = prepared.recipientAmountSats
@@ -963,6 +964,13 @@ actor OnchainSendAttemptService {
     private func currentAdmissionAttempt() throws -> OnchainSendAttempt? {
         do { return try currentAttempt() }
         catch { throw OnchainSendAttemptError.unresolved }
+    }
+
+    /// The address of the send still unresolved (pending, unknown or refused, so retryable or blocking a new send), if any.
+    /// A retry always pays this same address with the same inputs.
+    func unresolvedSendAddress() -> String? {
+        guard let attempt = try? currentAttempt(), attempt.status.blocksNewSend else { return nil }
+        return attempt.address
     }
 
     private func currentAttempt() throws -> OnchainSendAttempt? {

@@ -609,6 +609,35 @@ struct AppScene: View {
                 await pubkyProfile.retrySessionRestoration()
             }
             .task(id: [scenePhase == .active, network.isConnected, wipeCoordinator.isGateUp]) { await pollIncomingPaykitPaymentRequests() }
+            .task(id: [scenePhase == .active, SparkExitManager.shared.needsDriving]) {
+                guard scenePhase == .active else { return }
+                await SparkExitManager.shared.runWhileActive()
+            }
+            .task(id: [
+                SparkExitManager.shared.opensProgress,
+                SparkExitManager.shared.showsResult,
+                SparkExitManager.shared.hasLoadedRecord,
+                isLockedForDeepLinks,
+                wallet.walletExists == true,
+            ]) {
+                // A tapped exit notification opens the exit once the wallet is unlocked and its record is loaded.
+                let exit = SparkExitManager.shared
+                guard exit.opensProgress, wallet.walletExists == true, !isLockedForDeepLinks else { return }
+                switch SparkExitManager.notificationOpen(
+                    opensProgress: exit.opensProgress,
+                    showsResult: exit.showsResult,
+                    hasLoadedRecord: exit.hasLoadedRecord
+                ) {
+                case .wait:
+                    return
+                case .drop:
+                    exit.opensProgress = false
+                case .open:
+                    exit.opensProgress = false
+                    navigation.reset()
+                    navigation.navigate(.sparkExitProgress)
+                }
+            }
             .task(id: foregroundContactSession) {
                 shopContactImport?.task.cancel()
                 shopContactImport = nil

@@ -1821,6 +1821,26 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertNil(blocked)
     }
 
+    func testALaterSettlementClosesTheOpenManualAttemptOfItsRequest() async throws {
+        let harness = AllowanceHarness()
+        await harness.executor.activate(identity: Fixtures.identityKey)
+        let request = try Fixtures.paymentRequest()
+        let attemptId = try await harness.executor.beginManualPayment(request, paymentEndpointIdentifier: Fixtures.onchainIdentifier)
+        let openAttempt = try XCTUnwrap(attemptId)
+        await harness.executor.finishManualPayment(attemptId: openAttempt, outcome: .unknown)
+
+        await harness.executor.settleManualPayment(requestId: request.id, outcome: .failed)
+        await harness.executor.settleManualPayment(requestId: request.id, outcome: .succeeded)
+
+        let outcomes = await harness.sdk.recordedOutcomes
+        XCTAssertEqual(outcomes, [
+            Paykit.PaymentOutcomeReport(attemptId: openAttempt, outcome: .unknown),
+            Paykit.PaymentOutcomeReport(attemptId: openAttempt, outcome: .failed),
+        ], "Only the open attempt settles, once")
+        let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
+        XCTAssertEqual(journal.map(\.stage), [.failed])
+    }
+
     func testRecoverySettlesAManualLightningPaymentRestoredFromABackupTakenBeforeTheSend() async throws {
         let harness = AllowanceHarness()
         await harness.executor.activate(identity: Fixtures.identityKey)

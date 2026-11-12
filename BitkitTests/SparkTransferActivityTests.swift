@@ -34,11 +34,70 @@ final class SparkTransferActivityTests: XCTestCase {
         XCTAssertEqual(unclaimed.map(\.txid), ["pending-deposit"], "A deposit claimed early still shows as in progress")
     }
 
+    func testAClaimedDepositHidesOnlyItsOwnOutputOfTheTransaction() {
+        let deposits = [0, 1].map {
+            DepositInfo(
+                txid: "batched", vout: $0, amountSats: 7500, isMature: true,
+                refundTx: nil, refundTxId: nil, refundState: nil, claimError: nil, instantClaimStatus: nil, maxClaimFee: nil
+            )
+        }
+        let claimed = [payment(id: "1", status: .completed, details: .deposit(txId: "batched", vout: 0))]
+
+        let unclaimed = SparkManager.unclaimedDeposits(deposits, claimed: claimed)
+
+        XCTAssertEqual(unclaimed.map(\.vout), [1], "Another output of a claimed deposit's transaction was hidden")
+    }
+
+    func testARecoveredReadBalanceNotifiesEvenWhenItEqualsTheShownOne() {
+        let kept = SparkBalances(readSats: 0, keptSats: 9000, pendingSats: 0)
+        let recovered = SparkBalances(readSats: 9000, keptSats: nil, pendingSats: 0)
+
+        XCTAssertTrue(SparkManager.balancesChanged(from: kept, to: recovered), "Sendable stayed 0 after Spark read the balance again")
+        XCTAssertFalse(SparkManager.balancesChanged(from: recovered, to: recovered))
+        XCTAssertTrue(SparkManager.balancesChanged(from: recovered, to: SparkBalances(readSats: 9000, keptSats: nil, pendingSats: 1)))
+    }
+
     func testAZeroReadAfterAFailedWithdrawalOrSyncKeepsTheLastKnownBalance() {
-        XCTAssertEqual(SparkManager.keptBalanceSats(read: 0, lastShown: 9000, isStale: true), 9000, "The balance read 0 while stale")
-        XCTAssertNil(SparkManager.keptBalanceSats(read: 0, lastShown: 9000, isStale: false))
-        XCTAssertNil(SparkManager.keptBalanceSats(read: 4000, lastShown: 9000, isStale: true))
-        XCTAssertNil(SparkManager.keptBalanceSats(read: 0, lastShown: 0, isStale: true))
+        XCTAssertEqual(
+            SparkManager.keptBalanceSats(read: 0, lastShown: 9000, isStale: true, withdrewAll: false, isExiting: false), 9000,
+            "The balance read 0 while stale"
+        )
+        XCTAssertNil(SparkManager.keptBalanceSats(read: 0, lastShown: 9000, isStale: false, withdrewAll: false, isExiting: false))
+        XCTAssertNil(SparkManager.keptBalanceSats(read: 4000, lastShown: 9000, isStale: true, withdrewAll: false, isExiting: false))
+        XCTAssertNil(SparkManager.keptBalanceSats(read: 0, lastShown: 0, isStale: true, withdrewAll: false, isExiting: false))
+    }
+
+    func testAZeroReadDuringAnEmergencyExitKeepsNoBalance() {
+        XCTAssertNil(
+            SparkManager.keptBalanceSats(read: 0, lastShown: 9000, isStale: true, withdrewAll: false, isExiting: true),
+            "The balance the exit moves to savings stayed shown in Spending"
+        )
+    }
+
+    func testACancelledExitShowsTheBalanceKeptBeforeIt() {
+        XCTAssertEqual(SparkManager.keptBalanceSats(afterExitKept: 10000, read: 0, isCancel: true), 10000, "The cancel dropped the kept balance")
+        XCTAssertNil(SparkManager.keptBalanceSats(afterExitKept: 10000, read: 0, isCancel: false), "The exit's balance came back after it ended")
+        XCTAssertNil(SparkManager.keptBalanceSats(afterExitKept: 10000, read: 4000, isCancel: true))
+        XCTAssertNil(SparkManager.keptBalanceSats(afterExitKept: nil, read: 0, isCancel: true))
+    }
+
+    func testAZeroReadAfterASuccessfulWithdrawalDropsTheLastShownBalance() {
+        XCTAssertNil(
+            SparkManager.keptBalanceSats(read: 0, lastShown: 9000, isStale: true, withdrewAll: true, isExiting: false),
+            "The withdrawn balance stayed shown while Spark's last sync had failed"
+        )
+    }
+
+    func testABalanceReadBeforeAFullWithdrawalNeverBringsItBack() {
+        XCTAssertEqual(
+            SparkManager.withdrewAllAt(100, read: 9000, lastSyncedAt: 90),
+            100,
+            "A refresh that read the balance before the withdrawal brought it back"
+        )
+        XCTAssertEqual(SparkManager.withdrewAllAt(100, read: 9000, lastSyncedAt: nil), 100)
+        XCTAssertEqual(SparkManager.withdrewAllAt(100, read: 0, lastSyncedAt: 101), 100)
+        XCTAssertNil(SparkManager.withdrewAllAt(100, read: 2000, lastSyncedAt: 101), "New funds after the withdrawal stayed hidden")
+        XCTAssertNil(SparkManager.withdrewAllAt(nil, read: 0, lastSyncedAt: 101))
     }
 
     func testASyncedZeroReadAfterAFailedWithdrawalClearsTheKeptBalance() {

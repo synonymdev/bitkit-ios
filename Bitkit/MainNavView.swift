@@ -82,6 +82,11 @@ struct MainNavView: View {
             navigationContent
         }
         .environment(sparkTransfer)
+        .onReceive(OnchainSendAttemptService.localResolutionPublisher.receive(on: DispatchQueue.main)) { resolution in
+            // The swipe's funding can resolve while another screen of the transfer shows.
+            guard resolution.isSparkFunding else { return }
+            _ = sparkTransfer.followIfOwned(txid: resolution.txid, attemptId: resolution.attemptId)
+        }
         .onChange(of: pendingProfileSetupResumeState, initial: true) { _, resumeState in
             guard resumeState.shouldResume(didResume: &didResumePendingPubkyProfileSetup) else { return }
             navigation.navigate(.createProfile)
@@ -705,6 +710,12 @@ struct MainNavView: View {
                 case .connections: LightningConnectionsView()
                 case let .connectionDetail(channelId): LightningConnectionDetailView(channelId: channelId)
                 case .sparkConnectionDetail: SparkConnectionDetailView()
+                case .sparkExitIntro: SparkExitIntroView()
+                case .sparkExitQuote: SparkExitQuoteView()
+                case .sparkExitFunding: SparkExitFundingView()
+                case .sparkExitConfirm: SparkExitConfirmView()
+                case .sparkExitProgress: SparkExitProgressView()
+                case .sparkExitFeeBump: SparkExitFeeBumpView()
                 case let .closeConnection(channel: channel): CloseConnectionConfirmation(channel: channel)
                 case .node: NodeStateView()
                 case .electrumSettings: ElectrumSettingsScreen()
