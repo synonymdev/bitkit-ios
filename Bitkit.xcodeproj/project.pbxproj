@@ -396,6 +396,7 @@
 				751000000000000000000001 /* Generate Plural Localizations */,
 				961058E72C355B5500E1F1D8 /* Embed Foundation Extensions */,
 				96EMBED0012026012000FRAME /* Remove Static Framework Stubs */,
+				B17C0F1A2EAE000000000003 /* Breez API Key From Keychain */,
 			);
 			buildRules = (
 			);
@@ -598,7 +599,28 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ \"$CONFIGURATION\" = \"Release\" ] && [ -z \"$(echo \"${BREEZ_API_KEY}\" | tr -d ' ')\" ]; then\n  echo \"error: BREEZ_API_KEY is empty. Copy Secrets.xcconfig.template to Secrets.xcconfig and set the key before a Release build or archive (Docs/RELEASE.md).\"\n  exit 1\nfi\n";
+			shellScript = "if [ \"$CONFIGURATION\" = \"Release\" ] && [ -z \"$(echo \"${BREEZ_API_KEY}\" | tr -d ' ')\" ] && ! /usr/bin/security find-generic-password -a \"$USER\" -s BREEZ_API_KEY >/dev/null 2>&1; then\n  echo \"error: BREEZ_API_KEY is empty. Store it in the keychain item BREEZ_API_KEY or set it in Secrets.xcconfig before a Release build or archive (Docs/RELEASE.md).\"\n  exit 1\nfi\n";
+			showEnvVarsInLog = 0;
+		};
+		B17C0F1A2EAE000000000003 /* Breez API Key From Keychain */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+			);
+			name = "Breez API Key From Keychain";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# When no build setting (Secrets.xcconfig, xcodebuild NAME=value) sets BREEZ_API_KEY, read it from the macOS\n# keychain item BREEZ_API_KEY and write it into the built Info.plist before signing. Never printed.\n[ -n \"$(echo \"${BREEZ_API_KEY}\" | tr -d ' ')\" ] && exit 0\n[ -x /usr/bin/security ] || exit 0\nkey=$(/usr/bin/security find-generic-password -a \"$USER\" -s BREEZ_API_KEY -w 2>/dev/null) || exit 0\n[ -n \"$key\" ] || exit 0\n/usr/libexec/PlistBuddy -c \"Set :BREEZ_API_KEY $key\" \"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n";
 			showEnvVarsInLog = 0;
 		};
 		751000000000000000000001 /* Generate Plural Localizations */ = {
