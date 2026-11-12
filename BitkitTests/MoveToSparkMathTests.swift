@@ -43,4 +43,10 @@ final class MoveToSparkMathTests: XCTestCase {
         XCTAssertFalse(MoveToSparkMath.canMove(channels: [channel], isSparkUsable: false))
         XCTAssertTrue(MoveToSparkMath.canMove(channels: [channel], isSparkUsable: true))
     }
+
+    func testSparkTakesNoMoveDuringAnExit() {
+        XCTAssertTrue(MoveToSparkMath.isSparkUsable(isReady: true, isExiting: false))
+        XCTAssertFalse(MoveToSparkMath.isSparkUsable(isReady: true, isExiting: true))
+        XCTAssertFalse(MoveToSparkMath.isSparkUsable(isReady: false, isExiting: false))
+    }
 }

@@ -2053,6 +2053,16 @@ final class PaykitPaymentRequestManager {
         }
     }
 
+    private static let declinedLifecycleStates: [Paykit.PaymentRequestLifecycleState] = [.rejected, .canceled]
+
+    /// Requests the user declined stay marked as presented while the SDK still lists them, so one never pops up again
+    /// if a later read reports it as proposed.
+    private var declinedRequestIds: Set<PaykitPaymentRequest.ID> {
+        Set(historyRequests.filter {
+            $0.direction == .incoming && Self.declinedLifecycleStates.contains($0.lifecycleState)
+        }.map(\.id))
+    }
+
     func canDismiss(_ request: PaykitPaymentRequest) -> Bool {
         retainedHardwareRetries[request.id] == nil
     }
@@ -2693,7 +2703,7 @@ final class PaykitPaymentRequestManager {
                 clockOffset: subscriptionClockOffset
             )
             let currentRequestIds = Set(pendingRequests.map(\.id))
-            presentedRequestIds.formIntersection(currentRequestIds)
+            presentedRequestIds.formIntersection(currentRequestIds.union(declinedRequestIds))
             presentationRetryAttempts = presentationRetryAttempts.filter { currentRequestIds.contains($0.key) }
             presentationRetryDeadlines = presentationRetryDeadlines.filter { currentRequestIds.contains($0.key) }
             automaticPresentationDiagnosticReasons = automaticPresentationDiagnosticReasons.filter { currentRequestIds.contains($0.key) }
@@ -2804,7 +2814,11 @@ final class PaykitPaymentRequestManager {
             historyRequests.removeAll { $0.id == request.id }
             historyRequests.insert(updatedRequest, at: 0)
             pendingRequests.removeAll { $0.id == request.id }
-            presentedRequestIds.remove(request.id)
+            if Self.declinedLifecycleStates.contains(resultingState) {
+                presentedRequestIds.insert(request.id)
+            } else {
+                presentedRequestIds.remove(request.id)
+            }
             presentationRetryAttempts.removeValue(forKey: request.id)
             presentationRetryDeadlines.removeValue(forKey: request.id)
             automaticPresentationDiagnosticReasons.removeValue(forKey: request.id)
@@ -2877,7 +2891,7 @@ final class PaykitPaymentRequestManager {
             requestedSubscriptionProposalId = nil
         }
         let requestIds = Set(pendingRequests.map(\.id))
-        presentedRequestIds.formIntersection(requestIds)
+        presentedRequestIds.formIntersection(requestIds.union(declinedRequestIds))
         presentationRetryAttempts = presentationRetryAttempts.filter { requestIds.contains($0.key) }
         presentationRetryDeadlines = presentationRetryDeadlines.filter { requestIds.contains($0.key) }
         automaticPresentationDiagnosticReasons = automaticPresentationDiagnosticReasons.filter { requestIds.contains($0.key) }

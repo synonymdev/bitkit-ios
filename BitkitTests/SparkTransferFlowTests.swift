@@ -1,4 +1,5 @@
 @testable import Bitkit
+import LDKNode
 import XCTest
 
 final class SparkTransferFlowTests: XCTestCase {
@@ -27,10 +28,11 @@ final class SparkTransferFlowTests: XCTestCase {
         )
     }
 
-    func testInstantClaimedBySdkAddsIt() {
+    func testInstantClaimedBySdkShowsAddingUntilSparkListsItClaimed() {
         XCTAssertEqual(
             SparkClaimDecision.onOffer(.automatic(feeSats: 300, confirmations: 0), speed: .instant, ceilingSats: ceiling),
-            .added
+            .adding,
+            "Success showed before Spark claimed the deposit"
         )
     }
 
@@ -328,6 +330,52 @@ final class SparkTransferFlowTests: XCTestCase {
         await flow.waitForClaim()
 
         XCTAssertEqual(flow.claimState, .added, "The funding this swipe left unresolved lost the approval it gave")
+    }
+
+    @MainActor
+    func testAFundingThatResolvesOffTheConfirmScreenIsFollowedOnce() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
+        let attemptId = UUID()
+        flow.quote = quote(instantMax: 3010)
+        flow.approveSwipe()
+        flow.bindApproval(to: attemptId, after: OnchainSendAttemptError.unresolved)
+
+        // The swipe's funding resolves while the Amount screen shows, so no confirm screen follows it.
+        XCTAssertTrue(flow.followIfOwned(txid: "txid", attemptId: attemptId), "A funding this flow approved went unfollowed")
+        await flow.waitForClaim()
+
+        XCTAssertEqual(flow.txid, "txid")
+        XCTAssertEqual(flow.claimState, .added)
+        XCTAssertFalse(flow.followIfOwned(txid: "txid", attemptId: attemptId), "A followed funding was followed again")
+    }
+
+    @MainActor
+    func testANewAmountAfterAFollowedFundingIsANewTransfer() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
+        let attemptId = UUID()
+        flow.start(amountSats: 40000, isMaxAmount: false)
+        flow.quote = quote(instantMax: 3010)
+        flow.approveSwipe()
+        flow.bindApproval(to: attemptId, after: OnchainSendAttemptError.unresolved)
+        XCTAssertTrue(flow.followIfOwned(txid: "txid", attemptId: attemptId))
+        await flow.waitForClaim()
+
+        flow.start(amountSats: 40000, isMaxAmount: false)
+        XCTAssertEqual(flow.txid, "txid", "the transfer lost the funding it follows")
+        // The funding resolved while Spending Amount showed, and a new amount is a new transfer.
+        flow.start(amountSats: 50000, isMaxAmount: false)
+        XCTAssertNil(flow.txid, "an earlier funding stood in for a new transfer's swipe")
+    }
+
+    @MainActor
+    func testAFundingWhoseOutcomeIsUnknownIsKeptNotFailed() {
+        XCTAssertEqual(try TransferViewModel.fundedTxid(.accepted(txid: "txid")), "txid")
+        XCTAssertThrowsError(try TransferViewModel.fundedTxid(.unknown(txid: "txid"))) { error in
+            XCTAssertEqual((error as? SparkFundingUnresolved)?.txid, "txid", "A funding that may be on the network read as failed")
+        }
+        XCTAssertThrowsError(try TransferViewModel.fundedTxid(.rejected(txid: "txid", reason: "fee too low"))) { error in
+            XCTAssertEqual((error as? SparkFundingUnresolved)?.rejectionReason, "fee too low")
+        }
     }
 
     @MainActor

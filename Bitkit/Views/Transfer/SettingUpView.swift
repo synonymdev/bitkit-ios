@@ -65,8 +65,8 @@ struct SettingUpView: View {
     /// The index of the step in progress; every step is done once the deposit is added.
     static func currentStep(for state: SparkClaimState) -> Int {
         switch state {
-        case .looking, .notSeen: 1
-        case .claiming, .adding, .repriced, .unavailable, .later: 2
+        case .looking, .notSeen, .later: 1
+        case .claiming, .adding, .repriced, .unavailable: 2
         case .added: 3
         }
     }

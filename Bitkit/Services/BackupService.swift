@@ -135,6 +135,7 @@ class BackupService {
     /// export never replaces the remote backup it couldn't read yet.
     private static let sparkExitRestorePendingKey = "sparkExitRestorePending"
     private let backupData: ((BackupCategory) async throws -> Data)?
+    private let isSparkExitActive: () async -> Bool
     private let uploadBackup: (String, Data) async throws -> Void
     private let waitForBackupDelay: () async throws -> Void
     private let waitForTemporaryFailureDelay: (UInt64) async throws -> Void
@@ -165,6 +166,7 @@ class BackupService {
     init(
         defaults: UserDefaults = .standard,
         backupData: ((BackupCategory) async throws -> Data)? = nil,
+        isSparkExitActive: @escaping () async -> Bool = { @MainActor in SparkExitManager.shared.isExiting },
         usdtRecoveryBackup: UsdtRecoveryBackupStore = UsdtRecoveryBackupStore(),
         uploadBackup: @escaping (String, Data) async throws -> Void = { key, data in
             _ = try await VssBackupClient.shared.putObject(key: key, data: data)
@@ -183,6 +185,7 @@ class BackupService {
         }
     ) {
         self.defaults = defaults
+        self.isSparkExitActive = isSparkExitActive
         self.fetchBackup = fetchBackup
         self.backupData = backupData
         self.usdtRecoveryBackup = usdtRecoveryBackup
@@ -789,6 +792,9 @@ class BackupService {
                 // App-owned, so it takes no part in the core field migration above and never sets
                 // needsRewrite. Restored names wait as pending ones until each wallet is paired again.
                 HwKnownDeviceStorage.restoreNames(payload.hwWalletNames ?? [:])
+                SparkExitEarlierAddressBackup.restore(payload.sparkExitEarlierAddresses, network: "\(Env.network)") {
+                    SparkExitEarlierAddressStore(walletIndex: $0)
+                }
 
                 // Force address rotation by clearing onchain address
                 UserDefaults.standard.set("", forKey: "onchainAddress")
@@ -946,6 +952,15 @@ class BackupService {
         // METADATA (hardware wallet names). Scoped to the names alone: the known-device store is also
         // rewritten by every connect, and reconnect traffic must not re-upload the whole envelope.
         HwKnownDeviceStorage.namesChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { @Sendable [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .metadata)
+            }
+            .store(in: cancellables)
+
+        // METADATA (earlier Spark exit addresses)
+        SparkExitEarlierAddressStore.savedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
@@ -1380,7 +1395,11 @@ class BackupService {
                 cache: cache,
                 pubkySession: pubkySession,
                 pubkyContactProfileOverrides: pubkyContactProfileOverrides,
-                hwWalletNames: hwWalletNames.isEmpty ? nil : hwWalletNames
+                hwWalletNames: hwWalletNames.isEmpty ? nil : hwWalletNames,
+                sparkExitEarlierAddresses: SparkExitEarlierAddressBackup.backup(
+                    SparkExitEarlierAddressStore(walletIndex: LightningService.shared.currentWalletIndex),
+                    walletKey: SparkExitFundingIndexes.walletKey(network: "\(Env.network)", walletIndex: LightningService.shared.currentWalletIndex)
+                )
             )
             return try JSONEncoder().encode(payload)
 
@@ -1451,7 +1470,12 @@ class BackupService {
         }
     }
 
+    /// Nothing while an exit runs: the operators may stop reporting a leaf once it is being exited, so a fresh export
+    /// could drop the very leaf a restored wallet needs. The backup from before the exit stays.
     private func sparkExitBackupData() async throws -> Data? {
+        if await isSparkExitActive() {
+            return nil
+        }
         if let backupData {
             return try await backupData(.sparkExit)
         }

@@ -37,6 +37,12 @@ struct ContactPaymentContext: Equatable {
             incomingPaymentRequest.map { $0.amount.asset != .btc || $0.pricing.conversion != nil } == true
     }
 
+    /// An on-chain and a Lightning endpoint, between which the router picks, Spark's leg to the on-chain one included.
+    var hasMixedBitcoinEndpoints: Bool {
+        endpoints.contains { $0.methodId.onchainNetwork != nil } &&
+            endpoints.contains { $0.methodId == .bitcoinLightningLnurl || $0.methodId == .bitcoinLightningBolt11 }
+    }
+
     func initialUsdtSubscriptionPayment(at date: Date = Date()) -> PaykitRequestPricing.Payment? {
         guard isInitialSubscriptionPayment, let request = incomingPaymentRequest, request.billingPeriod != nil,
               Set(request.acceptedPaymentEndpointIdentifiers) == [PublicPaykitService.MethodId.usdtArbitrum.rawValue],
@@ -117,6 +123,7 @@ struct ScanPaymentOperations {
     let state: () -> ScanPaymentState
     let canSendLightning: (_ amountSats: UInt64) -> Bool
     var decodeInvoice: (String) async throws -> BitkitCore.Scanner = { try await decode(invoice: $0) }
+    var canRouteThroughSpark: @MainActor () -> Bool = { PaykitRouteService.canRouteThroughSpark }
 
     @MainActor
     static func live(lightningService: LightningService) -> ScanPaymentOperations {
@@ -171,6 +178,9 @@ class AppViewModel: ObservableObject {
     @Published var contactPaymentContext: ContactPaymentContext?
     private(set) var didRejectScannedPayment = false
     @Published var paykitUsesUsdt = false
+    @Published var paykitRoute: PaykitRouteUi?
+    /// Bumped by each routing request, so only the latest one's answer lands.
+    var paykitRoutingGeneration = 0
     @Published var paykitReviewedAmount: PaykitAmount?
     @Published var paykitPaymentTerms: PaykitRequestPricing.Payment?
 
@@ -765,9 +775,28 @@ extension AppViewModel {
         return paykitBitcoinMethod(for: selectedWalletToPayFrom)
     }
 
+    /// The method a send prices with. Spending with no Lightning payment to make funds the Spark leg to the on-chain
+    /// endpoint, so it takes that endpoint's price, the one the leg and its proof pay.
+    /// Amount picks the source and the asset: for a contact that lists USDT or is priced in another asset, and for a mixed
+    /// Bitcoin contact while Spark can carry a leg, so an amount no Lightning endpoint takes still reaches the router.
+    var contactPaymentPicksSource: Bool {
+        guard let context = contactPaymentContext else { return false }
+        return context.requiresAssetSelection || (context.hasMixedBitcoinEndpoints && paykitRoute?.offersSparkLeg == true)
+    }
+
     func paykitBitcoinMethod(for wallet: WalletType) -> PublicPaykitService.MethodId {
         if wallet == .lightning {
-            return lnurlPayData != nil ? .bitcoinLightningLnurl : .bitcoinLightningBolt11
+            // A routed Spark leg pays its on-chain endpoint, whatever Lightning endpoint the contact also has.
+            if let leg = paykitRoute?.serviceLeg, let method = PublicPaykitService.MethodId(rawValue: leg.endpoint.methodId) {
+                return method
+            }
+            if lnurlPayData != nil {
+                return .bitcoinLightningLnurl
+            }
+            if scannedLightningInvoice == nil, let address = scannedOnchainInvoice?.address {
+                return PublicPaykitService.onchainMethodId(for: address)
+            }
+            return .bitcoinLightningBolt11
         }
         return PublicPaykitService.onchainMethodId(for: scannedOnchainInvoice?.address ?? "")
     }
@@ -803,7 +832,9 @@ extension AppViewModel {
             }
         }
 
-        if let context = claimedContactPaymentContext, context.requiresAssetSelection, scope != .onchainPayments {
+        if let context = claimedContactPaymentContext, scope != .onchainPayments,
+           context.requiresAssetSelection || context.hasMixedBitcoinEndpoints && scanPaymentOperations.canRouteThroughSpark()
+        {
             resetSendState(preservingContactPaymentContext: true, ownerID: sendPresentationID)
             expectedGeneration = sendStateGeneration
             for endpoint in context.endpoints where endpoint.methodId != .usdtArbitrum {
@@ -829,6 +860,20 @@ extension AppViewModel {
                 isUsdtEnabled: SettingsViewModel.shared.isUsdtEnabled
             ) || context.incomingPaymentRequest.map { PaykitUsdtPaymentService.shared.hasBinding(for: $0.id) } == true
             selectedWalletToPayFrom = canUseLightning || (hasLightning && scannedOnchainInvoice == nil) ? .lightning : .onchain
+            // A Spark leg can pay the on-chain endpoint from Spending here too, whatever Lightning can pay now: an amount
+            // entered later can pass Lightning's limit, and the router still picks a direct payment that works.
+            if scannedOnchainInvoice != nil,
+               let route = PaykitRouteService.routeUi(for: context, canRouteThroughSpark: scanPaymentOperations.canRouteThroughSpark()),
+               route.offersSparkLeg
+            {
+                paykitRoute = route
+                // A request keeps its source here; its Confirm asks the router.
+                if !hasLightning, context.incomingPaymentRequest == nil,
+                   max(state.spendableOnchainBalanceSats, alternativeOnchainBalanceSats) <= UInt64(Env.dustLimit)
+                {
+                    selectedWalletToPayFrom = .lightning
+                }
+            }
             let canSelectUsdt = SettingsViewModel.shared.isUsdtEnabled && context.endpoints.contains { $0.methodId == .usdtArbitrum }
             if !paykitUsesUsdt, !canSelectUsdt, let request = context.incomingPaymentRequest {
                 do {
@@ -1042,6 +1087,20 @@ extension AppViewModel {
 
             // Fallback to on-chain if address is available
             guard !invoice.address.isEmpty, validateIncomingOnchainPaymentRequestAmount(requestedAmount ?? invoice.amountSatoshis) else { return }
+
+            // An on-chain contact payment opens with Spending as a source while Spark can carry it there, whether or
+            // not Savings covers it; Spending is the default when Savings holds no more than dust.
+            if let context = contactPaymentContext, scope != .onchainPayments,
+               let route = PaykitRouteService.routeUi(for: context, canRouteThroughSpark: scanPaymentOperations.canRouteThroughSpark()),
+               route.offersSparkLeg
+            {
+                handleScannedOnchainInvoice(invoice)
+                paykitRoute = route
+                if max(paymentState.spendableOnchainBalanceSats, alternativeOnchainBalanceSats) <= UInt64(Env.dustLimit) {
+                    selectedWalletToPayFrom = .lightning
+                }
+                return
+            }
 
             // If node is running, validate balance immediately
             if paymentState.isNodeRunning {
@@ -1388,6 +1447,7 @@ extension AppViewModel {
         sendStateOwnerID = ownerID
         sendStateGeneration = UUID()
         paykitUsesUsdt = false
+        paykitRoute = nil
         paykitReviewedAmount = nil
         paykitPaymentTerms = nil
         scannedLightningInvoice = nil

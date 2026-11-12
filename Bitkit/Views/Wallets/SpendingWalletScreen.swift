@@ -53,7 +53,7 @@ struct SpendingWalletScreen: View {
                             .padding(.top, 28)
                         }
 
-                        if wallet.totalLightningSats > 0, wallet.channels?.isEmpty == false || SparkManager.shared.balanceSats > 0 {
+                        if wallet.totalLightningSats > 0, wallet.channels?.isEmpty == false || SparkManager.shared.shownSpendingSats > 0 {
                             transferButton
                                 .transition(.move(edge: .leading).combined(with: .opacity))
                                 .padding(.top, 28)

@@ -1000,7 +1000,8 @@ class SettingsViewModel: NSObject, ObservableObject {
             dismissedSuggestions: defaults.stringArray(forKey: "dismissedSuggestions") ?? [],
             lastUsedTags: defaults.stringArray(forKey: "lastUsedTags") ?? [],
             quickPayLedger: spend,
-            detachedActivityContacts: CoreService.shared.activity.detachedContactsBackupSnapshot()
+            detachedActivityContacts: CoreService.shared.activity.detachedContactsBackupSnapshot(),
+            sparkExitNextFundingIndexes: SparkExitFundingIndexes.backup(defaults)
         )
     }
 
@@ -1030,5 +1031,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         defaults.set(cache.lastUsedTags, forKey: "lastUsedTags")
         QuickPaySpendStore.shared.restoreFromBackup(ledger: cache.quickPayLedger)
         CoreService.shared.activity.restoreDetachedContacts(cache.detachedActivityContacts)
+        SparkExitFundingIndexes.restore(cache.sparkExitNextFundingIndexes, into: defaults)
     }
 }

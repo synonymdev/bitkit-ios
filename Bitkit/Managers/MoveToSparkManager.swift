@@ -19,7 +19,12 @@ enum MoveToSparkMath {
     /// Whether Spark can take a move; every Move to Spark check goes through here.
     @MainActor
     static func isSparkUsable(_ spark: SparkManager) -> Bool {
-        spark.isReady
+        isSparkUsable(isReady: spark.isReady, isExiting: spark.isExiting)
+    }
+
+    /// Spark takes no move during an emergency exit, which is sweeping its funds to savings.
+    static func isSparkUsable(isReady: Bool, isExiting: Bool) -> Bool {
+        isReady && !isExiting
     }
 
     /// Whether the channels hold a balance worth moving to a usable Spark wallet.

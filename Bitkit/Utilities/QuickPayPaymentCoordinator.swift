@@ -198,6 +198,10 @@ final class QuickPayPaymentCoordinator {
     }
 
     static func isHardReject(_ error: Error) -> Bool {
+        // Spark refuses only before anything leaves the wallet.
+        if error is ChannelFreeRailSendRefused || (error as? AppError)?.underlyingError is ChannelFreeRailSendRefused {
+            return true
+        }
         guard let nodeError = nodeError(from: error) else {
             return false
         }

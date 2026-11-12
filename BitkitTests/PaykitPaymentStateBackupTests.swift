@@ -927,6 +927,25 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         XCTAssertThrowsError(try restored(object))
     }
 
+    func testSparkFundingBackupKeepsItsTransferFlag() throws {
+        let envelope = try JSONDecoder().decode(WalletBackupV1.self, from: Self.completeAttemptGolden())
+        let wire = try XCTUnwrap(envelope.paykitPaymentState?.activeOnchainAttempt)
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(wire)) as? [String: Any])
+        object["requestId"] = nil
+        object["payerIdentity"] = nil
+        object["status"] = "pending"
+        let plain = try JSONDecoder().decode(PaykitPaymentStateBackup.ActiveOnchainAttempt.self,
+                                             from: JSONSerialization.data(withJSONObject: object))
+        var funding = try plain.restored(wallet: Self.goldenWallet(), proofs: []).0
+        XCTAssertFalse(funding.isSparkFunding)
+        funding.sparkFunding = true
+
+        let backup = try PaykitPaymentStateBackup.ActiveOnchainAttempt(funding, wallet: Self.goldenWallet())
+        let decoded = try JSONDecoder().decode(PaykitPaymentStateBackup.ActiveOnchainAttempt.self, from: JSONEncoder().encode(backup))
+
+        XCTAssertTrue(try decoded.restored(wallet: Self.goldenWallet(), proofs: []).0.isSparkFunding)
+    }
+
     func testCandidateFeeRatesRoundtripAndRejectForeignOrMalformedRates() throws {
         let envelope = try JSONDecoder().decode(WalletBackupV1.self, from: Self.completeAttemptGolden())
         let state = try XCTUnwrap(envelope.paykitPaymentState)
