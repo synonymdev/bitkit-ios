@@ -1038,6 +1038,9 @@
 "settings__status__spark__ready" = "Подключено";
 "settings__status__spark__pending" = "Подключение...";
 "settings__status__spark__error" = "Не в сети";
+"settings__status__exit__title" = "Экстренный Выход";
+"settings__status__exit__pending" = "Выполняется";
+"settings__status__exit__funding" = "Нужно средств на комиссии";
 "settings__status__backup__title" = "Последнее Полное Резервное Копирование Данных";
 "settings__status__backup__ready" = "Скопировано";
 "settings__status__backup__pending" = "Резервное копирование...";

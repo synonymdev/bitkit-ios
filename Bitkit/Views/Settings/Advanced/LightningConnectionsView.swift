@@ -155,6 +155,17 @@ struct LightningConnectionsView: View {
                                 }
                             }
 
+                            if MoveToSparkMath.canMove(
+                                channels: wallet.channels,
+                                isSparkUsable: MoveToSparkMath.isSparkUsable(SparkManager.shared)
+                            ) {
+                                CustomButton(title: t("lightning__move_to_spark__nav_title")) {
+                                    navigation.navigate(.moveToSpark)
+                                }
+                                .accessibilityIdentifier("MoveToSpark")
+                                .padding(.vertical, 16)
+                            }
+
                             // Closed Connections section
                             if showClosedConnections && !closedChannels.isEmpty {
                                 SettingsSectionHeader(t("lightning__conn_closed"))

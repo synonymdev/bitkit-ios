@@ -237,6 +237,11 @@ struct MainNavView: View {
             ) {
                 config in SecuritySheet(config: config)
             }
+            .sheet(item: $sheets.moveToSparkSheetItem, onDismiss: {
+                sheets.hideSheetIfActive(.moveToSpark, reason: "Move to Spark intro dismissed")
+            }) { config in
+                MoveToSparkSheet(config: config)
+            }
             .sheet(item: $sheets.usdtIntroSheetItem, onDismiss: {
                 sheets.hideSheetIfActive(.usdtIntro, reason: "USDT intro dismissed")
             }) { config in
@@ -710,6 +715,7 @@ struct MainNavView: View {
                 case .connections: LightningConnectionsView()
                 case let .connectionDetail(channelId): LightningConnectionDetailView(channelId: channelId)
                 case .sparkConnectionDetail: SparkConnectionDetailView()
+                case .moveToSpark: MoveToSparkView()
                 case .sparkExitIntro: SparkExitIntroView()
                 case .sparkExitQuote: SparkExitQuoteView()
                 case .sparkExitFunding: SparkExitFundingView()

@@ -924,6 +924,9 @@
 "settings__status__spark__ready" = "Συνδεδεμένο";
 "settings__status__spark__pending" = "Σύνδεση...";
 "settings__status__spark__error" = "Εκτός σύνδεσης";
+"settings__status__exit__title" = "Έξοδος Έκτακτης Ανάγκης";
+"settings__status__exit__pending" = "Σε εξέλιξη";
+"settings__status__exit__funding" = "Απαιτούμενη χρηματοδότηση τελών";
 "settings__status__backup__title" = "Τελευταίο Πλήρες Αντίγραφο Δεδομένων";
 "settings__status__backup__error" = "Αποτυχία ολοκλήρωσης πλήρους αντιγράφου";
 "settings__adv__section_debug" = "Debug";

@@ -1041,6 +1041,9 @@
 "settings__status__spark__ready" = "Verbunden";
 "settings__status__spark__pending" = "Verbinden...";
 "settings__status__spark__error" = "Offline";
+"settings__status__exit__title" = "Notausstieg";
+"settings__status__exit__pending" = "Läuft";
+"settings__status__exit__funding" = "Benötigte Gebührendeckung";
 "settings__status__backup__title" = "Vollständiges Backup";
 "settings__status__backup__ready" = "Abgeschlossen";
 "settings__status__backup__pending" = "In Bearbeitung...";

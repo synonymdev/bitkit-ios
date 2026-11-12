@@ -2674,8 +2674,8 @@ extension LightningService {
         }
     }
 
-    func estimateRoutingFees(bolt11: String, amountSats: UInt64? = nil) async throws -> UInt64 {
-        if let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: amountSats) {
+    func estimateRoutingFees(bolt11: String, amountSats: UInt64? = nil, channelsOnly: Bool = false) async throws -> UInt64 {
+        if !channelsOnly, let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: amountSats) {
             return try await rail.estimateRoutingFees(bolt11: bolt11, amountSats: amountSats)
         }
         guard let node else {
