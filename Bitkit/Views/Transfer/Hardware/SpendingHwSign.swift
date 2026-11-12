@@ -15,6 +15,8 @@ struct SpendingHwSign: View {
 
     @State private var signingTask: Task<Void, Never>?
     @State private var passphraseTask: Task<Void, Never>?
+    @State private var hasSignedOnThisScreen = false
+    @State private var newSignatureQuote: SparkTransferQuote?
 
     private var hwSend: HwSendCoordinator {
         flow.hwSend
@@ -23,6 +25,18 @@ struct SpendingHwSign: View {
     private struct QuoteInputs: Equatable {
         let amountSats: UInt64
         let speed: SparkTransferSpeed
+    }
+
+    enum SigningStep: Equatable {
+        case sign
+        case confirmNewSignature
+    }
+
+    /// A blocking retained send needs the user's consent before the device signs anew. A Retry on this screen rebroadcasts the
+    /// bytes it already sent, so it never asks: consenting there would sign a second payment.
+    static func signingStep(retainedStatus: HwRetainedSendStatus, isRetryOnThisScreen: Bool) -> SigningStep {
+        guard !isRetryOnThisScreen, retainedStatus == .blocking else { return .sign }
+        return .confirmNewSignature
     }
 
     var body: some View {
@@ -104,6 +118,22 @@ struct SpendingHwSign: View {
                 onCancel: dismissPassphrase
             )
         }
+        .alert(
+            t("lightning__transfer_hw__broadcast_uncertain_title"),
+            isPresented: newSignaturePromptBinding
+        ) {
+            Button(t("common__dialog_cancel"), role: .cancel) {
+                newSignatureQuote = nil
+            }
+            Button(t("wallet__send_yes")) {
+                if let quote = newSignatureQuote {
+                    newSignatureQuote = nil
+                    signAfterConsent(quote)
+                }
+            }
+        } message: {
+            Text(t("lightning__transfer_hw__broadcast_uncertain_description"))
+        }
         .onDisappear {
             let stillInFlow = navigation.path.contains {
                 if case .spendingHwSign = $0 {
@@ -139,43 +169,75 @@ struct SpendingHwSign: View {
         )
     }
 
+    private var newSignaturePromptBinding: Binding<Bool> {
+        Binding(
+            get: { newSignatureQuote != nil },
+            set: {
+                if !$0 {
+                    newSignatureQuote = nil
+                }
+            }
+        )
+    }
+
     private func startSigning() {
         guard signingTask == nil else { return }
         signingTask = Task { @MainActor in
             defer { signingTask = nil }
             guard let quote = await quoteToSign() else { return }
-            do {
-                let result = try await PaykitPaymentProofService.shared.withHardwarePaymentOwnership(walletId: walletId) {
-                    try await hwSend.signAndBroadcast(
-                        manager: hwWalletManager,
-                        address: quote.address,
-                        sats: quote.depositSats,
-                        satsPerVByte: UInt64(quote.satsPerVbyte)
-                    )
-                }
-                await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
-                    txid: result.txId,
-                    address: quote.address,
-                    amount: quote.depositSats,
-                    fee: result.miningFeeSats,
-                    feeRate: UInt32(clamping: result.feeRate),
-                    isTransfer: true,
-                    walletId: walletId
-                )
-                hwSend.completeBroadcast()
-                SparkManager.shared.onDepositBroadcast(txid: result.txId, amountSats: quote.depositSats)
-                flow.onBroadcast(txid: result.txId)
-                Logger.info("Funded Spark wallet with \(quote.depositSats) sats from hardware wallet in \(result.txId)", context: "SpendingHwSign")
-                navigation.navigate(.spendingHwSigned)
-            } catch is CancellationError {
-                return
-            } catch is HwPassphraseError {
-                hwSend.requestPassphrase()
-            } catch let error as HwTransferError {
-                app.toast(error)
-            } catch {
-                showHardwareError(error)
+            let status = await hwSend.retainedSendStatus(address: quote.address, sats: quote.depositSats, hasIncomingRequest: false)
+            let isRetryOnThisScreen = hasSignedOnThisScreen && hwSend.hasPendingBroadcast
+            switch Self.signingStep(retainedStatus: status, isRetryOnThisScreen: isRetryOnThisScreen) {
+            case .sign:
+                await sign(quote)
+            case .confirmNewSignature:
+                newSignatureQuote = quote
             }
+        }
+    }
+
+    private func signAfterConsent(_ quote: SparkTransferQuote) {
+        guard signingTask == nil else { return }
+        hwSend.consentToNewSignature(address: quote.address, sats: quote.depositSats)
+        signingTask = Task { @MainActor in
+            defer { signingTask = nil }
+            await sign(quote)
+        }
+    }
+
+    private func sign(_ quote: SparkTransferQuote) async {
+        hasSignedOnThisScreen = true
+        do {
+            let result = try await PaykitPaymentProofService.shared.withHardwarePaymentOwnership(walletId: walletId) {
+                try await hwSend.signAndBroadcast(
+                    manager: hwWalletManager,
+                    address: quote.address,
+                    sats: quote.depositSats,
+                    satsPerVByte: UInt64(quote.satsPerVbyte)
+                )
+            }
+            await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
+                txid: result.txId,
+                address: quote.address,
+                amount: quote.depositSats,
+                fee: result.miningFeeSats,
+                feeRate: UInt32(clamping: result.feeRate),
+                isTransfer: true,
+                walletId: walletId
+            )
+            hwSend.completeBroadcast()
+            SparkManager.shared.onDepositBroadcast(txid: result.txId, amountSats: quote.depositSats)
+            flow.onBroadcast(txid: result.txId)
+            Logger.info("Funded Spark wallet with \(quote.depositSats) sats from hardware wallet in \(result.txId)", context: "SpendingHwSign")
+            navigation.navigate(.spendingHwSigned)
+        } catch is CancellationError {
+            return
+        } catch is HwPassphraseError {
+            hwSend.requestPassphrase()
+        } catch let error as HwTransferError {
+            app.toast(error)
+        } catch {
+            showHardwareError(error)
         }
     }
 
@@ -184,6 +246,10 @@ struct SpendingHwSign: View {
     private func quoteToSign() async -> SparkTransferQuote? {
         guard let shown = flow.quote else { return nil }
         if hwSend.hasPendingBroadcast {
+            return shown
+        }
+        // A retained transaction's fee is fixed in its bytes, so today's fee must not hold up its Retry after a reopen.
+        if await hwSend.retainedSendStatus(address: shown.address, sats: shown.depositSats, hasIncomingRequest: false).retrySignedTx != nil {
             return shown
         }
         guard let fresh = await flow.refreshQuote(wallet: wallet, feeEstimatesManager: feeEstimatesManager, hwWalletManager: hwWalletManager)
