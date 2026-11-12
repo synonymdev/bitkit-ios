@@ -72,6 +72,12 @@ extension AppViewModel {
 }
 
 /// Where a transfer to spending stands once its deposit is broadcast.
+private struct KeptClaim {
+    var state: SparkClaimState
+    var isFeeApproved: Bool
+    var hasWaited: Bool
+}
+
 enum SparkClaimState: Equatable {
     /// Instant was chosen and Spark has not listed the deposit yet.
     case looking
@@ -187,6 +193,8 @@ final class SparkTransferFlow {
     @ObservationIgnored private var approved: (ceilingSats: UInt64, speed: SparkTransferSpeed)?
     @ObservationIgnored private var approvals: [UUID: (ceilingSats: UInt64, speed: SparkTransferSpeed)] = [:]
     @ObservationIgnored private var watchTasks: [String: Task<Void, Never>] = [:]
+    /// The claim of each deposit not on screen, by lowercased txid, so the banner reopens it at its step and fee choice.
+    @ObservationIgnored private var keptClaims: [String: KeptClaim] = [:]
     @ObservationIgnored private var quoteRequestId = 0
     /// The mining fee a refused fixed-amount funding needed, which this transfer's quotes show at least.
     @ObservationIgnored private(set) var fixedFeeFloorSats: UInt64?
@@ -216,6 +224,7 @@ final class SparkTransferFlow {
             quote = nil
             fixedFeeFloorSats = nil
             // A funding followed for the earlier transfer never stands in for this one's swipe.
+            keepCurrentClaim()
             txid = nil
         }
         self.amountSats = amountSats
@@ -227,6 +236,7 @@ final class SparkTransferFlow {
     /// A new transfer after a broadcast one starts from Instant with nothing priced; the earlier claim goes on.
     func beginIfBroadcast() {
         guard txid != nil else { return }
+        keepCurrentClaim()
         txid = nil
         amountSats = 0
         isMaxAmount = false
@@ -309,6 +319,9 @@ final class SparkTransferFlow {
 
     /// Records the broadcast deposit and starts its claim for the chosen speed.
     func onBroadcast(txid: String, ceilingSats: UInt64? = nil) {
+        if self.txid != txid {
+            keepCurrentClaim()
+        }
         self.txid = txid
         ceilings[txid] = ceilingSats ?? quote?.claimFees.instantMaxSats ?? 0
         offers[txid] = nil
@@ -372,10 +385,12 @@ final class SparkTransferFlow {
     /// follow, as after a relaunch, is added by Spark at 3 confirmations.
     func showDeposit(txid: String) {
         guard self.txid?.caseInsensitiveCompare(txid) != .orderedSame else { return }
+        keepCurrentClaim()
+        let kept = keptClaims.removeValue(forKey: txid.lowercased())
         self.txid = txid
-        claimState = .later
-        isFeeApproved = false
-        hasWaited = false
+        claimState = kept?.state ?? .later
+        isFeeApproved = kept?.isFeeApproved ?? false
+        hasWaited = kept?.hasWaited ?? false
     }
 
     /// Ends the transfer on screen once Spark lists its deposit as claimed, whatever the speed, so Later or Wait
@@ -444,8 +459,17 @@ final class SparkTransferFlow {
 
     /// Shows a claim's progress only while its deposit is the transfer on screen.
     private func setClaimState(_ state: SparkClaimState, for txid: String) {
-        guard !Task.isCancelled, self.txid == txid else { return }
+        guard !Task.isCancelled else { return }
+        guard self.txid == txid else {
+            keptClaims[txid.lowercased()]?.state = state
+            return
+        }
         claimState = state
+    }
+
+    private func keepCurrentClaim() {
+        guard let txid else { return }
+        keptClaims[txid.lowercased()] = KeptClaim(state: claimState, isFeeApproved: isFeeApproved, hasWaited: hasWaited)
     }
 
     private func pollDeposit(txid: String) async {

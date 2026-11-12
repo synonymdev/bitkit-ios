@@ -282,6 +282,22 @@ final class SparkTransferFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testTheTransferBannerReopensARepricedDepositAfterAnotherTransferBegan() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 1500), choice(earlyFee: 1500)], claims: [.claimed])
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 1500))
+
+        flow.beginIfBroadcast()
+        flow.showDeposit(txid: "txid")
+
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 1500), "The banner lost the pending fee decision")
+        flow.payRepriced()
+        await flow.waitForClaim()
+        XCTAssertEqual(flow.claimState, .added)
+    }
+
+    @MainActor
     func testTheTransferBannerReopensAWaitedDepositAtTheNormalSpeedOnTheLastStep() {
         let flow = SparkTransferFlow(amountSats: 100_000, speed: .later, quote: quote)
         flow.onBroadcast(txid: "txid")
