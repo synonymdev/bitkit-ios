@@ -160,15 +160,19 @@ class PubkyProfileManager: ObservableObject {
     }
 
     init(
-        remoteProfileResolver: @escaping RemoteProfileResolver = { try await PubkyProfileManager.resolveRemoteProfile(publicKey: $0) },
+        remoteProfileResolver: @escaping RemoteProfileResolver = { try await PubkyAppProfileStore.shared.load(publicKey: $0) },
         profilePublisher: @escaping ProfilePublisher = {
-            try await PubkyService.publishPaykitProfile($0.toPaykitProfile(), expectedIdentity: $1)
+            try await PubkyAppProfileStore.shared.save($0, expectedIdentity: $1)
         },
         avatarUploader: @escaping AvatarUploader = {
-            try await PubkyService.uploadProfileAvatar(bytes: $0, contentType: "image/jpeg", expectedIdentity: $1)
+            try await PubkyAppProfileStore.shared.uploadAvatar($0, expectedIdentity: $1)
         },
         profileDeleter: @escaping ProfileDeleter = {
-            try await PubkyService.deletePaykitProfile(expectedIdentity: $0)
+            // A Ring identity's profile belongs to Ring, so unlinking it leaves its pubky.app profile in place.
+            try await PubkyAppProfileStore.shared.deleteProfile(
+                expectedIdentity: $0,
+                keepPubkyAppProfile: PubkyProfileManager.isRingAdopted(publicKey: $0)
+            )
         }
     ) {
         self.remoteProfileResolver = remoteProfileResolver
@@ -447,6 +451,14 @@ class PubkyProfileManager: ObservableObject {
         return try await avatarUploader(imageData, expectedIdentity)
     }
 
+    /// Upload a contact's avatar to Bitkit's own Paykit blob storage, which contact edits keep using. Returns the `pubky://`
+    /// URI, and writes nothing unless `expectedIdentity` is still signed in when it runs.
+    func uploadContactAvatar(image: UIImage, expectedIdentity: String) async throws -> String {
+        _ = try activeSessionSecret()
+        let imageData = try compressAvatar(image)
+        return try await PubkyService.uploadProfileAvatar(bytes: imageData, contentType: "image/jpeg", expectedIdentity: expectedIdentity)
+    }
+
     private func compressAvatar(_ image: UIImage, maxSize: CGFloat = 400) throws -> Data {
         // Resize to max dimensions
         let scale = min(maxSize / image.size.width, maxSize / image.size.height, 1.0)
@@ -472,6 +484,7 @@ class PubkyProfileManager: ObservableObject {
         links: [PubkyProfileLink],
         tags: [String] = [],
         existingImageUrl: String? = nil,
+        baseRevision: String? = nil,
         avatarImage: UIImage? = nil,
         loadStoredSecretKey: () async throws -> String? = {
             await Task.detached { PubkyProfileManager.activeSecretKeyHex() }.value
@@ -487,6 +500,7 @@ class PubkyProfileManager: ObservableObject {
                 links: links,
                 tags: tags,
                 existingImageUrl: existingImageUrl,
+                baseRevision: baseRevision,
                 avatarImage: avatarImage
             )
             return
@@ -521,6 +535,7 @@ class PubkyProfileManager: ObservableObject {
                     links: links,
                     tags: tags,
                     existingImageUrl: existingImageUrl,
+                    baseRevision: baseRevision,
                     avatarImage: avatarImage
                 )
             },
@@ -739,6 +754,7 @@ class PubkyProfileManager: ObservableObject {
         links: [PubkyProfileLink],
         tags: [String],
         existingImageUrl: String?,
+        baseRevision: String?,
         avatarImage: UIImage?
     ) async throws {
         var avatarUri: String?
@@ -747,10 +763,22 @@ class PubkyProfileManager: ObservableObject {
         }
         let imageUrl = Self.resolvedImageUrl(newImageUrl: avatarUri, existingImageUrl: existingImageUrl)
 
-        try await writeProfile(name: name, bio: bio, imageUrl: imageUrl, links: links, tags: tags)
+        // A profile whose only miss is its tags is created all the same; its tags can be added from Profile.
+        let (savedProfile, tagsNotSavedAt) = try await writeProfile(
+            name: name,
+            bio: bio,
+            imageUrl: imageUrl,
+            links: links,
+            tags: tags,
+            baseRevision: baseRevision,
+            expectedIdentity: publicKey
+        )
+        if tagsNotSavedAt != nil {
+            Logger.warn("Created the profile without its tags", context: "PubkyProfileManager")
+        }
         Self.notifyAppStateBackupChanged()
 
-        let createdProfile = PubkyProfile(
+        let createdProfile = savedProfile ?? PubkyProfile(
             publicKey: publicKey,
             name: name,
             bio: bio,
@@ -879,11 +907,22 @@ class PubkyProfileManager: ObservableObject {
         bio: String,
         links: [PubkyProfileLink],
         tags: [String] = [],
-        avatarImage: UIImage? = nil
+        avatarImage: UIImage? = nil,
+        baseRevision: String? = nil,
+        baseTagsUnread: Bool = false
     ) async throws -> Bool {
         guard let session = currentSession else { return false }
         _ = try activeSessionSecret()
-        return try await saveProfileEdit(name: name, bio: bio, links: links, tags: tags, avatarImage: avatarImage, session: session)
+        return try await saveProfileEdit(
+            name: name,
+            bio: bio,
+            links: links,
+            tags: tags,
+            avatarImage: avatarImage,
+            baseRevision: baseRevision,
+            baseTagsUnread: baseTagsUnread,
+            session: session
+        )
     }
 
     /// Starting the edit drops every profile read that started before it, ahead of the avatar upload, so a refresh that finds
@@ -899,6 +938,8 @@ class PubkyProfileManager: ObservableObject {
         links: [PubkyProfileLink],
         tags: [String],
         avatarImage: UIImage?,
+        baseRevision: String?,
+        baseTagsUnread: Bool,
         session: SignedInSession
     ) async throws -> Bool {
         if profileReadAwaitingSaves?.session != session {
@@ -913,6 +954,8 @@ class PubkyProfileManager: ObservableObject {
                 links: links,
                 tags: tags,
                 avatarImage: avatarImage,
+                baseRevision: baseRevision,
+                baseTagsUnread: baseTagsUnread,
                 session: session
             )
             profileSavesInFlight -= 1
@@ -930,6 +973,8 @@ class PubkyProfileManager: ObservableObject {
         links: [PubkyProfileLink],
         tags: [String],
         avatarImage: UIImage?,
+        baseRevision: String?,
+        baseTagsUnread: Bool,
         session: SignedInSession
     ) async throws -> Bool {
         var newImageUrl: String?
@@ -948,7 +993,16 @@ class PubkyProfileManager: ObservableObject {
                 return false
             }
         }
-        return try await publishProfileEdit(name: name, bio: bio, links: links, tags: tags, newImageUrl: newImageUrl, session: session)
+        return try await publishProfileEdit(
+            name: name,
+            bio: bio,
+            links: links,
+            tags: tags,
+            newImageUrl: newImageUrl,
+            baseRevision: baseRevision,
+            baseTagsUnread: baseTagsUnread,
+            session: session
+        )
     }
 
     /// A published profile ends any pending setup. The SDK publishes only while the session's identity is still signed in,
@@ -960,17 +1014,23 @@ class PubkyProfileManager: ObservableObject {
         links: [PubkyProfileLink],
         tags: [String],
         newImageUrl: String?,
+        baseRevision: String?,
+        baseTagsUnread: Bool,
         session: SignedInSession
     ) async throws -> Bool {
         let resolvedImageUrl = Self.resolvedImageUrl(newImageUrl: newImageUrl, existingImageUrl: profile?.imageUrl)
 
+        let savedProfile: PubkyProfile?
+        let tagsNotSavedAt: String?
         do {
-            try await writeProfile(
+            (savedProfile, tagsNotSavedAt) = try await writeProfile(
                 name: name,
                 bio: bio,
                 imageUrl: resolvedImageUrl,
                 links: links,
                 tags: tags,
+                baseRevision: baseRevision,
+                baseTagsUnread: baseTagsUnread,
                 expectedIdentity: session.publicKey
             )
         } catch PubkyServiceError.identityChanged {
@@ -985,7 +1045,7 @@ class PubkyProfileManager: ObservableObject {
             return false
         }
 
-        let updatedProfile = PubkyProfile(
+        let updatedProfile = savedProfile ?? PubkyProfile(
             publicKey: session.publicKey,
             name: name,
             bio: bio,
@@ -996,6 +1056,10 @@ class PubkyProfileManager: ObservableObject {
         )
         commitProfile(updatedProfile)
         setProfileSetupPending(false)
+        // The other fields are on pubky.app, so the screen shows them and a retry starts from their revision.
+        if let tagsNotSavedAt {
+            throw PubkyAppProfileError.tagsNotSaved(revision: tagsNotSavedAt)
+        }
         return true
     }
 
@@ -1068,20 +1132,32 @@ class PubkyProfileManager: ObservableObject {
         imageUrl: String?,
         links: [PubkyProfileLink],
         tags: [String] = [],
+        baseRevision: String? = nil,
+        baseTagsUnread: Bool = false,
         expectedIdentity: String? = nil
-    ) async throws {
-        let profileData = PubkyProfileData(
+    ) async throws -> (profile: PubkyProfile?, tagsNotSavedAt: String?) {
+        var profileData = PubkyProfileData(
             name: name,
             bio: bio,
             image: imageUrl,
             links: links.map { PubkyProfileData.Link(label: $0.label, url: $0.url) },
             tags: tags
         )
+        profileData.baseRevision = baseRevision
+        profileData.baseTagsUnread = baseTagsUnread
+        let saveId = UUID()
+        profileData.saveId = saveId
 
         let publish = profilePublisher
-        try await Task.detached {
-            try await publish(profileData, expectedIdentity)
-        }.value
+        do {
+            try await Task.detached {
+                try await publish(profileData, expectedIdentity)
+            }.value
+        } catch let PubkyAppProfileError.tagsNotSaved(revision) {
+            // The other fields are on pubky.app; the caller decides what that means for its flow.
+            return await (PubkyAppProfileStore.shared.savedProfile(saveId: saveId), revision)
+        }
+        return await (PubkyAppProfileStore.shared.savedProfile(saveId: saveId), nil)
     }
 
     private func discardAbandonedSession() async {
@@ -1156,7 +1232,16 @@ class PubkyProfileManager: ObservableObject {
             avatarImage: UIImage? = nil
         ) async throws -> Bool {
             guard let session = currentSession else { return false }
-            return try await saveProfileEdit(name: name, bio: bio, links: links, tags: tags, avatarImage: avatarImage, session: session)
+            return try await saveProfileEdit(
+                name: name,
+                bio: bio,
+                links: links,
+                tags: tags,
+                avatarImage: avatarImage,
+                baseRevision: profile?.revision,
+                baseTagsUnread: profile?.tagsUnread ?? false,
+                session: session
+            )
         }
 
         func clearAuthenticatedStateForTesting() {
@@ -1188,6 +1273,15 @@ class PubkyProfileManager: ObservableObject {
                 readOnlyProfile = nil
                 cacheProfileMetadata(loadedProfile)
             }
+        } catch PubkyServiceError.profileNotFound {
+            // A profile deleted on pubky.app is set up again rather than left unreachable.
+            guard publicKey == pk, profileWriteGeneration == read.generation else { return }
+            Logger.info("Profile no longer exists, starting profile setup", context: "PubkyProfileManager")
+            profile = nil
+            if PubkyPublicKeyFormat.matches(cachedProfileOwner, pk) {
+                clearCachedProfileMetadata()
+            }
+            setProfileSetupPending(true)
         } catch {
             Logger.error("Failed to load profile: \(error)", context: "PubkyProfileManager")
         }
@@ -1762,6 +1856,10 @@ class PubkyProfileManager: ObservableObject {
 
     /// The signed-in pubky is Pubky Ring's, adopted through the shared keychain, so removing it here only unlinks it.
     var isRingAdoptedIdentity: Bool {
+        Self.isRingAdopted(publicKey: publicKey)
+    }
+
+    nonisolated static func isRingAdopted(publicKey: String?) -> Bool {
         guard let adopted = AdoptedPubkyReference.current, adopted.sourceApp == SharedPubkyKeychain.ringSourceApp else {
             return false
         }

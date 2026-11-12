@@ -600,12 +600,95 @@ final class PaymentNavigationHelperTests: XCTestCase {
         return app
     }
 
+    func testEmbeddedSubscriptionRetryRestoresSelectedRailAmount() throws {
+        let address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"
+        let onchain = PublicPaykitService.onchainMethodId(for: address)
+        let usdt = try PaykitUsdt.endpoint(address: "0x1111111111111111111111111111111111111111")
+        let period = PaykitBillingPeriod(startsAt: Date().addingTimeInterval(-60), endsAt: Date().addingTimeInterval(86400))
+        for method in [PublicPaykitService.MethodId.bitcoinLightningBolt11, .bitcoinLightningLnurl, onchain, .usdtArbitrum] {
+            let request = try incomingPaymentRequest(
+                endpointIdentifier: method.rawValue,
+                amount: PaymentRequestAmount(value: "2.50", asset: "usd"),
+                conversion: .fixed(rates: [ConversionRate(asset: "btc-lightning", value: "0.00001"),
+                                           ConversionRate(asset: "btc-regtest", value: "0.00002"),
+                                           ConversionRate(asset: "usdt", value: "1")]),
+                billingPeriod: period
+            )
+            let app = appWithInvoice(paymentHash: "retry", amountSatoshis: 0)
+            app.scannedOnchainInvoice = OnChainInvoice(address: address, amountSatoshis: 0, label: nil, message: nil, params: nil)
+            if method == .bitcoinLightningLnurl {
+                app.lnurlPayData = LnurlPayData(uri: "https://example.com/pay", callback: "https://example.com/callback",
+                                                minSendable: 1000, maxSendable: 100_000_000, metadataStr: "[]",
+                                                commentAllowed: nil, allowsNostr: false, nostrPubkey: nil)
+            }
+            app.selectedWalletToPayFrom = method == onchain ? .onchain : .lightning
+            app.paykitUsesUsdt = method == .usdtArbitrum
+            let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request,
+                                                isInitialSubscriptionPayment: true, endpoints: [usdt])
+            app.contactPaymentContext = context
+            XCTAssertTrue(context.requiresAssetSelection)
+            let flow = SendPresentationState(initialRoute: .confirm)
+            let wallet = WalletViewModel()
+            // The retry has reset the wallet; scanning has bound the selected rail's terms.
+            app.paykitPaymentTerms = try request.payment(using: method)
+            app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
+            try flow.prepareEmbeddedRetry(context: context, app: app, wallet: wallet)
+            let expectedRoute: SendRoute = switch method {
+            case .usdtArbitrum: .usdt(recipient: usdt.value, amount: "2.5")
+            case .bitcoinLightningLnurl: .lnurlPayConfirm
+            default: .confirm
+            }
+            XCTAssertEqual(flow.pendingEmbeddedRetryRoute, expectedRoute, method.rawValue)
+            XCTAssertEqual(wallet.sendAmountSats, method == .usdtArbitrum ? nil : (method == onchain ? 5000 : 2500), method.rawValue)
+
+            wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+            app.paykitPaymentTerms = nil
+            app.paykitReviewedAmount = nil
+            if method != .usdtArbitrum {
+                try flow.prepareEmbeddedRetry(context: context, app: app, wallet: wallet)
+                XCTAssertEqual(flow.pendingEmbeddedRetryRoute, .amount, "An unbound quote must still be reviewed")
+                XCTAssertNil(wallet.sendAmountSats)
+            }
+        }
+    }
+
+    func testEmbeddedSubscriptionRetryKeepsTheBoundPeriodQuote() throws {
+        let now = Date()
+        let period = PaykitBillingPeriod(startsAt: now.addingTimeInterval(-60), endsAt: now.addingTimeInterval(86400))
+        let first = PaymentConversionQuoteRecord(eventId: "first", billingPeriod: period.sdkValue,
+                                                 rates: [ConversionRate(asset: "btc", value: "0.00001")],
+                                                 validFrom: period.sdkValue.startsAt, expiresAt: period.sdkValue.endsAt, outboundStatus: nil)
+        var newer = first
+        newer.eventId = "newer"
+        newer.rates = [ConversionRate(asset: "btc", value: "0.00002")]
+        let request = try incomingPaymentRequest(endpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+                                                 amount: PaymentRequestAmount(value: "2.50", asset: "usd"), conversion: .perPeriod,
+                                                 billingPeriod: period, quotes: [first, newer])
+        let app = appWithInvoice(paymentHash: "period-retry", amountSatoshis: 0)
+        app.selectedWalletToPayFrom = .lightning
+        let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request, isInitialSubscriptionPayment: true)
+        app.contactPaymentContext = context
+        app.paykitPaymentTerms = try request.payment(using: .bitcoinLightningBolt11, quoteId: "first")
+        app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
+        let wallet = WalletViewModel()
+        let flow = SendPresentationState(initialRoute: .confirm)
+
+        try flow.prepareEmbeddedRetry(context: context, app: app, wallet: wallet)
+
+        XCTAssertEqual(flow.pendingEmbeddedRetryRoute, .confirm)
+        XCTAssertEqual(wallet.sendAmountSats, 2500)
+        XCTAssertEqual(app.paykitPaymentTerms?.quoteId, "first")
+        XCTAssertEqual(app.paykitReviewedAmount?.atomic, 2500)
+    }
+
     private func incomingPaymentRequest(
         endpointIdentifier: String,
         additionalEndpointIdentifiers: [String] = [],
         amount: PaymentRequestAmount = PaymentRequestAmount(value: "0.00001", asset: "btc"),
         conversion: PaymentConversion? = nil,
-        deadline: PaymentDeadline? = nil
+        deadline: PaymentDeadline? = nil,
+        billingPeriod: PaykitBillingPeriod? = nil,
+        quotes: [PaymentConversionQuoteRecord] = []
     ) throws -> PaykitPaymentRequest {
         let record = try PaymentRequestRecord(
             counterparty: "pubkycontact",
@@ -624,7 +707,8 @@ final class PaymentNavigationHelperTests: XCTestCase {
                 amount: amount,
                 paymentReference: PaymentReference(text: "invoice-123"),
                 proposalExpiresAt: nil,
-                recurrence: nil,
+                recurrence: billingPeriod.map { PaymentRequestRecurrence(every: 1, unit: "day", startsAt: $0.sdkValue.startsAt,
+                                                                         anchor: $0.sdkValue.startsAt, endsAt: nil) },
                 acceptedPaymentEndpointIdentifiers: [endpointIdentifier] + additionalEndpointIdentifiers,
                 paymentEndpoints: nil,
                 requiredAppId: "bitkit",
@@ -639,7 +723,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
             rejectedOutboundStatus: nil,
             canceledEventId: nil,
             canceledOutboundStatus: nil,
-            conversionQuotes: [],
+            conversionQuotes: quotes,
             paymentProofs: [],
             lastStreamItemId: 1,
             lastOutboundMessageId: nil,
@@ -647,6 +731,10 @@ final class PaymentNavigationHelperTests: XCTestCase {
             lastEventAt: "2027-01-15T08:00:00Z",
             invalidReason: nil
         )
+        if let billingPeriod {
+            let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+            return PaykitPaymentRequest(subscription: subscription, billingPeriod: billingPeriod, lifecycleState: .accepted)
+        }
         return try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date(timeIntervalSince1970: 0)))
     }
 

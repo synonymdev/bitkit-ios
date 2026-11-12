@@ -191,6 +191,22 @@ final class SendPresentationState {
     }
 
     @MainActor
+    func prepareEmbeddedRetry(context: ContactPaymentContext, app: AppViewModel, wallet: WalletViewModel) throws {
+        guard let request = context.incomingPaymentRequest else { throw PaykitPaymentRequestError.requestUnavailable }
+        if !context.requiresAssetSelection || app.paykitPaymentTerms != nil {
+            let payment = try request.payment(using: app.paykitPaymentMethod, quoteId: app.paykitPaymentTerms?.quoteId)
+            wallet.sendAmountSats = payment.amount.asset == .btc ? payment.amount.atomic : nil
+        }
+        if app.paykitUsesUsdt, let terms = context.initialUsdtSubscriptionPayment(), let recipient = context.endpoints.first?.value {
+            app.paykitPaymentTerms = terms
+            app.paykitReviewedAmount = terms.amount
+            pendingEmbeddedRetryRoute = .usdt(recipient: recipient, amount: terms.amount.value)
+        } else {
+            pendingEmbeddedRetryRoute = PaymentNavigationHelper.requestConfirmationRoute(app: app) ?? .amount
+        }
+    }
+
+    @MainActor
     private func returnToRequestAmountReview(app: AppViewModel) {
         app.paykitPaymentTerms = nil
         app.paykitReviewedAmount = nil
@@ -1665,20 +1681,11 @@ struct SendSheet: View {
             return
         }
 
-        if !context.requiresAssetSelection {
-            do {
-                wallet.sendAmountSats = try request.payment(using: app.paykitPaymentMethod).amount.atomic
-            } catch {
-                showEmbeddedInitialPaymentFailure(request, error: error, context: context)
-                return
-            }
-        }
-        if app.paykitUsesUsdt, let terms = context.initialUsdtSubscriptionPayment(), let recipient = context.endpoints.first?.value {
-            app.paykitPaymentTerms = terms
-            app.paykitReviewedAmount = terms.amount
-            flow.pendingEmbeddedRetryRoute = .usdt(recipient: recipient, amount: terms.amount.value)
-        } else {
-            flow.pendingEmbeddedRetryRoute = PaymentNavigationHelper.requestConfirmationRoute(app: app) ?? .amount
+        do {
+            try flow.prepareEmbeddedRetry(context: context, app: app, wallet: wallet)
+        } catch {
+            showEmbeddedInitialPaymentFailure(request, error: error, context: context)
+            return
         }
         flow.hasValidatedAfterSync = false
         guard !shouldShowSyncOverlay else { return }
