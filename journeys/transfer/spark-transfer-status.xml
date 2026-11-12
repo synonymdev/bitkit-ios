@@ -1,0 +1,22 @@
+<journey name="spark transfer status">
+  <description>
+    Verifies the transfer status screen after a transfer to spending through Spark, against the "Funds In Transfer
+    (spark)" Figma section: three steps (Processing Payment, Payment Successful, then what the last step is doing),
+    the transfer arrows in dashed rings while the transfer runs, coins while the fast transfer is in question, and a
+    check once the funds reach spending.
+
+    Precondition: as in spark-transfer-to-spending.xml (a build whose Spark reads Bitkit's chain, a wallet with a
+    positive on-chain Savings balance and no channels). Start on the confirm screen (testTag "SpendingConfirm") of a
+    transfer to spending. Which of the fee-changed and fast-unavailable states shows depends on the provider's quote
+    after the broadcast; the unit tests in SparkFundingRecoveryTests cover every state's frame.
+  </description>
+  <actions>
+    <action>With "Instant" (testTag "SpendingConfirmInstant") selected, swipe to confirm and verify the nav title "Transfer Funds", the headline "Funds in transfer", the text (testTag "SettingUpText") "Please wait, your funds transfer is in progress. This should take a few minutes." and the transfer animation (testTag "LightningSettingUp")</action>
+    <action>Verify step 1 is active and the label under the steps reads "Processing Payment", with "Continue Using Bitkit" (testTag "TransferSuccess-button") at the bottom</action>
+    <action>Once Spark sees the deposit, verify step 1 shows a check and the label reads "Payment Successful"; then, while Spark adds it, steps 1 and 2 show checks and the label reads "Adding To Spending Balance"</action>
+    <action>If the fast transfer fee rose, verify the headline "Fast transfer fee changed", the text "The fast transfer fee is now ₿ …. Approve to access your funds quickly, or wait ±30 min.", the coins animation, the label "Fast Transfer Fee Changed" and the buttons "Wait" (testTag "SparkDepositWait") and "Approve" (testTag "SparkDepositPay") side by side</action>
+    <action>If the fast transfer is unavailable, verify the headline "Fast transfer unavailable", the text ending "about 30 minutes.", the coins animation and the label "Using Normal Transfer Speed"</action>
+    <action>Once the deposit reaches the spending balance, verify the nav title "Transfer Successful", the headline "Funds moved to spending", the text "Your funds have been transferred and your spending balance is ready to use.", the check (testTag "TransferSuccess") and the button "Awesome!" (testTag "TransferSuccess-button"); tap it and verify the wallet home shows</action>
+    <action>Start another transfer, select "Later" (testTag "SpendingConfirmLater"), swipe to confirm and verify the text ends "about 30 minutes." with step 1 active and the label "Processing Payment"</action>
+  </actions>
+</journey>

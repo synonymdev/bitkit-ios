@@ -56,40 +56,42 @@ final class SparkFundingRecoveryTests: XCTestCase {
         XCTAssertTrue(SparkFundingRecovery.pendingScreenGoesHome(confirmScreenOpen: false))
     }
 
-    func testSettingUpShowsLaterWheneverTheTextSaysItWaitsForConfirmations() {
-        for state in [SparkClaimState.later, .unavailable, .notSeen] {
-            XCTAssertTrue(SettingUpView.showsLater(speed: .instant, state: state), "\(state)")
-        }
-        for state in [SparkClaimState.looking, .claiming, .adding, .added, .repriced(feeSats: 1)] {
-            XCTAssertFalse(SettingUpView.showsLater(speed: .instant, state: state), "\(state)")
-        }
-        XCTAssertTrue(SettingUpView.showsLater(speed: .later, state: .looking))
-    }
-
-    func testSettingUpShowsAStepForEveryStateStillInProgress() {
-        let states: [SparkClaimState] = [.looking, .claiming, .adding, .repriced(feeSats: 1), .unavailable, .later, .notSeen]
-        for state in states {
-            XCTAssertFalse(state.isDone, "\(state)")
-            XCTAssertLessThan(SettingUpView.currentStep(for: state), 3, "\(state) points past the last step")
-        }
-        XCTAssertEqual(SettingUpView.currentStep(for: .adding), 2, "Adding is the last step, Spark adding it")
-    }
-
-    /// The same step as Android's `SettingUpScreen` for every state: a deposit Spark has not seen stays on
-    /// Payment Successful, whatever the speed.
-    func testSettingUpStepMatchesAndroidForEveryState() {
-        let expected: [(SparkClaimState, Int)] = [
-            (.looking, 1),
-            (.notSeen, 1),
-            (.later, 1),
-            (.claiming, 2),
-            (.adding, 2),
-            (.repriced(feeSats: 1), 2),
-            (.unavailable, 2),
-            (.added, 3),
+    /// Every deposit state shows one frame of the Funds In Transfer (spark) design, at the step that frame shows.
+    func testSettingUpShowsTheDesignFrameForEveryState() {
+        let expected: [(SparkClaimState, SparkTransferSpeed, SettingUpStage, Int)] = [
+            (.looking, .instant, .processing(normalSpeed: false), 0),
+            (.later, .later, .processing(normalSpeed: true), 0),
+            (.notSeen, .instant, .processing(normalSpeed: true), 0),
+            (.claiming, .instant, .received, 1),
+            (.repriced(feeSats: 2134), .instant, .feeChanged(feeSats: 2134), 2),
+            (.unavailable, .instant, .fastUnavailable, 2),
+            (.later, .instant, .adding(normalSpeed: true), 2),
+            (.adding, .instant, .adding(normalSpeed: false), 2),
+            (.added, .instant, .done, 2),
         ]
-        for (state, step) in expected {
-            XCTAssertEqual(SettingUpView.currentStep(for: state), step, "\(state)")
+        for (state, speed, stage, step) in expected {
+            let shown = SettingUpStage(state: state, speed: speed)
+            XCTAssertEqual(shown, stage, "\(state) at \(speed)")
+            XCTAssertEqual(shown.currentStep, step, "\(state) at \(speed)")
+            XCTAssertEqual(shown.steps.count, 3, "\(state) shows three steps")
         }
+    }
+
+    func testApprovingAChangedFeeNeverStepsBackToPaymentSuccessful() {
+        XCTAssertEqual(SettingUpStage(state: .claiming, speed: .instant, approvedFee: true), .adding(normalSpeed: false))
+    }
+
+    func testSettingUpSaysAboutThirtyMinutesOnlyAtNormalSpeed() {
+        let normal: [SettingUpStage] = [.processing(normalSpeed: true), .fastUnavailable, .adding(normalSpeed: true)]
+        let fast: [SettingUpStage] = [.processing(normalSpeed: false), .received, .adding(normalSpeed: false)]
+        normal.forEach { XCTAssertTrue($0.isNormalSpeed, "\($0)") }
+        fast.forEach { XCTAssertFalse($0.isNormalSpeed, "\($0)") }
+    }
+
+    func testSettingUpLabelsTheLastStepByWhatItIsDoing() {
+        XCTAssertEqual(SettingUpStage.feeChanged(feeSats: 1).steps.last, t("lightning__setting_up__step_fee_changed"))
+        XCTAssertEqual(SettingUpStage.fastUnavailable.steps.last, t("lightning__setting_up__step_normal_speed"))
+        XCTAssertEqual(SettingUpStage.adding(normalSpeed: true).steps.last, t("lightning__setting_up__step_normal_speed"))
+        XCTAssertEqual(SettingUpStage.adding(normalSpeed: false).steps.last, t("lightning__setting_up_step_spark"))
     }
 }
