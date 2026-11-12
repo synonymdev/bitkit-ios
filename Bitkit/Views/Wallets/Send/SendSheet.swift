@@ -335,7 +335,7 @@ struct SendSheet: View {
     private var sparkCanPayScannedInvoice: Bool {
         let spark = SparkManager.shared
         let amountSats = wallet.sendAmountSats ?? app.scannedLightningInvoice?.amountSatoshis ?? 0
-        return Self.sparkCanPay(amountSats: amountSats, isReady: spark.isReady, balanceSats: spark.balanceSats)
+        return !spark.isExiting && Self.sparkCanPay(amountSats: amountSats, isReady: spark.isReady, balanceSats: spark.balanceSats)
     }
 
     /// Leaves room for Spark's fee, as `LightningService.canSend` does.

@@ -521,6 +521,25 @@ final class PaykitRouteTests: XCTestCase {
     }
 
     @MainActor
+    func testAContactWithdrawalIsRefusedOnceAnExitHoldsSpark() async {
+        let spends = SparkSpends { true }
+        var steps: [String] = []
+        do {
+            _ = try await SparkManager.sendJournaledWithdrawal(
+                spends: spends,
+                send: { steps.append("sent") },
+                closeUnsent: { steps.append("closed") },
+                settleLater: { steps.append("settle later") }
+            )
+            XCTFail("A contact withdrawal went out while an exit held Spark")
+        } catch {
+            XCTAssertTrue(error is SparkWithdrawalNotSent, "Nothing left, so the allowance attempt fails instead of staying unknown")
+        }
+        XCTAssertEqual(steps, ["closed"], "The exit's leaves stay unspent and the journal closes at once")
+        XCTAssertEqual(spends.inFlight, 0)
+    }
+
+    @MainActor
     func testASecondContactWithdrawalIsRefusedWhileTheFirstPrepares() throws {
         snapshotAppDefaultsDomain()
         SparkManager.pendingContactWithdrawal = nil

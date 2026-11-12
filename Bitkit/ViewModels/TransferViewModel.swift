@@ -469,7 +469,7 @@ class TransferViewModel: ObservableObject {
         sparkFeeTask?.cancel()
         sparkFeeTask = nil
         isPricingSparkWithdrawal = false
-        guard sparkBalanceSats() > 0 else { return }
+        guard sparkBalanceSats() > 0, !SparkManager.shared.isExiting else { return }
         guard let confirmedFeeSats = confirmedSparkFeeSats, let address = sparkWithdrawAddress else {
             throw AppError(message: "lightning__spending_confirm__error_quote", debugMessage: "Spark withdrawal not priced")
         }
@@ -960,7 +960,8 @@ struct SavingsSelection: Equatable {
     }
 
     /// Without a pick (`selectedChannelIds` nil) every ready channel moves. Spark moves when picked and holding a balance
-    /// its withdrawal fee leaves something of, so one too small to move never holds the channels back.
+    /// its withdrawal fee leaves something of, so one too small to move never holds the channels back. Its balance is 0
+    /// during an emergency exit.
     static func resolve(
         readyChannelIds: [String],
         selectedChannelIds: Set<String>?,

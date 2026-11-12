@@ -147,6 +147,9 @@ class LightningService: NodeLifecycleService {
     /// Node sends under way, so a listing that shows only an earlier failed attempt doesn't drop their hash.
     private var ldkSendsInFlight: Set<String> = []
     weak var channelFreeRail: ChannelFreeLightningRail?
+    /// The rail whose payments the duplicate-payment check reads, kept while an emergency exit takes Spark off
+    /// Lightning: an invoice Spark paid or is paying is never paid again over a channel.
+    weak var channelFreePaymentHistory: ChannelFreeLightningRail?
     var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
     var onchainTransactionReceived: (@Sendable (String) async -> Void)?
     typealias OnchainActivityCompletion = @MainActor () async -> Void
@@ -2240,7 +2243,8 @@ extension LightningService {
     /// here but isn't connected, or no sync has reached it yet, so a payment it may hold is never read as one it never
     /// made.
     func channelFreeRailPayments() async throws -> [ChannelFreeRailPayment] {
-        if let rail = channelFreeRail {
+        // During an emergency exit Spark is off the rail but still lists the payments it made.
+        if let rail = channelFreeRail ?? channelFreePaymentHistory {
             // A restored wallet fills its list on its first sync, so before a sync reaches Spark a missing send proves
             // nothing.
             guard await rail.hasSynced(after: nil) else { throw ChannelFreeRailUnavailable() }

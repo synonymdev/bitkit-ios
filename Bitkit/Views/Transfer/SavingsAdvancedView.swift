@@ -13,7 +13,7 @@ struct SavingsAdvancedView: View {
     }
 
     private var sparkSats: UInt64 {
-        SparkManager.shared.balanceSats
+        SparkManager.shared.isExiting ? 0 : SparkManager.shared.balanceSats
     }
 
     private var selection: SavingsSelection {

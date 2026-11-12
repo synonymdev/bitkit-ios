@@ -49,17 +49,32 @@ final class SparkManager: ChannelFreeLightningRail {
     private nonisolated static let depositClaimFeePpm: UInt32 = 2000
 
     private(set) var isReady = false
+    private(set) var walletIndex = 0
     /// What Spark read, which sends and withdrawals use.
     private(set) var balanceSats: UInt64 = 0
     /// The last balance shown, kept while Spark reads 0 after a failed withdrawal or a failed sync; display only.
     private(set) var keptBalanceSats: UInt64?
+    /// The kept balance when an exit started, shown again should the exit be cancelled.
+    @ObservationIgnored private var keptBeforeExit: UInt64?
     /// The balance Home and the Spark connection show.
     var shownBalanceSats: UInt64 {
         keptBalanceSats ?? balanceSats
     }
 
+    /// The balance Spending and its connections show: 0 during an emergency exit, whose amount shows in transfer to
+    /// savings instead.
+    var shownSpendingSats: UInt64 {
+        Self.shownSpendingSats(isExiting: isExiting, shownBalanceSats: shownBalanceSats)
+    }
+
+    nonisolated static func shownSpendingSats(isExiting: Bool, shownBalanceSats: UInt64) -> UInt64 {
+        isExiting ? 0 : shownBalanceSats
+    }
+
     /// Deposits seen on-chain that Spark claims into `balanceSats` after 3 confirmations.
     private(set) var pendingDepositSats: UInt64 = 0
+    /// Funds an emergency exit can still recover, as Spark reports them.
+    private(set) var recoverableFundsSats: UInt64 = 0
     /// On-chain deposits into Spark, pending ones first, for the Lightning Connections screens.
     private(set) var deposits: [SparkDeposit] = []
     private(set) var withdrawals: [SparkWithdrawal] = []
@@ -87,8 +102,24 @@ final class SparkManager: ChannelFreeLightningRail {
     @ObservationIgnored private var withdrewAllAt: UInt64?
     @ObservationIgnored private var listenerId: String?
     @ObservationIgnored private var connectTask: Task<Void, Error>?
+    /// A leaf optimization is running, as its events tell.
+    @ObservationIgnored private var isOptimizing = false
+    /// Sends and withdrawals past their exit check, which an exit starting waits for.
+    let spends = SparkSpends { SparkExitManager.shared.isExiting }
+    /// Waiting before an exit quote for value an interrupted leaf optimization still owes the wallet.
+    private(set) var isSettlingForExit = false
+    /// When a leaf optimization last moved without completing, so a counter-swap it left may still be unclaimed.
+    private nonisolated static let optimizationActivityKey = "sparkOptimizationActivityAt"
+    /// The SDK claims a counter-swap left by an interrupted optimization only after this long
+    /// (spark-wallet `COUNTER_SWAP_CLAIM_GRACE_PERIOD_SECS`), plus a margin for the round that created it.
+    static let counterSwapClaimGraceSeconds: TimeInterval = 300 + 30
+    /// The longest an exit waits for a running optimization before going ahead.
+    private static let optimizationWaitSeconds: TimeInterval = 120
     /// Bumped by `wipe`, so a connect that started before it disconnects instead of keeping the wiped wallet.
     @ObservationIgnored private var connectGeneration = 0
+    /// Set for the whole wipe: no connect, start or exit reconnect is admitted, so nothing brings the wiped wallet's
+    /// Spark identity back while its mnemonic still exists.
+    @ObservationIgnored private var isWiping = false
     /// The refresh in flight; callers during it wait for it, and it reads once more for them.
     @ObservationIgnored private var refreshTask: Task<Void, Error>?
     @ObservationIgnored private var refreshAgain = false
@@ -118,6 +149,204 @@ final class SparkManager: ChannelFreeLightningRail {
         sdk != nil
     }
 
+    /// An emergency exit is moving the Spark balance on-chain: Spark then neither sends nor receives, and its
+    /// balance counts as in transfer to savings.
+    var isExiting: Bool {
+        SparkExitManager.shared.isExiting
+    }
+
+    /// Takes Spark off the Lightning rail for an emergency exit, so no payment moves leaves the exit is spending.
+    func detachForExit() {
+        if LightningService.shared.channelFreeRail === self {
+            LightningService.shared.channelFreeRail = nil
+        }
+    }
+
+    /// Saves the kept balance as an exit starts, before a refresh reads Spark as exiting and drops it: a cancelled
+    /// exit shows it again.
+    func holdKeptBalanceForExit() {
+        keptBeforeExit = keptBalanceSats ?? keptBeforeExit
+        keptBalanceSats = nil
+    }
+
+    /// Connects Spark again so its leaf optimization follows whether an exit runs: off when one starts, back on
+    /// once it ends. An exit cancelled before it paid anything (`isCancel`) shows the kept balance again.
+    func reconnectForExit(isCancel: Bool = false) async {
+        guard let network = Self.sparkNetwork, !isWiping else { return }
+        if isExiting {
+            holdKeptBalanceForExit()
+        } else {
+            keptBalanceSats = Self.keptBalanceSats(afterExitKept: keptBeforeExit, read: balanceSats, isCancel: isCancel)
+                ?? keptBalanceSats
+            keptBeforeExit = nil
+        }
+        // A connect still running, such as the launch's, builds an SDK on the same storage: it ends first and is
+        // disconnected below, so no second SDK keeps running.
+        if let connecting = connectTask {
+            _ = try? await connecting.value
+        }
+        noteOptimizationCutShort()
+        if let sdk {
+            if let listenerId {
+                _ = await sdk.removeEventListener(id: listenerId)
+            }
+            try? await sdk.disconnect()
+        }
+        sdk = nil
+        listenerId = nil
+        do {
+            let generation = connectGeneration
+            let walletIndex = walletIndex
+            let connecting = Task { try await connect(walletIndex: walletIndex, network: network, generation: generation) }
+            connectTask = connecting
+            defer {
+                if connectTask == connecting {
+                    connectTask = nil
+                }
+            }
+            try await connecting.value
+            try await refresh()
+        } catch {
+            Logger.error("Failed to reconnect Spark for the exit: \(error)", context: "SparkManager")
+        }
+    }
+
+    /// Connects the Spark SDK alone for a background exit run, never the node: no refresh, no activity sync and no
+    /// Lightning rail. Returns nil when it does not connect within `timeout`; the connect keeps going, and a later
+    /// `start` picks it up.
+    /// `operation`'s result, or nil once `timeout` passes first. Returns at the timeout without waiting for `operation`,
+    /// which a task group would do; the operation carries on, unstructured, and its late result is dropped.
+    nonisolated static func firstOf<T: Sendable>(timeout: TimeInterval, _ operation: @escaping @Sendable () async -> T) async -> T? {
+        await withCheckedContinuation { continuation in
+            let resumed = SparkFirstResume()
+            Task {
+                let value = await operation()
+                if resumed.claim() {
+                    continuation.resume(returning: value)
+                }
+            }
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(max(0, timeout) * 1_000_000_000))
+                if resumed.claim() {
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
+    }
+
+    func connectForExit(walletIndex: Int, timeout: TimeInterval) async -> SparkExitRecovering? {
+        guard let network = Self.sparkNetwork else { return nil }
+        if sdk == nil {
+            self.walletIndex = walletIndex
+            if connectTask == nil {
+                let generation = connectGeneration
+                connectTask = Task { try await connect(walletIndex: walletIndex, network: network, generation: generation) }
+            }
+            let connecting = connectTask
+            // nil while still connecting at the timeout; the connect itself keeps running for `start`.
+            let didConnect: Bool? = await Self.firstOf(timeout: timeout) { await (try? connecting?.value) != nil }
+            // A finished connect is forgotten, so a failed one is tried again; one still running is kept for `start`.
+            if didConnect != nil {
+                connectTask = nil
+            }
+            guard didConnect == true else {
+                Logger.warn("Spark did not connect within \(Int(timeout))s for the exit", context: "SparkManager")
+                return nil
+            }
+        }
+        return exitRecovering
+    }
+
+    /// Waits until no leaf optimization runs and no counter-swap one left behind is still inside the SDK's claim
+    /// grace, then syncs, which claims it. An optimization swaps leaves with the operators; one cut short (by a
+    /// disconnect or the app closing) leaves its counter-swap unclaimed for 5 minutes, and a quote taken meanwhile
+    /// would leave that value out of the exit.
+    func settleForExit() async {
+        isSettlingForExit = true
+        defer { isSettlingForExit = false }
+        await waitForOptimization()
+        let activity = UserDefaults.standard.object(forKey: Self.optimizationActivityKey) as? TimeInterval
+        if let activity {
+            let wait = Self.counterSwapClaimGraceSeconds - Date().timeIntervalSince1970 + activity
+            if wait > 0 {
+                Logger.info("Waiting \(Int(wait))s for an interrupted Spark optimization before the exit quote", context: "SparkManager")
+                try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+            }
+        }
+        guard !Task.isCancelled, let sdk else { return }
+        do {
+            _ = try await sdk.syncWallet(request: SyncWalletRequest())
+            if activity != nil, !isOptimizing {
+                UserDefaults.standard.removeObject(forKey: Self.optimizationActivityKey)
+            }
+        } catch {
+            Logger.warn("Failed to sync Spark before the exit quote: \(error)", context: "SparkManager")
+        }
+        await refreshState()
+    }
+
+    /// Waits for a running leaf optimization to finish, for up to two minutes.
+    func waitForOptimization() async {
+        let deadline = Date().addingTimeInterval(Self.optimizationWaitSeconds)
+        while isOptimizing, !Task.isCancelled, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+    }
+
+    /// Waits for the sends and withdrawals that passed their exit check before the exit held Spark, for up to two
+    /// minutes, so the exit quotes the leaves they leave.
+    func holdSpendsForExit() async throws {
+        try await spends.holdForExit(timeout: Self.optimizationWaitSeconds)
+    }
+
+    func releaseSpendsHold() {
+        spends.release()
+    }
+
+    private func noteOptimization(_ event: AutoOptimizationEvent) {
+        switch event {
+        case .started, .roundCompleted:
+            isOptimizing = true
+            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.optimizationActivityKey)
+        case .cancelled, .failed:
+            isOptimizing = false
+            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.optimizationActivityKey)
+        case .completed, .skipped:
+            isOptimizing = false
+            UserDefaults.standard.removeObject(forKey: Self.optimizationActivityKey)
+        }
+    }
+
+    private func noteOptimizationCutShort() {
+        guard isOptimizing else { return }
+        isOptimizing = false
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.optimizationActivityKey)
+    }
+
+    /// The SDK calls of an emergency exit, or nil while Spark is not connected.
+    var exitRecovering: SparkExitRecovering? {
+        sdk.map(BreezSparkExitRecovering.init)
+    }
+
+    /// The fee rate an exit is built at: the fastest the SDK's chain service recommends, at least 1 sat/vB.
+    func exitFeeRate() async throws -> UInt64 {
+        try await max(1, requireSdk().recommendedFees().fastestFee)
+    }
+
+    /// The SDK's recommended rates for an exit's fee bump.
+    func exitNetworkFees() async throws -> SparkExitNetworkFees {
+        let fees = try await requireSdk().recommendedFees()
+        return SparkExitNetworkFees(fastest: max(1, fees.fastestFee), halfHour: max(1, fees.halfHourFee))
+    }
+
+    nonisolated static var exitNetwork: BreezSdkSpark.Network? {
+        switch Env.network {
+        case .bitcoin: .mainnet
+        case .regtest: .regtest
+        default: nil
+        }
+    }
+
     /// The exit data's generation while connected, nil while disconnected, so a backup can tell a change from observing
     /// that restarted while Spark stayed connected.
     var exitStateVersion: Int? {
@@ -145,19 +374,30 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     func start(walletIndex: Int) async {
-        guard let network = Self.sparkNetwork else { return }
+        guard let network = Self.sparkNetwork, !isWiping else { return }
+        self.walletIndex = walletIndex
+        SparkExitManager.shared.load(walletIndex: walletIndex)
         do {
             if sdk == nil {
                 if connectTask == nil {
                     let generation = connectGeneration
                     connectTask = Task { try await connect(walletIndex: walletIndex, network: network, generation: generation) }
                 }
-                try await connectTask?.value
-                connectTask = nil
+                let task = connectTask
+                // A reconnect may have replaced the task while this one was awaited: only the task it awaited is cleared.
+                defer {
+                    if connectTask == task {
+                        connectTask = nil
+                    }
+                }
+                try await task?.value
             }
             // Registered before the first refresh marks Spark ready, so Lightning calls never see it ready while they
-            // still go to LDK, even when that refresh or the activity sync fails.
-            LightningService.shared.channelFreeRail = self
+            // still go to LDK, even when that refresh or the activity sync fails. An emergency exit keeps it out.
+            LightningService.shared.channelFreePaymentHistory = self
+            if !isExiting {
+                LightningService.shared.channelFreeRail = self
+            }
             activitiesSynced = try await Self.startConnected(
                 activitiesSynced: activitiesSynced,
                 refresh: { try await refresh() },
@@ -169,7 +409,6 @@ final class SparkManager: ChannelFreeLightningRail {
             )
             await settleContactWithdrawal(allowClear: false)
         } catch {
-            connectTask = nil
             Logger.error("Failed to start Spark wallet: \(error)", context: "SparkManager")
         }
     }
@@ -197,11 +436,12 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     private func connect(walletIndex: Int, network: BreezSdkSpark.Network, generation: Int) async throws {
+        guard !isWiping else { throw CancellationError() }
         guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
             throw CustomServiceError.mnemonicNotFound
         }
         let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
-        let config = Self.sdkConfig(network: network, apiKey: Env.breezApiKey)
+        let config = Self.sdkConfig(network: network, apiKey: Env.breezApiKey, isExiting: isExiting)
         let storageDir = Env.sparkStorage(walletIndex: walletIndex)
         try FileManager.default.createDirectory(at: storageDir, withIntermediateDirectories: true)
         // What `BreezSdkSpark.connect` builds, plus our own chain service where Env names one.
@@ -212,7 +452,7 @@ final class SparkManager: ChannelFreeLightningRail {
         }
         syncedThisRun = false
         let connected = try await builder.build()
-        guard generation == connectGeneration else {
+        guard generation == connectGeneration, !isWiping else {
             try? await connected.disconnect()
             throw CancellationError()
         }
@@ -226,7 +466,7 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// The SDK config Bitkit connects with.
-    nonisolated static func sdkConfig(network: BreezSdkSpark.Network, apiKey: String?) -> BreezSdkSpark.Config {
+    nonisolated static func sdkConfig(network: BreezSdkSpark.Network, apiKey: String?, isExiting: Bool) -> BreezSdkSpark.Config {
         var config = defaultConfig(network: network)
         config.apiKey = apiKey
         // No Breez data sync server, no Lightning address server and no third-party input lookups: Bitkit uses none.
@@ -239,20 +479,58 @@ final class SparkManager: ChannelFreeLightningRail {
             onchain: .networkRecommended(leewaySatPerVbyte: depositClaimFeeLeewaySatPerVbyte),
             proportionalPpm: nil
         )
+        // Optimizing swaps leaves with the operators, which would hand the leaves an exit is spending to someone
+        // else, whose refunds then confirm first. Off for as long as an emergency exit runs.
+        config.leafOptimizationConfig.autoEnabled = !isExiting
         return config
     }
 
     /// Disconnects and deletes this wallet's Spark data. A connect still running is waited for first, so it can't
     /// keep the wiped wallet; throws when the data could not be deleted, so the wipe is retried.
     func wipe(walletIndex: Int) async throws {
-        connectGeneration += 1
-        syncedThisRun = false
+        defer { isWiping = false }
+        var disconnectError: Error?
+        try await Self.wipeInOrder(
+            closeAdmission: {
+                isWiping = true
+                connectGeneration += 1
+                syncedThisRun = false
+            },
+            drainExitWork: { await SparkExitManager.shared.wipe() },
+            disconnect: { disconnectError = await disconnectForWipe() },
+            deleteData: { try deleteWipedData(walletIndex: walletIndex) }
+        )
+        if let disconnectError {
+            throw disconnectError
+        }
+    }
+
+    /// The wipe's steps, in the order that keeps the wiped wallet's identity from coming back.
+    static func wipeInOrder(
+        closeAdmission: () -> Void,
+        drainExitWork: () async -> Void,
+        disconnect: () async -> Void,
+        deleteData: () throws -> Void
+    ) async throws {
+        closeAdmission()
+        // An exit tick finishing now may reconnect; with admission closed it can't, and it is done before the SDK goes.
+        await drainExitWork()
+        await disconnect()
+        try deleteData()
+    }
+
+    private func disconnectForWipe() async -> Error? {
         if let connectTask {
             _ = try? await connectTask.value
         }
         connectTask = nil
+        UserDefaults.standard.removeObject(forKey: Self.optimizationActivityKey)
+        isOptimizing = false
         if LightningService.shared.channelFreeRail === self {
             LightningService.shared.channelFreeRail = nil
+        }
+        if LightningService.shared.channelFreePaymentHistory === self {
+            LightningService.shared.channelFreePaymentHistory = nil
         }
         LightningService.shared.forgetRailAttempts()
         var disconnectError: Error?
@@ -272,11 +550,17 @@ final class SparkManager: ChannelFreeLightningRail {
         refreshAgain = false
         activitiesSynced = false
         isReady = false
+        return disconnectError
+    }
+
+    private func deleteWipedData(walletIndex: Int) throws {
         balanceSats = 0
         keptBalanceSats = nil
+        keptBeforeExit = nil
         withdrawalFailedAt = nil
         withdrewAllAt = nil
         pendingDepositSats = 0
+        recoverableFundsSats = 0
         deposits = []
         withdrawals = []
         broadcastDeposits = [:]
@@ -289,9 +573,11 @@ final class SparkManager: ChannelFreeLightningRail {
         onStateChanged?()
         try Self.removeIfPresent(Env.sparkStorage(walletIndex: walletIndex))
         try Self.removeIfPresent(Env.sparkExitRestore(walletIndex: walletIndex))
-        if let disconnectError {
-            throw disconnectError
-        }
+        // The exit's own wipe only logs a failed delete: here it throws, so the wipe is retried, and covers the wiped
+        // wallet's index even when the exit manager holds another one.
+        try SparkExitStore(walletIndex: walletIndex).deleteWithCopies()
+        try Self.removeIfPresent(Env.sparkExitLostLeaves(walletIndex: walletIndex))
+        try Self.removeIfPresent(Env.sparkExitEarlierAddresses(walletIndex: walletIndex))
     }
 
     nonisolated static func removeIfPresent(_ url: URL) throws {
@@ -347,16 +633,18 @@ final class SparkManager: ChannelFreeLightningRail {
         }
         // The fee limit is checked on the quote that is sent, not only on the earlier estimate.
         try Self.checkSendFee(feeSats, maxFeeSats: maxFeeSats)
-        // A deadline that passed while the quote was prepared stops the payment here, before anything leaves.
-        try beforeSubmission()
-        let response: SendPaymentResponse
-        do {
-            response = try await sdk.sendPayment(request: SendPaymentRequest(
-                prepareResponse: prepared,
-                options: Self.bolt11SendOptions
-            ))
-        } catch {
-            throw Self.sendPaymentFailure(error)
+        // An exit that started while the quote was prepared refuses it here, before its hash is recorded.
+        let response: SendPaymentResponse = try await spends.run {
+            // A deadline that passed while the quote was prepared stops the payment here, before anything leaves.
+            try beforeSubmission()
+            do {
+                return try await sdk.sendPayment(request: SendPaymentRequest(
+                    prepareResponse: prepared,
+                    options: Self.bolt11SendOptions
+                ))
+            } catch {
+                throw Self.sendPaymentFailure(error)
+            }
         }
         Logger.info("Sent Spark payment '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
         return invoiceDetails.paymentHash
@@ -520,10 +808,14 @@ final class SparkManager: ChannelFreeLightningRail {
         do {
             let prepared = try await prepareWithdrawAll(to: address)
             try Self.checkWithdrawalFee(Self.withdrawalFeeSats(prepared), shownFeeSats: maxFeeSats)
-            let response = try await requireSdk().sendPayment(request: SendPaymentRequest(
-                prepareResponse: prepared,
-                options: .bitcoinAddress(confirmationSpeed: .medium)
-            ))
+            let sdk = try await requireSdk()
+            // Preparing suspends, so an exit can start meanwhile.
+            let response = try await spends.run {
+                try await sdk.sendPayment(request: SendPaymentRequest(
+                    prepareResponse: prepared,
+                    options: .bitcoinAddress(confirmationSpeed: .medium)
+                ))
+            }
             preparedWithdrawal = nil
             if case let .withdraw(txId, _, _) = response.payment.details {
                 sentWithdrawalTxIds.insert(txId)
@@ -688,6 +980,10 @@ final class SparkManager: ChannelFreeLightningRail {
         let prepared: PrepareSendPaymentResponse
         let earlierPayments: [Payment]
         do {
+            // An exit spends every leaf, so no contact withdrawal starts while one runs.
+            guard !isExiting else {
+                throw ChannelFreeRailSendRefused(reason: t("wallet__payment_failed_description"))
+            }
             try claimContactWithdrawal()
         } catch {
             throw SparkWithdrawalNotSent(underlying: error)
@@ -731,35 +1027,34 @@ final class SparkManager: ChannelFreeLightningRail {
             },
             paymentDeadline: paymentDeadline
         )
-        let response: SendPaymentResponse
-        do {
-            response = try await sdk.sendPayment(request: SendPaymentRequest(
-                prepareResponse: prepared,
-                options: .bitcoinAddress(confirmationSpeed: .medium),
-                idempotencyKey: pending.idempotencyKey
-            ))
-        } catch {
-            throw await Self.withdrawalSendFailure(
-                error,
-                closeUnsent: {
-                    await Self.closeUnsentWithdrawal(journaled, releaseProof: Self.releaseUnsentProof, failAllowance: Self.failAllowance)
-                },
-                settleLater: {
-                    let failedAt = UInt64(Date().timeIntervalSince1970)
-                    Task {
-                        await Self.settleAfterFailedWithdrawal(
-                            failedAt: failedAt,
-                            syncWallet: {
-                                _ = try await self.requireSdk().syncWallet(request: SyncWalletRequest())
-                                self.syncedThisRun = true
-                            },
-                            hasSynced: { await self.hasSynced(after: $0) },
-                            settle: { await self.settleContactWithdrawal(allowClear: $0) }
-                        )
-                    }
+        let idempotencyKey = pending.idempotencyKey
+        let response = try await Self.sendJournaledWithdrawal(
+            spends: spends,
+            send: {
+                try await sdk.sendPayment(request: SendPaymentRequest(
+                    prepareResponse: prepared,
+                    options: .bitcoinAddress(confirmationSpeed: .medium),
+                    idempotencyKey: idempotencyKey
+                ))
+            },
+            closeUnsent: {
+                await Self.closeUnsentWithdrawal(journaled, releaseProof: Self.releaseUnsentProof, failAllowance: Self.failAllowance)
+            },
+            settleLater: {
+                let failedAt = UInt64(Date().timeIntervalSince1970)
+                Task {
+                    await Self.settleAfterFailedWithdrawal(
+                        failedAt: failedAt,
+                        syncWallet: {
+                            _ = try await self.requireSdk().syncWallet(request: SyncWalletRequest())
+                            self.syncedThisRun = true
+                        },
+                        hasSynced: { await self.hasSynced(after: $0) },
+                        settle: { await self.settleContactWithdrawal(allowClear: $0) }
+                    )
                 }
-            )
-        }
+            }
+        )
         Logger.info("Sent Spark withdrawal '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
         pending.paymentId = response.payment.id
         Self.pendingContactWithdrawal = pending
@@ -799,6 +1094,22 @@ final class SparkManager: ChannelFreeLightningRail {
         }
         guard case let .withdraw(txId, _, _) = payment.details else { return payment.id }
         return txId
+    }
+
+    /// Sends a contact withdrawal whose journal is open, counted in `spends` so an exit starting meanwhile refuses it or
+    /// waits for it. A send refused before it left closes the journal and ends as `SparkWithdrawalNotSent`; any other
+    /// failure settles later from Spark's payment list.
+    static func sendJournaledWithdrawal<T>(
+        spends: SparkSpends,
+        send: () async throws -> T,
+        closeUnsent: () async -> Void,
+        settleLater: () -> Void
+    ) async throws -> T {
+        do {
+            return try await spends.run(send)
+        } catch {
+            throw await withdrawalSendFailure(error, closeUnsent: closeUnsent, settleLater: settleLater)
+        }
     }
 
     /// What a failed `sendPayment` of a journaled withdrawal means. A refusal Spark makes before anything reaches the
@@ -1227,7 +1538,8 @@ final class SparkManager: ChannelFreeLightningRail {
             read: info.balanceSats,
             lastShown: shownBalanceSats,
             isStale: withdrawalFailedAt != nil || info.lastSyncError != nil,
-            withdrewAll: withdrewAllAt != nil
+            withdrewAll: withdrewAllAt != nil,
+            isExiting: isExiting
         )
         let changed = !isReady || Self.balancesChanged(
             from: SparkBalances(readSats: balanceSats, keptSats: keptBalanceSats, pendingSats: pendingDepositSats),
@@ -1237,6 +1549,7 @@ final class SparkManager: ChannelFreeLightningRail {
         balanceSats = info.balanceSats
         keptBalanceSats = kept
         pendingDepositSats = pending
+        recoverableFundsSats = info.recoverableFundsSats
         deposits = listedDeposits
         withdrawals = Self.withdrawals(payments)
         for deposit in deposits {
@@ -1324,9 +1637,14 @@ final class SparkManager: ChannelFreeLightningRail {
 
     /// After a failed withdrawal, or while Spark's last sync failed (`isStale`), Spark can read 0 with the funds still
     /// there, so the last shown balance stays shown until it reads one again. After a withdrawal of the whole balance
-    /// (`withdrewAll`) the 0 is real.
-    nonisolated static func keptBalanceSats(read: UInt64, lastShown: UInt64, isStale: Bool, withdrewAll: Bool) -> UInt64? {
-        read == 0 && isStale && !withdrewAll && lastShown > 0 ? lastShown : nil
+    /// (`withdrewAll`) the 0 is real. An emergency exit moves the balance to savings, so a 0 read during one keeps nothing.
+    nonisolated static func keptBalanceSats(read: UInt64, lastShown: UInt64, isStale: Bool, withdrewAll: Bool, isExiting: Bool) -> UInt64? {
+        read == 0 && isStale && !withdrewAll && lastShown > 0 && !isExiting ? lastShown : nil
+    }
+
+    /// The balance kept again once an exit ends: a cancelled exit moved nothing, so what was kept before it still is.
+    nonisolated static func keptBalanceSats(afterExitKept kept: UInt64?, read: UInt64, isCancel: Bool) -> UInt64? {
+        isCancel && read == 0 ? kept : nil
     }
 
     /// A failed withdrawal stops keeping the balance once Spark reads one, or reads 0 after a sync that ended after it.
@@ -1506,6 +1824,8 @@ final class SparkManager: ChannelFreeLightningRail {
             await recordActivity(payment)
         case .unilateralExitStateChanged:
             Self.notifyExitStateChanged()
+        case let .autoOptimization(optimizationEvent):
+            noteOptimization(optimizationEvent)
         default:
             break
         }
@@ -1818,6 +2138,35 @@ struct SparkWithdrawal: Identifiable, Equatable {
     }
 }
 
+struct BreezSparkExitRecovering: SparkExitRecovering {
+    let sdk: BreezSdk
+
+    func prepare(_ request: PrepareRecoverFundsRequest) async throws -> PrepareRecoverFundsResponse {
+        try await sdk.prepareRecoverFunds(request: request)
+    }
+
+    func recover(_ request: RecoverFundsRequest, signer: CpfpSigner?) async throws -> RecoverFundsResponse {
+        try await sdk.recoverFunds(request: request, signer: signer)
+    }
+
+    func check(_ recovery: RecoverFundsResponse) async throws -> CheckRecoverFundsResponse {
+        try await sdk.checkRecoverFunds(request: CheckRecoverFundsRequest(recovery: recovery))
+    }
+
+    func exportExitState() async throws -> String {
+        try await sdk.exportUnilateralExitState().exitState
+    }
+
+    func importExitState(_ exitState: String) async throws {
+        let imported = try await sdk.importUnilateralExitState(request: ImportUnilateralExitStateRequest(exitState: exitState))
+        Logger.info(
+            "Imported the Spark exit's own exit data: '\(imported.importedLeaves)' leaves, '\(imported.skippedForeignLeaves)' foreign, "
+                + "'\(imported.skippedConflictingLeaves)' conflicting, '\(imported.skippedChains)' already held",
+            context: "SparkManager"
+        )
+    }
+}
+
 private final class SparkEventListener: BreezSdkSpark.EventListener, @unchecked Sendable {
     private let handler: @Sendable (SdkEvent) async -> Void
 
@@ -1827,6 +2176,65 @@ private final class SparkEventListener: BreezSdkSpark.EventListener, @unchecked 
 
     func onEvent(event: SdkEvent) async {
         await handler(event)
+    }
+}
+
+/// The Spark sends and withdrawals past their exit check. An exit holds Spark before it waits for them, so every later
+/// one refuses, and it quotes the leaves they leave once they end.
+@MainActor
+final class SparkSpends {
+    private let isExiting: () -> Bool
+    private(set) var inFlight = 0
+    /// An exit start holds Spark while it waits for the sends, before its record exists.
+    private(set) var isHeld = false
+
+    init(isExiting: @escaping () -> Bool) {
+        self.isExiting = isExiting
+    }
+
+    /// Runs `send` counted, unless an exit holds Spark. Called after the send's last await but the one inside `send`,
+    /// so an exit starting meanwhile either refuses it here or waits for it.
+    func run<T>(_ send: () async throws -> T) async throws -> T {
+        guard !isExiting(), !isHeld else {
+            Logger.info("Refused a Spark send: an emergency exit holds Spark", context: "SparkManager")
+            throw ChannelFreeRailSendRefused(reason: t("wallet__payment_failed_description"))
+        }
+        inFlight += 1
+        defer { inFlight -= 1 }
+        return try await send()
+    }
+
+    /// Holds Spark for an exit start and waits for the counted sends to end, for up to `timeout`. Throws, and lets go,
+    /// when one is still sending then: the exit must not start while a send can spend its leaves, and the user starts
+    /// it again once the send ended. The start lets go (`release`) once its record holds Spark.
+    func holdForExit(timeout: TimeInterval) async throws {
+        isHeld = true
+        let deadline = Date().addingTimeInterval(timeout)
+        while inFlight > 0, !Task.isCancelled, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        if inFlight > 0 {
+            Logger.warn("Gave up waiting for Spark sends in flight to end", context: "SparkManager")
+            isHeld = false
+            throw AppError(message: t("other__try_again"), debugMessage: "A Spark payment is still sending")
+        }
+    }
+
+    func release() {
+        isHeld = false
+    }
+}
+
+/// Lets the first of two racing tasks resume a continuation, once.
+private final class SparkFirstResume: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isClaimed = false
+
+    func claim() -> Bool {
+        lock.withLock {
+            defer { isClaimed = true }
+            return !isClaimed
+        }
     }
 }
 

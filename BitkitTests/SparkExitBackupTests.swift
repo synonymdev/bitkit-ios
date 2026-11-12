@@ -31,6 +31,29 @@ final class SparkExitBackupTests: XCTestCase {
         XCTAssertEqual(restored.network, backup.network)
     }
 
+    /// R4: while an exit runs, a fresh export could lack the leaves it moves, so the backup from before it stays.
+    func testDoesNotRefreshTheExitDataWhileAnExitRuns() async throws {
+        let suite = "SparkExitBackupTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var uploads: [String] = []
+        var exports = 0
+        let service = BackupService(
+            defaults: defaults,
+            backupData: { _ in
+                exports += 1
+                return Data("{}".utf8)
+            },
+            isSparkExitActive: { true },
+            uploadBackup: { key, _ in uploads.append(key) }
+        )
+
+        await service.triggerBackup(category: .sparkExit)
+
+        XCTAssertTrue(uploads.isEmpty)
+        XCTAssertEqual(exports, 0)
+    }
+
     func testAFailedExitRestoreBlocksReplacingTheRemoteBackupUntilItRecovers() async throws {
         let suite = "SparkExitBackupTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -55,6 +78,42 @@ final class SparkExitBackupTests: XCTestCase {
 
         // The next attempt finds no older backup, so the fresh export may go up.
         remoteIsReadable = true
+        _ = await service.triggerBackup(category: .sparkExit)
+        XCTAssertEqual(uploads, ["SPARK_EXIT"])
+    }
+
+    /// Both rules at once: a pending restore during an exit uploads nothing; once the restore completes and the exit
+    /// ends, the upload goes through.
+    func testAPendingRestoreDuringAnExitUploadsNothingUntilBothClear() async throws {
+        let suite = "SparkExitBackupTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let export = try JSONEncoder().encode(SparkExitBackupV1(version: 1, createdAt: 1000, network: "regtest", exitState: "fresh"))
+        var remoteIsReadable = false
+        var isExiting = true
+        var uploads: [String] = []
+        let service = BackupService(
+            defaults: defaults,
+            backupData: { _ in export },
+            isSparkExitActive: { isExiting },
+            uploadBackup: { key, _ in uploads.append(key) },
+            waitForTemporaryFailureDelay: { _ in },
+            fetchBackup: { _ in
+                guard remoteIsReadable else { throw URLError(.notConnectedToInternet) }
+                return nil
+            }
+        )
+
+        await service.restoreSparkExit()
+        _ = await service.triggerBackup(category: .sparkExit)
+        XCTAssertTrue(uploads.isEmpty, "the restore is pending and an exit runs")
+
+        // The restore completes, but the exit still runs: still nothing.
+        remoteIsReadable = true
+        _ = await service.triggerBackup(category: .sparkExit)
+        XCTAssertTrue(uploads.isEmpty, "an exit still runs")
+
+        isExiting = false
         _ = await service.triggerBackup(category: .sparkExit)
         XCTAssertEqual(uploads, ["SPARK_EXIT"])
     }
