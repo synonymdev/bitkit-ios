@@ -4,9 +4,11 @@
 # ///
 """Fund an address on Spark's regtest chain from the shared test wallet.
 
-Use it on a dev build running on Spark's regtest chain: fund the Savings address to test Savings
-to Spending and the deposit claim, or Spark's deposit address on the Spark screen to fund Spending
-directly. It spends from the wallet behind the SPARK_REGTEST_MNEMONIC
+Use it to fund Spark's deposit address on the Spark screen of a Debug build launched without
+SPARK_CHAIN_SERVICE_URL, which connects Spark to Lightspark's regtest. Savings always watches
+Bitkit's staging regtest, a different chain, and so does Spark when SPARK_CHAIN_SERVICE_URL points
+it there: fund those with the staging deposit (`./lsp POST /regtest/chain/deposit`, see
+`journeys/README.md`), never with this script. It spends from the wallet behind the SPARK_REGTEST_MNEMONIC
 secret (BIP84 m/84'/1'/0'/0/0, one P2WPKH address for receive and change) and broadcasts through
 Lightspark's regtest mempool API. Lightspark mines about once a minute.
 
