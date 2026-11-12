@@ -22,8 +22,24 @@ enum HealthStatus: String {
     }
 }
 
+/// The step of a running emergency exit, named like its App Status subtitle key.
+enum ExitStatusStep: String {
+    case funding
+    case pending
+}
+
 @MainActor
 struct AppStatusHelper {
+    /// Nil while no emergency exit runs. Asks for fee funding only while no payment covers it, as the progress screen does.
+    nonisolated static func exitStep(record: SparkExitRecord?, fundingState: SparkExitFundingState? = nil) -> ExitStatusStep? {
+        guard let record, record.isActive else { return nil }
+        guard record.fundingShortfallSats != nil else { return .pending }
+        switch fundingState ?? SparkExitMath.fundingState(record, utxos: nil) {
+        case .paid, .seen: return .pending
+        default: return .funding
+        }
+    }
+
     static func internetStatus(network: NetworkMonitor) -> HealthStatus {
         return network.isConnected ? .ready : .error
     }
@@ -63,20 +79,65 @@ struct AppStatusHelper {
     }
 
     static func channelsStatus(from wallet: WalletViewModel, network: NetworkMonitor) -> HealthStatus {
-        let isOnline = network.isConnected
-        let hasChannels = wallet.channelCount > 0
+        channelsStatus(
+            isOnline: network.isConnected,
+            hasUsableChannels: wallet.hasUsableChannels,
+            hasChannels: wallet.channelCount > 0,
+            isSparkUsable: MoveToSparkMath.isSparkUsable(SparkManager.shared)
+        )
+    }
 
+    static func isLightningViaSpark(from wallet: WalletViewModel, network: NetworkMonitor) -> Bool {
+        isLightningViaSpark(
+            isOnline: network.isConnected,
+            hasUsableChannels: wallet.hasUsableChannels,
+            isSparkUsable: MoveToSparkMath.isSparkUsable(SparkManager.shared)
+        )
+    }
+
+    /// Nil where Spark is unsupported.
+    static func sparkStatus(network: NetworkMonitor) -> HealthStatus? {
+        let spark = SparkManager.shared
+        return sparkStatus(
+            isOnline: network.isConnected,
+            isSupported: spark.isSupported,
+            isReady: spark.isReady,
+            hasStartFailed: spark.hasStartFailed
+        )
+    }
+
+    /// Spark carries Lightning when no channel can, so the connection is ready through it; red only when neither can pay.
+    nonisolated static func channelsStatus(
+        isOnline: Bool,
+        hasUsableChannels: Bool,
+        hasChannels: Bool,
+        isSparkUsable: Bool
+    ) -> HealthStatus {
         if !isOnline {
             return .error
         }
 
-        if !hasChannels {
-            return .error
-        } else if wallet.hasUsableChannels {
+        if hasUsableChannels || isSparkUsable {
             return .ready
+        } else if !hasChannels {
+            return .error
         } else {
             return .pending
         }
+    }
+
+    /// No channel is usable, so Spark carries Lightning payments.
+    nonisolated static func isLightningViaSpark(isOnline: Bool, hasUsableChannels: Bool, isSparkUsable: Bool) -> Bool {
+        isOnline && !hasUsableChannels && isSparkUsable
+    }
+
+    nonisolated static func sparkStatus(isOnline: Bool, isSupported: Bool, isReady: Bool, hasStartFailed: Bool) -> HealthStatus? {
+        guard isSupported else { return nil }
+        guard isOnline else { return .error }
+        if isReady {
+            return .ready
+        }
+        return hasStartFailed ? .error : .pending
     }
 
     static func combinedAppStatus(from wallet: WalletViewModel, network: NetworkMonitor) -> HealthStatus {

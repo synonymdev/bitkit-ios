@@ -21,6 +21,8 @@ enum SettingsBackupConfig {
         "hasSeenNotificationsIntro",
         "hasSeenQuickpayIntro",
         "hasSeenShopIntro",
+        "hasSeenTransferIntro",
+        "hasSeenTransferToSpendingIntro",
         "hasSeenTransferToSavingsIntro",
         "hasSeenWidgetsIntro",
         "hasDismissedWidgetsOnboardingHint",

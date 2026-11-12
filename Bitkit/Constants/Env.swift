@@ -221,6 +221,16 @@ enum Env {
         }
     }
 
+    /// Esplora REST API Spark reads the chain from and broadcasts through, in place of the SDK's default
+    /// (mempool.space with blockstream as fallback on mainnet); nil keeps the default. On regtest a debug or E2E build
+    /// can point Spark at Bitkit's own chain with `SPARK_CHAIN_SERVICE_URL`, so a Savings deposit reaches it.
+    static func sparkChainServiceUrl(for network: LDKNode.Network) -> String? {
+        switch network {
+        case .bitcoin: "https://bitkit.to/electrs"
+        default: configValue("SPARK_CHAIN_SERVICE_URL")
+        }
+    }
+
     static var electrumServerUrl: String {
         if isE2E, e2eBackend == "local" {
             return "tcp://\(e2eLocalHost):60001"
@@ -276,6 +286,46 @@ enum Env {
         appStorageUrl
             .appendingPathComponent(networkName)
             .appendingPathComponent("wallet\(walletIndex)/ldk")
+    }
+
+    static func sparkStorage(walletIndex: Int) -> URL {
+        appStorageUrl
+            .appendingPathComponent(networkName)
+            .appendingPathComponent("wallet\(walletIndex)/spark")
+    }
+
+    /// A restored Spark exit data backup waiting to be imported once Spark connects; outside Spark's storage, which a
+    /// wipe removes.
+    static func sparkExitRestore(walletIndex: Int) -> URL {
+        appStorageUrl
+            .appendingPathComponent(networkName)
+            .appendingPathComponent("wallet\(walletIndex)/spark-exit-restore.json")
+    }
+
+    /// The running Spark emergency exit, if any: its signed recovery and how far it got.
+    static func sparkExitRecord(walletIndex: Int) -> URL {
+        appStorageUrl
+            .appendingPathComponent(networkName)
+            .appendingPathComponent("wallet\(walletIndex)/spark-exit.json")
+    }
+
+    /// Earlier Spark exits' funding addresses that hold, or may still receive, coins, kept past the exit record.
+    static func sparkExitEarlierAddresses(walletIndex: Int) -> URL {
+        appStorageUrl
+            .appendingPathComponent(networkName)
+            .appendingPathComponent("wallet\(walletIndex)/spark-exit-earlier-addresses.json")
+    }
+
+    /// The leaves an older state of the wallet claimed in an earlier Spark exit, kept out of every later one.
+    static func sparkExitLostLeaves(walletIndex: Int) -> URL {
+        appStorageUrl
+            .appendingPathComponent(networkName)
+            .appendingPathComponent("wallet\(walletIndex)/spark-exit-lost-leaves.json")
+    }
+
+    /// Breez SDK API key, set with the `BREEZ_API_KEY` build setting. Spark on mainnet needs it; its regtest does not.
+    static var breezApiKey: String? {
+        infoPlistValue("BREEZ_API_KEY")
     }
 
     static func bitkitCoreStorage(walletIndex: Int) -> URL {

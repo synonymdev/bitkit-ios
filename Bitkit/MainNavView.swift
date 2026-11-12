@@ -25,6 +25,7 @@ struct MainNavView: View {
     @Environment(\.scenePhase) var scenePhase
 
     @State private var usdtReceipts = UsdtReceiptQueue()
+    @State private var sparkTransfer = SparkTransferFlow()
     @State private var showClipboardAlert = false
     @State private var clipboardUri: String?
     @State private var didResumePendingPubkyProfileSetup = false
@@ -79,6 +80,12 @@ struct MainNavView: View {
     private var navigationWithGeneralSheets: some View {
         NavigationStack(path: $navigation.path) {
             navigationContent
+        }
+        .environment(sparkTransfer)
+        .onReceive(OnchainSendAttemptService.localResolutionPublisher.receive(on: DispatchQueue.main)) { resolution in
+            // The swipe's funding can resolve while another screen of the transfer shows.
+            guard resolution.isSparkFunding else { return }
+            _ = sparkTransfer.followIfOwned(txid: resolution.txid, attemptId: resolution.attemptId)
         }
         .onChange(of: pendingProfileSetupResumeState, initial: true) { _, resumeState in
             guard resumeState.shouldResume(didResume: &didResumePendingPubkyProfileSetup) else { return }
@@ -229,6 +236,11 @@ struct MainNavView: View {
                 }
             ) {
                 config in SecuritySheet(config: config)
+            }
+            .sheet(item: $sheets.moveToSparkSheetItem, onDismiss: {
+                sheets.hideSheetIfActive(.moveToSpark, reason: "Move to Spark intro dismissed")
+            }) { config in
+                MoveToSparkSheet(config: config)
             }
             .sheet(item: $sheets.usdtIntroSheetItem, onDismiss: {
                 sheets.hideSheetIfActive(.usdtIntro, reason: "USDT intro dismissed")
@@ -509,7 +521,17 @@ struct MainNavView: View {
                 case .scanner: ScannerScreen()
 
                 // Transfer
+                case .transferIntro: TransferIntroView()
                 case .fundingOptions: FundingOptions()
+                case .spendingIntro: SpendingIntroView()
+                case let .spendingIntroHw(walletId): SpendingIntroView(walletId: walletId)
+                case .spendingAmount: SpendingAmount()
+                case let .spendingAmountHw(walletId): SpendingAmountHw(walletId: walletId)
+                case let .spendingHwSign(walletId): SpendingHwSign(walletId: walletId)
+                case .spendingHwSigned: SpendingHwSigned()
+                case .spendingConfirm: SpendingConfirm()
+                case .transferLearnMore: TransferLearnMoreView()
+                case .settingUp: SettingUpView()
                 case let .fundManual(nodeUri): FundManualSetupView(initialNodeUri: nodeUri)
                 case let .fundManualAmount(lnPeer): FundManualAmountView(lnPeer: lnPeer)
                 case let .fundManualConfirm(lnPeer, amountSats): FundManualConfirmView(lnPeer: lnPeer, amountSats: amountSats)
@@ -692,6 +714,14 @@ struct MainNavView: View {
                 case .addressTypePreference: AddressTypePreferenceView()
                 case .connections: LightningConnectionsView()
                 case let .connectionDetail(channelId): LightningConnectionDetailView(channelId: channelId)
+                case .sparkConnectionDetail: SparkConnectionDetailView()
+                case .moveToSpark: MoveToSparkView()
+                case .sparkExitIntro: SparkExitIntroView()
+                case .sparkExitQuote: SparkExitQuoteView()
+                case .sparkExitFunding: SparkExitFundingView()
+                case .sparkExitConfirm: SparkExitConfirmView()
+                case .sparkExitProgress: SparkExitProgressView()
+                case .sparkExitFeeBump: SparkExitFeeBumpView()
                 case let .closeConnection(channel: channel): CloseConnectionConfirmation(channel: channel)
                 case .node: NodeStateView()
                 case .electrumSettings: ElectrumSettingsScreen()
