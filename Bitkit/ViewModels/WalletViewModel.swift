@@ -218,6 +218,10 @@ class WalletViewModel: ObservableObject {
         walletExists = try Keychain.exists(key: .bip39Mnemonic(index: 0))
     }
 
+    /// The event streams of moves still waiting for their outcome, by listener id: `wipe` ends them, since the wiped
+    /// node reports no late outcome.
+    private var moveEventSinks: [String: AsyncStream<Event>.Continuation] = [:]
+
     func addOnEvent(id: String, handler: @escaping (Event) -> Void) {
         eventHandlers[id] = handler
     }
@@ -1163,6 +1167,104 @@ class WalletViewModel: ObservableObject {
     func send(bolt11: String, sats: UInt64? = nil) async throws -> SettledLightningPayment {
         let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
         return try await watchSend(hash: String(hash))
+    }
+
+    /// Pays from the channels only, with the routing fee capped at `maxFeeMsat`, and waits for the payment to settle.
+    /// Pays `bolt11` from the channels only and waits up to `timeout` for its outcome; `nil` means it is still in flight.
+    /// It listens before sending, so an outcome LDK reports before the send returns is not missed, and it matches a
+    /// failure by payment id as well as by hash, since LDK can report one without its hash. After a timeout it keeps
+    /// listening: a failure that arrives later calls `onLateFailure`, and a success `onLateSuccess`.
+    func sendOverChannels(
+        bolt11: String,
+        sats: UInt64,
+        maxFeeMsat: UInt64,
+        timeout: Duration = .seconds(120),
+        onTimeout: @escaping @MainActor () -> Void = {},
+        onLateFailure: @escaping @MainActor () -> Void = {},
+        onLateSuccess: @escaping @MainActor (SettledLightningPayment) -> Void = { _ in }
+    ) async throws -> SettledLightningPayment? {
+        // LDK's default route parameters, with the routing fee capped.
+        let params = RouteParametersConfig(
+            maxTotalRoutingFeeMsat: maxFeeMsat,
+            maxTotalCltvExpiryDelta: 1008,
+            maxPathCount: 10,
+            maxChannelSaturationPowerOfHalf: 2
+        )
+        let listenerId = "move-to-spark-\(UUID().uuidString)"
+        let (events, sink) = AsyncStream<Event>.makeStream(bufferingPolicy: .unbounded)
+        addOnEvent(id: listenerId) { sink.yield($0) }
+        moveEventSinks[listenerId] = sink
+        let id: String
+        do {
+            id = try await String(lightningService.send(bolt11: bolt11, sats: sats, params: params, channelsOnly: true))
+        } catch {
+            removeOnEvent(id: listenerId)
+            moveEventSinks.removeValue(forKey: listenerId)
+            sink.finish()
+            throw error
+        }
+        return try await Self.settle(
+            paymentId: id,
+            events: events,
+            timeout: timeout,
+            onTimeout: onTimeout,
+            onLateFailure: onLateFailure,
+            onLateSuccess: onLateSuccess,
+            onEnd: { [weak self] in
+                self?.removeOnEvent(id: listenerId)
+                self?.moveEventSinks.removeValue(forKey: listenerId)
+                sink.finish()
+            }
+        )
+    }
+
+    /// Waits for the payment `paymentId`'s outcome in `events`, or `nil` after `timeout`. `onTimeout` runs in the same
+    /// step that gives up waiting, so an outcome that arrives right after already finds the caller's in-flight state
+    /// and goes to `onLateFailure` or `onLateSuccess`.
+    static func settle(
+        paymentId id: String,
+        events: AsyncStream<Event>,
+        timeout: Duration,
+        onTimeout: @escaping @MainActor () -> Void,
+        onLateFailure: @escaping @MainActor () -> Void,
+        onLateSuccess: @escaping @MainActor (SettledLightningPayment) -> Void,
+        onEnd: @escaping @MainActor () -> Void = {}
+    ) async throws -> SettledLightningPayment? {
+        try await withCheckedThrowingContinuation { continuation in
+            var isAnswered = false
+            Task { @MainActor in
+                defer { onEnd() }
+                for await event in events {
+                    let outcome: Result<SettledLightningPayment?, Error>
+                    switch event {
+                    case let .paymentSuccessful(_, paymentHash, _, feePaidMsat) where paymentHash == id:
+                        outcome = .success(SettledLightningPayment(paymentHash: paymentHash, feePaidSats: (feePaidMsat ?? 0) / 1000))
+                    case let .paymentFailed(paymentId, paymentHash, reason) where paymentHash == id || paymentId == id:
+                        outcome = .failure(AppError(paymentFailureReason: reason))
+                    default:
+                        continue
+                    }
+                    if isAnswered {
+                        switch outcome {
+                        case let .success(settled?): onLateSuccess(settled)
+                        case .success: break
+                        case .failure: onLateFailure()
+                        }
+                    } else {
+                        isAnswered = true
+                        continuation.resume(with: outcome)
+                    }
+                    return
+                }
+            }
+            Task { @MainActor in
+                try? await Task.sleep(for: timeout)
+                guard !isAnswered else { return }
+                isAnswered = true
+                onTimeout()
+                continuation.resume(returning: nil)
+            }
+        }
     }
 
     /// Observes task cancellation so `waitForLightningPayment`'s task group can unwind after its
@@ -2122,6 +2224,11 @@ class WalletViewModel: ObservableObject {
         try await SparkManager.shared.wipe(walletIndex: 0)
 
         probeOutcomes.removeAll()
+        // A move's late outcome belongs to the wiped wallet, and its node is gone: stop waiting for it
+        for sink in moveEventSinks.values {
+            sink.finish()
+        }
+        moveEventSinks.removeAll()
 
         // Reset AppStorage display values
         totalBalanceSats = 0

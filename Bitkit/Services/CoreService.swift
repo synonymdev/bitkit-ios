@@ -996,6 +996,15 @@ class ActivityService {
         case .succeeded: .succeeded
         }
 
+        // Paying an invoice of the wallet's own Spark (Move to Spark) gives an LDK send and a Spark receive under one hash:
+        // the send is the payment, so its row wins whichever leg arrives first.
+        let isChannelFreeReceive = rail == .channelFree && payment.direction == .inbound
+        if isChannelFreeReceive, let sent = existingLightning, sent.txType == .sent {
+            try settleMove(sent, receiveState: state)
+            return
+        }
+        let replacesSelfReceive = rail == .ldk && payment.direction == .outbound && existingLightning?.txType == .received
+
         if let existing = existingLightning,
            Self.keepsLightningStatus(
                existing: existing.status,
@@ -1009,8 +1018,12 @@ class ActivityService {
         // Skip if existing activity has newer timestamp, unless payment status is changing
         if let existing = existingLightning, let existingUpdatedAt = existing.updatedAt {
             let statusChanging = existing.status != state
+            // The Spark receive of a move can settle the send before the node's routing fee is recorded.
+            let feeChanging = payment.feePaidMsat.map { $0 / 1000 != existing.fee } ?? false
             let needsPrivateContactAttribution = existing.contact == nil && payment.direction == .inbound
-            if existingUpdatedAt > paymentTimestamp && !statusChanging && !needsPrivateContactAttribution {
+            if existingUpdatedAt > paymentTimestamp && !statusChanging && !feeChanging && !needsPrivateContactAttribution
+                && !replacesSelfReceive
+            {
                 return
             }
         }
@@ -1043,26 +1056,41 @@ class ActivityService {
             seenAt: existingLightning?.seenAt
         )
 
-        if existingActivity != nil {
-            try await ServiceQueue.background(.core) {
-                var updated = ln
-                if case let .lightning(latest)? = try getActivityById(walletId: ln.walletId, activityId: payment.id),
-                   latest.contact != existingLightning?.contact
-                {
-                    updated.contact = latest.contact
-                }
-                if self.isContactDetached(activityId: payment.id, walletId: ln.walletId) {
-                    updated.contact = nil
-                }
-                try updateActivity(activityId: payment.id, activity: .lightning(updated))
-                self.activitiesChangedSubject.send()
+        try await ServiceQueue.background(.core) {
+            let latestActivity = try getActivityById(walletId: ln.walletId, activityId: payment.id)
+            // The move's LDK send can be stored while this receive waited on its contact lookup; it still wins.
+            if isChannelFreeReceive, case let .lightning(latest)? = latestActivity, latest.txType == .sent {
+                try self.settleMove(latest, receiveState: state)
+                return
             }
-        } else {
-            try await upsert(.lightning(ln))
+            guard let latestActivity else {
+                try upsertActivity(activity: .lightning(ln))
+                self.updateBoostTxIdsCache(for: .lightning(ln))
+                self.activitiesChangedSubject.send()
+                return
+            }
+            var updated = ln
+            if case let .lightning(latest) = latestActivity, latest.contact != existingLightning?.contact {
+                updated.contact = latest.contact
+            }
+            if self.isContactDetached(activityId: payment.id, walletId: ln.walletId) {
+                updated.contact = nil
+            }
+            try updateActivity(activityId: payment.id, activity: .lightning(updated))
+            self.activitiesChangedSubject.send()
         }
         if payment.direction == .outbound, ln.contact != nil, payment.status != .pending {
             Self.sentPaymentContacts.forget(paymentHash: payment.id)
         }
+    }
+
+    /// A succeeded Spark receive proves the move's LDK send settled, so the send's row becomes succeeded and keeps its amount and fee.
+    private func settleMove(_ sent: LightningActivity, receiveState: BitkitCore.PaymentState) throws {
+        guard receiveState == .succeeded, sent.status != .succeeded else { return }
+        var settled = sent
+        settled.status = .succeeded
+        try updateActivity(activityId: sent.id, activity: .lightning(settled))
+        activitiesChangedSubject.send()
     }
 
     private func privatePaykitContactPublicKey(forReceivedInvoicePaymentHash paymentHash: String, direction: PaymentDirection) async -> String? {
