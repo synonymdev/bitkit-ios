@@ -927,6 +927,12 @@ class WalletViewModel: ObservableObject {
         Logger.info("Selected UTXOs: \(String(describing: selectedUtxos))")
     }
 
+    /// The rate a normal send pays now, from the cached estimates, or nil when none are cached.
+    func normalFeeRate() async -> UInt32? {
+        guard let feeEstimates = await feeEstimatesManager.getEstimates(refresh: false) else { return nil }
+        return TransactionSpeed.normal.getFeeRate(from: feeEstimates)
+    }
+
     /// Gets fee limits for custom fee input
     /// - Returns: Tuple with (minFee, maxFee) in sat/vB
     func getFeeLimits() async -> (minFee: UInt32, maxFee: UInt32) {
