@@ -635,7 +635,8 @@ struct SparkExitDriver {
             // A step the SDK could not read is settled by a fresh build, once a block, unless a step is still to send:
             // a build now would conflict with it at the same fee. A check marks a step unverified when one chain read
             // fails and clears it on the next clean check, so only a step that was already unverified before this check
-            // rebuilds, and one this check just turned unverified holds it until the next check, as it may be in flight.
+            // rebuilds, and one this check just turned unverified holds it, as it may be in flight. A step that stays
+            // unread rebuilds at the first check, once a block at most, where no other step just turned unverified.
             if let tip, isUnverifiedRebuildDue(checked.recovery, stored: stored, record: record, tip: tip) {
                 Logger.warn("Spark exit has a step the SDK could not read, rebuilding over it", context: "SparkExitDriver")
                 record.unverifiedRebuiltAtHeight = tip
