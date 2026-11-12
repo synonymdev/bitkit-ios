@@ -132,7 +132,7 @@ struct SettingUpView: View {
                         .frame(maxWidth: .infinity)
                         .accessibilityIdentifier("TransferSuccess")
                 } else {
-                    EllipseLoader(variant: stage.showsCoins ? .quickpay : .transfer)
+                    EllipseLoader(variant: stage.showsCoins ? .coins : .transfer)
                         .id(stage.showsCoins)
                         .padding(.top, 32)
                         .padding(.horizontal, 16)
