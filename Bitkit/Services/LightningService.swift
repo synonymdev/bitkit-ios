@@ -20,6 +20,11 @@ protocol ChannelFreeLightningRail: AnyObject {
     /// Whether the rail's last wallet sync reached it, and started after `seconds` since 1970 when given. The rail
     /// finishes an interrupted send only on such a sync, so before one its list can lack a send that went out.
     func hasSynced(after seconds: UInt64?) async -> Bool
+    /// What the operators show of this wallet's Lightning sends of `bolt11`, nil when they show none. Throws when they
+    /// can't be asked or the answer can't be read.
+    func lightningSendStatus(bolt11: String) async throws -> PaymentStatus?
+    /// Whether this app would have paid `bolt11` by a direct Spark transfer, which `lightningSendStatus` can't see.
+    func mayPayBySparkTransfer(bolt11: String, sats: UInt64?) async throws -> Bool
 }
 
 @MainActor
@@ -1065,6 +1070,8 @@ class LightningService: NodeLifecycleService {
             if let paid = try await settledEarlierAttempt(
                 paymentHash: paymentHash,
                 on: [.ldk, .channelFree],
+                bolt11: bolt11,
+                sats: sats,
                 invoiceCreatedAt: invoice?.secondsSinceEpoch(),
                 invoiceExpiresAt: expiresAt
             ) {
@@ -1129,6 +1136,8 @@ class LightningService: NodeLifecycleService {
         if let paid = try await settledEarlierAttempt(
             paymentHash: paymentHash,
             on: [.channelFree],
+            bolt11: bolt11,
+            sats: sats,
             invoiceCreatedAt: invoice?.secondsSinceEpoch(),
             invoiceExpiresAt: expiresAt
         ) {
@@ -1198,7 +1207,7 @@ class LightningService: NodeLifecycleService {
     /// there. Until then an unlistable node refuses every Spark payment.
     static let ldkAttemptsSeededKey = "ldkAttemptedPaymentHashesSeeded"
     /// When the wallet was restored, in seconds since 1970, until Spark lists its sends after a sync since. No backup
-    /// keeps `railAttemptsKey`, so until then an invoice made before the restore may be one Spark already paid.
+    /// keeps `railAttemptsKey`, so that listing fills it, and the sends Spark listed hold the node after a relaunch.
     static let sparkHistoryUnseededSinceKey = "sparkHistoryUnseededSince"
 
     /// Called as a wallet is restored, before Spark starts.
@@ -1212,7 +1221,8 @@ class LightningService: NodeLifecycleService {
 
     /// When the wallet was restored, in seconds since 1970. Spark can report a sync while its payment history failed to
     /// sync, so its list can lack a send it made before then, and a still-valid invoice created before it that Spark
-    /// hasn't listed as pending or paid is refused on either rail until it expires.
+    /// hasn't listed as pending or paid is refused on either rail until it expires, unless Spark's operators confirm
+    /// no send of it.
     static let sparkRestoredAtKey = "sparkRestoredAt"
 
     var sparkRestoredAt: Int? {
@@ -1233,7 +1243,7 @@ class LightningService: NodeLifecycleService {
         eventCallbackLock.withLock { railAttemptsStore.object(forKey: Self.sparkHistoryUnseededSinceKey) as? Int }
     }
 
-    /// Reads Spark's sends after its sync, which ends the hold on invoices made before a restore.
+    /// Reads Spark's sends after its sync, which keeps the ones made before a restore in `railAttemptsKey`.
     func listRailSendsIfUnseeded() async {
         guard sparkHistoryUnseededSince != nil else { return }
         _ = try? await channelFreeRailPayments()
@@ -1446,12 +1456,14 @@ class LightningService: NodeLifecycleService {
 
     /// An invoice must never go out on both rails: an earlier attempt still pending on `rails` refuses the payment as a
     /// duplicate, as LDK does its own, and a settled one returns its hash as paid. A failed or unknown one lets the
-    /// payment go. While either rail can't list its payments, an invoice it was sent over is refused as pending too, and
-    /// while Spark hasn't listed its sends since a restore, one created (`invoiceCreatedAt`) before it is refused, as
-    /// is one Spark's list doesn't show pending or paid until it expires (`refuseUnverifiedRestoredInvoice`).
+    /// payment go. While either rail can't list its payments, an invoice it was sent over is refused as pending too.
+    /// After a restore, a still-valid invoice created (`invoiceCreatedAt`) before it that Spark's list doesn't show
+    /// pending or paid is refused unless Spark's operators confirm no send of it (`refuseUnverifiedRestoredInvoice`).
     private func settledEarlierAttempt(
         paymentHash: String?,
         on rails: [LightningPaymentRail],
+        bolt11: String,
+        sats: UInt64?,
         invoiceCreatedAt: UInt64?,
         invoiceExpiresAt: Int?
     ) async throws -> PaymentHash? {
@@ -1501,7 +1513,8 @@ class LightningService: NodeLifecycleService {
                         releaseRailAttempt(paymentHash: paymentHash)
                         if !isPaidOverTheNode {
                             try await refuseUnverifiedRestoredInvoice(
-                                paymentHash: paymentHash, invoiceCreatedAt: invoiceCreatedAt, invoiceExpiresAt: invoiceExpiresAt
+                                paymentHash: paymentHash, bolt11: bolt11, sats: sats,
+                                invoiceCreatedAt: invoiceCreatedAt, invoiceExpiresAt: invoiceExpiresAt
                             )
                         }
                     }
@@ -1514,13 +1527,10 @@ class LightningService: NodeLifecycleService {
                 throw Self.pendingDuplicate(paymentHash: paymentHash)
             } else if isPaidOverTheNode {
                 Logger.info("Skipped Spark's restore checks of '\(paymentHash)', the node already paid it", context: "LightningService")
-            } else if let invoiceCreatedAt, let since = sparkHistoryUnseededSince, Int(clamping: invoiceCreatedAt) < since {
-                // Nothing left the wallet, and an invoice made after the restore can't be one Spark paid before it.
-                Logger.warn("Refused paying '\(paymentHash)' until Spark lists its sends since the restore", context: "LightningService")
-                throw ChannelFreeRailSendRefused.restoredInvoiceUnverified()
             } else {
                 try await refuseUnverifiedRestoredInvoice(
-                    paymentHash: paymentHash, invoiceCreatedAt: invoiceCreatedAt, invoiceExpiresAt: invoiceExpiresAt
+                    paymentHash: paymentHash, bolt11: bolt11, sats: sats,
+                    invoiceCreatedAt: invoiceCreatedAt, invoiceExpiresAt: invoiceExpiresAt
                 )
             }
         }
@@ -1535,18 +1545,45 @@ class LightningService: NodeLifecycleService {
         return nil
     }
 
-    /// After a restore, refuses a still-valid invoice created before it, whatever Spark's sync said, until it expires.
-    private func refuseUnverifiedRestoredInvoice(paymentHash: String, invoiceCreatedAt: UInt64?, invoiceExpiresAt: Int?) async throws {
+    /// After a restore, refuses a still-valid invoice created before it, as Spark's list can lack a send it made then,
+    /// unless Spark's operators show no Lightning send of it and it can't have been paid by a direct Spark transfer,
+    /// which they can't see. Any send they show, sent, pending or failed, or no answer, refuses it until it expires.
+    private func refuseUnverifiedRestoredInvoice(
+        paymentHash: String,
+        bolt11: String,
+        sats: UInt64?,
+        invoiceCreatedAt: UInt64?,
+        invoiceExpiresAt: Int?
+    ) async throws {
         guard let restoredAt = sparkRestoredAt, Self.holdsRestoredInvoice(
             restoredAt: restoredAt,
             invoiceCreatedAt: invoiceCreatedAt,
             invoiceExpiresAt: invoiceExpiresAt,
             now: Int(now().timeIntervalSince1970)
         ) else { return }
-        let sparkRuns = channelFreeRail != nil ? true : await channelFreeRailSupported()
+        let rail = channelFreeRail ?? channelFreePaymentHistory
+        let sparkRuns = rail != nil ? true : await channelFreeRailSupported()
         guard sparkRuns else { return }
-        Logger.warn("Refused paying '\(paymentHash)', a pre-restore invoice Spark hasn't listed", context: "LightningService")
-        throw ChannelFreeRailSendRefused.restoredInvoiceUnverified()
+        do {
+            guard let rail else { throw ChannelFreeRailUnavailable() }
+            if let status = try await rail.lightningSendStatus(bolt11: bolt11) {
+                Logger.warn("Refused paying '\(paymentHash)', a pre-restore invoice Spark shows as '\(status)'", context: "LightningService")
+                throw ChannelFreeRailSendRefused.restoredInvoiceUnverified()
+            }
+            if try await rail.mayPayBySparkTransfer(bolt11: bolt11, sats: sats) {
+                Logger.warn("Refused paying '\(paymentHash)', a pre-restore invoice Spark may have paid by transfer", context: "LightningService")
+                throw ChannelFreeRailSendRefused.restoredInvoiceUnverified()
+            }
+            Logger.info("Spark's operators show no send of pre-restore invoice '\(paymentHash)'", context: "LightningService")
+        } catch let refusal as ChannelFreeRailSendRefused {
+            throw refusal
+        } catch {
+            Logger.warn(
+                "Refused paying '\(paymentHash)', Spark couldn't show its sends of a pre-restore invoice: \(error)",
+                context: "LightningService"
+            )
+            throw ChannelFreeRailSendRefused.restoredInvoiceUnverified()
+        }
     }
 
     /// An unknown time counts as before the restore and never expiring.
