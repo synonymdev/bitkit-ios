@@ -5,33 +5,37 @@ import UIKit
 /// Reads a payment request from the closest Bitkit phone showing its Receive screen over Bluetooth LE.
 ///
 /// Scans for the nearby service while a payment scanner is open, connects to the strongest advertiser at
-/// or above `NearbyProtocol.minRssi`, reads meta and the needed chunks, disconnects and delivers the request
-/// once. A peripheral is not retried for `retryInterval` after an attempt.
+/// or above `NearbyProtocol.minRssi`, reads meta and the needed chunks, disconnects and delivers the request.
+/// A peripheral is not retried for `retryInterval` after an attempt. Scanning pauses while a request is handled,
+/// resumes when the handler did not take it, and otherwise waits for the next `start`.
 @MainActor
-final class NearbyPaymentScanner: NSObject, ObservableObject {
-    @Published private(set) var authorization: CBManagerAuthorization = CBManager.authorization
-    @Published private(set) var isScanning = false
+@Observable
+final class NearbyPaymentScanner: NSObject {
+    private(set) var authorization: CBManagerAuthorization = CBManager.authorization
+    private(set) var isScanning = false
 
     nonisolated static let retryInterval: TimeInterval = 10
     private static let selectionWindow: TimeInterval = 0.3
     private static let connectTimeout: TimeInterval = 8
 
-    private var central: CBCentralManager?
-    private var onRequest: ((String) async -> Void)?
-    private var candidates: [UUID: (peripheral: CBPeripheral, rssi: Int)] = [:]
-    private var lastAttempts: [UUID: Date] = [:]
-    private var selectionTask: Task<Void, Never>?
-    private var timeoutTask: Task<Void, Never>?
-    private var connected: CBPeripheral?
-    private var expectedLength: Int?
-    private var chunks: [Data] = []
+    @ObservationIgnored private var central: CBCentralManager?
+    @ObservationIgnored private var onRequest: ((String) async -> Bool)?
+    @ObservationIgnored private var candidates: [UUID: (peripheral: CBPeripheral, rssi: Int)] = [:]
+    @ObservationIgnored private var lastAttempts: [UUID: Date] = [:]
+    @ObservationIgnored private var selectionTask: Task<Void, Never>?
+    @ObservationIgnored private var timeoutTask: Task<Void, Never>?
+    @ObservationIgnored private var connected: CBPeripheral?
+    @ObservationIgnored private var expectedLength: Int?
+    @ObservationIgnored private var chunks: [Data] = []
+    @ObservationIgnored private var isDelivering = false
 
     var isAuthorized: Bool {
         authorization == .allowedAlways
     }
 
     /// Starts scanning when Bluetooth is already authorized. It never prompts; see `requestAuthorization`.
-    func start(onRequest: @escaping (String) async -> Void) {
+    /// `onRequest` returns whether the request was taken; scanning resumes when it was not.
+    func start(onRequest: @escaping (String) async -> Bool) {
         self.onRequest = onRequest
         authorization = CBManager.authorization
         guard isAuthorized else { return }
@@ -40,6 +44,7 @@ final class NearbyPaymentScanner: NSObject, ObservableObject {
 
     func stop() {
         onRequest = nil
+        isDelivering = false
         selectionTask?.cancel()
         selectionTask = nil
         disconnect()
@@ -74,12 +79,16 @@ final class NearbyPaymentScanner: NSObject, ObservableObject {
         if let central {
             scanIfReady(central)
         } else {
-            central = CBCentralManager(delegate: self, queue: nil)
+            central = CBCentralManager(
+                delegate: self,
+                queue: nil,
+                options: [CBCentralManagerOptionShowPowerAlertKey: false]
+            )
         }
     }
 
     private func scanIfReady(_ central: CBCentralManager) {
-        guard central.state == .poweredOn, onRequest != nil, connected == nil else {
+        guard central.state == .poweredOn, onRequest != nil, connected == nil, !isDelivering else {
             isScanning = false
             return
         }
@@ -197,10 +206,21 @@ final class NearbyPaymentScanner: NSObject, ObservableObject {
     }
 
     private func deliver(_ request: String) {
-        let onRequest = onRequest
-        // One request per scanner session: stop before handing it over.
-        stop()
-        Task { await onRequest?(request) }
+        guard let onRequest else { return }
+        disconnect()
+        isDelivering = true
+        isScanning = false
+        Task { [weak self] in
+            let wasTaken = await onRequest(request)
+            guard let self, isDelivering else { return }
+            isDelivering = false
+            if wasTaken {
+                // Wait for the scanner to be shown again (`start`) before reading another phone.
+                self.onRequest = nil
+            } else if let central {
+                scanIfReady(central)
+            }
+        }
     }
 
     private func handleValue(_ peripheral: CBPeripheral, characteristic: CBCharacteristic, error: Error?) {

@@ -428,6 +428,7 @@
 "other__nfc_error_text" = "This tag does not contain a payment request Bitkit can read.";
 "other__nfc_error_multiple" = "This tag contains more than one payment request.";
 "other__nfc_error_unavailable" = "This device cannot read NFC tags.";
+"other__nfc_error_read_failed" = "Bitkit could not read this tag. Hold your phone still and try again.";
 "other__nfc_intro__nav_title" = "TapPay (NFC)";
 "other__nfc_intro__title" = "Pay with\n<accent>just one tap</accent>";
 "other__nfc_intro__description" = "Bitkit now supports NFC payments. Hold your phone near a compatible payment terminal or phone to pay instantly.";

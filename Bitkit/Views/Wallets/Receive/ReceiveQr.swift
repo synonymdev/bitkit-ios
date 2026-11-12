@@ -30,7 +30,7 @@ struct ReceiveQr: View {
     @State private var verifyTask: Task<Void, Never>?
     @State private var passphraseTask: Task<Void, Never>?
     @State private var engagedSession = HwEngagedSession()
-    @StateObject private var nearbyAdvertiser = NearbyPaymentAdvertiser()
+    @State private var nearbyAdvertiser = NearbyPaymentAdvertiser()
     @Environment(\.scenePhase) private var scenePhase
 
     init(
@@ -282,7 +282,8 @@ struct ReceiveQr: View {
         .sheetBackground()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("ReceiveScreen")
-        .onChange(of: nearbyRequest, initial: true) { updateNearbyAdvertising() }
+        .onAppear { updateNearbyAdvertising() }
+        .onChange(of: nearbyRequest) { updateNearbyAdvertising() }
         .onChange(of: scenePhase) { updateNearbyAdvertising() }
         .onDisappear { nearbyAdvertiser.stop() }
         .sheet(isPresented: passphrasePromptBinding) {

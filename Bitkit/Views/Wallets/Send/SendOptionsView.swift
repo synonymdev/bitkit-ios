@@ -67,7 +67,8 @@ struct SendOptionsView: View {
                                     handleRoute(route)
                                 }
                             }
-                        }
+                        },
+                        isNearbyPaused: !navigationPath.isEmpty
                     )
 
                     RectangleButton(

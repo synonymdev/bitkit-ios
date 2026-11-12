@@ -4,17 +4,36 @@ import Foundation
 /// Serves the Receive screen's payment request to nearby phones as a Bluetooth LE GATT server.
 ///
 /// Advertises only the service UUID (no device name) while `start` is in effect. The owner calls `stop`
-/// when the Receive screen leaves the foreground or the nearby setting is off.
+/// when the Receive screen leaves the foreground or the nearby setting is off. It never asks for Bluetooth
+/// permission: it runs only once the user allowed Bluetooth (from a payment scanner's Bluetooth button).
 @MainActor
-final class NearbyPaymentAdvertiser: NSObject, ObservableObject {
-    @Published private(set) var isAdvertising = false
+@Observable
+final class NearbyPaymentAdvertiser: NSObject {
+    private(set) var isAdvertising = false
 
-    private var manager: CBPeripheralManager?
-    private var request: Data?
-    private var isServiceAdded = false
+    @ObservationIgnored private var manager: CBPeripheralManager?
+    @ObservationIgnored private var request: Data?
+    @ObservationIgnored private var isServiceAdded = false
+    @ObservationIgnored private var isAddingService = false
+    /// The request each central started reading, so a request change mid-read cannot mix chunks.
+    @ObservationIgnored private var requestsByCentral: [UUID: Data] = [:]
+    @ObservationIgnored private let authorization: () -> CBManagerAuthorization
+
+    init(authorization: @escaping () -> CBManagerAuthorization = { CBManager.authorization }) {
+        self.authorization = authorization
+    }
+
+    /// Whether advertising may start without showing the Bluetooth permission prompt.
+    var canAdvertise: Bool {
+        authorization() == .allowedAlways
+    }
 
     /// Starts serving `request` (a payment URI), or updates the served request while running.
     func start(request uri: String) {
+        guard canAdvertise else {
+            stop()
+            return
+        }
         guard let encoded = NearbyProtocol.encodeRequest(uri) else {
             Logger.warn("Nearby request is empty or too large to serve", context: "NearbyPaymentAdvertiser")
             stop()
@@ -24,12 +43,17 @@ final class NearbyPaymentAdvertiser: NSObject, ObservableObject {
         if let manager {
             publishIfReady(manager)
         } else {
-            manager = CBPeripheralManager(delegate: self, queue: nil)
+            manager = CBPeripheralManager(
+                delegate: self,
+                queue: nil,
+                options: [CBPeripheralManagerOptionShowPowerAlertKey: false]
+            )
         }
     }
 
     func stop() {
         request = nil
+        requestsByCentral = [:]
         if let manager {
             manager.stopAdvertising()
             manager.removeAllServices()
@@ -37,6 +61,7 @@ final class NearbyPaymentAdvertiser: NSObject, ObservableObject {
         }
         manager = nil
         isServiceAdded = false
+        isAddingService = false
         isAdvertising = false
     }
 
@@ -46,6 +71,8 @@ final class NearbyPaymentAdvertiser: NSObject, ObservableObject {
             return
         }
         guard isServiceAdded else {
+            guard !isAddingService else { return }
+            isAddingService = true
             manager.add(Self.makeService())
             return
         }
@@ -68,12 +95,14 @@ final class NearbyPaymentAdvertiser: NSObject, ObservableObject {
             publishIfReady(manager)
         } else {
             isServiceAdded = false
+            isAddingService = false
             isAdvertising = false
         }
     }
 
     private func handleServiceAdded(_ manager: CBPeripheralManager, error: Error?) {
         guard manager === self.manager else { return }
+        isAddingService = false
         if let error {
             Logger.error(error, context: "Nearby GATT service")
             return
@@ -92,8 +121,26 @@ final class NearbyPaymentAdvertiser: NSObject, ObservableObject {
         isAdvertising = request != nil
     }
 
+    /// Test seam: sets the served request without Bluetooth.
+    func setServedRequestForTesting(_ uri: String) {
+        request = NearbyProtocol.encodeRequest(uri)
+    }
+
+    /// The request a central reads. It is snapshotted when the central reads meta, so its chunks always match the
+    /// length it was told, even if Receive changes the request mid-read.
+    func servedRequest(for central: UUID, characteristic: CBUUID) -> Data? {
+        if characteristic == NearbyProtocol.metaUUID, let request {
+            requestsByCentral[central] = request
+            return request
+        }
+        return requestsByCentral[central] ?? request
+    }
+
     private func handleRead(_ manager: CBPeripheralManager, request read: CBATTRequest) {
-        guard let request, let value = NearbyProtocol.value(for: read.characteristic.uuid, request: request) else {
+        let uuid = read.characteristic.uuid
+        guard let request = servedRequest(for: read.central.identifier, characteristic: uuid),
+              let value = NearbyProtocol.value(for: uuid, request: request)
+        else {
             manager.respond(to: read, withResult: .attributeNotFound)
             return
         }

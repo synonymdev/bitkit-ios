@@ -336,11 +336,14 @@ struct Scanner: View {
     let onImageSelection: (PhotosPickerItem?) async -> Void
     /// Starts an NFC read; nil hides the NFC control (non-payment scanners, devices without NFC).
     var onNfcRead: (() async -> Void)?
-    /// Receives a request read over Bluetooth from a nearby phone; nil turns Bluetooth scanning off.
-    var onNearbyRequest: ((String) async -> Void)?
+    /// Receives a request read over Bluetooth from a nearby phone and returns whether it was taken; nil turns
+    /// Bluetooth scanning off.
+    var onNearbyRequest: ((String) async -> Bool)?
+    /// Pauses Bluetooth scanning while something covers the scanner (for example the payment sheet it opened).
+    var isNearbyPaused = false
 
     @State private var isTorchOn = false
-    @StateObject private var nearby = NearbyPaymentScanner()
+    @State private var nearby = NearbyPaymentScanner()
 
     private var isPaymentScanner: Bool {
         onNfcRead != nil || onNearbyRequest != nil
@@ -421,10 +424,17 @@ struct Scanner: View {
                 nearby.stop()
             }
         }
+        .onChange(of: isNearbyPaused) { _, isPaused in
+            if isPaused {
+                nearby.stop()
+            } else {
+                startNearbyScanning()
+            }
+        }
     }
 
     private func startNearbyScanning() {
-        guard let onNearbyRequest else { return }
+        guard let onNearbyRequest, !isNearbyPaused, scenePhase == .active else { return }
         nearby.start(onRequest: onNearbyRequest)
     }
 }

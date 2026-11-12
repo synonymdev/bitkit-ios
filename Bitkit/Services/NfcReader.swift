@@ -14,6 +14,16 @@ enum NfcReadError: Error, Equatable {
     var isSilent: Bool {
         self == .cancelled || self == .timedOut
     }
+
+    /// Message for the app toast and the system NFC sheet.
+    var message: String {
+        switch self {
+        case .unavailable: t("other__nfc_error_unavailable")
+        case .multiplePaymentRequests: t("other__nfc_error_multiple")
+        case .noPaymentRequest: t("other__nfc_error_text")
+        case .busy, .cancelled, .timedOut, .failed: t("other__nfc_error_read_failed")
+        }
+    }
 }
 
 @MainActor
@@ -42,7 +52,8 @@ final class NfcReader: NSObject, NfcPaymentReading {
 
         return try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
-            let session = NFCNDEFReaderSession(delegate: self, queue: nil, invalidateAfterFirstRead: true)
+            // Kept open after a read so a tag without a payment request can be refused on the system sheet.
+            let session = NFCNDEFReaderSession(delegate: self, queue: nil, invalidateAfterFirstRead: false)
             session.alertMessage = alertMessage
             self.session = session
             session.begin()
@@ -54,6 +65,17 @@ final class NfcReader: NSObject, NfcPaymentReading {
         self.continuation = nil
         session = nil
         continuation.resume(with: result.mapError { $0 as Error })
+    }
+
+    private func complete(_ session: NFCNDEFReaderSession, with result: Result<String, NfcReadError>) {
+        guard session === self.session else { return }
+        switch result {
+        case .success:
+            session.invalidate()
+        case let .failure(error):
+            session.invalidate(errorMessage: error.message)
+        }
+        finish(result)
     }
 
     nonisolated static func readError(for error: Error) -> NfcReadError? {
@@ -75,7 +97,7 @@ final class NfcReader: NSObject, NfcPaymentReading {
 }
 
 extension NfcReader: NFCNDEFReaderSessionDelegate {
-    nonisolated func readerSession(_: NFCNDEFReaderSession, didDetectNDEFs messages: [NFCNDEFMessage]) {
+    nonisolated func readerSession(_ session: NFCNDEFReaderSession, didDetectNDEFs messages: [NFCNDEFMessage]) {
         let records = messages.flatMap(\.records).map {
             NdefRecord(typeNameFormat: $0.typeNameFormat.rawValue, type: $0.type, payload: $0.payload)
         }
@@ -86,13 +108,14 @@ extension NfcReader: NFCNDEFReaderSessionDelegate {
             }
         }
         Task { @MainActor in
-            self.finish(result)
+            self.complete(session, with: result)
         }
     }
 
-    nonisolated func readerSession(_: NFCNDEFReaderSession, didInvalidateWithError error: Error) {
+    nonisolated func readerSession(_ session: NFCNDEFReaderSession, didInvalidateWithError error: Error) {
         guard let readError = Self.readError(for: error) else { return }
         Task { @MainActor in
+            guard session === self.session else { return }
             self.finish(.failure(readError))
         }
     }

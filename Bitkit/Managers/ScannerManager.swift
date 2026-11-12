@@ -22,6 +22,8 @@ class ScannerManager: ObservableObject {
     private weak var hwWalletManager: HwWalletManager?
     private let nfcReader: NfcPaymentReading
     private var isHandlingScan = false
+    /// Whether the last main scan opened a payment flow, so a Bluetooth read knows the request was taken.
+    private var didOpenScanFlow = false
 
     init(
         nfcReader: NfcPaymentReading? = nil,
@@ -66,7 +68,12 @@ class ScannerManager: ObservableObject {
         await processScan(uri, context: context, isCurrent: isCurrent)
     }
 
-    private func processScan(_ uri: String, context: ScannerContext, isCurrent: () -> Bool) async {
+    private func processScan(
+        _ uri: String,
+        context: ScannerContext,
+        scope: ScanHandlingScope = .unrestricted,
+        isCurrent: () -> Bool
+    ) async {
         let uri = uri.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !uri.isEmpty else { return }
 
@@ -76,9 +83,9 @@ class ScannerManager: ObservableObject {
             handleAddContactScan(uri)
         case .main:
             playScanSuccess()
-            await handleMainScan(uri, isCurrent: isCurrent)
+            await handleMainScan(uri, scope: scope, isCurrent: isCurrent)
         case .send:
-            await processSendScan(uri, isCurrent: isCurrent) { _ in }
+            await processSendScan(uri, scope: scope, isCurrent: isCurrent) { _ in }
         case .electrum:
             playScanSuccess()
             await handleElectrumScan(uri)
@@ -103,7 +110,8 @@ class ScannerManager: ObservableObject {
         navigation?.navigate(.addContact(publicKey: input))
     }
 
-    private func handleMainScan(_ uri: String, isCurrent: () -> Bool) async {
+    private func handleMainScan(_ uri: String, scope: ScanHandlingScope = .unrestricted, isCurrent: () -> Bool) async {
+        didOpenScanFlow = false
         guard let app else { return }
 
         do {
@@ -115,6 +123,7 @@ class ScannerManager: ObservableObject {
                           navigation?.path == path else { return }
                     navigation?.navigate(route)
                 }
+                didOpenScanFlow = true
                 return
             }
             if handlePubkyRouteIfNeeded(uri) {
@@ -123,6 +132,7 @@ class ScannerManager: ObservableObject {
 
             try await app.handleScannedData(
                 uri,
+                scope: scope,
                 alternativeOnchainBalanceSats: hwWalletManager?.maximumFundingBalanceSats ?? 0,
                 isCurrentScan: isCurrent
             )
@@ -135,6 +145,7 @@ class ScannerManager: ObservableObject {
                     settings: settings,
                     sheetViewModel: sheets
                 )
+                didOpenScanFlow = !app.didRejectScannedPayment
             }
         } catch {
             guard isCurrent(), !(error is CancellationError) else { return }
@@ -210,7 +221,7 @@ class ScannerManager: ObservableObject {
         playScanSuccess()
 
         do {
-            if scope == .unrestricted, case let .usdtPayment(recipient, amount)? = try resolveUsdtPaymentRoute(input: uri) {
+            if scope != .onchainPayments, case let .usdtPayment(recipient, amount)? = try resolveUsdtPaymentRoute(input: uri) {
                 guard app.contactPaymentContext == nil, wallet?.usdtWallet.isSendPresented == false else {
                     completion(nil)
                     return
@@ -291,29 +302,70 @@ class ScannerManager: ObservableObject {
         await handleSendScan(uri, scope: scope, isCurrent: isCurrent, completion: completion)
     }
 
-    /// Handles a request read over Bluetooth. Bluetooth range lets a device that is not the merchant's
-    /// answer, so the request always opens the normal review and QuickPay does not apply.
-    func handleNearbyRequest(_ uri: String, context: ScannerContext, isCurrent: () -> Bool = { true }) async {
-        guard let app else { return }
-        await app.withQuickPaySuppressed {
-            await handleScan(uri, context: context, isCurrent: isCurrent)
+    /// Schemes accepted from Bluetooth: payment requests only. Unlike a camera or NFC read, a Bluetooth request can
+    /// come from any nearby device, so sign-in, setup, withdraw and contact links are refused.
+    nonisolated static let nearbyPaymentSchemes = ["bitcoin:", "lightning:", "ethereum:", "lnurlp:"]
+
+    nonisolated static func isNearbyPaymentRequest(_ uri: String) -> Bool {
+        let lowercase = uri.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return nearbyPaymentSchemes.contains { lowercase.hasPrefix($0) }
+    }
+
+    /// Handles a request read over Bluetooth. It always opens the normal review (QuickPay does not apply) and is
+    /// limited to on-chain, Lightning, LNURL-pay and USDT requests.
+    /// - Returns: false when the request was not taken (refused, or another scan is being handled), so the caller
+    ///   can keep listening.
+    @discardableResult
+    func handleNearbyRequest(_ uri: String, context: ScannerContext, isCurrent: () -> Bool = { true }) async -> Bool {
+        guard let app, context == .main || context == .send else { return false }
+        guard Self.isNearbyPaymentRequest(uri) else {
+            showUnsupportedQRCodeError()
+            return false
         }
+        guard !isHandlingScan, isCurrent() else { return false }
+        isHandlingScan = true
+        defer { isHandlingScan = false }
+        if context == .send {
+            var routed = false
+            await app.withQuickPaySuppressed {
+                await processSendScan(uri, scope: .paymentRequests, isCurrent: isCurrent) { routed = $0 != nil }
+            }
+            return routed
+        }
+        await app.withQuickPaySuppressed {
+            await processScan(uri, context: .main, scope: .paymentRequests, isCurrent: isCurrent)
+        }
+        return didOpenScanFlow
     }
 
     /// Send-sheet variant of `handleNearbyRequest`.
+    @discardableResult
     func handleSendNearbyRequest(
         _ uri: String,
         scope: ScanHandlingScope = .unrestricted,
         isCurrent: () -> Bool = { true },
         completion: @escaping (SendRoute?) -> Void
-    ) async {
-        guard let app else {
+    ) async -> Bool {
+        guard let app, Self.isNearbyPaymentRequest(uri) else {
+            showUnsupportedQRCodeError()
             completion(nil)
-            return
+            return false
         }
+        guard !isHandlingScan, isCurrent() else { return false }
+        isHandlingScan = true
+        defer { isHandlingScan = false }
+        var routed = false
         await app.withQuickPaySuppressed {
-            await handleSendScan(uri, scope: scope, isCurrent: isCurrent, completion: completion)
+            await processSendScan(
+                uri,
+                scope: scope == .onchainPayments ? .onchainPayments : .paymentRequests,
+                isCurrent: isCurrent
+            ) { route in
+                routed = route != nil
+                completion(route)
+            }
         }
+        return routed
     }
 
     private func readNfcPaymentRequest() async -> String? {
@@ -332,12 +384,7 @@ class ScannerManager: ObservableObject {
 
     private func showNfcReadError(_ error: NfcReadError) {
         guard !error.isSilent, error != .busy else { return }
-        let description = switch error {
-        case .unavailable: t("other__nfc_error_unavailable")
-        case .multiplePaymentRequests: t("other__nfc_error_multiple")
-        default: t("other__nfc_error_text")
-        }
-        app?.toast(type: .error, title: t("other__nfc_error_header"), description: description)
+        app?.toast(type: .error, title: t("other__nfc_error_header"), description: error.message)
     }
 
     private func shouldOpenPaymentFlow(for uri: String) -> Bool {

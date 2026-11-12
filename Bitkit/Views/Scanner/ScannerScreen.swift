@@ -42,7 +42,8 @@ struct ScannerScreen: View {
                     : nil,
                 onNearbyRequest: scannerContext == .main
                     ? { await scanner.handleNearbyRequest($0, context: scannerContext) }
-                    : nil
+                    : nil,
+                isNearbyPaused: sheets.activeSheetConfiguration != nil
             )
             .padding(.bottom, 16)
 

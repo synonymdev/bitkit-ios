@@ -101,6 +101,37 @@ final class NearbyProtocolTests: XCTestCase {
         XCTAssertFalse(NearbyPaymentScanner.isDebounced(now.addingTimeInterval(-10), now: now))
     }
 
+    @MainActor
+    func testAdvertiserServesTheRequestEachCentralStartedReading() throws {
+        let advertiser = NearbyPaymentAdvertiser(authorization: { .allowedAlways })
+        let first = UUID()
+        let second = UUID()
+        let original = "lightning:lnbcrt" + String(repeating: "a", count: 700)
+        advertiser.setServedRequestForTesting(original)
+        XCTAssertNotNil(advertiser.servedRequest(for: first, characteristic: NearbyProtocol.metaUUID))
+
+        advertiser.setServedRequestForTesting("bitcoin:bcrt1qnew")
+
+        let firstRequest = try XCTUnwrap(advertiser.servedRequest(for: first, characteristic: NearbyProtocol.dataUUIDs[1]))
+        XCTAssertEqual(firstRequest, Data(original.utf8))
+        let secondMeta = try XCTUnwrap(advertiser.servedRequest(for: second, characteristic: NearbyProtocol.metaUUID))
+        XCTAssertEqual(secondMeta, Data("bitcoin:bcrt1qnew".utf8))
+
+        advertiser.stop()
+        XCTAssertNil(advertiser.servedRequest(for: first, characteristic: NearbyProtocol.dataUUIDs[0]))
+    }
+
+    @MainActor
+    func testAdvertiserDoesNotStartWithoutBluetoothPermission() {
+        for authorization in [CBManagerAuthorization.notDetermined, .denied, .restricted] {
+            let advertiser = NearbyPaymentAdvertiser(authorization: { authorization })
+            XCTAssertFalse(advertiser.canAdvertise)
+            advertiser.start(request: "bitcoin:bcrt1qexample")
+            XCTAssertFalse(advertiser.isAdvertising)
+            XCTAssertNil(advertiser.servedRequest(for: UUID(), characteristic: NearbyProtocol.metaUUID))
+        }
+    }
+
     func testScannerStatusTextBySources() {
         XCTAssertEqual(ScannerSources(nfc: true, bluetooth: true).statusKey, "other__scan_status_qr_nfc_bluetooth")
         XCTAssertEqual(ScannerSources(nfc: true, bluetooth: false).statusKey, "other__scan_status_qr_nfc")
