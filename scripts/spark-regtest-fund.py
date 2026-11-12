@@ -8,9 +8,9 @@ Use it to fund Spark's deposit address on the Spark screen of a Debug build laun
 SPARK_CHAIN_SERVICE_URL, which connects Spark to Lightspark's regtest. Savings always watches
 Bitkit's staging regtest, a different chain, and so does Spark when SPARK_CHAIN_SERVICE_URL points
 it there: fund those with the staging deposit (`./lsp POST /regtest/chain/deposit`, see
-`journeys/README.md`), never with this script. It spends from the wallet behind the SPARK_REGTEST_MNEMONIC
-secret (BIP84 m/84'/1'/0'/0/0, one P2WPKH address for receive and change) and broadcasts through
-Lightspark's regtest mempool API. Lightspark mines about once a minute.
+`journeys/README.md`), never with this script. It spends from the wallet behind the
+SPARK_REGTEST_MNEMONIC secret (BIP84 m/84'/1'/0'/0/0, one P2WPKH address for receive and
+change) and broadcasts through Lightspark's regtest mempool API. Lightspark mines about once a minute.
 
 Usage:
   SPARK_REGTEST_MNEMONIC="<12 words>" uv run scripts/spark-regtest-fund.py <bcrt1… address> [sats]
