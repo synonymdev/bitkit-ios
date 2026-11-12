@@ -69,6 +69,26 @@ final class SendConfirmationViewTests: XCTestCase {
         ))
     }
 
+    func testARouteRefusedWhenConfirmOpensKeepsTheSwipeAndTheAutomaticPaymentOff() {
+        // Confirm's first routing call keeps a refusal the way a source switch does.
+        let refused = SendConfirmationView.refusedRouteSource(after: .refused, on: .lightning, previous: nil)
+
+        XCTAssertFalse(SendConfirmationView.canStartAutomaticPayment(
+            shouldAutomaticallyPay: true,
+            hasStartedAutomaticPayment: false,
+            isSetupPending: false,
+            isPreparingWallet: false,
+            isRouteRefused: refused == .lightning
+        ), "an automatic attempt must not pay a source the router refused")
+        XCTAssertTrue(SendConfirmationView.isSwipeDisabled(
+            walletType: .lightning,
+            isHardwarePayment: false,
+            isHardwareConfirmationUnavailable: false,
+            feeRate: 5,
+            isRouteRefused: refused == .lightning
+        ))
+    }
+
     func testAutomaticPaymentAwaitsFeeRateOnlyWhileItIsLoading() {
         XCTAssertTrue(SendConfirmationView.automaticPaymentAwaitsFeeRate(isFeeRateMissing: true, feeRateLoadFailed: false))
         XCTAssertFalse(SendConfirmationView.automaticPaymentAwaitsFeeRate(isFeeRateMissing: true, feeRateLoadFailed: true))
@@ -230,5 +250,29 @@ final class SendConfirmationViewTests: XCTestCase {
         XCTAssertFalse(SendConfirmationView.isDefiniteSwapFailure(PubkySwapClaimError.timedOut(electrumError)))
         XCTAssertFalse(SendConfirmationView.isDefiniteSwapFailure(CancellationError()))
         XCTAssertFalse(SendConfirmationView.isDefiniteSwapFailure(electrumError))
+    }
+
+    func testASparkLegThatMayHaveSentStaysPendingInsteadOfOfferingTryAgain() {
+        struct Refused: Error {}
+        struct Lost: Error {}
+        let attempt = SparkWithdrawalAttempt(
+            address: "bcrt1qcontact",
+            amountSats: 20000,
+            requestId: PaykitPaymentRequest.ID(paymentRequestId: "request", counterparty: "payee")
+        )
+
+        let unresolved = SendConfirmationView.serviceLegFailureRoute(Lost(), attempt: attempt, routingCacheResetAttempted: false)
+        XCTAssertEqual(
+            unresolved,
+            .sparkWithdrawalPending(attempt),
+            "Spark may have sent it, so the screen follows its journal until it settles"
+        )
+
+        let refused = SendConfirmationView.serviceLegFailureRoute(
+            SparkWithdrawalNotSent(underlying: Refused()),
+            attempt: attempt,
+            routingCacheResetAttempted: false
+        )
+        guard case .failure = refused else { return XCTFail("A leg Spark refused before sending can be tried again") }
     }
 }
