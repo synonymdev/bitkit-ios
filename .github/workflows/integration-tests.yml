@@ -42,8 +42,6 @@ concurrency:
 jobs:
 
   test:
-    # PR code must not publish dependency caches into the dispatch ref's scope.
-    cache-mode: read
     if: github.event.pull_request.draft == false
     name: Run Integration Tests
     runs-on: macos-15
@@ -130,6 +128,8 @@ jobs:
 
       - name: Run integration tests
         timeout-minutes: 25
+        env:
+          TEST_RUNNER_BLOCKTANK_REGTEST_AUTH: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'release-3.1.1' && inputs.pr == '' && inputs.merge_commit == '' && secrets.BLOCKTANK_REGTEST_AUTH || '' }}
         run: |
           xcrun simctl bootstatus "$SIMULATOR_UDID" -b
           echo "⏱️  Starting integration tests at $(date)"
