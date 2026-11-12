@@ -182,6 +182,14 @@ final class SparkExitFundingIndexTests: XCTestCase {
         XCTAssertEqual(reads, Array(0 ... 5 + SparkExitMath.fundingScanGapLimit))
     }
 
+    func testAFundingScanFromTheTopOfTheIndexRangeEndsInsteadOfOverflowing() async {
+        let start = UInt32.max - 5
+
+        let next = await SparkExitMath.scanNextFundingIndex(from: start) { _ in true }
+
+        XCTAssertEqual(next, UInt32.max)
+    }
+
     func testAFundingScanStopsAtItsCeilingWhenEveryAddressReadsAsUsed() async {
         var reads: UInt32 = 0
 

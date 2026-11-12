@@ -591,9 +591,9 @@ enum SparkExitMath {
     static func scanNextFundingIndex(from start: UInt32 = 0, isUsed: (UInt32) async throws -> Bool) async rethrows -> UInt32 {
         var next = start
         var index = start
-        let end = start.addingReportingOverflow(fundingScanMaxAddresses)
-        let limit = end.overflow ? UInt32.max : end.partialValue
-        while index < next + fundingScanGapLimit, index < limit {
+        // In 64 bits, so a counter near the top of the index range ends the scan instead of overflowing.
+        let limit = min(UInt64(start) + UInt64(fundingScanMaxAddresses), UInt64(UInt32.max))
+        while UInt64(index) < UInt64(next) + UInt64(fundingScanGapLimit), UInt64(index) < limit {
             if try await isUsed(index) {
                 next = index + 1
             }
