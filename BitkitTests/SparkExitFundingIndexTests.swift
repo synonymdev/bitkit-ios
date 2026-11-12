@@ -102,7 +102,7 @@ final class SparkExitFundingIndexTests: XCTestCase {
         XCTAssertEqual(defaults.object(forKey: key) as? Int, 3, "the next quote scans again")
     }
 
-    func testAFundingIndexRestoredFromTheBackupIsUsedWithoutAScan() async throws {
+    func testAFundingIndexRestoredFromTheBackupIsOnlyScannedForwardFrom() async throws {
         defaults.set(3, forKey: key)
         let backup = try roundTrip(cache(sparkExitNextFundingIndexes: SparkExitFundingIndexes.backup(defaults)))
         restore(backup)
@@ -112,7 +112,33 @@ final class SparkExitFundingIndexTests: XCTestCase {
 
         XCTAssertEqual(backup.sparkExitNextFundingIndexes, ["regtest/wallet0": 3], "keyed as bitkit-android keys it")
         XCTAssertEqual(next, 3)
-        XCTAssertTrue(chain.addressReads.isEmpty, "a backed-up index needs no scan")
+        XCTAssertEqual(chain.addressReads, (3 ..< 3 + SparkExitMath.fundingScanGapLimit).map(address), "a backed-up index needs no scan below it")
+    }
+
+    func testAQuoteWhileARestoreIsPendingScansPastTheRestoredCounterFirst() async throws {
+        // The backup carrying counter 4 never landed: address 3 still holds the lost exit's coins.
+        SparkExitFundingIndexes.restore(["regtest/wallet0": 3], into: defaults)
+        chain.usedAddresses = [address(0), address(1), address(2), address(3)]
+        chain.utxosByAddress[address(3)] = [SparkExitFixtures.utxo("lost", value: 7000)]
+
+        let next = try await nextFundingIndex()
+
+        XCTAssertEqual(next, 4, "the next exit funds from the lost exit's address")
+        XCTAssertEqual(try earlierAddressStore.load(), [keptCoins(3, sats: 7000)])
+        XCTAssertFalse(defaults.bool(forKey: pendingKey))
+    }
+
+    func testAQuoteWhileARestoreIsPendingFailsWhenTheScanFails() async {
+        SparkExitFundingIndexes.restore(["regtest/wallet0": 3], into: defaults)
+        chain.isAddressReadUnreadable = true
+
+        do {
+            _ = try await nextFundingIndex()
+            XCTFail("a quote could fund from the address a lost exit used")
+        } catch {}
+
+        XCTAssertEqual(defaults.integer(forKey: key), 3)
+        XCTAssertTrue(defaults.bool(forKey: pendingKey), "the restore no longer runs again")
     }
 
     func testARestoreKeepsTheHigherIndexOfTheDeviceAndTheBackup() {
@@ -154,6 +180,14 @@ final class SparkExitFundingIndexTests: XCTestCase {
 
         XCTAssertEqual(next, 6)
         XCTAssertEqual(reads, Array(0 ... 5 + SparkExitMath.fundingScanGapLimit))
+    }
+
+    func testAFundingScanFromTheTopOfTheIndexRangeEndsInsteadOfOverflowing() async {
+        let start = UInt32.max - 5
+
+        let next = await SparkExitMath.scanNextFundingIndex(from: start) { _ in true }
+
+        XCTAssertEqual(next, UInt32.max)
     }
 
     func testAFundingScanStopsAtItsCeilingWhenEveryAddressReadsAsUsed() async {
@@ -220,9 +254,47 @@ final class SparkExitFundingIndexTests: XCTestCase {
         try await SparkExitManager.recoverFunding(recovery, now: now)
 
         XCTAssertEqual(try earlierAddressStore.load(), [keptCoins(2, sats: 5000)], "the lost funding goes unwatched")
-        XCTAssertTrue(chain.addressReads.isEmpty, "a restored counter needs no scan for the next index")
+        XCTAssertEqual(chain.addressReads, (3 ..< 23).map(address), "a restored counter is scanned forward from, once")
         XCTAssertNil(defaults.object(forKey: pendingKey), "every start reads the funding addresses again")
         XCTAssertEqual(defaults.integer(forKey: key), 3)
+    }
+
+    func testARestoredCounterThatPredatesTheLastExitsFundingFindsItsCoins() async throws {
+        // The backup carrying counter 4 never landed: the exit that funded address 3 is lost with it.
+        SparkExitFundingIndexes.restore(["regtest/wallet0": 3], into: defaults)
+        chain.usedAddresses = [address(0), address(1), address(2), address(3)]
+        chain.utxosByAddress[address(3)] = [SparkExitFixtures.utxo("lost", value: 7000)]
+
+        let next = try await SparkExitManager.recoverFunding(recovery, now: now)
+
+        XCTAssertEqual(next, 4)
+        XCTAssertEqual(try earlierAddressStore.load(), [keptCoins(3, sats: 7000)], "address 3's coins stay hidden")
+        XCTAssertEqual(defaults.integer(forKey: key), 4, "the next exit reuses address 3")
+    }
+
+    func testARestoredCounterAtAForgottenExitsAddressListsItsLatePaymentAsKeptChange() async throws {
+        // The exit at address 3 was forgotten before funding, so the counter went back to 3; a payment came late.
+        try earlierAddressStore.add(SparkExitEarlierAddress(address: address(3), path: path(3), kind: .cancelledFunding, sats: nil, date: now))
+        SparkExitFundingIndexes.restore(["regtest/wallet0": 3], into: defaults)
+        chain.usedAddresses = [address(0), address(1), address(2), address(3)]
+        chain.utxosByAddress[address(3)] = [SparkExitFixtures.utxo("late", value: 4000)]
+
+        let next = try await SparkExitManager.recoverFunding(recovery, now: now)
+
+        XCTAssertEqual(next, 4)
+        XCTAssertEqual(try earlierAddressStore.load(), [keptCoins(3, sats: 4000)], "the late payment is watched only until its cancel expires")
+    }
+
+    func testARestoredCounterPastTheScanCeilingStillScansForward() async throws {
+        let ceiling = Int(SparkExitMath.fundingScanMaxAddresses)
+        SparkExitFundingIndexes.restore(["regtest/wallet0": ceiling], into: defaults)
+        chain.usedAddresses = [address(UInt32(ceiling))]
+        chain.utxosByAddress[address(UInt32(ceiling))] = [SparkExitFixtures.utxo("lost", value: 7000)]
+
+        let next = try await SparkExitManager.recoverFunding(recovery, now: now)
+
+        XCTAssertEqual(next, UInt32(ceiling) + 1)
+        XCTAssertEqual(try earlierAddressStore.load(), [keptCoins(UInt32(ceiling), sats: 7000)])
     }
 
     func testAKeptCounterWithNoRestorePendingReadsNoFundingAddress() async throws {
