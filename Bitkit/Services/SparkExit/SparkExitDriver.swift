@@ -55,6 +55,8 @@ struct SparkExitDriver {
     /// A leaf the operators' watchtower stopped is relabelled promptly; one still stopped after this many blocks
     /// never will be.
     static let stoppedLeafBlocks: UInt32 = 6
+    /// Blocks a Redo rebuild waits for a skipped leaf the diverged generation recovers, about an hour.
+    static let redoHoldBlocks: UInt32 = 6
     /// A build waiting for a leaf that may still move tries again after this many blocks, doubling up to a day.
     static let retryBlocks: UInt32 = 6
     static let retryMaxBlocks: UInt32 = 144
@@ -439,6 +441,9 @@ struct SparkExitDriver {
             // Only cooperative leaves the operators could not co-sign: kept as the exit's recovery, so the next check
             // puts them through the bounded failed-leaf retry (about a week), with the operators-waiting line.
             if !built.failed.isEmpty {
+                if holdsRedo(&record, waiting: waitingLeafIds, tip: tip) {
+                    return
+                }
                 record.adopt(built, at: now())
                 record.waitingLeafIds = waitingLeafIds.isEmpty ? nil : waitingLeafIds
                 if let valid {
@@ -465,6 +470,11 @@ struct SparkExitDriver {
             if record.exitLeafIds.isEmpty {
                 await finish(&record, phase: .failed(reason: SparkExitRecord.lostReason))
             }
+            return
+        }
+        // A diverged generation is never sent again, so a Redo rebuild that leaves out a waiting leaf it recovers would
+        // leave that leaf unsent until the rest of the exit is done: it tries again at its usual pace for a few blocks.
+        if holdsRedo(&record, waiting: waitingLeafIds, tip: tip) {
             return
         }
         record.adopt(built, at: now())
@@ -990,6 +1000,23 @@ struct SparkExitDriver {
         else { return false }
         Logger.warn("Spark exit keeps its generation: the rebuild left waiting a leaf it recovers", context: "SparkExitDriver")
         record = valid
+        return true
+    }
+
+    /// A Redo rebuild that leaves out a waiting leaf the diverged generation recovers is not adopted for
+    /// `redoHoldBlocks` from the first such build: it stays rebuilding, at the rebuild pace.
+    private func holdsRedo(_ record: inout SparkExitRecord, waiting: [String], tip: UInt32?) -> Bool {
+        guard record.isRedoRebuild == true,
+              record.recovery?.response.leaves.contains(where: { waiting.contains($0.leafId) }) == true
+        else { return false }
+        // Without a tip the hold goes on uncounted: the failed read that skipped the leaf often fails the tip too.
+        let since = record.redoHeldSince ?? tip
+        if let tip, let since, tip.saturatingSub(since) >= Self.redoHoldBlocks {
+            return false
+        }
+        Logger.info("Holding the Spark exit's Redo rebuild for waiting leaves \(waiting)", context: "SparkExitDriver")
+        record.redoHeldSince = since
+        record.lastBuildAt = now()
         return true
     }
 
