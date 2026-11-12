@@ -149,7 +149,15 @@ struct SparkExitDriver {
                     // generation stays over a failed-only build, running again with the funding adopted. Once a
                     // block, like the check's rebuild: the valid generation's retry clock does not pace it.
                     let tip = try? await chain.tipHeight()
-                    if tip == nil || record.unverifiedRebuiltAtHeight != tip {
+                    let unilateral = (record.recovery?.response.transactions ?? []).filter { $0.kind != .cooperative }
+                    if unilateral.contains(where: { $0.status == .ready }) || !unilateral.contains(where: { $0.status == .unverified }) {
+                        // A clean check while the payment came can read the unread step again, and it is then sent:
+                        // a rebuild now would conflict with it at the same fee. The ask ends, and the funding it
+                        // adopted stays for a later rebuild or the leftover sweep.
+                        Logger.info("Spark exit steps read again: the funded unverified rebuild is not needed", context: "SparkExitDriver")
+                        record.phase = .running
+                        record.isUnverifiedAsk = nil
+                    } else if tip == nil || record.unverifiedRebuiltAtHeight != tip {
                         record.unverifiedRebuiltAtHeight = tip
                         var valid = record
                         valid.phase = .running

@@ -1829,6 +1829,26 @@ final class SparkExitDriverTests: XCTestCase {
         return (record, readable, failure)
     }
 
+    /// A savings payment keeps an unverified rebuild's ask open; a clean check while it confirms reads the unread step
+    /// as ready, and it is sent. The funded rebuild then never runs: it would conflict with that step at the same fee.
+    func testAFundedUnverifiedAskWhoseStepReadsAgainEndsWithoutARebuild() async throws {
+        var (record, readable, _) = try await unverifiedAsk()
+        let paid = String(repeating: "f", count: 64)
+        record.fundingPaymentTxid = paid
+        let builds = sdk.recoverRequests.count
+        sdk.checks = [CheckRecoverFundsResponse(recovery: readable, verdict: .valid)]
+        chain.utxosByAddress[record.funding[0].address] = [SparkExitFixtures.utxo(paid, value: 50000)]
+        chain.tip = 1001
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(sdk.recoverRequests.count, builds, "rebuilt over n2, which the clean check made ready and sent")
+        XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2"])
+        XCTAssertEqual(record.phase, .running)
+        XCTAssertNil(record.isUnverifiedAsk)
+        XCTAssertEqual(record.generation, 1)
+    }
+
     /// Confirmed funding for an unverified rebuild's fee ask resumes that rebuild with its guard: a build of only failed
     /// cooperative leaves beside the waiting leaf is never adopted, and the exit runs on with the valid generation.
     func testFundingAnUnverifiedRebuildsAskKeepsTheValidGenerationOverAFailedOnlyBuild() async throws {
