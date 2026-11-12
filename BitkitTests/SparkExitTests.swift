@@ -1606,6 +1606,42 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(chain.broadcasts.map(\.txid), ["n2b"], "the unverified step is still not sent")
     }
 
+    /// A ready step that one failed chain read turns unverified may already be sent, so it is not rebuilt over: the
+    /// exit waits for the next check, which reads it again, and rebuilds only if it stays unread.
+    func testAStepAFailedReadTurnsUnverifiedWaitsForTheNextCheckInsteadOfRebuilding() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        let ready = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 10)),
+            SparkExitFixtures.tx("n2", cpfp: "03c", dependsOn: ["n1"]),
+        ])
+        let unread = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 10)),
+            SparkExitFixtures.tx("n2", cpfp: "03c", dependsOn: ["n1"], status: .unverified),
+        ])
+        record.adopt(ready, at: clock)
+        sdk.checks = [CheckRecoverFundsResponse(recovery: unread, verdict: .valid)]
+
+        record = try await driver().tick(record)
+
+        XCTAssertTrue(sdk.recoverRequests.isEmpty, "rebuilt over a step one failed read turned unverified")
+        XCTAssertNil(record.unverifiedRebuiltAtHeight)
+        XCTAssertNil(record.isUnverifiedAsk)
+        XCTAssertEqual(record.generation, 1)
+        XCTAssertTrue(chain.broadcasts.isEmpty, "the unverified step was sent")
+
+        // Still unread at the next check: now it rebuilds.
+        sdk.checks = [CheckRecoverFundsResponse(recovery: unread, verdict: .valid)]
+        sdk.builds = [SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 10)),
+            SparkExitFixtures.tx("n2b", cpfp: "03d", dependsOn: ["n1"]),
+        ])]
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(sdk.recoverRequests.count, 1)
+        XCTAssertEqual(record.unverifiedRebuiltAtHeight, 1000)
+        XCTAssertEqual(record.generation, 2)
+    }
+
     /// An unverified rebuild that builds only failed cooperative leaves, beside the leaf it could not read, keeps the
     /// valid generation: its signed steps are still sent once the chain reads again.
     func testAnUnverifiedRebuildOfOnlyFailedLeavesKeepsTheValidGeneration() async throws {
