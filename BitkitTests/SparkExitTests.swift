@@ -1384,8 +1384,8 @@ final class SparkExitDriverTests: XCTestCase {
         )
     }
 
-    /// Since SDK 0.28.2 a lost fee race comes as `Redo`. The refund whose input was spent is struck once, and the
-    /// rebuild follows the spent funding: its refund is sent, so the next Redo strikes nothing and no leaf is lost.
+    /// Since SDK 0.28.2 a lost fee race comes as `Redo`. The refund whose input was spent is struck once; once the
+    /// rebuild's refund is sent, the next Redo strikes nothing and no leaf is lost.
     func testARedoAfterALostFeeRaceStrikesTheSpentRefundOnlyOnce() async throws {
         var record = SparkExitFixtures.record(phase: .running)
         record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 20000)
@@ -1481,6 +1481,49 @@ final class SparkExitDriverTests: XCTestCase {
         XCTAssertEqual(record.waitingLeafIds, ["leaf-2"])
         XCTAssertNil(record.redoHeldSince)
         XCTAssertFalse(record.isRebuilding)
+    }
+
+    /// A Redo hold whose top-up was funded runs at the rebuild pace: it leaves the funding phase, so no fee ask stays on
+    /// screen and the next tick does not build again before the rebuild interval.
+    func testARedoHoldAfterAFundedTopUpRunsAtTheRebuildPace() async throws {
+        var record = try await heldRedoRebuild()
+        record.phase = .needsFunding(requiredSats: 23000)
+        chain.utxosByAddress["bcrt1qfunding"] = [
+            SparkExitFixtures.utxo("f0", vout: 1, value: 20000),
+            SparkExitFixtures.utxo("topup", value: 3000),
+        ]
+        sdk.builds = Array(repeating: SparkExitFixtures.recovery([SparkExitFixtures.tx("n1b")]), count: 2)
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.funding.compactMap(\.txid), ["f0", "topup"])
+        XCTAssertEqual(record.generation, 1, "the Redo rebuild without leaf-2 was adopted")
+        XCTAssertEqual(record.phase, .running, "a funded hold still asks for fees")
+        XCTAssertEqual(record.redoHeldSince, 1000)
+        let requests = sdk.recoverRequests.count
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(sdk.recoverRequests.count, requests, "built again before the rebuild interval")
+    }
+
+    /// An empty prepare during a Redo hold keeps the hold's own bound: the waiting leaf's retry clock is not started.
+    func testAnEmptyPrepareDuringARedoHoldLeavesTheRetryClockAlone() async throws {
+        var record = try await heldRedoRebuild()
+        var none = SparkExitFixtures.prepared(leaves: [])
+        none.skipped = [SkippedLeaf(leafId: "leaf-2", valueSats: 50000, reason: .unverified)]
+        sdk.preparedResponse = none
+
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+        record = try await driver().tick(record)
+        XCTAssertNil(record.retrySince, "the hold started the waiting leaf's retry clock")
+        XCTAssertEqual(record.redoHeldSince, 1000)
+        XCTAssertEqual(record.generation, 1)
+        XCTAssertTrue(record.isRebuilding)
+
+        chain.tip = 1000 + SparkExitDriver.redoHoldBlocks
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.retrySince, chain.tip, "the waiting leaf's retry clock starts once the hold ends")
     }
 
     /// A Redo over a generation that recovers both leaves, whose rebuild skips leaf-2 as unread, at tip 1000.

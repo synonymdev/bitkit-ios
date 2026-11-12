@@ -388,7 +388,12 @@ struct SparkExitDriver {
         guard !prepared.leaves.isEmpty else {
             // A leaf the chain could not be read for, or one the operators' watchtower just stopped, may still move:
             // the build waits for it, for about a week. Finished leaves are not listed.
-            if prepared.skipped.contains(where: { isProvisional($0, prepared: prepared, record: record, tip: tip) }) {
+            let provisional = prepared.skipped.filter { isProvisional($0, prepared: prepared, record: record, tip: tip) }
+            // A Redo hold keeps its own pace and bound: the waiting leaf's retry clock would stretch it.
+            if holdsRedo(&record, waiting: provisional.map(\.leafId), tip: tip) {
+                return
+            }
+            if !provisional.isEmpty {
                 guard let tip else { return }
                 let since = record.retrySince ?? tip
                 if tip.saturatingSub(since) < Self.releaseBlocks {
@@ -1017,6 +1022,10 @@ struct SparkExitDriver {
         Logger.info("Holding the Spark exit's Redo rebuild for waiting leaves \(waiting)", context: "SparkExitDriver")
         record.redoHeldSince = since
         record.lastBuildAt = now()
+        // Funding a top-up already covered runs the hold at the rebuild pace, with no fee ask on screen.
+        if record.phase != .running, record.fundingShortfallSats == nil {
+            record.phase = .running
+        }
         return true
     }
 
