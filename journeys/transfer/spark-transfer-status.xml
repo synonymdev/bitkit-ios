@@ -1,22 +1,30 @@
 <journey name="spark transfer status">
   <description>
-    Verifies the transfer status screen after a transfer to spending through Spark, against the "Funds In Transfer
-    (spark)" Figma section: three steps (Processing Payment, Payment Successful, then what the last step is doing),
-    the transfer arrows in dashed rings while the transfer runs, coins while the fast transfer is in question, and a
-    check once the funds reach spending.
+    Verifies the transfer status screen after a transfer to spending through Spark, against the Figma section
+    "Funds In Transfer (spark)". Every in-progress frame shows the nav title "Transfer Funds" with the menu and no
+    back button, three steps, the active step's label under them and one bottom-pinned button; headlines show in
+    capitals. A fast (Instant) transfer moves through "Processing Payment" (step 1, Spark has not listed the
+    deposit), "Payment Successful" (step 1 done, Spark lists it) and "Adding To Spending Balance" (steps 1 and 2
+    done), all with the transfer arrows in dashed rings, and ends on "Transfer Successful" with the check and
+    "Awesome!". A normal speed (Later) transfer shows the same steps with "This should take about 30 minutes.".
 
-    Precondition: as in spark-transfer-to-spending.xml (a build whose Spark reads Bitkit's chain, a wallet with a
-    positive on-chain Savings balance and no channels). Start on the confirm screen (testTag "SpendingConfirm") of a
-    transfer to spending. Which of the fee-changed and fast-unavailable states shows depends on the provider's quote
-    after the broadcast; the unit tests in SparkFundingRecoveryTests cover every state's frame.
+    Whether Spark reprices the fast transfer or offers none is the provider's call, so those two frames (coins in
+    place of the arrows) are conditional steps here; SparkFundingRecoveryTests cover every frame. Spark lists a deposit about a
+    minute after its broadcast, so each step shows for a few seconds at least.
+
+    Precondition: as in spark-transfer-to-spending.xml: a dev build with Spark connected on its regtest and
+    reading Bitkit's chain, Savings funded on that chain (at least 20 000 sats, confirmed) and no channels. Start
+    on the wallet home screen.
   </description>
   <actions>
-    <action>With "Instant" (testTag "SpendingConfirmInstant") selected, swipe to confirm and verify the nav title "Transfer Funds", the headline "Funds in transfer", the text (testTag "SettingUpText") "Please wait, your funds transfer is in progress. This should take a few minutes." and the transfer animation (testTag "LightningSettingUp")</action>
-    <action>Verify step 1 is active and the label under the steps reads "Processing Payment", with "Continue Using Bitkit" (testTag "TransferSuccess-button") at the bottom</action>
-    <action>Once Spark sees the deposit, verify step 1 shows a check and the label reads "Payment Successful"; then, while Spark adds it, steps 1 and 2 show checks and the label reads "Adding To Spending Balance"</action>
-    <action>If the fast transfer fee rose, verify the headline "Fast transfer fee changed", the text "The fast transfer fee is now ₿ …. Approve to access your funds quickly, or wait ±30 min.", the coins animation, the label "Fast Transfer Fee Changed" and the buttons "Wait" (testTag "SparkDepositWait") and "Approve" (testTag "SparkDepositPay") side by side; tap "Wait" and verify the headline "Funds in transfer", the text ending "about 30 minutes." and the label "Using Normal Transfer Speed" on step 3</action>
-    <action>If the fast transfer is unavailable, verify the headline "Fast transfer unavailable", the text ending "about 30 minutes.", the coins animation and the label "Using Normal Transfer Speed"</action>
-    <action>Once the deposit reaches the spending balance, verify the nav title "Transfer Successful", the headline "Funds moved to spending", the text "Your funds have been transferred and your spending balance is ready to use.", the check (testTag "TransferSuccess") and the button "Awesome!" (testTag "TransferSuccess-button"); tap it and verify the wallet home shows</action>
-    <action>Start another transfer, select "Later" (testTag "SpendingConfirmLater"), swipe to confirm and verify the text ends "about 30 minutes." with step 1 active and the label "Processing Payment", then "Payment Successful" once Spark lists the deposit</action>
+    <action>Tap the Savings balance card (id "ActivitySavings"), tap "Transfer To Spending" (id "TransferToSpending"), tap "25%" (id "SpendingAmountQuarter") and tap "Continue" (id "SpendingAmountContinue")</action>
+    <action>Verify "Instant" (id "SpendingConfirmInstant") is selected and swipe to confirm</action>
+    <action>Verify the status screen (id "LightningSettingUp") shows "Transfer Funds", the headline "Funds in transfer", the text (id "SettingUpText") "Please wait, your funds transfer is in progress. This should take a few minutes.", step 1 active with "Processing Payment", and "Continue Using Bitkit" (id "TransferSuccess-button")</action>
+    <action>Wait up to 3 minutes for "Payment Successful" with step 1 checked, then for "Adding To Spending Balance" with steps 1 and 2 checked; each keeps the same headline, text and button</action>
+    <action>If the fast transfer fee rose, verify the headline "Fast transfer fee changed", the text "The fast transfer fee is now ₿ …. Approve to access your funds quickly, or wait ±30 min.", the coins, the label "Fast Transfer Fee Changed" and "Wait" (id "SparkDepositWait") and "Approve" (id "SparkDepositPay") side by side; tap "Wait" and verify the headline "Funds in transfer", the text ending "about 30 minutes." and the label "Using Normal Transfer Speed" on step 3</action>
+    <action>If the fast transfer is unavailable, verify the headline "Fast transfer unavailable", the text ending "about 30 minutes.", the coins and the label "Using Normal Transfer Speed"</action>
+    <action>Wait up to 3 minutes for "Transfer Successful" (id "TransferSuccess"): the headline "Funds moved to spending", "Your funds have been transferred and your spending balance is ready to use.", the check and "Awesome!" (id "TransferSuccess-button")</action>
+    <action>Tap "Awesome!" and verify the wallet home screen shows the higher Spending balance</action>
+    <action>Start another transfer the same way, tap "Later" (id "SpendingConfirmLater"), swipe to confirm and verify the text ends "about 30 minutes." with step 1 active and "Processing Payment", then "Payment Successful" once Spark lists the deposit</action>
   </actions>
 </journey>
