@@ -323,6 +323,10 @@ carries the same file name, journey name and actions, changing only the identifi
 platform forces. The iOS description also leaves the Recovery home-screen quick action to a manual check,
 as the harness cannot trigger one.
 
+`settings/quickpay-payment-pin.xml` pairs with synonymdev/bitkit-android#1909 and is adapted: on iOS
+the PIN pad is a sheet whose back control is `NavigationBack`, and the slider stop labels are not
+tappable, so the tester taps the slider track above the label.
+
 `payment-requests/minimum-onchain-amount.xml` is shared with Android: minimum amount
 feedback, preparation cleanup, and manual retry use the same actions and
 `PaymentRequestAmountTooLowToast` identifier on both platforms.

@@ -740,6 +740,7 @@
 "security__pin_forgot_reset" = "Reset (Richiede la Recovery Phrase)";
 "security__pin_send" = "Inserisci il codice PIN per confermare e inviare questo pagamento.";
 "security__pin_allowance" = "Inserisci il codice PIN per confermare questa modifica del Plafond.";
+"security__pin_quickpay" = "Inserisci il codice PIN per confermare questa modifica a QuickPay.";
 "security__pin_send_title" = "Inserisci Codice PIN";
 "security__pin_use_biometrics" = "Utilizza {biometricsName}";
 "security__bio" = "Biometria";

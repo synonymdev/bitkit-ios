@@ -748,6 +748,7 @@
 "security__pin_forgot_reset" = "Reset (wymaga mnemonika)";
 "security__pin_send" = "Proszę podaj swój kod PIN aby potwierdzić i wysłać płatność.";
 "security__pin_allowance" = "Proszę podaj swój kod PIN aby potwierdzić tę zmianę przydziału.";
+"security__pin_quickpay" = "Proszę podaj swój kod PIN, aby potwierdzić tę zmianę QuickPay.";
 "security__pin_send_title" = "Wprowadź kod PIN";
 "security__pin_use_biometrics" = "Użyj {biometricsName}";
 "security__bio" = "Biometria";
