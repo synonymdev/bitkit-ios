@@ -51,6 +51,7 @@ struct SendConfirmationView: View {
     @State private var savingsFallbackWalletId: String?
     @State private var onchainFeeCalculationId: Int?
     @State private var presentationID: UUID?
+    @State private var retainedOrdinarySignedTx: HwFundingSignedTx?
 
     private struct WalletSwitchRun {
         let id: UUID
@@ -176,6 +177,10 @@ struct SendConfirmationView: View {
         return paykitPaymentRequestManager.retainedHardwareRetries[request.id]
     }
 
+    private var retainedSignedTx: HwFundingSignedTx? {
+        retainedHardwareRetry?.retainedHardwareRetry?.signedTx ?? retainedOrdinarySignedTx
+    }
+
     static func confirmationFeeRate(retained: HwFundingSignedTx?, selected: UInt32?) -> UInt32? {
         guard let retained else { return selected }
         return UInt32(exactly: retained.feeRate.rounded(.up))
@@ -186,18 +191,18 @@ struct SendConfirmationView: View {
     }
 
     private var confirmationFeeRate: UInt32? {
-        Self.confirmationFeeRate(retained: retainedHardwareRetry?.retainedHardwareRetry?.signedTx, selected: wallet.selectedFeeRateSatsPerVByte)
+        Self.confirmationFeeRate(retained: retainedSignedTx, selected: wallet.selectedFeeRateSatsPerVByte)
     }
 
     private var confirmationSpeed: TransactionSpeed {
-        if retainedHardwareRetry != nil, let confirmationFeeRate {
+        if retainedSignedTx != nil, let confirmationFeeRate {
             return .custom(satsPerVByte: confirmationFeeRate)
         }
         return wallet.selectedSpeed
     }
 
     private var canEditFee: Bool {
-        Self.canEditConfirmationFee(retained: retainedHardwareRetry?.retainedHardwareRetry?.signedTx, isLoading: isHardwarePreparationLoading)
+        Self.canEditConfirmationFee(retained: retainedSignedTx, isLoading: isHardwarePreparationLoading)
     }
 
     private var canSwitchFundingSource: Bool {
@@ -265,10 +270,12 @@ struct SendConfirmationView: View {
         case fee
         case feePercentage
         case minimumFee
+        case retainedHardwarePayment
 
         var title: String {
             switch self {
             case .minimumFee: return t("wallet__send_dialog5_title")
+            case .retainedHardwarePayment: return t("lightning__transfer_hw__broadcast_uncertain_title")
             default: return t("common__are_you_sure")
             }
         }
@@ -280,6 +287,7 @@ struct SendConfirmationView: View {
             case .fee: return t("wallet__send_dialog4")
             case .feePercentage: return t("wallet__send_dialog3")
             case .minimumFee: return t("wallet__send_dialog5_description")
+            case .retainedHardwarePayment: return t("lightning__transfer_hw__broadcast_uncertain_description")
             }
         }
     }
@@ -575,6 +583,7 @@ struct SendConfirmationView: View {
                 feeCalculationId += 1
             }
             .onChange(of: hwSend.walletId) {
+                retainedOrdinarySignedTx = nil
                 guard preparingRequest == nil else { return }
                 Task { await calculateTransactionFee(afterFundingSwitch: true) }
             }
@@ -1002,6 +1011,8 @@ struct SendConfirmationView: View {
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
         guard !isSubmittingPayment else { return }
+        // Read now: returning from the PIN screen recalculates the fee, which would hide what this swipe approved.
+        let reviewedRetainedTx = retainedOrdinarySignedTx
         guard !requiresAmountReview, preparingRequest == nil, !isRequestSetupPending, walletSwitchContext == nil,
               refusedRouteSource != app.selectedWalletToPayFrom,
               isAutomatic || !prepareRequestCoinsIfNeeded() else { throw CancellationError() }
@@ -1102,12 +1113,44 @@ struct SendConfirmationView: View {
         }
 
         if hwSend.isActive {
+            let consentedToNewSignature = warnings.contains(.retainedHardwarePayment)
+            if consentedToNewSignature, let invoice = app.scannedOnchainInvoice {
+                hwSend.consentToNewSignature(address: invoice.address, sats: wallet.sendAmountSats ?? invoice.amountSatoshis)
+            }
+            let rebroadcastTx: HwFundingSignedTx? = if let address = app.scannedOnchainInvoice?.address, let sats = wallet.sendAmountSats {
+                await hwSend.retainedRebroadcastTx(
+                    address: address, sats: sats, hasIncomingRequest: app.contactPaymentContext?.incomingPaymentRequest != nil
+                )
+            } else {
+                nil
+            }
+            if Self.mustReviewCurrentFeeBeforeSigning(
+                reviewedRetainedTx: reviewedRetainedTx, rebroadcastTx: rebroadcastTx, consentedToNewSignature: consentedToNewSignature
+            ) {
+                retainedOrdinarySignedTx = nil
+                transactionFee = 0
+                hwSend.discardPreviewFee()
+                await calculateTransactionFee()
+                // Resets the swipe, so the next one signs the fee now on screen. The consent is still held, so it does not warn again.
+                throw CancellationError()
+            }
             navigationPath.append(.hardwareSign)
         } else if !app.paykitUsesUsdt, let leg = app.paykitRoute?.serviceLeg {
             await performServiceRoutedPayment(leg)
         } else {
             try await performPayment(isAutomatic: isAutomatic)
         }
+    }
+
+    /// A review locked to a retained fee approved only those signed bytes. Signing anything else there would use a fee the user
+    /// never saw, so the review must show the current fee first.
+    static func mustReviewCurrentFeeBeforeSigning(
+        reviewedRetainedTx: HwFundingSignedTx?,
+        rebroadcastTx: HwFundingSignedTx?,
+        consentedToNewSignature: Bool
+    ) -> Bool {
+        guard let reviewedRetainedTx else { return false }
+        return consentedToNewSignature || rebroadcastTx?.serializedTx != reviewedRetainedTx.serializedTx
     }
 
     /// A source switch on Confirm needs the router only when it moves a Spark leg's send to Savings, or any send to
@@ -2113,6 +2156,15 @@ struct SendConfirmationView: View {
             0
         }
 
+        if let address = app.scannedOnchainInvoice?.address {
+            let status = await hwSend.retainedSendStatus(
+                address: address, sats: amount, hasIncomingRequest: app.contactPaymentContext?.incomingPaymentRequest != nil
+            )
+            if status == .blocking {
+                warnings.append(.retainedHardwarePayment)
+            }
+        }
+
         // Check if amount > 50% of balance
         if app.selectedWalletToPayFrom == .lightning {
             let lightningBalance = wallet.totalLightningSats
@@ -2510,6 +2562,24 @@ struct SendConfirmationView: View {
             return
         }
 
+        // A retained send needs no current fee rate, so it must stay reachable while rates cannot load.
+        if let walletId = hwSend.walletId {
+            let status = await hwSend.retainedSendStatus(
+                address: address, sats: amountSats, hasIncomingRequest: app.contactPaymentContext?.incomingPaymentRequest != nil
+            )
+            guard isCurrentSend() else { return }
+            retainedOrdinarySignedTx = status.retrySignedTx
+            if let retainedOrdinarySignedTx {
+                hwSend.seedAvailable(
+                    walletId: walletId,
+                    availableSats: hwWalletManager.fundingBalance(walletId: walletId),
+                    retainedFeeSats: retainedOrdinarySignedTx.miningFeeSats
+                )
+                apply(retainedOrdinarySignedTx.miningFeeSats)
+                return
+            }
+        }
+
         guard let feeRate = confirmationFeeRate else {
             if hwSend.isActive {
                 await hwSend.refreshAvailable(
@@ -2545,7 +2615,8 @@ struct SendConfirmationView: View {
                     manager: hwWalletManager,
                     address: address,
                     sats: amountSats,
-                    satsPerVByte: UInt64(feeRate)
+                    satsPerVByte: UInt64(feeRate),
+                    hasIncomingRequest: app.contactPaymentContext?.incomingPaymentRequest != nil
                 ) else { return }
                 apply(fee)
                 savingsFallbackWalletId = nil
