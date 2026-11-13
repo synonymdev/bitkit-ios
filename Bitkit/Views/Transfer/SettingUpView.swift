@@ -88,8 +88,7 @@ struct SettingUpView: View {
     }
 
     private var isDepositSeen: Bool {
-        guard let txid = flow.txid else { return false }
-        return SparkManager.shared.deposits.contains { $0.isListed && $0.txid.caseInsensitiveCompare(txid) == .orderedSame }
+        flow.isDepositSeen(in: SparkManager.shared.deposits)
     }
 
     var text: String {

@@ -258,6 +258,19 @@ final class SparkTransferFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testTheDepositStaysSeenWhileSparkDropsItFromItsListToClaimIt() {
+        let flow = SparkTransferFlow(amountSats: 100_000, speed: .later, quote: quote)
+        flow.onBroadcast(txid: "TXID")
+        let broadcast = [SparkDeposit(txid: "TXID", amountSats: 100_000, isClaimed: false, isListed: false)]
+        XCTAssertFalse(flow.isDepositSeen(in: broadcast))
+
+        let listed = [SparkDeposit(txid: "txid", amountSats: 100_000, isClaimed: false)]
+        XCTAssertTrue(flow.isDepositSeen(in: listed))
+        flow.noteSettled(listed)
+        XCTAssertTrue(flow.isDepositSeen(in: broadcast), "Setting up went back to Processing Payment while Spark claimed it")
+    }
+
+    @MainActor
     func testALaterTransferEndsOnceSparkClaimsItsDeposit() {
         let flow = SparkTransferFlow(amountSats: 100_000, speed: .later, quote: quote)
         flow.onBroadcast(txid: "txid")

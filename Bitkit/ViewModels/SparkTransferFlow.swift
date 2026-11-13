@@ -179,6 +179,8 @@ final class SparkTransferFlow {
     var quoteError: String?
 
     private(set) var txid: String?
+    /// The deposit Spark listed. Spark drops a deposit from its list while claiming it, so it stays seen.
+    private(set) var seenTxid: String?
     var claimState: SparkClaimState = .looking
     /// Whether the user approved the changed fast transfer fee, kept here so a reopened status screen keeps its step.
     private(set) var isFeeApproved = false
@@ -395,7 +397,16 @@ final class SparkTransferFlow {
 
     /// Ends the transfer on screen once Spark lists its deposit as claimed, whatever the speed, so Later or Wait
     /// doesn't stay in progress after the deposit reached spending.
+    /// Whether Spark has listed this transfer's deposit, also once it drops it from its list to claim it.
+    func isDepositSeen(in deposits: [SparkDeposit]) -> Bool {
+        guard let txid else { return false }
+        return seenTxid == txid || deposits.contains { $0.isListed && $0.txid.caseInsensitiveCompare(txid) == .orderedSame }
+    }
+
     func noteSettled(_ deposits: [SparkDeposit]) {
+        if let txid, deposits.contains(where: { $0.isListed && $0.txid.caseInsensitiveCompare(txid) == .orderedSame }) {
+            seenTxid = txid
+        }
         guard let txid, !claimState.isDone,
               deposits.contains(where: { $0.isClaimed && $0.txid.caseInsensitiveCompare(txid) == .orderedSame })
         else { return }
