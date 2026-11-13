@@ -320,9 +320,7 @@ final class AddressTypeSettingsTests: XCTestCase {
         settings.selectedAddressType = .taproot
         settings.addressTypesToMonitor = [.nativeSegwit, .taproot, .legacy]
         settings.hideBalance = true
-        settings.enableQuickpay = true
-        settings.quickpayAmount = 1
-        settings.quickpayDailyLimitMultiplier = 10
+        settings.storeQuickpaySettings(enabled: true, amount: 1, dailyLimitMultiplier: 10)
         UserDefaults.standard.synchronize()
 
         let backupDict = settings.getSettingsDictionary()

@@ -19,9 +19,7 @@ final class SendQuickpayLnurlRemountTests: XCTestCase {
         super.setUp()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
         snapshotAppDefaults("primaryDisplay", "cached_fx_rates", "enableQuickpay", "quickpayAmount", "quickpayDailyLimitMultiplier")
-        SettingsViewModel.shared.enableQuickpay = true
-        SettingsViewModel.shared.quickpayAmount = 5
-        SettingsViewModel.shared.quickpayDailyLimitMultiplier = 5
+        SettingsViewModel.shared.storeQuickpaySettings(enabled: true, amount: 5, dailyLimitMultiplier: 5)
         let rate = FxRate(symbol: "BTCUSD", lastPrice: "100000", base: "BTC", baseName: "Bitcoin", quote: "USD",
                           quoteName: "US Dollar", currencySymbol: "$", currencyFlag: "", lastUpdatedAt: 0)
         UserDefaults.standard.set(try? JSONEncoder().encode([rate]), forKey: "cached_fx_rates")
@@ -140,7 +138,7 @@ final class SendQuickpayLnurlRemountTests: XCTestCase {
         defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
         app.lnurlPayData = lnurl(callback: "http://127.0.0.1:9/never")
         app.selectedWalletToPayFrom = .lightning
-        SettingsViewModel.shared.enableQuickpay = false
+        SettingsViewModel.shared.storeQuickpaySettings(enabled: false)
         sheets.showSheet(.send, data: SendConfig(view: .lnurlPayConfirm))
         try await Task.sleep(for: .seconds(1))
         let presentationID = try XCTUnwrap(sheets.activeSheetConfiguration?.presentationID)
@@ -155,7 +153,7 @@ final class SendQuickpayLnurlRemountTests: XCTestCase {
 
     /// F2: a home-scanner LNURL whose decode finishes after the user opened Send manually.
     func testLateHomeScanDoesNotCloseSendOpenedDuringDecode() async throws {
-        SettingsViewModel.shared.enableQuickpay = false
+        SettingsViewModel.shared.storeQuickpaySettings(enabled: false)
         let sheets = SheetViewModel()
         let started = expectation(description: "decode suspended")
         var continuation: CheckedContinuation<BitkitCore.Scanner, Error>?

@@ -749,6 +749,7 @@
 "security__pin_forgot_reset" = "Réinitialisation (nécessite une phrase de récupération)";
 "security__pin_send" = "Veuillez saisir votre code PIN pour confirmer et envoyer ce paiement.";
 "security__pin_allowance" = "Veuillez saisir votre code PIN pour confirmer cette modification de l'allocation.";
+"security__pin_quickpay" = "Veuillez saisir votre code PIN pour confirmer cette modification de QuickPay.";
 "security__pin_send_title" = "Entrer code PIN";
 "security__pin_use_biometrics" = "Utiliser {biometricsName}";
 "security__bio" = "Biométrie";

@@ -662,6 +662,7 @@
 "security__pin_forgot_reset" = "Επαναφορά (Απαιτείται Φράση Ανάκτησης)";
 "security__pin_send" = "Παρακαλώ εισάγετε τον κωδικό PIN σας για να επιβεβαιώσετε και να στείλετε αυτή την πληρωμή.";
 "security__pin_allowance" = "Παρακαλώ εισάγετε τον κωδικό PIN σας για να επιβεβαιώσετε αυτή την αλλαγή της προέγκρισης.";
+"security__pin_quickpay" = "Εισάγαγε τον κωδικό PIN για να επιβεβαιώσεις αυτή την αλλαγή στο QuickPay.";
 "security__pin_send_title" = "Εισάγετε Κωδικό PIN";
 "security__pin_use_biometrics" = "Χρήση {biometricsName}";
 "security__bio" = "Βιομετρικά";

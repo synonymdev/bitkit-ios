@@ -12,6 +12,12 @@ enum CoinSelectionMethod: String, CaseIterable {
     case autopilot
 }
 
+enum QuickpaySettingChange: Equatable {
+    case enabled(Bool)
+    case amount(Double)
+    case dailyLimitMultiplier(Double)
+}
+
 extension CoinSelectionAlgorithm {
     var stringValue: String {
         switch self {
@@ -104,9 +110,11 @@ class SettingsViewModel: NSObject, ObservableObject {
     @AppStorage("hideBalanceOnOpen") var hideBalanceOnOpen: Bool = false
     @AppStorage("readClipboard") var readClipboard: Bool = false
     @AppStorage("warnWhenSendingOver100") var warnWhenSendingOver100: Bool = false
-    @AppStorage("enableQuickpay") var enableQuickpay: Bool = false
-    @AppStorage("quickpayAmount") var quickpayAmount: Double = 5
-    @AppStorage("quickpayDailyLimitMultiplier") var quickpayDailyLimitMultiplier: Double = 5
+    // QuickPay: change only through `changeQuickpaySetting`, which asks for the payment PIN before QuickPay may spend more.
+    @AppStorage("enableQuickpay") private(set) var enableQuickpay: Bool = false
+    @AppStorage("quickpayAmount") private(set) var quickpayAmount: Double = 5
+    @AppStorage("quickpayDailyLimitMultiplier") private(set) var quickpayDailyLimitMultiplier: Double = 5
+    private var pendingQuickpayChangeID: UUID?
     @AppStorage("enableNotifications") var enableNotifications: Bool = false
     @AppStorage("ignoresSwitchUnitToast") var ignoresSwitchUnitToast: Bool = false
     @AppStorage("ignoresHideBalanceToast") var ignoresHideBalanceToast: Bool = false
@@ -115,6 +123,10 @@ class SettingsViewModel: NSObject, ObservableObject {
     @Published var pinEnabled: Bool = false
     @AppStorage("requirePinForPayments") var requirePinForPayments: Bool = false
     @AppStorage("useBiometrics") var useBiometrics: Bool = false
+
+    var requiresPaymentAuthorization: Bool {
+        requirePinForPayments && pinEnabled
+    }
 
     // Electrum Server Settings
     @Published var electrumHost: String = ""
@@ -255,6 +267,65 @@ class SettingsViewModel: NSObject, ObservableObject {
         rgsIsLoading = false
         rgsUrlIsValid = false
         setupRgsValidationDebounce()
+    }
+
+    // MARK: - QuickPay
+
+    /// Saves a QuickPay change. While payments require a PIN, turning QuickPay on or raising a limit saves only once
+    /// `authorize` approves; any other change saves at once and drops a change still waiting for approval.
+    /// Only one change waits at a time: further raises are ignored until it is approved or rejected.
+    /// - Returns: The approval task of a change that now waits, or nil when nothing waits.
+    @discardableResult
+    func changeQuickpaySetting(
+        _ change: QuickpaySettingChange,
+        authorize: @escaping @MainActor () async -> Bool
+    ) -> Task<Void, Never>? {
+        guard !isStoredQuickpaySetting(change) else { return nil }
+        guard requiresPaymentAuthorization, raisesQuickpaySpending(change) else {
+            pendingQuickpayChangeID = nil
+            applyQuickpayChange(change)
+            return nil
+        }
+        guard pendingQuickpayChangeID == nil else { return nil }
+
+        let changeID = UUID()
+        pendingQuickpayChangeID = changeID
+        return Task {
+            let isApproved = await authorize()
+            guard pendingQuickpayChangeID == changeID else { return }
+            pendingQuickpayChangeID = nil
+            if isApproved {
+                applyQuickpayChange(change)
+            }
+        }
+    }
+
+    private func isStoredQuickpaySetting(_ change: QuickpaySettingChange) -> Bool {
+        switch change {
+        case let .enabled(isEnabled): isEnabled == enableQuickpay
+        case let .amount(amount): amount == quickpayAmount
+        case let .dailyLimitMultiplier(multiplier): multiplier == quickpayDailyLimitMultiplier
+        }
+    }
+
+    private func raisesQuickpaySpending(_ change: QuickpaySettingChange) -> Bool {
+        switch change {
+        case let .enabled(isEnabled):
+            isEnabled && !enableQuickpay
+        case let .amount(amount):
+            amount > quickpayAmount
+        case let .dailyLimitMultiplier(multiplier):
+            // Spending uses the sanitized multiplier, so an unsupported stored value counts as the default.
+            QuickPayLimits.sanitizedMultiplier(multiplier) > QuickPayLimits.sanitizedMultiplier(quickpayDailyLimitMultiplier)
+        }
+    }
+
+    private func applyQuickpayChange(_ change: QuickpaySettingChange) {
+        switch change {
+        case let .enabled(isEnabled): enableQuickpay = isEnabled
+        case let .amount(amount): quickpayAmount = amount
+        case let .dailyLimitMultiplier(multiplier): quickpayDailyLimitMultiplier = multiplier
+        }
     }
 
     func isCurrentServerConnection(_ generation: UUID) -> Bool {
@@ -958,7 +1029,7 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     /// Re-read UserDefaults into @AppStorage properties after a direct defaults write.
-    private func syncAppStorageFromDefaults() {
+    func syncAppStorageFromDefaults() {
         usdtPreference = UsdtPreference(rawValue: defaults.string(forKey: UsdtPreference.key) ?? "") ?? .undecided
         _swipeBalanceToHide = defaults.object(forKey: "swipeBalanceToHide") as? Bool ?? true
         defaultTransactionSpeed = TransactionSpeed(rawValue: defaults.string(forKey: "defaultTransactionSpeed") ?? "")
