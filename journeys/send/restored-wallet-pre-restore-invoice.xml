@@ -1,0 +1,33 @@
+<journey name="restored wallet pre-restore invoice">
+  <description>
+    After a restore, a still-valid invoice created before it pays over Spark once Spark's operators show no send of
+    it, and one the wallet paid before the restore never goes out again. Spark's list can lack a send the wallet made
+    before the restore, so a pre-restore invoice is checked with the operators, also while Spark has not synced since
+    the restore; a send they show completed or pending refuses it with "Bitkit can't confirm this invoice wasn't paid
+    before you restored your wallet. Please request a new invoice." A failed one counts as unsent. Once Spark's first
+    sync lists the earlier payment, the app reads it as already paid instead, with no new send: either outcome passes
+    the last check, as long as nothing leaves the wallet. The operator answers, the unsynced case and the failed-send
+    retry are covered by ChannelFreeRailTests.
+
+    Preconditions: two Debug builds on two simulators, each with Spark connected on its regtest (no key needed), no
+    Lightning channel and QuickPay disabled. The payer has a Spark balance of at least 5,000 sats from Lightspark's
+    regtest faucet, sent to the deposit address its Spark connection screen shows (id "SparkDepositAddress"). Bitkit's
+    own invoices carry no Spark address, so the payer pays them over Lightning through Spark's provider. The journey
+    wipes the payer half way through, so do not run it against a wallet whose funds matter. Do all steps within the
+    invoices' expiry, a day for an invoice from Receive.
+  </description>
+  <actions>
+    <action>On the payee, tap Receive (id "Receive"), create a 1,000-sat Lightning invoice and copy it as invoice A</action>
+    <action>On the payee, create a second 1,500-sat Lightning invoice and copy it as invoice B</action>
+    <action>On the payer, record the Spending balance, open invoice A with xcrun simctl openurl and a lightning: link, and swipe to pay</action>
+    <action>Verify the payer shows the payment as sent and the payee received 1,000 sats</action>
+    <action>On the payer, open the menu, navigate to Settings, then the "Security" tab (id "Tab-security"), then tap "Back Up Your Money" (id "BackupWallet"), continue past the intro (id "BackupIntroViewContinue"), tap to reveal the phrase (id "TapToReveal") and record the phrase from the word grid (id "SeedContainer")</action>
+    <action>Open Settings, then the "Security" tab, then "Reset And Restore" (id "ResetAndRestore"), tap "Reset Wallet" and confirm with "Yes, Reset" in the alert; neither carries an id, so tap them by label</action>
+    <action>On the onboarding screen tap "Restore" (id "RestoreWallet"), then "MultipleDevices-button", enter the recorded words into the word inputs (id "Word-0" onwards) and tap Restore (id "RestoreButton")</action>
+    <action>Wait for the restore to finish, tap "Get Started" (id "GetStartedButton") and wait until the Spending balance shows the balance recorded before the payment, less invoice A and its fee</action>
+    <action>On the payer, open invoice B with a lightning: link and swipe to pay</action>
+    <action>Verify the payer shows the payment as sent, with no "Bitkit can't confirm this invoice wasn't paid before you restored your wallet" error, and the payee received 1,500 sats</action>
+    <action>On the payer, record the Spending balance, then open invoice A again with a lightning: link and swipe to pay if the confirmation opens</action>
+    <action>Verify invoice A did not go out again: the payer shows the error "Bitkit can't confirm this invoice wasn't paid before you restored your wallet. Please request a new invoice." or reads the invoice as already paid, the payer's Spending balance is unchanged and the payee received nothing new</action>
+  </actions>
+</journey>

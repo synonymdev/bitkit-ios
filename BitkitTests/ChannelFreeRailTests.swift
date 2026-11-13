@@ -1416,8 +1416,19 @@ extension ChannelFreeRailTests {
         try await assertOperatorsStatusRefusesBothRails(.pending)
     }
 
-    func testAPreRestoreInvoiceTheOperatorsShowFailedIsRefusedOnBothRails() async throws {
-        try await assertOperatorsStatusRefusesBothRails(.failed)
+    func testAPreRestoreInvoiceRetriesOnBothRailsAfterItsSparkSendFailed() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        try await holdForTheOperators(sparkFunded: true)
+        rail.sendStatus = .success(nil)
+        try await sendOverSpark()
+        // The send failed, for example with no route: Spark lists it failed, and the operators show it failed once
+        // every attempt at its hash was returned.
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil)]
+        rail.sendStatus = .success(.failed)
+
+        try await sendOverSpark()
+        rail.balanceSats = 0
+        await assertReachesTheNode()
     }
 
     func testAPreRestoreInvoiceTheOperatorsShowNoSendOfPaysOverTheNode() async throws {
@@ -1438,6 +1449,29 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(rail.sentBolt11, Self.invoice)
         XCTAssertEqual(rail.sendStatusFetches, 1)
         XCTAssertEqual(rail.sparkTransferChecks, 1)
+    }
+
+    func testAPreRestoreInvoiceTheOperatorsShowNoSendOfPaysOverTheNodeWhileSparkIsUnsynced() async throws {
+        try restore(secondsAfterTheInvoice: 60)
+        try pinTheClockWhileTheInvoiceIsValid()
+        leaveSparkUnsyncedAndEmpty()
+        rail.sendStatus = .success(nil)
+
+        await assertReachesTheNode()
+        XCTAssertEqual(rail.sendStatusFetches, 1)
+    }
+
+    func testAPreRestoreInvoiceTheOperatorsShowNoSendOfPaysOverAFundedSparkWhileItIsUnsynced() async throws {
+        try restore(secondsAfterTheInvoice: 60)
+        try pinTheClockWhileTheInvoiceIsValid()
+        leaveSparkUnsyncedAndEmpty()
+        rail.balanceSats = 100_000
+        rail.sendStatus = .success(nil)
+
+        _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+
+        XCTAssertEqual(rail.sentBolt11, Self.invoice)
+        XCTAssertEqual(rail.sendStatusFetches, 1)
     }
 
     func testAPreRestoreInvoiceSparkMayHavePaidByTransferIsRefusedOnBothRails() async throws {
@@ -1480,6 +1514,81 @@ extension ChannelFreeRailTests {
         } catch {
             XCTAssertTrue((error as? Bitkit.ChannelFreeRailSendRefused)?.isRestoredInvoiceUnverified == true, "\(error)")
         }
+    }
+
+    // MARK: - Overlapping Spark sends
+
+    /// Sends the invoice over a funded Spark while a second Spark send of it runs whole during this send's operator
+    /// check, after which Spark lists that send as `status`, and `afterCompeting` runs.
+    private func sendOverACompetingSparkSend(
+        listedAs status: LDKNode.PaymentStatus,
+        afterCompeting: @escaping () -> Void = {}
+    ) async throws -> PaymentHash {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        try await holdForTheOperators(sparkFunded: true)
+        rail.sendStatus = .success(nil)
+        rail.onSendStatus = { [rail] in
+            _ = try? await service.send(bolt11: Self.invoice)
+            rail?.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: status, preimage: nil)]
+            afterCompeting()
+        }
+        return try await service.send(bolt11: Self.invoice)
+    }
+
+    func testOfTwoOverlappingSparkSendsOfOneInvoiceOnlyOneReachesSparkAndTheOtherReturnsItsPaidOutcome() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+
+        let sent = try await sendOverACompetingSparkSend(listedAs: .succeeded)
+
+        XCTAssertEqual(rail.sends, 1, "Spark sent an invoice it sent meanwhile")
+        XCTAssertEqual(sent, hash, "a paid send left its caller pending")
+    }
+
+    func testASparkSendRefusedForACompetingOneThatFailedReturnsTheFailure() async throws {
+        do {
+            _ = try await sendOverACompetingSparkSend(listedAs: .failed)
+            XCTFail("A send refused for a competing one that failed reported success")
+        } catch {
+            XCTAssertTrue(error is Bitkit.ChannelFreeRailSendRefused, "\(error)")
+        }
+        XCTAssertEqual(rail.sends, 1)
+    }
+
+    func testASparkSendRefusedForAFailedCompetingOneStaysPendingWhenASendEndsDuringItsRead() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        defer { service.endLdkSend(paymentHash: hash) }
+
+        // A node retry in flight when the refused send settles ends while Spark's list is read.
+        await assertPendingOverACompetingSparkSend { [rail] in
+            service.beginLdkSend(paymentHash: hash)
+            rail?.onList = { service.endLdkSend(paymentHash: hash) }
+        }
+    }
+
+    func testASparkSendRefusedForAFailedCompetingOneStaysPendingWhenASendStartsDuringItsRead() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+
+        // A Spark retry is recorded while Spark's list is read.
+        await assertPendingOverACompetingSparkSend { [rail] in
+            rail?.onList = { service.recordRailAttempt(paymentHash: hash) }
+        }
+    }
+
+    private func assertPendingOverACompetingSparkSend(
+        afterCompeting: @escaping () -> Void,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        do {
+            _ = try await sendOverACompetingSparkSend(listedAs: .failed, afterCompeting: afterCompeting)
+            XCTFail("A send refused for a competing one reported success", file: file, line: line)
+        } catch {
+            XCTAssertTrue(PrivatePaykitService.isDuplicatePaymentError(error), "\(error)", file: file, line: line)
+        }
+        XCTAssertEqual(rail.sends, 1, file: file, line: line)
     }
 
     func testOnlyASparkPreferringSendPaysAnInvoicesSparkAddressByTransfer() {
@@ -1771,6 +1880,7 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     var estimateError: Error?
     var listError: Error?
     var sentBolt11: String?
+    var sends = 0
     var sentFeeLimitSats: UInt64?
     var sendGate: (() async -> Void)?
     var refusal: Bitkit.ChannelFreeRailSendRefused?
@@ -1786,6 +1896,8 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     /// What the operators show of the invoice's sends; unreachable unless a test sets it.
     var sendStatus: Result<LDKNode.PaymentStatus?, Error> = .failure(NSError(domain: "spark operators", code: 1))
     var sendStatusFetches = 0
+    /// Runs once, on the next read of the operators' answer, before it returns `sendStatus`.
+    var onSendStatus: (() async -> Void)?
     /// Whether the invoice carries a Spark address a Spark-preferring send pays directly.
     var paysBySparkTransfer: Result<Bool, Error> = .success(false)
     var sparkTransferChecks = 0
@@ -1809,6 +1921,7 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
         await sendGate?()
         sentFeeLimitSats = maxFeeSats
         sentBolt11 = bolt11
+        sends += 1
         return "ee"
     }
 
@@ -1825,6 +1938,10 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
 
     func lightningSendStatus(bolt11: String) async throws -> LDKNode.PaymentStatus? {
         sendStatusFetches += 1
+        if let onSendStatus {
+            self.onSendStatus = nil
+            await onSendStatus()
+        }
         return try sendStatus.get()
     }
 
