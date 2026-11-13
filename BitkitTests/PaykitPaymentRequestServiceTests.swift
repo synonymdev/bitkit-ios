@@ -3108,7 +3108,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                     to: target
                 )
             }
-            try await waitUntil { await sdk.uploadIsPaused() }
+            try await waitUntil(before: proposal) { await sdk.uploadIsPaused() }
             switch change {
             case "expired": clock.advance(by: 60)
             case "removed": await manager.refreshEligibleTargets(savedPublicKeys: [])
@@ -11540,6 +11540,7 @@ private final class PaymentRequestTestClock: @unchecked Sendable {
 
 private enum PaymentRequestTestError: Error {
     case timedOut
+    case endedFirst
 }
 
 private actor PaymentProofProtectionGate {
@@ -11628,6 +11629,29 @@ private final class PaymentRequestIntakeError: PrivateOperationError, @unchecked
     override func redactedContext() -> String {
         "transport failure"
     }
+}
+
+/// Polls with no time limit, as on a slow runner `condition` can take seconds to hold, and fails at once when `operation`
+/// ends without it holding.
+@MainActor
+private func waitUntil(before operation: Task<some Sendable, Error>, condition: @MainActor () async -> Bool) async throws {
+    let ended = OperationEndFlag()
+    Task { @MainActor in
+        _ = await operation.result
+        ended.isSet = true
+    }
+    while await !condition() {
+        guard !ended.isSet else {
+            guard await condition() else { throw PaymentRequestTestError.endedFirst }
+            return
+        }
+        try await Task.sleep(for: .milliseconds(10))
+    }
+}
+
+@MainActor
+private final class OperationEndFlag {
+    var isSet = false
 }
 
 @MainActor

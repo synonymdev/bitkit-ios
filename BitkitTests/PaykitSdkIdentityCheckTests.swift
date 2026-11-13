@@ -975,12 +975,15 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         try Keychain.upsert(key: .pubkySecretKey, data: Data(oldSecret.utf8))
 
         let readEntered = expectation(description: "the old cleanup is reading SDK state")
-        let cleanupEnded = expectation(description: "the abandoned cleanup returns")
+        // The wipe stops waiting once the cleanup is held in its read, however long the cleanup takes to get there
+        let readEnteredGate = AsyncGate()
+        let cleanupEnded = AsyncGate()
         let readGate = AsyncGate()
         defer { readGate.open() }
         let oldSdk = AbandonedCleanupSdk(noPointer: .init())
         let suspendRead = {
             readEntered.fulfill()
+            readEnteredGate.open()
             // Like the UniFFI call, it ignores Swift cancellation
             await readGate.wait()
         }
@@ -1002,7 +1005,7 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
 
         let wipe = Task {
             try await service.withWalletWipe {
-                await AppReset.runRemoteCleanup(timeout: .milliseconds(100)) {
+                await AppReset.runRemoteCleanup(until: { await readEnteredGate.wait() }) {
                     switch heldRead {
                     case .registry, .revision:
                         _ = try? await service.syncPublicEndpoints([])
@@ -1011,15 +1014,15 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
                     case .peers, .linkRecovery:
                         _ = try? await service.clearPrivatePaymentLists(to: oldSdk.recoveringPeers, isSessionCurrent: { !Task.isCancelled })
                     }
-                    cleanupEnded.fulfill()
+                    cleanupEnded.open()
                 }
                 // The wipe clears these once it has stopped waiting for the cleanup
                 try Keychain.delete(key: .pubkySecretKey)
                 try Keychain.delete(key: oldGenerationKey)
             }
         }
-        await fulfillment(of: [readEntered], timeout: 2)
         try await wipe.value
+        await fulfillment(of: [readEntered], timeout: 0)
         XCTAssertNil(try Keychain.load(key: oldGenerationKey))
 
         // The next wallet's first operation creates its own SDK and identity before the old response arrives
@@ -1029,7 +1032,7 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         XCTAssertTrue(replacementSdk.mutations.isEmpty)
 
         readGate.open()
-        await fulfillment(of: [cleanupEnded], timeout: 2)
+        await cleanupEnded.wait()
 
         XCTAssertNil(try Keychain.load(key: oldGenerationKey), "Completed wipe must not recreate the old identity's keychain state")
         let alreadyStartedMutations = heldRead == .linkRecovery ? ["recoverLink"] : []

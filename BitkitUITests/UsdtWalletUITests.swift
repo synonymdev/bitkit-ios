@@ -116,8 +116,7 @@ final class UsdtWalletUITests: XCTestCase {
         }
         XCTAssertTrue(app.buttons["UsdtWallet"].waitForExistence(timeout: 90))
         capture(app, "USDT home")
-        app.buttons["UsdtWallet"].tap()
-        XCTAssertTrue(app.buttons["UsdtReceive"].waitForExistence(timeout: 5))
+        openUsdtWallet(app)
         app.buttons["UsdtReceive"].tap()
         XCTAssertTrue(app.buttons["UsdtReceiveDetails"].waitForExistence(timeout: 30))
         capture(app, "USDT receive")
@@ -188,6 +187,20 @@ final class UsdtWalletUITests: XCTestCase {
         capture(app, "USDT saved activity offline after restart")
     }
 
+    /// Until the wallet's push ends, Home's own Receive is under the wallet's, so a tap can open Bitcoin Receive instead.
+    @MainActor
+    private func openUsdtWallet(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        app.buttons["UsdtWallet"].tap()
+        let homeReceive = app.buttons.matching(NSPredicate(format: "identifier == %@", "Receive")).firstMatch
+        XCTAssertTrue(wait(for: homeReceive, toMatch: "exists == false OR hittable == false"), file: file, line: line)
+        XCTAssertTrue(wait(for: app.buttons["UsdtReceive"], toMatch: "hittable == true"), file: file, line: line)
+    }
+
+    private func wait(for element: XCUIElement, toMatch predicate: String, timeout: TimeInterval = 5) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: predicate), object: element)
+        return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+    }
+
     @MainActor
     private func capture(_ app: XCUIApplication, _ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
@@ -228,8 +241,7 @@ final class UsdtWalletUITests: XCTestCase {
             app.buttons["UsdtIntroEnable"].tap()
         }
         XCTAssertTrue(app.buttons["UsdtWallet"].waitForExistence(timeout: 90), app.debugDescription)
-        app.buttons["UsdtWallet"].tap()
-        XCTAssertTrue(app.buttons["UsdtReceive"].waitForExistence(timeout: 5))
+        openUsdtWallet(app)
         app.buttons["UsdtReceive"].tap()
         XCTAssertTrue(app.buttons["UsdtReceiveDetails"].waitForExistence(timeout: 30))
         let qr = app.descendants(matching: .any).matching(identifier: "QRCode").firstMatch
@@ -284,7 +296,13 @@ final class UsdtWalletUITests: XCTestCase {
         let cameraAlert = XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts
             .containing(NSPredicate(format: "label CONTAINS[c] %@", "camera")).firstMatch
         XCTAssertTrue(cameraAlert.waitForExistence(timeout: 5))
-        cameraAlert.buttons["Allow"].tap()
+        let allow = cameraAlert.buttons["Allow"]
+        XCTAssertTrue(wait(for: allow, toMatch: "hittable == true"))
+        allow.tap()
+        // A tap while the alert is still animating in can be dropped, leaving the alert up
+        if !cameraAlert.waitForNonExistence(timeout: 2), allow.exists {
+            allow.tap()
+        }
         XCTAssertTrue(cameraAlert.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons["UsdtManual"].waitForExistence(timeout: 5))
         app.buttons["UsdtManual"].tap()
