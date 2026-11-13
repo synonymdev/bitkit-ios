@@ -382,7 +382,6 @@ final class QuickPaySpendStore: @unchecked Sendable {
         lockedWriteLedger(ledger ?? QuickPayLedger(dayKey: "", spentCents: 0, records: []))
     }
 
-    /// The route check and the reservation share this rule, so QuickPay off or a zero amount can never reach a fresh dispatch.
     private static func isEligible(amountSats: UInt64, enabled: Bool, thresholdUsd: Double, rates: QuickPaySpendRates) -> Bool {
         guard enabled, amountSats > 0, let thresholdSats = rates.usdToSats(thresholdUsd), thresholdSats > 0 else { return false }
         return amountSats <= thresholdSats

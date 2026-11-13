@@ -14,6 +14,10 @@ final class QuickPaySpendStoreTests: XCTestCase {
         satsToUsdCents: { _ in 0 },
         usdToSats: { usd in UInt64(usd * 200) }
     )
+    private let missingRates = QuickPaySpendRates(
+        satsToUsdCents: { _ in nil },
+        usdToSats: { usd in UInt64(usd * 200) }
+    )
 
     override func setUp() {
         super.setUp()
@@ -326,12 +330,6 @@ final class QuickPaySpendStoreTests: XCTestCase {
     }
 
     func testReserveBoundRejectsWhenDisabledWithoutConverting() throws {
-        let missingRates = QuickPaySpendRates(
-            satsToUsdCents: { _ in nil },
-            usdToSats: { usd in UInt64(usd * 200) }
-        )
-
-        XCTAssertNil(try sut.reserveBound(paymentHash: "abc", amountSats: 500, enabled: false, thresholdUsd: 5, multiplier: 5, rates: rates))
         XCTAssertNil(try sut.reserveBound(paymentHash: "abc", amountSats: 500, enabled: false, thresholdUsd: 5, multiplier: 5, rates: missingRates))
         XCTAssertNil(sut.record(matching: "abc"))
         XCTAssertEqual(sut.spentCentsToday(), 0)
@@ -344,11 +342,6 @@ final class QuickPaySpendStoreTests: XCTestCase {
     }
 
     func testReserveBoundFailsWithConversionErrorWhenRatesAreUnavailable() {
-        let missingRates = QuickPaySpendRates(
-            satsToUsdCents: { _ in nil },
-            usdToSats: { usd in UInt64(usd * 200) }
-        )
-
         XCTAssertThrowsError(
             try sut.reserveBound(paymentHash: "abc", amountSats: 500, enabled: true, thresholdUsd: 5, multiplier: 5, rates: missingRates)
         ) { error in

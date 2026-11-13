@@ -851,17 +851,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
 
     func testDisabledRepayAfterFailedRecordIsReconciledAwayFallsBackToConfirm() async throws {
         let invoiceHash = try Self.invoiceHash
-        XCTAssertNotNil(
-            try store.reserveBound(
-                paymentHash: invoiceHash,
-                amountSats: 1000,
-                enabled: true,
-                thresholdUsd: 5,
-                multiplier: 5,
-                rates: rates
-            )
-        )
-        store.markSubmitted(invoicePaymentHash: invoiceHash, paymentId: "pid")
+        try reserveSubmittedRecord(invoiceHash)
         settings.enableQuickpay = false
         var sent = false
         let coordinator = QuickPayPaymentCoordinator(
@@ -895,17 +885,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
 
     func testDisabledSubmittedPendingRecordStaysPendingWithoutSending() async throws {
         let invoiceHash = try Self.invoiceHash
-        XCTAssertNotNil(
-            try store.reserveBound(
-                paymentHash: invoiceHash,
-                amountSats: 1000,
-                enabled: true,
-                thresholdUsd: 5,
-                multiplier: 5,
-                rates: rates
-            )
-        )
-        store.markSubmitted(invoicePaymentHash: invoiceHash, paymentId: "pid")
+        try reserveSubmittedRecord(invoiceHash)
         settings.enableQuickpay = false
         var sent = false
 
@@ -930,17 +910,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
 
     func testDisabledSubmittedRecordThatLdkSucceededSettlesWithoutSending() async throws {
         let invoiceHash = try Self.invoiceHash
-        XCTAssertNotNil(
-            try store.reserveBound(
-                paymentHash: invoiceHash,
-                amountSats: 1000,
-                enabled: true,
-                thresholdUsd: 5,
-                multiplier: 5,
-                rates: rates
-            )
-        )
-        store.markSubmitted(invoicePaymentHash: invoiceHash, paymentId: "pid")
+        try reserveSubmittedRecord(invoiceHash)
         settings.enableQuickpay = false
         var sent = false
 
@@ -988,6 +958,20 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             return XCTFail("Expected LNURL confirm fallback, got \(String(describing: outcome))")
         }
         XCTAssertEqual(store.spentCentsToday(), 0)
+    }
+
+    private func reserveSubmittedRecord(_ invoiceHash: String) throws {
+        XCTAssertNotNil(
+            try store.reserveBound(
+                paymentHash: invoiceHash,
+                amountSats: 1000,
+                enabled: true,
+                thresholdUsd: 5,
+                multiplier: 5,
+                rates: rates
+            )
+        )
+        store.markSubmitted(invoicePaymentHash: invoiceHash, paymentId: "pid")
     }
 
     private func firstRoute(
