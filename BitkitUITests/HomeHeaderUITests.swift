@@ -8,6 +8,7 @@ final class HomeHeaderUITests: XCTestCase {
     func testHeaderRowTapsOpenHeaderButtonsAndBalanceStillToggles() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
+        app.launchArguments += ["-appUpdateIgnoreTimestamp", String(Date().timeIntervalSince1970)]
         app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch()
         if app.buttons["Continue"].waitForExistence(timeout: 3) {

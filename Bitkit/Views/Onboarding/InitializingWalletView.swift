@@ -10,11 +10,22 @@ struct InitializingWalletView: View {
     @Binding var nodeLifecycleState: NodeLifecycleState
     let onComplete: () -> Void
 
+    init(
+        nodeLifecycleState: Binding<NodeLifecycleState>,
+        initialPercentage: Double = 0,
+        onComplete: @escaping () -> Void
+    ) {
+        _nodeLifecycleState = nodeLifecycleState
+        _percentage = State(initialValue: initialPercentage)
+        self.onComplete = onComplete
+    }
+
     private var shouldFinish: Bool {
         nodeLifecycleState == .running
     }
 
     private func handleCompletion() {
+        guard shouldFinish, !shouldStopAnimation else { return }
         timer?.invalidate()
         shouldStopAnimation = true
         Haptics.stopHaptics()
