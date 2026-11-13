@@ -558,7 +558,9 @@ extension PrivatePaykitService {
                 guard let hasAttempted = await hasAttemptedOutboundBolt11Payment(paymentHash: paymentHash) else {
                     continue
                 }
-                guard PublicPaykitService.hasLightningRouteHints(bolt11: endpoint.value), !hasAttempted else {
+                // An invoice without route hints is offered too, unlike the ones this wallet publishes. A payee on the
+                // public graph, such as a merchant's node, leaves them out, and the send screen pays its invoice.
+                guard !hasAttempted else {
                     staleLightningPaymentHashes.insert(paymentHash)
                     continue
                 }
