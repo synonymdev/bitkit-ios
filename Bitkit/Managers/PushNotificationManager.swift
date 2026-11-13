@@ -20,6 +20,8 @@ final class PushNotificationManager: ObservableObject {
             } else {
                 Logger.debug("Push notification permission denied by user")
             }
+            // Wake registration waits on this status, so a first grant registers without another trip to the foreground.
+            self.updateNotificationPermission()
         }
     }
 
