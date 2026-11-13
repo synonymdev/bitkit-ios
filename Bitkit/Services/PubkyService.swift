@@ -1,4 +1,3 @@
-import BitkitCore
 import Combine
 import Foundation
 import Paykit
@@ -105,14 +104,6 @@ enum PubkyService {
         )
     }
 
-    static func approveRingAuth(authUrl: String, secretKeyHex: String, sdkService: PaykitSdkService = .shared) async throws {
-        try await sdkService.republishIdentityBeforeApproval(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
-        try Task.checkCancellation()
-        try await ServiceQueue.background(.core) {
-            try await BitkitCore.approvePubkyAuth(authUrl: authUrl, secretKeyHex: secretKeyHex)
-        }
-    }
-
     static func approveAuthWithCompanionClaim(
         authUrl: String,
         approvedClientID: String,
@@ -159,17 +150,10 @@ enum PubkyService {
                 approvedClientID: clientID,
                 secretKeyHex: secretKeyHex
             )
-        },
-        ringApproval: (String, String) async throws -> Void = { authUrl, secretKeyHex in
-            try await approveRingAuth(authUrl: authUrl, secretKeyHex: secretKeyHex)
         }
     ) async throws {
-        guard let authorizationUrl = request.authorizationUrl else { return }
-        if request.isGrantSignup {
-            try await ordinaryApproval(authorizationUrl, request.capabilities, request.clientID, secretKeyHex)
-        } else {
-            try await ringApproval(authorizationUrl, secretKeyHex)
-        }
+        guard request.isGrantSignup, let authorizationUrl = request.authorizationUrl else { return }
+        try await ordinaryApproval(authorizationUrl, request.capabilities, request.clientID, secretKeyHex)
     }
 
     typealias OrdinaryAuthApproval = (String, String, String, String) async throws -> Void
