@@ -3,13 +3,17 @@ import Foundation
 // MARK: - Backup
 
 extension PrivatePaykitService {
-    func backupSnapshot() async throws -> (state: String?, sdkVersion: UInt64) {
-        let initialSdkVersion = await PaykitSdkService.shared.backupStateVersion
-        guard try await PaykitSdkService.shared.currentPublicKey() != nil else {
+    func backupSnapshot(
+        sdkService: PaykitSdkService = .shared,
+        hasStoredIdentity: @Sendable () throws -> Bool = { try PubkyProfileManager.hasStoredIdentityForBackup() }
+    ) async throws -> (state: String?, sdkVersion: UInt64) {
+        let initialSdkVersion = await sdkService.backupStateVersion
+        guard try await sdkService.currentPublicKey() != nil else {
+            guard try !hasStoredIdentity() else { throw PubkyServiceError.sessionNotActive }
             return (nil, initialSdkVersion)
         }
         // Wallet backups may be required before broadcast; they cannot wait for payment to finish.
-        let exported = try await PaykitSdkService.shared.exportBackupSnapshot(priority: .interactive)
+        let exported = try await sdkService.exportBackupSnapshot(priority: .interactive)
         let backup = Backup(
             sdkState: exported.state,
             consumedPrivatePaymentListVersions: state.contacts.compactMapValues { contactState in
