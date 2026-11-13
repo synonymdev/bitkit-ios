@@ -120,34 +120,27 @@ class ActivityService {
 
     /// Cached transaction IDs that appear in boostTxIds, per wallet id (for filtering replaced
     /// transactions). Scoped because a boost chain only ever exists within one wallet.
-    ///
-    /// Lock-guarded rather than actor- or `MainActor`-isolated: `updateBoostTxIdsCache` is called
-    /// from inside the synchronous `ServiceQueue.background(.core)` blocks below, which must stay
-    /// non-async (see `replaceHwSnapshot`), while readers run on whichever executor calls
-    /// `getTxIdsInBoostTxIds`. Never hold the lock across an `await`.
-    private let cachedTxIdsInBoostTxIds = OSAllocatedUnfairLock(initialState: [String: Set<String>]())
+    private let boostTxIdsCache = BoostTxIdsCache()
 
     /// Get the set of transaction IDs that appear in boostTxIds (cached for performance)
     func getTxIdsInBoostTxIds(walletId: String = WalletScope.default) async -> Set<String> {
-        if let cached = cachedTxIdsInBoostTxIds.withLock({ $0[walletId] }) {
-            return cached
+        await boostTxIdsCache.get(walletId: walletId) { [self] in
+            await loadBoostTxIds(walletId: walletId)
         }
-        await refreshBoostTxIdsCache(walletId: walletId)
-        return cachedTxIdsInBoostTxIds.withLock { $0[walletId] ?? [] }
     }
 
     private func updateBoostTxIdsCache(for activity: Activity) {
         guard case let .onchain(onchain) = activity, !onchain.boostTxIds.isEmpty else { return }
-        cachedTxIdsInBoostTxIds.withLock {
-            // Only merge into an already-warmed wallet. Seeding a cold one would make
-            // `getTxIdsInBoostTxIds` treat this single activity's ids as the whole set and skip its
-            // refresh, so the rest of the wallet's boost chain would be invisible.
-            guard $0[onchain.walletId] != nil else { return }
-            $0[onchain.walletId, default: []].formUnion(onchain.boostTxIds)
-        }
+        boostTxIdsCache.merge(onchain.boostTxIds, walletId: onchain.walletId)
     }
 
     private func refreshBoostTxIdsCache(walletId: String = WalletScope.default) async {
+        _ = await boostTxIdsCache.get(walletId: walletId, forceRefresh: true) { [self] in
+            await loadBoostTxIds(walletId: walletId)
+        }
+    }
+
+    private func loadBoostTxIds(walletId: String) async -> Set<String>? {
         do {
             let allOnchainActivities = try await get(filter: .onchain, walletId: walletId)
             var txIds: Set<String> = []
@@ -156,10 +149,10 @@ class ActivityService {
                     txIds.formUnion(onchain.boostTxIds)
                 }
             }
-            let txIdsToCache = txIds
-            cachedTxIdsInBoostTxIds.withLock { $0[walletId] = txIdsToCache }
+            return txIds
         } catch {
             Logger.error("Failed to refresh boostTxIds cache for '\(walletId)': \(error)", context: "ActivityService")
+            return nil
         }
     }
 
@@ -462,7 +455,7 @@ class ActivityService {
             }
 
             // Clear cache since all activities are deleted
-            self.cachedTxIdsInBoostTxIds.withLock { $0.removeAll() }
+            self.boostTxIdsCache.invalidateAll()
             self.activitiesChangedSubject.send()
         }
     }
@@ -517,7 +510,7 @@ class ActivityService {
         // (boosting is gated off for watch-only wallets), and `getTxIdsInBoostTxIds` rebuilds
         // lazily on the next read. Rebuilding inside the block above would also deadlock — it
         // re-enters the core queue.
-        cachedTxIdsInBoostTxIds.withLock { $0[walletId] = nil }
+        boostTxIdsCache.invalidate(walletId: walletId)
         activitiesChangedSubject.send()
 
         // A deletion cascades into `activity_tags`, so the metadata envelope carrying this wallet's
@@ -2018,6 +2011,107 @@ class ActivityService {
 
             Logger.info("Generated \(activityId) test activities across all time periods", context: "CoreService")
             self.activitiesChangedSubject.send()
+        }
+    }
+}
+
+// MARK: - Boost history cache
+
+/// Coalesces cold boost-history reads per wallet without holding a lock across an await.
+/// Synchronous mutations also use this lock because they run inside the core service queue.
+final class BoostTxIdsCache: @unchecked Sendable {
+    enum LoadResult: Sendable {
+        case loaded(Set<String>)
+        case invalidated
+    }
+
+    enum Read: Sendable {
+        case cached(Set<String>)
+        case loading(Task<LoadResult, Never>)
+    }
+
+    private struct Flight {
+        let id: UUID
+        let task: Task<LoadResult, Never>
+    }
+
+    private struct Entry {
+        var value: Set<String>?
+        var flight: Flight?
+        var pendingTxIds: Set<String> = []
+    }
+
+    private let entries = OSAllocatedUnfairLock(initialState: [String: Entry]())
+
+    func get(walletId: String, forceRefresh: Bool = false, load: @escaping @Sendable () async -> Set<String>?) async -> Set<String> {
+        var nextRead = read(walletId: walletId, forceRefresh: forceRefresh, load: load)
+        while true {
+            switch nextRead {
+            case let .cached(value):
+                return value
+            case let .loading(task):
+                switch await task.value {
+                case let .loaded(value): return value
+                case .invalidated: nextRead = read(walletId: walletId, load: load)
+                }
+            }
+        }
+    }
+
+    func read(walletId: String, forceRefresh: Bool = false, load: @escaping @Sendable () async -> Set<String>?) -> Read {
+        entries.withLock { entries in
+            if !forceRefresh {
+                if let flight = entries[walletId]?.flight {
+                    return .loading(flight.task)
+                }
+                if let value = entries[walletId]?.value {
+                    return .cached(value)
+                }
+            }
+
+            let id = UUID()
+            let task = Task {
+                let value = await load()
+                return self.complete(value, walletId: walletId, flightId: id)
+            }
+            // Preserve the last successful value only for refresh failures; invalidation removes it entirely.
+            entries[walletId] = Entry(value: entries[walletId]?.value, flight: Flight(id: id, task: task))
+            return .loading(task)
+        }
+    }
+
+    func merge(_ txIds: [String], walletId: String) {
+        entries.withLock { entries in
+            // A cold cache must not be seeded with a partial, single-activity snapshot.
+            guard var entry = entries[walletId] else { return }
+            if entry.value != nil {
+                entry.value?.formUnion(txIds)
+            }
+            if entry.flight != nil {
+                entry.pendingTxIds.formUnion(txIds)
+            }
+            entries[walletId] = entry
+        }
+    }
+
+    func invalidate(walletId: String) {
+        entries.withLock { $0[walletId] = nil }
+    }
+
+    func invalidateAll() {
+        entries.withLock { $0.removeAll() }
+    }
+
+    private func complete(_ value: Set<String>?, walletId: String, flightId: UUID) -> LoadResult {
+        entries.withLock { entries in
+            guard let entry = entries[walletId], entry.flight?.id == flightId else { return .invalidated }
+            guard let value else {
+                entries[walletId] = entry.value.map { Entry(value: $0) }
+                return .loaded(entry.value ?? [])
+            }
+            let mergedValue = value.union(entry.pendingTxIds)
+            entries[walletId] = Entry(value: mergedValue)
+            return .loaded(mergedValue)
         }
     }
 }
