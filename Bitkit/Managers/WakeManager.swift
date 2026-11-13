@@ -125,6 +125,50 @@ enum WakeConfig {
     }
 }
 
+/// When to try a registration again after it failed. Only network failures, 5xx and 429 are tried again; any other
+/// answer would come back the same.
+enum WakeRetry {
+    static let firstDelaySecs: UInt64 = 30
+    static let maxDelaySecs: UInt64 = 900
+    /// The longest a 429's `Retry-After` is followed.
+    static let maxRetryAfterSecs: UInt64 = 3600
+
+    /// Seconds to wait before attempt `attempt + 1`, or nil when trying again cannot help.
+    static func delaySecs(after error: Error, attempt: Int) -> UInt64? {
+        let retryAfterSecs: UInt64?
+        switch error {
+        case WakeError.RequestFailed:
+            retryAfterSecs = nil
+        case let WakeError.GatewayRejected(status, _, _, _, retryAfter) where status == 429 || status >= 500:
+            retryAfterSecs = retryAfter
+        default:
+            return nil
+        }
+        let backoff = min(maxDelaySecs, firstDelaySecs << UInt64(min(max(attempt, 0), 5)))
+        return max(backoff, min(retryAfterSecs ?? 0, maxRetryAfterSecs))
+    }
+
+    /// Runs `operation` until it returns without an error that is worth trying again, waiting between attempts.
+    /// Cancelling the task stops it, with the last result.
+    static func run<T>(
+        sleep: (UInt64) async throws -> Void = { try await Task.sleep(for: .seconds(Int64($0))) },
+        _ operation: () async -> (result: T, error: Error?)
+    ) async -> T {
+        var attempt = 0
+        while true {
+            let (result, error) = await operation()
+            guard let error, let delay = delaySecs(after: error, attempt: attempt) else { return result }
+            Logger.info("Trying the wake registration again in \(delay) s", context: "Wake")
+            do {
+                try await sleep(delay)
+            } catch {
+                return result
+            }
+            attempt += 1
+        }
+    }
+}
+
 extension WakeHandlerRegistry {
     /// Background wakes the app delegate handles. Any other topic is acknowledged `noHandler`.
     static let app = WakeHandlerRegistry([:])
@@ -295,15 +339,27 @@ final class WakeManager {
     func registerIfAllowed(_ inputs: WakeRegistrationInputs) async -> WakeRegistrationResult {
         latestInputs = inputs
         guard gatewayUrl != nil else { return .notConfigured }
-        return await serialized { await self.register(force: false) }
+        // Runs inside the scene's `.task(id:)`, so a change of inputs cancels the waiting.
+        return await WakeRetry.run { await self.serialized { await self.register(force: false) } }
     }
 
     /// Registers again with the latest inputs even when nothing changed.
     func registerNow() async -> WakeRegistrationResult {
-        await serialized { await self.register(force: true) }
+        await serialized { await self.register(force: true) }.result
     }
 
-    private func register(force: Bool) async -> WakeRegistrationResult {
+    private func register(force: Bool) async -> (result: WakeRegistrationResult, error: Error?) {
+        let result: WakeRegistrationResult
+        do {
+            result = try await registerOrThrow(force: force)
+        } catch {
+            Logger.error("Failed to register for wakes: \(error)", context: "Wake")
+            return (.failed(error.localizedDescription), error)
+        }
+        return (result, nil)
+    }
+
+    private func registerOrThrow(force: Bool) async throws -> WakeRegistrationResult {
         guard let gatewayUrl else { return .notConfigured }
         guard let inputs = latestInputs,
               WakeRegistrationPolicy.allowsRegistration(
@@ -317,29 +373,24 @@ final class WakeManager {
         guard selection != .skip else { return .waitingForIdentity }
         let identities = WakeIdentityResolver.identities(nodeId: nodeId, selection: selection)
 
-        do {
-            let credentials = try WakeStorage.loadOrCreateCredentials()
-            let outcome = try await WakeRegistrar(gatewayUrl: gatewayUrl).register(
-                credentials: credentials,
-                pushToken: pushToken,
-                identities: identities,
-                force: force,
-                sign: { request in try await Self.proofs(for: request, nodeId: nodeId, selection: selection) }
-            )
-            guard case let .registered(registration) = outcome else { return .unchanged }
-            Logger.info(
-                "Registered for wakes as \(registration.deviceId) with \(identities.map { $0.prefix(3) }.joined(separator: ", "))",
-                context: "Wake"
-            )
-            if !registration.unknownTopics.isEmpty {
-                Logger.warn("Wake gateway does not know topics \(registration.unknownTopics)", context: "Wake")
-            }
-            refreshPresence()
-            return .registered(deviceId: registration.deviceId, unknownTopics: registration.unknownTopics)
-        } catch {
-            Logger.error("Failed to register for wakes: \(error)", context: "Wake")
-            return .failed(error.localizedDescription)
+        let credentials = try WakeStorage.loadOrCreateCredentials()
+        let outcome = try await WakeRegistrar(gatewayUrl: gatewayUrl).register(
+            credentials: credentials,
+            pushToken: pushToken,
+            identities: identities,
+            force: force,
+            sign: { request in try await Self.proofs(for: request, nodeId: nodeId, selection: selection) }
+        )
+        guard case let .registered(registration) = outcome else { return .unchanged }
+        Logger.info(
+            "Registered for wakes as \(registration.deviceId) with \(identities.map { $0.prefix(3) }.joined(separator: ", "))",
+            context: "Wake"
+        )
+        if !registration.unknownTopics.isEmpty {
+            Logger.warn("Wake gateway does not know topics \(registration.unknownTopics)", context: "Wake")
         }
+        refreshPresence()
+        return .registered(deviceId: registration.deviceId, unknownTopics: registration.unknownTopics)
     }
 
     private static func proofs(

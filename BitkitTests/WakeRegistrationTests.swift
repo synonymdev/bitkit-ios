@@ -457,3 +457,71 @@ final class WakeUnregistrarTests: XCTestCase {
         return try await unregistrar.run()
     }
 }
+
+final class WakeRetryTests: XCTestCase {
+    private static let offline = WakeError.RequestFailed(reason: "offline")
+
+    func testOnlyNetworkFailuresServerErrorsAndRateLimitsAreTriedAgain() {
+        XCTAssertEqual(WakeRetry.delaySecs(after: Self.offline, attempt: 0), 30)
+        XCTAssertEqual(WakeRetry.delaySecs(after: rejected(503), attempt: 0), 30)
+        XCTAssertEqual(WakeRetry.delaySecs(after: rejected(429), attempt: 0), 30)
+        XCTAssertNil(WakeRetry.delaySecs(after: rejected(409, code: "stale_registration"), attempt: 0))
+        XCTAssertNil(WakeRetry.delaySecs(after: rejected(401, code: "stale_timestamp"), attempt: 0))
+        XCTAssertNil(WakeRetry.delaySecs(after: rejected(400), attempt: 0))
+        XCTAssertNil(WakeRetry.delaySecs(after: WakeError.InvalidResponse(reason: "not json"), attempt: 0))
+        XCTAssertNil(WakeRetry.delaySecs(after: CancellationError(), attempt: 0))
+    }
+
+    func testTheDelayDoublesUpToFifteenMinutes() {
+        let delays = (0 ..< 8).map { WakeRetry.delaySecs(after: Self.offline, attempt: $0) }
+
+        XCTAssertEqual(delays, [30, 60, 120, 240, 480, 900, 900, 900])
+    }
+
+    func testALongerRetryAfterIsFollowedUpToAnHour() {
+        XCTAssertEqual(WakeRetry.delaySecs(after: rejected(429, retryAfter: 120), attempt: 0), 120)
+        XCTAssertEqual(WakeRetry.delaySecs(after: rejected(429, retryAfter: 10), attempt: 2), 120)
+        XCTAssertEqual(WakeRetry.delaySecs(after: rejected(429, retryAfter: .max), attempt: 0), 3600)
+    }
+
+    func testTransientFailuresAreTriedAgainUntilOneSucceeds() async {
+        var attempts = 0
+        var slept: [UInt64] = []
+
+        let result = await WakeRetry.run(sleep: { slept.append($0) }) { () -> (result: String, error: Error?) in
+            attempts += 1
+            return attempts < 3 ? ("failed", Self.offline) : ("registered", nil)
+        }
+
+        XCTAssertEqual(result, "registered")
+        XCTAssertEqual(slept, [30, 60])
+    }
+
+    func testAFinalErrorIsNotTriedAgain() async {
+        var attempts = 0
+
+        let result = await WakeRetry.run(sleep: { _ in XCTFail("Waited") }) { () -> (result: String, error: Error?) in
+            attempts += 1
+            return ("conflict", self.rejected(409, code: "stale_registration"))
+        }
+
+        XCTAssertEqual(result, "conflict")
+        XCTAssertEqual(attempts, 1)
+    }
+
+    func testCancellingStopsTheWaiting() async {
+        var attempts = 0
+
+        let result = await WakeRetry.run(sleep: { _ in throw CancellationError() }) { () -> (result: String, error: Error?) in
+            attempts += 1
+            return ("failed", Self.offline)
+        }
+
+        XCTAssertEqual(result, "failed")
+        XCTAssertEqual(attempts, 1)
+    }
+
+    private func rejected(_ status: UInt16, code: String = "error", retryAfter: UInt64? = nil) -> WakeError {
+        WakeError.GatewayRejected(status: status, code: code, detail: "", serverTime: nil, retryAfterSecs: retryAfter)
+    }
+}
