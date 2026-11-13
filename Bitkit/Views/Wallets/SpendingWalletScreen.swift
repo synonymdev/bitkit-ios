@@ -7,6 +7,10 @@ struct SpendingWalletScreen: View {
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
+    private var canMoveToSpark: Bool {
+        MoveToSparkMath.canMove(channels: wallet.channels, isSparkUsable: MoveToSparkMath.isSparkUsable(SparkManager.shared))
+    }
+
     private var shouldShowOnboarding: Bool {
         let hasLightningActivities = activity.lightningActivities?.isEmpty == false
         return wallet.totalLightningSats == 0 && !hasLightningActivities
@@ -41,7 +45,15 @@ struct SpendingWalletScreen: View {
                     }
 
                     if !shouldShowOnboarding {
-                        if let channels = wallet.channels, !channels.isEmpty {
+                        if canMoveToSpark {
+                            CustomButton(title: t("lightning__move_to_spark__nav_title")) {
+                                navigation.navigate(.moveToSpark)
+                            }
+                            .accessibilityIdentifier("MoveToSpark")
+                            .padding(.top, 28)
+                        }
+
+                        if wallet.totalLightningSats > 0, wallet.channels?.isEmpty == false || SparkManager.shared.shownSpendingSats > 0 {
                             transferButton
                                 .transition(.move(edge: .leading).combined(with: .opacity))
                                 .padding(.top, 28)
@@ -58,12 +70,7 @@ struct SpendingWalletScreen: View {
                 .contentMargins(.bottom, ScreenLayout.bottomPaddingWithSafeArea)
                 .accessibilityIdentifier("HomeScrollView")
                 .refreshable {
-                    do {
-                        try await wallet.sync()
-                        try await activity.syncLdkNodePayments()
-                    } catch {
-                        app.toast(error)
-                    }
+                    await WalletPullRefresh.sync(wallet: wallet, activity: activity, app: app)
                 }
                 .frame(maxWidth: .infinity, minHeight: 400)
                 .transition(.move(edge: .leading).combined(with: .opacity))
@@ -107,7 +114,7 @@ struct SpendingWalletScreen: View {
 
     var transferFromSavingsButton: some View {
         CustomButton(
-            title: t("lightning__transfer_to_spending_button"),
+            title: t("lightning__funding__button1"),
             variant: .secondary,
             icon: Image("arrow-up-down")
                 .resizable()
@@ -115,7 +122,13 @@ struct SpendingWalletScreen: View {
                 .frame(width: 16, height: 16)
                 .foregroundColor(.white80)
         ) {
-            sheets.showSheet(.transferUnavailable)
+            if !SparkManager.shared.canFundFromChain {
+                sheets.showSheet(.transferUnavailable)
+            } else if app.hasSeenTransferToSpendingIntro {
+                navigation.navigate(.spendingAmount)
+            } else {
+                navigation.navigate(.spendingIntro)
+            }
         }
         .accessibilityIdentifier("TransferFromSavings")
     }

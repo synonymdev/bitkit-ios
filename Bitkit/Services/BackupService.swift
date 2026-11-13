@@ -131,7 +131,12 @@ class BackupService {
     private var foregroundObservationGeneration: UInt64 = 0
 
     private let defaults: UserDefaults
+    private let fetchBackup: (String) async throws -> Data?
+    /// Set while the Spark exit data restore hasn't succeeded or found no older backup, kept across launches, so a fresh
+    /// export never replaces the remote backup it couldn't read yet.
+    private static let sparkExitRestorePendingKey = "sparkExitRestorePending"
     private let backupData: ((BackupCategory) async throws -> Data)?
+    private let isSparkExitActive: () async -> Bool
     private let uploadBackup: (String, Data) async throws -> Void
     private let waitForBackupDelay: () async throws -> Void
     private let waitForTemporaryFailureDelay: (UInt64) async throws -> Void
@@ -142,6 +147,7 @@ class BackupService {
 
     private let statusUpdateQueue = DispatchQueue(label: "backup-service-status-update", qos: .userInitiated)
     private let stateQueue = DispatchQueue(label: "backup-service-state", qos: .userInitiated)
+    private var sparkExitMark = SparkExitBackupMark()
     private let backupStatusesSubject = PassthroughSubject<[BackupCategory: BackupItemStatus], Never>()
 
     private let backupFailureSubject = PassthroughSubject<Int, Never>()
@@ -162,6 +168,7 @@ class BackupService {
     init(
         defaults: UserDefaults = .standard,
         backupData: ((BackupCategory) async throws -> Data)? = nil,
+        isSparkExitActive: @escaping () async -> Bool = { @MainActor in SparkExitManager.shared.isExiting },
         usdtRecoveryBackup: UsdtRecoveryBackupStore = UsdtRecoveryBackupStore(),
         uploadBackup: @escaping (String, Data) async throws -> Void = { key, data in
             _ = try await VssBackupClient.shared.putObject(key: key, data: data)
@@ -175,9 +182,14 @@ class BackupService {
         waitForScheduledBackupCompletion: @escaping (BackupCategory, BackupOutcome) async -> Void = { _, _ in },
         waitForForegroundRecoveryTimeout: @escaping () async throws -> Void = {
             try await Task.sleep(for: .seconds(BackupService.backupFailureCheckInterval))
+        },
+        fetchBackup: @escaping (String) async throws -> Data? = { key in
+            try await VssBackupClient.shared.getObject(key: key)?.value
         }
     ) {
         self.defaults = defaults
+        self.isSparkExitActive = isSparkExitActive
+        self.fetchBackup = fetchBackup
         self.backupData = backupData
         self.usdtRecoveryBackup = usdtRecoveryBackup
         self.uploadBackup = uploadBackup
@@ -314,6 +326,13 @@ class BackupService {
 
             Logger.debug("Start observing backup statuses and data store changes", context: "BackupService")
             await installBackupObservers(generation: observation.generation, foregroundGeneration: observation.foregroundGeneration)
+
+            // Spark's exit data signals are missed while observing is stopped, as it is while the node stops and Spark
+            // stays connected: mark it when the exit data changed since it was last marked, not on every restart.
+            let version = await SparkManager.shared.exitStateVersion
+            if stateQueue.sync(execute: { sparkExitMark.claim(version: version) }) {
+                markBackupRequired(category: .sparkExit)
+            }
         }
     }
 
@@ -432,6 +451,20 @@ class BackupService {
                 } else {
                     try await persistWalletBackup()
                 }
+            } else if category == .sparkExit {
+                // A restore that couldn't read the remote backup is tried again first, and blocks replacing it until then.
+                if defaults.bool(forKey: Self.sparkExitRestorePendingKey) {
+                    await restoreSparkExit()
+                }
+                guard !defaults.bool(forKey: Self.sparkExitRestorePendingKey) else { throw SparkExitBackupError.restorePending }
+                // Restored exit data Spark couldn't import yet lives only in the remote backup, so nothing replaces it.
+                guard await !SparkManager.shared.hasStagedExitState(walletIndex: LightningService.shared.currentWalletIndex) else {
+                    throw SparkExitBackupError.restorePending
+                }
+                // Nothing to back up until Spark connects, which marks this category required again.
+                if let data = try await sparkExitBackupData() {
+                    try await uploadBackup(category.rawValue, data)
+                }
             } else {
                 if category == .metadata {
                     try await prepareMetadataBackup(generation: generation)
@@ -471,6 +504,10 @@ class BackupService {
             if case MetadataBackupError.deferred = error {
                 outcome = .busy
                 Logger.debug("Metadata backup deferred until wallet restoration and backup complete", context: "BackupService")
+            } else if error is SparkExitBackupError {
+                // Backs off like an unreachable server: retrying every few seconds refetches several MB each time.
+                outcome = .temporarilyUnavailable
+                Logger.warn("Spark exit backup deferred until its restore reads the remote backup", context: "BackupService")
             } else if error is WalletBackupSnapshotError {
                 outcome = .snapshotChanged
                 Logger.warn("Wallet backup deferred after three changing snapshots", context: "BackupService")
@@ -722,14 +759,10 @@ class BackupService {
             try await performRestore(category: .wallet, retainedData: retainedWalletBackup) { dataBytes in
                 try walletRestoreGate.retain(dataBytes)
                 let payload = try JSONDecoder().decode(WalletBackupV1.self, from: dataBytes)
-                if let paymentState = payload.paykitPaymentState {
+                try await Self.restorePaykitPaymentState(from: payload) { paymentState, hasLedger in
                     // VssBackupClient's existing custom backup namespace is explicitly wallet index 0.
                     let backupWallet = try await PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet.backupNamespace(index: 0)
-                    try await PaykitPaymentProofService.shared.restoreBackup(
-                        paymentState,
-                        wallet: backupWallet,
-                        hasLedger: payload.paykitSdkBackupState != nil
-                    )
+                    try await PaykitPaymentProofService.shared.restoreBackup(paymentState, wallet: backupWallet, hasLedger: hasLedger)
                 }
                 try TransferStorage.shared.upsertList(payload.transfers)
                 await PrivatePaykitAddressReservationStore.shared.restoreBackup(
@@ -790,6 +823,9 @@ class BackupService {
                 // App-owned, so it takes no part in the core field migration above and never sets
                 // needsRewrite. Restored names wait as pending ones until each wallet is paired again.
                 HwKnownDeviceStorage.restoreNames(payload.hwWalletNames ?? [:])
+                SparkExitEarlierAddressBackup.restore(payload.sparkExitEarlierAddresses, network: "\(Env.network)") {
+                    SparkExitEarlierAddressStore(walletIndex: $0)
+                }
 
                 // Force address rotation by clearing onchain address
                 UserDefaults.standard.set("", forKey: "onchainAddress")
@@ -818,6 +854,9 @@ class BackupService {
 
                 Logger.debug("Restored \(payload.orders.count) orders, \(payload.cjitEntries.count) CJITs", context: "BackupService")
             }
+
+            await restoreSparkExit()
+            markRestoreComplete(category: .sparkExit)
 
             // Always reset PIN settings after restore (PIN is never backed up for security)
             await SettingsViewModel.shared.resetPinSettings()
@@ -895,6 +934,17 @@ class BackupService {
             }
             .store(in: cancellables)
 
+        SparkManager.exitStateChangedPublisher
+            .sink { [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .sparkExit)
+                Task { @MainActor in
+                    let version = SparkManager.shared.exitStateVersion
+                    _ = self.stateQueue.sync { self.sparkExitMark.claim(version: version) }
+                }
+            }
+            .store(in: cancellables)
+
         // Record requirements synchronously; the scheduled upload already has a debounce.
         WalletBackupChangeTracker.localChanges
             .merge(with: PaykitSdkService.walletBackupDataChangedPublisher)
@@ -933,6 +983,15 @@ class BackupService {
         // METADATA (hardware wallet names). Scoped to the names alone: the known-device store is also
         // rewritten by every connect, and reconnect traffic must not re-upload the whole envelope.
         HwKnownDeviceStorage.namesChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { @Sendable [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .metadata)
+            }
+            .store(in: cancellables)
+
+        // METADATA (earlier Spark exit addresses)
+        SparkExitEarlierAddressStore.savedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
@@ -1165,9 +1224,15 @@ class BackupService {
         return statuses[category] ?? BackupItemStatus()
     }
 
+    /// The categories whose remote timestamp tells when the wallet was last backed up.
+    /// The Spark exit data is left out: reading its time downloads data that can reach several MB.
+    static let latestBackupTimeCategories = BackupCategory.allCases.filter {
+        $0 != .lightningConnections && $0 != .usdt && $0 != .sparkExit
+    }
+
     func getLatestBackupTime() async -> UInt64? {
         let timestamps = await withTaskGroup(of: UInt64?.self) { group in
-            for category in BackupCategory.allCases where category != .lightningConnections && category != .usdt {
+            for category in Self.latestBackupTimeCategories {
                 group.addTask {
                     await self.getRemoteBackupTimestamp(category: category)
                 }
@@ -1387,7 +1452,11 @@ class BackupService {
                 cache: cache,
                 pubkySession: pubkySession,
                 pubkyContactProfileOverrides: pubkyContactProfileOverrides,
-                hwWalletNames: hwWalletNames.isEmpty ? nil : hwWalletNames
+                hwWalletNames: hwWalletNames.isEmpty ? nil : hwWalletNames,
+                sparkExitEarlierAddresses: SparkExitEarlierAddressBackup.backup(
+                    SparkExitEarlierAddressStore(walletIndex: LightningService.shared.currentWalletIndex),
+                    walletKey: SparkExitFundingIndexes.walletKey(network: "\(Env.network)", walletIndex: LightningService.shared.currentWalletIndex)
+                )
             )
             return try JSONEncoder().encode(payload)
 
@@ -1427,7 +1496,48 @@ class BackupService {
                 code: -1,
                 userInfo: [NSLocalizedDescriptionKey: "LIGHTNING_CONNECTIONS backup is managed by ldk-node"]
             )
+
+        case .sparkExit:
+            guard let data = try await sparkExitBackupData() else {
+                throw NSError(
+                    domain: "BackupService",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: "SPARK_EXIT has nothing to back up while Spark is not connected"]
+                )
+            }
+            return data
         }
+    }
+
+    /// Restores the Spark exit data backup. Until that succeeds, or the backup is found absent (not just unreadable), the
+    /// restore stays pending and the next backup attempt tries it again before uploading.
+    func restoreSparkExit() async {
+        defaults.set(true, forKey: Self.sparkExitRestorePendingKey)
+        do {
+            if let data = try await fetchBackup(BackupCategory.sparkExit.rawValue) {
+                let backup = try JSONDecoder().decode(SparkExitBackupV1.self, from: data)
+                try await SparkManager.shared.restoreExitBackup(backup, walletIndex: LightningService.shared.currentWalletIndex)
+                Logger.info("Restore success for: '\(BackupCategory.sparkExit.rawValue)'", context: "BackupService")
+            } else {
+                Logger.warn("Restore null for: '\(BackupCategory.sparkExit.rawValue)'", context: "BackupService")
+            }
+            defaults.removeObject(forKey: Self.sparkExitRestorePendingKey)
+        } catch {
+            Logger.warn("Restore error for: '\(BackupCategory.sparkExit.rawValue)': \(error)", context: "BackupService")
+        }
+    }
+
+    /// Nothing while an exit runs: the operators may stop reporting a leaf once it is being exited, so a fresh export
+    /// could drop the very leaf a restored wallet needs. The backup from before the exit stays.
+    private func sparkExitBackupData() async throws -> Data? {
+        if await isSparkExitActive() {
+            return nil
+        }
+        if let backupData {
+            return try await backupData(.sparkExit)
+        }
+        guard let backup = try await SparkManager.shared.exitBackup() else { return nil }
+        return try JSONEncoder().encode(backup)
     }
 
     /// Re-upload the envelopes whose Core-owned fields the restore had to migrate, so later restores
@@ -1477,6 +1587,19 @@ class BackupService {
             return
         }
         markRestoreComplete(category: category)
+    }
+
+    /// A backup can predate payments made since, so restoring a wallet payload pauses automatic payments before any Paykit
+    /// state comes back, also for a payload without payment state, until the user resumes them. The pause is kept per
+    /// device, so it applies even when no allowance this wallet pays through existed at the restore.
+    static func restorePaykitPaymentState(
+        from payload: WalletBackupV1,
+        allowanceStore: any PaykitAllowanceStoring = PaykitAllowanceKeychainStore(),
+        restore: (_ paymentState: PaykitPaymentStateBackup, _ hasLedger: Bool) async throws -> Void
+    ) async throws {
+        try allowanceStore.setPausedAfterRestore(true)
+        guard let paymentState = payload.paykitPaymentState else { return }
+        try await restore(paymentState, payload.paykitSdkBackupState != nil)
     }
 
     func markRestoreComplete(category: BackupCategory) {
@@ -1643,6 +1766,24 @@ struct BackupFailureNotificationGate {
         }
 
         lastNotificationTime = currentTime
+        return true
+    }
+}
+
+enum SparkExitBackupError: Error {
+    /// The restore couldn't read the remote backup or import it yet, so a fresh export must not replace it.
+    case restorePending
+}
+
+/// Which Spark exit data generation the backup was last marked for, so observing restarting on a foreground marks it
+/// only when the exit data changed meanwhile.
+struct SparkExitBackupMark {
+    private var markedVersion: Int?
+
+    /// True when `version` is an exit data generation not marked yet, and records it; nil while Spark is disconnected.
+    mutating func claim(version: Int?) -> Bool {
+        guard let version, version != markedVersion else { return false }
+        markedVersion = version
         return true
     }
 }

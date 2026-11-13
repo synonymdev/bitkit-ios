@@ -907,7 +907,7 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
             localRole: .payee, state: .proposed, proposalStreamItemId: 1,
             proposalOutboundMessageId: nil, proposalOutboundStatus: nil,
             proposalEventId: "71300000-0000-4000-8000-000000000002",
-            proposalAppId: appId, payerAppId: nil, executionClaimAppId: nil,
+            proposalAppId: appId, proposalRecordedAt: nil, payerAppId: nil, executionClaimAppId: nil,
             terms: PaymentRequestTerms(
                 amount: PaymentRequestAmount(value: "0.001", asset: "btc"),
                 paymentReference: PaymentReference(text: "invoice-123"),
@@ -915,7 +915,7 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
                 paymentEndpoints: nil, requiredAppId: "bitkit", conversion: nil, paymentDeadline: nil,
                 metadata: PrivateJsonObject(text: "{}")
             ),
-            acceptedEventId: nil, acceptedOutboundStatus: nil,
+            acceptedEventId: nil, acceptedOutboundStatus: nil, acceptanceRecordedAt: nil,
             rejectedEventId: nil, rejectedOutboundStatus: nil,
             canceledEventId: nil, canceledOutboundStatus: nil,
             conversionQuotes: [], paymentProofs: [], lastStreamItemId: 42,
@@ -1035,6 +1035,39 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         let alreadyStartedMutations = heldRead == .linkRecovery ? ["recoverLink"] : []
         XCTAssertEqual(oldSdk.mutations, alreadyStartedMutations, "Abandoned cleanup must not start another mutation")
         XCTAssertTrue(replacementSdk.mutations.isEmpty, "An old wallet cleanup must not mutate the replacement SDK")
+    }
+
+    func testReauthenticationSignsInOnlyWhileTheExpectedIdentityIsSignedInWithItsOwnKey() async throws {
+        let ownKey = String(repeating: "1", count: 64)
+        let ownIdentity = try PubkyProfileManager.publicKeyFromSecretKey(ownKey)
+        let otherKey = String(repeating: "2", count: 64)
+        let signInReached = PubkyServiceError.authFailed("sign-in reached")
+        let cases: [(signedIn: String?, key: String?, signsIn: Bool)] = [
+            (nil, ownKey, false),
+            (identityB, ownKey, false),
+            (ownIdentity, otherKey, false),
+            (ownIdentity, nil, false),
+            (ownIdentity, ownKey, true),
+        ]
+        for testCase in cases {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = testCase.signedIn
+            var bootstraps = 0
+            let service = PaykitSdkService(sdkFactory: { sdk }, bootstrapFactory: { _, _ in
+                bootstraps += 1
+                throw signInReached
+            })
+
+            do {
+                _ = try await service.reauthenticate(expectedIdentity: ownIdentity, secretKeyHex: { testCase.key })
+                XCTFail("Expected reauthentication to stop")
+            } catch PubkyServiceError.identityChanged {
+                XCTAssertFalse(testCase.signsIn, "\(testCase)")
+            } catch {
+                XCTAssertTrue(testCase.signsIn, "\(testCase): \(error)")
+            }
+            XCTAssertEqual(bootstraps, testCase.signsIn ? 1 : 0, "\(testCase)")
+        }
     }
 }
 
@@ -1407,6 +1440,6 @@ private final class AbandonedCleanupSdk: PaykitSdk, @unchecked Sendable {
         updates _: [PrivatePaymentListReservationUpdateInput], clearUnlistedLinkedPeers _: Bool
     ) async throws -> PrivatePaymentListDeliveryReport {
         mutations.append("privateEndpoints")
-        return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+        return PrivatePaymentListDeliveryReport(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
     }
 }

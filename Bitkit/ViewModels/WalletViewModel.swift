@@ -1,4 +1,5 @@
 import BitkitCore
+import Combine
 import LDKNode
 import SwiftUI
 
@@ -9,6 +10,7 @@ struct SwapUpdatesStopTimeoutError: Error {}
 class WalletViewModel: ObservableObject {
     let usdtWallet: UsdtWalletManager
     @Published var walletExists: Bool? = nil
+    private var cancellables = Set<AnyCancellable>()
     @Published var isSyncingWallet = false // Syncing both LN and on chain
     @AppStorage("totalBalanceSats") var totalBalanceSats: Int = 0 // Combined onchain and LN
     @AppStorage("totalOnchainSats") var totalOnchainSats: Int = 0 // The total balance of our on-chain wallet
@@ -24,6 +26,7 @@ class WalletViewModel: ObservableObject {
     @Published private(set) var isReceiveInvoiceUpdating = false
     @Published private(set) var receiveInvoiceError: String?
     private var receiveRefreshID = UUID()
+    private var sparkReadiness = SparkReadinessTransition()
     private var receiveCommitID = UUID()
 
     var hasCoherentReceiveInvoice: Bool {
@@ -75,7 +78,7 @@ class WalletViewModel: ObservableObject {
     @Published var peers: [PeerDetails]?
     @Published var channels: [ChannelDetails]?
     private var eventHandlers: [String: (Event) -> Void] = [:]
-    private var watchSendContinuations: [String: CheckedContinuation<SettledLightningPayment, Error>] = [:]
+    private(set) var watchSendContinuations: [String: CheckedContinuation<SettledLightningPayment, Error>] = [:]
     private var probeOutcomes: [PaymentId: ProbeOutcome] = [:]
 
     @AppStorage("legacyNetworkGraphCleanupDone") private var legacyNetworkGraphCleanupDone = false
@@ -173,6 +176,26 @@ class WalletViewModel: ObservableObject {
         }
         lightningService.onchainTransactionReceived = { await onchainObservation($0, false) }
         lightningService.onchainTransactionConfirmed = { await onchainObservation($0, true) }
+        lightningService.channelFreeRailSupported = { await MainActor.run { SparkManager.shared.isSupported } }
+        // A Spark funding whose outcome was unknown resolves later, from the pending screen or once the chain shows it.
+        OnchainSendAttemptService.localResolutionPublisher
+            .sink { resolution in
+                Task { _ = await SparkFundingRecovery.follow(resolution) }
+            }
+            .store(in: &cancellables)
+        SparkManager.shared.onStateChanged = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                // Paykit may have published without a Lightning endpoint before Spark connected, so republish once
+                // it becomes ready; that refresh also updates the balance and the receive invoice.
+                if self.sparkReadiness.becameReady(SparkManager.shared.isReady) {
+                    await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "spark-ready refresh", forceRefreshLightning: true)
+                    return
+                }
+                await self.updateBalanceState()
+                try? await self.refreshBip21(reportsError: false)
+            }
+        }
         lightningService.onchainActivityWillPersist = { [weak self] in
             guard let self else { return nil }
             let isSessionCurrent = publicPaykitPublicationAdmission()
@@ -195,8 +218,18 @@ class WalletViewModel: ObservableObject {
         walletExists = try Keychain.exists(key: .bip39Mnemonic(index: 0))
     }
 
+    /// The event streams of moves still waiting for their outcome, by listener id: `wipe` ends them, since the wiped
+    /// node reports no late outcome.
+    private var moveEventSinks: [String: AsyncStream<Event>.Continuation] = [:]
+
     func addOnEvent(id: String, handler: @escaping (Event) -> Void) {
         eventHandlers[id] = handler
+    }
+
+    func notifyEventHandlers(_ event: Event) {
+        for handler in eventHandlers.values {
+            handler(event)
+        }
     }
 
     func removeOnEvent(id: String) {
@@ -261,6 +294,8 @@ class WalletViewModel: ObservableObject {
         }
 
         syncState()
+        // Spark needs no node, so it starts alongside it and keeps running while the node stops.
+        Task { await SparkManager.shared.start(walletIndex: walletIndex) }
         do {
             let electrumServerUrl = electrumConfigService.getCurrentServer().fullUrl
             let rgsServerUrl = rgsConfigService.getCurrentServerUrl()
@@ -284,10 +319,7 @@ class WalletViewModel: ObservableObject {
             }
             try await nodeLifecycle.start(onEvent: { event in
                 Task { @MainActor in
-                    // Notify all event handlers
-                    for handler in self.eventHandlers.values {
-                        handler(event)
-                    }
+                    self.notifyEventHandlers(event)
 
                     // Handle specific events for targeted UI updates
                     switch event {
@@ -473,6 +505,7 @@ class WalletViewModel: ObservableObject {
 
     func closeStartAdmissionForWipe() {
         isStartAdmissionClosedForWipe = true
+        cancelPaykitPostSync()
     }
 
     private func stopNodeLocked(clearEventCallback: Bool, swapUpdatesStopped: Bool = false) async throws {
@@ -556,6 +589,10 @@ class WalletViewModel: ObservableObject {
     nonisolated static let swapUpdatesWipeStopTimeout: Duration = .seconds(30)
 
     private var swapUpdatesTask: Task<Void, Never>?
+    private var paykitPostSyncTask: Task<Void, Never>?
+    private var pendingPaykitPostSyncSession: (@MainActor () -> Bool)?
+    /// Replaces the Paykit follow-up of a sync in tests, so a pass can be held open without a homeserver.
+    var paykitPostSyncOperationForTesting: (@MainActor (@escaping @MainActor () -> Bool) async -> Void)?
     private var swapEventsTask: Task<Void, Never>?
     private var swapUpdatesRunning = false
 
@@ -638,9 +675,14 @@ class WalletViewModel: ObservableObject {
         }
     }
 
-    func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
+    func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil, isPaykitEndpoint: Bool = false) async throws -> String {
         let finalExpirySecs = expirySecs ?? 60 * 60 * 24
-        let invoice = try await lightningService.receive(amountSats: amountSats, description: note, expirySecs: finalExpirySecs)
+        let invoice = try await lightningService.receive(
+            amountSats: amountSats,
+            description: note,
+            expirySecs: finalExpirySecs,
+            isPaykitEndpoint: isPaykitEndpoint
+        )
         return invoice.lowercased()
     }
 
@@ -706,11 +748,54 @@ class WalletViewModel: ObservableObject {
         isSyncingWallet = false
         syncState()
         QuickPayPaymentCoordinator.shared.reconcileAgainstLdk()
-        await refreshPublicPaykitAddressIfNeeded(isSessionCurrent: isSessionCurrent)
-        if isPaykitUIActive {
-            await PrivatePaykitService.shared.reconcileReceivedPayments(wallet: self)
-            await PrivatePaykitService.shared.handleOnchainActivity(wallet: self)
+        schedulePaykitPostSync(isSessionCurrent: isSessionCurrent)
+    }
+
+    /// Runs the Paykit follow-up of a node sync off the caller's path: each step can wait on a homeserver write lock,
+    /// so a caller such as pull-to-refresh must not wait for it. A sync that lands while one runs queues one more pass.
+    func schedulePaykitPostSync(isSessionCurrent: @escaping @MainActor () -> Bool) {
+        guard !isPaykitPostSyncBlockedByWipe else { return }
+        pendingPaykitPostSyncSession = isSessionCurrent
+        guard paykitPostSyncTask == nil else { return }
+        paykitPostSyncTask = Task { [weak self] in
+            while let self, !Task.isCancelled, !isPaykitPostSyncBlockedByWipe, let session = pendingPaykitPostSyncSession {
+                pendingPaykitPostSyncSession = nil
+                if let operation = paykitPostSyncOperationForTesting {
+                    await operation(session)
+                } else {
+                    await runPaykitPostSync(isSessionCurrent: session)
+                }
+            }
+            if !Task.isCancelled {
+                self?.paykitPostSyncTask = nil
+            }
         }
+    }
+
+    private func runPaykitPostSync(isSessionCurrent: @escaping @MainActor () -> Bool) async {
+        await refreshPublicPaykitAddressIfNeeded(isSessionCurrent: isSessionCurrent)
+        guard !Task.isCancelled, isPaykitUIActive else { return }
+        await PrivatePaykitService.shared.reconcileReceivedPayments(wallet: self)
+        guard !Task.isCancelled, isPaykitUIActive else { return }
+        await PrivatePaykitService.shared.handleOnchainActivity(wallet: self)
+    }
+
+    /// Waits for the Paykit follow-up of earlier syncs, including a pass queued while one ran. For callers that must
+    /// act after it, such as the foreground endpoint refresh, which would otherwise race its publication.
+    func waitForPaykitPostSync() async {
+        while let task = paykitPostSyncTask, !Task.isCancelled {
+            await task.value
+        }
+    }
+
+    private var isPaykitPostSyncBlockedByWipe: Bool {
+        isStartAdmissionClosedForWipe || WipeCoordinator.shared.isGateUp
+    }
+
+    private func cancelPaykitPostSync() {
+        pendingPaykitPostSyncSession = nil
+        paykitPostSyncTask?.cancel()
+        paykitPostSyncTask = nil
     }
 
     /// Sends bitcoin to an on-chain address
@@ -1132,6 +1217,104 @@ class WalletViewModel: ObservableObject {
         return try await watchSend(hash: String(hash))
     }
 
+    /// Pays from the channels only, with the routing fee capped at `maxFeeMsat`, and waits for the payment to settle.
+    /// Pays `bolt11` from the channels only and waits up to `timeout` for its outcome; `nil` means it is still in flight.
+    /// It listens before sending, so an outcome LDK reports before the send returns is not missed, and it matches a
+    /// failure by payment id as well as by hash, since LDK can report one without its hash. After a timeout it keeps
+    /// listening: a failure that arrives later calls `onLateFailure`, and a success `onLateSuccess`.
+    func sendOverChannels(
+        bolt11: String,
+        sats: UInt64,
+        maxFeeMsat: UInt64,
+        timeout: Duration = .seconds(120),
+        onTimeout: @escaping @MainActor () -> Void = {},
+        onLateFailure: @escaping @MainActor () -> Void = {},
+        onLateSuccess: @escaping @MainActor (SettledLightningPayment) -> Void = { _ in }
+    ) async throws -> SettledLightningPayment? {
+        // LDK's default route parameters, with the routing fee capped.
+        let params = RouteParametersConfig(
+            maxTotalRoutingFeeMsat: maxFeeMsat,
+            maxTotalCltvExpiryDelta: 1008,
+            maxPathCount: 10,
+            maxChannelSaturationPowerOfHalf: 2
+        )
+        let listenerId = "move-to-spark-\(UUID().uuidString)"
+        let (events, sink) = AsyncStream<Event>.makeStream(bufferingPolicy: .unbounded)
+        addOnEvent(id: listenerId) { sink.yield($0) }
+        moveEventSinks[listenerId] = sink
+        let id: String
+        do {
+            id = try await String(lightningService.send(bolt11: bolt11, sats: sats, params: params, channelsOnly: true))
+        } catch {
+            removeOnEvent(id: listenerId)
+            moveEventSinks.removeValue(forKey: listenerId)
+            sink.finish()
+            throw error
+        }
+        return try await Self.settle(
+            paymentId: id,
+            events: events,
+            timeout: timeout,
+            onTimeout: onTimeout,
+            onLateFailure: onLateFailure,
+            onLateSuccess: onLateSuccess,
+            onEnd: { [weak self] in
+                self?.removeOnEvent(id: listenerId)
+                self?.moveEventSinks.removeValue(forKey: listenerId)
+                sink.finish()
+            }
+        )
+    }
+
+    /// Waits for the payment `paymentId`'s outcome in `events`, or `nil` after `timeout`. `onTimeout` runs in the same
+    /// step that gives up waiting, so an outcome that arrives right after already finds the caller's in-flight state
+    /// and goes to `onLateFailure` or `onLateSuccess`.
+    static func settle(
+        paymentId id: String,
+        events: AsyncStream<Event>,
+        timeout: Duration,
+        onTimeout: @escaping @MainActor () -> Void,
+        onLateFailure: @escaping @MainActor () -> Void,
+        onLateSuccess: @escaping @MainActor (SettledLightningPayment) -> Void,
+        onEnd: @escaping @MainActor () -> Void = {}
+    ) async throws -> SettledLightningPayment? {
+        try await withCheckedThrowingContinuation { continuation in
+            var isAnswered = false
+            Task { @MainActor in
+                defer { onEnd() }
+                for await event in events {
+                    let outcome: Result<SettledLightningPayment?, Error>
+                    switch event {
+                    case let .paymentSuccessful(_, paymentHash, _, feePaidMsat) where paymentHash == id:
+                        outcome = .success(SettledLightningPayment(paymentHash: paymentHash, feePaidSats: (feePaidMsat ?? 0) / 1000))
+                    case let .paymentFailed(paymentId, paymentHash, reason) where paymentHash == id || paymentId == id:
+                        outcome = .failure(AppError(paymentFailureReason: reason))
+                    default:
+                        continue
+                    }
+                    if isAnswered {
+                        switch outcome {
+                        case let .success(settled?): onLateSuccess(settled)
+                        case .success: break
+                        case .failure: onLateFailure()
+                        }
+                    } else {
+                        isAnswered = true
+                        continuation.resume(with: outcome)
+                    }
+                    return
+                }
+            }
+            Task { @MainActor in
+                try? await Task.sleep(for: timeout)
+                guard !isAnswered else { return }
+                isAnswered = true
+                onTimeout()
+                continuation.resume(returning: nil)
+            }
+        }
+    }
+
     /// Observes task cancellation so `waitForLightningPayment`'s task group can unwind after its
     /// timeout instead of awaiting a continuation that only an LDK event would resume.
     private func watchSend(hash: String) async throws -> SettledLightningPayment {
@@ -1163,11 +1346,38 @@ class WalletViewModel: ObservableObject {
                 }
 
                 syncState()
+                Task { [weak self] in
+                    await self?.finishWatchSendIfRailAlreadySettled(hash: hash, eventId: eventId)
+                }
             }
         } onCancel: {
             Task { @MainActor [weak self] in
                 self?.finishWatchSend(id: eventId, result: .failure(CancellationError()))
             }
+        }
+    }
+
+    /// A Spark-to-Spark payment settles inside the send call, so its completion event can fire before `watchSend`
+    /// starts listening; the rail's own payment list still has the outcome.
+    private func finishWatchSendIfRailAlreadySettled(hash: String, eventId: String) async {
+        // A send skipped because the node already paid the invoice gets no new event.
+        if let paid = await lightningService.nodePayments()?.first(where: {
+            $0.direction == .outbound && $0.status == .succeeded && $0.id.caseInsensitiveCompare(hash) == .orderedSame
+        }) {
+            finishWatchSend(id: eventId, result: .success(SettledLightningPayment(paymentHash: hash, feePaidSats: (paid.feePaidMsat ?? 0) / 1000)))
+            return
+        }
+        // A retry over a channel settles from LDK; an earlier Spark attempt's outcome doesn't decide it.
+        guard lightningService.attemptRail(paymentHash: hash) != .ldk else { return }
+        let payments = await (try? lightningService.channelFreeRailPayments()) ?? []
+        let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: hash)
+        switch payment?.status {
+        case .succeeded:
+            finishWatchSend(id: eventId, result: .success(SettledLightningPayment(paymentHash: hash, feePaidSats: payment?.feeSats ?? 0)))
+        case .failed:
+            finishWatchSend(id: eventId, result: .failure(AppError(paymentFailureReason: nil)))
+        case .pending, nil:
+            break
         }
     }
 
@@ -1358,21 +1568,38 @@ class WalletViewModel: ObservableObject {
         }
     }
 
+    /// Spark's part of Spending: its balance, or while an exit runs only what it holds beyond the exit's leaves.
+    nonisolated static func spendingSparkSats(isExiting: Bool, balanceSats: UInt64, outsideExitSats: UInt64?) -> UInt64 {
+        isExiting ? (outsideExitSats ?? 0) : balanceSats
+    }
+
     func updateBalanceState() async {
         // Ensure we have fresh data from LDK before computing balance
         await lightningService.refreshCache()
 
         do {
             try? await transferService.syncTransferStates()
-            let state = try await balanceManager.deriveBalanceState()
+            let state = try await balanceManager.deriveBalanceState(exitInTransfer: SparkExitManager.shared.inTransfer)
+            let spark = SparkManager.shared
             balanceInTransferToSavings = Int(state.balanceInTransferToSavings)
-            balanceInTransferToSpending = Int(state.balanceInTransferToSpending)
+            balanceInTransferToSpending = Int(state.balanceInTransferToSpending + spark.pendingDepositSats)
+            // During an emergency exit the exit's leaves are on their way to savings and counted there instead; what
+            // Spark holds beyond them stays in Spending.
+            let outsideExitSats = SparkExitManager.shared.record.flatMap {
+                SparkExitMath.outsideExitSats(sparkBalanceSats: spark.balanceSats, record: $0)
+            }
+            let sparkBalanceSats = Self.spendingSparkSats(
+                isExiting: spark.isExiting,
+                balanceSats: spark.shownBalanceSats,
+                outsideExitSats: outsideExitSats
+            )
 
             // Update display values with adjusted balances
             totalOnchainSats = Int(state.totalOnchainSats)
-            totalLightningSats = Int(state.totalLightningSats)
-            totalBalanceSats = Int(state.totalBalanceSats)
-            maxSendLightningSats = Int(state.maxSendLightningSats)
+            totalLightningSats = Int(state.totalLightningSats + sparkBalanceSats)
+            totalBalanceSats = Int(state.totalBalanceSats + sparkBalanceSats + spark.pendingDepositSats)
+            // A payment goes over one rail, so the larger of the two balances caps it.
+            maxSendLightningSats = Int(max(state.maxSendLightningSats, spark.isExiting ? 0 : spark.sendableSats))
 
             // Update channel fundable balance (excludes Legacy UTXOs and accounts for funding tx fee)
             let (selectedType, monitoredTypes) = LightningService.addressTypeStateFromUserDefaults()
@@ -1387,6 +1614,8 @@ class WalletViewModel: ObservableObject {
             let activeTransfers = try? transferService.getActiveTransfers()
             let forceCloseTransfer = activeTransfers?.first {
                 $0.type == .forceClose && !$0.isSettled
+            } ?? activeTransfers?.first {
+                $0.type == .sparkExit && !$0.isSettled
             }
             forceCloseClaimableAtHeight = forceCloseTransfer?.claimableAtHeight
         } catch {
@@ -1428,13 +1657,18 @@ class WalletViewModel: ObservableObject {
         return channels?.contains(where: \.isUsable) ?? false
     }
 
+    /// Whether Lightning can be received, through a usable channel or Spark; Paykit publishes a Lightning endpoint only then.
+    var canReceiveLightning: Bool {
+        hasUsableChannels || SparkManager.shared.isReady
+    }
+
     var canCreateReceiveLightningInvoice: Bool {
         let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
         return canCreateReceiveLightningInvoice(amountSats: amountSats)
     }
 
     func canCreateReceiveLightningInvoice(amountSats: UInt64?) -> Bool {
-        ReceiveLiquidityDecision.canCreateLightningInvoice(
+        SparkManager.shared.isReady || ReceiveLiquidityDecision.canCreateLightningInvoice(
             hasReadyChannels: hasReadyChannels,
             inboundCapacitySats: totalReadyInboundLightningSats,
             invoiceAmountSats: amountSats
@@ -1507,7 +1741,7 @@ class WalletViewModel: ObservableObject {
             if attempt > 0 {
                 guard try await canCommitInvoice() else { continue }
             }
-            if includeLightning, hasUsableChannels {
+            if includeLightning, canReceiveLightning {
                 let hasReusableInvoice = await hasReusablePublicPaykitInvoice()
                 guard try await canCommitInvoice() else { continue }
                 let shouldRefreshBolt11 = forceRefreshBolt11 || !hasReusableInvoice
@@ -1604,7 +1838,7 @@ class WalletViewModel: ObservableObject {
 
         if sharesPublicPaykitEndpoints {
             do {
-                try await publishPublicPaykitEndpoints(refreshIfNeeded: hasUsableChannels, isSessionCurrent: isSessionCurrent)
+                try await publishPublicPaykitEndpoints(refreshIfNeeded: canReceiveLightning, isSessionCurrent: isSessionCurrent)
             } catch {
                 Logger.warn("Failed to refresh public Paykit endpoints after channel availability changed: \(error)", context: "WalletViewModel")
             }
@@ -1641,7 +1875,7 @@ class WalletViewModel: ObservableObject {
     }
 
     private func refreshPublicPaykitBolt11(canCommitInvoice: () async throws -> Bool) async throws -> Bool {
-        let invoice = try await createInvoice(amountSats: nil, note: "")
+        let invoice = try await createInvoice(amountSats: nil, note: "", isPaykitEndpoint: true)
         let decodedInvoice = try await decode(invoice: invoice)
         guard try await canCommitInvoice() else { return false }
         guard case let .lightning(lightningInvoice) = decodedInvoice else {
@@ -2035,7 +2269,14 @@ class WalletViewModel: ObservableObject {
             try await nodeLifecycle.wipeStorage(walletIndex: 0)
         }
 
+        try await SparkManager.shared.wipe(walletIndex: 0)
+
         probeOutcomes.removeAll()
+        // A move's late outcome belongs to the wiped wallet, and its node is gone: stop waiting for it
+        for sink in moveEventSinks.values {
+            sink.finish()
+        }
+        moveEventSinks.removeAll()
 
         // Reset AppStorage display values
         totalBalanceSats = 0
@@ -2054,5 +2295,15 @@ class WalletViewModel: ObservableObject {
         try setWalletExistsState()
 
         Logger.warn("Wallet wipe completed", context: "WalletViewModel")
+    }
+}
+
+/// Tells when Spark goes from not ready to ready, so work that ran without it (Paykit endpoints) runs once more.
+struct SparkReadinessTransition {
+    private var wasReady = false
+
+    mutating func becameReady(_ isReady: Bool) -> Bool {
+        defer { wasReady = isReady }
+        return isReady && !wasReady
     }
 }

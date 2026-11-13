@@ -41,6 +41,15 @@ final class UsdtWalletManager {
 
     private var pendingDepositIds: Set<String> = []
     private(set) var historyComplete = false
+    /// Before the first complete history sync, a confirmed receipt counts as new only if its block time is after this
+    /// point (first refresh after launch or wipe, or the start of a restore). Older entries are history the sync is still
+    /// discovering.
+    private var receiptsSince: UInt64?
+    /// Starts with the receipts saved before launch or restored from a backup, which were already celebrated.
+    private var announcedReceiptIds: Set<String> = []
+    private var receiptEpoch = 0
+    /// Open from the start of a restore until it ends, so later restore steps keep the window's start time.
+    private var restoreReceiptWindowOpen = false
     private(set) var refreshing = false
     private(set) var recoveryGeneration = 0
     var errorMessage: String?
@@ -166,17 +175,22 @@ final class UsdtWalletManager {
         guard isConfigured, !wiping else { return }
         historyRefreshRequested = historyRefreshRequested || includeHistory
         guard !refreshing, now() >= rateLimitedUntil else { return }
-        let historyDue = historyRefreshRequested && !isSendPresented && Date() >= nextHistoryRefresh
-        guard historyDue || Date() >= nextRefresh else { return }
+        let historyDue = historyRefreshRequested && !isSendPresented && now() >= nextHistoryRefresh
+        guard historyDue || now() >= nextRefresh else { return }
         var refreshDelay: TimeInterval = 10
         activeOperations += 1
         refreshing = true
         balanceIsStale = true
-        defer { refreshing = false; nextRefresh = max(rateLimitedUntil, Date().addingTimeInterval(refreshDelay)); finishOperation() }
+        defer { refreshing = false; nextRefresh = max(rateLimitedUntil, now().addingTimeInterval(refreshDelay)); finishOperation() }
         do {
             let wallet = try await wallet()
             let previousTransfers = historyComplete ? transfers : nil
+            let epoch = receiptEpoch
             transfers = try await ServiceQueue.background(.core, wrapErrors: false) { try wallet.history() }
+            if receiptsSince == nil {
+                receiptsSince = Self.receiptBaseline(now())
+                announcedReceiptIds.formUnion(Self.receiptIds(transfers))
+            }
             var settlementError: Error?
             do {
                 balance = try await wallet.balance()
@@ -190,13 +204,20 @@ final class UsdtWalletManager {
                 settlementError = error
             }
             try Task.checkCancellation()
-            if historyRefreshRequested, !isSendPresented, Date() >= nextHistoryRefresh {
+            if historyRefreshRequested, !isSendPresented, now() >= nextHistoryRefresh {
                 historyRefreshRequested = false
-                nextHistoryRefresh = Date().addingTimeInterval(10)
+                nextHistoryRefresh = now().addingTimeInterval(10)
                 let complete = try await wallet.syncHistory()
                 historyComplete = historyComplete || complete
                 transfers = try await ServiceQueue.background(.core, wrapErrors: false) { try wallet.history() }
-                for transfer in Self.newIncomingTransfers(previous: previousTransfers, current: transfers) {
+                let received = Self.newIncomingTransfers(
+                    previous: epoch == receiptEpoch ? previousTransfers : nil,
+                    current: transfers,
+                    since: receiptsSince ?? 0,
+                    announced: announcedReceiptIds
+                )
+                announcedReceiptIds.formUnion(received.map(\.id))
+                for transfer in received {
                     receivedTxPublisher.send(transfer)
                 }
             }
@@ -214,10 +235,41 @@ final class UsdtWalletManager {
         }
     }
 
-    static func newIncomingTransfers(previous: [UsdtTransfer]?, current: [UsdtTransfer]) -> [UsdtTransfer] {
-        guard let previous else { return [] }
-        let knownIds = Set(previous.filter { $0.isIncoming && $0.status == .confirmed }.map(\.id))
-        return current.filter { $0.isIncoming && $0.status == .confirmed && $0.amount > 0 && !knownIds.contains($0.id) }
+    /// Without `previous` (history not yet complete), only receipts with a block time at or after `since` are new.
+    static func newIncomingTransfers(
+        previous: [UsdtTransfer]?,
+        current: [UsdtTransfer],
+        since: UInt64,
+        announced: Set<String>
+    ) -> [UsdtTransfer] {
+        let knownIds = receiptIds(previous ?? []).union(announced)
+        return current.filter {
+            $0.isIncoming && $0.status == .confirmed && $0.amount > 0 && !knownIds.contains($0.id) &&
+                (previous != nil || $0.timestamp >= since)
+        }
+    }
+
+    private static func receiptIds(_ transfers: [UsdtTransfer]) -> Set<String> {
+        Set(transfers.filter { $0.isIncoming && $0.status == .confirmed }.map(\.id))
+    }
+
+    /// Allows for block timestamps that trail the device clock.
+    private static func receiptBaseline(_ date: Date) -> UInt64 {
+        UInt64(max(0, date.timeIntervalSince1970 - 60))
+    }
+
+    /// Starts the receipt window when a restore begins, before backup discovery, so a receipt that confirms while
+    /// backups are found and downloaded still celebrates. Keeps the announced IDs, so a receipt celebrated just
+    /// before a restore is not celebrated again.
+    func startRestoreReceiptWindow() {
+        receiptEpoch &+= 1
+        guard !restoreReceiptWindowOpen else { return }
+        restoreReceiptWindowOpen = true
+        receiptsSince = Self.receiptBaseline(now())
+    }
+
+    func endRestoreReceiptWindow() {
+        restoreReceiptWindowOpen = false
     }
 
     func quote(recipient: String, amount: String, destination: UsdtDestination) async throws -> UsdtQuote {
@@ -264,6 +316,11 @@ final class UsdtWalletManager {
         pendingDepositIds.removeAll()
         transfers = try wallet.history()
         historyComplete = false
+        if receiptsSince == nil {
+            receiptsSince = Self.receiptBaseline(now())
+        }
+        receiptEpoch &+= 1
+        announcedReceiptIds.formUnion(Self.receiptIds(transfers))
     }
 
     func paymentEndpoint() async throws -> PublicPaykitService.Endpoint {
@@ -459,6 +516,7 @@ final class UsdtWalletManager {
 
     func pauseForRecoveryRestore() async {
         recoveryPaused = true
+        startRestoreReceiptWindow()
         PaykitUsdtPaymentService.shared.pauseForRecoveryRestore()
         if activeOperations > 0 {
             await withCheckedContinuation { idleWaiters.append($0) }
@@ -467,6 +525,7 @@ final class UsdtWalletManager {
 
     func resumeAfterRecoveryRestore() {
         recoveryPaused = false
+        restoreReceiptWindowOpen = false
     }
 
     private func performWipe() async throws {
@@ -484,6 +543,10 @@ final class UsdtWalletManager {
         transfers = []
         pendingDepositIds.removeAll()
         historyComplete = false
+        receiptsSince = nil
+        restoreReceiptWindowOpen = false
+        announcedReceiptIds.removeAll()
+        receiptEpoch &+= 1
         errorMessage = nil
         let directory = storageDirectory
         try await ServiceQueue.background(.core, wrapErrors: false) {

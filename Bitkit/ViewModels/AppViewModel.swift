@@ -1,6 +1,7 @@
 import BitkitCore
 import Combine
 import LDKNode
+import enum Paykit.PaykitError
 import SwiftUI
 
 /// Published when a payment shown on the pending screen succeeds or fails.
@@ -35,6 +36,12 @@ struct ContactPaymentContext: Equatable {
     var requiresAssetSelection: Bool {
         endpoints.contains { $0.methodId == .usdtArbitrum } ||
             incomingPaymentRequest.map { $0.amount.asset != .btc || $0.pricing.conversion != nil } == true
+    }
+
+    /// An on-chain and a Lightning endpoint, between which the router picks, Spark's leg to the on-chain one included.
+    var hasMixedBitcoinEndpoints: Bool {
+        endpoints.contains { $0.methodId.onchainNetwork != nil } &&
+            endpoints.contains { $0.methodId == .bitcoinLightningLnurl || $0.methodId == .bitcoinLightningBolt11 }
     }
 
     func initialUsdtSubscriptionPayment(at date: Date = Date()) -> PaykitRequestPricing.Payment? {
@@ -106,12 +113,18 @@ struct ScanPaymentState {
     let totalLightningBalanceSats: UInt64
     let hasChannels: Bool
     let hasUsableChannels: Bool
+    /// Spark sends Lightning without channels.
+    var hasChannelFreeRail = false
+    /// What the channels can send, usable or not, so a channel whose peer is briefly offline is waited for only when it
+    /// could pay.
+    var channelOutboundSats: UInt64 = 0
 }
 
 struct ScanPaymentOperations {
     let state: () -> ScanPaymentState
     let canSendLightning: (_ amountSats: UInt64) -> Bool
     var decodeInvoice: (String) async throws -> BitkitCore.Scanner = { try await decode(invoice: $0) }
+    var canRouteThroughSpark: @MainActor () -> Bool = { PaykitRouteService.canRouteThroughSpark }
 
     @MainActor
     static func live(lightningService: LightningService) -> ScanPaymentOperations {
@@ -121,9 +134,12 @@ struct ScanPaymentOperations {
                 return ScanPaymentState(
                     isNodeRunning: lightningService.status?.isRunning == true,
                     spendableOnchainBalanceSats: lightningService.balances?.spendableOnchainBalanceSats ?? 0,
-                    totalLightningBalanceSats: lightningService.balances?.totalLightningBalanceSats ?? 0,
+                    totalLightningBalanceSats: (lightningService.balances?.totalLightningBalanceSats ?? 0)
+                        + (lightningService.channelFreeRail?.balanceSats ?? 0),
                     hasChannels: channels?.isEmpty == false,
-                    hasUsableChannels: channels?.contains(where: \.isUsable) == true
+                    hasUsableChannels: channels?.contains(where: \.isUsable) == true,
+                    hasChannelFreeRail: lightningService.channelFreeRail?.isReady == true,
+                    channelOutboundSats: (channels ?? []).map(\.outboundCapacityMsat).reduce(0, +) / 1000
                 )
             },
             canSendLightning: lightningService.canSend
@@ -163,6 +179,9 @@ class AppViewModel: ObservableObject {
     @Published var contactPaymentContext: ContactPaymentContext?
     private(set) var didRejectScannedPayment = false
     @Published var paykitUsesUsdt = false
+    @Published var paykitRoute: PaykitRouteUi?
+    /// Bumped by each routing request, so only the latest one's answer lands.
+    var paykitRoutingGeneration = 0
     @Published var paykitReviewedAmount: PaykitAmount?
     @Published var paykitPaymentTerms: PaykitRequestPricing.Payment?
 
@@ -203,7 +222,10 @@ class AppViewModel: ObservableObject {
     @AppStorage("hasSeenProfileIntro") var hasSeenProfileIntro: Bool = false
     @AppStorage("hasSeenNotificationsIntro") var hasSeenNotificationsIntro: Bool = false
     @AppStorage("hasSeenQuickpayIntro") var hasSeenQuickpayIntro: Bool = false
+    @AppStorage("hasSeenMoveToSparkIntro") var hasSeenMoveToSparkIntro: Bool = false
     @AppStorage("hasSeenShopIntro") var hasSeenShopIntro: Bool = false
+    @AppStorage("hasSeenTransferIntro") var hasSeenTransferIntro: Bool = false
+    @AppStorage("hasSeenTransferToSpendingIntro") var hasSeenTransferToSpendingIntro: Bool = false
     @AppStorage("hasSeenTransferToSavingsIntro") var hasSeenTransferToSavingsIntro: Bool = false
     @AppStorage("hasSeenWidgetsIntro") var hasSeenWidgetsIntro: Bool = false
 
@@ -556,7 +578,10 @@ class AppViewModel: ObservableObject {
         hasSeenProfileIntro = false
         hasSeenNotificationsIntro = false
         hasSeenQuickpayIntro = false
+        hasSeenMoveToSparkIntro = false
         hasSeenShopIntro = false
+        hasSeenTransferIntro = false
+        hasSeenTransferToSpendingIntro = false
         hasSeenTransferToSavingsIntro = false
         hasSeenWidgetsIntro = false
         hasDismissedWidgetsOnboardingHint = false
@@ -609,7 +634,21 @@ extension AppViewModel {
         if error is CancellationError || error.isHwUserCancellation() {
             return
         }
-        toast(type: .error, title: "Error", description: HwErrorPresenter.jadeMessage(from: error) ?? error.localizedDescription)
+        toast(type: .error, title: t("common__error"), description: Self.toastDescription(for: error))
+    }
+
+    /// Paykit errors describe themselves as the raw Swift enum (`Paykit.PaykitError.Transport(code: ..., context: ...)`),
+    /// so they are logged and shown as a retry hint instead.
+    static func toastDescription(for error: Error) -> String {
+        if let jadeMessage = HwErrorPresenter.jadeMessage(from: error) {
+            return jadeMessage
+        }
+        let underlyingError = (error as? AppError)?.underlyingError ?? error
+        if underlyingError is PaykitError {
+            Logger.error("Paykit error shown as toast: \(underlyingError)", context: "AppViewModel")
+            return t("other__try_again")
+        }
+        return error.localizedDescription
     }
 
     func toast(_ error: HwTransferError) {
@@ -751,9 +790,28 @@ extension AppViewModel {
         return paykitBitcoinMethod(for: selectedWalletToPayFrom)
     }
 
+    /// The method a send prices with. Spending with no Lightning payment to make funds the Spark leg to the on-chain
+    /// endpoint, so it takes that endpoint's price, the one the leg and its proof pay.
+    /// Amount picks the source and the asset: for a contact that lists USDT or is priced in another asset, and for a mixed
+    /// Bitcoin contact while Spark can carry a leg, so an amount no Lightning endpoint takes still reaches the router.
+    var contactPaymentPicksSource: Bool {
+        guard let context = contactPaymentContext else { return false }
+        return context.requiresAssetSelection || (context.hasMixedBitcoinEndpoints && paykitRoute?.offersSparkLeg == true)
+    }
+
     func paykitBitcoinMethod(for wallet: WalletType) -> PublicPaykitService.MethodId {
         if wallet == .lightning {
-            return lnurlPayData != nil ? .bitcoinLightningLnurl : .bitcoinLightningBolt11
+            // A routed Spark leg pays its on-chain endpoint, whatever Lightning endpoint the contact also has.
+            if let leg = paykitRoute?.serviceLeg, let method = PublicPaykitService.MethodId(rawValue: leg.endpoint.methodId) {
+                return method
+            }
+            if lnurlPayData != nil {
+                return .bitcoinLightningLnurl
+            }
+            if scannedLightningInvoice == nil, let address = scannedOnchainInvoice?.address {
+                return PublicPaykitService.onchainMethodId(for: address)
+            }
+            return .bitcoinLightningBolt11
         }
         return PublicPaykitService.onchainMethodId(for: scannedOnchainInvoice?.address ?? "")
     }
@@ -789,7 +847,9 @@ extension AppViewModel {
             }
         }
 
-        if let context = claimedContactPaymentContext, context.requiresAssetSelection, scope != .onchainPayments {
+        if let context = claimedContactPaymentContext, scope != .onchainPayments,
+           context.requiresAssetSelection || context.hasMixedBitcoinEndpoints && scanPaymentOperations.canRouteThroughSpark()
+        {
             resetSendState(preservingContactPaymentContext: true, ownerID: sendPresentationID)
             expectedGeneration = sendStateGeneration
             for endpoint in context.endpoints where endpoint.methodId != .usdtArbitrum {
@@ -815,6 +875,20 @@ extension AppViewModel {
                 isUsdtEnabled: SettingsViewModel.shared.isUsdtEnabled
             ) || context.incomingPaymentRequest.map { PaykitUsdtPaymentService.shared.hasBinding(for: $0.id) } == true
             selectedWalletToPayFrom = canUseLightning || (hasLightning && scannedOnchainInvoice == nil) ? .lightning : .onchain
+            // A Spark leg can pay the on-chain endpoint from Spending here too, whatever Lightning can pay now: an amount
+            // entered later can pass Lightning's limit, and the router still picks a direct payment that works.
+            if scannedOnchainInvoice != nil,
+               let route = PaykitRouteService.routeUi(for: context, canRouteThroughSpark: scanPaymentOperations.canRouteThroughSpark()),
+               route.offersSparkLeg
+            {
+                paykitRoute = route
+                // A request keeps its source here; its Confirm asks the router.
+                if !hasLightning, context.incomingPaymentRequest == nil,
+                   max(state.spendableOnchainBalanceSats, alternativeOnchainBalanceSats) <= UInt64(Env.dustLimit)
+                {
+                    selectedWalletToPayFrom = .lightning
+                }
+            }
             let canSelectUsdt = SettingsViewModel.shared.isUsdtEnabled && context.endpoints.contains { $0.methodId == .usdtArbitrum }
             if !paykitUsesUsdt, !canSelectUsdt, let request = context.incomingPaymentRequest {
                 do {
@@ -858,15 +932,6 @@ extension AppViewModel {
             else {
                 throw ScanHandlingError.unsupportedRequest
             }
-            if Bip21Utils.isDuplicatedBip21(uri) {
-                toast(
-                    type: .error,
-                    title: t("other__scan_err_decoding"),
-                    description: t("other__scan__error__generic"),
-                    accessibilityIdentifier: "InvalidAddressToast"
-                )
-                return
-            }
             let data = try await scanPaymentOperations.decodeInvoice(uri)
             try ensureScannedDataHandlingOwnership(
                 handlingId,
@@ -890,17 +955,6 @@ extension AppViewModel {
 
         if scope == .unrestricted, SamRockSetupRequest.isProtocolURL(uri) {
             handleInvalidBTCPayConnection(uri)
-            return
-        }
-
-        // Workaround for duplicated BIP21 URIs (bitkit-core#63)
-        if scope == .unrestricted, Bip21Utils.isDuplicatedBip21(uri) {
-            toast(
-                type: .error,
-                title: t("other__scan_err_decoding"),
-                description: t("other__scan__error__generic"),
-                accessibilityIdentifier: "InvalidAddressToast"
-            )
             return
         }
 
@@ -979,21 +1033,21 @@ extension AppViewModel {
                         if nodeIsRunning {
                             // Node is running → we have fresh balances; validate immediately.
                             // Prefer lightning; if insufficient or no channels/capacity, fall back to onchain.
-                            let canSendLightning = try scanPaymentOperations.canSendLightning(
-                                contactPaymentContext?.incomingPaymentRequest?.payment(using: .bitcoinLightningBolt11).amount.atomic ??
-                                    lightningInvoice.amountSatoshis
-                            )
+                            let lightningAmount = try contactPaymentContext?.incomingPaymentRequest?
+                                .payment(using: .bitcoinLightningBolt11).amount.atomic ?? lightningInvoice.amountSatoshis
+                            let canSendLightning = scanPaymentOperations.canSendLightning(lightningAmount)
 
                             if canSendLightning {
                                 handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
                                 return
                             }
 
-                            // Channels exist but none are usable (e.g. peer offline): still prefer
-                            // lightning. The send sheet shows the sync overlay and either proceeds
-                            // over lightning when the peer reconnects or falls back to onchain
-                            // after its timeout.
-                            if paymentState.hasChannels, !paymentState.hasUsableChannels {
+                            // Channels exist but none are usable (e.g. peer offline) and they could pay once it is
+                            // back: still prefer lightning. The send sheet shows the sync overlay and either proceeds
+                            // over lightning when the peer reconnects or falls back to onchain after its timeout.
+                            if paymentState.hasChannels, !paymentState.hasUsableChannels,
+                               paymentState.channelOutboundSats >= max(1, lightningAmount)
+                            {
                                 handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
                                 return
                             }
@@ -1028,6 +1082,20 @@ extension AppViewModel {
 
             // Fallback to on-chain if address is available
             guard !invoice.address.isEmpty, validateIncomingOnchainPaymentRequestAmount(requestedAmount ?? invoice.amountSatoshis) else { return }
+
+            // An on-chain contact payment opens with Spending as a source while Spark can carry it there, whether or
+            // not Savings covers it; Spending is the default when Savings holds no more than dust.
+            if let context = contactPaymentContext, scope != .onchainPayments,
+               let route = PaykitRouteService.routeUi(for: context, canRouteThroughSpark: scanPaymentOperations.canRouteThroughSpark()),
+               route.offersSparkLeg
+            {
+                handleScannedOnchainInvoice(invoice)
+                paykitRoute = route
+                if max(paymentState.spendableOnchainBalanceSats, alternativeOnchainBalanceSats) <= UInt64(Env.dustLimit) {
+                    selectedWalletToPayFrom = .lightning
+                }
+                return
+            }
 
             // If node is running, validate balance immediately
             if paymentState.isNodeRunning {
@@ -1077,13 +1145,13 @@ extension AppViewModel {
                 let paymentAmount = requestedAmount ?? invoice.amountSatoshis
                 // If user has no channels at all, they can never pay a pure lightning invoice.
                 // Show insufficient spending toast and do not navigate to the send flow.
-                if !paymentState.hasChannels {
+                if !paymentState.hasChannels, !paymentState.hasChannelFreeRail {
                     showInsufficientSpendingToast(invoiceAmount: paymentAmount, spendingBalance: paymentState.totalLightningBalanceSats)
                     return
                 }
 
-                // If channels are usable, validate capacity immediately
-                if paymentState.hasUsableChannels {
+                // If channels are usable or Spark can pay, validate capacity immediately
+                if paymentState.hasUsableChannels || paymentState.hasChannelFreeRail {
                     guard scanPaymentOperations.canSendLightning(paymentAmount) else {
                         showInsufficientSpendingToast(invoiceAmount: paymentAmount, spendingBalance: paymentState.totalLightningBalanceSats)
                         return
@@ -1257,8 +1325,9 @@ extension AppViewModel {
             return
         }
 
+        // Spark receives without inbound liquidity, so only a channel-only wallet can lack the capacity.
         let lightningBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
-        if lightningBalance < max(1, data.minWithdrawableSat) {
+        if lightningService.channelFreeRail?.isReady != true, lightningBalance < max(1, data.minWithdrawableSat) {
             toast(
                 type: .warning,
                 title: t("other__lnurl_withdr_error"),
@@ -1373,6 +1442,7 @@ extension AppViewModel {
         sendStateOwnerID = ownerID
         sendStateGeneration = UUID()
         paykitUsesUsdt = false
+        paykitRoute = nil
         paykitReviewedAmount = nil
         paykitPaymentTerms = nil
         scannedLightningInvoice = nil
@@ -1443,15 +1513,6 @@ extension AppViewModel {
         guard !normalized.isEmpty else {
             manualEntryValidationResult = .empty
             isManualEntryInputValid = false
-            return
-        }
-
-        // Workaround for duplicated BIP21 URIs (bitkit-core#63)
-        if Bip21Utils.isDuplicatedBip21(normalized) {
-            guard currentSequence == manualEntryValidationSequence else { return }
-            manualEntryValidationResult = .invalid
-            isManualEntryInputValid = false
-            showValidationErrorToast(for: .invalid)
             return
         }
 
@@ -1695,6 +1756,12 @@ extension AppViewModel {
                 return
             }
 
+            // Spark's withdrawal to Savings is a transfer from Spending, not a payment received.
+            if SparkManager.shared.isWithdrawal(txid: txid) {
+                await CoreService.shared.activity.markOnchainActivityAsTransfer(txId: txid)
+                return
+            }
+
             let shouldShow = await CoreService.shared.activity.shouldShowReceivedSheet(txid: txid, value: sats)
             guard shouldShow else { return }
 
@@ -1766,7 +1833,11 @@ extension AppViewModel {
 
     func handleLdkNodeEvent(_ event: Event) {
         switch event {
-        case let .paymentReceived(paymentId, _, amountMsat, _):
+        case let .paymentReceived(paymentId, paymentHash, amountMsat, _):
+            // A move to Spark reports its outcome on its own screen.
+            if MoveToSparkPayments.contains(paymentHash) {
+                break
+            }
             Task {
                 if let paymentId {
                     if await CoreService.shared.activity.isActivitySeen(id: paymentId) {

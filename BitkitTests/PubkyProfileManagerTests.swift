@@ -1420,6 +1420,50 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testCreateIdentityPreservesUnreadTagsFromTheRestoreFormAfterRefresh() async throws {
+        try await withRestoredProfileDefaults {
+            UserDefaults.standard.set(true, forKey: "pubky_profile_setup_pending")
+            var unread = makeProfile(publicKey: ringKeyA, name: "Alice")
+            unread.revision = "restored-revision"
+            unread.tagsUnread = true
+            let stub = RemoteProfileStub(profiles: [ringKeyA: unread])
+            let publications = ProfilePublications()
+            let manager = PubkyProfileManager(
+                remoteProfileResolver: { try await stub.resolve($0) },
+                profilePublisher: { try await publications.publish($0, expectedIdentity: $1) }
+            )
+            manager.publicKey = ringKeyA
+            await manager.loadProfile()
+            let restored = try XCTUnwrap(manager.profile)
+            XCTAssertTrue(restored.tagsUnread)
+            XCTAssertTrue(restored.tags.isEmpty)
+
+            let refreshed = unread.withTags(["friend", "work"])
+            var readable = refreshed
+            readable.tagsUnread = false
+            await stub.setProfile(readable, for: ringKeyA)
+            await manager.loadProfile()
+            XCTAssertEqual(manager.profile?.tags, ["friend", "work"])
+            XCTAssertEqual(manager.profile?.tagsUnread, false)
+
+            try await manager.createIdentity(
+                name: "Renamed",
+                bio: restored.bio,
+                links: restored.links,
+                tags: restored.tags,
+                baseRevision: restored.revision,
+                baseTagsUnread: restored.tagsUnread
+            )
+
+            let published = await publications.published
+            let profile = try XCTUnwrap(published.first)
+            XCTAssertEqual(published.count, 1)
+            XCTAssertEqual(profile.baseRevision, "restored-revision")
+            XCTAssertTrue(profile.baseTagsUnread, "The store must preserve the tags the restore form could not show")
+        }
+    }
+
+    @MainActor
     func testSignupDoesNotRestoreProfileStateAfterWalletReset() async throws {
         snapshotAppDefaultsDomain()
         let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
