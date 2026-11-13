@@ -473,8 +473,8 @@ struct AppScene: View {
     @State private var isContactRefreshForeground = false
     @State private var shopContactImport: (id: UUID, task: Task<Void, Never>)?
     @State private var foregroundWalletSync: Task<Void, Never>?
-    /// Set when a background push launched the app with a wallet, which then starts once the app is active.
-    @State private var isWalletStartDeferred = false
+    /// What waits for the app to be active, after a background push launched it or a start came while in the background.
+    @State private var deferredWalletStart: DeferredWalletStart?
 
     private var nodeRestarter: NodeRestarter {
         NodeRestarter(
@@ -1123,7 +1123,7 @@ struct AppScene: View {
 
         guard !WalletLaunchPolicy.defersStart(applicationState: UIApplication.shared.applicationState) else {
             Logger.info("Launched in the background, starting the wallet once the app is active", context: "AppScene")
-            isWalletStartDeferred = true
+            deferredWalletStart = .launch
             return
         }
 
@@ -1152,6 +1152,14 @@ struct AppScene: View {
     }
 
     private func startWallet(completingBackupRestore: Bool = false, playsErrorHaptic: Bool = true) async {
+        // Every automatic start, such as a network recovery, waits too. A restore that finishes is left to complete.
+        guard completingBackupRestore || !WalletLaunchPolicy.defersStart(applicationState: UIApplication.shared.applicationState) else {
+            Logger.info("In the background, starting the wallet once the app is active", context: "AppScene")
+            if deferredWalletStart == nil {
+                deferredWalletStart = .start
+            }
+            return
+        }
         let hasPendingRestore = BackupService.shared.hasPendingWalletRestore()
         guard !WalletBackupRestoreGate.blocksWalletStart(
             isRestoreRunning: isWalletBackupRestoreRunning,
@@ -1462,8 +1470,8 @@ struct AppScene: View {
                 guard !wipeCoordinator.isGateUp else { return }
             }
 
-            if isWalletStartDeferred {
-                isWalletStartDeferred = false
+            if deferredWalletStart == .launch {
+                deferredWalletStart = nil
                 handleWalletExistsChange(wallet.walletExists)
             }
 
@@ -1477,7 +1485,17 @@ struct AppScene: View {
                 if retryPendingWalletRestoreIfNeeded() {
                     return
                 }
-                nodeRestarter.retryOnForeground(returnedFromBackground: returnedFromBackground)
+                let foregroundRestart = nodeRestarter.retryOnForeground(returnedFromBackground: returnedFromBackground)
+                if deferredWalletStart == .start {
+                    deferredWalletStart = nil
+                    let isNodeDown = switch wallet.nodeLifecycleState {
+                    case .stopped, .initializing, .errorStarting: true
+                    default: false
+                    }
+                    if isNodeDown, foregroundRestart == nil {
+                        nodeRestarter.restart(reason: "App opened")
+                    }
+                }
                 let foregroundSync = Task {
                     if pubkyProfile.isInitialized {
                         await pubkyProfile.checkAdoptedSource()
@@ -2376,6 +2394,8 @@ struct AppScene: View {
 
         if isConnected {
             guard wallet.walletExists == true, !wipeCoordinator.isGateUp else { return }
+            // A background launch restores and starts nothing until the app is opened.
+            guard deferredWalletStart != .launch else { return }
 
             if retryPendingWalletRestoreIfNeeded() {
                 return
@@ -2448,4 +2468,11 @@ enum WalletLaunchPolicy {
     static func defersStart(applicationState: UIApplication.State) -> Bool {
         applicationState == .background
     }
+}
+
+enum DeferredWalletStart: Equatable {
+    /// A background push launched the app: the whole launch, restore included, runs once it is active.
+    case launch
+    /// An automatic start came while in the background: the node starts once the app is active.
+    case start
 }
