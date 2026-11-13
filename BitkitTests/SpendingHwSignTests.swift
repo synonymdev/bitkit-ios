@@ -77,4 +77,29 @@ final class SpendingHwSignTests: XCTestCase {
         XCTAssertEqual(status, .retry(signedTx))
         XCTAssertEqual(SpendingHwSign.signingStep(retainedStatus: status, isRetryOnThisScreen: false), .sign)
     }
+
+    func testRetainedRetryQuoteKeepsTheOriginalFee() {
+        let claimFees = SparkClaimFees(instantMaxSats: 2000, laterSats: 500)
+
+        let quote = SpendingHwSign.retainedRetryQuote(address: depositAddress, depositSats: 42000, signedTx: signedTx, claimFees: claimFees)
+
+        XCTAssertEqual(quote, SparkTransferQuote(
+            address: depositAddress,
+            satsPerVbyte: 3,
+            networkFeeSats: signedTx.miningFeeSats,
+            depositSats: 42000,
+            claimFees: claimFees
+        ))
+    }
+
+    func testRetainedRetryQuoteNeedsAFeeRateItCanShow() {
+        let unshowable = HwFundingSignedTx(serializedTx: "aabb", miningFeeSats: 141, feeRate: .nan, totalSpent: 42141)
+
+        XCTAssertNil(SpendingHwSign.retainedRetryQuote(
+            address: depositAddress,
+            depositSats: 42000,
+            signedTx: unshowable,
+            claimFees: SparkClaimFees(instantMaxSats: 2000, laterSats: 500)
+        ))
+    }
 }

@@ -17,6 +17,8 @@ struct SpendingHwSign: View {
     @State private var passphraseTask: Task<Void, Never>?
     @State private var hasSignedOnThisScreen = false
     @State private var newSignatureQuote: SparkTransferQuote?
+    /// A reopened transfer whose retained bytes go out again on Retry, priced at their original fee.
+    @State private var isRetainedRetry = false
 
     private var hwSend: HwSendCoordinator {
         flow.hwSend
@@ -37,6 +39,57 @@ struct SpendingHwSign: View {
     static func signingStep(retainedStatus: HwRetainedSendStatus, isRetryOnThisScreen: Bool) -> SigningStep {
         guard !isRetryOnThisScreen, retainedStatus == .blocking else { return .sign }
         return .confirmNewSignature
+    }
+
+    /// The quote a Retry of a retained transfer shows and rebroadcasts: the fee its signed bytes fixed, which today's fee can't
+    /// change or make unfundable. Nil when the retained fee rate can't be shown, which prices the transfer anew.
+    static func retainedRetryQuote(
+        address: String,
+        depositSats: UInt64,
+        signedTx: HwFundingSignedTx,
+        claimFees: SparkClaimFees
+    ) -> SparkTransferQuote? {
+        guard let satsPerVbyte = SendConfirmationView.confirmationFeeRate(retained: signedTx, selected: nil) else { return nil }
+        return SparkTransferQuote(
+            address: address,
+            satsPerVbyte: satsPerVbyte,
+            networkFeeSats: signedTx.miningFeeSats,
+            depositSats: depositSats,
+            claimFees: claimFees
+        )
+    }
+
+    /// Prices the transfer, and says whether it is a Retry of a retained transfer. That Retry is priced from its signed bytes, so
+    /// a fee rise that puts its amount above today's maximum can't fail its quote and take the Retry away.
+    @MainActor
+    static func refreshQuote(
+        flow: SparkTransferFlow,
+        wallet: WalletViewModel,
+        feeEstimatesManager: FeeEstimatesManager,
+        hwWalletManager: HwWalletManager
+    ) async -> (quote: SparkTransferQuote?, isRetainedRetry: Bool) {
+        let amountSats = flow.amountSats
+        if flow.walletId != nil, let address = try? await SparkManager.shared.depositAddress(),
+           let retained = await flow.hwSend.retainedSendStatus(address: address, sats: amountSats, hasIncomingRequest: false).retrySignedTx
+        {
+            flow.isQuoting = true
+            defer { flow.isQuoting = false }
+            do {
+                let claimFees = try await SparkManager.shared.depositClaimFees(amountSats: amountSats)
+                if let quote = retainedRetryQuote(address: address, depositSats: amountSats, signedTx: retained, claimFees: claimFees) {
+                    flow.quote = quote
+                    flow.quoteError = nil
+                    return (quote, true)
+                }
+            } catch {
+                Logger.error("Failed to price the retry of a retained transfer to spending: \(error)", context: "SpendingHwSign")
+                flow.quote = nil
+                flow.quoteError = t("lightning__spending_confirm__error_quote")
+                return (nil, true)
+            }
+        }
+        let quote = await flow.refreshQuote(wallet: wallet, feeEstimatesManager: feeEstimatesManager, hwWalletManager: hwWalletManager)
+        return (quote, false)
     }
 
     var body: some View {
@@ -91,7 +144,7 @@ struct SpendingHwSign: View {
             }
 
             CustomButton(
-                title: hwSend.hasPendingBroadcast ? t("common__retry") : vendor.sendSignButtonTitle,
+                title: hwSend.hasPendingBroadcast || isRetainedRetry ? t("common__retry") : vendor.sendSignButtonTitle,
                 isDisabled: isBusy || flow.quote == nil,
                 isLoading: isBusy
             ) {
@@ -109,7 +162,11 @@ struct SpendingHwSign: View {
         .task(id: QuoteInputs(amountSats: flow.amountSats, speed: flow.speed)) {
             guard !SparkTransferFlow.isRunningInPreview, !hwSend.hasPendingBroadcast else { return }
             hwWalletManager.warmUpConnection(walletId: walletId)
-            await flow.refreshQuote(wallet: wallet, feeEstimatesManager: feeEstimatesManager, hwWalletManager: hwWalletManager)
+            let priced = await Self.refreshQuote(
+                flow: flow, wallet: wallet, feeEstimatesManager: feeEstimatesManager, hwWalletManager: hwWalletManager
+            )
+            guard !Task.isCancelled else { return }
+            isRetainedRetry = priced.isRetainedRetry
         }
         .sheet(isPresented: passphrasePromptBinding) {
             HwPassphrasePromptSheet(
@@ -199,6 +256,8 @@ struct SpendingHwSign: View {
     private func signAfterConsent(_ quote: SparkTransferQuote) {
         guard signingTask == nil else { return }
         hwSend.consentToNewSignature(address: quote.address, sats: quote.depositSats)
+        // Consent signs anew, so the button reads the sign label again.
+        isRetainedRetry = false
         signingTask = Task { @MainActor in
             defer { signingTask = nil }
             await sign(quote)
