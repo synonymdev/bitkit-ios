@@ -73,6 +73,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool
     {
         UNUserNotificationCenter.current().delegate = self
+        SparkExitManager.registerBackgroundTask()
 
         // Check notification authorization status at launch and re-register with APN if granted
         UNUserNotificationCenter.current().getNotificationSettings { settings in
@@ -177,6 +178,8 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                 PaykitSubscriptionNotificationTargetStore.save(target)
             }
             NotificationCenter.default.post(name: .paykitSubscriptionPaymentDue, object: nil, userInfo: userInfo)
+        } else if userInfo["bitkit_action"] as? String == SparkExitManager.notificationAction {
+            Task { @MainActor in SparkExitManager.shared.opensProgress = true }
         } else {
             PushNotificationManager.shared.handleNotification(userInfo)
         }

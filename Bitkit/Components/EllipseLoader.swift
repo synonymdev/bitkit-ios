@@ -5,12 +5,14 @@ enum EllipseLoaderVariant {
     case sync
     case syncOnchain
     case quickpay
+    /// The quickpay coins, held still.
+    case coins
     case transfer
     case hardware
 
     var accentColor: String {
         switch self {
-        case .sync, .quickpay, .transfer: return "purple"
+        case .sync, .quickpay, .coins, .transfer: return "purple"
         case .syncOnchain: return "brand"
         case .hardware: return "blue"
         }
@@ -20,7 +22,7 @@ enum EllipseLoaderVariant {
         switch self {
         case .sync, .transfer, .hardware: return 0.85
         case .syncOnchain: return 0.82
-        case .quickpay: return 1
+        case .quickpay, .coins: return 1
         }
     }
 
@@ -28,7 +30,7 @@ enum EllipseLoaderVariant {
         switch self {
         case .sync, .syncOnchain:
             return Animation.easeOut(duration: 1.5).repeatForever(autoreverses: true)
-        case .quickpay:
+        case .quickpay, .coins:
             return Animation.easeOut(duration: 1.6).repeatForever(autoreverses: true)
         case .transfer:
             return Animation.easeInOut(duration: 3).repeatForever(autoreverses: true)
@@ -125,6 +127,10 @@ struct EllipseLoader: View {
                 .aspectRatio(contentMode: .fit)
         case .quickpay:
             AnimatedCoinStack()
+        case .coins:
+            Image("coin-stack-4")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
         case .transfer:
             AnimatedTransferFigure()
         case .hardware:

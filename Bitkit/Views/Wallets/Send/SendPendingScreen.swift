@@ -38,6 +38,8 @@ struct SendPendingScreen: View {
     var hardwareWalletId: String?
     var hardwareTransactionId: String?
     var hardwarePaymentIdentity: String?
+    /// The Spark withdrawal this screen waits on, whose journal settles it.
+    var sparkWithdrawal: SparkWithdrawalAttempt?
     var proofService: PaykitPaymentProofService = .shared
     var requestPinCheck: () async -> Bool = { false }
     @Binding var navigationPath: [SendRoute]
@@ -107,7 +109,10 @@ struct SendPendingScreen: View {
     }
 
     private var pendingAmountSats: UInt64? {
-        pendingHardwareWalletId == nil ? onchainAttempt?.amountSats ?? pendingOnchainProof?.onchainAmountSats ?? wallet
+        if let sparkWithdrawal {
+            return sparkWithdrawal.amountSats
+        }
+        return pendingHardwareWalletId == nil ? onchainAttempt?.amountSats ?? pendingOnchainProof?.onchainAmountSats ?? wallet
             .sendAmountSats : pendingOnchainProof?.onchainAmountSats
     }
 
@@ -279,7 +284,7 @@ struct SendPendingScreen: View {
                     {
                         applyOnchainPaymentResolution(resolution)
                     }
-                } else if !onchainStateUnavailable {
+                } else if !onchainStateUnavailable, Self.readsNodeOnchainAttempts(sparkWithdrawal: sparkWithdrawal) {
                     do {
                         let loaded = try await Self.loadOrdinaryPending(
                             using: attemptService, context: ordinaryPendingContext,
@@ -316,7 +321,7 @@ struct SendPendingScreen: View {
             await searchForActivity()
             // Completion events are one-shot. Keep the visible original operation in sync
             // with its durable result even when an event preceded subscription or initialization.
-            while paymentHash == nil, paykitPaymentRequestId == nil, pendingHardwareWalletId == nil,
+            while paymentHash == nil, paykitPaymentRequestId == nil, pendingHardwareWalletId == nil, sparkWithdrawal == nil,
                   !ordinarySendResolved, !Task.isCancelled
             {
                 do { try await Task.sleep(for: .seconds(2)) }
@@ -326,7 +331,9 @@ struct SendPendingScreen: View {
         }
         .task {
             // The request can end, or a failed check recover, while this screen stays open.
-            while paymentHash == nil, abandonableAttempt == nil, !Task.isCancelled {
+            while paymentHash == nil, abandonableAttempt == nil, Self.readsNodeOnchainAttempts(sparkWithdrawal: sparkWithdrawal),
+                  !Task.isCancelled
+            {
                 if pendingHardwareWalletId == nil {
                     guard await loadAbandonableAttempt() else { return }
                 }
@@ -347,6 +354,43 @@ struct SendPendingScreen: View {
         .onReceive(PaykitPaymentProofService.onchainPaymentResolutionPublisher.receive(on: DispatchQueue.main)) { resolution in
             applyOnchainPaymentResolution(resolution)
         }
+        .onReceive(SparkManager.contactWithdrawalResolutionPublisher.receive(on: DispatchQueue.main)) { resolution in
+            applySparkWithdrawalResolution(resolution)
+        }
+        .task {
+            // The journal may have closed before this screen subscribed.
+            guard let attempt = sparkWithdrawal, SparkManager.pendingContactWithdrawal?.attempt != attempt,
+                  let resolution = SparkManager.lastContactWithdrawalResolution
+            else { return }
+            applySparkWithdrawalResolution(resolution)
+        }
+    }
+
+    private func applySparkWithdrawalResolution(_ resolution: SparkContactWithdrawalResolution) {
+        guard !ordinarySendResolved, let attempt = sparkWithdrawal,
+              let route = Self.sparkWithdrawalRoute(for: resolution, attempt: attempt)
+        else { return }
+        ordinarySendResolved = true
+        navigationPath.append(route)
+    }
+
+    /// Whether the screen reads the node wallet's on-chain send attempts: never for a Spark withdrawal, which creates
+    /// none, so an unrelated unresolved send never shows as this one; its journal settles it instead.
+    static func readsNodeOnchainAttempts(sparkWithdrawal: SparkWithdrawalAttempt?) -> Bool {
+        sparkWithdrawal == nil
+    }
+
+    /// Where the journal's close takes the screen waiting on `attempt`: a success once Spark sent it, a failure that can
+    /// be tried again once it never did, and nowhere for another withdrawal.
+    static func sparkWithdrawalRoute(for resolution: SparkContactWithdrawalResolution, attempt: SparkWithdrawalAttempt) -> SendRoute? {
+        guard resolution.attempt == attempt else { return nil }
+        if let txId = resolution.txId {
+            return .success(paymentId: txId)
+        }
+        return .failure(SendFailureContext(
+            error: AppError(message: "wallet__payment_failed_description", debugMessage: "Spark never sent the contact withdrawal"),
+            retryRoute: .confirm
+        ))
     }
 
     @MainActor
@@ -542,6 +586,9 @@ struct SendPendingScreen: View {
     }
 
     private var onchainPendingMessage: String {
+        if sparkWithdrawal != nil {
+            return t("wallet__onchain_unknown_pending")
+        }
         if onchainStateUnavailable {
             return t("wallet__onchain_state_unavailable")
         }
@@ -616,6 +663,13 @@ struct SendPendingScreen: View {
         foundActivity = .onchain(resolution.activity)
         onchainAttempt?.status = .accepted
         onchainAttempt?.localFollowupComplete = true
+        if resolution.isSparkFunding {
+            sheets.hideSheet(reason: "Recovered Spark funding")
+            // An open Spending Confirm follows it at the chosen speed; otherwise leave the funding flow for home.
+            if SparkFundingRecovery.pendingScreenGoesHome(confirmScreenOpen: SparkFundingRecovery.confirmScreenOpen) {
+                navigation.reset()
+            }
+        }
     }
 
     static func matchesLocalResolution(_ resolution: OnchainSendLocalResolution, attempt: OnchainSendAttempt?,

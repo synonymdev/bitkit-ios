@@ -3108,7 +3108,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                     to: target
                 )
             }
-            try await waitUntil { await sdk.uploadIsPaused() }
+            try await waitUntil(before: proposal) { await sdk.uploadIsPaused() }
             switch change {
             case "expired": clock.advance(by: 60)
             case "removed": await manager.refreshEligibleTargets(savedPublicKeys: [])
@@ -5133,6 +5133,40 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.requestPresentation(request))
     }
 
+    func testResolutionFailureEndsARequestedPresentationWithAToast() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        XCTAssertTrue(manager.requestPresentation(request))
+
+        let feedback = try XCTUnwrap(
+            IncomingPaykitPaymentRequestPresentationDispatcher.finishRequestedPresentationAfterResolutionFailure(
+                for: request,
+                with: manager
+            )
+        )
+
+        XCTAssertNil(manager.requestedPresentationId)
+        XCTAssertFalse(manager.isWaitingForPresentationRetry(request))
+        XCTAssertEqual(manager.pendingRequests, [request])
+        XCTAssertNotNil(feedback.toast)
+    }
+
+    func testResolutionFailureLeavesAutomaticPresentationToRetry() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.requestsForPresentation().first)
+
+        XCTAssertNil(
+            IncomingPaykitPaymentRequestPresentationDispatcher.finishRequestedPresentationAfterResolutionFailure(
+                for: request,
+                with: manager
+            )
+        )
+    }
+
     func testPendingPrivateLinkRecoveryStopsAutomaticPresentationWithoutToast() async throws {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)
@@ -7144,6 +7178,24 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.pendingRequests.isEmpty)
         XCTAssertTrue(manager.historyRequests.isEmpty)
         XCTAssertFalse(manager.isApprovedForPayment(request))
+    }
+
+    func testDismissedRequestIsNotPresentedAgainWhenTheSdkListsItAsProposedAgain() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.requestsForPresentation().first)
+        XCTAssertTrue(manager.markPresentedIfPending(request))
+
+        try await manager.dismiss(request)
+        try await sdk.setRecords([paymentRequestRecord(state: .rejected)])
+        await manager.refresh()
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+
+        try await sdk.setRecords([paymentRequestRecord()])
+        await manager.refresh()
+        XCTAssertEqual(manager.pendingRequests.map(\.id), [request.id])
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
     }
 
     func testFailedRejectionDropsRequestRemovedFromAuthoritativeQueue() async throws {
@@ -11488,6 +11540,7 @@ private final class PaymentRequestTestClock: @unchecked Sendable {
 
 private enum PaymentRequestTestError: Error {
     case timedOut
+    case endedFirst
 }
 
 private actor PaymentProofProtectionGate {
@@ -11576,6 +11629,29 @@ private final class PaymentRequestIntakeError: PrivateOperationError, @unchecked
     override func redactedContext() -> String {
         "transport failure"
     }
+}
+
+/// Polls with no time limit, as on a slow runner `condition` can take seconds to hold, and fails at once when `operation`
+/// ends without it holding.
+@MainActor
+private func waitUntil(before operation: Task<some Sendable, Error>, condition: @MainActor () async -> Bool) async throws {
+    let ended = OperationEndFlag()
+    Task { @MainActor in
+        _ = await operation.result
+        ended.isSet = true
+    }
+    while await !condition() {
+        guard !ended.isSet else {
+            guard await condition() else { throw PaymentRequestTestError.endedFirst }
+            return
+        }
+        try await Task.sleep(for: .milliseconds(10))
+    }
+}
+
+@MainActor
+private final class OperationEndFlag {
+    var isSet = false
 }
 
 @MainActor

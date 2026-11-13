@@ -127,6 +127,8 @@ Apply the shared [store release-note checks](https://github.com/synonymdev/bitki
 
 ## 2. Build and Upload to TestFlight
 
+Before archiving, make sure the Breez API key is available (ask the team for the key). Either store it in the macOS keychain item `BREEZ_API_KEY` (copy the key, then run `printf 'add-generic-password -U -a %s -s BREEZ_API_KEY -w %s\n' "$USER" "$(pbpaste)" | security -i && pbcopy </dev/null`, which passes it on stdin so it never shows in a process list; the bare `-w` prompt keeps only 128 characters), or create `Secrets.xcconfig` at the repo root with `BREEZ_API_KEY` set (copy `Secrets.xcconfig.template`). A non-empty build setting wins over the keychain item. Release builds fail without either, and every build fails when a set key is not a complete certificate, so Spark can't ship switched off.
+
 ### Option A: Manual (Xcode)
 
 1. Open `Bitkit.xcodeproj` in Xcode

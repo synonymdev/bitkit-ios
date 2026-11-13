@@ -19,6 +19,8 @@ struct AppStatusView: View {
                     bitcoinNodeStatusRow
                     nodeStatusRow
                     channelsStatusRow
+                    sparkStatusRow
+                    exitStatusRow
                     backupStatusRow
                 }
             }
@@ -122,7 +124,8 @@ struct AppStatusView: View {
 
     private var channelsStatusRow: some View {
         let status = AppStatusHelper.channelsStatus(from: wallet, network: network)
-        let description = t("settings__status__lightning_connection__\(status.rawValue)")
+        let isViaSpark = AppStatusHelper.isLightningViaSpark(from: wallet, network: network)
+        let description = t("settings__status__lightning_connection__\(isViaSpark ? "spark" : status.rawValue)")
 
         return StatusRow(
             imageName: "status-lightning",
@@ -134,6 +137,39 @@ struct AppStatusView: View {
             }
         )
         .accessibilityIdentifier("Status-lightning_connection")
+    }
+
+    @ViewBuilder
+    private var sparkStatusRow: some View {
+        if let status = AppStatusHelper.sparkStatus(network: network) {
+            StatusRow(
+                imageName: "asterisk",
+                title: t("settings__status__spark__title"),
+                description: t("settings__status__spark__\(status.rawValue)"),
+                status: status,
+                // Spark's detail shows a zero balance until Spark has read its state.
+                onTap: status == .ready ? { navigation.navigate(.sparkConnectionDetail) } : nil
+            )
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("Status-spark")
+        }
+    }
+
+    @ViewBuilder
+    private var exitStatusRow: some View {
+        if let step = AppStatusHelper.exitStep(record: SparkExitManager.shared.record, fundingState: SparkExitManager.shared.fundingState) {
+            StatusRow(
+                imageName: "warning",
+                title: t("settings__status__exit__title"),
+                description: t("settings__status__exit__\(step.rawValue)"),
+                status: .pending,
+                onTap: {
+                    navigation.navigate(.sparkExitProgress)
+                }
+            )
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("Status-spark_exit")
+        }
     }
 
     private var backupStatusRow: some View {

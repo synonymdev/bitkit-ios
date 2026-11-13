@@ -39,7 +39,17 @@ enum Route: Hashable {
     case subscriptions(showPayments: Bool)
     case paymentRequestDetail(PaykitPaymentRequest.ID)
     case subscriptionDetail(PaykitSubscription.ID)
+    case transferIntro
     case fundingOptions
+    case spendingIntro
+    case spendingIntroHw(walletId: String)
+    case spendingAmount
+    case spendingAmountHw(walletId: String)
+    case spendingHwSign(walletId: String)
+    case spendingHwSigned
+    case spendingConfirm
+    case transferLearnMore
+    case settingUp
     case fundManual(nodeUri: String?)
     case fundManualAmount(lnPeer: LnPeer)
     case fundManualConfirm(lnPeer: LnPeer, amountSats: UInt64)
@@ -93,6 +103,14 @@ enum Route: Hashable {
     case addressTypePreference
     case connections
     case connectionDetail(channelId: String)
+    case sparkConnectionDetail
+    case moveToSpark
+    case sparkExitIntro
+    case sparkExitQuote
+    case sparkExitFunding
+    case sparkExitConfirm
+    case sparkExitProgress
+    case sparkExitFeeBump
     case closeConnection(channel: ChannelDetails)
     case node
     case electrumSettings
@@ -203,6 +221,13 @@ class NavigationViewModel: ObservableObject {
     }
 
     func navigate(_ route: Route) {
+        path.append(route)
+    }
+
+    /// Pushes `route` only while the stack is still `expectedPath`, so a screen that awaited something before
+    /// navigating doesn't reopen a flow the user left with Back meanwhile.
+    func navigate(_ route: Route, from expectedPath: [Route]) {
+        guard path == expectedPath else { return }
         path.append(route)
     }
 

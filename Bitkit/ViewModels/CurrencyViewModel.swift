@@ -169,6 +169,12 @@ extension CurrencyViewModel {
         Self.primaryAmountText(sats: sats, converted: convert(sats: sats), primaryDisplay: primaryDisplay, displayUnit: displayUnit)
     }
 
+    /// An amount the user sends from another wallet, always in bitcoin: it must be exact, which a fiat figure converted
+    /// at another wallet's rate is not.
+    func bitcoinAmountText(sats: UInt64) -> String {
+        Self.primaryAmountText(sats: sats, converted: convert(sats: sats), primaryDisplay: .bitcoin, displayUnit: displayUnit)
+    }
+
     nonisolated static func primaryAmountText(
         sats: UInt64,
         converted: ConvertedAmount?,
