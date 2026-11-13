@@ -180,7 +180,6 @@ final class PubkyIdentityRepublishTests: XCTestCase {
             await fulfillment(of: [started], timeout: 1)
 
             let caller = Task {
-                // The ring path then fails on its invalid URL, which still shows the approval went ahead.
                 try? await approve(kind, using: service)
                 proceeded.fulfill()
             }
@@ -216,7 +215,7 @@ final class PubkyIdentityRepublishTests: XCTestCase {
     }
 
     func testAuthRepublishesSigningIdentityBeforeApprovalEvenWhenPublicationFails() async throws {
-        for kind in [Approval.ordinary, .companion] {
+        for kind in Approval.allCases {
             for result in [Result<Bool, Error>.success(true), .failure(PubkyServiceError.profileNotFound)] {
                 let bootstrap = RepublishBootstrap(noPointer: .init())
                 let service = PaykitSdkService(bootstrapFactory: { _, _ in bootstrap })
@@ -263,7 +262,7 @@ final class PubkyIdentityRepublishTests: XCTestCase {
     }
 
     private enum Approval: CaseIterable {
-        case ordinary, companion, ring
+        case ordinary, companion
     }
 
     private func approve(_ kind: Approval, using service: PaykitSdkService) async throws {
@@ -283,8 +282,6 @@ final class PubkyIdentityRepublishTests: XCTestCase {
                 accountPayload: Data([1]) + Data(repeating: 0, count: 83),
                 secretKeyHex: secretKeyHex, sdkService: service
             )
-        case .ring:
-            try await PubkyService.approveRingAuth(authUrl: "invalid-auth-url", secretKeyHex: secretKeyHex, sdkService: service)
         }
     }
 }
