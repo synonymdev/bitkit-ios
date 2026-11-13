@@ -1,5 +1,6 @@
 @testable import Bitkit
 import BitkitCore
+import UIKit
 import UserNotifications
 import XCTest
 
@@ -523,5 +524,13 @@ final class WakeRetryTests: XCTestCase {
 
     private func rejected(_ status: UInt16, code: String = "error", retryAfter: UInt64? = nil) -> WakeError {
         WakeError.GatewayRejected(status: status, code: code, detail: "", serverTime: nil, retryAfterSecs: retryAfter)
+    }
+}
+
+final class WalletLaunchPolicyTests: XCTestCase {
+    func testABackgroundLaunchWaitsForTheAppToOpen() {
+        XCTAssertTrue(WalletLaunchPolicy.defersStart(applicationState: .background), "A background push launched the app")
+        XCTAssertFalse(WalletLaunchPolicy.defersStart(applicationState: .inactive), "A launch the user started")
+        XCTAssertFalse(WalletLaunchPolicy.defersStart(applicationState: .active))
     }
 }

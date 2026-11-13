@@ -473,6 +473,8 @@ struct AppScene: View {
     @State private var isContactRefreshForeground = false
     @State private var shopContactImport: (id: UUID, task: Task<Void, Never>)?
     @State private var foregroundWalletSync: Task<Void, Never>?
+    /// Set when a background push launched the app with a wallet, which then starts once the app is active.
+    @State private var isWalletStartDeferred = false
 
     private var nodeRestarter: NodeRestarter {
         NodeRestarter(
@@ -1119,6 +1121,12 @@ struct AppScene: View {
         // Don't start wallet if we're in recovery mode
         guard !showRecoveryScreen else { return }
 
+        guard !WalletLaunchPolicy.defersStart(applicationState: UIApplication.shared.applicationState) else {
+            Logger.info("Launched in the background, starting the wallet once the app is active", context: "AppScene")
+            isWalletStartDeferred = true
+            return
+        }
+
         wallet.addOnEvent(id: "toasts-and-sheets") { [weak app] lightningEvent in
             app?.handleLdkNodeEvent(lightningEvent)
         }
@@ -1452,6 +1460,11 @@ struct AppScene: View {
             if wipeCoordinator.isGateUp {
                 wipeCoordinator.retry()
                 guard !wipeCoordinator.isGateUp else { return }
+            }
+
+            if isWalletStartDeferred {
+                isWalletStartDeferred = false
+                handleWalletExistsChange(wallet.walletExists)
             }
 
             // Called even behind the PIN screen, so a background release still pending is called off.
@@ -2426,5 +2439,13 @@ struct AppScene: View {
             title: t("settings__backup__failed_title"),
             description: tPlural("settings__backup__failed_message", arguments: ["interval": intervalMinutes])
         )
+    }
+}
+
+/// A background push (`remote-notification`) can launch the app on a locked phone, where the node would start for nothing
+/// and be suspended mid-start. The wallet starts once the app is opened instead.
+enum WalletLaunchPolicy {
+    static func defersStart(applicationState: UIApplication.State) -> Bool {
+        applicationState == .background
     }
 }
