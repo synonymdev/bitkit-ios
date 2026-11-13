@@ -331,6 +331,7 @@ final class WakeRegistrarTests: XCTestCase {
 
         XCTAssertEqual(record.lastTimestamp, Self.now, "The gateway may have stored it")
         XCTAssertNil(record.device)
+        XCTAssertEqual(record.sentToGatewayUrl, "http://127.0.0.1:9010", "So it can still be unregistered there")
 
         _ = try await register()
         XCTAssertEqual(sent.map(\.timestamp), [Self.now, Self.now + 1])
@@ -387,5 +388,72 @@ final class WakeRegistrarTests: XCTestCase {
             force: force,
             sign: { _ in [WakeIdentityProof(identity: Self.lightning, signature: "signature")] }
         )
+    }
+}
+
+final class WakeUnregistrarTests: XCTestCase {
+    private static let gatewayUrl = "http://127.0.0.1:9010"
+
+    private var record = WakeRegistrationRecord()
+    private var calls: [String] = []
+
+    func testARegistrationWhoseAnswerWasLostIsUnregisteredAtItsGateway() async throws {
+        record = WakeRegistrationRecord(lastTimestamp: 1_790_000_000, device: nil, sentToGatewayUrl: Self.gatewayUrl)
+
+        let removed = try await unregister()
+
+        XCTAssertTrue(removed)
+        XCTAssertEqual(calls, [Self.gatewayUrl])
+        XCTAssertEqual(record, WakeRegistrationRecord(lastTimestamp: 1_790_000_000), "The timestamp keeps increasing")
+    }
+
+    func testADeviceTheGatewayNoLongerKnowsCountsAsRemoved() async throws {
+        record = WakeRegistrationRecord(lastTimestamp: 1_790_000_000, sentToGatewayUrl: Self.gatewayUrl)
+
+        let removed = try await unregister(failure: WakeError.GatewayRejected(
+            status: 401, code: "unauthorized", detail: "", serverTime: nil, retryAfterSecs: nil
+        ))
+
+        XCTAssertTrue(removed)
+        XCTAssertNil(record.registeredGatewayUrl)
+    }
+
+    func testAFailedUnregisterKeepsTheGateway() async throws {
+        record = WakeRegistrationRecord(lastTimestamp: 1_790_000_000, sentToGatewayUrl: Self.gatewayUrl)
+
+        do {
+            _ = try await unregister(failure: WakeError.RequestFailed(reason: "offline"))
+            XCTFail("Unregistered")
+        } catch {}
+
+        XCTAssertEqual(record.registeredGatewayUrl, Self.gatewayUrl)
+    }
+
+    func testAnInstallNeverSentAnywhereHasNothingToRemove() async throws {
+        record = WakeRegistrationRecord(lastTimestamp: nil)
+
+        let removed = try await unregister()
+
+        XCTAssertFalse(removed)
+        XCTAssertTrue(calls.isEmpty)
+    }
+
+    private func unregister(failure: Error? = nil) async throws -> Bool {
+        var unregistrar = WakeUnregistrar()
+        unregistrar.loadRegistration = { self.record }
+        unregistrar.saveRegistration = { self.record = $0 }
+        unregistrar.loadCredentials = {
+            WakeCredentials(
+                installId: "AAAAAAAAAAAAAAAAAAAAAA", encryptionPublicKey: "02", encryptionSecretKey: "55",
+                deviceSecret: "wkd_secret", deviceSecretSha256: "00"
+            )
+        }
+        unregistrar.unregister = { gatewayUrl, _ in
+            self.calls.append(gatewayUrl)
+            if let failure {
+                throw failure
+            }
+        }
+        return try await unregistrar.run()
     }
 }

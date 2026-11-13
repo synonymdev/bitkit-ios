@@ -252,6 +252,17 @@ final class WakeReceiverTests: XCTestCase {
         XCTAssertTrue(acks.calls.isEmpty)
     }
 
+    func testAWakeForARegistrationWhoseAnswerWasLostIsAcknowledged() async throws {
+        let acks = AckRecorder()
+        var receiver = try makeReceiver(handlers: .app, acks: acks)
+        receiver.loadRegistration = { WakeRegistrationRecord(lastTimestamp: 1_790_000_000, device: nil, sentToGatewayUrl: Self.gatewayUrl) }
+
+        let receipt = try await receiver.receive(pushJson: vector("apns_v1_background").pushJson)
+
+        XCTAssertEqual(receipt, .acknowledged(id: Self.backgroundWakeId, topic: "blocktank.incomingHtlc", outcome: .noHandler, isDelivered: true))
+        XCTAssertEqual(acks.calls.map(\.gatewayUrl), [Self.gatewayUrl])
+    }
+
     func testAPushForAnotherKeyIsDropped() async throws {
         let acks = AckRecorder()
         var receiver = try makeReceiver(handlers: .app, acks: acks)

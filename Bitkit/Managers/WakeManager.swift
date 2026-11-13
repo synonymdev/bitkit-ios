@@ -208,6 +208,7 @@ struct WakeRegistrar {
             // Kept before sending, since the gateway may accept it even when its answer is lost. What it held before
             // then no longer counts as unchanged.
             record.lastTimestamp = request.timestamp
+            record.sentToGatewayUrl = gatewayUrl
             if record.device != registeredDevice {
                 record.device = nil
             }
@@ -228,6 +229,37 @@ struct WakeRegistrar {
         record.device = registeredDevice
         try saveRegistration(record)
         return .registered(registration)
+    }
+}
+
+/// Removes the install from the gateway that may hold it, including one whose registration answer was lost. A device
+/// the gateway no longer knows counts as removed.
+struct WakeUnregistrar {
+    typealias Unregister = (_ gatewayUrl: String, _ deviceSecret: String) async throws -> Void
+
+    var unregister: Unregister = { gatewayUrl, deviceSecret in
+        try await ServiceQueue.background(.core, wrapErrors: false) {
+            try await wakeUnregister(gatewayUrl: gatewayUrl, deviceSecret: deviceSecret)
+        }
+    }
+
+    var loadRegistration: () throws -> WakeRegistrationRecord = WakeStorage.loadRegistration
+    var saveRegistration: (WakeRegistrationRecord) throws -> Void = WakeStorage.saveRegistration
+    var loadCredentials: () throws -> WakeCredentials? = WakeStorage.loadCredentials
+
+    /// Returns false when no gateway may hold the install.
+    func run() async throws -> Bool {
+        var record = try loadRegistration()
+        guard let gatewayUrl = record.registeredGatewayUrl, let credentials = try loadCredentials() else { return false }
+        do {
+            try await unregister(gatewayUrl, credentials.deviceSecret)
+        } catch WakeError.GatewayRejected(401, _, _, _, _) {
+            Logger.info("Wake gateway no longer knows this device", context: "Wake")
+        }
+        record.device = nil
+        record.sentToGatewayUrl = nil
+        try saveRegistration(record)
+        return true
     }
 }
 
@@ -336,18 +368,9 @@ final class WakeManager {
 
     private func unregisterRegisteredDevice() async {
         do {
-            var record = try WakeStorage.loadRegistration()
-            guard let device = record.device, let credentials = try WakeStorage.loadCredentials() else { return }
-            do {
-                try await ServiceQueue.background(.core, wrapErrors: false) {
-                    try await wakeUnregister(gatewayUrl: device.gatewayUrl, deviceSecret: credentials.deviceSecret)
-                }
-            } catch WakeError.GatewayRejected(401, _, _, _, _) {
-                Logger.info("Wake gateway no longer knows this device", context: "Wake")
+            if try await WakeUnregistrar().run() {
+                Logger.info("Unregistered from wakes", context: "Wake")
             }
-            record.device = nil
-            try WakeStorage.saveRegistration(record)
-            Logger.info("Unregistered from wakes", context: "Wake")
         } catch {
             Logger.warn("Failed to unregister from wakes: \(error)", context: "Wake")
         }

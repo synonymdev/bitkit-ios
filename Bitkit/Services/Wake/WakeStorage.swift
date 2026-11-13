@@ -64,6 +64,14 @@ struct WakeRegistrationRecord: Codable, Equatable {
     var lastTimestamp: UInt64?
     /// What the gateway accepted last, while the install is registered.
     var device: WakeRegisteredDevice?
+    /// The gateway a registration was sent to, kept before sending since it may hold the install even when its answer
+    /// is lost. Cleared once the install is unregistered.
+    var sentToGatewayUrl: String?
+
+    /// The gateway that may hold this install: where its wakes are acknowledged and where it unregisters.
+    var registeredGatewayUrl: String? {
+        sentToGatewayUrl ?? device?.gatewayUrl
+    }
 }
 
 enum WakeTimestamp {

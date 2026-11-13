@@ -101,13 +101,13 @@ struct WakeReceiver {
 
     func receive(pushJson: String) async -> WakeReceipt {
         let credentials: WakeCredentials
-        let device: WakeRegisteredDevice
+        let gatewayUrl: String
         do {
-            guard let storedCredentials = try loadCredentials(), let registeredDevice = try loadRegistration().device else {
+            guard let storedCredentials = try loadCredentials(), let registeredGatewayUrl = try loadRegistration().registeredGatewayUrl else {
                 return .notRegistered
             }
             credentials = storedCredentials
-            device = registeredDevice
+            gatewayUrl = registeredGatewayUrl
         } catch {
             Logger.warn("Wake credentials unavailable: \(error)", context: "Wake")
             return .notRegistered
@@ -138,7 +138,7 @@ struct WakeReceiver {
 
         let outcome = await handlers.outcome(for: envelope)
         do {
-            try await acknowledge(device.gatewayUrl, credentials.deviceSecret, id, outcome)
+            try await acknowledge(gatewayUrl, credentials.deviceSecret, id, outcome)
             Logger.info("Acknowledged wake \(id) on \(envelope.topic) as \(outcome)", context: "Wake")
             return .acknowledged(id: id, topic: envelope.topic, outcome: outcome, isDelivered: true)
         } catch {
