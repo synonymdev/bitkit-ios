@@ -256,6 +256,11 @@ required to run the suite.
 
 When you port an Android feature, port its journeys too — see the Journeys section in `AGENTS.md`.
 
+`boost/rbf-own-send.xml` checks the replacement before checking the activity list on both platforms.
+iOS syncs the wallet and list before showing Boost success and returning Home. Open the row on the
+first actionable Home screen, with no settling delay. Read the payment amount from
+`ActivityAmount`, since the displayed debit can include the fee.
+
 `home/timed-reminders-do-not-interrupt.xml` pairs with synonymdev/bitkit-android#1575. Use a
 PIN-disabled wallet and an eligible reminder; the backup reminder works without USDT configuration.
 The file name, journey name and actions match Android. Android resumes Home after permission prompts
