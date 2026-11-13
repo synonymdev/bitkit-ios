@@ -156,7 +156,11 @@ final class AppReset: WipeStepExecutor {
 
     /// A hung remote cleanup must not hold the wipe; what it leaves behind is recoverable from the seed.
     static func runRemoteCleanup(timeout: Duration = .seconds(15), _ cleanup: @escaping () async -> Void) async {
-        guard await withDeadline(timeout, cleanup) == nil else { return }
+        await runRemoteCleanup(until: { try await Task.sleep(for: timeout) }, cleanup)
+    }
+
+    static func runRemoteCleanup(until deadline: @escaping () async throws -> Void, _ cleanup: @escaping () async -> Void) async {
+        guard await withDeadline(until: deadline, cleanup) == nil else { return }
         Logger.warn("Remote cleanup timed out, continuing the wipe", context: "AppReset")
     }
 

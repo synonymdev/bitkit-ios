@@ -1071,8 +1071,18 @@ class BackupService {
 
     private func scheduleBackup(category: BackupCategory, initialOutcome: BackupOutcome = .failed, foregroundGeneration: UInt64? = nil) async {
         try? await ServiceQueue.background(.backup) { [self] in
+            // A request made before a wipe or restore began can arrive after it: drop it, and clear the running flag that
+            // `markBackupRequired` set for it, which would otherwise keep the category from being scheduled again
+            guard !shouldSkipBackup(category: category) else {
+                if backupJobs[category] == nil, runningBackupTasks[category] == nil {
+                    updateBackupStatus(category: category) { status in
+                        BackupItemStatus(synced: status.synced, required: status.required, running: false)
+                    }
+                }
+                return
+            }
             if let foregroundGeneration {
-                guard isObserving, !shouldSkipBackup(category: category),
+                guard isObserving,
                       stateQueue.sync(execute: { foregroundObservationGeneration == foregroundGeneration })
                 else { return }
             }

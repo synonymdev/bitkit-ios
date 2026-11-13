@@ -222,10 +222,9 @@ final class BackupServiceTests: XCTestCase {
     }
 
     func testTemporaryFailureRemainsPendingAcrossServiceRestart() async throws {
-        let suite = "BackupServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
         for category in [BackupCategory.wallet, .usdt] {
+            // Its own suite per category: a stopped service's jobs can still rewrite the statuses of the suite it used
+            let defaults = try makeIsolatedDefaults("\(#function).\(category)")
             let unavailable = BackupService(defaults: defaults, backupData: { _ in
                 throw PaykitError.SharedStateBusy(code: "shared_state_busy", context: "pending reconciliation")
             }, waitForBackupDelay: { try await Task.sleep(nanoseconds: 60_000_000_000) })
