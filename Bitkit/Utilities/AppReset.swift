@@ -172,7 +172,7 @@ final class AppReset: WipeStepExecutor {
         let path = Env.logDirectory
         if FileManager.default.fileExists(atPath: path) {
             Logger.warn("Wiping entire logs directory...")
-            try FileManager.default.removeItem(at: URL(fileURLWithPath: path))
+            try Logger.removeLogDirectory(atPath: path)
         } else {
             Logger.warn("No logs directory found to wipe: \(path)")
         }
