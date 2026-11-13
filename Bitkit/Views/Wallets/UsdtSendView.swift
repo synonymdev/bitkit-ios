@@ -13,6 +13,7 @@ struct UsdtSendView: View {
     var quotePayment: ((String, String, UsdtDestination) async throws -> UsdtQuote)?
     var authenticatePayment: (() async -> Bool)?
     var sendPayment: ((UsdtQuote) async throws -> Void)?
+    var fundingSourceButton: AnyView?
     var onReviewChange: ((Bool) -> Void)?
     var onBack: (() -> Void)?
     var onClose: (() -> Void)?
@@ -64,6 +65,7 @@ struct UsdtSendView: View {
         quotePayment: ((String, String, UsdtDestination) async throws -> UsdtQuote)? = nil,
         authenticatePayment: (() async -> Bool)? = nil,
         sendPayment: ((UsdtQuote) async throws -> Void)? = nil,
+        fundingSourceButton: AnyView? = nil,
         onReviewChange: ((Bool) -> Void)? = nil,
         onBack: (() -> Void)? = nil,
         onClose: (() -> Void)? = nil
@@ -77,6 +79,7 @@ struct UsdtSendView: View {
         self.quotePayment = quotePayment
         self.authenticatePayment = authenticatePayment
         self.sendPayment = sendPayment
+        self.fundingSourceButton = fundingSourceButton
         self.onReviewChange = onReviewChange
         self.onBack = onBack
         self.onClose = onClose
@@ -142,7 +145,7 @@ struct UsdtSendView: View {
             }
             return t(submissionFailed ? "wallet__send_error_tx_failed" : "usdt__submitted")
         }
-        if quote != nil || (editingAmount && isAmountFixed) {
+        if quote != nil || paymentRequest != nil || (editingAmount && isAmountFixed) {
             return t(paymentRequest == nil ? "wallet__send_review" : "wallet__payment_request")
         }
         return t(editingAmount ? "usdt__amount" : "usdt__send_title")
@@ -150,6 +153,11 @@ struct UsdtSendView: View {
 
     private var isReviewingPayment: Bool {
         paymentContext != nil && settings.isUsdtEnabled && quote != nil && !submitted
+    }
+
+    private var hasSufficientRequestFunds: Bool {
+        // Native quoting checks funds even when the observable balance has not loaded yet.
+        paymentContext?.incomingPaymentRequest == nil || usdt.balance == nil || quote?.isAffordable(with: usdt.balance) == true
     }
 
     var body: some View {
@@ -252,6 +260,8 @@ struct UsdtSendView: View {
                 submittedContent
             } else if let quote {
                 confirmation(quote)
+            } else if paymentRequest != nil {
+                preparingConfirmation
             } else if editingAmount, isAmountFixed {
                 fixedAmountPreparation
             } else if editingAmount {
@@ -535,6 +545,27 @@ struct UsdtSendView: View {
             .accessibilityIdentifier("UsdtReviewDetails")
     }
 
+    private var preparingConfirmation: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            UsdtAmountHeader(amount: amount)
+            if paymentContext?.endpoints.count ?? 0 > 1, let fundingSourceButton {
+                fundingSourceButton.disabled(busy || submitted).frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            PaymentRequestSummary(contactName: contactName, note: requestNote, accentColor: .usdtAccent)
+            PaymentReviewIllustration(imageSize: 329, isPaymentRequest: true).frame(maxHeight: 256)
+            Spacer(minLength: 0)
+            if let error {
+                BodySText(error, textColor: .brandAccent).accessibilityIdentifier("UsdtError")
+                CustomButton(title: t("common__try_again"), size: .small, isDisabled: busy) {
+                    await quoteFixedAmount()
+                }
+            }
+            SwipeButton(title: t("wallet__send_swipe"), accentColor: .usdtAccent, isDisabled: true, isLoading: busy) {}
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("UsdtConfirmLoading")
+    }
+
     func confirmation(_ quote: UsdtQuote) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             GeometryReader { geometry in
@@ -543,6 +574,10 @@ struct UsdtSendView: View {
                         UsdtAmountHeader(amount: usdtFormatAmount(amount: quote.amount), displayAmount: usdtExactAmount(quote.amount))
                             .contentShape(Rectangle()).onTapGesture(perform: goBack)
                             .allowsHitTesting(!busy && !embedded && !isAmountFixed)
+                        if !showDetails, paymentContext?.endpoints.count ?? 0 > 1, let fundingSourceButton {
+                            fundingSourceButton.disabled(busy || submitted)
+                                .frame(maxWidth: .infinity, alignment: .trailing).padding(.top, 16)
+                        }
                         Spacer().frame(height: 24)
                         if showDetails {
                             quoteDetails(quote)
@@ -556,7 +591,8 @@ struct UsdtSendView: View {
                             Spacer(minLength: 0)
                             PaymentReviewIllustration(
                                 swipeProgress: busy || paymentComplete ? 1 : swipeProgress,
-                                imageSize: 329
+                                imageSize: 329,
+                                isPaymentRequest: paymentRequest != nil
                             )
                             .padding(.top, 16).frame(height: 256)
                         }
@@ -575,7 +611,7 @@ struct UsdtSendView: View {
                 .id(showDetails)
             }
             SwipeButton(
-                title: t("wallet__send_swipe"), accentColor: .usdtAccent, isDisabled: busy,
+                title: t("wallet__send_swipe"), accentColor: .usdtAccent, isDisabled: busy || !hasSufficientRequestFunds,
                 isLoading: busy, isSubmitted: submitted, isComplete: paymentComplete, swipeProgress: $swipeProgress
             ) {
                 automaticPayment = false
@@ -593,14 +629,18 @@ struct UsdtSendView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 16) {
                 SendSectionView(t("usdt__pay_from"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
-                    NumberPadActionButton(
-                        text: "USDT",
-                        titleKerning: 1,
-                        titleLineHeight: 18,
-                        color: .usdtAccent,
-                        variant: .secondary,
-                        disabled: true
-                    ) {}
+                    if let fundingSourceButton {
+                        fundingSourceButton.disabled(busy || submitted)
+                    } else {
+                        NumberPadActionButton(
+                            text: "USDT",
+                            titleKerning: 1,
+                            titleLineHeight: 18,
+                            color: .usdtAccent,
+                            variant: .secondary,
+                            disabled: true
+                        ) {}
+                    }
                 }
                 UsdtDetailCell(title: t("usdt__network"), value: UsdtDestination.arbitrum.label, icon: "usdt-network", minimumValueHeight: 28)
             }
@@ -838,6 +878,7 @@ struct UsdtSendView: View {
 
     private func confirmPayment() async throws {
         guard let quote, !busy, !submitted else { return }
+        guard hasSufficientRequestFunds else { throw UsdtError.InsufficientBalance }
         var warnings: [String] = []
         if let balance = usdt.balance, quote.amount > balance / 2 {
             warnings.append("wallet__send_dialog2_usdt")
@@ -877,6 +918,7 @@ struct UsdtSendView: View {
 
     private func authenticateAndSend() async throws {
         guard !busy else { return }
+        guard hasSufficientRequestFunds else { throw UsdtError.InsufficientBalance }
         if let authenticatePayment {
             busy = true
             let authorized = await authenticatePayment()
@@ -974,6 +1016,7 @@ struct UsdtSendView: View {
             }
         }
         do {
+            guard hasSufficientRequestFunds else { throw UsdtError.InsufficientBalance }
             if let sendPayment {
                 try await sendPayment(quote)
             } else {

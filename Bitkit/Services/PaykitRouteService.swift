@@ -107,6 +107,8 @@ enum PaykitRouteService {
         source: Source,
         lightningSpendableSats: UInt64,
         onchainSpendableSats: UInt64,
+        paymentRequest: PaykitPaymentRequest? = nil,
+        quoteId: String? = nil,
         quoteLegs: ([PaykitEndpoint], UInt64) async throws -> [ServiceRouteLeg] = { try await sparkLegs(to: $0, amountSats: $1) }
     ) async throws -> PaykitRoute {
         func pick(_ serviceLegs: [ServiceRouteLeg]) throws -> PaykitRoute {
@@ -125,8 +127,26 @@ enum PaykitRouteService {
         let direct = try pick([])
         guard case .none = direct, source == .spending, route.offersSparkLeg else { return direct }
         guard SparkManager.pendingContactWithdrawal == nil else { throw SparkWithdrawalSettling() }
-        let serviceLegs = try await quoteLegs(route.onchainEndpoints, amountSats)
-        return serviceLegs.isEmpty ? direct : try pick(serviceLegs)
+        let endpoints = route.onchainEndpoints.filter {
+            PublicPaykitService.MethodId(rawValue: $0.methodId)?.onchainNetwork == Env.network
+        }
+        guard let endpoint = endpoints.first, let method = PublicPaykitService.MethodId(rawValue: endpoint.methodId) else { return direct }
+        let terms = try paymentRequest?.payment(using: method, quoteId: quoteId)
+        guard terms?.isValid(at: Date()) != false else { throw PaykitPaymentRequestError.requestExpired }
+        let serviceAmount = terms?.amount.atomic ?? amountSats
+        let serviceLegs = try await quoteLegs(endpoints, serviceAmount)
+        // Once direct payment is unavailable, the on-chain price must not make the Lightning endpoint eligible again.
+        return try paykitRoutePayment(
+            request: request(
+                route: PaykitRouteUi(endpoints: endpoints, offersSparkLeg: true),
+                amountSats: serviceAmount,
+                source: .spending,
+                lightningSpendableSats: 0,
+                onchainSpendableSats: 0,
+                serviceLegs: serviceLegs
+            ),
+            network: Env.bitkitCoreNetwork
+        )
     }
 
     /// Spark's leg to each of `endpoints`, from `quote`. Throws `SparkLegUnaffordable` when no leg is quoted and one
@@ -293,10 +313,9 @@ extension AppViewModel {
         lightningSpendableSats: UInt64,
         onchainSpendableSats: UInt64,
         request: PaykitPaymentRequest?,
-        router: (PaykitRouteUi, UInt64, PaykitRouteService.Source, UInt64, UInt64) async throws -> PaykitRoute = {
-            try await PaykitRouteService.route($0, amountSats: $1, source: $2, lightningSpendableSats: $3, onchainSpendableSats: $4)
-        },
-        decodeEndpoint: (String) async throws -> BitkitCore.Scanner = { try await decode(invoice: $0) }
+        router: ((PaykitRouteUi, UInt64, PaykitRouteService.Source, UInt64, UInt64) async throws -> PaykitRoute)? = nil,
+        decodeEndpoint: (String) async throws -> BitkitCore.Scanner = { try await decode(invoice: $0) },
+        quoteLegs: ([PaykitEndpoint], UInt64) async throws -> [ServiceRouteLeg] = { try await PaykitRouteService.sparkLegs(to: $0, amountSats: $1) }
     ) async -> PaykitRouteOutcome {
         var unrouted = route
         unrouted.serviceLeg = nil
@@ -305,6 +324,8 @@ extension AppViewModel {
         let contactId = contactPaymentContext?.id
         paykitRoutingGeneration += 1
         let generation = paykitRoutingGeneration
+        let quoteId = paykitPaymentTerms?.quoteId
+        paykitRoute = unrouted
         // A dismissed or replaced payment, a newer routing request (a new amount or source) or a source picked since
         // makes the answer stale, so it never lands on what followed it.
         // A short balance names itself first, then the limit of an LNURL that refused the amount (the router never saw
@@ -322,13 +343,21 @@ extension AppViewModel {
             return .refused
         }
         let isCurrent = {
-            self.contactPaymentContext?.id == contactId && self.paykitRoutingGeneration == generation &&
+            !Task.isCancelled && self.contactPaymentContext?.id == contactId && self.paykitRoutingGeneration == generation &&
                 (self.selectedWalletToPayFrom == .lightning) == (source == .spending) &&
                 (self.paykitRoute.map { $0.endpoints == route.endpoints } ?? true)
         }
         do {
             // The known invoice and LNURL go to the router too, so it never picks an LNURL whose limits refuse the amount.
-            let picked = try await router(unrouted, amountSats, source, lightningSpendableSats, onchainSpendableSats)
+            let picked: PaykitRoute = if let router {
+                try await router(unrouted, amountSats, source, lightningSpendableSats, onchainSpendableSats)
+            } else {
+                try await PaykitRouteService.route(
+                    unrouted, amountSats: amountSats, source: source,
+                    lightningSpendableSats: lightningSpendableSats, onchainSpendableSats: onchainSpendableSats,
+                    paymentRequest: request, quoteId: quoteId, quoteLegs: quoteLegs
+                )
+            }
             guard isCurrent() else { return .stale }
             switch picked {
             case let .direct(endpoint):
@@ -345,6 +374,17 @@ extension AppViewModel {
             case let .service(leg):
                 var routed = unrouted
                 routed.serviceLeg = leg
+                if let request {
+                    guard let method = PublicPaykitService.MethodId(rawValue: leg.endpoint.methodId) else {
+                        throw PaykitPaymentRequestError.requestUnavailable
+                    }
+                    let terms = try request.payment(using: method, quoteId: quoteId)
+                    guard terms.isValid(at: Date()), terms.amount.asset == .btc, terms.amount.atomic == leg.deliveredSat else {
+                        throw PaykitPaymentRequestError.amountMismatch
+                    }
+                    paykitPaymentTerms = terms
+                    paykitReviewedAmount = terms.amount
+                }
                 paykitRoute = routed
                 selectedWalletToPayFrom = .lightning
                 return .leg

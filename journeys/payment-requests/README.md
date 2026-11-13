@@ -14,10 +14,10 @@ amount with Savings selected. The amount uses the issuer's fixed rate; the displ
 estimate uses Bitkit's own market rate. The flow stops before broadcasting.
 Fractional-satoshi Lightning payments and dynamic quotes remain unsupported.
 
-`fixed-quoted-confirmation.xml` also covers funding choices and rail-specific quotes. On iOS,
-requests offering both LNURL Spending and Savings retain the Amount funding-source selector;
-LNURL confirmation has no wallet selector. Android provides that choice in its common
-confirmation view. LNURL-only requests with a quote meeting the endpoint minimum go directly to confirmation on both platforms.
+`fixed-quoted-confirmation.xml` also covers funding choices and rail-specific quotes.
+Fixed requests, including due subscription payments, open confirmation on both platforms.
+The same dropdown as amount entry selects Spending, Savings, available hardware wallets, or
+USDT while retaining the request's exact amount and requiring a confirmation swipe.
 On iOS, initially below-minimum Savings or LNURL quotes stay on Amount with Continue disabled,
 and Back after failed automatic coin preparation closes that fallback review. A controlled manual
 UTXO-loading failure exercises the same Back behavior in `SendConfirmationLifecycleTests`; the

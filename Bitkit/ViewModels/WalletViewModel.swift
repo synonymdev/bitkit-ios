@@ -53,7 +53,9 @@ class WalletViewModel: ObservableObject {
     @Published var availableUtxos: [SpendableUtxo] = []
     @Published var isMaxAmountSend: Bool = false
     /// Cached Lightning routing fee estimate for the active send (confirmation, fee picker instant row).
-    @Published var routingFeeEstimateSats: UInt64 = 0
+    @Published var routingFeeEstimateSats: UInt64?
+    @Published private(set) var routingFeeEstimateFailed = false
+    private var routingFeeEstimateID = UUID()
 
     /// Shared eligibility check for the unified invoice switch UI.
     /// - Parameter amountSats: The amount the user intends to send (on-chain invoice amount or current entered amount).
@@ -1061,14 +1063,25 @@ class WalletViewModel: ObservableObject {
 
     /// Refreshes `routingFeeEstimateSats` for the send UI.
     func refreshRoutingFeeEstimate(bolt11: String, amountSats: UInt64?) async {
+        guard !Task.isCancelled else { return }
+        resetRoutingFeeEstimate()
+        let estimateID = routingFeeEstimateID
         do {
             let fee = try await estimateRoutingFees(bolt11: bolt11, amountSats: amountSats)
+            guard !Task.isCancelled, routingFeeEstimateID == estimateID else { return }
             routingFeeEstimateSats = fee
             Logger.info("Estimated routing fees: \(fee) sat")
         } catch {
+            guard !Task.isCancelled, routingFeeEstimateID == estimateID else { return }
+            routingFeeEstimateFailed = true
             Logger.error("Failed to calculate routing fees: \(error)", context: "WalletViewModel")
-            routingFeeEstimateSats = 0
         }
+    }
+
+    func resetRoutingFeeEstimate() {
+        routingFeeEstimateID = UUID()
+        routingFeeEstimateSats = nil
+        routingFeeEstimateFailed = false
     }
 
     struct ProbeOutcome {
@@ -2179,7 +2192,7 @@ class WalletViewModel: ObservableObject {
         availableUtxos = []
         selectedSpeed = speed
         isMaxAmountSend = false
-        routingFeeEstimateSats = 0
+        resetRoutingFeeEstimate()
     }
 
     func refreshAfterChannelClosed(channelId: LDKNode.ChannelId, reason: LDKNode.ClosureReason?) async {
