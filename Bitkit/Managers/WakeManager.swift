@@ -205,8 +205,12 @@ struct WakeRegistrar {
                 )
             }
             let proofs = try await sign(request)
-            // Kept before sending, since the gateway may accept it even when its answer is lost.
+            // Kept before sending, since the gateway may accept it even when its answer is lost. What it held before
+            // then no longer counts as unchanged.
             record.lastTimestamp = request.timestamp
+            if record.device != registeredDevice {
+                record.device = nil
+            }
             try saveRegistration(record)
             return try await send(gatewayUrl, request, proofs)
         }

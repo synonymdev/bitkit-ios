@@ -336,7 +336,26 @@ final class WakeRegistrarTests: XCTestCase {
         XCTAssertEqual(sent.map(\.timestamp), [Self.now, Self.now + 1])
     }
 
+    func testAnUpdateWhoseAnswerIsLostIsNotTakenAsTheOldRegistration() async throws {
+        _ = try await register()
+        do {
+            _ = try await register(identities: [Self.lightning, Self.pubky], send: { _ in
+                throw WakeError.RequestFailed(reason: "connection reset")
+            })
+            XCTFail("Registered")
+        } catch {}
+        XCTAssertNil(record.device, "The gateway may hold the update")
+
+        let outcome = try await register()
+
+        XCTAssertEqual(outcome, .registered(Self.registration), "Back to ln only is sent, not skipped as unchanged")
+        XCTAssertEqual(sent.map(\.timestamp), [Self.now, Self.now + 1, Self.now + 2])
+        XCTAssertEqual(record.device?.content.identities, [Self.lightning])
+    }
+
     // MARK: - Helpers
+
+    private static let pubky = "pk:47cz1q7hnqtedgwnxt5k5pz5in1ji5oyx7r9fwr3fsc5ojppftry"
 
     private static let registration = WakeRegistration(
         deviceId: "device", identities: [lightning], topics: ["paykit.*", "swap.*"], unknownTopics: [], serverTime: now
@@ -344,6 +363,7 @@ final class WakeRegistrarTests: XCTestCase {
 
     private func register(
         pushToken: String = WakeRegistrarTests.pushToken,
+        identities: [String] = [WakeRegistrarTests.lightning],
         force: Bool = false,
         send: ((WakeRegistrationRequest) throws -> WakeRegistrationRequest)? = nil
     ) async throws -> WakeRegistrar.Outcome {
@@ -363,7 +383,7 @@ final class WakeRegistrarTests: XCTestCase {
         return try await registrar.register(
             credentials: credentials,
             pushToken: pushToken,
-            identities: [Self.lightning],
+            identities: identities,
             force: force,
             sign: { _ in [WakeIdentityProof(identity: Self.lightning, signature: "signature")] }
         )
