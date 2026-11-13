@@ -1509,7 +1509,7 @@ final class SparkManager: ChannelFreeLightningRail {
         let known = Set(deposits.map(\.txid))
         let local = broadcastDeposits
             .filter { !known.contains($0.key) }
-            .map { SparkDeposit(txid: $0.key, amountSats: $0.value, isClaimed: false, confirmations: 0) }
+            .map { SparkDeposit(txid: $0.key, amountSats: $0.value, isClaimed: false, confirmations: 0, isListed: false) }
         guard !local.isEmpty else { return }
         deposits = local + deposits
         pendingDepositSats = deposits.filter { !$0.isClaimed }.reduce(0) { $0 + $1.amountSats }
@@ -1979,9 +1979,18 @@ struct SparkDeposit: Identifiable, Equatable {
     var claimedAt: UInt64?
     /// On-chain confirmations, known for deposits this wallet sent.
     var confirmations: UInt32?
+    /// Whether Spark lists it, rather than only the app that just broadcast it.
+    var isListed = true
 
     var id: String {
         "\(txid)-\(isClaimed)"
+    }
+}
+
+extension [SparkDeposit] {
+    /// The deposit whose progress the transfer banner opens: the first one Spark has not claimed yet.
+    var inProgressTxid: String? {
+        first { !$0.isClaimed }?.txid
     }
 }
 
