@@ -197,11 +197,8 @@ final class QuickPaySpendStore: @unchecked Sendable {
         multiplier: Double,
         rates: QuickPaySpendRates
     ) -> Bool {
-        guard enabled, amountSats > 0, let thresholdSats = rates.usdToSats(thresholdUsd), thresholdSats > 0 else { return false }
-        if amountSats > thresholdSats {
-            return false
-        }
-        guard let convertedCents = rates.satsToUsdCents(amountSats) else { return false }
+        guard Self.isEligible(amountSats: amountSats, enabled: enabled, thresholdUsd: thresholdUsd, rates: rates),
+              let convertedCents = rates.satsToUsdCents(amountSats) else { return false }
 
         let reserveCents = QuickPayLimits.reserveCents(convertedCents: convertedCents, thresholdUsd: thresholdUsd, amountSats: amountSats)
         let capCents = QuickPayLimits.capCents(thresholdUsd: thresholdUsd, multiplier: multiplier)
@@ -229,12 +226,13 @@ final class QuickPaySpendStore: @unchecked Sendable {
     func reserveBound(
         paymentHash: String,
         amountSats: UInt64,
+        enabled: Bool,
         thresholdUsd: Double,
         multiplier: Double,
         rates: QuickPaySpendRates,
         keepHashes: Set<String> = []
     ) throws -> QuickPayLedgerRecord? {
-        guard !paymentHash.isEmpty, let thresholdSats = rates.usdToSats(thresholdUsd), thresholdSats > 0, amountSats <= thresholdSats else {
+        guard !paymentHash.isEmpty, Self.isEligible(amountSats: amountSats, enabled: enabled, thresholdUsd: thresholdUsd, rates: rates) else {
             return nil
         }
         guard let convertedCents = rates.satsToUsdCents(amountSats) else {
@@ -382,6 +380,11 @@ final class QuickPaySpendStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         lockedWriteLedger(ledger ?? QuickPayLedger(dayKey: "", spentCents: 0, records: []))
+    }
+
+    private static func isEligible(amountSats: UInt64, enabled: Bool, thresholdUsd: Double, rates: QuickPaySpendRates) -> Bool {
+        guard enabled, amountSats > 0, let thresholdSats = rates.usdToSats(thresholdUsd), thresholdSats > 0 else { return false }
+        return amountSats <= thresholdSats
     }
 
     private func lockedSpend(forDayKey dayKey: String) -> (dayKey: String, spentCents: Int64) {
