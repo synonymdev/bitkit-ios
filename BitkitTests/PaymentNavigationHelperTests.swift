@@ -725,6 +725,93 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertEqual(app.paykitReviewedAmount?.atomic, 2500)
     }
 
+    func testSparkRequestQuotesAndBindsItsOnchainAmountBeforeConfirmation() async throws {
+        snapshotAppDefaultsDomain()
+        SparkManager.pendingContactWithdrawal = nil
+        let address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"
+        let endpoint = PaykitEndpoint(methodId: "btc-regtest-p2wpkh", value: address)
+        let lightning = PaykitEndpoint(methodId: "btc-lightning-lnurl", value: "https://example.com/pay")
+        let period = PaykitBillingPeriod(startsAt: Date().addingTimeInterval(-60), endsAt: Date().addingTimeInterval(86400))
+        for isSubscription in [false, true] {
+            // The larger on-chain price also fits the LNURL range, but must not revive that direct route.
+            for onchainRate in ["0.000021", "0.00005"] {
+                let rates = [ConversionRate(asset: "btc-lightning", value: "0.00003"),
+                             ConversionRate(asset: "btc-regtest", value: onchainRate)]
+                let quote = PaymentConversionQuoteRecord(eventId: "bound", billingPeriod: period.sdkValue, rates: rates,
+                                                         validFrom: period.sdkValue.startsAt, expiresAt: period.sdkValue.endsAt, outboundStatus: nil)
+                var newer = quote
+                newer.eventId = "newer"
+                newer.rates = [ConversionRate(asset: "btc", value: "0.0001")]
+                let request = try incomingPaymentRequest(
+                    endpointIdentifier: lightning.methodId, additionalEndpointIdentifiers: [endpoint.methodId],
+                    amount: PaymentRequestAmount(value: "2.50", asset: "usd"),
+                    conversion: isSubscription ? .perPeriod : .fixed(rates: rates),
+                    billingPeriod: isSubscription ? period : nil, quotes: isSubscription ? [quote, newer] : []
+                )
+                let app = AppViewModel()
+                app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+                app.selectedWalletToPayFrom = .lightning
+                app.lnurlPayData = LnurlPayData(uri: lightning.value, callback: lightning.value, minSendable: 10_000_000,
+                                                maxSendable: 100_000_000, metadataStr: "[]", commentAllowed: nil,
+                                                allowsNostr: false, nostrPubkey: nil)
+                app.paykitPaymentTerms = try request.payment(using: .bitcoinLightningLnurl, quoteId: isSubscription ? "bound" : nil)
+                app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
+                XCTAssertEqual(app.paykitReviewedAmount?.atomic, 7500)
+                let expected = try request.payment(using: .regtestOnchainP2wpkh, quoteId: isSubscription ? "bound" : nil)
+                var quotedAmounts: [UInt64] = []
+                let outcome = await app.routeContactPayment(
+                    PaykitRouteUi(endpoints: [lightning, endpoint], offersSparkLeg: true), amountSats: 7500,
+                    source: .spending, lightningSpendableSats: 50000, onchainSpendableSats: 0, request: request,
+                    quoteLegs: { endpoints, amount in
+                        quotedAmounts.append(amount)
+                        XCTAssertEqual(endpoints, [endpoint])
+                        return [ServiceRouteLeg(service: SparkManager.routeService, endpoint: endpoint, deliveredSat: amount,
+                                                debitSat: amount + 123, atomicity: "trusted", validUntilUnix: 0)]
+                    }
+                )
+                XCTAssertEqual(outcome, .leg)
+                XCTAssertEqual(quotedAmounts, [expected.amount.atomic])
+                XCTAssertEqual(app.paykitRoute?.deliveredSat, expected.amount.atomic)
+                XCTAssertEqual(app.paykitRoute?.totalFeeSat, 123)
+                XCTAssertEqual(app.paykitPaymentTerms, expected)
+                XCTAssertEqual(app.paykitReviewedAmount, expected.amount)
+                XCTAssertEqual(app.paykitPaymentMethod, .regtestOnchainP2wpkh)
+            }
+        }
+    }
+
+    func testSparkRepricingCannotRestoreTermsAfterFundingSourceChanges() async throws {
+        snapshotAppDefaultsDomain()
+        SparkManager.pendingContactWithdrawal = nil
+        let endpoint = PaykitEndpoint(methodId: "btc-regtest-p2wpkh", value: "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x")
+        let request = try incomingPaymentRequest(
+            endpointIdentifier: endpoint.methodId,
+            amount: PaymentRequestAmount(value: "2.50", asset: "usd"),
+            conversion: .fixed(rates: [ConversionRate(asset: "btc-lightning", value: "0.00003"),
+                                       ConversionRate(asset: "btc-regtest", value: "0.000021")])
+        )
+        let app = AppViewModel()
+        app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+        app.selectedWalletToPayFrom = .lightning
+        let savingsTerms = try request.payment(using: .regtestOnchainP2wpkh)
+        let outcome = await app.routeContactPayment(
+            PaykitRouteUi(endpoints: [endpoint], offersSparkLeg: true), amountSats: 7500,
+            source: .spending, lightningSpendableSats: 50000, onchainSpendableSats: 0, request: request,
+            quoteLegs: { _, amount in
+                app.selectedWalletToPayFrom = .onchain
+                app.paykitPaymentTerms = savingsTerms
+                app.paykitReviewedAmount = savingsTerms.amount
+                return [ServiceRouteLeg(service: SparkManager.routeService, endpoint: endpoint, deliveredSat: amount,
+                                        debitSat: amount + 123, atomicity: "trusted", validUntilUnix: 0)]
+            }
+        )
+        XCTAssertEqual(outcome, .stale)
+        XCTAssertNil(app.paykitRoute?.serviceLeg)
+        XCTAssertEqual(app.selectedWalletToPayFrom, .onchain)
+        XCTAssertEqual(app.paykitPaymentTerms, savingsTerms)
+        XCTAssertEqual(app.paykitReviewedAmount, savingsTerms.amount)
+    }
+
     private func incomingPaymentRequest(
         endpointIdentifier: String,
         additionalEndpointIdentifiers: [String] = [],

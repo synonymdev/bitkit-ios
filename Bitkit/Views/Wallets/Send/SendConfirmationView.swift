@@ -30,6 +30,7 @@ struct SendConfirmationView: View {
 
     @State private var showDetails = false
     @State private var routedIncomingRequestId: PaykitPaymentRequest.ID?
+    @State private var routingConfirmationId: UUID?
     /// Set when Confirm picks a request's source itself, so that switch isn't routed twice.
     @State private var skipNextSourceReroute = false
     @State private var refusedRouteSource: WalletType?
@@ -429,7 +430,7 @@ struct SendConfirmationView: View {
                     : t("wallet__send_swipe"),
                 accentColor: accentColor,
                 isDisabled: isSwipeDisabled,
-                isLoading: walletSwitchContext != nil || Self.isSwipeLoading(
+                isLoading: routingConfirmationId != nil || walletSwitchContext != nil || Self.isSwipeLoading(
                     hasStartedAutomaticPayment: hasStartedAutomaticPayment,
                     isFeeRateMissing: isFeeRateMissing,
                     feeRateLoadFailed: wallet.feeRateLoadFailed,
@@ -585,7 +586,7 @@ struct SendConfirmationView: View {
         guard !requiresAmountReview, Self.canStartAutomaticPayment(
             shouldAutomaticallyPay: shouldAutomaticallyPay,
             hasStartedAutomaticPayment: hasStartedAutomaticPayment,
-            isSetupPending: isSetupPending,
+            isSetupPending: isSetupPending || routingConfirmationId != nil,
             isPreparingWallet: walletSwitchContext != nil,
             isRouteRefused: refusedRouteSource == app.selectedWalletToPayFrom
         ) else { return }
@@ -946,7 +947,7 @@ struct SendConfirmationView: View {
     }
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
-        guard !isSubmittingPayment, !isAuthorizingPayment else { return }
+        guard !isSubmittingPayment, !isAuthorizingPayment, routingConfirmationId == nil else { return }
         if isAutomatic, app.contactPaymentContext?.incomingPaymentRequest != nil,
            app.selectedWalletToPayFrom == .lightning, app.paykitRoute?.serviceLeg == nil, wallet.routingFeeEstimateSats == nil
         {
@@ -1290,7 +1291,7 @@ struct SendConfirmationView: View {
             isHardwareConfirmationUnavailable: isHardwareConfirmationUnavailable,
             feeRate: wallet.selectedFeeRateSatsPerVByte,
             isPreparingRequest: preparingRequest != nil,
-            isSetupPending: isRequestSetupPending,
+            isSetupPending: isRequestSetupPending || routingConfirmationId != nil,
             isPreparingWallet: walletSwitchContext != nil,
             isAmountReviewRequired: requiresAmountReview,
             isPreparingOnchainSend: isPreparingOnchainSend,
@@ -1415,21 +1416,33 @@ struct SendConfirmationView: View {
             amountSats = route.deliveredSat ?? wallet.sendAmountSats ?? 0
         }
         guard amountSats > 0 else { return }
-        if let request {
-            routedIncomingRequestId = request.id
-            // A request has no amount screen to pick its source, so pick it as that screen would: Savings when it covers
-            // the amount and fee, otherwise Spending, where the Spark leg can carry it.
-            if !sourceChanged, app.selectedWalletToPayFrom == .onchain, app.scannedLightningInvoice == nil, app.lnurlPayData == nil,
-               await Self.requestStartsOnSpending(
-                   savingsSendableSats: savingsSendableSats(),
-                   amountSats: amountSats,
-                   offersSparkLeg: route.offersSparkLeg
-               )
-            {
-                skipNextSourceReroute = true
-                app.selectedWalletToPayFrom = .lightning
+        let routingId = UUID()
+        routingConfirmationId = routingId
+        defer {
+            if routingConfirmationId == routingId {
+                routingConfirmationId = nil
             }
         }
+        let generation = app.paykitRoutingGeneration
+        func isCurrentPreflight() -> Bool {
+            !Task.isCancelled && routingConfirmationId == routingId && app.contactPaymentContext?.id == context.id
+                && app.paykitRoutingGeneration == generation && !app.paykitUsesUsdt && !hwSend.isActive
+        }
+        if request != nil,
+           // A request has no amount screen to pick its source, so pick it as that screen would: Savings when it covers
+           // the amount and fee, otherwise Spending, where the Spark leg can carry it.
+           !sourceChanged, app.selectedWalletToPayFrom == .onchain, app.scannedLightningInvoice == nil, app.lnurlPayData == nil,
+           await Self.requestStartsOnSpending(
+               savingsSendableSats: savingsSendableSats(),
+               amountSats: amountSats,
+               offersSparkLeg: route.offersSparkLeg
+           )
+        {
+            guard isCurrentPreflight() else { return }
+            skipNextSourceReroute = true
+            app.selectedWalletToPayFrom = .lightning
+        }
+        guard isCurrentPreflight() else { return }
         let walletType = app.selectedWalletToPayFrom
         let source: PaykitRouteService.Source = walletType == .lightning ? .spending : .savings
         let outcome = await app.routeContactPayment(
@@ -1440,6 +1453,14 @@ struct SendConfirmationView: View {
             onchainSpendableSats: source == .savings ? UInt64(max(0, wallet.spendableOnchainBalanceSats)) : 0,
             request: request
         )
+        guard routingConfirmationId == routingId, outcome != .stale, !Task.isCancelled else { return }
+        routedIncomingRequestId = request?.id
+        if outcome == .leg || outcome == .direct, let terms = app.paykitPaymentTerms, request != nil {
+            wallet.sendAmountSats = terms.amount.atomic
+            if sourceChanged {
+                walletSwitchContext = sendContext
+            }
+        }
         // The first call when Confirm opens keeps a refusal too, so a request with no route offers no swipe.
         refusedRouteSource = Self.refusedRouteSource(after: outcome, on: walletType, previous: refusedRouteSource)
         if Self.reroutePaysLnurl(

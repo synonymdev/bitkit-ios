@@ -30,8 +30,9 @@ Spark (Lightning without channels) needs a Breez API key on mainnet. Provide it 
 
 - Store it in the macOS keychain item `BREEZ_API_KEY`, which the build reads when no build setting sets the key:
   ```bash
-  security add-generic-password -U -a "$USER" -s BREEZ_API_KEY -w
+  printf 'add-generic-password -U -a %s -s BREEZ_API_KEY -w %s\n' "$USER" "$(pbpaste)" | security -i && pbcopy </dev/null
   ```
+  Copy the key first. The command passes the key on stdin, so it never shows in a process list. It then clears the clipboard. The bare `-w` prompt keeps only 128 characters, which cuts the key short. The build stops when a set key is not a complete certificate, and its error names the source to fix.
 - Or copy `Secrets.xcconfig.template` to `Secrets.xcconfig` (gitignored) and paste the key after `BREEZ_API_KEY =`.
 
 Without it the app builds and Spark stays off on mainnet; regtest needs no key.

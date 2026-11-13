@@ -129,6 +129,43 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         await fulfillment(of: [returned], timeout: 8)
     }
 
+    func testCancelledRequestRoutingPreflightRunsAgainAfterReturningFromTags() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let request = try onchainRequest(isQuoted: false)
+        let app = AppViewModel()
+        app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+        app.scannedOnchainInvoice = invoice
+        app.selectedWalletToPayFrom = .onchain
+        app.paykitRoute = PaykitRouteUi(
+            endpoints: [PaykitEndpoint(methodId: "btc-regtest-p2wpkh", value: invoice.address)], offersSparkLeg: true
+        )
+        let wallet = ControlledSendWallet(operation: .maximumSendable, suspendsResumedPreparation: true)
+        wallet.sendAmountSats = 2500
+        wallet.spendableOnchainBalanceSats = 10000
+        wallet.selectedFeeRateSatsPerVByte = 2
+        let sheets = SheetViewModel()
+        sheets.activeSheetConfiguration = SheetConfiguration(id: .send, data: nil)
+        let navigation = SendConfirmationTestNavigation()
+        navigation.path = []
+        let window = host(app: app, wallet: wallet, sheets: sheets,
+                          path: Binding(get: { navigation.path }, set: { navigation.path = $0 }),
+                          navigation: navigation, confirmationIsRoot: true)
+        defer { wallet.resume(); close(window) }
+        await fulfillment(of: [wallet.started], timeout: 3)
+        navigation.path.append(.tag)
+        try await navigation.waitForAppearance(.tag)
+        wallet.resume()
+        await fulfillment(of: [wallet.finished], timeout: 3)
+        XCTAssertTrue(wallet.wasCancelled)
+        XCTAssertNil(app.paykitRoute?.serviceLeg)
+        navigation.path.removeLast()
+        try await navigation.waitForAppearance(.confirm)
+        await fulfillment(of: [wallet.resumedStarted], timeout: 3)
+        XCTAssertEqual(wallet.preparationCount, 2, "Cancelled routing must not mark this request as already routed")
+        wallet.resume()
+    }
+
     func testFixedLightningReviewUsesInvoiceAmountAfterEditingAnotherFundingSource() async throws {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
@@ -1467,7 +1504,7 @@ private final class SendConfirmationTestNavigation {
 
 @MainActor
 private final class ControlledSendWallet: WalletViewModel {
-    enum Operation { case fee, manualUtxos, selection }
+    enum Operation { case fee, manualUtxos, selection, maximumSendable }
 
     let started = XCTestExpectation(description: "Send preparation suspended")
     let finished = XCTestExpectation(description: "Send preparation resumed")
@@ -1531,7 +1568,10 @@ private final class ControlledSendWallet: WalletViewModel {
     }
 
     override func calculateMaxSendableAmount(address: String, satsPerVByte: UInt32, isCurrentSend: () -> Bool = { true }) async throws -> UInt64 {
-        UInt64(max(0, spendableOnchainBalanceSats - 10))
+        if operation == .maximumSendable {
+            try await suspend()
+        }
+        return UInt64(max(0, spendableOnchainBalanceSats - 10))
     }
 
     override func calculateTotalFee(address: String, amountSats: UInt64, satsPerVByte: UInt32,
