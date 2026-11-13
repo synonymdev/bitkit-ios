@@ -1,18 +1,6 @@
 @testable import Bitkit
 import XCTest
 
-extension SettingsViewModel {
-    /// Stores QuickPay settings the way a restore does, since their setters are private: write the defaults, then
-    /// re-read them. A value left nil keeps the one the settings report now.
-    func storeQuickpaySettings(enabled: Bool? = nil, amount: Double? = nil, dailyLimitMultiplier: Double? = nil) {
-        let defaults = UserDefaults.standard
-        defaults.set(enabled ?? enableQuickpay, forKey: "enableQuickpay")
-        defaults.set(amount ?? quickpayAmount, forKey: "quickpayAmount")
-        defaults.set(dailyLimitMultiplier ?? quickpayDailyLimitMultiplier, forKey: "quickpayDailyLimitMultiplier")
-        reloadQuickpaySettingsFromDefaults()
-    }
-}
-
 @MainActor
 final class QuickpaySettingsTests: XCTestCase {
     private let settings = SettingsViewModel.shared
