@@ -708,6 +708,25 @@ final class SparkManager: ChannelFreeLightningRail {
         return lastSyncedAt > seconds
     }
 
+    nonisolated func lightningSendStatus(bolt11: String) async throws -> LDKNode.PaymentStatus? {
+        let response = try await requireSdk().fetchLightningSendStatus(request: FetchLightningSendStatusRequest(invoice: bolt11))
+        return response.status.map(Self.ldkStatus)
+    }
+
+    nonisolated func mayPayBySparkTransfer(bolt11: String, sats: UInt64?) async throws -> Bool {
+        // Only then does the invoice's Spark address matter, so no other network prepares the payment for it.
+        guard Self.prefersSpark else { return false }
+        let prepared = try await prepareSend(paymentRequest: bolt11, amountSats: sats)
+        guard case let .bolt11Invoice(_, sparkTransferFeeSats, _) = prepared.paymentMethod else { return false }
+        return Self.paysBySparkTransfer(prefersSpark: Self.prefersSpark, sparkTransferFeeSats: sparkTransferFeeSats)
+    }
+
+    /// The SDK quotes a Spark transfer fee only for an invoice that carries a Spark address, and sends to that address
+    /// only when the send prefers Spark.
+    nonisolated static func paysBySparkTransfer(prefersSpark: Bool, sparkTransferFeeSats: UInt64?) -> Bool {
+        prefersSpark && sparkTransferFeeSats != nil
+    }
+
     nonisolated func lightningPayments() async throws -> [ChannelFreeRailPayment] {
         let payments = try await requireSdk().listPayments(request: ListPaymentsRequest(sortAscending: false)).payments
         return payments.compactMap { payment in
