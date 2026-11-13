@@ -413,6 +413,11 @@ final class WakeSeenStoreTests: XCTestCase {
         XCTAssertFalse(store.claim(id: "wake-\(WakeSeenStore.maxEntries)", deadline: 10000, now: 1000))
     }
 
+    func testADeadlineNearTheTopOfUInt64DoesNotTrap() {
+        XCTAssertTrue(WakeSeenStore(directory: directory).claim(id: "a", deadline: .max, now: 1000))
+        XCTAssertTrue(WakeSeenStore(directory: directory).claim(id: "b", deadline: nil, now: .max))
+    }
+
     func testAnUnusableStoreLetsTheWakeThrough() throws {
         let blocked = directory.appendingPathComponent("file")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

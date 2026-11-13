@@ -24,6 +24,13 @@ final class WakeTimestampTests: XCTestCase {
             "One signed with a clock too far ahead was never accepted"
         )
     }
+
+    func testGatewayValuesNearTheTopOfUInt64DoNotTrap() {
+        XCTAssertEqual(WakeTimestamp.saturatingAdd(.max, 1), .max)
+        XCTAssertEqual(WakeTimestamp.next(now: 1000, last: .max), .max)
+        XCTAssertEqual(WakeTimestamp.retry(serverTime: .max, last: 1000), .max)
+        XCTAssertEqual(WakeTimestamp.retry(serverTime: .max - 10, last: .max - 5), .max - 4)
+    }
 }
 
 final class WakeRegistrationPolicyTests: XCTestCase {
@@ -301,6 +308,19 @@ final class WakeRegistrarTests: XCTestCase {
         }
         XCTAssertEqual(sent.count, 2)
         XCTAssertNil(record.device)
+    }
+
+    func testAnImplausibleGatewayClockIsNeitherSignedNorKept() async throws {
+        let stale = WakeError.GatewayRejected(status: 401, code: "stale_timestamp", detail: "", serverTime: .max, retryAfterSecs: nil)
+
+        do {
+            _ = try await register(send: { _ in throw stale })
+            XCTFail("Registered")
+        } catch {
+            XCTAssertEqual(error as? WakeError, stale)
+        }
+        XCTAssertEqual(sent.map(\.timestamp), [Self.now])
+        XCTAssertEqual(record.lastTimestamp, Self.now)
     }
 
     func testATimestampIsKeptWhenTheAnswerIsLost() async throws {

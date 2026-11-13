@@ -214,7 +214,9 @@ struct WakeRegistrar {
         let registration: WakeRegistration
         do {
             registration = try await attempt(WakeTimestamp.next(now: now(), last: lastTimestamp))
-        } catch let WakeError.GatewayRejected(401, "stale_timestamp", _, serverTime?, _) {
+        } catch let WakeError.GatewayRejected(401, "stale_timestamp", _, serverTime?, _)
+            where WakeTimestamp.plausibleServerTimes.contains(serverTime)
+        {
             Logger.warn("Wake gateway clock differs from the device's, signing again with its time", context: "Wake")
             registration = try await attempt(WakeTimestamp.retry(serverTime: serverTime, last: lastTimestamp))
         }

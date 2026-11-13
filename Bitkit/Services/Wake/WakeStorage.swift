@@ -70,17 +70,26 @@ enum WakeTimestamp {
     /// How far the gateway lets `ts` stray from its clock.
     static let maxSkewSecs: UInt64 = 600
 
+    /// Gateway clocks outside 2020 to 2100 are refused, not signed and kept as `lastTimestamp`.
+    static let plausibleServerTimes: ClosedRange<UInt64> = 1_577_836_800 ... 4_102_444_800
+
     /// `max(now, last + 1)`, so a relaunch within the same second or a clock that stepped back is not refused as stale.
     static func next(now: UInt64, last: UInt64?) -> UInt64 {
         guard let last else { return now }
-        return max(now, last + 1)
+        return max(now, saturatingAdd(last, 1))
     }
 
     /// The timestamp to sign again with after a 401 `stale_timestamp`, which carries the gateway's clock. A `last` too far
     /// ahead of that clock was never accepted, so only an earlier one has to be passed.
     static func retry(serverTime: UInt64, last: UInt64?) -> UInt64 {
-        guard let last, last < serverTime + maxSkewSecs else { return serverTime }
-        return max(serverTime, last + 1)
+        guard let last, last < saturatingAdd(serverTime, maxSkewSecs) else { return serverTime }
+        return max(serverTime, saturatingAdd(last, 1))
+    }
+
+    /// The gateway sends any `u64`, so sums stop at `UInt64.max` instead of trapping.
+    static func saturatingAdd(_ lhs: UInt64, _ rhs: UInt64) -> UInt64 {
+        let (sum, overflow) = lhs.addingReportingOverflow(rhs)
+        return overflow ? .max : sum
     }
 
     static var now: UInt64 {

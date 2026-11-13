@@ -20,7 +20,8 @@ final class WakeSeenStore {
     /// Records `id` and returns true, or returns false when this process or another already recorded it. When the store
     /// cannot be used the wake is let through, since dropping one loses more than doing its work twice.
     func claim(id: String, deadline: UInt64?, now: UInt64 = WakeTimestamp.now) -> Bool {
-        let expiresAt = deadline.map { $0 + Self.retentionAfterDeadlineSecs } ?? now + Self.retentionWithoutDeadlineSecs
+        let expiresAt = deadline.map { WakeTimestamp.saturatingAdd($0, Self.retentionAfterDeadlineSecs) }
+            ?? WakeTimestamp.saturatingAdd(now, Self.retentionWithoutDeadlineSecs)
         do {
             return try withExclusiveLock {
                 var entries = loadEntries().filter { $0.value > now }
