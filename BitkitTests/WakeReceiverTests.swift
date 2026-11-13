@@ -274,6 +274,24 @@ final class WakeReceiverTests: XCTestCase {
         XCTAssertTrue(acks.calls.isEmpty)
     }
 
+    func testAFailedAckIsSentAgainWithoutRedoingTheWork() async throws {
+        let acks = AckRecorder(failure: WakeError.RequestFailed(reason: "offline"))
+        var handledCount = 0
+        let receiver = try makeReceiver(handlers: WakeHandlerRegistry(["blocktank.incomingHtlc": { _ in handledCount += 1 }]), acks: acks)
+        let push = try vector("apns_v1_background").pushJson
+
+        let first = await receiver.receive(pushJson: push)
+        acks.failure = nil
+        let second = await receiver.receive(pushJson: push)
+        let third = await receiver.receive(pushJson: push)
+
+        XCTAssertEqual(first, .acknowledged(id: Self.backgroundWakeId, topic: "blocktank.incomingHtlc", outcome: .handled, isDelivered: false))
+        XCTAssertEqual(second, .acknowledged(id: Self.backgroundWakeId, topic: "blocktank.incomingHtlc", outcome: .handled, isDelivered: true))
+        XCTAssertEqual(third, .duplicate(id: Self.backgroundWakeId))
+        XCTAssertEqual(handledCount, 1)
+        XCTAssertEqual(acks.calls.map(\.outcome), [.handled, .handled])
+    }
+
     func testAnAckThatDoesNotReachTheGatewayIsReported() async throws {
         let acks = AckRecorder(failure: WakeError.RequestFailed(reason: "offline"))
         let receiver = try makeReceiver(handlers: .app, acks: acks)
@@ -371,7 +389,7 @@ private final class AckRecorder {
     }
 
     private(set) var calls: [Call] = []
-    private let failure: Error?
+    var failure: Error?
 
     init(failure: Error? = nil) {
         self.failure = failure
@@ -400,33 +418,44 @@ final class WakeSeenStoreTests: XCTestCase {
         let app = WakeSeenStore(directory: directory)
         let notificationExtension = WakeSeenStore(directory: directory)
 
-        XCTAssertTrue(app.claim(id: "a", deadline: 2000, now: 1000))
-        XCTAssertFalse(notificationExtension.claim(id: "a", deadline: 2000, now: 1000))
-        XCTAssertFalse(app.claim(id: "a", deadline: 2000, now: 1500))
-        XCTAssertTrue(notificationExtension.claim(id: "b", deadline: 2000, now: 1000))
+        XCTAssertEqual(app.claim(id: "a", deadline: 2000, now: 1000), .new)
+        XCTAssertEqual(notificationExtension.claim(id: "a", deadline: 2000, now: 1000), .taken)
+        XCTAssertEqual(app.claim(id: "a", deadline: 2000, now: 1500), .taken)
+        XCTAssertEqual(notificationExtension.claim(id: "b", deadline: 2000, now: 1000), .new)
     }
 
     func testAnIdIsForgottenAnHourAfterItsDeadline() {
         let store = WakeSeenStore(directory: directory)
 
-        XCTAssertTrue(store.claim(id: "a", deadline: 2000, now: 1000))
-        XCTAssertFalse(store.claim(id: "a", deadline: 2000, now: 2000 + WakeSeenStore.retentionAfterDeadlineSecs - 1))
-        XCTAssertTrue(store.claim(id: "a", deadline: 2000, now: 2000 + WakeSeenStore.retentionAfterDeadlineSecs))
+        XCTAssertEqual(store.claim(id: "a", deadline: 2000, now: 1000), .new)
+        XCTAssertEqual(store.claim(id: "a", deadline: 2000, now: 2000 + WakeSeenStore.retentionAfterDeadlineSecs - 1), .taken)
+        XCTAssertEqual(store.claim(id: "a", deadline: 2000, now: 2000 + WakeSeenStore.retentionAfterDeadlineSecs), .new)
     }
 
     func testTheStoreKeepsTheNewestIds() {
         let store = WakeSeenStore(directory: directory)
         for index in 0 ... WakeSeenStore.maxEntries {
-            XCTAssertTrue(store.claim(id: "wake-\(index)", deadline: 10000 + UInt64(index), now: 1000))
+            XCTAssertEqual(store.claim(id: "wake-\(index)", deadline: 10000 + UInt64(index), now: 1000), .new)
         }
 
-        XCTAssertTrue(store.claim(id: "wake-0", deadline: 10000, now: 1000), "The oldest id made room for the newest")
-        XCTAssertFalse(store.claim(id: "wake-\(WakeSeenStore.maxEntries)", deadline: 10000, now: 1000))
+        XCTAssertEqual(store.claim(id: "wake-0", deadline: 10000, now: 1000), .new, "The oldest id made room for the newest")
+        XCTAssertEqual(store.claim(id: "wake-\(WakeSeenStore.maxEntries)", deadline: 10000, now: 1000), .taken)
     }
 
     func testADeadlineNearTheTopOfUInt64DoesNotTrap() {
-        XCTAssertTrue(WakeSeenStore(directory: directory).claim(id: "a", deadline: .max, now: 1000))
-        XCTAssertTrue(WakeSeenStore(directory: directory).claim(id: "b", deadline: nil, now: .max))
+        XCTAssertEqual(WakeSeenStore(directory: directory).claim(id: "a", deadline: .max, now: 1000), .new)
+        XCTAssertEqual(WakeSeenStore(directory: directory).claim(id: "b", deadline: nil, now: .max), .new)
+    }
+
+    func testAnUnacknowledgedOutcomeIsKeptUntilTheAckLands() {
+        let app = WakeSeenStore(directory: directory)
+        let notificationExtension = WakeSeenStore(directory: directory)
+
+        XCTAssertEqual(app.claim(id: "a", deadline: 2000, now: 1000), .new)
+        app.recordUnacknowledged(id: "a", outcome: .noHandler)
+        XCTAssertEqual(notificationExtension.claim(id: "a", deadline: 2000, now: 1000), .unacknowledged(.noHandler))
+        notificationExtension.recordAcknowledged(id: "a")
+        XCTAssertEqual(app.claim(id: "a", deadline: 2000, now: 1000), .taken)
     }
 
     func testAnUnusableStoreLetsTheWakeThrough() throws {
@@ -435,7 +464,7 @@ final class WakeSeenStoreTests: XCTestCase {
         try Data().write(to: blocked)
         let store = WakeSeenStore(directory: blocked)
 
-        XCTAssertTrue(store.claim(id: "a", deadline: 2000, now: 1000))
-        XCTAssertTrue(store.claim(id: "a", deadline: 2000, now: 1000))
+        XCTAssertEqual(store.claim(id: "a", deadline: 2000, now: 1000), .new)
+        XCTAssertEqual(store.claim(id: "a", deadline: 2000, now: 1000), .new)
     }
 }

@@ -127,9 +127,15 @@ struct WakeReceiver {
         guard envelope.version >= 1, let id = envelope.id else {
             return .legacy(topic: envelope.topic)
         }
-        guard seenStore.claim(id: id, deadline: envelope.deadline, now: now()) else {
+        switch seenStore.claim(id: id, deadline: envelope.deadline, now: now()) {
+        case .new:
+            break
+        case .taken:
             Logger.info("Skipped wake \(id) on \(envelope.topic), already taken on", context: "Wake")
             return .duplicate(id: id)
+        case let .unacknowledged(outcome):
+            // The work is done; only the gateway did not hear about it.
+            return await sendAck(id: id, topic: envelope.topic, outcome: outcome, gatewayUrl: gatewayUrl, credentials: credentials)
         }
         if let deadline = envelope.deadline, now() > deadline {
             Logger.info("Dropped wake \(id) on \(envelope.topic), past its deadline", context: "Wake")
@@ -137,13 +143,25 @@ struct WakeReceiver {
         }
 
         let outcome = await handlers.outcome(for: envelope)
+        seenStore.recordUnacknowledged(id: id, outcome: outcome)
+        return await sendAck(id: id, topic: envelope.topic, outcome: outcome, gatewayUrl: gatewayUrl, credentials: credentials)
+    }
+
+    private func sendAck(
+        id: String,
+        topic: String,
+        outcome: WakeAckOutcome,
+        gatewayUrl: String,
+        credentials: WakeCredentials
+    ) async -> WakeReceipt {
         do {
             try await acknowledge(gatewayUrl, credentials.deviceSecret, id, outcome)
-            Logger.info("Acknowledged wake \(id) on \(envelope.topic) as \(outcome)", context: "Wake")
-            return .acknowledged(id: id, topic: envelope.topic, outcome: outcome, isDelivered: true)
+            seenStore.recordAcknowledged(id: id)
+            Logger.info("Acknowledged wake \(id) on \(topic) as \(outcome)", context: "Wake")
+            return .acknowledged(id: id, topic: topic, outcome: outcome, isDelivered: true)
         } catch {
-            Logger.warn("Failed to acknowledge wake \(id) on \(envelope.topic): \(error)", context: "Wake")
-            return .acknowledged(id: id, topic: envelope.topic, outcome: outcome, isDelivered: false)
+            Logger.warn("Failed to acknowledge wake \(id) on \(topic), trying again if it is delivered again: \(error)", context: "Wake")
+            return .acknowledged(id: id, topic: topic, outcome: outcome, isDelivered: false)
         }
     }
 }
