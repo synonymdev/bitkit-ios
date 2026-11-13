@@ -197,8 +197,8 @@ final class QuickPaySpendStore: @unchecked Sendable {
         multiplier: Double,
         rates: QuickPaySpendRates
     ) -> Bool {
-        guard Self.isEligible(amountSats: amountSats, enabled: enabled, thresholdUsd: thresholdUsd, rates: rates) else { return false }
-        guard let convertedCents = rates.satsToUsdCents(amountSats) else { return false }
+        guard Self.isEligible(amountSats: amountSats, enabled: enabled, thresholdUsd: thresholdUsd, rates: rates),
+              let convertedCents = rates.satsToUsdCents(amountSats) else { return false }
 
         let reserveCents = QuickPayLimits.reserveCents(convertedCents: convertedCents, thresholdUsd: thresholdUsd, amountSats: amountSats)
         let capCents = QuickPayLimits.capCents(thresholdUsd: thresholdUsd, multiplier: multiplier)

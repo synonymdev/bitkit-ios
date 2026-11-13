@@ -932,7 +932,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertEqual(store.spentCentsToday(), 500)
     }
 
-    func testDisabledLnurlFallsBackToConfirmBeforeFetchingInvoice() async throws {
+    func testDisabledLnurlFallsBackToConfirmBeforeFetchingInvoice() async {
         settings.enableQuickpay = false
         var sent = false
         let app = AppViewModel()
