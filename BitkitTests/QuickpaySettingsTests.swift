@@ -9,65 +9,44 @@ extension SettingsViewModel {
         defaults.set(enabled ?? enableQuickpay, forKey: "enableQuickpay")
         defaults.set(amount ?? quickpayAmount, forKey: "quickpayAmount")
         defaults.set(dailyLimitMultiplier ?? quickpayDailyLimitMultiplier, forKey: "quickpayDailyLimitMultiplier")
-        syncAppStorageFromDefaults()
+        reloadQuickpaySettingsFromDefaults()
     }
 }
 
 @MainActor
 final class QuickpaySettingsTests: XCTestCase {
     private let settings = SettingsViewModel.shared
-    private var originalPinEnabled = false
 
     override func setUp() {
         super.setUp()
-        // Re-reading the stored settings writes every @AppStorage key, not only the QuickPay ones.
         snapshotAppDefaultsDomain()
-        originalPinEnabled = settings.pinEnabled
+        addTeardownBlock { @MainActor [settings] in settings.updatePinEnabledState() }
         settings.storeQuickpaySettings(enabled: false, amount: 5, dailyLimitMultiplier: 5)
         settings.pinEnabled = true
         settings.requirePinForPayments = true
     }
 
-    override func tearDown() {
-        settings.pinEnabled = originalPinEnabled
-        super.tearDown()
-    }
+    func testRaisesSaveOnlyTheirOwnSettingOnceApproved() async {
+        let raises: [(QuickpaySettingChange, (SettingsViewModel) -> Bool)] = [
+            (.enabled(true), { $0.enableQuickpay && $0.quickpayAmount == 5 && $0.quickpayDailyLimitMultiplier == 5 }),
+            (.amount(20), { !$0.enableQuickpay && $0.quickpayAmount == 20 && $0.quickpayDailyLimitMultiplier == 5 }),
+            (.dailyLimitMultiplier(10), { !$0.enableQuickpay && $0.quickpayAmount == 5 && $0.quickpayDailyLimitMultiplier == 10 }),
+        ]
+        for (change, isSaved) in raises {
+            settings.storeQuickpaySettings(enabled: false, amount: 5, dailyLimitMultiplier: 5)
+            let authorization = ControlledAuthorization()
 
-    func testEnablingWaitsForApproval() async {
-        let authorization = ControlledAuthorization()
+            let pending = settings.changeQuickpaySetting(change, authorize: { await authorization.authorize() })
 
-        let pending = settings.changeQuickpaySetting(.enabled(true), authorize: { await authorization.authorize() })
-
-        XCTAssertNotNil(pending)
-        XCTAssertFalse(settings.enableQuickpay)
-        authorization.resolve(true)
-        await pending?.value
-        XCTAssertTrue(settings.enableQuickpay)
-        XCTAssertEqual(authorization.requestCount, 1)
-    }
-
-    func testRaisingAmountWaitsForApproval() async {
-        let authorization = ControlledAuthorization()
-
-        let pending = settings.changeQuickpaySetting(.amount(20), authorize: { await authorization.authorize() })
-
-        XCTAssertNotNil(pending)
-        XCTAssertEqual(settings.quickpayAmount, 5)
-        authorization.resolve(true)
-        await pending?.value
-        XCTAssertEqual(settings.quickpayAmount, 20)
-    }
-
-    func testRaisingDailyLimitMultiplierWaitsForApproval() async {
-        let authorization = ControlledAuthorization()
-
-        let pending = settings.changeQuickpaySetting(.dailyLimitMultiplier(10), authorize: { await authorization.authorize() })
-
-        XCTAssertNotNil(pending)
-        XCTAssertEqual(settings.quickpayDailyLimitMultiplier, 5)
-        authorization.resolve(true)
-        await pending?.value
-        XCTAssertEqual(settings.quickpayDailyLimitMultiplier, 10)
+            XCTAssertNotNil(pending, "\(change)")
+            XCTAssertFalse(settings.enableQuickpay, "\(change)")
+            XCTAssertEqual(settings.quickpayAmount, 5, "\(change)")
+            XCTAssertEqual(settings.quickpayDailyLimitMultiplier, 5, "\(change)")
+            authorization.resolve(true)
+            await pending?.value
+            XCTAssertTrue(isSaved(settings), "\(change)")
+            XCTAssertEqual(authorization.requestCount, 1, "\(change)")
+        }
     }
 
     func testDeniedRaisesSaveNothing() async {
@@ -143,18 +122,6 @@ final class QuickpaySettingsTests: XCTestCase {
         let next = settings.changeQuickpaySetting(.amount(5), authorize: { await authorization.authorize() })
         XCTAssertNotNil(next, "The dropped raise must not block the next one")
         await next?.value
-        XCTAssertEqual(settings.quickpayAmount, 5)
-    }
-
-    func testApprovalSavesOnlyTheApprovedSetting() async {
-        let authorization = ControlledAuthorization()
-        let pending = settings.changeQuickpaySetting(.dailyLimitMultiplier(10), authorize: { await authorization.authorize() })
-
-        authorization.resolve(true)
-        await pending?.value
-
-        XCTAssertEqual(settings.quickpayDailyLimitMultiplier, 10)
-        XCTAssertFalse(settings.enableQuickpay)
         XCTAssertEqual(settings.quickpayAmount, 5)
     }
 }

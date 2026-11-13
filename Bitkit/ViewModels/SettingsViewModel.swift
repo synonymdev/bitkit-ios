@@ -320,6 +320,13 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
     }
 
+    /// Re-reads the QuickPay settings after their UserDefaults keys were written directly, as a restore does.
+    func reloadQuickpaySettingsFromDefaults() {
+        enableQuickpay = defaults.bool(forKey: "enableQuickpay")
+        quickpayAmount = defaults.double(forKey: "quickpayAmount")
+        quickpayDailyLimitMultiplier = QuickPayLimits.sanitizedMultiplier(defaults.double(forKey: "quickpayDailyLimitMultiplier"))
+    }
+
     private func applyQuickpayChange(_ change: QuickpaySettingChange) {
         switch change {
         case let .enabled(isEnabled): enableQuickpay = isEnabled
@@ -1029,7 +1036,7 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     /// Re-read UserDefaults into @AppStorage properties after a direct defaults write.
-    func syncAppStorageFromDefaults() {
+    private func syncAppStorageFromDefaults() {
         usdtPreference = UsdtPreference(rawValue: defaults.string(forKey: UsdtPreference.key) ?? "") ?? .undecided
         _swipeBalanceToHide = defaults.object(forKey: "swipeBalanceToHide") as? Bool ?? true
         defaultTransactionSpeed = TransactionSpeed(rawValue: defaults.string(forKey: "defaultTransactionSpeed") ?? "")
@@ -1037,9 +1044,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         hideBalanceOnOpen = defaults.bool(forKey: "hideBalanceOnOpen")
         readClipboard = defaults.bool(forKey: "readClipboard")
         warnWhenSendingOver100 = defaults.bool(forKey: "warnWhenSendingOver100")
-        enableQuickpay = defaults.bool(forKey: "enableQuickpay")
-        quickpayAmount = defaults.double(forKey: "quickpayAmount")
-        quickpayDailyLimitMultiplier = QuickPayLimits.sanitizedMultiplier(defaults.double(forKey: "quickpayDailyLimitMultiplier"))
+        reloadQuickpaySettingsFromDefaults()
         enableNotifications = defaults.bool(forKey: "enableNotifications")
         requirePinForPayments = defaults.bool(forKey: "requirePinForPayments")
         useBiometrics = defaults.bool(forKey: "useBiometrics")
