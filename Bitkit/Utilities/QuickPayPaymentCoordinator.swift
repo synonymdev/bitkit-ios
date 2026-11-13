@@ -242,6 +242,12 @@ final class QuickPayPaymentCoordinator {
     ) async {
         guard generation == self.generation, app.sendStateGeneration == sendStateGeneration else { return }
 
+        // LNURL hands out a new invoice per fetch, so there is no submitted payment to observe yet: with QuickPay off, skip the fetch.
+        if app.lnurlPayData != nil, !settings.enableQuickpay {
+            activePresentation?.replaceQuickPay(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
+            return
+        }
+
         var bolt11: String?
         do {
             if let lnurlPayData = app.lnurlPayData {
@@ -310,6 +316,7 @@ final class QuickPayPaymentCoordinator {
             guard try store.reserveBound(
                 paymentHash: invoiceHash,
                 amountSats: amountSats,
+                enabled: settings.enableQuickpay,
                 thresholdUsd: settings.quickpayAmount,
                 multiplier: settings.quickpayDailyLimitMultiplier,
                 rates: .live(currency),
