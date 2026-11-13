@@ -936,6 +936,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         settings.enableQuickpay = false
         var sent = false
         let app = AppViewModel()
+        let wallet = WalletViewModel()
         // The `.invalid` callback never resolves, so a fetch would surface as a failure route instead of the fallback.
         app.lnurlPayData = LnurlPayData(
             uri: "https://lnurl.invalid/pay", callback: "https://lnurl.invalid/callback",
@@ -951,12 +952,13 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             listRows: { [] }
         )
 
-        let outcome = await firstOutcome(from: coordinator, app: app)
+        let outcome = await firstOutcome(from: coordinator, app: app, wallet: wallet)
 
         XCTAssertFalse(sent)
         guard case .confirm(.lnurlPayConfirm) = outcome else {
             return XCTFail("Expected LNURL confirm fallback, got \(String(describing: outcome))")
         }
+        XCTAssertNil(wallet.sendAmountSats)
         XCTAssertEqual(store.spentCentsToday(), 0)
     }
 
