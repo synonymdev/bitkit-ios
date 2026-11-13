@@ -68,7 +68,16 @@ struct ShopMain: View {
                     sheetViewModel: sheets
                 )
             } catch {
-                app.toast(error)
+                if let toast = ShopPaymentRequest.decodingErrorToast(for: error) {
+                    app.toast(
+                        type: toast.type,
+                        title: toast.title,
+                        description: toast.description,
+                        accessibilityIdentifier: toast.accessibilityIdentifier
+                    )
+                } else {
+                    app.toast(error)
+                }
             }
         }
     }

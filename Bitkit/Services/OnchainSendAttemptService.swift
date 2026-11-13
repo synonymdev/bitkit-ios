@@ -292,6 +292,12 @@ struct OnchainSendAttempt: Codable, Equatable {
     var releaseApproved: Bool? = nil
     /// The transaction spending the original's coins back to the wallet, saved before it is broadcast.
     var releaseTxid: String? = nil
+    /// Set on a transfer from savings to the Spark deposit address, which pays no order.
+    var sparkFunding: Bool? = nil
+
+    var isSparkFunding: Bool {
+        sparkFunding == true && requestId == nil && orderId == nil
+    }
 
     var blocksNewSend: Bool {
         status.blocksNewSend || !localFollowupComplete
@@ -344,6 +350,13 @@ struct OnchainSendFollowupContext: Codable, Equatable {
     var channelId: String? = nil
 }
 
+/// A Spark funding refused before broadcast because it would send another amount, or pay a higher mining fee, than the
+/// user approved, as after the balance grew. A fixed amount's fee is bound too, as its coin selection can vary.
+struct SparkFundingChanged: Error {
+    /// The mining fee of the refused prepared send, nil when it was unknown.
+    var preparedFeeSats: UInt64?
+}
+
 struct OnchainSendTransferContext: Codable, Equatable {
     let clientBalanceSats: UInt64
     let txTotalSats: UInt64
@@ -358,6 +371,8 @@ struct OnchainSendLocalResolution {
     let amountSats: UInt64
     let contact: String?
     let activity: OnchainActivity
+    /// A recovered transfer to the Spark deposit address, which Spark must be told about and the funding flow left.
+    var isSparkFunding = false
 }
 
 protocol OnchainSendLocalFollowupHandling {
@@ -591,6 +606,8 @@ actor OnchainSendAttemptService {
         paymentIdentity: String? = nil,
         followupContext: OnchainSendFollowupContext? = nil,
         transferContext: OnchainSendTransferContext? = nil,
+        isSparkFunding: Bool = false,
+        approvedMiningFeeSats: UInt64? = nil,
         paymentDeadline: PaykitPreciseInstant? = nil,
         beforeBroadcastAttempt: () async throws -> Void = {},
         onPreDispatchFailure: (Error) async throws -> Void = { _ in throw OnchainSendAttemptError.preDispatchCleanupFailed }
@@ -613,7 +630,8 @@ actor OnchainSendAttemptService {
             amountSats: amountSats,
             isMaxAmount: isMaxAmount,
             followupContext: followupContext,
-            transferContext: transferContext
+            transferContext: transferContext,
+            isSparkFunding: isSparkFunding
         )
         nativeDispatchInProgress = attemptId
         defer { nativeDispatchInProgress = nil }
@@ -637,6 +655,12 @@ actor OnchainSendAttemptService {
                           prepared.recipientAmountSats >= originalFee,
                           prepared.recipientAmountSats <= context.txTotalSats - miningFee
                     else { throw OnchainSendAttemptError.unresolved }
+                }
+                // Savings never pay more than the Total the user confirmed, so a higher fee asks for another swipe.
+                if isSparkFunding || approvedMiningFeeSats != nil {
+                    guard prepared.recipientAmountSats == amountSats, let miningFee = prepared.miningFeeSats,
+                          let approvedFee = approvedMiningFeeSats ?? followupContext?.feeSats, miningFee <= approvedFee
+                    else { throw SparkFundingChanged(preparedFeeSats: prepared.miningFeeSats) }
                 }
                 attempt.amountSats = prepared.recipientAmountSats
                 attempt.txid = prepared.txid
@@ -869,7 +893,8 @@ actor OnchainSendAttemptService {
         amountSats: UInt64,
         isMaxAmount: Bool,
         followupContext: OnchainSendFollowupContext? = nil,
-        transferContext: OnchainSendTransferContext? = nil
+        transferContext: OnchainSendTransferContext? = nil,
+        isSparkFunding: Bool = false
     ) throws -> UUID {
         guard nativeDispatchInProgress == nil else { throw OnchainSendAttemptError.blocked(try? currentAttempt()) }
         if let previous = try currentAdmissionAttempt() {
@@ -890,7 +915,8 @@ actor OnchainSendAttemptService {
             isMaxAmount: isMaxAmount,
             status: .pending,
             followupContext: followupContext,
-            transferContext: transferContext
+            transferContext: transferContext,
+            sparkFunding: isSparkFunding ? true : nil
         )
         try store.save([attempt])
         knownAttempt = attempt
@@ -929,9 +955,22 @@ actor OnchainSendAttemptService {
         try store.save([attempt])
     }
 
+    /// The Spark funding still waiting on its outcome, so the confirm screen can keep the approval its swipe gave.
+    func unresolvedSparkFundingAttemptId() -> UUID? {
+        guard let attempt = try? currentAttempt(), attempt.isSparkFunding, attempt.status != .accepted else { return nil }
+        return attempt.id
+    }
+
     private func currentAdmissionAttempt() throws -> OnchainSendAttempt? {
         do { return try currentAttempt() }
         catch { throw OnchainSendAttemptError.unresolved }
+    }
+
+    /// The address of the send still unresolved (pending, unknown or refused, so retryable or blocking a new send), if any.
+    /// A retry always pays this same address with the same inputs.
+    func unresolvedSendAddress() -> String? {
+        guard let attempt = try? currentAttempt(), attempt.status.blocksNewSend else { return nil }
+        return attempt.address
     }
 
     private func currentAttempt() throws -> OnchainSendAttempt? {
@@ -987,7 +1026,8 @@ actor OnchainSendAttemptService {
                   saved.txId.caseInsensitiveCompare(txid) == .orderedSame, saved.txType == .sent
             else { throw OnchainSendAttemptError.localFollowupNotSaved }
             return OnchainSendLocalResolution(
-                attemptId: attempt.id, walletId: walletId, txid: txid, amountSats: saved.value, contact: saved.contact, activity: saved
+                attemptId: attempt.id, walletId: walletId, txid: txid, amountSats: saved.value, contact: saved.contact, activity: saved,
+                isSparkFunding: attempt.isSparkFunding
             )
         }
         ordinaryFollowupInProgress = attempt.id
@@ -996,7 +1036,8 @@ actor OnchainSendAttemptService {
         let activity = try await localFollowup.save(attempt)
         try acknowledgeLocalFollowup(txid: txid)
         let resolution = OnchainSendLocalResolution(
-            attemptId: attempt.id, walletId: walletId, txid: txid, amountSats: activity.value, contact: activity.contact, activity: activity
+            attemptId: attempt.id, walletId: walletId, txid: txid, amountSats: activity.value, contact: activity.contact, activity: activity,
+            isSparkFunding: attempt.isSparkFunding
         )
         Self.localResolutionSubject.send(resolution)
         return resolution
@@ -1079,11 +1120,11 @@ actor OnchainSendAttemptService {
             isTransfer: true, channelId: nil, createdAt: context.createdAt
         )])
         guard await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
-            txid: txid, address: attempt.address, amount: attempt.amountSats, fee: context.feeSats,
-            feeRate: context.feeRate, isTransfer: true,
-            feeIsExact: attempt.recoveryContext.map { $0.candidateTxids.first?.caseInsensitiveCompare(txid) != .orderedSame } ?? false
-        ), let activity = try await CoreService.shared.activity.getOnchainActivityByTxId(txid: txid),
-        activity.txType == .sent, activity.isTransfer
+                  txid: txid, address: attempt.address, amount: attempt.amountSats, fee: context.feeSats,
+                  feeRate: context.feeRate, isTransfer: true,
+                  feeIsExact: attempt.recoveryContext.map { $0.candidateTxids.first?.caseInsensitiveCompare(txid) != .orderedSame } ?? false
+              ), let activity = try await CoreService.shared.activity.getOnchainActivityByTxId(txid: txid),
+              activity.txType == .sent, activity.isTransfer
         else { throw OnchainSendAttemptError.localFollowupNotSaved }
         try acknowledgeLocalFollowup(txid: txid)
         Self.localResolutionSubject.send(OnchainSendLocalResolution(

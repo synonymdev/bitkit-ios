@@ -31,7 +31,8 @@ final class UsdtWalletUITests: XCTestCase {
             XCTAssertTrue(app.buttons["NewWallet"].waitForExistence(timeout: 5))
             app.buttons["NewWallet"].tap()
         }
-        XCTAssertTrue(app.otherElements["TotalBalance-primary"].waitForExistence(timeout: 90))
+        try app.skipIfBitcoinNodeUnavailable(waitingFor: app.otherElements["TotalBalance-primary"], timeout: 90)
+        XCTAssertTrue(app.otherElements["TotalBalance-primary"].exists)
         if app.buttons["UsdtIntroEnable"].waitForExistence(timeout: 10) {
             app.buttons["UsdtIntroEnable"].tap()
         }
@@ -50,7 +51,8 @@ final class UsdtWalletUITests: XCTestCase {
         capture(app, "USDT unknown wallet in German region")
         try tapBack(in: app)
         app.buttons["Send"].tap()
-        XCTAssertTrue(app.buttons["RecipientManual"].waitForExistence(timeout: 5))
+        try app.skipIfBitcoinNodeUnavailable(waitingFor: app.buttons["RecipientManual"], timeout: 30)
+        XCTAssertTrue(app.buttons["RecipientManual"].exists)
         app.buttons["RecipientManual"].tap()
         let input = app.textViews["RecipientInput"]
         XCTAssertTrue(input.waitForExistence(timeout: 5))

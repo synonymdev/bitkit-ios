@@ -554,9 +554,11 @@ extension PrivatePaykitService {
                     continue
                 }
 
-                guard PublicPaykitService.hasLightningRouteHints(bolt11: endpoint.value),
-                      await !hasAttemptedOutboundBolt11Payment(paymentHash: paymentHash)
-                else {
+                // Unknown while Spark can't list its payments: the invoice may be paid already, so it isn't offered.
+                guard let hasAttempted = await hasAttemptedOutboundBolt11Payment(paymentHash: paymentHash) else {
+                    continue
+                }
+                guard PublicPaykitService.hasLightningRouteHints(bolt11: endpoint.value), !hasAttempted else {
                     staleLightningPaymentHashes.insert(paymentHash)
                     continue
                 }

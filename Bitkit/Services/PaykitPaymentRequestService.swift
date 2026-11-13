@@ -595,6 +595,7 @@ enum PaykitPaymentRequestError: LocalizedError, Equatable {
     case operationInProgress
     case amountMismatch
     case subscriptionTooLong
+    case noteTooLong
 
     var errorDescription: String? {
         switch self {
@@ -608,6 +609,8 @@ enum PaykitPaymentRequestError: LocalizedError, Equatable {
             t("wallet__payment_request_mismatch")
         case .subscriptionTooLong:
             t("subscriptions__content_too_long")
+        case .noteTooLong:
+            t("wallet__payment_request_note_too_long")
         }
     }
 }
@@ -683,7 +686,7 @@ struct PaykitPaymentRequestService {
             UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
         },
         canReceiveLightning: @escaping @MainActor @Sendable () -> Bool = {
-            LightningService.shared.channels?.contains(where: \.isUsable) ?? false
+            LightningService.shared.channels?.contains(where: \.isUsable) ?? false || SparkManager.shared.isReady
         },
         marketRate: @escaping @MainActor @Sendable ()
             -> PaykitExchangeRate? = { CurrencyService.shared.loadCachedRates()?.first { $0.quote == "USD" }.map { PaykitExchangeRate(
@@ -907,10 +910,11 @@ struct PaykitPaymentRequestService {
             paymentDeadline: .at(timestamp: Self.timestamp(draft.expiresAt)),
             metadata: Paykit.PrivateJsonObject(text: metadataText)
         )
-        let record = try await sdk.proposePaymentRequest(
-            counterparty: target.publicKey,
+        let record = try await proposePaymentRequest(
+            to: target,
             terms: terms,
-            expectedIdentity: expectedIdentity
+            expectedIdentity: expectedIdentity,
+            tooLarge: .noteTooLong
         )
         let wasSent = await proposalWasSent(record, to: target.publicKey, expectedIdentity: expectedIdentity)
         let deliveryStatus = wasSent ? PaykitPaymentRequest.DeliveryStatus.sent : .queued
@@ -991,10 +995,11 @@ struct PaykitPaymentRequestService {
             proposalDate: proposalDate
         )
         try PaykitSubscriptionProposal.validate(terms)
-        let record = try await sdk.proposePaymentRequest(
-            counterparty: target.publicKey,
+        let record = try await proposePaymentRequest(
+            to: target,
             terms: terms,
-            expectedIdentity: expectedIdentity
+            expectedIdentity: expectedIdentity,
+            tooLarge: .subscriptionTooLong
         )
         let deliveryStatus = await proposalWasSent(record, to: target.publicKey, expectedIdentity: expectedIdentity)
             ? PaykitPaymentRequest.DeliveryStatus.sent
@@ -1004,6 +1009,22 @@ struct PaykitPaymentRequestService {
         }
         return subscription
     }
+
+    /// The SDK refuses a proposal that does not fit one Paykit message before queueing anything.
+    private func proposePaymentRequest(
+        to target: PaykitPaymentRequestTarget,
+        terms: Paykit.PaymentRequestTerms,
+        expectedIdentity: String,
+        tooLarge: PaykitPaymentRequestError
+    ) async throws -> Paykit.PaymentRequestRecord {
+        do {
+            return try await sdk.proposePaymentRequest(counterparty: target.publicKey, terms: terms, expectedIdentity: expectedIdentity)
+        } catch let PaykitError.Protocol(code, _) where code == Self.messageTooLargeCode {
+            throw tooLarge
+        }
+    }
+
+    static let messageTooLargeCode = "message_too_large"
 
     private func subscriptionTerms(
         _ draft: PaykitSubscriptionDraft,
@@ -2053,6 +2074,16 @@ final class PaykitPaymentRequestManager {
         }
     }
 
+    private static let declinedLifecycleStates: [Paykit.PaymentRequestLifecycleState] = [.rejected, .canceled]
+
+    /// Requests the user declined stay marked as presented while the SDK still lists them, so one never pops up again
+    /// if a later read reports it as proposed.
+    private var declinedRequestIds: Set<PaykitPaymentRequest.ID> {
+        Set(historyRequests.filter {
+            $0.direction == .incoming && Self.declinedLifecycleStates.contains($0.lifecycleState)
+        }.map(\.id))
+    }
+
     func canDismiss(_ request: PaykitPaymentRequest) -> Bool {
         retainedHardwareRetries[request.id] == nil
     }
@@ -2693,7 +2724,7 @@ final class PaykitPaymentRequestManager {
                 clockOffset: subscriptionClockOffset
             )
             let currentRequestIds = Set(pendingRequests.map(\.id))
-            presentedRequestIds.formIntersection(currentRequestIds)
+            presentedRequestIds.formIntersection(currentRequestIds.union(declinedRequestIds))
             presentationRetryAttempts = presentationRetryAttempts.filter { currentRequestIds.contains($0.key) }
             presentationRetryDeadlines = presentationRetryDeadlines.filter { currentRequestIds.contains($0.key) }
             automaticPresentationDiagnosticReasons = automaticPresentationDiagnosticReasons.filter { currentRequestIds.contains($0.key) }
@@ -2804,7 +2835,11 @@ final class PaykitPaymentRequestManager {
             historyRequests.removeAll { $0.id == request.id }
             historyRequests.insert(updatedRequest, at: 0)
             pendingRequests.removeAll { $0.id == request.id }
-            presentedRequestIds.remove(request.id)
+            if Self.declinedLifecycleStates.contains(resultingState) {
+                presentedRequestIds.insert(request.id)
+            } else {
+                presentedRequestIds.remove(request.id)
+            }
             presentationRetryAttempts.removeValue(forKey: request.id)
             presentationRetryDeadlines.removeValue(forKey: request.id)
             automaticPresentationDiagnosticReasons.removeValue(forKey: request.id)
@@ -2877,7 +2912,7 @@ final class PaykitPaymentRequestManager {
             requestedSubscriptionProposalId = nil
         }
         let requestIds = Set(pendingRequests.map(\.id))
-        presentedRequestIds.formIntersection(requestIds)
+        presentedRequestIds.formIntersection(requestIds.union(declinedRequestIds))
         presentationRetryAttempts = presentationRetryAttempts.filter { requestIds.contains($0.key) }
         presentationRetryDeadlines = presentationRetryDeadlines.filter { requestIds.contains($0.key) }
         automaticPresentationDiagnosticReasons = automaticPresentationDiagnosticReasons.filter { requestIds.contains($0.key) }

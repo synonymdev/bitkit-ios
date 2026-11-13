@@ -14,12 +14,12 @@ concurrency:
 env:
   GIT_LFS_SKIP_SMUDGE: "1"
   # Keep in step with `--minversion` in .swiftformat.
-  SWIFTFORMAT_VERSION: "0.64.0"
+  SWIFTFORMAT_VERSION: "0.64.6"
 
 jobs:
   swiftformat:
     name: SwiftFormat
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:

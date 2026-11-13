@@ -20,7 +20,8 @@ final class HomeHeaderUITests: XCTestCase {
             app.buttons["NewWallet"].tap()
         }
         let balance = app.otherElements["TotalBalance-primary"]
-        XCTAssertTrue(balance.waitForExistence(timeout: 90))
+        try app.skipIfBitcoinNodeUnavailable(waitingFor: balance, timeout: 90)
+        XCTAssertTrue(balance.exists)
         if app.buttons["UsdtIntroEnable"].waitForExistence(timeout: 10) {
             app.buttons["UsdtIntroEnable"].tap()
             XCTAssertTrue(app.buttons["UsdtIntroEnable"].waitForNonExistence(timeout: 5))

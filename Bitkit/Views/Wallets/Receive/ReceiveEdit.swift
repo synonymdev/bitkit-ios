@@ -231,7 +231,11 @@ struct ReceiveEdit: View {
     }
 
     private func additionalLiquidityAction() -> ReceiveAdditionalLiquidityAction {
-        ReceiveLiquidityDecision.additionalLiquidityAction(
+        // Spark receives any amount without inbound liquidity, so no channel is needed.
+        if SparkManager.shared.isReady {
+            return .none
+        }
+        return ReceiveLiquidityDecision.additionalLiquidityAction(
             source: liquiditySource,
             invoiceAmountSats: amountViewModel.amountSats,
             inboundCapacitySats: wallet.totalReadyInboundLightningSats

@@ -111,6 +111,10 @@ maximum and the journeys pass for the wrong reason:
 exit status, so an empty response there is not a failure. Give the wallet ~20s to sync before
 reading the balance.
 
+Staging's `/regtest/*` routes need basic auth. Export `BLOCKTANK_REGTEST_AUTH=user:password` for the
+`lsp` helper, and pass the same variable to the app (process environment or launch argument) so
+Settings > Blocktank Regtest can deposit and mine; Debug and E2E builds read it, release builds never do.
+
 **The `lsp` helper is borrowed from the sibling Android checkout.** It is the `blocktank-api` plugin's
 script, and there is no iOS copy yet — #694 tracks porting it. The relative path assumes
 `bitkit-android` is cloned next to this repo, which is the usual layout here; the hardware-wallet
@@ -191,13 +195,14 @@ Known naming differences:
 | Pubky Ring choice row lookup spinner | `PubkyChoiceIdentityLookup` (the same tag on every row) | `PubkyChoiceRingLookup_<pubky>` (bare z32 key) |
 | Contact import overview profile and friend count | — *(no tag; read the "Import" title and the "N friends" text)* | `ContactImportOverviewProfile`, `ContactImportOverviewSummary` |
 | Lightning Connections add connection | `add_connection_button` | `NavigationAction` |
+| Send contact row | `SendContact_<pubky>` | `SendContact-<pubky>` |
 
 `SubscriptionRow-<paymentRequestId>` matches Android exactly. `PaymentRequestRow` keeps that prefix
 but appends the billing period (`-one-time` for a one-off), because every recurring payment of one
 subscription carries the same `paymentRequestId` and they can list together — Android stops at the id
 and lets those rows collide. Match on the prefix when a journey needs to work on both platforms.
 
-Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `TransferUnavailable*`, `Fund*`,
+Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*`, `TransferUnavailable*`, `Fund*`,
 `External*`, `Hardware*`, `Widget*` — matches Android exactly.
 
 ## Capabilities
@@ -215,6 +220,8 @@ journey PR, which is what made this file conflict on every merge.
 | USDT wallet navigation without funding | an onboarded build with USDT configured; wallet syncing remains silent while offline; payment-action errors remain available — [USDT QA](../Docs/USDT-QA.md) |
 | Controlled USDT quotes, provider history, funded submission and recovery | an explicitly configured local USDT gateway/RPC/bundler fixture with owned test accounts and funds; absent from the standard journey environment. Report these steps as blocked unless that setup and transfer authorization are supplied — [USDT QA](../Docs/USDT-QA.md) |
 | On-chain funds and blocks on regtest | `../bitkit-android/lsp` deposit and mine, borrowed from the sibling Android checkout until #694 lands an iOS copy — [Backend preconditions](#backend-preconditions) |
+| Spark connected (App Status Spark row, spending through Spark, Spark Lightning payments) | a Debug build, which connects Spark to its regtest with no key. Transfers from regtest Savings also need the build launched with `SPARK_CHAIN_SERVICE_URL` set to the regtest's Esplora URL, as Spark's default regtest is its own chain; without it they show the Transfer Unavailable sheet. Spark's claim of a deposit (Instant or after 3 confirmations) depends on the provider's quote, so the setting-up states are covered by previews and unit tests — [app status](settings/app-status-spark-row.xml), [transfer](transfer/spark-transfer-to-spending.xml) |
+| Spark emergency exit up to the swipe | a Debug build with Spark connected on its regtest and a Spark balance from Lightspark's regtest faucet; the states after the swipe take days of blocks, so they are covered by unit tests — [transfer](transfer/spark-emergency-exit.xml) |
 | Lightning channels | a channel opened through Manual Setup to the node of the LSP the `E2E_BUILD` app targets, as an external LN peer — [Backend preconditions](#backend-preconditions) |
 | A hardware wallet to pair, watch and sign with | the deterministic Trezor emulator from `bitkit-docker`, reached through Trezor Bridge on the host; the simulator has no Bluetooth LE and iOS cannot do WebUSB, so BLE pairing and USB are not covered — [hardware-wallet](hardware-wallet/README.md) |
 | The OS notification-permission dialog | the one-shot `UNUserNotificationCenter` alert, reset with `xcrun simctl uninstall <device> to.bitkit` and a rebuild |
@@ -248,6 +255,14 @@ required to run the suite.
 ## Porting from Android
 
 When you port an Android feature, port its journeys too — see the Journeys section in `AGENTS.md`.
+
+`home/timed-reminders-do-not-interrupt.xml` pairs with synonymdev/bitkit-android#1575. Use a
+PIN-disabled wallet and an eligible reminder; the backup reminder works without USDT configuration.
+The file name, journey name and actions match Android. Android resumes Home after permission prompts
+and background/foreground; iOS instead uses primary-screen appearance/disappearance and explicit
+rechecks when app-update information arrives. A recheck while a sheet is open does not start a timer,
+and closing a sheet alone does not reschedule the queue. This journey covers those shared observable
+outcomes, not parity between the two scheduling implementations.
 
 Some suites are adapted rather than ported verbatim: `pubky-marketplace` because the two-wallet payment runs on regtest here. In `pubky-auth`, the
 watch-only OS handoff journey is iOS-only; `grant-signup.xml` and
