@@ -763,6 +763,20 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertFalse(record.isRebuilding)
     }
 
+    /// A Redo on a fee ask whose rebuild the held funding pays that same tick withdraws the ask's notification.
+    func testARedoRebuiltFromTheHeldFundingOnItsOwnTickWithdrawsTheFeeAsk() async throws {
+        let asked = bumpedRecord()
+        sdk.checks = try [CheckRecoverFundsResponse(recovery: XCTUnwrap(asked.recovery?.response), verdict: .redo(reason: .onChainStateDiverged))]
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("m1")])]
+
+        var record = try await driver().tick(asked)
+
+        XCTAssertEqual(record.phase, .running)
+        XCTAssertTrue(SparkExitManager.isFundingAskWithdrawn(record, previous: asked), "the fee ask's notification stayed")
+        record = try await driver().tick(record)
+        XCTAssertNil(record.isRedoAsk, "the ended ask stayed marked")
+    }
+
     /// A Redo rebuild the held funding pays too little for still follows the awaited top-up: one that confirmed short
     /// asks for the rest, as while waiting for it.
     func testARedoRebuildShortOfFundingAsksForTheRestOfAShortTopUp() async throws {

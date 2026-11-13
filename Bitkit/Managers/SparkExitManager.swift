@@ -1576,10 +1576,14 @@ final class SparkExitManager {
         UserDefaults.standard.dictionary(forKey: remindersKey) as? [String: TimeInterval] ?? [:]
     }
 
-    /// An unverified rebuild's fee ask the tick from `previous` withdrew: the valid generation needs nothing more.
+    /// A fee ask the tick from `previous` withdrew: an unverified rebuild's, as the valid generation needs nothing more,
+    /// or one of a Redo rebuild, asked before or during it, that runs with no new funding, on the Redo's tick or a later
+    /// one, as the held funding pays for it.
     nonisolated static func isFundingAskWithdrawn(_ record: SparkExitRecord, previous: SparkExitRecord) -> Bool {
-        guard previous.isUnverifiedAsk == true, case .needsFunding = previous.phase else { return false }
-        return record.phase == .running
+        guard case .needsFunding = previous.phase, record.phase == .running else { return false }
+        let isRedoAsk = (previous.isRedoAsk == true || record.isRedoAsk == true || previous.isRedoRebuild == true)
+            && record.funding == previous.funding
+        return previous.isUnverifiedAsk == true || isRedoAsk
     }
 
     /// Takes back the exit's delivered fee asks, which no longer hold.
