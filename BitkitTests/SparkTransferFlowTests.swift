@@ -64,6 +64,7 @@ final class SparkTransferFlowTests: XCTestCase {
         let flow = SparkTransferFlow(amountSats: 100_000, claimState: .repriced(feeSats: 1500))
         flow.waitForConfirmations()
         XCTAssertEqual(flow.claimState, .later)
+        XCTAssertTrue(flow.hasWaited)
     }
 
     @MainActor
@@ -193,6 +194,7 @@ final class SparkTransferFlowTests: XCTestCase {
 
         flow.payRepriced()
         XCTAssertEqual(flow.claimState, .claiming)
+        XCTAssertTrue(flow.isFeeApproved)
         await flow.waitForClaim()
         XCTAssertEqual(flow.claimState, .added)
     }
@@ -256,6 +258,19 @@ final class SparkTransferFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testTheDepositStaysSeenWhileSparkDropsItFromItsListToClaimIt() {
+        let flow = SparkTransferFlow(amountSats: 100_000, speed: .later, quote: quote)
+        flow.onBroadcast(txid: "TXID")
+        let broadcast = [SparkDeposit(txid: "TXID", amountSats: 100_000, isClaimed: false, isListed: false)]
+        XCTAssertFalse(flow.isDepositSeen(in: broadcast))
+
+        let listed = [SparkDeposit(txid: "txid", amountSats: 100_000, isClaimed: false)]
+        XCTAssertTrue(flow.isDepositSeen(in: listed))
+        flow.noteSettled(listed)
+        XCTAssertTrue(flow.isDepositSeen(in: broadcast), "Setting up went back to Processing Payment while Spark claimed it")
+    }
+
+    @MainActor
     func testALaterTransferEndsOnceSparkClaimsItsDeposit() {
         let flow = SparkTransferFlow(amountSats: 100_000, speed: .later, quote: quote)
         flow.onBroadcast(txid: "txid")
@@ -266,6 +281,69 @@ final class SparkTransferFlowTests: XCTestCase {
         XCTAssertEqual(flow.claimState, .later)
         flow.noteSettled([SparkDeposit(txid: "txid", amountSats: 100_000, isClaimed: true)])
         XCTAssertEqual(flow.claimState, .added, "Later stayed in progress after the deposit reached spending")
+    }
+
+    @MainActor
+    func testTheTransferBannerOpensTheFollowedDepositAtItsStep() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.submitted])
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+
+        flow.showDeposit(txid: "TXID")
+
+        XCTAssertEqual(flow.claimState, .adding, "The banner lost the followed transfer's step")
+    }
+
+    @MainActor
+    func testTheTransferBannerReopensARepricedDepositAfterAnotherTransferBegan() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 1500), choice(earlyFee: 1500)], claims: [.claimed])
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 1500))
+
+        flow.beginIfBroadcast()
+        flow.showDeposit(txid: "txid")
+
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 1500), "The banner lost the pending fee decision")
+        flow.payRepriced()
+        await flow.waitForClaim()
+        XCTAssertEqual(flow.claimState, .added)
+    }
+
+    @MainActor
+    func testTheTransferBannerReopensAWaitedDepositAtTheNormalSpeedOnTheLastStep() {
+        let flow = SparkTransferFlow(amountSats: 100_000, speed: .later, quote: quote)
+        flow.onBroadcast(txid: "txid")
+        flow.claimState = .repriced(feeSats: 1500)
+        flow.waitForConfirmations()
+
+        flow.showDeposit(txid: "TXID")
+
+        let stage = SettingUpStage(
+            state: flow.claimState, isSeen: true, approvedFee: flow.isFeeApproved, hasWaited: flow.hasWaited
+        )
+        XCTAssertEqual(stage, .adding(normalSpeed: true), "The banner lost the Wait over the changed fee")
+    }
+
+    @MainActor
+    func testTheTransferBannerOpensADepositNoClaimFollowsAsAddedAtMaturity() {
+        let flow = SparkTransferFlow()
+
+        flow.showDeposit(txid: "txid")
+        XCTAssertEqual(flow.claimState, .later)
+        XCTAssertEqual(SettingUpStage(state: flow.claimState), .processing(normalSpeed: true))
+
+        flow.noteSettled([SparkDeposit(txid: "txid", amountSats: 100_000, isClaimed: true)])
+        XCTAssertEqual(flow.claimState, .added, "The opened deposit stayed in progress after Spark claimed it")
+    }
+
+    func testTheTransferBannerPicksTheFirstUnclaimedDeposit() {
+        let deposits = [
+            SparkDeposit(txid: "claimed", amountSats: 1, isClaimed: true),
+            SparkDeposit(txid: "pending", amountSats: 1, isClaimed: false),
+        ]
+        XCTAssertEqual(deposits.inProgressTxid, "pending")
+        XCTAssertNil([SparkDeposit(txid: "claimed", amountSats: 1, isClaimed: true)].inProgressTxid)
     }
 
     @MainActor
