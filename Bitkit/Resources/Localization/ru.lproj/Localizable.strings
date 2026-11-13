@@ -1379,6 +1379,8 @@
 "wallet__send_sync_long_description" = "Похоже, вы отключены. Проверьте подключение. Bitkit будет пытаться переподключиться каждые несколько секунд.";
 "wallet__send_to" = "Кому";
 "wallet__send_swap_route" = "Маршрут";
+"wallet__swap_route_restored_text" = "Платёж контакту, прерванный восстановлением, вернулся в ваши сбережения.";
+"wallet__swap_route_restored_title" = "Платёж возвращён в Сбережения";
 "wallet__send_paykit_no_route__title" = "Не удаётся оплатить этому контакту";
 "wallet__send_paykit_no_route__description" = "У этого контакта сейчас нет способа оплаты, который может использовать Bitkit.";
 "wallet__recipient_contact" = "Контакт";

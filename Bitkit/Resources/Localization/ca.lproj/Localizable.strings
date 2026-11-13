@@ -1277,6 +1277,8 @@
 "wallet__send_sync_long_description" = "Sembla que estàs desconnectat. Comprova la connexió. Bitkit intentarà tornar a connectar-se cada pocs segons.";
 "wallet__send_to" = "A";
 "wallet__send_swap_route" = "Ruta";
+"wallet__swap_route_restored_text" = "Un pagament a un contacte que la restauració va interrompre ha tornat als teus estalvis.";
+"wallet__swap_route_restored_title" = "Pagament retornat a Estalvis";
 "wallet__send_paykit_no_route__title" = "No es pot pagar aquest contacte";
 "wallet__send_paykit_no_route__description" = "Aquest contacte no té cap mètode de pagament que Bitkit pugui fer servir ara mateix.";
 "wallet__recipient_contact" = "Contacte";

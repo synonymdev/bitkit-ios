@@ -1394,6 +1394,8 @@
 "wallet__send_sync_long_description" = "Wygląda na to, że nie masz połączenia. Sprawdź połączenie. Bitkit będzie próbował połączyć się ponownie co kilka sekund.";
 "wallet__send_to" = "Do";
 "wallet__send_swap_route" = "Trasa";
+"wallet__swap_route_restored_text" = "Płatność do kontaktu przerwana przez przywracanie wróciła do twoich oszczędności.";
+"wallet__swap_route_restored_title" = "Płatność zwrócona do Oszczędności";
 "wallet__send_paykit_no_route__title" = "Nie można zapłacić temu kontaktowi";
 "wallet__send_paykit_no_route__description" = "Ten kontakt nie ma obecnie żadnej metody płatności, której Bitkit może użyć.";
 "wallet__recipient_contact" = "Kontakt";

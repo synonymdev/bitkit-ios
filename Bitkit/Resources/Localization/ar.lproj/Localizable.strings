@@ -1158,6 +1158,8 @@
 "wallet__send_sync_long_description" = "يبدو أنك غير متصل. يرجى التحقق من اتصالك. سيحاول Bitkit إعادة الاتصال كل بضع ثوانٍ.";
 "wallet__send_to" = "إلى";
 "wallet__send_swap_route" = "المسار";
+"wallet__swap_route_restored_text" = "دفعة لجهة اتصال قاطعتها الاستعادة عادت إلى مدخراتك.";
+"wallet__swap_route_restored_title" = "أُعيدت الدفعة إلى المدخرات";
 "wallet__send_paykit_no_route__title" = "تعذّر الدفع لجهة الاتصال هذه";
 "wallet__send_paykit_no_route__description" = "ليس لدى جهة الاتصال هذه طريقة دفع يمكن لـ Bitkit استخدامها حاليًا.";
 "wallet__recipient_contact" = "جهة الاتصال";

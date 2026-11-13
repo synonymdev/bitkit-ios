@@ -11,6 +11,7 @@ enum SendFundingSource: Equatable {
 struct SendAmountView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject private var contactsManager: ContactsManager
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var wallet: WalletViewModel
@@ -43,6 +44,9 @@ struct SendAmountView: View {
            PaykitUsdtPaymentService.shared.hasBinding(for: request.id)
         {
             return [.usdt]
+        }
+        if app.paykitSwapRoute != nil {
+            return [.spending]
         }
         var sources: [SendFundingSource] = []
         // A Spark leg can carry an on-chain contact payment from Spending.
@@ -414,17 +418,28 @@ struct SendAmountView: View {
                 return
             }
 
-            if !app.paykitUsesUsdt, let context = app.contactPaymentContext,
+            // A swap route alone is quoted below; next to a Spark route, the router goes first and the swap covers what
+            // Spark can't pay, so a smaller amount entered later goes back to Spark.
+            if !app.paykitUsesUsdt, app.paykitSwapRoute == nil || app.paykitRoute != nil, let context = app.contactPaymentContext,
                let route = app.paykitRoute ?? PaykitRouteService.routeUi(for: context, canRouteThroughSpark: PaykitRouteService.canRouteThroughSpark)
             {
-                switch await routePaykitPayment(route, request: context.incomingPaymentRequest) {
+                let swapFallback = route.offersSparkLeg && app.selectedWalletToPayFrom == .lightning ? swapRouteFallback(context) : nil
+                let routedAmountSats = amountSats
+                let outcome = await routePaykitPayment(route, request: context.incomingPaymentRequest, hasSwapFallback: swapFallback != nil)
+                // An amount edited while the router answered no longer matches the saved send amount, so the answer is
+                // dropped and the next Continue routes the new amount.
+                guard amountSats == routedAmountSats else { return }
+                switch outcome {
                 case .leg:
+                    app.paykitSwapRoute = nil
                     navigationPath.append(.confirm)
                     return
                 case .refused, .stale:
                     return
                 case .direct:
-                    break
+                    app.paykitSwapRoute = nil
+                case .swapFallback:
+                    app.paykitSwapRoute = swapFallback
                 }
             }
 
@@ -436,6 +451,12 @@ struct SendAmountView: View {
                         title: "Insufficient Funds",
                         description: "You do not have enough funds in the selected wallet."
                     )
+                    return
+                }
+
+                if let route = app.paykitSwapRoute {
+                    guard await quoteSwapRoute(route) else { return }
+                    navigationPath.append(.confirm)
                     return
                 }
 
@@ -489,7 +510,64 @@ struct SendAmountView: View {
         }
     }
 
-    private func routePaykitPayment(_ route: PaykitRouteUi, request: PaykitPaymentRequest?) async -> PaykitRouteOutcome {
+    private func quoteSwapRoute(_ route: PaykitSwapRoute) async -> Bool {
+        let generation = app.sendStateGeneration
+        let context = app.contactPaymentContext
+        let quotedAmountSats = amountSats
+        do {
+            let paykitRoute = try await PubkySwapsRouteService.quote(
+                amountSats: quotedAmountSats,
+                endpoint: route.endpoint,
+                lightningSpendableSats: UInt64(wallet.maxSendLightningSats),
+                onchainSpendableSats: UInt64(wallet.spendableOnchainBalanceSats),
+                contacts: contactsManager.contacts.map(\.publicKey)
+            )
+            // A quote for a replaced send, another contact or an edited amount is dropped.
+            guard app.sendStateGeneration == generation, app.contactPaymentContext == context,
+                  app.paykitSwapRoute == route, amountSats == quotedAmountSats
+            else { return false }
+            switch paykitRoute {
+            case let .swap(quote):
+                var quoted = route
+                quoted.quote = quote
+                quoted.providerName = contactsManager.contacts
+                    .first { PubkyPublicKeyFormat.matches($0.publicKey, quote.providerPubky) }?.displayName
+                app.paykitSwapRoute = quoted
+                return true
+            case let .none(reason):
+                app.toast(type: .error, title: t("slashtags__error_pay_title"), description: reason)
+            case let .service(leg):
+                Logger.error("Unexpected service route \(leg.service)", context: "SendAmountView")
+                app.toast(type: .error, title: t("slashtags__error_pay_title"), description: t("common__error_body"))
+            case .direct:
+                // Savings now covers the payment, so it goes on-chain directly.
+                app.paykitSwapRoute = nil
+                selectFundingSource(.savings)
+                app.toast(type: .error, title: t("slashtags__error_pay_title"), description: t("common__error_body"))
+            }
+        } catch {
+            Logger.error("Failed to route Paykit payment through Pubky Swaps: \(error)", context: "SendAmountView")
+            app.toast(type: .error, title: t("slashtags__error_pay_title"), description: error.localizedDescription)
+        }
+        return false
+    }
+
+    /// The Pubky Swaps route that pays an on-chain contact from Spending when Spark can't, or nil when no swap can.
+    private func swapRouteFallback(_ context: ContactPaymentContext) -> PaykitSwapRoute? {
+        guard let address = app.scannedOnchainInvoice?.address else { return nil }
+        return PubkySwapsRouteService.route(
+            for: context,
+            address: address,
+            onchainBalanceSats: UInt64(max(0, wallet.spendableOnchainBalanceSats)),
+            lightningBalanceSats: UInt64(max(0, wallet.maxSendLightningSats))
+        )
+    }
+
+    private func routePaykitPayment(
+        _ route: PaykitRouteUi,
+        request: PaykitPaymentRequest?,
+        hasSwapFallback: Bool = false
+    ) async -> PaykitRouteOutcome {
         let source: PaykitRouteService.Source = app.selectedWalletToPayFrom == .lightning ? .spending : .savings
         return await app.routeContactPayment(
             route,
@@ -497,7 +575,8 @@ struct SendAmountView: View {
             source: source,
             lightningSpendableSats: source == .spending ? UInt64(max(0, wallet.maxSendLightningSats)) : 0,
             onchainSpendableSats: source == .savings ? maxSendableAmount ?? UInt64(max(0, wallet.spendableOnchainBalanceSats)) : 0,
-            request: request
+            request: request,
+            hasSwapFallback: hasSwapFallback
         )
     }
 

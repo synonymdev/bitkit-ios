@@ -3,6 +3,8 @@ import LDKNode
 import SwiftUI
 
 struct SendConfirmationView: View {
+    private static let providerKeyLength = 12
+
     @Environment(PaykitPaymentRequestManager.self) private var paykitPaymentRequestManager
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activityList: ActivityListViewModel
@@ -381,6 +383,13 @@ struct SendConfirmationView: View {
                         PaykitAmountText(amount: preparingRequest.amount, size: .display)
                             .accessibilityIdentifier("ReviewAmount")
                     }
+                } else if let quote = app.paykitSwapRoute?.quote {
+                    MoneyStack(
+                        sats: Int(wallet.sendAmountSats ?? quote.deliveredSat),
+                        showSymbol: true,
+                        testIdPrefix: "ReviewAmount",
+                        onTap: navigateToAmount
+                    )
                 } else if let deliveredSat = app.paykitRoute?.deliveredSat {
                     MoneyStack(
                         sats: Int(wallet.sendAmountSats ?? deliveredSat),
@@ -409,7 +418,9 @@ struct SendConfirmationView: View {
             .padding(.bottom, oneOffPaymentRequest == nil ? 44 : 24)
 
             if showDetails {
-                if let route = app.paykitRoute, let totalFeeSat = route.totalFeeSat {
+                if let route = app.paykitSwapRoute, let quote = route.quote {
+                    swapRouteView(route, quote: quote)
+                } else if let route = app.paykitRoute, let totalFeeSat = route.totalFeeSat {
                     paykitRouteView(route, totalFeeSat: totalFeeSat, note: oneOffPaymentRequestNote)
                 } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                     onchainView(invoice)
@@ -769,6 +780,62 @@ struct SendConfirmationView: View {
         }
     }
 
+    func swapRouteView(_ route: PaykitSwapRoute, quote: PubkySwapRouteQuote) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                SendSectionView(t("wallet__send_from")) {
+                    NumberPadActionButton(
+                        text: t("wallet__spending__title"),
+                        color: .purpleAccent,
+                        variant: .secondary,
+                        disabled: true
+                    ) {}
+                        .accessibilityIdentifier("SendConfirmAssetButton")
+                }
+
+                Spacer(minLength: 16)
+
+                if let contact = contactPaymentContact {
+                    SendSectionView(contactSectionTitle) {
+                        contactRecipient(contact)
+                    }
+                }
+            }
+
+            HStack(alignment: .top, spacing: 16) {
+                SendSectionView(t("wallet__send_fee_and_speed")) {
+                    HStack(spacing: 0) {
+                        Image("bolt-hollow")
+                            .foregroundColor(.purpleAccent)
+                            .frame(width: 16, height: 16)
+                            .padding(.trailing, 4)
+                        BodySSBText("\(t("fee__instant__title")) (")
+                        MoneyText(sats: Int(quote.totalFeeSat), size: .bodySSB, symbol: true, symbolColor: .textPrimary)
+                        BodySSBText(")")
+                    }
+                }
+
+                SendSectionView(t("wallet__send_swap_route")) {
+                    BodySSBText("Pubky Swaps · \(route.providerName ?? quote.providerPubky.ellipsis(maxLength: Self.providerKeyLength))")
+                        .lineLimit(2)
+                        .accessibilityIdentifier("ReviewSwapRoute")
+                }
+            }
+
+            SendSectionView(t("wallet__tags")) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(tagManager.selectedTagsArray, id: \.self) { tag in
+                            Tag(tag, icon: .close, onDelete: { tagManager.removeTagFromSelection(tag) })
+                        }
+                        AddTagButton(onPress: { navigationPath.append(.tag) })
+                            .accessibilityIdentifier("TagsAddSend")
+                    }
+                }
+            }
+        }
+    }
+
     func paykitRouteView(_ route: PaykitRouteUi, totalFeeSat: UInt64, note: String?) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
@@ -1103,11 +1170,19 @@ struct SendConfirmationView: View {
 
         if hwSend.isActive {
             navigationPath.append(.hardwareSign)
+        } else if let quote = app.paykitSwapRoute?.quote {
+            await performSwapRoutedPayment(quote)
         } else if !app.paykitUsesUsdt, let leg = app.paykitRoute?.serviceLeg {
             await performServiceRoutedPayment(leg)
         } else {
             try await performPayment(isAutomatic: isAutomatic)
         }
+    }
+
+    /// A swap route pays its quote's debit from spending, though the scanned invoice is on-chain, so the amount
+    /// warnings read the debit, or the entered amount before a quote.
+    static func swapRouteWarningAmountSats(_ route: PaykitSwapRoute, sendAmountSats: UInt64?) -> UInt64 {
+        route.quote?.debitSat ?? sendAmountSats ?? 0
     }
 
     /// A source switch on Confirm needs the router only when it moves a Spark leg's send to Savings, or any send to
@@ -1439,11 +1514,138 @@ struct SendConfirmationView: View {
         return note
     }
 
+    /// A swap result belongs to the sheet and quote that started it; a nil start never matches, so a dismissed sheet
+    /// cannot pass, and a payment edited from Amount in the same sheet holds a fresh quote or none.
+    static func isSwapRouteResultCurrent(
+        startedIn startedPresentationID: UUID?,
+        active activePresentationID: UUID?,
+        quoteId: String,
+        activeQuoteId: String?
+    ) -> Bool {
+        startedPresentationID != nil && startedPresentationID == activePresentationID && quoteId == activeQuoteId
+    }
+
+    /// Only a swap bitkit-core failed ends a sent hold payment for sure; any other claim error leaves it open.
+    static func isDefiniteSwapFailure(_ error: Error) -> Bool {
+        guard case PubkySwapClaimError.failed = error else { return false }
+        return true
+    }
+
+    private func performSwapRoutedPayment(_ quote: PubkySwapRouteQuote) async {
+        isSubmittingPayment = true
+        defer { isSubmittingPayment = false }
+        let contactPaymentContext = app.contactPaymentContext
+        // The claim can land after the sheet is dismissed, when another send may be open, or after the user went back
+        // to Amount in the same sheet, which quotes the edited payment afresh.
+        let startedPresentationID = sheets.activeSheetConfiguration?.presentationID
+        func isSendCurrent() -> Bool {
+            Self.isSwapRouteResultCurrent(
+                startedIn: startedPresentationID,
+                active: sheets.activeSheetConfiguration?.presentationID,
+                quoteId: quote.quoteId,
+                activeQuoteId: app.paykitSwapRoute?.quote?.quoteId
+            )
+        }
+        var createdMetadataPaymentId: String?
+        do {
+            // The quote must deliver the amount the user confirmed.
+            guard quote.deliveredSat == wallet.sendAmountSats else { throw PaykitPaymentRequestError.amountMismatch }
+            let payment = try await PubkySwapsRouteService.commit(quoteId: quote.quoteId)
+            Logger.info("Committed Pubky Swaps route \(payment.swapId) to \(payment.destinationAddress)", context: "SendConfirmation")
+            guard case let .lightning(holdInvoice) = try await decode(invoice: payment.invoice) else {
+                throw AppError(message: t("common__error_body"), debugMessage: "Swap hold invoice is not a Lightning invoice")
+            }
+            let paymentHash = holdInvoice.paymentHash.hex
+            createdMetadataPaymentId = paymentHash
+            await createPreActivityMetadata(paymentId: paymentHash, paymentHash: paymentHash)
+            // The hold invoice settles only after the claim reveals the preimage, so its payment stays pending until then.
+            _ = try await LightningService.shared.send(bolt11: payment.invoice)
+            // The hold payment's tags stay with it from here.
+            createdMetadataPaymentId = nil
+            // The provider settles the hold payment once it sees the claim, so the send waits on it like a pending
+            // Lightning payment. Pending has no way back to Amount, where a fresh quote could pay the contact twice.
+            app.addPendingPaymentHash(paymentHash, contactPaymentContext: contactPaymentContext)
+            if isSendCurrent() {
+                navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .amount, paymentRequest: payment.invoice))
+            }
+            driveSwapClaim(payment, paymentHash: paymentHash, contactPaymentContext: contactPaymentContext, isSendCurrent: isSendCurrent)
+        } catch {
+            Logger.error("Pubky Swaps route payment failed: \(error)", context: "SendConfirmation")
+            if let paymentId = createdMetadataPaymentId {
+                try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: paymentId)
+            }
+            guard isSendCurrent() else {
+                if !(error is CancellationError) {
+                    app.toast(
+                        type: .error,
+                        title: t("wallet__toast_payment_failed_title"),
+                        description: t("wallet__payment_failed_description"),
+                        accessibilityIdentifier: "PaymentFailedToast"
+                    )
+                }
+                return
+            }
+            // bitkit-core spends a quote on its first commit, and a refused one is no better, so a retry starts from
+            // the amount, where Continue asks for a fresh quote.
+            app.paykitSwapRoute?.quote = nil
+            navigationPath.append(.failure(SendFailureContext(
+                error: error,
+                retryRoute: .amount,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: nil
+            )))
+        }
+    }
+
+    /// Drives a paid swap to its claim; the hold payment's own events finish the send.
+    private func driveSwapClaim(
+        _ payment: PubkySwapRoutePayment,
+        paymentHash: String,
+        contactPaymentContext: ContactPaymentContext?,
+        isSendCurrent: @escaping () -> Bool
+    ) {
+        let eventId = "swap-route-\(payment.swapId)"
+        let claim = Task { try await PubkySwapsRouteService.awaitClaim(swapId: payment.swapId) }
+        // A failed hold payment ends the wait at once instead of polling the swap until the claim timeout.
+        wallet.addOnEvent(id: eventId) { event in
+            guard case let .paymentFailed(_, failedHash, _) = event, failedHash == paymentHash else { return }
+            claim.cancel()
+        }
+        Task { @MainActor in
+            defer { wallet.removeOnEvent(id: eventId) }
+            do {
+                let claimTxid = try await claim.value
+                Logger.info("Claimed Pubky Swaps route \(payment.swapId) in \(claimTxid)", context: "SendConfirmation")
+                // The claim pays the contact's address: the wallet's own record of the payment is the hold invoice's debit.
+                await syncContactForActivity(paymentId: paymentHash, contactPaymentContext: contactPaymentContext)
+            } catch {
+                // A failed hold payment cancels the wait, and its tags go with it.
+                if error is CancellationError {
+                    try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: paymentHash)
+                }
+                guard Self.isDefiniteSwapFailure(error) else {
+                    // The hold payment failed, or the wait ran out while the provider may still settle it.
+                    Logger.warn("Pubky Swaps route \(payment.swapId) not claimed: \(error)", context: "SendConfirmation")
+                    return
+                }
+                // A failed swap never reveals the preimage, so its hold payment cannot settle and a retry is safe.
+                Logger.error("Pubky Swaps route \(payment.swapId) failed: \(error)", context: "SendConfirmation")
+                try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: paymentHash)
+                if isSendCurrent() {
+                    app.paykitSwapRoute?.quote = nil
+                }
+                app.failPendingPayment(paymentHash)
+            }
+        }
+    }
+
     /// A request's Confirm opens with fixed terms and no amount screen, so the router is asked here: Direct switches the
     /// send to the endpoint it picks, and a Spark leg pays an on-chain request from Spending. A source switch on Confirm
     /// asks it again for any contact payment, so a leg never pays a send the payer moved to Savings.
     private func routeContactPaymentOnConfirm(sourceChanged: Bool = false) async {
-        guard let context = app.contactPaymentContext, !app.paykitUsesUsdt, !hwSend.isActive, !isSubmittingPayment else { return }
+        // A swap route pays its own quote, so the router never adds a Spark leg beside it.
+        guard let context = app.contactPaymentContext, app.paykitSwapRoute == nil, !app.paykitUsesUsdt, !hwSend.isActive,
+              !isSubmittingPayment else { return }
         let request = context.incomingPaymentRequest
         if !sourceChanged {
             guard let request, routedIncomingRequestId != request.id else { return }
@@ -1781,7 +1983,7 @@ struct SendConfirmationView: View {
                         shouldCancelPaymentProof = false
                         privatePaymentListOutcome = .succeeded
                         await contactPaymentContext?.resolvePrivatePaymentListConsumption(privatePaymentListOutcome)
-                        await syncContactForActivity(paymentId: paymentHash, contactPublicKey: contactPublicKey)
+                        await syncContactForActivity(paymentId: paymentHash, contactPaymentContext: contactPaymentContext)
                         Logger.info("Lightning payment successful: \(paymentHash)")
                         navigationPath.append(.success(paymentId: paymentHash))
                     } catch is PaymentTimeoutError {
@@ -2084,14 +2286,14 @@ struct SendConfirmationView: View {
         }
     }
 
-    private func syncContactForActivity(paymentId: String, contactPublicKey: String?) async {
-        guard let contactPublicKey else {
+    private func syncContactForActivity(paymentId: String, contactPaymentContext: ContactPaymentContext?) async {
+        guard let contactPaymentContext else {
             return
         }
 
         do {
-            app.addPendingContactPaymentContext(paymentId, context: app.contactPaymentContext)
-            try await activityList.setContact(contactPublicKey, forPaymentId: paymentId)
+            app.addPendingContactPaymentContext(paymentId, context: contactPaymentContext)
+            try await activityList.setContact(contactPaymentContext.publicKey, forPaymentId: paymentId)
             app.consumeContactPaymentContext(forPendingPaymentHash: paymentId)
         } catch {
             Logger.warn("Failed to set contact for activity \(paymentId): \(error)", context: "SendConfirmationView")
@@ -2103,7 +2305,9 @@ struct SendConfirmationView: View {
 
         // A Spark leg delivers its amount on-chain from Spending, so its amount and fee get the on-chain checks.
         let leg = app.paykitRoute?.serviceLeg
-        let amount: UInt64 = if let leg {
+        let amount: UInt64 = if let route = app.paykitSwapRoute {
+            Self.swapRouteWarningAmountSats(route, sendAmountSats: wallet.sendAmountSats)
+        } else if let leg {
             leg.deliveredSat
         } else if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
             wallet.sendAmountSats ?? invoice.amountSatoshis

@@ -1437,6 +1437,8 @@
 "wallet__send_sync_long_description" = "It appears you’re disconnected. Please check your connection. Bitkit will try to reconnect every few seconds.";
 "wallet__send_to" = "To";
 "wallet__send_swap_route" = "Route";
+"wallet__swap_route_restored_text" = "A contact payment the restore interrupted came back to your savings.";
+"wallet__swap_route_restored_title" = "Payment returned to Savings";
 "wallet__send_paykit_no_route__title" = "Can't pay this contact";
 "wallet__send_paykit_no_route__description" = "This contact has no payment method Bitkit can use right now.";
 "wallet__send_paykit_withdrawal_settling__description" = "An earlier withdrawal from your spending balance is still settling. Try again once it completes.";

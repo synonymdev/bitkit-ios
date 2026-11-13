@@ -1149,6 +1149,8 @@
 "wallet__send_sync_long_description" = "Parece que está desligado. Verifique a sua ligação. A Bitkit vai tentar voltar a ligar a cada poucos segundos.";
 "wallet__send_to" = "Para";
 "wallet__send_swap_route" = "Rota";
+"wallet__swap_route_restored_text" = "Um pagamento a um contacto que o restauro interrompeu voltou às tuas poupanças.";
+"wallet__swap_route_restored_title" = "Pagamento devolvido às Poupanças";
 "wallet__send_paykit_no_route__title" = "Não é possível pagar a este contacto";
 "wallet__send_paykit_no_route__description" = "Este contacto não tem neste momento nenhum método de pagamento que a Bitkit possa usar.";
 "wallet__recipient_contact" = "Contato";

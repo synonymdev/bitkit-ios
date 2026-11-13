@@ -179,6 +179,7 @@ class AppViewModel: ObservableObject {
     @Published var contactPaymentContext: ContactPaymentContext?
     private(set) var didRejectScannedPayment = false
     @Published var paykitUsesUsdt = false
+    @Published var paykitSwapRoute: PaykitSwapRoute?
     @Published var paykitRoute: PaykitRouteUi?
     /// Bumped by each routing request, so only the latest one's answer lands.
     var paykitRoutingGeneration = 0
@@ -718,6 +719,18 @@ extension AppViewModel {
         }
     }
 
+    /// Fails a pending send whose payment can no longer settle, as the payment's own failure event would.
+    func failPendingPayment(_ hash: String) {
+        guard pendingPaymentHashes.remove(hash) != nil else { return }
+        sendSheetPendingResolution = SendSheetPendingResolution(paymentHash: hash, success: false, failureReason: nil)
+        toast(
+            type: .error,
+            title: t("wallet__toast_payment_failed_title"),
+            description: t("wallet__payment_failed_description"),
+            accessibilityIdentifier: "PaymentFailedToast"
+        )
+    }
+
     func addPendingContactPaymentContext(_ hash: String, context: ContactPaymentContext?) {
         guard let context else { return }
         pendingContactPaymentContexts[hash] = context
@@ -1097,6 +1110,19 @@ extension AppViewModel {
                 return
             }
 
+            // Without a Spark leg, a Pubky Swaps provider can pay it from Spending: the router weighs swaps after service legs.
+            if let context = contactPaymentContext, let route = PubkySwapsRouteService.route(
+                for: context,
+                address: invoice.address,
+                onchainBalanceSats: max(paymentState.spendableOnchainBalanceSats, alternativeOnchainBalanceSats),
+                lightningBalanceSats: paymentState.totalLightningBalanceSats
+            ) {
+                handleScannedOnchainInvoice(invoice)
+                paykitSwapRoute = route
+                selectedWalletToPayFrom = .lightning
+                return
+            }
+
             // If node is running, validate balance immediately
             if paymentState.isNodeRunning {
                 let onchainBalance = max(
@@ -1442,6 +1468,7 @@ extension AppViewModel {
         sendStateOwnerID = ownerID
         sendStateGeneration = UUID()
         paykitUsesUsdt = false
+        paykitSwapRoute = nil
         paykitRoute = nil
         paykitReviewedAmount = nil
         paykitPaymentTerms = nil

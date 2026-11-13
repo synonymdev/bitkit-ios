@@ -373,6 +373,21 @@ class ContactsManager: ObservableObject {
         }
     }
 
+    /// Waits until the saved contacts have loaded, or until `timeout` passes, without starting a load itself.
+    func waitUntilLoaded(timeout: Duration) async {
+        guard !hasLoaded else { return }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { @MainActor in
+                for await loaded in self.$hasLoaded.values where loaded {
+                    return
+                }
+            }
+            group.addTask { try? await Task.sleep(for: timeout) }
+            await group.next()
+            group.cancelAll()
+        }
+    }
+
     func loadContacts(for publicKey: String) async throws {
         try await loadContacts(
             for: publicKey,

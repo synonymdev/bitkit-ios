@@ -1360,6 +1360,8 @@
 "wallet__send_sync_long_description" = "Sembra che tu sia disconnesso. Controlla la connessione. Bitkit proverà a riconnettersi ogni pochi secondi.";
 "wallet__send_to" = "A";
 "wallet__send_swap_route" = "Percorso";
+"wallet__swap_route_restored_text" = "Un pagamento a un contatto interrotto dal ripristino è tornato nei tuoi risparmi.";
+"wallet__swap_route_restored_title" = "Pagamento restituito ai Risparmi";
 "wallet__send_paykit_no_route__title" = "Impossibile pagare questo contatto";
 "wallet__send_paykit_no_route__description" = "Al momento questo contatto non ha un metodo di pagamento che Bitkit possa usare.";
 "wallet__recipient_contact" = "Contatto";

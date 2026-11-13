@@ -1384,6 +1384,8 @@
 "wallet__send_sync_long_description" = "Zdá se, že jste odpojeni. Zkontrolujte prosím připojení. Bitkit se bude každých několik sekund pokoušet znovu připojit.";
 "wallet__send_to" = "Komu";
 "wallet__send_swap_route" = "Trasa";
+"wallet__swap_route_restored_text" = "Platba kontaktu přerušená obnovou se vrátila do vašich úspor.";
+"wallet__swap_route_restored_title" = "Platba vrácena do Úspor";
 "wallet__send_paykit_no_route__title" = "Tomuto kontaktu nelze zaplatit";
 "wallet__send_paykit_no_route__description" = "Tento kontakt teď nemá žádný platební způsob, který by Bitkit mohl použít.";
 "wallet__recipient_contact" = "Kontakt";

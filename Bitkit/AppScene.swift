@@ -1304,6 +1304,37 @@ struct AppScene: View {
         widgets.objectWillChange.send()
         await pubkyProfile.initialize()
         await startWallet(completingBackupRestore: true)
+        restorePubkySwaps()
+    }
+
+    /// Finishes swap routes a restored wallet left in flight. A swap rebuilt from its provider's listing is claimed to
+    /// Savings, since the contact's address did not survive the restore, so the user learns the payment came back; a
+    /// swap still on record keeps its destination and is finished silently.
+    private func restorePubkySwaps() {
+        guard PubkySwapsRouteService.isEnabled else { return }
+        Task {
+            // Contacts load in the Paykit session's own task, and a saved provider among them recovers its swaps.
+            await contactsManager.waitUntilLoaded(timeout: .seconds(15))
+            let contacts = contactsManager.contacts.map(\.publicKey)
+            let swaps: (restored: [String], known: [String])
+            do {
+                swaps = try await PubkySwapsRouteService.restoreSwaps(contacts: contacts)
+            } catch {
+                Logger.warn("Failed to restore Pubky Swaps routes: \(error)", context: "AppScene")
+                return
+            }
+            Logger.info("Restored \(swaps.restored.count) Pubky Swaps routes, \(swaps.known.count) known", context: "AppScene")
+            // A known swap keeps the destination it was committed with, such as the contact, so it is driven silently.
+            for swapId in swaps.known {
+                Task { _ = try? await PubkySwapsRouteService.awaitClaim(swapId: swapId) }
+            }
+            for swapId in swaps.restored {
+                Task {
+                    guard await (try? PubkySwapsRouteService.awaitClaim(swapId: swapId)) != nil else { return }
+                    app.toast(type: .info, title: t("wallet__swap_route_restored_title"), description: t("wallet__swap_route_restored_text"))
+                }
+            }
+        }
     }
 
     private func retryWalletStart() async {

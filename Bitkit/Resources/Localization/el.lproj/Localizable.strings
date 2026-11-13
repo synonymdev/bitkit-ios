@@ -1176,6 +1176,8 @@
 "wallet__send_sync_long_description" = "Φαίνεται ότι είστε αποσυνδεδεμένοι. Ελέγξτε τη σύνδεσή σας. Το Bitkit θα προσπαθεί να επανασυνδεθεί κάθε λίγα δευτερόλεπτα.";
 "wallet__send_to" = "Προς";
 "wallet__send_swap_route" = "Διαδρομή";
+"wallet__swap_route_restored_text" = "Μια πληρωμή σε επαφή που διέκοψε η επαναφορά επέστρεψε στις αποταμιεύσεις σου.";
+"wallet__swap_route_restored_title" = "Η πληρωμή επέστρεψε στις Αποταμιεύσεις";
 "wallet__send_paykit_no_route__title" = "Δεν είναι δυνατή η πληρωμή αυτής της επαφής";
 "wallet__send_paykit_no_route__description" = "Αυτή η επαφή δεν έχει αυτή τη στιγμή κάποια μέθοδο πληρωμής που μπορεί να χρησιμοποιήσει το Bitkit.";
 "wallet__recipient_contact" = "Επαφή";

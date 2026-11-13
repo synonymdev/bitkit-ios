@@ -1382,6 +1382,8 @@
 "wallet__send_sync_long_description" = "Anscheinend bist du nicht verbunden. Bitte überprüfe deine Verbindung. Bitkit versucht alle paar Sekunden, sich erneut zu verbinden.";
 "wallet__send_to" = "An";
 "wallet__send_swap_route" = "Route";
+"wallet__swap_route_restored_text" = "Eine Zahlung an einen Kontakt, die die Wiederherstellung unterbrochen hat, ist in deine Ersparnisse zurückgeflossen.";
+"wallet__swap_route_restored_title" = "Zahlung an Ersparnisse zurückgegeben";
 "wallet__send_paykit_no_route__title" = "Zahlung an diesen Kontakt nicht möglich";
 "wallet__send_paykit_no_route__description" = "Dieser Kontakt hat derzeit keine Zahlungsmethode, die Bitkit nutzen kann.";
 "wallet__recipient_contact" = "Kontakt";
