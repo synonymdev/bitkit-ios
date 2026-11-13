@@ -247,6 +247,10 @@ struct SparkExitRecord: Codable, Equatable {
     /// The pending rebuild answers a divergence the SDK reported (`Redo`). Only such a rebuild adds lost-leaf strikes,
     /// so rebuilds over a stalled chain or an unverified step never make a leaf lost.
     var isRedoRebuild: Bool?
+    /// The tip at which a Redo rebuild first left out a waiting leaf the diverged generation recovers. The rebuild is
+    /// not adopted for `SparkExitDriver.redoHoldBlocks` from then, so a leaf one failed read skipped is not left unsent
+    /// until the rest of the exit is done.
+    var redoHeldSince: UInt32?
     /// The fee funding asked for came from a rebuild over a step the SDK could not read, while the generation out there
     /// is valid: funding it resumes that rebuild with its guard, and the ask ends once every step reads again.
     var isUnverifiedAsk: Bool?
@@ -428,6 +432,7 @@ struct SparkExitRecord: Codable, Equatable {
             rebuiltFromChainConfirmedCount = SparkExitMath.confirmedCount(built)
         }
         isRedoRebuild = nil
+        redoHeldSince = nil
         isUnverifiedAsk = nil
         isFeeBumpPending = nil
         feeBumpBuiltAtHeight = nil
