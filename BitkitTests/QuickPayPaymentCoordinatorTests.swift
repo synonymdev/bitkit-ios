@@ -493,7 +493,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             wallet: WalletViewModel(),
             settings: settings,
             currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
-            presentation: presentation(onRoute: { _ in }, onConfirm: {})
+            presentation: presentation(onRoute: { _ in }, onConfirm: { _ in })
         )
         await fulfillment(of: [sendStarted], timeout: 2)
         coordinator.detach()
@@ -510,7 +510,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
                         XCTFail("Live send should not emit yet")
                     }
                 },
-                onConfirm: { didConfirm = true }
+                onConfirm: { _ in didConfirm = true }
             )
         )
         try await Task.sleep(nanoseconds: 150_000_000)
@@ -544,7 +544,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             wallet: WalletViewModel(),
             settings: settings,
             currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
-            presentation: presentation(onRoute: { _ in }, onConfirm: {})
+            presentation: presentation(onRoute: { _ in }, onConfirm: { _ in })
         )
         await fulfillment(of: [sendStarted], timeout: 2)
         coordinator.pay(
@@ -552,7 +552,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             wallet: WalletViewModel(),
             settings: settings,
             currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
-            presentation: presentation(onRoute: { _ in XCTFail("Re-entry should not emit") }, onConfirm: {})
+            presentation: presentation(onRoute: { _ in XCTFail("Re-entry should not emit") }, onConfirm: { _ in })
         )
         try await Task.sleep(nanoseconds: 150_000_000)
         XCTAssertEqual(sendCount, 1)
@@ -581,14 +581,14 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         let wallet = WalletViewModel()
         let currency = CurrencyViewModel(currencyService: OfflineCurrencyService())
         coordinator.pay(app: app, wallet: wallet, settings: settings, currency: currency,
-                        presentation: presentation(onRoute: { _ in XCTFail("Retired callback must not navigate") }, onConfirm: {}),
+                        presentation: presentation(onRoute: { _ in XCTFail("Retired callback must not navigate") }, onConfirm: { _ in }),
                         sessionID: session)
         await fulfillment(of: [started], timeout: 2)
         coordinator.pay(app: app, wallet: wallet, settings: settings, currency: currency,
                         presentation: presentation(onRoute: { route in
                             guard case .failure = route else { return XCTFail("Expected rejection result") }
                             delivered.fulfill()
-                        }, onConfirm: {}), sessionID: session)
+                        }, onConfirm: { _ in }), sessionID: session)
         try XCTUnwrap(continuation).resume()
         await fulfillment(of: [delivered], timeout: 2)
         XCTAssertEqual(sendCount, 1)
@@ -614,7 +614,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         let wallet = WalletViewModel()
         let currency = CurrencyViewModel(currencyService: OfflineCurrencyService())
         coordinator.pay(app: app, wallet: wallet, settings: settings, currency: currency,
-                        presentation: presentation(onRoute: { _ in XCTFail("Retired callback must not navigate") }, onConfirm: {}),
+                        presentation: presentation(onRoute: { _ in XCTFail("Retired callback must not navigate") }, onConfirm: { _ in }),
                         sessionID: session)
         await fulfillment(of: [started], timeout: 2)
         XCTAssertTrue(coordinator.complete(paymentId: nil, paymentHash: invoiceHash, success: true).wasQuickPay)
@@ -622,7 +622,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
                         presentation: presentation(onRoute: { route in
                             guard case .success = route else { return XCTFail("Expected settled result") }
                             delivered.fulfill()
-                        }, onConfirm: {}), sessionID: session)
+                        }, onConfirm: { _ in }), sessionID: session)
         try XCTUnwrap(continuation).resume()
         await fulfillment(of: [delivered], timeout: 2)
     }
@@ -704,7 +704,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             wallet: WalletViewModel(),
             settings: settings,
             currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
-            presentation: presentation(onRoute: { _ in }, onConfirm: {})
+            presentation: presentation(onRoute: { _ in }, onConfirm: { _ in })
         )
         await fulfillment(of: [sendStarted], timeout: 2)
         XCTAssertNotNil(store.record(matching: invoiceHash))
@@ -801,7 +801,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
             presentation: presentation(
                 onRoute: { _ in firstSettled.fulfill() },
-                onConfirm: { didConfirm = true }
+                onConfirm: { _ in didConfirm = true }
             )
         )
         await fulfillment(of: [sendStarted], timeout: 2)
@@ -813,7 +813,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
             presentation: presentation(
                 onRoute: { _ in XCTFail("Second pay should not emit a route") },
-                onConfirm: { didConfirm = true }
+                onConfirm: { _ in didConfirm = true }
             )
         )
         try await Task.sleep(nanoseconds: 150_000_000)
@@ -1004,17 +1004,15 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             wallet: wallet ?? WalletViewModel(),
             settings: settings,
             currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
-            presentation: QuickPayPaymentCoordinator.Presentation(
-                appendRoute: {
+            presentation: presentation(
+                onRoute: {
                     outcome = .route($0)
                     exp.fulfill()
                 },
-                replaceQuickPay: {
+                onConfirm: {
                     outcome = .confirm($0)
                     exp.fulfill()
-                },
-                addPendingPaymentHash: { _ in },
-                routingCacheResetAttempted: false
+                }
             )
         )
         await fulfillment(of: [exp], timeout: 2)
@@ -1023,11 +1021,11 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
 
     private func presentation(
         onRoute: @escaping (SendRoute) -> Void,
-        onConfirm: @escaping () -> Void
+        onConfirm: @escaping (SendRoute) -> Void
     ) -> QuickPayPaymentCoordinator.Presentation {
         QuickPayPaymentCoordinator.Presentation(
             appendRoute: onRoute,
-            replaceQuickPay: { _ in onConfirm() },
+            replaceQuickPay: onConfirm,
             addPendingPaymentHash: { _ in },
             routingCacheResetAttempted: false
         )
