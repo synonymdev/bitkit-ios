@@ -1607,6 +1607,9 @@
 "wallet__boost_recomended_button" = "Usar Tasa sugerida";
 "wallet__boost_swipe" = "Deslizar para impulsar";
 "wallet__payment_received" = "Bitcoin recibido";
+"wallet__receipt_failed" = "Error al enviar el recibo";
+"wallet__receipt_sending" = "Enviando recibo";
+"wallet__receipt_sent" = "Recibo enviado";
 "wallet__payment_request" = "Solicitud de pago";
 "wallet__payment_request_unavailable" = "La solicitud de pago ya no está disponible.";
 "wallet__payment_request_note_too_long" = "Acorte la nota y vuelva a intentarlo.";

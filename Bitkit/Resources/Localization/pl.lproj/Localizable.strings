@@ -1614,6 +1614,9 @@
 "wallet__boost_recomended_button" = "Zastosuj sugerowaną opłatę";
 "wallet__boost_swipe" = "Przesuń, aby przyspieszyć";
 "wallet__payment_received" = "Otrzymano Bitcoinów";
+"wallet__receipt_failed" = "Nie udało się wysłać potwierdzenia";
+"wallet__receipt_sending" = "Wysyłanie potwierdzenia";
+"wallet__receipt_sent" = "Potwierdzenie wysłane";
 "wallet__payment_request" = "Żądanie płatności";
 "wallet__payment_request_unavailable" = "Żądanie płatności nie jest już dostępne.";
 "wallet__payment_request_note_too_long" = "Skróć notatkę i spróbuj ponownie.";

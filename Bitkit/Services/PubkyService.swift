@@ -1282,7 +1282,9 @@ actor PaykitSdkService {
                 guard await !PaykitPaymentActivity.shared.isActive else { throw OperationDeferral.paymentActive }
                 try Task.checkCancellation()
             }
-            return try await sdk.processOutboundPrivateMessages(counterparty: counterparty)
+            let report = try await sdk.processOutboundPrivateMessages(counterparty: counterparty)
+            PaykitOutboundDeliveryLog.shared.record(report)
+            return report
         }
     }
 
@@ -1293,7 +1295,26 @@ actor PaykitSdkService {
 
     func processPendingPrivateMessages(priority: PaykitSdkOperationLock.Priority) async throws -> [OutboundPrivateCounterpartySendReport] {
         try await withStateRevisionTracking(priority: priority, beforeOperation: { try await self.checkRefreshAdmission(priority) }) { sdk in
-            try await sdk.processPendingPrivateMessages()
+            let reports = try await sdk.processPendingPrivateMessages()
+            reports.compactMap(\.report).forEach(PaykitOutboundDeliveryLog.shared.record)
+            return reports
+        }
+    }
+
+    /// Prepares, stores and queues a receipt; repeating it with the same Receipt ID resumes the same issuance.
+    func issueReceipt(
+        counterparty: String,
+        draft: Paykit.ReceiptDraft,
+        priority: PaykitSdkOperationLock.Priority
+    ) async throws -> Paykit.ReceiptIssuanceView {
+        try await withStateRevisionTracking(priority: priority) { sdk in
+            try await sdk.issueReceipt(counterparty: counterparty, draft: draft)
+        }
+    }
+
+    func issuedReceipts(priority: PaykitSdkOperationLock.Priority) async throws -> [Paykit.ReceiptIssuanceView] {
+        try await withSdk(priority: priority) { sdk in
+            try await sdk.issuedReceipts()
         }
     }
 
@@ -2101,7 +2122,7 @@ actor PaykitSdkService {
         Paykit.PaykitAppCapabilities(
             privatePayments: status?.capability == .privateLinkCapable,
             paymentRequests: status?.capability == .privateLinkCapable,
-            receipts: false,
+            receipts: status?.capability == .privateLinkCapable,
             outgoingPayments: true
         )
     }

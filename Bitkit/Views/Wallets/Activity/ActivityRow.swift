@@ -89,6 +89,7 @@ struct ActivityRowContent<Icon: View, Amount: View>: View {
     var subtitleLineHeight: CGFloat?
     var textSpacing: CGFloat = 2
     var stacked = false
+    var receiptPaymentId: String?
     @ViewBuilder var icon: () -> Icon
     @ViewBuilder var amount: () -> Amount
 
@@ -98,7 +99,14 @@ struct ActivityRowContent<Icon: View, Amount: View>: View {
             icon()
             VStack(alignment: .leading, spacing: textSpacing) {
                 BodyMSBText(title, kerning: textKerning, lineHeight: titleLineHeight).lineLimit(stacked ? nil : 1)
-                CaptionBText(subtitle, kerning: textKerning, lineHeight: subtitleLineHeight).lineLimit(stacked ? nil : 1)
+                HStack(spacing: 4) {
+                    CaptionBText(subtitle, kerning: textKerning, lineHeight: subtitleLineHeight).lineLimit(stacked ? nil : 1)
+                    if let receiptPaymentId, PaykitReceiptService.shared.statuses[receiptPaymentId.lowercased()] != nil {
+                        CaptionBText("·", kerning: textKerning).lineLimit(1)
+                        PaykitReceiptStatusLine(paymentId: receiptPaymentId)
+                            .layoutPriority(1)
+                    }
+                }
             }
             .fixedSize(horizontal: false, vertical: true)
             if !stacked {

@@ -1602,6 +1602,9 @@
 "wallet__boost_recomended_button" = "Empfohlene Gebühr verwenden";
 "wallet__boost_swipe" = "Zum Beschleunigen wischen";
 "wallet__payment_received" = "Bitcoin empfangen";
+"wallet__receipt_failed" = "Beleg konnte nicht gesendet werden";
+"wallet__receipt_sending" = "Beleg wird gesendet";
+"wallet__receipt_sent" = "Beleg gesendet";
 "wallet__payment_request" = "Zahlungsanforderung";
 "wallet__payment_request_unavailable" = "Die Zahlungsanforderung ist nicht mehr verfügbar.";
 "wallet__payment_request_note_too_long" = "Kürze die Notiz und versuche es erneut.";
