@@ -429,7 +429,10 @@ This project follows **modern SwiftUI patterns** and explicitly **AVOIDS traditi
 
 **Managers:**
 - `SessionManager`: User session state
-- `PushNotificationManager`: Push notification handling for incoming payments
+- `PushNotificationManager`: Notification permission and the APNs device token
+- `WakeManager`: Registers with the wake gateway, keeps presence while the app is open, and handles background wakes.
+  The notification extension decrypts and acknowledges alert wakes through the shared `Services/Wake/` files.
+  Wakes stay off unless `Env.wakeGatewayUrl` names a gateway (debug builds: `WAKE_GATEWAY_URL`)
 - `ScannerManager`: QR code scanning for payments
 - `ToastWindowManager`: App-wide toast notifications
 - `TransferTrackingManager`: Tracks pending transfers (new feature)

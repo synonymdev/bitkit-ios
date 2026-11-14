@@ -10,32 +10,26 @@ const config = {
         production: process.env.APN_PRODUCTION === 'true'
     },
     app: {
-        bundleId: process.env.APP_BUNDLE_ID
+        bundleId: process.env.APP_BUNDLE_ID || 'to.bitkit'
     },
     device: {
         token: process.env.DEVICE_TOKEN
     },
-    notification: {
-        title: 'Test Title',
-        body: 'This is a test notification body',
-        sound: 'ping.aiff',
-        badge: 0
+    // The fake APNs of the wake gateway's docker stack, which records every push instead of sending it.
+    fakePush: {
+        url: process.env.FAKE_PUSH_URL || 'http://127.0.0.1:9100'
     },
-    push: {
-        priority: 10,
-        contentAvailable: 1,
-        mutableContent: 1
-    }
+    dryRun: process.env.DRY_RUN === 'true'
 };
 
 // Validate APN key file exists
-if (!fs.existsSync(config.apn.keyFile)) {
+if (!config.dryRun && !fs.existsSync(config.apn.keyFile || '')) {
     console.error(`❌ APN key file not found: ${config.apn.keyFile}`);
     console.error('Please ensure the key file exists and the path is correct.');
     process.exit(1);
 }
 
-const providerOptions = {
+const providerOptions = config.dryRun ? null : {
     token: {
         key: fs.readFileSync(config.apn.keyFile),
         keyId: config.apn.keyId,
@@ -44,14 +38,8 @@ const providerOptions = {
     production: config.apn.production
 };
 
-const defaultPaymentAlert = {
-    title: config.notification.title,
-    body: config.notification.body
-};
-
 module.exports = {
     providerOptions,
-    defaultPaymentAlert,
     appBundleID: config.app.bundleId,
     config
 };

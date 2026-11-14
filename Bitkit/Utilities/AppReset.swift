@@ -76,6 +76,10 @@ final class AppReset: WipeStepExecutor {
             await Self.runRemoteCleanup {
                 await PubkyProfileManager.removePrivatePaykitEndpointsForWipe(context: "AppReset.wipe")
             }
+            // Before the keychain wipe, which deletes the device secret it needs.
+            await Self.runRemoteCleanup {
+                await WakeManager.shared.unregister()
+            }
         case .resetLocalServices:
             await VssBackupClient.shared.reset()
             VssStoreIdProvider.shared.clearCache()

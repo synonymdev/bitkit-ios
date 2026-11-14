@@ -8,7 +8,8 @@ enum AppDataMigrations {
     /// Call once at app launch (before feature code loads migrated state).
     static func run(
         defaults: UserDefaults = .standard,
-        hasStoredPubkyIdentity: () -> Bool = hasStoredPubkyIdentity
+        hasStoredPubkyIdentity: () -> Bool = hasStoredPubkyIdentity,
+        deleteLegacyKeychainEntries: () throws -> Void = Keychain.deleteLegacyEntries
     ) {
         let current = defaults.integer(forKey: versionKey)
 
@@ -30,6 +31,12 @@ enum AppDataMigrations {
         if current < 4 {
             migration4(defaults: defaults)
             defaults.set(4, forKey: versionKey)
+        }
+
+        if current < 5 {
+            // A keychain that cannot be read yet (before the first unlock) is tried again on the next launch.
+            guard (try? deleteLegacyKeychainEntries()) != nil else { return }
+            defaults.set(5, forKey: versionKey)
         }
     }
 
