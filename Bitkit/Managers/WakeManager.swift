@@ -502,17 +502,24 @@ final class WakeManager {
         }
     }
 
-    private struct RegisteredInstall {
+    struct RegisteredInstall: Equatable {
         let gatewayUrl: String
         let deviceSecret: String
     }
 
-    /// The device, while it is registered with the gateway this build is configured for.
+    /// The install while the gateway this build is configured for may hold it. Built from the retained gateway and
+    /// credentials, not the cached registration, which is cleared while an update's answer is outstanding.
+    nonisolated static func registeredInstall(
+        gatewayUrl: String?,
+        record: WakeRegistrationRecord,
+        credentials: WakeCredentials?
+    ) -> RegisteredInstall? {
+        guard let gatewayUrl, record.registeredGatewayUrl == gatewayUrl, let credentials else { return nil }
+        return RegisteredInstall(gatewayUrl: gatewayUrl, deviceSecret: credentials.deviceSecret)
+    }
+
     private func registeredInstall() throws -> RegisteredInstall? {
-        guard let gatewayUrl, let device = try WakeStorage.loadRegistration().device, device.gatewayUrl == gatewayUrl,
-              let credentials = try WakeStorage.loadCredentials()
-        else { return nil }
-        return RegisteredInstall(gatewayUrl: device.gatewayUrl, deviceSecret: credentials.deviceSecret)
+        try Self.registeredInstall(gatewayUrl: gatewayUrl, record: WakeStorage.loadRegistration(), credentials: WakeStorage.loadCredentials())
     }
 
     // MARK: - Receiving

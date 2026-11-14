@@ -355,6 +355,30 @@ final class WakeRegistrarTests: XCTestCase {
         XCTAssertEqual(record.device?.content.identities, [Self.lightning])
     }
 
+    func testPresenceStillReachesTheGatewayWhileAnUpdatesAnswerIsLost() async throws {
+        _ = try await register()
+        do {
+            _ = try await register(identities: [Self.lightning, Self.pubky], send: { _ in
+                throw WakeError.RequestFailed(reason: "connection reset")
+            })
+            XCTFail("Registered")
+        } catch {}
+        XCTAssertNil(record.device)
+
+        let install = WakeManager.registeredInstall(gatewayUrl: "http://127.0.0.1:9010", record: record, credentials: credentials)
+
+        XCTAssertEqual(install, WakeManager.RegisteredInstall(gatewayUrl: "http://127.0.0.1:9010", deviceSecret: credentials.deviceSecret))
+    }
+
+    func testPresenceNeedsCredentialsAndTheConfiguredGateway() {
+        let sent = WakeRegistrationRecord(lastTimestamp: Self.now, sentToGatewayUrl: "http://127.0.0.1:9010")
+
+        XCTAssertNil(WakeManager.registeredInstall(gatewayUrl: "http://127.0.0.1:9010", record: WakeRegistrationRecord(), credentials: credentials))
+        XCTAssertNil(WakeManager.registeredInstall(gatewayUrl: "http://127.0.0.1:9010", record: sent, credentials: nil))
+        XCTAssertNil(WakeManager.registeredInstall(gatewayUrl: "https://other.example", record: sent, credentials: credentials))
+        XCTAssertNil(WakeManager.registeredInstall(gatewayUrl: nil, record: sent, credentials: credentials))
+    }
+
     // MARK: - Helpers
 
     private static let pubky = "pk:47cz1q7hnqtedgwnxt5k5pz5in1ji5oyx7r9fwr3fsc5ojppftry"
