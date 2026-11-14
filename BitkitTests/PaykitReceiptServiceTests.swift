@@ -260,16 +260,25 @@ final class PaykitReceiptServiceTests: XCTestCase {
         delivery.record(identity: Self.seller, report: OutboundPrivateSendReport(
             attempted: [7], sent: [7], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: []
         ))
-        delivery.markReceiptSent(identity: Self.seller, receiptId: "receipt-1")
-
         delivery.record(identity: Self.otherBuyer, report: OutboundPrivateSendReport(
             attempted: [7], sent: [], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: []
         ))
 
-        XCTAssertNil(delivery.wasSent(identity: Self.otherBuyer, messageId: 7))
-        XCTAssertEqual(delivery.wasSent(identity: Self.seller, messageId: 7), true)
-        XCTAssertTrue(delivery.isReceiptSent(identity: Self.seller, receiptId: "receipt-1"))
-        XCTAssertFalse(delivery.isReceiptSent(identity: Self.otherBuyer, receiptId: "receipt-1"))
+        XCTAssertEqual(delivery.deliveryOf(identity: Self.seller, receiptId: "receipt-1", messageId: 7), true)
+        XCTAssertNil(delivery.deliveryOf(identity: Self.otherBuyer, receiptId: "receipt-1", messageId: 7))
+        XCTAssertEqual(delivery.deliveryOf(identity: Self.seller, receiptId: "receipt-1", messageId: nil), true)
+    }
+
+    func testDeliveryCheckAfterResetRestoresNothing() {
+        delivery.record(identity: Self.seller, report: OutboundPrivateSendReport(
+            attempted: [7], sent: [7], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: []
+        ))
+        XCTAssertEqual(delivery.deliveryOf(identity: Self.seller, receiptId: "receipt-1", messageId: 7), true)
+
+        delivery.reset()
+
+        XCTAssertNil(delivery.deliveryOf(identity: Self.seller, receiptId: "receipt-1", messageId: 7))
+        XCTAssertNil(delivery.deliveryOf(identity: Self.seller, receiptId: "receipt-1", messageId: nil))
     }
 
     func testReceiptIsIssuedForTheIdentityThatMatchedIt() async throws {

@@ -400,14 +400,7 @@ final class PaykitReceiptService {
         _ views: [String: Paykit.ReceiptIssuanceView],
         identity: String
     ) -> Bool? {
-        if delivery.isReceiptSent(identity: identity, receiptId: candidate.receiptId) {
-            return true
-        }
-        let sent = delivery.wasSent(identity: identity, messageId: views[candidate.receiptId]?.outboundMessageId)
-        if sent == true {
-            delivery.markReceiptSent(identity: identity, receiptId: candidate.receiptId)
-        }
-        return sent
+        delivery.deliveryOf(identity: identity, receiptId: candidate.receiptId, messageId: views[candidate.receiptId]?.outboundMessageId)
     }
 
     /// Drains each counterparty's queue and marks its receipts sent right after, before a later drain can prune the
@@ -525,38 +518,39 @@ final class PaykitOutboundDeliveryLog: @unchecked Sendable {
         }
     }
 
-    /// True once a drain sent the message, false when its latest drain failed, nil when no drain reported it.
-    func wasSent(identity: String, messageId: UInt64?) -> Bool? {
-        guard let messageId else { return nil }
-        return lock.withLock { records(identity: identity).outcomes[String(messageId)] }
-    }
-
-    /// Receipts whose access was seen sent stay sent, whatever later pruning drops from the message outcomes.
-    func markReceiptSent(identity: String, receiptId: String) {
+    /// True once the receipt or its access message was seen sent, false when the message's latest drain failed, nil
+    /// when no drain reported it. A sent message marks the receipt sent in the same write, so it stays sent whatever
+    /// later pruning drops, and a reset that lands first leaves nothing to restore.
+    func deliveryOf(identity: String, receiptId: String, messageId: UInt64?) -> Bool? {
+        var delivery: Bool?
         update(identity: identity) { records in
-            if !records.sentReceiptIds.contains(receiptId) {
+            if records.sentReceiptIds.contains(receiptId) {
+                delivery = true
+                return
+            }
+            delivery = messageId.flatMap { records.outcomes[String($0)] }
+            if delivery == true {
                 records.sentReceiptIds.append(receiptId)
             }
         }
-    }
-
-    func isReceiptSent(identity: String, receiptId: String) -> Bool {
-        lock.withLock { records(identity: identity).sentReceiptIds.contains(receiptId) }
+        return delivery
     }
 
     func reset() {
         lock.withLock { defaults.removeObject(forKey: key) }
     }
 
-    private struct Records {
+    private struct Records: Equatable {
         var outcomes: [String: Bool] = [:]
         var sentReceiptIds: [String] = []
     }
 
     private func update(identity: String, _ change: (inout Records) -> Void) {
         lock.withLock {
-            var records = records(identity: identity)
+            let current = records(identity: identity)
+            var records = current
             change(&records)
+            guard records != current else { return }
             var all = defaults.dictionary(forKey: key) ?? [:]
             all[storageKey(identity)] = ["outcomes": records.outcomes, "sentReceiptIds": records.sentReceiptIds]
             defaults.set(all, forKey: key)
