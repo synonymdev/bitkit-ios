@@ -1393,6 +1393,7 @@ final class SparkExitManager {
             try? await Task.sleep(nanoseconds: 250_000_000)
         }
         guard !isTicking, startingCreatedAt == nil, let chain else { return .init(record: record) }
+        let previous = record
         let wasActive = record?.isActive == true
         isTicking = true
         defer { isTicking = false }
@@ -1428,6 +1429,9 @@ final class SparkExitManager {
         )
         if let updated = outcome.record {
             record = updated
+            if let previous, Self.isFundingAskWithdrawn(updated, previous: previous) {
+                Self.dismissDeliveredFundingNotifications(record: updated)
+            }
             await afterTick(updated, wasActive: wasActive)
         }
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastBackgroundRunKey)
