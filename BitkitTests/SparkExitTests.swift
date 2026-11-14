@@ -3389,6 +3389,27 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertEqual(third.fireAt, known.fireAt)
     }
 
+    /// A fee ask the exit withdrew is forgotten as fired, so a later ask for the same amount posts a reminder again.
+    func testAFeeAskAskedAgainAfterAWithdrawalPostsAReminder() throws {
+        let asked = SparkExitFixtures.record(phase: .needsFunding(requiredSats: 5000))
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let ask = try XCTUnwrap(SparkExitMath.reminders(asked, tip: 1000, now: now, network: .bitcoin).first { $0.isFunding })
+        let id = SparkExitManager.notificationId(ask, record: asked)
+        let firedAt = try XCTUnwrap(SparkExitManager.reminderDate(ask, rememberedAt: nil, now: now).remembered)
+        let otherStep = SparkExitManager.notificationId(SparkExitReminder(id: "1-h3000", fireAt: now), record: asked)
+        let remembered = [id: firedAt.timeIntervalSince1970, otherStep: firedAt.timeIntervalSince1970]
+        let later = now.addingTimeInterval(60 * 60)
+        XCTAssertNil(SparkExitManager.reminderDate(ask, rememberedAt: firedAt, now: later).fireAt, "a fired ask posted twice")
+
+        let forgotten = SparkExitManager.forgettingFundingReminders(remembered, record: asked)
+        let kept = SparkExitManager.keepingFired([:], remembered: forgotten, now: later)
+
+        XCTAssertNil(kept[id], "the withdrawn ask stayed remembered as fired")
+        XCTAssertNotNil(kept[otherStep], "another step's fired reminder was forgotten")
+        let again = SparkExitManager.reminderDate(ask, rememberedAt: kept[id].map(Date.init(timeIntervalSince1970:)), now: later)
+        XCTAssertNotNil(again.fireAt, "the ask asked again posted no reminder")
+    }
+
     /// With the operators down an older state's refund can take a leaf 100 blocks after ours matures, and the
     /// watchtower may publish after 50: reminders land well inside the smaller window.
     func testRemindersLandWellInsideTheDeadline() {

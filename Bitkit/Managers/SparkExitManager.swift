@@ -1586,13 +1586,23 @@ final class SparkExitManager {
         return previous.isUnverifiedAsk == true || isRedoAsk
     }
 
-    /// Takes back the exit's delivered fee asks, which no longer hold.
+    /// Takes back the exit's delivered fee asks, which no longer hold, and forgets they fired, so a later ask for the
+    /// same amount posts again.
     private nonisolated static func dismissDeliveredFundingNotifications(record: SparkExitRecord) {
-        let prefix = notificationId(SparkExitReminder(id: "", fireAt: Date()), record: record)
+        UserDefaults.standard.set(forgettingFundingReminders(rememberedReminders(), record: record), forKey: remindersKey)
         UNUserNotificationCenter.current().getDeliveredNotifications { delivered in
-            let ids = delivered.map(\.request.identifier).filter { $0.hasPrefix(prefix) && $0.contains("funding-") }
+            let ids = delivered.map(\.request.identifier).filter { isFundingNotificationId($0, record: record) }
             UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ids)
         }
+    }
+
+    /// `remembered` without the exit's fee asks.
+    nonisolated static func forgettingFundingReminders(_ remembered: [String: TimeInterval], record: SparkExitRecord) -> [String: TimeInterval] {
+        remembered.filter { !isFundingNotificationId($0.key, record: record) }
+    }
+
+    private nonisolated static func isFundingNotificationId(_ id: String, record: SparkExitRecord) -> Bool {
+        id.hasPrefix(notificationId(SparkExitReminder(id: "", fireAt: Date()), record: record)) && id.contains("funding-")
     }
 
     private nonisolated static func clearReminders() {
