@@ -43,7 +43,7 @@ final class PaykitReceiptServiceTests: XCTestCase {
     func testBareTxidProofFromAnotherPaykitAppIsMatchedToTheRecordedReceive() throws {
         let request = try payeeRequest(proofs: [proof(json: "{\"txid\":\"\(Self.txid)\"}", endpoint: Self.onchainMethod, eventId: "event-1")])
 
-        let candidates = match([request], onchain: [.bitcoin(Self.txid, rail: .onchain, sats: 10000)])
+        let candidates = match([request], onchain: [.bitcoin(Self.txid, rail: .onchain, sats: 10000, contact: Self.buyer)])
 
         XCTAssertEqual(candidates.map(\.metadataJson), ["{\"txid\":\"\(Self.txid)\"}"])
     }
@@ -71,9 +71,17 @@ final class PaykitReceiptServiceTests: XCTestCase {
     func testPaymentTwoRequestsClaimIsLeftAlone() throws {
         let claim = try proof(type: "bitcoin-onchain-txid", data: Self.txid, endpoint: Self.onchainMethod)
         let first = try payeeRequest(proofs: [claim])
-        let second = try payeeRequest(counterparty: Self.otherBuyer, requestId: "5f1c2a3b-1d2e-4f5a-8b6c-7d8e9f0a1b2c", proofs: [claim])
+        let second = try payeeRequest(requestId: "5f1c2a3b-1d2e-4f5a-8b6c-7d8e9f0a1b2c", proofs: [claim])
+        let receive = PaykitRecordedReceive.bitcoin(Self.txid, rail: .onchain, sats: 1, contact: Self.buyer)
 
-        XCTAssertTrue(match([first, second], onchain: [.bitcoin(Self.txid, rail: .onchain, sats: 1)]).isEmpty)
+        XCTAssertTrue(match([first, second], onchain: [receive]).isEmpty)
+    }
+
+    func testOnchainProofForAReceiveNotAttributedToThePayerIsIgnored() throws {
+        let request = try payeeRequest(proofs: [proof(type: "bitcoin-onchain-txid", data: Self.txid, endpoint: Self.onchainMethod)])
+        let unattributed = PaykitRecordedReceive.bitcoin(Self.txid, rail: .onchain, sats: 50000, address: Self.address)
+
+        XCTAssertTrue(match([request], onchain: [unattributed]).isEmpty)
     }
 
     func testReceiveRecordedWellBeforeTheRequestWasProposedIsNotReceipted() throws {
@@ -85,8 +93,8 @@ final class PaykitReceiptServiceTests: XCTestCase {
             proofs: [proof(type: "bitcoin-onchain-txid", data: Self.txid, endpoint: Self.onchainMethod)],
             proposedAt: "yesterday"
         )
-        let earlier = PaykitRecordedReceive.bitcoin(Self.txid, rail: .onchain, sats: 1000, receivedAt: 1_763_100_000)
-        let later = PaykitRecordedReceive.bitcoin(Self.txid, rail: .onchain, sats: 1000, receivedAt: 1_794_657_600)
+        let earlier = PaykitRecordedReceive.bitcoin(Self.txid, rail: .onchain, sats: 1000, receivedAt: 1_763_100_000, contact: Self.buyer)
+        let later = PaykitRecordedReceive.bitcoin(Self.txid, rail: .onchain, sats: 1000, receivedAt: 1_794_657_600, contact: Self.buyer)
 
         XCTAssertTrue(match([request], onchain: [earlier]).isEmpty)
         XCTAssertEqual(match([request], onchain: [later]).count, 1)
@@ -104,26 +112,45 @@ final class PaykitReceiptServiceTests: XCTestCase {
         XCTAssertEqual(candidates.map(\.counterparty), [Self.buyer])
     }
 
-    func testUsdtReceiptNamesTheProofTransactionAndKeysStatusByTransfer() throws {
-        let usdtProof = try proof(
+    private func usdtProof(_ eventId: String) throws -> PaymentProofRecord {
+        try proof(
             json: "{\"type\":\"erc20-transfer-eip712\",\"transaction_hash\":\"0xABC\"}",
             endpoint: PublicPaykitService.MethodId.usdtArbitrum.rawValue,
-            eventId: "usdt-event"
+            eventId: eventId
         )
-        let request = try payeeRequest(proofs: [usdtProof])
-        let usdt = PaykitVerifiedUsdtReceive(
-            requestId: PaykitPaymentRequest.ID(paymentRequestId: Self.requestId, counterparty: Self.buyer),
-            proofEventId: "usdt-event",
-            transferId: "Transfer-1",
+    }
+
+    private func usdtReceive(_ requestId: String, _ eventId: String, _ transferId: String) -> PaykitVerifiedUsdtReceive {
+        PaykitVerifiedUsdtReceive(
+            requestId: PaykitPaymentRequest.ID(paymentRequestId: requestId, counterparty: Self.buyer),
+            proofEventId: eventId,
+            transferId: transferId,
             amount: PaykitAmount(asset: .usdt, atomic: 9_000_000)
         )
+    }
 
-        let candidate = try XCTUnwrap(match([request], usdt: [usdt]).first)
+    func testUsdtReceiptNamesTheProofTransactionAndKeysStatusByTransfer() throws {
+        let request = try payeeRequest(proofs: [usdtProof("usdt-event")])
 
-        XCTAssertEqual(candidate.receive.paymentId, "0xabc")
+        let candidate = try XCTUnwrap(match([request], usdt: [usdtReceive(Self.requestId, "usdt-event", "Transfer-1")]).first)
+
+        XCTAssertEqual(candidate.receive.paymentId, "transfer-1")
         XCTAssertEqual(candidate.receive.statusKey, "transfer-1")
         XCTAssertEqual(candidate.receive.amount.value, "9")
         XCTAssertEqual(candidate.metadataJson, "{\"txid\":\"0xabc\"}")
+    }
+
+    func testTwoUsdtTransfersInOneTransactionEachGetAReceipt() throws {
+        let second = "5f1c2a3b-1d2e-4f5a-8b6c-7d8e9f0a1b2c"
+        let first = try payeeRequest(proofs: [usdtProof("event-a")])
+        let other = try payeeRequest(requestId: second, proofs: [usdtProof("event-b")])
+
+        let candidates = match(
+            [first, other],
+            usdt: [usdtReceive(Self.requestId, "event-a", "transfer-a"), usdtReceive(second, "event-b", "transfer-b")]
+        )
+
+        XCTAssertEqual(Set(candidates.map(\.receive.statusKey)), ["transfer-a", "transfer-b"])
     }
 
     func testReceiptIdIsAStableUuidV4PerRequestAndPayment() throws {
@@ -221,7 +248,7 @@ final class PaykitReceiptServiceTests: XCTestCase {
         let service = makeService(sdk)
         await service.reconcile()
 
-        delivery.record(OutboundPrivateSendReport(
+        delivery.record(identity: Self.seller, report: OutboundPrivateSendReport(
             attempted: [7], sent: [7], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: []
         ))
         await service.reconcile()
@@ -229,15 +256,29 @@ final class PaykitReceiptServiceTests: XCTestCase {
         XCTAssertEqual(service.statuses, [Self.hash: .sent])
     }
 
-    func testDeliveryOfAnotherIdentityIsForgotten() {
-        delivery.bind(identity: Self.seller)
-        delivery.record(OutboundPrivateSendReport(
+    func testDeliveryIsKeptPerIdentity() {
+        delivery.record(identity: Self.seller, report: OutboundPrivateSendReport(
             attempted: [7], sent: [7], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: []
         ))
+        delivery.markReceiptSent(identity: Self.seller, receiptId: "receipt-1")
 
-        delivery.bind(identity: Self.otherBuyer)
+        delivery.record(identity: Self.otherBuyer, report: OutboundPrivateSendReport(
+            attempted: [7], sent: [], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: []
+        ))
 
-        XCTAssertNil(delivery.wasSent(7))
+        XCTAssertNil(delivery.wasSent(identity: Self.otherBuyer, messageId: 7))
+        XCTAssertEqual(delivery.wasSent(identity: Self.seller, messageId: 7), true)
+        XCTAssertTrue(delivery.isReceiptSent(identity: Self.seller, receiptId: "receipt-1"))
+        XCTAssertFalse(delivery.isReceiptSent(identity: Self.otherBuyer, receiptId: "receipt-1"))
+    }
+
+    func testReceiptIsIssuedForTheIdentityThatMatchedIt() async throws {
+        let sdk = try FakeReceiptSdk(requests: [lightningPaidRequest()])
+        let service = makeService(sdk)
+
+        await service.reconcile()
+
+        XCTAssertEqual(sdk.issuedIdentities, [Self.seller])
     }
 
     func testNothingIsIssuedBeforeThePaymentIsRecorded() async throws {
@@ -360,6 +401,7 @@ private final class FakeReceiptSdk: PaykitReceiptSdk, @unchecked Sendable {
     var issueFails = false
     var drainOutcome = DrainOutcome.sent
     private(set) var issuedCount = 0
+    private(set) var issuedIdentities: [String] = []
     private(set) var drainedCounterparties: [String] = []
 
     init(requests: [PaymentRequestRecord]) {
@@ -380,9 +422,11 @@ private final class FakeReceiptSdk: PaykitReceiptSdk, @unchecked Sendable {
     func issueReceipt(
         counterparty: String,
         draft: ReceiptDraft,
+        expectedIdentity: String,
         priority _: PaykitSdkOperationLock.Priority
     ) async throws -> ReceiptIssuanceView {
         issuedCount += 1
+        issuedIdentities.append(expectedIdentity)
         if issueFails {
             throw URLError(.notConnectedToInternet)
         }

@@ -20,7 +20,7 @@ enum PaykitReceiptRail: Equatable {
 
 /// A payment this wallet recorded as received, which a receipt can name.
 struct PaykitRecordedReceive: Equatable {
-    /// Lowercase payment hash for Lightning, transaction id for on-chain and USDT.
+    /// Lowercase payment hash for Lightning, transaction id for on-chain, verified transfer id for USDT.
     let paymentId: String
     let rail: PaykitReceiptRail
     let amount: PaykitAmount
@@ -32,6 +32,8 @@ struct PaykitRecordedReceive: Equatable {
     var receivedAt: UInt64?
     /// The contact the wallet attributed the receive to.
     var contact: String?
+    /// The transaction that carried the payment, for the receipt's metadata.
+    var transactionId: String
 
     init(
         paymentId: String,
@@ -40,9 +42,11 @@ struct PaykitRecordedReceive: Equatable {
         address: String? = nil,
         statusKey: String? = nil,
         receivedAt: UInt64? = nil,
-        contact: String? = nil
+        contact: String? = nil,
+        transactionId: String? = nil
     ) {
         self.paymentId = paymentId.lowercased()
+        self.transactionId = (transactionId ?? paymentId).lowercased()
         self.rail = rail
         self.amount = amount
         self.address = address
@@ -95,7 +99,7 @@ struct PaykitReceiptCandidate {
     var metadataJson: String {
         switch receive.rail {
         case .lightning: "{\"payment_hash\":\"\(receive.paymentId)\"}"
-        case .onchain, .usdt: "{\"txid\":\"\(receive.paymentId)\"}"
+        case .onchain, .usdt: "{\"txid\":\"\(receive.transactionId)\"}"
         }
     }
 
@@ -115,7 +119,8 @@ struct PaykitReceiptCandidate {
 /// Pairs the requests this wallet issued with the payments it recorded for them: the payer's proof names the request
 /// and the payment, or the request's own invoice or address received it. A proof alone is only the payer's claim, so
 /// nothing is receipted until the money is recorded here, after the request was proposed and, when the wallet knows
-/// the payer, from that counterparty; a payment two requests still claim is left alone.
+/// the payer, from that counterparty. A txid is public, so an on-chain proof counts only for a receive the wallet
+/// attributed to that counterparty. A payment two requests still claim is left alone.
 enum PaykitReceiptMatcher {
     static func candidates(
         records: [Paykit.PaymentRequestRecord],
@@ -139,6 +144,7 @@ enum PaykitReceiptMatcher {
             for proof in record.paymentProofs {
                 guard let (rail, id) = bitcoinPaymentId(proof),
                       let receive = rail == .lightning ? lightningReceives[id] : onchainByTxid[id],
+                      rail == .lightning || PubkyPublicKeyFormat.matches(receive.contact, record.counterparty),
                       couldBePaid(record, by: receive)
                 else { continue }
                 found.append(candidate(proof.paymentEndpointIdentifier, proof.billingPeriod, receive))
@@ -156,7 +162,9 @@ enum PaykitReceiptMatcher {
                 guard let proof = record.paymentProofs.first(where: { $0.eventId == usdt.proofEventId }),
                       let hash = proofValue(proof, "transaction_hash")
                 else { continue }
-                let receive = PaykitRecordedReceive(paymentId: hash, rail: .usdt, amount: usdt.amount, statusKey: usdt.transferId)
+                let receive = PaykitRecordedReceive(
+                    paymentId: usdt.transferId, rail: .usdt, amount: usdt.amount, transactionId: hash
+                )
                 found.append(candidate(proof.paymentEndpointIdentifier, proof.billingPeriod, receive))
             }
         }
@@ -282,7 +290,7 @@ final class PaykitReceiptService {
         await serialized {
             guard let candidate = self.candidates[paymentId.lowercased()], let identity = self.identity else { return }
             self.statuses[candidate.receive.statusKey] = .sending
-            await self.issue(candidate)
+            await self.issue(candidate, identity: identity)
             await self.publish(Array(self.candidates.values), identity: identity)
         }
     }
@@ -316,7 +324,6 @@ final class PaykitReceiptService {
                 reset()
             }
             identity = current
-            delivery.bind(identity: current)
 
             let records = try await sdk.sharedPaymentRequests(priority: .background).filter { $0.localRole == .payee }
             let hasPayments = records.contains { !$0.paymentProofs.isEmpty || !($0.terms?.paymentEndpoints ?? [:]).isEmpty }
@@ -343,7 +350,7 @@ final class PaykitReceiptService {
                 if issued[candidate.receiptId]?.status == .accessQueued || attemptedReceiptIds.contains(candidate.receiptId) {
                     continue
                 }
-                await issue(candidate)
+                await issue(candidate, identity: current)
                 attemptedReceiptIds.insert(candidate.receiptId)
             }
             await publish(found, identity: current)
@@ -352,9 +359,11 @@ final class PaykitReceiptService {
         }
     }
 
-    private func issue(_ candidate: PaykitReceiptCandidate) async {
+    private func issue(_ candidate: PaykitReceiptCandidate, identity: String) async {
         do {
-            let view = try await sdk.issueReceipt(counterparty: candidate.counterparty, draft: candidate.draft(), priority: .background)
+            let view = try await sdk.issueReceipt(
+                counterparty: candidate.counterparty, draft: candidate.draft(), expectedIdentity: identity, priority: .background
+            )
             Logger.info("Issued Paykit receipt '\(candidate.receiptId)' with status '\(view.status)'", context: "PaykitReceiptService")
         } catch {
             Logger.warn("Failed to issue Paykit receipt '\(candidate.receiptId)': \(error)", context: "PaykitReceiptService")
@@ -363,16 +372,16 @@ final class PaykitReceiptService {
 
     private func publish(_ found: [PaykitReceiptCandidate], identity: String) async {
         guard var views = await readIssuedViews() else { return }
-        let undelivered = found.filter { deliveryOf($0, views) != true }
+        let undelivered = found.filter { deliveryOf($0, views, identity: identity) != true }
         var unreachable: [String] = []
         if !undelivered.isEmpty {
-            unreachable = await drain(undelivered, identity: identity)
+            unreachable = await drain(undelivered, views: views, identity: identity)
             guard let drained = await readIssuedViews() else { return }
             views = drained
         }
         var updated: [String: PaykitReceiptStatus] = [:]
         for candidate in found {
-            let sent = deliveryOf(candidate, views)
+            let sent = deliveryOf(candidate, views, identity: identity)
             updated[candidate.receive.statusKey] = if sent == true {
                 .sent
             } else if views[candidate.receiptId]?.status != .accessQueued || sent == false {
@@ -386,18 +395,24 @@ final class PaykitReceiptService {
         statuses = updated
     }
 
-    private func deliveryOf(_ candidate: PaykitReceiptCandidate, _ views: [String: Paykit.ReceiptIssuanceView]) -> Bool? {
-        if delivery.isReceiptSent(candidate.receiptId) {
+    private func deliveryOf(
+        _ candidate: PaykitReceiptCandidate,
+        _ views: [String: Paykit.ReceiptIssuanceView],
+        identity: String
+    ) -> Bool? {
+        if delivery.isReceiptSent(identity: identity, receiptId: candidate.receiptId) {
             return true
         }
-        let sent = delivery.wasSent(views[candidate.receiptId]?.outboundMessageId)
+        let sent = delivery.wasSent(identity: identity, messageId: views[candidate.receiptId]?.outboundMessageId)
         if sent == true {
-            delivery.markReceiptSent(candidate.receiptId)
+            delivery.markReceiptSent(identity: identity, receiptId: candidate.receiptId)
         }
         return sent
     }
 
-    private func drain(_ found: [PaykitReceiptCandidate], identity: String) async -> [String] {
+    /// Drains each counterparty's queue and marks its receipts sent right after, before a later drain can prune the
+    /// evidence. Returns the counterparties that could not be reached.
+    private func drain(_ found: [PaykitReceiptCandidate], views: [String: Paykit.ReceiptIssuanceView], identity: String) async -> [String] {
         var counterparties: [String] = []
         for candidate in found where !counterparties.contains(where: { PubkyPublicKeyFormat.matches($0, candidate.counterparty) }) {
             counterparties.append(candidate.counterparty)
@@ -408,10 +423,13 @@ final class PaykitReceiptService {
                 let report = try await sdk.processOutboundPrivateMessages(
                     counterparty: counterparty, priority: .background, expectedIdentity: identity
                 )
-                delivery.record(report)
+                delivery.record(identity: identity, report: report)
             } catch {
                 Logger.warn("Failed to send Paykit receipt access: \(error)", context: "PaykitReceiptService")
                 unreachable.append(counterparty)
+            }
+            for candidate in found where PubkyPublicKeyFormat.matches(candidate.counterparty, counterparty) {
+                _ = deliveryOf(candidate, views, identity: identity)
             }
         }
         return unreachable
@@ -465,6 +483,7 @@ protocol PaykitReceiptSdk: Sendable {
     func issueReceipt(
         counterparty: String,
         draft: Paykit.ReceiptDraft,
+        expectedIdentity: String,
         priority: PaykitSdkOperationLock.Priority
     ) async throws -> Paykit.ReceiptIssuanceView
     func issuedReceipts(priority: PaykitSdkOperationLock.Priority) async throws -> [Paykit.ReceiptIssuanceView]
@@ -477,11 +496,13 @@ protocol PaykitReceiptSdk: Sendable {
 
 extension PaykitSdkService: PaykitReceiptSdk {}
 
-/// What drains reported for queued Paykit private messages, kept across launches: the SDK reports a message's delivery
-/// only to the call that drained it, so a receipt counts as sent only once some drain saw its message go out.
+/// What drains reported for queued Paykit private messages, kept across launches and per identity: the SDK reports a
+/// message's delivery only to the call that drained it, so a receipt counts as sent only once some drain saw its message
+/// go out. Message ids are local to one identity's Paykit state, so each identity keeps its own records.
 final class PaykitOutboundDeliveryLog: @unchecked Sendable {
     static let shared = PaykitOutboundDeliveryLog()
 
+    /// Most message outcomes kept per identity besides the latest report's; the oldest ids are dropped first.
     private static let maxEntries = 1000
     private let defaults: UserDefaults
     private let key: String
@@ -492,66 +513,65 @@ final class PaykitOutboundDeliveryLog: @unchecked Sendable {
         self.key = key
     }
 
-    func record(_ report: Paykit.OutboundPrivateSendReport) {
+    func record(identity: String, report: Paykit.OutboundPrivateSendReport) {
         guard !report.sent.isEmpty || !report.failed.isEmpty else { return }
-        update { outcomes in
-            report.failed.forEach { outcomes[String($0.outboundMessageId)] = false }
-            report.sent.forEach { outcomes[String($0)] = true }
+        var reported: [String: Bool] = [:]
+        report.failed.forEach { reported[String($0.outboundMessageId)] = false }
+        report.sent.forEach { reported[String($0)] = true }
+        update(identity: identity) { records in
+            let older = records.outcomes.filter { reported[$0.key] == nil }
+            let kept = Set(older.keys.compactMap(UInt64.init).sorted().suffix(Self.maxEntries).map(String.init))
+            records.outcomes = older.filter { kept.contains($0.key) }.merging(reported) { _, new in new }
         }
     }
 
     /// True once a drain sent the message, false when its latest drain failed, nil when no drain reported it.
-    func wasSent(_ messageId: UInt64?) -> Bool? {
+    func wasSent(identity: String, messageId: UInt64?) -> Bool? {
         guard let messageId else { return nil }
-        return lock.withLock { stored().outcomes[String(messageId)] }
+        return lock.withLock { records(identity: identity).outcomes[String(messageId)] }
     }
 
     /// Receipts whose access was seen sent stay sent, whatever later pruning drops from the message outcomes.
-    func markReceiptSent(_ receiptId: String) {
-        lock.withLock {
-            let current = stored()
-            guard !current.sentReceiptIds.contains(receiptId) else { return }
-            save(identity: current.identity, outcomes: current.outcomes, sentReceiptIds: current.sentReceiptIds + [receiptId])
-        }
-    }
-
-    func isReceiptSent(_ receiptId: String) -> Bool {
-        lock.withLock { stored().sentReceiptIds.contains(receiptId) }
-    }
-
-    /// Message ids are local to one identity's Paykit state, so outcomes recorded for another, or for none, are dropped.
-    func bind(identity: String) {
-        lock.withLock {
-            guard !PubkyPublicKeyFormat.matches(stored().identity, identity) else { return }
-            save(identity: identity, outcomes: [:], sentReceiptIds: [])
-        }
-    }
-
-    private func update(_ change: (inout [String: Bool]) -> Void) {
-        lock.withLock {
-            let current = stored()
-            var outcomes = current.outcomes
-            change(&outcomes)
-            if outcomes.count > Self.maxEntries {
-                let kept = Set(outcomes.keys.compactMap(UInt64.init).sorted().suffix(Self.maxEntries).map(String.init))
-                outcomes = outcomes.filter { kept.contains($0.key) }
+    func markReceiptSent(identity: String, receiptId: String) {
+        update(identity: identity) { records in
+            if !records.sentReceiptIds.contains(receiptId) {
+                records.sentReceiptIds.append(receiptId)
             }
-            save(identity: current.identity, outcomes: outcomes, sentReceiptIds: current.sentReceiptIds)
         }
     }
 
-    private func stored() -> (identity: String?, outcomes: [String: Bool], sentReceiptIds: [String]) {
-        let value = defaults.dictionary(forKey: key)
-        return (
-            value?["identity"] as? String,
-            value?["outcomes"] as? [String: Bool] ?? [:],
-            value?["sentReceiptIds"] as? [String] ?? []
+    func isReceiptSent(identity: String, receiptId: String) -> Bool {
+        lock.withLock { records(identity: identity).sentReceiptIds.contains(receiptId) }
+    }
+
+    func reset() {
+        lock.withLock { defaults.removeObject(forKey: key) }
+    }
+
+    private struct Records {
+        var outcomes: [String: Bool] = [:]
+        var sentReceiptIds: [String] = []
+    }
+
+    private func update(identity: String, _ change: (inout Records) -> Void) {
+        lock.withLock {
+            var records = records(identity: identity)
+            change(&records)
+            var all = defaults.dictionary(forKey: key) ?? [:]
+            all[storageKey(identity)] = ["outcomes": records.outcomes, "sentReceiptIds": records.sentReceiptIds]
+            defaults.set(all, forKey: key)
+        }
+    }
+
+    private func records(identity: String) -> Records {
+        let value = defaults.dictionary(forKey: key)?[storageKey(identity)] as? [String: Any]
+        return Records(
+            outcomes: value?["outcomes"] as? [String: Bool] ?? [:],
+            sentReceiptIds: value?["sentReceiptIds"] as? [String] ?? []
         )
     }
 
-    private func save(identity: String?, outcomes: [String: Bool], sentReceiptIds: [String]) {
-        var value: [String: Any] = ["outcomes": outcomes, "sentReceiptIds": sentReceiptIds]
-        value["identity"] = identity
-        defaults.set(value, forKey: key)
+    private func storageKey(_ identity: String) -> String {
+        PubkyPublicKeyFormat.normalized(identity) ?? identity
     }
 }
