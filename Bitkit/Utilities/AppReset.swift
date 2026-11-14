@@ -103,6 +103,7 @@ final class AppReset: WipeStepExecutor {
         case .wipeKeychain:
             try Self.wipeKeychain()
             PaykitUsdtPaymentService.shared.resetForWipe()
+            PaykitReceiptService.shared.reset()
         case .resetSettings:
             if let bundleID = Bundle.main.bundleIdentifier {
                 UserDefaults.standard.removePersistentDomain(forName: bundleID)

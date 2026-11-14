@@ -1768,7 +1768,10 @@ extension AppViewModel {
             await CoreService.shared.activity.markOnchainActivityAsSeen(txid: txid)
 
             await MainActor.run {
-                sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, sats: sats))
+                sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, sats: sats, paymentId: txid))
+            }
+            if PaykitFeatureFlags.isUIEnabled {
+                await PaykitReceiptService.shared.reconcile()
             }
         }
     }
@@ -1848,7 +1851,14 @@ extension AppViewModel {
 
                 await MainActor.run {
                     let sats = LightningAmountConversion.satsCeil(fromMsats: amountMsat)
-                    sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: sats))
+                    sheetViewModel.showSheet(
+                        .receivedTx,
+                        data: ReceivedTxSheetDetails(type: .lightning, sats: sats, paymentId: paymentHash)
+                    )
+                }
+                if PaykitFeatureFlags.isUIEnabled {
+                    try? await CoreService.shared.activity.syncLdkNodePayments(LightningService.shared.listPayments() ?? [])
+                    await PaykitReceiptService.shared.reconcile()
                 }
             }
         case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):

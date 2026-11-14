@@ -1604,6 +1604,9 @@
 "wallet__boost_recomended_button" = "Použít navrhovaný poplatek";
 "wallet__boost_swipe" = "Přejetím posilte";
 "wallet__payment_received" = "bitcoin přijatý";
+"wallet__receipt_failed" = "Odeslání potvrzení selhalo";
+"wallet__receipt_sending" = "Odesílání potvrzení";
+"wallet__receipt_sent" = "Potvrzení odesláno";
 "wallet__payment_request" = "Žádost o platbu";
 "wallet__payment_request_unavailable" = "Žádost o platbu již není k dispozici.";
 "wallet__payment_request_note_too_long" = "Zkraťte poznámku a zkuste to znovu.";

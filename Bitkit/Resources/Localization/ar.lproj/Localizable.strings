@@ -1237,6 +1237,9 @@
 "wallet__boost_fee_not_set" = "يرجى تعيين معدل الرسوم قبل التعزيز.";
 "wallet__boost_swipe" = "اسحب للتعزيز";
 "wallet__payment_received" = "تم استلام Bitcoin";
+"wallet__receipt_failed" = "فشل إرسال الإيصال";
+"wallet__receipt_sending" = "جارٍ إرسال الإيصال";
+"wallet__receipt_sent" = "تم إرسال الإيصال";
 "widgets__onboarding__title" = "مرحبًا،\n<accent>الأدوات</accent>";
 "widgets__onboarding__description" = "استمتع بموجزات لامركزية من خدمات الويب المفضلة لديك، بإضافة أدوات ممتعة ومفيدة إلى محفظة Bitkit.";
 "widgets__onboarding__view_organize" = "العرض والتنظيم";

@@ -1577,6 +1577,9 @@
 "wallet__boost_recomended_button" = "Utilizza la tariffa suggerita";
 "wallet__boost_swipe" = "Scorri per Potenziare";
 "wallet__payment_received" = "Bitcoin ricevuti";
+"wallet__receipt_failed" = "Invio della ricevuta non riuscito";
+"wallet__receipt_sending" = "Invio della ricevuta";
+"wallet__receipt_sent" = "Ricevuta inviata";
 "wallet__payment_request" = "Richiesta di pagamento";
 "wallet__payment_request_unavailable" = "La richiesta di pagamento non è più disponibile.";
 "wallet__payment_request_note_too_long" = "Accorcia la nota e riprova.";

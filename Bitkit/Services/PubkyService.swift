@@ -1282,7 +1282,12 @@ actor PaykitSdkService {
                 guard await !PaykitPaymentActivity.shared.isActive else { throw OperationDeferral.paymentActive }
                 try Task.checkCancellation()
             }
-            return try await sdk.processOutboundPrivateMessages(counterparty: counterparty)
+            let report = try await sdk.processOutboundPrivateMessages(counterparty: counterparty)
+            // The checked identity, or the key `withSdk` refreshed for this drain.
+            if let identity = expectedIdentity ?? self.cachedPaykitKey?.publicKey {
+                PaykitOutboundDeliveryLog.shared.record(identity: identity, report: report)
+            }
+            return report
         }
     }
 
@@ -1293,7 +1298,33 @@ actor PaykitSdkService {
 
     func processPendingPrivateMessages(priority: PaykitSdkOperationLock.Priority) async throws -> [OutboundPrivateCounterpartySendReport] {
         try await withStateRevisionTracking(priority: priority, beforeOperation: { try await self.checkRefreshAdmission(priority) }) { sdk in
-            try await sdk.processPendingPrivateMessages()
+            let reports = try await sdk.processPendingPrivateMessages()
+            if let identity = self.cachedPaykitKey?.publicKey {
+                reports.compactMap(\.report).forEach { PaykitOutboundDeliveryLog.shared.record(identity: identity, report: $0) }
+            }
+            return reports
+        }
+    }
+
+    /// Prepares, stores and queues a receipt; repeating it with the same Receipt ID resumes the same issuance. Fails when
+    /// the SDK no longer holds `expectedIdentity`, the identity whose requests and payments produced the draft.
+    func issueReceipt(
+        counterparty: String,
+        draft: Paykit.ReceiptDraft,
+        expectedIdentity: String,
+        priority: PaykitSdkOperationLock.Priority
+    ) async throws -> Paykit.ReceiptIssuanceView {
+        try await withStateRevisionTracking(priority: priority) { sdk in
+            guard try await PubkyPublicKeyFormat.matches(sdk.identityStatus()?.publicKey, expectedIdentity) else {
+                throw PubkyServiceError.identityChanged
+            }
+            return try await sdk.issueReceipt(counterparty: counterparty, draft: draft)
+        }
+    }
+
+    func issuedReceipts(priority: PaykitSdkOperationLock.Priority) async throws -> [Paykit.ReceiptIssuanceView] {
+        try await withSdk(priority: priority) { sdk in
+            try await sdk.issuedReceipts()
         }
     }
 
@@ -2101,7 +2132,7 @@ actor PaykitSdkService {
         Paykit.PaykitAppCapabilities(
             privatePayments: status?.capability == .privateLinkCapable,
             paymentRequests: status?.capability == .privateLinkCapable,
-            receipts: false,
+            receipts: status?.capability == .privateLinkCapable,
             outgoingPayments: true
         )
     }

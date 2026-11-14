@@ -1598,6 +1598,9 @@
 "wallet__boost_recomended_button" = "Использовать рекомендованную комиссию";
 "wallet__boost_swipe" = "Ускорить";
 "wallet__payment_received" = "Получен Биткоин";
+"wallet__receipt_failed" = "Не удалось отправить квитанцию";
+"wallet__receipt_sending" = "Отправка квитанции";
+"wallet__receipt_sent" = "Квитанция отправлена";
 "wallet__payment_request" = "Запрос на оплату";
 "wallet__payment_request_unavailable" = "Запрос на оплату больше недоступен.";
 "wallet__payment_request_note_too_long" = "Сократите заметку и попробуйте снова.";

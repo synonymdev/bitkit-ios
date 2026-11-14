@@ -1481,6 +1481,9 @@
 "wallet__boost_fee_not_set" = "Estableix una taxa de tarifa abans d'accelerar.";
 "wallet__boost_swipe" = "Llisca per impulsar";
 "wallet__payment_received" = "Rebut Bitcoin";
+"wallet__receipt_failed" = "No s'ha pogut enviar el rebut";
+"wallet__receipt_sending" = "S'està enviant el rebut";
+"wallet__receipt_sent" = "Rebut enviat";
 "wallet__payment_request" = "Sol·licitud de pagament";
 "wallet__payment_request_unavailable" = "La sol·licitud de pagament ja no està disponible.";
 "wallet__payment_request_note_too_long" = "Escurça la nota i torna-ho a provar.";

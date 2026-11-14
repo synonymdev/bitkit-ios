@@ -1610,6 +1610,9 @@
 "wallet__boost_recomended_button" = "Voorgestelde Vergoeding";
 "wallet__boost_swipe" = "Veeg Om Te Boosten";
 "wallet__payment_received" = "Bitcoin Ontvangen";
+"wallet__receipt_failed" = "Ontvangstbewijs verzenden mislukt";
+"wallet__receipt_sending" = "Ontvangstbewijs verzenden";
+"wallet__receipt_sent" = "Ontvangstbewijs verzonden";
 "wallet__payment_request" = "Betaalverzoek";
 "wallet__payment_request_unavailable" = "Het betaalverzoek is niet meer beschikbaar.";
 "wallet__payment_request_note_too_long" = "Maak de opmerking korter en probeer het opnieuw.";

@@ -1353,6 +1353,9 @@
 "wallet__boost_fee_not_set" = "Ορίστε ποσοστό τέλους πριν από την ενίσχυση.";
 "wallet__boost_swipe" = "Σύρετε για Ενίσχυση";
 "wallet__payment_received" = "Bitcoin Λήφθηκε";
+"wallet__receipt_failed" = "Η αποστολή της απόδειξης απέτυχε";
+"wallet__receipt_sending" = "Αποστολή απόδειξης";
+"wallet__receipt_sent" = "Η απόδειξη στάλθηκε";
 "wallet__payment_request" = "Αίτημα πληρωμής";
 "wallet__payment_request_unavailable" = "Το αίτημα πληρωμής δεν είναι πλέον διαθέσιμο.";
 "wallet__payment_request_note_too_long" = "Συντόμευσε τη σημείωση και δοκίμασε ξανά.";

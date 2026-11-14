@@ -1658,6 +1658,9 @@
 "wallet__boost_recomended_button" = "Use Suggested Fee";
 "wallet__boost_swipe" = "Swipe To Boost";
 "wallet__payment_received" = "Received Bitcoin";
+"wallet__receipt_failed" = "Receipt failed";
+"wallet__receipt_sending" = "Sending receipt";
+"wallet__receipt_sent" = "Receipt sent";
 "wallet__payment_request" = "Payment Request";
 "wallet__payment_request_unavailable" = "The payment request is no longer available.";
 "wallet__payment_request_note_too_long" = "Shorten the note and try again.";

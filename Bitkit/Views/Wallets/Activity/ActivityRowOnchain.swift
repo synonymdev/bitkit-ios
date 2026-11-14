@@ -79,7 +79,7 @@ struct ActivityRowOnchain: View {
     }
 
     var body: some View {
-        ActivityRowContent(title: status, subtitle: description) {
+        ActivityRowContent(title: status, subtitle: description, receiptPaymentId: item.txType == .received ? item.txId : nil) {
             if let contact {
                 PubkyContactAvatar(contact: contact, size: 40)
             } else {

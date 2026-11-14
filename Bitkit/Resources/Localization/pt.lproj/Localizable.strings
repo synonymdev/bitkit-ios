@@ -1310,6 +1310,9 @@
 "wallet__boost_fee_not_set" = "Defina uma taxa antes de acelerar.";
 "wallet__boost_swipe" = "Arraste para acelerar";
 "wallet__payment_received" = "Bitcoin Recebido";
+"wallet__receipt_failed" = "Falha ao enviar o recibo";
+"wallet__receipt_sending" = "A enviar recibo";
+"wallet__receipt_sent" = "Recibo enviado";
 "wallet__payment_request_unavailable" = "O pedido de pagamento já não está disponível.";
 "wallet__payment_request_note_too_long" = "Encurte a nota e tente novamente.";
 "wallet__payment_request_expired" = "O pedido de pagamento expirou.";
