@@ -24,6 +24,8 @@ struct PaykitReceiptStatusView: View {
                         .lineLimit(1)
                 }
                 .buttonStyle(.borderless)
+                // A long locale shortens the status instead of Retry.
+                .layoutPriority(1)
                 .accessibilityIdentifier("PaykitReceiptRetry")
             }
         }

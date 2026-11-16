@@ -1017,6 +1017,7 @@ actor PaykitSdkService {
             }
             if peers.contains(where: { $0.state == .linked }) {
                 do {
+                    try await sendPendingMessages(sdk)
                     let report = try await sdk.clearPrivatePaymentListAndProcessOutbound(
                         counterparty: publicKey
                     )
@@ -1126,7 +1127,8 @@ actor PaykitSdkService {
                 }
             }
         ) { sdk in
-            try await sdk.syncPrivatePaymentListsWithReservationsAndProcessOutbound(
+            try await sendPendingMessages(sdk)
+            return try await sdk.syncPrivatePaymentListsWithReservationsAndProcessOutbound(
                 updates: updates,
                 clearUnlistedLinkedPeers: clearUnlistedLinkedPeers
             )
@@ -1184,6 +1186,7 @@ actor PaykitSdkService {
                 throw PubkyServiceError.sessionNotActive
             }
             try checkMutationAdmission()
+            try await sendPendingMessages(sdk)
             return try await sdk.syncPrivatePaymentListsWithReservationsAndProcessOutbound(
                 updates: updates,
                 clearUnlistedLinkedPeers: false
@@ -1303,6 +1306,21 @@ actor PaykitSdkService {
                 reports.compactMap(\.report).forEach { PaykitOutboundDeliveryLog.shared.record(identity: identity, report: $0) }
             }
             return reports
+        }
+    }
+
+    /// Sends and records what is already queued, receipts included, before a payment-list sync whose own drain would send
+    /// them unreported.
+    private func sendPendingMessages(_ sdk: PaykitSdk) async throws {
+        do {
+            let reports = try await sdk.processPendingPrivateMessages()
+            if let identity = cachedPaykitKey?.publicKey {
+                reports.compactMap(\.report).forEach { PaykitOutboundDeliveryLog.shared.record(identity: identity, report: $0) }
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            Logger.warn("Failed to send queued Paykit messages before a payment-list sync: \(error)", context: "PaykitSdkService")
         }
     }
 
