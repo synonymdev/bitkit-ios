@@ -540,6 +540,39 @@ extension ScannerManagerTests {
         XCTAssertNil(app.scannedOnchainInvoice)
     }
 
+    func testNearbyRequestCannotRouteAfterTheSendSheetMovesOn() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        let started = expectation(description: "Nearby request decoding suspended")
+        var continuation: CheckedContinuation<BitkitCore.Scanner, Error>?
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { _ in
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        var navigationPath: [SendRoute] = []
+        var routes: [SendRoute?] = []
+        let task = Task {
+            await scanner.handleSendNearbyRequest(paymentURI, isCurrent: { navigationPath.isEmpty }) { routes.append($0) }
+        }
+
+        await fulfillment(of: [started], timeout: 2)
+        navigationPath.append(.manual)
+        try XCTUnwrap(continuation).resume(returning: decoded)
+        let wasTaken = await task.value
+
+        XCTAssertFalse(wasTaken)
+        XCTAssertTrue(routes.isEmpty)
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .send)
+    }
+
     func testRefusedNearbyRequestOnMainScannerIsNotTaken() async {
         let sheets = SheetViewModel()
         sheets.showSheet(.scanner)
