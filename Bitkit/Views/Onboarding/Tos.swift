@@ -6,7 +6,7 @@ struct TosContent: View {
             VStack(alignment: .leading, spacing: 10) {
                 Group {
                     Text(
-                        "**Effective date: October 20, 2026**"
+                        "**Effective date: November 27, 2026**"
                     )
 
                     Text(
@@ -83,7 +83,7 @@ struct TosContent: View {
                     Text("2.1.4 **\"Base Fee\"** means the fee set out in Table A of the Fee Schedule;")
 
                     Text(
-                        "2.1.5 **\"Bitkit Services\"** means the Bitkit Wallet, the Lightning Connection Services or use of Slashtags through the Bitkit Wallet;"
+                        "2.1.5 **\"Bitkit Services\"** means the Bitkit Wallet, the Lightning Connection Services or use of Pubky and Paykit through the Bitkit Wallet;"
                     )
 
                     Text("2.1.6 **\"Bitkit Wallet\"** means the self-custodial wallet mobile application software named Bitkit;")
@@ -187,87 +187,89 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "2.1.33 **\"Person\"** includes an individual, association, partnership, corporation, company, other body corporate, trust, estate, and any form of organization, group, or entity (whether or not having separate legal personality);"
+                        "2.1.33 **\"Paykit\"** means the open-source protocol the Bitkit Wallet uses to exchange payment details between Pubky identities;"
+                    )
+                    Text(
+                        "2.1.34 **\"Person\"** includes an individual, association, partnership, corporation, company, other body corporate, trust, estate, and any form of organization, group, or entity (whether or not having separate legal personality);"
                     )
 
                     Text(
-                        "2.1.34 **\"Private Channel Fee\"** means the fee set out in Table C of the Fee Schedule;"
+                        "2.1.35 **\"Private Channel Fee\"** means the fee set out in Table C of the Fee Schedule;"
                     )
 
                     Text(
-                        "2.1.35 **“Prohibited Jurisdiction”** means any jurisdiction subject to a comprehensive embargo by the United States, the Republic of El Salvador or the United Nations, which comprise as of the effective date, Iran, the Democratic People's Republic of Korea (“North Korea”), Cuba, Syria, Crimea (a region of Ukraine annexed by the Russian Federation), the self-proclaimed Donetsk People's Republic (a region of Ukraine) and the self-proclaimed Luhansk People's Republic (a region of Ukraine), including Governmental Authorities of those jurisdictions;"
+                        "2.1.36 **“Prohibited Jurisdiction”** means any jurisdiction subject to a comprehensive embargo by the United States, the Republic of El Salvador or the United Nations, which comprise as of the effective date, Iran, the Democratic People's Republic of Korea (“North Korea”), Cuba, Syria, Crimea (a region of Ukraine annexed by the Russian Federation), the self-proclaimed Donetsk People's Republic (a region of Ukraine) and the self-proclaimed Luhansk People's Republic (a region of Ukraine), including Governmental Authorities of those jurisdictions;"
                     )
 
                     Text(
-                        "2.1.36 **\"Prohibited Person\"** means the Government of Venezuela; any resident of, Government or Government Official of, any Prohibited Jurisdiction; and any Sanctioned Person;"
+                        "2.1.37 **\"Prohibited Person\"** means the Government of Venezuela; any resident of, Government or Government Official of, any Prohibited Jurisdiction; and any Sanctioned Person;"
                     )
 
                     Text(
-                        "2.1.37 **\"Prohibited Use\"** has the meaning given to it in Section 10.2;"
+                        "2.1.38 **\"Prohibited Use\"** has the meaning given to it in Section 10.2;"
                     )
 
                     Text(
-                        "2.1.38 **\"Recipient\"** means the recipient of any Wallet Asset Transfer (including any Routed Payment);"
+                        "2.1.39 **\"Pubky\"** means a public-key identity under the open-source Pubky protocol, together with the profile and other data published under it on the homeserver that hosts it;"
+                    )
+                    Text(
+                        "2.1.40 **\"Recipient\"** means the recipient of any Wallet Asset Transfer (including any Routed Payment);"
                     )
 
                     Text(
-                        "2.1.39 **\"Remote Balance\"** means the LN-BTC standing to the credit of the Blocktank Node in respect of your Blocktank Connection (sometimes referred to as your 'receiving capacity');"
+                        "2.1.41 **\"Remote Balance\"** means the LN-BTC standing to the credit of the Blocktank Node in respect of your Blocktank Connection (sometimes referred to as your 'receiving capacity');"
                     )
 
                     Text(
-                        "2.1.40 **\"Routed Payment\"** means any transfer of LN-BTC made by a User through a Connection;"
+                        "2.1.42 **\"Routed Payment\"** means any transfer of LN-BTC made by a User through a Connection;"
                     )
 
                     Text(
-                        "2.1.41 **“Sanctions List”** means the “Specially Designated Nationals and Blocked Persons” (‘SDN’) List and the Non-SDN List, including the “Sectoral Sanctions Identifications List”, published by the Office of Foreign Assets Control of the U.S. Department of the Treasury; the Section 311 Special Measures for Jurisdictions, Financial Institutions, or International Transactions of Primary Money Laundering Concern published by the Financial Crimes Enforcement Network of the U.S. Department of the Treasury; and, any other foreign terrorist organization or other sanctioned, restricted, or debarred party list published by the Financial Investigation Unit of the Attorney General’s Office of the Republic of El Salvador, or under Economic Sanctions, AML, or CTF Laws of or by Governments of the United States, the Republic of El Salvador or the United Nations;"
+                        "2.1.43 **“Sanctions List”** means the “Specially Designated Nationals and Blocked Persons” (‘SDN’) List and the Non-SDN List, including the “Sectoral Sanctions Identifications List”, published by the Office of Foreign Assets Control of the U.S. Department of the Treasury; the Section 311 Special Measures for Jurisdictions, Financial Institutions, or International Transactions of Primary Money Laundering Concern published by the Financial Crimes Enforcement Network of the U.S. Department of the Treasury; and, any other foreign terrorist organization or other sanctioned, restricted, or debarred party list published by the Financial Investigation Unit of the Attorney General’s Office of the Republic of El Salvador, or under Economic Sanctions, AML, or CTF Laws of or by Governments of the United States, the Republic of El Salvador or the United Nations;"
                     )
 
                     Text(
-                        "2.1.42 **\"Sanctioned Person\"** refers to any Person or Digital Assets network address that is: (i) specifically listed in any Sanctions List; (ii) directly or indirectly owned 50 percent or more by any Person or group of Persons in the aggregate or Digital Assets network address associated with such Person or Persons that is included in any Sanctions List, (iii) the Government or any Government Official of any Prohibited Jurisdiction; or (v) whose dealings with Synonym, the Bitkit Wallet, and/or the User is subject to any Government Approval or otherwise sanctioned, restricted, or penalized under applicable Economic Sanctions, AML, or CTF Laws;"
+                        "2.1.44 **\"Sanctioned Person\"** refers to any Person or Digital Assets network address that is: (i) specifically listed in any Sanctions List; (ii) directly or indirectly owned 50 percent or more by any Person or group of Persons in the aggregate or Digital Assets network address associated with such Person or Persons that is included in any Sanctions List, (iii) the Government or any Government Official of any Prohibited Jurisdiction; or (v) whose dealings with Synonym, the Bitkit Wallet, and/or the User is subject to any Government Approval or otherwise sanctioned, restricted, or penalized under applicable Economic Sanctions, AML, or CTF Laws;"
                     )
 
                     Text(
-                        "2.1.43 **\"Slashtags\"** means the internet protocol designed by Synonym which utilises slashtag keypairs (being tags starting with the / symbol);"
+                        "2.1.45 **\"Spending Balance\"** means the LN-BTC standing to the credit of the User Node in respect of a Blocktank Connection (sometimes referred to as your 'local balance');"
                     )
 
                     Text(
-                        "2.1.44 **\"Spending Balance\"** means the LN-BTC standing to the credit of the User Node in respect of a Blocktank Connection (sometimes referred to as your 'local balance');"
+                        "2.1.46 **“Supported Assets”** means, as of the effective date of these Terms, BTC, LN-BTC and, where shown as available in the Bitkit Wallet, USDT, including a supported version identified in the Bitkit Wallet as USDT0, on a Supported Asset Network."
                     )
 
                     Text(
-                        "2.1.45 **“Supported Assets”** means, as of the effective date of these Terms, BTC, LN-BTC and, where shown as available in the Bitkit Wallet, USDT, including a supported version identified in the Bitkit Wallet as USDT0, on a Supported Asset Network."
+                        "2.1.47 **“Supported Asset Networks”** means, as of the effective date of these Terms, the Bitcoin blockchain, the Lightning Network and, where shown as available in the Bitkit Wallet for USDT, Arbitrum One. Support for a Supported Asset or Supported Asset Network may vary by jurisdiction and may be changed, suspended or discontinued in accordance with these Terms."
                     )
 
                     Text(
-                        "2.1.46 **“Supported Asset Networks”** means, as of the effective date of these Terms, the Bitcoin blockchain, the Lightning Network and, where shown as available in the Bitkit Wallet for USDT, Arbitrum One. Support for a Supported Asset or Supported Asset Network may vary by jurisdiction and may be changed, suspended or discontinued in accordance with these Terms."
+                        "2.1.48 **\"Tax Information Exchange Laws\"** means Laws relating to the exchange of information relating to taxes between Governments, including United States Foreign Account Tax Compliance Act, as enacted by Title V, Subtitle A of the Hiring Incentives to Restore Employment Act, P.L 111-147 (2010), as amended; and common reporting standard or the Standard for Automatic Exchange of Financial Account Information;"
                     )
 
                     Text(
-                        "2.1.47 **\"Tax Information Exchange Laws\"** means Laws relating to the exchange of information relating to taxes between Governments, including United States Foreign Account Tax Compliance Act, as enacted by Title V, Subtitle A of the Hiring Incentives to Restore Employment Act, P.L 111-147 (2010), as amended; and common reporting standard or the Standard for Automatic Exchange of Financial Account Information;"
+                        "2.1.49 **“Third Party Services”** means any website, node, programming interface, product, data  or service that is not controlled by Synonym or any of its Associates;"
                     )
 
                     Text(
-                        "2.1.48 **“Third Party Services”** means any website, node, programming interface, product, data  or service that is not controlled by Synonym or any of its Associates;"
+                        "2.1.50 **“USDT”** means the Digital Asset known as Tether USD, in the form supported by the Bitkit Wallet from time to time, including USDT0 on Arbitrum One;"
                     )
 
                     Text(
-                        "2.1.49 **“USDT”** means the Digital Asset known as Tether USD, in the form supported by the Bitkit Wallet from time to time, including USDT0 on Arbitrum One;"
+                        "2.1.51 **“USDT Feature”** means the Bitkit Wallet functionality that enables a User to store, send, receive, view or, where made available, bridge USDT through a Supported Asset Network;"
                     )
 
                     Text(
-                        "2.1.50 **“USDT Feature”** means the Bitkit Wallet functionality that enables a User to store, send, receive, view or, where made available, bridge USDT through a Supported Asset Network;"
+                        "2.1.52 **“USDT Transfer”** means a Wallet Asset Transfer of USDT through the USDT Feature, including a transfer to another address on a Supported Asset Network and, where made available, a cross-network transfer;"
                     )
 
                     Text(
-                        "2.1.51 **“USDT Transfer”** means a Wallet Asset Transfer of USDT through the USDT Feature, including a transfer to another address on a Supported Asset Network and, where made available, a cross-network transfer;"
+                        "2.1.53 **“User Node”** means the alphanumeric identifier that represents a means, on the Lightning Network, for holding, storing and transferring LN-BTC; and"
                     )
 
                     Text(
-                        "2.1.52 **“User Node”** means the alphanumeric identifier that represents a means, on the Lightning Network, for holding, storing and transferring LN-BTC; and"
-                    )
-
-                    Text(
-                        "2.1.53 **“Variable Fee”** means the fee set out in Table B of the Fee Schedule."
+                        "2.1.54 **“Variable Fee”** means the fee set out in Table B of the Fee Schedule."
                     )
 
                     Text(
@@ -468,42 +470,40 @@ struct TosContent: View {
                     )
                 }
 
-                // Slashtags
+                // Pubky and contact payments
                 Group {
-                    Text("**6. SLASHTAGS**")
+                    Text("**6. PUBKY AND CONTACT PAYMENTS**")
 
                     Text(
-                        "*This section contains terms of use for Bitkit Services identified as Slashtags.*"
+                        "*This section contains terms of use for Pubky profiles and contact payments in the Bitkit Services.*"
+                    )
+
+                    Text("6.1 By using Pubky or Paykit through the Bitkit Services, you agree as follows:")
+
+                    Text(
+                        "6.1.1 Subject to your compliance with the terms and conditions hereunder, you may use Pubky and Paykit solely in accordance with these Terms. You agree to, and will not attempt to circumvent, such limitations."
                     )
 
                     Text(
-                        "6.1 By using the Slashtags feature of the Bitkit Services, you agree as follows:"
-                    )
-
-                    Text(
-                        "6.1.1 Subject to your compliance with the terms and conditions hereunder, you may use the Slashtags solely in accordance with these Terms. You agree to, and will not attempt to circumvent, such limitations."
-                    )
-
-                    Text(
-                        "6.1.2 Slashtags is offered under an open-source license. Open-source software licenses constitute separate written agreements. To the limited extent the open-source software license expressly supersedes these Terms, the open source license instead sets forth your agreement with Synonym for the applicable open source software."
+                        "6.1.2 Pubky and Paykit are offered under open-source licenses. Open-source software licenses constitute separate written agreements. To the limited extent the open-source software license expressly supersedes these Terms, the open source license instead sets forth your agreement with Synonym for the applicable open source software."
                     )
 
                     Text("6.2 Without limiting the generality of the foregoing, you will not:")
 
                     Text(
-                        "6.2.1 use Slashtags in any manner that may threaten the security or functionality of the Bitkit Services or the software or services of any third party; or"
+                        "6.2.1 use Pubky or Paykit in any manner that may threaten the security or functionality of the Bitkit Services or the software or services of any third party; or"
                     )
 
                     Text(
-                        "6.2.2 use Slashtags to circumvent the intended functionality or limitations of the software or services of any third party."
+                        "6.2.2 use Pubky or Paykit to circumvent the intended functionality or limitations of the software or services of any third party."
                     )
 
                     Text(
-                        "6.3 Your use of the Slashtags requires the transmission of data and information over the Internet and public networks. Accordingly, Synonym does not, and cannot, guarantee the confidentiality, security or reliability of any communications made by you through Slashtags. The use of Slashtags to supplant traditional login and password site protection is untested and may prove insecure. Any such use is at your own risk."
+                        "6.3 Your use of Pubky and Paykit requires the transmission of data and information over the Internet and public networks. Accordingly, Synonym does not, and cannot, guarantee the confidentiality, security or reliability of any communications made by you through Pubky or Paykit. The use of Pubky to supplant traditional login and password site protection is untested and may prove insecure. Any such use is at your own risk."
                     )
 
                     Text(
-                        "6.4 Slashtags can be used to create and to receive social profiles and dynamic content through the Bitkit Wallet. This content is User Content as described below and is not moderated, endorsed or verified by Synonym. Accordingly, it may contain content which is defamatory, obscene, indecent, abusive, offensive, harassing, violent, hateful, inflammatory, or otherwise objectionable. It may also violate Law, these Terms or the rights of any Person, including the intellectual property rights of any Person. User Content may be misleading, contain misstatements of fact or omit to state facts that a User might consider important."
+                        "6.4 Pubky can be used to create and to receive social profiles and dynamic content through the Bitkit Wallet. This content is User Content as described below and is not moderated, endorsed or verified by Synonym. Accordingly, it may contain content which is defamatory, obscene, indecent, abusive, offensive, harassing, violent, hateful, inflammatory, or otherwise objectionable. It may also violate Law, these Terms or the rights of any Person, including the intellectual property rights of any Person. User Content may be misleading, contain misstatements of fact or omit to state facts that a User might consider important."
                     )
                 }
 
@@ -518,7 +518,7 @@ struct TosContent: View {
                     Text("7.1 **User Content**")
 
                     Text(
-                        "7.1.1 Slashtags and other Bitkit Services allow Users to submit, post, display, provide, or otherwise make available content such as profile information, comments, questions, and other content or information (any such materials a User submits, posts, displays, provides, or otherwise makes available on the Bitkit Service is referred to as **\"User Content\"**)."
+                        "7.1.1 Pubky and other Bitkit Services allow Users to submit, post, display, provide, or otherwise make available content such as profile information, comments, questions, and other content or information (any such materials a User submits, posts, displays, provides, or otherwise makes available on the Bitkit Service is referred to as **\"User Content\"**)."
                     )
 
                     Text(
