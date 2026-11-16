@@ -11,6 +11,7 @@
 	<array>
 		<string>fetch</string>
 		<string>processing</string>
+		<string>remote-notification</string>
 	</array>
 	<key>UIDesignRequiresCompatibility</key>
 	<true/>
@@ -82,10 +83,6 @@
 		<string>InterTight-Medium.ttf</string>
 		<string>InterTight-Regular.ttf</string>
 		<string>InterTight-SemiBold.ttf</string>
-	</array>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>remote-notification</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
