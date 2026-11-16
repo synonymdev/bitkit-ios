@@ -1,4 +1,5 @@
 import BitkitCore
+import Combine
 import CryptoKit
 import Foundation
 import LDKNode
@@ -504,6 +505,12 @@ final class PaykitOutboundDeliveryLog: @unchecked Sendable {
 
     /// Most message outcomes kept per identity besides the latest report's; the oldest ids are dropped first.
     private static let maxEntries = 1000
+    private static let backupChanged = PassthroughSubject<Void, Never>()
+    /// Fires when a receipt is first seen sent, the only part of these records the wallet backup keeps.
+    static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {
+        backupChanged.eraseToAnyPublisher()
+    }
+
     private let defaults: UserDefaults
     private let key: String
     private let lock = NSLock()
@@ -547,20 +554,41 @@ final class PaykitOutboundDeliveryLog: @unchecked Sendable {
         lock.withLock { defaults.removeObject(forKey: key) }
     }
 
+    /// Receipt ids seen sent, by identity, for the wallet backup: a restored SDK does not drain a sent message again,
+    /// so only these records show the receipt as sent. Nil when none were.
+    func backupSnapshot() -> [String: [String]]? {
+        let all = lock.withLock { defaults.dictionary(forKey: key) ?? [:] }
+        let sent = all.compactMapValues { (($0 as? [String: Any])?["sentReceiptIds"] as? [String]).flatMap { $0.isEmpty ? nil : $0 } }
+        return sent.isEmpty ? nil : sent
+    }
+
+    /// Adds the restored sent receipt ids to what this device already recorded.
+    func restoreBackup(_ sentReceiptIds: [String: [String]]) {
+        for (identity, ids) in sentReceiptIds {
+            update(identity: identity) { records in
+                records.sentReceiptIds += ids.filter { !records.sentReceiptIds.contains($0) }
+            }
+        }
+    }
+
     private struct Records: Equatable {
         var outcomes: [String: Bool] = [:]
         var sentReceiptIds: [String] = []
     }
 
     private func update(identity: String, _ change: (inout Records) -> Void) {
-        lock.withLock {
+        let sentChanged = lock.withLock {
             let current = records(identity: identity)
             var records = current
             change(&records)
-            guard records != current else { return }
+            guard records != current else { return false }
             var all = defaults.dictionary(forKey: key) ?? [:]
             all[storageKey(identity)] = ["outcomes": records.outcomes, "sentReceiptIds": records.sentReceiptIds]
             defaults.set(all, forKey: key)
+            return records.sentReceiptIds != current.sentReceiptIds
+        }
+        if sentChanged {
+            Self.backupChanged.send()
         }
     }
 

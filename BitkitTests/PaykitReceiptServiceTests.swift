@@ -294,6 +294,20 @@ final class PaykitReceiptServiceTests: XCTestCase {
         XCTAssertEqual(delivery.deliveryOf(identity: Self.seller, receiptId: "receipt-1", messageId: nil), true)
     }
 
+    func testSentReceiptsComeBackFromTheWalletBackup() throws {
+        delivery.record(identity: Self.seller, report: OutboundPrivateSendReport(
+            attempted: [7], sent: [7], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: []
+        ))
+        XCTAssertEqual(delivery.deliveryOf(identity: Self.seller, receiptId: "receipt-1", messageId: 7), true)
+        let backup = try XCTUnwrap(delivery.backupSnapshot())
+
+        delivery.reset()
+        delivery.restoreBackup(backup)
+
+        XCTAssertEqual(delivery.deliveryOf(identity: Self.seller, receiptId: "receipt-1", messageId: nil), true)
+        XCTAssertNil(delivery.deliveryOf(identity: Self.otherBuyer, receiptId: "receipt-1", messageId: nil))
+    }
+
     func testDeliveryCheckAfterResetRestoresNothing() {
         delivery.record(identity: Self.seller, report: OutboundPrivateSendReport(
             attempted: [7], sent: [7], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: []
