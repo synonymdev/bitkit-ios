@@ -18,10 +18,10 @@
     <action>Take a screenshot and verify no profile error is shown</action>
     <action>Return Home without pressing "PayContactsContinue", then open Profile using "ProfileButton"</action>
     <action>Verify "ProfileViewName" shows "Profile Save Test"</action>
-    <action>Open Settings, select General and scroll to the payment sharing settings</action>
+    <action>Open Settings, then select General</action>
+    <action>Scroll to the payment sharing settings and wait up to a minute for both switches to settle</action>
     <action>Verify Private contact payments ("PrivateContactPaymentsToggle") and Public payments ("PublicPaymentsToggle") are both on</action>
-    <action>Return Home</action>
-    <action>Relaunch the app and open Profile using "ProfileButton"</action>
+    <action>Return Home, then relaunch the app and open Profile using "ProfileButton"</action>
     <action>If "ProfileCachedName" appears while loading, verify it shows "Profile Save Test"; this is not yet the full profile</action>
     <action>Wait for the full profile name (id "ProfileViewName", predicate exists). If loading does not finish, report the loading state and elapsed time without claiming the saved name was lost</action>
     <action>Verify "ProfileViewName" shows "Profile Save Test" and "ProfileCachedHeader" is gone</action>
