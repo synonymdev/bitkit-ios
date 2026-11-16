@@ -323,18 +323,23 @@ class ScannerManager: ObservableObject {
             showUnsupportedQRCodeError()
             return false
         }
-        guard !isHandlingScan, isCurrent() else { return false }
+        // A request arrives unprompted, so it must not open anything once the user has left the scanner.
+        let isCurrentOrigin = originCheck()
+        func isStillCurrent() -> Bool {
+            isCurrent() && isCurrentOrigin()
+        }
+        guard !isHandlingScan, isStillCurrent() else { return false }
         isHandlingScan = true
         defer { isHandlingScan = false }
         if context == .send {
             var routed = false
             await app.withQuickPaySuppressed {
-                await processSendScan(uri, scope: .paymentRequests, isCurrent: isCurrent) { routed = $0 != nil }
+                await processSendScan(uri, scope: .paymentRequests, isCurrent: isStillCurrent) { routed = $0 != nil }
             }
             return routed
         }
         await app.withQuickPaySuppressed {
-            await processScan(uri, context: .main, scope: .paymentRequests, isCurrent: isCurrent)
+            await processScan(uri, context: .main, scope: .paymentRequests, isCurrent: isStillCurrent)
         }
         return didOpenScanFlow
     }
@@ -353,7 +358,11 @@ class ScannerManager: ObservableObject {
             completion(nil)
             return false
         }
-        guard !isHandlingScan, isCurrent() else { return false }
+        let isCurrentOrigin = originCheck()
+        func isStillCurrent() -> Bool {
+            isCurrent() && isCurrentOrigin()
+        }
+        guard !isHandlingScan, isStillCurrent() else { return false }
         isHandlingScan = true
         defer { isHandlingScan = false }
         var routed = false
@@ -361,7 +370,7 @@ class ScannerManager: ObservableObject {
             await processSendScan(
                 uri,
                 scope: scope == .onchainPayments ? .onchainPayments : .paymentRequests,
-                isCurrent: isCurrent
+                isCurrent: isStillCurrent
             ) { route in
                 routed = route != nil
                 completion(route)
@@ -504,6 +513,16 @@ class ScannerManager: ObservableObject {
                     description: t("other__qr_error_detection_description")
                 )
             }
+        }
+    }
+
+    /// True while the sheet and navigation path shown when this is called are still shown.
+    private func originCheck() -> () -> Bool {
+        let presentationID = sheets?.activeSheetConfiguration?.presentationID
+        let navigationPath = navigation?.path
+        return { [weak self] in
+            !Task.isCancelled && self?.sheets?.activeSheetConfiguration?.presentationID == presentationID &&
+                self?.navigation?.path == navigationPath
         }
     }
 
