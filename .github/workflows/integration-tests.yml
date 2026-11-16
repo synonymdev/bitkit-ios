@@ -46,7 +46,7 @@ jobs:
     cache-mode: read
     if: github.event.pull_request.draft == false
     name: Run Integration Tests
-    runs-on: [self-hosted, macOS]
+    runs-on: macos-26
     timeout-minutes: 60
     permissions:
       contents: read
@@ -86,22 +86,41 @@ jobs:
             const {reportRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
             await reportRetargetResult({github, context, core, name: 'Run Integration Tests', phase: 'start'});
 
-      - name: Checkout bitkit-docker
-        uses: actions/checkout@v7
+      - name: Install bitcoind
+        run: |
+          curl -fsSL -o /tmp/bitcoin.tar.gz https://bitcoincore.org/bin/bitcoin-core-26.0/bitcoin-26.0-arm64-apple-darwin.tar.gz
+          tar -xzf /tmp/bitcoin.tar.gz -C /tmp
+          echo "/tmp/bitcoin-26.0/bin" >> "$GITHUB_PATH"
+
+      - name: Cache electrs
+        id: electrs-cache
+        uses: actions/cache@v6
         with:
-          repository: synonymdev/bitkit-docker
-          ref: main
-          path: bitkit-docker
+          path: ~/.cargo/bin/electrs
+          key: electrs-0.10.2-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Build electrs
+        if: steps.electrs-cache.outputs.cache-hit != 'true'
+        run: |
+          cargo install electrs --version 0.10.2 --locked
 
       - name: Start local regtest
-        working-directory: bitkit-docker
+        env:
+          BITCOIN_DIR: ${{ runner.temp }}/bitcoin
+          ELECTRS_DB: ${{ runner.temp }}/electrs
         run: |
-          docker compose down -v -t 60 || true
-          docker compose up -d bitcoind bitcoinsetup electrs
-
-      - name: Mine initial blocks
-        timeout-minutes: 5
-        run: until docker exec bitcoin bitcoin-cli -regtest -rpcport=43782 -rpcuser=polaruser -rpcpassword=polarpass -generate 101; do sleep 2; done
+          mkdir -p "$BITCOIN_DIR" "$ELECTRS_DB"
+          bitcoind -regtest -daemon -datadir="$BITCOIN_DIR" \
+            -rpcport=43782 -rpcbind=127.0.0.1 -rpcallowip=127.0.0.1 -port=39388 \
+            -rpcauth='polaruser:5e5e98c21f5c814568f8b55d83b23c1c$066b03f92df30b11de8e4b1b1cd5b1b4281aa25205bd57df9be82caf97a05526' \
+            -txindex=1 -fallbackfee=0.00002 -maxmempool=500
+          cli() { bitcoin-cli -regtest -rpcport=43782 -rpcuser=polaruser -rpcpassword=polarpass "$@"; }
+          until cli getblockchaininfo >/dev/null 2>&1; do sleep 1; done
+          cli createwallet default >/dev/null
+          cli -generate 101 >/dev/null
+          nohup ~/.cargo/bin/electrs --network regtest --db-dir "$ELECTRS_DB" --daemon-dir "$BITCOIN_DIR" \
+            --daemon-rpc-addr 127.0.0.1:43782 --daemon-p2p-addr 127.0.0.1:39388 \
+            --electrum-rpc-addr 127.0.0.1:60001 > "${{ runner.temp }}/electrs.log" 2>&1 &
 
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -123,8 +142,6 @@ jobs:
           ')
           echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
           echo "DESTINATION=platform=iOS Simulator,id=$udid" >> "$GITHUB_ENV"
-          xcrun simctl shutdown all || true
-          xcrun simctl erase "$udid"
           xcrun simctl boot "$udid"
 
       - name: Install xcbeautify
@@ -209,10 +226,12 @@ jobs:
           name: integration-test-results
           path: ${{ env.RESULT_BUNDLE }}
 
-      - name: Tear down regtest stack
-        if: always()
-        working-directory: bitkit-docker
-        run: docker compose down -v || true
+      - name: Upload electrs log
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: electrs-log
+          path: ${{ runner.temp }}/electrs.log
 
   report-retarget-result:
     name: Report retarget integration result
