@@ -1536,7 +1536,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
     func testNewProfileEnablesPrivateThenPublicPayments() async throws {
         try await withIsolatedDefaultsAsync { defaults in
             let profile = signedInProfile(ownerKey: "pubky-current")
-            let contacts = ContactsManager(contactRecords: { [] })
+            let contacts = loadedContacts()
             let operations = OperationsSpy()
 
             await ContactPaymentsService.enableForNewProfile(
@@ -1559,7 +1559,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
             let operations = OperationsSpy()
 
             await ContactPaymentsService.enableForNewProfile(
-                pubkyProfile: profile, contactsManager: ContactsManager(contactRecords: { [] }),
+                pubkyProfile: profile, contactsManager: loadedContacts(),
                 operations: operations.makeOperations(defaults: defaults), defaults: defaults,
                 privatePaymentAccess: { _ in false }
             )
@@ -1575,7 +1575,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
             operations.publicPublicationFailures = [1]
 
             await ContactPaymentsService.enableForNewProfile(
-                pubkyProfile: profile, contactsManager: ContactsManager(contactRecords: { [] }),
+                pubkyProfile: profile, contactsManager: loadedContacts(),
                 operations: operations.makeOperations(defaults: defaults), defaults: defaults,
                 privatePaymentAccess: { _ in true }
             )
@@ -1592,7 +1592,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
             let operations = OperationsSpy()
 
             await ContactPaymentsService.enableForNewProfile(
-                pubkyProfile: PubkyProfileManager(), contactsManager: ContactsManager(contactRecords: { [] }),
+                pubkyProfile: PubkyProfileManager(), contactsManager: loadedContacts(),
                 operations: operations.makeOperations(defaults: defaults), defaults: defaults,
                 privatePaymentAccess: { _ in true }
             )
@@ -1613,7 +1613,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
             let operations = OperationsSpy()
 
             await ContactPaymentsService.ensureEnabled(
-                pubkyProfile: profile, contactsManager: ContactsManager(contactRecords: { [] }),
+                pubkyProfile: profile, contactsManager: loadedContacts(),
                 operations: operations.makeOperations(defaults: defaults), defaults: defaults,
                 privatePaymentAccess: { _ in true }
             )
@@ -1632,7 +1632,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
             let operations = OperationsSpy()
 
             await ContactPaymentsService.ensureEnabled(
-                pubkyProfile: profile, contactsManager: ContactsManager(contactRecords: { [] }),
+                pubkyProfile: profile, contactsManager: loadedContacts(),
                 operations: operations.makeOperations(defaults: defaults), defaults: defaults,
                 privatePaymentAccess: { _ in true }
             )
@@ -1652,7 +1652,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
             let operations = OperationsSpy()
 
             await ContactPaymentsService.ensureEnabled(
-                pubkyProfile: profile, contactsManager: ContactsManager(contactRecords: { [] }),
+                pubkyProfile: profile, contactsManager: loadedContacts(),
                 operations: operations.makeOperations(defaults: defaults), defaults: defaults,
                 privatePaymentAccess: { _ in true }
             )
@@ -1666,7 +1666,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
             let operations = OperationsSpy()
 
             await ContactPaymentsService.ensureEnabled(
-                pubkyProfile: profile, contactsManager: ContactsManager(contactRecords: { [] }),
+                pubkyProfile: profile, contactsManager: loadedContacts(),
                 operations: operations.makeOperations(defaults: defaults), defaults: defaults,
                 privatePaymentAccess: { _ in false }
             )
@@ -1683,7 +1683,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
             let operations = OperationsSpy()
 
             await ContactPaymentsService.ensureEnabled(
-                pubkyProfile: PubkyProfileManager(), contactsManager: ContactsManager(contactRecords: { [] }),
+                pubkyProfile: PubkyProfileManager(), contactsManager: loadedContacts(),
                 operations: operations.makeOperations(defaults: defaults), defaults: defaults,
                 privatePaymentAccess: { _ in true }
             )
@@ -1712,6 +1712,13 @@ final class ContactPaymentsServiceTests: XCTestCase {
         try Keychain.upsert(key: .pubkySecretKey, data: Data(secretKeyHex.utf8))
         let rawOwnerKey = try PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
         return rawOwnerKey.hasPrefix("pubky") ? rawOwnerKey : "pubky\(rawOwnerKey)"
+    }
+
+    /// An empty contact list that has already loaded, so setup never runs the shared contact cleanup of the host app.
+    private func loadedContacts() -> ContactsManager {
+        let contacts = ContactsManager(contactRecords: { [] })
+        contacts.hasLoaded = true
+        return contacts
     }
 
     private func signedInProfile(ownerKey: String) -> PubkyProfileManager {
