@@ -1685,6 +1685,25 @@ final class ContactPaymentsServiceTests: XCTestCase {
         }
     }
 
+    /// Paykit UI turned off in Dev Settings before setup starts, such as during Ring adoption, keeps both modes off.
+    func testSetupWritesNothingWhenPaykitUIIsDisabledBeforeItStarts() async throws {
+        try await withIsolatedDefaultsAsync { defaults in
+            let profile = signedInProfile(ownerKey: "pubky-current")
+            defaults.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
+            let operations = OperationsSpy()
+
+            await ContactPaymentsService.enableForNewProfile(
+                pubkyProfile: profile, contactsManager: loadedContacts(),
+                operations: operations.makeOperations(defaults: defaults), defaults: defaults,
+                privatePaymentAccess: { _ in true }
+            )
+
+            XCTAssertTrue(operations.calls.isEmpty)
+            XCTAssertFalse(ContactPaymentsService.isEnabled(defaults: defaults))
+            XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+        }
+    }
+
     /// The foreground check leaves payments alone when both modes are already on.
     func testEnsureEnabledDoesNothingWhenBothModesAreOn() async throws {
         try await withIsolatedDefaultsAsync { defaults in

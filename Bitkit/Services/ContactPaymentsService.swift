@@ -233,6 +233,10 @@ enum ContactPaymentsService {
 
     @MainActor private static var hasLoggedPrivateUnavailable = false
 
+    private static func isPaykitUIEnabled(defaults: UserDefaults) -> Bool {
+        defaults.object(forKey: PaykitFeatureFlags.uiEnabledKey) as? Bool ?? PaykitFeatureFlags.uiEnabledByDefault
+    }
+
     @MainActor
     private static func enable(
         onlyWhenOff: Bool,
@@ -242,6 +246,8 @@ enum ContactPaymentsService {
         defaults: UserDefaults,
         privatePaymentAccess: (String) throws -> Bool
     ) async {
+        // A Paykit UI disable that lands before setup starts keeps both modes off.
+        guard isPaykitUIEnabled(defaults: defaults) else { return }
         let context = onlyWhenOff ? "an existing profile" : "a new profile"
         let session = pubkyProfile.currentSession
         if !onlyWhenOff || !isEnabled(defaults: defaults) {
@@ -269,8 +275,7 @@ enum ContactPaymentsService {
         // Public sharing belongs to the session this run started for; a replaced or ended session gets its own run.
         guard !Task.isCancelled, session != nil, pubkyProfile.currentSession == session else { return }
         // A Paykit UI disable during private setup wins; one that starts later supersedes the public change itself.
-        let isPaykitUIEnabled = defaults.object(forKey: PaykitFeatureFlags.uiEnabledKey) as? Bool ?? PaykitFeatureFlags.uiEnabledByDefault
-        guard isPaykitUIEnabled else { return }
+        guard isPaykitUIEnabled(defaults: defaults) else { return }
         if !onlyWhenOff || !defaults.bool(forKey: PublicPaykitService.publishingEnabledKey) {
             do {
                 try await setPublicEnabled(true, pubkyProfile: pubkyProfile, operations: operations, defaults: defaults)
