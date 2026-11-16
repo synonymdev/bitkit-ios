@@ -177,26 +177,26 @@ final class KeychainTests: XCTestCase {
         let pin = Keychain.account(for: .securityPin)
         let mnemonic = Keychain.account(for: .bip39Mnemonic(index: 0))
         let passphrase = Keychain.account(for: .bip39Passphrase(index: 0))
-        let pushKey = Keychain.account(for: .pushNotificationPrivateKey)
+        let sessionKey = Keychain.account(for: .paykitSession)
 
         var deleted: [String] = []
         XCTAssertThrowsError(try Keychain.wipe(
-            accounts: [pin, mnemonic, pushKey, passphrase],
+            accounts: [pin, mnemonic, sessionKey, passphrase],
             retaining: [],
             delete: { account in
                 deleted.append(account)
                 return account == mnemonic ? errSecInteractionNotAllowed : errSecSuccess
             },
-            remainingAccounts: { [pin, mnemonic, pushKey] }
+            remainingAccounts: { [pin, mnemonic, sessionKey] }
         ))
         XCTAssertEqual(Set(deleted), [mnemonic, passphrase], "nothing else is deleted while a seed delete failed")
 
         deleted = []
         XCTAssertThrowsError(try Keychain.wipe(
-            accounts: [pin, mnemonic, pushKey],
+            accounts: [pin, mnemonic, sessionKey],
             retaining: [],
             delete: { deleted.append($0); return errSecSuccess },
-            remainingAccounts: { [pin, mnemonic, pushKey] }
+            remainingAccounts: { [pin, mnemonic, sessionKey] }
         ))
         XCTAssertEqual(deleted, [mnemonic], "a seed the keychain still lists is not taken as gone")
 
@@ -214,12 +214,12 @@ final class KeychainTests: XCTestCase {
     func testAWipeDeletesTheSeedsFirstThenTheRestButNotTheRetained() throws {
         let pin = Keychain.account(for: .securityPin)
         let mnemonic = Keychain.account(for: .bip39Mnemonic(index: 0))
-        let pushKey = Keychain.account(for: .pushNotificationPrivateKey)
-        var stored: Set = [pin, mnemonic, pushKey]
+        let sessionKey = Keychain.account(for: .paykitSession)
+        var stored: Set = [pin, mnemonic, sessionKey]
         var deleted: [String] = []
 
         try Keychain.wipe(
-            accounts: [pushKey, pin, mnemonic],
+            accounts: [sessionKey, pin, mnemonic],
             retaining: [pin],
             delete: { account in
                 deleted.append(account)
@@ -229,17 +229,34 @@ final class KeychainTests: XCTestCase {
             remainingAccounts: { Array(stored) }
         )
 
-        XCTAssertEqual(deleted, [mnemonic, pushKey])
+        XCTAssertEqual(deleted, [mnemonic, sessionKey])
         XCTAssertEqual(stored, [pin])
     }
 
-    func testUpsertInsertsThenReplacesTheValue() throws {
-        try Keychain.upsert(key: .pushNotificationPrivateKey, data: Data("first".utf8))
-        XCTAssertEqual(try Keychain.loadString(key: .pushNotificationPrivateKey), "first")
+    func testLegacyPushNotificationKeyIsDeleted() throws {
+        let legacy: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: "unit-tests.push_notification_private_key",
+            kSecAttrAccessGroup as String: Env.keychainGroup,
+        ]
+        var item = legacy
+        item[kSecValueData as String] = Data("old key".utf8)
+        XCTAssertEqual(SecItemAdd(item as CFDictionary, nil), errSecSuccess, "Failed to plant the legacy account")
+        addTeardownBlock { SecItemDelete(legacy as CFDictionary) }
 
-        try Keychain.upsert(key: .pushNotificationPrivateKey, data: Data("second".utf8))
-        XCTAssertEqual(try Keychain.loadString(key: .pushNotificationPrivateKey), "second")
-        XCTAssertThrowsError(try Keychain.saveString(key: .pushNotificationPrivateKey, str: "third")) { error in
+        try Keychain.deleteLegacyEntries()
+
+        XCTAssertEqual(SecItemCopyMatching(legacy as CFDictionary, nil), errSecItemNotFound)
+        XCTAssertNoThrow(try Keychain.deleteLegacyEntries(), "Deleting it again finds nothing to delete")
+    }
+
+    func testUpsertInsertsThenReplacesTheValue() throws {
+        try Keychain.upsert(key: .paykitSession, data: Data("first".utf8))
+        XCTAssertEqual(try Keychain.loadString(key: .paykitSession), "first")
+
+        try Keychain.upsert(key: .paykitSession, data: Data("second".utf8))
+        XCTAssertEqual(try Keychain.loadString(key: .paykitSession), "second")
+        XCTAssertThrowsError(try Keychain.saveString(key: .paykitSession, str: "third")) { error in
             XCTAssertEqual(error as? KeychainError, .failedToSaveAlreadyExists)
         }
     }
