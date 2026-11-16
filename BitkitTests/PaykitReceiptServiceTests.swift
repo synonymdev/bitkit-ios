@@ -110,6 +110,21 @@ final class PaykitReceiptServiceTests: XCTestCase {
         XCTAssertEqual(candidate.receive.amount.atomic, 3000)
     }
 
+    func testOnchainProofCountsOnlyWhatWasPaidToTheRequestsOwnAddress() throws {
+        let request = try payeeRequest(
+            proofs: [proof(type: "bitcoin-onchain-txid", data: Self.txid, endpoint: Self.onchainMethod)],
+            endpoints: [Self.onchainMethod: "{\"value\":\"\(Self.address)\"}"]
+        )
+        let batch = Self.onchainReceive(
+            sats: 40000, address: "bcrt1qother", contact: Self.buyer,
+            outputs: ["bcrt1qother": 30000, Self.address.lowercased(): 10000]
+        )
+
+        let candidate = try XCTUnwrap(match([request], onchain: [batch]).first)
+
+        XCTAssertEqual(candidate.receive.amount.atomic, 10000)
+    }
+
     func testOnchainReceiptIsWithheldWhenItsOutputsAreUnknown() throws {
         let request = try payeeRequest(endpoints: [Self.onchainMethod: "{\"value\":\"\(Self.address)\"}"])
         var unknown = Self.onchainReceive(sats: 5000)

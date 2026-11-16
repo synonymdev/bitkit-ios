@@ -58,11 +58,13 @@ struct PaykitRecordedReceive: Equatable {
         self.contact = contact
     }
 
-    /// An on-chain receive narrowed to what it paid to `address`, so a batch paying other addresses of this wallet
-    /// does not count toward the request; nil when that amount is unknown or zero. Other rails are returned as they are.
-    func paid(to address: String?) -> Self? {
+    /// An on-chain receive narrowed to what it paid to `addresses`, so a batch paying other addresses of this wallet
+    /// does not count toward the request; nil when that amount is unknown or zero. Other rails come back unchanged.
+    func paid(to addresses: [String]) -> Self? {
         guard rail == .onchain else { return self }
-        guard let address, let sats = outputs?[address.lowercased()], sats > 0 else { return nil }
+        guard let outputs else { return nil }
+        let sats = Set(addresses.map { $0.lowercased() }).reduce(UInt64(0)) { $0 + (outputs[$1] ?? 0) }
+        guard sats > 0 else { return nil }
         var narrowed = self
         narrowed.amount = PaykitAmount(asset: .btc, atomic: sats)
         return narrowed
@@ -157,11 +159,14 @@ enum PaykitReceiptMatcher {
                 )
             }
 
+            // A proof's payment counts only toward the request's own addresses when it names any, else toward the
+            // address the wallet attributed to the payer.
+            let requestAddresses = onchainAddresses(terms, network)
             for proof in record.paymentProofs {
                 guard let (rail, id) = bitcoinPaymentId(proof),
                       let recorded = rail == .lightning ? lightningReceives[id] : onchainByTxid[id],
                       rail == .lightning || PubkyPublicKeyFormat.matches(recorded.contact, record.counterparty),
-                      let receive = recorded.paid(to: recorded.address),
+                      let receive = recorded.paid(to: requestAddresses.isEmpty ? [recorded.address].compactMap(\.self) : requestAddresses),
                       couldBePaid(record, by: receive)
                 else { continue }
                 found.append(candidate(proof.paymentEndpointIdentifier, proof.billingPeriod, receive))
@@ -242,13 +247,23 @@ enum PaykitReceiptMatcher {
                 }
             } else if method.onchainNetwork == network {
                 for receive in onchainReceives where receive.address?.lowercased() == payload.value.lowercased() {
-                    if let paid = receive.paid(to: payload.value) {
+                    if let paid = receive.paid(to: [payload.value]) {
                         matches.append((identifier, paid))
                     }
                 }
             }
         }
         return matches
+    }
+
+    private static func onchainAddresses(_ terms: Paykit.PaymentRequestTerms, _ network: LDKNode.Network) -> [String] {
+        (terms.paymentEndpoints ?? [:]).compactMap { identifier, data in
+            guard terms.acceptedPaymentEndpointIdentifiers.contains(identifier),
+                  let method = PublicPaykitService.MethodId(rawValue: identifier), method.onchainNetwork == network,
+                  let payload = PaykitIssuerInterop.parseEndpointPayload(data)
+            else { return nil }
+            return payload.value
+        }
     }
 
     private static func proofValue(_ proof: Paykit.PaymentProofRecord, _ key: String) -> String? {
