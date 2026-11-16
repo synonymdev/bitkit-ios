@@ -1603,6 +1603,97 @@ final class ContactPaymentsServiceTests: XCTestCase {
         }
     }
 
+    /// The foreground check leaves payments alone when both modes are already on.
+    func testEnsureEnabledDoesNothingWhenBothModesAreOn() async throws {
+        try await withIsolatedDefaultsAsync { defaults in
+            let profile = signedInProfile(ownerKey: "pubky-current")
+            defaults.set(true, forKey: ContactPaymentsService.confirmedPreferenceKey)
+            defaults.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
+            defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+            let operations = OperationsSpy()
+
+            await ContactPaymentsService.ensureEnabled(
+                pubkyProfile: profile, contactsManager: ContactsManager(contactRecords: { [] }),
+                operations: operations.makeOperations(defaults: defaults), defaults: defaults,
+                privatePaymentAccess: { _ in true }
+            )
+
+            XCTAssertTrue(operations.calls.isEmpty)
+        }
+    }
+
+    /// A profile whose user turned both modes off before the toggles were removed gets both back on, private first.
+    func testEnsureEnabledTurnsOnModesTheUserTurnedOff() async throws {
+        try await withIsolatedDefaultsAsync { defaults in
+            let profile = signedInProfile(ownerKey: "pubky-current")
+            defaults.set(true, forKey: ContactPaymentsService.confirmedPreferenceKey)
+            defaults.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+            defaults.set(false, forKey: PublicPaykitService.publishingEnabledKey)
+            let operations = OperationsSpy()
+
+            await ContactPaymentsService.ensureEnabled(
+                pubkyProfile: profile, contactsManager: ContactsManager(contactRecords: { [] }),
+                operations: operations.makeOperations(defaults: defaults), defaults: defaults,
+                privatePaymentAccess: { _ in true }
+            )
+
+            XCTAssertEqual(operations.calls, ["capability:true", "private:publish", "public:true"])
+            XCTAssertTrue(ContactPaymentsService.isEnabled(defaults: defaults))
+            XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+        }
+    }
+
+    /// Only the mode that is off is turned on; a profile without private access still gets public payments.
+    func testEnsureEnabledTurnsOnOnlyTheModeThatIsOff() async throws {
+        try await withIsolatedDefaultsAsync { defaults in
+            let profile = signedInProfile(ownerKey: "pubky-current")
+            defaults.set(true, forKey: ContactPaymentsService.confirmedPreferenceKey)
+            defaults.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
+            let operations = OperationsSpy()
+
+            await ContactPaymentsService.ensureEnabled(
+                pubkyProfile: profile, contactsManager: ContactsManager(contactRecords: { [] }),
+                operations: operations.makeOperations(defaults: defaults), defaults: defaults,
+                privatePaymentAccess: { _ in true }
+            )
+
+            XCTAssertEqual(operations.calls, ["public:true"])
+        }
+
+        try await withIsolatedDefaultsAsync { defaults in
+            let profile = signedInProfile(ownerKey: "pubky-current")
+            defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+            let operations = OperationsSpy()
+
+            await ContactPaymentsService.ensureEnabled(
+                pubkyProfile: profile, contactsManager: ContactsManager(contactRecords: { [] }),
+                operations: operations.makeOperations(defaults: defaults), defaults: defaults,
+                privatePaymentAccess: { _ in false }
+            )
+
+            XCTAssertTrue(operations.calls.isEmpty, "Without private access nothing is written")
+            XCTAssertFalse(ContactPaymentsService.isEnabled(defaults: defaults))
+            XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+        }
+    }
+
+    /// Without a Pubky session the foreground check writes nothing.
+    func testEnsureEnabledWritesNothingWithoutAPubkySession() async throws {
+        try await withIsolatedDefaultsAsync { defaults in
+            let operations = OperationsSpy()
+
+            await ContactPaymentsService.ensureEnabled(
+                pubkyProfile: PubkyProfileManager(), contactsManager: ContactsManager(contactRecords: { [] }),
+                operations: operations.makeOperations(defaults: defaults), defaults: defaults,
+                privatePaymentAccess: { _ in true }
+            )
+
+            XCTAssertTrue(operations.calls.isEmpty)
+            XCTAssertFalse(ContactPaymentsService.isEnabled(defaults: defaults))
+            XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+        }
+    }
+
     /// Signs in with a local secret key so private contact payments are available, restoring the app's defaults, the
     /// Pubky secret key and the adopted reference when the test ends.
     private func useLocalPubkySecretKey() throws -> String {
