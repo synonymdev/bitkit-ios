@@ -60,7 +60,8 @@ struct SpendingHwSign: View {
     }
 
     /// Prices the transfer, and says whether it is a Retry of a retained transfer. That Retry is priced from its signed bytes, so
-    /// a fee rise that puts its amount above today's maximum can't fail its quote and take the Retry away.
+    /// a fee rise that puts its amount above today's maximum can't fail its quote and take the Retry away. A request a later one
+    /// superseded returns no quote and no Retry, as a superseded fresh quote does.
     @MainActor
     static func refreshQuote(
         flow: SparkTransferFlow,
@@ -68,28 +69,15 @@ struct SpendingHwSign: View {
         feeEstimatesManager: FeeEstimatesManager,
         hwWalletManager: HwWalletManager
     ) async -> (quote: SparkTransferQuote?, isRetainedRetry: Bool) {
-        let amountSats = flow.amountSats
-        if flow.walletId != nil, let address = try? await SparkManager.shared.depositAddress(),
-           let retained = await flow.hwSend.retainedSendStatus(address: address, sats: amountSats, hasIncomingRequest: false).retrySignedTx
-        {
-            flow.isQuoting = true
-            defer { flow.isQuoting = false }
-            do {
-                let claimFees = try await SparkManager.shared.depositClaimFees(amountSats: amountSats)
-                if let quote = retainedRetryQuote(address: address, depositSats: amountSats, signedTx: retained, claimFees: claimFees) {
-                    flow.quote = quote
-                    flow.quoteError = nil
-                    return (quote, true)
-                }
-            } catch {
-                Logger.error("Failed to price the retry of a retained transfer to spending: \(error)", context: "SpendingHwSign")
-                flow.quote = nil
-                flow.quoteError = t("lightning__spending_confirm__error_quote")
-                return (nil, true)
-            }
+        switch await flow.refreshRetainedRetryQuote() {
+        case let .retry(quote):
+            return (quote, true)
+        case .superseded:
+            return (nil, false)
+        case .priceAnew:
+            let quote = await flow.refreshQuote(wallet: wallet, feeEstimatesManager: feeEstimatesManager, hwWalletManager: hwWalletManager)
+            return (quote, false)
         }
-        let quote = await flow.refreshQuote(wallet: wallet, feeEstimatesManager: feeEstimatesManager, hwWalletManager: hwWalletManager)
-        return (quote, false)
     }
 
     var body: some View {

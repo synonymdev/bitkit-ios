@@ -92,6 +92,78 @@ final class SpendingHwSignTests: XCTestCase {
         ))
     }
 
+    /// A retained Retry of the flow's amount whose claim fee waits until `claimFeeGate` opens, returned once it is waiting on it.
+    private func delayedRetainedRetry(
+        _ flow: SparkTransferFlow,
+        claimFeeGate: AsyncGate
+    ) async -> Task<SparkRetainedRetryPricing, Never> {
+        let depositAddress = depositAddress
+        let waitingOnClaimFee = AsyncGate()
+        let retry = Task {
+            await flow.refreshRetainedRetryQuote(depositAddress: { depositAddress }, claimFees: { _ in
+                waitingOnClaimFee.open()
+                await claimFeeGate.wait()
+                return SparkClaimFees(instantMaxSats: 2000, laterSats: 500)
+            })
+        }
+        await waitingOnClaimFee.wait()
+        return retry
+    }
+
+    private func hwFlow(retaining record: HwRetainedSend) async throws -> SparkTransferFlow {
+        let service = HwRetainedSendService.inMemory()
+        try await service.retain(record)
+        let flow = SparkTransferFlow(hwSend: HwSendCoordinator(walletId: walletId, retainedSends: service))
+        flow.start(amountSats: record.sats, isMaxAmount: false, walletId: walletId)
+        return flow
+    }
+
+    func testADelayedRetainedRetryQuoteNeverReplacesALaterTransfersQuote() async throws {
+        let flow = try await hwFlow(retaining: retainedTransfer(sats: 42000))
+        let claimFeeGate = AsyncGate()
+        let delayedRetry = await delayedRetainedRetry(flow, claimFeeGate: claimFeeGate)
+
+        flow.start(amountSats: 50000, isMaxAmount: false, walletId: walletId)
+        let later = await flow.refreshRetainedRetryQuote(depositAddress: { self.depositAddress }, claimFees: { _ in
+            XCTFail("Another amount was priced as a Retry")
+            return SparkClaimFees(instantMaxSats: 2000, laterSats: 500)
+        })
+        XCTAssertEqual(later, .priceAnew)
+        // Stands in for the fresh quote `refreshQuote` writes next, which needs the live Spark SDK.
+        let laterQuote = SparkTransferQuote(
+            address: depositAddress,
+            satsPerVbyte: 4,
+            networkFeeSats: 300,
+            depositSats: 50000,
+            claimFees: SparkClaimFees(instantMaxSats: 2000, laterSats: 500)
+        )
+        flow.quote = laterQuote
+        claimFeeGate.open()
+
+        let stale = await delayedRetry.value
+        XCTAssertEqual(stale, .superseded)
+        XCTAssertEqual(flow.quote, laterQuote, "The earlier transfer's quote replaced the later one")
+        XCTAssertNil(flow.quoteError)
+    }
+
+    func testALaterRetainedRetryQuoteSupersedesADelayedOne() async throws {
+        let flow = try await hwFlow(retaining: retainedTransfer(sats: 42000))
+        let claimFeeGate = AsyncGate()
+        let delayedRetry = await delayedRetainedRetry(flow, claimFeeGate: claimFeeGate)
+
+        let laterFees = SparkClaimFees(instantMaxSats: 2100, laterSats: 600)
+        let later = await flow.refreshRetainedRetryQuote(depositAddress: { self.depositAddress }, claimFees: { _ in laterFees })
+        let laterQuote = SpendingHwSign.retainedRetryQuote(address: depositAddress, depositSats: 42000, signedTx: signedTx, claimFees: laterFees)
+        XCTAssertEqual(later, .retry(laterQuote))
+        XCTAssertFalse(flow.isQuoting)
+        claimFeeGate.open()
+
+        let stale = await delayedRetry.value
+        XCTAssertEqual(stale, .superseded)
+        XCTAssertEqual(flow.quote, laterQuote)
+        XCTAssertFalse(flow.isQuoting)
+    }
+
     func testRetainedRetryQuoteNeedsAFeeRateItCanShow() {
         let unshowable = HwFundingSignedTx(serializedTx: "aabb", miningFeeSats: 141, feeRate: .nan, totalSpent: 42141)
 

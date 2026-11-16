@@ -71,6 +71,16 @@ extension AppViewModel {
     }
 }
 
+/// What pricing a hardware transfer as a Retry of its wallet's retained transfer found.
+enum SparkRetainedRetryPricing: Equatable {
+    /// No retained transfer to retry, or one whose fee rate can't be shown, so the transfer is priced anew.
+    case priceAnew
+    /// A Retry at the fee its signed bytes fixed, or nil when its claim fee couldn't be priced.
+    case retry(SparkTransferQuote?)
+    /// A later quote request started meanwhile, so this one wrote nothing.
+    case superseded
+}
+
 /// Where a transfer to spending stands once its deposit is broadcast.
 enum SparkClaimState: Equatable {
     /// Instant was chosen and Spark has not listed the deposit yet.
@@ -165,7 +175,7 @@ final class SparkTransferFlow {
     /// The paired hardware wallet that funds the transfer, or nil for savings.
     private(set) var walletId: String?
     /// Signs and broadcasts a transfer funded from a hardware wallet.
-    let hwSend = HwSendCoordinator()
+    let hwSend: HwSendCoordinator
     var speed: SparkTransferSpeed = .instant
 
     var quote: SparkTransferQuote?
@@ -196,8 +206,10 @@ final class SparkTransferFlow {
         quote: SparkTransferQuote? = nil,
         claimState: SparkClaimState = .looking,
         operations: SparkClaimOperations = .live,
-        pollAttempts: Int = SparkTransferFlow.pollAttempts
+        pollAttempts: Int = SparkTransferFlow.pollAttempts,
+        hwSend: HwSendCoordinator? = nil
     ) {
+        self.hwSend = hwSend ?? HwSendCoordinator()
         self.operations = operations
         self.pollAttempts = pollAttempts
         self.amountSats = amountSats
@@ -299,6 +311,54 @@ final class SparkTransferFlow {
             quoteError = t("lightning__spending_confirm__error_quote")
             return nil
         }
+    }
+
+    /// Prices a Retry of the hardware wallet's retained transfer from its signed bytes, so a fee rise that puts its amount above
+    /// today's maximum can't fail its quote. It shares `refreshQuote`'s request id, so a later quote request of either kind
+    /// supersedes it, and a delayed result never replaces the quote of a later transfer.
+    func refreshRetainedRetryQuote(
+        depositAddress: () async throws -> String = { try await SparkManager.shared.depositAddress() },
+        claimFees: (UInt64) async throws -> SparkClaimFees = { try await SparkManager.shared.depositClaimFees(amountSats: $0) }
+    ) async -> SparkRetainedRetryPricing {
+        quoteRequestId += 1
+        let requestId = quoteRequestId
+        let amountSats = amountSats
+        let walletId = walletId
+        defer {
+            if requestId == quoteRequestId {
+                isQuoting = false
+            }
+        }
+        guard walletId != nil, let address = try? await depositAddress(),
+              let signedTx = await hwSend.retainedSendStatus(address: address, sats: amountSats, hasIncomingRequest: false).retrySignedTx
+        else {
+            return isCurrentQuoteRequest(requestId, amountSats: amountSats, walletId: walletId) ? .priceAnew : .superseded
+        }
+        guard isCurrentQuoteRequest(requestId, amountSats: amountSats, walletId: walletId) else { return .superseded }
+        isQuoting = true
+        do {
+            let claimFees = try await claimFees(amountSats)
+            guard isCurrentQuoteRequest(requestId, amountSats: amountSats, walletId: walletId) else { return .superseded }
+            guard let retryQuote = SpendingHwSign.retainedRetryQuote(
+                address: address,
+                depositSats: amountSats,
+                signedTx: signedTx,
+                claimFees: claimFees
+            ) else { return .priceAnew }
+            quote = retryQuote
+            quoteError = nil
+            return .retry(retryQuote)
+        } catch {
+            Logger.error("Failed to price the retry of a retained transfer to spending: \(error)", context: "SparkTransferFlow")
+            guard isCurrentQuoteRequest(requestId, amountSats: amountSats, walletId: walletId) else { return .superseded }
+            quote = nil
+            quoteError = t("lightning__spending_confirm__error_quote")
+            return .retry(nil)
+        }
+    }
+
+    private func isCurrentQuoteRequest(_ requestId: Int, amountSats: UInt64, walletId: String?) -> Bool {
+        requestId == quoteRequestId && self.amountSats == amountSats && self.walletId == walletId
     }
 
     // MARK: Claim
