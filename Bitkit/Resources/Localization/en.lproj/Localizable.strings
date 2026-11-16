@@ -604,6 +604,8 @@
 "other__scan_to_pay_title" = "Scan\n<accent>to pay</accent>";
 "other__scan_to_pay_text" = "Allow Camera, Bluetooth, and NFC access to scan bitcoin invoices and pay more quickly.";
 "other__nfc_alert" = "Tap payment terminal or phone";
+"other__nfc_read_button" = "Read NFC";
+"other__bluetooth_enable" = "Enable Bluetooth";
 "other__nfc_error_header" = "NFC Read Failed";
 "other__nfc_error_text" = "This tag does not contain a payment request Bitkit can read.";
 "other__nfc_error_multiple" = "This tag contains more than one payment request.";

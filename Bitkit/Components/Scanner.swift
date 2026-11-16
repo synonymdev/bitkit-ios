@@ -265,11 +265,11 @@ private struct ScannerStatusOverlay: View {
         VStack(spacing: 8) {
             if showsButtons {
                 HStack(spacing: 8) {
-                    ScannerSourceButton(icon: "bluetooth-connected", testID: "ScannerBluetoothButton") {
+                    ScannerSourceButton(icon: "bluetooth-connected", label: t("other__bluetooth_enable"), testID: "ScannerBluetoothButton") {
                         onBluetooth()
                     }
                     if isNfcAvailable, let onNfcRead {
-                        ScannerSourceButton(icon: "broadcast", testID: "ScannerNfcButton") {
+                        ScannerSourceButton(icon: "broadcast", label: t("other__nfc_read_button"), testID: "ScannerNfcButton") {
                             Task { await onNfcRead() }
                         }
                     }
@@ -304,6 +304,8 @@ private struct ScannerStatusOverlay: View {
 
 private struct ScannerSourceButton: View {
     let icon: String
+    /// Spoken by VoiceOver, since the button shows only an icon.
+    let label: String
     let testID: String
     let action: () -> Void
 
@@ -320,6 +322,7 @@ private struct ScannerSourceButton: View {
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
         .accessibilityIdentifier(testID)
     }
 }
@@ -460,12 +463,22 @@ struct ScannerPermissionRequest: View {
                 .padding(.bottom, 32)
             if showsSourceButtons {
                 HStack(spacing: 8) {
-                    ScannerSourceButton(icon: "camera", testID: "ScannerCameraButton", action: onRequestPermission)
+                    ScannerSourceButton(
+                        icon: "camera",
+                        label: t("other__camera_no_button"),
+                        testID: "ScannerCameraButton",
+                        action: onRequestPermission
+                    )
                     if let onBluetooth {
-                        ScannerSourceButton(icon: "bluetooth-connected", testID: "ScannerBluetoothButton", action: onBluetooth)
+                        ScannerSourceButton(
+                            icon: "bluetooth-connected",
+                            label: t("other__bluetooth_enable"),
+                            testID: "ScannerBluetoothButton",
+                            action: onBluetooth
+                        )
                     }
                     if let onNfcRead {
-                        ScannerSourceButton(icon: "broadcast", testID: "ScannerNfcButton") {
+                        ScannerSourceButton(icon: "broadcast", label: t("other__nfc_read_button"), testID: "ScannerNfcButton") {
                             Task { await onNfcRead() }
                         }
                     }
