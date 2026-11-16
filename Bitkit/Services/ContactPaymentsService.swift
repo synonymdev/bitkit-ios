@@ -2,6 +2,8 @@ import Foundation
 
 enum ContactPaymentsService {
     static let confirmedPreferenceKey = "hasConfirmedPublicPaykitEndpoints"
+    /// Set once the user turns public payments on or off themselves, so automatic changes leave their choice alone.
+    static let publicPreferenceChosenKey = "hasChosenPublicPaykitEndpoints"
 
     @MainActor private static var isOperationActive = false
     @MainActor private static var operationWaiters: [CheckedContinuation<Void, Never>] = []
@@ -195,7 +197,8 @@ enum ContactPaymentsService {
         _ enabled: Bool,
         pubkyProfile: PubkyProfileManager,
         operations: Operations,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        recordsChoice: Bool = true
     ) async throws -> Bool {
         latestPublicChange += 1
         let change = latestPublicChange
@@ -206,6 +209,9 @@ enum ContactPaymentsService {
         try Task.checkCancellation()
         guard isChangeCurrent() else { return false }
 
+        if recordsChoice {
+            defaults.set(true, forKey: publicPreferenceChosenKey)
+        }
         let wasEnabled = defaults.bool(forKey: PublicPaykitService.publishingEnabledKey)
         let wasCleanupPending = defaults.bool(forKey: PublicPaykitService.cleanupPendingKey)
         defaults.set(enabled, forKey: PublicPaykitService.publishingEnabledKey)

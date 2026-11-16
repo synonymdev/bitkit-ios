@@ -1521,6 +1521,8 @@ class PubkyProfileManager: ObservableObject {
         UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey)
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
         UserDefaults.standard.set(false, forKey: ContactPaymentsService.confirmedPreferenceKey)
+        UserDefaults.standard.removeObject(forKey: ContactPaymentsService.publicPreferenceChosenKey)
+        PaykitPaymentsMigration.clear()
         PrivatePaykitService.setContactSharingCleanupPending(false)
         UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11")
         UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11PaymentHash")

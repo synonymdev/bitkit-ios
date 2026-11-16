@@ -31,6 +31,11 @@ enum AppDataMigrations {
             migration4(defaults: defaults)
             defaults.set(4, forKey: versionKey)
         }
+
+        if current < 5 {
+            migration5(defaults: defaults, hasStoredPubkyIdentity: hasStoredPubkyIdentity)
+            defaults.set(5, forKey: versionKey)
+        }
     }
 
     /// Migration 1: Move suggestions into widgets
@@ -89,6 +94,14 @@ enum AppDataMigrations {
         defaults.removeObject(forKey: "publicPaykitBolt11")
         defaults.removeObject(forKey: "publicPaykitBolt11PaymentHash")
         defaults.removeObject(forKey: "publicPaykitBolt11ExpiresAt")
+    }
+
+    /// Migration 5: Queue turning private and public payments on for wallets that already have a Pubky profile.
+    /// New profiles get payments on when they are set up; this covers profiles from before that. The steps run later,
+    /// once the wallet, node and session are ready, and skip a setting the user already chose.
+    private static func migration5(defaults: UserDefaults, hasStoredPubkyIdentity: () -> Bool) {
+        guard hasStoredPubkyIdentity() else { return }
+        PaykitPaymentsMigration.queue(defaults: defaults)
     }
 
     private static func hasStoredPubkyIdentity() -> Bool {

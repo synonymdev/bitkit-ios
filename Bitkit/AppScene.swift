@@ -645,6 +645,7 @@ struct AppScene: View {
             }
             .task(id: publicPaykitForegroundSession) {
                 await refreshForegroundPublicPaykitEndpoints()
+                await runPaykitPaymentsMigration()
             }
             .onChange(of: pubkyProfile.isDeletingProfile) { _, isDeleting in
                 guard !isDeleting, isPaykitSceneActive else { return }
@@ -1521,6 +1522,20 @@ struct AppScene: View {
         await wallet.refreshPublicPaykitEndpointsOnForeground {
             !Task.isCancelled && isPaykitSceneActive && pubkyProfile.automaticPaykitSession == session
         }
+    }
+
+    private func runPaykitPaymentsMigration() async {
+        guard PaykitFeatureFlags.isUIEnabled,
+              let session = publicPaykitForegroundSession,
+              pubkyProfile.automaticPaykitSession == session
+        else { return }
+        await PaykitPaymentsMigration.run(
+            steps: .live(pubkyProfile: pubkyProfile, contactsManager: contactsManager, wallet: wallet),
+            isCurrent: {
+                !Task.isCancelled && !wipeCoordinator.isGateUp && PaykitFeatureFlags.isUIEnabled &&
+                    publicPaykitForegroundSession == session && pubkyProfile.automaticPaykitSession == session
+            }
+        )
     }
 
     private func refreshPrivateOnlyPaykitApp() async {

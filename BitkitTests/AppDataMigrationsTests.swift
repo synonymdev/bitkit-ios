@@ -13,7 +13,7 @@ final class AppDataMigrationsTests: XCTestCase {
 
         XCTAssertNil(defaults.object(forKey: paykitKey))
         XCTAssertTrue(isPaykitUIEnabled(defaults))
-        XCTAssertEqual(defaults.integer(forKey: AppDataMigrations.versionKey), 4)
+        XCTAssertEqual(defaults.integer(forKey: AppDataMigrations.versionKey), 5)
     }
 
     func testUpgradeWithPaykitOnKeepsPaykitOn() throws {
@@ -66,7 +66,7 @@ final class AppDataMigrationsTests: XCTestCase {
         AppDataMigrations.run(defaults: defaults, hasStoredPubkyIdentity: { true })
 
         XCTAssertTrue(isPaykitUIEnabled(defaults))
-        XCTAssertEqual(defaults.integer(forKey: AppDataMigrations.versionKey), 4)
+        XCTAssertEqual(defaults.integer(forKey: AppDataMigrations.versionKey), 5)
     }
 
     // MARK: - After this migration

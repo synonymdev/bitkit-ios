@@ -1329,6 +1329,22 @@ final class ContactPaymentsServiceTests: XCTestCase {
         }
     }
 
+    func testPublicSharingRecordsTheUsersChoiceUnlessAutomatic() async throws {
+        for recordsChoice in [true, false] {
+            try await withIsolatedDefaultsAsync { defaults in
+                let profile = signedInProfile(ownerKey: "owner")
+                let operations = OperationsSpy()
+                let applied = try await ContactPaymentsService.setPublicEnabled(
+                    true, pubkyProfile: profile, operations: operations.makeOperations(defaults: defaults), defaults: defaults,
+                    recordsChoice: recordsChoice
+                )
+                XCTAssertTrue(applied)
+                XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+                XCTAssertEqual(defaults.bool(forKey: ContactPaymentsService.publicPreferenceChosenKey), recordsChoice)
+            }
+        }
+    }
+
     func testPublicSharingFailurePreservesPrivateStateAndRetriesWithdrawal() async throws {
         for enabling in [false, true] {
             try await withIsolatedDefaultsAsync { defaults in

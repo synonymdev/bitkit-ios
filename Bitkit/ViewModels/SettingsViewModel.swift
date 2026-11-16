@@ -230,6 +230,8 @@ class SettingsViewModel: NSObject, ObservableObject {
         UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey)
         UserDefaults.standard.set(false, forKey: PublicPaykitService.cleanupPendingKey)
         UserDefaults.standard.set(false, forKey: ContactPaymentsService.confirmedPreferenceKey)
+        UserDefaults.standard.removeObject(forKey: ContactPaymentsService.publicPreferenceChosenKey)
+        PaykitPaymentsMigration.clear()
         UserDefaults.standard.set(true, forKey: PublicPaykitService.lightningPaymentOptionEnabledKey)
         UserDefaults.standard.set(true, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
         ignoresSwitchUnitToast = false
