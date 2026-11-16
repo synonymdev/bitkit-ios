@@ -41,14 +41,64 @@ concurrency:
 
 jobs:
 
+  regtest:
+    name: Select integration backend
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      backend: ${{ steps.select.outputs.backend }}
+    steps:
+      - name: Check whether staging credentials can be used
+        id: select
+        uses: actions/github-script@v9
+        env:
+          DISPATCH_PR: ${{ inputs.pr }}
+          DISPATCH_MERGE_COMMIT: ${{ inputs.merge_commit }}
+        with:
+          script: |
+            let pr = context.payload.pull_request;
+            if (!pr && process.env.DISPATCH_PR) {
+              const { data } = await github.rest.pulls.get({
+                ...context.repo,
+                pull_number: Number(process.env.DISPATCH_PR),
+              });
+              pr = data;
+            }
+
+            const repository = `${context.repo.owner}/${context.repo.repo}`.toLowerCase();
+            if (pr && pr.head.repo?.full_name?.toLowerCase() !== repository) {
+              core.setOutput('backend', 'local');
+              return;
+            }
+
+            // Retarget recovery can test a snapshot from before staging mode existed.
+            const ref = process.env.DISPATCH_MERGE_COMMIT
+              || (process.env.DISPATCH_PR ? `refs/pull/${process.env.DISPATCH_PR}/merge` : '');
+            if (ref) {
+              const { data } = await github.rest.repos.getContent({
+                ...context.repo,
+                path: 'BitkitTests/LocalRegtest.swift',
+                ref,
+              });
+              const source = Buffer.from(data.content, 'base64').toString('utf8');
+              if (!source.includes('INTEGRATION_REGTEST_BACKEND')) {
+                core.setOutput('backend', 'local');
+                return;
+              }
+            }
+            core.setOutput('backend', 'staging');
+
   test:
     # PR code must not publish dependency caches into the dispatch ref's scope.
     cache-mode: read
     if: github.event.pull_request.draft == false
     name: Run Integration Tests
-    # The suites fund and mine on a local regtest stack. macOS runners cannot run Docker, so this
-    # runs on Namespace, which hosts the stack on a Linux instance (see namespace-stack.sh).
-    runs-on: namespace-profile-mac
+    needs: [regtest]
+    # Forks use the isolated stack because GitHub withholds staging credentials from fork PRs.
+    runs-on: ${{ needs.regtest.outputs.backend == 'local' && 'namespace-profile-mac' || 'macos-26' }}
     timeout-minutes: 60
     permissions:
       contents: read
@@ -57,6 +107,7 @@ jobs:
       checks: write
       actions: write
     env:
+      REGTEST_BACKEND: ${{ needs.regtest.outputs.backend }}
       DERIVED_DATA: ${{ github.workspace }}/DerivedData
       RESULT_BUNDLE: ${{ github.workspace }}/IntegrationTests.xcresult
 
@@ -65,6 +116,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ inputs.merge_commit || (inputs.pr && format('refs/pull/{0}/merge', inputs.pr)) || '' }}
+          persist-credentials: false
 
       - name: Checkout retarget reporter
         if: inputs.retarget_run != ''
@@ -89,6 +141,7 @@ jobs:
             await reportRetargetResult({github, context, core, name: 'Run Integration Tests', phase: 'start'});
 
       - name: Checkout bitkit-docker
+        if: env.REGTEST_BACKEND == 'local'
         uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-docker
@@ -96,6 +149,7 @@ jobs:
           path: bitkit-docker
 
       - name: Start local regtest
+        if: env.REGTEST_BACKEND == 'local'
         run: |
           .github/scripts/namespace-stack.sh up bitkit-docker
           .github/scripts/namespace-stack.sh forward 43782 60001
@@ -103,6 +157,7 @@ jobs:
 
       # A separate step: `namespace-stack.sh up` puts its `docker exec` wrapper on the PATH for later steps only.
       - name: Mine initial blocks
+        if: env.REGTEST_BACKEND == 'local'
         timeout-minutes: 5
         run: until docker exec bitcoin bitcoin-cli -regtest -rpcport=43782 -rpcuser=polaruser -rpcpassword=polarpass -generate 101; do sleep 2; done
 
@@ -151,6 +206,7 @@ jobs:
           echo "✅ Build finished at $(date)"
 
       - name: Wait for electrum server
+        if: env.REGTEST_BACKEND == 'local'
         run: |
           for _ in $(seq 1 60); do
             python3 -c 'import socket; s = socket.create_connection(("127.0.0.1", 60001), 10); s.sendall(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"blockchain.headers.subscribe\",\"params\":[]}\n"); assert b"height" in s.recv(4096)' && exit 0
@@ -159,29 +215,44 @@ jobs:
           exit 1
 
       - name: Run integration tests
+        id: xctest
         timeout-minutes: 25
+        env:
+          BLOCKTANK_REGTEST_AUTH: ${{ needs.regtest.outputs.backend == 'staging' && secrets.BLOCKTANK_REGTEST_AUTH || '' }}
+          INTEGRATION_REGTEST_AUTH: ${{ needs.regtest.outputs.backend == 'staging' && secrets.INTEGRATION_REGTEST_AUTH || '' }}
+          INTEGRATION_REGTEST_API_URL: ${{ vars.INTEGRATION_REGTEST_API_URL }}
+          INTEGRATION_REGTEST_ELECTRUM_URL: ${{ vars.INTEGRATION_REGTEST_ELECTRUM_URL }}
         run: |
-          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
-          echo "⏱️  Starting integration tests at $(date)"
+          # xcodebuild forwards TEST_RUNNER_* variables to XCTest without the prefix.
+          # Only this integration job enables the destructive migration tests.
+          export TEST_RUNNER_BITKIT_DESTRUCTIVE_TESTS=1
+          if [[ "$REGTEST_BACKEND" == local ]]; then
+            export TEST_RUNNER_E2E=true
+          else
+            export TEST_RUNNER_E2E=false
+            export TEST_RUNNER_INTEGRATION_REGTEST_BACKEND=staging
 
-          # RNMigrationCleanupTests deletes the real ~/Documents/mmkv and ~/Documents/ldk, so it
-          # skips itself unless this is set. This lane runs on a throwaway CI simulator; the unit
-          # lane does not, and must not run it.
-          #
-          # TEST_RUNNER_E2E=true points the wallet's electrum at the local stack (Env.electrumServerUrl),
-          # the chain LocalRegtest funds and mines on.
-          #
-          # The TEST_RUNNER_ prefix is required: xcodebuild does not pass the invoking shell's
-          # environment to the simulator-hosted runner, only variables named TEST_RUNNER_<VAR>,
-          # which it forwards with the prefix stripped. Without it the guard never sees the
-          # variable, every test in the suite skips, and the lane still reports green.
-          #
-          # The live regtest suites are flaky on CI runners, so a failed test is retried once on
-          # its own instead of rebuilding and rerunning the whole suite.
-          #
-          # A test that runs past 10 minutes fails instead of stalling the step. Most tests take
-          # under 2 minutes; the first one can take about 5 while staging VSS is slow.
-          set -o pipefail && TEST_RUNNER_BITKIT_DESTRUCTIVE_TESTS=1 TEST_RUNNER_E2E=true xcodebuild test-without-building \
+            if [[ -n "$INTEGRATION_REGTEST_API_URL" || -n "$INTEGRATION_REGTEST_ELECTRUM_URL" ]]; then
+              if [[ -z "$INTEGRATION_REGTEST_API_URL" || -z "$INTEGRATION_REGTEST_ELECTRUM_URL" ]]; then
+                echo "::error::Configure the integration regtest API and Electrum URLs together"
+                exit 1
+              fi
+              export TEST_RUNNER_INTEGRATION_REGTEST_API_URL="$INTEGRATION_REGTEST_API_URL"
+              export TEST_RUNNER_INTEGRATION_REGTEST_ELECTRUM_URL="$INTEGRATION_REGTEST_ELECTRUM_URL"
+              export TEST_RUNNER_BLOCKTANK_REGTEST_AUTH="$INTEGRATION_REGTEST_AUTH"
+            else
+              export TEST_RUNNER_BLOCKTANK_REGTEST_AUTH="$BLOCKTANK_REGTEST_AUTH"
+            fi
+
+            if [[ -z "$TEST_RUNNER_BLOCKTANK_REGTEST_AUTH" ]]; then
+              echo "::error::The selected integration backend is missing its CI auth secret"
+              exit 1
+            fi
+          fi
+
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+          set -o pipefail
+          xcodebuild test-without-building \
             -scheme Bitkit \
             -destination "$DESTINATION" \
             -derivedDataPath "$DERIVED_DATA" \
@@ -203,15 +274,42 @@ jobs:
             | xcbeautify --report junit
           echo "✅ Integration tests completed at $(date)"
 
-      - name: Upload test results
+      - name: Summarize staging integration results
+        id: summary
+        if: always() && env.REGTEST_BACKEND == 'staging' && (steps.xctest.outcome == 'success' || steps.xctest.outcome == 'failure')
+        run: |
+          # Publish counts without the XCTest archive, which may contain process diagnostics.
+          if [[ ! -d "$RESULT_BUNDLE" ]]; then
+            echo "No XCTest result bundle was produced."
+            exit 0
+          fi
+          set -o pipefail
+          xcrun xcresulttool get test-results summary --path "$RESULT_BUNDLE" | python3 -c '
+          import json
+          import sys
+
+          summary = json.load(sys.stdin)
+          fields = ("totalTestCount", "passedTests", "failedTests", "skippedTests", "expectedFailures")
+          print(json.dumps({field: summary[field] for field in fields}, indent=2))
+          ' | tee "$RUNNER_TEMP/integration-test-summary.json"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload staging integration summary
         uses: actions/upload-artifact@v7
-        if: success() || failure()
+        if: always() && steps.summary.outputs.created == 'true'
+        with:
+          name: integration-test-results
+          path: ${{ runner.temp }}/integration-test-summary.json
+
+      - name: Upload local integration results
+        uses: actions/upload-artifact@v7
+        if: (success() || failure()) && env.REGTEST_BACKEND == 'local'
         with:
           name: integration-test-results
           path: ${{ env.RESULT_BUNDLE }}
 
       - name: Tear down regtest stack
-        if: always()
+        if: always() && env.REGTEST_BACKEND == 'local'
         run: .github/scripts/namespace-stack.sh down
 
   report-retarget-result:

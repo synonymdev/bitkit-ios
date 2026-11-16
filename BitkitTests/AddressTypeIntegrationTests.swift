@@ -362,10 +362,10 @@ final class AddressTypeIntegrationTests: XCTestCase {
 
         let legacyAddress = try await settings.lightningService.newAddressForType(.legacy)
         Logger.test("Funding legacy address: \(legacyAddress)", context: "AddressTypeIntegrationTests")
-        let txId = try await LocalRegtest.deposit(address: legacyAddress, amountSat: 50000)
+        let txId = try await IntegrationRegtest.deposit(address: legacyAddress, amountSat: 50000)
         XCTAssertFalse(txId.isEmpty)
 
-        try await LocalRegtest.mineBlocks(6)
+        try await IntegrationRegtest.mineBlocks(6)
 
         // Verify legacy has balance
         try await waitForBalance(.legacy, atLeast: 1)
@@ -393,10 +393,10 @@ final class AddressTypeIntegrationTests: XCTestCase {
         // Fund the taproot address
         let taprootAddress = try await settings.lightningService.newAddressForType(.taproot)
         Logger.test("Funding taproot address: \(taprootAddress)", context: "AddressTypeIntegrationTests")
-        let txId = try await LocalRegtest.deposit(address: taprootAddress, amountSat: 50000)
+        let txId = try await IntegrationRegtest.deposit(address: taprootAddress, amountSat: 50000)
         XCTAssertFalse(txId.isEmpty)
 
-        try await LocalRegtest.mineBlocks(6)
+        try await IntegrationRegtest.mineBlocks(6)
 
         // Verify taproot has balance
         try await waitForBalance(.taproot, atLeast: 1)
@@ -422,10 +422,10 @@ final class AddressTypeIntegrationTests: XCTestCase {
         // Fund the taproot address
         let taprootAddress = try await settings.lightningService.newAddressForType(.taproot)
         Logger.test("Funding taproot for prune test: \(taprootAddress)", context: "AddressTypeIntegrationTests")
-        let txId = try await LocalRegtest.deposit(address: taprootAddress, amountSat: 50000)
+        let txId = try await IntegrationRegtest.deposit(address: taprootAddress, amountSat: 50000)
         XCTAssertFalse(txId.isEmpty)
 
-        try await LocalRegtest.mineBlocks(6)
+        try await IntegrationRegtest.mineBlocks(6)
         try await waitForBalance(.taproot, atLeast: 1)
 
         // Add legacy (will be empty)

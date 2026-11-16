@@ -115,7 +115,7 @@ final class UtxoSelectionTests: XCTestCase {
             Logger.test(
                 "Depositing \(depositAmount) sats to wallet (transaction \(index + 1)/\(depositAmounts.count))", context: "UtxoSelectionTests"
             )
-            let txId = try await LocalRegtest.deposit(address: depositAddress, amountSat: depositAmount)
+            let txId = try await IntegrationRegtest.deposit(address: depositAddress, amountSat: depositAmount)
             XCTAssertFalse(txId.isEmpty, "Transaction ID should not be empty")
             transactionIds.append(txId)
             totalExpectedAmount += depositAmount
@@ -127,7 +127,7 @@ final class UtxoSelectionTests: XCTestCase {
 
         // Mine some blocks to confirm all transactions
         Logger.test("Mining 6 blocks to confirm all transactions", context: "UtxoSelectionTests")
-        try await LocalRegtest.mineBlocks(6)
+        try await IntegrationRegtest.mineBlocks(6)
         Logger.test("Blocks mined successfully", context: "UtxoSelectionTests")
 
         let outputs = try await waitForSpendableOutputs("\(depositAmounts.count) confirmed deposits") {
@@ -208,7 +208,7 @@ final class UtxoSelectionTests: XCTestCase {
 
         // Mine a block to confirm the transaction
         Logger.test("Mining 1 block to confirm the transaction", context: "UtxoSelectionTests")
-        try await LocalRegtest.mineBlocks(1)
+        try await IntegrationRegtest.mineBlocks(1)
         Logger.test("Block mined successfully", context: "UtxoSelectionTests")
 
         // Verify the spent ones are missing
@@ -276,7 +276,7 @@ final class UtxoSelectionTests: XCTestCase {
                 "Depositing \(depositAmount) sats to wallet (transaction \(index + 1)/\(depositAmounts.count))",
                 context: "UtxoSelectionTests"
             )
-            let txId = try await LocalRegtest.deposit(address: depositAddress, amountSat: depositAmount)
+            let txId = try await IntegrationRegtest.deposit(address: depositAddress, amountSat: depositAmount)
             XCTAssertFalse(txId.isEmpty, "Transaction ID should not be empty")
             totalExpectedAmount += depositAmount
             Logger.test("Deposit transaction \(index + 1) ID: \(txId), Amount: \(depositAmount) sats", context: "UtxoSelectionTests")
@@ -286,7 +286,7 @@ final class UtxoSelectionTests: XCTestCase {
 
         // Mine blocks to confirm all transactions
         Logger.test("Mining 6 blocks to confirm all transactions", context: "UtxoSelectionTests")
-        try await LocalRegtest.mineBlocks(6)
+        try await IntegrationRegtest.mineBlocks(6)
         Logger.test("Blocks mined successfully", context: "UtxoSelectionTests")
 
         let allUtxos = try await waitForSpendableOutputs("\(depositAmounts.count) confirmed deposits") {

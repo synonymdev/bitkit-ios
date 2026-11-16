@@ -232,6 +232,9 @@ enum Env {
     }
 
     static var electrumServerUrl: String {
+        if isUnitTest, network == .regtest, let url = configValue("INTEGRATION_REGTEST_ELECTRUM_URL") {
+            return url
+        }
         if isE2E, e2eBackend == "local" {
             return "tcp://\(e2eLocalHost):60001"
         }
@@ -360,7 +363,10 @@ enum Env {
     }
 
     static var blocktankClientServer: String {
-        switch network {
+        if isUnitTest, network == .regtest, let url = configValue("INTEGRATION_REGTEST_API_URL") {
+            return url
+        }
+        return switch network {
         case .bitcoin: "\(blocktankBaseUrl)/api"
         default: "\(blocktankBaseUrl)/blocktank/api/v2"
         }

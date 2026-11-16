@@ -61,3 +61,23 @@ enum LocalRegtest {
         let _: [String] = try await call("generatetoaddress", [count, address])
     }
 }
+
+/// Selects the funding backend used by CI and defaults to a local regtest chain.
+enum IntegrationRegtest {
+    private static let useStaging = ProcessInfo.processInfo.environment["INTEGRATION_REGTEST_BACKEND"] == "staging"
+
+    static func deposit(address: String, amountSat: UInt64) async throws -> String {
+        if useStaging {
+            return try await CoreService.shared.blocktank.regtestDepositFunds(address: address, amountSat: amountSat)
+        }
+        return try await LocalRegtest.deposit(address: address, amountSat: amountSat)
+    }
+
+    static func mineBlocks(_ count: UInt32) async throws {
+        if useStaging {
+            try await CoreService.shared.blocktank.regtestMineBlocks(count)
+        } else {
+            try await LocalRegtest.mineBlocks(Int(count))
+        }
+    }
+}
