@@ -233,7 +233,7 @@ enum PaykitReceiptMatcher {
         )).uuidString.lowercased()
     }
 
-    private static let receiveTimeTolerance: TimeInterval = 2 * 60 * 60
+    static let receiveTimeTolerance: TimeInterval = 2 * 60 * 60
 
     private static func couldBePaid(_ record: Paykit.PaymentRequestRecord, by receive: PaykitRecordedReceive) -> Bool {
         if let contact = receive.contact, !PubkyPublicKeyFormat.matches(contact, record.counterparty) {
@@ -269,7 +269,8 @@ enum PaykitReceiptMatcher {
                     matches.append((identifier, receive))
                 }
             } else if method.onchainNetwork == network {
-                for receive in onchainReceives where receive.address?.lowercased() == payload.value.lowercased() {
+                // A batch can pay the request's address while the activity shows another one, so match the outputs.
+                for receive in onchainReceives {
                     if let paid = receive.paid(to: [payload.value]) {
                         matches.append((identifier, paid))
                     }
@@ -541,18 +542,24 @@ final class PaykitReceiptService {
         return receives
     }
 
-    /// Confirmed on-chain receives with the outputs of each one a request's proof or endpoint names, so a receipt
-    /// counts only what was paid to the request.
+    /// Confirmed on-chain receives with their outputs, so a receipt counts only what was paid to the request. Outputs
+    /// are read for each receive a proof names, and for every receive since the earliest request with an on-chain
+    /// address was proposed, since a batch can pay that address while the activity shows another one.
     private func onchainReceives(_ activities: [Activity], records: [Paykit.PaymentRequestRecord]) async -> [PaykitRecordedReceive] {
-        let mentions = records.flatMap { record in
-            record.paymentProofs.map { $0.proof.exportText() } + Array((record.terms?.paymentEndpoints ?? [:]).values)
-        }.map { $0.lowercased() }
+        let mentions = records.flatMap { $0.paymentProofs.map { $0.proof.exportText().lowercased() } }
+        let endpointsSince = records.filter { record in
+            (record.terms?.paymentEndpoints ?? [:]).keys.contains { PublicPaykitService.MethodId(rawValue: $0)?.onchainNetwork != nil }
+        }.map { record in
+            (record.proposalRecordedAt.flatMap(PaykitPaymentRequest.parseDate) ?? .distantPast)
+                .addingTimeInterval(-PaykitReceiptMatcher.receiveTimeTolerance)
+        }.min()
         var receives: [PaykitRecordedReceive] = []
         for case let .onchain(activity) in activities where activity.txType == .received && activity.confirmed && activity.doesExist {
             let txid = activity.txId.lowercased()
             let address = activity.address.lowercased()
             var outputs: [String: UInt64]?
-            if mentions.contains(where: { $0.contains(txid) || (!address.isEmpty && $0.contains(address)) }) {
+            let afterEndpoint = endpointsSince.map { Date(timeIntervalSince1970: TimeInterval(activity.timestamp)) >= $0 } ?? false
+            if afterEndpoint || mentions.contains(where: { $0.contains(txid) || (!address.isEmpty && $0.contains(address)) }) {
                 outputs = outputsByTxid[txid]
                 if outputs == nil, let read = await transactionOutputs(txid) {
                     outputsByTxid[txid] = read
