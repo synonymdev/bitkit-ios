@@ -4,10 +4,13 @@ import Foundation
 enum ScannedPaymentRequest {
     private static let bitcoinWithoutAddress = "bitcoin:?"
     private static let lightningParams = ["lightning", "lno"]
+    private static let requiredParamPrefix = "req-"
 
     /// A BIP 321 URI may leave the address out and carry only a Lightning request
     /// (`bitcoin:?lightning=<invoice>`, used by Numo and planned by Square). The scanner rejects a `bitcoin:` URI
-    /// without an address, so that form becomes `lightning:<invoice>`. Anything else is returned trimmed and unchanged.
+    /// without an address, so that form becomes `lightning:<invoice>`. A URI with a required (`req-`) parameter is
+    /// kept, since BIP 321 forbids paying it without handling that parameter and the rewrite would drop it. Anything
+    /// else is returned trimmed and unchanged.
     static func normalized(_ text: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.lowercased().hasPrefix(bitcoinWithoutAddress) else { return trimmed }
@@ -16,6 +19,9 @@ enum ScannedPaymentRequest {
             let parts = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
             guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { continue }
             let key = parts[0].lowercased()
+            if key.hasPrefix(requiredParamPrefix) {
+                return trimmed
+            }
             if params[key] == nil {
                 params[key] = String(parts[1])
             }

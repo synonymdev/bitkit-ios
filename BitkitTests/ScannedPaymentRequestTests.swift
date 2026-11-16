@@ -20,6 +20,13 @@ final class ScannedPaymentRequestTests: XCTestCase {
         XCTAssertEqual(ScannedPaymentRequest.normalized("bitcoin:?lno=lno1qgsq"), "lightning:lno1qgsq")
     }
 
+    func testRequestWithRequiredParameterIsKept() {
+        let required = "bitcoin:?lightning=\(invoice)&req-pop=callback%3a"
+        XCTAssertEqual(ScannedPaymentRequest.normalized(required), required)
+        let uppercase = "BITCOIN:?REQ-FOO=bar&LIGHTNING=\(invoice)"
+        XCTAssertEqual(ScannedPaymentRequest.normalized(uppercase), uppercase)
+    }
+
     func testOtherBitcoinRequestsAreKept() {
         let unified = "bitcoin:bc1qtest?lightning=lnbc1"
         XCTAssertEqual(ScannedPaymentRequest.normalized(unified), unified)
