@@ -522,8 +522,8 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         )
         _ = try await service.syncPrivatePaymentListsWithReservations([], clearUnlistedLinkedPeers: true)
         let events = await recorder.events
-        // Each sync first sends what is already queued, so both calls reach the fake.
-        XCTAssertEqual(events, Array(repeating: "published", count: 6))
+        // The publication first sends what is already queued; the two withdrawals do not.
+        XCTAssertEqual(events, Array(repeating: "published", count: 4))
     }
 
     @MainActor

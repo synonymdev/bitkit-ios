@@ -27,7 +27,7 @@ final class PaykitContactLifecycleTests: XCTestCase {
             let service = PaykitSdkService(sdkFactory: { sdk })
             _ = try await service.removeContact(publicKey: sdk.publicKey)
             XCTAssertNil(sdk.record)
-            XCTAssertEqual(sdk.events, ["send-pending", "clear", "block", "remove"])
+            XCTAssertEqual(sdk.events, ["clear", "block", "remove"])
             XCTAssertTrue(sdk.peers.allSatisfy { $0.state == .blocked })
         }
     }
@@ -415,8 +415,8 @@ final class PaykitContactLifecycleTests: XCTestCase {
         XCTAssertEqual(report?.cleared.map(\.counterparty), keys)
         XCTAssertTrue(report?.failedToQueue.isEmpty == true)
         XCTAssertTrue(try XCTUnwrap(sdk.withdrawals.first?.first).reservations.isEmpty)
-        // Queued messages, receipts included, go out and get recorded before each sync's own drain.
-        XCTAssertEqual(sdk.events, ["send-pending", "sync", "send-pending", "sync"])
+        // A withdrawal supersedes a queued list instead of sending it first.
+        XCTAssertEqual(sdk.events, ["sync", "sync"])
     }
 }
 

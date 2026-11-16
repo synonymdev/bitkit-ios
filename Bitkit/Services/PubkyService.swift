@@ -1017,7 +1017,6 @@ actor PaykitSdkService {
             }
             if peers.contains(where: { $0.state == .linked }) {
                 do {
-                    try await sendPendingMessages(sdk)
                     let report = try await sdk.clearPrivatePaymentListAndProcessOutbound(
                         counterparty: publicKey
                     )
@@ -1127,7 +1126,10 @@ actor PaykitSdkService {
                 }
             }
         ) { sdk in
-            try await sendPendingMessages(sdk)
+            // A withdrawal must supersede any list still queued, so it never sends one first.
+            if !withdraws {
+                try await sendPendingMessages(sdk)
+            }
             return try await sdk.syncPrivatePaymentListsWithReservationsAndProcessOutbound(
                 updates: updates,
                 clearUnlistedLinkedPeers: clearUnlistedLinkedPeers
@@ -1186,7 +1188,6 @@ actor PaykitSdkService {
                 throw PubkyServiceError.sessionNotActive
             }
             try checkMutationAdmission()
-            try await sendPendingMessages(sdk)
             return try await sdk.syncPrivatePaymentListsWithReservationsAndProcessOutbound(
                 updates: updates,
                 clearUnlistedLinkedPeers: false
@@ -1309,8 +1310,15 @@ actor PaykitSdkService {
         }
     }
 
-    /// Sends and records what is already queued, receipts included, before a payment-list sync whose own drain would send
-    /// them unreported.
+    /// Sends and records what is already queued, receipts included, before a payment-list publication whose own drain
+    /// would send them unreported. Withdrawals skip it; a receipt they send stays unrecorded until the SDK reports
+    /// delivery per receipt.
+    private func recordDelivery(_ report: OutboundPrivateSendReport?) {
+        if let report, let identity = cachedPaykitKey?.publicKey {
+            PaykitOutboundDeliveryLog.shared.record(identity: identity, report: report)
+        }
+    }
+
     private func sendPendingMessages(_ sdk: PaykitSdk) async throws {
         do {
             let reports = try await sdk.processPendingPrivateMessages()
@@ -1640,12 +1648,14 @@ actor PaykitSdkService {
         afterPrivatePaymentListVersion: UInt64?
     ) async throws -> PreparedPrivateContactPayment {
         try await withStateRevisionTracking(priority: .interactive) { sdk in
-            try await sdk.prepareAndResolvePrivateContactPayment(
+            let prepared = try await sdk.prepareAndResolvePrivateContactPayment(
                 counterparty: counterparty,
                 amount: amount,
                 afterPrivatePaymentListVersion: afterPrivatePaymentListVersion,
                 maxAdvanceSteps: 1
             )
+            recordDelivery(prepared.outboundReport)
+            return prepared
         }
     }
 
@@ -1655,12 +1665,14 @@ actor PaykitSdkService {
         afterPrivatePaymentListVersion: UInt64?
     ) async throws -> PreparedPrivateContactPayment {
         try await withStateRevisionTracking(priority: .interactive) { sdk in
-            try await sdk.prepareAndResolvePrivatePaymentRequest(
+            let prepared = try await sdk.prepareAndResolvePrivatePaymentRequest(
                 counterparty: counterparty,
                 paymentRequestId: paymentRequestId,
                 afterPrivatePaymentListVersion: afterPrivatePaymentListVersion,
                 maxAdvanceSteps: 1
             )
+            recordDelivery(prepared.outboundReport)
+            return prepared
         }
     }
 
