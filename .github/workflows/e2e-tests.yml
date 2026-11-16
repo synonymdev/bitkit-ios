@@ -230,6 +230,9 @@ jobs:
     if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: [self-hosted, macOS]
     needs: [detect-changes, build-local, e2e-branch]
+    env:
+      # Reuse the legacy project so reset also clears containers left after a ref switch.
+      COMPOSE_PROJECT_NAME: docker
 
     strategy:
       fail-fast: false
@@ -318,13 +321,13 @@ jobs:
         run: |
           if [ -x ./scripts/local-backend ]; then
             ./scripts/local-backend prepare
-            ./scripts/local-backend down -v -t 300
+            ./scripts/local-backend down --remove-orphans -v -t 300
             ./scripts/local-backend up
             ./scripts/local-backend github-env >> "$GITHUB_ENV"
           else
             # Older E2E refs still carry the bundled stack.
             cd docker
-            docker compose --verbose down -v -t 300 || true
+            docker compose --verbose --profile trezor down --remove-orphans -v -t 300 || true
             mkdir -p lnd && chmod 777 lnd
             docker compose --verbose up --force-recreate -d
           fi
@@ -391,9 +394,9 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: |
           if [ -x ./scripts/local-backend ]; then
-            ./scripts/local-backend down -v || true
+            ./scripts/local-backend down --remove-orphans -v || true
           else
-            (cd docker && docker compose down -v) || true
+            (cd docker && docker compose --profile trezor down --remove-orphans -v) || true
           fi
 
   e2e-status:
