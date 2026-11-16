@@ -139,13 +139,16 @@ class ScannerManager: ObservableObject {
             guard isCurrent(), shouldOpenPaymentFlow(for: uri) else { return }
 
             if let currency, let settings, let sheets {
+                let presentationBefore = sheets.activeSheetConfiguration?.presentationID
                 PaymentNavigationHelper.openPaymentSheet(
                     app: app,
                     currency: currency,
                     settings: settings,
                     sheetViewModel: sheets
                 )
-                didOpenScanFlow = !app.didRejectScannedPayment
+                // A refused request (e.g. an expired invoice) only shows a toast and opens no sheet.
+                didOpenScanFlow = !app.didRejectScannedPayment &&
+                    sheets.activeSheetConfiguration?.presentationID != presentationBefore
             }
         } catch {
             guard isCurrent(), !(error is CancellationError) else { return }

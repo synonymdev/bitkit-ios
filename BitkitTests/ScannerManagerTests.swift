@@ -540,6 +540,33 @@ extension ScannerManagerTests {
         XCTAssertNil(app.scannedOnchainInvoice)
     }
 
+    func testRefusedNearbyRequestOnMainScannerIsNotTaken() async {
+        let sheets = SheetViewModel()
+        sheets.showSheet(.scanner)
+        let scanner = ScannerManager {}
+        let expired = LightningInvoice(
+            bolt11: "lnbcrt1expired",
+            paymentHash: Data(repeating: 1, count: 32),
+            amountSatoshis: 1000,
+            timestampSeconds: 0,
+            expirySeconds: 0,
+            isExpired: true,
+            description: nil,
+            networkType: .regtest,
+            payeeNodeId: nil
+        )
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { _ in .lightning(invoice: expired) })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+
+        let wasTaken = await scanner.handleNearbyRequest("lightning:lnbcrt1expired", context: .main)
+
+        XCTAssertFalse(wasTaken)
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .scanner)
+    }
+
     func testNearbyRequestReportsTakenWhenItRoutes() async {
         let sheets = SheetViewModel()
         sheets.showSheet(.send, data: SendConfig(view: .options))
