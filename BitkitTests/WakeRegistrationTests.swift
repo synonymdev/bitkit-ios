@@ -557,4 +557,16 @@ final class WalletLaunchPolicyTests: XCTestCase {
         XCTAssertFalse(WalletLaunchPolicy.defersStart(applicationState: .inactive), "A launch the user started")
         XCTAssertFalse(WalletLaunchPolicy.defersStart(applicationState: .active))
     }
+
+    func testABackgroundReconnectDoesNotStartAPendingRestore() {
+        let retry = { (running: Bool, pending: Bool, state: UIApplication.State) in
+            WalletLaunchPolicy.pendingRestoreRetry(isRestoreRunning: running, hasPendingRestore: { pending }, applicationState: state)
+        }
+        XCTAssertEqual(retry(false, true, .background), .deferred, "The .active path retries it once the app is opened")
+        XCTAssertEqual(retry(false, true, .active), .start)
+        XCTAssertEqual(retry(false, true, .inactive), .start)
+        XCTAssertEqual(retry(true, true, .background), .running, "A restore already running is left to finish")
+        XCTAssertEqual(retry(false, false, .background), PendingRestoreRetry.none)
+        XCTAssertEqual(retry(false, false, .active), PendingRestoreRetry.none)
+    }
 }

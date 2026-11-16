@@ -1335,13 +1335,23 @@ struct AppScene: View {
     }
 
     private func retryPendingWalletRestoreIfNeeded() -> Bool {
-        if isWalletBackupRestoreRunning {
+        let retry = WalletLaunchPolicy.pendingRestoreRetry(
+            isRestoreRunning: isWalletBackupRestoreRunning,
+            hasPendingRestore: { BackupService.shared.hasPendingWalletRestore() },
+            applicationState: UIApplication.shared.applicationState
+        )
+        switch retry {
+        case .none:
+            return false
+        case .running:
+            return true
+        case .deferred:
+            Logger.info("In the background, restoring the wallet once the app is active", context: "AppScene")
+            return true
+        case .start:
+            Task { await restoreWalletBackupAndStart() }
             return true
         }
-        guard BackupService.shared.hasPendingWalletRestore() else { return false }
-
-        Task { await restoreWalletBackupAndStart() }
-        return true
     }
 
     private func restoreFromMostRecentBackup() async -> Bool {
@@ -2468,6 +2478,31 @@ enum WalletLaunchPolicy {
     static func defersStart(applicationState: UIApplication.State) -> Bool {
         applicationState == .background
     }
+
+    /// A pending restore ends by starting the node, so in the background a new one waits for the app to be opened, where
+    /// the `.active` path retries it. A restore already running is left to finish.
+    static func pendingRestoreRetry(
+        isRestoreRunning: Bool,
+        hasPendingRestore: () -> Bool,
+        applicationState: UIApplication.State
+    ) -> PendingRestoreRetry {
+        if isRestoreRunning {
+            return .running
+        }
+        guard hasPendingRestore() else { return .none }
+        return defersStart(applicationState: applicationState) ? .deferred : .start
+    }
+}
+
+enum PendingRestoreRetry: Equatable {
+    /// No restore is pending.
+    case none
+    /// A restore is already running and finishes on its own.
+    case running
+    /// In the background: the restore starts once the app is active.
+    case deferred
+    /// Start the pending restore now.
+    case start
 }
 
 enum DeferredWalletStart: Equatable {
