@@ -188,7 +188,60 @@ enum ContactPaymentsService {
         }
     }
 
-    /// Public payment details are published only in response to an explicit public sharing choice.
+    /// A profile set up in this app shares private and public payment details from the start, so the user has nothing to
+    /// opt into; either can be turned off in Settings. Each change runs on its own and a failed one is logged after
+    /// `setEnabled` or `setPublicEnabled` has restored what it changed, so one failing still applies the other.
+    @MainActor
+    static func enableForNewProfile(
+        pubkyProfile: PubkyProfileManager,
+        contactsManager: ContactsManager,
+        operations: Operations,
+        defaults: UserDefaults = .standard,
+        privatePaymentAccess: (String) throws -> Bool = { try PubkyProfileManager.hasPrivatePaymentAccess(for: $0) }
+    ) async {
+        do {
+            try await setEnabled(
+                true,
+                pubkyProfile: pubkyProfile,
+                contactsManager: contactsManager,
+                operations: operations,
+                defaults: defaults,
+                privatePaymentAccess: privatePaymentAccess
+            )
+        } catch is CancellationError {
+            return
+        } catch {
+            Logger.error("Failed to enable private payments for a new profile: \(error)", context: "ContactPaymentsService")
+        }
+
+        do {
+            try await setPublicEnabled(true, pubkyProfile: pubkyProfile, operations: operations, defaults: defaults)
+        } catch is CancellationError {
+            return
+        } catch {
+            Logger.error("Failed to enable public payments for a new profile: \(error)", context: "ContactPaymentsService")
+        }
+    }
+
+    /// Starts `enableForNewProfile` without waiting for it, since publication can outlast the setup screens. The task
+    /// stops writing once the Pubky session it started for ends.
+    @MainActor
+    static func startEnablingForNewProfile(
+        pubkyProfile: PubkyProfileManager,
+        contactsManager: ContactsManager,
+        wallet: WalletViewModel
+    ) {
+        Task { @MainActor in
+            await enableForNewProfile(
+                pubkyProfile: pubkyProfile,
+                contactsManager: contactsManager,
+                operations: .live(wallet: wallet)
+            )
+        }
+    }
+
+    /// Public payment details are published only after a public sharing choice: the Settings toggle, or the setup of a
+    /// new profile.
     @discardableResult
     @MainActor
     static func setPublicEnabled(

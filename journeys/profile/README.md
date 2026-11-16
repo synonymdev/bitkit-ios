@@ -1,6 +1,6 @@
 # Profile
 
-`public-private-sharing.xml` verifies independent sharing controls, public opt-in and preference persistence. Use an unfunded local test identity. Public payment details can identify the profile even when the public Bitcoin address is separate from ordinary Receive; turning sharing off cannot erase copies others already obtained.
+`public-private-sharing.xml` verifies that profile setup turns on both sharing controls, that they change independently, and that preferences persist. Use an unfunded local test identity. Public payment details can identify the profile even when the public Bitcoin address is separate from ordinary Receive; turning sharing off cannot erase copies others already obtained.
 
 For remote-state checks, inspect the profile's public Bitcoin endpoint and a linked contact's private list. Public, ordinary Receive and contact-specific Bitcoin addresses must differ. With only private sharing enabled, public endpoints must be absent and the App Registry private capability must remain enabled, including with zero contacts. Disabling private sharing must withdraw private lists without removing opted-in public endpoints; disabling public sharing must remove public endpoints without withdrawing private lists. These inspections need remote storage access beyond the UI journey. USDT account identifiers are unchanged; Bitcoin address separation is not a claim of anonymity or per-contact USDT addresses.
 

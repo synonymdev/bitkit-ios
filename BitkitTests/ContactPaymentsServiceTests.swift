@@ -1532,24 +1532,74 @@ final class ContactPaymentsServiceTests: XCTestCase {
         }
     }
 
-    /// Pay Contacts' Continue enables contact payments in a task that outlives the screen. Like an import that finishes
-    /// after the user left it, it opens Profile only for an applied enable while Pay Contacts is still showing.
-    func testPayContactsOpensProfileOnlyForAnAppliedEnableWhilePayContactsIsShowing() {
-        let cases: [(name: String, isApplied: Bool, currentRoute: Route?, destination: Route?)] = [
-            ("applied on Pay Contacts", true, .payContacts, .profile),
-            ("stopped by a Pubky sign-out", false, .payContacts, nil),
-            ("stopped after the user left", false, .settings, nil),
-            ("applied after the user opened another screen", true, .settings, nil),
-            ("applied after the user went back", true, .createProfile, nil),
-            ("applied after the user went back to the start", true, nil, nil),
-        ]
+    /// A new profile turns on both private and public payments, private first, without the user opting in.
+    func testNewProfileEnablesPrivateThenPublicPayments() async throws {
+        try await withIsolatedDefaultsAsync { defaults in
+            let profile = signedInProfile(ownerKey: "pubky-current")
+            let contacts = ContactsManager(contactRecords: { [] })
+            let operations = OperationsSpy()
 
-        for testCase in cases {
-            XCTAssertEqual(
-                PayContactsView.destinationAfterEnable(isApplied: testCase.isApplied, currentRoute: testCase.currentRoute),
-                testCase.destination,
-                testCase.name
+            await ContactPaymentsService.enableForNewProfile(
+                pubkyProfile: profile, contactsManager: contacts,
+                operations: operations.makeOperations(defaults: defaults), defaults: defaults,
+                privatePaymentAccess: { _ in true }
             )
+
+            XCTAssertEqual(operations.calls, ["capability:true", "private:publish", "public:true"])
+            XCTAssertTrue(ContactPaymentsService.isEnabled(defaults: defaults))
+            XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+            XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.cleanupPendingKey))
+        }
+    }
+
+    /// One failing change is restored and logged; the other still applies.
+    func testNewProfileAppliesEachPaymentModeWhenTheOtherFails() async throws {
+        try await withIsolatedDefaultsAsync { defaults in
+            let profile = signedInProfile(ownerKey: "pubky-current")
+            let operations = OperationsSpy()
+
+            await ContactPaymentsService.enableForNewProfile(
+                pubkyProfile: profile, contactsManager: ContactsManager(contactRecords: { [] }),
+                operations: operations.makeOperations(defaults: defaults), defaults: defaults,
+                privatePaymentAccess: { _ in false }
+            )
+
+            XCTAssertEqual(operations.calls, ["public:true"], "Without private access only public payments turn on")
+            XCTAssertFalse(ContactPaymentsService.isEnabled(defaults: defaults))
+            XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+        }
+
+        try await withIsolatedDefaultsAsync { defaults in
+            let profile = signedInProfile(ownerKey: "pubky-current")
+            let operations = OperationsSpy()
+            operations.publicPublicationFailures = [1]
+
+            await ContactPaymentsService.enableForNewProfile(
+                pubkyProfile: profile, contactsManager: ContactsManager(contactRecords: { [] }),
+                operations: operations.makeOperations(defaults: defaults), defaults: defaults,
+                privatePaymentAccess: { _ in true }
+            )
+
+            XCTAssertEqual(operations.calls, ["capability:true", "private:publish", "public:true", "public:false"])
+            XCTAssertTrue(ContactPaymentsService.isEnabled(defaults: defaults), "Private payments stay on")
+            XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey), "Public sharing is restored to off")
+        }
+    }
+
+    /// A Pubky sign-out before setup runs leaves both payment modes off and writes nothing.
+    func testNewProfileWritesNothingWithoutAPubkySession() async throws {
+        try await withIsolatedDefaultsAsync { defaults in
+            let operations = OperationsSpy()
+
+            await ContactPaymentsService.enableForNewProfile(
+                pubkyProfile: PubkyProfileManager(), contactsManager: ContactsManager(contactRecords: { [] }),
+                operations: operations.makeOperations(defaults: defaults), defaults: defaults,
+                privatePaymentAccess: { _ in true }
+            )
+
+            XCTAssertTrue(operations.calls.isEmpty)
+            XCTAssertFalse(ContactPaymentsService.isEnabled(defaults: defaults))
+            XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
         }
     }
 
