@@ -110,10 +110,10 @@ final class SpendingHwSignTests: XCTestCase {
         return retry
     }
 
-    private func hwFlow(retaining record: HwRetainedSend) async throws -> SparkTransferFlow {
+    private func hwFlow(retaining record: HwRetainedSend, operations: SparkClaimOperations = .live) async throws -> SparkTransferFlow {
         let service = HwRetainedSendService.inMemory()
         try await service.retain(record)
-        let flow = SparkTransferFlow(hwSend: HwSendCoordinator(walletId: walletId, retainedSends: service))
+        let flow = SparkTransferFlow(operations: operations, pollAttempts: 2, hwSend: HwSendCoordinator(walletId: walletId, retainedSends: service))
         flow.start(amountSats: record.sats, isMaxAmount: false, walletId: walletId)
         return flow
     }
@@ -161,6 +161,76 @@ final class SpendingHwSignTests: XCTestCase {
         let stale = await delayedRetry.value
         XCTAssertEqual(stale, .superseded)
         XCTAssertEqual(flow.quote, laterQuote)
+        XCTAssertFalse(flow.isQuoting)
+    }
+
+    func testARetainedRetryKeepsTheSignedClaimFeeWhenARefreshRepricesItDuringTheBroadcast() async throws {
+        let operations = SparkClaimOperations(
+            offer: { txid in
+                SparkClaimOffer(
+                    txid: txid,
+                    vout: 0,
+                    kind: .choice(earlyFeeSats: 1500, earlyConfirmations: 0, standardFeeSats: 198, standardConfirmations: 3)
+                )
+            },
+            claimEarly: { _ in
+                XCTFail("Claimed early above the signed claim fee")
+                return .claimed
+            },
+            refresh: {},
+            sleep: { _ in }
+        )
+        let flow = try await hwFlow(retaining: retainedTransfer(sats: 42000), operations: operations)
+        let accepted = try XCTUnwrap(SpendingHwSign.retainedRetryQuote(
+            address: depositAddress,
+            depositSats: 42000,
+            signedTx: signedTx,
+            claimFees: SparkClaimFees(instantMaxSats: 1000, laterSats: 500)
+        ))
+        flow.quote = accepted
+        let claimFeeGate = AsyncGate()
+        let refresh = await delayedRetainedRetry(flow, claimFeeGate: claimFeeGate)
+
+        // The refresh reprices the claim fee to 2,000 sats after Retry signed the accepted quote, while its broadcast waits.
+        claimFeeGate.open()
+        _ = await refresh.value
+        XCTAssertEqual(flow.quote?.claimFees.instantMaxSats, 2000)
+        SpendingHwSign.startClaim(flow: flow, txid: "txid", signed: accepted)
+        await flow.waitForClaim()
+
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 1500))
+    }
+
+    func testRetainedRetryPricingIsBusyDuringItsLookups() async throws {
+        let flow = try await hwFlow(retaining: retainedTransfer(sats: 42000))
+        let depositAddress = depositAddress
+        let waitingOnAddress = AsyncGate()
+        let addressGate = AsyncGate()
+        let retry = Task {
+            await flow.refreshRetainedRetryQuote(depositAddress: {
+                waitingOnAddress.open()
+                await addressGate.wait()
+                return depositAddress
+            }, claimFees: { _ in SparkClaimFees(instantMaxSats: 1000, laterSats: 500) })
+        }
+        await waitingOnAddress.wait()
+
+        XCTAssertTrue(flow.isQuoting, "Retry stayed enabled while the retained transfer was looked up")
+        addressGate.open()
+        guard case .retry = await retry.value else { return XCTFail("Not priced as a Retry") }
+        XCTAssertFalse(flow.isQuoting)
+    }
+
+    func testRetainedRetryPricingThatPricesAnewIsNotLeftBusy() async throws {
+        let flow = try await hwFlow(retaining: retainedTransfer(sats: 42000))
+        flow.start(amountSats: 50000, isMaxAmount: false, walletId: walletId)
+
+        let pricing = await flow.refreshRetainedRetryQuote(depositAddress: { self.depositAddress }, claimFees: { _ in
+            XCTFail("Another amount was priced as a Retry")
+            return SparkClaimFees(instantMaxSats: 1000, laterSats: 500)
+        })
+
+        XCTAssertEqual(pricing, .priceAnew)
         XCTAssertFalse(flow.isQuoting)
     }
 

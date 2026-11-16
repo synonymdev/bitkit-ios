@@ -324,6 +324,8 @@ final class SparkTransferFlow {
         let requestId = quoteRequestId
         let amountSats = amountSats
         let walletId = walletId
+        // Busy before the first lookup, so Retry can't sign the shown quote while this one may still replace it.
+        isQuoting = true
         defer {
             if requestId == quoteRequestId {
                 isQuoting = false
@@ -335,7 +337,6 @@ final class SparkTransferFlow {
             return isCurrentQuoteRequest(requestId, amountSats: amountSats, walletId: walletId) ? .priceAnew : .superseded
         }
         guard isCurrentQuoteRequest(requestId, amountSats: amountSats, walletId: walletId) else { return .superseded }
-        isQuoting = true
         do {
             let claimFees = try await claimFees(amountSats)
             guard isCurrentQuoteRequest(requestId, amountSats: amountSats, walletId: walletId) else { return .superseded }

@@ -80,6 +80,13 @@ struct SpendingHwSign: View {
         }
     }
 
+    /// Starts the claim of a broadcast deposit at the early-claim fee of the quote the user signed, not that of whatever quote
+    /// a refresh that ended during the broadcast left on the flow, so a higher claim fee still asks first.
+    @MainActor
+    static func startClaim(flow: SparkTransferFlow, txid: String, signed quote: SparkTransferQuote) {
+        flow.onBroadcast(txid: txid, ceilingSats: quote.claimFees.instantMaxSats)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("lightning__transfer__nav_title"))
@@ -274,7 +281,7 @@ struct SpendingHwSign: View {
             )
             hwSend.completeBroadcast()
             SparkManager.shared.onDepositBroadcast(txid: result.txId, amountSats: quote.depositSats)
-            flow.onBroadcast(txid: result.txId)
+            Self.startClaim(flow: flow, txid: result.txId, signed: quote)
             Logger.info("Funded Spark wallet with \(quote.depositSats) sats from hardware wallet in \(result.txId)", context: "SpendingHwSign")
             navigation.navigate(.spendingHwSigned)
         } catch is CancellationError {
