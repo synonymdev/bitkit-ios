@@ -243,6 +243,7 @@ enum ContactPaymentsService {
         privatePaymentAccess: (String) throws -> Bool
     ) async {
         let context = onlyWhenOff ? "an existing profile" : "a new profile"
+        let session = pubkyProfile.currentSession
         if !onlyWhenOff || !isEnabled(defaults: defaults) {
             do {
                 try await setEnabled(
@@ -265,7 +266,8 @@ enum ContactPaymentsService {
             }
         }
 
-        guard !Task.isCancelled else { return }
+        // Public sharing belongs to the session this run started for; a replaced or ended session gets its own run.
+        guard !Task.isCancelled, session != nil, pubkyProfile.currentSession == session else { return }
         if !onlyWhenOff || !defaults.bool(forKey: PublicPaykitService.publishingEnabledKey) {
             do {
                 try await setPublicEnabled(true, pubkyProfile: pubkyProfile, operations: operations, defaults: defaults)

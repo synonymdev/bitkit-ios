@@ -1603,6 +1603,36 @@ final class ContactPaymentsServiceTests: XCTestCase {
         }
     }
 
+    /// Setup that outlives its session stops before public sharing instead of publishing for the replacement session.
+    func testNewProfileSkipsPublicPaymentsWhenTheSessionChangesDuringPrivateSetup() async throws {
+        try await withIsolatedDefaultsAsync { defaults in
+            let profile = signedInProfile(ownerKey: "pubky-current")
+            let operations = OperationsSpy()
+            let reachedHold = expectation(description: "Private setup syncing capability")
+            let (gate, release) = AsyncStream<Void>.makeStream()
+            defer { release.finish() }
+            operations.syncPrivateCapability = { _, _ in
+                reachedHold.fulfill()
+                for await _ in gate {}
+            }
+
+            let setup = Task {
+                await ContactPaymentsService.enableForNewProfile(
+                    pubkyProfile: profile, contactsManager: self.loadedContacts(),
+                    operations: operations.makeOperations(defaults: defaults), defaults: defaults,
+                    privatePaymentAccess: { _ in true }
+                )
+            }
+            await fulfillment(of: [reachedHold], timeout: 2)
+            profile.publicKey = "pubky-replacement"
+            release.finish()
+            await setup.value
+
+            XCTAssertFalse(operations.calls.contains("public:true"))
+            XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+        }
+    }
+
     /// The foreground check leaves payments alone when both modes are already on.
     func testEnsureEnabledDoesNothingWhenBothModesAreOn() async throws {
         try await withIsolatedDefaultsAsync { defaults in
