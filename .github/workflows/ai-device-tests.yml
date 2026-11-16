@@ -32,7 +32,7 @@ jobs:
   trezor-emu:
     if: inputs.suite == 'trezor-emu'
     name: Trezor emulator dashboard
-    runs-on: namespace-profile-mac
+    runs-on: [self-hosted, macOS]
     timeout-minutes: 90
 
     steps:
@@ -65,15 +65,6 @@ jobs:
       - name: Resolve Swift packages
         run: |
           xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile | xcbeautify
-
-      - name: Start remote Docker
-        run: |
-          awk '{ print } /^  trezor-user-env-mac:$/ { print "    extra_hosts:\n      - \"host.docker.internal:host-gateway\"" }' \
-            bitkit-docker/docker-compose.yml > /tmp/docker-compose.yml
-          mv /tmp/docker-compose.yml bitkit-docker/docker-compose.yml
-          mkdir -p bitkit-docker/lnd bitkit-docker/.trezor-user-env/{trezor-suite,logs/screens,logs/mcp-screenshots,firmware/user_downloaded}
-          .github/scripts/namespace-stack.sh up bitkit-docker
-          .github/scripts/namespace-stack.sh forward 43782 39388 60001 21325 21328 9001 23902
 
       - name: Start regtest and Trezor emulator
         working-directory: bitkit-docker
@@ -148,6 +139,9 @@ jobs:
           path: ai-device-artifacts/trezor
           if-no-files-found: warn
 
-      - name: Tear down emulator stack
+      - name: Stop emulator services
         if: always()
-        run: .github/scripts/namespace-stack.sh down
+        working-directory: bitkit-docker
+        run: |
+          ./scripts/trezor-emulator stop || true
+          docker compose down || true

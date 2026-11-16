@@ -46,9 +46,7 @@ jobs:
     cache-mode: read
     if: github.event.pull_request.draft == false
     name: Run Integration Tests
-    # The suites fund and mine on a local regtest stack. macOS runners cannot run Docker, so this
-    # runs on Namespace, which hosts the stack on a Linux instance (see namespace-stack.sh).
-    runs-on: namespace-profile-mac
+    runs-on: [self-hosted, macOS]
     timeout-minutes: 60
     permissions:
       contents: read
@@ -96,12 +94,11 @@ jobs:
           path: bitkit-docker
 
       - name: Start local regtest
+        working-directory: bitkit-docker
         run: |
-          .github/scripts/namespace-stack.sh up bitkit-docker
-          .github/scripts/namespace-stack.sh forward 43782 60001
-          (cd bitkit-docker && docker compose up -d bitcoind bitcoinsetup electrs)
+          docker compose down -v -t 60 || true
+          docker compose up -d bitcoind bitcoinsetup electrs
 
-      # A separate step: `namespace-stack.sh up` puts its `docker exec` wrapper on the PATH for later steps only.
       - name: Mine initial blocks
         timeout-minutes: 5
         run: until docker exec bitcoin bitcoin-cli -regtest -rpcport=43782 -rpcuser=polaruser -rpcpassword=polarpass -generate 101; do sleep 2; done
@@ -212,7 +209,8 @@ jobs:
 
       - name: Tear down regtest stack
         if: always()
-        run: .github/scripts/namespace-stack.sh down
+        working-directory: bitkit-docker
+        run: docker compose down -v || true
 
   report-retarget-result:
     name: Report retarget integration result

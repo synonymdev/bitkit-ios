@@ -228,11 +228,8 @@ jobs:
       checks: write
       actions: write
     if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
-    runs-on: namespace-profile-mac
+    runs-on: [self-hosted, macOS]
     needs: [detect-changes, build-local, e2e-branch]
-    env:
-      SIMULATOR_NAME: "iPhone 17"
-      SIMULATOR_OS_VERSION: "26.5"
 
     strategy:
       fail-fast: false
@@ -247,12 +244,6 @@ jobs:
     name: e2e-tests-local - ${{ matrix.shard.name }}
 
     steps:
-      - name: Checkout stack scripts
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.merge_commit || '' }}
-          sparse-checkout: .github/scripts
-
       - name: Checkout retarget reporter
         if: inputs.retarget_run != ''
         uses: actions/checkout@v7
@@ -315,11 +306,23 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: npm ci
 
-      - name: Run regtest setup
+      - name: Docker info
         run: |
-          .github/scripts/namespace-stack.sh up bitkit-e2e-tests/docker
-          (cd bitkit-e2e-tests/docker && docker compose up --force-recreate -d)
-          .github/scripts/namespace-stack.sh forward 43782 39388 60001 8080 9735 10009 3003 9001 9002 21325 21328
+          docker --version
+          docker info
+          docker ps
+          docker compose version
+
+      - name: Reset regtest environment
+        working-directory: bitkit-e2e-tests/docker
+        continue-on-error: true
+        run: docker compose --verbose down -v -t 300
+
+      - name: Run regtest setup
+        working-directory: bitkit-e2e-tests/docker
+        run: |
+          mkdir -p lnd && chmod 777 lnd
+          docker compose --verbose up --force-recreate -d
 
       - name: Wait for electrum server
         run: |
@@ -329,17 +332,6 @@ jobs:
           done
           exit 1
 
-      - name: Copy LND credentials
-        working-directory: bitkit-e2e-tests/docker
-        run: |
-          mkdir -p lnd/data/chain/bitcoin/regtest
-          for _ in $(seq 1 60); do
-            docker cp lnd:/home/lnd/.lnd/data/chain/bitcoin/regtest/admin.macaroon lnd/data/chain/bitcoin/regtest/ 2>/dev/null && break
-            sleep 5
-          done
-          docker cp lnd:/home/lnd/.lnd/tls.cert lnd/tls.cert
-          test -s lnd/data/chain/bitcoin/regtest/admin.macaroon
-
       - name: Clear previous E2E artifacts
         working-directory: bitkit-e2e-tests
         run: |
@@ -348,16 +340,8 @@ jobs:
 
       - name: Clear iOS Simulator environment
         run: |
-          udid=$(xcrun simctl list devices available -j | python3 -c '
-          import json, os, sys
-          runtime = "com.apple.CoreSimulator.SimRuntime.iOS-" + os.environ["SIMULATOR_OS_VERSION"].replace(".", "-")
-          devices = json.load(sys.stdin)["devices"].get(runtime, [])
-          print(next(d["udid"] for d in devices if d["name"] == os.environ["SIMULATOR_NAME"]))
-          ')
           xcrun simctl shutdown all || true
-          xcrun simctl erase "$udid"
-          xcrun simctl boot "$udid"
-          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl erase "iPhone 17" || true
           defaults write com.apple.iphonesimulator DisableAllNotifications -bool true
 
       - name: Run E2E Tests 1 (${{ matrix.shard.name }})
@@ -397,9 +381,10 @@ jobs:
           path: bitkit-e2e-tests/artifacts/
           retention-days: 7
 
-      - name: Tear down regtest stack
+      - name: Cleanup Docker containers
         if: always()
-        run: .github/scripts/namespace-stack.sh down
+        working-directory: bitkit-e2e-tests/docker
+        run: docker compose down -v || true
 
   e2e-status:
     if: always() && github.event.pull_request.draft == false
