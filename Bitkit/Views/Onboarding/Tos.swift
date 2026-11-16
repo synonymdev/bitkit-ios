@@ -523,7 +523,7 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "6.5.4 Your Pubky profile and the payment details described above are stored on the homeserver you choose, which may be operated by Synonym or by a third party. A homeserver operated by a third party is a Third-Party Service under Section 9."
+                        "6.5.4 Your Pubky profile and the payment details described above are stored on the homeserver that hosts your Pubky, which may be operated by Synonym or by a third party. A homeserver operated by a third party is a Third-Party Service under Section 9."
                     )
 
                     Text(
