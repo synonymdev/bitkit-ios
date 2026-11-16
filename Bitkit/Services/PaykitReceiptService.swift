@@ -243,7 +243,8 @@ enum PaykitReceiptMatcher {
         guard let proposedAt = PaykitPaymentRequest.parseDate(recordedAt) else { return false }
         // Lightning receive and request times both come from this device's clock; only block time can lag.
         let tolerance = receive.rail == .lightning ? 0 : receiveTimeTolerance
-        return Date(timeIntervalSince1970: TimeInterval(receivedAt)) >= proposedAt.addingTimeInterval(-tolerance)
+        // Receive times are whole seconds, so compare at that precision.
+        return TimeInterval(receivedAt) >= (proposedAt.timeIntervalSince1970 - tolerance).rounded(.down)
     }
 
     private static func isReceiptable(_ record: Paykit.PaymentRequestRecord) -> Bool {
@@ -262,32 +263,40 @@ enum PaykitReceiptMatcher {
                   let method = PublicPaykitService.MethodId(rawValue: identifier),
                   let payload = PaykitIssuerInterop.parseEndpointPayload(data)
             else { continue }
-            if method == .bitcoinLightningBolt11 {
-                if let hash = try? Bolt11Invoice.fromStr(invoiceStr: payload.value).paymentHash().lowercased(),
-                   let receive = lightningReceives[hash]
-                {
-                    matches.append((identifier, receive))
-                }
-            } else if method.onchainNetwork == network {
-                // A batch can pay the request's address while the activity shows another one, so match the outputs.
-                for receive in onchainReceives {
-                    if let paid = receive.paid(to: [payload.value]) {
-                        matches.append((identifier, paid))
-                    }
-                }
+            if method == .bitcoinLightningBolt11,
+               let hash = try? Bolt11Invoice.fromStr(invoiceStr: payload.value).paymentHash().lowercased(),
+               let receive = lightningReceives[hash]
+            {
+                matches.append((identifier, receive))
             }
+        }
+        // One receive counts once toward the request, over every on-chain address it names, so a transaction paying
+        // two of them is receipted in full. A batch can pay them while the activity shows another address.
+        let endpoints = onchainEndpoints(terms, network)
+        for receive in onchainReceives {
+            guard let paid = receive.paid(to: endpoints.map(\.address)),
+                  let endpoint = endpoints.first(where: { paid.countedAddresses.contains($0.address.lowercased()) })
+            else { continue }
+            matches.append((endpoint.identifier, paid))
         }
         return matches
     }
 
     private static func onchainAddresses(_ terms: Paykit.PaymentRequestTerms, _ network: LDKNode.Network) -> [String] {
-        (terms.paymentEndpoints ?? [:]).compactMap { identifier, data in
+        onchainEndpoints(terms, network).map(\.address)
+    }
+
+    private static func onchainEndpoints(
+        _ terms: Paykit.PaymentRequestTerms,
+        _ network: LDKNode.Network
+    ) -> [(identifier: String, address: String)] {
+        (terms.paymentEndpoints ?? [:]).compactMap { identifier, data -> (identifier: String, address: String)? in
             guard terms.acceptedPaymentEndpointIdentifiers.contains(identifier),
                   let method = PublicPaykitService.MethodId(rawValue: identifier), method.onchainNetwork == network,
                   let payload = PaykitIssuerInterop.parseEndpointPayload(data)
             else { return nil }
-            return payload.value
-        }
+            return (identifier, payload.value)
+        }.sorted { $0.identifier < $1.identifier }
     }
 
     private static func proofValue(_ proof: Paykit.PaymentProofRecord, _ key: String) -> String? {

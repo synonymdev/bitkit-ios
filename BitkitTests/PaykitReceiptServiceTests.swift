@@ -11,6 +11,7 @@ final class PaykitReceiptServiceTests: XCTestCase {
     private static let seller = "pubkyc3mduedw686dysw8ndr5c1dyry5h8k6i8hzbbmx9gf9k43zq4s9o"
     private static let address = "bcrt1qfn50lqawrce0evh66qrnlt8j447lwmeyqp5gmd"
     private static let onchainMethod = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+    private static let taprootMethod = PublicPaykitService.MethodId.regtestOnchainP2tr.rawValue
     private static let bolt11Method = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
     private nonisolated static let requestId = "4f1c2a3b-1d2e-4f5a-8b6c-7d8e9f0a1b2c"
     private static let preimage = String(repeating: "11", count: 32)
@@ -157,6 +158,18 @@ final class PaykitReceiptServiceTests: XCTestCase {
         XCTAssertEqual(candidate.receive.amount.atomic, 10000)
     }
 
+    func testOneTransactionPayingTwoOfARequestsAddressesIsReceiptedInFull() throws {
+        let request = try payeeRequest(endpoints: [
+            Self.onchainMethod: "{\"value\":\"\(Self.address)\"}",
+            Self.taprootMethod: "{\"value\":\"bcrt1psecond\"}",
+        ])
+        let receive = Self.onchainReceive(sats: 10000, outputs: [Self.address.lowercased(): 6000, "bcrt1psecond": 4000])
+
+        let candidates = match([request], onchain: [receive])
+
+        XCTAssertEqual(candidates.map(\.receive.amount.atomic), [10000])
+    }
+
     func testOnchainReceiptIsWithheldWhenItsOutputsAreUnknown() throws {
         let request = try payeeRequest(endpoints: [Self.onchainMethod: "{\"value\":\"\(Self.address)\"}"])
         var unknown = Self.onchainReceive(sats: 5000)
@@ -175,6 +188,18 @@ final class PaykitReceiptServiceTests: XCTestCase {
 
         XCTAssertTrue(match([request], lightning: [earlier]).isEmpty)
         XCTAssertEqual(match([request], lightning: [later]).count, 1)
+    }
+
+    func testLightningReceiveInTheSameSecondAsTheRequestIsReceipted() throws {
+        let request = try payeeRequest(
+            proofs: [proof(type: "bitcoin-bolt11-preimage", data: Self.preimage, endpoint: Self.bolt11Method)],
+            proposedAt: "2026-11-14T12:00:00.123456789+00:00"
+        )
+        let sameSecond = PaykitRecordedReceive.bitcoin(Self.hash, rail: .lightning, sats: 1, receivedAt: 1_794_657_600)
+        let secondBefore = PaykitRecordedReceive.bitcoin(Self.hash, rail: .lightning, sats: 1, receivedAt: 1_794_657_599)
+
+        XCTAssertEqual(match([request], lightning: [sameSecond]).count, 1)
+        XCTAssertTrue(match([request], lightning: [secondBefore]).isEmpty)
     }
 
     func testClaimOnAPaymentTheWalletAttributesToAnotherContactIsIgnored() throws {
@@ -495,7 +520,7 @@ final class PaykitReceiptServiceTests: XCTestCase {
                 paymentReference: PaymentReference(text: "order-42"),
                 proposalExpiresAt: nil,
                 recurrence: nil,
-                acceptedPaymentEndpointIdentifiers: [Self.onchainMethod, Self.bolt11Method],
+                acceptedPaymentEndpointIdentifiers: [Self.onchainMethod, Self.taprootMethod, Self.bolt11Method],
                 paymentEndpoints: endpoints,
                 requiredAppId: "bitkit",
                 conversion: nil,
