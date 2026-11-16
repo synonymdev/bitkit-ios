@@ -366,15 +366,21 @@ enum Env {
         }
     }
 
-    /// The wake gateway the app registers with for background pushes. Wakes do nothing without one. No gateway is
-    /// deployed yet, so only a debug build given `WAKE_GATEWAY_URL` in its environment or launch arguments has one.
+    /// The wake gateway the app registers with for background pushes. Wakes do nothing without one. A debug build
+    /// given `WAKE_GATEWAY_URL` in its environment or launch arguments uses that one instead. Unit tests have none.
     static var wakeGatewayUrl: String? {
         if isDebug, let override = configValue("WAKE_GATEWAY_URL") {
             return override
         }
+        return isUnitTest ? nil : wakeGatewayUrl(for: network)
+    }
+
+    /// The deployed gateway for `network`, or nil where none runs.
+    static func wakeGatewayUrl(for network: LDKNode.Network) -> String? {
         switch network {
-        case .bitcoin: return nil
-        case .testnet, .signet, .regtest: return nil
+        case .bitcoin: "https://wake.bitkit.to"
+        case .regtest: "https://wake.staging.bitkit.to"
+        case .testnet, .signet: nil
         }
     }
 

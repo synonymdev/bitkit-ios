@@ -1,5 +1,6 @@
 @testable import Bitkit
 import BitkitCore
+import LDKNode
 import UIKit
 import UserNotifications
 import XCTest
@@ -52,8 +53,15 @@ final class WakeRegistrationPolicyTests: XCTestCase {
     }
 
     func testWakesAreOffWithoutAGateway() {
-        // Unit tests run without WAKE_GATEWAY_URL, like every build but a debug one given it.
+        // Unit tests run on regtest but never reach the staging gateway.
         XCTAssertNil(Env.wakeGatewayUrl)
+    }
+
+    func testEachNetworkUsesItsDeployedGateway() {
+        XCTAssertEqual(Env.wakeGatewayUrl(for: .bitcoin), "https://wake.bitkit.to")
+        XCTAssertEqual(Env.wakeGatewayUrl(for: .regtest), "https://wake.staging.bitkit.to")
+        XCTAssertNil(Env.wakeGatewayUrl(for: .testnet))
+        XCTAssertNil(Env.wakeGatewayUrl(for: .signet))
     }
 
     @MainActor
