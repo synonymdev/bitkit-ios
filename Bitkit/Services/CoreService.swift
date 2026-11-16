@@ -42,6 +42,7 @@ enum ReceiveTagMutation {
 
 class ActivityService {
     private let coreService: CoreService
+    private let bumpFeeByRbf: (String, UInt32) async throws -> String
     private static let detachedContactsKey = "activityDetachedContacts"
 
     func isContactDetached(activityId: String, walletId: String) -> Bool {
@@ -119,34 +120,27 @@ class ActivityService {
 
     /// Cached transaction IDs that appear in boostTxIds, per wallet id (for filtering replaced
     /// transactions). Scoped because a boost chain only ever exists within one wallet.
-    ///
-    /// Lock-guarded rather than actor- or `MainActor`-isolated: `updateBoostTxIdsCache` is called
-    /// from inside the synchronous `ServiceQueue.background(.core)` blocks below, which must stay
-    /// non-async (see `replaceHwSnapshot`), while readers run on whichever executor calls
-    /// `getTxIdsInBoostTxIds`. Never hold the lock across an `await`.
-    private let cachedTxIdsInBoostTxIds = OSAllocatedUnfairLock(initialState: [String: Set<String>]())
+    private let boostTxIdsCache = BoostTxIdsCache()
 
     /// Get the set of transaction IDs that appear in boostTxIds (cached for performance)
     func getTxIdsInBoostTxIds(walletId: String = WalletScope.default) async -> Set<String> {
-        if let cached = cachedTxIdsInBoostTxIds.withLock({ $0[walletId] }) {
-            return cached
+        await boostTxIdsCache.get(walletId: walletId) { [self] in
+            await loadBoostTxIds(walletId: walletId)
         }
-        await refreshBoostTxIdsCache(walletId: walletId)
-        return cachedTxIdsInBoostTxIds.withLock { $0[walletId] ?? [] }
     }
 
     private func updateBoostTxIdsCache(for activity: Activity) {
         guard case let .onchain(onchain) = activity, !onchain.boostTxIds.isEmpty else { return }
-        cachedTxIdsInBoostTxIds.withLock {
-            // Only merge into an already-warmed wallet. Seeding a cold one would make
-            // `getTxIdsInBoostTxIds` treat this single activity's ids as the whole set and skip its
-            // refresh, so the rest of the wallet's boost chain would be invisible.
-            guard $0[onchain.walletId] != nil else { return }
-            $0[onchain.walletId, default: []].formUnion(onchain.boostTxIds)
-        }
+        boostTxIdsCache.merge(onchain.boostTxIds, walletId: onchain.walletId)
     }
 
     private func refreshBoostTxIdsCache(walletId: String = WalletScope.default) async {
+        _ = await boostTxIdsCache.get(walletId: walletId, forceRefresh: true) { [self] in
+            await loadBoostTxIds(walletId: walletId)
+        }
+    }
+
+    private func loadBoostTxIds(walletId: String) async -> Set<String>? {
         do {
             let allOnchainActivities = try await get(filter: .onchain, walletId: walletId)
             var txIds: Set<String> = []
@@ -155,10 +149,10 @@ class ActivityService {
                     txIds.formUnion(onchain.boostTxIds)
                 }
             }
-            let txIdsToCache = txIds
-            cachedTxIdsInBoostTxIds.withLock { $0[walletId] = txIdsToCache }
+            return txIds
         } catch {
             Logger.error("Failed to refresh boostTxIds cache for '\(walletId)': \(error)", context: "ActivityService")
+            return nil
         }
     }
 
@@ -426,11 +420,15 @@ class ActivityService {
     init(
         coreService: CoreService,
         channelLookup: ((String, PaymentDirection, BitkitCore.TransactionDetails?) async -> String?)? = nil,
-        nodeTransactionLookup: ((String) async -> LDKNode.TransactionDetails?)? = nil
+        nodeTransactionLookup: ((String) async -> LDKNode.TransactionDetails?)? = nil,
+        bumpFeeByRbf: @escaping (String, UInt32) async throws -> String = { txid, feeRate in
+            try await LightningService.shared.bumpFeeByRbf(txid: txid, satsPerVbyte: feeRate)
+        }
     ) {
         self.coreService = coreService
         self.channelLookup = channelLookup
         self.nodeTransactionLookup = nodeTransactionLookup
+        self.bumpFeeByRbf = bumpFeeByRbf
         addressSearchCoordinator = AddressSearchCoordinator()
     }
 
@@ -457,7 +455,7 @@ class ActivityService {
             }
 
             // Clear cache since all activities are deleted
-            self.cachedTxIdsInBoostTxIds.withLock { $0.removeAll() }
+            self.boostTxIdsCache.invalidateAll()
             self.activitiesChangedSubject.send()
         }
     }
@@ -512,7 +510,7 @@ class ActivityService {
         // (boosting is gated off for watch-only wallets), and `getTxIdsInBoostTxIds` rebuilds
         // lazily on the next read. Rebuilding inside the block above would also deadlock — it
         // re-enters the core queue.
-        cachedTxIdsInBoostTxIds.withLock { $0[walletId] = nil }
+        boostTxIdsCache.invalidate(walletId: walletId)
         activitiesChangedSubject.send()
 
         // A deletion cascades into `activity_tags`, so the metadata envelope carrying this wallet's
@@ -765,11 +763,7 @@ class ActivityService {
                 seenAt: seenAt
             )
 
-            if let existingOnchain {
-                try updateActivity(activityId: existingOnchain.id, activity: .onchain(onchain))
-            } else {
-                try upsertActivity(activity: .onchain(onchain))
-            }
+            try BitkitCore.upsertOnchainActivityPreservingFeeRate(activity: onchain)
             self.updateBoostTxIdsCache(for: .onchain(onchain))
             self.activitiesChangedSubject.send()
         }
@@ -832,7 +826,7 @@ class ActivityService {
                 existing.doesExist = false
                 existing.isBoosted = false
                 existing.updatedAt = UInt64(Date().timeIntervalSince1970)
-                try await self.update(id: existing.id, activity: .onchain(existing))
+                try await self.upsertOnchainActivityPreservingFeeRate(existing)
                 Logger.info("Marked transaction \(txid) as replaced", context: "CoreService.handleOnchainTransactionReplaced")
             } else {
                 Logger.info(
@@ -879,7 +873,7 @@ class ActivityService {
                     activity.isBoosted = true
                     activity.contact = activity.contact ?? replacedActivity?.contact
                     activity.updatedAt = UInt64(Date().timeIntervalSince1970)
-                    try await self.update(id: activity.id, activity: .onchain(activity))
+                    try await self.upsertOnchainActivityPreservingFeeRate(activity)
 
                     // Move tags from the replaced transaction
                     if let replacedActivity {
@@ -918,7 +912,7 @@ class ActivityService {
             onchain.confirmTimestamp = nil
             onchain.updatedAt = UInt64(Date().timeIntervalSince1970)
 
-            try await self.update(id: onchain.id, activity: .onchain(onchain))
+            try await self.upsertOnchainActivityPreservingFeeRate(onchain)
         }
     }
 
@@ -932,7 +926,7 @@ class ActivityService {
             onchain.doesExist = false
             onchain.updatedAt = UInt64(Date().timeIntervalSince1970)
 
-            try await self.update(id: onchain.id, activity: .onchain(onchain))
+            try await self.upsertOnchainActivityPreservingFeeRate(onchain)
         }
     }
 
@@ -955,7 +949,28 @@ class ActivityService {
         }
     }
 
-    private func processLightningPayment(_ payment: PaymentDetails) async throws {
+    /// Records a Lightning payment the channel-free rail sent or received the way an LDK payment is recorded, so it keeps
+    /// its Paykit contact and seen state across syncs.
+    func recordChannelFreeRailPayment(_ payment: PaymentDetails) async throws {
+        try await ServiceQueue.background(.core) {
+            try await self.processLightningPayment(payment, rail: .channelFree)
+        }
+    }
+
+    /// Contacts of Lightning sends, by payment hash, kept from before the payment goes out until its activity is saved,
+    /// so a send recorded after the app was killed mid-payment still names its contact.
+    nonisolated(unsafe) static var sentPaymentContacts = SentPaymentContacts(defaults: .standard)
+
+    /// Whether a Lightning activity keeps its status against an update: a settled payment stays settled, and a failure
+    /// from the rail that didn't carry the latest attempt is stale.
+    static func keepsLightningStatus(existing: BitkitCore.PaymentState, update: BitkitCore.PaymentState, isStaleRailFailure: Bool) -> Bool {
+        if existing == .succeeded, update != .succeeded {
+            return true
+        }
+        return update == .failed && existing != .failed && isStaleRailFailure
+    }
+
+    private func processLightningPayment(_ payment: PaymentDetails, rail: LightningPaymentRail = .ldk) async throws {
         guard case let .bolt11(_, preimage, _, description, bolt11) = payment.kind else { return }
 
         // Skip pending inbound payments - just means they created an invoice
@@ -975,17 +990,42 @@ class ActivityService {
         case .succeeded: .succeeded
         }
 
+        // Paying an invoice of the wallet's own Spark (Move to Spark) gives an LDK send and a Spark receive under one hash:
+        // the send is the payment, so its row wins whichever leg arrives first.
+        let isChannelFreeReceive = rail == .channelFree && payment.direction == .inbound
+        if isChannelFreeReceive, let sent = existingLightning, sent.txType == .sent {
+            try settleMove(sent, receiveState: state)
+            return
+        }
+        let replacesSelfReceive = rail == .ldk && payment.direction == .outbound && existingLightning?.txType == .received
+
+        if let existing = existingLightning,
+           Self.keepsLightningStatus(
+               existing: existing.status,
+               update: state,
+               isStaleRailFailure: LightningService.shared.isStaleFailure(paymentHash: payment.id, from: rail)
+           )
+        {
+            return
+        }
+
         // Skip if existing activity has newer timestamp, unless payment status is changing
         if let existing = existingLightning, let existingUpdatedAt = existing.updatedAt {
             let statusChanging = existing.status != state
+            // The Spark receive of a move can settle the send before the node's routing fee is recorded.
+            let feeChanging = payment.feePaidMsat.map { $0 / 1000 != existing.fee } ?? false
             let needsPrivateContactAttribution = existing.contact == nil && payment.direction == .inbound
-            if existingUpdatedAt > paymentTimestamp && !statusChanging && !needsPrivateContactAttribution {
+            if existingUpdatedAt > paymentTimestamp && !statusChanging && !feeChanging && !needsPrivateContactAttribution
+                && !replacesSelfReceive
+            {
                 return
             }
         }
 
         let contact = if let existingContact = existingLightning?.contact {
             existingContact
+        } else if payment.direction == .outbound, let sentContact = Self.sentPaymentContacts.contact(forPaymentHash: payment.id) {
+            sentContact
         } else {
             await privatePaykitContactPublicKey(
                 forReceivedInvoicePaymentHash: payment.id,
@@ -1010,23 +1050,41 @@ class ActivityService {
             seenAt: existingLightning?.seenAt
         )
 
-        if existingActivity != nil {
-            try await ServiceQueue.background(.core) {
-                var updated = ln
-                if case let .lightning(latest)? = try getActivityById(walletId: ln.walletId, activityId: payment.id),
-                   latest.contact != existingLightning?.contact
-                {
-                    updated.contact = latest.contact
-                }
-                if self.isContactDetached(activityId: payment.id, walletId: ln.walletId) {
-                    updated.contact = nil
-                }
-                try updateActivity(activityId: payment.id, activity: .lightning(updated))
-                self.activitiesChangedSubject.send()
+        try await ServiceQueue.background(.core) {
+            let latestActivity = try getActivityById(walletId: ln.walletId, activityId: payment.id)
+            // The move's LDK send can be stored while this receive waited on its contact lookup; it still wins.
+            if isChannelFreeReceive, case let .lightning(latest)? = latestActivity, latest.txType == .sent {
+                try self.settleMove(latest, receiveState: state)
+                return
             }
-        } else {
-            try await upsert(.lightning(ln))
+            guard let latestActivity else {
+                try upsertActivity(activity: .lightning(ln))
+                self.updateBoostTxIdsCache(for: .lightning(ln))
+                self.activitiesChangedSubject.send()
+                return
+            }
+            var updated = ln
+            if case let .lightning(latest) = latestActivity, latest.contact != existingLightning?.contact {
+                updated.contact = latest.contact
+            }
+            if self.isContactDetached(activityId: payment.id, walletId: ln.walletId) {
+                updated.contact = nil
+            }
+            try updateActivity(activityId: payment.id, activity: .lightning(updated))
+            self.activitiesChangedSubject.send()
         }
+        if payment.direction == .outbound, ln.contact != nil, payment.status != .pending {
+            Self.sentPaymentContacts.forget(paymentHash: payment.id)
+        }
+    }
+
+    /// A succeeded Spark receive proves the move's LDK send settled, so the send's row becomes succeeded and keeps its amount and fee.
+    private func settleMove(_ sent: LightningActivity, receiveState: BitkitCore.PaymentState) throws {
+        guard receiveState == .succeeded, sent.status != .succeeded else { return }
+        var settled = sent
+        settled.status = .succeeded
+        try updateActivity(activityId: sent.id, activity: .lightning(settled))
+        activitiesChangedSubject.send()
     }
 
     private func privatePaykitContactPublicKey(forReceivedInvoicePaymentHash paymentHash: String, direction: PaymentDirection) async -> String? {
@@ -1356,6 +1414,25 @@ class ActivityService {
         }
     }
 
+    func upsertOnchainActivityPreservingFeeRate(_ onchain: OnchainActivity) async throws {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.upsertOnchainActivityPreservingFeeRate(activity: onchain)
+            self.updateBoostTxIdsCache(for: .onchain(onchain))
+            self.activitiesChangedSubject.send()
+        }
+    }
+
+    private func recordRbfBoost(originalActivityId: String, replacementTxid: String, feeRate: UInt32) async throws {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.recordRbfBoost(
+                walletId: WalletScope.default, originalActivityId: originalActivityId,
+                replacementTxId: replacementTxid, feeRate: UInt64(feeRate)
+            )
+            self.metadataChangedSubject.send()
+            self.activitiesChangedSubject.send()
+        }
+    }
+
     /// Create sent onchain activity from send result so it appears immediately; LDK events update it later (e.g. confirmation).
     ///
     /// `walletId` scopes the row: a transfer funded from a watch-only hardware wallet is written
@@ -1453,6 +1530,42 @@ class ActivityService {
                 try updateActivity(activityId: existing.id, activity: .onchain(updated))
                 self.activitiesChangedSubject.send()
                 Logger.debug("Marked activity \(existing.id) as transfer for channel \(channelId)", context: "ActivityService")
+            }
+        } catch {
+            Logger.error("Failed to mark activity as transfer for \(txId): \(error)", context: "ActivityService")
+        }
+    }
+
+    /// Marks a sent on-chain activity the node doesn't watch, such as a Spark withdrawal to a contact, as confirmed once
+    /// its sender reports it complete.
+    func markOnchainActivityAsConfirmed(txId: String) async {
+        do {
+            try await ServiceQueue.background(.core) {
+                guard let existing = try BitkitCore.getActivityByTxId(walletId: WalletScope.default, txId: txId),
+                      !existing.confirmed
+                else { return }
+                var updated = existing
+                updated.confirmed = true
+                try updateActivity(activityId: existing.id, activity: .onchain(updated))
+                self.activitiesChangedSubject.send()
+            }
+        } catch {
+            Logger.error("Failed to mark activity as confirmed for \(txId): \(error)", context: "ActivityService")
+        }
+    }
+
+    /// Marks the on-chain activity for `txId` as a transfer between Savings and Spending that has no channel,
+    /// such as a Spark deposit or withdrawal. No-op until the activity exists or once it is marked.
+    func markOnchainActivityAsTransfer(txId: String) async {
+        do {
+            try await ServiceQueue.background(.core) {
+                guard let existing = try BitkitCore.getActivityByTxId(walletId: WalletScope.default, txId: txId),
+                      !existing.isTransfer
+                else { return }
+                var updated = existing
+                updated.isTransfer = true
+                try updateActivity(activityId: existing.id, activity: .onchain(updated))
+                self.activitiesChangedSubject.send()
             }
         } catch {
             Logger.error("Failed to mark activity as transfer for \(txId): \(error)", context: "ActivityService")
@@ -1800,22 +1913,23 @@ class ActivityService {
                 Logger.debug("Original transaction ID: \(onchainActivity.txId)", context: "CoreService.boostOnchainTransaction")
 
                 // Use RBF for outgoing transactions
-                txid = try await LightningService.shared.bumpFeeByRbf(
-                    txid: onchainActivity.txId,
-                    satsPerVbyte: feeRate
-                )
+                txid = try await self.bumpFeeByRbf(onchainActivity.txId, feeRate)
 
                 Logger.info("RBF transaction created successfully: \(txid)", context: "CoreService.boostOnchainTransaction")
 
-                // For RBF, mark the original activity as boosted and update the fee rate
-                // so the UI shows the correct confirmation time estimate until the replacement arrives
-                onchainActivity.isBoosted = true
-                onchainActivity.feeRate = UInt64(feeRate)
-                try await self.update(id: activityId, activity: .onchain(onchainActivity))
-                Logger.info(
-                    "Successfully marked activity \(activityId) as replaced by fee",
-                    context: "CoreService.boostOnchainTransaction"
-                )
+                // The replacement is already broadcast, so a failed record must not report the boost as failed.
+                do {
+                    try await self.recordRbfBoost(originalActivityId: activityId, replacementTxid: txid, feeRate: feeRate)
+                    Logger.info(
+                        "Successfully marked activity \(activityId) as replaced by fee",
+                        context: "CoreService.boostOnchainTransaction"
+                    )
+                } catch {
+                    Logger.warn(
+                        "Failed to record RBF boost of activity \(activityId) for broadcast replacement \(txid): \(error)",
+                        context: "CoreService.boostOnchainTransaction"
+                    )
+                }
             }
 
             return txid
@@ -1897,6 +2011,107 @@ class ActivityService {
 
             Logger.info("Generated \(activityId) test activities across all time periods", context: "CoreService")
             self.activitiesChangedSubject.send()
+        }
+    }
+}
+
+// MARK: - Boost history cache
+
+/// Coalesces cold boost-history reads per wallet without holding a lock across an await.
+/// Synchronous mutations also use this lock because they run inside the core service queue.
+final class BoostTxIdsCache: @unchecked Sendable {
+    enum LoadResult: Sendable {
+        case loaded(Set<String>)
+        case invalidated
+    }
+
+    enum Read: Sendable {
+        case cached(Set<String>)
+        case loading(Task<LoadResult, Never>)
+    }
+
+    private struct Flight {
+        let id: UUID
+        let task: Task<LoadResult, Never>
+    }
+
+    private struct Entry {
+        var value: Set<String>?
+        var flight: Flight?
+        var pendingTxIds: Set<String> = []
+    }
+
+    private let entries = OSAllocatedUnfairLock(initialState: [String: Entry]())
+
+    func get(walletId: String, forceRefresh: Bool = false, load: @escaping @Sendable () async -> Set<String>?) async -> Set<String> {
+        var nextRead = read(walletId: walletId, forceRefresh: forceRefresh, load: load)
+        while true {
+            switch nextRead {
+            case let .cached(value):
+                return value
+            case let .loading(task):
+                switch await task.value {
+                case let .loaded(value): return value
+                case .invalidated: nextRead = read(walletId: walletId, load: load)
+                }
+            }
+        }
+    }
+
+    func read(walletId: String, forceRefresh: Bool = false, load: @escaping @Sendable () async -> Set<String>?) -> Read {
+        entries.withLock { entries in
+            if !forceRefresh {
+                if let flight = entries[walletId]?.flight {
+                    return .loading(flight.task)
+                }
+                if let value = entries[walletId]?.value {
+                    return .cached(value)
+                }
+            }
+
+            let id = UUID()
+            let task = Task {
+                let value = await load()
+                return self.complete(value, walletId: walletId, flightId: id)
+            }
+            // Preserve the last successful value only for refresh failures; invalidation removes it entirely.
+            entries[walletId] = Entry(value: entries[walletId]?.value, flight: Flight(id: id, task: task))
+            return .loading(task)
+        }
+    }
+
+    func merge(_ txIds: [String], walletId: String) {
+        entries.withLock { entries in
+            // A cold cache must not be seeded with a partial, single-activity snapshot.
+            guard var entry = entries[walletId] else { return }
+            if entry.value != nil {
+                entry.value?.formUnion(txIds)
+            }
+            if entry.flight != nil {
+                entry.pendingTxIds.formUnion(txIds)
+            }
+            entries[walletId] = entry
+        }
+    }
+
+    func invalidate(walletId: String) {
+        entries.withLock { $0[walletId] = nil }
+    }
+
+    func invalidateAll() {
+        entries.withLock { $0.removeAll() }
+    }
+
+    private func complete(_ value: Set<String>?, walletId: String, flightId: UUID) -> LoadResult {
+        entries.withLock { entries in
+            guard let entry = entries[walletId], entry.flight?.id == flightId else { return .invalidated }
+            guard let value else {
+                entries[walletId] = entry.value.map { Entry(value: $0) }
+                return .loaded(entry.value ?? [])
+            }
+            let mergedValue = value.union(entry.pendingTxIds)
+            entries[walletId] = Entry(value: mergedValue)
+            return .loaded(mergedValue)
         }
     }
 }
@@ -2573,6 +2788,36 @@ class CoreService {
             case let .failure(error):
                 Logger.error("Failed to update Blocktank URL: \(error)", context: "CoreService")
             }
+        }
+    }
+}
+
+/// The contact a Lightning send pays, remembered by payment hash before it goes out.
+/// Shared across actors: every read-modify-write holds `lock`.
+struct SentPaymentContacts: @unchecked Sendable {
+    private static let key = "sentPaymentContacts"
+    /// `remember` runs on the main actor and `forget` on the core queue, so each read-modify-write holds this.
+    private static let lock = NSLock()
+    let defaults: UserDefaults
+
+    func remember(_ contact: String, forPaymentHash paymentHash: String) {
+        Self.lock.withLock {
+            var contacts = defaults.dictionary(forKey: Self.key) as? [String: String] ?? [:]
+            contacts[paymentHash.lowercased()] = contact
+            defaults.set(contacts, forKey: Self.key)
+        }
+    }
+
+    func contact(forPaymentHash paymentHash: String) -> String? {
+        (defaults.dictionary(forKey: Self.key) as? [String: String])?[paymentHash.lowercased()]
+    }
+
+    func forget(paymentHash: String) {
+        Self.lock.withLock {
+            guard var contacts = defaults.dictionary(forKey: Self.key) as? [String: String],
+                  contacts.removeValue(forKey: paymentHash.lowercased()) != nil
+            else { return }
+            defaults.set(contacts, forKey: Self.key)
         }
     }
 }

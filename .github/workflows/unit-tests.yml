@@ -45,6 +45,8 @@ jobs:
           echo "✅ Simulator started at $(date)"
 
       - name: Run unit tests
+        # Leaves time for the upload below when a slow runner's build ate most of the job's hour
+        timeout-minutes: 55
         run: |
           echo "⏱️  Starting unit tests at $(date)"
           set -o pipefail && xcodebuild test \
@@ -56,6 +58,9 @@ jobs:
             -skipPackageUpdates \
             -enableCodeCoverage NO \
             -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 300 \
+            -maximum-test-execution-time-allowance 300 \
             -skip-testing:BitkitTests/UtxoSelectionTests \
             -skip-testing:BitkitTests/AddressTypeIntegrationTests \
             -skip-testing:BitkitTests/RNMigrationCleanupTests \

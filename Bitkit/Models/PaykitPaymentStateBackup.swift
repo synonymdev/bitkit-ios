@@ -225,6 +225,8 @@ struct PaykitPaymentStateBackup: Codable {
         let candidateMiningFees: [String: String]?
         let followup: Followup?
         let transfer: Transfer?
+        /// A transfer to Spark's deposit address pays no order, so only this keeps it a transfer through a restore.
+        let sparkFunding: Bool?
 
         init(_ attempt: OnchainSendAttempt, wallet: Wallet, billingPeriod: PaykitBillingPeriod? = nil) throws {
             guard attempt.walletId == wallet.originalWalletId else { throw invalidBackup("On-chain attempt belongs to another backup wallet") }
@@ -277,6 +279,7 @@ struct PaykitPaymentStateBackup: Codable {
                 return Transfer(txTotalSats: String($0.txTotalSats), preTransferOnchainSats: String($0.preTransferOnchainSats),
                                 originalOrderClientBalanceSats: String($0.clientBalanceSats), originalOrderFeeSats: String(fee))
             }
+            sparkFunding = attempt.isSparkFunding ? true : nil
         }
 
         func restored(wallet destination: Wallet, proofs: [PendingPaykitPaymentProof]) throws -> (OnchainSendAttempt, [PendingPaykitPaymentProof]) {
@@ -369,7 +372,8 @@ struct PaykitPaymentStateBackup: Codable {
                                              recoveryContext: OnchainSendRecoveryContext(inputs: inputs ?? [], satsPerVbyte: rate,
                                                                                          paymentIdentity: payerIdentity,
                                                                                          candidateTxids: candidateTxids, candidateFeeRates: rates,
-                                                                                         candidateFeeSats: miningFees))
+                                                                                         candidateFeeSats: miningFees),
+                                             sparkFunding: sparkFunding)
             return (attempt, restoredProofs)
         }
 

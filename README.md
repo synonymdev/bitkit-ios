@@ -24,6 +24,19 @@ The app automatically selects the network based on the build configuration:
 - **Debug builds** → Uses **Regtest** network (for local development and testing)
 - **Release builds** → Uses **Bitcoin Mainnet** network (for production)
 
+### Build secrets
+
+Spark (Lightning without channels) needs a Breez API key on mainnet. Provide it in one of two ways:
+
+- Store it in the macOS keychain item `BREEZ_API_KEY`, which the build reads when no build setting sets the key:
+  ```bash
+  printf 'add-generic-password -U -a %s -s BREEZ_API_KEY -w %s\n' "$USER" "$(pbpaste)" | security -i && pbcopy </dev/null
+  ```
+  Copy the key first. The command passes the key on stdin, so it never shows in a process list. It then clears the clipboard. The bare `-w` prompt keeps only 128 characters, which cuts the key short. The build stops when a set key is not a complete certificate, and its error names the source to fix.
+- Or copy `Secrets.xcconfig.template` to `Secrets.xcconfig` (gitignored) and paste the key after `BREEZ_API_KEY =`.
+
+Without it the app builds and Spark stays off on mainnet; regtest needs no key.
+
 ### Building for E2E tests
 
 To produce an E2E build (uses the local Electrum backend by default), pass the `E2E_BUILD` compilation flag:

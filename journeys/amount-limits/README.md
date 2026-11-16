@@ -2,7 +2,10 @@
 
 These journeys exercise the "block number pad input exceeding the max/available amount" behaviour.
 The same `AmountInputViewModel` cap + `maxExceededCount` effect path backs the amount-entry screens
-for Send and the External node (Manual Setup) channel.
+for Send, Transfer→Spending and the External node (Manual Setup) channel.
+
+The hardware Transfer To Spending amount shares that path. It needs a paired device, so its journey
+lives in [`../hardware-wallet/transfer-to-spending-over-max.xml`](../hardware-wallet/transfer-to-spending-over-max.xml).
 
 `custom-fee-wallet-switch.xml` covers adjacent send preparation: a custom fee switches Spending to
 Savings, with manual or automatic coin selection after returning through the fee picker. It requires
@@ -35,7 +38,12 @@ preparation. Do not submit a payment.
      then `../bitkit-android/lsp POST /regtest/chain/mine '{"count":3}'`. `mine` prints nothing on
      success — that is not a failure. There is no iOS copy of that helper yet — see #694 and the
      top-level README.
-2. **The external-node flow needs a reachable Lightning peer.** The staging LSP node works
+2. **The Transfer→Spending flow needs Spark connected** (a dev build reaches Spark's regtest with no
+   key); otherwise the transfer opens the Transfer Unavailable sheet. Its maximum is the Savings
+   balance less the fast-rate fee for sending all of it to the Spark deposit address, so it loads
+   behind a spinner — wait for it before typing. `transfer-spending-over-max.xml` has not been walked
+   on the Spark flow yet.
+3. **The external-node flow needs a reachable Lightning peer.** The staging LSP node works
    (`../bitkit-android/lsp GET /info` for its id/host/port).
 
 ## Gotchas
@@ -45,7 +53,8 @@ preparation. Do not submit a payment.
   an over-max state, so the capped value is valid and Continue stays **enabled**.
 - Toasts are short-lived (`Toast.visibilityTimeShort`) and will have faded before a snapshot
   round-trip completes. Assert one with `xcodebuildmcp ui-automation wait-for-ui` on its identifier
-  (`SendAmountExceededToast`, `ExternalAmountExceededToast`) immediately after the over-max keypress.
+  (`SendAmountExceededToast`, `SpendingAmountExceededToast`, `ExternalAmountExceededToast`) immediately
+  after the over-max keypress.
 - Prefer `snapshot-ui` and tap elements by identifier (`N9`, `NRemove`) over screen coordinates.
 
 ## Verified behaviour
@@ -66,6 +75,9 @@ snapshot round-trip returns — race a `wait-for-ui` on the toast identifier aga
 - Send: screen `SendAmount`, field `SendNumberField`, available `AvailableAmount`,
   continue `ContinueAmount`; recipient `RecipientManual` / `RecipientInput` / `AddressContinue`;
   home Send button `Send`.
+- Transfer→Spending: screen `SpendingAmount`, field `SpendingAmountNumberField`,
+  available `SpendingAmountAvailable` (or `SpendingAmountRetry` when the fee could not be priced),
+  25% `SpendingAmountQuarter`, max `SpendingAmountMax`, continue `SpendingAmountContinue`.
 - External: funding `FundManual`; connection `NodeIdInput`/`HostInput`/`PortInput`/`ExternalContinue`;
   amount screen `ExternalAmount`, field `ExternalAmountNumberField`,
   available `ExternalAmountAvailable`, 25% `ExternalAmountQuarter`, max `ExternalAmountMax`,

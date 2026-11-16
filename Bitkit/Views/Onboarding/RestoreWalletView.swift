@@ -278,6 +278,8 @@ struct RestoreWalletView: View {
             // it on the Get Started tap left a window where replayed txs could still pop a sheet. #588
             SettingsViewModel.shared.pendingRestoreActivitySeenSince = UInt64(Date().timeIntervalSince1970)
             SettingsViewModel.shared.restoreSyncedBlockHeight = 0
+            // No backup keeps which invoices Spark paid, so node sends of older invoices wait for Spark's list.
+            LightningService.shared.markSparkHistoryUnseeded()
 
             // When restoring a wallet, monitor all address types to catch any existing funds
             SettingsViewModel.shared.monitorAllAddressTypes()
@@ -288,6 +290,7 @@ struct RestoreWalletView: View {
             // The node never started, so no sync will lift the hold. Left in place it would silence
             // every later on-chain receive, across retries and relaunches. #588
             SettingsViewModel.shared.pendingRestoreActivitySeenSince = 0
+            LightningService.shared.clearSparkRestore()
             BackupService.shared.setRestoring(false)
             app.toast(error)
         }

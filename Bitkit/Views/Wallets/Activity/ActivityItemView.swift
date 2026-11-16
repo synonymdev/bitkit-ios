@@ -19,6 +19,8 @@ struct ActivityItemView: View {
     @StateObject private var viewModel: ActivityItemViewModel
     @State private var boostTxDoesExist: [String: Bool] = [:] // Maps boostTxId -> doesExist
     @State private var isCpfpChild: Bool = false
+    /// Spark sent this transaction, so LDK holds no input of it to boost.
+    @State private var isSparkWithdrawal = false
 
     private var isPaykitUIActive: Bool {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
@@ -148,7 +150,7 @@ struct ActivityItemView: View {
         case .lightning:
             return true
         case let .onchain(activity):
-            if isCpfpChild {
+            if isCpfpChild || isSparkWithdrawal {
                 return true
             }
             if !activity.doesExist {
@@ -257,6 +259,7 @@ struct ActivityItemView: View {
             // Check if this is a CPFP child transaction
             if case let .onchain(activity) = viewModel.activity {
                 isCpfpChild = await CoreService.shared.activity.isCpfpChildTransaction(txId: activity.txId, walletId: activity.walletId)
+                isSparkWithdrawal = await SparkManager.shared.isSparkWithdrawal(txid: activity.txId, isSent: activity.txType == .sent)
             }
 
             // Load boostTxIds doesExist status to determine RBF vs CPFP

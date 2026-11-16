@@ -1372,8 +1372,10 @@ actor PaykitAllowanceExecutor {
         setStage(.sending, attemptId: attemptId, identity: identity)
     }
 
-    func finishManualPayment(attemptId: String, outcome: Paykit.PaymentOutcome, transactionId: String? = nil) async {
-        guard let identity = activeIdentity else { return }
+    /// Returns whether the outcome was recorded.
+    @discardableResult
+    func finishManualPayment(attemptId: String, outcome: Paykit.PaymentOutcome, transactionId: String? = nil) async -> Bool {
+        guard let identity = activeIdentity else { return false }
         if let transactionId {
             updateLocalState(identity: identity) { state in
                 guard let index = state.journal.firstIndex(where: { $0.attemptId == attemptId }) else { return }
@@ -1382,9 +1384,24 @@ actor PaykitAllowanceExecutor {
         }
         do {
             try await record(attemptId: attemptId, outcome: outcome, identity: identity)
+            return true
         } catch {
             Logger.warn("Failed to record a manual payment outcome: \(error)", context: "PaykitAllowance")
+            return false
         }
+    }
+
+    /// Settles the manual attempt still open for a request once its outcome is learned later, as a Spark withdrawal's
+    /// journal learns it, so an unsent send no longer blocks the request on the ledger.
+    /// Returns whether no attempt is left open for the request.
+    @discardableResult
+    func settleManualPayment(requestId: PaykitPaymentRequest.ID, outcome: Paykit.PaymentOutcome, transactionId: String? = nil) async -> Bool {
+        guard let identity = activeIdentity else { return false }
+        guard let entry = localState(identity: identity).journal.last(where: {
+            !$0.isAutomatic && $0.requestId == requestId && !$0.stage.isTerminal
+        })
+        else { return true }
+        return await finishManualPayment(attemptId: entry.attemptId, outcome: outcome, transactionId: transactionId)
     }
 
     // MARK: Helpers

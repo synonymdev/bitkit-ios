@@ -485,6 +485,7 @@ class PubkyProfileManager: ObservableObject {
         tags: [String] = [],
         existingImageUrl: String? = nil,
         baseRevision: String? = nil,
+        baseTagsUnread: Bool = false,
         avatarImage: UIImage? = nil,
         loadStoredSecretKey: () async throws -> String? = {
             await Task.detached { PubkyProfileManager.activeSecretKeyHex() }.value
@@ -501,6 +502,7 @@ class PubkyProfileManager: ObservableObject {
                 tags: tags,
                 existingImageUrl: existingImageUrl,
                 baseRevision: baseRevision,
+                baseTagsUnread: baseTagsUnread,
                 avatarImage: avatarImage
             )
             return
@@ -536,6 +538,7 @@ class PubkyProfileManager: ObservableObject {
                     tags: tags,
                     existingImageUrl: existingImageUrl,
                     baseRevision: baseRevision,
+                    baseTagsUnread: baseTagsUnread,
                     avatarImage: avatarImage
                 )
             },
@@ -755,6 +758,7 @@ class PubkyProfileManager: ObservableObject {
         tags: [String],
         existingImageUrl: String?,
         baseRevision: String?,
+        baseTagsUnread: Bool,
         avatarImage: UIImage?
     ) async throws {
         var avatarUri: String?
@@ -771,6 +775,7 @@ class PubkyProfileManager: ObservableObject {
             links: links,
             tags: tags,
             baseRevision: baseRevision,
+            baseTagsUnread: baseTagsUnread,
             expectedIdentity: publicKey
         )
         if tagsNotSavedAt != nil {

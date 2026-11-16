@@ -16,6 +16,8 @@ struct OnboardingView: View {
     let accentColor: Color
     let imagePosition: ImagePosition
     let titleDescriptionSpacing: CGFloat
+    let buttonHorizontalPadding: CGFloat
+    let maxImageSize: CGFloat?
     let testID: String?
 
     enum ImagePosition {
@@ -36,6 +38,8 @@ struct OnboardingView: View {
         accentColor: Color = .brandAccent,
         imagePosition: ImagePosition = .bottom,
         titleDescriptionSpacing: CGFloat = 14,
+        buttonHorizontalPadding: CGFloat = 16,
+        maxImageSize: CGFloat? = nil,
         testID: String? = nil
     ) {
         self.navTitle = navTitle ?? ""
@@ -50,6 +54,8 @@ struct OnboardingView: View {
         self.accentColor = accentColor
         self.imagePosition = imagePosition
         self.titleDescriptionSpacing = titleDescriptionSpacing
+        self.buttonHorizontalPadding = buttonHorizontalPadding
+        self.maxImageSize = maxImageSize
         self.testID = testID
     }
 
@@ -66,7 +72,7 @@ struct OnboardingView: View {
                     Image(imageName)
                         .resizable()
                         .scaledToFit()
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: maxImageSize ?? .infinity, maxHeight: maxImageSize)
                         .aspectRatio(1, contentMode: .fit)
                         .padding(.bottom, imagePosition == .center ? 0 : 48)
 
@@ -77,6 +83,7 @@ struct OnboardingView: View {
                 .frame(maxWidth: .infinity)
                 .frame(maxHeight: .infinity)
                 .layoutPriority(1)
+                .padding(.horizontal, 16)
 
                 VStack(alignment: .leading, spacing: titleDescriptionSpacing) {
                     DisplayText(title, textColor: titleColor, accentColor: accentColor)
@@ -86,14 +93,15 @@ struct OnboardingView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                .padding(.horizontal, 16)
 
                 CustomButton(title: buttonText) {
                     onButtonPress()
                 }
                 .padding(.top, 32)
+                .padding(.horizontal, buttonHorizontalPadding)
                 .accessibilityIdentifierIfPresent(testID.map { "\($0)-button" })
             }
-            .padding(.horizontal, 16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 16)

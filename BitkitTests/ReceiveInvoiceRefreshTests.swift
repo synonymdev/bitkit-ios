@@ -1754,7 +1754,12 @@ private final class GatedReceiveWallet: WalletViewModel {
         return "bcrt1qreceive"
     }
 
-    override func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
+    override func createInvoice(
+        amountSats: UInt64? = nil,
+        note: String,
+        expirySecs: UInt32? = nil,
+        isPaykitEndpoint: Bool = false
+    ) async throws -> String {
         if let invoiceCreation {
             return try await invoiceCreation()
         }
@@ -1844,7 +1849,12 @@ private final class TaggedReceiveWallet: WalletViewModel {
         true
     }
 
-    override func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
+    override func createInvoice(
+        amountSats: UInt64? = nil,
+        note: String,
+        expirySecs: UInt32? = nil,
+        isPaykitEndpoint: Bool = false
+    ) async throws -> String {
         invoiceCount += 1
         return invoiceCount == 1 ? "ln-first" : "ln-second"
     }

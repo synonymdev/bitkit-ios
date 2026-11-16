@@ -26,7 +26,9 @@ class BalanceManager {
     /// Derives the complete balance state including pending transfers
     /// - Returns: BalanceState with all balance calculations
     /// - Throws: Error if balance retrieval fails
-    func deriveBalanceState() async throws -> BalanceState {
+    /// - Parameter exitInTransfer: the running Spark exit's transfer and what it still brings to savings, counted in
+    ///   place of that transfer's fixed amount.
+    func deriveBalanceState(exitInTransfer: (transferId: String, sats: UInt64)? = nil) async throws -> BalanceState {
         let balanceDetails = await MainActor.run { lightningService.balances }
         guard let balanceDetails else {
             throw AppError(message: "Balance details unavailable", debugMessage: "LightningService.balances is nil")
@@ -43,7 +45,8 @@ class BalanceManager {
 
         let (lightningToSubtract, pendingCloseAmount) = await getCloseTransferAmounts(
             transfers: activeTransfers,
-            balanceDetails: balanceDetails
+            balanceDetails: balanceDetails,
+            exitInTransfer: exitInTransfer
         )
 
         // Detect orphan closed channels: channels with lightning balance that are no longer
@@ -138,12 +141,18 @@ class BalanceManager {
     /// - Returns: lightningToSubtract (always subtract from display), pendingAmount (add to total only if on-chain hasn't arrived)
     private func getCloseTransferAmounts(
         transfers: [Transfer],
-        balanceDetails: BalanceDetails
+        balanceDetails: BalanceDetails,
+        exitInTransfer: (transferId: String, sats: UInt64)? = nil
     ) async -> (lightningToSubtract: UInt64, pendingAmount: UInt64) {
         var lightningToSubtract: UInt64 = 0
         var pendingAmount: UInt64 = 0
 
         for transfer in transfers.filter({ $0.type.isToSavings() }) {
+            // A Spark exit has no channel: it is in transfer until its sweep confirms and the exit settles it.
+            if transfer.type == .sparkExit {
+                pendingAmount += Self.sparkExitInTransferSats(transfer, exitInTransfer: exitInTransfer)
+                continue
+            }
             guard let channelId = transfer.channelId else { continue }
 
             let balanceFromLdk = balanceDetails.lightningBalances
@@ -163,6 +172,12 @@ class BalanceManager {
         }
 
         return (lightningToSubtract, pendingAmount)
+    }
+
+    /// The running exit's own transfer counts what it still brings to savings; any other exit transfer its amount.
+    static func sparkExitInTransferSats(_ transfer: Transfer, exitInTransfer: (transferId: String, sats: UInt64)?) -> UInt64 {
+        guard let exitInTransfer, exitInTransfer.transferId == transfer.id else { return transfer.amountSats }
+        return exitInTransfer.sats
     }
 
     /// Detects "orphan" closed channels - channels that have lightning balance in LDK

@@ -16,6 +16,9 @@ struct SavingsIntroView: View {
                 navigation.navigate(.savingsAvailability)
             },
             imagePosition: .center,
+            titleDescriptionSpacing: 8,
+            buttonHorizontalPadding: 0,
+            maxImageSize: 256,
             testID: "SavingsIntro"
         )
         .navigationBarHidden(true)

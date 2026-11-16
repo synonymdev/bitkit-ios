@@ -6,8 +6,6 @@ final class AppCacheDataTests: XCTestCase {
         let json = #"""
         {
             "hasSeenShopIntro": true,
-            "hasSeenTransferIntro": true,
-            "hasSeenTransferToSpendingIntro": true,
             "blocktankRefundAddress": {"address": "bcrt1refund", "index": 7},
             "lastUsedTags": ["coffee"]
         }
@@ -17,5 +15,15 @@ final class AppCacheDataTests: XCTestCase {
 
         XCTAssertTrue(cache.hasSeenShopIntro)
         XCTAssertEqual(cache.lastUsedTags, ["coffee"])
+    }
+
+    func testTransferIntroFlagsRoundTrip() throws {
+        let json = #"{"hasSeenTransferIntro": true, "hasSeenTransferToSpendingIntro": true}"#
+
+        let cache = try JSONDecoder().decode(AppCacheData.self, from: Data(json.utf8))
+        let restored = try JSONDecoder().decode(AppCacheData.self, from: JSONEncoder().encode(cache))
+
+        XCTAssertTrue(restored.hasSeenTransferIntro)
+        XCTAssertTrue(restored.hasSeenTransferToSpendingIntro)
     }
 }

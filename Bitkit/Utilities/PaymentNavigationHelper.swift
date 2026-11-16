@@ -52,7 +52,7 @@ struct PaymentNavigationHelper {
             sheetViewModel.showSheet(.send, data: SendConfig(view: route))
             return
         }
-        if app.contactPaymentContext?.requiresAssetSelection == true {
+        if app.contactPaymentPicksSource {
             sheetViewModel.showSheet(.send, data: SendConfig(view: .amount))
             return
         }
@@ -119,7 +119,7 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore = .shared,
         coordinator: QuickPayPaymentCoordinator? = nil
     ) -> SendRoute? {
-        if app.contactPaymentContext?.requiresAssetSelection == true, app.paykitPaymentTerms == nil {
+        if app.contactPaymentPicksSource, app.paykitPaymentTerms == nil {
             return .amount
         }
         if let lnurlWithdrawData = app.lnurlWithdrawData {
@@ -220,7 +220,7 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore = .shared,
         coordinator: QuickPayPaymentCoordinator? = nil
     ) -> SendRoute? {
-        if app.contactPaymentContext?.requiresAssetSelection == true {
+        if app.contactPaymentPicksSource {
             if app.paykitPaymentTerms == nil {
                 return .amount
             }
