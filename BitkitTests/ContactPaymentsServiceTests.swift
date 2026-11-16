@@ -1639,9 +1639,9 @@ final class ContactPaymentsServiceTests: XCTestCase {
         let previous = await shared.knownSavedContactKeys
         let guardKey = "pubky" + String(repeating: "g", count: 52)
         _ = await shared.rememberSavedContacts([guardKey], replacing: false)
+        addTeardownBlock { _ = await shared.rememberSavedContacts(Array(previous), replacing: true) }
         let seeded = await shared.knownSavedContactKeys
         let rememberedKey = try XCTUnwrap(seeded.subtracting(previous).first)
-        defer { Task { _ = await shared.rememberSavedContacts(Array(previous), replacing: true) } }
 
         try await withIsolatedDefaultsAsync { defaults in
             await ContactPaymentsService.ensureEnabled(
