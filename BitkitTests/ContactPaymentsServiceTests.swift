@@ -1704,6 +1704,30 @@ final class ContactPaymentsServiceTests: XCTestCase {
         }
     }
 
+    /// A Ring identity adopted without a profile is signed in while Create Profile waits for Save; the foreground check
+    /// leaves its payments off until that Save starts setup.
+    func testEnsureEnabledWritesNothingWhileProfileSetupIsPending() async throws {
+        let pendingKey = "pubky_profile_setup_pending"
+        let previous = UserDefaults.standard.object(forKey: pendingKey)
+        UserDefaults.standard.set(true, forKey: pendingKey)
+        defer { UserDefaults.standard.set(previous, forKey: pendingKey) }
+        try await withIsolatedDefaultsAsync { defaults in
+            let profile = signedInProfile(ownerKey: "pubky-current")
+            XCTAssertTrue(profile.isProfileSetupPending)
+            let operations = OperationsSpy()
+
+            await ContactPaymentsService.ensureEnabled(
+                pubkyProfile: profile, contactsManager: loadedContacts(),
+                operations: operations.makeOperations(defaults: defaults), defaults: defaults,
+                privatePaymentAccess: { _ in true }
+            )
+
+            XCTAssertTrue(operations.calls.isEmpty)
+            XCTAssertFalse(ContactPaymentsService.isEnabled(defaults: defaults))
+            XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+        }
+    }
+
     /// The foreground check leaves payments alone when both modes are already on.
     func testEnsureEnabledDoesNothingWhenBothModesAreOn() async throws {
         try await withIsolatedDefaultsAsync { defaults in

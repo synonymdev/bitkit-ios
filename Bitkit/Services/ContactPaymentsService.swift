@@ -248,6 +248,10 @@ enum ContactPaymentsService {
     ) async {
         // A Paykit UI disable that lands before setup starts keeps both modes off.
         guard isPaykitUIEnabled(defaults: defaults) else { return }
+        // A profile still waiting for Create Profile's Save gets its setup from that Save, not from the foreground check.
+        if onlyWhenOff, pubkyProfile.isProfileSetupPending {
+            return
+        }
         let context = onlyWhenOff ? "an existing profile" : "a new profile"
         let session = pubkyProfile.currentSession
         if !onlyWhenOff || !isEnabled(defaults: defaults) {
