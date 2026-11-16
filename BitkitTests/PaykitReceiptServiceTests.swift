@@ -43,7 +43,7 @@ final class PaykitReceiptServiceTests: XCTestCase {
     func testBareTxidProofFromAnotherPaykitAppIsMatchedToTheRecordedReceive() throws {
         let request = try payeeRequest(proofs: [proof(json: "{\"txid\":\"\(Self.txid)\"}", endpoint: Self.onchainMethod, eventId: "event-1")])
 
-        let candidates = match([request], onchain: [.bitcoin(Self.txid, rail: .onchain, sats: 10000, contact: Self.buyer)])
+        let candidates = match([request], onchain: [Self.onchainReceive(sats: 10000, contact: Self.buyer)])
 
         XCTAssertEqual(candidates.map(\.metadataJson), ["{\"txid\":\"\(Self.txid)\"}"])
     }
@@ -54,12 +54,12 @@ final class PaykitReceiptServiceTests: XCTestCase {
             proofs: [proof(type: "bitcoin-onchain-txid", data: Self.txid, endpoint: Self.onchainMethod)]
         )
 
-        XCTAssertTrue(match([request], onchain: [.bitcoin(Self.txid, rail: .onchain, sats: 15000)]).isEmpty)
+        XCTAssertTrue(match([request], onchain: [Self.onchainReceive(sats: 15000)]).isEmpty)
     }
 
     func testMarketRequestReceiptsAnOverpaymentToItsOwnAddressWithoutAProof() throws {
         let request = try payeeRequest(endpoints: [Self.onchainMethod: "{\"value\":\"\(Self.address)\"}"])
-        let overpaid = PaykitRecordedReceive.bitcoin(Self.txid, rail: .onchain, sats: 20000, address: Self.address)
+        let overpaid = Self.onchainReceive(sats: 20000, address: Self.address)
 
         let candidate = try XCTUnwrap(match([request], onchain: [overpaid]).first)
 
@@ -72,14 +72,14 @@ final class PaykitReceiptServiceTests: XCTestCase {
         let claim = try proof(type: "bitcoin-onchain-txid", data: Self.txid, endpoint: Self.onchainMethod)
         let first = try payeeRequest(proofs: [claim])
         let second = try payeeRequest(requestId: "5f1c2a3b-1d2e-4f5a-8b6c-7d8e9f0a1b2c", proofs: [claim])
-        let receive = PaykitRecordedReceive.bitcoin(Self.txid, rail: .onchain, sats: 1, contact: Self.buyer)
+        let receive = Self.onchainReceive(sats: 1, contact: Self.buyer)
 
         XCTAssertTrue(match([first, second], onchain: [receive]).isEmpty)
     }
 
     func testOnchainProofForAReceiveNotAttributedToThePayerIsIgnored() throws {
         let request = try payeeRequest(proofs: [proof(type: "bitcoin-onchain-txid", data: Self.txid, endpoint: Self.onchainMethod)])
-        let unattributed = PaykitRecordedReceive.bitcoin(Self.txid, rail: .onchain, sats: 50000, address: Self.address)
+        let unattributed = Self.onchainReceive(sats: 50000, address: Self.address)
 
         XCTAssertTrue(match([request], onchain: [unattributed]).isEmpty)
     }
@@ -93,12 +93,29 @@ final class PaykitReceiptServiceTests: XCTestCase {
             proofs: [proof(type: "bitcoin-onchain-txid", data: Self.txid, endpoint: Self.onchainMethod)],
             proposedAt: "yesterday"
         )
-        let earlier = PaykitRecordedReceive.bitcoin(Self.txid, rail: .onchain, sats: 1000, receivedAt: 1_763_100_000, contact: Self.buyer)
-        let later = PaykitRecordedReceive.bitcoin(Self.txid, rail: .onchain, sats: 1000, receivedAt: 1_794_657_600, contact: Self.buyer)
+        let earlier = Self.onchainReceive(sats: 1000, receivedAt: 1_763_100_000, contact: Self.buyer)
+        let later = Self.onchainReceive(sats: 1000, receivedAt: 1_794_657_600, contact: Self.buyer)
 
         XCTAssertTrue(match([request], onchain: [earlier]).isEmpty)
         XCTAssertEqual(match([request], onchain: [later]).count, 1)
         XCTAssertTrue(match([unreadable], onchain: [later]).isEmpty)
+    }
+
+    func testOnchainReceiptCountsOnlyWhatWasPaidToTheRequest() throws {
+        let request = try payeeRequest(endpoints: [Self.onchainMethod: "{\"value\":\"\(Self.address)\"}"])
+        let batch = Self.onchainReceive(sats: 5000, outputs: [Self.address.lowercased(): 3000, "bcrt1qother": 2000])
+
+        let candidate = try XCTUnwrap(match([request], onchain: [batch]).first)
+
+        XCTAssertEqual(candidate.receive.amount.atomic, 3000)
+    }
+
+    func testOnchainReceiptIsWithheldWhenItsOutputsAreUnknown() throws {
+        let request = try payeeRequest(endpoints: [Self.onchainMethod: "{\"value\":\"\(Self.address)\"}"])
+        var unknown = Self.onchainReceive(sats: 5000)
+        unknown.outputs = nil
+
+        XCTAssertTrue(match([request], onchain: [unknown]).isEmpty)
     }
 
     func testLightningProofForAReceiveFromBeforeTheRequestIsNotReceipted() throws {
@@ -117,7 +134,7 @@ final class PaykitReceiptServiceTests: XCTestCase {
         let claim = try proof(type: "bitcoin-onchain-txid", data: Self.txid, endpoint: Self.onchainMethod)
         let payer = try payeeRequest(proofs: [claim])
         let claimant = try payeeRequest(counterparty: Self.otherBuyer, requestId: "5f1c2a3b-1d2e-4f5a-8b6c-7d8e9f0a1b2c", proofs: [claim])
-        let receive = PaykitRecordedReceive.bitcoin(Self.txid, rail: .onchain, sats: 1000, contact: Self.buyer)
+        let receive = Self.onchainReceive(sats: 1000, contact: Self.buyer)
 
         let candidates = match([payer, claimant], onchain: [receive])
 
@@ -361,6 +378,21 @@ final class PaykitReceiptServiceTests: XCTestCase {
             onchainReceives: onchain,
             usdtReceives: usdt,
             network: .regtest
+        )
+    }
+
+    /// An on-chain receive of `sats`, all paid to `address` unless `outputs` says otherwise.
+    private static func onchainReceive(
+        sats: UInt64,
+        address: String? = nil,
+        receivedAt: UInt64? = nil,
+        contact: String? = nil,
+        outputs: [String: UInt64]? = nil
+    ) -> PaykitRecordedReceive {
+        let address = address ?? Self.address
+        return .bitcoin(
+            txid, rail: .onchain, sats: sats, address: address, receivedAt: receivedAt, contact: contact,
+            outputs: outputs ?? [address.lowercased(): sats]
         )
     }
 

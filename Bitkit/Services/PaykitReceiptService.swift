@@ -24,9 +24,11 @@ struct PaykitRecordedReceive: Equatable {
     /// Lowercase payment hash for Lightning, transaction id for on-chain, verified transfer id for USDT.
     let paymentId: String
     let rail: PaykitReceiptRail
-    let amount: PaykitAmount
+    var amount: PaykitAmount
     /// The receiving address of an on-chain receive.
     var address: String?
+    /// Sats an on-chain receive paid to each of this wallet's addresses, keyed lowercase; nil when unknown.
+    var outputs: [String: UInt64]?
     /// What the activity row and received sheet know the payment by: its hash, txid or USDT transfer id.
     var statusKey: String
     /// When the wallet recorded the receive, in seconds since the epoch.
@@ -56,18 +58,31 @@ struct PaykitRecordedReceive: Equatable {
         self.contact = contact
     }
 
+    /// An on-chain receive narrowed to what it paid to `address`, so a batch paying other addresses of this wallet
+    /// does not count toward the request; nil when that amount is unknown or zero. Other rails are returned as they are.
+    func paid(to address: String?) -> Self? {
+        guard rail == .onchain else { return self }
+        guard let address, let sats = outputs?[address.lowercased()], sats > 0 else { return nil }
+        var narrowed = self
+        narrowed.amount = PaykitAmount(asset: .btc, atomic: sats)
+        return narrowed
+    }
+
     static func bitcoin(
         _ paymentId: String,
         rail: PaykitReceiptRail,
         sats: UInt64,
         address: String? = nil,
         receivedAt: UInt64? = nil,
-        contact: String? = nil
+        contact: String? = nil,
+        outputs: [String: UInt64]? = nil
     ) -> Self {
-        Self(
+        var receive = Self(
             paymentId: paymentId, rail: rail, amount: PaykitAmount(asset: .btc, atomic: sats), address: address,
             receivedAt: receivedAt, contact: contact
         )
+        receive.outputs = outputs
+        return receive
     }
 }
 
@@ -144,8 +159,9 @@ enum PaykitReceiptMatcher {
 
             for proof in record.paymentProofs {
                 guard let (rail, id) = bitcoinPaymentId(proof),
-                      let receive = rail == .lightning ? lightningReceives[id] : onchainByTxid[id],
-                      rail == .lightning || PubkyPublicKeyFormat.matches(receive.contact, record.counterparty),
+                      let recorded = rail == .lightning ? lightningReceives[id] : onchainByTxid[id],
+                      rail == .lightning || PubkyPublicKeyFormat.matches(recorded.contact, record.counterparty),
+                      let receive = recorded.paid(to: recorded.address),
                       couldBePaid(record, by: receive)
                 else { continue }
                 found.append(candidate(proof.paymentEndpointIdentifier, proof.billingPeriod, receive))
@@ -226,7 +242,9 @@ enum PaykitReceiptMatcher {
                 }
             } else if method.onchainNetwork == network {
                 for receive in onchainReceives where receive.address?.lowercased() == payload.value.lowercased() {
-                    matches.append((identifier, receive))
+                    if let paid = receive.paid(to: payload.value) {
+                        matches.append((identifier, paid))
+                    }
                 }
             }
         }
@@ -268,6 +286,9 @@ final class PaykitReceiptService {
     @ObservationIgnored private let delivery: PaykitOutboundDeliveryLog
     @ObservationIgnored private let activities: () async throws -> [Activity]
     @ObservationIgnored private let usdtReceipts: @MainActor () -> [PaykitUsdtPaymentService.Receipt]
+    @ObservationIgnored private let transactionOutputs: (String) async -> [String: UInt64]?
+    /// Confirmed transactions do not change, so their outputs are read once per launch.
+    @ObservationIgnored private var outputsByTxid: [String: [String: UInt64]] = [:]
     @ObservationIgnored private var attemptedReceiptIds = Set<String>()
     @ObservationIgnored private var candidates: [String: PaykitReceiptCandidate] = [:]
     @ObservationIgnored private var identity: String?
@@ -277,12 +298,23 @@ final class PaykitReceiptService {
         sdk: PaykitReceiptSdk = PaykitSdkService.shared,
         delivery: PaykitOutboundDeliveryLog = .shared,
         activities: @escaping () async throws -> [Activity] = { try await CoreService.shared.activity.get(txType: .received) },
-        usdtReceipts: @escaping @MainActor () -> [PaykitUsdtPaymentService.Receipt] = { PaykitUsdtPaymentService.shared.receipts }
+        usdtReceipts: @escaping @MainActor () -> [PaykitUsdtPaymentService.Receipt] = { PaykitUsdtPaymentService.shared.receipts },
+        transactionOutputs: @escaping (String) async -> [String: UInt64]? = PaykitReceiptService.storedOutputs
     ) {
         self.sdk = sdk
         self.delivery = delivery
         self.activities = activities
         self.usdtReceipts = usdtReceipts
+        self.transactionOutputs = transactionOutputs
+    }
+
+    /// Sats a stored transaction paid to each address, keyed lowercase; nil when its details are not stored.
+    private static func storedOutputs(txid: String) async -> [String: UInt64]? {
+        guard let details = try? await CoreService.shared.activity.getTransactionDetails(txid: txid) else { return nil }
+        return details.outputs.reduce(into: [:]) { outputs, output in
+            guard let address = output.scriptpubkeyAddress?.lowercased(), output.value > 0 else { return }
+            outputs[address, default: 0] += UInt64(output.value)
+        }
     }
 
     func reconcile() async {
@@ -302,6 +334,7 @@ final class PaykitReceiptService {
 
     func reset() {
         attemptedReceiptIds = []
+        outputsByTxid = [:]
         candidates = [:]
         identity = nil
         statuses = [:]
@@ -335,10 +368,10 @@ final class PaykitReceiptService {
             let found: [PaykitReceiptCandidate]
             if hasPayments {
                 let received = try await activities()
-                found = PaykitReceiptMatcher.candidates(
+                found = await PaykitReceiptMatcher.candidates(
                     records: records,
                     lightningReceives: Self.lightningReceives(received),
-                    onchainReceives: Self.onchainReceives(received),
+                    onchainReceives: onchainReceives(received, records: records),
                     usdtReceives: usdtReceives(identity: current)
                 )
             } else {
@@ -466,14 +499,30 @@ final class PaykitReceiptService {
         return receives
     }
 
-    private static func onchainReceives(_ activities: [Activity]) -> [PaykitRecordedReceive] {
-        activities.compactMap {
-            guard case let .onchain(activity) = $0, activity.txType == .received, activity.confirmed, activity.doesExist else { return nil }
-            return .bitcoin(
+    /// Confirmed on-chain receives with the outputs of each one a request's proof or endpoint names, so a receipt
+    /// counts only what was paid to the request.
+    private func onchainReceives(_ activities: [Activity], records: [Paykit.PaymentRequestRecord]) async -> [PaykitRecordedReceive] {
+        let mentions = records.flatMap { record in
+            record.paymentProofs.map { $0.proof.exportText() } + Array((record.terms?.paymentEndpoints ?? [:]).values)
+        }.map { $0.lowercased() }
+        var receives: [PaykitRecordedReceive] = []
+        for case let .onchain(activity) in activities where activity.txType == .received && activity.confirmed && activity.doesExist {
+            let txid = activity.txId.lowercased()
+            let address = activity.address.lowercased()
+            var outputs: [String: UInt64]?
+            if mentions.contains(where: { $0.contains(txid) || (!address.isEmpty && $0.contains(address)) }) {
+                outputs = outputsByTxid[txid]
+                if outputs == nil, let read = await transactionOutputs(txid) {
+                    outputsByTxid[txid] = read
+                    outputs = read
+                }
+            }
+            receives.append(.bitcoin(
                 activity.txId, rail: .onchain, sats: activity.value, address: activity.address,
-                receivedAt: activity.timestamp, contact: activity.contact
-            )
+                receivedAt: activity.timestamp, contact: activity.contact, outputs: outputs
+            ))
         }
+        return receives
     }
 }
 
