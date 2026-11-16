@@ -1633,6 +1633,28 @@ final class ContactPaymentsServiceTests: XCTestCase {
         }
     }
 
+    /// The setup tests run on an already loaded contact list, so they leave the host app's saved contacts alone.
+    func testSetupLeavesSharedSavedContactsAlone() async throws {
+        let shared = PrivatePaykitService.shared
+        let previous = await shared.knownSavedContactKeys
+        let guardKey = "pubky" + String(repeating: "g", count: 52)
+        _ = await shared.rememberSavedContacts([guardKey], replacing: false)
+        let seeded = await shared.knownSavedContactKeys
+        let rememberedKey = try XCTUnwrap(seeded.subtracting(previous).first)
+        defer { Task { _ = await shared.rememberSavedContacts(Array(previous), replacing: true) } }
+
+        try await withIsolatedDefaultsAsync { defaults in
+            await ContactPaymentsService.ensureEnabled(
+                pubkyProfile: signedInProfile(ownerKey: "pubky-current"), contactsManager: loadedContacts(),
+                operations: OperationsSpy().makeOperations(defaults: defaults), defaults: defaults,
+                privatePaymentAccess: { _ in true }
+            )
+        }
+
+        let known = await shared.knownSavedContactKeys
+        XCTAssertTrue(known.contains(rememberedKey))
+    }
+
     /// The foreground check leaves payments alone when both modes are already on.
     func testEnsureEnabledDoesNothingWhenBothModesAreOn() async throws {
         try await withIsolatedDefaultsAsync { defaults in
