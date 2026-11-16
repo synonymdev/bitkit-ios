@@ -233,6 +233,8 @@ jobs:
     env:
       # Reuse the legacy project so reset also clears containers left after a ref switch.
       COMPOSE_PROJECT_NAME: docker
+      # Match the legacy fixture for the iOS manual channel funding Max case.
+      BITCOIN_FALLBACK_FEE: "0.00001"
 
     strategy:
       fail-fast: false
