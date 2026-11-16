@@ -25,6 +25,9 @@ final class ScannedPaymentRequestTests: XCTestCase {
         XCTAssertEqual(ScannedPaymentRequest.normalized(required), required)
         let uppercase = "BITCOIN:?REQ-FOO=bar&LIGHTNING=\(invoice)"
         XCTAssertEqual(ScannedPaymentRequest.normalized(uppercase), uppercase)
+        for empty in ["bitcoin:?lightning=\(invoice)&req-foo=", "bitcoin:?lightning=\(invoice)&req-foo"] {
+            XCTAssertEqual(ScannedPaymentRequest.normalized(empty), empty)
+        }
     }
 
     func testOtherBitcoinRequestsAreKept() {

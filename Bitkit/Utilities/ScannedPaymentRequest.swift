@@ -17,11 +17,12 @@ enum ScannedPaymentRequest {
         var params: [String: String] = [:]
         for pair in trimmed.dropFirst(bitcoinWithoutAddress.count).split(separator: "&") {
             let parts = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
-            guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { continue }
             let key = parts[0].lowercased()
+            // Checked before empty pairs are skipped, since BIP 321 allows a required key with an empty or no value.
             if key.hasPrefix(requiredParamPrefix) {
                 return trimmed
             }
+            guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { continue }
             if params[key] == nil {
                 params[key] = String(parts[1])
             }
