@@ -645,6 +645,7 @@ struct AppScene: View {
             }
             .task(id: publicPaykitForegroundSession) {
                 await refreshForegroundPublicPaykitEndpoints()
+                await ensureContactPaymentsEnabled()
             }
             .onChange(of: pubkyProfile.isDeletingProfile) { _, isDeleting in
                 guard !isDeleting, isPaykitSceneActive else { return }
@@ -1521,6 +1522,18 @@ struct AppScene: View {
         await wallet.refreshPublicPaykitEndpointsOnForeground {
             !Task.isCancelled && isPaykitSceneActive && pubkyProfile.automaticPaykitSession == session
         }
+    }
+
+    /// Contact payments have no setting, so each foreground turns on whichever sharing mode is off.
+    private func ensureContactPaymentsEnabled() async {
+        guard PaykitFeatureFlags.isUIEnabled, !wipeCoordinator.isGateUp,
+              let session = publicPaykitForegroundSession, pubkyProfile.automaticPaykitSession == session
+        else { return }
+        await ContactPaymentsService.ensureEnabled(
+            pubkyProfile: pubkyProfile,
+            contactsManager: contactsManager,
+            operations: .live(wallet: wallet)
+        )
     }
 
     private func refreshPrivateOnlyPaykitApp() async {
