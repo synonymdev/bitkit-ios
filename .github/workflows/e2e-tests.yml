@@ -53,7 +53,7 @@ jobs:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     outputs:
-      code: ${{ (github.event_name == 'workflow_dispatch' && !inputs.pr) || steps.filter.outputs.code == 'true' }}
+      code: ${{ (github.event_name == 'workflow_dispatch' && !inputs.pr) || (steps.filter.outputs.code == 'true' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'e2e'))) }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -415,7 +415,7 @@ jobs:
 
       - name: E2E skipped - no code changes
         if: needs.detect-changes.outputs.code != 'true'
-        run: echo "✅ E2E skipped - no code changes"
+        run: echo "✅ E2E skipped - no code changes, or the PR has no 'e2e' label"
 
       - name: Verify all E2E shards succeeded
         if: needs.detect-changes.outputs.code == 'true'

@@ -44,7 +44,9 @@ jobs:
   test:
     # PR code must not publish dependency caches into the dispatch ref's scope.
     cache-mode: read
-    if: github.event.pull_request.draft == false
+    if: >-
+      github.event.pull_request.draft == false &&
+      (github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'e2e'))
     name: Run Integration Tests
     # The suites fund and mine on a local regtest stack. macOS runners cannot run Docker, so this
     # runs on Namespace, which hosts the stack on a Linux instance (see namespace-stack.sh).
