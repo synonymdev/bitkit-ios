@@ -1,61 +1,25 @@
 name: integration-tests
-run-name: >-
-  ${{ inputs.retarget_run && format('Retarget integration for PR #{0}', inputs.pr) || github.event.pull_request.title || github.event.head_commit.message || github.workflow }}
+run-name: Authenticated Blocktank integration pilot
 
 on:
-  push:
-    branches: [master]
-  pull_request:
-    branches: [master]
-    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
-    inputs:
-      pr:
-        description: "PR number to test as merged into master"
-        default: ""
-      merge_commit:
-        description: "Pinned PR merge commit for retarget validation"
-        default: ""
-      head_sha:
-        description: "PR head verified by the retarget dispatcher"
-        default: ""
-      check_run_id:
-        description: "PR check owned by this retarget validation"
-        default: ""
-      retarget_run:
-        description: "Retarget status owner (set by e2e-retarget.yml)"
-        default: ""
-      workflow_ref:
-        description: "Workflow source recorded for this validation generation"
-        default: master
-      helper_ref:
-        description: "Recovery helper branch or tag"
-        default: master
+
+permissions:
+  contents: read
+  packages: read
 
 env:
   GIT_LFS_SKIP_SMUDGE: "1"
 
 concurrency:
-  group: integration-tests-${{ github.event.pull_request.number || inputs.pr || github.ref }}
-  cancel-in-progress: true
+  group: stag0-hosted-integration-pilot
+  cancel-in-progress: false
 
 jobs:
-
   test:
-    # PR code must not publish dependency caches into the dispatch ref's scope.
-    cache-mode: read
-    if: github.event.pull_request.draft == false
     name: Run Integration Tests
-    # The suites fund and mine on a local regtest stack. macOS runners cannot run Docker, so this
-    # runs on Namespace, which hosts the stack on a Linux instance (see namespace-stack.sh).
-    runs-on: namespace-profile-mac
+    runs-on: macos-26
     timeout-minutes: 60
-    permissions:
-      contents: read
-      packages: read
-      pull-requests: read
-      checks: write
-      actions: write
     env:
       DERIVED_DATA: ${{ github.workspace }}/DerivedData
       RESULT_BUNDLE: ${{ github.workspace }}/IntegrationTests.xcresult
@@ -64,47 +28,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.merge_commit || (inputs.pr && format('refs/pull/{0}/merge', inputs.pr)) || '' }}
-
-      - name: Checkout retarget reporter
-        if: inputs.retarget_run != ''
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.workflow_sha }}
-          path: retarget-ci
-          sparse-checkout: .github/scripts
-      - name: Report retarget tests running
-        if: inputs.retarget_run != ''
-        uses: actions/github-script@v9
-        env:
-          RETARGET_CHECK_RUN_ID: ${{ inputs.check_run_id }}
-          RETARGET_RUN: ${{ inputs.retarget_run }}
-          RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
-          RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
-          RETARGET_PR: ${{ inputs.pr }}
-          RETARGET_HELPER_REF: ${{ inputs.helper_ref }}
-        with:
-          script: |
-            const {reportRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
-            await reportRetargetResult({github, context, core, name: 'Run Integration Tests', phase: 'start'});
-
-      - name: Checkout bitkit-docker
-        uses: actions/checkout@v7
-        with:
-          repository: synonymdev/bitkit-docker
-          ref: main
-          path: bitkit-docker
-
-      - name: Start local regtest
-        run: |
-          .github/scripts/namespace-stack.sh up bitkit-docker
-          .github/scripts/namespace-stack.sh forward 43782 60001
-          (cd bitkit-docker && docker compose up -d bitcoind bitcoinsetup electrs)
-
-      # A separate step: `namespace-stack.sh up` puts its `docker exec` wrapper on the PATH for later steps only.
-      - name: Mine initial blocks
-        timeout-minutes: 5
-        run: until docker exec bitcoin bitcoin-cli -regtest -rpcport=43782 -rpcuser=polaruser -rpcpassword=polarpass -generate 101; do sleep 2; done
+          persist-credentials: false
 
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -150,38 +74,32 @@ jobs:
             | xcbeautify
           echo "✅ Build finished at $(date)"
 
-      - name: Wait for electrum server
-        run: |
-          for _ in $(seq 1 60); do
-            python3 -c 'import socket; s = socket.create_connection(("127.0.0.1", 60001), 10); s.sendall(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"blockchain.headers.subscribe\",\"params\":[]}\n"); assert b"height" in s.recv(4096)' && exit 0
-            sleep 5
-          done
-          exit 1
-
       - name: Run integration tests
+        id: xctest
         timeout-minutes: 25
+        env:
+          TEST_RUNNER_BLOCKTANK_REGTEST_AUTH: ${{ secrets.BLOCKTANK_REGTEST_AUTH }}
+          TEST_RUNNER_INTEGRATION_REGTEST_API_URL: ${{ vars.INTEGRATION_REGTEST_API_URL }}
+          TEST_RUNNER_INTEGRATION_REGTEST_ELECTRUM_URL: ${{ vars.INTEGRATION_REGTEST_ELECTRUM_URL }}
+          INTEGRATION_REGTEST_AUTH: ${{ secrets.INTEGRATION_REGTEST_AUTH }}
+          TEST_RUNNER_BITKIT_DESTRUCTIVE_TESTS: "1"
+          TEST_RUNNER_E2E: "false"
         run: |
-          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
-          echo "⏱️  Starting integration tests at $(date)"
+          if [[ -n "$TEST_RUNNER_INTEGRATION_REGTEST_API_URL" || -n "$TEST_RUNNER_INTEGRATION_REGTEST_ELECTRUM_URL" ]]; then
+            if [[ -z "$TEST_RUNNER_INTEGRATION_REGTEST_API_URL" || -z "$TEST_RUNNER_INTEGRATION_REGTEST_ELECTRUM_URL" ]]; then
+              echo "::error::Configure the integration regtest API and Electrum URLs together"
+              exit 1
+            fi
+            export TEST_RUNNER_BLOCKTANK_REGTEST_AUTH="$INTEGRATION_REGTEST_AUTH"
+          fi
+          if [[ -z "$TEST_RUNNER_BLOCKTANK_REGTEST_AUTH" ]]; then
+            echo "::error::The selected regtest backend is missing its CI auth secret"
+            exit 1
+          fi
 
-          # RNMigrationCleanupTests deletes the real ~/Documents/mmkv and ~/Documents/ldk, so it
-          # skips itself unless this is set. This lane runs on a throwaway CI simulator; the unit
-          # lane does not, and must not run it.
-          #
-          # TEST_RUNNER_E2E=true points the wallet's electrum at the local stack (Env.electrumServerUrl),
-          # the chain LocalRegtest funds and mines on.
-          #
-          # The TEST_RUNNER_ prefix is required: xcodebuild does not pass the invoking shell's
-          # environment to the simulator-hosted runner, only variables named TEST_RUNNER_<VAR>,
-          # which it forwards with the prefix stripped. Without it the guard never sees the
-          # variable, every test in the suite skips, and the lane still reports green.
-          #
-          # The live regtest suites are flaky on CI runners, so a failed test is retried once on
-          # its own instead of rebuilding and rerunning the whole suite.
-          #
-          # A test that runs past 10 minutes fails instead of stalling the step. Most tests take
-          # under 2 minutes; the first one can take about 5 while staging VSS is slow.
-          set -o pipefail && TEST_RUNNER_BITKIT_DESTRUCTIVE_TESTS=1 TEST_RUNNER_E2E=true xcodebuild test-without-building \
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+          set -o pipefail
+          xcodebuild test-without-building \
             -scheme Bitkit \
             -destination "$DESTINATION" \
             -derivedDataPath "$DERIVED_DATA" \
@@ -192,8 +110,6 @@ jobs:
             -skipPackageUpdates \
             -enableCodeCoverage NO \
             -parallel-testing-enabled NO \
-            -retry-tests-on-failure \
-            -test-iterations 2 \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 600 \
             -maximum-test-execution-time-allowance 600 \
@@ -201,44 +117,23 @@ jobs:
             -only-testing:BitkitTests/AddressTypeIntegrationTests \
             -only-testing:BitkitTests/RNMigrationCleanupTests \
             | xcbeautify --report junit
-          echo "✅ Integration tests completed at $(date)"
 
-      - name: Upload test results
-        uses: actions/upload-artifact@v7
-        if: success() || failure()
-        with:
-          name: integration-test-results
-          path: ${{ env.RESULT_BUNDLE }}
+      - name: Verify all 28 test results
+        if: always() && steps.xctest.outcome != 'skipped'
+        run: |
+          xcrun xcresulttool get test-results summary --path "$RESULT_BUNDLE" > "$RUNNER_TEMP/integration-summary.json"
+          python3 - "$RUNNER_TEMP/integration-summary.json" <<'PYTHON'
+          import json
+          import sys
 
-      - name: Tear down regtest stack
-        if: always()
-        run: .github/scripts/namespace-stack.sh down
+          with open(sys.argv[1]) as report:
+              summary = json.load(report)
 
-  report-retarget-result:
-    name: Report retarget integration result
-    if: always() && inputs.retarget_run != ''
-    needs: [test]
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      pull-requests: read
-      checks: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.workflow_sha }}
-          path: retarget-ci
-          sparse-checkout: .github/scripts
-      - uses: actions/github-script@v9
-        env:
-          RETARGET_CHECK_RUN_ID: ${{ inputs.check_run_id }}
-          RETARGET_RUN: ${{ inputs.retarget_run }}
-          RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
-          RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
-          RETARGET_PR: ${{ inputs.pr }}
-          RETARGET_HELPER_REF: ${{ inputs.helper_ref }}
-          TEST_RESULT: ${{ needs.test.result }}
-        with:
-          script: |
-            const {reportRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
-            await reportRetargetResult({github, context, core, name: 'Run Integration Tests', phase: 'complete', result: process.env.TEST_RESULT});
+          total = summary["totalTestCount"]
+          passed = summary["passedTests"]
+          failed = summary["failedTests"]
+          skipped = summary["skippedTests"]
+          print(f"XCTest results: {passed} passed, {failed} failed, {skipped} skipped, {total} total.")
+          if (total, passed, failed, skipped) != (28, 28, 0, 0):
+              raise SystemExit("Expected 28 passing tests with no failures or skips.")
+          PYTHON
