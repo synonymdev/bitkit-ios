@@ -101,6 +101,18 @@ final class PaykitReceiptServiceTests: XCTestCase {
         XCTAssertTrue(match([unreadable], onchain: [later]).isEmpty)
     }
 
+    func testLightningProofForAReceiveFromBeforeTheRequestIsNotReceipted() throws {
+        let request = try payeeRequest(
+            proofs: [proof(type: "bitcoin-bolt11-preimage", data: Self.preimage, endpoint: Self.bolt11Method)],
+            proposedAt: "2026-11-14T12:00:00.123456789+00:00"
+        )
+        let earlier = PaykitRecordedReceive.bitcoin(Self.hash, rail: .lightning, sats: 1, receivedAt: 1_794_657_600 - 3600)
+        let later = PaykitRecordedReceive.bitcoin(Self.hash, rail: .lightning, sats: 1, receivedAt: 1_794_657_600 + 60)
+
+        XCTAssertTrue(match([request], lightning: [earlier]).isEmpty)
+        XCTAssertEqual(match([request], lightning: [later]).count, 1)
+    }
+
     func testClaimOnAPaymentTheWalletAttributesToAnotherContactIsIgnored() throws {
         let claim = try proof(type: "bitcoin-onchain-txid", data: Self.txid, endpoint: Self.onchainMethod)
         let payer = try payeeRequest(proofs: [claim])
@@ -256,6 +268,19 @@ final class PaykitReceiptServiceTests: XCTestCase {
         XCTAssertEqual(service.statuses, [Self.hash: .sent])
     }
 
+    func testRetryThatCannotReadIssuedReceiptsFails() async throws {
+        let sdk = try FakeReceiptSdk(requests: [lightningPaidRequest()])
+        sdk.issueFails = true
+        let service = makeService(sdk)
+        await service.reconcile()
+        XCTAssertEqual(service.statuses, [Self.hash: .failed])
+
+        sdk.readFails = true
+        await service.retry(paymentId: Self.hash)
+
+        XCTAssertEqual(service.statuses, [Self.hash: .failed])
+    }
+
     func testDeliveryIsKeptPerIdentity() {
         delivery.record(identity: Self.seller, report: OutboundPrivateSendReport(
             attempted: [7], sent: [7], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: []
@@ -408,6 +433,7 @@ private final class FakeReceiptSdk: PaykitReceiptSdk, @unchecked Sendable {
     enum DrainOutcome { case sent, failed, none, unreachable }
 
     var issueFails = false
+    var readFails = false
     var drainOutcome = DrainOutcome.sent
     private(set) var issuedCount = 0
     private(set) var issuedIdentities: [String] = []
@@ -452,7 +478,10 @@ private final class FakeReceiptSdk: PaykitReceiptSdk, @unchecked Sendable {
     }
 
     func issuedReceipts(priority _: PaykitSdkOperationLock.Priority) async throws -> [ReceiptIssuanceView] {
-        Array(issued.values)
+        if readFails {
+            throw URLError(.notConnectedToInternet)
+        }
+        return Array(issued.values)
     }
 
     func processOutboundPrivateMessages(

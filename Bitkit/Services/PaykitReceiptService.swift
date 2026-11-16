@@ -196,7 +196,9 @@ enum PaykitReceiptMatcher {
         }
         guard let receivedAt = receive.receivedAt, let recordedAt = record.proposalRecordedAt else { return true }
         guard let proposedAt = PaykitPaymentRequest.parseDate(recordedAt) else { return false }
-        return Date(timeIntervalSince1970: TimeInterval(receivedAt)) >= proposedAt.addingTimeInterval(-receiveTimeTolerance)
+        // Lightning receive and request times both come from this device's clock; only block time can lag.
+        let tolerance = receive.rail == .lightning ? 0 : receiveTimeTolerance
+        return Date(timeIntervalSince1970: TimeInterval(receivedAt)) >= proposedAt.addingTimeInterval(-tolerance)
     }
 
     private static func isReceiptable(_ record: Paykit.PaymentRequestRecord) -> Bool {
@@ -291,7 +293,9 @@ final class PaykitReceiptService {
             guard let candidate = self.candidates[paymentId.lowercased()], let identity = self.identity else { return }
             self.statuses[candidate.receive.statusKey] = .sending
             await self.issue(candidate, identity: identity)
-            await self.publish(Array(self.candidates.values), identity: identity)
+            if await !self.publish(Array(self.candidates.values), identity: identity) {
+                self.statuses[candidate.receive.statusKey] = .failed
+            }
         }
     }
 
@@ -370,13 +374,15 @@ final class PaykitReceiptService {
         }
     }
 
-    private func publish(_ found: [PaykitReceiptCandidate], identity: String) async {
-        guard var views = await readIssuedViews() else { return }
+    /// Returns false when it could not read the issued receipts and left the statuses as they were.
+    @discardableResult
+    private func publish(_ found: [PaykitReceiptCandidate], identity: String) async -> Bool {
+        guard var views = await readIssuedViews() else { return false }
         let undelivered = found.filter { deliveryOf($0, views, identity: identity) != true }
         var unreachable: [String] = []
         if !undelivered.isEmpty {
             unreachable = await drain(undelivered, views: views, identity: identity)
-            guard let drained = await readIssuedViews() else { return }
+            guard let drained = await readIssuedViews() else { return false }
             views = drained
         }
         var updated: [String: PaykitReceiptStatus] = [:]
@@ -393,6 +399,7 @@ final class PaykitReceiptService {
             }
         }
         statuses = updated
+        return true
     }
 
     private func deliveryOf(
