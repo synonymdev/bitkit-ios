@@ -1,0 +1,22 @@
+<journey name="cold start activity">
+  <description>
+    Verifies that Home's recent transactions and All Activity remain consistent across cold
+    starts. Requires an onboarded English-language wallet with at least four visible transactions
+    and space for at least one recent activity row on Home. Use a wallet with an outgoing RBF boost
+    if available, and note the replacement and original transactions before starting. This is an
+    iOS-specific cache regression: the duplicate full-history scans are proved by
+    BoostTxIdsCacheTests.swift, not inferred from screen timing. Those tests also inject refresh
+    failures to verify the last successful value is retained, without allowing a wallet wipe or
+    invalidation to restore old data. No new transactions should arrive during the comparison.
+  </description>
+  <actions>
+    <action>Launch Bitkit, unlock if required, and verify Home (id "HomeScrollView") shows at least one recent activity row (id "ActivityShort-0")</action>
+    <action>Note the amounts, directions, and order of the visible recent transactions</action>
+    <action>Stop the app with `xcodebuildmcp simulator stop --bundle-id to.bitkit` and relaunch with `xcodebuildmcp simulator launch-app --bundle-id to.bitkit`</action>
+    <action>Unlock if required and wait for the recent transactions to appear on Home</action>
+    <action>Verify the recent transactions have the same amounts, directions, and order as before the cold start</action>
+    <action>Tap "Show All" (id "ActivityShowAll") and verify the newest transactions match Home's recent transactions in the same order</action>
+    <action>If the wallet has the noted outgoing RBF boost, verify its replacement is listed and its replaced original is absent</action>
+    <action>Navigate back to Home, then tap "Show All" again and verify the same transaction list appears</action>
+  </actions>
+</journey>

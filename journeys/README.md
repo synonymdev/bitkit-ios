@@ -256,6 +256,11 @@ required to run the suite.
 
 When you port an Android feature, port its journeys too — see the Journeys section in `AGENTS.md`.
 
+`boost/rbf-own-send.xml` checks the replacement before checking the activity list on both platforms.
+iOS syncs the wallet and list before showing Boost success and returning Home. Open the row on the
+first actionable Home screen, with no settling delay. Read the payment amount from
+`ActivityAmount`, since the displayed debit can include the fee.
+
 `home/timed-reminders-do-not-interrupt.xml` pairs with synonymdev/bitkit-android#1575. Use a
 PIN-disabled wallet and an eligible reminder; the backup reminder works without USDT configuration.
 The file name, journey name and actions match Android. Android resumes Home after permission prompts
@@ -317,6 +322,9 @@ the same file on both sides: `xcodebuildmcp` here, the `android` CLI against a `
 checkout there (`android layout` is the `snapshot-ui` equivalent). A disagreement is worth writing
 down — as an intentional platform difference, or as something to look into — but it is not by itself
 a bug report. `AGENTS.md` has the commands.
+
+`security/logging-after-wallet-wipe.xml` is iOS-only. It covers the iOS logger recreating its
+session log after a regtest wallet wipe deletes the log directory in the same app process.
 
 `security/pin-attempts-wipe-gate.xml` is new on both platforms at once: synonymdev/bitkit-android#1753
 carries the same file name, journey name and actions, changing only the identifiers and commands the
