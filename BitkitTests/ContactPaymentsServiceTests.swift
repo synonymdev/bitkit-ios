@@ -1655,6 +1655,36 @@ final class ContactPaymentsServiceTests: XCTestCase {
         XCTAssertTrue(known.contains(rememberedKey))
     }
 
+    /// Paykit UI turned off in Dev Settings during private setup keeps public sharing off.
+    func testSetupSkipsPublicPaymentsWhenPaykitUIIsDisabledDuringPrivateSetup() async throws {
+        try await withIsolatedDefaultsAsync { defaults in
+            let profile = signedInProfile(ownerKey: "pubky-current")
+            let operations = OperationsSpy()
+            let reachedHold = expectation(description: "Private setup syncing capability")
+            let (gate, release) = AsyncStream<Void>.makeStream()
+            defer { release.finish() }
+            operations.syncPrivateCapability = { _, _ in
+                reachedHold.fulfill()
+                for await _ in gate {}
+            }
+
+            let setup = Task {
+                await ContactPaymentsService.ensureEnabled(
+                    pubkyProfile: profile, contactsManager: self.loadedContacts(),
+                    operations: operations.makeOperations(defaults: defaults), defaults: defaults,
+                    privatePaymentAccess: { _ in true }
+                )
+            }
+            await fulfillment(of: [reachedHold], timeout: 2)
+            defaults.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
+            release.finish()
+            await setup.value
+
+            XCTAssertFalse(operations.calls.contains("public:true"))
+            XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+        }
+    }
+
     /// The foreground check leaves payments alone when both modes are already on.
     func testEnsureEnabledDoesNothingWhenBothModesAreOn() async throws {
         try await withIsolatedDefaultsAsync { defaults in

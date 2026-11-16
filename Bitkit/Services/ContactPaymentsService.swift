@@ -268,6 +268,9 @@ enum ContactPaymentsService {
 
         // Public sharing belongs to the session this run started for; a replaced or ended session gets its own run.
         guard !Task.isCancelled, session != nil, pubkyProfile.currentSession == session else { return }
+        // A Paykit UI disable during private setup wins; one that starts later supersedes the public change itself.
+        let isPaykitUIEnabled = defaults.object(forKey: PaykitFeatureFlags.uiEnabledKey) as? Bool ?? PaykitFeatureFlags.uiEnabledByDefault
+        guard isPaykitUIEnabled else { return }
         if !onlyWhenOff || !defaults.bool(forKey: PublicPaykitService.publishingEnabledKey) {
             do {
                 try await setPublicEnabled(true, pubkyProfile: pubkyProfile, operations: operations, defaults: defaults)
