@@ -123,6 +123,8 @@ jobs:
           ')
           echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
           echo "DESTINATION=platform=iOS Simulator,id=$udid" >> "$GITHUB_ENV"
+          xcrun simctl shutdown all || true
+          xcrun simctl erase "$udid"
           xcrun simctl boot "$udid"
 
       - name: Install xcbeautify
