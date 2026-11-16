@@ -125,6 +125,27 @@ final class PaykitReceiptServiceTests: XCTestCase {
         XCTAssertEqual(candidate.receive.amount.atomic, 10000)
     }
 
+    func testOneTransactionPayingTwoRequestsReceiptsEach() throws {
+        let claim = try proof(type: "bitcoin-onchain-txid", data: Self.txid, endpoint: Self.onchainMethod)
+        let first = try payeeRequest(proofs: [claim], endpoints: [Self.onchainMethod: "{\"value\":\"\(Self.address)\"}"])
+        let second = try payeeRequest(
+            requestId: "9a8b7c6d-1d2e-4f5a-8b6c-7d8e9f0a1b2c", proofs: [claim],
+            endpoints: [Self.onchainMethod: "{\"value\":\"bcrt1qsecond\"}"]
+        )
+        let overlapping = try payeeRequest(
+            requestId: "8a8b7c6d-1d2e-4f5a-8b6c-7d8e9f0a1b2c", proofs: [claim],
+            endpoints: [Self.onchainMethod: "{\"value\":\"\(Self.address)\"}"]
+        )
+        let batch = Self.onchainReceive(
+            sats: 40000, contact: Self.buyer, outputs: [Self.address.lowercased(): 10000, "bcrt1qsecond": 30000]
+        )
+
+        let amounts = match([first, second], onchain: [batch]).map(\.receive.amount.atomic).sorted()
+
+        XCTAssertEqual(amounts, [10000, 30000])
+        XCTAssertEqual(match([first, overlapping], onchain: [batch]).count, 0)
+    }
+
     func testOnchainReceiptIsWithheldWhenItsOutputsAreUnknown() throws {
         let request = try payeeRequest(endpoints: [Self.onchainMethod: "{\"value\":\"\(Self.address)\"}"])
         var unknown = Self.onchainReceive(sats: 5000)

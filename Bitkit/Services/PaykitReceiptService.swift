@@ -11,6 +11,15 @@ enum PaykitReceiptStatus: Equatable {
     case sending
     case sent
     case failed
+
+    /// The status a payment shows when it carries several receipts: any failure, else any still sending.
+    static func combined(_ first: Self?, _ second: Self) -> Self {
+        guard let first else { return second }
+        if first == .failed || second == .failed {
+            return .failed
+        }
+        return first == .sending || second == .sending ? .sending : .sent
+    }
 }
 
 enum PaykitReceiptRail: Equatable {
@@ -29,6 +38,8 @@ struct PaykitRecordedReceive: Equatable {
     var address: String?
     /// Sats an on-chain receive paid to each of this wallet's addresses, keyed lowercase; nil when unknown.
     var outputs: [String: UInt64]?
+    /// The addresses whose outputs this receive counts toward a request, once narrowed; empty for other rails.
+    var countedAddresses: Set<String> = []
     /// What the activity row and received sheet know the payment by: its hash, txid or USDT transfer id.
     var statusKey: String
     /// When the wallet recorded the receive, in seconds since the epoch.
@@ -63,10 +74,11 @@ struct PaykitRecordedReceive: Equatable {
     func paid(to addresses: [String]) -> Self? {
         guard rail == .onchain else { return self }
         guard let outputs else { return nil }
-        let sats = Set(addresses.map { $0.lowercased() }).reduce(UInt64(0)) { $0 + (outputs[$1] ?? 0) }
-        guard sats > 0 else { return nil }
+        let counted = Set(addresses.map { $0.lowercased() }).filter { (outputs[$0] ?? 0) > 0 }
+        guard !counted.isEmpty else { return nil }
         var narrowed = self
-        narrowed.amount = PaykitAmount(asset: .btc, atomic: sats)
+        narrowed.amount = PaykitAmount(asset: .btc, atomic: counted.reduce(UInt64(0)) { $0 + (outputs[$1] ?? 0) })
+        narrowed.countedAddresses = counted
         return narrowed
     }
 
@@ -195,7 +207,18 @@ enum PaykitReceiptMatcher {
             seen.insert([$0.counterparty, $0.paymentRequestId, $0.billingPeriod?.startsAt ?? "", $0.receive.paymentId].joined(separator: "|"))
                 .inserted
         }
-        return Dictionary(grouping: unique, by: \.receive.paymentId).values.compactMap { $0.count == 1 ? $0.first : nil }
+        // Requests that claim the same payment are left alone; one transaction paying separate outputs to each of
+        // several requests receipts each one.
+        return Dictionary(grouping: unique, by: \.receive.paymentId).values.flatMap { claims in
+            claims.indices.compactMap { index in
+                let receive = claims[index].receive
+                let overlaps = claims.indices.contains { other in
+                    other != index &&
+                        (receive.countedAddresses.isEmpty || !receive.countedAddresses.isDisjoint(with: claims[other].receive.countedAddresses))
+                }
+                return overlaps ? nil : claims[index]
+            }
+        }
     }
 
     /// A UUID v4 derived from the receipt's request and payment, as Paykit requires a v4 Receipt ID.
@@ -305,7 +328,7 @@ final class PaykitReceiptService {
     /// Confirmed transactions do not change, so their outputs are read once per launch.
     @ObservationIgnored private var outputsByTxid: [String: [String: UInt64]] = [:]
     @ObservationIgnored private var attemptedReceiptIds = Set<String>()
-    @ObservationIgnored private var candidates: [String: PaykitReceiptCandidate] = [:]
+    @ObservationIgnored private var candidates: [String: [PaykitReceiptCandidate]] = [:]
     @ObservationIgnored private var identity: String?
     @ObservationIgnored private var running: Task<Void, Never>?
 
@@ -338,11 +361,14 @@ final class PaykitReceiptService {
 
     func retry(paymentId: String) async {
         await serialized {
-            guard let candidate = self.candidates[paymentId.lowercased()], let identity = self.identity else { return }
-            self.statuses[candidate.receive.statusKey] = .sending
-            await self.issue(candidate, identity: identity)
-            if await !self.publish(Array(self.candidates.values), identity: identity) {
-                self.statuses[candidate.receive.statusKey] = .failed
+            let key = paymentId.lowercased()
+            guard let receipts = self.candidates[key], let identity = self.identity else { return }
+            self.statuses[key] = .sending
+            for candidate in receipts {
+                await self.issue(candidate, identity: identity)
+            }
+            if await !self.publish(self.candidates.values.flatMap(\.self), identity: identity) {
+                self.statuses[key] = .failed
             }
         }
     }
@@ -392,7 +418,7 @@ final class PaykitReceiptService {
             } else {
                 found = []
             }
-            candidates = Dictionary(found.map { ($0.receive.statusKey, $0) }, uniquingKeysWith: { first, _ in first })
+            candidates = Dictionary(grouping: found, by: \.receive.statusKey)
             guard !found.isEmpty else {
                 statuses = [:]
                 return
@@ -437,7 +463,7 @@ final class PaykitReceiptService {
         var updated: [String: PaykitReceiptStatus] = [:]
         for candidate in found {
             let sent = deliveryOf(candidate, views, identity: identity)
-            updated[candidate.receive.statusKey] = if sent == true {
+            let status: PaykitReceiptStatus = if sent == true {
                 .sent
             } else if views[candidate.receiptId]?.status != .accessQueued || sent == false {
                 .failed
@@ -446,6 +472,7 @@ final class PaykitReceiptService {
             } else {
                 .sending
             }
+            updated[candidate.receive.statusKey] = .combined(updated[candidate.receive.statusKey], status)
         }
         statuses = updated
         return true
