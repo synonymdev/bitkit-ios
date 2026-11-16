@@ -57,6 +57,19 @@ final class SpendingHwSignTests: XCTestCase {
         XCTAssertEqual(record, retainedTransfer())
     }
 
+    func testNewTransferAfterConsentWarnsAgain() async throws {
+        let service = HwRetainedSendService.inMemory()
+        try await service.retain(retainedTransfer())
+        let coordinator = HwSendCoordinator(walletId: walletId, retainedSends: service)
+        coordinator.consentToNewSignature(address: depositAddress, sats: 50000)
+
+        coordinator.selectWallet(walletId, initialAvailableSats: 0, showsLoading: true)
+        coordinator.endRetainedSendConsent()
+
+        let step = await signingStep(coordinator, sats: 50000)
+        XCTAssertEqual(step, .confirmNewSignature)
+    }
+
     func testRepeatOfAnObservedTransferWarnsBeforeSigning() async throws {
         let service = HwRetainedSendService.inMemory()
         try await service.retain(retainedTransfer(observed: true))

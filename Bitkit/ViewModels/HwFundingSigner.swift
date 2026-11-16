@@ -961,7 +961,9 @@ final class HwSendCoordinator {
         return true
     }
 
-    private func endRetainedSendConsent() {
+    /// Ends the consent and any later regrant of it, as leaving the sign flow does. Unlike `cancel()`, it keeps this screen's
+    /// held bytes and in-flight work, so a new transfer can end the consent of an earlier one that was left without a cancel.
+    func endRetainedSendConsent() {
         retainedSendConsent = nil
         isRetainedSendConsentEnded = true
     }

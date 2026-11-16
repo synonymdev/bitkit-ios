@@ -153,6 +153,8 @@ struct SpendingAmountHw: View {
     private func loadAvailable() async {
         isPricingFailed = false
         flow.hwSend.selectWallet(walletId, initialAvailableSats: 0, showsLoading: true)
+        // A new transfer starts here. Learn More can leave the sign screen without cancelling it, so an earlier consent ends here.
+        flow.hwSend.endRetainedSendConsent()
         do {
             let address = try await SparkManager.shared.depositAddress()
             retainedRetrySats = await flow.hwSend.retainedRetrySats(address: address, hasIncomingRequest: false)
