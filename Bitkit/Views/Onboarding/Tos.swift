@@ -511,7 +511,7 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "6.5.1 Public payments are turned on when you create or connect a Pubky profile. An update of the Bitkit Wallet may also turn them on for a Pubky profile you set up before that update. They stay on while you have a Pubky profile in the Bitkit Wallet. To stop them, delete your Pubky profile."
+                        "6.5.1 Public payments are turned on when you create or connect a Pubky profile. An update of the Bitkit Wallet may also turn them on for a Pubky profile you set up before that update. They stay on while you have a Pubky profile in the Bitkit Wallet. To stop them, delete your Pubky profile or disconnect it from the Bitkit Wallet."
                     )
 
                     Text(
@@ -519,7 +519,7 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "6.5.3 Deleting your Pubky profile stops the Bitkit Wallet from publishing new payment details, and the Bitkit Wallet removes the details it published where the homeserver allows it. Synonym cannot recall payment details that other Persons have already read or stored."
+                        "6.5.3 Deleting your Pubky profile or disconnecting it from the Bitkit Wallet stops the Bitkit Wallet from publishing new payment details, and the Bitkit Wallet removes the details it published where the homeserver allows it. Synonym cannot recall payment details that other Persons have already read or stored."
                     )
 
                     Text(
