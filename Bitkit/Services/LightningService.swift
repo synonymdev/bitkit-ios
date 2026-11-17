@@ -177,6 +177,9 @@ class LightningService: NodeLifecycleService {
     /// The rail whose payments the duplicate-payment check reads, kept while an emergency exit takes Spark off
     /// Lightning: an invoice Spark paid or is paying is never paid again over a channel.
     weak var channelFreePaymentHistory: ChannelFreeLightningRail?
+    /// Writes the activity of a rail send in doubt once its hold ends at its invoice's expiry, as the failure of an
+    /// earlier attempt that came meanwhile left the row pending.
+    var railSendHoldExpired: ((String) async -> Void)?
     var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
     var onchainTransactionReceived: (@Sendable (String) async -> Void)?
     typealias OnchainActivityCompletion = @MainActor () async -> Void
@@ -1791,7 +1794,16 @@ class LightningService: NodeLifecycleService {
         // can still fail to resume it, so only an expired invoice shows a missing send will never go out.
         guard let expiresAt = uncertain.expiresAt, Int(now().timeIntervalSince1970) >= expiresAt else { return false }
         endRailSendUncertainty(paymentHash: hash)
+        await railSendHoldExpired?(hash)
         return true
+    }
+
+    /// Ends the holds of rail sends in doubt whose invoice expired since a sync reached the rail.
+    func endExpiredRailSendUncertainties() async {
+        let hashes = eventCallbackLock.withLock { Array(uncertainRailSendFailedAt().keys) }
+        for hash in hashes {
+            _ = await railSyncedSinceUncertainSend(paymentHash: hash)
+        }
     }
 
     private static func pendingDuplicate(paymentHash: String?) -> NodeError {
