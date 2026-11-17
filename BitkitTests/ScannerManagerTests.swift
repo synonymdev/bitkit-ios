@@ -695,6 +695,49 @@ extension ScannerManagerTests {
         XCTAssertNotNil(app.scannedOnchainInvoice)
     }
 
+    func testBluetoothRequestCannotRouteWhileAnNfcReadIsOpen() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        let reader = HeldNfcReader()
+        let scanner = ScannerManager(nfcReader: reader) {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { _ in decoded })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        var nfcRoutes: [SendRoute?] = []
+        let nfcTask = Task { await scanner.handleSendNfcRead { nfcRoutes.append($0) } }
+        await fulfillment(of: [reader.started], timeout: 2)
+
+        var nearbyRoutes: [SendRoute?] = []
+        let wasTaken = await scanner.handleSendNearbyRequest("bitcoin:bcrt1qnearbyrequest") { nearbyRoutes.append($0) }
+        reader.finish(.success(paymentURI))
+        await nfcTask.value
+
+        XCTAssertFalse(wasTaken, "The Bluetooth request must wait for the open NFC read")
+        XCTAssertTrue(nearbyRoutes.allSatisfy { $0 == nil })
+        XCTAssertEqual(nfcRoutes, [.amount])
+    }
+
+    func testFailedNfcReadReleasesTheScanLock() async {
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        let scanner = ScannerManager(nfcReader: FakeNfcReader(.failure(.cancelled))) {}
+        let app = configure(scanner, sheets: sheets)
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        var nfcRoutes: [SendRoute?] = []
+        await scanner.handleSendNfcRead { nfcRoutes.append($0) }
+
+        let wasTaken = await scanner.handleSendNearbyRequest(paymentURI) { _ in }
+
+        XCTAssertEqual(nfcRoutes, [nil])
+        XCTAssertTrue(wasTaken)
+    }
+
     func testNfcErrorMessages() {
         XCTAssertEqual(NfcReadError.noPaymentRequest.message, t("other__nfc_error_text"))
         XCTAssertEqual(NfcReadError.multiplePaymentRequests.message, t("other__nfc_error_multiple"))
@@ -723,5 +766,25 @@ private final class FakeNfcReader: NfcPaymentReading {
     func readPaymentRequest(alertMessage: String) async throws -> String {
         alertMessages.append(alertMessage)
         return try result.get()
+    }
+}
+
+/// Holds the NFC read open until the test finishes it, like the system NFC sheet waiting for a tag.
+@MainActor
+private final class HeldNfcReader: NfcPaymentReading {
+    var isAvailable = true
+    let started = XCTestExpectation(description: "NFC read open")
+    private var continuation: CheckedContinuation<String, Error>?
+
+    func readPaymentRequest(alertMessage _: String) async throws -> String {
+        try await withCheckedThrowingContinuation {
+            continuation = $0
+            started.fulfill()
+        }
+    }
+
+    func finish(_ result: Result<String, NfcReadError>) {
+        continuation?.resume(with: result)
+        continuation = nil
     }
 }

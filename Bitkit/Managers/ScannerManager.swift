@@ -287,9 +287,12 @@ class ScannerManager: ObservableObject {
     }
 
     /// Reads a payment request over NFC and handles it exactly like a scanned QR code.
+    /// The read holds the scan lock from the start, so a Bluetooth request can't route while the NFC sheet is up.
     func handleNfcRead(context: ScannerContext, isCurrent: () -> Bool = { true }) async {
-        guard let uri = await readNfcPaymentRequest() else { return }
-        await handleScan(uri, context: context, isCurrent: isCurrent)
+        guard isCurrent(), beginUserScan() else { return }
+        defer { isHandlingScan = false }
+        guard let uri = await readNfcPaymentRequest(), isCurrent() else { return }
+        await processScan(uri, context: context, isCurrent: isCurrent)
     }
 
     /// Reads a payment request over NFC from the Send sheet and resolves it like a scanned QR code.
@@ -298,11 +301,16 @@ class ScannerManager: ObservableObject {
         isCurrent: () -> Bool = { true },
         completion: @escaping (SendRoute?) -> Void
     ) async {
-        guard let uri = await readNfcPaymentRequest() else {
+        guard isCurrent(), beginUserScan() else {
             completion(nil)
             return
         }
-        await handleSendScan(uri, scope: scope, isCurrent: isCurrent, completion: completion)
+        defer { isHandlingScan = false }
+        guard let uri = await readNfcPaymentRequest(), isCurrent() else {
+            completion(nil)
+            return
+        }
+        await processSendScan(uri, scope: scope, isCurrent: isCurrent, completion: completion)
     }
 
     /// Schemes accepted from Bluetooth: payment requests only. Unlike a camera or NFC read, a Bluetooth request can
