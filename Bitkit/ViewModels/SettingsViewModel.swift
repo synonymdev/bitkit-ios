@@ -1047,6 +1047,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         readClipboard = defaults.bool(forKey: "readClipboard")
         warnWhenSendingOver100 = defaults.bool(forKey: "warnWhenSendingOver100")
         reloadQuickpaySettingsFromDefaults()
+        enableNearbyPayments = defaults.object(forKey: "enableNearbyPayments") as? Bool ?? true
         enableNotifications = defaults.bool(forKey: "enableNotifications")
         requirePinForPayments = defaults.bool(forKey: "requirePinForPayments")
         useBiometrics = defaults.bool(forKey: "useBiometrics")
