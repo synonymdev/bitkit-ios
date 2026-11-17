@@ -464,10 +464,20 @@ class BackupService {
                 case .pending:
                     throw SparkExitBackupError.restorePending
                 case .rejected:
+                    var isReplacedRemotely = false
                     if let staged = await stagedSparkExitState() {
-                        try await setAsideRejectedSparkExit(rejectedSparkExitCopy(staged: staged))
+                        let copy = try await rejectedSparkExitCopy(staged: staged)
+                        try await setAsideRejectedSparkExit(copy.data)
+                        isReplacedRemotely = copy.isReplacedRemotely
                     }
                     await discardStagedSparkExit()
+                    // Another device replaced the backup with exit data this one never read, so it is restored before
+                    // anything replaces it.
+                    if isReplacedRemotely {
+                        defaults.set(true, forKey: Self.sparkExitRestorePendingKey)
+                        await restoreSparkExit()
+                        throw SparkExitBackupError.restorePending
+                    }
                 case .nothingStaged, .imported:
                     break
                 }
@@ -1520,6 +1530,8 @@ class BackupService {
                     // A layout this app can't read never becomes readable here, so it is kept apart for an app that can.
                     Logger.warn("Unreadable '\(BackupCategory.sparkExit.rawValue)' backup: \(error)", context: "BackupService")
                     try await setAsideRejectedSparkExit(data)
+                    // Another device may have written a backup meanwhile; it is read before anything replaces it.
+                    guard try await fetchBackup(BackupCategory.sparkExit.rawValue) == data else { return }
                     defaults.removeObject(forKey: Self.sparkExitRestorePendingKey)
                     return
                 }
@@ -1535,19 +1547,20 @@ class BackupService {
     }
 
     /// The remote exit backup when it still holds the staged data, byte for byte as it came; otherwise, as another device
-    /// may have replaced it since, the staged data in a backup of its own.
-    private func rejectedSparkExitCopy(staged: String) async throws -> Data {
+    /// may have replaced it since, the staged data in a backup of its own, and whether the remote holds other data.
+    private func rejectedSparkExitCopy(staged: String) async throws -> (data: Data, isReplacedRemotely: Bool) {
         let remote = try await fetchBackup(BackupCategory.sparkExit.rawValue)
         let remoteBackup = remote.flatMap { try? JSONDecoder().decode(SparkExitBackupV1.self, from: $0) }
         if let remote, remoteBackup?.exitState == staged {
-            return remote
+            return (remote, false)
         }
-        return try JSONEncoder().encode(SparkExitBackupV1(
+        let copy = try JSONEncoder().encode(SparkExitBackupV1(
             version: 1,
             createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
             network: remoteBackup?.network ?? "\(Env.network)",
             exitState: staged
         ))
+        return (copy, remote != nil)
     }
 
     /// Keeps exit data Spark can never import under a key of its own, so a fresh export doesn't replace it and it stays
