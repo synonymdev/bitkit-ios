@@ -855,6 +855,29 @@ extension ChannelFreeRailTests {
         await assertReachesTheNode()
     }
 
+    func testASendInDoubtSavedBeforeTheUpgradeStaysHeldAgainstAnyFailure() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        service.now = { Date(timeIntervalSince1970: 1000) }
+        rail.balanceSats = 100_000
+        rail.errorAfterSubmission = NSError(domain: "spark", code: 2)
+        _ = try? await service.send(bolt11: Self.invoice)
+        rail.errorAfterSubmission = nil
+        // An earlier app version recorded neither the send's start nor its earlier attempts.
+        service.railAttemptsStore.removeObject(forKey: "channelFreeRailUncertainSendStartedAt")
+        service.railAttemptsStore.removeObject(forKey: "channelFreeRailUncertainSendEarlierAttempts")
+        rail.syncedAfter = { ($0 ?? 0) < 1000 }
+        rail.balanceSats = 0
+
+        XCTAssertTrue(service.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 2000, paymentId: "any"))
+        service.emitChannelFreeRailEvent(
+            .paymentFailed(paymentId: "any", paymentHash: hash, reason: nil),
+            paymentCreatedAt: 2000,
+            railPaymentId: "any"
+        )
+        await assertRefusedAsDuplicate()
+    }
+
     func testAFailureWithoutSparkIdsKeepsTheHoldUntilPastTheClockMargin() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         let service = Bitkit.LightningService.shared

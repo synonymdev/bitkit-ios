@@ -248,14 +248,17 @@ final class SparkExitBackupTests: XCTestCase {
         let otherDevice = try JSONEncoder().encode(SparkExitBackupV1(version: 1, createdAt: 950, network: "regtest", exitState: "other"))
         var remote = ["SPARK_EXIT": otherDevice]
         var staged: SparkStagedExitImport = .rejected
+        var restored: [String] = []
         let service = BackupService(
             defaults: defaults,
             backupData: { _ in export },
             uploadBackup: { remote[$0] = $1 },
+            waitForTemporaryFailureDelay: { _ in },
             fetchBackup: { remote[$0] },
             importStagedSparkExit: { staged },
             discardStagedSparkExit: { staged = .nothingStaged },
-            stagedSparkExitState: { "mine" }
+            stagedSparkExitState: { "mine" },
+            restoreExitBackup: { restored.append($0.exitState); staged = .pending }
         )
 
         _ = await service.triggerBackup(category: .sparkExit)
@@ -263,8 +266,40 @@ final class SparkExitBackupTests: XCTestCase {
         let kept = try JSONDecoder().decode(SparkExitBackupV1.self, from: XCTUnwrap(remote.first { $0.key.hasPrefix("SPARK_EXIT_REJECTED_") }?.value))
         XCTAssertEqual(kept.exitState, "mine", "The rejected exit data was lost for another device's backup")
         XCTAssertEqual(kept.network, "regtest")
-        XCTAssertEqual(staged, .nothingStaged)
-        XCTAssertEqual(remote["SPARK_EXIT"], export)
+        XCTAssertEqual(remote["SPARK_EXIT"], otherDevice, "A fresh export replaced exit data another device backed up")
+        XCTAssertEqual(restored, ["other"], "The other device's exit data was never restored")
+    }
+
+    func testABackupAnotherDeviceWritesWhileAnUnreadableOneIsSetAsideIsRestoredFirst() async throws {
+        let suite = "SparkExitBackupTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let unreadable = Data("unreadable".utf8)
+        let otherDevice = try JSONEncoder().encode(SparkExitBackupV1(version: 1, createdAt: 950, network: "regtest", exitState: "other"))
+        let export = try JSONEncoder().encode(SparkExitBackupV1(version: 1, createdAt: 1000, network: "regtest", exitState: "fresh"))
+        var remote = ["SPARK_EXIT": unreadable]
+        var restored: [String] = []
+        let service = BackupService(
+            defaults: defaults,
+            backupData: { _ in export },
+            uploadBackup: { key, data in
+                remote[key] = data
+                // Another device backs up its exit data while this one sets the unreadable copy aside.
+                if key.hasPrefix("SPARK_EXIT_REJECTED_") {
+                    remote["SPARK_EXIT"] = otherDevice
+                }
+            },
+            waitForTemporaryFailureDelay: { _ in },
+            fetchBackup: { remote[$0] },
+            importStagedSparkExit: { .nothingStaged },
+            restoreExitBackup: { restored.append($0.exitState) }
+        )
+
+        await service.restoreSparkExit()
+        _ = await service.triggerBackup(category: .sparkExit)
+
+        XCTAssertEqual(remote[BackupService.rejectedSparkExitKey(for: unreadable)], unreadable)
+        XCTAssertEqual(restored, ["other"], "A backup written during the set-aside was replaced unread")
     }
 
     func testOnlyInvalidInputMarksExitDataAsRejected() {

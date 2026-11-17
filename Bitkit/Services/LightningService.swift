@@ -1698,7 +1698,9 @@ class LightningService: NodeLifecycleService {
         if let paymentId, let earlier = uncertainRailSendEarlierAttempts()[hash] {
             return earlier.contains(paymentId)
         }
-        guard let startedAt = uncertainRailSendStartedAt()[hash] else { return false }
+        // A send in doubt saved before its start was recorded can't be told from an earlier attempt, so it stays held
+        // until its invoice expires.
+        guard let startedAt = uncertainRailSendStartedAt()[hash] else { return true }
         return createdAt < UInt64(max(0, startedAt)).addingReportingOverflow(Self.railClockSkewSeconds).partialValue
     }
 
