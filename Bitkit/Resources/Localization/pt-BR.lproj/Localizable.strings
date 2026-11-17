@@ -573,6 +573,8 @@
 "other__scan_to_pay_title" = "Escanear\n<accent>para pagar</accent>";
 "other__scan_to_pay_text" = "Permita o acesso à câmera, ao Bluetooth e ao NFC para escanear faturas de bitcoin e pagar mais rápido.";
 "other__nfc_alert" = "Aproxime da maquininha ou do celular";
+"other__nfc_read_button" = "Ler NFC";
+"other__bluetooth_enable" = "Ativar Bluetooth";
 "other__nfc_error_header" = "Falha na leitura NFC";
 "other__nfc_error_text" = "Esta etiqueta não contém uma solicitação de pagamento que a Bitkit consiga ler.";
 "other__nfc_error_multiple" = "Esta etiqueta contém mais de uma solicitação de pagamento.";

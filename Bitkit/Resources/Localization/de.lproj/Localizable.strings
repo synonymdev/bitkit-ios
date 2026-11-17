@@ -571,6 +571,8 @@
 "other__scan_to_pay_title" = "<accent>Scannen</accent>\nund zahlen";
 "other__scan_to_pay_text" = "Erlaube den Zugriff auf Kamera, Bluetooth und NFC, um Bitcoin-Rechnungen zu scannen und schneller zu bezahlen.";
 "other__nfc_alert" = "Halte dein Telefon an das Zahlungsterminal oder Telefon";
+"other__nfc_read_button" = "NFC lesen";
+"other__bluetooth_enable" = "Bluetooth aktivieren";
 "other__nfc_error_header" = "NFC-Lesen fehlgeschlagen";
 "other__nfc_error_text" = "Dieser Tag enthält keine Zahlungsanforderung, die Bitkit lesen kann.";
 "other__nfc_error_multiple" = "Dieser Tag enthält mehr als eine Zahlungsanforderung.";

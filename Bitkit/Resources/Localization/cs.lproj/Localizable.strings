@@ -573,6 +573,8 @@
 "other__scan_to_pay_title" = "Naskenujte\n<accent>a zaplaťte</accent>";
 "other__scan_to_pay_text" = "Povolte přístup k fotoaparátu, Bluetooth a NFC, abyste mohli skenovat bitcoinové faktury a platit rychleji.";
 "other__nfc_alert" = "Přiložte telefon k platebnímu terminálu nebo telefonu";
+"other__nfc_read_button" = "Číst NFC";
+"other__bluetooth_enable" = "Povolit Bluetooth";
 "other__nfc_error_header" = "Čtení NFC selhalo";
 "other__nfc_error_text" = "Tento štítek neobsahuje platební požadavek, který Bitkit dokáže přečíst.";
 "other__nfc_error_multiple" = "Tento štítek obsahuje více než jeden platební požadavek.";

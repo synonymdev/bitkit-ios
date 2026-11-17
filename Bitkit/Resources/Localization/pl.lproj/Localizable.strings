@@ -573,6 +573,8 @@
 "other__scan_to_pay_title" = "Skanuj\n<accent>i płać</accent>";
 "other__scan_to_pay_text" = "Zezwól na dostęp do aparatu, Bluetooth i NFC, aby skanować faktury bitcoin i płacić szybciej.";
 "other__nfc_alert" = "Zbliż telefon do terminala płatniczego lub telefonu";
+"other__nfc_read_button" = "Odczytaj NFC";
+"other__bluetooth_enable" = "Włącz Bluetooth";
 "other__nfc_error_header" = "Odczyt NFC nie powiódł się";
 "other__nfc_error_text" = "Ten tag nie zawiera żądania płatności, które Bitkit może odczytać.";
 "other__nfc_error_multiple" = "Ten tag zawiera więcej niż jedno żądanie płatności.";

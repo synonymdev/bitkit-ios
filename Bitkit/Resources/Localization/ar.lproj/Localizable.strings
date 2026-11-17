@@ -497,6 +497,8 @@
 "other__scan_to_pay_title" = "امسح\n<accent>للدفع</accent>";
 "other__scan_to_pay_text" = "اسمح بالوصول إلى الكاميرا و Bluetooth و NFC لمسح فواتير Bitcoin والدفع بشكل أسرع.";
 "other__nfc_alert" = "المس جهاز الدفع أو الهاتف";
+"other__nfc_read_button" = "قراءة NFC";
+"other__bluetooth_enable" = "تفعيل البلوتوث";
 "other__nfc_error_header" = "فشلت قراءة NFC";
 "other__nfc_error_text" = "لا تحتوي هذه العلامة على طلب دفع يمكن لـ Bitkit قراءته.";
 "other__nfc_error_multiple" = "تحتوي هذه العلامة على أكثر من طلب دفع واحد.";

@@ -568,6 +568,8 @@
 "other__scan_to_pay_title" = "Сканируйте\n<accent>и платите</accent>";
 "other__scan_to_pay_text" = "Разрешите доступ к камере, Bluetooth и NFC, чтобы сканировать счета bitcoin и платить быстрее.";
 "other__nfc_alert" = "Поднесите к платёжному терминалу или телефону";
+"other__nfc_read_button" = "Считать NFC";
+"other__bluetooth_enable" = "Включить Bluetooth";
 "other__nfc_error_header" = "Ошибка чтения NFC";
 "other__nfc_error_text" = "Эта метка не содержит запроса на оплату, который может прочитать Bitkit.";
 "other__nfc_error_multiple" = "Эта метка содержит более одного запроса на оплату.";

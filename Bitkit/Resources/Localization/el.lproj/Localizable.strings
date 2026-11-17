@@ -523,6 +523,8 @@
 "other__scan_to_pay_title" = "Σάρωση\n<accent>για πληρωμή</accent>";
 "other__scan_to_pay_text" = "Επιτρέψτε την πρόσβαση στην κάμερα, στο Bluetooth και στο NFC για να σαρώνετε τιμολόγια bitcoin και να πληρώνετε πιο γρήγορα.";
 "other__nfc_alert" = "Ακουμπήστε το τερματικό πληρωμής ή το τηλέφωνο";
+"other__nfc_read_button" = "Ανάγνωση NFC";
+"other__bluetooth_enable" = "Ενεργοποίηση Bluetooth";
 "other__nfc_error_header" = "Η ανάγνωση NFC απέτυχε";
 "other__nfc_error_text" = "Αυτή η ετικέτα δεν περιέχει αίτημα πληρωμής που μπορεί να διαβάσει το Bitkit.";
 "other__nfc_error_multiple" = "Αυτή η ετικέτα περιέχει περισσότερα από ένα αιτήματα πληρωμής.";

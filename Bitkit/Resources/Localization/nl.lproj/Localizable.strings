@@ -571,6 +571,8 @@
 "other__scan_to_pay_title" = "Scan\n<accent>om te betalen</accent>";
 "other__scan_to_pay_text" = "Geef toegang tot camera, Bluetooth en NFC om bitcoinfacturen te scannen en sneller te betalen.";
 "other__nfc_alert" = "Houd je telefoon bij de betaalterminal of telefoon";
+"other__nfc_read_button" = "NFC lezen";
+"other__bluetooth_enable" = "Bluetooth inschakelen";
 "other__nfc_error_header" = "NFC lezen mislukt";
 "other__nfc_error_text" = "Deze tag bevat geen betaalverzoek dat Bitkit kan lezen.";
 "other__nfc_error_multiple" = "Deze tag bevat meer dan één betaalverzoek.";
