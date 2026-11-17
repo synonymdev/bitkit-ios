@@ -476,6 +476,8 @@ final class PaykitReceiptService {
                 .sent
             } else if views[candidate.receiptId]?.status != .accessQueued {
                 .failed
+            } else if views[candidate.receiptId]?.lastError != nil {
+                .failed
             } else if unreachable.contains(where: { PubkyPublicKeyFormat.matches($0, candidate.counterparty) }) {
                 .failed
             } else {

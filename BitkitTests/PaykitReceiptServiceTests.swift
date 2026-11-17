@@ -333,6 +333,16 @@ final class PaykitReceiptServiceTests: XCTestCase {
         XCTAssertEqual(service.statuses, [Self.hash: .failed])
     }
 
+    func testReceiptFailsWhenItsLastSendAttemptFailed() async throws {
+        let sdk = try FakeReceiptSdk(requests: [lightningPaidRequest()])
+        sdk.drainOutcome = .retryable
+        let service = makeService(sdk)
+
+        await service.reconcile()
+
+        XCTAssertEqual(service.statuses, [Self.hash: .failed])
+    }
+
     func testReceiptFailsWhenItsCounterpartyCannotBeReached() async throws {
         let sdk = try FakeReceiptSdk(requests: [lightningPaidRequest()])
         sdk.drainOutcome = .unreachable
@@ -550,7 +560,7 @@ final class PaykitReceiptServiceTests: XCTestCase {
 private final class FakeReceiptSdk: PaykitReceiptSdk, @unchecked Sendable {
     private let requests: [PaymentRequestRecord]
     var issued: [String: ReceiptIssuanceView] = [:]
-    enum DrainOutcome { case sent, failed, none, unreachable }
+    enum DrainOutcome { case sent, failed, retryable, none, unreachable }
 
     var issueFails = false
     var readFails = false
@@ -624,13 +634,17 @@ private final class FakeReceiptSdk: PaykitReceiptSdk, @unchecked Sendable {
         switch drainOutcome {
         case .sent: deliverAll(.accessSent)
         case .failed: deliverAll(.accessFailed)
+        case .retryable:
+            for (id, view) in issued where view.status == .accessQueued {
+                issued[id]?.lastError = "peer unreachable"
+            }
         case .none, .unreachable: break
         }
         let failure = OutboundPrivateSendFailure(outboundMessageId: 7, error: PrivateOperationError(noPointer: .init()))
         return OutboundPrivateSendReport(
             attempted: drainOutcome == .none ? [] : [7],
             sent: drainOutcome == .sent ? [7] : [],
-            failed: drainOutcome == .failed ? [failure] : [],
+            failed: [.failed, .retryable].contains(drainOutcome) ? [failure] : [],
             reservationCleanupFailures: [],
             recoveryMarkerFailures: []
         )
