@@ -276,16 +276,16 @@ struct SparkConnectionDetailView: View {
                 }
             } label: {
                 compactRow(label: t("lightning__spark_deposit_tx")) {
-                    CaptionBText(deposit.txid, textColor: .textPrimary)
+                    CaptionBText(deposit.txid.ellipsis(maxLength: 16), textColor: .textPrimary)
                         .lineLimit(1)
-                        .truncationMode(.middle)
                 }
             }
             .buttonStyle(PlainButtonStyle())
             .accessibilityIdentifier("SparkDeposit")
 
+            // A claimed deposit's amount is what Spark credited after the claim fee; the row shows what was sent.
             compactRow(label: t("lightning__spark_deposit")) {
-                MoneyText(sats: Int(deposit.amountSats), size: .captionB, symbol: true)
+                MoneyText(sats: Int(deposit.amountSats + (deposit.isClaimed ? deposit.feeSats : 0)), size: .captionB, symbol: true)
             }
 
             if deposit.isClaimed {
