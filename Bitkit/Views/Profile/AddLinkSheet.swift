@@ -3,6 +3,7 @@ import SwiftUI
 struct AddLinkSheet: View {
     @Environment(\.dismiss) private var dismiss
 
+    var webLinksOnly = false
     let onSave: (String, String) -> Void
 
     @State private var label: String = ""
@@ -12,6 +13,7 @@ struct AddLinkSheet: View {
     private var canSave: Bool {
         !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (!webLinksOnly || url.isWebLink)
     }
 
     var body: some View {
@@ -60,7 +62,7 @@ struct AddLinkSheet: View {
         .presentationCornerRadius(32)
         .presentationDragIndicator(.visible)
         .sheet(isPresented: $showSuggestionsSheet) {
-            LinkSuggestionsSheet { suggestion in
+            LinkSuggestionsSheet(webLinksOnly: webLinksOnly) { suggestion in
                 label = suggestion
             }
         }
@@ -103,6 +105,25 @@ struct AddLinkSheet: View {
         .padding()
         .background(Color.white08)
         .cornerRadius(8)
+    }
+}
+
+extension String {
+    /// Whether this is an http(s) link, with or without its scheme: the only links a social v1 profile accepts.
+    /// A value with any other scheme, including a bare `host:port`, is refused, as the profile write keeps it unchanged.
+    var isWebLink: Bool {
+        let value = trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, !value.contains(where: \.isWhitespace) else { return false }
+        let hasScheme = value.range(of: "^[A-Za-z][A-Za-z0-9+.-]*:", options: .regularExpression) != nil
+        if !hasScheme, value.prefix(while: { $0 != "/" }).contains("@") {
+            return false
+        }
+        guard let components = URLComponents(string: hasScheme ? value : "https://\(value)"),
+              let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let host = components.host, host.contains("."),
+              let topLabel = host.split(separator: ".").last, !topLabel.allSatisfy(\.isNumber)
+        else { return false }
+        return true
     }
 }
 

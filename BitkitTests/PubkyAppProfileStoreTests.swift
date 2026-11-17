@@ -107,6 +107,20 @@ final class PubkyAppProfileStoreTests: XCTestCase {
         XCTAssertEqual(fitted.links.first?.url, "https://site1.com")
         XCTAssertFalse(fitted.links.contains { $0.label == "City" })
     }
+
+    func testFittedProfileKeepsOnlyLinksSocialV1Accepts() {
+        let links: [PubkyProfileData.Link] = [
+            .init(label: "Mail", url: "alice@example.com"),
+            .init(label: "Phone", url: "+49 123 456"),
+            .init(label: "Site", url: "example.com"),
+            .init(label: "Upper", url: "Https://example.com"),
+            .init(label: "Shout", url: "HTTP://example.com/path"),
+        ]
+        let fitted = PubkyAppProfileStore.fitted(PubkyProfileData(name: "Alice", bio: "", image: nil, links: links, tags: []))
+
+        XCTAssertEqual(fitted.links.map(\.url), ["https://example.com", "https://example.com", "http://example.com/path"])
+        XCTAssertTrue(links.filter(\.url.isWebLink).allSatisfy { link in fitted.links.contains { $0.label == link.label } })
+    }
 }
 
 final class ProfileWriteGateTests: XCTestCase {
