@@ -1583,6 +1583,7 @@ final class WalletBackupChangeTracker {
             PaykitSubscriptionStateStore.walletBackupDataChangedPublisher,
             PaykitPaymentRequestIdStore.walletBackupDataChangedPublisher,
             PaykitAllowanceKeychainStore.walletBackupDataChangedPublisher,
+            PaykitOutboundDeliveryLog.walletBackupDataChangedPublisher,
             PaykitPaymentProofService.proofStateChangedPublisher,
             OnchainSendAttemptStore.walletBackupDataChangedPublisher,
             UsdtWalletManager.walletBackupDataChangedPublisher,

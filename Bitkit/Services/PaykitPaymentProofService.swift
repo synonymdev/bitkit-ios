@@ -413,7 +413,8 @@ actor PaykitPaymentProofService {
                                                 pendingProofs: proofs.map(PaykitPaymentStateBackup.Proof.init), activeOnchainAttempt: active,
                                                 acceptedOneTimeRequests: PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests)
                                                     .backupSnapshot(),
-                                                allowances: PaykitAllowanceKeychainStore().backupSnapshot())
+                                                allowances: PaykitAllowanceKeychainStore().backupSnapshot(),
+                                                sentReceipts: PaykitOutboundDeliveryLog.shared.backupSnapshot())
         }
     }
 
@@ -431,6 +432,9 @@ actor PaykitPaymentProofService {
         try PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests).restoreBackup(state.acceptedOneTimeRequests ?? [:])
         if let allowances = state.allowances {
             PaykitAllowanceKeychainStore().restoreBackup(allowances, keepsLedgerFloors: hasLedger)
+        }
+        if let sentReceipts = state.sentReceipts {
+            PaykitOutboundDeliveryLog.shared.restoreBackup(sentReceipts)
         }
     }
 

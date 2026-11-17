@@ -12,15 +12,35 @@ struct NfcIntroSheet: View {
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     let config: NfcIntroSheetItem
+    @State private var authorization = PaymentAuthorization(pinMessage: t("security__pin_quickpay"))
+    /// Bumped when a change is not saved at once, so the toggle redraws at the stored value.
+    @State private var toggleRevision = 0
 
     var body: some View {
         Sheet(id: .nfcIntro, data: config) {
             NfcIntroContent(
-                isQuickpayEnabled: $settings.enableQuickpay,
+                isQuickpayEnabled: quickpayBinding,
                 onSettings: onSettings,
                 onContinue: onContinue
             )
+            .id(toggleRevision)
+            .paymentAuthorization(authorization)
         }
+    }
+
+    /// Turning QuickPay on asks for the payment PIN, as in QuickPay settings.
+    private var quickpayBinding: Binding<Bool> {
+        Binding(
+            get: { settings.enableQuickpay },
+            set: { isEnabled in
+                settings.changeQuickpaySetting(.enabled(isEnabled)) {
+                    await authorization.authorize(settings: settings)
+                }
+                if settings.enableQuickpay != isEnabled {
+                    toggleRevision += 1
+                }
+            }
+        )
     }
 
     private func onSettings() {

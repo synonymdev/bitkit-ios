@@ -644,6 +644,7 @@
 "security__pin_forgot_reset" = "إعادة التعيين (يتطلب عبارة الاسترداد)";
 "security__pin_send" = "يرجى إدخال رمز PIN الخاص بك لتأكيد وإرسال هذه الدفعة.";
 "security__pin_allowance" = "يرجى إدخال رمز PIN الخاص بك لتأكيد هذا التغيير في المخصص.";
+"security__pin_quickpay" = "يرجى إدخال رمز PIN لتأكيد هذا التغيير في QuickPay.";
 "security__pin_send_title" = "أدخل رمز PIN";
 "security__pin_use_biometrics" = "استخدام {biometricsName}";
 "security__bio" = "المقاييس الحيوية";
@@ -1147,10 +1148,7 @@
 "profile__edit" = "تعديل";
 "profile__pay_contacts_nav_title" = "الدفع لجهات الاتصال";
 "profile__pay_contacts_title" = "دع جهات اتصالك\n<accent>تدفع لك</accent>";
-"profile__pay_contacts_description" = "شارك تفاصيل الدفع بشكل خاص مع جهات اتصالك. تبقى المدفوعات العامة معطلة ما لم تفعّلها في الإعدادات.";
-"profile__private_payments_toggle" = "مدفوعات خاصة لجهات الاتصال";
-"profile__public_payments_toggle" = "مدفوعات عامة";
-"profile__payments_pending" = "التغييرات قيد الانتظار. قد تظل تفاصيل الدفع التي تمت مشاركتها سابقًا متاحة.";
+"profile__pay_contacts_description" = "استخدم Bitkit مع جهات اتصالك لإرسال المدفوعات مباشرةً، في أي وقت وفي أي مكان.";
 "profile__add_link_title" = "إضافة رابط";
 "profile__add_link_label" = "التسمية";
 "profile__add_link_label_placeholder" = "مثلاً «الموقع الإلكتروني»";
@@ -1260,6 +1258,9 @@
 "wallet__boost_fee_not_set" = "يرجى تعيين معدل الرسوم قبل التعزيز.";
 "wallet__boost_swipe" = "اسحب للتعزيز";
 "wallet__payment_received" = "تم استلام Bitcoin";
+"wallet__receipt_failed" = "فشل إرسال الإيصال";
+"wallet__receipt_sending" = "جارٍ إرسال الإيصال";
+"wallet__receipt_sent" = "تم إرسال الإيصال";
 "widgets__onboarding__title" = "مرحبًا،\n<accent>الأدوات</accent>";
 "widgets__onboarding__description" = "استمتع بموجزات لامركزية من خدمات الويب المفضلة لديك، بإضافة أدوات ممتعة ومفيدة إلى محفظة Bitkit.";
 "widgets__onboarding__view_organize" = "العرض والتنظيم";

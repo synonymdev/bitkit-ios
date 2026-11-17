@@ -188,7 +188,128 @@ enum ContactPaymentsService {
         }
     }
 
-    /// Public payment details are published only in response to an explicit public sharing choice.
+    /// A profile set up in this app shares private and public payment details from the start, so the user has nothing to
+    /// opt into. Each change runs on its own and a failed one is logged after `setEnabled` or `setPublicEnabled` has
+    /// restored what it changed, so one failing still applies the other.
+    @MainActor
+    static func enableForNewProfile(
+        pubkyProfile: PubkyProfileManager,
+        contactsManager: ContactsManager,
+        operations: Operations,
+        defaults: UserDefaults = .standard,
+        privatePaymentAccess: (String) throws -> Bool = { try PubkyProfileManager.hasPrivatePaymentAccess(for: $0) }
+    ) async {
+        await enable(
+            onlyWhenOff: false,
+            pubkyProfile: pubkyProfile,
+            contactsManager: contactsManager,
+            operations: operations,
+            defaults: defaults,
+            privatePaymentAccess: privatePaymentAccess
+        )
+    }
+
+    /// Contact payments have no setting: they stay on while a Pubky profile exists. Runs on each foreground and turns on
+    /// private, then public, sharing for whichever is off, which covers profiles set up before payments were always on
+    /// and users who turned them off. A failure waits for the next foreground; a profile without private payment access
+    /// keeps private sharing off and is logged once per launch.
+    @MainActor
+    static func ensureEnabled(
+        pubkyProfile: PubkyProfileManager,
+        contactsManager: ContactsManager,
+        operations: Operations,
+        defaults: UserDefaults = .standard,
+        privatePaymentAccess: (String) throws -> Bool = { try PubkyProfileManager.hasPrivatePaymentAccess(for: $0) }
+    ) async {
+        await enable(
+            onlyWhenOff: true,
+            pubkyProfile: pubkyProfile,
+            contactsManager: contactsManager,
+            operations: operations,
+            defaults: defaults,
+            privatePaymentAccess: privatePaymentAccess
+        )
+    }
+
+    @MainActor private static var hasLoggedPrivateUnavailable = false
+
+    private static func isPaykitUIEnabled(defaults: UserDefaults) -> Bool {
+        defaults.object(forKey: PaykitFeatureFlags.uiEnabledKey) as? Bool ?? PaykitFeatureFlags.uiEnabledByDefault
+    }
+
+    @MainActor
+    private static func enable(
+        onlyWhenOff: Bool,
+        pubkyProfile: PubkyProfileManager,
+        contactsManager: ContactsManager,
+        operations: Operations,
+        defaults: UserDefaults,
+        privatePaymentAccess: (String) throws -> Bool
+    ) async {
+        // A Paykit UI disable that lands before setup starts keeps both modes off.
+        guard isPaykitUIEnabled(defaults: defaults) else { return }
+        // A profile still waiting for Create Profile's Save gets its setup from that Save, not from the foreground check.
+        if onlyWhenOff, pubkyProfile.isProfileSetupPending {
+            return
+        }
+        let context = onlyWhenOff ? "an existing profile" : "a new profile"
+        let session = pubkyProfile.currentSession
+        if !onlyWhenOff || !isEnabled(defaults: defaults) {
+            do {
+                try await setEnabled(
+                    true,
+                    pubkyProfile: pubkyProfile,
+                    contactsManager: contactsManager,
+                    operations: operations,
+                    defaults: defaults,
+                    privatePaymentAccess: privatePaymentAccess
+                )
+            } catch is CancellationError {
+                return
+            } catch PrivatePaykitError.privateUnavailable where onlyWhenOff {
+                if !hasLoggedPrivateUnavailable {
+                    hasLoggedPrivateUnavailable = true
+                    Logger.info("Private payments are unavailable for this profile", context: "ContactPaymentsService")
+                }
+            } catch {
+                Logger.error("Failed to enable private payments for \(context): \(error)", context: "ContactPaymentsService")
+            }
+        }
+
+        // Public sharing belongs to the session this run started for; a replaced or ended session gets its own run.
+        guard !Task.isCancelled, session != nil, pubkyProfile.currentSession == session else { return }
+        // A Paykit UI disable during private setup wins; one that starts later supersedes the public change itself.
+        guard isPaykitUIEnabled(defaults: defaults) else { return }
+        if !onlyWhenOff || !defaults.bool(forKey: PublicPaykitService.publishingEnabledKey) {
+            do {
+                try await setPublicEnabled(true, pubkyProfile: pubkyProfile, operations: operations, defaults: defaults)
+            } catch is CancellationError {
+                return
+            } catch {
+                Logger.error("Failed to enable public payments for \(context): \(error)", context: "ContactPaymentsService")
+            }
+        }
+    }
+
+    /// Starts `enableForNewProfile` without waiting for it, since publication can outlast the setup screens. The task
+    /// stops writing once the Pubky session it started for ends.
+    @MainActor
+    static func startEnablingForNewProfile(
+        pubkyProfile: PubkyProfileManager,
+        contactsManager: ContactsManager,
+        wallet: WalletViewModel
+    ) {
+        Task { @MainActor in
+            await enableForNewProfile(
+                pubkyProfile: pubkyProfile,
+                contactsManager: contactsManager,
+                operations: .live(wallet: wallet)
+            )
+        }
+    }
+
+    /// Public payment details are published only after a public sharing choice: the Settings toggle, or the setup of a
+    /// new profile.
     @discardableResult
     @MainActor
     static func setPublicEnabled(

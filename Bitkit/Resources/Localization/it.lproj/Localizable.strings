@@ -752,6 +752,7 @@
 "security__pin_forgot_reset" = "Reset (Richiede la Recovery Phrase)";
 "security__pin_send" = "Inserisci il codice PIN per confermare e inviare questo pagamento.";
 "security__pin_allowance" = "Inserisci il codice PIN per confermare questa modifica del Plafond.";
+"security__pin_quickpay" = "Inserisci il codice PIN per confermare questa modifica a QuickPay.";
 "security__pin_send_title" = "Inserisci Codice PIN";
 "security__pin_use_biometrics" = "Utilizza {biometricsName}";
 "security__bio" = "Biometria";
@@ -1344,10 +1345,7 @@
 "profile__edit" = "Modifica";
 "profile__pay_contacts_nav_title" = "Paga Contatti";
 "profile__pay_contacts_title" = "Lascia che i tuoi contatti\n<accent>ti paghino</accent>";
-"profile__pay_contacts_description" = "Condividi i dati di pagamento in privato con i tuoi contatti. I pagamenti pubblici restano disattivati finché non li attivi nelle Impostazioni.";
-"profile__private_payments_toggle" = "Pagamenti privati con contatti";
-"profile__public_payments_toggle" = "Pagamenti pubblici";
-"profile__payments_pending" = "Modifiche in sospeso. I dati di pagamento condivisi in precedenza potrebbero essere ancora disponibili.";
+"profile__pay_contacts_description" = "Usa Bitkit con i tuoi contatti per inviare pagamenti direttamente, in qualsiasi momento, ovunque.";
 "profile__add_link_title" = "Aggiungi Link";
 "profile__add_link_label" = "ETICHETTA";
 "profile__add_link_label_placeholder" = "Per esempio 'Sito web'";
@@ -1600,6 +1598,9 @@
 "wallet__boost_recomended_button" = "Utilizza la tariffa suggerita";
 "wallet__boost_swipe" = "Scorri per Potenziare";
 "wallet__payment_received" = "Bitcoin ricevuti";
+"wallet__receipt_failed" = "Invio della ricevuta non riuscito";
+"wallet__receipt_sending" = "Invio della ricevuta";
+"wallet__receipt_sent" = "Ricevuta inviata";
 "wallet__payment_request" = "Richiesta di pagamento";
 "wallet__payment_request_unavailable" = "La richiesta di pagamento non è più disponibile.";
 "wallet__payment_request_note_too_long" = "Accorcia la nota e riprova.";

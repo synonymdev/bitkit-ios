@@ -5,6 +5,8 @@ struct CreateProfileView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
+    @EnvironmentObject var contactsManager: ContactsManager
+    @EnvironmentObject var wallet: WalletViewModel
 
     @State private var derivedPublicKey: String = ""
     @State private var username: String = ""
@@ -237,6 +239,11 @@ struct CreateProfileView: View {
                 baseTagsUnread: existingProfile?.tagsUnread ?? false,
                 avatarImage: avatarImage
             )
+            ContactPaymentsService.startEnablingForNewProfile(
+                pubkyProfile: pubkyProfile,
+                contactsManager: contactsManager,
+                wallet: wallet
+            )
             navigation.navigate(.payContacts)
         } catch is CancellationError {
             return
@@ -264,6 +271,8 @@ struct ProfileLinkInput: Identifiable {
             .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
             .environmentObject(PubkyProfileManager())
+            .environmentObject(ContactsManager())
+            .environmentObject(WalletViewModel())
     }
     .preferredColorScheme(.dark)
 }

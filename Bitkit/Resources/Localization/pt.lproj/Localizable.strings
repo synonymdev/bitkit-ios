@@ -693,6 +693,7 @@
 "security__pin_forgot_reset" = "Restaurar (Requer a Frase de Recuperação)";
 "security__pin_send" = "Digite seu código PIN para confirmar e enviar esse pagamento.";
 "security__pin_allowance" = "Digite seu código PIN para confirmar esta alteração da pré-aprovação.";
+"security__pin_quickpay" = "Digite seu código PIN para confirmar essa alteração no QuickPay.";
 "security__pin_send_title" = "Digitar o código PIN";
 "security__pin_use_biometrics" = "Usar {biometricsName}";
 "security__bio" = "Biometria";
@@ -1138,10 +1139,7 @@
 "profile__edit" = "Editar";
 "profile__pay_contacts_nav_title" = "Pagar a contactos";
 "profile__pay_contacts_title" = "Deixe os seus contactos\n<accent>pagar-lhe</accent>";
-"profile__pay_contacts_description" = "Partilhe dados de pagamento em privado com os seus contactos. Os pagamentos públicos ficam desativados até os ativar nas Definições.";
-"profile__private_payments_toggle" = "Pagamentos privados a contactos";
-"profile__public_payments_toggle" = "Pagamentos públicos";
-"profile__payments_pending" = "Existem alterações pendentes. Os dados de pagamento partilhados anteriormente poderão continuar disponíveis.";
+"profile__pay_contacts_description" = "Use a Bitkit com os seus contactos para enviar pagamentos diretamente, a qualquer hora, em qualquer lugar.";
 "profile__add_link_title" = "Adicionar link";
 "profile__add_link_label" = "ETIQUETA";
 "profile__add_link_label_placeholder" = "Por exemplo, «Website»";
@@ -1333,6 +1331,9 @@
 "wallet__boost_fee_not_set" = "Defina uma taxa antes de acelerar.";
 "wallet__boost_swipe" = "Arraste para acelerar";
 "wallet__payment_received" = "Bitcoin Recebido";
+"wallet__receipt_failed" = "Falha ao enviar o recibo";
+"wallet__receipt_sending" = "A enviar recibo";
+"wallet__receipt_sent" = "Recibo enviado";
 "wallet__payment_request_unavailable" = "O pedido de pagamento já não está disponível.";
 "wallet__payment_request_note_too_long" = "Encurte a nota e tente novamente.";
 "wallet__payment_request_expired" = "O pedido de pagamento expirou.";
