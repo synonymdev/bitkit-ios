@@ -302,6 +302,61 @@ final class SparkExitBackupTests: XCTestCase {
         XCTAssertEqual(restored, ["other"], "A backup written during the set-aside was replaced unread")
     }
 
+    func testARestoreOfAnotherDevicesBackupIsNotedBeforeTheStagedCopyGoes() async throws {
+        let suite = "SparkExitBackupTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let export = try JSONEncoder().encode(SparkExitBackupV1(version: 1, createdAt: 1000, network: "regtest", exitState: "fresh"))
+        let otherDevice = try JSONEncoder().encode(SparkExitBackupV1(version: 1, createdAt: 950, network: "regtest", exitState: "other"))
+        var remote = ["SPARK_EXIT": otherDevice]
+        var staged: SparkStagedExitImport = .rejected
+        var isRestorePendingWhenDiscarded: Bool?
+        let service = BackupService(
+            defaults: defaults,
+            backupData: { _ in export },
+            uploadBackup: { remote[$0] = $1 },
+            waitForTemporaryFailureDelay: { _ in },
+            fetchBackup: { remote[$0] },
+            importStagedSparkExit: { staged },
+            discardStagedSparkExit: {
+                // A stop here relaunches with whatever was saved before the staged copy went.
+                isRestorePendingWhenDiscarded = defaults.bool(forKey: "sparkExitRestorePending")
+                staged = .nothingStaged
+            },
+            stagedSparkExitState: { "mine" },
+            restoreExitBackup: { _ in staged = .pending }
+        )
+
+        _ = await service.triggerBackup(category: .sparkExit)
+
+        XCTAssertEqual(isRestorePendingWhenDiscarded, true, "A stop after the staged copy went would replace the other device's backup unread")
+        XCTAssertEqual(remote["SPARK_EXIT"], otherDevice)
+    }
+
+    func testAStagedFileThatCantBeReadKeepsTheRemoteCopy() async throws {
+        let suite = "SparkExitBackupTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let export = try JSONEncoder().encode(SparkExitBackupV1(version: 1, createdAt: 1000, network: "regtest", exitState: "fresh"))
+        let restored = try JSONEncoder().encode(SparkExitBackupV1(version: 1, createdAt: 950, network: "regtest", exitState: "restored"))
+        var remote = ["SPARK_EXIT": restored]
+        struct Unreadable: Error {}
+        let service = BackupService(
+            defaults: defaults,
+            backupData: { _ in export },
+            uploadBackup: { remote[$0] = $1 },
+            waitForTemporaryFailureDelay: { _ in },
+            fetchBackup: { remote[$0] },
+            importStagedSparkExit: { .rejected },
+            discardStagedSparkExit: {},
+            stagedSparkExitState: { throw Unreadable() }
+        )
+
+        _ = await service.triggerBackup(category: .sparkExit)
+
+        XCTAssertEqual(remote["SPARK_EXIT"], restored, "A staged file that couldn't be read let a fresh export replace the remote copy")
+    }
+
     func testOnlyInvalidInputMarksExitDataAsRejected() {
         XCTAssertEqual(SparkStagedExitImport(importError: SdkError.InvalidInput("unsupported exit state version")), .rejected)
         XCTAssertEqual(SparkStagedExitImport(importError: URLError(.notConnectedToInternet)), .pending)

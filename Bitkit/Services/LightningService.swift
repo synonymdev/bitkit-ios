@@ -1133,7 +1133,9 @@ class LightningService: NodeLifecycleService {
                     }
                 )
                 if let paymentHash {
-                    endRailSendUncertainty(paymentHash: paymentHash)
+                    // Spark took the send, which may still be pending: its earlier attempts stay known until it settles,
+                    // so their failures don't end its hold.
+                    eventCallbackLock.withLock { clearRailSendUncertainty(hash: paymentHash.lowercased(), keepingEarlierAttempts: true) }
                 }
                 return sent
             } catch let refusal as ChannelFreeRailSendRefused {
@@ -1694,10 +1696,11 @@ class LightningService: NodeLifecycleService {
 
     /// Callers hold `eventCallbackLock`.
     private func isEarlierThanUncertainRailSendLocked(hash: String, createdAt: UInt64, paymentId: String?) -> Bool {
-        guard uncertainRailSendFailedAt()[hash] != nil else { return false }
+        // Known until the latest send settles, also once Spark took it, so its earlier attempts are told apart by id.
         if let paymentId, let earlier = uncertainRailSendEarlierAttempts()[hash] {
             return earlier.contains(paymentId)
         }
+        guard uncertainRailSendFailedAt()[hash] != nil else { return false }
         // A send in doubt saved before its start was recorded can't be told from an earlier attempt, so it stays held
         // until its invoice expires.
         guard let startedAt = uncertainRailSendStartedAt()[hash] else { return true }
@@ -1735,13 +1738,13 @@ class LightningService: NodeLifecycleService {
     }
 
     /// Callers hold `eventCallbackLock`.
-    private func clearRailSendUncertainty(hash: String) {
+    private func clearRailSendUncertainty(hash: String, keepingEarlierAttempts: Bool = false) {
         var started = uncertainRailSendStartedAt()
         if started.removeValue(forKey: hash) != nil {
             railAttemptsStore.set(started, forKey: Self.uncertainRailSendsStartedKey)
         }
         var earlier = uncertainRailSendEarlierAttempts()
-        if earlier.removeValue(forKey: hash) != nil {
+        if !keepingEarlierAttempts, earlier.removeValue(forKey: hash) != nil {
             railAttemptsStore.set(earlier, forKey: Self.uncertainRailSendsEarlierAttemptsKey)
         }
         var uncertain = uncertainRailSendFailedAt()
