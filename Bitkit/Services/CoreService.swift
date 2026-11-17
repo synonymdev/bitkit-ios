@@ -1405,6 +1405,14 @@ class ActivityService {
         return !onchain.doesExist && onchain.txType == .sent && txIdsInBoostTxIds.contains(onchain.txId)
     }
 
+    /// Marks the stored Lightning send `id` failed while it is still pending.
+    func failPendingLightningSend(id: String) async throws {
+        guard case var .lightning(activity) = try await getActivity(id: id), activity.txType == .sent, activity.status == .pending
+        else { return }
+        activity.status = .failed
+        try await update(id: id, activity: .lightning(activity))
+    }
+
     func update(id: String, activity: Activity) async throws {
         try await ServiceQueue.background(.core) {
             try updateActivity(activityId: id, activity: activity)

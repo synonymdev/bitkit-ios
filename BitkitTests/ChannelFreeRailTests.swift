@@ -884,6 +884,56 @@ extension ChannelFreeRailTests {
         await assertReachesTheNode()
     }
 
+    func testAHoldThatEndsAtTheInvoicesExpiryWritesTheSendsActivity() async throws {
+        let invoice = try Bolt11Invoice.fromStr(invoiceStr: Self.invoice)
+        let hash = String(invoice.paymentHash())
+        let service = Bitkit.LightningService.shared
+        service.now = { Date(timeIntervalSince1970: 1000) }
+        rail.balanceSats = 100_000
+        rail.errorAfterSubmission = NSError(domain: "spark", code: 2)
+        _ = try? await service.send(bolt11: Self.invoice)
+        rail.errorAfterSubmission = nil
+        rail.syncedAfter = { _ in true }
+        var expired: [String] = []
+        let previousHook = service.railSendHoldExpired
+        defer { service.railSendHoldExpired = previousHook }
+        service.railSendHoldExpired = { expired.append($0) }
+
+        await service.endExpiredRailSendUncertainties()
+        XCTAssertEqual(expired, [], "a hold ended before the invoice expired")
+        XCTAssertTrue(service.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 900))
+
+        let expiresAt = invoice.secondsSinceEpoch() + invoice.expiryTimeSeconds()
+        service.now = { Date(timeIntervalSince1970: TimeInterval(expiresAt)) }
+        await service.endExpiredRailSendUncertainties()
+        XCTAssertEqual(expired, [hash], "the send's activity wasn't written when its hold ended")
+        XCTAssertFalse(service.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 900))
+    }
+
+    func testAnExpiredHoldWritesSparksLatestSendOrFailsTheStoredOne() async {
+        let hash = "ab"
+        var recorded: [String] = []
+        var failed: [String] = []
+        let payments = [
+            Self.sparkPayment(hash: hash, status: .failed, id: "earlier", timestamp: 1),
+            Self.sparkPayment(hash: hash, status: .failed, id: "retry", timestamp: 5),
+            Self.sparkPayment(hash: "cd", status: .completed, id: "other", timestamp: 9),
+        ]
+        await SparkManager.recordExpiredHold(
+            paymentHash: hash, payments: payments,
+            record: { recorded.append($0.id); return true }, failStoredSend: { failed.append($0) }
+        )
+        XCTAssertEqual(recorded, ["retry"])
+        XCTAssertEqual(failed, [])
+
+        await SparkManager.recordExpiredHold(
+            paymentHash: "ef", payments: payments,
+            record: { recorded.append($0.id); return true }, failStoredSend: { failed.append($0) }
+        )
+        XCTAssertEqual(recorded, ["retry"])
+        XCTAssertEqual(failed, ["ef"], "a send Spark lists none of stayed pending")
+    }
+
     func testAnUnknownSparkSendStaysHeldAfterARelaunchWhenSparkListsOnlyAnOlderFailedAttempt() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         let service = Bitkit.LightningService.shared
@@ -927,14 +977,14 @@ extension ChannelFreeRailTests {
         kept.forEach { service.railAttemptsStore.set($0.value, forKey: $0.key) }
     }
 
-    private static func sparkPayment(hash: String, status: BreezSdkSpark.PaymentStatus) -> Payment {
+    private static func sparkPayment(hash: String, status: BreezSdkSpark.PaymentStatus, id: String? = nil, timestamp: UInt64 = 1) -> Payment {
         Payment(
-            id: hash,
+            id: id ?? hash,
             paymentType: .send,
             status: status,
             amount: 20000,
             fees: 0,
-            timestamp: 1,
+            timestamp: timestamp,
             method: .lightning,
             details: .lightning(
                 description: nil,
