@@ -332,8 +332,8 @@ platform forces. The iOS description also leaves the Recovery home-screen quick 
 as the harness cannot trigger one.
 
 `settings/quickpay-payment-pin.xml` pairs with synonymdev/bitkit-android#1909 and is adapted: on iOS
-the PIN pad is a sheet whose back control is `NavigationBack`, and the slider stop labels are not
-tappable, so the tester taps the slider track above the label.
+the PIN pad is a sheet whose back control is `NavigationBack`, and with biometrics on a cancelled or
+failed biometric check counts as not approved instead of falling back to the PIN pad.
 
 `payment-requests/minimum-onchain-amount.xml` is shared with Android: minimum amount
 feedback, preparation cleanup, and manual retry use the same actions and
