@@ -134,7 +134,12 @@ class BackupService {
     /// Set while the Spark exit data restore hasn't succeeded or found no older backup, kept across launches, so a fresh
     /// export never replaces the remote backup it couldn't read yet.
     private static let sparkExitRestorePendingKey = "sparkExitRestorePending"
+    /// The remote key of exit data Spark rejected for good, read and written alike by bitkit-android.
+    static let sparkExitRejectedKey = "SPARK_EXIT_REJECTED"
     private let backupData: ((BackupCategory) async throws -> Data)?
+    private let importStagedSparkExit: () async -> SparkStagedExitImport
+    private let discardStagedSparkExit: () async -> Void
+    private let restoreExitBackup: (SparkExitBackupV1) async throws -> Void
     private let isSparkExitActive: () async -> Bool
     private let uploadBackup: (String, Data) async throws -> Void
     private let waitForBackupDelay: () async throws -> Void
@@ -182,9 +187,21 @@ class BackupService {
         },
         fetchBackup: @escaping (String) async throws -> Data? = { key in
             try await VssBackupClient.shared.getObject(key: key)?.value
+        },
+        importStagedSparkExit: @escaping () async -> SparkStagedExitImport = { @MainActor in
+            await SparkManager.shared.importStagedExitState(walletIndex: LightningService.shared.currentWalletIndex)
+        },
+        discardStagedSparkExit: @escaping () async -> Void = { @MainActor in
+            SparkManager.shared.discardStagedExitState(walletIndex: LightningService.shared.currentWalletIndex)
+        },
+        restoreExitBackup: @escaping (SparkExitBackupV1) async throws -> Void = { @MainActor backup in
+            try await SparkManager.shared.restoreExitBackup(backup, walletIndex: LightningService.shared.currentWalletIndex)
         }
     ) {
         self.defaults = defaults
+        self.importStagedSparkExit = importStagedSparkExit
+        self.discardStagedSparkExit = discardStagedSparkExit
+        self.restoreExitBackup = restoreExitBackup
         self.isSparkExitActive = isSparkExitActive
         self.fetchBackup = fetchBackup
         self.backupData = backupData
@@ -434,9 +451,16 @@ class BackupService {
                     await restoreSparkExit()
                 }
                 guard !defaults.bool(forKey: Self.sparkExitRestorePendingKey) else { throw SparkExitBackupError.restorePending }
-                // Restored exit data Spark couldn't import yet lives only in the remote backup, so nothing replaces it.
-                guard await !SparkManager.shared.hasStagedExitState(walletIndex: LightningService.shared.currentWalletIndex) else {
+                // Restored exit data Spark couldn't import yet lives only in the remote backup, so nothing replaces it, unless
+                // Spark can never import it: then the remote copy is set aside and fresh exports go up again.
+                switch await importStagedSparkExit() {
+                case .pending:
                     throw SparkExitBackupError.restorePending
+                case .rejected:
+                    try await setAsideRejectedSparkExit(fetchBackup(BackupCategory.sparkExit.rawValue))
+                    await discardStagedSparkExit()
+                case .nothingStaged, .imported:
+                    break
                 }
                 // Nothing to back up until Spark connects, which marks this category required again.
                 if let data = try await sparkExitBackupData() {
@@ -1468,8 +1492,17 @@ class BackupService {
         defaults.set(true, forKey: Self.sparkExitRestorePendingKey)
         do {
             if let data = try await fetchBackup(BackupCategory.sparkExit.rawValue) {
-                let backup = try JSONDecoder().decode(SparkExitBackupV1.self, from: data)
-                try await SparkManager.shared.restoreExitBackup(backup, walletIndex: LightningService.shared.currentWalletIndex)
+                let backup: SparkExitBackupV1
+                do {
+                    backup = try JSONDecoder().decode(SparkExitBackupV1.self, from: data)
+                } catch let error as DecodingError {
+                    // A layout this app can't read never becomes readable here, so it is kept apart for an app that can.
+                    Logger.warn("Unreadable '\(BackupCategory.sparkExit.rawValue)' backup: \(error)", context: "BackupService")
+                    try await setAsideRejectedSparkExit(data)
+                    defaults.removeObject(forKey: Self.sparkExitRestorePendingKey)
+                    return
+                }
+                try await restoreExitBackup(backup)
                 Logger.info("Restore success for: '\(BackupCategory.sparkExit.rawValue)'", context: "BackupService")
             } else {
                 Logger.warn("Restore null for: '\(BackupCategory.sparkExit.rawValue)'", context: "BackupService")
@@ -1478,6 +1511,18 @@ class BackupService {
         } catch {
             Logger.warn("Restore error for: '\(BackupCategory.sparkExit.rawValue)': \(error)", context: "BackupService")
         }
+    }
+
+    /// Keeps remote exit data Spark can never import under its own key, so a fresh export doesn't replace it and an app that
+    /// can import it still finds it. The first such copy stays; a later one doesn't overwrite it.
+    private func setAsideRejectedSparkExit(_ data: Data?) async throws {
+        guard let data else { return }
+        guard try await fetchBackup(Self.sparkExitRejectedKey) == nil else {
+            Logger.info("Kept the earlier '\(Self.sparkExitRejectedKey)' backup", context: "BackupService")
+            return
+        }
+        try await uploadBackup(Self.sparkExitRejectedKey, data)
+        Logger.warn("Set Spark exit data Spark can't import aside as '\(Self.sparkExitRejectedKey)'", context: "BackupService")
     }
 
     /// Nothing while an exit runs: the operators may stop reporting a leaf once it is being exited, so a fresh export

@@ -793,6 +793,12 @@ final class SparkManager: ChannelFreeLightningRail {
         return SparkClaimOffer(txid: deposit.txid, vout: deposit.vout, quote: quote)
     }
 
+    /// Whether Spark still lists the deposit in `txid` as unclaimed. Asks no provider for a quote.
+    func isDepositUnclaimed(txid: String) async throws -> Bool {
+        let unclaimed = try await requireSdk().listUnclaimedDeposits(request: ListUnclaimedDepositsRequest()).deposits
+        return unclaimed.contains { $0.txid.caseInsensitiveCompare(txid) == .orderedSame }
+    }
+
     /// Clears the fee cap an early claim of `offer` left on its deposit, back to the configured one, which never claims
     /// early (`sdkConfig`): a claim that names no cap clears the stored one before it is attempted. False when the cap
     /// may still be there: the call failed, or another claim of the deposit held it, which leaves the cap unchanged.
@@ -1440,15 +1446,21 @@ final class SparkManager: ChannelFreeLightningRail {
         }
     }
 
-    /// Whether restored exit data is still waiting for its import, after trying that again while connected.
-    func hasStagedExitState(walletIndex: Int) async -> Bool {
+    /// Tries the import of restored exit data again while connected, and says what became of it.
+    func importStagedExitState(walletIndex: Int) async -> SparkStagedExitImport {
         await importRestoredExitState(walletIndex: walletIndex)
-        return FileManager.default.fileExists(atPath: Env.sparkExitRestore(walletIndex: walletIndex).path)
     }
 
-    private func importRestoredExitState(walletIndex: Int) async {
+    /// Drops restored exit data Spark rejected, once the backup set its remote copy aside.
+    func discardStagedExitState(walletIndex: Int) {
+        try? FileManager.default.removeItem(at: Env.sparkExitRestore(walletIndex: walletIndex))
+    }
+
+    @discardableResult
+    private func importRestoredExitState(walletIndex: Int) async -> SparkStagedExitImport {
         let file = Env.sparkExitRestore(walletIndex: walletIndex)
-        guard let sdk, let data = FileManager.default.contents(atPath: file.path) else { return }
+        guard let data = FileManager.default.contents(atPath: file.path) else { return .nothingStaged }
+        guard let sdk else { return .pending }
         do {
             let imported = try await sdk.importUnilateralExitState(
                 request: ImportUnilateralExitStateRequest(exitState: String(decoding: data, as: UTF8.self))
@@ -1459,8 +1471,10 @@ final class SparkManager: ChannelFreeLightningRail {
                     + "'\(imported.skippedConflictingLeaves)' conflicting, '\(imported.skippedChains)' already held",
                 context: "SparkManager"
             )
+            return .imported
         } catch {
             Logger.error("Failed to import Spark exit data: \(error)", context: "SparkManager")
+            return SparkStagedExitImport(importError: error)
         }
     }
 
@@ -1865,7 +1879,7 @@ final class SparkManager: ChannelFreeLightningRail {
             await Self.handleSettledPayment(
                 payment,
                 record: { await self.recordActivity($0) },
-                emit: { LightningService.shared.emitChannelFreeRailEvent($0) },
+                emit: { LightningService.shared.emitChannelFreeRailEvent($0, paymentCreatedAt: payment.timestamp) },
                 refresh: { try await self.refresh() }
             )
         case let .paymentPending(payment):
@@ -2041,6 +2055,25 @@ struct SparkClaimOffer: Equatable {
 struct SparkClaimFees: Equatable {
     let instantMaxSats: UInt64
     let laterSats: UInt64
+}
+
+/// What became of restored exit data staged for import.
+enum SparkStagedExitImport: Equatable {
+    case nothingStaged
+    case imported
+    /// Spark can never import it: an exit state version this SDK doesn't support, or a payload it can't parse.
+    case rejected
+    /// Not imported yet, as while Spark is not connected or the import failed for a reason that may pass.
+    case pending
+
+    /// Spark runs the import without its operators, so only invalid input fails it every time.
+    init(importError: Error) {
+        if case SdkError.InvalidInput = importError {
+            self = .rejected
+        } else {
+            self = .pending
+        }
+    }
 }
 
 /// What accepting an early claim did.

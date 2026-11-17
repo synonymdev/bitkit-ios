@@ -133,6 +133,8 @@ enum SparkClaimDecision {
 struct SparkClaimOperations {
     var offer: (String) async throws -> SparkClaimOffer?
     var claimEarly: (SparkClaimOffer) async throws -> SparkEarlyClaim
+    /// Whether Spark still lists the deposit as unclaimed, without asking the provider for a quote.
+    var isUnclaimed: (String) async throws -> Bool
     var refresh: () async -> Void
     var sleep: (Duration) async -> Void
     /// Clears the early-claim fee cap `claimEarly` left on the deposit, so only the claim at maturity is made. False when
@@ -143,6 +145,7 @@ struct SparkClaimOperations {
         SparkClaimOperations(
             offer: { try await SparkManager.shared.depositClaimOffer(txid: $0) },
             claimEarly: { try await SparkManager.shared.claimEarly($0) },
+            isUnclaimed: { try await SparkManager.shared.isDepositUnclaimed(txid: $0) },
             refresh: { await SparkManager.shared.refreshState() },
             sleep: { try? await Task.sleep(for: $0) },
             releaseEarlyClaim: { await SparkManager.shared.releaseEarlyClaim($0) }
@@ -484,11 +487,25 @@ final class SparkTransferFlow {
     }
 
     private func pollDeposit(txid: String) async {
+        // After a waiting claim the fee ceiling stays on the deposit and Spark claims it early by itself once the provider
+        // offers it, so the poll only watches for the claim instead of quoting again.
+        var isClaimLeftToSpark = false
         for _ in 0 ..< pollAttempts {
             if Task.isCancelled {
                 return
             }
             do {
+                if isClaimLeftToSpark {
+                    let isUnclaimed = try await operations.isUnclaimed(txid)
+                    guard !Task.isCancelled else { return }
+                    if !isUnclaimed {
+                        setClaimState(.added, for: txid)
+                        return
+                    }
+                    await operations.refresh()
+                    await operations.sleep(Self.pollInterval)
+                    continue
+                }
                 let found = try await operations.offer(txid)
                 guard !Task.isCancelled else { return }
                 if found == nil, offers[txid] != nil {
@@ -511,6 +528,7 @@ final class SparkTransferFlow {
                         setClaimState(state, for: txid)
                         return
                     }
+                    isClaimLeftToSpark = true
                 }
             } catch {
                 Logger.warn("Failed to claim Spark deposit \(txid) early: \(error)", context: "SparkTransferFlow")
