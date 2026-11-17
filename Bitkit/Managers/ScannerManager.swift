@@ -22,6 +22,8 @@ class ScannerManager: ObservableObject {
     private weak var hwWalletManager: HwWalletManager?
     private let nfcReader: NfcPaymentReading
     private var isHandlingScan = false
+    /// Set while a Bluetooth request holds the scan lock. A QR code or NFC read the user starts takes the lock from it.
+    private var nearbyScanID: UUID?
     /// Whether the last main scan opened a payment flow, so a Bluetooth read knows the request was taken.
     private var didOpenScanFlow = false
 
@@ -61,8 +63,7 @@ class ScannerManager: ObservableObject {
     }
 
     func handleScan(_ uri: String, context: ScannerContext, isCurrent: () -> Bool = { true }) async {
-        guard !isHandlingScan, isCurrent() else { return }
-        isHandlingScan = true
+        guard isCurrent(), beginUserScan() else { return }
         defer { isHandlingScan = false }
 
         await processScan(uri, context: context, isCurrent: isCurrent)
@@ -193,8 +194,7 @@ class ScannerManager: ObservableObject {
         isCurrent: () -> Bool = { true },
         completion: @escaping (SendRoute?) -> Void
     ) async {
-        guard !isHandlingScan, isCurrent() else { return }
-        isHandlingScan = true
+        guard isCurrent(), beginUserScan() else { return }
         defer { isHandlingScan = false }
 
         await processSendScan(uri, scope: scope, isCurrent: isCurrent, completion: completion)
@@ -326,14 +326,14 @@ class ScannerManager: ObservableObject {
             showUnsupportedQRCodeError()
             return false
         }
-        // A request arrives unprompted, so it must not open anything once the user has left the scanner.
+        // A request arrives unprompted, so it must not open anything once the user has left the scanner or started
+        // a scan of their own.
         let isCurrentOrigin = originCheck()
+        guard isCurrent(), isCurrentOrigin(), let scanID = beginNearbyScan() else { return false }
+        defer { endNearbyScan(scanID) }
         func isStillCurrent() -> Bool {
-            isCurrent() && isCurrentOrigin()
+            nearbyScanID == scanID && isCurrent() && isCurrentOrigin()
         }
-        guard !isHandlingScan, isStillCurrent() else { return false }
-        isHandlingScan = true
-        defer { isHandlingScan = false }
         if context == .send {
             var routed = false
             await app.withQuickPaySuppressed {
@@ -344,7 +344,7 @@ class ScannerManager: ObservableObject {
         await app.withQuickPaySuppressed {
             await processScan(uri, context: .main, scope: .paymentRequests, isCurrent: isStillCurrent)
         }
-        return didOpenScanFlow
+        return nearbyScanID == scanID && didOpenScanFlow
     }
 
     /// Send-sheet variant of `handleNearbyRequest`.
@@ -362,12 +362,11 @@ class ScannerManager: ObservableObject {
             return false
         }
         let isCurrentOrigin = originCheck()
+        guard isCurrent(), isCurrentOrigin(), let scanID = beginNearbyScan() else { return false }
+        defer { endNearbyScan(scanID) }
         func isStillCurrent() -> Bool {
-            isCurrent() && isCurrentOrigin()
+            nearbyScanID == scanID && isCurrent() && isCurrentOrigin()
         }
-        guard !isHandlingScan, isStillCurrent() else { return false }
-        isHandlingScan = true
-        defer { isHandlingScan = false }
         var routed = false
         await app.withQuickPaySuppressed {
             await processSendScan(
@@ -380,6 +379,31 @@ class ScannerManager: ObservableObject {
             }
         }
         return routed
+    }
+
+    /// Takes the scan lock for a QR code or NFC read the user started. A Bluetooth request still decoding gives it up.
+    private func beginUserScan() -> Bool {
+        if isHandlingScan {
+            guard nearbyScanID != nil else { return false }
+            nearbyScanID = nil
+        }
+        isHandlingScan = true
+        return true
+    }
+
+    private func beginNearbyScan() -> UUID? {
+        guard !isHandlingScan else { return nil }
+        let scanID = UUID()
+        isHandlingScan = true
+        nearbyScanID = scanID
+        return scanID
+    }
+
+    private func endNearbyScan(_ scanID: UUID) {
+        // A user scan that took the lock releases it itself.
+        guard nearbyScanID == scanID else { return }
+        nearbyScanID = nil
+        isHandlingScan = false
     }
 
     private func readNfcPaymentRequest() async -> String? {
