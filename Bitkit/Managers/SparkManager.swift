@@ -1451,7 +1451,12 @@ final class SparkManager: ChannelFreeLightningRail {
         await importRestoredExitState(walletIndex: walletIndex)
     }
 
-    /// Drops restored exit data Spark rejected, once the backup set its remote copy aside.
+    /// The restored exit data waiting for Spark to import it, if any.
+    func stagedExitState(walletIndex: Int) -> String? {
+        FileManager.default.contents(atPath: Env.sparkExitRestore(walletIndex: walletIndex).path).map { String(decoding: $0, as: UTF8.self) }
+    }
+
+    /// Drops restored exit data Spark rejected, once the backup set a copy of it aside.
     func discardStagedExitState(walletIndex: Int) {
         try? FileManager.default.removeItem(at: Env.sparkExitRestore(walletIndex: walletIndex))
     }
