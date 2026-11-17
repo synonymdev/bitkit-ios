@@ -72,6 +72,12 @@ extension AppViewModel {
 }
 
 /// Where a transfer to spending stands once its deposit is broadcast.
+private struct KeptClaim {
+    var state: SparkClaimState
+    var isFeeApproved: Bool
+    var hasWaited: Bool
+}
+
 enum SparkClaimState: Equatable {
     /// Instant was chosen and Spark has not listed the deposit yet.
     case looking
@@ -173,7 +179,13 @@ final class SparkTransferFlow {
     var quoteError: String?
 
     private(set) var txid: String?
+    /// The deposit Spark listed. Spark drops a deposit from its list while claiming it, so it stays seen.
+    private(set) var seenTxid: String?
     var claimState: SparkClaimState = .looking
+    /// Whether the user approved the changed fast transfer fee, kept here so a reopened status screen keeps its step.
+    private(set) var isFeeApproved = false
+    /// Whether the user chose Wait over the changed fast transfer fee, kept here so a reopened status screen keeps its step.
+    private(set) var hasWaited = false
     /// Each broadcast deposit keeps its own claim: a later transfer neither stops an earlier one's early claim nor takes
     /// its results, which only the current transfer's screen shows.
     @ObservationIgnored private var offers: [String: SparkClaimOffer] = [:]
@@ -183,6 +195,8 @@ final class SparkTransferFlow {
     @ObservationIgnored private var approved: (ceilingSats: UInt64, speed: SparkTransferSpeed)?
     @ObservationIgnored private var approvals: [UUID: (ceilingSats: UInt64, speed: SparkTransferSpeed)] = [:]
     @ObservationIgnored private var watchTasks: [String: Task<Void, Never>] = [:]
+    /// The claim of each deposit not on screen, by lowercased txid, so the banner reopens it at its step and fee choice.
+    @ObservationIgnored private var keptClaims: [String: KeptClaim] = [:]
     @ObservationIgnored private var quoteRequestId = 0
     /// The mining fee a refused fixed-amount funding needed, which this transfer's quotes show at least.
     @ObservationIgnored private(set) var fixedFeeFloorSats: UInt64?
@@ -212,6 +226,7 @@ final class SparkTransferFlow {
             quote = nil
             fixedFeeFloorSats = nil
             // A funding followed for the earlier transfer never stands in for this one's swipe.
+            keepCurrentClaim()
             txid = nil
         }
         self.amountSats = amountSats
@@ -223,6 +238,7 @@ final class SparkTransferFlow {
     /// A new transfer after a broadcast one starts from Instant with nothing priced; the earlier claim goes on.
     func beginIfBroadcast() {
         guard txid != nil else { return }
+        keepCurrentClaim()
         txid = nil
         amountSats = 0
         isMaxAmount = false
@@ -305,10 +321,15 @@ final class SparkTransferFlow {
 
     /// Records the broadcast deposit and starts its claim for the chosen speed.
     func onBroadcast(txid: String, ceilingSats: UInt64? = nil) {
+        if self.txid != txid {
+            keepCurrentClaim()
+        }
         self.txid = txid
         ceilings[txid] = ceilingSats ?? quote?.claimFees.instantMaxSats ?? 0
         offers[txid] = nil
         claimState = speed == .instant ? .looking : .later
+        isFeeApproved = false
+        hasWaited = false
         watchTasks[txid]?.cancel()
         watchTasks[txid] = nil
         if speed == .instant {
@@ -362,9 +383,30 @@ final class SparkTransferFlow {
         onBroadcast(txid: txid, ceilingSats: approved.ceilingSats)
     }
 
+    /// Shows the progress of the deposit in `txid`, as when the transfer banner opens it. A deposit this flow doesn't
+    /// follow, as after a relaunch, is added by Spark at 3 confirmations.
+    func showDeposit(txid: String) {
+        guard self.txid?.caseInsensitiveCompare(txid) != .orderedSame else { return }
+        keepCurrentClaim()
+        let kept = keptClaims.removeValue(forKey: txid.lowercased())
+        self.txid = txid
+        claimState = kept?.state ?? .later
+        isFeeApproved = kept?.isFeeApproved ?? false
+        hasWaited = kept?.hasWaited ?? false
+    }
+
     /// Ends the transfer on screen once Spark lists its deposit as claimed, whatever the speed, so Later or Wait
     /// doesn't stay in progress after the deposit reached spending.
+    /// Whether Spark has listed this transfer's deposit, also once it drops it from its list to claim it.
+    func isDepositSeen(in deposits: [SparkDeposit]) -> Bool {
+        guard let txid else { return false }
+        return seenTxid == txid || deposits.contains { $0.isListed && $0.txid.caseInsensitiveCompare(txid) == .orderedSame }
+    }
+
     func noteSettled(_ deposits: [SparkDeposit]) {
+        if let txid, deposits.contains(where: { $0.isListed && $0.txid.caseInsensitiveCompare(txid) == .orderedSame }) {
+            seenTxid = txid
+        }
         guard let txid, !claimState.isDone,
               deposits.contains(where: { $0.isClaimed && $0.txid.caseInsensitiveCompare(txid) == .orderedSame })
         else { return }
@@ -378,12 +420,16 @@ final class SparkTransferFlow {
         guard case let .repriced(feeSats) = claimState, let txid else { return }
         ceilings[txid] = feeSats
         claimState = .claiming
+        isFeeApproved = true
         watch(txid: txid)
     }
 
     /// Leaves the deposit to the claim after 3 confirmations, clearing the fee cap an early claim attempt left on it, so
     /// Spark doesn't still claim it early.
     func waitForConfirmations() {
+        if case .repriced = claimState {
+            hasWaited = true
+        }
         if let txid {
             watchTasks[txid]?.cancel()
             watchTasks[txid] = nil
@@ -424,8 +470,17 @@ final class SparkTransferFlow {
 
     /// Shows a claim's progress only while its deposit is the transfer on screen.
     private func setClaimState(_ state: SparkClaimState, for txid: String) {
-        guard !Task.isCancelled, self.txid == txid else { return }
+        guard !Task.isCancelled else { return }
+        guard self.txid == txid else {
+            keptClaims[txid.lowercased()]?.state = state
+            return
+        }
         claimState = state
+    }
+
+    private func keepCurrentClaim() {
+        guard let txid else { return }
+        keptClaims[txid.lowercased()] = KeptClaim(state: claimState, isFeeApproved: isFeeApproved, hasWaited: hasWaited)
     }
 
     private func pollDeposit(txid: String) async {

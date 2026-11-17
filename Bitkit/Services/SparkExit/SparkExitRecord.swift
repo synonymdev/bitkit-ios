@@ -254,6 +254,9 @@ struct SparkExitRecord: Codable, Equatable {
     /// The fee funding asked for came from a rebuild over a step the SDK could not read, while the generation out there
     /// is valid: funding it resumes that rebuild with its guard, and the ask ends once every step reads again.
     var isUnverifiedAsk: Bool?
+    /// The fee funding asked for came while a Redo rebuild was pending: that rebuild may run on the funding the exit
+    /// holds, and the ask then ends. Kept until a tick starts past that ask.
+    var isRedoAsk: Bool?
     /// The tip of the last rebuild over a step the SDK could not read, so it rebuilds at most once a block.
     var unverifiedRebuiltAtHeight: UInt32?
     /// A higher fee rate the steps out there are not built at yet: a fee bump whose build kept the valid generation

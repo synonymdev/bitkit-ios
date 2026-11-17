@@ -20,6 +20,8 @@ final class PushNotificationManager: ObservableObject {
             } else {
                 Logger.debug("Push notification permission denied by user")
             }
+            // Wake registration waits on this status, so a first grant registers without another trip to the foreground.
+            self.updateNotificationPermission()
         }
     }
 
@@ -27,9 +29,14 @@ final class PushNotificationManager: ObservableObject {
     func requestPermissionIfUndecided() {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             guard settings.authorizationStatus == .notDetermined else { return }
-            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { _, error in
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
                 if let error {
                     Logger.error("Notification permission request failed: \(error)")
+                }
+                if granted {
+                    DispatchQueue.main.async {
+                        UIApplication.shared.registerForRemoteNotifications()
+                    }
                 }
                 self.updateNotificationPermission()
             }
@@ -49,7 +56,7 @@ final class PushNotificationManager: ObservableObject {
             self.deviceToken = token
         }
 
-        Logger.debug("✅ Device token: \(token)")
+        Logger.debug("✅ Received device token")
     }
 
     func unregister() {
