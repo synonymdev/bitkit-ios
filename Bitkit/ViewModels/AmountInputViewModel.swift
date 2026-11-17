@@ -132,9 +132,10 @@ final class AmountInputViewModel {
         }
     }
 
-    /// Shows the kept amount in the current display unit, after another screen switched it.
+    /// Shows the kept amount in the current display unit, after another screen switched it; typed text that still
+    /// reads as the kept amount stays as typed.
     func refreshDisplay(currency: CurrencyViewModel) {
-        guard amountSats > 0 else { return }
+        guard amountSats > 0, convertToSats(rawInputText, currency: currency) != amountSats else { return }
         updateFromSats(amountSats, currency: currency)
     }
 
