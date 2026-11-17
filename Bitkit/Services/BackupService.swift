@@ -141,6 +141,7 @@ class BackupService {
     private let backupData: ((BackupCategory) async throws -> Data)?
     private let importStagedSparkExit: () async -> SparkStagedExitImport
     private let discardStagedSparkExit: () async -> Void
+    private let stagedSparkExitState: () async -> String?
     private let restoreExitBackup: (SparkExitBackupV1) async throws -> Void
     private let isSparkExitActive: () async -> Bool
     private let uploadBackup: (String, Data) async throws -> Void
@@ -196,6 +197,9 @@ class BackupService {
         discardStagedSparkExit: @escaping () async -> Void = { @MainActor in
             SparkManager.shared.discardStagedExitState(walletIndex: LightningService.shared.currentWalletIndex)
         },
+        stagedSparkExitState: @escaping () async -> String? = { @MainActor in
+            SparkManager.shared.stagedExitState(walletIndex: LightningService.shared.currentWalletIndex)
+        },
         restoreExitBackup: @escaping (SparkExitBackupV1) async throws -> Void = { @MainActor backup in
             try await SparkManager.shared.restoreExitBackup(backup, walletIndex: LightningService.shared.currentWalletIndex)
         }
@@ -203,6 +207,7 @@ class BackupService {
         self.defaults = defaults
         self.importStagedSparkExit = importStagedSparkExit
         self.discardStagedSparkExit = discardStagedSparkExit
+        self.stagedSparkExitState = stagedSparkExitState
         self.restoreExitBackup = restoreExitBackup
         self.isSparkExitActive = isSparkExitActive
         self.fetchBackup = fetchBackup
@@ -454,16 +459,14 @@ class BackupService {
                 }
                 guard !defaults.bool(forKey: Self.sparkExitRestorePendingKey) else { throw SparkExitBackupError.restorePending }
                 // Restored exit data Spark couldn't import yet lives only in the remote backup, so nothing replaces it, unless
-                // Spark can never import it: then the remote copy is set aside and fresh exports go up again.
+                // Spark can never import it: then a copy of it is set aside and fresh exports go up again.
                 switch await importStagedSparkExit() {
                 case .pending:
                     throw SparkExitBackupError.restorePending
                 case .rejected:
-                    // The staged data came from this remote copy; without it, the staged data stays for a later try.
-                    guard let rejected = try await fetchBackup(BackupCategory.sparkExit.rawValue) else {
-                        throw SparkExitBackupError.restorePending
+                    if let staged = await stagedSparkExitState() {
+                        try await setAsideRejectedSparkExit(rejectedSparkExitCopy(staged: staged))
                     }
-                    try await setAsideRejectedSparkExit(rejected)
                     await discardStagedSparkExit()
                 case .nothingStaged, .imported:
                     break
@@ -1529,6 +1532,22 @@ class BackupService {
         } catch {
             Logger.warn("Restore error for: '\(BackupCategory.sparkExit.rawValue)': \(error)", context: "BackupService")
         }
+    }
+
+    /// The remote exit backup when it still holds the staged data, byte for byte as it came; otherwise, as another device
+    /// may have replaced it since, the staged data in a backup of its own.
+    private func rejectedSparkExitCopy(staged: String) async throws -> Data {
+        let remote = try await fetchBackup(BackupCategory.sparkExit.rawValue)
+        let remoteBackup = remote.flatMap { try? JSONDecoder().decode(SparkExitBackupV1.self, from: $0) }
+        if let remote, remoteBackup?.exitState == staged {
+            return remote
+        }
+        return try JSONEncoder().encode(SparkExitBackupV1(
+            version: 1,
+            createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
+            network: remoteBackup?.network ?? "\(Env.network)",
+            exitState: staged
+        ))
     }
 
     /// Keeps remote exit data Spark can never import under its own key, so a fresh export doesn't replace it and it stays
