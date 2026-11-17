@@ -1954,6 +1954,7 @@ extension AppViewModel {
                 )
             }
         case let .paymentFailed(paymentId, paymentHash, reason):
+            MoveToSparkPayments.remove(paymentHash)
             let outcome = QuickPayPaymentCoordinator.shared.complete(
                 paymentId: paymentId,
                 paymentHash: paymentHash,
