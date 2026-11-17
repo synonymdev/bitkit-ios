@@ -814,32 +814,72 @@ extension ChannelFreeRailTests {
 
     func testALateFailureOfAnEarlierAttemptKeepsARetryInDoubtHeld() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
-        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: 1000) }
+        let service = Bitkit.LightningService.shared
+        service.now = { Date(timeIntervalSince1970: 1000) }
+        // Spark lists an earlier attempt of the invoice when the retry goes out.
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil, id: "earlier")]
         rail.balanceSats = 100_000
         rail.errorAfterSubmission = NSError(domain: "spark", code: 2)
-        _ = try? await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+        _ = try? await service.send(bolt11: Self.invoice)
         rail.errorAfterSubmission = nil
         rail.syncedAfter = { ($0 ?? 0) < 1000 }
-        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil)]
         rail.balanceSats = 0
 
-        // Spark reports the failure of a payment it created before this send went out; its activity keeps its status too.
-        XCTAssertTrue(Bitkit.LightningService.shared.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 900))
-        XCTAssertFalse(Bitkit.LightningService.shared.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 1000))
-        XCTAssertFalse(
-            Bitkit.LightningService.shared.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 995),
-            "A Spark clock a few seconds behind made the retry's own failure look earlier"
+        // The earlier attempt's failure keeps the hold, whatever Spark's clock stamped on it; the retry's own ends it.
+        for createdAt: UInt64 in [900, 995, 1000, 1005] {
+            XCTAssertTrue(service.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: createdAt, paymentId: "earlier"))
+            XCTAssertFalse(service.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: createdAt, paymentId: "retry"))
+        }
+        // Without Spark's id, a failure stamped before the send or within the clock margin after it keeps the hold.
+        XCTAssertTrue(service.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 995))
+        XCTAssertTrue(service.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 1005))
+        XCTAssertFalse(service.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 1010))
+
+        // The earlier attempt's failure arrives stamped five seconds before the retry.
+        service.emitChannelFreeRailEvent(
+            .paymentFailed(paymentId: "earlier", paymentHash: hash, reason: nil),
+            paymentCreatedAt: 995,
+            railPaymentId: "earlier"
         )
-        Bitkit.LightningService.shared.emitChannelFreeRailEvent(
-            .paymentFailed(paymentId: hash, paymentHash: hash, reason: nil),
-            paymentCreatedAt: 900
+        await assertRefusedAsDuplicate()
+        // An ambiguous failure without Spark's id, stamped at the retry's start, keeps the hold too.
+        service.emitChannelFreeRailEvent(.paymentFailed(paymentId: hash, paymentHash: hash, reason: nil), paymentCreatedAt: 1000)
+        await assertRefusedAsDuplicate()
+
+        // The failure of the retry itself ends the hold, even stamped before it by a clock behind.
+        service.emitChannelFreeRailEvent(
+            .paymentFailed(paymentId: "retry", paymentHash: hash, reason: nil),
+            paymentCreatedAt: 995,
+            railPaymentId: "retry"
+        )
+        await assertReachesTheNode()
+    }
+
+    func testAFailureWithoutSparkIdsKeepsTheHoldUntilPastTheClockMargin() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        service.now = { Date(timeIntervalSince1970: 1000) }
+        // Spark's earlier attempt carries no id, so attempts can't be told apart by id.
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil)]
+        rail.balanceSats = 100_000
+        rail.errorAfterSubmission = NSError(domain: "spark", code: 2)
+        _ = try? await service.send(bolt11: Self.invoice)
+        rail.errorAfterSubmission = nil
+        rail.syncedAfter = { ($0 ?? 0) < 1000 }
+        rail.balanceSats = 0
+
+        XCTAssertTrue(service.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 1005, paymentId: "retry"))
+        service.emitChannelFreeRailEvent(
+            .paymentFailed(paymentId: "retry", paymentHash: hash, reason: nil),
+            paymentCreatedAt: 1005,
+            railPaymentId: "retry"
         )
         await assertRefusedAsDuplicate()
 
-        // The failure of the send itself ends the hold.
-        Bitkit.LightningService.shared.emitChannelFreeRailEvent(
-            .paymentFailed(paymentId: hash, paymentHash: hash, reason: nil),
-            paymentCreatedAt: 1000
+        service.emitChannelFreeRailEvent(
+            .paymentFailed(paymentId: "retry", paymentHash: hash, reason: nil),
+            paymentCreatedAt: 1010,
+            railPaymentId: "retry"
         )
         await assertReachesTheNode()
     }
