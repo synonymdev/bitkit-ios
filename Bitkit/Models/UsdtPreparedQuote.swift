@@ -13,6 +13,11 @@ struct UsdtPreparedQuote {
 }
 
 extension UsdtQuote {
+    func isAffordable(with balance: UInt64?) -> Bool {
+        guard let balance, amount > 0, amount <= balance else { return false }
+        return maximumFee <= balance - amount
+    }
+
     var totalCost: UInt64 {
         let deductedFee = amount - min(amount, receivedAmount)
         let (cost, overflow) = maximumFee.addingReportingOverflow(deductedFee)

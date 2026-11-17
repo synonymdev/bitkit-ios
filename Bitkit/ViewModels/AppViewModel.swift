@@ -799,6 +799,12 @@ extension AppViewModel {
         return context.requiresAssetSelection || (context.hasMixedBitcoinEndpoints && paykitRoute?.offersSparkLeg == true)
     }
 
+    var paykitMinimumBitcoinAmount: UInt64 {
+        guard selectedWalletToPayFrom == .lightning, paykitRoute?.serviceLeg == nil else { return UInt64(Env.dustLimit) }
+        let lightningMinimum = max(1, lnurlPayData?.minSendableSat ?? 1)
+        return paykitRoute?.offersSparkLeg == true ? min(lightningMinimum, UInt64(Env.dustLimit)) : lightningMinimum
+    }
+
     func paykitBitcoinMethod(for wallet: WalletType) -> PublicPaykitService.MethodId {
         if wallet == .lightning {
             // A routed Spark leg pays its on-chain endpoint, whatever Lightning endpoint the contact also has.
@@ -889,12 +895,13 @@ extension AppViewModel {
                     selectedWalletToPayFrom = .lightning
                 }
             }
-            let canSelectUsdt = SettingsViewModel.shared.isUsdtEnabled && context.endpoints.contains { $0.methodId == .usdtArbitrum }
-            if !paykitUsesUsdt, !canSelectUsdt, let request = context.incomingPaymentRequest {
+            if let request = context.incomingPaymentRequest {
                 do {
                     let terms = try request.payment(using: paykitPaymentMethod)
-                    let minimumAmount = selectedWalletToPayFrom == .lightning ? max(1, lnurlPayData?.minSendableSat ?? 1) : UInt64(Env.dustLimit)
-                    guard terms.isValid(at: Date()), terms.amount.atomic >= minimumAmount else { return }
+                    guard terms.isValid(at: Date()) else { return }
+                    if terms.amount.asset == .btc {
+                        guard terms.amount.atomic >= paykitMinimumBitcoinAmount else { return }
+                    }
                     paykitPaymentTerms = terms
                     paykitReviewedAmount = terms.amount
                 } catch PaykitAmountError.rateUnavailable {

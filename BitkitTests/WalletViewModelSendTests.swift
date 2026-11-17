@@ -6,6 +6,44 @@ import XCTest
 final class WalletViewModelSendTests: XCTestCase {
     private struct FeeFetchError: Error {}
 
+    func testRetiredRoutingFeeEstimatesCannotMakeANewSendPayable() async {
+        for retirement in ["replacement", "reset", "cancellation"] {
+            let started = expectation(description: "Routing estimate started")
+            var continuation: CheckedContinuation<UInt64, Never>?
+            let wallet = RoutingFeeWallet()
+            wallet.routingFeeEstimateSats = 20
+            wallet.estimate = { invoice in
+                guard invoice == "old-invoice" else { return 0 }
+                return await withCheckedContinuation {
+                    continuation = $0
+                    started.fulfill()
+                }
+            }
+            let task = Task { await wallet.refreshRoutingFeeEstimate(bolt11: "old-invoice", amountSats: nil) }
+            await fulfillment(of: [started], timeout: 3)
+            XCTAssertNil(wallet.routingFeeEstimateSats, "A pending estimate cannot reuse a previous route's fee")
+
+            switch retirement {
+            case "replacement":
+                await wallet.refreshRoutingFeeEstimate(bolt11: "new-invoice", amountSats: nil)
+            case "reset":
+                wallet.resetSendState(speed: .normal)
+            default:
+                task.cancel()
+            }
+            continuation?.resume(returning: 50)
+            await task.value
+            XCTAssertEqual(wallet.routingFeeEstimateSats, retirement == "replacement" ? 0 : nil)
+        }
+
+        let wallet = RoutingFeeWallet()
+        wallet.routingFeeEstimateSats = 20
+        let cancelled = Task { await wallet.refreshRoutingFeeEstimate(bolt11: "retired-invoice", amountSats: nil) }
+        cancelled.cancel()
+        await cancelled.value
+        XCTAssertEqual(wallet.routingFeeEstimateSats, 20, "An already-cancelled caller cannot invalidate the active estimate")
+    }
+
     func testFeeRateDoesNotApplyToAnExpiredSendContext() async throws {
         snapshotAppDefaultsDomain()
         FeeEstimatesManager().devOverrideFeeEstimates = true
@@ -227,5 +265,14 @@ final class WalletViewModelSendTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 100_000_000)
         waitTask.cancel()
         await fulfillment(of: [unwound], timeout: 2)
+    }
+}
+
+@MainActor
+private final class RoutingFeeWallet: WalletViewModel {
+    var estimate: (String) async throws -> UInt64 = { _ in 0 }
+
+    override func estimateRoutingFees(bolt11: String, amountSats: UInt64?) async throws -> UInt64 {
+        try await estimate(bolt11)
     }
 }

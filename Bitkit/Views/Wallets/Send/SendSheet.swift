@@ -137,6 +137,98 @@ final class SendPresentationState {
     }
 
     @MainActor
+    func selectRequestFundingSource(
+        _ source: SendFundingSource,
+        app: AppViewModel,
+        wallet: WalletViewModel,
+        hwSend: HwSendCoordinator,
+        hardwareAvailableSats: UInt64 = 0
+    ) {
+        guard !isSubmittingPayment, !isSetupPending, let request = app.contactPaymentContext?.incomingPaymentRequest else { return }
+        app.paykitRoutingGeneration += 1
+        app.paykitUsesUsdt = source == .usdt
+        if source == .usdt {
+            app.paykitRoute?.serviceLeg = nil
+        }
+        app.paykitRoute = SendConfirmationView.route(app.paykitRoute, afterSelecting: source)
+        switch source {
+        case .usdt, .spending, .savings:
+            hwSend.selectWallet(nil)
+            if source != .usdt {
+                app.selectedWalletToPayFrom = source == .spending ? .lightning : .onchain
+            }
+            if source == .savings {
+                wallet.selectedUtxos = nil
+            }
+        case let .hardware(walletId):
+            hwSend.selectWallet(walletId, initialAvailableSats: hardwareAvailableSats, showsLoading: true)
+            app.selectedWalletToPayFrom = .onchain
+        }
+        do {
+            let terms = try request.payment(using: app.paykitPaymentMethod)
+            guard terms.isValid(at: Date()) else { throw PaykitPaymentRequestError.requestExpired }
+            app.paykitPaymentTerms = terms
+            app.paykitReviewedAmount = terms.amount
+            wallet.sendAmountSats = terms.amount.asset == .btc ? terms.amount.atomic : nil
+            wallet.isMaxAmountSend = false
+            let route = PaymentNavigationHelper.requestConfirmationRoute(app: app) ?? .amount
+            guard route != .amount, terms.amount.asset != .btc || terms.amount.atomic >= app.paykitMinimumBitcoinAmount else {
+                returnToRequestAmountReview(app: app)
+                return
+            }
+            if (navigationPath.last ?? rootOverride ?? rootRoute) == route, !navigationPath.contains(.utxoSelection) {
+                return
+            }
+            if (rootOverride ?? rootRoute) == .amount {
+                navigationPath = [route]
+            } else if let amountIndex = navigationPath.lastIndex(of: .amount) {
+                navigationPath = Array(navigationPath.prefix(amountIndex + 1)) + [route]
+            } else {
+                rootOverride = nil
+                rootRoute = route
+                navigationPath = []
+                rootRouteGeneration &+= 1
+            }
+        } catch {
+            returnToRequestAmountReview(app: app)
+            app.toast(type: .error, title: t("wallet__payment_request"), description: error.localizedDescription)
+        }
+    }
+
+    @MainActor
+    func prepareEmbeddedRetry(context: ContactPaymentContext, app: AppViewModel, wallet: WalletViewModel) throws {
+        guard let request = context.incomingPaymentRequest else { throw PaykitPaymentRequestError.requestUnavailable }
+        if !context.requiresAssetSelection || app.paykitPaymentTerms != nil {
+            let payment = try request.payment(using: app.paykitPaymentMethod, quoteId: app.paykitPaymentTerms?.quoteId)
+            wallet.sendAmountSats = payment.amount.asset == .btc ? payment.amount.atomic : nil
+        }
+        if app.paykitUsesUsdt, let terms = context.initialUsdtSubscriptionPayment(), let recipient = context.endpoints.first?.value {
+            app.paykitPaymentTerms = terms
+            app.paykitReviewedAmount = terms.amount
+            pendingEmbeddedRetryRoute = .usdt(recipient: recipient, amount: terms.amount.value)
+        } else {
+            pendingEmbeddedRetryRoute = PaymentNavigationHelper.requestConfirmationRoute(app: app) ?? .amount
+        }
+    }
+
+    @MainActor
+    private func returnToRequestAmountReview(app: AppViewModel) {
+        app.paykitPaymentTerms = nil
+        app.paykitReviewedAmount = nil
+        isAmountReviewRequired = true
+        switch rootOverride ?? rootRoute {
+        case .amount:
+            navigationPath = []
+        case .confirm:
+            navigationPath = [.amount]
+        default:
+            rootOverride = .amount
+            navigationPath = []
+            rootRouteGeneration &+= 1
+        }
+    }
+
+    @MainActor
     func amountInput(for generation: UUID) -> AmountInputViewModel {
         if lnurlAmountGeneration == generation, let lnurlAmountInput {
             return lnurlAmountInput
@@ -300,14 +392,13 @@ struct SendSheet: View {
     /// For onchain: only need node running.
     private var shouldShowSyncOverlay: Bool {
         if isPreparingRequest || hwSend.isActive || flow.isResumingAcceptedOrdinarySend || app.paykitUsesUsdt ||
+            Self.defersLightningValidationToRequestRouter(app: app) ||
             (app.contactPaymentPicksSource && currentRoot == .amount && flow.navigationPath.isEmpty)
         {
             return false
         }
 
-        let isLightningPayment = app.scannedLightningInvoice != nil
-            || app.lnurlPayData != nil
-            || app.selectedWalletToPayFrom == .lightning
+        let isLightningPayment = Self.requiresLightningReadiness(app: app)
         return Self.waitsForNode(
             isNodeRunning: wallet.nodeLifecycleState == .running,
             isLightningPayment: isLightningPayment,
@@ -341,6 +432,18 @@ struct SendSheet: View {
     /// Leaves room for Spark's fee, as `LightningService.canSend` does.
     static func sparkCanPay(amountSats: UInt64, isReady: Bool, balanceSats: UInt64) -> Bool {
         isReady && amountSats > 0 && ChannelFreeRailFees.sendableSats(balanceSats: balanceSats) >= amountSats
+    }
+
+    static func defersLightningValidationToRequestRouter(app: AppViewModel) -> Bool {
+        app.contactPaymentContext?.incomingPaymentRequest != nil && !app.paykitUsesUsdt
+            && app.selectedWalletToPayFrom == .lightning && app.paykitRoute?.offersSparkLeg == true
+    }
+
+    static func requiresLightningReadiness(app: AppViewModel) -> Bool {
+        if app.contactPaymentContext?.incomingPaymentRequest != nil {
+            return !app.paykitUsesUsdt && app.selectedWalletToPayFrom == .lightning
+        }
+        return app.scannedLightningInvoice != nil || app.lnurlPayData != nil || app.selectedWalletToPayFrom == .lightning
     }
 
     /// Identity for the sync timeout task. The timer only counts down while the overlay is visible
@@ -616,7 +719,9 @@ struct SendSheet: View {
             } catch {
                 Logger.error("Failed to set default fee rate: \(error)")
             }
-            if let request = flow.incomingPaymentRequest, app.contactPaymentContext?.requiresAssetSelection != true || app.paykitPaymentTerms != nil {
+            if let request = flow.incomingPaymentRequest, !app.paykitUsesUsdt,
+               app.contactPaymentContext?.requiresAssetSelection != true || app.paykitPaymentTerms != nil
+            {
                 guard isCurrentIncomingRequest(request.id), let amount = try? request.payment(
                           using: app.paykitPaymentMethod,
                           quoteId: app.paykitPaymentTerms?.quoteId
@@ -777,7 +882,12 @@ struct SendSheet: View {
             return .failed
         }
 
-        if let lnurlPayData = app.lnurlPayData, app.paykitRoute?.serviceLeg == nil, let requestedAmount {
+        if Self.defersLightningValidationToRequestRouter(app: app) {
+            flow.hasValidatedAfterSync = true
+            return .ready
+        }
+
+        if Self.requiresLightningReadiness(app: app), app.paykitRoute?.serviceLeg == nil, let lnurlPayData = app.lnurlPayData, let requestedAmount {
             let minimumAmount = max(1, lnurlPayData.minSendableSat)
             guard requestedAmount >= minimumAmount else {
                 showPaymentSetupFailure(
@@ -813,7 +923,7 @@ struct SendSheet: View {
         }
 
         // Validate lightning payment if present
-        if let lightningInvoice = app.scannedLightningInvoice {
+        if Self.requiresLightningReadiness(app: app), let lightningInvoice = app.scannedLightningInvoice {
             // For lightning, if we have channels but none are usable yet, wait for them
             // to become usable. If there are no channels at all, or channels are already
             // usable, proceed with validation/fallback.
@@ -1064,6 +1174,27 @@ struct SendSheet: View {
         return false
     }
 
+    private var requestFundingSourceButton: AnyView? {
+        guard app.contactPaymentContext?.incomingPaymentRequest != nil else { return nil }
+        return AnyView(SendFundingSourceButton(hwSend: hwSend, disabled: flow.isSubmittingPayment || flow.isSetupPending) {
+            selectRequestFundingSource($0)
+        }.accessibilityIdentifier("SendConfirmAssetButton"))
+    }
+
+    private func selectRequestFundingSource(_ source: SendFundingSource) {
+        guard !flow.isSubmittingPayment, !flow.isSetupPending, let request = app.contactPaymentContext?.incomingPaymentRequest,
+              paykitPaymentRequestManager.retainedHardwareRetries[request.id] == nil,
+              !PaykitUsdtPaymentService.shared.hasBinding(for: request.id)
+        else { return }
+        var hardwareAvailableSats: UInt64 = 0
+        if case let .hardware(walletId) = source {
+            let balance = hwWalletManager.fundingBalance(walletId: walletId)
+            let reserve = HwFundingSigner.feeReserve(balanceSats: balance, satsPerVByte: wallet.selectedFeeRateSatsPerVByte.map(UInt64.init))
+            hardwareAvailableSats = balance > reserve ? balance - reserve : 0
+        }
+        flow.selectRequestFundingSource(source, app: app, wallet: wallet, hwSend: hwSend, hardwareAvailableSats: hardwareAvailableSats)
+    }
+
     @ViewBuilder
     private func viewForRoute(_ route: SendRoute) -> some View {
         switch route {
@@ -1095,7 +1226,7 @@ struct SendSheet: View {
                     }
                     guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
                 }
-            }, onReviewChange: { flow.isReviewingUsdtPayment = $0 }, onBack: {
+            }, fundingSourceButton: requestFundingSourceButton, onReviewChange: { flow.isReviewingUsdtPayment = $0 }, onBack: {
                 if flow.navigationPath.isEmpty {
                     sheets.hideSheet()
                 } else {
@@ -1121,7 +1252,8 @@ struct SendSheet: View {
                 preparingRequest: isPreparingRequest ? config.preparation?.request : nil,
                 isAmountReviewRequired: $flow.isAmountReviewRequired,
                 amountIsRoot: currentRoot == .amount,
-                isSetupPending: flow.isSetupPending || flow.isFallbackFundingPending
+                isSetupPending: flow.isSetupPending || flow.isFallbackFundingPending,
+                onSelectRequestFundingSource: selectRequestFundingSource
             )
         case .hardwareSign:
             let contactContext = app.contactPaymentContext
@@ -1255,7 +1387,8 @@ struct SendSheet: View {
                 isSubmittingPayment: $flow.isSubmittingPayment,
                 requestPinCheck: requestPinCheck,
                 prepareIncomingPaymentRequest: prepareIncomingPaymentRequest,
-                routingCacheResetAttempted: flow.routingCacheResetAttempted
+                routingCacheResetAttempted: flow.routingCacheResetAttempted,
+                fundingSourceButton: requestFundingSourceButton
             )
         case .lnurlWithdrawAmount:
             LnurlWithdrawAmount {
@@ -1596,20 +1729,11 @@ struct SendSheet: View {
             return
         }
 
-        if !context.requiresAssetSelection {
-            do {
-                wallet.sendAmountSats = try request.payment(using: app.paykitPaymentMethod).amount.atomic
-            } catch {
-                showEmbeddedInitialPaymentFailure(request, error: error, context: context)
-                return
-            }
-        }
-        if app.paykitUsesUsdt, let terms = context.initialUsdtSubscriptionPayment(), let recipient = context.endpoints.first?.value {
-            app.paykitPaymentTerms = terms
-            app.paykitReviewedAmount = terms.amount
-            flow.pendingEmbeddedRetryRoute = .usdt(recipient: recipient, amount: terms.amount.value)
-        } else {
-            flow.pendingEmbeddedRetryRoute = context.requiresAssetSelection ? .amount : app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+        do {
+            try flow.prepareEmbeddedRetry(context: context, app: app, wallet: wallet)
+        } catch {
+            showEmbeddedInitialPaymentFailure(request, error: error, context: context)
+            return
         }
         flow.hasValidatedAfterSync = false
         guard !shouldShowSyncOverlay else { return }

@@ -1302,7 +1302,12 @@ final class PaykitRouteTests: XCTestCase {
         routed.serviceLeg = sparkLeg(amountSats: 20000, feeSats: 2190)
 
         XCTAssertEqual(
-            SendConfirmationView.fundingSources(hasLightningInvoice: false, hasOnchainInvoice: true, offersSparkLeg: true, hardwareWalletIds: ["hw"]),
+            SendFundingSourceButton.fundingSources(
+                hasLightningInvoice: false,
+                hasOnchainInvoice: true,
+                offersSparkLeg: true,
+                hardwareWalletIds: ["hw"]
+            ),
             [.spending, .savings, .hardware(walletId: "hw")],
             "Confirm on a Spark leg still offers Savings and the hardware wallet"
         )
@@ -1313,24 +1318,6 @@ final class PaykitRouteTests: XCTestCase {
         XCTAssertEqual(SendConfirmationView.route(routed, afterSelecting: .savings), routed)
         XCTAssertEqual(SendConfirmationView.route(routed, afterSelecting: .spending), routed)
         XCTAssertNil(SendConfirmationView.route(nil, afterSelecting: .hardware(walletId: "hw")))
-    }
-
-    func testTheFromControlStaysSwitchableOnASparkRoute() {
-        let sources = SendConfirmationView.fundingSources(
-            hasLightningInvoice: false,
-            hasOnchainInvoice: true,
-            offersSparkLeg: true,
-            hardwareWalletIds: []
-        )
-        let canSwitch = SendConfirmationView.canSwitchFundingSource(hasRetainedHardwareRetry: false, fundingSources: sources)
-
-        let control = SendConfirmationView.sparkRouteFromControl(canSwitchFundingSource: canSwitch)
-
-        XCTAssertTrue(control.isSwitchable, "After picking Spark, FROM still moves a fixed request to Savings")
-        XCTAssertEqual(control.titleKey, "wallet__spending__title")
-        // A retained hardware retry pins the source, on a Spark route too.
-        let pinned = SendConfirmationView.canSwitchFundingSource(hasRetainedHardwareRetry: true, fundingSources: sources)
-        XCTAssertFalse(SendConfirmationView.sparkRouteFromControl(canSwitchFundingSource: pinned).isSwitchable)
     }
 
     func testARefusedRerouteOnConfirmKeepsTheSwipeOffUntilAnotherSourceIsPicked() {
@@ -1372,21 +1359,26 @@ final class PaykitRouteTests: XCTestCase {
     func testConfirmOffersSpendingWhileASparkLegCanCarryAnOnchainRequest() {
         // Savings covers the request, so its Confirm opens on Savings; Spending through Spark is still a source.
         XCTAssertEqual(
-            SendConfirmationView.fundingSources(hasLightningInvoice: false, hasOnchainInvoice: true, offersSparkLeg: true, hardwareWalletIds: []),
+            SendFundingSourceButton.fundingSources(hasLightningInvoice: false, hasOnchainInvoice: true, offersSparkLeg: true, hardwareWalletIds: []),
             [.spending, .savings]
         )
         // Savings is short, so the request opens on Spending, which must be in the list to switch back to.
         XCTAssertEqual(
-            SendConfirmationView.fundingSources(hasLightningInvoice: false, hasOnchainInvoice: true, offersSparkLeg: true, hardwareWalletIds: ["hw"]),
+            SendFundingSourceButton.fundingSources(
+                hasLightningInvoice: false,
+                hasOnchainInvoice: true,
+                offersSparkLeg: true,
+                hardwareWalletIds: ["hw"]
+            ),
             [.spending, .savings, .hardware(walletId: "hw")]
         )
         XCTAssertEqual(
-            SendConfirmationView.fundingSources(hasLightningInvoice: false, hasOnchainInvoice: true, offersSparkLeg: false, hardwareWalletIds: []),
+            SendFundingSourceButton.fundingSources(hasLightningInvoice: false, hasOnchainInvoice: true, offersSparkLeg: false, hardwareWalletIds: []),
             [.savings],
             "Without a Spark leg an on-chain request has no Spending source"
         )
         XCTAssertEqual(
-            SendConfirmationView.fundingSources(hasLightningInvoice: true, hasOnchainInvoice: true, offersSparkLeg: true, hardwareWalletIds: []),
+            SendFundingSourceButton.fundingSources(hasLightningInvoice: true, hasOnchainInvoice: true, offersSparkLeg: true, hardwareWalletIds: []),
             [.spending, .savings]
         )
     }

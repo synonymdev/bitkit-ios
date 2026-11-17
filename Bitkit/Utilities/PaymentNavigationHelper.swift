@@ -218,14 +218,11 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore = .shared,
         coordinator: QuickPayPaymentCoordinator? = nil
     ) -> SendRoute? {
+        if let route = requestConfirmationRoute(app: app) {
+            return route
+        }
         if app.contactPaymentPicksSource {
-            if app.paykitPaymentTerms == nil {
-                return .amount
-            }
-            // LNURL confirmation has no funding selector, so keep both Bitcoin methods reachable here.
-            if app.lnurlPayData != nil, app.scannedOnchainInvoice != nil {
-                return .amount
-            }
+            return .amount
         }
         guard let route = appropriateSendRoute(
             app: app,
@@ -237,23 +234,37 @@ struct PaymentNavigationHelper {
             return nil
         }
 
-        if app.contactPaymentContext?.incomingPaymentRequest != nil {
-            switch route {
-            case .quickpay, .amount:
-                return app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
-            case .lnurlPayAmount:
-                return .lnurlPayConfirm
-            default:
-                return route
-            }
-        }
-
         switch route {
         case .quickpay:
             return confirmRouteAfterQuickPayCap(app: app)
         default:
             return route
         }
+    }
+
+    static func requestConfirmationRoute(app: AppViewModel) -> SendRoute? {
+        guard let context = app.contactPaymentContext, context.incomingPaymentRequest != nil else { return nil }
+        if context.requiresAssetSelection, app.paykitPaymentTerms == nil {
+            return .amount
+        }
+        if app.paykitUsesUsdt {
+            guard let terms = app.paykitPaymentTerms,
+                  let recipient = context.endpoints.first(where: { $0.methodId == .usdtArbitrum })?.value
+            else { return .amount }
+            return .usdt(recipient: recipient, amount: terms.amount.inputValue)
+        }
+        if app.paykitRoute?.offersSparkLeg == true {
+            return .confirm
+        }
+        if app.selectedWalletToPayFrom == .lightning, let lnurl = app.lnurlPayData {
+            let amount = app.paykitPaymentTerms?.amount.atomic
+                ?? (try? context.incomingPaymentRequest?.payment(using: .bitcoinLightningLnurl).amount.atomic)
+            guard let amount, lnurl.accepts(amountSats: amount) else {
+                return .amount
+            }
+            return .lnurlPayConfirm
+        }
+        return .confirm
     }
 
     static func openPrivateContactPayment(

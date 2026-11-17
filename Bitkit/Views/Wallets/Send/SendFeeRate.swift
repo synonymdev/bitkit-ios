@@ -157,7 +157,7 @@ struct SendFeeRate: View {
                         if canSwitchWallet {
                             FeeItem(
                                 speed: .instant,
-                                amount: wallet.routingFeeEstimateSats,
+                                amount: wallet.routingFeeEstimateSats ?? 0,
                                 isSelected: wallet.selectedSpeed == .instant,
                                 isDisabled: false
                             ) {
