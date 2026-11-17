@@ -11,7 +11,7 @@ final class WebLinkTests: XCTestCase {
     func testLinksASocialV1ProfileRejectsAreRefused() {
         let links = [
             "mailto:a@b.c", "a@b.c", "tel:+123456789", "+1 234 567 890", "123.456.7890",
-            "ftp://example.com", "example", "two words.com", "",
+            "ftp://example.com", "example.com:8080", "example", "two words.com", "",
         ]
         for link in links {
             XCTAssertFalse(link.isWebLink, link)

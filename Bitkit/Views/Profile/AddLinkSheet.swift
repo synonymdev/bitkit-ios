@@ -110,10 +110,11 @@ struct AddLinkSheet: View {
 
 extension String {
     /// Whether this is an http(s) link, with or without its scheme: the only links a social v1 profile accepts.
+    /// A value with any other scheme, including a bare `host:port`, is refused, as the profile write keeps it unchanged.
     var isWebLink: Bool {
         let value = trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, !value.contains(where: \.isWhitespace) else { return false }
-        let hasScheme = value.range(of: "^[A-Za-z][A-Za-z0-9+.-]*:(?![0-9])", options: .regularExpression) != nil
+        let hasScheme = value.range(of: "^[A-Za-z][A-Za-z0-9+.-]*:", options: .regularExpression) != nil
         if !hasScheme, value.contains("@") {
             return false
         }

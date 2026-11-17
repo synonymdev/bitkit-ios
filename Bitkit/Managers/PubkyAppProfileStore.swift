@@ -365,7 +365,7 @@ actor PubkyAppProfileStore {
             data.links
                 .compactMap { link -> PubkyProfileData.Link? in
                     let title = singleLine(link.label)
-                    guard !title.isEmpty, let url = linkUrl(link.url) else { return nil }
+                    guard !title.isEmpty, let url = linkUrl(link.url), isSocialV1WebUrl(url) else { return nil }
                     return PubkyProfileData.Link(label: prefix(title, linkTitleMaxLength), url: url)
                 }
                 .prefix(linksMaxCount)
@@ -526,6 +526,11 @@ actor PubkyAppProfileStore {
         return data
     }
 
+    /// Social v1's own link rule: a lowercase `http://` or `https://` prefix; it drops other links on migration too.
+    private static func isSocialV1WebUrl(_ url: String) -> Bool {
+        url.hasPrefix("http://") || url.hasPrefix("https://")
+    }
+
     static func singleLine(_ text: String) -> String {
         String(String.UnicodeScalarView(text.unicodeScalars.map { $0.properties.generalCategory == .control ? " " : $0 }))
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -542,8 +547,8 @@ actor PubkyAppProfileStore {
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, !value.contains(where: \.isWhitespace) || isPhoneNumber(value) else { return nil }
         let url: String
-        if URL(string: value)?.scheme != nil, !isPhoneNumber(value) {
-            url = value
+        if let scheme = URL(string: value)?.scheme, !isPhoneNumber(value) {
+            url = scheme.lowercased() + value.dropFirst(scheme.count)
         } else if isEmailAddress(value) {
             url = "mailto:\(value)"
         } else if isPhoneNumber(value) {
