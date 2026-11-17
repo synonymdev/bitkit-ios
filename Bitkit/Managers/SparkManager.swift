@@ -737,7 +737,8 @@ final class SparkManager: ChannelFreeLightningRail {
                 status: Self.ldkStatus(payment.status),
                 preimage: htlcDetails.preimage,
                 timestamp: payment.timestamp,
-                feeSats: Self.sats(payment.fees)
+                feeSats: Self.sats(payment.fees),
+                id: payment.id
             )
         }
     }
@@ -1884,7 +1885,7 @@ final class SparkManager: ChannelFreeLightningRail {
             await Self.handleSettledPayment(
                 payment,
                 record: { await self.recordActivity($0) },
-                emit: { LightningService.shared.emitChannelFreeRailEvent($0, paymentCreatedAt: payment.timestamp) },
+                emit: { LightningService.shared.emitChannelFreeRailEvent($0, paymentCreatedAt: payment.timestamp, railPaymentId: payment.id) },
                 refresh: { try await self.refresh() }
             )
         case let .paymentPending(payment):
@@ -1942,7 +1943,7 @@ final class SparkManager: ChannelFreeLightningRail {
             sendsRecordedWithoutFee.remove(payment.id)
         }
         do {
-            try await CoreService.shared.activity.recordChannelFreeRailPayment(details)
+            try await CoreService.shared.activity.recordChannelFreeRailPayment(details, railPaymentId: payment.id)
             unsavedPayments.remove(payment.id)
             return true
         } catch {

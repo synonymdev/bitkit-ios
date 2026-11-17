@@ -951,9 +951,9 @@ class ActivityService {
 
     /// Records a Lightning payment the channel-free rail sent or received the way an LDK payment is recorded, so it keeps
     /// its Paykit contact and seen state across syncs.
-    func recordChannelFreeRailPayment(_ payment: PaymentDetails) async throws {
+    func recordChannelFreeRailPayment(_ payment: PaymentDetails, railPaymentId: String? = nil) async throws {
         try await ServiceQueue.background(.core) {
-            try await self.processLightningPayment(payment, rail: .channelFree)
+            try await self.processLightningPayment(payment, rail: .channelFree, railPaymentId: railPaymentId)
         }
     }
 
@@ -970,7 +970,8 @@ class ActivityService {
         return update == .failed && existing != .failed && isStaleRailFailure
     }
 
-    private func processLightningPayment(_ payment: PaymentDetails, rail: LightningPaymentRail = .ldk) async throws {
+    /// `railPaymentId` is the channel-free rail's id of the attempt, which a retried invoice lists once per attempt.
+    private func processLightningPayment(_ payment: PaymentDetails, rail: LightningPaymentRail = .ldk, railPaymentId: String? = nil) async throws {
         guard case let .bolt11(_, preimage, _, description, bolt11) = payment.kind else { return }
 
         // Skip pending inbound payments - just means they created an invoice
@@ -1007,7 +1008,8 @@ class ActivityService {
                    // Spark's failure of an attempt it created before a retry still in doubt went out.
                    || (rail == .channelFree && LightningService.shared.isEarlierThanUncertainRailSend(
                        paymentHash: payment.id,
-                       createdAt: paymentTimestamp
+                       createdAt: paymentTimestamp,
+                       paymentId: railPaymentId
                    ))
            )
         {
