@@ -295,7 +295,7 @@ struct SparkConnectionDetailView: View {
             } else {
                 compactRow(label: t("lightning__status")) {
                     CaptionBText(
-                        deposit.confirmations.map {
+                        deposit.confirmations.flatMap { $0 > 0 ? $0 : nil }.map {
                             t("lightning__spark_confirmations", variables: ["count": "\(min($0, 3))"])
                         } ?? t("wallet__activity_pending"),
                         textColor: .purpleAccent
