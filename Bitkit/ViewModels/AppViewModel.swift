@@ -210,16 +210,19 @@ class AppViewModel: ObservableObject {
         lockedDeepLinkRoutesInFlight > 0
     }
 
-    private var quickPaySuppressedScansInFlight = 0
+    private var quickPaySuppressions: Set<UUID> = []
     /// True while a payment request that must always be reviewed (for example one read over Bluetooth) routes.
     var isQuickPaySuppressed: Bool {
-        quickPaySuppressedScansInFlight > 0
+        !quickPaySuppressions.isEmpty
     }
 
-    func withQuickPaySuppressed(_ operation: () async -> Void) async {
-        quickPaySuppressedScansInFlight += 1
-        defer { quickPaySuppressedScansInFlight -= 1 }
-        await operation()
+    func suppressQuickPay(_ id: UUID) {
+        quickPaySuppressions.insert(id)
+    }
+
+    /// Releasing an id that is no longer held does nothing.
+    func releaseQuickPaySuppression(_ id: UUID) {
+        quickPaySuppressions.remove(id)
     }
 
     /// The last routed deep link. On a cold start the same link reaches the app twice (`onOpenURL` and the scene

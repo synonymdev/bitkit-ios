@@ -641,13 +641,19 @@ extension ScannerManagerTests {
         await fulfillment(of: [started], timeout: 2)
 
         var routes: [SendRoute?] = []
-        await scanner.handleSendNfcRead { routes.append($0) }
+        var suppressedAtUserRoute: [Bool] = []
+        await scanner.handleSendNfcRead { route in
+            routes.append(route)
+            suppressedAtUserRoute.append(app.isQuickPaySuppressed)
+        }
         try XCTUnwrap(continuation).resume(returning: decoded)
         let wasTaken = await task.value
 
         XCTAssertEqual(routes, [.amount])
+        XCTAssertEqual(suppressedAtUserRoute, [false], "QuickPay must apply to the user's own read")
         XCTAssertFalse(wasTaken)
         XCTAssertTrue(nearbyRoutes.allSatisfy { $0 == nil })
+        XCTAssertFalse(app.isQuickPaySuppressed)
 
         // The lock is free again for the next read.
         var nextRoutes: [SendRoute?] = []

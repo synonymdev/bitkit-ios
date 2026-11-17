@@ -320,7 +320,7 @@ class ScannerManager: ObservableObject {
     ///   can keep listening.
     @discardableResult
     func handleNearbyRequest(_ request: String, context: ScannerContext, isCurrent: () -> Bool = { true }) async -> Bool {
-        guard let app, context == .main || context == .send else { return false }
+        guard app != nil, context == .main || context == .send else { return false }
         let uri = ScannedPaymentRequest.normalized(request)
         guard Self.isNearbyPaymentRequest(uri) else {
             showUnsupportedQRCodeError()
@@ -336,14 +336,10 @@ class ScannerManager: ObservableObject {
         }
         if context == .send {
             var routed = false
-            await app.withQuickPaySuppressed {
-                await processSendScan(uri, scope: .paymentRequests, isCurrent: isStillCurrent) { routed = $0 != nil }
-            }
+            await processSendScan(uri, scope: .paymentRequests, isCurrent: isStillCurrent) { routed = $0 != nil }
             return routed
         }
-        await app.withQuickPaySuppressed {
-            await processScan(uri, context: .main, scope: .paymentRequests, isCurrent: isStillCurrent)
-        }
+        await processScan(uri, context: .main, scope: .paymentRequests, isCurrent: isStillCurrent)
         return nearbyScanID == scanID && didOpenScanFlow
     }
 
@@ -356,7 +352,7 @@ class ScannerManager: ObservableObject {
         completion: @escaping (SendRoute?) -> Void
     ) async -> Bool {
         let uri = ScannedPaymentRequest.normalized(request)
-        guard let app, Self.isNearbyPaymentRequest(uri) else {
+        guard app != nil, Self.isNearbyPaymentRequest(uri) else {
             showUnsupportedQRCodeError()
             completion(nil)
             return false
@@ -368,15 +364,13 @@ class ScannerManager: ObservableObject {
             nearbyScanID == scanID && isCurrent() && isCurrentOrigin()
         }
         var routed = false
-        await app.withQuickPaySuppressed {
-            await processSendScan(
-                uri,
-                scope: scope == .onchainPayments ? .onchainPayments : .paymentRequests,
-                isCurrent: isStillCurrent
-            ) { route in
-                routed = route != nil
-                completion(route)
-            }
+        await processSendScan(
+            uri,
+            scope: scope == .onchainPayments ? .onchainPayments : .paymentRequests,
+            isCurrent: isStillCurrent
+        ) { route in
+            routed = route != nil
+            completion(route)
         }
         return routed
     }
@@ -384,8 +378,9 @@ class ScannerManager: ObservableObject {
     /// Takes the scan lock for a QR code or NFC read the user started. A Bluetooth request still decoding gives it up.
     private func beginUserScan() -> Bool {
         if isHandlingScan {
-            guard nearbyScanID != nil else { return false }
-            nearbyScanID = nil
+            guard let nearbyScanID else { return false }
+            app?.releaseQuickPaySuppression(nearbyScanID)
+            self.nearbyScanID = nil
         }
         isHandlingScan = true
         return true
@@ -396,10 +391,14 @@ class ScannerManager: ObservableObject {
         let scanID = UUID()
         isHandlingScan = true
         nearbyScanID = scanID
+        // A Bluetooth request always opens the normal review. The suppression ends with the request or when a user
+        // scan takes over.
+        app?.suppressQuickPay(scanID)
         return scanID
     }
 
     private func endNearbyScan(_ scanID: UUID) {
+        app?.releaseQuickPaySuppression(scanID)
         // A user scan that took the lock releases it itself.
         guard nearbyScanID == scanID else { return }
         nearbyScanID = nil
