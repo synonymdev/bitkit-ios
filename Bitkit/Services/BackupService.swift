@@ -135,8 +135,8 @@ class BackupService {
     /// Set while the Spark exit data restore hasn't succeeded or found no older backup, kept across launches, so a fresh
     /// export never replaces the remote backup it couldn't read yet.
     private static let sparkExitRestorePendingKey = "sparkExitRestorePending"
-    /// The remote key of exit data Spark rejected for good. A later, different rejected copy goes under this key plus
-    /// `_` and the first 16 hex digits of its SHA-256.
+    /// The prefix of the remote keys of exit data Spark rejected for good: each copy goes under this plus `_` and the first
+    /// 16 hex digits of its SHA-256.
     static let sparkExitRejectedKey = "SPARK_EXIT_REJECTED"
     private let backupData: ((BackupCategory) async throws -> Data)?
     private let importStagedSparkExit: () async -> SparkStagedExitImport
@@ -1550,18 +1550,19 @@ class BackupService {
         ))
     }
 
-    /// Keeps remote exit data Spark can never import under its own key, so a fresh export doesn't replace it and it stays
-    /// recoverable. Each different rejected copy is kept; nothing reads them back yet.
+    /// Keeps exit data Spark can never import under a key of its own, so a fresh export doesn't replace it and it stays
+    /// recoverable. The key is derived from the data, so devices setting different copies aside at once never overwrite
+    /// each other's. Nothing reads them back yet.
     private func setAsideRejectedSparkExit(_ data: Data) async throws {
-        var key = Self.sparkExitRejectedKey
-        if let kept = try await fetchBackup(key) {
-            guard kept != data else { return }
-            let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-            key += "_" + digest.prefix(16)
-            guard try await fetchBackup(key) == nil else { return }
-        }
+        let key = Self.rejectedSparkExitKey(for: data)
+        guard try await fetchBackup(key) == nil else { return }
         try await uploadBackup(key, data)
         Logger.warn("Set Spark exit data Spark can't import aside as '\(key)'", context: "BackupService")
+    }
+
+    static func rejectedSparkExitKey(for data: Data) -> String {
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return sparkExitRejectedKey + "_" + digest.prefix(16)
     }
 
     /// Nothing while an exit runs: the operators may stop reporting a leaf once it is being exited, so a fresh export
