@@ -1004,6 +1004,11 @@ class ActivityService {
                existing: existing.status,
                update: state,
                isStaleRailFailure: LightningService.shared.isStaleFailure(paymentHash: payment.id, from: rail)
+                   // Spark's failure of an attempt it created before a retry still in doubt went out.
+                   || (rail == .channelFree && LightningService.shared.isEarlierThanUncertainRailSend(
+                       paymentHash: payment.id,
+                       createdAt: paymentTimestamp
+                   ))
            )
         {
             return

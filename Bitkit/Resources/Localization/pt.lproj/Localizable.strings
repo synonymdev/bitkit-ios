@@ -5,6 +5,7 @@
 "wallet__payment_recipient_rejected" = "O destinatário rejeitou este pagamento Lightning. Verifique a fatura e tente novamente.";
 "wallet__payment_abandoned" = "O pagamento Lightning foi interrompido antes de ser concluído.";
 "wallet__payment_expired" = "Este pagamento Lightning expirou. Peça uma nova fatura.";
+"wallet__payment_restored_invoice" = "A Bitkit não consegue confirmar que esta fatura não foi paga antes de restaurar a sua carteira. Peça uma nova fatura.";
 "wallet__payment_timeout" = "O pagamento expirou. Tente novamente.";
 "wallet__send_error_support" = "Suporte";
 "wallet__payment_route_not_found" = "O Bitkit não conseguiu encontrar uma rota Lightning para este pagamento.";
@@ -251,6 +252,7 @@
 "lightning__spending_intro__text" = "Transfira fundos para seu saldo de gastos para desfrutar de transações instantâneas e baratas com amigos, familiares e comerciantes.";
 "lightning__spending_intro__button" = "Começar";
 "lightning__spending_amount__quarter" = "25%";
+"lightning__spending_amount__error_min__title" = "Mínimo do saldo de poupança";
 "lightning__spending_amount__error_max__title" = "Saldo de gastos Máximo";
 "lightning__spending_amount__error_max__description" = "O valor que você pode transferir para seu saldo de gastos está atualmente limitado a ₿ {amount}.";
 "lightning__spending_amount__error_fee" = "Não foi possível obter a taxa de rede. Toque para tentar novamente.";
@@ -356,6 +358,29 @@
 "lightning__transaction" = "Transação";
 "lightning__order_fee" = "Taxa de pedido";
 "lightning__balance" = "Saldo";
+"lightning__move_to_spark__amount" = "Montante";
+"lightning__move_to_spark__confirm_text" = "O seu saldo é movido para a Spark através da Lightning, a forma com as taxas mais baixas de o manter em Gastos. A taxa de encaminhamento abaixo é o máximo que paga.";
+"lightning__move_to_spark__confirm_title" = "Mover para a\n<accent>Spark</accent>";
+"lightning__move_to_spark__done_rest_text" = "Parte do seu saldo já está na Spark. Mova o resto da mesma forma e depois feche a conexão esvaziada.";
+"lightning__move_to_spark__done_text" = "O seu saldo já está na Spark. Feche a conexão esvaziada para devolver a respetiva reserva à Poupança.";
+"lightning__move_to_spark__done_title" = "Movido para a\n<accent>Spark</accent>";
+"lightning__move_to_spark__failed_nothing" = "As suas conexões Lightning não têm saldo para mover.";
+"lightning__move_to_spark__failed_spark" = "A Spark ainda não está pronta para receber. Tente novamente daqui a pouco.";
+"lightning__move_to_spark__failed_title" = "Não foi possível\n<accent>mover</accent>";
+"lightning__move_to_spark__failed_unknown" = "Algo correu mal ao preparar o movimento. Tente novamente.";
+"lightning__move_to_spark__fee" = "Taxa de encaminhamento";
+"lightning__move_to_spark__intro_text" = "A Blocktank está a fechar as suas conexões Lightning. Mova agora o seu saldo para a Spark: é a opção com as taxas mais baixas e continua em Gastos.";
+"lightning__move_to_spark__intro_title" = "A sua conexão\n<accent>vai ser fechada</accent>";
+"lightning__move_to_spark__move_half" = "Mover Metade";
+"lightning__move_to_spark__move_now" = "Mover Agora";
+"lightning__move_to_spark__move_rest" = "Mover o Resto";
+"lightning__move_to_spark__nav_title" = "Mover Para a Spark";
+"lightning__move_to_spark__quoting" = "A procurar uma rota e a respetiva taxa…";
+"lightning__move_to_spark__swipe" = "Deslizar Para Mover";
+"lightning__move_to_spark__too_large_none" = "Em vez disso, feche a conexão para devolver o saldo à Poupança.";
+"lightning__move_to_spark__too_large_smaller" = "Pode movê-lo em partes mais pequenas.";
+"lightning__move_to_spark__too_large_text" = "{amount} é demasiado elevado para encaminhar para a Spark num só pagamento.";
+"lightning__move_to_spark__too_large_title" = "Montante\n<accent>demasiado elevado</accent>";
 "lightning__spark" = "Spark";
 "lightning__spark_claim_fee" = "Taxa de resgate";
 "lightning__spark_confirmations" = "{count}/3 confirmações";
@@ -409,6 +434,9 @@
 "lightning__spark_exit__leftover_swept" = "{amount} de taxas de emergência não utilizadas foi enviado para a poupança.";
 "lightning__spark_exit__leftover_sending" = "A enviar {amount} de taxas de emergência não utilizadas para a poupança.";
 "lightning__spark_exit__leftover_dust" = "{amount} de taxas de emergência não utilizadas é demasiado pequeno para enviar e fica em {address}, caminho de derivação {path}.";
+"lightning__spark_exit__earlier_addresses" = "Endereços de saída anteriores";
+"lightning__spark_exit__earlier_addresses_text" = "As saídas de emergência anteriores usaram estes endereços de financiamento. As moedas deixadas num deles continuam a ser suas: gaste-as com a sua frase de recuperação e o respetivo caminho de derivação.";
+"lightning__spark_exit__earlier_path" = "Caminho de derivação";
 "lightning__spark_exit__lost_leaves" = "{amount} foi reclamado on-chain por um antigo dono destes fundos e não pode ser recuperado.";
 "lightning__spark_exit__notification_lost" = "{amount} da sua transferência forçada não pode ser recuperado. Abra a Bitkit para ver porquê.";
 "lightning__spark_exit__notification_failed" = "A sua transferência forçada parou. Abra a Bitkit para ver porquê.";
@@ -431,6 +459,7 @@
 "lightning__spark_exit__rebuilt_from_chain" = "A Bitkit não conseguiu ler o progresso guardado desta transferência, por isso reconstrói-o a partir da blockchain.";
 "lightning__spark_exit__leftover_rejected" = "{amount} de taxas de emergência não utilizadas não pôde ser enviado e fica em {address}, caminho de derivação {path}.";
 "lightning__spark_exit__notification_not_moving" = "A sua transferência forçada não está a avançar. Abra a Bitkit para ver porquê.";
+"lightning__spark_exit__note_notifications_button" = "Ativar notificações";
 "lightning__spark_exit__waiting_operators" = "{amount} que os operadores da Spark moveram on-chain aguarda que o libertem. A Bitkit volta a pedir durante até uma semana.";
 "lightning__spark_exit__fee_rose" = "As taxas de rede subiram acima da taxa desta transferência. Pode ficar mais lenta.";
 "lightning__spark_exit__fee_bump_button" = "Pagar uma taxa mais alta";
@@ -1174,6 +1203,7 @@
 "wallet__swap_route_restored_title" = "Pagamento devolvido às Poupanças";
 "wallet__send_paykit_no_route__title" = "Não é possível pagar a este contacto";
 "wallet__send_paykit_no_route__description" = "Este contacto não tem neste momento nenhum método de pagamento que a Bitkit possa usar.";
+"wallet__send_paykit_withdrawal_settling__description" = "Um saque anterior do seu saldo de gastos ainda está a ser liquidado. Tente novamente quando estiver concluído.";
 "wallet__recipient_contact" = "Contato";
 "wallet__recipient_invoice" = "Colar Invoice";
 "wallet__recipient_manual" = "Inserir Manualmente";
@@ -1256,7 +1286,7 @@
 "wallet__receive_note_placeholder" = "Comentário opcional para o pagador";
 "wallet__receive_show_qr" = "Mostrar código QR";
 "wallet__receive_spending" = "Receber fundos Lightning";
-"wallet__receive_spending_text" = "Desfrute de pagamentos em bitcoin instantâneos e baratos na rede Lightning.";
+"wallet__receive_spending_text" = "Desfrute de transações instantâneas e baratas com amigos, família e comerciantes.";
 "wallet__receive_spending_title" = "Receba no <accent>saldo de gastos</accent>";
 "wallet__activity" = "Atividade";
 "wallet__activity_no" = "Nenhuma atividade ainda";
@@ -1267,6 +1297,7 @@
 "wallet__activity_failed" = "Falha";
 "wallet__activity_transfer" = "Transferência";
 "wallet__activity_transferring" = "Em transferência";
+"wallet__activity_move_to_spark" = "Mover para a Spark";
 "wallet__activity_transfer_savings_pending" = "Do Saldo de Gastos (±{duration})";
 "wallet__activity_transfer_savings_done" = "Do Saldo de Gastos";
 "wallet__activity_transfer_spending_pending" = "Da Poupança (±{duration})";
@@ -1748,5 +1779,7 @@
 "subscriptions__allowance_auto_paid" = "Pago automaticamente";
 
 "wallet__balance_updating" = "A atualizar o saldo…";
+"lightning__move_to_spark__in_flight_text" = "O pagamento está a caminho e aparece na Spark quando for liquidado. Se falhar, o montante fica na sua conexão.";
+"lightning__move_to_spark__in_flight_title" = "A mover para a\n<accent>Spark</accent>";
 "other__error_keychain" = "Problema de Ligação de Dados";
 "other__error_keychain_msg" = "Não foi possível carregar a chave principal do porta-chaves.";

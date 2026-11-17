@@ -231,6 +231,7 @@
 "lightning__transfer_failed__cancel" = "Проверить Ошибку";
 "lightning__transfer_failed__continue" = "Попробовать Снова";
 "lightning__spending_amount__quarter" = "25%";
+"lightning__spending_amount__error_min__title" = "Минимум Баланса Сбережений";
 "lightning__spending_amount__error_max__title" = "Максимум Баланса Расходов";
 "lightning__spending_amount__error_max__description" = "Сумма, которую вы можете перевести на баланс расходов, в настоящее время ограничена ₿ {amount}.";
 "lightning__spending_amount__error_fee" = "Не удалось получить сетевую комиссию. Нажмите, чтобы повторить.";
@@ -353,6 +354,29 @@
 "lightning__transaction" = "Транзакция";
 "lightning__order_fee" = "Комиссия Ордера";
 "lightning__balance" = "Баланс";
+"lightning__move_to_spark__amount" = "Сумма";
+"lightning__move_to_spark__confirm_text" = "Ваш баланс переносится в Spark через Lightning — это самый дешёвый способ сохранить его в Расходах. Комиссия за маршрутизацию ниже — максимум, который вы заплатите.";
+"lightning__move_to_spark__confirm_title" = "Перенос в\n<accent>Spark</accent>";
+"lightning__move_to_spark__done_rest_text" = "Часть вашего баланса уже в Spark. Перенесите остаток так же, а затем закройте опустевшее соединение.";
+"lightning__move_to_spark__done_text" = "Ваш баланс уже в Spark. Закройте опустевшее соединение, чтобы вернуть его резерв в Сбережения.";
+"lightning__move_to_spark__done_title" = "Перенесено в\n<accent>Spark</accent>";
+"lightning__move_to_spark__failed_nothing" = "На ваших Lightning соединениях не осталось баланса для переноса.";
+"lightning__move_to_spark__failed_spark" = "Spark пока не готов принимать платежи. Попробуйте ещё раз чуть позже.";
+"lightning__move_to_spark__failed_title" = "Не удалось\n<accent>перенести</accent>";
+"lightning__move_to_spark__failed_unknown" = "Что-то пошло не так при подготовке переноса. Попробуйте снова.";
+"lightning__move_to_spark__fee" = "Комиссия за маршрутизацию";
+"lightning__move_to_spark__intro_text" = "Blocktank закрывает свои Lightning соединения. Перенесите баланс в Spark сейчас: это самый дешёвый вариант, и баланс останется в Расходах.";
+"lightning__move_to_spark__intro_title" = "Ваше соединение\n<accent>закрывается</accent>";
+"lightning__move_to_spark__move_half" = "Перенести Половину";
+"lightning__move_to_spark__move_now" = "Перенести Сейчас";
+"lightning__move_to_spark__move_rest" = "Перенести Остаток";
+"lightning__move_to_spark__nav_title" = "Перенос в Spark";
+"lightning__move_to_spark__quoting" = "Поиск маршрута и комиссии…";
+"lightning__move_to_spark__swipe" = "Проведите для Переноса";
+"lightning__move_to_spark__too_large_none" = "Вместо этого закройте соединение, чтобы вернуть баланс в Сбережения.";
+"lightning__move_to_spark__too_large_smaller" = "Вы можете перенести её несколькими частями поменьше.";
+"lightning__move_to_spark__too_large_text" = "Сумма {amount} слишком велика, чтобы направить её в Spark одним платежом.";
+"lightning__move_to_spark__too_large_title" = "Сумма\n<accent>слишком велика</accent>";
 "lightning__spark" = "Spark";
 "lightning__spark_claim_fee" = "Комиссия за зачисление";
 "lightning__spark_confirmations" = "{count}/3 подтверждений";
@@ -406,6 +430,9 @@
 "lightning__spark_exit__leftover_swept" = "Неиспользованные экстренные комиссии ({amount}) отправлены в сбережения.";
 "lightning__spark_exit__leftover_sending" = "Отправка неиспользованных экстренных комиссий ({amount}) в сбережения.";
 "lightning__spark_exit__leftover_dust" = "Неиспользованные экстренные комиссии в размере {amount} слишком малы для отправки и остаются на {address}, путь деривации {path}.";
+"lightning__spark_exit__earlier_addresses" = "Прежние адреса выхода";
+"lightning__spark_exit__earlier_addresses_text" = "Прежние экстренные выходы использовали эти адреса пополнения. Монеты, оставшиеся на одном из них, по-прежнему ваши: потратьте их с помощью фразы восстановления и её пути деривации.";
+"lightning__spark_exit__earlier_path" = "Путь деривации";
 "lightning__spark_exit__lost_leaves" = "{amount} забрал ончейн один из прежних владельцев этих средств, их нельзя вернуть.";
 "lightning__spark_exit__notification_lost" = "{amount} из вашего принудительного перевода нельзя вернуть. Откройте Bitkit, чтобы узнать причину.";
 "lightning__spark_exit__notification_failed" = "Ваш принудительный перевод остановлен. Откройте Bitkit, чтобы узнать причину.";
@@ -428,6 +455,7 @@
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit не смог прочитать сохранённый прогресс этого перевода, поэтому восстанавливает его по блокчейну.";
 "lightning__spark_exit__leftover_rejected" = "Неиспользованные экстренные комиссии в размере {amount} не удалось отправить, они остаются на {address}, путь деривации {path}.";
 "lightning__spark_exit__notification_not_moving" = "Ваш принудительный перевод не продвигается. Откройте Bitkit, чтобы узнать причину.";
+"lightning__spark_exit__note_notifications_button" = "Включить уведомления";
 "lightning__spark_exit__waiting_operators" = "{amount}, которые операторы Spark перевели ончейн, ждут, пока операторы их выдадут. Bitkit будет запрашивать снова в течение недели.";
 "lightning__spark_exit__fee_rose" = "Сетевые комиссии превысили комиссию этого перевода. Он может замедлиться.";
 "lightning__spark_exit__fee_bump_button" = "Заплатить больше";
@@ -1404,6 +1432,7 @@
 "wallet__swap_route_restored_title" = "Платёж возвращён в Сбережения";
 "wallet__send_paykit_no_route__title" = "Не удаётся оплатить этому контакту";
 "wallet__send_paykit_no_route__description" = "У этого контакта сейчас нет способа оплаты, который может использовать Bitkit.";
+"wallet__send_paykit_withdrawal_settling__description" = "Предыдущий вывод с баланса расходов ещё не завершён. Попробуйте снова, когда он завершится.";
 "wallet__recipient_contact" = "Контакт";
 "wallet__recipient_invoice" = "Вставить Инвойс";
 "wallet__recipient_manual" = "Ввести Вручную";
@@ -1493,6 +1522,7 @@
 "wallet__payment_recipient_rejected" = "Получатель отклонил этот платеж Lightning. Проверьте счет и попробуйте снова.";
 "wallet__payment_abandoned" = "Платеж Lightning был остановлен до завершения.";
 "wallet__payment_expired" = "Срок действия этого платежа Lightning истек. Запросите новый счет.";
+"wallet__payment_restored_invoice" = "Bitkit не может подтвердить, что этот счёт не был оплачен до восстановления вашего кошелька. Запросите новый счёт.";
 "wallet__payment_timeout" = "Время ожидания платежа истекло. Попробуйте еще раз.";
 "wallet__payment_route_not_found" = "Bitkit не смог найти маршрут Lightning для этого платежа.";
 "wallet__payment_retries_exhausted" = "Bitkit попробовал несколько маршрутов Lightning, но платеж не удалось завершить.";
@@ -1522,7 +1552,7 @@
 "wallet__receive_show_qr" = "Показать QR-код";
 "wallet__receive_text_lnfunds" = "Хотите получить <accent>Лайтнинг</accent> средства?";
 "wallet__receive_spending" = "Получить Lightning средства";
-"wallet__receive_spending_text" = "Наслаждайтесь мгновенными и дешёвыми биткоин-платежами в сети Lightning.";
+"wallet__receive_spending_text" = "Наслаждайтесь мгновенными и дешёвыми транзакциями с друзьями, семьёй и продавцами.";
 "wallet__receive_spending_title" = "Получить на <accent>баланс расходов</accent>";
 "wallet__receive_cjit_error" = "Транзакция не удалась";
 "wallet__receive_cjit_error_msg" = "Не удалось отправить средства на ваш Баланс Расходов.";
@@ -1539,6 +1569,7 @@
 "wallet__activity_failed" = "Не удалось";
 "wallet__activity_transfer" = "Перенос";
 "wallet__activity_transferring" = "Перевод";
+"wallet__activity_move_to_spark" = "Перенос в Spark";
 "wallet__activity_transfer_savings_pending" = "От Расходов ({duration}м)";
 "wallet__activity_transfer_savings_done" = "От Расходов";
 "wallet__activity_transfer_spending_pending" = "От Сбережений ({duration}м)";
@@ -2082,3 +2113,5 @@
 "subscriptions__allowance_auto_paid" = "Оплачено автоматически";
 
 "wallet__balance_updating" = "Обновление баланса…";
+"lightning__move_to_spark__in_flight_text" = "Платёж в пути и появится в Spark после завершения. Если он не пройдёт, сумма останется в вашем соединении.";
+"lightning__move_to_spark__in_flight_title" = "Идёт перенос\nв <accent>Spark</accent>";

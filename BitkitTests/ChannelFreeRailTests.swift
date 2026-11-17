@@ -823,7 +823,9 @@ extension ChannelFreeRailTests {
         rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil)]
         rail.balanceSats = 0
 
-        // Spark reports the failure of a payment it created before this send went out.
+        // Spark reports the failure of a payment it created before this send went out; its activity keeps its status too.
+        XCTAssertTrue(Bitkit.LightningService.shared.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 900))
+        XCTAssertFalse(Bitkit.LightningService.shared.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 1000))
         Bitkit.LightningService.shared.emitChannelFreeRailEvent(
             .paymentFailed(paymentId: hash, paymentHash: hash, reason: nil),
             paymentCreatedAt: 900

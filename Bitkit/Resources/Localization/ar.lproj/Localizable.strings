@@ -200,6 +200,7 @@
 "lightning__spending_intro__text" = "حوّل الأموال إلى رصيد إنفاقك للاستمتاع بمعاملات فورية ورخيصة مع الأصدقاء والعائلة والتجار.";
 "lightning__spending_intro__button" = "ابدأ";
 "lightning__spending_amount__quarter" = "25%";
+"lightning__spending_amount__error_min__title" = "الحد الأدنى لرصيد المدخرات";
 "lightning__spending_amount__error_max__title" = "الحد الأقصى لرصيد الإنفاق";
 "lightning__spending_amount__error_max__description" = "المبلغ الذي يمكنك تحويله إلى رصيد الإنفاق محدود حاليًا بـ ₿ {amount}.";
 "lightning__spending_amount__error_fee" = "تعذّر الحصول على رسوم الشبكة. انقر للمحاولة مرة أخرى.";
@@ -305,6 +306,29 @@
 "lightning__transaction" = "المعاملة";
 "lightning__order_fee" = "رسوم الطلب";
 "lightning__balance" = "الرصيد";
+"lightning__move_to_spark__amount" = "المبلغ";
+"lightning__move_to_spark__confirm_text" = "يُنقل رصيدك إلى Spark عبر Lightning، وهي الطريقة الأقل رسومًا لإبقائه في الإنفاق. رسوم التوجيه أدناه هي الحد الأقصى الذي تدفعه.";
+"lightning__move_to_spark__confirm_title" = "النقل إلى\n<accent>Spark</accent>";
+"lightning__move_to_spark__done_rest_text" = "أصبح جزء من رصيدك على Spark الآن. انقل الباقي بالطريقة نفسها، ثم أغلق الاتصال الذي أُفرغ.";
+"lightning__move_to_spark__done_text" = "أصبح رصيدك على Spark الآن. أغلق الاتصال الذي أُفرغ لإعادة احتياطيه إلى المدخرات.";
+"lightning__move_to_spark__done_title" = "تم النقل إلى\n<accent>Spark</accent>";
+"lightning__move_to_spark__failed_nothing" = "لم يتبقَّ في اتصالات Lightning الخاصة بك أي رصيد لنقله.";
+"lightning__move_to_spark__failed_spark" = "Spark غير جاهز للاستلام بعد. حاول مرة أخرى بعد لحظات.";
+"lightning__move_to_spark__failed_title" = "تعذّر\n<accent>النقل</accent>";
+"lightning__move_to_spark__failed_unknown" = "حدث خطأ أثناء التحضير للنقل. حاول مرة أخرى.";
+"lightning__move_to_spark__fee" = "رسوم التوجيه";
+"lightning__move_to_spark__intro_text" = "تُغلق Blocktank اتصالات Lightning الخاصة بها. انقل رصيدك إلى Spark الآن: إنه الخيار الأقل رسومًا، ويبقى في الإنفاق.";
+"lightning__move_to_spark__intro_title" = "اتصالك\n<accent>قيد الإغلاق</accent>";
+"lightning__move_to_spark__move_half" = "انقل النصف";
+"lightning__move_to_spark__move_now" = "انقل الآن";
+"lightning__move_to_spark__move_rest" = "انقل الباقي";
+"lightning__move_to_spark__nav_title" = "النقل إلى Spark";
+"lightning__move_to_spark__quoting" = "جارٍ البحث عن مسار ورسومه…";
+"lightning__move_to_spark__swipe" = "اسحب للنقل";
+"lightning__move_to_spark__too_large_none" = "أغلق الاتصال بدلاً من ذلك لإعادة الرصيد إلى المدخرات.";
+"lightning__move_to_spark__too_large_smaller" = "يمكنك نقله على دفعات أصغر.";
+"lightning__move_to_spark__too_large_text" = "المبلغ {amount} كبير جدًا لتوجيهه إلى Spark في دفعة واحدة.";
+"lightning__move_to_spark__too_large_title" = "المبلغ\n<accent>كبير جدًا</accent>";
 "lightning__spark" = "Spark";
 "lightning__spark_claim_fee" = "رسوم المطالبة";
 "lightning__spark_confirmations" = "{count}/3 تأكيدات";
@@ -358,6 +382,9 @@
 "lightning__spark_exit__leftover_swept" = "أُرسل {amount} من رسوم الطوارئ غير المستخدمة إلى المدخرات.";
 "lightning__spark_exit__leftover_sending" = "جارٍ إرسال {amount} من رسوم الطوارئ غير المستخدمة إلى المدخرات.";
 "lightning__spark_exit__leftover_dust" = "{amount} من رسوم الطوارئ غير المستخدمة أصغر من أن يُرسل ويبقى في {address}، مسار الاشتقاق {path}.";
+"lightning__spark_exit__earlier_addresses" = "عناوين الخروج السابقة";
+"lightning__spark_exit__earlier_addresses_text" = "استخدمت عمليات الخروج الطارئ السابقة عناوين التمويل هذه. تبقى العملات المتروكة في أحدها ملكًا لك: أنفقها باستخدام عبارة الاسترداد ومسار الاشتقاق.";
+"lightning__spark_exit__earlier_path" = "مسار الاشتقاق";
 "lightning__spark_exit__lost_leaves" = "طالب مالك سابق لهذه الأموال بمبلغ {amount} على السلسلة ولا يمكن استرداده.";
 "lightning__spark_exit__notification_lost" = "لا يمكن استرداد {amount} من تحويلك القسري. افتح Bitkit لمعرفة السبب.";
 "lightning__spark_exit__notification_failed" = "توقف التحويل القسري. افتح Bitkit لمعرفة السبب.";
@@ -380,6 +407,7 @@
 "lightning__spark_exit__rebuilt_from_chain" = "تعذّر على Bitkit قراءة التقدم المحفوظ لهذا التحويل، لذا يعيد بناءه من السلسلة.";
 "lightning__spark_exit__leftover_rejected" = "تعذّر إرسال {amount} من رسوم الطوارئ غير المستخدمة ويبقى في {address}، مسار الاشتقاق {path}.";
 "lightning__spark_exit__notification_not_moving" = "التحويل القسري لا يتقدم. افتح Bitkit لمعرفة السبب.";
+"lightning__spark_exit__note_notifications_button" = "تفعيل الإشعارات";
 "lightning__spark_exit__waiting_operators" = "{amount} الذي نقله مشغّلو Spark إلى السلسلة ينتظر أن يحرروه. يطلب Bitkit ذلك مجددًا لمدة تصل إلى أسبوع.";
 "lightning__spark_exit__fee_rose" = "ارتفعت رسوم الشبكة فوق رسوم هذا التحويل. قد يتباطأ.";
 "lightning__spark_exit__fee_bump_button" = "ادفع رسومًا أعلى";
@@ -863,6 +891,7 @@
 "wallet__payment_recipient_rejected" = "رفض المستلم دفعة Lightning هذه. تحقق من الفاتورة وحاول مرة أخرى.";
 "wallet__payment_abandoned" = "تم إيقاف دفعة Lightning قبل اكتمالها.";
 "wallet__payment_expired" = "انتهت صلاحية دفعة Lightning هذه. اطلب فاتورة جديدة.";
+"wallet__payment_restored_invoice" = "لا يستطيع Bitkit التأكد من أن هذه الفاتورة لم تُدفع قبل استعادة محفظتك. يرجى طلب فاتورة جديدة.";
 "wallet__payment_timeout" = "انتهت مهلة الدفع. حاول مرة أخرى.";
 "wallet__payment_route_not_found" = "لم يتمكن Bitkit من العثور على مسار Lightning لهذه الدفعة.";
 "wallet__payment_retries_exhausted" = "جرّب Bitkit عدة مسارات Lightning، لكن تعذر إكمال الدفعة.";
@@ -889,7 +918,7 @@
 "wallet__receive_note_placeholder" = "ملاحظة اختيارية للدافع";
 "wallet__receive_show_qr" = "عرض رمز QR";
 "wallet__receive_spending" = "استلام أموال Lightning";
-"wallet__receive_spending_text" = "استمتع بمدفوعات Bitcoin فورية ورخيصة على شبكة Lightning.";
+"wallet__receive_spending_text" = "استمتع بمعاملات فورية ورخيصة مع الأصدقاء والعائلة والتجار.";
 "wallet__receive_spending_title" = "استلم على <accent>رصيد الإنفاق</accent>";
 "settings__backup__category_contacts" = "جهات الاتصال";
 "settings__support__title" = "الدعم";
@@ -1183,6 +1212,7 @@
 "wallet__swap_route_restored_title" = "أُعيدت الدفعة إلى المدخرات";
 "wallet__send_paykit_no_route__title" = "تعذّر الدفع لجهة الاتصال هذه";
 "wallet__send_paykit_no_route__description" = "ليس لدى جهة الاتصال هذه طريقة دفع يمكن لـ Bitkit استخدامها حاليًا.";
+"wallet__send_paykit_withdrawal_settling__description" = "لا تزال عملية سحب سابقة من رصيد الإنفاق قيد التسوية. حاول مرة أخرى بعد اكتمالها.";
 "wallet__recipient_contact" = "جهة الاتصال";
 "wallet__recipient_invoice" = "لصق فاتورة";
 "wallet__recipient_manual" = "إدخال يدوي";
@@ -1688,6 +1718,7 @@
 "wallet__activity_failed" = "فشلت";
 "wallet__activity_transfer" = "تحويل";
 "wallet__activity_transferring" = "جارٍ التحويل";
+"wallet__activity_move_to_spark" = "النقل إلى Spark";
 "wallet__activity_transfer_savings_pending" = "من الإنفاق ({duration})";
 "wallet__activity_transfer_savings_done" = "من الإنفاق";
 "wallet__activity_transfer_spending_pending" = "من المدخرات ({duration})";
@@ -1768,5 +1799,7 @@
 "subscriptions__allowance_auto_paid" = "مدفوع تلقائيًا";
 
 "wallet__balance_updating" = "جارٍ تحديث الرصيد…";
+"lightning__move_to_spark__in_flight_text" = "الدفعة في طريقها وستظهر في Spark بمجرد تسويتها. إذا فشلت، يبقى المبلغ في اتصالك.";
+"lightning__move_to_spark__in_flight_title" = "جارٍ النقل إلى\n<accent>Spark</accent>";
 "other__error_keychain" = "مشكلة في الاتصال بالبيانات";
 "other__error_keychain_msg" = "تعذر تحميل المفتاح الأساسي من سلسلة المفاتيح.";
