@@ -624,6 +624,7 @@
 "security__pin_forgot_reset" = "إعادة التعيين (يتطلب عبارة الاسترداد)";
 "security__pin_send" = "يرجى إدخال رمز PIN الخاص بك لتأكيد وإرسال هذه الدفعة.";
 "security__pin_allowance" = "يرجى إدخال رمز PIN الخاص بك لتأكيد هذا التغيير في المخصص.";
+"security__pin_quickpay" = "يرجى إدخال رمز PIN لتأكيد هذا التغيير في QuickPay.";
 "security__pin_send_title" = "أدخل رمز PIN";
 "security__pin_use_biometrics" = "استخدام {biometricsName}";
 "security__bio" = "المقاييس الحيوية";
@@ -1234,6 +1235,9 @@
 "wallet__boost_fee_not_set" = "يرجى تعيين معدل الرسوم قبل التعزيز.";
 "wallet__boost_swipe" = "اسحب للتعزيز";
 "wallet__payment_received" = "تم استلام Bitcoin";
+"wallet__receipt_failed" = "فشل إرسال الإيصال";
+"wallet__receipt_sending" = "جارٍ إرسال الإيصال";
+"wallet__receipt_sent" = "تم إرسال الإيصال";
 "widgets__onboarding__title" = "مرحبًا،\n<accent>الأدوات</accent>";
 "widgets__onboarding__description" = "استمتع بموجزات لامركزية من خدمات الويب المفضلة لديك، بإضافة أدوات ممتعة ومفيدة إلى محفظة Bitkit.";
 "widgets__onboarding__view_organize" = "العرض والتنظيم";

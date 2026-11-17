@@ -673,6 +673,7 @@
 "security__pin_forgot_reset" = "Restaurar (Requer a Frase de Recuperação)";
 "security__pin_send" = "Digite seu código PIN para confirmar e enviar esse pagamento.";
 "security__pin_allowance" = "Digite seu código PIN para confirmar esta alteração da pré-aprovação.";
+"security__pin_quickpay" = "Digite seu código PIN para confirmar essa alteração no QuickPay.";
 "security__pin_send_title" = "Digitar o código PIN";
 "security__pin_use_biometrics" = "Usar {biometricsName}";
 "security__bio" = "Biometria";
@@ -1307,6 +1308,9 @@
 "wallet__boost_fee_not_set" = "Defina uma taxa antes de acelerar.";
 "wallet__boost_swipe" = "Arraste para acelerar";
 "wallet__payment_received" = "Bitcoin Recebido";
+"wallet__receipt_failed" = "Falha ao enviar o recibo";
+"wallet__receipt_sending" = "A enviar recibo";
+"wallet__receipt_sent" = "Recibo enviado";
 "wallet__payment_request_unavailable" = "O pedido de pagamento já não está disponível.";
 "wallet__payment_request_note_too_long" = "Encurte a nota e tente novamente.";
 "wallet__payment_request_expired" = "O pedido de pagamento expirou.";

@@ -287,6 +287,9 @@ every tab; start the swipes away from the edge.
 actions. Successful dismissal without a toast or duplicate payment is shared behavior, not an
 iOS-only feature.
 
+`payment-requests/paid-request-receipt.xml` has the same file name, journey name and actions on both
+platforms; the receipt line identifiers `PaykitReceiptStatus` and `PaykitReceiptRetry` match Android.
+
 `usdt-payment-restoration.xml` has the same file name, journey name and actions on both platforms.
 Android restores an unpaid amount draft after process death, while iOS may return to the wallet.
 A submitted payment must return to the wallet without reopening the paid draft on either platform.
@@ -330,6 +333,10 @@ session log after a regtest wallet wipe deletes the log directory in the same ap
 carries the same file name, journey name and actions, changing only the identifiers and commands the
 platform forces. The iOS description also leaves the Recovery home-screen quick action to a manual check,
 as the harness cannot trigger one.
+
+`settings/quickpay-payment-pin.xml` pairs with synonymdev/bitkit-android#1909 and is adapted: on iOS
+the PIN pad is a sheet whose back control is `NavigationBack`, and with biometrics on a cancelled or
+failed biometric check counts as not approved instead of falling back to the PIN pad.
 
 `payment-requests/minimum-onchain-amount.xml` is shared with Android: minimum amount
 feedback, preparation cleanup, and manual retry use the same actions and

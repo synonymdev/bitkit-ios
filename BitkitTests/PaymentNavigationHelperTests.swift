@@ -34,9 +34,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
         spendDefaults = UserDefaults(suiteName: spendSuiteName)
         spendStore = QuickPaySpendStore(defaults: spendDefaults)
 
-        settings.enableQuickpay = true
-        settings.quickpayAmount = 5
-        settings.quickpayDailyLimitMultiplier = 5
+        settings.storeQuickpaySettings(enabled: true, amount: 5, dailyLimitMultiplier: 5)
         guard let encodedRates = try? JSONEncoder().encode([usdRate]) else {
             XCTFail("Failed to encode the QuickPay test exchange rate")
             return
@@ -107,7 +105,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
     }
 
     func testUsesQuickpayWhenHashIsAlreadyOpenEvenIfDisabled() throws {
-        settings.enableQuickpay = false
+        settings.storeQuickpaySettings(enabled: false)
         let hash = "aabbccdd"
         XCTAssertNotNil(
             try spendStore.reserveBound(
@@ -124,7 +122,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
     }
 
     func testUsesQuickpayWhenHashIsOpenEvenIfDailyCapIsExceeded() throws {
-        settings.quickpayDailyLimitMultiplier = 1
+        settings.storeQuickpaySettings(dailyLimitMultiplier: 1)
         let rates = QuickPaySpendRates.live(CurrencyViewModel(currencyService: OfflineCurrencyService()))
         let hash = "aabbccdd"
         XCTAssertNotNil(try spendStore.reserveBound(paymentHash: hash, amountSats: 1000, thresholdUsd: 5, multiplier: 1, rates: rates))

@@ -738,6 +738,7 @@
 "security__pin_forgot_reset" = "Reset (Vereist de Herstelwooden)";
 "security__pin_send" = "Voer uw pincode in om deze betaling te bevestigen en versturen.";
 "security__pin_allowance" = "Voer uw pincode in om deze wijziging van de toelage te bevestigen.";
+"security__pin_quickpay" = "Voer je pincode in om deze wijziging van QuickPay te bevestigen.";
 "security__pin_send_title" = "Voer Pincode In";
 "security__pin_use_biometrics" = "Gebruik {biometricsName}";
 "security__bio" = "Biometrie";
@@ -1607,6 +1608,9 @@
 "wallet__boost_recomended_button" = "Voorgestelde Vergoeding";
 "wallet__boost_swipe" = "Veeg Om Te Boosten";
 "wallet__payment_received" = "Bitcoin Ontvangen";
+"wallet__receipt_failed" = "Ontvangstbewijs verzenden mislukt";
+"wallet__receipt_sending" = "Ontvangstbewijs verzenden";
+"wallet__receipt_sent" = "Ontvangstbewijs verzonden";
 "wallet__payment_request" = "Betaalverzoek";
 "wallet__payment_request_unavailable" = "Het betaalverzoek is niet meer beschikbaar.";
 "wallet__payment_request_note_too_long" = "Maak de opmerking korter en probeer het opnieuw.";

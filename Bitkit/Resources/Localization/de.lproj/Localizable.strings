@@ -738,6 +738,7 @@
 "security__pin_forgot_reset" = "Zurücksetzen (erfordert Wiederherstellungsphrase)";
 "security__pin_send" = "Bitte gib deinen PIN-Code ein, um diese Zahlung zu bestätigen und zu senden.";
 "security__pin_allowance" = "Bitte gib deinen PIN-Code ein, um diese Änderung des Kontingents zu bestätigen.";
+"security__pin_quickpay" = "Bitte gib deinen PIN-Code ein, um diese Änderung an QuickPay zu bestätigen.";
 "security__pin_send_title" = "PIN-Code eingeben";
 "security__pin_use_biometrics" = "Verwende {biometricsName}";
 "security__bio" = "Biometrie";
@@ -1599,6 +1600,9 @@
 "wallet__boost_recomended_button" = "Empfohlene Gebühr verwenden";
 "wallet__boost_swipe" = "Zum Beschleunigen wischen";
 "wallet__payment_received" = "Bitcoin empfangen";
+"wallet__receipt_failed" = "Beleg konnte nicht gesendet werden";
+"wallet__receipt_sending" = "Beleg wird gesendet";
+"wallet__receipt_sent" = "Beleg gesendet";
 "wallet__payment_request" = "Zahlungsanforderung";
 "wallet__payment_request_unavailable" = "Die Zahlungsanforderung ist nicht mehr verfügbar.";
 "wallet__payment_request_note_too_long" = "Kürze die Notiz und versuche es erneut.";
