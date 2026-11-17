@@ -2102,7 +2102,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             // The refusal is a definite pre-broadcast failure, which releases the list.
             isListConsumed = false
             try await sdk.setRecords([paymentRequestRecord(counterparty: record.counterparty, state: .accepted)])
-            await SendConfirmationView.restoreRequestForAnotherSwipe(context, app: app, manager: manager)
+            let isCurrent = await SendConfirmationView.restoreRequestForAnotherSwipe(context, app: app, manager: manager) { true }
+            XCTAssertTrue(isCurrent)
             XCTAssertEqual(app.contactPaymentContext?.id, context.id)
 
             guard swipesAgain else {
@@ -2119,6 +2120,37 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             let accepted = await sdk.snapshot().acceptedRequests
             XCTAssertEqual(accepted.count, 1, "The request must not be accepted a second time")
         }
+    }
+
+    @MainActor
+    func testFeeRefusalIsDroppedWhenAnotherSendStartsWhileItsRequestIsRestored() async throws {
+        let record = try paymentRequestRecord(counterparty: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xy")
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        let app = AppViewModel()
+        let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request, endpoints: [])
+        app.contactPaymentContext = context
+        try await manager.prepareForPayment(request)
+        try await sdk.setRecords([paymentRequestRecord(counterparty: record.counterparty, state: .accepted)])
+        await sdk.pauseNextPaymentRequestList()
+
+        var ownsFlow = true
+        let restore = Task { @MainActor in
+            await SendConfirmationView.restoreRequestForAnotherSwipe(context, app: app, manager: manager) { ownsFlow }
+        }
+        try await waitUntil { await sdk.paymentRequestListIsPaused() }
+        // The sheet is replaced by another payment while the refused one waits on the SDK.
+        let replacement = ContactPaymentContext(publicKey: "pubkyother")
+        app.contactPaymentContext = replacement
+        ownsFlow = false
+        await sdk.resumePaymentRequestList()
+
+        let isCurrent = await restore.value
+        XCTAssertFalse(isCurrent, "A refusal must not write its fee and amount into another payment")
+        XCTAssertEqual(app.contactPaymentContext?.id, replacement.id, "The restored request must not replace the new payment's context")
+        XCTAssertFalse(manager.isApprovedForPayment(request))
     }
 
     func testApprovedPaymentRechecksBlockingInEachSoftwareSendRouteWithoutRepeatingAcceptance() async throws {
