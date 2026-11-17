@@ -1735,6 +1735,9 @@
 "wallet__onchain_retry_note" = "Reintentar {amount} sats a {address} amb les mateixes monedes originals. L'import del destinatari no canvia. Introdueix la taxa de tarifa de xarxa en sat/vB. Això no pot crear un pagament separat.";
 "wallet__onchain_retry_construction" = "Aquesta tarifa no es pot pagar amb les monedes originals mantenint l'import del destinatari, o aquestes monedes ja no estan disponibles. Tria una taxa de tarifa més baixa o espera que es reconegui el pagament original. No s'ha enviat cap pagament separat.";
 "wallet__onchain_retry_unavailable" = "Ara mateix no s'ha pogut preparar el reintent. És possible que el pagament original ja hagi arribat a la xarxa. Comprova la connexió i reintenta només aquest pagament original.";
+"wallet__send_fee_increased_title" = "La tarifa de xarxa ha canviat";
+"wallet__send_fee_increased" = "La tarifa de xarxa ara és de {amount}, més alta que la mostrada inicialment. No s'ha enviat res. Torna a desplaçar per confirmar.";
+"wallet__send_fee_candidate_unavailable" = "La transacció que has revisat ja no es pot enviar. No s'ha enviat res. Revisa el pagament i torna-ho a provar.";
 "wallet__onchain_retry_invalid_fee" = "Introdueix una taxa de tarifa sencera entre 1 i 4.294.967.295 sat/vB.";
 "wallet__onchain_retry_max_note" = "Reintentar {amount} sats a {address} amb les mateixes monedes originals i la taxa de tarifa original de {fee} sat/vB. Enviar-ho tot no deixa monedes per a una tarifa més alta sense reduir l'import del destinatari. L'import no canvia. Això no pot crear un pagament separat.";
 "usdt__address" = "Adreça del destinatari";

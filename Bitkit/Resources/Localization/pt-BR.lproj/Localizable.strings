@@ -1886,6 +1886,9 @@
 "wallet__onchain_retry_note" = "Tentar novamente {amount} sats para {address} usando as mesmas moedas originais. O valor do destinatário permanece inalterado. Digite a taxa de rede em sat/vB. Isso não pode criar um pagamento separado.";
 "wallet__onchain_retry_construction" = "Esta taxa não pode ser paga com as moedas originais mantendo o valor do destinatário inalterado, ou essas moedas não estão mais disponíveis. Escolha uma taxa menor ou aguarde o pagamento original ser reconhecido. Nenhum pagamento separado foi enviado.";
 "wallet__onchain_retry_unavailable" = "Não foi possível preparar a nova tentativa agora. O pagamento original pode já ter chegado à rede. Verifique sua conexão e tente novamente apenas este pagamento original.";
+"wallet__send_fee_increased_title" = "Taxa de rede alterada";
+"wallet__send_fee_increased" = "A taxa de rede agora é de {amount}, mais alta do que a exibida inicialmente. Nada foi enviado. Deslize novamente para confirmar.";
+"wallet__send_fee_candidate_unavailable" = "A transação que você revisou não pode mais ser enviada. Nada foi enviado. Revise o pagamento e tente novamente.";
 "wallet__onchain_retry_invalid_fee" = "Digite uma taxa em número inteiro de 1 a 4.294.967.295 sat/vB.";
 "wallet__onchain_retry_max_note" = "Tentar novamente {amount} sats para {address} usando as mesmas moedas originais e a taxa original de {fee} sat/vB. Enviar tudo não deixa moedas para uma taxa maior sem reduzir o valor do destinatário. O valor permanece inalterado. Isso não pode criar um pagamento separado.";
 "usdt__address" = "Endereço do destinatário";

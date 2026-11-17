@@ -1885,6 +1885,9 @@
 "wallet__onchain_retry_note" = "Ponów wysłanie {amount} sats na {address} przy użyciu tych samych oryginalnych monet. Kwota dla odbiorcy pozostaje bez zmian. Wprowadź stawkę opłaty sieciowej w sat/vB. Nie może to utworzyć osobnej płatności.";
 "wallet__onchain_retry_construction" = "Tej opłaty nie można pokryć z oryginalnych monet bez zmiany kwoty dla odbiorcy lub te monety nie są już dostępne. Wybierz niższą stawkę opłaty lub poczekaj, aż oryginalna płatność zostanie rozpoznana. Nie wysłano osobnej płatności.";
 "wallet__onchain_retry_unavailable" = "Nie udało się teraz przygotować ponowienia. Oryginalna płatność mogła już dotrzeć do sieci. Sprawdź połączenie i ponów tylko tę oryginalną płatność.";
+"wallet__send_fee_increased_title" = "Opłata sieciowa się zmieniła";
+"wallet__send_fee_increased" = "Opłata sieciowa wynosi teraz {amount} i jest wyższa niż pokazana na początku. Nic nie zostało wysłane. Przesuń ponownie, aby potwierdzić.";
+"wallet__send_fee_candidate_unavailable" = "Sprawdzonej transakcji nie można już wysłać. Nic nie zostało wysłane. Sprawdź płatność i spróbuj ponownie.";
 "wallet__onchain_retry_invalid_fee" = "Wprowadź stawkę opłaty jako liczbę całkowitą od 1 do 4 294 967 295 sat/vB.";
 "wallet__onchain_retry_max_note" = "Ponów wysłanie {amount} sats na {address} przy użyciu tych samych oryginalnych monet i oryginalnej stawki opłaty {fee} sat/vB. Wysłanie wszystkiego nie zostawia monet na wyższą opłatę bez zmniejszenia kwoty dla odbiorcy. Kwota pozostaje bez zmian. Nie może to utworzyć osobnej płatności.";
 "usdt__address" = "Adres odbiorcy";

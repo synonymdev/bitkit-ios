@@ -51,6 +51,38 @@ struct SendConfirmationView: View {
     @State private var savingsFallbackWalletId: String?
     @State private var onchainFeeCalculationId: Int?
     @State private var presentationID: UUID?
+    @State private var feeReapproval: FeeReapproval?
+
+    /// The prepared transaction a swipe was refused for because it pays a higher mining fee than was shown, with the
+    /// payment it was prepared for. The next swipe approves its actual fee and sends that same transaction.
+    struct FeeReapproval: Equatable {
+        let candidateTxid: String
+        let address: String
+        let requestedSats: UInt64
+        let isMaxAmount: Bool
+        let feeRate: UInt32
+        let utxos: [SpendableUtxo]?
+        let recipientAmountSats: UInt64
+        let miningFeeSats: UInt64
+
+        init(_ increased: OnchainSendFeeIncreased, address: String, requestedSats: UInt64, isMaxAmount: Bool, feeRate: UInt32,
+             utxos: [SpendableUtxo]?)
+        {
+            candidateTxid = increased.candidateTxid
+            self.address = address
+            self.requestedSats = requestedSats
+            self.isMaxAmount = isMaxAmount
+            self.feeRate = feeRate
+            self.utxos = utxos
+            recipientAmountSats = increased.recipientAmountSats
+            miningFeeSats = increased.miningFeeSats
+        }
+
+        /// Whether the payment on screen is still the one this transaction was prepared for.
+        func covers(address: String, amountSats: UInt64, feeRate: UInt32?, utxos: [SpendableUtxo]?) -> Bool {
+            self.address == address && recipientAmountSats == amountSats && self.feeRate == feeRate && self.utxos == utxos
+        }
+    }
 
     private struct WalletSwitchRun {
         let id: UUID
@@ -259,7 +291,7 @@ struct SendConfirmationView: View {
     }
 
     /// Warning system
-    private enum WarningType: String, CaseIterable {
+    enum WarningType: String, CaseIterable {
         case amount
         case balance
         case fee
@@ -1687,6 +1719,7 @@ struct SendConfirmationView: View {
         var originalPaymentIdentity: String?
         var privatePaymentListOutcome = PrivatePaymentListSendOutcome.definitePreBroadcastFailure
         var manualAllowanceAttemptId: String?
+        var onchainSend: (address: String, requestedSats: UInt64, isMaxAmount: Bool)?
 
         do {
             try validateIncomingPaymentRequestContext(contactPaymentContext)
@@ -1821,7 +1854,18 @@ struct SendConfirmationView: View {
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 wallet.sendAmountSats = amount
-                let useMaxAmount = await shouldUseMaxOnchainSend(address: invoice.address, amountSats: amount)
+                let reapproval = feeReapproval.flatMap {
+                    $0.covers(address: invoice.address, amountSats: amount, feeRate: wallet.selectedFeeRateSatsPerVByte, utxos: wallet.selectedUtxos)
+                        ? $0 : nil
+                }
+                feeReapproval = nil
+                let useMaxAmount = if let reapproval {
+                    reapproval.isMaxAmount
+                } else {
+                    await shouldUseMaxOnchainSend(address: invoice.address, amountSats: amount)
+                }
+                let requestedSats = reapproval?.requestedSats ?? amount
+                onchainSend = (invoice.address, requestedSats, useMaxAmount)
                 let result = try await Self.sendOnchainPayment(
                     request: incomingPaymentRequest,
                     prepareBroadcast: {
@@ -1847,7 +1891,7 @@ struct SendConfirmationView: View {
                     send: { beforeBroadcastAttempt in
                         try await wallet.send(
                             address: invoice.address,
-                            sats: amount,
+                            sats: requestedSats,
                             isMaxAmount: useMaxAmount,
                             requestId: incomingPaymentRequest?.id, paymentIdentity: originalPaymentIdentity,
                             followupContext: OnchainSendFollowupContext(
@@ -1855,6 +1899,8 @@ struct SendConfirmationView: View {
                                 tags: tagManager.selectedTagsArray, contact: contactPublicKey,
                                 createdAt: UInt64(Date().timeIntervalSince1970)
                             ),
+                            reviewedMiningFeeSats: UInt64(max(0, transactionFee)),
+                            reapprovedCandidateTxid: reapproval?.candidateTxid,
                             paymentDeadline: incomingPaymentRequest?.submissionDeadline(quoteId: app.paykitPaymentTerms?.quoteId),
                             beforeBroadcastAttempt: beforeBroadcastAttempt,
                             onPreDispatchFailure: { _ in
@@ -2026,6 +2072,21 @@ struct SendConfirmationView: View {
                 try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: paymentId)
             }
 
+            if case let OnchainSendAttemptError.preDispatch(refused) = error, let increased = refused as? OnchainSendFeeIncreased,
+               let onchainSend, let feeRate = wallet.selectedFeeRateSatsPerVByte
+            {
+                reviewIncreasedFee(FeeReapproval(
+                    increased, address: onchainSend.address, requestedSats: onchainSend.requestedSats,
+                    isMaxAmount: onchainSend.isMaxAmount, feeRate: feeRate, utxos: wallet.selectedUtxos
+                ))
+                if isAutomatic {
+                    showManualConfirmation(reason: "mining fee increased")
+                    return
+                }
+                // Resets the swipe, so the actual fee gets its own swipe, warnings and authentication.
+                throw CancellationError()
+            }
+
             navigationPath.append(.failure(SendFailureContext(
                 error: error,
                 retryRoute: .confirm,
@@ -2034,6 +2095,28 @@ struct SendConfirmationView: View {
                 contactPaymentContext: contactPaymentContext
             )))
         }
+    }
+
+    /// Shows the fee and amount of the prepared transaction in place of the estimate the refused swipe approved.
+    private func reviewIncreasedFee(_ reapproval: FeeReapproval) {
+        Logger.warn(
+            "Prepared on-chain fee \(reapproval.miningFeeSats) sats exceeds the reviewed \(transactionFee) sats; asking again",
+            context: "SendConfirmation"
+        )
+        // A fee estimate still running must not replace the actual fee.
+        feeCalculationId += 1
+        feeReapproval = reapproval
+        transactionFee = Int(clamping: reapproval.miningFeeSats)
+        if wallet.sendAmountSats != reapproval.recipientAmountSats {
+            wallet.sendAmountSats = reapproval.recipientAmountSats
+        }
+        showDetails = true
+        app.toast(
+            type: .info,
+            title: t("wallet__send_fee_increased_title"),
+            description: t("wallet__send_fee_increased", variables: ["amount": currency.primaryAmountText(sats: reapproval.miningFeeSats)]),
+            accessibilityIdentifier: "SendFeeIncreasedToast"
+        )
     }
 
     private func paymentProofPreparation() throws -> (endpointIdentifier: String, kind: PaykitPaymentProofKind) {
@@ -2134,14 +2217,8 @@ struct SendConfirmationView: View {
         // Check if fee > $10 (only for onchain)
         if leg != nil || app.selectedWalletToPayFrom == .onchain {
             let fee = leg.map { $0.debitSat.saturatingSub($0.deliveredSat) } ?? UInt64(max(0, transactionFee))
-            if let feeUsd = currency.convert(sats: fee, to: "USD"), feeUsd.value > 10.0 {
-                warnings.append(.fee)
-            }
-
-            // Check if fee > 50% of send amount
-            if fee > 0 && fee > amount / 2 {
-                warnings.append(.feePercentage)
-            }
+            let feeUsd = currency.convert(sats: fee, to: "USD")
+            warnings += Self.feeWarnings(feeSats: fee, amountSats: amount, isOverUsdLimit: feeUsd.map { $0.value > 10.0 } == true)
 
             // TODO: add minimum fee warning
             // Check minimum fee warning
@@ -2152,6 +2229,18 @@ struct SendConfirmationView: View {
             // }
         }
 
+        return warnings
+    }
+
+    /// The warnings for a fee over $10 or over half of the amount sent.
+    static func feeWarnings(feeSats: UInt64, amountSats: UInt64, isOverUsdLimit: Bool) -> [WarningType] {
+        var warnings: [WarningType] = []
+        if isOverUsdLimit {
+            warnings.append(.fee)
+        }
+        if feeSats > 0, feeSats > amountSats / 2 {
+            warnings.append(.feePercentage)
+        }
         return warnings
     }
 
@@ -2549,6 +2638,11 @@ struct SendConfirmationView: View {
                 ) else { return }
                 apply(fee)
                 savingsFallbackWalletId = nil
+                return
+            }
+
+            if let feeReapproval, feeReapproval.covers(address: address, amountSats: amountSats, feeRate: feeRate, utxos: wallet.selectedUtxos) {
+                apply(feeReapproval.miningFeeSats)
                 return
             }
 

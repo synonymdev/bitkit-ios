@@ -9,6 +9,15 @@ These checks need a disposable funded regtest wallet and controlled native trans
 
 If the winning fee is not already known, an attempt without a retained candidate fee must still wait for verified transaction-history data. The private candidate-fee map is not exported in the shared backup: reset or a new installation uses the existing history fallback, not an imported fee. A retained fee is bookkeeping evidence, never payment-acceptance evidence.
 
+## Initial send fee approval
+
+The first swipe approves the fee shown on Confirm, which is an estimate. These checks need a controlled fixture in which the transaction prepared after the swipe pays a higher mining fee than that estimate at an unchanged rate, such as wallet coins that change between the estimate and the swipe; an ordinary send does not produce it.
+
+1. Swipe with payment PIN enabled. Verify nothing is broadcast, Confirm stays open with the higher fee and the actual amount, a "Network fee changed" notice appears (toast id "SendFeeIncreasedToast" on iOS), and no Pending payment or blocked send remains. Swipe again: the over-$10 and over-50% fee warnings must use the higher fee, the PIN or biometric prompt must appear again, and exactly one transaction must reach the backend, paying the fee shown on the second review.
+2. After the notice, close the sheet, then separately go Back or change the amount, fee rate or coins. Verify nothing was sent, a new send starts from a fresh estimate, and a Paykit request is still unpaid and payable once.
+3. After the notice, spend the wallet's coins another way, let a request expire, or switch wallet or payer identity, then swipe. Verify an error is shown and nothing is sent or silently prepared in its place.
+4. Verify a prepared fee equal to or lower than the estimate sends on the first swipe with no notice.
+
 ## Recovery review and authentication
 
 Use the retained original payment from the same controlled fixture. Keep transaction history controlled so an original confirmation cannot silently replace the approval being checked.
