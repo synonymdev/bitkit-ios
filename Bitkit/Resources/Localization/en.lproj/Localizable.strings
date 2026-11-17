@@ -2000,6 +2000,9 @@
 "wallet__onchain_retry_note" = "Retry {amount} sats to {address} using the same original coins. The recipient amount stays unchanged. Enter the network fee rate in sat/vB. This cannot create a separate payment.";
 "wallet__onchain_retry_construction" = "This fee cannot be paid from the original coins while keeping the recipient amount unchanged, or those coins are no longer available. Choose a lower fee rate or wait for the original payment to be recognized. No separate payment was sent.";
 "wallet__onchain_retry_unavailable" = "The retry could not be prepared right now. The original payment may already have reached the network. Check your connection and retry only this original payment.";
+"wallet__send_fee_increased_title" = "Network fee changed";
+"wallet__send_fee_increased" = "The network fee is now {amount}, higher than first shown. Nothing was sent. Swipe again to confirm.";
+"wallet__send_fee_candidate_unavailable" = "The transaction you reviewed can no longer be sent. Nothing was sent. Review the payment and try again.";
 
 "wallet__onchain_retry_invalid_fee" = "Enter a whole-number fee rate from 1 to 4,294,967,295 sat/vB.";
 

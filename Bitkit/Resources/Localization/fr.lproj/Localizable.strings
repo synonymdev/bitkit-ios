@@ -1887,6 +1887,9 @@
 "wallet__onchain_retry_note" = "Réessayer l'envoi de {amount} sats à {address} avec les mêmes UTXO d'origine. Le montant du destinataire reste inchangé. Saisissez le taux de frais de réseau en sat/vB. Cela ne peut pas créer de paiement séparé.";
 "wallet__onchain_retry_construction" = "Ces frais ne peuvent pas être payés à partir des UTXO d'origine sans modifier le montant du destinataire, ou ces UTXO ne sont plus disponibles. Choisissez un taux de frais plus bas ou attendez que le paiement d'origine soit reconnu. Aucun paiement séparé n'a été envoyé.";
 "wallet__onchain_retry_unavailable" = "La nouvelle tentative n'a pas pu être préparée pour le moment. Le paiement d'origine a peut-être déjà atteint le réseau. Vérifiez votre connexion et ne réessayez que ce paiement d'origine.";
+"wallet__send_fee_increased_title" = "Frais de réseau modifiés";
+"wallet__send_fee_increased" = "Les frais de réseau sont maintenant de {amount}, plus élevés que ceux affichés au départ. Rien n'a été envoyé. Glissez à nouveau pour confirmer.";
+"wallet__send_fee_candidate_unavailable" = "La transaction que vous avez vérifiée ne peut plus être envoyée. Rien n'a été envoyé. Vérifiez le paiement et réessayez.";
 "wallet__onchain_retry_invalid_fee" = "Saisissez un taux de frais entier compris entre 1 et 4 294 967 295 sat/vB.";
 "wallet__onchain_retry_max_note" = "Réessayer l'envoi de {amount} sats à {address} avec les mêmes UTXO d'origine et le taux de frais d'origine de {fee} sat/vB. Un envoi total ne laisse aucun UTXO pour des frais plus élevés sans réduire le montant du destinataire. Le montant reste inchangé. Cela ne peut pas créer de paiement séparé.";
 "usdt__address" = "Adresse du destinataire";
