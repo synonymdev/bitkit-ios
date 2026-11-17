@@ -361,11 +361,13 @@ private struct SpendingSpeedRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                VStack(alignment: .trailing, spacing: 0) {
-                    MoneyText(sats: Int(amount ?? 0), size: .bodyMSB, symbol: true, fillsWidth: false, shimmer: isLoading)
-                    BodySSBText(amountCaption, textColor: .textSecondary)
+                if isLoading || amount != nil {
+                    VStack(alignment: .trailing, spacing: 0) {
+                        MoneyText(sats: Int(amount ?? 0), size: .bodyMSB, symbol: true, fillsWidth: false, shimmer: isLoading)
+                        BodySSBText(amountCaption, textColor: .textSecondary)
+                    }
+                    .fixedSize()
                 }
-                .fixedSize()
 
                 Image("check-mark")
                     .resizable()

@@ -23,8 +23,8 @@ struct SpendingHwSigned: View {
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 256, height: 256)
-                .padding()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 32)
                 .accessibilityIdentifier("HardwareTransferSigned")
 
             Spacer()

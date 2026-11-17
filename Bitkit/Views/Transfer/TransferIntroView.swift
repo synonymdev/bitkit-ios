@@ -17,6 +17,7 @@ struct TransferIntroView: View {
             },
             accentColor: .purpleAccent,
             imagePosition: .center,
+            contentHorizontalPadding: 0,
             testID: "TransferIntro"
         )
         .navigationBarHidden(true)
