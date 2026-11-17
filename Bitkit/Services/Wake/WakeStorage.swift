@@ -87,12 +87,16 @@ enum WakeTimestamp {
         return max(now, saturatingAdd(last, 1))
     }
 
+    /// How long an unchanged registration stands before it is sent again. The gateway retires a device that had no
+    /// accepted push or registration for 270 days (`retention.idle_device_days`), and presence does not count, so an
+    /// install that rarely gets a wake registers again long before that.
+    static let registrationMaxAgeSecs: UInt64 = 30 * 24 * 60 * 60
+
     /// Whether an unchanged registration last sent at `last` is sent again, so the gateway never retires the device as
-    /// idle (`WakeConfig.registrationMaxAgeSecs`). One with no recorded time is sent again once, and a clock that stepped
-    /// back waits.
+    /// idle. One with no recorded time is sent again once, and a clock that stepped back waits.
     static func isRegistrationDue(now: UInt64, last: UInt64?) -> Bool {
         guard let last else { return true }
-        return now >= last && now - last >= WakeConfig.registrationMaxAgeSecs
+        return now >= last && now - last >= registrationMaxAgeSecs
     }
 
     /// The timestamp to sign again with after a 401 `stale_timestamp`, which carries the gateway's clock. A `last` too far

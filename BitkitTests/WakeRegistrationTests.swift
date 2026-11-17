@@ -287,7 +287,7 @@ final class WakeRegistrarTests: XCTestCase {
     func testAnUnchangedRegistrationIsSentAgainOnceItReachesItsMaxAgeAndNotBefore() async throws {
         _ = try await register()
 
-        nowSecs += WakeConfig.registrationMaxAgeSecs - 1
+        nowSecs += WakeTimestamp.registrationMaxAgeSecs - 1
         let early = try await register()
         XCTAssertEqual(early, .unchanged)
 
@@ -296,11 +296,11 @@ final class WakeRegistrarTests: XCTestCase {
         XCTAssertEqual(due, .registered(Self.registration))
         let next = try await register()
         XCTAssertEqual(next, .unchanged, "The age restarts from the new registration")
-        XCTAssertEqual(sent.map(\.timestamp), [Self.now, Self.now + WakeConfig.registrationMaxAgeSecs])
+        XCTAssertEqual(sent.map(\.timestamp), [Self.now, Self.now + WakeTimestamp.registrationMaxAgeSecs])
     }
 
     func testARegistrationIsDueFromItsMaxAgeAndOnceWithoutARecordedTime() {
-        let maxAge = WakeConfig.registrationMaxAgeSecs
+        let maxAge = WakeTimestamp.registrationMaxAgeSecs
         XCTAssertTrue(WakeTimestamp.isRegistrationDue(now: Self.now, last: nil))
         XCTAssertFalse(WakeTimestamp.isRegistrationDue(now: Self.now, last: Self.now))
         XCTAssertFalse(WakeTimestamp.isRegistrationDue(now: Self.now, last: Self.now - maxAge + 1))
