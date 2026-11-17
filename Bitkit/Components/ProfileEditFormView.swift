@@ -18,6 +18,8 @@ struct ProfileEditFormView<Avatar: View>: View {
     let bioPlaceholder: String
     let isSaving: Bool
     var maxLinks: Int?
+    /// Whether links must be http(s), as social v1 profiles require; contact links accept any text.
+    var webLinksOnly = false
     /// Whether the name can be saved; contact edits accept any non-empty name.
     var isNameValid: (String) -> Bool = { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     let footerNote: String?
@@ -53,7 +55,7 @@ struct ProfileEditFormView<Avatar: View>: View {
             }
         }
         .sheet(isPresented: $showAddLinkSheet, onDismiss: dismissKeyboard) {
-            AddLinkSheet { label, url in
+            AddLinkSheet(webLinksOnly: webLinksOnly) { label, url in
                 links.append(ProfileLinkInput(label: label, url: url))
             }
         }

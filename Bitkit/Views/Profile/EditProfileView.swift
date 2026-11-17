@@ -36,6 +36,7 @@ struct EditProfileView: View {
                 bioPlaceholder: t("profile__create_bio_placeholder"),
                 isSaving: isSaving,
                 maxLinks: PubkyAppProfileLimits.maxLinks,
+                webLinksOnly: true,
                 isNameValid: PubkyAppProfileLimits.isValidName,
                 footerNote: t("profile__edit_public_note"),
                 deleteLabel: copy.label,
