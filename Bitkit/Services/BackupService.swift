@@ -1,5 +1,6 @@
 import BitkitCore
 import Combine
+import CryptoKit
 import Foundation
 import Paykit
 import VssRustClientFfi
@@ -134,7 +135,8 @@ class BackupService {
     /// Set while the Spark exit data restore hasn't succeeded or found no older backup, kept across launches, so a fresh
     /// export never replaces the remote backup it couldn't read yet.
     private static let sparkExitRestorePendingKey = "sparkExitRestorePending"
-    /// The remote key of exit data Spark rejected for good, read and written alike by bitkit-android.
+    /// The remote key of exit data Spark rejected for good. A later, different rejected copy goes under this key plus
+    /// `_` and the first 16 hex digits of its SHA-256.
     static let sparkExitRejectedKey = "SPARK_EXIT_REJECTED"
     private let backupData: ((BackupCategory) async throws -> Data)?
     private let importStagedSparkExit: () async -> SparkStagedExitImport
@@ -457,7 +459,11 @@ class BackupService {
                 case .pending:
                     throw SparkExitBackupError.restorePending
                 case .rejected:
-                    try await setAsideRejectedSparkExit(fetchBackup(BackupCategory.sparkExit.rawValue))
+                    // The staged data came from this remote copy; without it, the staged data stays for a later try.
+                    guard let rejected = try await fetchBackup(BackupCategory.sparkExit.rawValue) else {
+                        throw SparkExitBackupError.restorePending
+                    }
+                    try await setAsideRejectedSparkExit(rejected)
                     await discardStagedSparkExit()
                 case .nothingStaged, .imported:
                     break
@@ -1526,15 +1532,17 @@ class BackupService {
     }
 
     /// Keeps remote exit data Spark can never import under its own key, so a fresh export doesn't replace it and it stays
-    /// recoverable. The first such copy stays; a later one doesn't overwrite it. Nothing reads the key back yet.
-    private func setAsideRejectedSparkExit(_ data: Data?) async throws {
-        guard let data else { return }
-        guard try await fetchBackup(Self.sparkExitRejectedKey) == nil else {
-            Logger.info("Kept the earlier '\(Self.sparkExitRejectedKey)' backup", context: "BackupService")
-            return
+    /// recoverable. Each different rejected copy is kept; nothing reads them back yet.
+    private func setAsideRejectedSparkExit(_ data: Data) async throws {
+        var key = Self.sparkExitRejectedKey
+        if let kept = try await fetchBackup(key) {
+            guard kept != data else { return }
+            let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            key += "_" + digest.prefix(16)
+            guard try await fetchBackup(key) == nil else { return }
         }
-        try await uploadBackup(Self.sparkExitRejectedKey, data)
-        Logger.warn("Set Spark exit data Spark can't import aside as '\(Self.sparkExitRejectedKey)'", context: "BackupService")
+        try await uploadBackup(key, data)
+        Logger.warn("Set Spark exit data Spark can't import aside as '\(key)'", context: "BackupService")
     }
 
     /// Nothing while an exit runs: the operators may stop reporting a leaf once it is being exited, so a fresh export
