@@ -341,6 +341,8 @@ final class PaykitReceiptService {
     @ObservationIgnored private var candidates: [String: [PaykitReceiptCandidate]] = [:]
     @ObservationIgnored private var identity: String?
     @ObservationIgnored private var running: Task<Void, Never>?
+    /// Bumped by `resetForWipe()`; a pass that started before the wipe writes nothing after it.
+    @ObservationIgnored private var wipeGeneration = 0
 
     init(
         sdk: PaykitReceiptSdk = PaykitSdkService.shared,
@@ -371,16 +373,22 @@ final class PaykitReceiptService {
 
     func retry(paymentId: String) async {
         await serialized {
+            let generation = self.wipeGeneration
             let key = paymentId.lowercased()
             guard let receipts = self.candidates[key], let identity = self.identity else { return }
             self.statuses[key] = .sending
             for candidate in receipts {
                 await self.issue(candidate, identity: identity)
             }
-            if await !self.publish(self.candidates.values.flatMap(\.self), identity: identity) {
+            if await !self.publish(self.candidates.values.flatMap(\.self), identity: identity, generation: generation) {
                 self.statuses[key] = .failed
             }
         }
+    }
+
+    func resetForWipe() {
+        wipeGeneration += 1
+        reset()
     }
 
     func reset() {
@@ -402,6 +410,7 @@ final class PaykitReceiptService {
     }
 
     private func reconcileNow() async {
+        let generation = wipeGeneration
         do {
             guard let status = try await sdk.identityStatus(priority: .background),
                   status.capability == .privateLinkCapable, let current = status.publicKey
@@ -442,7 +451,7 @@ final class PaykitReceiptService {
                 await issue(candidate, identity: current)
                 attemptedReceiptIds.insert(candidate.receiptId)
             }
-            await publish(found, identity: current)
+            await publish(found, identity: current, generation: generation)
         } catch {
             Logger.warn("Failed to reconcile Paykit receipts: \(error)", context: "PaykitReceiptService")
         }
@@ -461,9 +470,9 @@ final class PaykitReceiptService {
 
     /// Returns false when it could not read the issued receipts and left the statuses as they were.
     @discardableResult
-    private func publish(_ found: [PaykitReceiptCandidate], identity: String) async -> Bool {
+    private func publish(_ found: [PaykitReceiptCandidate], identity: String, generation: Int) async -> Bool {
         guard var views = await readIssuedViews() else { return false }
-        let queued = found.filter { views[$0.receiptId]?.status == .accessQueued && !isSent($0, views, identity: identity) }
+        let queued = found.filter { views[$0.receiptId]?.status == .accessQueued && !isSent($0, views, identity: identity, generation: generation) }
         var unreachable: [String] = []
         if !queued.isEmpty {
             unreachable = await drain(queued, identity: identity)
@@ -472,7 +481,7 @@ final class PaykitReceiptService {
         }
         var updated: [String: PaykitReceiptStatus] = [:]
         for candidate in found {
-            let status: PaykitReceiptStatus = if isSent(candidate, views, identity: identity) {
+            let status: PaykitReceiptStatus = if isSent(candidate, views, identity: identity, generation: generation) {
                 .sent
             } else if views[candidate.receiptId]?.status != .accessQueued {
                 .failed
@@ -485,13 +494,21 @@ final class PaykitReceiptService {
             }
             updated[candidate.receive.statusKey] = .combined(updated[candidate.receive.statusKey], status)
         }
+        guard generation == wipeGeneration else { return true }
         statuses = updated
         return true
     }
 
-    private func isSent(_ candidate: PaykitReceiptCandidate, _ views: [String: Paykit.ReceiptIssuanceView], identity: String) -> Bool {
+    private func isSent(
+        _ candidate: PaykitReceiptCandidate,
+        _ views: [String: Paykit.ReceiptIssuanceView],
+        identity: String,
+        generation: Int
+    ) -> Bool {
         if views[candidate.receiptId]?.status == .accessSent {
-            delivery.markSent(identity: identity, receiptId: candidate.receiptId)
+            if generation == wipeGeneration {
+                delivery.markSent(identity: identity, receiptId: candidate.receiptId)
+            }
             return true
         }
         return delivery.isSent(identity: identity, receiptId: candidate.receiptId)

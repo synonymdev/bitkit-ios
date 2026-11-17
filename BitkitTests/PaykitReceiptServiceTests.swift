@@ -389,6 +389,17 @@ final class PaykitReceiptServiceTests: XCTestCase {
         XCTAssertEqual(sdk.drainedCounterparties, [])
     }
 
+    func testPassInterruptedByAWipeWritesNothingAfterIt() async throws {
+        let sdk = try FakeReceiptSdk(requests: [lightningPaidRequest()])
+        let service = makeService(sdk)
+        sdk.onDrain = { service.resetForWipe() }
+
+        await service.reconcile()
+
+        XCTAssertEqual(service.statuses, [:])
+        XCTAssertNil(delivery.backupSnapshot())
+    }
+
     func testRetryThatCannotReadIssuedReceiptsFails() async throws {
         let sdk = try FakeReceiptSdk(requests: [lightningPaidRequest()])
         sdk.issueFails = true
@@ -568,6 +579,7 @@ private final class FakeReceiptSdk: PaykitReceiptSdk, @unchecked Sendable {
     private(set) var issuedCount = 0
     private(set) var issuedIdentities: [String] = []
     var drainedCounterparties: [String] = []
+    var onDrain: (@MainActor () -> Void)?
 
     init(requests: [PaymentRequestRecord]) {
         self.requests = requests
@@ -639,6 +651,9 @@ private final class FakeReceiptSdk: PaykitReceiptSdk, @unchecked Sendable {
                 issued[id]?.lastError = "peer unreachable"
             }
         case .none, .unreachable: break
+        }
+        if let onDrain {
+            await onDrain()
         }
         let failure = OutboundPrivateSendFailure(outboundMessageId: 7, error: PrivateOperationError(noPointer: .init()))
         return OutboundPrivateSendReport(
