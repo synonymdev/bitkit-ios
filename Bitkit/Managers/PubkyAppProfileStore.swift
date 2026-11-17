@@ -589,7 +589,8 @@ actor PubkyAppProfileStore {
     }
 
     private static func isPubkyAppFile(_ uri: String) -> Bool {
-        uri.contains("/pub/pubky.app/files/") && uri.unicodeScalars.count <= linkUrlMaxLength
+        (uri.contains("/pub/pubky.app/files/") || uri.contains("/pub/social/v1/files/"))
+            && uri.unicodeScalars.count <= linkUrlMaxLength
     }
 
     private static func identity(_ expectedIdentity: String?) async throws -> String {
