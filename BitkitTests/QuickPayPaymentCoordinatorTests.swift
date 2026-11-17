@@ -33,9 +33,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         suiteName = "QuickPayPaymentCoordinatorTests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)
         store = QuickPaySpendStore(defaults: defaults, dayKey: { "2026-08-15" })
-        settings.enableQuickpay = true
-        settings.quickpayAmount = 5
-        settings.quickpayDailyLimitMultiplier = 5
+        settings.storeQuickpaySettings(enabled: true, amount: 5, dailyLimitMultiplier: 5)
         guard let encodedRates = try? JSONEncoder().encode([usdRate]) else {
             XCTFail("Failed to encode the QuickPay test exchange rate")
             return
