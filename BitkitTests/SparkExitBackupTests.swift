@@ -174,7 +174,7 @@ final class SparkExitBackupTests: XCTestCase {
         let outcome = await service.triggerBackup(category: .sparkExit)
 
         XCTAssertEqual(outcome, .completed)
-        XCTAssertEqual(remote["SPARK_EXIT_REJECTED"], unreadable, "The exit data this app can't read was lost")
+        XCTAssertEqual(remote[BackupService.rejectedSparkExitKey(for: unreadable)], unreadable, "The exit data this app can't read was lost")
         XCTAssertEqual(remote["SPARK_EXIT"], export)
     }
 
@@ -201,25 +201,25 @@ final class SparkExitBackupTests: XCTestCase {
         await service.restoreSparkExit()
         _ = await service.triggerBackup(category: .sparkExit)
         XCTAssertEqual(remote["SPARK_EXIT"], restored, "A transient import failure let a fresh export replace the remote copy")
-        XCTAssertNil(remote["SPARK_EXIT_REJECTED"])
+        XCTAssertFalse(remote.keys.contains { $0.hasPrefix("SPARK_EXIT_REJECTED") })
 
         staged = .rejected
         let outcome = await service.triggerBackup(category: .sparkExit)
 
         XCTAssertEqual(outcome, .completed)
         XCTAssertEqual(staged, .nothingStaged)
-        XCTAssertEqual(remote["SPARK_EXIT_REJECTED"], restored)
+        XCTAssertEqual(remote[BackupService.rejectedSparkExitKey(for: restored)], restored)
         XCTAssertEqual(remote["SPARK_EXIT"], export)
     }
 
-    func testAnEarlierRejectedCopyIsKeptBesideALaterOne() async throws {
+    func testDifferentRejectedCopiesNeverOverwriteEachOther() async throws {
         let suite = "SparkExitBackupTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let export = try JSONEncoder().encode(SparkExitBackupV1(version: 1, createdAt: 1000, network: "regtest", exitState: "fresh"))
         let earlier = Data("earlier".utf8)
         let later = try JSONEncoder().encode(SparkExitBackupV1(version: 1, createdAt: 900, network: "regtest", exitState: "later"))
-        var remote = ["SPARK_EXIT": later, "SPARK_EXIT_REJECTED": earlier]
+        var remote = ["SPARK_EXIT": later, BackupService.rejectedSparkExitKey(for: earlier): earlier]
         var staged: SparkStagedExitImport = .rejected
         let service = BackupService(
             defaults: defaults,
@@ -233,9 +233,10 @@ final class SparkExitBackupTests: XCTestCase {
 
         _ = await service.triggerBackup(category: .sparkExit)
 
+        XCTAssertEqual(remote[BackupService.rejectedSparkExitKey(for: earlier)], earlier)
+        XCTAssertEqual(remote[BackupService.rejectedSparkExitKey(for: later)], later)
         let digest = SHA256.hash(data: later).map { String(format: "%02x", $0) }.joined()
-        XCTAssertEqual(remote["SPARK_EXIT_REJECTED"], earlier)
-        XCTAssertEqual(remote["SPARK_EXIT_REJECTED_" + digest.prefix(16)], later)
+        XCTAssertEqual(BackupService.rejectedSparkExitKey(for: later), "SPARK_EXIT_REJECTED_" + digest.prefix(16))
         XCTAssertEqual(remote["SPARK_EXIT"], export)
     }
 
@@ -259,7 +260,7 @@ final class SparkExitBackupTests: XCTestCase {
 
         _ = await service.triggerBackup(category: .sparkExit)
 
-        let kept = try JSONDecoder().decode(SparkExitBackupV1.self, from: XCTUnwrap(remote["SPARK_EXIT_REJECTED"]))
+        let kept = try JSONDecoder().decode(SparkExitBackupV1.self, from: XCTUnwrap(remote.first { $0.key.hasPrefix("SPARK_EXIT_REJECTED_") }?.value))
         XCTAssertEqual(kept.exitState, "mine", "The rejected exit data was lost for another device's backup")
         XCTAssertEqual(kept.network, "regtest")
         XCTAssertEqual(staged, .nothingStaged)
