@@ -812,6 +812,8 @@ class WalletViewModel: ObservableObject {
         requestId: PaykitPaymentRequest.ID? = nil,
         paymentIdentity: String? = nil,
         followupContext: OnchainSendFollowupContext? = nil,
+        reviewedMiningFeeSats: UInt64? = nil,
+        reapprovedCandidateTxid: String? = nil,
         paymentDeadline: PaykitPreciseInstant? = nil,
         beforeBroadcastAttempt: () async throws -> Void = {},
         onPreDispatchFailure: (Error) async throws -> Void = { _ in throw OnchainSendAttemptError.preDispatchCleanupFailed }
@@ -836,6 +838,8 @@ class WalletViewModel: ObservableObject {
             requestId: requestId,
             paymentIdentity: paymentIdentity,
             followupContext: followupContext,
+            reviewedMiningFeeSats: reviewedMiningFeeSats,
+            reapprovedCandidateTxid: reapprovedCandidateTxid,
             paymentDeadline: paymentDeadline,
             beforeBroadcastAttempt: beforeBroadcastAttempt,
             onPreDispatchFailure: onPreDispatchFailure
@@ -2180,6 +2184,7 @@ class WalletViewModel: ObservableObject {
         selectedSpeed = speed
         isMaxAmountSend = false
         routingFeeEstimateSats = 0
+        Task { await OnchainSendAttemptService.shared.discardHeldCandidate() }
     }
 
     func refreshAfterChannelClosed(channelId: LDKNode.ChannelId, reason: LDKNode.ClosureReason?) async {

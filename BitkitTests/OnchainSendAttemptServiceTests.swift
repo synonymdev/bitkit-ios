@@ -404,6 +404,244 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         }
     }
 
+    /// Sends the reviewed payment of the fee tests below, whose prepared transaction pays a 212 sat mining fee.
+    private func sendReviewed(
+        _ service: OnchainSendAttemptService, sender: PreparedAttemptNodeMock, reviewedFee: UInt64,
+        reapproved: String? = nil, amountSats: UInt64 = 1000, requestId: PaykitPaymentRequest.ID? = nil,
+        paymentDeadline: PaykitPreciseInstant? = nil,
+        beforeBroadcastAttempt: () async throws -> Void = {},
+        onPreDispatchFailure: (Error) async throws -> Void = { _ in }
+    ) async throws -> OnchainSendResult {
+        try await service.send(
+            using: sender, address: "bcrt1qexample", amountSats: amountSats, satsPerVbyte: 1, utxosToSpend: nil,
+            isMaxAmount: false, requestId: requestId, paymentIdentity: requestId == nil ? nil : "payer",
+            followupContext: .init(feeSats: reviewedFee, feeRate: 1, tags: [], contact: nil, createdAt: 1),
+            reviewedMiningFeeSats: reviewedFee, reapprovedCandidateTxid: reapproved, paymentDeadline: paymentDeadline,
+            beforeBroadcastAttempt: beforeBroadcastAttempt, onPreDispatchFailure: onPreDispatchFailure
+        )
+    }
+
+    private func reviewedSender() -> PreparedAttemptNodeMock {
+        let sender = PreparedAttemptNodeMock()
+        sender.amount = 1000
+        sender.miningFee = 212
+        sender.result = .accepted(txid: sender.txid)
+        return sender
+    }
+
+    /// Runs the first approval at a 203 sat fee and returns the refusal for the 212 sat transaction it prepared.
+    private func refusedForHigherFee(
+        _ service: OnchainSendAttemptService, sender: PreparedAttemptNodeMock, requestId: PaykitPaymentRequest.ID? = nil,
+        paymentDeadline: PaykitPreciseInstant? = nil
+    ) async throws -> OnchainSendFeeIncreased {
+        do {
+            _ = try await sendReviewed(
+                service, sender: sender, reviewedFee: 203, requestId: requestId, paymentDeadline: paymentDeadline,
+                beforeBroadcastAttempt: { XCTFail("A refused fee must not start the request's payment") },
+                onPreDispatchFailure: { _ in XCTFail("A refused fee has no started payment to roll back") }
+            )
+        } catch let OnchainSendAttemptError.preDispatch(error) {
+            return try XCTUnwrap(error as? OnchainSendFeeIncreased, "Refused with \(error)")
+        }
+        XCTFail("A 212 sat transaction went out under a 203 sat approval")
+        throw CancellationError()
+    }
+
+    func testInitialSendWithAHigherPreparedFeeIsRefusedThenSendsThatTransactionOnceWhenReapproved() async throws {
+        for requestId: PaykitPaymentRequest.ID? in [nil, .init(paymentRequestId: "request", counterparty: "payee", billingPeriodStartsAt: nil)] {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = reviewedSender()
+
+            let increased = try await refusedForHigherFee(service, sender: sender, requestId: requestId)
+            XCTAssertEqual(increased, OnchainSendFeeIncreased(candidateTxid: sender.txid, miningFeeSats: 212, recipientAmountSats: 1000))
+            XCTAssertEqual(sender.broadcasts, 0)
+            XCTAssertTrue(store.snapshot().isEmpty, "A refused fee must not leave an attempt that blocks later sends")
+
+            // A second preparation would pick this other transaction.
+            sender.txid = String(repeating: "cd", count: 32)
+            var requestStarts = 0
+            let result = try await sendReviewed(
+                service, sender: sender, reviewedFee: increased.miningFeeSats, reapproved: increased.candidateTxid, requestId: requestId,
+                beforeBroadcastAttempt: {
+                    requestStarts += 1
+                    XCTAssertEqual(store.snapshot().first?.recoveryContext?.candidateTxids, [increased.candidateTxid])
+                    XCTAssertEqual(store.snapshot().first?.followupContext?.feeSats, 212)
+                    XCTAssertEqual(sender.broadcasts, 0)
+                }
+            )
+            XCTAssertEqual(result, .accepted(txid: increased.candidateTxid))
+            XCTAssertEqual(sender.preparations, 1, "The approved transaction must be sent, not prepared again")
+            XCTAssertEqual(sender.broadcasts, 1)
+            XCTAssertEqual(requestStarts, 1)
+            XCTAssertEqual(store.snapshot().first?.txid, increased.candidateTxid)
+            XCTAssertEqual(store.snapshot().first?.requestId, requestId)
+
+            do {
+                _ = try await sendReviewed(service, sender: sender, reviewedFee: 212, reapproved: increased.candidateTxid)
+                XCTFail("An approval must not send its transaction twice")
+            } catch let OnchainSendAttemptError.preDispatch(error) {
+                XCTAssertTrue(error is OnchainSendCandidateUnavailable, "Refused with \(error)")
+            }
+            XCTAssertEqual(sender.broadcasts, 1)
+        }
+    }
+
+    func testInitialSendAtOrBelowTheReviewedFeeSendsWithoutAnotherApproval() async throws {
+        for reviewedFee: UInt64 in [212, 213, 5000] {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = reviewedSender()
+            let result = try await sendReviewed(service, sender: sender, reviewedFee: reviewedFee)
+            XCTAssertEqual(result, .accepted(txid: sender.txid))
+            XCTAssertEqual(sender.preparations, 1)
+            XCTAssertEqual(sender.broadcasts, 1)
+            XCTAssertEqual(store.snapshot().first?.followupContext?.feeSats, 212)
+        }
+    }
+
+    func testCancelledFeeReapprovalSendsNothingAndLeavesLaterSendsFree() async throws {
+        for discardsExplicitly in [true, false] {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = reviewedSender()
+            let increased = try await refusedForHigherFee(service, sender: sender)
+            if discardsExplicitly {
+                await service.discardHeldCandidate()
+            }
+            XCTAssertEqual(sender.broadcasts, 0)
+            XCTAssertTrue(store.snapshot().isEmpty)
+            let blocking = try await service.blockingAttempt()
+            XCTAssertNil(blocking)
+
+            // Another payment is prepared on its own and drops the refused transaction.
+            sender.txid = String(repeating: "cd", count: 32)
+            sender.result = .accepted(txid: sender.txid)
+            let next = try await sendReviewed(service, sender: sender, reviewedFee: 212, amountSats: 1000)
+            XCTAssertEqual(next, .accepted(txid: sender.txid))
+            XCTAssertEqual(sender.preparations, 2)
+            XCTAssertEqual(sender.broadcasts, 1)
+            try await service.acknowledgeLocalFollowup(txid: sender.txid)
+
+            do {
+                _ = try await sendReviewed(service, sender: sender, reviewedFee: 212, reapproved: increased.candidateTxid)
+                XCTFail("A dropped transaction must not be sent or prepared again under its old approval")
+            } catch let OnchainSendAttemptError.preDispatch(error) {
+                XCTAssertTrue(error is OnchainSendCandidateUnavailable, "Refused with \(error)")
+            }
+            XCTAssertEqual(sender.preparations, 2)
+            XCTAssertEqual(sender.broadcasts, 1)
+        }
+    }
+
+    func testReapprovedTransactionThatCanNoLongerBeSentIsNotRebuilt() async throws {
+        let future = PaykitPreciseInstant(date: Date().addingTimeInterval(3600))
+        let expired = PaykitPreciseInstant(date: Date(timeIntervalSince1970: 1000))
+        let requestId = PaykitPaymentRequest.ID(paymentRequestId: "request", counterparty: "payee", billingPeriodStartsAt: nil)
+        typealias Case = (
+            reason: String, deadline: PaykitPreciseInstant, refusedBeforeAdmission: Bool,
+            changeSender: (PreparedAttemptNodeMock) -> Void, changePayment: (inout UInt64, inout PaykitPaymentRequest.ID?) -> Void
+        )
+        let cases: [Case] = [
+            ("its coins were spent", future, false, { $0.spendable = [] }, { _, _ in }),
+            ("the request expired", expired, true, { _ in }, { _, _ in }),
+            ("the node changed", future, true, { $0.dispatchNode = NSObject() }, { _, _ in }),
+            ("the wallet changed", future, true, { $0.currentWalletIndex = 1 }, { _, _ in }),
+            ("the amount changed", future, true, { _ in }, { amount, _ in amount = 1001 }),
+            ("the request changed", future, true, { _ in }, { _, request in request = nil }),
+        ]
+        for testCase in cases {
+            let reason = testCase.reason
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = reviewedSender()
+            sender.spendable = Set(sender.inputs)
+            // The first approval is refused for its fee before any deadline is read.
+            let increased = try await refusedForHigherFee(service, sender: sender, requestId: requestId, paymentDeadline: testCase.deadline)
+            testCase.changeSender(sender)
+            var amount: UInt64 = 1000
+            var request: PaykitPaymentRequest.ID? = requestId
+            testCase.changePayment(&amount, &request)
+            let savesBefore = store.saves
+            do {
+                _ = try await sendReviewed(
+                    service, sender: sender, reviewedFee: 212, reapproved: increased.candidateTxid, amountSats: amount,
+                    requestId: request, paymentDeadline: testCase.deadline,
+                    beforeBroadcastAttempt: { XCTFail("The request's payment must not start when \(reason)") },
+                    onPreDispatchFailure: { _ in XCTFail("No started payment exists to roll back when \(reason)") }
+                )
+                XCTFail("The approved transaction went out although \(reason)")
+            } catch let OnchainSendAttemptError.preDispatch(error) {
+                XCTAssertTrue(error is OnchainSendCandidateUnavailable, "Refused with \(error) when \(reason)")
+            }
+            XCTAssertEqual(sender.preparations, 1, "No other transaction may be prepared when \(reason)")
+            XCTAssertEqual(sender.broadcasts, 0, "Nothing may be sent when \(reason)")
+            XCTAssertTrue(store.snapshot().isEmpty, "The attempt must be released when \(reason)")
+            if testCase.refusedBeforeAdmission {
+                XCTAssertEqual(store.saves, savesBefore, "No attempt may be saved when \(reason)")
+            }
+        }
+    }
+
+    func testNodeStopDropsTheKeptTransactionAndASendStillPreparingKeepsNone() async throws {
+        for stopsWhilePreparing in [false, true] {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = reviewedSender()
+            var candidateTxid = sender.txid
+            if stopsWhilePreparing {
+                sender.onPrepare = { await sender.beforeNodeStop?() }
+                do {
+                    _ = try await sendReviewed(service, sender: sender, reviewedFee: 203)
+                    XCTFail("A 212 sat transaction went out under a 203 sat approval")
+                } catch let OnchainSendAttemptError.preDispatch(error) {
+                    XCTAssertTrue(error is OnchainSendCandidateUnavailable, "Refused with \(error)")
+                }
+                sender.onPrepare = nil
+            } else {
+                candidateTxid = try await refusedForHigherFee(service, sender: sender).candidateTxid
+                await sender.beforeNodeStop?()
+            }
+            XCTAssertTrue(store.snapshot().isEmpty)
+            do {
+                _ = try await sendReviewed(service, sender: sender, reviewedFee: 212, reapproved: candidateTxid)
+                XCTFail("A transaction of a stopped node must not be sent")
+            } catch let OnchainSendAttemptError.preDispatch(error) {
+                XCTAssertTrue(error is OnchainSendCandidateUnavailable, "Refused with \(error)")
+            }
+            XCTAssertEqual(sender.preparations, 1)
+            XCTAssertEqual(sender.broadcasts, 0)
+        }
+    }
+
+    func testDiscardingAnotherTransactionKeepsTheOneAwaitingApproval() async throws {
+        let service = OnchainSendAttemptService(store: MemoryAttemptStore())
+        let sender = reviewedSender()
+        let increased = try await refusedForHigherFee(service, sender: sender)
+        await service.discardHeldCandidate(txid: String(repeating: "cd", count: 32))
+        let result = try await sendReviewed(service, sender: sender, reviewedFee: 212, reapproved: increased.candidateTxid)
+        XCTAssertEqual(result, .accepted(txid: increased.candidateTxid))
+        XCTAssertEqual(sender.preparations, 1)
+    }
+
+    func testReapprovalBelowTheActualFeeKeepsTheSameTransactionForAnotherApproval() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = reviewedSender()
+        let increased = try await refusedForHigherFee(service, sender: sender)
+        do {
+            _ = try await sendReviewed(service, sender: sender, reviewedFee: 211, reapproved: increased.candidateTxid)
+            XCTFail("211 sats do not approve a 212 sat fee")
+        } catch let OnchainSendAttemptError.preDispatch(error) {
+            XCTAssertEqual(error as? OnchainSendFeeIncreased, increased)
+        }
+        XCTAssertEqual(sender.broadcasts, 0)
+        let result = try await sendReviewed(service, sender: sender, reviewedFee: 212, reapproved: increased.candidateTxid)
+        XCTAssertEqual(result, .accepted(txid: increased.candidateTxid))
+        XCTAssertEqual(sender.preparations, 1)
+        XCTAssertEqual(sender.broadcasts, 1)
+    }
+
     func testPreparedReceiptIsDurableBeforeNativeDispatch() async throws {
         for max in [false, true] {
             let store = MemoryAttemptStore()
@@ -1640,6 +1878,7 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
 final class MemoryAttemptStore: OnchainSendAttemptStoring, @unchecked Sendable {
     private let lock = NSLock()
     private var attempts: [OnchainSendAttempt] = []
+    private var saveCount = 0
     var failLoad = false
     var failSave = false
 
@@ -1658,7 +1897,14 @@ final class MemoryAttemptStore: OnchainSendAttemptStoring, @unchecked Sendable {
         if failSave {
             throw MemoryAttemptStoreError.failed
         }
+        saveCount += 1
         self.attempts = attempts
+    }
+
+    var saves: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return saveCount
     }
 
     func snapshot() -> [OnchainSendAttempt] {
@@ -1728,7 +1974,7 @@ final class AttemptNodeMock: OnchainSending {
 
 final class PreparedAttemptNodeMock: OnchainSending {
     var currentWalletIndex = 0
-    let dispatchNode = NSObject()
+    var dispatchNode = NSObject()
     var onchainDispatchNode: AnyObject? {
         dispatchNode
     }
@@ -1750,6 +1996,17 @@ final class PreparedAttemptNodeMock: OnchainSending {
     var result: OnchainSendResult?
     var deadlineClock: () -> Date = Date.init
     var onNativeQueueDispatch: (() -> Void)?
+    var spendable: Set<OnchainSendInput>?
+
+    func spendableOnchainInputs() async throws -> Set<OnchainSendInput>? {
+        spendable
+    }
+
+    var beforeNodeStop: (() async -> Void)?
+
+    func beforeOnchainNodeStops(_ action: @escaping () async -> Void) {
+        beforeNodeStop = action
+    }
 
     func prepareOnchainSend(address: String, sats: UInt64, satsPerVbyte: UInt32,
                             utxosToSpend: [SpendableUtxo]?, isMaxAmount: Bool,

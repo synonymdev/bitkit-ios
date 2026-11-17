@@ -1533,6 +1533,9 @@
 "wallet__onchain_retry_note" = "Repetir {amount} sats para {address} com as mesmas moedas originais. O montante do destinatário mantém-se. Introduza a taxa de rede em sat/vB. Isto não pode criar um pagamento separado.";
 "wallet__onchain_retry_construction" = "Esta taxa não pode ser paga com as moedas originais sem alterar o montante do destinatário, ou essas moedas já não estão disponíveis. Escolha uma taxa mais baixa ou aguarde que o pagamento original seja reconhecido. Não foi enviado nenhum pagamento separado.";
 "wallet__onchain_retry_unavailable" = "Não foi possível preparar a repetição neste momento. O pagamento original pode já ter chegado à rede. Verifique a ligação e repita apenas este pagamento original.";
+"wallet__send_fee_increased_title" = "A taxa de rede mudou";
+"wallet__send_fee_increased" = "A taxa de rede é agora de {amount}, mais alta do que a apresentada inicialmente. Nada foi enviado. Deslize novamente para confirmar.";
+"wallet__send_fee_candidate_unavailable" = "A transação que reviu já não pode ser enviada. Nada foi enviado. Reveja o pagamento e tente novamente.";
 "wallet__onchain_retry_invalid_fee" = "Introduza uma taxa em número inteiro entre 1 e 4 294 967 295 sat/vB.";
 "wallet__onchain_retry_max_note" = "Repetir {amount} sats para {address} com as mesmas moedas originais e a taxa original de {fee} sat/vB. Enviar tudo não deixa moedas para uma taxa mais alta sem reduzir o montante do destinatário. O montante mantém-se. Isto não pode criar um pagamento separado.";
 "usdt__address" = "Endereço do destinatário";

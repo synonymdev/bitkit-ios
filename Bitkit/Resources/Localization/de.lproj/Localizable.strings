@@ -1873,6 +1873,9 @@
 "wallet__onchain_retry_note" = "Sende {amount} sats erneut an {address} mit denselben ursprünglichen Coins. Der Empfängerbetrag bleibt unverändert. Gib den Netzwerkgebührensatz in sat/vB ein. Dadurch kann keine separate Zahlung entstehen.";
 "wallet__onchain_retry_construction" = "Diese Gebühr kann nicht aus den ursprünglichen Coins bezahlt werden, ohne den Empfängerbetrag zu ändern, oder diese Coins sind nicht mehr verfügbar. Wähle einen niedrigeren Gebührensatz oder warte, bis die ursprüngliche Zahlung erkannt wird. Es wurde keine separate Zahlung gesendet.";
 "wallet__onchain_retry_unavailable" = "Die Wiederholung konnte gerade nicht vorbereitet werden. Die ursprüngliche Zahlung hat das Netzwerk möglicherweise bereits erreicht. Überprüfe deine Verbindung und wiederhole nur diese ursprüngliche Zahlung.";
+"wallet__send_fee_increased_title" = "Netzwerkgebühr geändert";
+"wallet__send_fee_increased" = "Die Netzwerkgebühr beträgt jetzt {amount} und ist höher als zuerst angezeigt. Es wurde nichts gesendet. Wische erneut, um zu bestätigen.";
+"wallet__send_fee_candidate_unavailable" = "Die geprüfte Transaktion kann nicht mehr gesendet werden. Es wurde nichts gesendet. Überprüfe die Zahlung und versuche es erneut.";
 "wallet__onchain_retry_invalid_fee" = "Gib einen ganzzahligen Gebührensatz von 1 bis 4.294.967.295 sat/vB ein.";
 "wallet__onchain_retry_max_note" = "Sende {amount} sats erneut an {address} mit denselben ursprünglichen Coins und dem ursprünglichen Gebührensatz von {fee} sat/vB. „Alles senden“ lässt keine Coins für eine höhere Gebühr übrig, ohne den Empfängerbetrag zu verringern. Der Betrag bleibt unverändert. Dadurch kann keine separate Zahlung entstehen.";
 "usdt__address" = "Empfängeradresse";
