@@ -313,7 +313,7 @@ final class PaykitReceiptServiceTests: XCTestCase {
         XCTAssertEqual(restarted.statuses, [Self.hash: .sent])
     }
 
-    func testReceiptStaysSendingUntilADrainReportsItsMessageSent() async throws {
+    func testReceiptStaysSendingWhileItsAccessIsQueued() async throws {
         let sdk = try FakeReceiptSdk(requests: [lightningPaidRequest()])
         sdk.drainOutcome = .none
         let service = makeService(sdk)
@@ -323,7 +323,7 @@ final class PaykitReceiptServiceTests: XCTestCase {
         XCTAssertEqual(service.statuses, [Self.hash: .sending])
     }
 
-    func testReceiptFailsWhenItsMessageFailsToSend() async throws {
+    func testReceiptFailsWhenTheSdkReportsItsAccessFailed() async throws {
         let sdk = try FakeReceiptSdk(requests: [lightningPaidRequest()])
         sdk.drainOutcome = .failed
         let service = makeService(sdk)
@@ -349,12 +349,34 @@ final class PaykitReceiptServiceTests: XCTestCase {
         let service = makeService(sdk)
         await service.reconcile()
 
-        delivery.record(identity: Self.seller, report: OutboundPrivateSendReport(
-            attempted: [7], sent: [7], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: []
-        ))
+        sdk.deliverAll(.accessSent)
         await service.reconcile()
 
         XCTAssertEqual(service.statuses, [Self.hash: .sent])
+        XCTAssertTrue(try delivery.isSent(identity: Self.seller, receiptId: XCTUnwrap(sdk.issued.keys.first)))
+    }
+
+    func testSentReceiptIsNotIssuedAgain() async throws {
+        let sdk = try FakeReceiptSdk(requests: [lightningPaidRequest()])
+        await makeService(sdk).reconcile()
+
+        await makeService(sdk).reconcile()
+
+        XCTAssertEqual(sdk.issuedCount, 1)
+    }
+
+    func testRestoredReceiptTheBackupMarksSentStaysSentWithoutADrain() async throws {
+        let sdk = try FakeReceiptSdk(requests: [lightningPaidRequest()])
+        sdk.drainOutcome = .none
+        await makeService(sdk).reconcile()
+        try delivery.markSent(identity: Self.seller, receiptId: XCTUnwrap(sdk.issued.keys.first))
+        sdk.drainedCounterparties = []
+
+        let restored = makeService(sdk)
+        await restored.reconcile()
+
+        XCTAssertEqual(restored.statuses, [Self.hash: .sent])
+        XCTAssertEqual(sdk.drainedCounterparties, [])
     }
 
     func testRetryThatCannotReadIssuedReceiptsFails() async throws {
@@ -371,42 +393,22 @@ final class PaykitReceiptServiceTests: XCTestCase {
     }
 
     func testDeliveryIsKeptPerIdentity() {
-        delivery.record(identity: Self.seller, report: OutboundPrivateSendReport(
-            attempted: [7], sent: [7], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: []
-        ))
-        delivery.record(identity: Self.otherBuyer, report: OutboundPrivateSendReport(
-            attempted: [7], sent: [], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: []
-        ))
+        delivery.markSent(identity: Self.seller, receiptId: "receipt-1")
 
-        XCTAssertEqual(delivery.deliveryOf(identity: Self.seller, receiptId: "receipt-1", messageId: 7), true)
-        XCTAssertNil(delivery.deliveryOf(identity: Self.otherBuyer, receiptId: "receipt-1", messageId: 7))
-        XCTAssertEqual(delivery.deliveryOf(identity: Self.seller, receiptId: "receipt-1", messageId: nil), true)
+        XCTAssertTrue(delivery.isSent(identity: Self.seller, receiptId: "receipt-1"))
+        XCTAssertFalse(delivery.isSent(identity: Self.otherBuyer, receiptId: "receipt-1"))
     }
 
     func testSentReceiptsComeBackFromTheWalletBackup() throws {
-        delivery.record(identity: Self.seller, report: OutboundPrivateSendReport(
-            attempted: [7], sent: [7], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: []
-        ))
-        XCTAssertEqual(delivery.deliveryOf(identity: Self.seller, receiptId: "receipt-1", messageId: 7), true)
+        delivery.markSent(identity: Self.seller, receiptId: "receipt-1")
         let backup = try XCTUnwrap(delivery.backupSnapshot())
 
         delivery.reset()
+        XCTAssertFalse(delivery.isSent(identity: Self.seller, receiptId: "receipt-1"))
         delivery.restoreBackup(backup)
 
-        XCTAssertEqual(delivery.deliveryOf(identity: Self.seller, receiptId: "receipt-1", messageId: nil), true)
-        XCTAssertNil(delivery.deliveryOf(identity: Self.otherBuyer, receiptId: "receipt-1", messageId: nil))
-    }
-
-    func testDeliveryCheckAfterResetRestoresNothing() {
-        delivery.record(identity: Self.seller, report: OutboundPrivateSendReport(
-            attempted: [7], sent: [7], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: []
-        ))
-        XCTAssertEqual(delivery.deliveryOf(identity: Self.seller, receiptId: "receipt-1", messageId: 7), true)
-
-        delivery.reset()
-
-        XCTAssertNil(delivery.deliveryOf(identity: Self.seller, receiptId: "receipt-1", messageId: 7))
-        XCTAssertNil(delivery.deliveryOf(identity: Self.seller, receiptId: "receipt-1", messageId: nil))
+        XCTAssertTrue(delivery.isSent(identity: Self.seller, receiptId: "receipt-1"))
+        XCTAssertFalse(delivery.isSent(identity: Self.otherBuyer, receiptId: "receipt-1"))
     }
 
     func testReceiptIsIssuedForTheIdentityThatMatchedIt() async throws {
@@ -547,7 +549,7 @@ final class PaykitReceiptServiceTests: XCTestCase {
 
 private final class FakeReceiptSdk: PaykitReceiptSdk, @unchecked Sendable {
     private let requests: [PaymentRequestRecord]
-    private var issued: [String: ReceiptIssuanceView] = [:]
+    var issued: [String: ReceiptIssuanceView] = [:]
     enum DrainOutcome { case sent, failed, none, unreachable }
 
     var issueFails = false
@@ -555,7 +557,7 @@ private final class FakeReceiptSdk: PaykitReceiptSdk, @unchecked Sendable {
     var drainOutcome = DrainOutcome.sent
     private(set) var issuedCount = 0
     private(set) var issuedIdentities: [String] = []
-    private(set) var drainedCounterparties: [String] = []
+    var drainedCounterparties: [String] = []
 
     init(requests: [PaymentRequestRecord]) {
         self.requests = requests
@@ -589,10 +591,18 @@ private final class FakeReceiptSdk: PaykitReceiptSdk, @unchecked Sendable {
             paymentReference: draft.paymentReference, paymentRequestId: draft.paymentRequestId, billingPeriod: draft.billingPeriod,
             paymentEndpointIdentifier: draft.paymentEndpointIdentifier, amount: draft.amount, status: .accessQueued,
             outboundMessageId: 7, createdAt: "2027-01-15T08:02:00Z", updatedAt: "2027-01-15T08:02:00Z",
-            storedAt: "2027-01-15T08:02:00Z", accessQueuedAt: "2027-01-15T08:02:00Z"
+            storedAt: "2027-01-15T08:02:00Z", accessQueuedAt: "2027-01-15T08:02:00Z", lastError: nil
         )
-        issued[receiptId] = view
+        if issued[receiptId] == nil {
+            issued[receiptId] = view
+        }
         return view
+    }
+
+    func deliverAll(_ status: ReceiptIssuanceStatus) {
+        for (id, view) in issued where view.status == .accessQueued {
+            issued[id]?.status = status
+        }
     }
 
     func issuedReceipts(priority _: PaykitSdkOperationLock.Priority) async throws -> [ReceiptIssuanceView] {
@@ -610,6 +620,11 @@ private final class FakeReceiptSdk: PaykitReceiptSdk, @unchecked Sendable {
         drainedCounterparties.append(counterparty)
         if drainOutcome == .unreachable {
             throw URLError(.cannotConnectToHost)
+        }
+        switch drainOutcome {
+        case .sent: deliverAll(.accessSent)
+        case .failed: deliverAll(.accessFailed)
+        case .none, .unreachable: break
         }
         let failure = OutboundPrivateSendFailure(outboundMessageId: 7, error: PrivateOperationError(noPointer: .init()))
         return OutboundPrivateSendReport(

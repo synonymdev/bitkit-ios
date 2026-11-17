@@ -522,8 +522,7 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         )
         _ = try await service.syncPrivatePaymentListsWithReservations([], clearUnlistedLinkedPeers: true)
         let events = await recorder.events
-        // The publication first sends what is already queued; the two withdrawals do not.
-        XCTAssertEqual(events, Array(repeating: "published", count: 4))
+        XCTAssertEqual(events, Array(repeating: "published", count: 3))
     }
 
     @MainActor
@@ -545,9 +544,7 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                 )
             }),
         ]
-        for (index, operation) in operations.enumerated() {
-            // The payment-list sync, last, first sends what is already queued, so it reaches the fake twice per run.
-            let reads = index == operations.count - 1 ? 2 : 1
+        for operation in operations {
             for queued in operation.readsRevision ? [true, false] : [true] {
                 let (gate, release) = AsyncStream<Void>.makeStream()
                 defer { release.finish() }
@@ -601,7 +598,7 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                 PaykitPaymentActivity.shared.end(payment)
                 try await operation.run(service, .background)
                 let completedEvents = await recorder.events
-                XCTAssertEqual(completedEvents, ["waiting"] + Array(repeating: "refresh", count: 2 * reads))
+                XCTAssertEqual(completedEvents, ["waiting"] + Array(repeating: "refresh", count: 2))
             }
         }
     }
