@@ -18,6 +18,8 @@ struct SendOptionsView: View {
     @Binding var navigationPath: [SendRoute]
     let hwSend: HwSendCoordinator
     @State private var selectedItem: PhotosPickerItem?
+    /// Bumped each time Send leaves Options, so a read started before can't route after the user comes back.
+    @State private var scannerVisit = 0
 
     private var scanScope: ScanHandlingScope {
         hwSend.isActive ? .onchainPayments : .unrestricted
@@ -55,7 +57,7 @@ struct SendOptionsView: View {
                         onNfcRead: scanner.isNfcReadingAvailable
                             ? {
                                 // Moving on (e.g. to Enter Manually) keeps the sheet open, so check its own path too.
-                                await scanner.handleSendNfcRead(scope: scanScope, isCurrent: { navigationPath.isEmpty }) { route in
+                                await scanner.handleSendNfcRead(scope: scanScope, isCurrent: isOnThisScannerVisit()) { route in
                                     if let route {
                                         handleRoute(route)
                                     }
@@ -67,7 +69,7 @@ struct SendOptionsView: View {
                             await scanner.handleSendNearbyRequest(
                                 request,
                                 scope: scanScope,
-                                isCurrent: { navigationPath.isEmpty }
+                                isCurrent: isOnThisScannerVisit()
                             ) { route in
                                 if let route {
                                     handleRoute(route)
@@ -123,6 +125,17 @@ struct SendOptionsView: View {
                 hwWalletManager: hwWalletManager
             )
         }
+        .onChange(of: navigationPath.isEmpty) { _, isOnOptions in
+            if !isOnOptions {
+                scannerVisit += 1
+            }
+        }
+    }
+
+    /// True while Send still shows Options in the same visit as when this is called.
+    private func isOnThisScannerVisit() -> () -> Bool {
+        let visit = scannerVisit
+        return { navigationPath.isEmpty && scannerVisit == visit }
     }
 
     func handlePaste() {

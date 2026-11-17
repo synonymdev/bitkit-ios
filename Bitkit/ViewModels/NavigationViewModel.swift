@@ -210,7 +210,16 @@ func resolveUsdtPaymentRoute(input: String, isEnabled: Bool = Env.isUsdtEnabled)
 
 @MainActor
 class NavigationViewModel: ObservableObject {
-    @Published var path: [Route] = []
+    @Published var path: [Route] = [] {
+        didSet {
+            if path != oldValue {
+                pathGeneration += 1
+            }
+        }
+    }
+
+    /// Changes with every change to `path`, so leaving a screen and coming back is not the same visit.
+    private(set) var pathGeneration = 0
 
     var currentRoute: Route? {
         path.last

@@ -558,13 +558,13 @@ class ScannerManager: ObservableObject {
         }
     }
 
-    /// True while the sheet and navigation path shown when this is called are still shown.
+    /// True while the sheet and navigation path shown when this is called are still shown, without having left them.
     private func originCheck() -> () -> Bool {
         let presentationID = sheets?.activeSheetConfiguration?.presentationID
-        let navigationPath = navigation?.path
+        let pathGeneration = navigation?.pathGeneration
         return { [weak self] in
             !Task.isCancelled && self?.sheets?.activeSheetConfiguration?.presentationID == presentationID &&
-                self?.navigation?.path == navigationPath
+                self?.navigation?.pathGeneration == pathGeneration
         }
     }
 

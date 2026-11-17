@@ -634,6 +634,36 @@ extension ScannerManagerTests {
         XCTAssertEqual(sheets.activeSheetConfiguration?.id, .send)
     }
 
+    func testNfcReadCannotRouteAfterLeavingAndReturningToTheScanner() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        let navigation = NavigationViewModel()
+        let started = expectation(description: "NFC request decoding suspended")
+        var continuation: CheckedContinuation<BitkitCore.Scanner, Error>?
+        let scanner = ScannerManager(nfcReader: FakeNfcReader(.success(paymentURI))) {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { _ in
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, navigation: navigation, sheets: sheets
+        )
+        sheets.showSheet(.scanner)
+        let task = Task { await scanner.handleNfcRead(context: .main) }
+
+        await fulfillment(of: [started], timeout: 2)
+        navigation.path.append(.savingsWallet)
+        navigation.path.removeLast()
+        try XCTUnwrap(continuation).resume(returning: decoded)
+        await task.value
+
+        XCTAssertTrue(navigation.path.isEmpty)
+        XCTAssertNil(app.scannedOnchainInvoice, "A read from an earlier visit must not route")
+    }
+
     func testRefusedNearbyRequestOnMainScannerIsNotTaken() async {
         let sheets = SheetViewModel()
         sheets.showSheet(.scanner)
