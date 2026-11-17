@@ -356,8 +356,6 @@
 "lightning__spark_deposit__wait_button" = "Warten";
 "lightning__spark_deposit__waiting" = "Spark schreibt es deinem Ausgabenguthaben {when} gut.";
 "lightning__spark_deposit__waiting_next" = "Spark schreibt es deinem Ausgabenguthaben nach der nächsten Bestätigung gut.";
-"lightning__spark_deposits_claimed" = "Eingelöste Einzahlungen";
-"lightning__spark_deposits_pending" = "Laufende Einzahlungen";
 "lightning__spark_provider" = "Anbieter";
 "lightning__spark_provider_value" = "Spark über Breez";
 "lightning__spark_receiving_unlimited" = "Kein Limit";
@@ -1036,8 +1034,6 @@
 "settings__status__spark__ready" = "Verbunden";
 "settings__status__spark__pending" = "Verbinden...";
 "settings__status__spark__error" = "Offline";
-"settings__status__exit__title" = "Notausstieg";
-"settings__status__exit__pending" = "Läuft";
 "settings__status__exit__funding" = "Benötigte Gebührendeckung";
 "settings__status__backup__title" = "Vollständiges Backup";
 "settings__status__backup__ready" = "Abgeschlossen";

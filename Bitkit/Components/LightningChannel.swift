@@ -12,8 +12,10 @@ struct LightningChannel: View {
     let remoteBalance: UInt64
     let status: ChannelStatus
     let showLabels: Bool
-    /// False for a balance whose receiving isn't capped by a channel, such as Spark: only the spending side is drawn.
+    /// False to draw only the spending side.
     let showReceiving: Bool
+    /// Receiving isn't capped by a channel, such as with Spark: shows "no limit" and a full receiving bar.
+    let receivingUnlimited: Bool
 
     init(
         capacity: UInt64,
@@ -21,7 +23,8 @@ struct LightningChannel: View {
         remoteBalance: UInt64,
         status: ChannelStatus = .open,
         showLabels: Bool = false,
-        showReceiving: Bool = true
+        showReceiving: Bool = true,
+        receivingUnlimited: Bool = false
     ) {
         self.capacity = capacity
         self.localBalance = localBalance
@@ -29,6 +32,7 @@ struct LightningChannel: View {
         self.status = status
         self.showLabels = showLabels
         self.showReceiving = showReceiving
+        self.receivingUnlimited = receivingUnlimited
     }
 
     private var spendingColor: Color {
@@ -50,6 +54,9 @@ struct LightningChannel: View {
     }
 
     private var receivingColor: Color {
+        if receivingUnlimited {
+            return receivingAvailableColor
+        }
         switch status {
         case .closed:
             return Color.gray6
@@ -73,6 +80,9 @@ struct LightningChannel: View {
     }
 
     private var receivingPercentage: CGFloat {
+        if receivingUnlimited {
+            return 1
+        }
         guard capacity > 0 else { return 0 }
         return CGFloat(remoteBalance) / CGFloat(capacity)
     }
@@ -119,7 +129,11 @@ struct LightningChannel: View {
                             .frame(width: 14, height: 14)
                             .foregroundColor(receivingAvailableColor)
 
-                        BodySSBText(formatNumber(remoteBalance), textColor: receivingAvailableColor)
+                        if receivingUnlimited {
+                            CaptionBText(t("lightning__spark_receiving_unlimited"), textColor: receivingAvailableColor)
+                        } else {
+                            BodySSBText(formatNumber(remoteBalance), textColor: receivingAvailableColor)
+                        }
                     }
                 }
             }

@@ -145,7 +145,12 @@ struct AppStatusHelper {
         let bitcoinNodeState = bitcoinNodeStatus(from: wallet, network: network)
         let nodeState = nodeStatus(from: wallet, network: network)
 
-        let states = [internetState, bitcoinNodeState, nodeState]
+        let exit = SparkExitManager.shared
+        let sparkState: HealthStatus? = exitStep(record: exit.record, fundingState: exit.fundingState) != nil
+            ? .pending
+            : sparkStatus(network: network)
+
+        let states = [internetState, bitcoinNodeState, nodeState] + [sparkState].compactMap { $0 }
 
         // If any component is in error state, return error
         if states.contains(.error) {

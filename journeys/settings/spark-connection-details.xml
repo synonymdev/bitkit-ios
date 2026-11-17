@@ -1,0 +1,26 @@
+<journey name="spark connection details">
+  <description>
+    Lightning Connections lists Spark last under OPEN CONNECTIONS, after any open channel, as "Spark via Breez"
+    with a channel bar whose receiving side reads "no limit". Its detail screen shows the same bar, then STATUS
+    ("Connection open" in green while Spark is connected, "Connecting..." in yellow, "Offline..." in red),
+    PROVIDER (Spark operators, the regtest deposit address, the trust paragraph), BALANCE (receiving capacity
+    "no limit", spending balance) and DEPOSITS, one group per deposit: its transaction, amount, and the claim fee
+    once claimed or the confirmations until then. The footer holds "Transfer To Savings" and, while Spark holds
+    funds or a force transfer runs, "Force Transfer To Savings".
+
+    Precondition: Debug build on regtest with Spark connected on its regtest (journeys/README.md capabilities),
+    no Lightning channel, and a claimed Spark deposit (fund the deposit address from Lightspark's regtest faucet
+    and wait for 3 confirmations). Start on the wallet home screen.
+  </description>
+  <actions>
+    <action>Tap the menu button (id "HeaderMenu"), Settings (id "DrawerSettings"), the Advanced tab (id "Tab-advanced") and Lightning Connections (id "Channels")</action>
+    <action>Verify the header's receiving reads "no limit" and OPEN CONNECTIONS lists "Spark via Breez" (id "SparkConnection") with its bar's receiving side reading "no limit", and no separate SPARK section</action>
+    <action>Tap "Spark via Breez" and verify the title "Spark via Breez" and the same bar at the top</action>
+    <action>Verify STATUS shows "Connection open" in green (id "SparkStatus")</action>
+    <action>Verify PROVIDER shows "Spark" with "Lightspark, Breez and Flashnet", the deposit address (id "SparkDepositAddress") and the paragraph starting "Your spending balance uses Spark"</action>
+    <action>Verify BALANCE shows "Receiving capacity" with "no limit" and "Spending balance" with the Spark balance</action>
+    <action>Verify DEPOSITS shows "Deposit tx" with the shortened transaction id (id "SparkDeposit"), "Deposit" with its amount and "Claim fee"</action>
+    <action>Verify the footer shows "Transfer To Savings" (id "SparkTransferToSavings") enabled and "Force Transfer To Savings" (id "SparkEmergencyExit") with a warning icon under it</action>
+    <action>Tap "Deposit tx" and verify the block explorer opens on that transaction</action>
+  </actions>
+</journey>

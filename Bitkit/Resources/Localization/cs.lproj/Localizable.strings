@@ -358,8 +358,6 @@
 "lightning__spark_deposit__wait_button" = "Počkat";
 "lightning__spark_deposit__waiting" = "Spark ji připíše na váš zůstatek k utrácení {when}.";
 "lightning__spark_deposit__waiting_next" = "Spark ji připíše na váš zůstatek k utrácení po dalším potvrzení.";
-"lightning__spark_deposits_claimed" = "Připsané vklady";
-"lightning__spark_deposits_pending" = "Probíhající vklady";
 "lightning__spark_provider" = "Poskytovatel";
 "lightning__spark_provider_value" = "Spark přes Breez";
 "lightning__spark_receiving_unlimited" = "Bez limitu";
@@ -1038,8 +1036,6 @@
 "settings__status__spark__ready" = "Připojeno";
 "settings__status__spark__pending" = "Připojování...";
 "settings__status__spark__error" = "Offline";
-"settings__status__exit__title" = "Nouzový výstup";
-"settings__status__exit__pending" = "Probíhá";
 "settings__status__exit__funding" = "Potřebné krytí poplatků";
 "settings__status__backup__title" = "Nejnovější úplná záloha dat";
 "settings__status__backup__ready" = "Zálohováno";
