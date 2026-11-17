@@ -1675,14 +1675,17 @@ class LightningService: NodeLifecycleService {
     }
 
     /// Whether Spark created the payment of a failure at `createdAt` before the send of `paymentHash` still in doubt went
-    /// out: the failure ended an earlier attempt, and Spark may still finish the later one.
+    /// out: the failure ended an earlier attempt, and Spark may still finish the later one. Spark's clock and this
+    /// phone's may differ, so a payment created within `railClockSkewSeconds` of the send counts as the send's own.
     func isEarlierThanUncertainRailSend(paymentHash: String, createdAt: UInt64) -> Bool {
         eventCallbackLock.withLock {
             let hash = paymentHash.lowercased()
             guard uncertainRailSendFailedAt()[hash] != nil, let startedAt = uncertainRailSendStartedAt()[hash] else { return false }
-            return createdAt < UInt64(max(0, startedAt))
+            return createdAt.addingReportingOverflow(Self.railClockSkewSeconds).partialValue < UInt64(max(0, startedAt))
         }
     }
+
+    static let railClockSkewSeconds: UInt64 = 10
 
     /// Rail sends whose outcome stayed unknown, listed as pending until a sync after them reaches the rail: Spark may
     /// still finish one, while its own list shows only an earlier attempt, or nothing.

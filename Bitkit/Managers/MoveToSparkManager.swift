@@ -5,7 +5,7 @@ import LDKNode
 
 /// The amounts behind moving the channels' balance to Spark, kept apart so they can be tested without a node.
 enum MoveToSparkMath {
-    /// The move invoice's description, which is also how Activity tells a move's send from other payments.
+    /// The move invoice's description.
     static let invoiceDescription = "Move to Spark"
     /// Below this a move is not offered: what is left is about the routing fee.
     static let minMoveSats: UInt64 = 1000
@@ -98,7 +98,12 @@ enum MoveToSparkError: Error {
 @MainActor
 enum MoveToSparkPayments {
     private static let storageKey = "moveToSparkPaymentHashes"
-    static var defaults: UserDefaults = .standard
+    static var defaults: UserDefaults = .standard {
+        didSet { cached = nil }
+    }
+
+    /// Read once, as Activity asks for every row it draws.
+    private static var cached: [String: Double]?
     /// Outside the main actor, so the backup observers can subscribe from anywhere.
     nonisolated static var savedPublisher: AnyPublisher<Void, Never> {
         MoveToSparkPaymentsSaved.subject.eraseToAnyPublisher()
@@ -107,7 +112,7 @@ enum MoveToSparkPayments {
     static func insert(_ paymentHash: String, now: Date = Date()) {
         var hashes = stored
         hashes[paymentHash.lowercased()] = now.timeIntervalSince1970
-        defaults.set(hashes, forKey: storageKey)
+        save(hashes)
         MoveToSparkPaymentsSaved.subject.send()
     }
 
@@ -123,19 +128,30 @@ enum MoveToSparkPayments {
         for hash in paymentHashes where hashes[hash.lowercased()] == nil {
             hashes[hash.lowercased()] = now.timeIntervalSince1970
         }
-        defaults.set(hashes, forKey: storageKey)
+        save(hashes)
     }
 
     static func contains(_ paymentHash: String?) -> Bool {
         paymentHash.map { stored[$0.lowercased()] != nil } ?? false
     }
 
+    private static func save(_ hashes: [String: Double]) {
+        defaults.set(hashes, forKey: storageKey)
+        cached = hashes
+    }
+
     static func removeAll() {
         defaults.removeObject(forKey: storageKey)
+        cached = nil
     }
 
     private static var stored: [String: Double] {
-        defaults.dictionary(forKey: storageKey) as? [String: Double] ?? [:]
+        if let cached {
+            return cached
+        }
+        let hashes = defaults.dictionary(forKey: storageKey) as? [String: Double] ?? [:]
+        cached = hashes
+        return hashes
     }
 }
 

@@ -826,6 +826,10 @@ extension ChannelFreeRailTests {
         // Spark reports the failure of a payment it created before this send went out; its activity keeps its status too.
         XCTAssertTrue(Bitkit.LightningService.shared.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 900))
         XCTAssertFalse(Bitkit.LightningService.shared.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 1000))
+        XCTAssertFalse(
+            Bitkit.LightningService.shared.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 995),
+            "A Spark clock a few seconds behind made the retry's own failure look earlier"
+        )
         Bitkit.LightningService.shared.emitChannelFreeRailEvent(
             .paymentFailed(paymentId: hash, paymentHash: hash, reason: nil),
             paymentCreatedAt: 900

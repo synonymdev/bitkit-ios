@@ -165,7 +165,8 @@ final class SparkExitBackupTests: XCTestCase {
             defaults: defaults,
             backupData: { _ in export },
             uploadBackup: { remote[$0] = $1 },
-            fetchBackup: { remote[$0] }
+            fetchBackup: { remote[$0] },
+            importStagedSparkExit: { .nothingStaged }
         )
 
         await service.restoreSparkExit()
@@ -209,7 +210,7 @@ final class SparkExitBackupTests: XCTestCase {
         XCTAssertEqual(remote["SPARK_EXIT"], export)
     }
 
-    func testAnEarlierRejectedCopyIsNotOverwritten() async throws {
+    func testAnEarlierRejectedCopyIsKeptBesideALaterOne() async throws {
         let suite = "SparkExitBackupTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -229,7 +230,29 @@ final class SparkExitBackupTests: XCTestCase {
         _ = await service.triggerBackup(category: .sparkExit)
 
         XCTAssertEqual(remote["SPARK_EXIT_REJECTED"], earlier)
+        XCTAssertEqual(remote["SPARK_EXIT_REJECTED_1d9283d848ea941a"], Data("later".utf8))
         XCTAssertEqual(remote["SPARK_EXIT"], export)
+    }
+
+    func testRejectedDataMissingRemotelyStaysStaged() async throws {
+        let suite = "SparkExitBackupTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var remote: [String: Data] = [:]
+        var staged: SparkStagedExitImport = .rejected
+        let service = BackupService(
+            defaults: defaults,
+            backupData: { _ in Data("fresh".utf8) },
+            uploadBackup: { remote[$0] = $1 },
+            fetchBackup: { remote[$0] },
+            importStagedSparkExit: { staged },
+            discardStagedSparkExit: { staged = .nothingStaged }
+        )
+
+        _ = await service.triggerBackup(category: .sparkExit)
+
+        XCTAssertEqual(staged, .rejected, "The staged exit data was dropped with no copy kept")
+        XCTAssertNil(remote["SPARK_EXIT"])
     }
 
     func testOnlyInvalidInputMarksExitDataAsRejected() {
