@@ -238,7 +238,6 @@
 "lightning__spending_confirm__lsp_fee" = "Servicegebühren";
 "lightning__spending_confirm__amount" = "Zu den Ausgaben";
 "lightning__spending_confirm__total" = "Total";
-"lightning__spending_confirm__spending_fee" = "Spending fee";
 "lightning__spending_confirm__instant_text" = "Ready in a few minutes";
 "lightning__spending_confirm__later" = "Later";
 "lightning__spending_confirm__later_text" = "After 3 confirmations, about 30 minutes";
@@ -454,8 +453,6 @@
 "lightning__spark_exit__quote_text" = "Starte eine forcierte Übertragung nur, wenn dein Ausgabenguthaben nicht mehr funktioniert. <accent>Deine Mittel können bis zu 4 Wochen nicht verfügbar sein.</accent>";
 "lightning__spark_exit__send_to_address" = "An Adresse senden";
 "lightning__spark_learn__title" = "Transfer\n<accent>speed</accent>";
-"lightning__spark_learn__text" = "Instant pays the provider to add your transfer to your spending balance before it confirms, so it is ready in a few minutes.\n\nLater waits for 3 confirmations, about 30 minutes, and costs less.";
-"lightning__spark_learn__label" = "Spending balance after transfer";
 "lightning__reserve_balance" = "Reserveguthaben";
 "lightning__total_size" = "Gesamtgröße des Channels";
 "lightning__fees" = "Gebühren";

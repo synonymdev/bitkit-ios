@@ -240,7 +240,6 @@
 "lightning__spending_confirm__lsp_fee" = "Poplatky za služby";
 "lightning__spending_confirm__amount" = "Do výdajů";
 "lightning__spending_confirm__total" = "Celkem";
-"lightning__spending_confirm__spending_fee" = "Spending fee";
 "lightning__spending_confirm__instant_text" = "Ready in a few minutes";
 "lightning__spending_confirm__later" = "Later";
 "lightning__spending_confirm__later_text" = "After 3 confirmations, about 30 minutes";
@@ -456,8 +455,6 @@
 "lightning__spark_exit__quote_text" = "Vynucený převod zahajte, jen pokud váš výdajový zůstatek přestal fungovat. <accent>Vaše prostředky mohou být nedostupné až 4 týdny.</accent>";
 "lightning__spark_exit__send_to_address" = "Odeslat na adresu";
 "lightning__spark_learn__title" = "Transfer\n<accent>speed</accent>";
-"lightning__spark_learn__text" = "Instant pays the provider to add your transfer to your spending balance before it confirms, so it is ready in a few minutes.\n\nLater waits for 3 confirmations, about 30 minutes, and costs less.";
-"lightning__spark_learn__label" = "Spending balance after transfer";
 "lightning__reserve_balance" = "Rezervní zůstatek";
 "lightning__total_size" = "Celková velikost kanálu";
 "lightning__fees" = "Poplatky";

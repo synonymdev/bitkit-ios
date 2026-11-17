@@ -17,7 +17,7 @@
     <action>Verify the transfer amount screen opens (id "HardwareTransferAmount"), titled "TRANSFER TO SPENDING", showing an AVAILABLE row (id "HardwareTransferAmountAvailable"), the 25% and MAX quick buttons, and a number pad</action>
     <action>Tap the "25%" quick button (id "HardwareTransferAmountQuarter") to set a valid amount below the available limit</action>
     <action>Tap "Continue" (id "HardwareTransferAmountContinue") and wait for the fee estimate</action>
-    <action>Verify the sign screen opens (id "HardwareTransferSign"), titled "SIGN WITH YOUR DEVICE", showing the NETWORK FEES, SPENDING FEE, TO SPENDING and TOTAL cells, the Instant and Later rows with Instant selected, the Learn More button, and the Trezor illustration</action>
+    <action>Verify the sign screen opens (id "HardwareTransferSign"), titled "SIGN WITH YOUR DEVICE", showing the NETWORK FEES, SERVICE FEES, TO SPENDING and TOTAL cells, the deposit address under "ADDRESS (CONFIRM ON DEVICE)" (id "SpendingConfirmAddress"), the Fast and Normal rows with Fast selected, and the Trezor illustration</action>
     <action>Tap "Open Trezor Connect" (id "HardwareTransferOpenTrezorConnect"). If fees rose since the screen priced them, verify a "Fees changed" toast and refreshed fee cells, and tap "Open Trezor Connect" again; otherwise signing starts immediately</action>
     <action>Approve the Recipient, Amount, Locktime, and Summary prompts on the Bridge emulator in order</action>
     <action>Verify the transaction signed screen appears (id "HardwareTransferSigned"), titled "TRANSACTION SIGNED", showing the same fee cells and the checkmark illustration</action>
