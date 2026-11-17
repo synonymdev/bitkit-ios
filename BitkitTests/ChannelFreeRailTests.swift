@@ -878,6 +878,43 @@ extension ChannelFreeRailTests {
         await assertRefusedAsDuplicate()
     }
 
+    func testAnEarlierAttemptsFailureAfterSparkTookTheRetryKeepsItsHold() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        service.now = { Date(timeIntervalSince1970: 1000) }
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil, id: "earlier")]
+        rail.balanceSats = 100_000
+        // Spark takes the retry, which stays pending.
+        _ = try await service.send(bolt11: Self.invoice)
+        rail.sentBolt11 = nil
+        rail.payments = [
+            Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil, id: "earlier"),
+            Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .pending, preimage: nil, id: "retry"),
+        ]
+        rail.balanceSats = 0
+
+        XCTAssertTrue(service.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 2000, paymentId: "earlier"))
+        XCTAssertFalse(service.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 2000, paymentId: "retry"))
+        service.emitChannelFreeRailEvent(
+            .paymentFailed(paymentId: "earlier", paymentHash: hash, reason: nil),
+            paymentCreatedAt: 900,
+            railPaymentId: "earlier"
+        )
+        await assertRefusedAsDuplicate()
+
+        // The retry's own failure ends it.
+        rail.payments = [
+            Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil, id: "earlier"),
+            Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil, id: "retry"),
+        ]
+        service.emitChannelFreeRailEvent(
+            .paymentFailed(paymentId: "retry", paymentHash: hash, reason: nil),
+            paymentCreatedAt: 1000,
+            railPaymentId: "retry"
+        )
+        await assertReachesTheNode()
+    }
+
     func testAFailureWithoutSparkIdsKeepsTheHoldUntilPastTheClockMargin() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         let service = Bitkit.LightningService.shared

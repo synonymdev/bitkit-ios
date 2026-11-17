@@ -1490,9 +1490,11 @@ final class SparkManager: ChannelFreeLightningRail {
         await importRestoredExitState(walletIndex: walletIndex)
     }
 
-    /// The restored exit data waiting for Spark to import it, if any.
-    func stagedExitState(walletIndex: Int) -> String? {
-        FileManager.default.contents(atPath: Env.sparkExitRestore(walletIndex: walletIndex).path).map { String(decoding: $0, as: UTF8.self) }
+    /// The restored exit data waiting for Spark to import it, if any. Throws when a staged file can't be read.
+    func stagedExitState(walletIndex: Int) throws -> String? {
+        let file = Env.sparkExitRestore(walletIndex: walletIndex)
+        guard FileManager.default.fileExists(atPath: file.path) else { return nil }
+        return try String(decoding: Data(contentsOf: file), as: UTF8.self)
     }
 
     /// Drops restored exit data Spark rejected, once the backup set a copy of it aside.
@@ -1503,8 +1505,9 @@ final class SparkManager: ChannelFreeLightningRail {
     @discardableResult
     private func importRestoredExitState(walletIndex: Int) async -> SparkStagedExitImport {
         let file = Env.sparkExitRestore(walletIndex: walletIndex)
-        guard let data = FileManager.default.contents(atPath: file.path) else { return .nothingStaged }
-        guard let sdk else { return .pending }
+        guard FileManager.default.fileExists(atPath: file.path) else { return .nothingStaged }
+        // A staged file that can't be read now isn't absent: nothing may replace the remote copy until it is imported.
+        guard let data = FileManager.default.contents(atPath: file.path), let sdk else { return .pending }
         do {
             let imported = try await sdk.importUnilateralExitState(
                 request: ImportUnilateralExitStateRequest(exitState: String(decoding: data, as: UTF8.self))
