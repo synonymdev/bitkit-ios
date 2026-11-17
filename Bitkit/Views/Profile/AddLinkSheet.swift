@@ -115,7 +115,7 @@ extension String {
         let value = trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, !value.contains(where: \.isWhitespace) else { return false }
         let hasScheme = value.range(of: "^[A-Za-z][A-Za-z0-9+.-]*:", options: .regularExpression) != nil
-        if !hasScheme, value.contains("@") {
+        if !hasScheme, value.prefix(while: { $0 != "/" }).contains("@") {
             return false
         }
         guard let components = URLComponents(string: hasScheme ? value : "https://\(value)"),

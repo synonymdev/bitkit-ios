@@ -3,7 +3,14 @@ import XCTest
 
 final class WebLinkTests: XCTestCase {
     func testWebLinksAreAcceptedWithOrWithoutTheirScheme() {
-        for link in ["https://example.com", "http://example.com/a?b=c", "example.com", " www.example.com/path "] {
+        for link in [
+            "https://example.com",
+            "http://example.com/a?b=c",
+            "example.com",
+            " www.example.com/path ",
+            "medium.com/@alice",
+            "example.com/a@b",
+        ] {
             XCTAssertTrue(link.isWebLink, link)
         }
     }
