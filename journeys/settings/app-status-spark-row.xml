@@ -13,7 +13,7 @@
     <action>Tap the menu button (id "HeaderMenu") and tap App Status (id "DrawerAppStatus")</action>
     <action>Verify a row titled "Lightning Provider (Spark)" (id "Status-spark") sits directly under Lightning Connection (id "Status-lightning_connection") and reads "Connected" within 2 minutes</action>
     <action>Verify Lightning Connection reads "Using Spark"</action>
-    <action>Tap the row and verify Spark's detail screen opens</action>
     <action>Verify "Bitkit v" with the app's version and build (id "AppVersion") shows centred at the bottom</action>
+    <action>Tap the row and verify Spark's detail screen opens</action>
   </actions>
 </journey>
