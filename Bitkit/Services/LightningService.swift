@@ -1655,11 +1655,13 @@ class LightningService: NodeLifecycleService {
     /// out: the failure ended an earlier attempt, and Spark may still finish the later one. Spark's clock and this
     /// phone's may differ, so a payment created within `railClockSkewSeconds` of the send counts as the send's own.
     func isEarlierThanUncertainRailSend(paymentHash: String, createdAt: UInt64) -> Bool {
-        eventCallbackLock.withLock {
-            let hash = paymentHash.lowercased()
-            guard uncertainRailSendFailedAt()[hash] != nil, let startedAt = uncertainRailSendStartedAt()[hash] else { return false }
-            return createdAt.addingReportingOverflow(Self.railClockSkewSeconds).partialValue < UInt64(max(0, startedAt))
-        }
+        eventCallbackLock.withLock { isEarlierThanUncertainRailSendLocked(hash: paymentHash.lowercased(), createdAt: createdAt) }
+    }
+
+    /// Callers hold `eventCallbackLock`.
+    private func isEarlierThanUncertainRailSendLocked(hash: String, createdAt: UInt64) -> Bool {
+        guard uncertainRailSendFailedAt()[hash] != nil, let startedAt = uncertainRailSendStartedAt()[hash] else { return false }
+        return createdAt.addingReportingOverflow(Self.railClockSkewSeconds).partialValue < UInt64(max(0, startedAt))
     }
 
     static let railClockSkewSeconds: UInt64 = 10
@@ -1689,14 +1691,31 @@ class LightningService: NodeLifecycleService {
     }
 
     private func endRailSendUncertainty(paymentHash: String) {
-        eventCallbackLock.withLock {
-            var started = uncertainRailSendStartedAt()
-            if started.removeValue(forKey: paymentHash.lowercased()) != nil {
-                railAttemptsStore.set(started, forKey: Self.uncertainRailSendsStartedKey)
+        eventCallbackLock.withLock { clearRailSendUncertainty(hash: paymentHash.lowercased()) }
+    }
+
+    /// Callers hold `eventCallbackLock`.
+    private func clearRailSendUncertainty(hash: String) {
+        var started = uncertainRailSendStartedAt()
+        if started.removeValue(forKey: hash) != nil {
+            railAttemptsStore.set(started, forKey: Self.uncertainRailSendsStartedKey)
+        }
+        var uncertain = uncertainRailSendFailedAt()
+        guard uncertain.removeValue(forKey: hash) != nil else { return }
+        railAttemptsStore.set(uncertain, forKey: Self.uncertainRailSendsKey)
+    }
+
+    /// Ends the hold a Spark failure settles, unless it ended an attempt before the send still in doubt; checked and
+    /// ended under one lock, so a retry recorded in between keeps its hold. False when the failure is ignored.
+    private func settleRailFailure(paymentHash: String, createdAt: UInt64?) -> Bool {
+        let hash = paymentHash.lowercased()
+        return eventCallbackLock.withLock {
+            if let createdAt, isEarlierThanUncertainRailSendLocked(hash: hash, createdAt: createdAt) {
+                return false
             }
-            var uncertain = uncertainRailSendFailedAt()
-            guard uncertain.removeValue(forKey: paymentHash.lowercased()) != nil else { return }
-            railAttemptsStore.set(uncertain, forKey: Self.uncertainRailSendsKey)
+            clearRailSendUncertainty(hash: hash)
+            removeAttempt(paymentHash: hash, key: Self.railAttemptsKey)
+            return true
         }
     }
 
@@ -2320,18 +2339,14 @@ extension LightningService {
     /// Spark runs before the node starts, so its events wait until the node's event callback is set rather than being lost.
     /// `paymentCreatedAt` is when Spark created the payment the event is about, in seconds since 1970.
     func emitChannelFreeRailEvent(_ event: Event, paymentCreatedAt: UInt64? = nil) {
-        if case let .paymentFailed(_, paymentHash?, _) = event, let paymentCreatedAt,
-           isEarlierThanUncertainRailSend(paymentHash: paymentHash, createdAt: paymentCreatedAt)
-        {
-            Logger.info("Ignored a Spark failure of an attempt before the send still in doubt: \(event)", context: "LightningService")
-            return
-        }
         switch event {
         case let .paymentFailed(_, paymentHash?, _):
-            // The event settles a send whose outcome was unknown, so retries of its invoice are no longer held.
-            endRailSendUncertainty(paymentHash: paymentHash)
-            // The failure of the send itself, which may arrive while its send call is still returning.
-            releaseRailAttempt(paymentHash: paymentHash, unlessInFlight: false)
+            // The event settles a send whose outcome was unknown, so retries of its invoice are no longer held; the
+            // failure of the send itself may arrive while its send call is still returning.
+            guard settleRailFailure(paymentHash: paymentHash, createdAt: paymentCreatedAt) else {
+                Logger.info("Ignored a Spark failure of an attempt before the send still in doubt: \(event)", context: "LightningService")
+                return
+            }
         case let .paymentSuccessful(_, paymentHash, _, _):
             endRailSendUncertainty(paymentHash: paymentHash)
         default:
