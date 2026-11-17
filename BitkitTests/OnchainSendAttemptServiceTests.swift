@@ -583,6 +583,37 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         }
     }
 
+    func testNodeStopDropsTheKeptTransactionAndASendStillPreparingKeepsNone() async throws {
+        for stopsWhilePreparing in [false, true] {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = reviewedSender()
+            var candidateTxid = sender.txid
+            if stopsWhilePreparing {
+                sender.onPrepare = { await sender.beforeNodeStop?() }
+                do {
+                    _ = try await sendReviewed(service, sender: sender, reviewedFee: 203)
+                    XCTFail("A 212 sat transaction went out under a 203 sat approval")
+                } catch let OnchainSendAttemptError.preDispatch(error) {
+                    XCTAssertTrue(error is OnchainSendCandidateUnavailable, "Refused with \(error)")
+                }
+                sender.onPrepare = nil
+            } else {
+                candidateTxid = try await refusedForHigherFee(service, sender: sender).candidateTxid
+                await sender.beforeNodeStop?()
+            }
+            XCTAssertTrue(store.snapshot().isEmpty)
+            do {
+                _ = try await sendReviewed(service, sender: sender, reviewedFee: 212, reapproved: candidateTxid)
+                XCTFail("A transaction of a stopped node must not be sent")
+            } catch let OnchainSendAttemptError.preDispatch(error) {
+                XCTAssertTrue(error is OnchainSendCandidateUnavailable, "Refused with \(error)")
+            }
+            XCTAssertEqual(sender.preparations, 1)
+            XCTAssertEqual(sender.broadcasts, 0)
+        }
+    }
+
     func testDiscardingAnotherTransactionKeepsTheOneAwaitingApproval() async throws {
         let service = OnchainSendAttemptService(store: MemoryAttemptStore())
         let sender = reviewedSender()
@@ -1969,6 +2000,12 @@ final class PreparedAttemptNodeMock: OnchainSending {
 
     func spendableOnchainInputs() async throws -> Set<OnchainSendInput>? {
         spendable
+    }
+
+    var beforeNodeStop: (() async -> Void)?
+
+    func beforeOnchainNodeStops(_ action: @escaping () async -> Void) {
+        beforeNodeStop = action
     }
 
     func prepareOnchainSend(address: String, sats: UInt64, satsPerVbyte: UInt32,

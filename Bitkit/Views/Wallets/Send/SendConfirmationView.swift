@@ -2097,6 +2097,17 @@ struct SendConfirmationView: View {
                 throw CancellationError()
             }
 
+            if case let OnchainSendAttemptError.preDispatch(refused) = error, let unavailable = refused as? OnchainSendCandidateUnavailable {
+                // The kept transaction is gone, so the review goes back to an estimate.
+                app.toast(type: .error, title: t("common__error"), description: unavailable.localizedDescription)
+                Task { await calculateTransactionFee() }
+                if isAutomatic {
+                    showManualConfirmation(reason: "reviewed transaction unavailable")
+                    return
+                }
+                throw CancellationError()
+            }
+
             navigationPath.append(.failure(SendFailureContext(
                 error: error,
                 retryRoute: .confirm,

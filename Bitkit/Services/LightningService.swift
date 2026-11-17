@@ -107,8 +107,14 @@ class LightningService: NodeLifecycleService {
     private static let watchOnlyAccountHighestPreRevealedAddressIndex: UInt32 = 999
 
     private var node: Node?
+    private let beforeNodeStopLock = NSLock()
+    private var beforeNodeStopAction: (() async -> Void)?
     /// Runs before the node stops, while its wallet can still release what was prepared on it.
-    var beforeNodeStop: (() async -> Void)?
+    var beforeNodeStop: (() async -> Void)? {
+        get { beforeNodeStopLock.withLock { beforeNodeStopAction } }
+        set { beforeNodeStopLock.withLock { beforeNodeStopAction = newValue } }
+    }
+
     var onchainDispatchNode: AnyObject? {
         node
     }

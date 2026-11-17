@@ -574,6 +574,7 @@ actor OnchainSendAttemptService {
     private let store: any OnchainSendAttemptStoring
     private var knownAttempt: OnchainSendAttempt?
     private var heldCandidate: HeldCandidate?
+    private weak var stoppingNode: AnyObject?
     private var nativeDispatchInProgress: UUID?
     private var requestFollowupInProgress: UUID?
     private var ordinaryFollowupInProgress: UUID?
@@ -658,6 +659,13 @@ actor OnchainSendAttemptService {
         heldCandidate = nil
     }
 
+    /// Dropping a kept transaction persists through the wallet that prepared it, so it is dropped before that wallet's
+    /// node stops, and a send still preparing on that node keeps nothing afterwards.
+    private func nodeStopping(_ node: AnyObject?) {
+        heldCandidate = nil
+        stoppingNode = node
+    }
+
     /// - Parameters:
     ///   - reviewedMiningFeeSats: The mining fee the user approved. A prepared transaction paying more is kept and
     ///     refused with `OnchainSendFeeIncreased` before any broadcast side effect.
@@ -710,6 +718,9 @@ actor OnchainSendAttemptService {
                 throw OnchainSendAttemptError.preDispatch(OnchainSendCandidateUnavailable())
             }
             reapproved = held.prepared
+        }
+        if reviewedMiningFeeSats != nil {
+            lightningService.beforeOnchainNodeStops { [weak self, weak dispatchNode] in await self?.nodeStopping(dispatchNode) }
         }
         let attemptId = try admit(
             walletId: Self.walletId(index: walletIndex),
@@ -765,10 +776,11 @@ actor OnchainSendAttemptService {
                 if let reviewedMiningFeeSats {
                     guard let miningFee = prepared.miningFeeSats else { throw OnchainSendAttemptError.unresolved }
                     if miningFee > reviewedMiningFeeSats {
+                        // A node that began stopping while this was prepared can no longer send it.
+                        guard lightningService.onchainDispatchNode === dispatchNode, stoppingNode !== dispatchNode else {
+                            throw OnchainSendCandidateUnavailable()
+                        }
                         heldCandidate = HeldCandidate(prepared: prepared, payment: payment, node: dispatchNode)
-                        // Dropping a kept transaction persists through the wallet that prepared it, so it is dropped
-                        // while that wallet's node still runs, never after another instance took over its storage.
-                        lightningService.beforeOnchainNodeStops { [weak self] in await self?.discardHeldCandidate() }
                         throw OnchainSendFeeIncreased(
                             candidateTxid: prepared.txid, miningFeeSats: miningFee, recipientAmountSats: prepared.recipientAmountSats
                         )
