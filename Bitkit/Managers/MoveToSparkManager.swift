@@ -230,6 +230,11 @@ final class MoveToSparkManager {
     /// A swiped payment that has not settled yet; leaving the screen keeps it, so it is never quoted over.
     private var isMoveInFlight = false
 
+    /// A move is kept for its result, so its screen stays reachable while the channels have nothing left to move.
+    var keepsMoveForItsResult: Bool {
+        keepsOutcome || isMoveInFlight
+    }
+
     private let services: any MoveToSparkServices
 
     init(services: any MoveToSparkServices = LiveMoveToSparkServices()) {

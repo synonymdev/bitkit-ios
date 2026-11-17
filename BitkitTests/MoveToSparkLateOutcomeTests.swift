@@ -3,6 +3,20 @@ import LDKNode
 import XCTest
 
 final class MoveToSparkLateOutcomeTests: XCTestCase {
+    @MainActor
+    func testAMoveKeptForItsResultKeepsItsScreenReachableUntilTheWalletIsWiped() {
+        let manager = MoveToSparkManager()
+        XCTAssertFalse(manager.keepsMoveForItsResult)
+
+        _ = manager.beginMove()
+        XCTAssertTrue(manager.keepsMoveForItsResult, "A move in flight hid its screen once the channels had nothing left to move")
+        manager.reset()
+        XCTAssertTrue(manager.keepsMoveForItsResult, "Leaving the screen of a move in flight forgot it")
+
+        manager.resetForWipe()
+        XCTAssertFalse(manager.keepsMoveForItsResult)
+    }
+
     func testLateSuccessOfTheInFlightMoveShowsItMovedWithItsFee() {
         let state = MoveToSparkState.inFlight(amountSats: 40000)
         XCTAssertTrue(MoveToSparkManager.showsInFlightMove(state, generation: 3, moveGeneration: 3))
