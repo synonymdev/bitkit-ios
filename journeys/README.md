@@ -287,6 +287,9 @@ every tab; start the swipes away from the edge.
 actions. Successful dismissal without a toast or duplicate payment is shared behavior, not an
 iOS-only feature.
 
+`payment-requests/paid-request-receipt.xml` has the same file name, journey name and actions on both
+platforms; the receipt line identifiers `PaykitReceiptStatus` and `PaykitReceiptRetry` match Android.
+
 `usdt-payment-restoration.xml` has the same file name, journey name and actions on both platforms.
 Android restores an unpaid amount draft after process death, while iOS may return to the wallet.
 A submitted payment must return to the wallet without reopening the paid draft on either platform.

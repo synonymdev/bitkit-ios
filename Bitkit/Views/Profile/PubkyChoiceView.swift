@@ -5,6 +5,7 @@ struct PubkyChoiceView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var contactsManager: ContactsManager
+    @EnvironmentObject var wallet: WalletViewModel
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var ringPubkys: [String] = []
@@ -201,6 +202,11 @@ struct PubkyChoiceView: View {
             }
 
             if let destination = await Self.destinationAfterAdoption(of: adopted, pubkyProfile: pubkyProfile, contactsManager: contactsManager) {
+                ContactPaymentsService.startEnablingForNewProfile(
+                    pubkyProfile: pubkyProfile,
+                    contactsManager: contactsManager,
+                    wallet: wallet
+                )
                 navigation.path = [destination]
             }
         } catch is CancellationError {
@@ -254,6 +260,7 @@ struct PubkyChoiceView: View {
             .environmentObject(NavigationViewModel())
             .environmentObject(PubkyProfileManager())
             .environmentObject(ContactsManager())
+            .environmentObject(WalletViewModel())
     }
     .preferredColorScheme(.dark)
 }

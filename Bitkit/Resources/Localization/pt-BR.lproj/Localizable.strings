@@ -1357,10 +1357,7 @@
 "profile__edit" = "Editar";
 "profile__pay_contacts_nav_title" = "Pagar Contatos";
 "profile__pay_contacts_title" = "Deixe seus contatos\n<accent>pagarem você</accent>";
-"profile__pay_contacts_description" = "Compartilhe dados de pagamento de forma privada com seus contatos. Os pagamentos públicos ficam desativados até você ativá-los nas Configurações.";
-"profile__private_payments_toggle" = "Pagamentos privados a contatos";
-"profile__public_payments_toggle" = "Pagamentos públicos";
-"profile__payments_pending" = "Há alterações pendentes. Os dados de pagamento compartilhados anteriormente podem continuar disponíveis.";
+"profile__pay_contacts_description" = "Use a Bitkit com seus contatos para enviar pagamentos diretamente, a qualquer hora, em qualquer lugar.";
 "profile__add_link_title" = "Adicionar Link";
 "profile__add_link_label" = "RÓTULO";
 "profile__add_link_label_placeholder" = "Por exemplo, \"Website\".";
@@ -1616,6 +1613,9 @@
 "wallet__boost_recomended_button" = "Usar Taxa Sugerida";
 "wallet__boost_swipe" = "Arraste para acelerar";
 "wallet__payment_received" = "Bitcoin Recebido";
+"wallet__receipt_failed" = "Falha ao enviar o recibo";
+"wallet__receipt_sending" = "Enviando recibo";
+"wallet__receipt_sent" = "Recibo enviado";
 "wallet__payment_request" = "Solicitação de pagamento";
 "wallet__payment_request_unavailable" = "A solicitação de pagamento não está mais disponível.";
 "wallet__payment_request_note_too_long" = "Encurte a nota e tente novamente.";

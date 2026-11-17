@@ -55,19 +55,15 @@ profile must also be absent from the saved contacts.
 
 ## Contact payment sharing
 
-`contact-payment-sharing.xml` checks disabling private sharing and keeping it off after returning to
-Settings.
+Private contact payments have no setting: they stay on while a Pubky profile exists, and the app turns
+them back on when it comes to the foreground. Only sign-out, profile deletion and wallet wipe turn
+private sharing off.
 
 Network and storage fault injection are outside journey-runner capabilities. With private contact sharing
-on, make one private-list withdrawal fail and let the following app-registry update fail as well.
-Turn off private contact payments. The app must report the failure, keep the private toggle off,
-leave public sharing unchanged, and retain cleanup without republishing cleared private lists.
-Restore connectivity and foreground the app. Cleanup must finish while private sharing stays off.
-Repeat with only the trailing app-registry update failing.
-
-Hold withdrawal in progress and foreground the app. It must not start another cleanup. Request
-sharing on again before withdrawal finishes: publication must wait until the earlier cleanup ends,
-then leave sharing on. Repeat while a foreground cleanup is already running.
+on, delete the profile with one private-list withdrawal failing and the following app-registry update
+failing as well. The app must report the failure and retain cleanup without republishing cleared
+private lists. Restore connectivity and foreground the app. Cleanup must
+finish. Repeat with only the trailing app-registry update failing.
 
 ## Contact synchronization overlap
 

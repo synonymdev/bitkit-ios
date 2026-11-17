@@ -1399,10 +1399,7 @@
 "profile__edit" = "Edit";
 "profile__pay_contacts_nav_title" = "Pay Contacts";
 "profile__pay_contacts_title" = "Let your contacts\n<accent>pay you</accent>";
-"profile__pay_contacts_description" = "Share payment details privately with your contacts. Public payments stay off unless you enable them in Settings.";
-"profile__private_payments_toggle" = "Private contact payments";
-"profile__public_payments_toggle" = "Public payments";
-"profile__payments_pending" = "Changes are pending. Previously shared payment details may still be available.";
+"profile__pay_contacts_description" = "Use Bitkit with your contacts to send payments directly, anytime, anywhere.";
 "profile__add_link_title" = "Add Link";
 "profile__add_link_label" = "LABEL";
 "profile__add_link_label_placeholder" = "For example 'Website'";
@@ -1659,6 +1656,9 @@
 "wallet__boost_recomended_button" = "Use Suggested Fee";
 "wallet__boost_swipe" = "Swipe To Boost";
 "wallet__payment_received" = "Received Bitcoin";
+"wallet__receipt_failed" = "Receipt failed";
+"wallet__receipt_sending" = "Sending receipt";
+"wallet__receipt_sent" = "Receipt sent";
 "wallet__payment_request" = "Payment Request";
 "wallet__payment_request_unavailable" = "The payment request is no longer available.";
 "wallet__payment_request_note_too_long" = "Shorten the note and try again.";

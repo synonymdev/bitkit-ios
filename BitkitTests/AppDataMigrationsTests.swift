@@ -13,7 +13,7 @@ final class AppDataMigrationsTests: XCTestCase {
 
         XCTAssertNil(defaults.object(forKey: paykitKey))
         XCTAssertTrue(isPaykitUIEnabled(defaults))
-        XCTAssertEqual(defaults.integer(forKey: AppDataMigrations.versionKey), 4)
+        XCTAssertEqual(defaults.integer(forKey: AppDataMigrations.versionKey), 5)
     }
 
     func testUpgradeWithPaykitOnKeepsPaykitOn() throws {
@@ -66,7 +66,24 @@ final class AppDataMigrationsTests: XCTestCase {
         AppDataMigrations.run(defaults: defaults, hasStoredPubkyIdentity: { true })
 
         XCTAssertTrue(isPaykitUIEnabled(defaults))
-        XCTAssertEqual(defaults.integer(forKey: AppDataMigrations.versionKey), 4)
+        XCTAssertEqual(defaults.integer(forKey: AppDataMigrations.versionKey), 5)
+    }
+
+    func testLegacyKeychainCleanupIsRetriedUntilItSucceeds() throws {
+        let defaults = try makeIsolatedDefaults()
+        defaults.set(4, forKey: AppDataMigrations.versionKey)
+        struct KeychainLocked: Error {}
+
+        AppDataMigrations.run(defaults: defaults, hasStoredPubkyIdentity: { false }, deleteLegacyKeychainEntries: { throw KeychainLocked() })
+        XCTAssertEqual(defaults.integer(forKey: AppDataMigrations.versionKey), 4, "A locked keychain is tried again on the next launch")
+
+        var deletions = 0
+        AppDataMigrations.run(defaults: defaults, hasStoredPubkyIdentity: { false }, deleteLegacyKeychainEntries: { deletions += 1 })
+        XCTAssertEqual(deletions, 1)
+        XCTAssertEqual(defaults.integer(forKey: AppDataMigrations.versionKey), 5)
+
+        AppDataMigrations.run(defaults: defaults, hasStoredPubkyIdentity: { false }, deleteLegacyKeychainEntries: { deletions += 1 })
+        XCTAssertEqual(deletions, 1, "The cleanup runs once")
     }
 
     // MARK: - After this migration

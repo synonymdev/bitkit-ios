@@ -10,6 +10,8 @@ struct PaykitPaymentStateBackup: Codable {
     var acceptedOneTimeRequests: [String: [RequestID]]? = nil
     /// Local allowance state by identity, so a restored wallet keeps its USD labels and can still verify open attempts.
     var allowances: PaykitAllowanceStateBackups? = nil
+    /// Paykit receipt ids seen sent, by identity, so a restored wallet does not show them as still sending.
+    var sentReceipts: [String: [String]]? = nil
 
     struct RequestID: Codable {
         let paymentRequestId: String

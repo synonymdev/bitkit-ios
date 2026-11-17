@@ -11,6 +11,8 @@ struct ReceivedTxSheetDetails: Codable {
     var sats: UInt64 = 0
     var usdtAmount: UInt64? = nil
     var usdtTransferId: String? = nil
+    /// Payment hash or txid of a bitcoin receive, to show its Paykit receipt.
+    var paymentId: String? = nil
 }
 
 struct ReceivedTxSheetItem: SheetItem {
@@ -55,6 +57,10 @@ struct ReceivedTx: View {
                             .onTapGesture { showUsdtDetails() }
                     } else {
                         MoneyStack(sats: Int(config.details.sats), showSymbol: true, testIdPrefix: "ReceivedTransaction")
+                    }
+                    if let receiptPaymentId = config.details.usdtTransferId ?? config.details.paymentId {
+                        PaykitReceiptStatusLine(paymentId: receiptPaymentId)
+                            .padding(.top, 16)
                     }
                     Spacer()
                     HStack(spacing: 16) {

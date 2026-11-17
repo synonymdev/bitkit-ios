@@ -76,6 +76,10 @@ final class AppReset: WipeStepExecutor {
             await Self.runRemoteCleanup {
                 await PubkyProfileManager.removePrivatePaykitEndpointsForWipe(context: "AppReset.wipe")
             }
+            // Before the keychain wipe, which deletes the device secret it needs.
+            await Self.runRemoteCleanup {
+                await WakeManager.shared.unregister()
+            }
         case .resetLocalServices:
             await VssBackupClient.shared.reset()
             VssStoreIdProvider.shared.clearCache()
@@ -103,6 +107,7 @@ final class AppReset: WipeStepExecutor {
         case .wipeKeychain:
             try Self.wipeKeychain()
             PaykitUsdtPaymentService.shared.resetForWipe()
+            PaykitReceiptService.shared.reset()
         case .resetSettings:
             if let bundleID = Bundle.main.bundleIdentifier {
                 UserDefaults.standard.removePersistentDomain(forName: bundleID)

@@ -1352,10 +1352,7 @@
 "profile__edit" = "Bewerken";
 "profile__pay_contacts_nav_title" = "Contacten betalen";
 "profile__pay_contacts_title" = "Laat uw contacten\n<accent>u betalen</accent>";
-"profile__pay_contacts_description" = "Deel betaalgegevens privé met je contacten. Openbare betalingen blijven uit totdat je ze inschakelt in Instellingen.";
-"profile__private_payments_toggle" = "Privébetalingen met contacten";
-"profile__public_payments_toggle" = "Openbare betalingen";
-"profile__payments_pending" = "Wijzigingen zijn in behandeling. Eerder gedeelde betaalgegevens kunnen nog beschikbaar zijn.";
+"profile__pay_contacts_description" = "Gebruik Bitkit met uw contacten om direct betalingen te versturen, altijd en overal.";
 "profile__add_link_title" = "Link toevoegen";
 "profile__add_link_label" = "LABEL";
 "profile__add_link_label_placeholder" = "Bijvoorbeeld 'Website'";
@@ -1611,6 +1608,9 @@
 "wallet__boost_recomended_button" = "Voorgestelde Vergoeding";
 "wallet__boost_swipe" = "Veeg Om Te Boosten";
 "wallet__payment_received" = "Bitcoin Ontvangen";
+"wallet__receipt_failed" = "Ontvangstbewijs verzenden mislukt";
+"wallet__receipt_sending" = "Ontvangstbewijs verzenden";
+"wallet__receipt_sent" = "Ontvangstbewijs verzonden";
 "wallet__payment_request" = "Betaalverzoek";
 "wallet__payment_request_unavailable" = "Het betaalverzoek is niet meer beschikbaar.";
 "wallet__payment_request_note_too_long" = "Maak de opmerking korter en probeer het opnieuw.";
