@@ -8,6 +8,8 @@ protocol OnchainSending {
     var onchainDispatchNode: AnyObject? { get }
     /// The coins the wallet can spend now, nil when the sender cannot tell.
     func spendableOnchainInputs() async throws -> Set<OnchainSendInput>?
+    /// Runs `action` before the node stops, while its wallet is still the live one.
+    func beforeOnchainNodeStops(_ action: @escaping () async -> Void)
     func prepareOnchainSend(address: String, sats: UInt64, satsPerVbyte: UInt32,
                             utxosToSpend: [SpendableUtxo]?, isMaxAmount: Bool,
                             expectedWalletIndex: Int, expectedNode: AnyObject?, paymentDeadline: PaykitPreciseInstant?) async throws
@@ -18,11 +20,17 @@ extension OnchainSending {
     func spendableOnchainInputs() async throws -> Set<OnchainSendInput>? {
         nil
     }
+
+    func beforeOnchainNodeStops(_: @escaping () async -> Void) {}
 }
 
 extension LightningService: OnchainSending {
     func spendableOnchainInputs() async throws -> Set<OnchainSendInput>? {
         try await Set(listSpendableOutputs().map { OnchainSendInput(txid: $0.outpoint.txid, vout: $0.outpoint.vout) })
+    }
+
+    func beforeOnchainNodeStops(_ action: @escaping () async -> Void) {
+        beforeNodeStop = action
     }
 
     func prepareOnchainSend(
@@ -627,6 +635,8 @@ actor OnchainSendAttemptService {
     private struct HeldCandidate {
         let prepared: PreparedOnchainSendDispatch
         let payment: Payment
+        /// The node that prepared it, the only one that can send it.
+        let node: AnyObject?
 
         struct Payment: Equatable {
             let walletIndex: Int
@@ -641,8 +651,10 @@ actor OnchainSendAttemptService {
         }
     }
 
-    /// Drops the transaction kept for a renewed approval, as when its send flow is left.
-    func discardHeldCandidate() {
+    /// Drops the transaction kept for a renewed approval, as when its send flow is left or its node stops. With a
+    /// `txid`, only that transaction is dropped.
+    func discardHeldCandidate(txid: String? = nil) {
+        guard txid == nil || heldCandidate?.prepared.txid == txid else { return }
         heldCandidate = nil
     }
 
@@ -691,7 +703,10 @@ actor OnchainSendAttemptService {
         )
         var reapproved: PreparedOnchainSendDispatch?
         if let reapprovedCandidateTxid {
-            guard let held, held.prepared.txid == reapprovedCandidateTxid, held.payment == payment else {
+            // Checked before admission, so a transaction that cannot be sent leaves no attempt and starts no request payment.
+            guard let held, held.prepared.txid == reapprovedCandidateTxid, held.payment == payment, held.node === dispatchNode,
+                  (try? PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)) != nil
+            else {
                 throw OnchainSendAttemptError.preDispatch(OnchainSendCandidateUnavailable())
             }
             reapproved = held.prepared
@@ -750,7 +765,10 @@ actor OnchainSendAttemptService {
                 if let reviewedMiningFeeSats {
                     guard let miningFee = prepared.miningFeeSats else { throw OnchainSendAttemptError.unresolved }
                     if miningFee > reviewedMiningFeeSats {
-                        heldCandidate = HeldCandidate(prepared: prepared, payment: payment)
+                        heldCandidate = HeldCandidate(prepared: prepared, payment: payment, node: dispatchNode)
+                        // Dropping a kept transaction persists through the wallet that prepared it, so it is dropped
+                        // while that wallet's node still runs, never after another instance took over its storage.
+                        lightningService.beforeOnchainNodeStops { [weak self] in await self?.discardHeldCandidate() }
                         throw OnchainSendFeeIncreased(
                             candidateTxid: prepared.txid, miningFeeSats: miningFee, recipientAmountSats: prepared.recipientAmountSats
                         )

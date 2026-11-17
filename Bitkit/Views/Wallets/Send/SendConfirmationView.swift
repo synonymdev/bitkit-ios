@@ -1080,6 +1080,9 @@ struct SendConfirmationView: View {
             }
         }
 
+        // The fee the warnings and this approval are for; an estimate finishing later must not stand in for it.
+        let reviewedFeeSats = UInt64(max(0, transactionFee))
+
         // Validate payment and show warnings if needed
         let warnings = await validatePayment()
         if !warnings.isEmpty {
@@ -1138,7 +1141,7 @@ struct SendConfirmationView: View {
         } else if !app.paykitUsesUsdt, let leg = app.paykitRoute?.serviceLeg {
             await performServiceRoutedPayment(leg)
         } else {
-            try await performPayment(isAutomatic: isAutomatic)
+            try await performPayment(isAutomatic: isAutomatic, reviewedFeeSats: reviewedFeeSats)
         }
     }
 
@@ -1703,7 +1706,7 @@ struct SendConfirmationView: View {
         }
     }
 
-    private func performPayment(isAutomatic: Bool) async throws {
+    private func performPayment(isAutomatic: Bool, reviewedFeeSats: UInt64) async throws {
         let paymentActivity = PaykitPaymentActivity.shared.begin()
         defer { PaykitPaymentActivity.shared.end(paymentActivity) }
         isSubmittingPayment = true
@@ -1899,7 +1902,7 @@ struct SendConfirmationView: View {
                                 tags: tagManager.selectedTagsArray, contact: contactPublicKey,
                                 createdAt: UInt64(Date().timeIntervalSince1970)
                             ),
-                            reviewedMiningFeeSats: UInt64(max(0, transactionFee)),
+                            reviewedMiningFeeSats: reviewedFeeSats,
                             reapprovedCandidateTxid: reapproval?.candidateTxid,
                             paymentDeadline: incomingPaymentRequest?.submissionDeadline(quoteId: app.paykitPaymentTerms?.quoteId),
                             beforeBroadcastAttempt: beforeBroadcastAttempt,
@@ -2075,6 +2078,13 @@ struct SendConfirmationView: View {
             if case let OnchainSendAttemptError.preDispatch(refused) = error, let increased = refused as? OnchainSendFeeIncreased,
                let onchainSend, let feeRate = wallet.selectedFeeRateSatsPerVByte
             {
+                guard Self.isFeeRefusalCurrent(
+                    presentationID: presentationID, activePresentationID: sheets.activeSheetConfiguration?.presentationID,
+                    address: onchainSend.address, currentAddress: app.scannedOnchainInvoice?.address
+                ) else {
+                    await OnchainSendAttemptService.shared.discardHeldCandidate(txid: increased.candidateTxid)
+                    return
+                }
                 reviewIncreasedFee(FeeReapproval(
                     increased, address: onchainSend.address, requestedSats: onchainSend.requestedSats,
                     isMaxAmount: onchainSend.isMaxAmount, feeRate: feeRate, utxos: wallet.selectedUtxos
@@ -2095,6 +2105,11 @@ struct SendConfirmationView: View {
                 contactPaymentContext: contactPaymentContext
             )))
         }
+    }
+
+    /// A refusal that returns after its send was closed or replaced has no review to go back to.
+    static func isFeeRefusalCurrent(presentationID: UUID?, activePresentationID: UUID?, address: String, currentAddress: String?) -> Bool {
+        presentationID != nil && presentationID == activePresentationID && address == currentAddress
     }
 
     /// Shows the fee and amount of the prepared transaction in place of the estimate the refused swipe approved.

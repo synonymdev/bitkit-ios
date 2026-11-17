@@ -35,6 +35,23 @@ final class SendConfirmationViewTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testFeeRefusalIsIgnoredOnceItsSendWasClosedOrReplaced() {
+        let presentation = UUID()
+        XCTAssertTrue(SendConfirmationView.isFeeRefusalCurrent(
+            presentationID: presentation, activePresentationID: presentation, address: "bcrt1qexample", currentAddress: "bcrt1qexample"
+        ))
+        let stale: [(UUID?, String?)] = [(nil, "bcrt1qexample"), (UUID(), "bcrt1qexample"), (presentation, nil), (presentation, "bcrt1qother")]
+        for (active, address) in stale {
+            XCTAssertFalse(SendConfirmationView.isFeeRefusalCurrent(
+                presentationID: presentation, activePresentationID: active, address: "bcrt1qexample", currentAddress: address
+            ))
+        }
+        XCTAssertFalse(SendConfirmationView.isFeeRefusalCurrent(
+            presentationID: nil, activePresentationID: nil, address: "bcrt1qexample", currentAddress: "bcrt1qexample"
+        ))
+    }
+
     func testFeeReapprovalCoversOnlyThePaymentItsTransactionWasPreparedFor() {
         let utxo = SpendableUtxo(outpoint: OutPoint(txid: String(repeating: "a", count: 64), vout: 0), valueSats: 20000)
         // A send-all's prepared transaction delivers less once its fee is higher, and that amount is the one reviewed.

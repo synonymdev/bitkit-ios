@@ -535,38 +535,62 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
     }
 
     func testReapprovedTransactionThatCanNoLongerBeSentIsNotRebuilt() async throws {
-        let deadlineDate = Date(timeIntervalSince1970: 1_800_000_000)
-        let deadline = PaykitPreciseInstant(date: deadlineDate)
+        let future = PaykitPreciseInstant(date: Date().addingTimeInterval(3600))
+        let expired = PaykitPreciseInstant(date: Date(timeIntervalSince1970: 1000))
         let requestId = PaykitPaymentRequest.ID(paymentRequestId: "request", counterparty: "payee", billingPeriodStartsAt: nil)
-        let changes: [(String, (PreparedAttemptNodeMock) -> Void, (inout UInt64, inout PaykitPaymentRequest.ID?) -> Void)] = [
-            ("its coins were spent", { $0.spendable = [] }, { _, _ in }),
-            ("the request expired", { $0.deadlineClock = { deadlineDate.addingTimeInterval(1) } }, { _, _ in }),
-            ("the wallet changed", { $0.currentWalletIndex = 1 }, { _, _ in }),
-            ("the amount changed", { _ in }, { amount, _ in amount = 1001 }),
-            ("the request changed", { _ in }, { _, request in request = nil }),
+        typealias Case = (
+            reason: String, deadline: PaykitPreciseInstant, refusedBeforeAdmission: Bool,
+            changeSender: (PreparedAttemptNodeMock) -> Void, changePayment: (inout UInt64, inout PaykitPaymentRequest.ID?) -> Void
+        )
+        let cases: [Case] = [
+            ("its coins were spent", future, false, { $0.spendable = [] }, { _, _ in }),
+            ("the request expired", expired, true, { _ in }, { _, _ in }),
+            ("the node changed", future, true, { $0.dispatchNode = NSObject() }, { _, _ in }),
+            ("the wallet changed", future, true, { $0.currentWalletIndex = 1 }, { _, _ in }),
+            ("the amount changed", future, true, { _ in }, { amount, _ in amount = 1001 }),
+            ("the request changed", future, true, { _ in }, { _, request in request = nil }),
         ]
-        for (reason, changeSender, changePayment) in changes {
+        for testCase in cases {
+            let reason = testCase.reason
             let store = MemoryAttemptStore()
             let service = OnchainSendAttemptService(store: store)
             let sender = reviewedSender()
-            sender.deadlineClock = { deadlineDate.addingTimeInterval(-1) }
             sender.spendable = Set(sender.inputs)
-            let increased = try await refusedForHigherFee(service, sender: sender, requestId: requestId, paymentDeadline: deadline)
-            changeSender(sender)
+            // The first approval is refused for its fee before any deadline is read.
+            let increased = try await refusedForHigherFee(service, sender: sender, requestId: requestId, paymentDeadline: testCase.deadline)
+            testCase.changeSender(sender)
             var amount: UInt64 = 1000
             var request: PaykitPaymentRequest.ID? = requestId
-            changePayment(&amount, &request)
+            testCase.changePayment(&amount, &request)
+            let savesBefore = store.saves
             do {
                 _ = try await sendReviewed(
                     service, sender: sender, reviewedFee: 212, reapproved: increased.candidateTxid, amountSats: amount,
-                    requestId: request, paymentDeadline: deadline
+                    requestId: request, paymentDeadline: testCase.deadline,
+                    beforeBroadcastAttempt: { XCTFail("The request's payment must not start when \(reason)") },
+                    onPreDispatchFailure: { _ in XCTFail("No started payment exists to roll back when \(reason)") }
                 )
                 XCTFail("The approved transaction went out although \(reason)")
-            } catch OnchainSendAttemptError.preDispatch {}
+            } catch let OnchainSendAttemptError.preDispatch(error) {
+                XCTAssertTrue(error is OnchainSendCandidateUnavailable, "Refused with \(error) when \(reason)")
+            }
             XCTAssertEqual(sender.preparations, 1, "No other transaction may be prepared when \(reason)")
             XCTAssertEqual(sender.broadcasts, 0, "Nothing may be sent when \(reason)")
             XCTAssertTrue(store.snapshot().isEmpty, "The attempt must be released when \(reason)")
+            if testCase.refusedBeforeAdmission {
+                XCTAssertEqual(store.saves, savesBefore, "No attempt may be saved when \(reason)")
+            }
         }
+    }
+
+    func testDiscardingAnotherTransactionKeepsTheOneAwaitingApproval() async throws {
+        let service = OnchainSendAttemptService(store: MemoryAttemptStore())
+        let sender = reviewedSender()
+        let increased = try await refusedForHigherFee(service, sender: sender)
+        await service.discardHeldCandidate(txid: String(repeating: "cd", count: 32))
+        let result = try await sendReviewed(service, sender: sender, reviewedFee: 212, reapproved: increased.candidateTxid)
+        XCTAssertEqual(result, .accepted(txid: increased.candidateTxid))
+        XCTAssertEqual(sender.preparations, 1)
     }
 
     func testReapprovalBelowTheActualFeeKeepsTheSameTransactionForAnotherApproval() async throws {
@@ -1823,6 +1847,7 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
 final class MemoryAttemptStore: OnchainSendAttemptStoring, @unchecked Sendable {
     private let lock = NSLock()
     private var attempts: [OnchainSendAttempt] = []
+    private var saveCount = 0
     var failLoad = false
     var failSave = false
 
@@ -1841,7 +1866,14 @@ final class MemoryAttemptStore: OnchainSendAttemptStoring, @unchecked Sendable {
         if failSave {
             throw MemoryAttemptStoreError.failed
         }
+        saveCount += 1
         self.attempts = attempts
+    }
+
+    var saves: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return saveCount
     }
 
     func snapshot() -> [OnchainSendAttempt] {
@@ -1911,7 +1943,7 @@ final class AttemptNodeMock: OnchainSending {
 
 final class PreparedAttemptNodeMock: OnchainSending {
     var currentWalletIndex = 0
-    let dispatchNode = NSObject()
+    var dispatchNode = NSObject()
     var onchainDispatchNode: AnyObject? {
         dispatchNode
     }
