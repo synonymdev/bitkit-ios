@@ -2085,6 +2085,7 @@ struct SendConfirmationView: View {
                     await OnchainSendAttemptService.shared.discardHeldCandidate(txid: increased.candidateTxid)
                     return
                 }
+                await Self.restoreRequestForAnotherSwipe(contactPaymentContext, app: app, manager: paykitPaymentRequestManager)
                 reviewIncreasedFee(FeeReapproval(
                     increased, address: onchainSend.address, requestedSats: onchainSend.requestedSats,
                     isMaxAmount: onchainSend.isMaxAmount, feeRate: feeRate, utxos: wallet.selectedUtxos
@@ -2099,6 +2100,7 @@ struct SendConfirmationView: View {
 
             if case let OnchainSendAttemptError.preDispatch(refused) = error, let unavailable = refused as? OnchainSendCandidateUnavailable {
                 // The kept transaction is gone, so the review goes back to an estimate.
+                await Self.restoreRequestForAnotherSwipe(contactPaymentContext, app: app, manager: paykitPaymentRequestManager)
                 app.toast(type: .error, title: t("common__error"), description: unavailable.localizedDescription)
                 Task { await calculateTransactionFee() }
                 if isAutomatic {
@@ -2116,6 +2118,14 @@ struct SendConfirmationView: View {
                 contactPaymentContext: contactPaymentContext
             )))
         }
+    }
+
+    /// A refusal that stays on Confirm has released the request's private payment list. The request loses its approval
+    /// here, so the next swipe prepares it again and consumes that list before anything is sent.
+    @MainActor
+    static func restoreRequestForAnotherSwipe(_ context: ContactPaymentContext?, app: AppViewModel, manager: PaykitPaymentRequestManager) async {
+        guard let context else { return }
+        await SendSheet.restoreHardwareContactPaymentForRetry(context, app: app, manager: manager)
     }
 
     /// A refusal that returns after its send was closed or replaced has no review to go back to.
