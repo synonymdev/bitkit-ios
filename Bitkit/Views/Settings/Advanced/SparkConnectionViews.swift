@@ -31,7 +31,7 @@ struct SparkConnectionRow: View {
                 }
                 .padding(.bottom, 6)
 
-                SparkChannel(balanceSats: spark.shownBalanceSats)
+                SparkChannel(balanceSats: spark.shownBalanceSats, isReceiving: spark.isReceiving)
                     .padding(.bottom, 16)
 
                 CustomDivider()
@@ -43,9 +43,10 @@ struct SparkConnectionRow: View {
     }
 }
 
-/// Spark's balance as a channel bar: its spending balance, and receiving with no limit.
+/// Spark's balance as a channel bar: its spending balance, and receiving with no limit while Spark can receive.
 private struct SparkChannel: View {
     let balanceSats: UInt64
+    let isReceiving: Bool
 
     var body: some View {
         LightningChannel(
@@ -53,7 +54,8 @@ private struct SparkChannel: View {
             localBalance: balanceSats,
             remoteBalance: 0,
             status: .open,
-            receivingUnlimited: true
+            showReceiving: isReceiving,
+            receivingUnlimited: isReceiving
         )
     }
 }
@@ -119,7 +121,7 @@ struct SparkConnectionDetailView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    SparkChannel(balanceSats: spark.shownBalanceSats)
+                    SparkChannel(balanceSats: spark.shownBalanceSats, isReceiving: spark.isReceiving)
                         .padding(.bottom, 16)
 
                     CustomDivider()
@@ -158,7 +160,9 @@ struct SparkConnectionDetailView: View {
 
                     VStack(alignment: .leading, spacing: 0) {
                         SettingsSectionHeader(t("lightning__balance"))
-                        detailRow(label: t("lightning__receiving_label"), value: t("lightning__spark_receiving_unlimited"))
+                        if spark.isReceiving {
+                            detailRow(label: t("lightning__receiving_label"), value: t("lightning__spark_receiving_unlimited"))
+                        }
                         amountRow(label: t("lightning__spending_label"), amount: spark.shownBalanceSats)
                     }
 
@@ -288,10 +292,12 @@ struct SparkConnectionDetailView: View {
                 compactRow(label: t("lightning__spark_claim_fee")) {
                     MoneyText(sats: Int(deposit.feeSats), size: .captionB, symbol: true)
                 }
-            } else if let confirmations = deposit.confirmations {
+            } else {
                 compactRow(label: t("lightning__status")) {
                     CaptionBText(
-                        t("lightning__spark_confirmations", variables: ["count": "\(min(confirmations, 3))"]),
+                        deposit.confirmations.map {
+                            t("lightning__spark_confirmations", variables: ["count": "\(min($0, 3))"])
+                        } ?? t("wallet__activity_pending"),
                         textColor: .purpleAccent
                     )
                 }

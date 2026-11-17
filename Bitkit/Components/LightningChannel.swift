@@ -167,9 +167,9 @@ struct LightningChannel: View {
         HStack(spacing: 4) {
             // Spending bar (left)
             ZStack(alignment: .trailing) {
-                // Background
+                // Background, an empty grey track while Spark holds nothing
                 Rectangle()
-                    .fill(spendingColor)
+                    .fill(receivingUnlimited && localBalance == 0 ? Color.gray6 : spendingColor)
                     .cornerRadius(8, corners: [.topLeft, .bottomLeft])
 
                 // Available

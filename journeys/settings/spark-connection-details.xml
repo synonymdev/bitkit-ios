@@ -8,7 +8,9 @@
     once claimed or the confirmations until then. The footer holds "Transfer To Savings" and, while Spark holds
     funds or a force transfer runs, "Force Transfer To Savings".
     Spark's row shows once Spark is connected, so "Connecting..." and "Offline..." are covered by unit tests and
-    the PR's screenshots, not here.
+    the PR's screenshots, not here. While Spark cannot receive (not connected, or a force transfer running) the bar shows
+    only the spending side and the "Receiving capacity" row is hidden; an unclaimed deposit whose confirmations are
+    unknown reads "Pending" under Status. A zero balance draws an empty grey spending track.
 
     Precondition: Debug build on regtest with Spark connected on its regtest (journeys/README.md capabilities),
     no Lightning channel, and a claimed Spark deposit (fund the deposit address from Lightspark's regtest faucet

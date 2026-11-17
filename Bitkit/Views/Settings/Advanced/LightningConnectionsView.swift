@@ -56,7 +56,7 @@ struct LightningConnectionsView: View {
                                         .foregroundColor(.white)
                                     // Spark receives without inbound liquidity, so no channel caps receiving.
                                     TitleText(
-                                        SparkManager.shared.isReady ? t("lightning__spark_receiving_unlimited") : formatNumber(receivingCapacity),
+                                        SparkManager.shared.isReceiving ? t("lightning__spark_receiving_unlimited") : formatNumber(receivingCapacity),
                                         textColor: .white
                                     )
                                 }
