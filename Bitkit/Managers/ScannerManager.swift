@@ -289,10 +289,14 @@ class ScannerManager: ObservableObject {
     /// Reads a payment request over NFC and handles it exactly like a scanned QR code.
     /// The read holds the scan lock from the start, so a Bluetooth request can't route while the NFC sheet is up.
     func handleNfcRead(context: ScannerContext, isCurrent: () -> Bool = { true }) async {
-        guard isCurrent(), beginUserScan() else { return }
+        let isCurrentOrigin = originCheck()
+        func isStillCurrent() -> Bool {
+            isCurrent() && isCurrentOrigin()
+        }
+        guard isStillCurrent(), beginUserScan() else { return }
         defer { isHandlingScan = false }
-        guard let uri = await readNfcPaymentRequest(), isCurrent() else { return }
-        await processScan(uri, context: context, isCurrent: isCurrent)
+        guard let uri = await readNfcPaymentRequest(), isStillCurrent() else { return }
+        await processScan(uri, context: context, isCurrent: isStillCurrent)
     }
 
     /// Reads a payment request over NFC from the Send sheet and resolves it like a scanned QR code.
@@ -301,16 +305,20 @@ class ScannerManager: ObservableObject {
         isCurrent: () -> Bool = { true },
         completion: @escaping (SendRoute?) -> Void
     ) async {
-        guard isCurrent(), beginUserScan() else {
+        let isCurrentOrigin = originCheck()
+        func isStillCurrent() -> Bool {
+            isCurrent() && isCurrentOrigin()
+        }
+        guard isStillCurrent(), beginUserScan() else {
             completion(nil)
             return
         }
         defer { isHandlingScan = false }
-        guard let uri = await readNfcPaymentRequest(), isCurrent() else {
+        guard let uri = await readNfcPaymentRequest(), isStillCurrent() else {
             completion(nil)
             return
         }
-        await processSendScan(uri, scope: scope, isCurrent: isCurrent, completion: completion)
+        await processSendScan(uri, scope: scope, isCurrent: isStillCurrent, completion: completion)
     }
 
     /// Schemes accepted from Bluetooth: payment requests only. Unlike a camera or NFC read, a Bluetooth request can
