@@ -113,6 +113,10 @@ enum WakeConfig {
     static let presenceRenewal: Duration = .seconds(60)
     /// iOS gives a background push 30 seconds.
     static let backgroundPushTimeout: Duration = .seconds(25)
+    /// How long an unchanged registration stands before it is sent again. The gateway retires a device that had no
+    /// accepted push or registration for 270 days (`retention.idle_device_days`), and presence does not count, so an
+    /// install that rarely gets a wake registers again long before that.
+    static let registrationMaxAgeSecs: UInt64 = 30 * 24 * 60 * 60
 
     /// `Bitkit.entitlements` says `development` for both configurations, so it cannot tell which APNs environment
     /// issued the token. A wrong environment fails every push.
@@ -220,14 +224,15 @@ struct WakeRegistrar {
                 topics: WakeConfig.topics
             )
         }
-        if !force, let device = record.device, device.gatewayUrl == gatewayUrl, device.content == content(device.content.audience) {
+        let isFresh = !WakeTimestamp.isRegistrationDue(now: now(), last: record.lastTimestamp)
+        if !force, isFresh, let device = record.device, device.gatewayUrl == gatewayUrl, device.content == content(device.content.audience) {
             return .unchanged
         }
 
         // The audience is the gateway's, never a constant.
         let info = try await serverInfo(gatewayUrl)
         let registeredDevice = WakeRegisteredDevice(gatewayUrl: gatewayUrl, content: content(info.audience))
-        if !force, record.device == registeredDevice {
+        if !force, isFresh, record.device == registeredDevice {
             return .unchanged
         }
 

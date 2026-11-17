@@ -87,6 +87,14 @@ enum WakeTimestamp {
         return max(now, saturatingAdd(last, 1))
     }
 
+    /// Whether an unchanged registration last sent at `last` is sent again, so the gateway never retires the device as
+    /// idle (`WakeConfig.registrationMaxAgeSecs`). One with no recorded time is sent again once, and a clock that stepped
+    /// back waits.
+    static func isRegistrationDue(now: UInt64, last: UInt64?) -> Bool {
+        guard let last else { return true }
+        return now >= last && now - last >= WakeConfig.registrationMaxAgeSecs
+    }
+
     /// The timestamp to sign again with after a 401 `stale_timestamp`, which carries the gateway's clock. A `last` too far
     /// ahead of that clock was never accepted, so only an earlier one has to be passed.
     static func retry(serverTime: UInt64, last: UInt64?) -> UInt64 {

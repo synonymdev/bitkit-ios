@@ -240,6 +240,7 @@ final class WakeRegistrarTests: XCTestCase {
     private var sent: [WakeRegistrationRequest] = []
     private var serverInfoCalls = 0
     private var credentials: WakeCredentials!
+    private var nowSecs = WakeRegistrarTests.now
 
     override func setUpWithError() throws {
         credentials = try WakeCredentials.generate()
@@ -269,6 +270,42 @@ final class WakeRegistrarTests: XCTestCase {
         XCTAssertEqual(outcome, .unchanged)
         XCTAssertEqual(sent.count, 1)
         XCTAssertEqual(serverInfoCalls, 1, "Nothing changed, so the gateway is not asked")
+    }
+
+    func testARegistrationIsSentAgainBeforeTheGatewayRetiresTheDeviceAsIdle() async throws {
+        _ = try await register()
+        // synonymdev/wake retires a device with no accepted push or registration for retention.idle_device_days (270)
+        // and then answers 401 to its secret; presence does not count as activity.
+        nowSecs += 271 * 24 * 60 * 60
+
+        let outcome = try await register()
+
+        XCTAssertEqual(outcome, .registered(Self.registration), "271 days after the only registration")
+        XCTAssertEqual(sent.count, 2)
+    }
+
+    func testAnUnchangedRegistrationIsSentAgainOnceItReachesItsMaxAgeAndNotBefore() async throws {
+        _ = try await register()
+
+        nowSecs += WakeConfig.registrationMaxAgeSecs - 1
+        let early = try await register()
+        XCTAssertEqual(early, .unchanged)
+
+        nowSecs += 1
+        let due = try await register()
+        XCTAssertEqual(due, .registered(Self.registration))
+        let next = try await register()
+        XCTAssertEqual(next, .unchanged, "The age restarts from the new registration")
+        XCTAssertEqual(sent.map(\.timestamp), [Self.now, Self.now + WakeConfig.registrationMaxAgeSecs])
+    }
+
+    func testARegistrationIsDueFromItsMaxAgeAndOnceWithoutARecordedTime() {
+        let maxAge = WakeConfig.registrationMaxAgeSecs
+        XCTAssertTrue(WakeTimestamp.isRegistrationDue(now: Self.now, last: nil))
+        XCTAssertFalse(WakeTimestamp.isRegistrationDue(now: Self.now, last: Self.now))
+        XCTAssertFalse(WakeTimestamp.isRegistrationDue(now: Self.now, last: Self.now - maxAge + 1))
+        XCTAssertTrue(WakeTimestamp.isRegistrationDue(now: Self.now, last: Self.now - maxAge))
+        XCTAssertFalse(WakeTimestamp.isRegistrationDue(now: Self.now, last: Self.now + 5), "A clock stepped back waits")
     }
 
     func testAForcedRegistrationIsSentAgainWithALaterTimestamp() async throws {
@@ -408,7 +445,7 @@ final class WakeRegistrarTests: XCTestCase {
         }
         registrar.loadRegistration = { self.record }
         registrar.saveRegistration = { self.record = $0 }
-        registrar.now = { Self.now }
+        registrar.now = { self.nowSecs }
         registrar.send = { _, request, _ in
             self.sent.append(request)
             _ = try send?(request)
