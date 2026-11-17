@@ -851,14 +851,14 @@ final class SparkManager: ChannelFreeLightningRail {
         }
     }
 
-    /// Accepts the early claim of `offer` at its quoted fee. The fee ceiling stays on the deposit, so an early claim
-    /// not offered at this depth is still made once the provider offers it.
-    func claimEarly(_ offer: SparkClaimOffer) async throws -> SparkEarlyClaim {
+    /// Accepts the early claim of `offer`, capped at `ceilingSats`, the fee the user approved. The cap stays on the
+    /// deposit, so an early claim not offered at this depth is still made once the provider offers it within the cap.
+    func claimEarly(_ offer: SparkClaimOffer, ceilingSats: UInt64) async throws -> SparkEarlyClaim {
         guard case let .choice(earlyFeeSats, _, _, _) = offer.kind else { return .claimed }
         let request = ClaimDepositRequest(
             txid: offer.txid,
             vout: offer.vout,
-            maxFee: MaxFee(onchain: .fixed(amount: earlyFeeSats), proportionalPpm: nil)
+            maxFee: MaxFee(onchain: .fixed(amount: max(earlyFeeSats, ceilingSats)), proportionalPpm: nil)
         )
         let claim: SparkEarlyClaim
         do {

@@ -132,7 +132,8 @@ enum SparkClaimDecision {
 /// The Spark calls the deposit claim makes, injectable so the polling can be tested without the SDK.
 struct SparkClaimOperations {
     var offer: (String) async throws -> SparkClaimOffer?
-    var claimEarly: (SparkClaimOffer) async throws -> SparkEarlyClaim
+    /// Accepts the early claim of an offer, capped at the fee the user approved.
+    var claimEarly: (SparkClaimOffer, _ ceilingSats: UInt64) async throws -> SparkEarlyClaim
     /// Whether Spark still lists the deposit as unclaimed, without asking the provider for a quote.
     var isUnclaimed: (String) async throws -> Bool
     var refresh: () async -> Void
@@ -144,7 +145,7 @@ struct SparkClaimOperations {
     static var live: SparkClaimOperations {
         SparkClaimOperations(
             offer: { try await SparkManager.shared.depositClaimOffer(txid: $0) },
-            claimEarly: { try await SparkManager.shared.claimEarly($0) },
+            claimEarly: { try await SparkManager.shared.claimEarly($0, ceilingSats: $1) },
             isUnclaimed: { try await SparkManager.shared.isDepositUnclaimed(txid: $0) },
             refresh: { await SparkManager.shared.refreshState() },
             sleep: { try? await Task.sleep(for: $0) },
@@ -524,7 +525,7 @@ final class SparkTransferFlow {
                     }
                     setClaimState(.claiming, for: txid)
                     claimedOffers[txid] = found
-                    let claim = try await operations.claimEarly(found)
+                    let claim = try await operations.claimEarly(found, ceilings[txid] ?? 0)
                     guard !Task.isCancelled else { return }
                     if let state = SparkClaimDecision.onClaim(claim) {
                         setClaimState(state, for: txid)

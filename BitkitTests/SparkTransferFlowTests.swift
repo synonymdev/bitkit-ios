@@ -74,7 +74,7 @@ final class SparkTransferFlowTests: XCTestCase {
             offer: { txid in SparkClaimOffer(txid: txid, vout: 0, kind: .choice(
                 earlyFeeSats: 900, earlyConfirmations: 0, standardFeeSats: 198, standardConfirmations: 3
             )) },
-            claimEarly: { _ in .repriced(requiredFeeSats: 1500) },
+            claimEarly: { _, _ in .repriced(requiredFeeSats: 1500) },
             isUnclaimed: { _ in true },
             refresh: {},
             sleep: { _ in },
@@ -103,7 +103,7 @@ final class SparkTransferFlowTests: XCTestCase {
             offer: { txid in SparkClaimOffer(txid: txid, vout: 0, kind: .choice(
                 earlyFeeSats: 900, earlyConfirmations: 0, standardFeeSats: 198, standardConfirmations: 3
             )) },
-            claimEarly: { _ in .repriced(requiredFeeSats: 1500) },
+            claimEarly: { _, _ in .repriced(requiredFeeSats: 1500) },
             isUnclaimed: { _ in true },
             refresh: {},
             sleep: { _ in },
@@ -133,7 +133,7 @@ final class SparkTransferFlowTests: XCTestCase {
             offer: { txid in SparkClaimOffer(txid: txid, vout: 0, kind: .choice(
                 earlyFeeSats: 1500, earlyConfirmations: 0, standardFeeSats: 198, standardConfirmations: 3
             )) },
-            claimEarly: { _ in .claimed },
+            claimEarly: { _, _ in .claimed },
             isUnclaimed: { _ in true },
             refresh: {},
             sleep: { _ in },
@@ -170,6 +170,15 @@ final class SparkTransferFlowTests: XCTestCase {
         XCTAssertEqual(calls.offers, 1, "A waiting claim asked the provider for a quote again")
         XCTAssertEqual(calls.claims, 1)
         XCTAssertEqual(calls.unclaimedChecks, 2)
+    }
+
+    @MainActor
+    func testAWaitingEarlyClaimIsCappedAtTheApprovedFeeNotTheFirstQuote() async {
+        let calls = PollCalls()
+        let flow = pollingFlow(offers: [choice(earlyFee: 300)], claims: [.waiting], pollAttempts: 2, calls: calls)
+        flow.onBroadcast(txid: "txid", ceilingSats: 500)
+        await flow.waitForClaim()
+        XCTAssertEqual(calls.ceilings, [500], "Spark would leave a later offer under the approved fee unclaimed")
     }
 
     @MainActor
@@ -222,7 +231,7 @@ final class SparkTransferFlowTests: XCTestCase {
             offer: { txid in SparkClaimOffer(txid: txid, vout: 0, kind: .choice(
                 earlyFeeSats: 900, earlyConfirmations: 0, standardFeeSats: 198, standardConfirmations: 3
             )) },
-            claimEarly: { offer in
+            claimEarly: { offer, _ in
                 await withCheckedContinuation { release = $0 }
                 claimed.append(offer.txid)
                 return .claimed
@@ -487,6 +496,7 @@ final class SparkTransferFlowTests: XCTestCase {
         var offers = 0
         var claims = 0
         var unclaimedChecks = 0
+        var ceilings: [UInt64] = []
     }
 
     /// A flow whose poll answers with `offers` in turn (nil once they run out), whose claims answer with `claims`, and
@@ -508,8 +518,9 @@ final class SparkTransferFlowTests: XCTestCase {
                 guard !offers.isEmpty, let kind = offers.removeFirst() else { return nil }
                 return SparkClaimOffer(txid: txid, vout: 0, kind: kind)
             },
-            claimEarly: { _ in
+            claimEarly: { _, ceilingSats in
                 calls.claims += 1
+                calls.ceilings.append(ceilingSats)
                 return claims.isEmpty ? .waiting : claims.removeFirst()
             },
             isUnclaimed: { _ in
