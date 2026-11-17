@@ -132,6 +132,12 @@ final class AmountInputViewModel {
         }
     }
 
+    /// Shows the kept amount in the current display unit, after another screen switched it.
+    func refreshDisplay(currency: CurrencyViewModel) {
+        guard amountSats > 0 else { return }
+        updateFromSats(amountSats, currency: currency)
+    }
+
     /// Toggles between Bitcoin and Fiat display modes while preserving input
     /// - Parameter currency: The current currency settings
     func togglePrimaryDisplay(currency: CurrencyViewModel) {

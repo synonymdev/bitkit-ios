@@ -34,6 +34,19 @@ final class NumberPadTests: XCTestCase {
         XCTAssertEqual(viewModel.displayText, "1.0")
     }
 
+    func testRefreshDisplayFollowsUnitSwitchedElsewhere() {
+        let viewModel = AmountInputViewModel()
+        let currency = mockCurrency(primaryDisplay: .bitcoin, displayUnit: .modern)
+        viewModel.updateFromSats(5000, currency: currency)
+        XCTAssertEqual(viewModel.displayText, "5 000")
+
+        currency.displayUnit = .classic
+        viewModel.refreshDisplay(currency: currency)
+
+        XCTAssertEqual(viewModel.amountSats, 5000)
+        XCTAssertEqual(viewModel.displayText, "0.00005")
+    }
+
     // MARK: - Modern Bitcoin Tests
 
     func testModernBitcoinInput() {

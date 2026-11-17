@@ -92,6 +92,8 @@ struct SpendingAmount: View {
                 isCalculatingMax = false
             }
         }
+        // The confirm screen's fees switch the display unit, so the kept amount follows it on the way back.
+        .onAppear { amountViewModel.refreshDisplay(currency: currency) }
         .onChange(of: maxTransferAmount) { updateInputCap() }
         .onChange(of: amountViewModel.maxExceededCount) { onMaxExceeded() }
     }

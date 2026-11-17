@@ -85,6 +85,8 @@ struct SpendingAmountHw: View {
         .task(id: maxAttempt) {
             await loadAvailable()
         }
+        // The confirm screen's fees switch the display unit, so the kept amount follows it on the way back.
+        .onAppear { amountViewModel.refreshDisplay(currency: currency) }
         .onChange(of: maxAllowed, initial: true) { updateInputCap() }
         .onChange(of: isLoading) { updateInputCap() }
         .onChange(of: amountViewModel.maxExceededCount) { onMaxExceeded() }
