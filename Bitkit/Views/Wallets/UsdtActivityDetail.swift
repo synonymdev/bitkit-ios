@@ -19,7 +19,8 @@ struct UsdtActivityRow: View {
                 title: contactName ?? transfer.title,
                 subtitle: transfer.status == .bridging
                     ? t("usdt__to_network", variables: ["network": transfer.destination.label])
-                    : DateFormatterHelpers.getActivityItemDate(transfer.timestamp)
+                    : DateFormatterHelpers.getActivityItemDate(transfer.timestamp),
+                receiptPaymentId: transfer.isIncoming ? transfer.id : nil
             ) {
                 UsdtActivityIcon(transfer: transfer)
             } amount: {

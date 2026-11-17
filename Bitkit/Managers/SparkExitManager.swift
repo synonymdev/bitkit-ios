@@ -1393,6 +1393,7 @@ final class SparkExitManager {
             try? await Task.sleep(nanoseconds: 250_000_000)
         }
         guard !isTicking, startingCreatedAt == nil, let chain else { return .init(record: record) }
+        let previous = record
         let wasActive = record?.isActive == true
         isTicking = true
         defer { isTicking = false }
@@ -1428,6 +1429,9 @@ final class SparkExitManager {
         )
         if let updated = outcome.record {
             record = updated
+            if let previous, Self.isFundingAskWithdrawn(updated, previous: previous) {
+                Self.dismissDeliveredFundingNotifications(record: updated)
+            }
             await afterTick(updated, wasActive: wasActive)
         }
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.lastBackgroundRunKey)
@@ -1576,19 +1580,33 @@ final class SparkExitManager {
         UserDefaults.standard.dictionary(forKey: remindersKey) as? [String: TimeInterval] ?? [:]
     }
 
-    /// An unverified rebuild's fee ask the tick from `previous` withdrew: the valid generation needs nothing more.
+    /// A fee ask the tick from `previous` withdrew: an unverified rebuild's, as the valid generation needs nothing more,
+    /// or one of a Redo rebuild, asked before or during it, that runs with no new funding, on the Redo's tick or a later
+    /// one, as the held funding pays for it.
     nonisolated static func isFundingAskWithdrawn(_ record: SparkExitRecord, previous: SparkExitRecord) -> Bool {
-        guard previous.isUnverifiedAsk == true, case .needsFunding = previous.phase else { return false }
-        return record.phase == .running
+        guard case .needsFunding = previous.phase, record.phase == .running else { return false }
+        let isRedoAsk = (previous.isRedoAsk == true || record.isRedoAsk == true || previous.isRedoRebuild == true)
+            && record.funding == previous.funding
+        return previous.isUnverifiedAsk == true || isRedoAsk
     }
 
-    /// Takes back the exit's delivered fee asks, which no longer hold.
+    /// Takes back the exit's delivered fee asks, which no longer hold, and forgets they fired, so a later ask for the
+    /// same amount posts again.
     private nonisolated static func dismissDeliveredFundingNotifications(record: SparkExitRecord) {
-        let prefix = notificationId(SparkExitReminder(id: "", fireAt: Date()), record: record)
+        UserDefaults.standard.set(forgettingFundingReminders(rememberedReminders(), record: record), forKey: remindersKey)
         UNUserNotificationCenter.current().getDeliveredNotifications { delivered in
-            let ids = delivered.map(\.request.identifier).filter { $0.hasPrefix(prefix) && $0.contains("funding-") }
+            let ids = delivered.map(\.request.identifier).filter { isFundingNotificationId($0, record: record) }
             UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ids)
         }
+    }
+
+    /// `remembered` without the exit's fee asks.
+    nonisolated static func forgettingFundingReminders(_ remembered: [String: TimeInterval], record: SparkExitRecord) -> [String: TimeInterval] {
+        remembered.filter { !isFundingNotificationId($0.key, record: record) }
+    }
+
+    private nonisolated static func isFundingNotificationId(_ id: String, record: SparkExitRecord) -> Bool {
+        id.hasPrefix(notificationId(SparkExitReminder(id: "", fireAt: Date()), record: record)) && id.contains("funding-")
     }
 
     private nonisolated static func clearReminders() {

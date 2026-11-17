@@ -1,37 +1,41 @@
 const apn = require('@parse/node-apn');
 
 const { providerOptions, config } = require('./settings');
-const { createPushData } = require('./helpers');
+const { fetchRecordedPush, createPushData } = require('./helpers');
 
-const provider = new apn.Provider(providerOptions);
+const main = async () => {
+    const recorded = await fetchRecordedPush(config.device.token);
+    if (!recorded) {
+        console.error('❌ The fake APNs recorded no push for this device. Register it and send a wake first.');
+        process.exit(1);
+    }
 
-const deviceToken = config.device.token;
+    const notification = createPushData(recorded);
+    console.log(`🚀 Relaying push #${recorded.seq}: ${notification.pushType}, priority ${notification.priority}`);
 
-if (!deviceToken) {
-    console.error('❌ No device token configured. Please set DEVICE_TOKEN in your .env file.');
-    process.exit(1);
-}
+    if (config.dryRun) {
+        console.log(JSON.stringify({ headers: notification.headers(), body: notification.rawPayload }, null, 2));
+        return;
+    }
 
-const notification = createPushData({ type: 'payment' });
-
-console.log("🚀 Sending test notification...");
-
-provider.send(notification, deviceToken)
-    .then((result) => {
+    const provider = new apn.Provider(providerOptions);
+    try {
+        const result = await provider.send(notification, recorded.token);
         if (result.sent.length > 0) {
             console.log('✅ SENT!');
-            return;
+        } else {
+            console.log('❌ No success from APS.');
+            console.error(JSON.stringify(result.failed));
         }
-
-        console.log("❌ No success from APS.");
-        console.error(JSON.stringify(result.failed));
-    })
-    .catch((error) => {
-        console.error("❌ Error sending push notification.");
-        console.log(JSON.stringify(error));
-    })
-    .finally(() => {
+    } finally {
         provider.shutdown();
-        console.log("🏁 Done.");
-        process.exit(0);
-    });
+    }
+};
+
+main()
+    .catch((error) => {
+        console.error('❌ Error sending push notification.');
+        console.error(error);
+        process.exitCode = 1;
+    })
+    .finally(() => console.log('🏁 Done.'));

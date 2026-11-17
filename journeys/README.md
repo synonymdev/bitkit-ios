@@ -256,6 +256,11 @@ required to run the suite.
 
 When you port an Android feature, port its journeys too — see the Journeys section in `AGENTS.md`.
 
+`boost/rbf-own-send.xml` checks the replacement before checking the activity list on both platforms.
+iOS syncs the wallet and list before showing Boost success and returning Home. Open the row on the
+first actionable Home screen, with no settling delay. Read the payment amount from
+`ActivityAmount`, since the displayed debit can include the fee.
+
 `home/timed-reminders-do-not-interrupt.xml` pairs with synonymdev/bitkit-android#1575. Use a
 PIN-disabled wallet and an eligible reminder; the backup reminder works without USDT configuration.
 The file name, journey name and actions match Android. Android resumes Home after permission prompts
@@ -281,6 +286,9 @@ every tab; start the swipes away from the edge.
 `payment-requests/success-dismissal.xml` has a matching Android journey with the same name and
 actions. Successful dismissal without a toast or duplicate payment is shared behavior, not an
 iOS-only feature.
+
+`payment-requests/paid-request-receipt.xml` has the same file name, journey name and actions on both
+platforms; the receipt line identifiers `PaykitReceiptStatus` and `PaykitReceiptRetry` match Android.
 
 `usdt-payment-restoration.xml` has the same file name, journey name and actions on both platforms.
 Android restores an unpaid amount draft after process death, while iOS may return to the wallet.
@@ -318,10 +326,17 @@ checkout there (`android layout` is the `snapshot-ui` equivalent). A disagreemen
 down — as an intentional platform difference, or as something to look into — but it is not by itself
 a bug report. `AGENTS.md` has the commands.
 
+`security/logging-after-wallet-wipe.xml` is iOS-only. It covers the iOS logger recreating its
+session log after a regtest wallet wipe deletes the log directory in the same app process.
+
 `security/pin-attempts-wipe-gate.xml` is new on both platforms at once: synonymdev/bitkit-android#1753
 carries the same file name, journey name and actions, changing only the identifiers and commands the
 platform forces. The iOS description also leaves the Recovery home-screen quick action to a manual check,
 as the harness cannot trigger one.
+
+`settings/quickpay-payment-pin.xml` pairs with synonymdev/bitkit-android#1909 and is adapted: on iOS
+the PIN pad is a sheet whose back control is `NavigationBack`, and with biometrics on a cancelled or
+failed biometric check counts as not approved instead of falling back to the PIN pad.
 
 `payment-requests/minimum-onchain-amount.xml` is shared with Android: minimum amount
 feedback, preparation cleanup, and manual retry use the same actions and

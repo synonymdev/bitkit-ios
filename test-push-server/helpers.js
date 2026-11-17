@@ -1,27 +1,33 @@
 const apn = require('@parse/node-apn');
 
-const { defaultPaymentAlert, appBundleID, config } = require('./settings');
+const { appBundleID, config } = require('./settings');
 
-// Matches the 28 day expiry the previous push wrapper applied by default.
-const DEFAULT_TTL_SECONDS = 28 * 86400;
-
-const createPushData = (payload) => {
-    return new apn.Notification({
-        topic: appBundleID,
-        // The notification service extension reads the encrypted blob from aps.alert.payload,
-        // so this has to stay nested inside the alert rather than sit in the custom payload.
-        alert: {
-            ...defaultPaymentAlert,
-            payload
-        },
-        priority: config.push.priority,
-        contentAvailable: config.push.contentAvailable,
-        mutableContent: config.push.mutableContent,
-        badge: config.notification.badge,
-        sound: config.notification.sound,
-        expiry: Math.floor(Date.now() / 1000) + DEFAULT_TTL_SECONDS,
-        payload: {}
-    });
+// The newest push the gateway's fake APNs recorded, for `token` when one is given.
+const fetchRecordedPush = async (token) => {
+    const response = await fetch(`${config.fakePush.url}/_recorded`);
+    if (!response.ok) {
+        throw new Error(`The fake APNs answered ${response.status}`);
+    }
+    const pushes = (await response.json())
+        .filter((push) => push.platform === 'apns' && (!token || push.token === token))
+        .sort((a, b) => b.seq - a.seq);
+    return pushes[0];
 };
 
-module.exports = { createPushData };
+// The recorded push as the gateway would send it to APNs: the same body, push type, priority, expiry and collapse id.
+const createPushData = (recorded) => {
+    const header = (name) => recorded.headers.find(([key]) => key === name)?.[1];
+    const notification = new apn.Notification();
+    notification.rawPayload = JSON.parse(recorded.raw_body);
+    notification.topic = appBundleID;
+    notification.pushType = header('apns-push-type');
+    notification.priority = Number(header('apns-priority'));
+    notification.expiry = Number(header('apns-expiration'));
+    const collapseId = header('apns-collapse-id');
+    if (collapseId) {
+        notification.collapseId = collapseId;
+    }
+    return notification;
+};
+
+module.exports = { fetchRecordedPush, createPushData };

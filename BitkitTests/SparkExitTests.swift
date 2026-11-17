@@ -1495,8 +1495,10 @@ final class SparkExitDriverTests: XCTestCase {
         sdk.builds = Array(repeating: SparkExitFixtures.recovery([SparkExitFixtures.tx("n1b")]), count: 2)
         clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
 
+        let asked = record
         record = try await driver().tick(record)
         XCTAssertEqual(record.funding.compactMap(\.txid), ["f0", "topup"])
+        XCTAssertFalse(SparkExitManager.isFundingAskWithdrawn(record, previous: asked), "a top-up answered the ask")
         XCTAssertEqual(record.generation, 1, "the Redo rebuild without leaf-2 was adopted")
         XCTAssertEqual(record.phase, .running, "a funded hold still asks for fees")
         XCTAssertEqual(record.redoHeldSince, 1000)
@@ -1524,6 +1526,53 @@ final class SparkExitDriverTests: XCTestCase {
         clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
         record = try await driver().tick(record)
         XCTAssertEqual(record.retrySince, chain.tip, "the waiting leaf's retry clock starts once the hold ends")
+    }
+
+    /// A Redo hold whose build the held funding paid for runs at the rebuild pace, whatever the old shortfall, and its
+    /// fee ask is withdrawn. A later build of the hold that comes up short asks again.
+    func testARedoHoldBuiltFromTheHeldFundingWithdrawsTheFeeAsk() async throws {
+        var record = try await heldRedoRebuild()
+        record.phase = .needsFunding(requiredSats: 23000)
+        let asked = record
+        chain.utxosByAddress["bcrt1qfunding"] = [SparkExitFixtures.utxo("f0", vout: 1, value: 20000)]
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1b")])]
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(sdk.recoverRequests.count, 2, "the held funding did not build the rebuild")
+        XCTAssertEqual(record.generation, 1, "the Redo rebuild without leaf-2 was adopted")
+        XCTAssertEqual(record.phase, .running, "a hold the held funding paid for still asks for fees")
+        XCTAssertEqual(record.redoHeldSince, 1000)
+        XCTAssertTrue(SparkExitManager.isFundingAskWithdrawn(record, previous: asked), "the fee ask's notification stayed")
+
+        sdk.recoverError = SdkError.InsufficientCpfpFunds(requiredSats: 30000, docsUrl: "")
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+        record = try await driver().tick(record)
+
+        guard case .needsFunding = record.phase else { return XCTFail("a later short build of the hold did not ask: \(record.phase)") }
+        XCTAssertEqual(record.generation, 1)
+    }
+
+    /// A Redo hold's own build that comes up short asks for fees; a later build the held funding pays withdraws the ask.
+    func testARedoHoldThroughAShortBuildWithdrawsTheAskOnceTheHeldFundingPays() async throws {
+        let held = try await heldRedoRebuild()
+        XCTAssertEqual(held.phase, .running)
+        chain.utxosByAddress["bcrt1qfunding"] = [SparkExitFixtures.utxo("f0", vout: 1, value: 20000)]
+        sdk.recoverErrors = [SdkError.InsufficientCpfpFunds(requiredSats: 30000, docsUrl: "")]
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+        let asked = try await driver().tick(held)
+        guard case .needsFunding = asked.phase else { return XCTFail("the hold's short build did not ask: \(asked.phase)") }
+
+        // The next build needs less, which the held funding pays.
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1b")])]
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+        let record = try await driver().tick(asked)
+
+        XCTAssertEqual(record.phase, .running, "a hold the held funding paid for still asks for fees")
+        XCTAssertEqual(record.generation, 1)
+        XCTAssertEqual(record.funding, asked.funding)
+        XCTAssertTrue(SparkExitManager.isFundingAskWithdrawn(record, previous: asked), "the fee ask's notification stayed")
     }
 
     /// A Redo over a generation that recovers both leaves, whose rebuild skips leaf-2 as unread, at tip 1000.
@@ -3338,6 +3387,27 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertNil(first.remembered, "a date guessed without the tip was kept")
         XCTAssertEqual(second.fireAt, known.fireAt, "the reminder at maturity was taken early")
         XCTAssertEqual(third.fireAt, known.fireAt)
+    }
+
+    /// A fee ask the exit withdrew is forgotten as fired, so a later ask for the same amount posts a reminder again.
+    func testAFeeAskAskedAgainAfterAWithdrawalPostsAReminder() throws {
+        let asked = SparkExitFixtures.record(phase: .needsFunding(requiredSats: 5000))
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let ask = try XCTUnwrap(SparkExitMath.reminders(asked, tip: 1000, now: now, network: .bitcoin).first { $0.isFunding })
+        let id = SparkExitManager.notificationId(ask, record: asked)
+        let firedAt = try XCTUnwrap(SparkExitManager.reminderDate(ask, rememberedAt: nil, now: now).remembered)
+        let otherStep = SparkExitManager.notificationId(SparkExitReminder(id: "1-h3000", fireAt: now), record: asked)
+        let remembered = [id: firedAt.timeIntervalSince1970, otherStep: firedAt.timeIntervalSince1970]
+        let later = now.addingTimeInterval(60 * 60)
+        XCTAssertNil(SparkExitManager.reminderDate(ask, rememberedAt: firedAt, now: later).fireAt, "a fired ask posted twice")
+
+        let forgotten = SparkExitManager.forgettingFundingReminders(remembered, record: asked)
+        let kept = SparkExitManager.keepingFired([:], remembered: forgotten, now: later)
+
+        XCTAssertNil(kept[id], "the withdrawn ask stayed remembered as fired")
+        XCTAssertNotNil(kept[otherStep], "another step's fired reminder was forgotten")
+        let again = SparkExitManager.reminderDate(ask, rememberedAt: kept[id].map(Date.init(timeIntervalSince1970:)), now: later)
+        XCTAssertNotNil(again.fireAt, "the ask asked again posted no reminder")
     }
 
     /// With the operators down an older state's refund can take a leaf 100 blocks after ours matures, and the

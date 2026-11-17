@@ -33,7 +33,7 @@ final class ServerConnectionResetTests: XCTestCase {
                 restartCount += 1
             }
         }
-        await fulfillment(of: [endpoint.started], timeout: 3)
+        await endpoint.assertReached(by: connection)
 
         clearServerPreferencesAndReset()
         settings.rgsIsLoading = true
@@ -56,7 +56,7 @@ final class ServerConnectionResetTests: XCTestCase {
                 throw TestError.restartFailed
             }
         }
-        await fulfillment(of: [restart.started], timeout: 3)
+        await restart.assertReached(by: connection)
         clearServerPreferencesAndReset()
         settings.rgsIsLoading = true
         restart.resume(())
@@ -89,7 +89,7 @@ final class ServerConnectionResetTests: XCTestCase {
                 waitCount += 1
             }, isNodeRunning: { true })
         }
-        await fulfillment(of: [restart.started], timeout: 3)
+        await restart.assertReached(by: connection)
         clearServerPreferencesAndReset()
         settings.electrumHost = "new.example.com"
         settings.electrumIsLoading = true
@@ -112,7 +112,7 @@ final class ServerConnectionResetTests: XCTestCase {
                 await wait.wait()
             }, isNodeRunning: { true })
         }
-        await fulfillment(of: [wait.started], timeout: 3)
+        await wait.assertReached(by: connection)
         clearServerPreferencesAndReset()
         wait.resume(())
 
@@ -140,7 +140,8 @@ final class ServerConnectionResetTests: XCTestCase {
                 await electrumRestart.wait()
             }, waitForConnection: {}, isNodeRunning: { true })
         }
-        await fulfillment(of: [restart.started, electrumRestart.started], timeout: 3)
+        await restart.assertReached(by: connection)
+        await electrumRestart.assertReached(by: electrumConnection)
 
         let invalidated = expectation(description: "Wipe invalidates the pending connection")
         let observation = settings.$rgsIsLoading.dropFirst().filter { !$0 }.first().sink { _ in invalidated.fulfill() }
@@ -247,7 +248,7 @@ final class ServerConnectionResetTests: XCTestCase {
                 XCTFail("Cancelled request must not restart the node")
             })
         }
-        await fulfillment(of: [endpoint.started], timeout: 3)
+        await endpoint.assertReached(by: connection)
         connection.cancel()
         endpoint.resume(true)
 
@@ -273,20 +274,40 @@ final class ServerConnectionResetTests: XCTestCase {
     }
 }
 
+/// Holds a connection at one of its suspension points. Waiting for it to get there has no time limit: on a slow runner it
+/// can take seconds, and a connection that returns without getting there fails the test at once.
 @MainActor
 private final class ConnectionGate<Value> {
-    let started = XCTestExpectation(description: "Connection reached suspended operation")
     private var continuation: CheckedContinuation<Value, Never>?
+    private var hasStarted = false
+    private var reachedWaiter: CheckedContinuation<Bool, Never>?
 
     func wait() async -> Value {
         await withCheckedContinuation {
             continuation = $0
-            started.fulfill()
+            hasStarted = true
+            reachedWaiter?.resume(returning: true)
+            reachedWaiter = nil
         }
     }
 
     func resume(_ value: Value) {
         continuation?.resume(returning: value)
         continuation = nil
+    }
+
+    func assertReached(by connection: Task<some Sendable, Never>, file: StaticString = #filePath, line: UInt = #line) async {
+        let reached = await reached(by: connection)
+        XCTAssertTrue(reached, "The connection returned before reaching the gate", file: file, line: line)
+    }
+
+    private func reached(by connection: Task<some Sendable, Never>) async -> Bool {
+        guard !hasStarted else { return true }
+        Task {
+            _ = await connection.value
+            reachedWaiter?.resume(returning: hasStarted)
+            reachedWaiter = nil
+        }
+        return await withCheckedContinuation { reachedWaiter = $0 }
     }
 }
