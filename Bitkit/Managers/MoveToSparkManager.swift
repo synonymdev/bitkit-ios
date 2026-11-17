@@ -1,4 +1,5 @@
 import BitkitCore
+import Combine
 import Foundation
 import LDKNode
 
@@ -75,10 +76,12 @@ struct MoveToSparkQuote: Equatable {
     let feeSats: UInt64
 }
 
+@MainActor
 extension LightningActivity {
-    /// The channel send of a move to Spark, which Activity shows as a transfer rather than a payment.
+    /// The channel send of a move to Spark, which Activity shows as a transfer rather than a payment. Known by its payment
+    /// hash, so a paid outside invoice that happens to carry the move's description stays a payment.
     var isMoveToSpark: Bool {
-        txType == .sent && message == MoveToSparkMath.invoiceDescription
+        txType == .sent && MoveToSparkPayments.contains(id)
     }
 }
 
@@ -90,40 +93,54 @@ enum MoveToSparkError: Error {
 }
 
 /// The payments that move a channel balance to Spark, whose send and receive the app does not announce as payments.
-/// Kept on disk, so a move that settles after a relaunch is still known as one.
+/// Kept on disk until a wipe and in the metadata backup, so a move that settles after a relaunch, and its Activity row after
+/// a restore, stay known as one.
 @MainActor
 enum MoveToSparkPayments {
     private static let storageKey = "moveToSparkPaymentHashes"
-    /// Far beyond the move invoice's expiry, so Spark reporting a receive late, after a relaunch, still finds its move.
-    static let retention: TimeInterval = 30 * 24 * 60 * 60
     static var defaults: UserDefaults = .standard
+    /// Outside the main actor, so the backup observers can subscribe from anywhere.
+    nonisolated static var savedPublisher: AnyPublisher<Void, Never> {
+        MoveToSparkPaymentsSaved.subject.eraseToAnyPublisher()
+    }
 
     static func insert(_ paymentHash: String, now: Date = Date()) {
-        var hashes = stored(now: now)
+        var hashes = stored
         hashes[paymentHash.lowercased()] = now.timeIntervalSince1970
         defaults.set(hashes, forKey: storageKey)
+        MoveToSparkPaymentsSaved.subject.send()
     }
 
-    static func contains(_ paymentHash: String?, now: Date = Date()) -> Bool {
-        paymentHash.map { stored(now: now)[$0.lowercased()] != nil } ?? false
+    /// Sorted, so an unchanged store backs up byte for byte the same.
+    static func backupSnapshot() -> [String] {
+        stored.keys.sorted()
     }
 
-    /// Forgets a move whose payment failed: its amount stays in the channel, and Spark receives nothing for it.
-    static func remove(_ paymentHash: String?, now: Date = Date()) {
-        guard let paymentHash else { return }
-        var hashes = stored(now: now)
-        guard hashes.removeValue(forKey: paymentHash.lowercased()) != nil else { return }
+    /// Adds the restored hashes to any already known.
+    static func restore(_ paymentHashes: [String]?, now: Date = Date()) {
+        guard let paymentHashes, !paymentHashes.isEmpty else { return }
+        var hashes = stored
+        for hash in paymentHashes where hashes[hash.lowercased()] == nil {
+            hashes[hash.lowercased()] = now.timeIntervalSince1970
+        }
         defaults.set(hashes, forKey: storageKey)
+    }
+
+    static func contains(_ paymentHash: String?) -> Bool {
+        paymentHash.map { stored[$0.lowercased()] != nil } ?? false
     }
 
     static func removeAll() {
         defaults.removeObject(forKey: storageKey)
     }
 
-    private static func stored(now: Date) -> [String: Double] {
-        let hashes = defaults.dictionary(forKey: storageKey) as? [String: Double] ?? [:]
-        return hashes.filter { now.timeIntervalSince1970 - $0.value < retention }
+    private static var stored: [String: Double] {
+        defaults.dictionary(forKey: storageKey) as? [String: Double] ?? [:]
     }
+}
+
+private enum MoveToSparkPaymentsSaved {
+    static let subject = PassthroughSubject<Void, Never>()
 }
 
 /// What a move quote needs from Spark and the channels, apart so the quote can be tested without either.
@@ -262,11 +279,9 @@ final class MoveToSparkManager {
             }
         }
         state = .confirm(quote, isMoving: true)
-        var paymentHash: String?
         do {
-            let hash = try String(describing: Bolt11Invoice.fromStr(invoiceStr: quote.invoice).paymentHash())
-            paymentHash = hash
-            MoveToSparkPayments.insert(hash)
+            let paymentHash = try Bolt11Invoice.fromStr(invoiceStr: quote.invoice).paymentHash()
+            MoveToSparkPayments.insert(String(describing: paymentHash))
             guard let settled = try await wallet.sendOverChannels(
                 bolt11: quote.invoice,
                 sats: quote.amountSats,
@@ -295,7 +310,6 @@ final class MoveToSparkManager {
             state = Self.doneState(amountSats: quote.amountSats, feeSats: settled.feePaidSats, channels: wallet.channels)
         } catch {
             Logger.error("Failed to move '\(quote.amountSats)' sats to Spark: \(error)", context: "MoveToSpark")
-            MoveToSparkPayments.remove(paymentHash)
             guard moveGeneration == generation else { return }
             state = Self.isNoRoute(error) || Self.isSendWithoutRoute(error, invoice: quote.invoice)
                 ? .tooLarge(amountSats: quote.amountSats, smallerSats: MoveToSparkMath.smallerAmount(quote.amountSats))

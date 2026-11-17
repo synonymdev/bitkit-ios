@@ -819,6 +819,7 @@ class BackupService {
                 SparkExitEarlierAddressBackup.restore(payload.sparkExitEarlierAddresses, network: "\(Env.network)") {
                     SparkExitEarlierAddressStore(walletIndex: $0)
                 }
+                await MoveToSparkPayments.restore(payload.moveToSparkPaymentHashes)
 
                 // Force address rotation by clearing onchain address
                 UserDefaults.standard.set("", forKey: "onchainAddress")
@@ -985,6 +986,15 @@ class BackupService {
 
         // METADATA (earlier Spark exit addresses)
         SparkExitEarlierAddressStore.savedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { @Sendable [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .metadata)
+            }
+            .store(in: cancellables)
+
+        // METADATA (moves to Spark)
+        MoveToSparkPayments.savedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
@@ -1421,6 +1431,7 @@ class BackupService {
             // case to guard against. Nil rather than an empty map when nothing is named, so an
             // envelope this app writes stays byte-comparable with one bitkit-android writes.
             let hwWalletNames = HwKnownDeviceStorage.backupSnapshot()
+            let moveToSparkPaymentHashes = await MoveToSparkPayments.backupSnapshot()
 
             let payload = MetadataBackupV1(
                 version: 1,
@@ -1433,7 +1444,8 @@ class BackupService {
                 sparkExitEarlierAddresses: SparkExitEarlierAddressBackup.backup(
                     SparkExitEarlierAddressStore(walletIndex: LightningService.shared.currentWalletIndex),
                     walletKey: SparkExitFundingIndexes.walletKey(network: "\(Env.network)", walletIndex: LightningService.shared.currentWalletIndex)
-                )
+                ),
+                moveToSparkPaymentHashes: moveToSparkPaymentHashes.isEmpty ? nil : moveToSparkPaymentHashes
             )
             return try JSONEncoder().encode(payload)
 
@@ -1495,7 +1507,7 @@ class BackupService {
                 let backup: SparkExitBackupV1
                 do {
                     backup = try JSONDecoder().decode(SparkExitBackupV1.self, from: data)
-                } catch let error as DecodingError {
+                } catch let error as Swift.DecodingError {
                     // A layout this app can't read never becomes readable here, so it is kept apart for an app that can.
                     Logger.warn("Unreadable '\(BackupCategory.sparkExit.rawValue)' backup: \(error)", context: "BackupService")
                     try await setAsideRejectedSparkExit(data)
@@ -1513,8 +1525,8 @@ class BackupService {
         }
     }
 
-    /// Keeps remote exit data Spark can never import under its own key, so a fresh export doesn't replace it and an app that
-    /// can import it still finds it. The first such copy stays; a later one doesn't overwrite it.
+    /// Keeps remote exit data Spark can never import under its own key, so a fresh export doesn't replace it and it stays
+    /// recoverable. The first such copy stays; a later one doesn't overwrite it. Nothing reads the key back yet.
     private func setAsideRejectedSparkExit(_ data: Data?) async throws {
         guard let data else { return }
         guard try await fetchBackup(Self.sparkExitRejectedKey) == nil else {

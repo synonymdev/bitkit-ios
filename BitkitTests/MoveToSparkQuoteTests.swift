@@ -1,4 +1,5 @@
 @testable import Bitkit
+import BitkitCore
 import LDKNode
 import XCTest
 
@@ -135,19 +136,36 @@ final class MoveToSparkPaymentsTests: XCTestCase {
         XCTAssertFalse(MoveToSparkPayments.contains(nil))
     }
 
-    func testFailedMoveIsForgotten() {
-        MoveToSparkPayments.insert("abcd")
-        MoveToSparkPayments.insert("ef01")
-        MoveToSparkPayments.remove("ABCD")
-        XCTAssertFalse(MoveToSparkPayments.contains("abcd"))
-        XCTAssertTrue(MoveToSparkPayments.contains("ef01"))
+    func testAnOldMoveIsStillKnown() {
+        MoveToSparkPayments.insert("abcd", now: Date(timeIntervalSince1970: 1_000_000))
+        XCTAssertTrue(MoveToSparkPayments.contains("abcd"))
     }
 
-    func testHashIsKeptUntilItsRetentionEnds() {
-        let start = Date(timeIntervalSince1970: 1_000_000)
-        MoveToSparkPayments.insert("abcd", now: start)
-        XCTAssertTrue(MoveToSparkPayments.contains("abcd", now: start.addingTimeInterval(MoveToSparkPayments.retention - 1)))
-        XCTAssertFalse(MoveToSparkPayments.contains("abcd", now: start.addingTimeInterval(MoveToSparkPayments.retention)))
+    func testOnlyAMovesSendIsAMoveToSpark() {
+        MoveToSparkPayments.insert("abcd")
+        XCTAssertTrue(activity(id: "abcd", type: .sent, message: "").isMoveToSpark)
+        XCTAssertFalse(activity(id: "ef01", type: .sent, message: MoveToSparkMath.invoiceDescription).isMoveToSpark)
+        XCTAssertFalse(activity(id: "abcd", type: .received, message: "").isMoveToSpark)
+    }
+
+    private func activity(id: String, type: BitkitCore.PaymentType, message: String) -> LightningActivity {
+        LightningActivity(
+            walletId: WalletScope.default, id: id, txType: type, status: .succeeded, value: 1000, fee: 1,
+            invoice: "lnbcrt1", message: message, timestamp: 1, preimage: nil, contact: nil,
+            createdAt: 1, updatedAt: 1, seenAt: nil
+        )
+    }
+
+    func testRestoredHashesAreKnownAndBackedUpSorted() throws {
+        MoveToSparkPayments.insert("ef01")
+        MoveToSparkPayments.restore(["ABCD", "ef01"])
+        XCTAssertTrue(MoveToSparkPayments.contains("abcd"))
+        XCTAssertEqual(MoveToSparkPayments.backupSnapshot(), ["abcd", "ef01"])
+
+        let json = #"{"version":1,"createdAt":1,"tagMetadata":[],"cache":{"hasSeenContactsIntro":true},"moveToSparkPaymentHashes":["abcd"]}"#
+        XCTAssertEqual(try JSONDecoder().decode(MetadataBackupV1.self, from: Data(json.utf8)).moveToSparkPaymentHashes, ["abcd"])
+        let older = #"{"version":1,"createdAt":1,"tagMetadata":[],"cache":{"hasSeenContactsIntro":true}}"#
+        XCTAssertNil(try JSONDecoder().decode(MetadataBackupV1.self, from: Data(older.utf8)).moveToSparkPaymentHashes)
     }
 
     func testWipeForgetsEveryHash() {
