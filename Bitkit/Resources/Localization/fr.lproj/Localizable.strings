@@ -241,7 +241,6 @@
 "lightning__spending_confirm__lsp_fee" = "Frais de service";
 "lightning__spending_confirm__amount" = "Vers Dépenses";
 "lightning__spending_confirm__total" = "Total";
-"lightning__spending_confirm__spending_fee" = "Spending fee";
 "lightning__spending_confirm__instant_text" = "Ready in a few minutes";
 "lightning__spending_confirm__later" = "Later";
 "lightning__spending_confirm__later_text" = "After 3 confirmations, about 30 minutes";
@@ -450,8 +449,6 @@
 "lightning__spark_exit__cancel_failed" = "Impossible de vérifier l'adresse de financement. Réessayez.";
 "lightning__spark_exit__fee_bump_leaves_behind" = "Des frais plus élevés laisseraient une partie de cette sortie sur Spark, donc aucun n'est proposé. La sortie se confirme une fois que les frais de réseau baissent.";
 "lightning__spark_learn__title" = "Transfer\n<accent>speed</accent>";
-"lightning__spark_learn__text" = "Instant pays the provider to add your transfer to your spending balance before it confirms, so it is ready in a few minutes.\n\nLater waits for 3 confirmations, about 30 minutes, and costs less.";
-"lightning__spark_learn__label" = "Spending balance after transfer";
 "lightning__reserve_balance" = "Solde de réserve (non dépensable)";
 "lightning__total_size" = "Taille totale du canal";
 "lightning__fees" = "Frais";

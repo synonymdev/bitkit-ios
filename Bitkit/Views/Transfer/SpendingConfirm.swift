@@ -13,9 +13,6 @@ struct SpendingConfirm: View {
     @State private var isPaying = false
     @State private var hideSwipeButton = false
 
-    /// The coin drawing fills 72% of its square image, so this draws it about 134 pt wide, Android's third of the screen.
-    private static let coinsSize: CGFloat = 186
-
     /// Fee rates move while the screen is open, so the quote is redone this often as well as on every change.
     private static let requoteInterval: Duration = .seconds(60)
 
@@ -31,49 +28,31 @@ struct SpendingConfirm: View {
                 .disabled(isPaying)
                 .padding(.bottom, 16)
 
-            // The coins sit in the space left above the swipe, as on Android; on a short screen the content scrolls.
-            GeometryReader { geo in
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        DisplayText(t("lightning__transfer__confirm"), accentColor: .purpleAccent)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 24) {
+                    DisplayText(t("lightning__transfer__confirm"), accentColor: .purpleAccent)
 
-                        SpendingConfirmFees(quote: flow.quote, speed: flow.speed, isLoading: flow.quote == nil && flow.quoteError == nil)
-                            .padding(.top, 16)
+                    SpendingConfirmFees(quote: flow.quote, speed: flow.speed, isLoading: flow.quote == nil && flow.quoteError == nil)
 
-                        if let error = flow.quoteError {
-                            quoteError(error)
-                                .padding(.bottom, 16)
-                        }
-
-                        SpendingSpeedPicker(quote: flow.quote, speed: Bindable(flow).speed)
-                            .disabled(isPaying)
-                            .padding(.top, 8)
-                            .padding(.horizontal, -16)
-                            .padding(.bottom, 10)
-
-                        CustomButton(title: t("common__learn_more"), size: .small) {
-                            navigation.navigate(.transferLearnMore)
-                        }
-                        .disabled(isPaying)
-                        .accessibilityIdentifier("SpendingConfirmMore")
-
-                        Spacer(minLength: 0)
-
-                        Image("coin-stack-x")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: Self.coinsSize, height: Self.coinsSize)
-                            .frame(maxWidth: .infinity)
-
-                        Spacer(minLength: 0)
+                    if let error = flow.quoteError {
+                        quoteError(error)
                     }
-                    // The speed rows run edge to edge, so the scroll spans the screen and pads its own content.
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
-                    .frame(minHeight: geo.size.height)
+
+                    SpendingSpeedPicker(
+                        quote: flow.quote,
+                        speed: Bindable(flow).speed,
+                        isLoading: flow.quote == nil && flow.quoteError == nil
+                    )
+                    .disabled(isPaying)
+
+                    CustomButton(title: t("common__learn_more"), size: .small) {
+                        navigation.navigate(.transferLearnMore)
+                    }
+                    .disabled(isPaying)
+                    .accessibilityIdentifier("SpendingConfirmMore")
                 }
+                .padding(.bottom, 16)
             }
-            .padding(.horizontal, -16)
 
             if !hideSwipeButton {
                 SwipeButton(
@@ -249,14 +228,19 @@ extension SpendingConfirm {
 /// The swipe reset after the fees went up while the screen was open; the toast says by how much.
 struct SpendingFeesIncreasedError: Error {}
 
-/// Network fee, spending fee, what reaches spending and what leaves savings, in the confirm screen's grid.
+/// Network fee, service fee, what reaches spending and what leaves savings, in the confirm screen's grid; a tap switches
+/// every amount on the screen between bitcoin and the local currency.
 struct SpendingConfirmFees: View {
     let quote: SparkTransferQuote?
     let speed: SparkTransferSpeed
     var isLoading = false
+    /// The Spark deposit address a hardware wallet asks to confirm on the device.
+    var address: String?
+
+    @EnvironmentObject var currency: CurrencyViewModel
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(alignment: .leading, spacing: 24) {
             HStack {
                 FeeDisplayRow(
                     label: t("lightning__spending_confirm__network_fee"),
@@ -264,11 +248,9 @@ struct SpendingConfirmFees: View {
                     isLoading: isLoading
                 )
                 .frame(maxWidth: .infinity)
-
                 FeeDisplayRow(
-                    label: t("lightning__spending_confirm__spending_fee"),
+                    label: t("lightning__spending_confirm__lsp_fee"),
                     amount: quote?.claimFeeSats(for: speed) ?? 0,
-                    prefix: SpendingSpeedPicker.feePrefix(for: speed),
                     isLoading: isLoading
                 )
                 .frame(maxWidth: .infinity)
@@ -278,12 +260,9 @@ struct SpendingConfirmFees: View {
                 FeeDisplayRow(
                     label: t("lightning__spending_confirm__amount"),
                     amount: quote?.toSpendingSats(for: speed) ?? 0,
-                    // What reaches spending is net of the estimated claim fee, so it is an estimate too.
-                    prefix: SpendingSpeedPicker.feePrefix(for: speed),
                     isLoading: isLoading
                 )
                 .frame(maxWidth: .infinity)
-
                 FeeDisplayRow(
                     label: t("lightning__spending_confirm__total"),
                     amount: quote?.totalSats ?? 0,
@@ -291,54 +270,114 @@ struct SpendingConfirmFees: View {
                 )
                 .frame(maxWidth: .infinity)
             }
+
+            if let address {
+                VStack(alignment: .leading, spacing: 8) {
+                    CaptionMText(t("lightning__transfer_hw__address"))
+                    BodySSBText(address)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .padding(.bottom, 8)
+                    Divider()
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("SpendingConfirmAddress")
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation { currency.togglePrimaryDisplay() }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("SpendingConfirmFees")
     }
 }
 
-/// Instant or Later, in the style of the send flow's fee-speed rows.
+/// Fast or Normal, each with its claim fee: Fast's is its ceiling ("max"), Normal's the current rate ("est").
 struct SpendingSpeedPicker: View {
     let quote: SparkTransferQuote?
     @Binding var speed: SparkTransferSpeed
-
-    /// Both claim fees are estimates: Instant's is its ceiling, Later's the current rate.
-    static func feePrefix(for _: SparkTransferSpeed) -> String {
-        "±"
-    }
+    /// Shimmers the fees while the quote is loading; stops once it fails, so the rows don't look stuck.
+    var isLoading = false
 
     var body: some View {
         VStack(spacing: 0) {
-            FeeItem(
-                title: t("fee__instant__title"),
+            SpendingSpeedRow(
+                title: t("fee__fast__title"),
                 subtitle: t("lightning__spending_confirm__instant_text"),
                 iconName: TransactionSpeed.fast.iconName,
-                iconColor: .purpleAccent,
-                amount: quote?.claimFees.instantMaxSats ?? 0,
-                amountPrefix: Self.feePrefix(for: .instant),
-                isSelected: speed == .instant,
-                isDisabled: false,
-                dividerAtBottom: true
+                amount: quote?.claimFees.instantMaxSats,
+                amountCaption: t("lightning__spending_confirm__fee_max"),
+                isLoading: isLoading,
+                isSelected: speed == .instant
             ) {
                 speed = .instant
             }
             .accessibilityIdentifier("SpendingConfirmInstant")
 
-            FeeItem(
-                title: t("lightning__spending_confirm__later"),
+            Divider()
+
+            SpendingSpeedRow(
+                title: t("fee__normal__title"),
                 subtitle: t("lightning__spending_confirm__later_text"),
-                iconName: TransactionSpeed.normal.iconName,
-                iconColor: .purpleAccent,
-                amount: quote?.claimFees.laterSats ?? 0,
-                amountPrefix: Self.feePrefix(for: .later),
-                isSelected: speed == .later,
-                isDisabled: false,
-                dividerAtBottom: true
+                iconName: "clock",
+                amount: quote?.claimFees.laterSats,
+                amountCaption: t("lightning__spending_confirm__fee_est"),
+                isLoading: isLoading,
+                isSelected: speed == .later
             ) {
                 speed = .later
             }
             .accessibilityIdentifier("SpendingConfirmLater")
         }
+    }
+}
+
+private struct SpendingSpeedRow: View {
+    let title: String
+    let subtitle: String
+    let iconName: String
+    let amount: UInt64?
+    let amountCaption: String
+    let isLoading: Bool
+    let isSelected: Bool
+    let onPress: () -> Void
+
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: onPress) {
+            HStack(spacing: 12) {
+                HStack(spacing: 16) {
+                    Image(iconName)
+                        .resizable()
+                        .foregroundColor(isEnabled ? .purpleAccent : .gray)
+                        .frame(width: 32, height: 32)
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        BodyMSBText(title)
+                        BodySSBText(subtitle, textColor: .textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                VStack(alignment: .trailing, spacing: 0) {
+                    MoneyText(sats: Int(amount ?? 0), size: .bodyMSB, symbol: true, fillsWidth: false, shimmer: isLoading)
+                    BodySSBText(amountCaption, textColor: .textSecondary)
+                }
+                .fixedSize()
+
+                Image("check-mark")
+                    .resizable()
+                    .foregroundColor(.purpleAccent)
+                    .frame(width: 22, height: 22)
+                    .opacity(isSelected ? 1 : 0)
+            }
+            .padding(.vertical, 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

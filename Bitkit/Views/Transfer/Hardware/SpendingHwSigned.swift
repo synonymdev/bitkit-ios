@@ -17,7 +17,7 @@ struct SpendingHwSigned: View {
             DisplayText(t("lightning__transfer_hw__signed_title"), accentColor: .purpleAccent)
 
             SpendingConfirmFees(quote: flow.quote, speed: flow.speed)
-                .padding(.top, 16)
+                .padding(.top, 24)
 
             Image("check")
                 .resizable()

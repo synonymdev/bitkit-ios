@@ -33,31 +33,31 @@ struct SpendingHwSign: View {
 
             GeometryReader { geometry in
                 ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 24) {
                         DisplayText(
                             t(hwSend.hasPendingBroadcast ? "lightning__transfer_hw__signed_title" : "lightning__transfer_hw__sign_title"),
                             accentColor: .purpleAccent
                         )
 
-                        SpendingConfirmFees(quote: flow.quote, speed: flow.speed, isLoading: flow.quote == nil && flow.quoteError == nil)
-                            .padding(.top, 16)
+                        SpendingConfirmFees(
+                            quote: flow.quote,
+                            speed: flow.speed,
+                            isLoading: flow.quote == nil && flow.quoteError == nil,
+                            address: flow.quote?.address
+                        )
 
                         if let error = flow.quoteError {
                             BodyMText(error, textColor: .redAccent)
-                                .padding(.bottom, 16)
                         }
 
-                        SpendingSpeedPicker(quote: flow.quote, speed: Bindable(flow).speed)
-                            .disabled(isBusy || hwSend.hasPendingBroadcast)
-                            .padding(.horizontal, -16)
-                            .padding(.bottom, 16)
+                        SpendingSpeedPicker(
+                            quote: flow.quote,
+                            speed: Bindable(flow).speed,
+                            isLoading: flow.quote == nil && flow.quoteError == nil
+                        )
+                        .disabled(isBusy || hwSend.hasPendingBroadcast)
 
-                        CustomButton(title: t("common__learn_more"), size: .small, isDisabled: isBusy || hwSend.hasPendingBroadcast) {
-                            navigation.navigate(.transferLearnMore)
-                        }
-                        .accessibilityIdentifier("HardwareTransferSignLearnMore")
-
-                        Spacer(minLength: 16)
+                        Spacer(minLength: 0)
 
                         Image(vendor.signImageName)
                             .resizable()
@@ -65,15 +65,10 @@ struct SpendingHwSign: View {
                             .frame(maxWidth: 200, maxHeight: 200)
                             .frame(maxWidth: .infinity)
                             .accessibilityHidden(true)
-
-                        Spacer(minLength: 16)
                     }
                     // Fills the free space on tall screens so the picture sits centred in it, and scrolls on short ones.
                     .frame(minHeight: geometry.size.height)
-                    // The speed rows run edge to edge, so the scroll spans the screen and pads its own content.
-                    .padding(.horizontal, 16)
                 }
-                .padding(.horizontal, -16)
             }
 
             CustomButton(

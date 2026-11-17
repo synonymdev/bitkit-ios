@@ -114,7 +114,7 @@ struct SpendingWalletScreen: View {
 
     var transferFromSavingsButton: some View {
         CustomButton(
-            title: t("lightning__funding__button1"),
+            title: t("lightning__transfer_from_savings_button"),
             variant: .secondary,
             icon: Image("arrow-up-down")
                 .resizable()

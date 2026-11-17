@@ -256,7 +256,6 @@
 "lightning__spending_confirm__lsp_fee" = "Taxa de serviço";
 "lightning__spending_confirm__amount" = "Para gastos";
 "lightning__spending_confirm__total" = "Total";
-"lightning__spending_confirm__spending_fee" = "Spending fee";
 "lightning__spending_confirm__instant_text" = "Ready in a few minutes";
 "lightning__spending_confirm__later" = "Later";
 "lightning__spending_confirm__later_text" = "After 3 confirmations, about 30 minutes";
@@ -447,8 +446,6 @@
 "lightning__spark_exit__cancel_failed" = "Não foi possível verificar o endereço de financiamento. Tente novamente.";
 "lightning__spark_exit__fee_bump_leaves_behind" = "Uma taxa mais alta deixaria parte desta saída na Spark, por isso não é oferecida nenhuma. A saída confirma quando as taxas de rede descerem.";
 "lightning__spark_learn__title" = "Transfer\n<accent>speed</accent>";
-"lightning__spark_learn__text" = "Instant pays the provider to add your transfer to your spending balance before it confirms, so it is ready in a few minutes.\n\nLater waits for 3 confirmations, about 30 minutes, and costs less.";
-"lightning__spark_learn__label" = "Spending balance after transfer";
 "lightning__reserve_balance" = "Saldo de reserva (não utilizável)";
 "lightning__total_size" = "Tamanho total do canal";
 "lightning__fees" = "Taxas";

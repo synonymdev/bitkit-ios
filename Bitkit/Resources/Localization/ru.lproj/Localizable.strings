@@ -236,7 +236,6 @@
 "lightning__spending_confirm__lsp_fee" = "Сервисные Комиссии";
 "lightning__spending_confirm__amount" = "На Баланс Расходов";
 "lightning__spending_confirm__total" = "Итого";
-"lightning__spending_confirm__spending_fee" = "Spending fee";
 "lightning__spending_confirm__instant_text" = "Ready in a few minutes";
 "lightning__spending_confirm__later" = "Later";
 "lightning__spending_confirm__later_text" = "After 3 confirmations, about 30 minutes";
@@ -444,8 +443,6 @@
 "lightning__spark_exit__cancel_failed" = "Не удалось проверить адрес для оплаты комиссий. Попробуйте снова.";
 "lightning__spark_exit__fee_bump_leaves_behind" = "Более высокая комиссия оставила бы часть этого выхода в Spark, поэтому она не предлагается. Выход подтвердится, когда сетевые комиссии снизятся.";
 "lightning__spark_learn__title" = "Transfer\n<accent>speed</accent>";
-"lightning__spark_learn__text" = "Instant pays the provider to add your transfer to your spending balance before it confirms, so it is ready in a few minutes.\n\nLater waits for 3 confirmations, about 30 minutes, and costs less.";
-"lightning__spark_learn__label" = "Spending balance after transfer";
 "lightning__reserve_balance" = "Резервный Баланс (не доступен для трат)";
 "lightning__total_size" = "Общий Размер Канала";
 "lightning__fees" = "Комиссии";

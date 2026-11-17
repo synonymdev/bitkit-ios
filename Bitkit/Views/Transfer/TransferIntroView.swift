@@ -6,7 +6,7 @@ struct TransferIntroView: View {
 
     var body: some View {
         OnboardingView(
-            navTitle: t("lightning__transfer__nav_title"),
+            navTitle: t("lightning__funding__nav_title"),
             title: t("lightning__transfer_intro__title"),
             description: t("lightning__transfer_intro__text"),
             imageName: "lightning",

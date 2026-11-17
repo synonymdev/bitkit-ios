@@ -230,7 +230,6 @@
 "lightning__spending_confirm__lsp_fee" = "Comisión de servicio";
 "lightning__spending_confirm__amount" = "A gasto";
 "lightning__spending_confirm__total" = "Total";
-"lightning__spending_confirm__spending_fee" = "Spending fee";
 "lightning__spending_confirm__instant_text" = "Ready in a few minutes";
 "lightning__spending_confirm__later" = "Later";
 "lightning__spending_confirm__later_text" = "After 3 confirmations, about 30 minutes";
@@ -434,8 +433,6 @@
 "lightning__spark_exit__cancel_failed" = "No se pudo comprobar la dirección de financiación. Inténtalo de nuevo.";
 "lightning__spark_exit__fee_bump_leaves_behind" = "Una comisión más alta dejaría parte de esta salida en Spark, así que no se ofrece ninguna. La salida se confirma cuando bajen las comisiones de red.";
 "lightning__spark_learn__title" = "Transfer\n<accent>speed</accent>";
-"lightning__spark_learn__text" = "Instant pays the provider to add your transfer to your spending balance before it confirms, so it is ready in a few minutes.\n\nLater waits for 3 confirmations, about 30 minutes, and costs less.";
-"lightning__spark_learn__label" = "Spending balance after transfer";
 "lightning__reserve_balance" = "Saldo de reserva";
 "lightning__total_size" = "Tamaño total del canal";
 "lightning__fees" = "Comisiones";
