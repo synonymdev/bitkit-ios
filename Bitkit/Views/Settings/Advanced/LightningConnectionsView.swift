@@ -7,6 +7,7 @@ struct LightningConnectionsView: View {
     @EnvironmentObject var blocktank: BlocktankViewModel
     @EnvironmentObject var channelDetails: ChannelDetailsViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var network: NetworkMonitor
     @EnvironmentObject var wallet: WalletViewModel
 
     @State private var showClosedConnections = false
@@ -56,7 +57,9 @@ struct LightningConnectionsView: View {
                                         .foregroundColor(.white)
                                     // Spark receives without inbound liquidity, so no channel caps receiving.
                                     TitleText(
-                                        SparkManager.shared.isReceiving ? t("lightning__spark_receiving_unlimited") : formatNumber(receivingCapacity),
+                                        AppStatusHelper
+                                            .isSparkReceiving(network: network) ? t("lightning__spark_receiving_unlimited") :
+                                            formatNumber(receivingCapacity),
                                         textColor: .white
                                     )
                                 }

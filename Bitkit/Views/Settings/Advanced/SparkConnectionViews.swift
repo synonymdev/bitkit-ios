@@ -4,6 +4,7 @@ import SwiftUI
 /// reach its deposit address to fund it from the faucet.
 struct SparkConnectionRow: View {
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var network: NetworkMonitor
 
     private let spark = SparkManager.shared
 
@@ -31,7 +32,7 @@ struct SparkConnectionRow: View {
                 }
                 .padding(.bottom, 6)
 
-                SparkChannel(balanceSats: spark.shownBalanceSats, isReceiving: spark.isReceiving)
+                SparkChannel(balanceSats: spark.shownBalanceSats, isReceiving: AppStatusHelper.isSparkReceiving(network: network))
                     .padding(.bottom, 16)
 
                 CustomDivider()
@@ -121,7 +122,7 @@ struct SparkConnectionDetailView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    SparkChannel(balanceSats: spark.shownBalanceSats, isReceiving: spark.isReceiving)
+                    SparkChannel(balanceSats: spark.shownBalanceSats, isReceiving: AppStatusHelper.isSparkReceiving(network: network))
                         .padding(.bottom, 16)
 
                     CustomDivider()
@@ -160,7 +161,7 @@ struct SparkConnectionDetailView: View {
 
                     VStack(alignment: .leading, spacing: 0) {
                         SettingsSectionHeader(t("lightning__balance"))
-                        if spark.isReceiving {
+                        if AppStatusHelper.isSparkReceiving(network: network) {
                             detailRow(label: t("lightning__receiving_label"), value: t("lightning__spark_receiving_unlimited"))
                         }
                         amountRow(label: t("lightning__spending_label"), amount: spark.shownBalanceSats)

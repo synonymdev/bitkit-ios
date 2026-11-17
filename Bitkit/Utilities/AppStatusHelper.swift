@@ -96,6 +96,11 @@ struct AppStatusHelper {
     }
 
     /// Nil where Spark is unsupported.
+    /// Spark can take payments only while the device is online, the same check that shows it "Offline...".
+    static func isSparkReceiving(network: NetworkMonitor) -> Bool {
+        network.isConnected && SparkManager.shared.isReceiving
+    }
+
     static func sparkStatus(network: NetworkMonitor) -> HealthStatus? {
         let spark = SparkManager.shared
         return sparkStatus(
