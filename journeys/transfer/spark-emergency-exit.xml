@@ -26,6 +26,6 @@
     <action>Verify no reason shows in red (testTag "SparkExitQuoteBlocked") and "Continue" (testTag "SparkExitQuoteContinue") is enabled</action>
     <action>Tap "Continue" and verify the "Fund the fees" screen names the fee funding amount, with "Pay from savings" (testTag "SparkExitFundSavings") and "Fund from another wallet" (testTag "SparkExitFundExternal")</action>
     <action>Tap "Fund from another wallet" and verify a QR code and a bcrt1 address (testTag "SparkExitFundingAddress") show, and "Continue" (testTag "SparkExitFundingContinue") is disabled</action>
-    <action>Go back to the Spark connection screen and verify "Transfer to Savings" is still enabled: nothing started</action>
+    <action>Go back to the Spark connection screen and verify "Transfer To Savings" is still enabled: nothing started</action>
   </actions>
 </journey>

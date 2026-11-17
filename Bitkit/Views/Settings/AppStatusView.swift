@@ -23,14 +23,14 @@ struct AppStatusView: View {
                     backupStatusRow
                 }
             }
+            .refreshable {
+                await refreshAppStatus()
+            }
 
             BodyMText(t("settings__status__app_version", variables: ["version": appVersion]), textColor: .white64)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.vertical, 16)
                 .accessibilityIdentifier("AppVersion")
-                .refreshable {
-                    await refreshAppStatus()
-                }
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)

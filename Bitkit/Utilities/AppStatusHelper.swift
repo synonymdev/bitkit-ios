@@ -150,19 +150,19 @@ struct AppStatusHelper {
             ? .pending
             : sparkStatus(network: network)
 
-        let states = [internetState, bitcoinNodeState, nodeState] + [sparkState].compactMap { $0 }
+        return combinedStatus(of: [internetState, bitcoinNodeState, nodeState, sparkState])
+    }
 
-        // If any component is in error state, return error
+    /// Red when any component errs, yellow when any is pending, green otherwise; a nil component (Spark where it is
+    /// unsupported) does not count.
+    nonisolated static func combinedStatus(of states: [HealthStatus?]) -> HealthStatus {
+        let states = states.compactMap { $0 }
         if states.contains(.error) {
             return .error
         }
-
-        // If any component is pending, return pending
         if states.contains(.pending) {
             return .pending
         }
-
-        // All components are ready
         return .ready
     }
 }

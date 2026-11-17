@@ -7,6 +7,8 @@
     "no limit", spending balance) and DEPOSITS, one group per deposit: its transaction, amount, and the claim fee
     once claimed or the confirmations until then. The footer holds "Transfer To Savings" and, while Spark holds
     funds or a force transfer runs, "Force Transfer To Savings".
+    Spark's row shows once Spark is connected, so "Connecting..." and "Offline..." are covered by unit tests and
+    the PR's screenshots, not here.
 
     Precondition: Debug build on regtest with Spark connected on its regtest (journeys/README.md capabilities),
     no Lightning channel, and a claimed Spark deposit (fund the deposit address from Lightspark's regtest faucet
