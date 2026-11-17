@@ -897,7 +897,8 @@ extension ChannelFreeRailTests {
         var expired: [String] = []
         let previousHook = service.railSendHoldExpired
         defer { service.railSendHoldExpired = previousHook }
-        service.railSendHoldExpired = { expired.append($0) }
+        var saves = false
+        service.railSendHoldExpired = { expired.append($0); return saves }
 
         await service.endExpiredRailSendUncertainties()
         XCTAssertEqual(expired, [], "a hold ended before the invoice expired")
@@ -908,6 +909,13 @@ extension ChannelFreeRailTests {
         await service.endExpiredRailSendUncertainties()
         XCTAssertEqual(expired, [hash], "the send's activity wasn't written when its hold ended")
         XCTAssertFalse(service.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 900))
+
+        // The write failed, so the next sync tries it again, until it is saved.
+        saves = true
+        await service.endExpiredRailSendUncertainties()
+        XCTAssertEqual(expired, [hash, hash], "an activity that failed to save wasn't retried")
+        await service.endExpiredRailSendUncertainties()
+        XCTAssertEqual(expired, [hash, hash], "a saved activity was written again")
     }
 
     func testAnExpiredHoldWritesSparksLatestSendOrFailsTheStoredOne() async {
@@ -919,16 +927,16 @@ extension ChannelFreeRailTests {
             Self.sparkPayment(hash: hash, status: .failed, id: "retry", timestamp: 5),
             Self.sparkPayment(hash: "cd", status: .completed, id: "other", timestamp: 9),
         ]
-        await SparkManager.recordExpiredHold(
+        _ = await SparkManager.recordExpiredHold(
             paymentHash: hash, payments: payments,
-            record: { recorded.append($0.id); return true }, failStoredSend: { failed.append($0) }
+            record: { recorded.append($0.id); return true }, failStoredSend: { failed.append($0); return true }
         )
         XCTAssertEqual(recorded, ["retry"])
         XCTAssertEqual(failed, [])
 
-        await SparkManager.recordExpiredHold(
+        _ = await SparkManager.recordExpiredHold(
             paymentHash: "ef", payments: payments,
-            record: { recorded.append($0.id); return true }, failStoredSend: { failed.append($0) }
+            record: { recorded.append($0.id); return true }, failStoredSend: { failed.append($0); return true }
         )
         XCTAssertEqual(recorded, ["retry"])
         XCTAssertEqual(failed, ["ef"], "a send Spark lists none of stayed pending")

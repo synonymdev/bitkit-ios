@@ -399,7 +399,7 @@ final class SparkManager: ChannelFreeLightningRail {
             // Registered before the first refresh marks Spark ready, so Lightning calls never see it ready while they
             // still go to LDK, even when that refresh or the activity sync fails. An emergency exit keeps it out.
             LightningService.shared.channelFreePaymentHistory = self
-            LightningService.shared.railSendHoldExpired = { [weak self] hash in await self?.recordExpiredHold(paymentHash: hash) }
+            LightningService.shared.railSendHoldExpired = { [weak self] hash in await self?.recordExpiredHold(paymentHash: hash) ?? false }
             if !isExiting {
                 LightningService.shared.channelFreeRail = self
             }
@@ -1807,14 +1807,14 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// Writes the activity of a send whose hold ended at its invoice's expiry: Spark's latest send of it, or a failure
-    /// of the stored pending send when Spark lists none.
-    private func recordExpiredHold(paymentHash: String) async {
-        guard let payments = try? await requireSdk().listPayments(request: ListPaymentsRequest()).payments else { return }
-        await Self.recordExpiredHold(
+    /// of the stored pending send when Spark lists none. Returns whether it was saved.
+    private func recordExpiredHold(paymentHash: String) async -> Bool {
+        guard let payments = try? await requireSdk().listPayments(request: ListPaymentsRequest()).payments else { return false }
+        return await Self.recordExpiredHold(
             paymentHash: paymentHash,
             payments: payments,
             record: { await self.recordActivity($0) },
-            failStoredSend: { try? await CoreService.shared.activity.failPendingLightningSend(id: $0) }
+            failStoredSend: { await (try? CoreService.shared.activity.failPendingLightningSend(id: $0)) != nil }
         )
     }
 
@@ -1822,17 +1822,16 @@ final class SparkManager: ChannelFreeLightningRail {
         paymentHash: String,
         payments: [Payment],
         record: (Payment) async -> Bool,
-        failStoredSend: (String) async -> Void
-    ) async {
+        failStoredSend: (String) async -> Bool
+    ) async -> Bool {
         let sends = payments.filter { payment in
             guard payment.paymentType == .send, case let .lightning(_, _, _, htlcDetails, _, _, _, _) = payment.details else { return false }
             return htlcDetails.paymentHash.caseInsensitiveCompare(paymentHash) == .orderedSame
         }
         if let latest = sends.max(by: { $0.timestamp < $1.timestamp }) {
-            _ = await record(latest)
-        } else {
-            await failStoredSend(paymentHash)
+            return await record(latest)
         }
+        return await failStoredSend(paymentHash)
     }
 
     /// Payment hashes whose every Lightning send failed, so a hold on a channel retry can be released.
