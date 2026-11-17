@@ -236,7 +236,8 @@ Device-clock fault injection requires a separate manual run: [Paykit clock chang
 
 **`onchain-receive/confirmed-only-background-notification.xml`.** It covers the notification Android's
 `LightningNodeService` foreground service posts for a background onchain receive. iOS has no
-foreground node service, and its notification extension handles only Blocktank pushes.
+foreground node service, and its notification extension only acknowledges wake pushes and delivers the
+gateway's alert; it never starts the node.
 
 **`deeplinks/screen-deeplink.xml` and `sheet-deeplink.xml`.** These Android journeys exercise `bitkit://screen/...` routing with a
 dev-mode gate and a cold-start replay. iOS registers the `bitkit` URL scheme (`Bitkit/Info.plist`)

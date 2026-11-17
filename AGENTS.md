@@ -195,7 +195,7 @@ This app integrates with:
 - **LDK Node** (Lightning Development Kit) for Lightning Network functionality
 - **BitkitCore** (Rust-based core library) for Bitcoin operations
 - **Electrum/Esplora** for blockchain data
-- **Blocktank** for Lightning channel services
+- **Spark** (Breez SDK) for the Spending balance. Blocktank no longer opens channels; the app only reads existing Blocktank orders and CJIT entries
 
 ## Prerequisites
 
