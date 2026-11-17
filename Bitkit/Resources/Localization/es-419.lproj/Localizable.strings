@@ -373,8 +373,6 @@
 "lightning__spark_deposit__wait_button" = "Esperar";
 "lightning__spark_deposit__waiting" = "Spark lo agrega a tu saldo de gastos {when}.";
 "lightning__spark_deposit__waiting_next" = "Spark lo agrega a tu saldo de gastos después de la próxima confirmación.";
-"lightning__spark_deposits_claimed" = "Depósitos reclamados";
-"lightning__spark_deposits_pending" = "Depósitos en curso";
 "lightning__spark_provider" = "Proveedor";
 "lightning__spark_provider_value" = "Spark mediante Breez";
 "lightning__spark_receiving_unlimited" = "Sin límite";
@@ -1055,8 +1053,6 @@
 "settings__status__spark__ready" = "Conectado";
 "settings__status__spark__pending" = "Conectando...";
 "settings__status__spark__error" = "Sin conexión";
-"settings__status__exit__title" = "Salida de emergencia";
-"settings__status__exit__pending" = "En curso";
 "settings__status__exit__funding" = "Fondos para comisiones necesarios";
 "settings__status__backup__title" = "Última copia de seguridad completa de los datos";
 "settings__status__backup__ready" = "Copia de seguridad";

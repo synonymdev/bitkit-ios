@@ -31,19 +31,8 @@ struct SparkConnectionRow: View {
                 }
                 .padding(.bottom, 6)
 
-                LightningChannel(
-                    capacity: spark.shownBalanceSats,
-                    localBalance: spark.shownBalanceSats,
-                    remoteBalance: 0,
-                    status: .open,
-                    showReceiving: false
-                )
-                .padding(.bottom, 16)
-
-                ForEach(spark.deposits.filter { !$0.isClaimed }) { deposit in
-                    SparkDepositRow(deposit: deposit)
-                        .padding(.bottom, 16)
-                }
+                SparkChannel(balanceSats: spark.shownBalanceSats, isReceiving: spark.isReceiving)
+                    .padding(.bottom, 16)
 
                 CustomDivider()
             }
@@ -54,189 +43,203 @@ struct SparkConnectionRow: View {
     }
 }
 
-/// A deposit into Spark or a withdrawal out of it, with its amount, confirmations while pending, and a link to
-/// its transaction.
-struct SparkDepositRow: View {
+/// Spark's balance as a channel bar: its spending balance, and receiving with no limit while Spark can receive.
+private struct SparkChannel: View {
+    let balanceSats: UInt64
+    let isReceiving: Bool
+
+    var body: some View {
+        LightningChannel(
+            capacity: balanceSats,
+            localBalance: balanceSats,
+            remoteBalance: 0,
+            status: .open,
+            showReceiving: isReceiving,
+            receivingUnlimited: isReceiving
+        )
+    }
+}
+
+/// A withdrawal out of Spark to savings, with its amount and a link to its transaction.
+struct SparkWithdrawalRow: View {
     @Environment(\.openURL) private var openURL
 
-    let title: String
-    let txid: String
-    let amountSats: UInt64
-    var confirmations: UInt32?
-
-    init(deposit: SparkDeposit) {
-        title = t("lightning__spark_deposit")
-        txid = deposit.txid
-        amountSats = deposit.amountSats
-        confirmations = deposit.confirmations
-    }
-
-    init(withdrawal: SparkWithdrawal) {
-        title = t("wallet__activity_transfer_to_savings")
-        txid = withdrawal.txid
-        amountSats = withdrawal.amountSats
-    }
+    let withdrawal: SparkWithdrawal
 
     var body: some View {
         Button {
-            if let url = URL(string: "\(Env.blockExplorerUrl)/tx/\(txid)") {
+            if let url = URL(string: "\(Env.blockExplorerUrl)/tx/\(withdrawal.txid)") {
                 openURL(url)
             }
         } label: {
             HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    CaptionBText(title, textColor: .textPrimary)
-                    CaptionBText(txid)
+                    CaptionBText(t("wallet__activity_transfer_to_savings"), textColor: .textPrimary)
+                    CaptionBText(withdrawal.txid)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
                 Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    MoneyText(sats: Int(amountSats), size: .captionB, symbol: true)
-                    if let confirmations {
-                        CaptionBText(
-                            t("lightning__spark_confirmations", variables: ["count": "\(min(confirmations, 3))"]),
-                            textColor: .purpleAccent
-                        )
-                    }
-                }
+                MoneyText(sats: Int(withdrawal.amountSats), size: .captionB, symbol: true)
             }
             .contentShape(.rect)
         }
         .buttonStyle(PlainButtonStyle())
-        .accessibilityIdentifier("SparkDeposit")
+        .accessibilityIdentifier("SparkWithdrawal")
     }
 }
 
 struct SparkConnectionDetailView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var network: NetworkMonitor
+    @Environment(\.openURL) private var openURL
 
     @State private var depositAddress: String?
 
     private let spark = SparkManager.shared
 
-    /// The emergency exit is offered while Spark holds funds, also a kept balance while it reads 0, and leads to the
-    /// exit's progress or result while it runs or its leftover fee funding is still on its way to savings.
+    /// The force transfer is offered while Spark holds funds, also a kept balance while it reads 0, and leads to the
+    /// transfer's progress or result while it runs or its leftover fee funding is still on its way to savings.
     private var showsExit: Bool {
         spark.shownBalanceSats > 0 || spark.recoverableFundsSats > 0 || SparkExitManager.shared.showsResult
     }
 
+    /// Spark's connection state, worded and coloured like a channel's: open, connecting or offline.
+    private var status: (text: String, color: Color) {
+        switch AppStatusHelper.sparkStatus(network: network) ?? .error {
+        case .ready: (t("lightning__order_state__open"), .greenAccent)
+        case .pending: (t("settings__status__spark__pending"), .yellowAccent)
+        case .error: (t("settings__status__spark__error"), .redAccent)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            NavigationBar(title: t("lightning__spark"))
+            NavigationBar(title: t("lightning__spark_provider_value"))
                 .padding(.bottom, 16)
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    LightningChannel(
-                        capacity: spark.shownBalanceSats,
-                        localBalance: spark.shownBalanceSats,
-                        remoteBalance: 0,
-                        status: .open,
-                        showReceiving: false
-                    )
-                    .padding(.bottom, 28)
+                    SparkChannel(balanceSats: spark.shownBalanceSats, isReceiving: spark.isReceiving)
+                        .padding(.bottom, 16)
 
-                    VStack(alignment: .leading, spacing: 16) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            CustomDivider()
-                            SettingsSectionHeader(t("lightning__spark_provider"))
-                            detailRow(label: t("lightning__spark_provider"), value: t("lightning__spark_provider_value"))
-                            BodySText(t("lightning__spark_trust"))
-                                .fixedSize(horizontal: false, vertical: true)
-                                .padding(.top, 12)
+                    CustomDivider()
 
-                            if let depositAddress {
-                                Button {
-                                    UIPasteboard.general.string = depositAddress
-                                    Haptics.play(.copiedToClipboard)
-                                    app.toast(type: .success, title: t("common__copied"), description: depositAddress)
-                                } label: {
-                                    detailRow(label: t("wallet__activity_address"), value: depositAddress)
-                                        .contentShape(.rect)
-                                }
-                                .buttonStyle(PlainButtonStyle())
+                    VStack(alignment: .leading, spacing: 0) {
+                        SettingsSectionHeader(t("lightning__status"))
+                        HStack(alignment: .center, spacing: 8) {
+                            CircularIcon(
+                                icon: "bolt",
+                                iconColor: status.color,
+                                backgroundColor: status.color.opacity(0.16),
+                                size: 32
+                            )
+                            BodyMSBText(status.text, textColor: status.color)
+                        }
+                        .padding(.bottom, 16)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("SparkStatus")
+                        CustomDivider()
+                    }
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        SettingsSectionHeader(t("lightning__spark_provider"))
+                        detailRow(label: t("lightning__spark"), value: t("lightning__spark_operators"))
+
+                        if let depositAddress {
+                            copyRow(label: t("wallet__activity_address"), value: depositAddress)
                                 .accessibilityIdentifier("SparkDepositAddress")
-                            }
                         }
 
+                        BodyMText(t("lightning__spark_trust"), textColor: .white50)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.vertical, 16)
+                        CustomDivider()
+                    }
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        SettingsSectionHeader(t("lightning__balance"))
+                        if spark.isReceiving {
+                            detailRow(label: t("lightning__receiving_label"), value: t("lightning__spark_receiving_unlimited"))
+                        }
+                        amountRow(label: t("lightning__spending_label"), amount: spark.shownBalanceSats)
+                    }
+
+                    if !spark.deposits.isEmpty {
                         VStack(alignment: .leading, spacing: 0) {
-                            SettingsSectionHeader(t("lightning__balance"))
-                            amountRow(label: t("lightning__spending_label"), amount: spark.shownBalanceSats)
-                        }
-
-                        let pending = spark.deposits.filter { !$0.isClaimed }
-                        if !pending.isEmpty {
-                            VStack(alignment: .leading, spacing: 16) {
-                                SettingsSectionHeader(t("lightning__spark_deposits_pending"))
-                                ForEach(pending) { SparkDepositRow(deposit: $0) }
-                            }
-                        }
-
-                        let claimed = spark.deposits.filter(\.isClaimed)
-                        if !claimed.isEmpty {
-                            VStack(alignment: .leading, spacing: 0) {
-                                SettingsSectionHeader(t("lightning__spark_deposits_claimed"))
-                                ForEach(claimed) { deposit in
-                                    SparkDepositRow(deposit: deposit)
-                                        .padding(.bottom, 8)
-                                    amountRow(label: t("lightning__spark_claim_fee"), amount: deposit.feeSats)
-                                }
-                            }
-                        }
-
-                        let earlier = SparkExitManager.shared.shownEarlierAddresses
-                        if !earlier.isEmpty {
-                            VStack(alignment: .leading, spacing: 0) {
-                                SettingsSectionHeader(t("lightning__spark_exit__earlier_addresses"))
-                                BodySText(t("lightning__spark_exit__earlier_addresses_text"))
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .padding(.bottom, 8)
-                                ForEach(earlier) { entry in
-                                    copyRow(label: t("wallet__activity_address"), value: entry.address)
-                                        .accessibilityIdentifier("SparkExitEarlierAddress")
-                                    copyRow(label: t("lightning__spark_exit__earlier_path"), value: entry.path)
-                                        .accessibilityIdentifier("SparkExitEarlierPath")
-                                    if let sats = entry.sats {
-                                        amountRow(label: t("lightning__balance"), amount: sats)
-                                    }
-                                }
-                                .padding(.bottom, 8)
-                            }
-                        }
-
-                        if !spark.withdrawals.isEmpty {
-                            VStack(alignment: .leading, spacing: 0) {
-                                SettingsSectionHeader(t("lightning__savings_confirm__label"))
-                                ForEach(spark.withdrawals) { withdrawal in
-                                    SparkDepositRow(withdrawal: withdrawal)
-                                        .padding(.bottom, 8)
-                                    amountRow(label: t("wallet__activity_fee"), amount: withdrawal.feeSats)
-                                }
+                            SettingsSectionHeader(t("lightning__spark_deposits"))
+                            CustomDivider()
+                            ForEach(spark.deposits) { deposit in
+                                depositRows(deposit)
                             }
                         }
                     }
-                    .padding(.bottom, 32)
+
+                    let earlier = SparkExitManager.shared.shownEarlierAddresses
+                    if !earlier.isEmpty {
+                        VStack(alignment: .leading, spacing: 0) {
+                            SettingsSectionHeader(t("lightning__spark_exit__earlier_addresses"))
+                            BodySText(t("lightning__spark_exit__earlier_addresses_text"))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.bottom, 8)
+                            ForEach(earlier) { entry in
+                                copyRow(label: t("wallet__activity_address"), value: entry.address)
+                                    .accessibilityIdentifier("SparkExitEarlierAddress")
+                                copyRow(label: t("lightning__spark_exit__earlier_path"), value: entry.path)
+                                    .accessibilityIdentifier("SparkExitEarlierPath")
+                                if let sats = entry.sats {
+                                    amountRow(label: t("lightning__balance"), amount: sats)
+                                }
+                            }
+                            .padding(.bottom, 8)
+                        }
+                    }
+
+                    if !spark.withdrawals.isEmpty {
+                        VStack(alignment: .leading, spacing: 0) {
+                            SettingsSectionHeader(t("lightning__savings_confirm__label"))
+                            ForEach(spark.withdrawals) { withdrawal in
+                                SparkWithdrawalRow(withdrawal: withdrawal)
+                                    .padding(.vertical, 8)
+                                amountRow(label: t("wallet__activity_fee"), amount: withdrawal.feeSats)
+                            }
+                        }
+                    }
                 }
+                .padding(.bottom, 32)
             }
 
-            CustomButton(title: t("lightning__transfer_to_savings_button")) {
-                if app.hasSeenTransferToSavingsIntro {
-                    navigation.navigate(.savingsAvailability)
-                } else {
-                    navigation.navigate(.savingsIntro)
+            VStack(spacing: 16) {
+                CustomButton(
+                    title: t("lightning__transfer_to_savings_button"),
+                    icon: Image("arrow-up-down")
+                        .resizable()
+                        .frame(width: 16, height: 16)
+                        .foregroundColor(.textPrimary)
+                ) {
+                    if app.hasSeenTransferToSavingsIntro {
+                        navigation.navigate(.savingsAvailability)
+                    } else {
+                        navigation.navigate(.savingsIntro)
+                    }
                 }
-            }
-            .disabled(spark.balanceSats == 0 || spark.isExiting)
-            .accessibilityIdentifier("SparkTransferToSavings")
+                .disabled(spark.balanceSats == 0 || spark.isExiting)
+                .accessibilityIdentifier("SparkTransferToSavings")
 
-            if showsExit {
-                CustomButton(title: t("lightning__spark_exit__button"), variant: .tertiary) {
-                    navigation.navigate(SparkExitManager.shared.showsResult ? .sparkExitProgress : .sparkExitIntro)
+                if showsExit {
+                    CustomButton(
+                        title: t("lightning__spark_exit__button"),
+                        variant: .secondary,
+                        icon: Image("warning")
+                            .resizable()
+                            .frame(width: 16, height: 16)
+                            .foregroundColor(.yellowAccent)
+                    ) {
+                        navigation.navigate(SparkExitManager.shared.showsResult ? .sparkExitProgress : .sparkExitIntro)
+                    }
+                    .accessibilityIdentifier("SparkEmergencyExit")
                 }
-                .padding(.top, 8)
-                .accessibilityIdentifier("SparkEmergencyExit")
             }
         }
         .navigationBarHidden(true)
@@ -262,6 +265,56 @@ struct SparkConnectionDetailView: View {
         } catch {
             Logger.warn("Failed to load Spark deposit address: \(error)", context: "SparkConnectionDetailView")
         }
+    }
+
+    /// A deposit's transaction, amount and claim fee, or its confirmations while Spark has not claimed it.
+    private func depositRows(_ deposit: SparkDeposit) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                if let url = URL(string: "\(Env.blockExplorerUrl)/tx/\(deposit.txid)") {
+                    openURL(url)
+                }
+            } label: {
+                compactRow(label: t("lightning__spark_deposit_tx")) {
+                    CaptionBText(deposit.txid, textColor: .textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityIdentifier("SparkDeposit")
+
+            compactRow(label: t("lightning__spark_deposit")) {
+                MoneyText(sats: Int(deposit.amountSats), size: .captionB, symbol: true)
+            }
+
+            if deposit.isClaimed {
+                compactRow(label: t("lightning__spark_claim_fee")) {
+                    MoneyText(sats: Int(deposit.feeSats), size: .captionB, symbol: true)
+                }
+            } else {
+                compactRow(label: t("lightning__status")) {
+                    CaptionBText(
+                        deposit.confirmations.map {
+                            t("lightning__spark_confirmations", variables: ["count": "\(min($0, 3))"])
+                        } ?? t("wallet__activity_pending"),
+                        textColor: .purpleAccent
+                    )
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .overlay(alignment: .bottom) { CustomDivider() }
+    }
+
+    private func compactRow(label: String, @ViewBuilder value: () -> some View) -> some View {
+        HStack(alignment: .center, spacing: 16) {
+            CaptionBText(label, textColor: .textPrimary)
+            Spacer()
+            value()
+        }
+        .frame(height: 34)
+        .contentShape(.rect)
     }
 
     private func detailRow(label: String, value: String) -> some View {

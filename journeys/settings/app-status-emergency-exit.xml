@@ -1,10 +1,10 @@
 <journey name="app status emergency exit">
   <description>
-    While an emergency exit is active, App Status shows an "Emergency Exit" row under Lightning Connection.
-    It reads "Fee funding needed" while the exit asks for fee funding and "In progress" otherwise, including
+    While an emergency exit is active, App Status shows the force transfer on the "Lightning Provider (Spark)"
+    row under Lightning Connection, with a yellow warning icon. It reads "Fee funding needed" while the exit asks for fee funding and "Force transfer to savings in progress..." otherwise, including
     while a payment that covers the funding waits to confirm. The row opens the exit's progress screen. With
-    no active exit the row is absent. An exit paid from savings cannot be cancelled and runs for days,
-    so the row's removal once an exit ends is covered by unit tests, not here. On iOS, OK on the progress
+    no active exit the row shows Spark's connection again. An exit paid from savings cannot be cancelled and runs for days,
+    so the row's return to the connection once an exit ends is covered by unit tests, not here. On iOS, OK on the progress
     screen returns to the wallet home screen from any entry point, App Status included. An exit takes Spark off the
     Lightning rail, so with no usable channel Lightning Connection stops reading "Using Spark" while it runs.
 
@@ -15,10 +15,10 @@
   </description>
   <actions>
     <action>Tap the menu button (id "HeaderMenu") and tap App Status (id "DrawerAppStatus")</action>
-    <action>Verify a row titled "Emergency Exit" (id "Status-spark_exit") sits under Lightning Connection (id "Status-lightning_connection") and reads "In progress", since savings paid the funding</action>
+    <action>Verify the "Lightning Provider (Spark)" row (id "Status-spark_exit") sits under Lightning Connection (id "Status-lightning_connection") and reads "Force transfer to savings in progress...", since savings paid the funding</action>
     <action>Verify Lightning Connection (id "Status-lightning_connection") reads "No open connections", not "Using Spark"</action>
     <action>Tap the row and verify the exit's progress screen opens</action>
     <action>Tap "OK" (id "SparkExitProgressOk") and verify the wallet home screen shows</action>
-    <action>Open App Status again from the menu and verify the "Emergency Exit" row is still there</action>
+    <action>Open App Status again from the menu and verify the row (id "Status-spark_exit") still reads "Force transfer to savings in progress..."</action>
   </actions>
 </journey>
