@@ -172,19 +172,9 @@ class TransferService {
                                     "Force close batched sweep detected via txid \(sweepTxid), settled transfer: \(transfer.id)",
                                     context: "TransferService"
                                 )
-                            } else if await !canJudgeSweepAsDust(sweepTxid: sweepSpendingTxid) {
-                                Logger.debug(
-                                    "Force close sweep may still be valid, awaiting its activity: \(transfer.id)",
-                                    context: "TransferService"
-                                )
                             } else if let pendingSweeps = balances?.pendingBalancesFromChannelClosures,
-                                      Self.isUnsweepable(
-                                          channelId: channelId,
-                                          pendingSweeps: pendingSweeps,
-                                          changeType: LDKNode.AddressType.fromStorage(
-                                              UserDefaults.standard.string(forKey: "selectedAddressType")
-                                          )
-                                      )
+                                      let changeType = await dustJudgingChangeType(sweepTxid: sweepSpendingTxid),
+                                      Self.isUnsweepable(channelId: channelId, pendingSweeps: pendingSweeps, changeType: changeType)
                             {
                                 // LDK only adds the sweep's output when more than dust is left after fees. A dust-only
                                 // sweep has no outputs, every broadcast fails with `bad-txns-vout-empty` and the sweep
@@ -214,16 +204,20 @@ class TransferService {
     /// LDK's fee floor; the sweeper never pays less.
     private static let feerateFloorSatPerKw: UInt64 = 253
 
-    /// Dust is judged only on complete evidence: no address type change is staged but not yet applied to the node, the
-    /// wallet's payments are readable, and the wallet does not already hold the sweep, which is then real whatever the
-    /// change type is now.
-    private func canJudgeSweepAsDust(sweepTxid: String?) async -> Bool {
-        if await MainActor.run(body: { SettingsViewModel.shared.isChangingAddressType }) {
-            return false
+    /// The change type to judge dust by, or nil while the evidence is incomplete: the wallet's payments are unreadable,
+    /// the wallet already holds the sweep (which is then real whatever the change type is now), or an address type
+    /// change is staged but not yet applied to the node. The flag and the selected type are read together after the
+    /// payment lookup, so a change started during it is seen.
+    private func dustJudgingChangeType(sweepTxid: String?) async -> LDKNode.AddressType? {
+        if let sweepTxid {
+            guard let payments = await lightningService.listPayments(),
+                  !Self.walletHolds(txid: sweepTxid, payments: payments)
+            else { return nil }
         }
-        guard let sweepTxid else { return true }
-        guard let payments = await lightningService.listPayments() else { return false }
-        return !Self.walletHolds(txid: sweepTxid, payments: payments)
+        return await MainActor.run {
+            guard !SettingsViewModel.shared.isChangingAddressType else { return nil }
+            return LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
+        }
     }
 
     /// Whether the on-chain wallet holds the transaction, synced or still unconfirmed.
