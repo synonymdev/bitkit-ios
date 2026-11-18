@@ -172,12 +172,11 @@ class TransferService {
                                     "Force close batched sweep detected via txid \(sweepTxid), settled transfer: \(transfer.id)",
                                     context: "TransferService"
                                 )
-                            } else if let sweepTxid = sweepSpendingTxid,
-                                      await Self.walletHolds(txid: sweepTxid, payments: lightningService.listPayments() ?? [])
-                            {
-                                // A sweep the wallet already holds is real, whatever the change type is now, so it
-                                // waits for its activity instead of being judged as dust.
-                                Logger.debug("Force close sweep is in the wallet, awaiting its activity: \(transfer.id)", context: "TransferService")
+                            } else if await !canJudgeSweepAsDust(sweepTxid: sweepSpendingTxid) {
+                                Logger.debug(
+                                    "Force close sweep may still be valid, awaiting its activity: \(transfer.id)",
+                                    context: "TransferService"
+                                )
                             } else if let pendingSweeps = balances?.pendingBalancesFromChannelClosures,
                                       Self.isUnsweepable(
                                           channelId: channelId,
@@ -214,6 +213,18 @@ class TransferService {
     private static let sweepInputWu: UInt64 = 276
     /// LDK's fee floor; the sweeper never pays less.
     private static let feerateFloorSatPerKw: UInt64 = 253
+
+    /// Dust is judged only on complete evidence: no address type change is staged but not yet applied to the node, the
+    /// wallet's payments are readable, and the wallet does not already hold the sweep, which is then real whatever the
+    /// change type is now.
+    private func canJudgeSweepAsDust(sweepTxid: String?) async -> Bool {
+        if await MainActor.run(body: { SettingsViewModel.shared.isChangingAddressType }) {
+            return false
+        }
+        guard let sweepTxid else { return true }
+        guard let payments = await lightningService.listPayments() else { return false }
+        return !Self.walletHolds(txid: sweepTxid, payments: payments)
+    }
 
     /// Whether the on-chain wallet holds the transaction, synced or still unconfirmed.
     static func walletHolds(txid: String, payments: [PaymentDetails]) -> Bool {
