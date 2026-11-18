@@ -2053,6 +2053,106 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertFalse(manager.isApprovedForPayment(request))
     }
 
+    @MainActor
+    func testFeeRefusalOnConfirmConsumesThePaymentListAgainBeforeTheReapprovedSend() async throws {
+        for swipesAgain in [true, false] {
+            let record = try paymentRequestRecord(counterparty: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xy")
+            let sdk = PaymentRequestSdkMock(records: [record])
+            let manager = paymentRequestManager(sdk: sdk)
+            await manager.refresh()
+            let request = try XCTUnwrap(manager.pendingRequests.first)
+            let app = AppViewModel()
+            let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request, endpoints: [])
+            app.contactPaymentContext = context
+            let attempts = OnchainSendAttemptService(store: MemoryAttemptStore())
+            let sender = PreparedAttemptNodeMock()
+            sender.amount = 1000
+            sender.miningFee = 212
+            sender.result = .accepted(txid: sender.txid)
+            var isListConsumed = false
+            var consumptions = 0
+            let consume = {
+                XCTAssertFalse(isListConsumed)
+                isListConsumed = true
+                consumptions += 1
+            }
+            func swipe(reviewedFee: UInt64, reapproved: String?) async throws -> OnchainSendResult {
+                let current = try XCTUnwrap(app.contactPaymentContext?.incomingPaymentRequest)
+                try await manager.prepareForPayment(current, consumePrivatePaymentList: consume)
+                return try await attempts.send(
+                    using: sender, address: "bcrt1qexample", amountSats: 1000, satsPerVbyte: 1, utxosToSpend: nil,
+                    isMaxAmount: false, requestId: current.id, paymentIdentity: "payer",
+                    reviewedMiningFeeSats: reviewedFee, reapprovedCandidateTxid: reapproved,
+                    beforeBroadcastAttempt: {
+                        XCTAssertTrue(isListConsumed, "The payment list must be consumed before the transaction is sent")
+                        XCTAssertEqual(sender.broadcasts, 0)
+                    },
+                    onPreDispatchFailure: { _ in }
+                )
+            }
+
+            var candidateTxid: String?
+            do {
+                _ = try await swipe(reviewedFee: 203, reapproved: nil)
+                XCTFail("A 212 sat transaction went out under a 203 sat approval")
+            } catch let OnchainSendAttemptError.preDispatch(error) {
+                candidateTxid = (error as? OnchainSendFeeIncreased)?.candidateTxid
+            }
+            XCTAssertEqual(consumptions, 1)
+            // The refusal is a definite pre-broadcast failure, which releases the list.
+            isListConsumed = false
+            try await sdk.setRecords([paymentRequestRecord(counterparty: record.counterparty, state: .accepted)])
+            let isCurrent = await SendConfirmationView.restoreRequestForAnotherSwipe(context, app: app, manager: manager) { true }
+            XCTAssertTrue(isCurrent)
+            XCTAssertEqual(app.contactPaymentContext?.id, context.id)
+
+            guard swipesAgain else {
+                XCTAssertFalse(isListConsumed, "A cancelled review must leave the list released")
+                XCTAssertEqual(sender.broadcasts, 0)
+                continue
+            }
+            let result = try await swipe(reviewedFee: 212, reapproved: XCTUnwrap(candidateTxid))
+            XCTAssertEqual(result, .accepted(txid: sender.txid))
+            XCTAssertEqual(consumptions, 2, "The second swipe must consume the released list again, once")
+            XCTAssertTrue(isListConsumed)
+            XCTAssertEqual(sender.preparations, 1)
+            XCTAssertEqual(sender.broadcasts, 1)
+            let accepted = await sdk.snapshot().acceptedRequests
+            XCTAssertEqual(accepted.count, 1, "The request must not be accepted a second time")
+        }
+    }
+
+    @MainActor
+    func testFeeRefusalIsDroppedWhenAnotherSendStartsWhileItsRequestIsRestored() async throws {
+        let record = try paymentRequestRecord(counterparty: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xy")
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        let app = AppViewModel()
+        let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request, endpoints: [])
+        app.contactPaymentContext = context
+        try await manager.prepareForPayment(request)
+        try await sdk.setRecords([paymentRequestRecord(counterparty: record.counterparty, state: .accepted)])
+        await sdk.pauseNextPaymentRequestList()
+
+        var ownsFlow = true
+        let restore = Task { @MainActor in
+            await SendConfirmationView.restoreRequestForAnotherSwipe(context, app: app, manager: manager) { ownsFlow }
+        }
+        try await waitUntil { await sdk.paymentRequestListIsPaused() }
+        // The sheet is replaced by another payment while the refused one waits on the SDK.
+        let replacement = ContactPaymentContext(publicKey: "pubkyother")
+        app.contactPaymentContext = replacement
+        ownsFlow = false
+        await sdk.resumePaymentRequestList()
+
+        let isCurrent = await restore.value
+        XCTAssertFalse(isCurrent, "A refusal must not write its fee and amount into another payment")
+        XCTAssertEqual(app.contactPaymentContext?.id, replacement.id, "The restored request must not replace the new payment's context")
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+    }
+
     func testApprovedPaymentRechecksBlockingInEachSoftwareSendRouteWithoutRepeatingAcceptance() async throws {
         let record = try paymentRequestRecord(counterparty: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xy")
         let sdk = PaymentRequestSdkMock(records: [record])

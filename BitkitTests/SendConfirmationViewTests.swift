@@ -1,8 +1,73 @@
 @testable import Bitkit
+import BitkitCore
 import LDKNode
 import XCTest
 
 final class SendConfirmationViewTests: XCTestCase {
+    @MainActor
+    func testFeeWarningsUseTheFeeOfThePreparedTransactionAfterAFeeIncrease() async throws {
+        let service = OnchainSendAttemptService(store: MemoryAttemptStore())
+        let sender = PreparedAttemptNodeMock()
+        sender.amount = 1000
+        sender.miningFee = 520
+        let reviewedFee: UInt64 = 203
+        XCTAssertEqual(SendConfirmationView.feeWarnings(feeSats: reviewedFee, amountSats: 1000, isOverUsdLimit: false), [])
+
+        var reapproval: SendConfirmationView.FeeReapproval?
+        do {
+            _ = try await service.send(
+                using: sender, address: "bcrt1qexample", amountSats: 1000, satsPerVbyte: 1, utxosToSpend: nil,
+                isMaxAmount: false, reviewedMiningFeeSats: reviewedFee
+            )
+            XCTFail("A 520 sat transaction went out under a 203 sat approval")
+        } catch let OnchainSendAttemptError.preDispatch(error) {
+            let increased = try XCTUnwrap(error as? OnchainSendFeeIncreased)
+            reapproval = .init(increased, address: "bcrt1qexample", requestedSats: 1000, isMaxAmount: false, feeRate: 1, utxos: nil)
+        }
+        let review = try XCTUnwrap(reapproval)
+        XCTAssertEqual(review.miningFeeSats, 520)
+        XCTAssertEqual(
+            SendConfirmationView.feeWarnings(feeSats: review.miningFeeSats, amountSats: review.recipientAmountSats, isOverUsdLimit: false),
+            [.feePercentage]
+        )
+        XCTAssertEqual(
+            SendConfirmationView.feeWarnings(feeSats: review.miningFeeSats, amountSats: review.recipientAmountSats, isOverUsdLimit: true),
+            [.fee, .feePercentage]
+        )
+    }
+
+    @MainActor
+    func testFeeRefusalIsIgnoredOnceItsSendWasClosedOrReplaced() {
+        let presentation = UUID()
+        XCTAssertTrue(SendConfirmationView.isFeeRefusalCurrent(
+            presentationID: presentation, activePresentationID: presentation, address: "bcrt1qexample", currentAddress: "bcrt1qexample"
+        ))
+        let stale: [(UUID?, String?)] = [(nil, "bcrt1qexample"), (UUID(), "bcrt1qexample"), (presentation, nil), (presentation, "bcrt1qother")]
+        for (active, address) in stale {
+            XCTAssertFalse(SendConfirmationView.isFeeRefusalCurrent(
+                presentationID: presentation, activePresentationID: active, address: "bcrt1qexample", currentAddress: address
+            ))
+        }
+        XCTAssertFalse(SendConfirmationView.isFeeRefusalCurrent(
+            presentationID: nil, activePresentationID: nil, address: "bcrt1qexample", currentAddress: "bcrt1qexample"
+        ))
+    }
+
+    func testFeeReapprovalCoversOnlyThePaymentItsTransactionWasPreparedFor() {
+        let utxo = SpendableUtxo(outpoint: OutPoint(txid: String(repeating: "a", count: 64), vout: 0), valueSats: 20000)
+        // A send-all's prepared transaction delivers less once its fee is higher, and that amount is the one reviewed.
+        let increased = OnchainSendFeeIncreased(candidateTxid: String(repeating: "ab", count: 32), miningFeeSats: 212, recipientAmountSats: 19788)
+        let review = SendConfirmationView.FeeReapproval(
+            increased, address: "bcrt1qexample", requestedSats: 19797, isMaxAmount: true, feeRate: 1, utxos: [utxo]
+        )
+        XCTAssertTrue(review.covers(address: "bcrt1qexample", amountSats: 19788, feeRate: 1, utxos: [utxo]))
+        XCTAssertFalse(review.covers(address: "bcrt1qother", amountSats: 19788, feeRate: 1, utxos: [utxo]))
+        XCTAssertFalse(review.covers(address: "bcrt1qexample", amountSats: 19797, feeRate: 1, utxos: [utxo]))
+        XCTAssertFalse(review.covers(address: "bcrt1qexample", amountSats: 19788, feeRate: 2, utxos: [utxo]))
+        XCTAssertFalse(review.covers(address: "bcrt1qexample", amountSats: 19788, feeRate: nil, utxos: [utxo]))
+        XCTAssertFalse(review.covers(address: "bcrt1qexample", amountSats: 19788, feeRate: 1, utxos: nil))
+    }
+
     func testLightningPaymentRejectsAmountsThatDifferFromTheFixedInvoice() async throws {
         for (invoiceAmount, reviewedAmount, expectedSend) in [(10000, 1000, false), (10000, 10000, true), (0, 1000, true)] {
             var sent = false
@@ -208,6 +273,47 @@ final class SendConfirmationViewTests: XCTestCase {
             ),
             .uncertain
         )
+    }
+
+    func testSwapRouteWarningsReadTheQuoteDebitPaidFromSpending() {
+        let endpoint = PaykitEndpoint(methodId: "bitcoin", value: "bcrt1qcontact")
+        var route = PaykitSwapRoute(endpoint: endpoint)
+        XCTAssertEqual(SendConfirmationView.swapRouteWarningAmountSats(route, sendAmountSats: 50000), 50000)
+        XCTAssertEqual(SendConfirmationView.swapRouteWarningAmountSats(route, sendAmountSats: nil), 0)
+        route.quote = PubkySwapRouteQuote(
+            providerPubky: "provider", quoteId: "quote", endpoint: endpoint, deliveredSat: 50000, lockSat: 50300, debitSat: 51200,
+            serviceFeeSat: 500, providerOnchainFeeSat: 400, claimFeeSat: 300, totalFeeSat: 1200, atomicity: "hold_invoice",
+            validUntilUnix: 0, providersQuoted: 1
+        )
+        XCTAssertEqual(SendConfirmationView.swapRouteWarningAmountSats(route, sendAmountSats: 50000), 51200)
+    }
+
+    func testSwapRouteResultReachesOnlyTheSheetThatStartedIt() {
+        let started = UUID()
+        func isCurrent(_ start: UUID?, _ active: UUID?) -> Bool {
+            SendConfirmationView.isSwapRouteResultCurrent(startedIn: start, active: active, quoteId: "quote", activeQuoteId: "quote")
+        }
+        XCTAssertTrue(isCurrent(started, started))
+        XCTAssertFalse(isCurrent(started, UUID()))
+        XCTAssertFalse(isCurrent(started, nil))
+        XCTAssertFalse(isCurrent(nil, nil))
+    }
+
+    func testSwapRouteResultSkipsAPaymentEditedInTheSameSheet() {
+        let sheet = UUID()
+        func isCurrent(_ activeQuoteId: String?) -> Bool {
+            SendConfirmationView.isSwapRouteResultCurrent(startedIn: sheet, active: sheet, quoteId: "quote", activeQuoteId: activeQuoteId)
+        }
+        XCTAssertFalse(isCurrent("edited-quote"))
+        XCTAssertFalse(isCurrent(nil))
+    }
+
+    func testOnlyAFailedSwapEndsASentHoldPayment() {
+        let electrumError = AppError(message: "electrum", debugMessage: nil)
+        XCTAssertTrue(SendConfirmationView.isDefiniteSwapFailure(PubkySwapClaimError.failed("lockup expired")))
+        XCTAssertFalse(SendConfirmationView.isDefiniteSwapFailure(PubkySwapClaimError.timedOut(electrumError)))
+        XCTAssertFalse(SendConfirmationView.isDefiniteSwapFailure(CancellationError()))
+        XCTAssertFalse(SendConfirmationView.isDefiniteSwapFailure(electrumError))
     }
 
     func testASparkLegThatMayHaveSentStaysPendingInsteadOfOfferingTryAgain() {

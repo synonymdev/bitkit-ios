@@ -62,7 +62,7 @@ final class SendSheetLifecycleTests: XCTestCase {
     func testExternalLnurlHandoffDoesNotTransferOwnershipToOpenSend() async throws {
         let (app, sheets, _, window, _) = makeHost()
         defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
-        SettingsViewModel.shared.enableQuickpay = false
+        SettingsViewModel.shared.storeQuickpaySettings(enabled: false)
         sheets.showSheet(.send, data: SendConfig(view: .options))
         try await Task.sleep(for: .seconds(1))
         let previousID = try XCTUnwrap(sheets.activeSheetConfiguration?.presentationID)

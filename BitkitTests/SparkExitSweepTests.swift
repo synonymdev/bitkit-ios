@@ -358,6 +358,113 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertEqual(received.sweepTxid, "sweep")
     }
 
+    /// The fee funding the main sweep returns counts as unspent fees on the Done screen, not as spending balance.
+    func testTheFundingTheSweepReturnsCountsAsFeesNotSpendingBalance() throws {
+        let script = try SparkExitAddress.scriptPubKey(destination)
+        let unspent = String(repeating: "aa", count: 32)
+        let refund = String(repeating: "bb", count: 32)
+        let child = rawTx(spending: [(unspent, 0)], paying: [(3000, Data())])
+        let childTxid = try XCTUnwrap(SparkExitTxid.txid(hex: child))
+        let sweep = RecoveryTransaction(
+            kind: .sweep,
+            nodeId: nil,
+            txid: "s",
+            txHex: rawTx(spending: [(refund, 0), (unspent, 1), (childTxid, 0)], paying: [(96500, script)]),
+            cpfpTxHex: nil,
+            csvTimelockBlocks: nil,
+            dependsOn: [],
+            status: .confirmed(blockHeight: 50)
+        )
+        var record = endedRecord()
+        record.funding = [.init(index: 0, address: key.address, pubkey: key.pubkey, txid: unspent, vout: 1, valueSats: 4000)]
+        record.recovery = StoredRecovery(SparkExitFixtures.recovery([SparkExitFixtures.tx("n", cpfp: child), sweep]))
+        record.earlierReceivedSats = ["c": 5000]
+        record.sweptLeftover = [.init(txid: "l", valueSats: 1000)]
+
+        // The unspent funding UTXO and the CPFP child's change; the refund's output is the exited value.
+        XCTAssertEqual(SparkExitMath.returnedFundingSats(record), 7000)
+        XCTAssertEqual(SparkExitMath.returned(record), SparkExitReturned(spendingSats: 94500, feesSats: 8000))
+    }
+
+    /// A retry keeps the fee funding the replaced generation's sweep returned as fees, not spending balance.
+    func testTheFundingAnEarlierSweepReturnedStaysFeesAfterARetry() throws {
+        let script = try SparkExitAddress.scriptPubKey(destination)
+        let unspent = String(repeating: "aa", count: 32)
+        let refund = String(repeating: "bb", count: 32)
+        let child = rawTx(spending: [(unspent, 0)], paying: [(3000, Data())])
+        let childTxid = try XCTUnwrap(SparkExitTxid.txid(hex: child))
+        let sweep = RecoveryTransaction(
+            kind: .sweep,
+            nodeId: nil,
+            txid: "s",
+            txHex: rawTx(spending: [(refund, 0), (unspent, 1), (childTxid, 0)], paying: [(96500, script)]),
+            cpfpTxHex: nil,
+            csvTimelockBlocks: nil,
+            dependsOn: [],
+            status: .confirmed(blockHeight: 50)
+        )
+        let cooperative = RecoveryTransaction(
+            kind: .cooperative,
+            nodeId: nil,
+            txid: "c",
+            txHex: rawTx(spending: [(refund, 1)], paying: [(5000, script)]),
+            cpfpTxHex: nil,
+            csvTimelockBlocks: nil,
+            dependsOn: [],
+            status: .confirmed(blockHeight: 60)
+        )
+        var record = endedRecord()
+        record.funding = [.init(index: 0, address: key.address, pubkey: key.pubkey, txid: unspent, vout: 1, valueSats: 4000)]
+        record.recovery = StoredRecovery(SparkExitFixtures.recovery([SparkExitFixtures.tx("n", cpfp: child), sweep]))
+
+        record.adopt(SparkExitFixtures.recovery([cooperative]))
+        record.phase = .done
+        record.sweptLeftover = [.init(txid: "l", valueSats: 1000)]
+
+        XCTAssertEqual(record.earlierReturnedFundingSats, ["s": 7000])
+        XCTAssertEqual(SparkExitMath.returned(record), SparkExitReturned(spendingSats: 94500, feesSats: 8000))
+    }
+
+    /// Spending balance and fees always add up to what reached savings and the swept leftover.
+    func testTheReturnedSplitAlwaysAddsUpToWhatReachedSavings() throws {
+        let script = try SparkExitAddress.scriptPubKey(destination)
+        let unspent = String(repeating: "aa", count: 32)
+        var random = SeededGenerator(seed: 7)
+        for _ in 0 ..< 200 {
+            let received = UInt64.random(in: 1 ..< 200_000, using: &random)
+            let funding = UInt64.random(in: 0 ..< 300_000, using: &random)
+            let leftover = UInt64.random(in: 0 ..< 50000, using: &random)
+            var record = endedRecord()
+            record.funding = [.init(index: 0, address: key.address, pubkey: key.pubkey, txid: unspent, vout: 0, valueSats: funding)]
+            record.recovery = StoredRecovery(SparkExitFixtures.recovery([RecoveryTransaction(
+                kind: .sweep,
+                nodeId: nil,
+                txid: "s",
+                txHex: rawTx(spending: [(unspent, 0)], paying: [(received, script)]),
+                cpfpTxHex: nil,
+                csvTimelockBlocks: nil,
+                dependsOn: [],
+                status: .confirmed(blockHeight: 50)
+            )]))
+            record.sweptLeftover = [.init(txid: "l", valueSats: leftover)]
+
+            let returned = try XCTUnwrap(SparkExitMath.returned(record))
+
+            XCTAssertEqual(returned.spendingSats + returned.feesSats, received + leftover)
+            XCTAssertEqual(returned.spendingSats, received - min(funding, received))
+        }
+    }
+
+    private func rawTx(spending inputs: [(txid: String, vout: UInt32)], paying outputs: [(sats: UInt64, script: Data)]) -> String {
+        func littleEndian(_ value: UInt64, bytes: Int) -> String {
+            (0 ..< bytes).map { String(format: "%02x", (value >> (8 * UInt64($0))) & 0xFF) }.joined()
+        }
+        let ins = inputs.map { Data($0.txid.hexaBytes.reversed()).hex + littleEndian(UInt64($0.vout), bytes: 4) + "00" + "ffffffff" }
+        let outs = outputs.map { littleEndian($0.sats, bytes: 8) + String(format: "%02x", $0.script.count) + $0.script.hex }
+        return "02000000" + String(format: "%02x", inputs.count) + ins.joined() + String(format: "%02x", outputs.count) + outs.joined()
+            + "00000000"
+    }
+
     /// Each exit signs with the key at its own funding index, so a later exit never spends an earlier one's address.
     func testSignsWithTheKeyAtTheRecordsFundingIndex() async throws {
         let second = try SparkExitFundingKey.derive(index: 4, mnemonic: Self.mnemonic, passphrase: nil, network: .regtest)
@@ -1061,5 +1168,22 @@ final class SparkExitSweepTests: XCTestCase {
 private extension Data {
     init(hex: String) {
         self.init(hex.hexaBytes)
+    }
+}
+
+/// SplitMix64, so generated cases repeat from run to run.
+private struct SeededGenerator: RandomNumberGenerator {
+    var state: UInt64
+
+    init(seed: UInt64) {
+        state = seed
+    }
+
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
     }
 }

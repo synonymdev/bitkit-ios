@@ -3,6 +3,8 @@ import SwiftUI
 struct SavingsIntroView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var transfer: TransferViewModel
+    @EnvironmentObject var wallet: WalletViewModel
 
     var body: some View {
         OnboardingView(
@@ -13,7 +15,7 @@ struct SavingsIntroView: View {
             buttonText: t("lightning__savings_intro__button"),
             onButtonPress: {
                 app.hasSeenTransferToSavingsIntro = true
-                navigation.navigate(.savingsAvailability)
+                navigation.navigateToTransferSavings(wallet: wallet, transfer: transfer)
             },
             imagePosition: .center,
             titleDescriptionSpacing: 8,
@@ -30,6 +32,8 @@ struct SavingsIntroView: View {
         SavingsIntroView()
             .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
+            .environmentObject(TransferViewModel())
+            .environmentObject(WalletViewModel())
             .preferredColorScheme(.dark)
     }
 }

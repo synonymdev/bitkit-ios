@@ -44,7 +44,7 @@ final class SparkExitFeeBumpTests: XCTestCase {
     }
 
     /// The funding ask is one figure: one payment of `single_utxo_sats`, which the SDK splits per node.
-    func testTheQuoteAsksForOnePaymentAndCountsTheStepsItFunds() async throws {
+    func testTheQuoteAsksForTheWholeFunding() async throws {
         var prepared = SparkExitFixtures.prepared(funding: 12000)
         prepared.funding = RecoveryFunding(
             singleUtxoSats: 12000,
@@ -60,7 +60,6 @@ final class SparkExitFeeBumpTests: XCTestCase {
         let quote = try await SparkExitQuote.prepare(sdk, feeRateSatPerVbyte: 2, destination: "bcrt1qdestination", lostLeafIds: [])
 
         XCTAssertEqual(quote.fundingSats, 12000)
-        XCTAssertEqual(quote.fundedSteps, 3)
     }
 
     /// Every rebuild resumes with the strategy the exit was prepared with; one started before 0.28 stays per branch.

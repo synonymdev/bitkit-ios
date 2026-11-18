@@ -8,10 +8,14 @@
 
     Precondition: an onboarded regtest wallet with no Lightning channel, connected to the LSP
     (README.md, Backend preconditions). The LSP node pays the invoices with the lsp helper (borrowed from the sibling Android checkout, see README.md).
+
+    Blocked: the first step relied on Blocktank opening a CJIT channel on payment, which it no longer
+    does. Running this again needs a channel opened to the wallet with inbound capacity from another
+    node, such as one in bitkit-docker.
   </description>
   <actions>
     <action>Open Receive, create a Lightning invoice for 50 000 sats (it opens a channel from the LSP on payment) and copy the invoice</action>
-    <action>Pay it from the LSP node: ../bitkit-android/lsp POST /regtest/lightning/pay '{"invoice":"&lt;bolt11&gt;"}'</action>
+    <action>Pay it from the LSP node: ../bitkit-android/lsp POST /regtest/channel/pay '{"invoice":"&lt;bolt11&gt;"}'</action>
     <action>Verify the received sheet shows 50 000 sats</action>
     <action>Open Settings, then the "Advanced" tab, then "Lightning Connections", open the new connection and note its total size and receiving capacity</action>
     <action>Go back to Receive and create a Lightning invoice for an amount between 15% and 90% of the connection's total size that is also below its receiving capacity (for example 30% of the size)</action>

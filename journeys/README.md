@@ -236,7 +236,8 @@ Device-clock fault injection requires a separate manual run: [Paykit clock chang
 
 **`onchain-receive/confirmed-only-background-notification.xml`.** It covers the notification Android's
 `LightningNodeService` foreground service posts for a background onchain receive. iOS has no
-foreground node service, and its notification extension handles only Blocktank pushes.
+foreground node service, and its notification extension only acknowledges wake pushes and delivers the
+gateway's alert; it never starts the node.
 
 **`deeplinks/screen-deeplink.xml` and `sheet-deeplink.xml`.** These Android journeys exercise `bitkit://screen/...` routing with a
 dev-mode gate and a cold-start replay. iOS registers the `bitkit` URL scheme (`Bitkit/Info.plist`)
@@ -271,7 +272,9 @@ outcomes, not parity between the two scheduling implementations.
 
 Some suites are adapted rather than ported verbatim: `pubky-marketplace` because the two-wallet payment runs on regtest here. In `pubky-auth`, the
 watch-only OS handoff journey is iOS-only; `grant-signup.xml` and
-`grant-signup-existing-identity.xml` are shared with Android.
+`grant-signup-existing-identity.xml` are shared with Android. `paykit-swap-restore.xml` checks the
+"Payment returned to Savings" toast right after the first block, before the claim confirms, because on
+iOS the toast shows once the claim is broadcast and hides before the Received sheet opens.
 
 `profile/signup-create-profile.xml` is currently iOS-only. It covers the iOS Profile Error regression
 after staging signup. Android also supports this signup flow, but this journey has not been ported there.
@@ -333,6 +336,10 @@ session log after a regtest wallet wipe deletes the log directory in the same ap
 carries the same file name, journey name and actions, changing only the identifiers and commands the
 platform forces. The iOS description also leaves the Recovery home-screen quick action to a manual check,
 as the harness cannot trigger one.
+
+`settings/quickpay-payment-pin.xml` pairs with synonymdev/bitkit-android#1909 and is adapted: on iOS
+the PIN pad is a sheet whose back control is `NavigationBack`, and with biometrics on a cancelled or
+failed biometric check counts as not approved instead of falling back to the PIN pad.
 
 `payment-requests/minimum-onchain-amount.xml` is shared with Android: minimum amount
 feedback, preparation cleanup, and manual retry use the same actions and
