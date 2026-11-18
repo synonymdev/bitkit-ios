@@ -365,7 +365,8 @@ struct SparkExitPayView: View {
     /// The payments the first read of the funding address found this visit; only one arriving after them starts the
     /// exit on its own.
     @State private var entrySeenCount: Int?
-    /// Started on its own this visit: a failed start shows its error and waits for a tap, never retrying by itself.
+    /// A start ran this visit, on its own or from a tap: a failed one shows its error and waits for a tap, never
+    /// retrying by itself.
     @State private var hasAutoStarted = false
     @State private var isStarting = false
 
@@ -402,7 +403,7 @@ struct SparkExitPayView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // A running start cannot be left: it would go on and open Progress anyway.
-            NavigationBar(title: t("lightning__spark_exit__nav_title"), showBackButton: !isStarting)
+            NavigationBar(title: t("lightning__spark_exit__nav_title"), showBackButton: !isStarting, showMenuButton: !isStarting)
                 .padding(.bottom, 16)
 
             ScrollView(showsIndicators: false) {
@@ -427,6 +428,8 @@ struct SparkExitPayView: View {
             // Funds already at the address on entry wait for a tap; a failed start offers Try Again.
             if isFunded, !isStarting, !canAutoStart {
                 CustomButton(title: t(hasAutoStarted ? "common__try_again" : "common__continue")) {
+                    // The visit's start is spent: a payment arriving after a failed start never starts one by itself.
+                    hasAutoStarted = true
                     start()
                 }
                 .padding(.bottom, 16)
