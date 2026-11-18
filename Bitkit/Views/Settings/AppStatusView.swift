@@ -188,9 +188,9 @@ struct AppStatusView: View {
         if let timestamp = backupTimestamp {
             let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
             let formatter = DateFormatter()
-            formatter.dateStyle = .medium
-            formatter.timeStyle = .short
             formatter.locale = Locale.current
+            // The frame's "Jan 2, 2023 at 11:45" in US English, in each locale's own order and words elsewhere.
+            formatter.setLocalizedDateFormatFromTemplate("MMMdyyyyHHmm")
             description = formatter.string(from: date)
             status = .ready
         } else {
@@ -199,7 +199,7 @@ struct AppStatusView: View {
         }
 
         return StatusRow(
-            imageName: "rewind",
+            imageName: "cloud-check",
             title: t("settings__status__backup__title"),
             description: description,
             status: status,
