@@ -392,7 +392,6 @@
 "lightning__spark_exit__step_sweep" = "Odesláno do úspor";
 "lightning__spark_exit__done_title" = "Převod\n<accent>dokončen</accent>";
 "lightning__spark_exit__done_text" = "Vaše prostředky byly převedeny do úspor.";
-"lightning__spark_exit__partial_text" = "Malé částky ({count}) zůstaly na Spark.";
 "lightning__spark_exit__failed_leaves" = "{amount} přesunuli operátoři Spark na blockchain a není na Spark. Operátoři vám ji stále mohou uvolnit.";
 "lightning__spark_exit__leftover" = "{amount} z nouzových poplatků je stále na adrese {address}.";
 "lightning__spark_exit__leftover_swept" = "{amount} nepoužitých nouzových poplatků bylo odesláno do úspor.";

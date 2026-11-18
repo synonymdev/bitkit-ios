@@ -387,7 +387,6 @@
 "lightning__spark_exit__step_sweep" = "Отправлено на баланс сбережений";
 "lightning__spark_exit__done_title" = "Перевод\n<accent>завершён</accent>";
 "lightning__spark_exit__done_text" = "Ваши средства переведены на баланс сбережений.";
-"lightning__spark_exit__partial_text" = "Небольших сумм, оставшихся в Spark: {count}.";
 "lightning__spark_exit__failed_leaves" = "{amount} перевели ончейн операторы Spark, и в Spark этой суммы нет. Операторы всё ещё могут выдать её вам.";
 "lightning__spark_exit__leftover" = "{amount} экстренных комиссий всё ещё находятся на {address}.";
 "lightning__spark_exit__leftover_swept" = "Неиспользованные экстренные комиссии ({amount}) отправлены в сбережения.";

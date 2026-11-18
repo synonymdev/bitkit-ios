@@ -419,7 +419,6 @@
 "lightning__spark_exit__step_sweep" = "Sent to savings balance";
 "lightning__spark_exit__done_title" = "Transfer\n<accent>completed</accent>";
 "lightning__spark_exit__done_text" = "Your funds have been transferred to your savings balance.";
-"lightning__spark_exit__partial_text" = "{count} small amounts stayed on Spark.";
 "lightning__spark_exit__failed_leaves" = "{amount} was moved on-chain by the Spark operators and is not on Spark. The operators can still release it to you.";
 "lightning__spark_exit__leftover" = "{amount} of emergency fees is still at {address}.";
 "lightning__spark_exit__leftover_swept" = "{amount} of unused emergency fees was sent to savings.";

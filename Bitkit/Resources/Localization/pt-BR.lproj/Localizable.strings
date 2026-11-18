@@ -392,7 +392,6 @@
 "lightning__spark_exit__step_sweep" = "Enviado para o saldo de poupança";
 "lightning__spark_exit__done_title" = "Transferência\n<accent>concluída</accent>";
 "lightning__spark_exit__done_text" = "Seus fundos foram transferidos para o seu saldo de poupança.";
-"lightning__spark_exit__partial_text" = "{count} valores pequenos ficaram na Spark.";
 "lightning__spark_exit__failed_leaves" = "{amount} foi movido on-chain pelos operadores da Spark e não está na Spark. Os operadores ainda podem liberá-lo para você.";
 "lightning__spark_exit__leftover" = "{amount} de taxas de emergência ainda está em {address}.";
 "lightning__spark_exit__leftover_swept" = "{amount} de taxas de emergência não utilizadas foi enviado para a poupança.";

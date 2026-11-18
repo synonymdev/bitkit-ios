@@ -376,7 +376,6 @@
 "lightning__spark_exit__step_sweep" = "Enviat al saldo d'estalvis";
 "lightning__spark_exit__done_title" = "Transferència\n<accent>completada</accent>";
 "lightning__spark_exit__done_text" = "Els teus fons s'han transferit al teu saldo d'estalvis.";
-"lightning__spark_exit__partial_text" = "{count} quantitats petites s'han quedat a Spark.";
 "lightning__spark_exit__failed_leaves" = "Els operadors de Spark han mogut {amount} on-chain i no és a Spark. Els operadors encara te'ls poden alliberar.";
 "lightning__spark_exit__leftover" = "{amount} de comissions d'emergència encara són a {address}.";
 "lightning__spark_exit__leftover_swept" = "{amount} de comissions d'emergència no utilitzades s'han enviat als estalvis.";

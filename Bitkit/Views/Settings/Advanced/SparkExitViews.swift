@@ -568,7 +568,8 @@ struct SparkExitTxNote: View {
     }
 }
 
-/// Where the ended exit's leftover fee funding is: on its way to savings, sent, or too small to send.
+/// Where the ended exit's leftover fee funding is: on its way to savings, sent, or too small to send. A completed exit
+/// counts what it sends back in its returned note, so it names only funding that stays at the address.
 struct SparkExitLeftoverStatus: View {
     @EnvironmentObject var currency: CurrencyViewModel
 
@@ -579,17 +580,41 @@ struct SparkExitLeftoverStatus: View {
         SparkExitFundingKey.path(index: record.fundingIndex, network: Env.bitkitCoreNetwork)
     }
 
+    private var isDone: Bool {
+        record.phase == .done
+    }
+
+    /// The line to show: on a completed exit, none for funding a sweep sent back.
+    private var line: SparkExitRecord.LeftoverLine? {
+        switch record.leftoverLine {
+        case .sending, .swept: isDone ? nil : record.leftoverLine
+        default: record.leftoverLine
+        }
+    }
+
+    /// What earlier sweeps sent back, listed only before the exit completed.
+    private var sweptEarlier: [SparkExitRecord.SweptLeftover] {
+        isDone ? [] : record.sweptLeftover ?? []
+    }
+
     /// One line with the total of every UTXO at the funding address, never one per UTXO, after what earlier sweeps sent.
     var body: some View {
+        if line != nil || !sweptEarlier.isEmpty {
+            lines
+                .padding(.top, 16)
+        }
+    }
+
+    private var lines: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(record.sweptLeftover ?? [], id: \.txid) { swept in
+            ForEach(sweptEarlier, id: \.txid) { swept in
                 SparkExitTxNote(
                     text: t("lightning__spark_exit__leftover_swept",
                             variables: ["amount": sparkExitAmountAccent(currency.primaryAmountText(sats: swept.valueSats))]),
                     txid: swept.txid
                 )
             }
-            switch record.leftoverLine {
+            switch line {
             case let .sending(sats, txid):
                 if let txid {
                     SparkExitTxNote(
@@ -760,8 +785,6 @@ struct SparkExitProgressView: View {
         case .done:
             [
                 t("lightning__spark_exit__done_text"),
-                (record?.skippedLeafCount ?? 0) > 0
-                    ? t("lightning__spark_exit__partial_text", variables: ["count": "\(record?.skippedLeafCount ?? 0)"]) : nil,
                 record.flatMap { $0.isFailedLeavesReleased == true && $0.failedLeavesSats > 0 ? $0.failedLeavesSats : nil }.map {
                     t("lightning__spark_exit__failed_leaves", variables: ["amount": sparkExitAmountAccent(currency.primaryAmountText(sats: $0))])
                 },
@@ -916,11 +939,8 @@ struct SparkExitProgressView: View {
                                 .padding(.top, 16)
                         }
 
-                        if !record.isActive, !record.leftover.isEmpty || !(record.sweptLeftover ?? []).isEmpty,
-                           let address = record.funding.first?.address
-                        {
+                        if !record.isActive, let address = record.funding.first?.address {
                             SparkExitLeftoverStatus(record: record, address: address)
-                                .padding(.top, 16)
                         }
                     }
                 }
