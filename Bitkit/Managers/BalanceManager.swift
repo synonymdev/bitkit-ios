@@ -146,6 +146,9 @@ class BalanceManager {
     ) async -> (lightningToSubtract: UInt64, pendingAmount: UInt64) {
         var lightningToSubtract: UInt64 = 0
         var pendingAmount: UInt64 = 0
+        let pendingSweeps = balanceDetails.pendingBalancesFromChannelClosures
+        let hasBroadcastSweep = pendingSweeps.contains { Self.sweepTxid(of: $0) != nil }
+        let payments = hasBroadcastSweep ? await lightningService.listPayments() ?? [] : []
 
         for transfer in transfers.filter({ $0.type.isToSavings() }) {
             // A Spark exit has no channel: it is in transfer until its sweep confirms and the exit settles it.
@@ -166,12 +169,44 @@ class BalanceManager {
                 )
             }
 
-            if await !coreService.activity.hasOnchainActivityForChannel(channelId: channelId) {
+            // Once the wallet holds the channel's sweep, Savings counts its output, so the transfer stops adding to the total.
+            let walletHoldsSweep = Self.walletHoldsSweep(channelId: channelId, pendingSweeps: pendingSweeps, payments: payments)
+            if !walletHoldsSweep, await !coreService.activity.hasOnchainActivityForChannel(channelId: channelId) {
                 pendingAmount += transfer.amountSats
             }
         }
 
         return (lightningToSubtract, pendingAmount)
+    }
+
+    /// Whether the on-chain wallet already holds the channel's sweep transaction, synced or still unconfirmed.
+    static func walletHoldsSweep(channelId: String, pendingSweeps: [PendingSweepBalance], payments: [PaymentDetails]) -> Bool {
+        let sweepTxids = pendingSweeps.compactMap { sweep -> String? in
+            guard sweepChannelId(of: sweep) == channelId else { return nil }
+            return sweepTxid(of: sweep)
+        }
+        guard !sweepTxids.isEmpty else { return false }
+
+        return payments.contains { payment in
+            guard case let .onchain(txid, _) = payment.kind else { return false }
+            return sweepTxids.contains { $0.caseInsensitiveCompare(txid) == .orderedSame }
+        }
+    }
+
+    private static func sweepChannelId(of sweep: PendingSweepBalance) -> ChannelId? {
+        switch sweep {
+        case let .pendingBroadcast(channelId, _): channelId
+        case let .broadcastAwaitingConfirmation(channelId, _, _, _): channelId
+        case let .awaitingThresholdConfirmations(channelId, _, _, _, _): channelId
+        }
+    }
+
+    private static func sweepTxid(of sweep: PendingSweepBalance) -> String? {
+        switch sweep {
+        case .pendingBroadcast: nil
+        case let .broadcastAwaitingConfirmation(_, _, latestSpendingTxid, _): latestSpendingTxid
+        case let .awaitingThresholdConfirmations(_, latestSpendingTxid, _, _, _): latestSpendingTxid
+        }
     }
 
     /// The running exit's own transfer counts what it still brings to savings; any other exit transfer its amount.
