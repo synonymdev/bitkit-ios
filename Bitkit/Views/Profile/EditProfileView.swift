@@ -10,6 +10,7 @@ struct EditProfileView: View {
     @State private var username: String = ""
     @State private var bio: String = ""
     @State private var links: [ProfileLinkInput] = []
+    @State private var storedLinkUrls: Set<String> = []
     @State private var tags: [String] = []
     @State private var baseRevision: String?
     @State private var baseTagsUnread = false
@@ -36,6 +37,8 @@ struct EditProfileView: View {
                 bioPlaceholder: t("profile__create_bio_placeholder"),
                 isSaving: isSaving,
                 maxLinks: PubkyAppProfileLimits.maxLinks,
+                webLinksOnly: true,
+                storedLinkUrls: storedLinkUrls,
                 isNameValid: PubkyAppProfileLimits.isValidName,
                 footerNote: t("profile__edit_public_note"),
                 deleteLabel: copy.label,
@@ -158,6 +161,7 @@ struct EditProfileView: View {
         loadedBio = profile.bio
         bio = profile.bio
         links = profile.links.map { ProfileLinkInput(label: $0.label, url: $0.url) }
+        storedLinkUrls = Set(profile.links.map(\.url))
         tags = profile.tags
         baseRevision = profile.revision
         baseTagsUnread = profile.tagsUnread
@@ -234,7 +238,9 @@ struct EditProfileView: View {
     /// or the profile publishes, it stops quietly, with no toast and no navigation.
     private func saveProfile() async {
         let trimmedName = username.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard PubkyAppProfileLimits.isValidName(trimmedName) else { return }
+        guard PubkyAppProfileLimits.isValidName(trimmedName),
+              links.allSatisfy({ storedLinkUrls.contains($0.url) || $0.url.isWebLink })
+        else { return }
 
         isSaving = true
         defer { isSaving = false }

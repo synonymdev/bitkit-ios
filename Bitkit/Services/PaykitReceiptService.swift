@@ -341,6 +341,8 @@ final class PaykitReceiptService {
     @ObservationIgnored private var candidates: [String: [PaykitReceiptCandidate]] = [:]
     @ObservationIgnored private var identity: String?
     @ObservationIgnored private var running: Task<Void, Never>?
+    /// Bumped by `resetForWipe()`; a pass that started before the wipe writes nothing after it.
+    @ObservationIgnored private var wipeGeneration = 0
 
     init(
         sdk: PaykitReceiptSdk = PaykitSdkService.shared,
@@ -371,16 +373,22 @@ final class PaykitReceiptService {
 
     func retry(paymentId: String) async {
         await serialized {
+            let generation = self.wipeGeneration
             let key = paymentId.lowercased()
             guard let receipts = self.candidates[key], let identity = self.identity else { return }
             self.statuses[key] = .sending
             for candidate in receipts {
                 await self.issue(candidate, identity: identity)
             }
-            if await !self.publish(self.candidates.values.flatMap(\.self), identity: identity) {
+            if await !self.publish(self.candidates.values.flatMap(\.self), identity: identity, generation: generation) {
                 self.statuses[key] = .failed
             }
         }
+    }
+
+    func resetForWipe() {
+        wipeGeneration += 1
+        reset()
     }
 
     func reset() {
@@ -402,6 +410,7 @@ final class PaykitReceiptService {
     }
 
     private func reconcileNow() async {
+        let generation = wipeGeneration
         do {
             guard let status = try await sdk.identityStatus(priority: .background),
                   status.capability == .privateLinkCapable, let current = status.publicKey
@@ -436,13 +445,13 @@ final class PaykitReceiptService {
 
             let issued = try await issuedViews()
             for candidate in found {
-                if issued[candidate.receiptId]?.status == .accessQueued || attemptedReceiptIds.contains(candidate.receiptId) {
+                if !needsIssuing(issued[candidate.receiptId]?.status) || attemptedReceiptIds.contains(candidate.receiptId) {
                     continue
                 }
                 await issue(candidate, identity: current)
                 attemptedReceiptIds.insert(candidate.receiptId)
             }
-            await publish(found, identity: current)
+            await publish(found, identity: current, generation: generation)
         } catch {
             Logger.warn("Failed to reconcile Paykit receipts: \(error)", context: "PaykitReceiptService")
         }
@@ -461,21 +470,22 @@ final class PaykitReceiptService {
 
     /// Returns false when it could not read the issued receipts and left the statuses as they were.
     @discardableResult
-    private func publish(_ found: [PaykitReceiptCandidate], identity: String) async -> Bool {
+    private func publish(_ found: [PaykitReceiptCandidate], identity: String, generation: Int) async -> Bool {
         guard var views = await readIssuedViews() else { return false }
-        let undelivered = found.filter { deliveryOf($0, views, identity: identity) != true }
+        let queued = found.filter { views[$0.receiptId]?.status == .accessQueued && !isSent($0, views, identity: identity, generation: generation) }
         var unreachable: [String] = []
-        if !undelivered.isEmpty {
-            unreachable = await drain(undelivered, views: views, identity: identity)
+        if !queued.isEmpty {
+            unreachable = await drain(queued, identity: identity)
             guard let drained = await readIssuedViews() else { return false }
             views = drained
         }
         var updated: [String: PaykitReceiptStatus] = [:]
         for candidate in found {
-            let sent = deliveryOf(candidate, views, identity: identity)
-            let status: PaykitReceiptStatus = if sent == true {
+            let status: PaykitReceiptStatus = if isSent(candidate, views, identity: identity, generation: generation) {
                 .sent
-            } else if views[candidate.receiptId]?.status != .accessQueued || sent == false {
+            } else if views[candidate.receiptId]?.status != .accessQueued {
+                .failed
+            } else if views[candidate.receiptId]?.lastError != nil {
                 .failed
             } else if unreachable.contains(where: { PubkyPublicKeyFormat.matches($0, candidate.counterparty) }) {
                 .failed
@@ -484,21 +494,35 @@ final class PaykitReceiptService {
             }
             updated[candidate.receive.statusKey] = .combined(updated[candidate.receive.statusKey], status)
         }
+        guard generation == wipeGeneration else { return true }
         statuses = updated
         return true
     }
 
-    private func deliveryOf(
+    private func isSent(
         _ candidate: PaykitReceiptCandidate,
         _ views: [String: Paykit.ReceiptIssuanceView],
-        identity: String
-    ) -> Bool? {
-        delivery.deliveryOf(identity: identity, receiptId: candidate.receiptId, messageId: views[candidate.receiptId]?.outboundMessageId)
+        identity: String,
+        generation: Int
+    ) -> Bool {
+        if views[candidate.receiptId]?.status == .accessSent {
+            if generation == wipeGeneration {
+                delivery.markSent(identity: identity, receiptId: candidate.receiptId)
+            }
+            return true
+        }
+        return delivery.isSent(identity: identity, receiptId: candidate.receiptId)
     }
 
-    /// Drains each counterparty's queue and marks its receipts sent right after, before a later drain can prune the
-    /// evidence. Returns the counterparties that could not be reached.
-    private func drain(_ found: [PaykitReceiptCandidate], views: [String: Paykit.ReceiptIssuanceView], identity: String) async -> [String] {
+    private func needsIssuing(_ status: Paykit.ReceiptIssuanceStatus?) -> Bool {
+        switch status {
+        case nil, .pendingStorage, .stored, .failed: true
+        case .accessQueued, .accessSent, .accessFailed, .unknown: false
+        }
+    }
+
+    /// Drains each counterparty's queue. Returns the counterparties that could not be reached.
+    private func drain(_ found: [PaykitReceiptCandidate], identity: String) async -> [String] {
         var counterparties: [String] = []
         for candidate in found where !counterparties.contains(where: { PubkyPublicKeyFormat.matches($0, candidate.counterparty) }) {
             counterparties.append(candidate.counterparty)
@@ -506,16 +530,12 @@ final class PaykitReceiptService {
         var unreachable: [String] = []
         for counterparty in counterparties {
             do {
-                let report = try await sdk.processOutboundPrivateMessages(
+                _ = try await sdk.processOutboundPrivateMessages(
                     counterparty: counterparty, priority: .background, expectedIdentity: identity
                 )
-                delivery.record(identity: identity, report: report)
             } catch {
                 Logger.warn("Failed to send Paykit receipt access: \(error)", context: "PaykitReceiptService")
                 unreachable.append(counterparty)
-            }
-            for candidate in found where PubkyPublicKeyFormat.matches(candidate.counterparty, counterparty) {
-                _ = deliveryOf(candidate, views, identity: identity)
             }
         }
         return unreachable
@@ -604,16 +624,13 @@ protocol PaykitReceiptSdk: Sendable {
 
 extension PaykitSdkService: PaykitReceiptSdk {}
 
-/// What drains reported for queued Paykit private messages, kept across launches and per identity: the SDK reports a
-/// message's delivery only to the call that drained it, so a receipt counts as sent only once some drain saw its message
-/// go out. Message ids are local to one identity's Paykit state, so each identity keeps its own records.
+/// Receipt ids seen sent, per identity. The SDK reports Receipt Access delivery on each issuance, but a restored SDK does not
+/// send a delivered message again, so the wallet backup carries these ids to keep such receipts sent.
 final class PaykitOutboundDeliveryLog: @unchecked Sendable {
     static let shared = PaykitOutboundDeliveryLog()
 
-    /// Most message outcomes kept per identity besides the latest report's; the oldest ids are dropped first.
-    private static let maxEntries = 1000
     private static let backupChanged = PassthroughSubject<Void, Never>()
-    /// Fires when a receipt is first seen sent, the only part of these records the wallet backup keeps.
+    /// Fires when a receipt is first seen sent.
     static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {
         backupChanged.eraseToAnyPublisher()
     }
@@ -627,42 +644,23 @@ final class PaykitOutboundDeliveryLog: @unchecked Sendable {
         self.key = key
     }
 
-    func record(identity: String, report: Paykit.OutboundPrivateSendReport) {
-        guard !report.sent.isEmpty || !report.failed.isEmpty else { return }
-        var reported: [String: Bool] = [:]
-        report.failed.forEach { reported[String($0.outboundMessageId)] = false }
-        report.sent.forEach { reported[String($0)] = true }
-        update(identity: identity) { records in
-            let older = records.outcomes.filter { reported[$0.key] == nil }
-            let kept = Set(older.keys.compactMap(UInt64.init).sorted().suffix(Self.maxEntries).map(String.init))
-            records.outcomes = older.filter { kept.contains($0.key) }.merging(reported) { _, new in new }
-        }
+    func isSent(identity: String, receiptId: String) -> Bool {
+        lock.withLock { records(identity: identity).sentReceiptIds.contains(receiptId) }
     }
 
-    /// True once the receipt or its access message was seen sent, false when the message's latest drain failed, nil
-    /// when no drain reported it. A sent message marks the receipt sent in the same write, so it stays sent whatever
-    /// later pruning drops, and a reset that lands first leaves nothing to restore.
-    func deliveryOf(identity: String, receiptId: String, messageId: UInt64?) -> Bool? {
-        var delivery: Bool?
+    func markSent(identity: String, receiptId: String) {
         update(identity: identity) { records in
-            if records.sentReceiptIds.contains(receiptId) {
-                delivery = true
-                return
-            }
-            delivery = messageId.flatMap { records.outcomes[String($0)] }
-            if delivery == true {
+            if !records.sentReceiptIds.contains(receiptId) {
                 records.sentReceiptIds.append(receiptId)
             }
         }
-        return delivery
     }
 
     func reset() {
         lock.withLock { defaults.removeObject(forKey: key) }
     }
 
-    /// Receipt ids seen sent, by identity, for the wallet backup: a restored SDK does not drain a sent message again,
-    /// so only these records show the receipt as sent. Nil when none were.
+    /// Receipt ids seen sent, by identity, for the wallet backup. Nil when none were.
     func backupSnapshot() -> [String: [String]]? {
         let all = lock.withLock { defaults.dictionary(forKey: key) ?? [:] }
         let sent = all.compactMapValues { (($0 as? [String: Any])?["sentReceiptIds"] as? [String]).flatMap { $0.isEmpty ? nil : $0 } }
@@ -679,7 +677,6 @@ final class PaykitOutboundDeliveryLog: @unchecked Sendable {
     }
 
     private struct Records: Equatable {
-        var outcomes: [String: Bool] = [:]
         var sentReceiptIds: [String] = []
     }
 
@@ -690,7 +687,7 @@ final class PaykitOutboundDeliveryLog: @unchecked Sendable {
             change(&records)
             guard records != current else { return false }
             var all = defaults.dictionary(forKey: key) ?? [:]
-            all[storageKey(identity)] = ["outcomes": records.outcomes, "sentReceiptIds": records.sentReceiptIds]
+            all[storageKey(identity)] = ["sentReceiptIds": records.sentReceiptIds]
             defaults.set(all, forKey: key)
             return records.sentReceiptIds != current.sentReceiptIds
         }
@@ -701,10 +698,7 @@ final class PaykitOutboundDeliveryLog: @unchecked Sendable {
 
     private func records(identity: String) -> Records {
         let value = defaults.dictionary(forKey: key)?[storageKey(identity)] as? [String: Any]
-        return Records(
-            outcomes: value?["outcomes"] as? [String: Bool] ?? [:],
-            sentReceiptIds: value?["sentReceiptIds"] as? [String] ?? []
-        )
+        return Records(sentReceiptIds: value?["sentReceiptIds"] as? [String] ?? [])
     }
 
     private func storageKey(_ identity: String) -> String {
