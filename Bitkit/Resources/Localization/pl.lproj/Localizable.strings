@@ -1047,7 +1047,7 @@
 "settings__status__spark__pending" = "Łączenie...";
 "settings__status__spark__error" = "Offline...";
 "settings__status__spark__exit" = "Trwa wymuszony transfer na oszczędności...";
-"settings__status__exit__funding" = "Potrzebne środki na opłaty";
+"settings__status__exit__funding" = "Potrzebne opłaty awaryjne";
 "settings__status__app_version" = "Bitkit v{version}";
 "settings__status__backup__title" = "Ostatnia kopia zapasowa";
 "settings__status__backup__ready" = "Zapisano";

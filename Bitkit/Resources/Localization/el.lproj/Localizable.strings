@@ -928,7 +928,7 @@
 "settings__status__spark__pending" = "Σύνδεση...";
 "settings__status__spark__error" = "Εκτός σύνδεσης...";
 "settings__status__spark__exit" = "Αναγκαστική μεταφορά στις αποταμιεύσεις σε εξέλιξη...";
-"settings__status__exit__funding" = "Απαιτούμενη χρηματοδότηση τελών";
+"settings__status__exit__funding" = "Απαιτούνται έκτακτα τέλη";
 "settings__status__app_version" = "Bitkit v{version}";
 "settings__status__backup__title" = "Τελευταίο Πλήρες Αντίγραφο Δεδομένων";
 "settings__status__backup__error" = "Αποτυχία ολοκλήρωσης πλήρους αντιγράφου";

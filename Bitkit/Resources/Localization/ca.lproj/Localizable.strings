@@ -984,7 +984,7 @@
 "settings__status__spark__pending" = "Conectant ...";
 "settings__status__spark__error" = "Fora de línia...";
 "settings__status__spark__exit" = "Transferència forçada a estalvis en curs...";
-"settings__status__exit__funding" = "Finançament de comissions necessari";
+"settings__status__exit__funding" = "Comissions d'emergència necessàries";
 "settings__status__app_version" = "Bitkit v{version}";
 "settings__status__backup__title" = "Última còpia de seguretat completa de dades";
 "settings__status__backup__error" = "No s\'ha pogut completar una còpia de seguretat completa";

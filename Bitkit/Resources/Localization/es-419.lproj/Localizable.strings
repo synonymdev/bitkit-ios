@@ -1048,7 +1048,7 @@
 "settings__status__spark__pending" = "Conectando...";
 "settings__status__spark__error" = "Sin conexión...";
 "settings__status__spark__exit" = "Transferencia forzada a ahorros en curso...";
-"settings__status__exit__funding" = "Fondos para comisiones necesarios";
+"settings__status__exit__funding" = "Comisiones de emergencia necesarias";
 "settings__status__app_version" = "Bitkit v{version}";
 "settings__status__backup__title" = "Última copia de seguridad completa de los datos";
 "settings__status__backup__ready" = "Copia de seguridad";

@@ -1047,7 +1047,7 @@
 "settings__status__spark__pending" = "Připojování...";
 "settings__status__spark__error" = "Offline...";
 "settings__status__spark__exit" = "Probíhá vynucený převod do úspor...";
-"settings__status__exit__funding" = "Potřebné krytí poplatků";
+"settings__status__exit__funding" = "Potřebné nouzové poplatky";
 "settings__status__app_version" = "Bitkit v{version}";
 "settings__status__backup__title" = "Nejnovější úplná záloha dat";
 "settings__status__backup__ready" = "Zálohováno";

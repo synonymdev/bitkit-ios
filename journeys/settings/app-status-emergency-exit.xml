@@ -1,7 +1,7 @@
 <journey name="app status emergency exit">
   <description>
     While a Spark force transfer (emergency exit) is active, App Status shows it on the "Lightning Provider (Spark)"
-    row under Lightning Connection, with a yellow warning icon. It reads "Fee funding needed" while the exit asks for
+    row under Lightning Connection, with a yellow warning icon. It reads "Emergency fees needed" while the exit asks for
     fee funding and "Force transfer to savings in progress..." otherwise, including while a payment that covers the
     funding waits to confirm. The row opens the exit's progress screen, and leaving that screen returns to App Status.
     With no active exit the row shows Spark's connection again. An exit paid from savings cannot be cancelled and runs

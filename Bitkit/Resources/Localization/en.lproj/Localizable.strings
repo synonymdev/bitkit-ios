@@ -1065,7 +1065,7 @@
 "settings__status__spark__pending" = "Connecting...";
 "settings__status__spark__error" = "Offline...";
 "settings__status__spark__exit" = "Force transfer to savings in progress...";
-"settings__status__exit__funding" = "Fee funding needed";
+"settings__status__exit__funding" = "Emergency fees needed";
 "settings__status__app_version" = "Bitkit v{version}";
 "settings__status__backup__title" = "Latest Full Data Backup";
 "settings__status__backup__ready" = "Backed up";

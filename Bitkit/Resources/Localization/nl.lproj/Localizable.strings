@@ -1045,7 +1045,7 @@
 "settings__status__spark__pending" = "Aansluiten...";
 "settings__status__spark__error" = "Offline...";
 "settings__status__spark__exit" = "Geforceerde overboeking naar spaargeld bezig...";
-"settings__status__exit__funding" = "Benodigde vergoedingsdekking";
+"settings__status__exit__funding" = "Benodigde noodkosten";
 "settings__status__app_version" = "Bitkit v{version}";
 "settings__status__backup__title" = "Laatste volledige gegevensback-up";
 "settings__status__backup__ready" = "Back-up klaar";
