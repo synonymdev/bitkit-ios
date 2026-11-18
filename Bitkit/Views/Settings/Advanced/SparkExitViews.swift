@@ -47,7 +47,6 @@ struct SparkExitIntroView: View {
 
 /// What the force transfer moves, what the network takes, and what reaches savings.
 struct SparkExitQuoteView: View {
-    @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var navigation: NavigationViewModel
 
     private let exit = SparkExitManager.shared
@@ -79,16 +78,6 @@ struct SparkExitQuoteView: View {
 
                     if let quote = exit.quote {
                         SparkExitQuoteRows(quote: quote)
-
-                        if let unexitableSats = SparkExitMath.unexitableSats(sparkBalanceSats: SparkManager.shared.balanceSats, quote: quote) {
-                            BodySText(t(
-                                "lightning__spark_exit__quote_outside",
-                                variables: ["amount": sparkExitAmountAccent(currency.primaryAmountText(sats: unexitableSats))]
-                            ), accentColor: .white, accentFont: Fonts.bold)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .padding(.top, 16)
-                                .accessibilityIdentifier("SparkExitQuoteOutside")
-                        }
                     } else if exit.isQuoting {
                         let key = SparkManager.shared.isSettlingForExit ? "lightning__spark_exit__quote_settling" : "lightning__spark_exit__quote_loading"
                         BodyMText(t(key))
@@ -803,7 +792,7 @@ struct SparkExitProgressView: View {
                     BodyMText(text, accentFont: Fonts.bold)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, SparkExitLayout.headlineGap)
-                        .padding(.bottom, 16)
+                        .padding(.bottom, 32)
 
                     if let record {
                         SparkExitSteps(record: record)

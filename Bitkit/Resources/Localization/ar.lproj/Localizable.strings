@@ -351,7 +351,6 @@
 "lightning__spark_exit__lost_leaves" = "طالب مالك سابق لهذه الأموال بمبلغ {amount} على السلسلة ولا يمكن استرداده.";
 "lightning__spark_exit__notification_lost" = "لا يمكن استرداد {amount} من تحويلك القسري. افتح Bitkit لمعرفة السبب.";
 "lightning__spark_exit__notification_failed" = "توقف التحويل القسري. افتح Bitkit لمعرفة السبب.";
-"lightning__spark_exit__quote_outside" = "لا يمكن تحويل {amount} من رصيدك على Spark الآن: مبالغ أصغر من أن تغطي رسومها، أو لا تزال تتحرك داخل Spark. يبقى على Spark.";
 "lightning__spark_exit__left_behind_leaves" = "لا يمكن تحويل {amount} بمعدل الرسوم هذا ويبقى على Spark.";
 "lightning__spark_exit__needs_funding_title" = "مطلوب\n<accent>رسوم إضافية</accent>";
 "lightning__spark_exit__needs_funding_text" = "يحتاج التحويل القسري إلى <accent>{amount}</accent> إضافية لدفع رسومه. ادفعها للمتابعة.";

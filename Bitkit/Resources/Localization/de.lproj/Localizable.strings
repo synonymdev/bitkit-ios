@@ -402,7 +402,6 @@
 "lightning__spark_exit__lost_leaves" = "{amount} wurden von einem früheren Besitzer dieser Mittel on-chain beansprucht und können nicht wiederhergestellt werden.";
 "lightning__spark_exit__notification_lost" = "{amount} deiner forcierten Übertragung können nicht zurückgeholt werden. Öffne Bitkit, um den Grund zu sehen.";
 "lightning__spark_exit__notification_failed" = "Deine forcierte Übertragung wurde gestoppt. Öffne Bitkit, um den Grund zu sehen.";
-"lightning__spark_exit__quote_outside" = "{amount} deines Spark-Guthabens kann derzeit nicht übertragen werden: Beträge, die zu klein sind, um ihre eigenen Gebühren zu zahlen, oder die sich noch innerhalb von Spark bewegen. Sie bleiben auf Spark.";
 "lightning__spark_exit__left_behind_leaves" = "{amount} kann bei diesem Gebührensatz nicht übertragen werden und bleibt auf Spark.";
 "lightning__spark_exit__needs_funding_title" = "Mehr Gebühren\n<accent>nötig</accent>";
 "lightning__spark_exit__needs_funding_text" = "Die forcierte Übertragung braucht noch <accent>{amount}</accent>, um ihre Gebühren zu zahlen. Zahle sie, um fortzufahren.";

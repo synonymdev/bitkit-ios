@@ -398,7 +398,6 @@
 "lightning__spark_exit__lost_leaves" = "{amount} è stato riscattato on-chain da un precedente proprietario di questi fondi e non può essere recuperato.";
 "lightning__spark_exit__notification_lost" = "{amount} del tuo trasferimento forzato non può essere recuperato. Apri Bitkit per scoprire perché.";
 "lightning__spark_exit__notification_failed" = "Il tuo trasferimento forzato si è interrotto. Apri Bitkit per scoprire perché.";
-"lightning__spark_exit__quote_outside" = "{amount} del tuo saldo Spark non può essere trasferito ora: importi troppo piccoli per pagare le proprie commissioni, o ancora in movimento dentro Spark. Resta su Spark.";
 "lightning__spark_exit__left_behind_leaves" = "{amount} non può essere trasferito a questa tariffa e resta su Spark.";
 "lightning__spark_exit__needs_funding_title" = "Servono altre\n<accent>commissioni</accent>";
 "lightning__spark_exit__needs_funding_text" = "Il trasferimento forzato richiede <accent>{amount}</accent> in più per pagare le sue commissioni. Paga questo importo per continuare.";

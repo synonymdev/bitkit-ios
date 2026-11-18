@@ -388,7 +388,6 @@
 "lightning__spark_exit__lost_leaves" = "Un propietari anterior d'aquests fons ha reclamat {amount} on-chain i no es pot recuperar.";
 "lightning__spark_exit__notification_lost" = "{amount} de la teva transferència forçosa no es pot recuperar. Obre Bitkit per veure'n el motiu.";
 "lightning__spark_exit__notification_failed" = "La teva transferència forçosa s'ha aturat. Obre Bitkit per veure'n el motiu.";
-"lightning__spark_exit__quote_outside" = "{amount} del teu saldo de Spark no es pot transferir ara mateix: imports massa petits per pagar les seves pròpies comissions, o que encara s'estan movent dins de Spark. Es queda a Spark.";
 "lightning__spark_exit__left_behind_leaves" = "{amount} no es pot transferir amb aquesta tarifa i es queda a Spark.";
 "lightning__spark_exit__needs_funding_title" = "Calen més\n<accent>comissions</accent>";
 "lightning__spark_exit__needs_funding_text" = "La transferència forçosa necessita <accent>{amount}</accent> més per pagar les seves comissions. Paga-ho per continuar.";

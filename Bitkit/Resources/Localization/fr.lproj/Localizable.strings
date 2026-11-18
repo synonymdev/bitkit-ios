@@ -405,7 +405,6 @@
 "lightning__spark_exit__lost_leaves" = "{amount} a été réclamé on-chain par un ancien propriétaire de ces fonds et ne peut pas être récupéré.";
 "lightning__spark_exit__notification_lost" = "{amount} de votre transfert forcé ne peut pas être récupéré. Ouvrez Bitkit pour savoir pourquoi.";
 "lightning__spark_exit__notification_failed" = "Votre transfert forcé s'est arrêté. Ouvrez Bitkit pour savoir pourquoi.";
-"lightning__spark_exit__quote_outside" = "{amount} de votre solde Spark ne peut pas être transféré pour le moment : des montants trop faibles pour payer leurs propres frais, ou encore en mouvement dans Spark. Il reste sur Spark.";
 "lightning__spark_exit__left_behind_leaves" = "{amount} ne peut pas être transféré à ce taux de frais et reste sur Spark.";
 "lightning__spark_exit__needs_funding_title" = "Frais supplémentaires\n<accent>requis</accent>";
 "lightning__spark_exit__needs_funding_text" = "Le transfert forcé a besoin de <accent>{amount}</accent> de plus pour payer ses frais. Payez-les pour continuer.";

@@ -434,7 +434,6 @@
 "lightning__spark_exit__lost_leaves" = "{amount} was claimed on-chain by an older owner of these funds and can't be recovered.";
 "lightning__spark_exit__notification_lost" = "{amount} of your force transfer can't be recovered. Open Bitkit to see why.";
 "lightning__spark_exit__notification_failed" = "Your force transfer stopped. Open Bitkit to see why.";
-"lightning__spark_exit__quote_outside" = "{amount} of your Spark balance can't be transferred right now: amounts too small to pay their own fees, or still moving inside Spark. It stays on Spark.";
 "lightning__spark_exit__left_behind_leaves" = "{amount} can't be transferred at this fee rate and stays on Spark.";
 "lightning__spark_exit__needs_funding_title" = "More fees\n<accent>needed</accent>";
 "lightning__spark_exit__needs_funding_text" = "The force transfer needs <accent>{amount}</accent> more to pay its fees. Pay it to continue.";

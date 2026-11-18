@@ -402,7 +402,6 @@
 "lightning__spark_exit__lost_leaves" = "{amount} is on-chain geclaimd door een eerdere eigenaar van dit geld en kan niet worden teruggehaald.";
 "lightning__spark_exit__notification_lost" = "{amount} van uw geforceerde overboeking kan niet worden hersteld. Open Bitkit om te zien waarom.";
 "lightning__spark_exit__notification_failed" = "Uw geforceerde overboeking is gestopt. Open Bitkit om te zien waarom.";
-"lightning__spark_exit__quote_outside" = "{amount} van uw Spark-saldo kan nu niet worden overgeboekt: bedragen die te klein zijn om hun eigen kosten te betalen, of die nog binnen Spark bewegen. Het blijft op Spark.";
 "lightning__spark_exit__left_behind_leaves" = "{amount} kan tegen dit kostentarief niet worden overgeboekt en blijft op Spark.";
 "lightning__spark_exit__needs_funding_title" = "Meer vergoeding\n<accent>nodig</accent>";
 "lightning__spark_exit__needs_funding_text" = "De geforceerde overboeking heeft nog <accent>{amount}</accent> nodig om de kosten te betalen. Betaal dit bedrag om door te gaan.";

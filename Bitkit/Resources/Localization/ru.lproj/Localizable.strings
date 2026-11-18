@@ -399,7 +399,6 @@
 "lightning__spark_exit__lost_leaves" = "{amount} забрал ончейн один из прежних владельцев этих средств, их нельзя вернуть.";
 "lightning__spark_exit__notification_lost" = "{amount} из вашего принудительного перевода нельзя вернуть. Откройте Bitkit, чтобы узнать причину.";
 "lightning__spark_exit__notification_failed" = "Ваш принудительный перевод остановлен. Откройте Bitkit, чтобы узнать причину.";
-"lightning__spark_exit__quote_outside" = "{amount} вашего баланса Spark сейчас нельзя перевести: суммы слишком малы, чтобы оплатить собственные комиссии, или ещё перемещаются внутри Spark. Они остаются в Spark.";
 "lightning__spark_exit__left_behind_leaves" = "{amount} нельзя перевести при этой ставке комиссии, и они остаются в Spark.";
 "lightning__spark_exit__needs_funding_title" = "Нужно больше\n<accent>комиссий</accent>";
 "lightning__spark_exit__needs_funding_text" = "Для оплаты комиссий принудительному переводу нужно ещё <accent>{amount}</accent>. Оплатите, чтобы продолжить.";

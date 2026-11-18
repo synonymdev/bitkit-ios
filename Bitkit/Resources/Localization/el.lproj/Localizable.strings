@@ -375,7 +375,6 @@
 "lightning__spark_exit__lost_leaves" = "{amount} διεκδικήθηκε on-chain από προηγούμενο κάτοχο αυτών των κεφαλαίων και δεν μπορεί να ανακτηθεί.";
 "lightning__spark_exit__notification_lost" = "Τα {amount} της αναγκαστικής μεταφοράς σας δεν μπορούν να ανακτηθούν. Ανοίξτε το Bitkit για να δείτε γιατί.";
 "lightning__spark_exit__notification_failed" = "Η αναγκαστική μεταφορά σας σταμάτησε. Ανοίξτε το Bitkit για να δείτε γιατί.";
-"lightning__spark_exit__quote_outside" = "Τα {amount} του υπολοίπου σας στο Spark δεν μπορούν να μεταφερθούν αυτή τη στιγμή: ποσά πολύ μικρά για να πληρώσουν τα δικά τους τέλη, ή που ακόμα μετακινούνται μέσα στο Spark. Παραμένουν στο Spark.";
 "lightning__spark_exit__left_behind_leaves" = "Τα {amount} δεν μπορούν να μεταφερθούν με αυτό το ποσοστό τέλους και παραμένουν στο Spark.";
 "lightning__spark_exit__needs_funding_title" = "Απαιτούνται\n<accent>επιπλέον τέλη</accent>";
 "lightning__spark_exit__needs_funding_text" = "Η αναγκαστική μεταφορά χρειάζεται άλλα <accent>{amount}</accent> για να πληρώσει τα τέλη της. Πληρώστε τα για να συνεχίσει.";

@@ -404,7 +404,6 @@
 "lightning__spark_exit__lost_leaves" = "{amount} zostało przejęte on-chain przez poprzedniego właściciela tych środków i nie można go odzyskać.";
 "lightning__spark_exit__notification_lost" = "{amount} z Twojego wymuszonego transferu nie można odzyskać. Otwórz Bitkit, aby zobaczyć powód.";
 "lightning__spark_exit__notification_failed" = "Twój wymuszony transfer został zatrzymany. Otwórz Bitkit, aby zobaczyć powód.";
-"lightning__spark_exit__quote_outside" = "{amount} Twojego salda Spark nie może być teraz przesłane: kwoty zbyt małe, by pokryć własne opłaty, lub wciąż przemieszczające się w Spark. Pozostaje na Spark.";
 "lightning__spark_exit__left_behind_leaves" = "{amount} nie może zostać przesłane przy tej stawce opłaty i pozostaje na Spark.";
 "lightning__spark_exit__needs_funding_title" = "Potrzeba więcej\n<accent>opłat</accent>";
 "lightning__spark_exit__needs_funding_text" = "Wymuszony transfer potrzebuje jeszcze <accent>{amount}</accent> na pokrycie opłat. Zapłać tę kwotę, aby kontynuować.";
