@@ -392,6 +392,7 @@ struct SparkExitPayView: View {
     private var canAutoStart: Bool {
         SparkExitMath.canAutoStartFunding(
             isFunded: isFunded,
+            isStarting: isStarting,
             hasAutoStarted: hasAutoStarted,
             entrySeenCount: entrySeenCount,
             seenCount: exit.fundingSeenCount
@@ -425,7 +426,7 @@ struct SparkExitPayView: View {
             // Funds already at the address on entry wait for a tap; a failed start offers Try Again.
             if isFunded, !isStarting, !canAutoStart {
                 CustomButton(title: t(hasAutoStarted ? "common__try_again" : "common__continue")) {
-                    await start()
+                    start()
                 }
                 .padding(.bottom, 16)
                 .accessibilityIdentifier("SparkExitPayRetry")
@@ -451,19 +452,22 @@ struct SparkExitPayView: View {
         .onChange(of: canAutoStart) { _, canAutoStart in
             guard canAutoStart else { return }
             hasAutoStarted = true
-            isStarting = true
-            Task { await start(isClaimed: true) }
+            start()
         }
     }
 
-    private func start(isClaimed: Bool = false) async {
-        guard isClaimed || !isStarting else { return }
+    /// Claims the one start this screen runs at a time before its task begins, so neither a tap nor a payment can
+    /// launch a second.
+    private func start() {
+        guard !isStarting else { return }
         isStarting = true
-        defer { isStarting = false }
         exit.fundFromSavings = false
         // Asked as the force transfer starts: the reminders are how Bitkit reaches the user when a step needs the app.
         PushNotificationManager.shared.requestPermissionIfUndecided()
-        try? await startSparkExit(app: app, navigation: navigation)
+        Task {
+            try? await startSparkExit(app: app, navigation: navigation)
+            isStarting = false
+        }
     }
 }
 
