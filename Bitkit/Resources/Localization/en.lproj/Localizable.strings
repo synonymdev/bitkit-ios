@@ -470,7 +470,7 @@
 "lightning__spark_exit__cancel_title" = "Cancel transfer?";
 "lightning__spark_exit__fee_bump_leaves_behind" = "A higher fee would leave part of this transfer on Spark, so none is offered. The transfer confirms once network fees drop.";
 "lightning__spark_exit__copy_address" = "Copy address";
-"lightning__spark_exit__done_button" = "Wallet overview";
+"lightning__spark_exit__done_button" = "Wallet Overview";
 "lightning__spark_exit__done_returned" = "Your spending balance of <accent>{amount}</accent> has been returned to your savings balance.";
 "lightning__spark_exit__done_returned_fees" = "Your spending balance of <accent>{amount}</accent> and the remaining emergency fee budget of <accent>{fees}</accent> have been returned to your savings balance.";
 "lightning__spark_exit__fees_header" = "Emergency fees";
