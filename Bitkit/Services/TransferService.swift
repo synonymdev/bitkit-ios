@@ -172,6 +172,14 @@ class TransferService {
                                     "Force close batched sweep detected via txid \(sweepTxid), settled transfer: \(transfer.id)",
                                     context: "TransferService"
                                 )
+                            } else if let pendingSweeps = balances?.pendingBalancesFromChannelClosures,
+                                      Self.isDustOnlySweep(channelId: channelId, pendingSweeps: pendingSweeps)
+                            {
+                                // LDK only adds the sweep's output when more than dust is left after fees. A dust-only
+                                // sweep has no outputs, every broadcast fails with `bad-txns-vout-empty` and the sweep
+                                // never resolves, so settle the transfer: those sats can't be claimed.
+                                try await markSettled(id: transfer.id)
+                                Logger.info("Force close sweep is dust, settled transfer: \(transfer.id)", context: "TransferService")
                             } else {
                                 Logger.debug("Force close awaiting sweep detection for transfer: \(transfer.id)", context: "TransferService")
                             }
@@ -183,6 +191,38 @@ class TransferService {
                     }
                 }
             }
+        }
+    }
+
+    /// Largest sweep treated as dust. One sweep input plus a P2TR output weighs up to about 530 WU, so at
+    /// ldk-node's 1000 sat/kW fallback rate for sweeps the fee is about 530 sats; add the P2TR dust limit of
+    /// 330 sats and round up. A sweepable output under it settles early and later shows as an on-chain
+    /// receive. Keep in step with Android `TransferRepo.MAX_UNSWEEPABLE_SATS`.
+    static let maxUnsweepableSats: UInt64 = 1000
+
+    /// Whether the channel's pending sweeps together are too small to ever be swept.
+    static func isDustOnlySweep(channelId: String, pendingSweeps: [PendingSweepBalance]) -> Bool {
+        let channelSweepSats = pendingSweeps
+            .filter { $0.sweepChannelId == channelId }
+            .reduce(UInt64(0)) { $0 + $1.sweepAmountSats }
+        return channelSweepSats <= maxUnsweepableSats
+    }
+}
+
+private extension PendingSweepBalance {
+    var sweepChannelId: ChannelId? {
+        switch self {
+        case let .pendingBroadcast(channelId, _): channelId
+        case let .broadcastAwaitingConfirmation(channelId, _, _, _): channelId
+        case let .awaitingThresholdConfirmations(channelId, _, _, _, _): channelId
+        }
+    }
+
+    var sweepAmountSats: UInt64 {
+        switch self {
+        case let .pendingBroadcast(_, amountSatoshis): amountSatoshis
+        case let .broadcastAwaitingConfirmation(_, _, _, amountSatoshis): amountSatoshis
+        case let .awaitingThresholdConfirmations(_, _, _, _, amountSatoshis): amountSatoshis
         }
     }
 }
