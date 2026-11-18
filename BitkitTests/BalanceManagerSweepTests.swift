@@ -21,13 +21,17 @@ final class BalanceManagerSweepTests: XCTestCase {
         .broadcastAwaitingConfirmation(channelId: channel, latestBroadcastHeight: 800_000, latestSpendingTxid: txid, amountSatoshis: 500)
     }
 
-    func testWalletHoldingTheSweepStopsTheTransferCounting() {
-        let sweeps = [broadcastSweep(channel: channelId, txid: "sweep-txid")]
-
-        XCTAssertTrue(BalanceManager.walletHoldsSweep(channelId: channelId, pendingSweeps: sweeps, payments: [onchainPayment(txid: "sweep-txid")]))
+    private func held(_ sweeps: [PendingSweepBalance], _ payments: [LDKNode.PaymentDetails]) -> [UInt64] {
+        BalanceManager.heldSweeps(channelId: channelId, pendingSweeps: sweeps, payments: payments).map(\.sats)
     }
 
-    func testConfirmedSweepInTheWalletStopsTheTransferCounting() {
+    func testHeldSweepCountsWhatItPaidTheWallet() {
+        let sweeps = [broadcastSweep(channel: channelId, txid: "sweep-txid")]
+
+        XCTAssertEqual(held(sweeps, [onchainPayment(txid: "sweep-txid")]), [389])
+    }
+
+    func testConfirmedSweepInTheWalletIsHeld() {
         let confirmed = PendingSweepBalance.awaitingThresholdConfirmations(
             channelId: channelId,
             latestSpendingTxid: "SWEEP-TXID",
@@ -36,32 +40,34 @@ final class BalanceManagerSweepTests: XCTestCase {
             amountSatoshis: 500
         )
 
-        XCTAssertTrue(BalanceManager.walletHoldsSweep(
-            channelId: channelId,
-            pendingSweeps: [confirmed],
-            payments: [onchainPayment(txid: "sweep-txid")]
-        ))
+        XCTAssertEqual(held([confirmed], [onchainPayment(txid: "sweep-txid")]), [389])
     }
 
-    func testSweepNotYetInTheWalletKeepsTheTransferCounting() {
+    func testSweepNotYetInTheWalletIsNotHeld() {
         let sweeps = [broadcastSweep(channel: channelId, txid: "sweep-txid")]
 
-        XCTAssertFalse(BalanceManager.walletHoldsSweep(channelId: channelId, pendingSweeps: sweeps, payments: []))
-        XCTAssertFalse(BalanceManager.walletHoldsSweep(channelId: channelId, pendingSweeps: sweeps, payments: [onchainPayment(txid: "other")]))
+        XCTAssertEqual(held(sweeps, []), [])
+        XCTAssertEqual(held(sweeps, [onchainPayment(txid: "other")]), [])
     }
 
-    func testAnotherChannelsSweepOrAnUnbroadcastSweepDoesNotCount() {
+    func testAnotherChannelsSweepOrAnUnbroadcastSweepIsNotHeld() {
         let payments = [onchainPayment(txid: "sweep-txid")]
 
-        XCTAssertFalse(BalanceManager.walletHoldsSweep(
-            channelId: channelId,
-            pendingSweeps: [broadcastSweep(channel: "other-channel", txid: "sweep-txid")],
-            payments: payments
-        ))
-        XCTAssertFalse(BalanceManager.walletHoldsSweep(
-            channelId: channelId,
-            pendingSweeps: [.pendingBroadcast(channelId: channelId, amountSatoshis: 500)],
-            payments: payments
-        ))
+        XCTAssertEqual(held([broadcastSweep(channel: "other-channel", txid: "sweep-txid")], payments), [])
+        XCTAssertEqual(held([.pendingBroadcast(channelId: channelId, amountSatoshis: 500)], payments), [])
+    }
+
+    func testBatchedSweepIsHeldByEachOfItsChannels() {
+        let sweeps = [
+            broadcastSweep(channel: channelId, txid: "batch-txid"),
+            broadcastSweep(channel: "other-channel", txid: "batch-txid"),
+        ]
+        let payments = [onchainPayment(txid: "batch-txid")]
+
+        XCTAssertEqual(held(sweeps, payments), [389])
+        XCTAssertEqual(
+            BalanceManager.heldSweeps(channelId: "other-channel", pendingSweeps: sweeps, payments: payments).map(\.txid),
+            ["batch-txid"]
+        )
     }
 }

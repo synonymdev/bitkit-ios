@@ -2081,6 +2081,14 @@ extension LightningService {
         cachedChannels
     }
 
+    /// Balances and payments read in one LDK call, so both describe the same wallet state.
+    func balancesAndPayments() async -> (balances: BalanceDetails, payments: [PaymentDetails])? {
+        try? await ServiceQueue.background(.ldk) { [self] in
+            guard let node else { return nil }
+            return (node.listBalances(), node.listPayments())
+        }
+    }
+
     func listPayments() async -> [PaymentDetails]? {
         try? await ServiceQueue.background(.ldk) { [self] in
             node?.listPayments()
