@@ -202,6 +202,7 @@ struct BitkitApp: App {
             try? TrezorCredentialStorage.deleteAll()
         }
         _ = ToastWindowManager.shared
+        Wip242TouchLog.install()
     }
 
     var body: some Scene {
