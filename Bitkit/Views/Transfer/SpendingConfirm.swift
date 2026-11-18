@@ -276,7 +276,7 @@ struct SpendingConfirmFees: View {
                     CaptionMText(t("lightning__transfer_hw__address"))
                     BodySSBText(address)
                         .lineLimit(1)
-                        .truncationMode(.middle)
+                        .truncationMode(.tail)
                         .padding(.bottom, 8)
                     Divider()
                 }

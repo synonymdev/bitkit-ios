@@ -14,10 +14,10 @@ struct TransferLearnMoreView: View {
                         DisplayText(t("lightning__spark_learn__title"), accentColor: .purpleAccent)
 
                         VStack(alignment: .leading, spacing: 0) {
-                            BodyMBoldText(t("fee__fast__title"))
+                            BodyMBoldText(t("fee__fast__title"), textColor: .textPrimary)
                             BodyMText(t("lightning__spark_learn__fast_text"))
                                 .padding(.bottom, 22)
-                            BodyMBoldText(t("lightning__spending_confirm__later"))
+                            BodyMBoldText(t("lightning__spending_confirm__later"), textColor: .textPrimary)
                             BodyMText(t("lightning__spark_learn__later_text"))
                         }
                     }

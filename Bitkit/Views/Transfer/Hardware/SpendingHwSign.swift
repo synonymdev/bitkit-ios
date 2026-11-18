@@ -31,54 +31,59 @@ struct SpendingHwSign: View {
                 .disabled(!hwSend.canLeave)
                 .padding(.bottom, 16)
 
-            GeometryReader { geometry in
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 24) {
-                        DisplayText(
-                            t(hwSend.hasPendingBroadcast ? "lightning__transfer_hw__signed_title" : "lightning__transfer_hw__sign_title"),
-                            accentColor: .purpleAccent
-                        )
+            ZStack(alignment: .bottom) {
+                GeometryReader { geometry in
+                    ScrollView(showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 24) {
+                            DisplayText(
+                                t(hwSend.hasPendingBroadcast ? "lightning__transfer_hw__signed_title" : "lightning__transfer_hw__sign_title"),
+                                accentColor: .purpleAccent
+                            )
 
-                        SpendingConfirmFees(
-                            quote: flow.quote,
-                            speed: flow.speed,
-                            isLoading: flow.quote == nil && flow.quoteError == nil,
-                            address: flow.quote?.address
-                        )
+                            SpendingConfirmFees(
+                                quote: flow.quote,
+                                speed: flow.speed,
+                                isLoading: flow.quote == nil && flow.quoteError == nil,
+                                address: flow.quote?.address
+                            )
 
-                        if let error = flow.quoteError {
-                            BodyMText(error, textColor: .redAccent)
+                            if let error = flow.quoteError {
+                                BodyMText(error, textColor: .redAccent)
+                            }
+
+                            SpendingSpeedPicker(
+                                quote: flow.quote,
+                                speed: Bindable(flow).speed,
+                                isLoading: flow.quote == nil && flow.quoteError == nil
+                            )
+                            .disabled(isBusy || hwSend.hasPendingBroadcast)
+
+                            Spacer(minLength: 8)
+
+                            // As in the frame: the device's top 187 of 254 points shows, its lower part behind the button.
+                            Image(vendor.transferSignImageName)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 254, height: 254)
+                                .frame(height: 187, alignment: .top)
+                                .clipped()
+                                .frame(maxWidth: .infinity)
+                                .accessibilityHidden(true)
                         }
-
-                        SpendingSpeedPicker(
-                            quote: flow.quote,
-                            speed: Bindable(flow).speed,
-                            isLoading: flow.quote == nil && flow.quoteError == nil
-                        )
-                        .disabled(isBusy || hwSend.hasPendingBroadcast)
-
-                        Spacer(minLength: 0)
-
-                        Image(vendor.signImageName)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: 200, maxHeight: 200)
-                            .frame(maxWidth: .infinity)
-                            .accessibilityHidden(true)
+                        // Fills the free space on tall screens so the device sits at the bottom, and scrolls on short ones.
+                        .frame(minHeight: geometry.size.height)
                     }
-                    // Fills the free space on tall screens so the picture sits centred in it, and scrolls on short ones.
-                    .frame(minHeight: geometry.size.height)
                 }
-            }
 
-            CustomButton(
-                title: hwSend.hasPendingBroadcast ? t("common__retry") : vendor.sendSignButtonTitle,
-                isDisabled: isBusy || flow.quote == nil,
-                isLoading: isBusy
-            ) {
-                startSigning()
+                CustomButton(
+                    title: hwSend.hasPendingBroadcast ? t("common__retry") : vendor.sendSignButtonTitle,
+                    isDisabled: isBusy || flow.quote == nil,
+                    isLoading: isBusy
+                ) {
+                    startSigning()
+                }
+                .accessibilityIdentifier("HardwareTransferOpenTrezorConnect")
             }
-            .accessibilityIdentifier("HardwareTransferOpenTrezorConnect")
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("HardwareTransferSign")
