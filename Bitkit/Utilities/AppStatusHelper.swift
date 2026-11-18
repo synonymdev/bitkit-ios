@@ -27,6 +27,11 @@ enum HealthStatus: String {
 enum ExitStatusStep: String {
     case funding
     case pending
+
+    /// The Spark row's text while the force transfer runs, on App Status and Spark's connection screen.
+    var descriptionKey: String {
+        self == .funding ? "settings__status__exit__funding" : "settings__status__spark__exit"
+    }
 }
 
 @MainActor
