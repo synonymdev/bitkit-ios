@@ -19,10 +19,10 @@ final class ForceCloseDustTests: XCTestCase {
         XCTAssertTrue(TransferService.isDustOnlySweep(channelId: channelId, pendingSweeps: sweeps))
     }
 
-    func testSweepsAddingUpToMoreThanDustAreSweepable() {
+    func testSweepsAddingUpToASweepableAmountAreNotDust() {
         let sweeps: [PendingSweepBalance] = [
-            .pendingBroadcast(channelId: channelId, amountSatoshis: 600),
-            .pendingBroadcast(channelId: channelId, amountSatoshis: 401),
+            .pendingBroadcast(channelId: channelId, amountSatoshis: 400),
+            .pendingBroadcast(channelId: channelId, amountSatoshis: 64),
             .pendingBroadcast(channelId: "other-channel", amountSatoshis: 1),
         ]
 
