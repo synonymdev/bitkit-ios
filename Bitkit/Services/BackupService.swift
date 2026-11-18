@@ -1538,7 +1538,8 @@ class BackupService {
                     return
                 }
                 try await restoreExitBackup(backup)
-                Logger.info("Restore success for: '\(BackupCategory.sparkExit.rawValue)'", context: "BackupService")
+                // Spark imports it only once connected, and may still reject it then.
+                Logger.info("Staged '\(BackupCategory.sparkExit.rawValue)' for Spark's import", context: "BackupService")
             } else {
                 Logger.warn("Restore null for: '\(BackupCategory.sparkExit.rawValue)'", context: "BackupService")
             }
