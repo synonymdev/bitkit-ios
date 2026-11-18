@@ -372,7 +372,6 @@
 "lightning__spark_exit__fees" = "Taxas de rede";
 "lightning__spark_exit__receive" = "Recebe (estimativa)";
 "lightning__spark_exit__savings_refused" = "O seu pagamento da poupança não foi concluído. Pague novamente ou financie a partir de outra carteira.";
-"lightning__spark_exit__outside_exit" = "{amount} na Spark não faz parte desta transferência e fica na Spark.";
 "lightning__spark_exit__quote_loading" = "A obter os custos…";
 "lightning__spark_exit__quote_settling" = "A aguardar que a Spark termine de mover o seu saldo. Isto pode demorar até 5 minutos.";
 "lightning__spark_exit__quote_error" = "Não foi possível obter os custos da transferência. Tente novamente.";
@@ -397,8 +396,6 @@
 "lightning__spark_exit__leftover_swept" = "{amount} de taxas de emergência não utilizadas foi enviado para a poupança.";
 "lightning__spark_exit__leftover_sending" = "A enviar {amount} de taxas de emergência não utilizadas para a poupança.";
 "lightning__spark_exit__leftover_dust" = "{amount} de taxas de emergência não utilizadas é demasiado pequeno para enviar e fica em {address}, caminho de derivação {path}.";
-"lightning__spark_exit__fund_paid" = "Pago da poupança, a aguardar confirmação.";
-"lightning__spark_exit__fund_pending" = "Pagamento detetado, a aguardar confirmação.";
 "lightning__spark_exit__lost_leaves" = "{amount} foi reclamado on-chain por um antigo dono destes fundos e não pode ser recuperado.";
 "lightning__spark_exit__notification_lost" = "{amount} da sua transferência forçada não pode ser recuperado. Abra a Bitkit para ver porquê.";
 "lightning__spark_exit__notification_failed" = "A sua transferência forçada parou. Abra a Bitkit para ver porquê.";

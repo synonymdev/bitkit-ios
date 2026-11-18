@@ -401,7 +401,6 @@
 "lightning__spark_exit__fees" = "Network fees";
 "lightning__spark_exit__receive" = "You receive (estimate)";
 "lightning__spark_exit__savings_refused" = "Your savings payment didn't go through. Pay again, or fund from another wallet.";
-"lightning__spark_exit__outside_exit" = "{amount} on Spark is not part of this transfer and stays on Spark.";
 "lightning__spark_exit__quote_loading" = "Getting the costs…";
 "lightning__spark_exit__quote_settling" = "Waiting for Spark to finish moving your balance. This can take up to 5 minutes.";
 "lightning__spark_exit__quote_error" = "Could not get the transfer costs. Try again.";
@@ -429,8 +428,6 @@
 "lightning__spark_exit__earlier_addresses_text" = "Earlier force transfers used these emergency fee addresses. Coins left at one stay yours: spend them with your recovery phrase and its derivation path.";
 "lightning__spark_exit__earlier_path" = "Derivation path";
 "lightning__spark_exit__leftover_dust" = "{amount} of unused emergency fees is too small to send and stays at {address}, derivation path {path}.";
-"lightning__spark_exit__fund_paid" = "Paid from savings, waiting for confirmation.";
-"lightning__spark_exit__fund_pending" = "Payment seen, waiting for confirmation.";
 "lightning__spark_exit__lost_leaves" = "{amount} was claimed on-chain by an older owner of these funds and can't be recovered.";
 "lightning__spark_exit__notification_lost" = "{amount} of your force transfer can't be recovered. Open Bitkit to see why.";
 "lightning__spark_exit__notification_failed" = "Your force transfer stopped. Open Bitkit to see why.";

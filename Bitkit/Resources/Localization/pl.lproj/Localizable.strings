@@ -374,7 +374,6 @@
 "lightning__spark_exit__fees" = "Opłaty sieciowe";
 "lightning__spark_exit__receive" = "Otrzymasz (szacunkowo)";
 "lightning__spark_exit__savings_refused" = "Twoja płatność z Oszczędności nie przeszła. Zapłać ponownie lub sfinansuj z innego portfela.";
-"lightning__spark_exit__outside_exit" = "{amount} na Spark nie jest częścią tego transferu i pozostaje na Spark.";
 "lightning__spark_exit__quote_loading" = "Pobieranie kosztów…";
 "lightning__spark_exit__quote_settling" = "Czekamy, aż Spark zakończy przenoszenie Twojego salda. Może to potrwać do 5 minut.";
 "lightning__spark_exit__quote_error" = "Nie udało się pobrać kosztów transferu. Spróbuj ponownie.";
@@ -399,8 +398,6 @@
 "lightning__spark_exit__leftover_swept" = "{amount} niewykorzystanych opłat awaryjnych zostało wysłane do oszczędności.";
 "lightning__spark_exit__leftover_sending" = "Wysyłanie {amount} niewykorzystanych opłat awaryjnych do oszczędności.";
 "lightning__spark_exit__leftover_dust" = "{amount} niewykorzystanych opłat awaryjnych to za mało, by je wysłać, i pozostaje pod adresem {address}, ścieżka derywacji {path}.";
-"lightning__spark_exit__fund_paid" = "Zapłacono z oszczędności, czekamy na potwierdzenie.";
-"lightning__spark_exit__fund_pending" = "Płatność wykryta, czekamy na potwierdzenie.";
 "lightning__spark_exit__lost_leaves" = "{amount} zostało przejęte on-chain przez poprzedniego właściciela tych środków i nie można go odzyskać.";
 "lightning__spark_exit__notification_lost" = "{amount} z Twojego wymuszonego transferu nie można odzyskać. Otwórz Bitkit, aby zobaczyć powód.";
 "lightning__spark_exit__notification_failed" = "Twój wymuszony transfer został zatrzymany. Otwórz Bitkit, aby zobaczyć powód.";

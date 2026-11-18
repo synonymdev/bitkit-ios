@@ -368,7 +368,6 @@
 "lightning__spark_exit__fees" = "Commissioni di rete";
 "lightning__spark_exit__receive" = "Riceverai (stima)";
 "lightning__spark_exit__savings_refused" = "Il tuo pagamento dai risparmi non è andato a buon fine. Paga di nuovo o finanzia da un altro portafoglio.";
-"lightning__spark_exit__outside_exit" = "{amount} su Spark non fa parte di questo trasferimento e resta su Spark.";
 "lightning__spark_exit__quote_loading" = "Calcolo dei costi…";
 "lightning__spark_exit__quote_settling" = "In attesa che Spark finisca di spostare il tuo saldo. Può richiedere fino a 5 minuti.";
 "lightning__spark_exit__quote_error" = "Impossibile ottenere i costi del trasferimento. Riprova.";
@@ -393,8 +392,6 @@
 "lightning__spark_exit__leftover_swept" = "{amount} di commissioni di emergenza non utilizzate è stato inviato ai risparmi.";
 "lightning__spark_exit__leftover_sending" = "Invio di {amount} di commissioni di emergenza non utilizzate ai risparmi.";
 "lightning__spark_exit__leftover_dust" = "{amount} di commissioni di emergenza non utilizzate è troppo poco per essere inviato e resta su {address}, percorso di derivazione {path}.";
-"lightning__spark_exit__fund_paid" = "Pagato dai risparmi, in attesa di conferma.";
-"lightning__spark_exit__fund_pending" = "Pagamento rilevato, in attesa di conferma.";
 "lightning__spark_exit__lost_leaves" = "{amount} è stato riscattato on-chain da un precedente proprietario di questi fondi e non può essere recuperato.";
 "lightning__spark_exit__notification_lost" = "{amount} del tuo trasferimento forzato non può essere recuperato. Apri Bitkit per scoprire perché.";
 "lightning__spark_exit__notification_failed" = "Il tuo trasferimento forzato si è interrotto. Apri Bitkit per scoprire perché.";

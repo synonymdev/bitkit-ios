@@ -375,7 +375,6 @@
 "lightning__spark_exit__fees" = "Comisiones de red";
 "lightning__spark_exit__receive" = "Recibes (estimado)";
 "lightning__spark_exit__savings_refused" = "Tu pago desde ahorros no se completó. Paga de nuevo o financia desde otra billetera.";
-"lightning__spark_exit__outside_exit" = "{amount} en Spark no forma parte de esta transferencia y se queda en Spark.";
 "lightning__spark_exit__quote_loading" = "Obteniendo los costos…";
 "lightning__spark_exit__quote_settling" = "Esperando a que Spark termine de mover tu saldo. Esto puede tardar hasta 5 minutos.";
 "lightning__spark_exit__quote_error" = "No se pudieron obtener los costos de la transferencia. Intenta de nuevo.";
@@ -400,8 +399,6 @@
 "lightning__spark_exit__leftover_swept" = "{amount} de comisiones de emergencia sin usar se envió a tus ahorros.";
 "lightning__spark_exit__leftover_sending" = "Enviando {amount} de comisiones de emergencia sin usar a tus ahorros.";
 "lightning__spark_exit__leftover_dust" = "{amount} de comisiones de emergencia sin usar es demasiado pequeño para enviarse y se queda en {address}, ruta de derivación {path}.";
-"lightning__spark_exit__fund_paid" = "Pagado desde ahorros, esperando confirmación.";
-"lightning__spark_exit__fund_pending" = "Pago detectado, esperando confirmación.";
 "lightning__spark_exit__lost_leaves" = "Un propietario anterior de estos fondos reclamó {amount} on-chain y no se puede recuperar.";
 "lightning__spark_exit__notification_lost" = "{amount} de tu transferencia forzada no se puede recuperar. Abre Bitkit para ver por qué.";
 "lightning__spark_exit__notification_failed" = "Tu transferencia forzada se detuvo. Abre Bitkit para ver por qué.";

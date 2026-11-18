@@ -525,19 +525,6 @@ func sparkExitAmountAccent(_ amount: String) -> String {
     "<accent>\(amount)</accent>"
 }
 
-/// A fee funding payment on its way: no QR and no amount to send, only what is awaited and its transaction.
-struct SparkExitWaitingPayment: View {
-    let text: String
-    let txid: String
-    let testId: String
-
-    var body: some View {
-        SparkExitTxNote(text: text, txid: txid)
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier(testId)
-    }
-}
-
 /// A line of progress with the transaction it is about, in the activity explore cell whose id copies on tap.
 struct SparkExitTxNote: View {
     let text: String
@@ -804,17 +791,6 @@ struct SparkExitProgressView: View {
                                 .accessibilityIdentifier("SparkExitReturned")
                         }
 
-                        if let sweepTxid = SparkExitMath.received(record)?.sweepTxid {
-                            ActivityInfoSection(
-                                title: t("wallet__activity_tx_id"),
-                                content: sweepTxid,
-                                testId: "SparkExitSweepTxid",
-                                usesCustomDivider: true,
-                                bottomSpacing: 0
-                            )
-                            .padding(.top, 24)
-                        }
-
                         if exit.isSavingsPaymentRefused {
                             BodySText(t("lightning__spark_exit__savings_refused"), textColor: .redAccent)
                                 .padding(.top, 24)
@@ -836,13 +812,7 @@ struct SparkExitProgressView: View {
                                     targetSats: exit.fundingAskTotal ?? sats + receivedSats
                                 )
                                 .padding(.top, 32)
-                            case let .paid(txid):
-                                SparkExitWaitingPayment(text: t("lightning__spark_exit__fund_paid"), txid: txid, testId: "SparkExitFundingPaid")
-                                    .padding(.top, 24)
-                            case let .seen(txid):
-                                SparkExitWaitingPayment(text: t("lightning__spark_exit__fund_pending"), txid: txid, testId: "SparkExitFundingSeen")
-                                    .padding(.top, 24)
-                            case nil:
+                            case .paid, .seen, nil:
                                 EmptyView()
                             }
                         }
@@ -894,15 +864,6 @@ struct SparkExitProgressView: View {
                             .buttonStyle(PlainButtonStyle())
                             .padding(.top, 16)
                             .accessibilityIdentifier("SparkExitFeeRose")
-                        }
-
-                        if let outsideSats = SparkExitMath.outsideExitSats(sparkBalanceSats: SparkManager.shared.balanceSats, record: record) {
-                            BodySText(t(
-                                "lightning__spark_exit__outside_exit",
-                                variables: ["amount": sparkExitAmountAccent(currency.primaryAmountText(sats: outsideSats))]
-                            ), accentColor: .white, accentFont: Fonts.bold)
-                                .padding(.top, 16)
-                                .accessibilityIdentifier("SparkExitOutsideExit")
                         }
 
                         if let lostText {

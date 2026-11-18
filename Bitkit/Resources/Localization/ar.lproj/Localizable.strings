@@ -321,7 +321,6 @@
 "lightning__spark_exit__fees" = "رسوم الشبكة";
 "lightning__spark_exit__receive" = "ستستلم (تقديريًا)";
 "lightning__spark_exit__savings_refused" = "لم يكتمل دفعك من المدخرات. ادفع مرة أخرى، أو موّل من محفظة أخرى.";
-"lightning__spark_exit__outside_exit" = "{amount} على Spark ليس جزءًا من هذا التحويل ويبقى على Spark.";
 "lightning__spark_exit__quote_loading" = "جارٍ الحصول على التكاليف…";
 "lightning__spark_exit__quote_settling" = "بانتظار أن ينتهي Spark من نقل رصيدك. قد يستغرق ذلك حتى 5 دقائق.";
 "lightning__spark_exit__quote_error" = "تعذّر الحصول على تكاليف التحويل. حاول مرة أخرى.";
@@ -346,8 +345,6 @@
 "lightning__spark_exit__leftover_swept" = "أُرسل {amount} من رسوم الطوارئ غير المستخدمة إلى المدخرات.";
 "lightning__spark_exit__leftover_sending" = "جارٍ إرسال {amount} من رسوم الطوارئ غير المستخدمة إلى المدخرات.";
 "lightning__spark_exit__leftover_dust" = "{amount} من رسوم الطوارئ غير المستخدمة أصغر من أن يُرسل ويبقى في {address}، مسار الاشتقاق {path}.";
-"lightning__spark_exit__fund_paid" = "تم الدفع من المدخرات، بانتظار التأكيد.";
-"lightning__spark_exit__fund_pending" = "تم رصد الدفعة، بانتظار التأكيد.";
 "lightning__spark_exit__lost_leaves" = "طالب مالك سابق لهذه الأموال بمبلغ {amount} على السلسلة ولا يمكن استرداده.";
 "lightning__spark_exit__notification_lost" = "لا يمكن استرداد {amount} من تحويلك القسري. افتح Bitkit لمعرفة السبب.";
 "lightning__spark_exit__notification_failed" = "توقف التحويل القسري. افتح Bitkit لمعرفة السبب.";

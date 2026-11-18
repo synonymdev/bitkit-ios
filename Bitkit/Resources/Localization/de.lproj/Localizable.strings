@@ -372,7 +372,6 @@
 "lightning__spark_exit__fees" = "Netzwerkgebühren";
 "lightning__spark_exit__receive" = "Du erhältst (Schätzung)";
 "lightning__spark_exit__savings_refused" = "Deine Zahlung vom Sparkonto ist nicht durchgegangen. Zahle erneut oder finanziere aus einer anderen Wallet.";
-"lightning__spark_exit__outside_exit" = "{amount} auf Spark gehört nicht zu dieser Übertragung und bleibt auf Spark.";
 "lightning__spark_exit__quote_loading" = "Kosten werden abgerufen…";
 "lightning__spark_exit__quote_settling" = "Warte, bis Spark dein Guthaben fertig verschoben hat. Das kann bis zu 5 Minuten dauern.";
 "lightning__spark_exit__quote_error" = "Die Übertragungskosten konnten nicht abgerufen werden. Versuche es erneut.";
@@ -397,8 +396,6 @@
 "lightning__spark_exit__leftover_swept" = "{amount} nicht verbrauchte Notfallgebühren wurden an dein Sparkonto gesendet.";
 "lightning__spark_exit__leftover_sending" = "{amount} nicht verbrauchte Notfallgebühren werden an dein Sparkonto gesendet.";
 "lightning__spark_exit__leftover_dust" = "{amount} nicht verbrauchte Notfallgebühren sind zu klein zum Senden und bleiben bei {address}, Ableitungspfad {path}.";
-"lightning__spark_exit__fund_paid" = "Aus dem Sparkonto bezahlt, warte auf Bestätigung.";
-"lightning__spark_exit__fund_pending" = "Zahlung erkannt, warte auf Bestätigung.";
 "lightning__spark_exit__lost_leaves" = "{amount} wurden von einem früheren Besitzer dieser Mittel on-chain beansprucht und können nicht wiederhergestellt werden.";
 "lightning__spark_exit__notification_lost" = "{amount} deiner forcierten Übertragung können nicht zurückgeholt werden. Öffne Bitkit, um den Grund zu sehen.";
 "lightning__spark_exit__notification_failed" = "Deine forcierte Übertragung wurde gestoppt. Öffne Bitkit, um den Grund zu sehen.";

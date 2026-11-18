@@ -345,7 +345,6 @@
 "lightning__spark_exit__fees" = "Τέλη δικτύου";
 "lightning__spark_exit__receive" = "Λαμβάνετε (εκτίμηση)";
 "lightning__spark_exit__savings_refused" = "Η πληρωμή σας από αποταμιεύσεις δεν ολοκληρώθηκε. Πληρώστε ξανά ή χρηματοδοτήστε από άλλο πορτοφόλι.";
-"lightning__spark_exit__outside_exit" = "Τα {amount} στο Spark δεν αποτελούν μέρος αυτής της μεταφοράς και παραμένουν στο Spark.";
 "lightning__spark_exit__quote_loading" = "Λήψη κόστους…";
 "lightning__spark_exit__quote_settling" = "Αναμονή για να ολοκληρώσει το Spark τη μεταφορά του υπολοίπου σας. Αυτό μπορεί να διαρκέσει έως 5 λεπτά.";
 "lightning__spark_exit__quote_error" = "Δεν ήταν δυνατή η λήψη του κόστους μεταφοράς. Δοκιμάστε ξανά.";
@@ -370,8 +369,6 @@
 "lightning__spark_exit__leftover_swept" = "Τα {amount} αχρησιμοποίητων έκτακτων τελών στάλθηκαν στις αποταμιεύσεις.";
 "lightning__spark_exit__leftover_sending" = "Αποστολή {amount} αχρησιμοποίητων έκτακτων τελών στις αποταμιεύσεις.";
 "lightning__spark_exit__leftover_dust" = "Τα {amount} αχρησιμοποίητων έκτακτων τελών είναι πολύ μικρά για αποστολή και παραμένουν στη διεύθυνση {address}, διαδρομή παραγωγής {path}.";
-"lightning__spark_exit__fund_paid" = "Πληρώθηκε από τις αποταμιεύσεις, αναμονή επιβεβαίωσης.";
-"lightning__spark_exit__fund_pending" = "Η πληρωμή εντοπίστηκε, αναμονή επιβεβαίωσης.";
 "lightning__spark_exit__lost_leaves" = "{amount} διεκδικήθηκε on-chain από προηγούμενο κάτοχο αυτών των κεφαλαίων και δεν μπορεί να ανακτηθεί.";
 "lightning__spark_exit__notification_lost" = "Τα {amount} της αναγκαστικής μεταφοράς σας δεν μπορούν να ανακτηθούν. Ανοίξτε το Bitkit για να δείτε γιατί.";
 "lightning__spark_exit__notification_failed" = "Η αναγκαστική μεταφορά σας σταμάτησε. Ανοίξτε το Bitkit για να δείτε γιατί.";

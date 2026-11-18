@@ -375,7 +375,6 @@
 "lightning__spark_exit__fees" = "Frais de réseau";
 "lightning__spark_exit__receive" = "Vous recevez (estimation)";
 "lightning__spark_exit__savings_refused" = "Votre paiement depuis l'épargne n'a pas abouti. Payez à nouveau ou financez depuis un autre portefeuille.";
-"lightning__spark_exit__outside_exit" = "{amount} sur Spark ne fait pas partie de ce transfert et reste sur Spark.";
 "lightning__spark_exit__quote_loading" = "Obtention des coûts…";
 "lightning__spark_exit__quote_settling" = "En attente que Spark termine le transfert de votre solde. Cela peut prendre jusqu'à 5 minutes.";
 "lightning__spark_exit__quote_error" = "Impossible d'obtenir les coûts du transfert. Réessayez.";
@@ -400,8 +399,6 @@
 "lightning__spark_exit__leftover_swept" = "{amount} de frais d'urgence inutilisés ont été envoyés vers l'épargne.";
 "lightning__spark_exit__leftover_sending" = "Envoi de {amount} de frais d'urgence inutilisés vers l'épargne.";
 "lightning__spark_exit__leftover_dust" = "{amount} de frais d'urgence inutilisés est trop faible pour être envoyé et reste à {address}, chemin de dérivation {path}.";
-"lightning__spark_exit__fund_paid" = "Payé depuis l'épargne, en attente de confirmation.";
-"lightning__spark_exit__fund_pending" = "Paiement détecté, en attente de confirmation.";
 "lightning__spark_exit__lost_leaves" = "{amount} a été réclamé on-chain par un ancien propriétaire de ces fonds et ne peut pas être récupéré.";
 "lightning__spark_exit__notification_lost" = "{amount} de votre transfert forcé ne peut pas être récupéré. Ouvrez Bitkit pour savoir pourquoi.";
 "lightning__spark_exit__notification_failed" = "Votre transfert forcé s'est arrêté. Ouvrez Bitkit pour savoir pourquoi.";

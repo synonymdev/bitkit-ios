@@ -372,7 +372,6 @@
 "lightning__spark_exit__fees" = "Netwerkkosten";
 "lightning__spark_exit__receive" = "U ontvangt (schatting)";
 "lightning__spark_exit__savings_refused" = "Je betaling uit spaargeld is niet gelukt. Betaal opnieuw of financier vanuit een andere wallet.";
-"lightning__spark_exit__outside_exit" = "{amount} op Spark hoort niet bij deze overboeking en blijft op Spark.";
 "lightning__spark_exit__quote_loading" = "Kosten ophalen…";
 "lightning__spark_exit__quote_settling" = "Wachten tot Spark klaar is met het verplaatsen van je saldo. Dit kan tot 5 minuten duren.";
 "lightning__spark_exit__quote_error" = "Kon de kosten van de overboeking niet ophalen. Probeer opnieuw.";
@@ -397,8 +396,6 @@
 "lightning__spark_exit__leftover_swept" = "{amount} aan ongebruikte noodkosten is naar spaargeld gestuurd.";
 "lightning__spark_exit__leftover_sending" = "{amount} aan ongebruikte noodkosten wordt naar spaargeld gestuurd.";
 "lightning__spark_exit__leftover_dust" = "{amount} aan ongebruikte noodkosten is te klein om te versturen en blijft op {address}, afleidingspad {path}.";
-"lightning__spark_exit__fund_paid" = "Betaald uit spaargeld, wachten op bevestiging.";
-"lightning__spark_exit__fund_pending" = "Betaling gezien, wachten op bevestiging.";
 "lightning__spark_exit__lost_leaves" = "{amount} is on-chain geclaimd door een eerdere eigenaar van dit geld en kan niet worden teruggehaald.";
 "lightning__spark_exit__notification_lost" = "{amount} van uw geforceerde overboeking kan niet worden hersteld. Open Bitkit om te zien waarom.";
 "lightning__spark_exit__notification_failed" = "Uw geforceerde overboeking is gestopt. Open Bitkit om te zien waarom.";

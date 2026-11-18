@@ -374,7 +374,6 @@
 "lightning__spark_exit__fees" = "Síťové poplatky";
 "lightning__spark_exit__receive" = "Obdržíte (odhad)";
 "lightning__spark_exit__savings_refused" = "Vaše platba z úspor neprošla. Zaplaťte znovu, nebo financujte z jiné peněženky.";
-"lightning__spark_exit__outside_exit" = "{amount} na Spark není součástí tohoto převodu a zůstává na Spark.";
 "lightning__spark_exit__quote_loading" = "Zjišťuji náklady…";
 "lightning__spark_exit__quote_settling" = "Čekáme, až Spark dokončí přesun vašeho zůstatku. Může to trvat až 5 minut.";
 "lightning__spark_exit__quote_error" = "Náklady na převod se nepodařilo zjistit. Zkuste to znovu.";
@@ -399,8 +398,6 @@
 "lightning__spark_exit__leftover_swept" = "{amount} nepoužitých nouzových poplatků bylo odesláno do úspor.";
 "lightning__spark_exit__leftover_sending" = "Odesílání {amount} nepoužitých nouzových poplatků do úspor.";
 "lightning__spark_exit__leftover_dust" = "{amount} nepoužitých nouzových poplatků je příliš málo na odeslání a zůstává na adrese {address}, derivační cesta {path}.";
-"lightning__spark_exit__fund_paid" = "Zaplaceno z úspor, čeká se na potvrzení.";
-"lightning__spark_exit__fund_pending" = "Platba zaznamenána, čeká se na potvrzení.";
 "lightning__spark_exit__lost_leaves" = "{amount} si on-chain nárokoval dřívější vlastník těchto prostředků a nelze to získat zpět.";
 "lightning__spark_exit__notification_lost" = "{amount} z vašeho vynuceného převodu nelze obnovit. Otevřete Bitkit a zjistěte proč.";
 "lightning__spark_exit__notification_failed" = "Váš vynucený převod se zastavil. Otevřete Bitkit a zjistěte proč.";

@@ -358,7 +358,6 @@
 "lightning__spark_exit__fees" = "Comissions de xarxa";
 "lightning__spark_exit__receive" = "Rebràs (estimació)";
 "lightning__spark_exit__savings_refused" = "El teu pagament dels estalvis no s'ha completat. Torna a pagar o finança des d'un altre moneder.";
-"lightning__spark_exit__outside_exit" = "{amount} a Spark no forma part d'aquesta transferència i es queda a Spark.";
 "lightning__spark_exit__quote_loading" = "Obtenint els costos…";
 "lightning__spark_exit__quote_settling" = "Esperant que Spark acabi de moure el teu saldo. Pot trigar fins a 5 minuts.";
 "lightning__spark_exit__quote_error" = "No s'han pogut obtenir els costos de la transferència. Torna-ho a intentar.";
@@ -383,8 +382,6 @@
 "lightning__spark_exit__leftover_swept" = "{amount} de comissions d'emergència no utilitzades s'han enviat als estalvis.";
 "lightning__spark_exit__leftover_sending" = "S'estan enviant {amount} de comissions d'emergència no utilitzades als estalvis.";
 "lightning__spark_exit__leftover_dust" = "{amount} de comissions d'emergència no utilitzades són massa petits per enviar-se i es queden a {address}, camí de derivació {path}.";
-"lightning__spark_exit__fund_paid" = "Pagat des d'estalvis, esperant la confirmació.";
-"lightning__spark_exit__fund_pending" = "Pagament detectat, esperant la confirmació.";
 "lightning__spark_exit__lost_leaves" = "Un propietari anterior d'aquests fons ha reclamat {amount} on-chain i no es pot recuperar.";
 "lightning__spark_exit__notification_lost" = "{amount} de la teva transferència forçosa no es pot recuperar. Obre Bitkit per veure'n el motiu.";
 "lightning__spark_exit__notification_failed" = "La teva transferència forçosa s'ha aturat. Obre Bitkit per veure'n el motiu.";
