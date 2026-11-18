@@ -250,13 +250,12 @@ struct WakeRegistrar {
                 )
             }
             let proofs = try await sign(request)
-            // Kept before sending, since the gateway may accept it even when its answer is lost. What it held before
-            // then no longer counts as unchanged.
+            // Kept before sending, since the gateway may accept it even when its answer is lost. The device is cleared
+            // until the gateway answers: with `lastTimestamp` already advanced, a kept one would read as fresh and
+            // unchanged, so a failed renewal would wait another max age.
             record.lastTimestamp = request.timestamp
             record.sentToGatewayUrl = gatewayUrl
-            if record.device != registeredDevice {
-                record.device = nil
-            }
+            record.device = nil
             try saveRegistration(record)
             return try await send(gatewayUrl, request, proofs)
         }

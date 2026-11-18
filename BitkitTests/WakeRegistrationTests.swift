@@ -299,6 +299,24 @@ final class WakeRegistrarTests: XCTestCase {
         XCTAssertEqual(sent.map(\.timestamp), [Self.now, Self.now + WakeTimestamp.registrationMaxAgeSecs])
     }
 
+    func testARenewalWhoseSendFailsIsSentAgainOnTheNextTry() async throws {
+        _ = try await register()
+        nowSecs += WakeTimestamp.registrationMaxAgeSecs
+        do {
+            _ = try await register(send: { _ in throw WakeError.RequestFailed(reason: "connection reset") })
+            XCTFail("Registered")
+        } catch {}
+        XCTAssertNil(record.device, "The renewal is still pending")
+
+        let outcome = try await register()
+
+        XCTAssertEqual(outcome, .registered(Self.registration))
+        let renewedAt = Self.now + WakeTimestamp.registrationMaxAgeSecs
+        XCTAssertEqual(sent.map(\.timestamp), [Self.now, renewedAt, renewedAt + 1])
+        let next = try await register()
+        XCTAssertEqual(next, .unchanged)
+    }
+
     func testARegistrationIsDueFromItsMaxAgeAndOnceWithoutARecordedTime() {
         let maxAge = WakeTimestamp.registrationMaxAgeSecs
         XCTAssertTrue(WakeTimestamp.isRegistrationDue(now: Self.now, last: nil))
