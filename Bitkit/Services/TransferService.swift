@@ -202,10 +202,10 @@ class TransferService {
 
     /// Version, input and output counts and locktime (10 bytes), plus the 2 witness flag bytes.
     private static let sweepTxOverheadWu: UInt64 = 42
-    /// One input (41 bytes) plus the lightest witness LDK sweeps (108 WU, a key-only spend). The sweep balance does not
-    /// say its input type, so the lower bound keeps a sweepable output from settling early; a dust to_local input,
-    /// which is heavier, can keep its transfer waiting.
-    private static let sweepInputWu: UInt64 = 272
+    /// One input (41 bytes) plus the lightest witness LDK sweeps from an anchor channel (112 WU, the CSV 1 spend of our
+    /// output from a counterparty close). The sweep balance does not say its input type, so the lower bound keeps a
+    /// sweepable output from settling early; a dust to_local input, which is heavier, can keep its transfer waiting.
+    private static let sweepInputWu: UInt64 = 276
     /// LDK's fee floor; the sweeper never pays less.
     private static let feerateFloorSatPerKw: UInt64 = 253
 

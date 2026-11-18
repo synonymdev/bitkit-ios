@@ -34,10 +34,13 @@ final class ForceCloseDustTests: XCTestCase {
         XCTAssertTrue(TransferService.isUnsweepable(channelId: channelId, pendingSweeps: sweeps, changeType: .legacy))
     }
 
-    func testTaprootBoundIsOneLightestInputAtTheFeeFloor() {
-        // 486 WU at 253 sat/kW is 122 sats, plus 330 sats of Taproot dust
-        XCTAssertTrue(TransferService.isUnsweepable(channelId: channelId, pendingSweeps: [sweep(451)], changeType: .taproot))
-        XCTAssertFalse(TransferService.isUnsweepable(channelId: channelId, pendingSweeps: [sweep(452)], changeType: .taproot))
+    func testBoundsAreOneAnchorInputAtTheFeeFloor() {
+        // 442 WU at 253 sat/kW is 111 sats, plus 294 sats of native SegWit dust
+        XCTAssertTrue(TransferService.isUnsweepable(channelId: channelId, pendingSweeps: [sweep(404)], changeType: .nativeSegwit))
+        XCTAssertFalse(TransferService.isUnsweepable(channelId: channelId, pendingSweeps: [sweep(405)], changeType: .nativeSegwit))
+        // 490 WU at 253 sat/kW is 123 sats, plus 330 sats of Taproot dust
+        XCTAssertTrue(TransferService.isUnsweepable(channelId: channelId, pendingSweeps: [sweep(452)], changeType: .taproot))
+        XCTAssertFalse(TransferService.isUnsweepable(channelId: channelId, pendingSweeps: [sweep(453)], changeType: .taproot))
     }
 
     func testSweepableCounterpartyCloseOutputKeepsWaiting() {
