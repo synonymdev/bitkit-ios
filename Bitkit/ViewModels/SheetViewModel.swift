@@ -58,6 +58,7 @@ class SheetViewModel: ObservableObject {
 
     @Published var activeSheetConfiguration: SheetConfiguration? = nil {
         didSet {
+            NSLog("WIP242 sheet %@ -> %@", "\(String(describing: oldValue?.id))", "\(String(describing: activeSheetConfiguration?.id))")
             if oldValue?.presentationID != activeSheetConfiguration?.presentationID {
                 let cleanup = oldValue?.sendState?.onDismiss
                 oldValue?.sendState?.onDismiss = nil

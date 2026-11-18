@@ -11,8 +11,8 @@ env:
   GIT_LFS_SKIP_SMUDGE: "1"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.run_id }}
+  cancel-in-progress: false
   
 jobs:
     
@@ -66,6 +66,20 @@ jobs:
             -skip-testing:BitkitTests/RNMigrationCleanupTests \
             | xcbeautify --report junit
           echo "✅ Unit tests completed at $(date)"
+
+      - name: Save WIP242 app log
+        if: failure()
+        run: |
+          xcrun simctl spawn booted log show --last 90m --info --debug --style compact \
+            --predicate 'eventMessage CONTAINS "WIP242"' > "$RUNNER_TEMP/wip242.log" || true
+          wc -l "$RUNNER_TEMP/wip242.log"
+
+      - name: Upload WIP242 app log
+        uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: wip242-log
+          path: ${{ runner.temp }}/wip242.log
 
       - name: Upload test results
         uses: actions/upload-artifact@v7

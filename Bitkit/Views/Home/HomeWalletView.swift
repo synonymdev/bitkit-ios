@@ -92,7 +92,7 @@ struct HomeWalletView: View {
                 HardwareWalletsGrid(wallets: hwWalletManager.wallets, showAdditionalWallet: showsUsdt) { hwWallet in
                     navigation.navigate(.hardwareWallet(walletId: hwWallet.id))
                 } additionalWallet: {
-                    Button { navigation.navigate(.usdtWallet) } label: {
+                    Button { NSLog("WIP242 tile action path=%@", "\(navigation.path)"); navigation.navigate(.usdtWallet) } label: {
                         WalletBalanceContent {
                             CaptionMText("USDT", kerning: 1)
                         } icon: {

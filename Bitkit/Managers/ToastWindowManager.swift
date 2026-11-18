@@ -215,6 +215,7 @@ class PassThroughWindow: UIWindow {
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let hitView = super.hitTest(point, with: event)
+        NSLog("WIP242 toastHit %@ type=%@ isRoot=%d hasToast=%d frame=%@", "\(point)", "\(hitView.map { String(describing: type(of: $0)) } ?? "nil")", hitView == rootViewController?.view ? 1 : 0, hasToast ? 1 : 0, "\(toastFrame)")
 
         // If the hit view is the root view controller's view (the background)
         if hitView == rootViewController?.view {

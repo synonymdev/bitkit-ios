@@ -211,7 +211,9 @@ func resolveUsdtPaymentRoute(input: String, isEnabled: Bool = Env.isUsdtEnabled)
 
 @MainActor
 class NavigationViewModel: ObservableObject {
-    @Published var path: [Route] = []
+    @Published var path: [Route] = [] {
+        didSet { NSLog("WIP242 path %@ -> %@", "\(oldValue)", "\(path)") }
+    }
 
     var currentRoute: Route? {
         path.last

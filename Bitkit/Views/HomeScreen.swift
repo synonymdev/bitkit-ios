@@ -101,10 +101,12 @@ struct HomeScreen: View {
         }
         .navigationBarHidden(true)
         .onAppear {
+            NSLog("WIP242 home appear")
             TimedSheetManager.shared.onPrimaryScreenEntered()
             consumeRequestedHomePage()
         }
         .onDisappear {
+            NSLog("WIP242 home disappear")
             TimedSheetManager.shared.onPrimaryScreenExited()
         }
         // Channels and Spark load after Home first checks its sheets, so the Move to Spark intro is checked again.
