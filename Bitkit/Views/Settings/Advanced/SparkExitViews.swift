@@ -568,33 +568,31 @@ struct SparkExitTxNote: View {
     }
 }
 
-/// Where the ended exit's leftover fee funding is: on its way to savings, sent, or too small to send. A completed exit
-/// counts what it sends back in its returned note, so it names only funding that stays at the address.
+/// Where the ended exit's leftover fee funding is: on its way to savings, sent, or too small to send. Once the returned
+/// note counts what the sweeps sent back, it names only funding that has not reached savings yet.
 struct SparkExitLeftoverStatus: View {
     @EnvironmentObject var currency: CurrencyViewModel
 
     let record: SparkExitRecord
     let address: String
+    /// The returned note shows the unused fees, confirmed sweeps included, so their lines would repeat it.
+    var isSweptCounted = false
 
     private var path: String {
         SparkExitFundingKey.path(index: record.fundingIndex, network: Env.bitkitCoreNetwork)
     }
 
-    private var isDone: Bool {
-        record.phase == .done
-    }
-
-    /// The line to show: on a completed exit, none for funding a sweep sent back.
+    /// The line to show: none for a confirmed sweep the returned note already counts.
     private var line: SparkExitRecord.LeftoverLine? {
         switch record.leftoverLine {
-        case .sending, .swept: isDone ? nil : record.leftoverLine
+        case .swept: isSweptCounted ? nil : record.leftoverLine
         default: record.leftoverLine
         }
     }
 
-    /// What earlier sweeps sent back, listed only before the exit completed.
+    /// What earlier sweeps sent back, unless the returned note already counts it.
     private var sweptEarlier: [SparkExitRecord.SweptLeftover] {
-        isDone ? [] : record.sweptLeftover ?? []
+        isSweptCounted ? [] : record.sweptLeftover ?? []
     }
 
     /// One line with the total of every UTXO at the funding address, never one per UTXO, after what earlier sweeps sent.
@@ -811,6 +809,12 @@ struct SparkExitProgressView: View {
         )
     }
 
+    /// The returned note names the unused emergency fees, so a done exit's confirmed sweeps are counted there.
+    private var isReturnedFeesShown: Bool {
+        guard let record, record.phase == .done, let returned = SparkExitMath.returned(record) else { return false }
+        return returned.spendingSats > 0 && returned.feesSats > 0
+    }
+
     private var isFailedOrMissing: Bool {
         switch record?.phase {
         case .failed, nil: true
@@ -940,7 +944,7 @@ struct SparkExitProgressView: View {
                         }
 
                         if !record.isActive, let address = record.funding.first?.address {
-                            SparkExitLeftoverStatus(record: record, address: address)
+                            SparkExitLeftoverStatus(record: record, address: address, isSweptCounted: isReturnedFeesShown)
                         }
                     }
                 }
