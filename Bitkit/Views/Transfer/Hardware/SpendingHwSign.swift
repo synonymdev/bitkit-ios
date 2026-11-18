@@ -34,7 +34,8 @@ struct SpendingHwSign: View {
             ZStack(alignment: .bottom) {
                 GeometryReader { geometry in
                     ScrollView(showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 24) {
+                        // As in the frame: 32 under the title, 10 between the fee rows and 10 above the speed rows.
+                        VStack(alignment: .leading, spacing: 0) {
                             DisplayText(
                                 t(hwSend.hasPendingBroadcast ? "lightning__transfer_hw__signed_title" : "lightning__transfer_hw__sign_title"),
                                 accentColor: .purpleAccent
@@ -44,11 +45,14 @@ struct SpendingHwSign: View {
                                 quote: flow.quote,
                                 speed: flow.speed,
                                 isLoading: flow.quote == nil && flow.quoteError == nil,
-                                address: flow.quote?.address
+                                address: flow.quote?.address,
+                                rowSpacing: 10
                             )
+                            .padding(.top, 32)
 
                             if let error = flow.quoteError {
                                 BodyMText(error, textColor: .redAccent)
+                                    .padding(.top, 10)
                             }
 
                             SpendingSpeedPicker(
@@ -57,8 +61,10 @@ struct SpendingHwSign: View {
                                 isLoading: flow.quote == nil && flow.quoteError == nil
                             )
                             .disabled(isBusy || hwSend.hasPendingBroadcast)
+                            .padding(.top, 10)
 
-                            Spacer(minLength: 8)
+                            // At least 56 above the device on short screens.
+                            Spacer(minLength: 56)
 
                             // As in the frame: the device's top 187 of 254 points shows, its lower part behind the button.
                             Image(vendor.transferSignImageName)

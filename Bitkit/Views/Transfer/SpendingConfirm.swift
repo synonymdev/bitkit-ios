@@ -236,11 +236,13 @@ struct SpendingConfirmFees: View {
     var isLoading = false
     /// The Spark deposit address a hardware wallet asks to confirm on the device.
     var address: String?
+    /// 24 as the Review frame draws it; the hardware wallet's Review & Sign frame draws 10.
+    var rowSpacing: CGFloat = 24
 
     @EnvironmentObject var currency: CurrencyViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: rowSpacing) {
             HStack {
                 FeeDisplayRow(
                     label: t("lightning__spending_confirm__network_fee"),
