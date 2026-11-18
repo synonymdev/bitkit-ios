@@ -32,13 +32,13 @@ class BalanceManager {
         guard var balanceDetails = await MainActor.run(body: { lightningService.balances }) else {
             throw AppError(message: "Balance details unavailable", debugMessage: "LightningService.balances is nil")
         }
-        // A broadcast sweep is matched against the wallet's payments, read with the balances in one snapshot.
-        var payments: [PaymentDetails] = []
+        // A broadcast sweep is matched against the wallet's spendable outputs, read together with the balances.
+        var outputs: [SpendableUtxo] = []
         if balanceDetails.pendingBalancesFromChannelClosures.contains(where: { Self.sweepTxid(of: $0) != nil }),
-           let snapshot = await lightningService.balancesAndPayments()
+           let snapshot = await lightningService.balancesAndOutputs()
         {
             balanceDetails = snapshot.balances
-            payments = snapshot.payments
+            outputs = snapshot.outputs
         }
 
         let channels = await MainActor.run { lightningService.channels } ?? []
@@ -53,7 +53,7 @@ class BalanceManager {
         let (lightningToSubtract, onchainToSubtract, pendingCloseAmount) = await getCloseTransferAmounts(
             transfers: activeTransfers,
             balanceDetails: balanceDetails,
-            payments: payments,
+            outputs: outputs,
             exitInTransfer: exitInTransfer
         )
 
@@ -150,7 +150,7 @@ class BalanceManager {
     private func getCloseTransferAmounts(
         transfers: [Transfer],
         balanceDetails: BalanceDetails,
-        payments: [PaymentDetails],
+        outputs: [SpendableUtxo],
         exitInTransfer: (transferId: String, sats: UInt64)? = nil
     ) async -> (lightningToSubtract: UInt64, onchainToSubtract: UInt64, pendingAmount: UInt64) {
         var lightningToSubtract: UInt64 = 0
@@ -184,7 +184,7 @@ class BalanceManager {
 
             // Once the wallet holds the channel's sweep, Savings includes its output: show that output as in transfer
             // until its activity syncs, and take it out of the on-chain total so it counts once.
-            let heldSweeps = Self.heldSweeps(channelId: channelId, pendingSweeps: pendingSweeps, payments: payments)
+            let heldSweeps = Self.heldSweeps(channelId: channelId, pendingSweeps: pendingSweeps, outputs: outputs)
             if heldSweeps.isEmpty {
                 pendingAmount += transfer.amountSats
             } else {
@@ -198,23 +198,22 @@ class BalanceManager {
         return (lightningToSubtract, onchainToSubtract, pendingAmount)
     }
 
-    /// The channel's sweep transactions the on-chain wallet already holds, synced or still unconfirmed, with what each
-    /// paid the wallet.
+    /// The channel's sweep transactions whose outputs the on-chain wallet holds, confirmed or in the mempool, with what
+    /// each paid the wallet.
     static func heldSweeps(
         channelId: String,
         pendingSweeps: [PendingSweepBalance],
-        payments: [PaymentDetails]
+        outputs: [SpendableUtxo]
     ) -> [(txid: String, sats: UInt64)] {
         let sweepTxids = pendingSweeps.compactMap { sweep -> String? in
             guard sweepChannelId(of: sweep) == channelId else { return nil }
-            return sweepTxid(of: sweep)
+            return sweepTxid(of: sweep)?.lowercased()
         }
 
-        return payments.compactMap { payment in
-            guard case let .onchain(txid, _) = payment.kind,
-                  sweepTxids.contains(where: { $0.caseInsensitiveCompare(txid) == .orderedSame })
-            else { return nil }
-            return (txid, (payment.amountMsat ?? 0) / 1000)
+        return Set(sweepTxids).sorted().compactMap { txid in
+            let held = outputs.filter { $0.outpoint.txid.lowercased() == txid }
+            guard !held.isEmpty else { return nil }
+            return (txid, held.reduce(0) { $0 + $1.valueSats })
         }
     }
 

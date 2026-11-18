@@ -163,9 +163,6 @@ class LightningService: NodeLifecycleService {
     /// The rail whose payments the duplicate-payment check reads, kept while an emergency exit takes Spark off
     /// Lightning: an invoice Spark paid or is paying is never paid again over a channel.
     weak var channelFreePaymentHistory: ChannelFreeLightningRail?
-    /// Transactions evicted from the mempool and not seen since; ldk-node keeps their payments listed as pending.
-    private let evictedTxidsLock = NSLock()
-    private var evictedTxids: Set<String> = []
     var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
     var onchainTransactionReceived: (@Sendable (String) async -> Void)?
     typealias OnchainActivityCompletion = @MainActor () async -> Void
@@ -2084,32 +2081,14 @@ extension LightningService {
         cachedChannels
     }
 
-    /// Payments, then balances, without on-chain payments whose transaction was evicted from the mempool. A sync
-    /// between the two reads can only add a payment the balances already include, never drop one they lack.
-    func balancesAndPayments() async -> (balances: BalanceDetails, payments: [PaymentDetails])? {
-        let evicted = evictedTxidsLock.withLock { evictedTxids }
-        return try? await ServiceQueue.background(.ldk) { [self] in
+    /// The wallet's spendable outputs, then its balances. Both come from the wallet's current view, which drops a
+    /// transaction evicted from the mempool, unlike the payment store; a sync between the reads can only add an output
+    /// the balances already include.
+    func balancesAndOutputs() async -> (balances: BalanceDetails, outputs: [SpendableUtxo])? {
+        try? await ServiceQueue.background(.ldk) { [self] in
             guard let node else { return nil }
-            let payments = Self.withoutEvicted(node.listPayments(), evictedTxids: evicted)
-            return (node.listBalances(), payments)
-        }
-    }
-
-    static func withoutEvicted(_ payments: [PaymentDetails], evictedTxids: Set<String>) -> [PaymentDetails] {
-        guard !evictedTxids.isEmpty else { return payments }
-        return payments.filter { payment in
-            guard case let .onchain(txid, _) = payment.kind else { return true }
-            return !evictedTxids.contains(txid.lowercased())
-        }
-    }
-
-    private func setEvicted(_ txid: String, _ evicted: Bool) {
-        evictedTxidsLock.withLock {
-            if evicted {
-                evictedTxids.insert(txid.lowercased())
-            } else {
-                evictedTxids.remove(txid.lowercased())
-            }
+            let outputs = try node.onchainPayment().listSpendableOutputs()
+            return (node.listBalances(), outputs)
         }
     }
 
@@ -2545,7 +2524,6 @@ extension LightningService {
 
                 case let .onchainTransactionReceived(txid, details):
                     Logger.info("📥 Onchain transaction received: txid=\(txid) amountSats=\(details.amountSats)")
-                    setEvicted(txid, false)
                     Task {
                         await self.onchainTransactionReceived?(txid)
                         do {
@@ -2558,7 +2536,6 @@ extension LightningService {
                     }
                 case let .onchainTransactionConfirmed(txid, _, blockHeight, _, details):
                     Logger.info("✅ Onchain transaction confirmed: txid=\(txid) blockHeight=\(blockHeight) amountSats=\(details.amountSats)")
-                    setEvicted(txid, false)
                     Task {
                         if let onchainTransactionConfirmed = self.onchainTransactionConfirmed {
                             await onchainTransactionConfirmed(txid)
@@ -2598,7 +2575,6 @@ extension LightningService {
                     }
                 case let .onchainTransactionEvicted(txid):
                     Logger.warn("🗑️ Onchain transaction removed from mempool: txid=\(txid)")
-                    setEvicted(txid, true)
                     Task {
                         do {
                             try await self.persistOnchainActivity(completion: onchainActivityCompletion) {
