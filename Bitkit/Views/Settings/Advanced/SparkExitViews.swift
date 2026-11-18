@@ -356,15 +356,14 @@ struct SparkExitFundingView: View {
     }
 }
 
-/// The emergency fees paid from another wallet to the funding address: the force transfer starts on its own once a
-/// payment that covers them arrives here; fees already there wait for a tap on Continue.
+/// The emergency fees paid from another wallet to the funding address: the force transfer starts on its own once the
+/// funding address holds them, on entry too; a failed start shows Try again.
 struct SparkExitPayView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
 
-    /// The payments the first read of the funding address found this visit; only one arriving after them starts the
-    /// exit on its own.
-    @State private var entrySeenCount: Int?
+    /// The funding address was read this visit, so what it holds is current.
+    @State private var hasReadFunding = false
     /// A start ran this visit, on its own or from a tap: a failed one shows its error and waits for a tap, never
     /// retrying by itself.
     @State private var hasAutoStarted = false
@@ -395,8 +394,7 @@ struct SparkExitPayView: View {
             isFunded: isFunded,
             isStarting: isStarting,
             hasAutoStarted: hasAutoStarted,
-            entrySeenCount: entrySeenCount,
-            seenCount: exit.fundingSeenCount
+            hasReadFunding: hasReadFunding
         )
     }
 
@@ -425,11 +423,9 @@ struct SparkExitPayView: View {
                 .padding(.bottom, 32)
             }
 
-            // Funds already at the address on entry wait for a tap; a failed start offers Try Again.
-            if isFunded, !isStarting, !canAutoStart {
-                CustomButton(title: t(hasAutoStarted ? "common__try_again" : "common__continue")) {
-                    // The visit's start is spent: a payment arriving after a failed start never starts one by itself.
-                    hasAutoStarted = true
+            // A failed start offers Try again. A start can wait minutes for Spark, so its button spins until it ends.
+            if isStarting || (isFunded && hasAutoStarted) {
+                CustomButton(title: t("common__try_again"), isLoading: isStarting) {
                     start()
                 }
                 .padding(.bottom, 16)
@@ -445,12 +441,10 @@ struct SparkExitPayView: View {
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .task {
-            entrySeenCount = nil
+            hasReadFunding = false
             hasAutoStarted = false
             await exit.watchFundingAddress {
-                if entrySeenCount == nil {
-                    entrySeenCount = exit.fundingSeenCount
-                }
+                hasReadFunding = true
             }
         }
         .onChange(of: canAutoStart) { _, canAutoStart in
@@ -460,7 +454,7 @@ struct SparkExitPayView: View {
         }
     }
 
-    /// Claims the one start this screen runs at a time before its task begins, so neither a tap nor a payment can
+    /// Claims the one start this screen runs at a time before its task begins, so neither a tap nor the funding can
     /// launch a second.
     private func start() {
         guard !isStarting else { return }
