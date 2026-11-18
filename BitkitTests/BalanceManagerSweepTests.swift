@@ -70,4 +70,19 @@ final class BalanceManagerSweepTests: XCTestCase {
             ["batch-txid"]
         )
     }
+
+    func testEvictedSweepIsDroppedFromThePayments() {
+        let payments = [onchainPayment(txid: "evicted-txid"), onchainPayment(txid: "sweep-txid")]
+
+        let kept = LightningService.withoutEvicted(payments, evictedTxids: ["evicted-txid"])
+
+        XCTAssertEqual(kept.map(\.id), ["sweep-txid"])
+    }
+
+    func testEvictedSweepIsNotHeld() {
+        let sweeps = [broadcastSweep(channel: channelId, txid: "SWEEP-TXID")]
+        let payments = LightningService.withoutEvicted([onchainPayment(txid: "SWEEP-TXID")], evictedTxids: ["sweep-txid"])
+
+        XCTAssertEqual(held(sweeps, payments), [])
+    }
 }
