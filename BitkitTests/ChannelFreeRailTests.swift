@@ -915,6 +915,28 @@ extension ChannelFreeRailTests {
         await assertReachesTheNode()
     }
 
+    func testARetrySparkTookButDoesntListYetKeepsTheNodeFromPaying() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        service.now = { Date(timeIntervalSince1970: 1000) }
+        let earlier = Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil, id: "earlier")
+        rail.payments = [earlier]
+        rail.balanceSats = 100_000
+        _ = try await service.send(bolt11: Self.invoice)
+        rail.sentBolt11 = nil
+        rail.balanceSats = 0
+
+        // Spark took the retry but still lists only the earlier failure.
+        await assertRefusedAsDuplicate()
+
+        // Once it lists the retry failed, the invoice can be paid again.
+        rail.payments = [
+            earlier,
+            Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil, id: "retry"),
+        ]
+        await assertReachesTheNode()
+    }
+
     func testAFailureWithoutSparkIdsKeepsTheHoldUntilPastTheClockMargin() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         let service = Bitkit.LightningService.shared

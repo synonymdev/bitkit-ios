@@ -1671,6 +1671,28 @@ class LightningService: NodeLifecycleService {
         railAttemptsStore.dictionary(forKey: Self.uncertainRailSendsStartedKey) as? [String: Int] ?? [:]
     }
 
+    /// Spark took a retry of an unexpired invoice but lists only the attempts before it: their failures read pending, so
+    /// the node never pays the invoice the retry may still pay.
+    private func takenRetriesPending(_ payments: [ChannelFreeRailPayment], unexpired: Set<String>) -> [ChannelFreeRailPayment] {
+        let earlier = eventCallbackLock.withLock { uncertainRailSendEarlierAttempts() }
+        guard !earlier.isEmpty else { return payments }
+        let isEarlier = { (payment: ChannelFreeRailPayment) in
+            payment.id.map { earlier[payment.paymentHash.lowercased()]?.contains($0) ?? false } ?? false
+        }
+        let retryListed = Set(payments.filter { $0.direction == .outbound && !isEarlier($0) }.map { $0.paymentHash.lowercased() })
+        return payments.map { payment in
+            let hash = payment.paymentHash.lowercased()
+            guard payment.direction == .outbound, payment.status == .failed, isEarlier(payment), unexpired.contains(hash),
+                  !retryListed.contains(hash) else { return payment }
+            var pending = ChannelFreeRailPayment(
+                paymentHash: payment.paymentHash, direction: payment.direction, status: .pending, preimage: payment.preimage,
+                timestamp: payment.timestamp, feeSats: payment.feeSats
+            )
+            pending.id = payment.id
+            return pending
+        }
+    }
+
     /// Callers hold `eventCallbackLock`.
     private func uncertainRailSendEarlierAttempts() -> [String: [String]] {
         railAttemptsStore.dictionary(forKey: Self.uncertainRailSendsEarlierAttemptsKey) as? [String: [String]] ?? [:]
@@ -2478,7 +2500,7 @@ extension LightningService {
             // Read before the listing, so a sync that ends while it is read can't settle a send the listing predates.
             let unsettled = await unsettledUncertainRailSends()
             let kept = unexpiredRailAttempts()
-            let payments = try await rail.lightningPayments()
+            let payments = try await takenRetriesPending(rail.lightningPayments(), unexpired: kept)
             if let since = sparkHistoryUnseededSince, await rail.hasSynced(after: UInt64(clamping: since)) {
                 // Kept, so after a relaunch the sends Spark listed hold the node until Spark syncs again.
                 let seeded = payments.filter { $0.direction == .outbound && $0.status != .failed }.map { $0.paymentHash.lowercased() }
