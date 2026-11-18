@@ -22,7 +22,8 @@ enum HealthStatus: String {
     }
 }
 
-/// The step of a running emergency exit, named like its App Status subtitle key.
+/// The step of a running force transfer, which picks its App Status subtitle: `settings__status__exit__funding` while it
+/// asks for fee funding, `settings__status__spark__exit` otherwise.
 enum ExitStatusStep: String {
     case funding
     case pending
@@ -95,12 +96,12 @@ struct AppStatusHelper {
         )
     }
 
-    /// Nil where Spark is unsupported.
     /// Spark can take payments only while the device is online, the same check that shows it "Offline...".
     static func isSparkReceiving(network: NetworkMonitor) -> Bool {
         network.isConnected && SparkManager.shared.isReceiving
     }
 
+    /// Nil where Spark is unsupported.
     static func sparkStatus(network: NetworkMonitor) -> HealthStatus? {
         let spark = SparkManager.shared
         return sparkStatus(
