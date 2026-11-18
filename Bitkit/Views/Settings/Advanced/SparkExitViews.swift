@@ -71,7 +71,6 @@ struct SparkExitQuoteView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     DisplayText(t("lightning__spark_exit__quote_title"), accentColor: .yellowAccent)
-                        .padding(.top, 32)
 
                     BodyMText(t("lightning__spark_exit__quote_text"), accentFont: Fonts.bold)
                         .fixedSize(horizontal: false, vertical: true)
@@ -244,7 +243,6 @@ struct SparkExitFundingView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     DisplayText(t("lightning__spark_exit__fees_title"), accentColor: .yellowAccent)
-                        .padding(.top, 32)
 
                     BodyMText(t("lightning__spark_exit__fees_text"))
                         .fixedSize(horizontal: false, vertical: true)
@@ -407,7 +405,6 @@ struct SparkExitPayView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     DisplayText(t("lightning__spark_exit__pay_title"), accentColor: .yellowAccent)
-                        .padding(.top, 32)
 
                     BodyMText(t("lightning__spark_exit__pay_text"), accentFont: Fonts.bold)
                         .fixedSize(horizontal: false, vertical: true)
@@ -665,7 +662,6 @@ struct SparkExitConfirmView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     DisplayText(t("lightning__spark_exit__confirm_title"), accentColor: .yellowAccent)
-                        .padding(.top, 32)
                         .padding(.bottom, 32)
 
                     if let quote = exit.quote {
@@ -779,12 +775,12 @@ struct SparkExitProgressView: View {
     /// What the ended force transfer returned to savings: the spending balance and the emergency fees it did not spend.
     private var returnedText: String? {
         guard let record, let receivedSats = SparkExitMath.received(record)?.sats else { return nil }
-        let amount = sparkExitAmountAccent(currency.primaryAmountText(sats: receivedSats))
+        let amount = currency.primaryAmountText(sats: receivedSats)
         let feesSats = record.returnedFeeSats
         guard feesSats > 0 else { return t("lightning__spark_exit__done_returned", variables: ["amount": amount]) }
         return t(
             "lightning__spark_exit__done_returned_fees",
-            variables: ["amount": amount, "fees": sparkExitAmountAccent(currency.primaryAmountText(sats: feesSats))]
+            variables: ["amount": amount, "fees": currency.primaryAmountText(sats: feesSats)]
         )
     }
 
@@ -803,7 +799,6 @@ struct SparkExitProgressView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     DisplayText(title, accentColor: .yellowAccent)
-                        .padding(.top, 32)
 
                     BodyMText(text, accentFont: Fonts.bold)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1098,7 +1093,6 @@ struct SparkExitFeeBumpView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     DisplayText(t("lightning__spark_exit__fee_bump_title"), accentColor: .yellowAccent)
-                        .padding(.top, 32)
 
                     BodyMText(
                         t("lightning__spark_exit__fee_bump_text", variables: ["rate": "\(exit.record?.feeRateSatPerVbyte ?? 0)"]),
