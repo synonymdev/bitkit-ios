@@ -20,7 +20,7 @@ jobs:
     if: github.event.pull_request.draft == false
     name: Run Tests
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 175
 
     steps:
       - name: Checkout repository
@@ -44,42 +44,55 @@ jobs:
           xcrun simctl boot "iPhone 17" || true
           echo "✅ Simulator started at $(date)"
 
-      - name: Run unit tests
-        # Leaves time for the upload below when a slow runner's build ate most of the job's hour
-        timeout-minutes: 55
+      - name: Loop the UI suite
+        timeout-minutes: 160
         run: |
-          echo "⏱️  Starting unit tests at $(date)"
-          set -o pipefail && xcodebuild test \
-            -scheme Bitkit \
+          set -o pipefail
+          xcodebuild build-for-testing -scheme Bitkit \
             -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' \
-            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
-            -disablePackageRepositoryCache \
-            -disableAutomaticPackageResolution \
-            -skipPackageUpdates \
-            -enableCodeCoverage NO \
-            -parallel-testing-enabled NO \
-            -test-timeouts-enabled YES \
-            -default-test-execution-time-allowance 300 \
-            -maximum-test-execution-time-allowance 300 \
-            -skip-testing:BitkitTests/UtxoSelectionTests \
-            -skip-testing:BitkitTests/AddressTypeIntegrationTests \
-            -skip-testing:BitkitTests/RNMigrationCleanupTests \
-            | xcbeautify --report junit
-          echo "✅ Unit tests completed at $(date)"
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" -disablePackageRepositoryCache \
+            -disableAutomaticPackageResolution -skipPackageUpdates -enableCodeCoverage NO \
+            -derivedDataPath "$RUNNER_TEMP/dd" | xcbeautify
+          RUN=$(ls "$RUNNER_TEMP"/dd/Build/Products/*.xctestrun | head -1)
+          UDID=$(xcrun simctl list devices booted -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print([x['udid'] for v in d.values() for x in v if x['name']=='iPhone 17'][0])")
+          mkdir -p "$RUNNER_TEMP/wip242"
+          fails=0
+          t0=$(date +%s)
+          for i in $(seq 1 20); do
+            [ $(( $(date +%s) - t0 )) -lt 7200 ] || break
+            xcrun simctl shutdown "$UDID" || true
+            xcrun simctl erase "$UDID"
+            xcrun simctl boot "$UDID"
+            start=$(date "+%Y-%m-%d %H:%M:%S")
+            if xcodebuild test-without-building -xctestrun "$RUN" -destination "id=$UDID" \
+                -skip-testing:BitkitTests/UtxoSelectionTests -skip-testing:BitkitTests/AddressTypeIntegrationTests \
+                -skip-testing:BitkitTests/RNMigrationCleanupTests -parallel-testing-enabled NO -test-timeouts-enabled YES \
+                -default-test-execution-time-allowance 300 -maximum-test-execution-time-allowance 300 \
+                -resultBundlePath "$RUNNER_TEMP/wip242/round-$i.xcresult" > "$RUNNER_TEMP/wip242/round-$i.log" 2>&1; then
+              echo "ROUND $i passed"
+              rm -rf "$RUNNER_TEMP/wip242/round-$i.xcresult"
+            else
+              fails=$((fails+1))
+              echo "ROUND $i failed"
+              grep -E "error: -\[|\.swift:[0-9]+: error" "$RUNNER_TEMP/wip242/round-$i.log" | head -5 || true
+            fi
+            xcrun simctl spawn "$UDID" log show --start "$start" --info --debug --style compact \
+              --predicate 'eventMessage CONTAINS "WIP242"' > "$RUNNER_TEMP/wip242/round-$i.wip242.log" 2>&1 || true
+          done
+          echo "failed rounds: $fails"
+          [ "$fails" -eq 0 ]
 
       - name: Save WIP242 app log
         if: always()
         run: |
-          xcrun simctl spawn booted log show --last 90m --info --debug --style compact \
-            --predicate 'eventMessage CONTAINS "WIP242"' > "$RUNNER_TEMP/wip242.log" || true
-          wc -l "$RUNNER_TEMP/wip242.log"
+          ls -la "$RUNNER_TEMP/wip242" || true
 
       - name: Upload WIP242 app log
         uses: actions/upload-artifact@v7
         if: always()
         with:
           name: wip242-log
-          path: ${{ runner.temp }}/wip242.log
+          path: ${{ runner.temp }}/wip242
 
       - name: Upload test results
         uses: actions/upload-artifact@v7
