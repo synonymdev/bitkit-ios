@@ -108,6 +108,7 @@ enum Route: Hashable {
     case sparkExitIntro
     case sparkExitQuote
     case sparkExitFunding
+    case sparkExitPay
     case sparkExitConfirm
     case sparkExitProgress
     case sparkExitFeeBump
@@ -264,5 +265,14 @@ class NavigationViewModel: ObservableObject {
 
     func reset() {
         path.removeAll()
+    }
+
+    /// Opens a started force transfer's progress right above the Spark connection screen it started from, so leaving
+    /// progress returns there.
+    func openSparkExitProgress() {
+        if let index = path.lastIndex(of: .sparkConnectionDetail) {
+            path = Array(path[...index])
+        }
+        path.append(.sparkExitProgress)
     }
 }

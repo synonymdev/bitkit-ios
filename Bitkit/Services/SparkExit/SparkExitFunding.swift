@@ -132,14 +132,9 @@ struct SparkExitQuote: Equatable {
     }
 
     /// The on-chain payment that funds the CPFP fees, or 0 when every leaf is recovered cooperatively. One payment,
-    /// from savings or another wallet: the SDK splits it into one output per fee-bumped transaction (`fundedSteps`).
+    /// from savings or another wallet: the SDK splits it into one output per fee-bumped transaction.
     var fundingSats: UInt64 {
         prepared.funding?.singleUtxoSats ?? 0
-    }
-
-    /// The transactions the funding pays a fee for, each from its own share.
-    var fundedSteps: Int {
-        prepared.funding?.perBranch.count ?? 0
     }
 
     /// What the sweep and the cooperative recoveries pay to savings: `receiveSats` plus the fee funding the exit

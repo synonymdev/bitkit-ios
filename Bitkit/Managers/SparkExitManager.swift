@@ -918,15 +918,20 @@ final class SparkExitManager {
         self.fundingAddress = fundingAddress
     }
 
-    /// Watches the funding address while the user funds it from another wallet.
+    /// Watches the funding address while the user pays the emergency fees from another wallet.
     func watchFundingAddress() async {
-        guard let chain, let fundingAddress else { return }
         while !Task.isCancelled {
-            if let utxos = try? await chain.utxos(address: fundingAddress) {
-                noteFundingSeen(utxos)
-            }
+            await readFundingAddress()
             try? await Task.sleep(nanoseconds: 15 * 1_000_000_000)
         }
+    }
+
+    /// Reads the funding address once: what reached it, or nil when it could not be read.
+    @discardableResult
+    func readFundingAddress() async -> UInt64? {
+        guard let chain, let fundingAddress, let utxos = try? await chain.utxos(address: fundingAddress) else { return nil }
+        noteFundingSeen(utxos)
+        return fundingSeenSats
     }
 
     /// What reached the funding address before the exit starts.
