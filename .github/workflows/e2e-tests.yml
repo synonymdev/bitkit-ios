@@ -1,10 +1,14 @@
 name: e2e-tests
 run-name: >-
-  ${{ inputs.retarget_run && format('Retarget E2E for PR #{0}', inputs.pr) || github.event.pull_request.title || github.event.head_commit.message || github.workflow }}
+  ${{ inputs.hosted_two_shard && 'Hosted iOS two-shard pilot' || inputs.retarget_run && format('Retarget E2E for PR #{0}', inputs.pr) || github.event.pull_request.title || github.event.head_commit.message || github.workflow }}
 
 on:
   workflow_dispatch:
     inputs:
+      hosted_two_shard:
+        description: "Run the hosted Mac and Ubuntu pilot on this branch"
+        type: boolean
+        default: false
       e2e_branch:
         description: "Branch of synonymdev/bitkit-e2e-tests to use (main | default-feature-branch | custom branch name)"
         required: false
@@ -43,6 +47,7 @@ env:
   TERM: xterm-256color
   FORCE_COLOR: 1
   GIT_LFS_SKIP_SMUDGE: "1"
+  PILOT_HARNESS_SHA: 13b5308a629f9e2cf640ad742d334a4a247df5ea
 
 concurrency:
   group: e2e-tests-${{ github.event.pull_request.number || inputs.pr || github.ref }}
@@ -52,6 +57,10 @@ jobs:
   detect-changes:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
     outputs:
       code: ${{ (github.event_name == 'workflow_dispatch' && !inputs.pr) || steps.filter.outputs.code == 'true' }}
     steps:
@@ -80,6 +89,12 @@ jobs:
               - 'Package.swift'
               - '.github/workflows/e2e-tests.yml'
               - '.github/scripts/**'
+      - name: Confirm both pilot pairs before starting the shared build
+        if: inputs.hosted_two_shard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHARD: "1"
+        run: python3 .github/scripts/hosted-e2e-pair.py barrier
 
   build-local:
     needs: detect-changes
@@ -213,7 +228,7 @@ jobs:
 
   e2e-branch:
     needs: detect-changes
-    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
+    if: "!inputs.hosted_two_shard && github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'"
     uses: synonymdev/bitkit-e2e-tests/.github/workflows/determine-e2e-branch.yml@main
     with:
       app_branch: ${{ inputs.app_branch || github.head_ref || github.ref_name }}
@@ -227,7 +242,7 @@ jobs:
       pull-requests: read
       checks: write
       actions: write
-    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
+    if: "!inputs.hosted_two_shard && github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'"
     runs-on: [self-hosted, macOS]
     needs: [detect-changes, build-local, e2e-branch]
     env:
@@ -401,8 +416,153 @@ jobs:
             (cd docker && docker compose --profile trezor down --remove-orphans -v) || true
           fi
 
+  hosted-ubuntu:
+    name: Hosted Ubuntu shard ${{ matrix.shard }}
+    if: github.event_name == 'workflow_dispatch' && inputs.hosted_two_shard && !inputs.pr && !inputs.retarget_run
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    env:
+      SHARD: ${{ matrix.shard }}
+      IOS_GATE_SHARD: ${{ matrix.shard == 1 && 'payments' || 'channels' }}
+      BITCOIN_FALLBACK_FEE: "0.00001"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: synonymdev/bitkit-e2e-tests
+          ref: ${{ env.PILOT_HARNESS_SHA }}
+          path: bitkit-e2e-tests
+          persist-credentials: false
+      - name: Join CI network
+        uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3, used in the original trial
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          hostname: bk-linux-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
+          args: --accept-dns=false
+      - name: Authorize this runner pair
+        env:
+          TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
+        run: python3 .github/scripts/hosted-e2e-pair.py authorize
+      - name: Serve the pinned regtest backend until its Mac finishes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/hosted-e2e-backend.sh
+
+  hosted-mac:
+    name: Hosted iOS shard ${{ matrix.shard }}
+    if: github.event_name == 'workflow_dispatch' && inputs.hosted_two_shard && !inputs.pr && !inputs.retarget_run
+    runs-on: macos-26
+    timeout-minutes: 155
+    permissions:
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    env:
+      SHARD: ${{ matrix.shard }}
+      IOS_GATE_SHARD: ${{ matrix.shard == 1 && 'payments' || 'channels' }}
+      BACKEND: local
+      SIMULATOR_NAME: iPhone 17
+      SIMULATOR_OS_VERSION: "26.5"
+      WDA_LAUNCH_TIMEOUT: "600000"
+      WDIO_CONNECTION_RETRY_TIMEOUT: "660000"
+      RECORD_VIDEO: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: synonymdev/bitkit-e2e-tests
+          ref: ${{ env.PILOT_HARNESS_SHA }}
+          path: bitkit-e2e-tests
+          persist-credentials: false
+      - name: Join CI network
+        uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          hostname: bk-mac-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
+          args: --accept-dns=false
+      - name: Authorize this runner pair
+        env:
+          TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
+        run: python3 .github/scripts/hosted-e2e-pair.py authorize
+      - name: Verify paired backend
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/hosted-e2e-mac.sh connect
+      - name: Wait for both verified pairs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/hosted-e2e-mac.sh barrier
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.6"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Install dependencies and start the simulator
+        working-directory: bitkit-e2e-tests
+        run: |
+          set -euo pipefail
+          udid=$(xcrun simctl list devices available -j | jq -er --arg name "$SIMULATOR_NAME" '.devices["com.apple.CoreSimulator.SimRuntime.iOS-26-5"][] | select(.name == $name) | .udid' | head -1)
+          xcrun simctl boot "$udid"
+          npm ci
+          command -v ffmpeg >/dev/null || brew install ffmpeg
+          xcrun simctl bootstatus "$udid" -b
+          open -a Simulator
+      - name: Wait for the shared app build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 2400))
+          while ((SECONDS < deadline)); do
+            if status=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs?per_page=100" --jq '.jobs[] | select(.name == "build-local") | .conclusion // "running"'); then
+              case "$status" in
+                success) exit 0 ;;
+                running|'') ;;
+                *) echo "::error::Shared build concluded $status"; exit 1 ;;
+              esac
+            fi
+            sleep 15
+          done
+          echo "::error::Timed out waiting for the shared build"
+          exit 1
+      - uses: actions/download-artifact@v8
+        with:
+          name: bitkit-e2e-ios_${{ github.run_number }}
+          path: bitkit-e2e-tests/aut
+      - name: Run gate cases on the paired backend
+        working-directory: bitkit-e2e-tests
+        run: bash ../.github/scripts/hosted-e2e-gate.sh
+      - name: Shut down the private forwarders
+        if: always()
+        run: .github/scripts/hosted-e2e-mac.sh stop
+      - name: Upload gate evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: hosted-ios-${{ matrix.shard }}-${{ github.run_attempt }}
+          path: bitkit-e2e-tests/artifacts/
+          if-no-files-found: ignore
+          retention-days: 3
+
   e2e-status:
-    if: always() && github.event.pull_request.draft == false
+    if: always() && !inputs.hosted_two_shard && github.event.pull_request.draft == false
     name: e2e-status
     runs-on: ubuntu-24.04
     needs: [detect-changes, e2e-tests-local]
