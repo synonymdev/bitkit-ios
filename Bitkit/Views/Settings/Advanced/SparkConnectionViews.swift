@@ -94,6 +94,8 @@ struct SparkConnectionDetailView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var network: NetworkMonitor
+    @EnvironmentObject var transfer: TransferViewModel
+    @EnvironmentObject var wallet: WalletViewModel
     @Environment(\.openURL) private var openURL
 
     @State private var depositAddress: String?
@@ -220,7 +222,7 @@ struct SparkConnectionDetailView: View {
                         .foregroundColor(.textPrimary)
                 ) {
                     if app.hasSeenTransferToSavingsIntro {
-                        navigation.navigate(.savingsAvailability)
+                        navigation.navigateToTransferSavings(wallet: wallet, transfer: transfer)
                     } else {
                         navigation.navigate(.savingsIntro)
                     }
