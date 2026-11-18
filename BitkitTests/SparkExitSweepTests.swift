@@ -386,6 +386,45 @@ final class SparkExitSweepTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.returned(record), SparkExitReturned(spendingSats: 94500, feesSats: 8000))
     }
 
+    /// A retry keeps the fee funding the replaced generation's sweep returned as fees, not spending balance.
+    func testTheFundingAnEarlierSweepReturnedStaysFeesAfterARetry() throws {
+        let script = try SparkExitAddress.scriptPubKey(destination)
+        let unspent = String(repeating: "aa", count: 32)
+        let refund = String(repeating: "bb", count: 32)
+        let child = rawTx(spending: [(unspent, 0)], paying: [(3000, Data())])
+        let childTxid = try XCTUnwrap(SparkExitTxid.txid(hex: child))
+        let sweep = RecoveryTransaction(
+            kind: .sweep,
+            nodeId: nil,
+            txid: "s",
+            txHex: rawTx(spending: [(refund, 0), (unspent, 1), (childTxid, 0)], paying: [(96500, script)]),
+            cpfpTxHex: nil,
+            csvTimelockBlocks: nil,
+            dependsOn: [],
+            status: .confirmed(blockHeight: 50)
+        )
+        let cooperative = RecoveryTransaction(
+            kind: .cooperative,
+            nodeId: nil,
+            txid: "c",
+            txHex: rawTx(spending: [(refund, 1)], paying: [(5000, script)]),
+            cpfpTxHex: nil,
+            csvTimelockBlocks: nil,
+            dependsOn: [],
+            status: .confirmed(blockHeight: 60)
+        )
+        var record = endedRecord()
+        record.funding = [.init(index: 0, address: key.address, pubkey: key.pubkey, txid: unspent, vout: 1, valueSats: 4000)]
+        record.recovery = StoredRecovery(SparkExitFixtures.recovery([SparkExitFixtures.tx("n", cpfp: child), sweep]))
+
+        record.adopt(SparkExitFixtures.recovery([cooperative]))
+        record.phase = .done
+        record.sweptLeftover = [.init(txid: "l", valueSats: 1000)]
+
+        XCTAssertEqual(record.earlierReturnedFundingSats, ["s": 7000])
+        XCTAssertEqual(SparkExitMath.returned(record), SparkExitReturned(spendingSats: 94500, feesSats: 8000))
+    }
+
     /// Spending balance and fees always add up to what reached savings and the swept leftover.
     func testTheReturnedSplitAlwaysAddsUpToWhatReachedSavings() throws {
         let script = try SparkExitAddress.scriptPubKey(destination)

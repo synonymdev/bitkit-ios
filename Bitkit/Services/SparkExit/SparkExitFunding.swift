@@ -385,7 +385,8 @@ enum SparkExitMath {
     /// The unspent fee funding the SWEEP steps of `record`'s recovery return to savings: the value of their inputs that
     /// spend the funding address, which are funding UTXOs and the outputs of a CPFP child or the fan-out. An input whose
     /// parent this recovery does not hold, such as an earlier generation's CPFP change, is not counted, nor is the sweep
-    /// of a replaced generation: the record keeps only what it paid (`earlierReceivedSats`).
+    /// of a replaced generation: the record keeps what it paid (`earlierReceivedSats`) and returned
+    /// (`earlierReturnedFundingSats`).
     static func returnedFundingSats(_ record: SparkExitRecord) -> UInt64 {
         guard let recovery = record.recovery?.response else { return 0 }
         var funding: [String: UInt64] = [:]
@@ -426,12 +427,15 @@ enum SparkExitMath {
 
     /// What the ended exit returned to savings, split as the done screen names it: `received` less the fee funding the
     /// main sweep returned is the spending balance, which bears the sweep's own fee; that funding and
-    /// `sweptLeftoverSats` are the emergency fees it did not spend. Nil before it ended done or when no output to
-    /// savings can be read.
+    /// `sweptLeftoverSats` are the emergency fees it did not spend, with what sweeps of replaced generations returned.
+    /// Nil before it ended done or when no output to savings can be read.
     static func returned(_ record: SparkExitRecord) -> SparkExitReturned? {
         guard let received = received(record)?.sats else { return nil }
+        let current = Set((record.recovery?.response.transactions ?? []).filter { $0.kind == .sweep }.map(\.txid))
+        let earlier = (record.earlierReturnedFundingSats ?? [:]).filter { !current.contains($0.key) }.values
+            .reduce(UInt64(0)) { $0.saturatingAdd($1) }
         // Capped at what was received, so the two parts always add up to what reached savings.
-        let funding = min(returnedFundingSats(record), received)
+        let funding = min(returnedFundingSats(record).saturatingAdd(earlier), received)
         return SparkExitReturned(spendingSats: received - funding, feesSats: sweptLeftoverSats(record).saturatingAdd(funding))
     }
 
