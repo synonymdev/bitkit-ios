@@ -432,6 +432,18 @@ final class WakeManager {
     /// Tells the gateway the app is open, so it holds back wakes and fallback alerts meant for an app in the background.
     func sceneBecameActive() {
         isSceneActive = true
+        renewRegistrationIfDue()
+        startPresence()
+    }
+
+    /// The scene registers again only when its inputs change, so a registration that reached its max age while the app
+    /// stayed in memory is sent from here.
+    private func renewRegistrationIfDue() {
+        guard gatewayUrl != nil, latestInputs != nil else { return }
+        Task { await serialized { await self.register(force: false) } }
+    }
+
+    private func startPresence() {
         endPresenceClearTask()
         let previous = presenceTask
         previous?.cancel()
@@ -470,7 +482,7 @@ final class WakeManager {
 
     private func refreshPresence() {
         guard isSceneActive else { return }
-        sceneBecameActive()
+        startPresence()
     }
 
     /// Ends the background task clearing presence, or only `identifier` when given, so an older clear cannot end a newer one.
