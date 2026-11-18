@@ -173,7 +173,13 @@ class TransferService {
                                     context: "TransferService"
                                 )
                             } else if let pendingSweeps = balances?.pendingBalancesFromChannelClosures,
-                                      Self.isDustOnlySweep(channelId: channelId, pendingSweeps: pendingSweeps)
+                                      Self.isUnsweepable(
+                                          channelId: channelId,
+                                          pendingSweeps: pendingSweeps,
+                                          changeType: LDKNode.AddressType.fromStorage(
+                                              UserDefaults.standard.string(forKey: "selectedAddressType")
+                                          )
+                                      )
                             {
                                 // LDK only adds the sweep's output when more than dust is left after fees. A dust-only
                                 // sweep has no outputs, every broadcast fails with `bad-txns-vout-empty` and the sweep
@@ -194,29 +200,66 @@ class TransferService {
         }
     }
 
-    /// Largest sweep that can never get an output, mirroring LDK's `maybe_add_change_output`: the change must
-    /// be at least the P2TR dust limit (330 sats) after the fee of the heaviest single-input sweep (a delayed
-    /// to_local input plus a P2TR change output, 532 WU) at the 253 sat/kW fee floor (134 sats). A larger
-    /// sweep gets swept once fees allow, so its transfer keeps waiting for it.
-    /// Keep in step with Android `TransferRepo.MAX_UNSWEEPABLE_SATS`.
-    static let maxUnsweepableSats: UInt64 = 463
+    /// Version, input and output counts and locktime (10 bytes), plus the 2 witness flag bytes.
+    private static let sweepTxOverheadWu: UInt64 = 42
+    /// One input (41 bytes) plus the lightest witness LDK sweeps (108 WU, a key-only spend). The sweep balance does not
+    /// say its input type, so the lower bound keeps a sweepable output from settling early; a dust to_local input,
+    /// which is heavier, can keep its transfer waiting.
+    private static let sweepInputWu: UInt64 = 272
+    /// LDK's fee floor; the sweeper never pays less.
+    private static let feerateFloorSatPerKw: UInt64 = 253
 
-    /// Whether the channel's pending sweeps together are too small to ever be swept.
-    static func isDustOnlySweep(channelId: String, pendingSweeps: [PendingSweepBalance]) -> Bool {
-        let channelSweepSats = pendingSweeps
-            .filter { $0.sweepChannelId == channelId }
-            .reduce(UInt64(0)) { $0 + $1.sweepAmountSats }
-        return channelSweepSats <= maxUnsweepableSats
+    /// Whether LDK can never give the channel's sweep an output, at any fee rate. Mirrors LDK's
+    /// `maybe_add_change_output`: the sweeper batches every unconfirmed pending sweep, across channels, into one
+    /// transaction paying a change output of the wallet's primary address type, and adds that output only when the
+    /// change left after the fee is at least its dust limit. Each input is priced as the lightest one, at the fee
+    /// floor. Keep in step with Android `TransferRepo.isUnsweepable`.
+    static func isUnsweepable(channelId: String, pendingSweeps: [PendingSweepBalance], changeType: LDKNode.AddressType) -> Bool {
+        let ownSweeps = pendingSweeps.filter { $0.sweepChannelId == channelId }
+        guard !ownSweeps.isEmpty, !ownSweeps.contains(where: \.isConfirmedSweep) else { return false }
+
+        let batch = pendingSweeps.filter { !$0.isConfirmedSweep }
+        let totalSats = batch.reduce(UInt64(0)) { $0 + $1.sweepAmountSats }
+        let weightWu = sweepTxOverheadWu + UInt64(batch.count) * sweepInputWu + changeType.outputBytes * 4
+        let feeSats = weightWu * feerateFloorSatPerKw / 1000
+        return totalSats < changeType.dustLimitSats + feeSats
     }
 }
 
-private extension PendingSweepBalance {
+private extension LDKNode.AddressType {
+    var outputBytes: UInt64 {
+        switch self {
+        case .taproot: 43
+        case .nativeSegwit: 31
+        case .nestedSegwit: 32
+        case .legacy: 34
+        }
+    }
+
+    var dustLimitSats: UInt64 {
+        switch self {
+        case .taproot: 330
+        case .nativeSegwit: 294
+        case .nestedSegwit: 540
+        case .legacy: 546
+        }
+    }
+}
+
+extension PendingSweepBalance {
     var sweepChannelId: ChannelId? {
         switch self {
         case let .pendingBroadcast(channelId, _): channelId
         case let .broadcastAwaitingConfirmation(channelId, _, _, _): channelId
         case let .awaitingThresholdConfirmations(channelId, _, _, _, _): channelId
         }
+    }
+
+    var isConfirmedSweep: Bool {
+        if case .awaitingThresholdConfirmations = self {
+            return true
+        }
+        return false
     }
 
     var sweepAmountSats: UInt64 {

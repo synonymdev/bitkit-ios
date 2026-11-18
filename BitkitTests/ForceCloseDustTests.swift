@@ -6,7 +6,11 @@ import XCTest
 final class ForceCloseDustTests: XCTestCase {
     private let channelId = "dust-channel"
 
-    func testDustSweepIsUnsweepable() {
+    private func sweep(_ sats: UInt64, channel: String? = nil) -> PendingSweepBalance {
+        .pendingBroadcast(channelId: channel ?? channelId, amountSatoshis: sats)
+    }
+
+    func testChangeBelowDustAfterTheFloorFeeIsUnsweepable() {
         let sweeps: [PendingSweepBalance] = [
             .broadcastAwaitingConfirmation(
                 channelId: channelId,
@@ -16,29 +20,48 @@ final class ForceCloseDustTests: XCTestCase {
             ),
         ]
 
-        XCTAssertTrue(TransferService.isDustOnlySweep(channelId: channelId, pendingSweeps: sweeps))
+        XCTAssertTrue(TransferService.isUnsweepable(channelId: channelId, pendingSweeps: sweeps, changeType: .nativeSegwit))
+        XCTAssertTrue(TransferService.isUnsweepable(channelId: channelId, pendingSweeps: sweeps, changeType: .taproot))
     }
 
-    func testSweepsAddingUpToASweepableAmountAreNotDust() {
-        let sweeps: [PendingSweepBalance] = [
-            .pendingBroadcast(channelId: channelId, amountSatoshis: 400),
-            .pendingBroadcast(channelId: channelId, amountSatoshis: 64),
-            .pendingBroadcast(channelId: "other-channel", amountSatoshis: 1),
-        ]
+    func testDustDependsOnTheChangeAddressType() {
+        // 500 sats leave a native SegWit or Taproot output but are below the legacy and nested SegWit dust limits
+        let sweeps = [sweep(500)]
 
-        XCTAssertFalse(TransferService.isDustOnlySweep(channelId: channelId, pendingSweeps: sweeps))
+        XCTAssertFalse(TransferService.isUnsweepable(channelId: channelId, pendingSweeps: sweeps, changeType: .nativeSegwit))
+        XCTAssertFalse(TransferService.isUnsweepable(channelId: channelId, pendingSweeps: sweeps, changeType: .taproot))
+        XCTAssertTrue(TransferService.isUnsweepable(channelId: channelId, pendingSweeps: sweeps, changeType: .nestedSegwit))
+        XCTAssertTrue(TransferService.isUnsweepable(channelId: channelId, pendingSweeps: sweeps, changeType: .legacy))
     }
 
-    func testDustThresholdIsInclusive() {
-        let atLimit: [PendingSweepBalance] = [
-            .pendingBroadcast(channelId: channelId, amountSatoshis: TransferService.maxUnsweepableSats),
-        ]
-        let aboveLimit: [PendingSweepBalance] = [
-            .pendingBroadcast(channelId: channelId, amountSatoshis: TransferService.maxUnsweepableSats + 1),
-        ]
+    func testTaprootBoundIsOneLightestInputAtTheFeeFloor() {
+        // 486 WU at 253 sat/kW is 122 sats, plus 330 sats of Taproot dust
+        XCTAssertTrue(TransferService.isUnsweepable(channelId: channelId, pendingSweeps: [sweep(451)], changeType: .taproot))
+        XCTAssertFalse(TransferService.isUnsweepable(channelId: channelId, pendingSweeps: [sweep(452)], changeType: .taproot))
+    }
 
-        XCTAssertTrue(TransferService.isDustOnlySweep(channelId: channelId, pendingSweeps: atLimit))
-        XCTAssertFalse(TransferService.isDustOnlySweep(channelId: channelId, pendingSweeps: aboveLimit))
+    func testSweepableCounterpartyCloseOutputKeepsWaiting() {
+        // 410 sats leave 299 sats of native SegWit change at the floor, above its 294-sat dust limit
+        XCTAssertFalse(TransferService.isUnsweepable(channelId: channelId, pendingSweeps: [sweep(410)], changeType: .nativeSegwit))
+    }
+
+    func testDustBatchedWithAnotherChannelSweepIsSweepable() {
+        let sweeps = [sweep(388), sweep(388, channel: "other-channel")]
+
+        XCTAssertFalse(TransferService.isUnsweepable(channelId: channelId, pendingSweeps: sweeps, changeType: .taproot))
+    }
+
+    func testNoUnconfirmedSweepIsNotUnsweepable() {
+        let confirmed: PendingSweepBalance = .awaitingThresholdConfirmations(
+            channelId: channelId,
+            latestSpendingTxid: "sweep-txid",
+            confirmationHash: "block-hash",
+            confirmationHeight: 800_000,
+            amountSatoshis: 388
+        )
+
+        XCTAssertFalse(TransferService.isUnsweepable(channelId: channelId, pendingSweeps: [], changeType: .taproot))
+        XCTAssertFalse(TransferService.isUnsweepable(channelId: channelId, pendingSweeps: [confirmed], changeType: .taproot))
     }
 
     func testClosedChannelBalanceIsOurBalanceNotCapacity() {
