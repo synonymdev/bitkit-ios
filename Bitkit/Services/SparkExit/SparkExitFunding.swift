@@ -611,15 +611,6 @@ enum SparkExitMath {
         return outside > 0 ? outside : nil
     }
 
-    /// The Spark balance a quote cannot exit: the leaves it skips, and what the balance holds beyond every leaf the
-    /// SDK lists, such as a counter-swap still unclaimed. Nil when there is none.
-    static func unexitableSats(sparkBalanceSats: UInt64, quote: SparkExitQuote) -> UInt64? {
-        let listed = quote.leafTotalSats + quote.leftBehindSats
-        let beyond = beyondLostLeaves(sparkBalanceSats.saturatingSub(listed), lostLeafSats: quote.lostLeafSats)
-        let unexitable = quote.leftBehindSats + beyond
-        return unexitable > 0 ? unexitable : nil
-    }
-
     /// `sats` less the lost leaves it still holds. Spark's balance keeps a leaf an older state claimed until a later
     /// sync drops it, so each lost leaf, largest first, is taken out only while what is left still covers it.
     static func beyondLostLeaves(_ sats: UInt64, lostLeafSats: [UInt64]) -> UInt64 {

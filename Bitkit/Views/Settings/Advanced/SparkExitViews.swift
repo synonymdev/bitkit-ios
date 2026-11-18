@@ -362,7 +362,8 @@ struct SparkExitPayView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
 
-    /// Starts once per visit: a failed start shows its error and waits for the user, never retrying on its own.
+    /// Starts once per visit, when a payment arrives while the screen is open: a failed start shows its error and waits
+    /// for the user, never retrying on its own.
     @State private var hasAutoStarted = false
     @State private var isStarting = false
 
@@ -410,8 +411,10 @@ struct SparkExitPayView: View {
                 .padding(.bottom, 32)
             }
 
-            if hasAutoStarted, isFunded, !isStarting {
-                CustomButton(title: t("common__try_again")) {
+            // Funds already at the address on entry wait for a tap; a failed start offers Try Again.
+            if isFunded, !isStarting {
+                CustomButton(title: t(hasAutoStarted ? "common__try_again" : "common__continue")) {
+                    hasAutoStarted = true
                     await start()
                 }
                 .padding(.bottom, 16)
@@ -429,15 +432,16 @@ struct SparkExitPayView: View {
         .task {
             await exit.watchFundingAddress()
         }
-        .onChange(of: isFunded, initial: true) { _, isFunded in
+        .onChange(of: isFunded) { _, isFunded in
             guard isFunded, !hasAutoStarted else { return }
             hasAutoStarted = true
-            Task { await start() }
+            isStarting = true
+            Task { await start(isClaimed: true) }
         }
     }
 
-    private func start() async {
-        guard !isStarting else { return }
+    private func start(isClaimed: Bool = false) async {
+        guard isClaimed || !isStarting else { return }
         isStarting = true
         defer { isStarting = false }
         exit.fundFromSavings = false
