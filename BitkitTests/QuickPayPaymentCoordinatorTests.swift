@@ -826,7 +826,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
 
     func testDisabledFreshPaymentFallsBackToConfirmWithoutSending() async throws {
         let invoiceHash = try Self.invoiceHash
-        settings.enableQuickpay = false
+        settings.storeQuickpaySettings(enabled: false)
         var sent = false
         let coordinator = QuickPayPaymentCoordinator(
             store: store,
@@ -850,7 +850,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
     func testDisabledRepayAfterFailedRecordIsReconciledAwayFallsBackToConfirm() async throws {
         let invoiceHash = try Self.invoiceHash
         try reserveSubmittedRecord(invoiceHash)
-        settings.enableQuickpay = false
+        settings.storeQuickpaySettings(enabled: false)
         var sent = false
         let coordinator = QuickPayPaymentCoordinator(
             store: store,
@@ -884,7 +884,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
     func testDisabledSubmittedPendingRecordStaysPendingWithoutSending() async throws {
         let invoiceHash = try Self.invoiceHash
         try reserveSubmittedRecord(invoiceHash)
-        settings.enableQuickpay = false
+        settings.storeQuickpaySettings(enabled: false)
         var sent = false
 
         let route = await firstRoute(
@@ -909,7 +909,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
     func testDisabledSubmittedRecordThatLdkSucceededSettlesWithoutSending() async throws {
         let invoiceHash = try Self.invoiceHash
         try reserveSubmittedRecord(invoiceHash)
-        settings.enableQuickpay = false
+        settings.storeQuickpaySettings(enabled: false)
         var sent = false
 
         let route = await firstRoute(
@@ -931,7 +931,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
     }
 
     func testDisabledLnurlFallsBackToConfirmBeforeFetchingInvoice() async {
-        settings.enableQuickpay = false
+        settings.storeQuickpaySettings(enabled: false)
         var sent = false
         let app = AppViewModel()
         let wallet = WalletViewModel()
