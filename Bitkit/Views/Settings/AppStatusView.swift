@@ -189,8 +189,8 @@ struct AppStatusView: View {
             let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
             let formatter = DateFormatter()
             formatter.locale = Locale.current
-            // The frame's "Jan 2, 2023 at 11:45" in US English, in each locale's own order and words elsewhere.
-            formatter.setLocalizedDateFormatFromTemplate("MMMdyyyyHHmm")
+            // The frame's "Jan 2, 2023 at 11:45 PM" in US English: each locale's own order, words and hour cycle (j).
+            formatter.setLocalizedDateFormatFromTemplate("MMMdyyyyjjmm")
             description = formatter.string(from: date)
             status = .ready
         } else {
