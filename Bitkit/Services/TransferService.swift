@@ -172,6 +172,12 @@ class TransferService {
                                     "Force close batched sweep detected via txid \(sweepTxid), settled transfer: \(transfer.id)",
                                     context: "TransferService"
                                 )
+                            } else if let sweepTxid = sweepSpendingTxid,
+                                      await Self.walletHolds(txid: sweepTxid, payments: lightningService.listPayments() ?? [])
+                            {
+                                // A sweep the wallet already holds is real, whatever the change type is now, so it
+                                // waits for its activity instead of being judged as dust.
+                                Logger.debug("Force close sweep is in the wallet, awaiting its activity: \(transfer.id)", context: "TransferService")
                             } else if let pendingSweeps = balances?.pendingBalancesFromChannelClosures,
                                       Self.isUnsweepable(
                                           channelId: channelId,
@@ -208,6 +214,16 @@ class TransferService {
     private static let sweepInputWu: UInt64 = 276
     /// LDK's fee floor; the sweeper never pays less.
     private static let feerateFloorSatPerKw: UInt64 = 253
+
+    /// Whether the on-chain wallet holds the transaction, synced or still unconfirmed.
+    static func walletHolds(txid: String, payments: [PaymentDetails]) -> Bool {
+        payments.contains { payment in
+            if case let .onchain(paymentTxid, _) = payment.kind {
+                return paymentTxid.caseInsensitiveCompare(txid) == .orderedSame
+            }
+            return false
+        }
+    }
 
     /// Whether LDK can never give the channel's sweep an output, at any fee rate. Mirrors LDK's
     /// `maybe_add_change_output`: the sweeper batches every unconfirmed pending sweep, across channels, into one

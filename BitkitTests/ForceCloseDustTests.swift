@@ -87,4 +87,19 @@ final class ForceCloseDustTests: XCTestCase {
 
         XCTAssertEqual(closed.balanceOnCloseSats, 388)
     }
+
+    func testWalletHoldsAnUnconfirmedSweep() {
+        let sweep = LDKNode.PaymentDetails(
+            id: "sweep",
+            kind: .onchain(txid: "valid-sweep-txid", status: .unconfirmed),
+            amountMsat: 309_000,
+            feePaidMsat: nil,
+            direction: .inbound,
+            status: .pending,
+            latestUpdateTimestamp: 0
+        )
+
+        XCTAssertTrue(TransferService.walletHolds(txid: "valid-sweep-txid", payments: [sweep]))
+        XCTAssertFalse(TransferService.walletHolds(txid: "rejected-sweep-txid", payments: [sweep]))
+    }
 }
