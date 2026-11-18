@@ -172,6 +172,15 @@ class TransferService {
                                     "Force close batched sweep detected via txid \(sweepTxid), settled transfer: \(transfer.id)",
                                     context: "TransferService"
                                 )
+                            } else if let pendingSweeps = balances?.pendingBalancesFromChannelClosures,
+                                      let changeType = await dustJudgingChangeType(sweepTxid: sweepSpendingTxid),
+                                      Self.isUnsweepable(channelId: channelId, pendingSweeps: pendingSweeps, changeType: changeType)
+                            {
+                                // LDK only adds the sweep's output when more than dust is left after fees. A dust-only
+                                // sweep has no outputs, every broadcast fails with `bad-txns-vout-empty` and the sweep
+                                // never resolves, so settle the transfer: those sats can't be claimed.
+                                try await markSettled(id: transfer.id)
+                                Logger.info("Force close sweep is dust, settled transfer: \(transfer.id)", context: "TransferService")
                             } else {
                                 Logger.debug("Force close awaiting sweep detection for transfer: \(transfer.id)", context: "TransferService")
                             }
@@ -183,6 +192,102 @@ class TransferService {
                     }
                 }
             }
+        }
+    }
+
+    /// Version, input and output counts and locktime (10 bytes), plus the 2 witness flag bytes.
+    private static let sweepTxOverheadWu: UInt64 = 42
+    /// One input (41 bytes) plus the lightest witness LDK sweeps from an anchor channel (112 WU, the CSV 1 spend of our
+    /// output from a counterparty close). The sweep balance does not say its input type, so the lower bound keeps a
+    /// sweepable output from settling early; a dust to_local input, which is heavier, can keep its transfer waiting.
+    private static let sweepInputWu: UInt64 = 276
+    /// LDK's fee floor; the sweeper never pays less.
+    private static let feerateFloorSatPerKw: UInt64 = 253
+
+    /// The change type to judge dust by, or nil while the evidence is incomplete: the wallet's payments are unreadable,
+    /// the wallet already holds the sweep (which is then real whatever the change type is now), or an address type
+    /// change is staged but not yet applied to the node. The flag and the selected type are read together after the
+    /// payment lookup, so a change started during it is seen.
+    private func dustJudgingChangeType(sweepTxid: String?) async -> LDKNode.AddressType? {
+        if let sweepTxid {
+            guard let payments = await lightningService.listPayments(),
+                  !Self.walletHolds(txid: sweepTxid, payments: payments)
+            else { return nil }
+        }
+        return await MainActor.run {
+            guard !SettingsViewModel.shared.isChangingAddressType else { return nil }
+            return LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
+        }
+    }
+
+    /// Whether the on-chain wallet holds the transaction, synced or still unconfirmed.
+    static func walletHolds(txid: String, payments: [PaymentDetails]) -> Bool {
+        payments.contains { payment in
+            if case let .onchain(paymentTxid, _) = payment.kind {
+                return paymentTxid.caseInsensitiveCompare(txid) == .orderedSame
+            }
+            return false
+        }
+    }
+
+    /// Whether LDK can never give the channel's sweep an output, at any fee rate. Mirrors LDK's
+    /// `maybe_add_change_output`: the sweeper batches every unconfirmed pending sweep, across channels, into one
+    /// transaction paying a change output of the wallet's primary address type, and adds that output only when the
+    /// change left after the fee is at least its dust limit. Each input is priced as the lightest one, at the fee
+    /// floor. Keep in step with Android `TransferRepo.isUnsweepable`.
+    static func isUnsweepable(channelId: String, pendingSweeps: [PendingSweepBalance], changeType: LDKNode.AddressType) -> Bool {
+        let ownSweeps = pendingSweeps.filter { $0.sweepChannelId == channelId }
+        guard !ownSweeps.isEmpty, !ownSweeps.contains(where: \.isConfirmedSweep) else { return false }
+
+        let batch = pendingSweeps.filter { !$0.isConfirmedSweep }
+        let totalSats = batch.reduce(UInt64(0)) { $0 + $1.sweepAmountSats }
+        let weightWu = sweepTxOverheadWu + UInt64(batch.count) * sweepInputWu + changeType.outputBytes * 4
+        let feeSats = weightWu * feerateFloorSatPerKw / 1000
+        return totalSats < changeType.dustLimitSats + feeSats
+    }
+}
+
+private extension LDKNode.AddressType {
+    var outputBytes: UInt64 {
+        switch self {
+        case .taproot: 43
+        case .nativeSegwit: 31
+        case .nestedSegwit: 32
+        case .legacy: 34
+        }
+    }
+
+    var dustLimitSats: UInt64 {
+        switch self {
+        case .taproot: 330
+        case .nativeSegwit: 294
+        case .nestedSegwit: 540
+        case .legacy: 546
+        }
+    }
+}
+
+extension PendingSweepBalance {
+    var sweepChannelId: ChannelId? {
+        switch self {
+        case let .pendingBroadcast(channelId, _): channelId
+        case let .broadcastAwaitingConfirmation(channelId, _, _, _): channelId
+        case let .awaitingThresholdConfirmations(channelId, _, _, _, _): channelId
+        }
+    }
+
+    var isConfirmedSweep: Bool {
+        if case .awaitingThresholdConfirmations = self {
+            return true
+        }
+        return false
+    }
+
+    var sweepAmountSats: UInt64 {
+        switch self {
+        case let .pendingBroadcast(_, amountSatoshis): amountSatoshis
+        case let .broadcastAwaitingConfirmation(_, _, _, amountSatoshis): amountSatoshis
+        case let .awaitingThresholdConfirmations(_, _, _, _, amountSatoshis): amountSatoshis
         }
     }
 }

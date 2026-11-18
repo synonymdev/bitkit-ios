@@ -2214,11 +2214,19 @@ class WalletViewModel: ObservableObject {
             let channelLightningBalance = allBalances.first { $0.channelIdString == channelIdString }
             var channelBalance = channelLightningBalance?.amountSats ?? 0
 
-            // If no balance found in lightningBalances, get from closed channel record
+            // The sweep holds what the close actually paid us
+            if channelBalance == 0 {
+                channelBalance = lightningService.balances?.pendingBalancesFromChannelClosures
+                    .filter { $0.sweepChannelId == channelIdString }
+                    .reduce(0) { $0 + $1.sweepAmountSats } ?? 0
+            }
+
+            // Last resort, from the record kept at close: outbound capacity plus our reserve, which overstates a
+            // balance below the reserve, but never the channel capacity
             if channelBalance == 0, let closedChannels = try? await coreService.activity.closedChannels(sortDirection: .desc),
                let closedChannel = closedChannels.first(where: { $0.channelId == channelIdString })
             {
-                channelBalance = closedChannel.channelValueSats
+                channelBalance = closedChannel.balanceOnCloseSats
             }
 
             // For force closes, get the timelock height
