@@ -476,6 +476,8 @@ jobs:
       BACKEND: local
       SIMULATOR_NAME: iPhone 17
       SIMULATOR_OS_VERSION: "26.5"
+      # Keep wallet, input, camera, connectivity and diagnostic services available to the gate.
+      SIMSLIM_KEEP_CATEGORIES: icloud,store,pim,web,photos,messaging,connectivity,telemetry,mdm,other
       WDA_LAUNCH_TIMEOUT: "600000"
       WDIO_CONNECTION_RETRY_TIMEOUT: "660000"
       RECORD_VIDEO: true
@@ -519,11 +521,27 @@ jobs:
         run: |
           set -euo pipefail
           udid=$(xcrun simctl list devices available -j | jq -er --arg name "$SIMULATOR_NAME" '.devices["com.apple.CoreSimulator.SimRuntime.iOS-26-5"][] | select(.name == $name) | .udid' | head -1)
+          echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
           xcrun simctl boot "$udid"
           npm ci
           command -v ffmpeg >/dev/null || brew install ffmpeg
           xcrun simctl bootstatus "$udid" -b
+      - name: Apply SimSlim to the hosted simulator
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          archive=simslim-v0.15.0-macos-arm64.tar.gz
+          curl -fsSL --retry 3 -o "$archive" "https://github.com/MobAI-App/simslim/releases/download/v0.15.0/$archive"
+          echo "8db2d7b9c41f7cbc925c883a2907a2941e8b8bf8d6fc8cc4ce7343a830d61a31  $archive" | shasum -a 256 -c -
+          tar -xzf "$archive" simslim
+          ./simslim version
+          evidence="$GITHUB_WORKSPACE/bitkit-e2e-tests/artifacts/simslim"
+          mkdir -p "$evidence"
+          ./simslim measure "$SIMULATOR_UDID" --json | tee "$evidence/stock.json"
+          ./simslim on "$SIMULATOR_UDID" --except "$SIMSLIM_KEEP_CATEGORIES"
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
           open -a Simulator
+          ./simslim measure "$SIMULATOR_UDID" --json | tee "$evidence/slim.json"
       - name: Wait for the shared app build
         env:
           GH_TOKEN: ${{ github.token }}
@@ -546,6 +564,13 @@ jobs:
         with:
           name: bitkit-e2e-ios_${{ github.run_number }}
           path: bitkit-e2e-tests/aut
+      - name: Verify the gate simulator and its SimSlim profile
+        working-directory: bitkit-e2e-tests
+        run: |
+          set -euo pipefail
+          # The harness selects a booted simulator by name. Ensure its only match is the slimmed device.
+          xcrun simctl list devices booted -j | jq -e '[.devices[][] | select(.name == env.SIMULATOR_NAME and .state == "Booted") | .udid] == [env.SIMULATOR_UDID]'
+          "$RUNNER_TEMP/simslim" verify "$SIMULATOR_UDID" --except "$SIMSLIM_KEEP_CATEGORIES" --json | tee artifacts/simslim/verified.json
       - name: Run gate cases on the paired backend
         working-directory: bitkit-e2e-tests
         run: bash ../.github/scripts/hosted-e2e-gate.sh
