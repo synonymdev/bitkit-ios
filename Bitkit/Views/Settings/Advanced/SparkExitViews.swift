@@ -401,7 +401,8 @@ struct SparkExitPayView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            NavigationBar(title: t("lightning__spark_exit__nav_title"))
+            // A running start cannot be left: it would go on and open Progress anyway.
+            NavigationBar(title: t("lightning__spark_exit__nav_title"), showBackButton: !isStarting)
                 .padding(.bottom, 16)
 
             ScrollView(showsIndicators: false) {
@@ -432,7 +433,7 @@ struct SparkExitPayView: View {
                 .accessibilityIdentifier("SparkExitPayRetry")
             }
 
-            CustomButton(title: t("common__cancel"), variant: .secondary) {
+            CustomButton(title: t("common__cancel"), variant: .secondary, isDisabled: isStarting) {
                 navigation.navigateBack()
             }
             .accessibilityIdentifier("SparkExitPayCancel")
@@ -461,11 +462,17 @@ struct SparkExitPayView: View {
     private func start() {
         guard !isStarting else { return }
         isStarting = true
+        SwipeBackState.allowSwipeBack = false
         exit.fundFromSavings = false
         // Asked as the force transfer starts: the reminders are how Bitkit reaches the user when a step needs the app.
         PushNotificationManager.shared.requestPermissionIfUndecided()
         Task {
-            try? await startSparkExit(app: app, navigation: navigation)
+            do {
+                try await startSparkExit(app: app, navigation: navigation)
+            } catch {
+                // Still here: swipe back again. A start that opened Progress leaves the gesture to it, which blocks it.
+                SwipeBackState.allowSwipeBack = true
+            }
             isStarting = false
         }
     }
