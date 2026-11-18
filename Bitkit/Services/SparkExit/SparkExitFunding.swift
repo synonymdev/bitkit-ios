@@ -206,6 +206,12 @@ struct SparkExitFeeBumpOption: Equatable, Identifiable {
     }
 }
 
+/// What an ended exit returned to savings: `spendingSats` of spending balance, `feesSats` of unspent emergency fees.
+struct SparkExitReturned: Equatable {
+    let spendingSats: UInt64
+    let feesSats: UInt64
+}
+
 /// A local notification that brings the user back to an exit; `id` is stable across runs for the same step.
 struct SparkExitReminder: Equatable {
     let id: String
@@ -374,6 +380,66 @@ enum SparkExitMath {
         let sats = paid.values.reduce(0, +)
         guard sats > 0 else { return nil }
         return (sats, transactions.first { $0.kind == .sweep }?.txid ?? record.landedSweepTxid)
+    }
+
+    /// The unspent fee funding the SWEEP steps of `record`'s recovery return to savings: the value of their inputs that
+    /// spend the funding address, which are funding UTXOs and the outputs of a CPFP child or the fan-out. An input whose
+    /// parent this recovery does not hold, such as an earlier generation's CPFP change, is not counted, nor is the sweep
+    /// of a replaced generation: the record keeps only what it paid (`earlierReceivedSats`).
+    static func returnedFundingSats(_ record: SparkExitRecord) -> UInt64 {
+        guard let recovery = record.recovery?.response else { return 0 }
+        var funding: [String: UInt64] = [:]
+        for input in record.fundingInputs + recovery.fundingInputs {
+            if case let .p2wpkh(txid, vout, valueSats, _) = input {
+                funding["\(txid):\(vout)"] = valueSats
+            }
+        }
+        var parents: [String: String] = [:]
+        for tx in recovery.transactions {
+            if let hex = tx.cpfpTxHex, let txid = SparkExitTxid.txid(hex: hex) {
+                parents[txid] = hex
+            }
+        }
+        for tx in recovery.transactions where tx.kind == .fanOut {
+            parents[tx.txid] = tx.txHex
+        }
+        var seen: Set<String> = []
+        var sats: UInt64 = 0
+        for sweep in recovery.transactions where sweep.kind == .sweep {
+            for input in SparkExitTxid.inputOutpoints(hex: sweep.txHex) ?? [] {
+                let outpoint = "\(input.txid):\(input.vout)"
+                guard seen.insert(outpoint).inserted else { continue }
+                let parentOutputs = parents[input.txid].flatMap { SparkExitTxid.outputs(hex: $0) }
+                let value = funding[outpoint] ?? parentOutputs.flatMap { Int(input.vout) < $0.count ? $0[Int(input.vout)].value : nil }
+                sats = sats.saturatingAdd(value ?? 0)
+            }
+        }
+        return sats
+    }
+
+    /// The leftover fee funding the ended exit swept back on its own: earlier sweeps and the confirmed last one.
+    static func sweptLeftoverSats(_ record: SparkExitRecord) -> UInt64 {
+        let swept = (record.sweptLeftover ?? []).reduce(UInt64(0)) { $0.saturatingAdd($1.valueSats) }
+        let sending = record.leftoverSweep?.isConfirmed == true ? record.leftoverSweep?.valueSats ?? 0 : 0
+        return swept.saturatingAdd(sending)
+    }
+
+    /// What the ended exit returned to savings, split as the done screen names it: `received` less the fee funding the
+    /// main sweep returned is the spending balance, which bears the sweep's own fee; that funding and
+    /// `sweptLeftoverSats` are the emergency fees it did not spend. Nil before it ended done or when no output to
+    /// savings can be read.
+    static func returned(_ record: SparkExitRecord) -> SparkExitReturned? {
+        guard let received = received(record)?.sats else { return nil }
+        // Capped at what was received, so the two parts always add up to what reached savings.
+        let funding = min(returnedFundingSats(record), received)
+        return SparkExitReturned(spendingSats: received - funding, feesSats: sweptLeftoverSats(record).saturatingAdd(funding))
+    }
+
+    /// Pay to confirm starts the exit on its own, once, for a payment that arrived after its first read of the funding
+    /// address (`entrySeenCount`, nil until that read) and covers the funding. Funding already there when it opened
+    /// waits for a tap, so nothing starts unseen.
+    static func canAutoStartFunding(isFunded: Bool, hasAutoStarted: Bool, entrySeenCount: Int?, seenCount: Int) -> Bool {
+        isFunded && !hasAutoStarted && entrySeenCount.map { seenCount > $0 } == true
     }
 
     /// The exit's sweeps to savings: the recovery's, else the one that landed before a retry replaced it, and those of

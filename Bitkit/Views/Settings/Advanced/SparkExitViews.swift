@@ -356,14 +356,16 @@ struct SparkExitFundingView: View {
     }
 }
 
-/// The emergency fees paid from another wallet to the funding address: the force transfer starts on its own once the
-/// address holds them.
+/// The emergency fees paid from another wallet to the funding address: the force transfer starts on its own once a
+/// payment that covers them arrives here; fees already there wait for a tap on Continue.
 struct SparkExitPayView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
 
-    /// Starts once per visit, when a payment arrives while the screen is open: a failed start shows its error and waits
-    /// for the user, never retrying on its own.
+    /// The payments the first read of the funding address found this visit; only one arriving after them starts the
+    /// exit on its own.
+    @State private var entrySeenCount: Int?
+    /// Started on its own this visit: a failed start shows its error and waits for a tap, never retrying by itself.
     @State private var hasAutoStarted = false
     @State private var isStarting = false
 
@@ -385,6 +387,15 @@ struct SparkExitPayView: View {
 
     private var isFunded: Bool {
         exit.fundingSeenSats >= prestartFunding.covered
+    }
+
+    private var canAutoStart: Bool {
+        SparkExitMath.canAutoStartFunding(
+            isFunded: isFunded,
+            hasAutoStarted: hasAutoStarted,
+            entrySeenCount: entrySeenCount,
+            seenCount: exit.fundingSeenCount
+        )
     }
 
     var body: some View {
@@ -412,9 +423,8 @@ struct SparkExitPayView: View {
             }
 
             // Funds already at the address on entry wait for a tap; a failed start offers Try Again.
-            if isFunded, !isStarting {
+            if isFunded, !isStarting, !canAutoStart {
                 CustomButton(title: t(hasAutoStarted ? "common__try_again" : "common__continue")) {
-                    hasAutoStarted = true
                     await start()
                 }
                 .padding(.bottom, 16)
@@ -430,10 +440,16 @@ struct SparkExitPayView: View {
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .task {
-            await exit.watchFundingAddress()
+            entrySeenCount = nil
+            hasAutoStarted = false
+            await exit.watchFundingAddress {
+                if entrySeenCount == nil {
+                    entrySeenCount = exit.fundingSeenCount
+                }
+            }
         }
-        .onChange(of: isFunded) { _, isFunded in
-            guard isFunded, !hasAutoStarted else { return }
+        .onChange(of: canAutoStart) { _, canAutoStart in
+            guard canAutoStart else { return }
             hasAutoStarted = true
             isStarting = true
             Task { await start(isClaimed: true) }
@@ -754,9 +770,9 @@ struct SparkExitProgressView: View {
 
     /// What the ended force transfer returned to savings: the spending balance and the emergency fees it did not spend.
     private var returnedText: String? {
-        guard let record, let receivedSats = SparkExitMath.received(record)?.sats else { return nil }
-        let amount = currency.primaryAmountText(sats: receivedSats)
-        let feesSats = record.returnedFeeSats
+        guard let record, let returned = SparkExitMath.returned(record), returned.spendingSats > 0 else { return nil }
+        let amount = currency.primaryAmountText(sats: returned.spendingSats)
+        let feesSats = returned.feesSats
         guard feesSats > 0 else { return t("lightning__spark_exit__done_returned", variables: ["amount": amount]) }
         return t(
             "lightning__spark_exit__done_returned_fees",
@@ -1264,15 +1280,6 @@ struct SparkExitSteps: View {
             .frame(height: 50)
             CustomDivider()
         }
-    }
-}
-
-private extension SparkExitRecord {
-    /// The emergency fees the ended force transfer did not spend and sent back to savings.
-    var returnedFeeSats: UInt64 {
-        let swept = (sweptLeftover ?? []).reduce(0) { $0 + $1.valueSats }
-        let sending = leftoverSweep?.isConfirmed == true ? leftoverSweep?.valueSats ?? 0 : 0
-        return swept + sending
     }
 }
 

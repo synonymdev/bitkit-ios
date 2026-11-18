@@ -3317,6 +3317,19 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.neededSats(record, state: .ask(sats: 500)), 500)
     }
 
+    /// Pay to confirm starts on its own only for a covering payment that arrives while it shows, and only once.
+    func testPayToConfirmAutoStartsOnlyForAPaymentThatArrivesWhileItShows() {
+        // Before its first read, and for funding already there on entry, it waits for a tap.
+        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: true, hasAutoStarted: false, entrySeenCount: nil, seenCount: 1))
+        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: true, hasAutoStarted: false, entrySeenCount: 1, seenCount: 1))
+        // A payment arriving after the first read starts it once it covers the funding.
+        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: false, hasAutoStarted: false, entrySeenCount: 0, seenCount: 1))
+        XCTAssertTrue(SparkExitMath.canAutoStartFunding(isFunded: true, hasAutoStarted: false, entrySeenCount: 0, seenCount: 1))
+        XCTAssertTrue(SparkExitMath.canAutoStartFunding(isFunded: true, hasAutoStarted: false, entrySeenCount: 1, seenCount: 2))
+        // A failed auto-start waits for Try Again.
+        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: true, hasAutoStarted: true, entrySeenCount: 0, seenCount: 2))
+    }
+
     /// qa-03: 2,000 of 4,348 at the address showed no hint until the whole sum arrived.
     func testAPartialPaymentNamesWhatIsStillMissing() {
         XCTAssertNil(SparkExitMath.partialFundingSats(receivedSats: 0, requiredSats: 4348))

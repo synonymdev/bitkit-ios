@@ -918,10 +918,13 @@ final class SparkExitManager {
         self.fundingAddress = fundingAddress
     }
 
-    /// Watches the funding address while the user pays the emergency fees from another wallet.
-    func watchFundingAddress() async {
+    /// Watches the funding address while the user pays the emergency fees from another wallet, calling `onRead` after
+    /// each read that succeeded.
+    func watchFundingAddress(onRead: () -> Void = {}) async {
         while !Task.isCancelled {
-            await readFundingAddress()
+            if await readFundingAddress() != nil {
+                onRead()
+            }
             try? await Task.sleep(nanoseconds: 15 * 1_000_000_000)
         }
     }
