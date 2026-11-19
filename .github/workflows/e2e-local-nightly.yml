@@ -50,10 +50,13 @@ jobs:
         if: steps.images.outputs.cache-hit != 'true'
         run: ./scripts/local-backend spark-pack "$RUNNER_TEMP/spark-images.tar"
 
+      - name: Compress the fixture archive for transfer
+        run: gzip -1 -c "$RUNNER_TEMP/spark-images.tar" > "$RUNNER_TEMP/spark-images.tar.gz"
+
       - uses: actions/upload-artifact@v7
         with:
           name: spark-fixture-images
-          path: ${{ runner.temp }}/spark-images.tar
+          path: ${{ runner.temp }}/spark-images.tar.gz
           if-no-files-found: error
           compression-level: 0
           retention-days: 3
@@ -96,7 +99,7 @@ jobs:
         id: spark
         working-directory: bitkit-e2e-tests
         env:
-          SPARK_IMAGE_ARCHIVE: ${{ runner.temp }}/spark-images.tar
+          SPARK_IMAGE_ARCHIVE: ${{ runner.temp }}/spark-images.tar.gz
         run: |
           if [[ "$RUNNER_ARCH" != ARM64 ]]; then
             echo "::error::The Spark fixture archive requires an ARM64 Mac runner."
@@ -153,7 +156,7 @@ jobs:
 
       - name: Remove the imported image archive
         if: always()
-        run: rm -f "$RUNNER_TEMP/spark-images.tar"
+        run: rm -f "$RUNNER_TEMP/spark-images.tar.gz"
 
       # Preserve logs and recordings from failed attempts even when a retry passes.
       - uses: actions/upload-artifact@v7
