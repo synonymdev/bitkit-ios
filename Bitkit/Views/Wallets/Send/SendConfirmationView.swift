@@ -15,6 +15,7 @@ struct SendConfirmationView: View {
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var tagManager: TagManager
+    @EnvironmentObject var transfer: TransferViewModel
     @Environment(HwWalletManager.self) private var hwWalletManager
 
     @Binding var navigationPath: [SendRoute]
@@ -85,6 +86,12 @@ struct SendConfirmationView: View {
             self.address == address && recipientAmountSats == amountSats && self.feeRate == feeRate && self.utxos == utxos
         }
     }
+
+    /// The spending balance update a Lightning payment that fits only across the channels and Spark runs first.
+    @State private var sparkUpdateQuote: MoveToSparkQuote?
+    @State private var sparkUpdateQuoteRun = 0
+    /// The update quote still loading; only that run clears it, so an older quote never releases the swipe.
+    @State private var sparkUpdateQuotingRun: Int?
 
     private struct WalletSwitchRun {
         let id: UUID
@@ -1027,6 +1034,10 @@ struct SendConfirmationView: View {
                 }
             }
 
+            if let feeSats = sparkUpdateQuote?.feeSats {
+                SendUpdateFeeSection(feeSats: feeSats)
+            }
+
             if let description = app.scannedLightningInvoice?.description, !description.isEmpty,
                description.trimmingCharacters(in: .whitespacesAndNewlines) != oneOffPaymentRequestNote
             {
@@ -1146,6 +1157,8 @@ struct SendConfirmationView: View {
                 return
             }
         }
+
+        guard await confirmSparkUpdateQuote(isAutomatic: isAutomatic) else { throw CancellationError() }
 
         // The fee the warnings and this approval are for; an estimate finishing later must not stand in for it.
         let reviewedFeeSats = UInt64(max(0, transactionFee))
@@ -1422,10 +1435,11 @@ struct SendConfirmationView: View {
         isPreparingWallet: Bool = false,
         isAmountReviewRequired: Bool = false,
         isPreparingOnchainSend: Bool = false,
-        isRouteRefused: Bool = false
+        isRouteRefused: Bool = false,
+        isUpdateQuoting: Bool = false
     ) -> Bool {
         isAmountReviewRequired || isPreparingRequest || isSetupPending || isPreparingWallet || isPreparingOnchainSend || isRouteRefused
-            || isHardwareConfirmationUnavailable
+            || isHardwareConfirmationUnavailable || isUpdateQuoting
             || isFeeRateMissing(walletType: walletType, isHardwarePayment: isHardwarePayment, feeRate: feeRate)
     }
 
@@ -1448,7 +1462,8 @@ struct SendConfirmationView: View {
             isPreparingWallet: walletSwitchContext != nil,
             isAmountReviewRequired: requiresAmountReview,
             isPreparingOnchainSend: isPreparingOnchainSend,
-            isRouteRefused: refusedRouteSource == app.selectedWalletToPayFrom
+            isRouteRefused: refusedRouteSource == app.selectedWalletToPayFrom,
+            isUpdateQuoting: sparkUpdateQuotingRun != nil
         )
     }
 
@@ -1717,7 +1732,10 @@ struct SendConfirmationView: View {
             route,
             amountSats: amountSats,
             source: source,
-            lightningSpendableSats: source == .spending ? UInt64(max(0, wallet.maxSendLightningSats)) : 0,
+            // The hold payment goes out over one rail, never after a spending balance update.
+            lightningSpendableSats: source == .spending
+                ? min(UInt64(max(0, wallet.maxSendLightningSats)), MoveToSparkMath.singleRailSendableSats())
+                : 0,
             onchainSpendableSats: source == .savings ? UInt64(max(0, wallet.spendableOnchainBalanceSats)) : 0,
             request: request
         )
@@ -2005,6 +2023,15 @@ struct SendConfirmationView: View {
                     }
                 ) {
                     do {
+                        // After the allowance check above, so a refused request moves nothing.
+                        try await MoveToSparkManager.shared.updateSpendingBalanceIfNeeded(
+                            bolt11: invoice.bolt11,
+                            amountSats: amount,
+                            shown: sparkUpdateQuote,
+                            wallet: wallet,
+                            transfer: transfer,
+                            onUnseen: { showSparkUpdateQuote($0) }
+                        )
                         privatePaymentListOutcome = .uncertain
                         try await wallet.sendWithTimeout(
                             bolt11: invoice.bolt11,
@@ -2271,11 +2298,14 @@ struct SendConfirmationView: View {
             if shouldCancelPaymentProof, let incomingPaymentRequest {
                 await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
             }
-            Logger.error("Payment failed: \(error)")
-
             if let paymentId = createdMetadataPaymentId {
                 try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: paymentId)
             }
+            if error as? MoveToSparkError == .updateFeeUnseen {
+                // Nothing moved or paid: the new update fee shows in the details and the swipe resets to pay with it.
+                throw CancellationError()
+            }
+            Logger.error("Payment failed: \(error)")
 
             if case let OnchainSendAttemptError.preDispatch(refused) = error, let increased = refused as? OnchainSendFeeIncreased,
                let onchainSend, let feeRate = wallet.selectedFeeRateSatsPerVByte
@@ -2973,19 +3003,97 @@ struct SendConfirmationView: View {
 
     @MainActor
     private func calculateRoutingFee() async {
+        sparkUpdateQuote = nil
         guard !requiresAmountReview else { return }
         guard let bolt11 = app.scannedLightningInvoice?.bolt11 else {
             wallet.routingFeeEstimateSats = 0
             return
         }
 
-        if canSwitchWallet || app.selectedWalletToPayFrom == .lightning {
+        if let payment = sparkUpdatePayment, MoveToSparkMath.needsUpdateToSend(amountSats: payment.amountSats) {
+            await estimateSparkUpdateFees(bolt11: payment.bolt11, amountSats: payment.amountSats)
+        } else if canSwitchWallet || app.selectedWalletToPayFrom == .lightning {
             // For invoices with a built-in amount, pass nil so LDK uses native msat precision
             let amountSats: UInt64? = app.scannedLightningInvoice?.amountSatoshis == 0 ? wallet.sendAmountSats : nil
             await wallet.refreshRoutingFeeEstimate(bolt11: bolt11, amountSats: amountSats)
         } else {
             wallet.routingFeeEstimateSats = 0
         }
+    }
+
+    /// The Lightning payment Confirm sends from Spending, which may need the spending balance update first; a Spark leg
+    /// pays another endpoint and never does.
+    private var sparkUpdatePayment: (bolt11: String, amountSats: UInt64)? {
+        guard app.selectedWalletToPayFrom == .lightning, app.paykitRoute?.serviceLeg == nil,
+              let invoice = app.scannedLightningInvoice else { return nil }
+        return (invoice.bolt11, invoice.amountSatoshis > 0 ? invoice.amountSatoshis : wallet.sendAmountSats ?? 0)
+    }
+
+    /// Quotes the update a payment of `amountSats` needs, and Spark's fee for the payment after it.
+    @MainActor
+    private func estimateSparkUpdateFees(bolt11: String, amountSats: UInt64) async {
+        sparkUpdateQuoteRun += 1
+        let run = sparkUpdateQuoteRun
+        sparkUpdateQuotingRun = run
+        defer {
+            if sparkUpdateQuotingRun == run {
+                sparkUpdateQuotingRun = nil
+            }
+        }
+        let quote = try? await MoveToSparkManager.shared.updateQuote(wallet: wallet)
+        let feeSats = await MoveToSparkManager.shared.estimateFeeAfterUpdate(bolt11: bolt11, amountSats: amountSats)
+        guard run == sparkUpdateQuoteRun else { return }
+        wallet.routingFeeEstimateSats = feeSats
+        showSparkUpdateQuote(quote)
+    }
+
+    /// The update fee sits in the details, so each new quote opens them.
+    private func showSparkUpdateQuote(_ quote: MoveToSparkQuote?) {
+        sparkUpdateQuote = quote
+        if quote != nil {
+            showDetails = true
+        }
+    }
+
+    /// Quotes the spending balance update again when the payment needs one, before anything is prepared or sent. A quote
+    /// the user did not see, or a fee above the one shown, stops the swipe and shows the new fee instead.
+    @MainActor
+    private func confirmSparkUpdateQuote(isAutomatic: Bool) async -> Bool {
+        guard let payment = sparkUpdatePayment, MoveToSparkMath.needsUpdateToSend(amountSats: payment.amountSats) else { return true }
+        let fresh: MoveToSparkQuote
+        do {
+            fresh = try await MoveToSparkManager.shared.updateQuote(wallet: wallet)
+        } catch {
+            Logger.error("Failed to quote the spending balance update: \(error)", context: "SendConfirmation")
+            navigationPath.append(.failure(SendFailureContext(
+                error: MoveToSparkError.updateFailed,
+                retryRoute: .confirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: payment.bolt11,
+                contactPaymentContext: app.contactPaymentContext
+            )))
+            return false
+        }
+        let shown = sparkUpdateQuote
+        showSparkUpdateQuote(fresh)
+        guard MoveToSparkMath.isUpdateFeeUnseen(shownFeeSats: shown?.feeSats, freshFeeSats: fresh.feeSats) else { return true }
+        Logger.info("Stopped a payment to show the update fee '\(fresh.feeSats)'", context: "SendConfirmation")
+        if isAutomatic {
+            showManualConfirmation(reason: "update fee")
+        }
+        return false
+    }
+}
+
+/// The fee of the spending balance update a payment that fits only across the channels and Spark runs first.
+struct SendUpdateFeeSection: View {
+    let feeSats: UInt64
+
+    var body: some View {
+        SendSectionView(t("wallet__send_update_fee")) {
+            MoneyText(sats: Int(feeSats), size: .bodySSB, symbol: true, symbolColor: .textPrimary)
+        }
+        .accessibilityIdentifier("ReviewUpdateFee")
     }
 }
 

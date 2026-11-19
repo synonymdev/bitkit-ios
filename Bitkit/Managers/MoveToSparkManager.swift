@@ -77,6 +77,90 @@ enum MoveToSparkMath {
             return wasSats >= minMoveSats && $0.nextOutboundHtlcLimitMsat / 1000 < minMoveSats
         }
     }
+
+    /// The most a Lightning payment can send: over the channels, from Spark, or from Spark after an update.
+    static func maxSendSats(channels: [ChannelDetails]?, spark: SparkSendState) -> UInt64 {
+        max(movableSats(channels: channels), spark.sendableSats, combinedSendableSats(channels: channels, spark: spark))
+    }
+
+    /// The most Spark can send once the channels' balance less a guessed routing fee has moved to it; 0 when nothing can
+    /// move.
+    static func combinedSendableSats(channels: [ChannelDetails]?, spark: SparkSendState) -> UInt64 {
+        guard canMove(channels: channels, isSparkUsable: spark.isUsable) else { return 0 }
+        let limitSats = movableSats(channels: channels)
+        let (balanceSats, overflow) = spark.balanceSats.addingReportingOverflow(firstCandidate(wantedSats: limitSats, limitSats: limitSats))
+        return ChannelFreeRailFees.sendableSats(balanceSats: overflow ? .max : balanceSats)
+    }
+
+    /// The most the channels or a usable Spark can send alone.
+    static func singleRailSendableSats(channels: [ChannelDetails]?, spark: SparkSendState) -> UInt64 {
+        max(movableSats(channels: channels), spark.sendableSats)
+    }
+
+    /// Whether `amountSats` fits neither the channels nor Spark alone, but fits Spark once the channels moved to it.
+    static func needsUpdateToSend(amountSats: UInt64, channels: [ChannelDetails]?, spark: SparkSendState) -> Bool {
+        amountSats > singleRailSendableSats(channels: channels, spark: spark)
+            && amountSats <= combinedSendableSats(channels: channels, spark: spark)
+    }
+
+    /// Whether a Lightning payment of `amountSats` needs the update now, from the node's channels and Spark's state.
+    @MainActor
+    static func needsUpdateToSend(amountSats: UInt64) -> Bool {
+        needsUpdateToSend(amountSats: amountSats, channels: LightningService.shared.channels, spark: .live)
+    }
+
+    /// Whether a Lightning send can pay `amountSats`: over one rail, or from Spark once the spending balance is updated.
+    @MainActor
+    static func canSendLightning(amountSats: UInt64, lightningService: LightningService = .shared) -> Bool {
+        lightningService.canSend(amountSats: amountSats)
+            || needsUpdateToSend(amountSats: amountSats, channels: lightningService.channels, spark: .live)
+    }
+
+    /// The most a Lightning payment can send over the channels or Spark alone, without an update.
+    @MainActor
+    static func singleRailSendableSats() -> UInt64 {
+        singleRailSendableSats(channels: LightningService.shared.channels, spark: .live)
+    }
+
+    /// Whether Spark can pay `amountSats` and its `feeSats` for the payment once `quote` has moved to it.
+    static func coversPayment(quote: MoveToSparkQuote, spark: SparkSendState, amountSats: UInt64, feeSats: UInt64) -> Bool {
+        let (have, haveOverflow) = spark.balanceSats.addingReportingOverflow(quote.amountSats)
+        let (need, needOverflow) = amountSats.addingReportingOverflow(feeSats)
+        return spark.isUsable && !needOverflow && (haveOverflow || have >= need)
+    }
+
+    /// The update fee guard: nothing is charged that the user did not see, so a fresh quote with no fee shown before it,
+    /// or a fee above the one shown, stops the payment until the new fee shows.
+    static func isUpdateFeeUnseen(shownFeeSats: UInt64?, freshFeeSats: UInt64) -> Bool {
+        guard let shownFeeSats else { return true }
+        return freshFeeSats > shownFeeSats
+    }
+}
+
+/// What the update to Spark reads of Spark: whether it takes a move, and what it can then send.
+struct SparkSendState: Equatable {
+    var isReady: Bool
+    var isExiting: Bool
+    var balanceSats: UInt64
+
+    var isUsable: Bool {
+        MoveToSparkMath.isSparkUsable(isReady: isReady, isExiting: isExiting)
+    }
+
+    /// What Spark can send once its service fee is kept; nothing while it is not usable.
+    var sendableSats: UInt64 {
+        isUsable ? ChannelFreeRailFees.sendableSats(balanceSats: balanceSats) : 0
+    }
+
+    func canSend(_ amountSats: UInt64) -> Bool {
+        sendableSats >= amountSats
+    }
+
+    @MainActor
+    static var live: SparkSendState {
+        let spark = SparkManager.shared
+        return SparkSendState(isReady: spark.isReady, isExiting: spark.isExiting, balanceSats: spark.balanceSats)
+    }
 }
 
 struct MoveToSparkQuote: Equatable {
@@ -94,11 +178,19 @@ extension LightningActivity {
     }
 }
 
-enum MoveToSparkError: Error {
+enum MoveToSparkError: Error, Equatable {
     case nothingToMove
     case sparkUnavailable
     /// `amountSats` did not route from the channels to Spark in one payment.
     case tooLarge(amountSats: UInt64)
+    /// The quoted move, with Spark's balance, would not cover a payment of `amountSats`, so nothing moved.
+    case updateFallsShort(amountSats: UInt64)
+    /// The update's fee is new or above the one the user saw, so nothing moved until they see it.
+    case updateFeeUnseen
+    /// The update moved the balance, but Spark cannot pay with it yet: the move or Spark's balance has not settled.
+    case updateUnsettled
+    /// The update for a payment could not be quoted or did not move; the payment was not sent.
+    case updateFailed
 }
 
 /// The payments that move a channel balance to Spark, whose send and receive the app does not announce as payments.
@@ -174,6 +266,10 @@ protocol MoveToSparkServices {
     func receiveInvoice(description: String, expirySecs: UInt32) async throws -> String
     /// The routing fee LDK estimates for paying `bolt11` with `amountSats` over the channels only.
     func estimateChannelFee(bolt11: String, amountSats: UInt64) async throws -> UInt64
+    @MainActor var spark: SparkSendState { get }
+    /// Spark's fee for paying `bolt11` with `amountSats`, from Spark's own quote, which prices the amount whatever its balance.
+    func estimateSparkFee(bolt11: String, amountSats: UInt64) async throws -> UInt64
+    func refreshSpark() async
 }
 
 struct LiveMoveToSparkServices: MoveToSparkServices {
@@ -187,6 +283,18 @@ struct LiveMoveToSparkServices: MoveToSparkServices {
 
     func estimateChannelFee(bolt11: String, amountSats: UInt64) async throws -> UInt64 {
         try await LightningService.shared.estimateRoutingFees(bolt11: bolt11, amountSats: amountSats, channelsOnly: true)
+    }
+
+    @MainActor var spark: SparkSendState {
+        .live
+    }
+
+    func estimateSparkFee(bolt11: String, amountSats: UInt64) async throws -> UInt64 {
+        try await SparkManager.shared.estimateRoutingFees(bolt11: bolt11, amountSats: amountSats)
+    }
+
+    func refreshSpark() async {
+        await SparkManager.shared.refreshState()
     }
 }
 
@@ -229,6 +337,10 @@ final class MoveToSparkManager {
 
     private static let invoiceExpirySecs: UInt32 = 3600
     private static let maxQuoteRounds = 4
+    /// How long a payment after an update waits for Spark to show the moved balance.
+    private static let sparkBalanceWait: Duration = .seconds(60)
+    /// How often that wait reads Spark's balance again.
+    private static let sparkBalanceRecheck: Duration = .seconds(2)
 
     private(set) var state: MoveToSparkState = .quoting
     /// A move was started and its outcome is still the modal's, so showing the modal again keeps it.
@@ -245,6 +357,8 @@ final class MoveToSparkManager {
     }
 
     private let services: any MoveToSparkServices
+    /// One move at a time: the modal's and a payment's update would otherwise pay from the same channel balance.
+    private var moveTail: Task<Void, Never>?
 
     init(services: any MoveToSparkServices = LiveMoveToSparkServices()) {
         self.services = services
@@ -311,12 +425,9 @@ final class MoveToSparkManager {
         }
         state = .confirm(quote, isMoving: true)
         do {
-            let paymentHash = try Bolt11Invoice.fromStr(invoiceStr: quote.invoice).paymentHash()
-            MoveToSparkPayments.insert(String(describing: paymentHash))
-            guard let settled = try await wallet.sendOverChannels(
-                bolt11: quote.invoice,
-                sats: quote.amountSats,
-                maxFeeMsat: MoveToSparkMath.feeCapMsat(feeSats: quote.feeSats),
+            guard let settled = try await payOverChannels(
+                quote,
+                wallet: wallet,
                 // Shown in the step that stops waiting, so a late outcome right after it finds this move in flight.
                 onTimeout: { [weak self] in self?.showInFlight(amountSats: quote.amountSats, moveGeneration: moveGeneration) },
                 onLateFailure: { [weak self] in self?.lateFailure(amountSats: quote.amountSats, moveGeneration: moveGeneration) },
@@ -349,6 +460,121 @@ final class MoveToSparkManager {
             state = Self.isNoRoute(error) || Self.isSendWithoutRoute(error, invoice: quote.invoice)
                 ? .tooLarge(amountSats: quote.amountSats, smallerSats: MoveToSparkMath.smallerAmount(quote.amountSats))
                 : .failed(.unknown)
+        }
+    }
+
+    /// Pays `quote` over the channels, after any move still paying, and waits for its outcome; `nil` means it is still in
+    /// flight, and its late outcome goes to `onLateFailure` or `onLateSuccess`.
+    private func payOverChannels(
+        _ quote: MoveToSparkQuote,
+        wallet: WalletViewModel,
+        onTimeout: @escaping @MainActor () -> Void = {},
+        onLateFailure: @escaping @MainActor () -> Void = {},
+        onLateSuccess: @escaping @MainActor (WalletViewModel.SettledLightningPayment) -> Void = { _ in }
+    ) async throws -> WalletViewModel.SettledLightningPayment? {
+        let previous = moveTail
+        let payment = Task { @MainActor in
+            await previous?.value
+            let paymentHash = try Bolt11Invoice.fromStr(invoiceStr: quote.invoice).paymentHash()
+            MoveToSparkPayments.insert(String(describing: paymentHash))
+            return try await wallet.sendOverChannels(
+                bolt11: quote.invoice,
+                sats: quote.amountSats,
+                maxFeeMsat: MoveToSparkMath.feeCapMsat(feeSats: quote.feeSats),
+                onTimeout: onTimeout,
+                onLateFailure: onLateFailure,
+                onLateSuccess: onLateSuccess
+            )
+        }
+        moveTail = Task { _ = try? await payment.value }
+        return try await payment.value
+    }
+
+    /// Quotes moving everything the channels can send, for a payment that needs the update.
+    func updateQuote(wallet: WalletViewModel) async throws -> MoveToSparkQuote {
+        try await makeQuote(channels: wallet.channels, targetSats: nil)
+    }
+
+    /// Spark's fee for a payment of `amountSats` once the spending balance is updated; Spark's service fee alone when
+    /// nothing can price it, or when there is no invoice yet, as for an LNURL before its callback.
+    func estimateFeeAfterUpdate(bolt11: String?, amountSats: UInt64) async -> UInt64 {
+        if let bolt11, let feeSats = try? await services.estimateSparkFee(bolt11: bolt11, amountSats: amountSats) {
+            return feeSats
+        }
+        Logger.debug("Fell back to Spark's service fee for an update payment", context: "MoveToSpark")
+        return ChannelFreeRailFees.serviceFeeSats(amountSats: amountSats)
+    }
+
+    /// Before a payment of `bolt11` for `amountSats` that fits only across the channels and Spark, quotes the update
+    /// again and moves the channels' balance to Spark, then waits until Spark can pay. Moves nothing and throws
+    /// `updateFeeUnseen` when no update fee was shown, or the fresh fee is above `shown`, handing the fresh quote to
+    /// `onUnseen` to show. Any other failure throws a `MoveToSparkError`, so the payment is known as not sent.
+    func updateSpendingBalanceIfNeeded(
+        bolt11: String,
+        amountSats: UInt64,
+        shown: MoveToSparkQuote?,
+        wallet: WalletViewModel,
+        transfer: TransferViewModel,
+        onUnseen: (MoveToSparkQuote) -> Void
+    ) async throws {
+        guard MoveToSparkMath.needsUpdateToSend(amountSats: amountSats) else { return }
+        do {
+            let fresh = try await updateQuote(wallet: wallet)
+            if MoveToSparkMath.isUpdateFeeUnseen(shownFeeSats: shown?.feeSats, freshFeeSats: fresh.feeSats) {
+                Logger.info("Stopped a payment to show the update fee '\(fresh.feeSats)'", context: "MoveToSpark")
+                onUnseen(fresh)
+                throw MoveToSparkError.updateFeeUnseen
+            }
+            try await updateToSend(quote: fresh, bolt11: bolt11, amountSats: amountSats, wallet: wallet, transfer: transfer)
+        } catch let error as MoveToSparkError {
+            throw error
+        } catch {
+            Logger.warn("Failed to update the spending balance for '\(amountSats)' sats: \(error)", context: "MoveToSpark")
+            throw MoveToSparkError.updateFailed
+        }
+    }
+
+    /// Moves the channels' balance to Spark with `quote`, whose fee the user saw, and waits until Spark can pay
+    /// `amountSats`. Once the move settles, closes the channels it emptied, also when the payment then fails.
+    func updateToSend(
+        quote: MoveToSparkQuote,
+        bolt11: String,
+        amountSats: UInt64,
+        wallet: WalletViewModel,
+        transfer: TransferViewModel
+    ) async throws {
+        try await checkCoverage(quote: quote, bolt11: bolt11, amountSats: amountSats)
+        let channelsBefore = wallet.channels ?? []
+        let settled = try await payOverChannels(
+            quote,
+            wallet: wallet,
+            onLateSuccess: { [weak self, weak wallet, weak transfer] _ in
+                guard let self, let wallet, let transfer else { return }
+                closeEmptied(before: channelsBefore, wallet: wallet, transfer: transfer)
+            }
+        )
+        // Still in flight: the funds reach Spark or return to the channels on their own.
+        guard settled != nil else { throw MoveToSparkError.updateUnsettled }
+        closeEmptied(before: channelsBefore, wallet: wallet, transfer: transfer)
+        try await waitForSpark(toSend: amountSats)
+    }
+
+    /// Before any move: Spark must price the payment, and the quote with Spark's balance must cover it and that fee.
+    func checkCoverage(quote: MoveToSparkQuote, bolt11: String, amountSats: UInt64) async throws {
+        guard let feeSats = try? await services.estimateSparkFee(bolt11: bolt11, amountSats: amountSats),
+              MoveToSparkMath.coversPayment(quote: quote, spark: services.spark, amountSats: amountSats, feeSats: feeSats)
+        else {
+            throw MoveToSparkError.updateFallsShort(amountSats: amountSats)
+        }
+    }
+
+    private func waitForSpark(toSend amountSats: UInt64) async throws {
+        let deadline = ContinuousClock.now + Self.sparkBalanceWait
+        while !services.spark.canSend(amountSats) {
+            await services.refreshSpark()
+            guard !services.spark.canSend(amountSats) else { return }
+            guard ContinuousClock.now < deadline else { throw MoveToSparkError.updateUnsettled }
+            try await Task.sleep(for: Self.sparkBalanceRecheck)
         }
     }
 
@@ -494,7 +720,7 @@ final class MoveToSparkManager {
         case let .tooLarge(amountSats): .tooLarge(amountSats: amountSats, smallerSats: MoveToSparkMath.smallerAmount(amountSats))
         case .nothingToMove: .failed(.nothingToMove)
         case .sparkUnavailable: .failed(.sparkUnavailable)
-        case nil: .failed(.unknown)
+        case .updateFallsShort, .updateFeeUnseen, .updateUnsettled, .updateFailed, nil: .failed(.unknown)
         }
     }
 }

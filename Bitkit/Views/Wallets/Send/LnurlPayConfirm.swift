@@ -9,6 +9,7 @@ struct LnurlPayConfirm: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var transfer: TransferViewModel
 
     @Binding var navigationPath: [SendRoute]
     @Binding var isSubmittingPayment: Bool
@@ -22,6 +23,9 @@ struct LnurlPayConfirm: View {
     @State private var biometricErrorMessage = ""
     @State private var comment = ""
     @State private var hasStartedAutomaticPayment = false
+    /// The spending balance update a payment that fits only across the channels and Spark runs first.
+    @State private var sparkUpdateQuote: MoveToSparkQuote?
+    @State private var isSparkUpdateQuoting = false
     @FocusState private var isCommentFocused: Bool
 
     static func sendLightningPayment<Result>(
@@ -78,6 +82,8 @@ struct LnurlPayConfirm: View {
             Text(biometricErrorMessage)
         }
         .task {
+            // The invoice comes only with the swipe, so the update is quoted before the callback.
+            await estimateSparkUpdateFee()
             guard !Task.isCancelled else { return }
             // PIN navigation can cancel the view task while authorization is awaiting its result.
             Task { @MainActor in await startAutomaticPaymentIfNeeded() }
@@ -131,6 +137,14 @@ struct LnurlPayConfirm: View {
 
                     Divider()
 
+                    if let feeSats = sparkUpdateQuote?.feeSats {
+                        SendUpdateFeeSection(feeSats: feeSats)
+                            .padding(.vertical)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Divider()
+                    }
+
                     if let commentAllowed = lnurlPayData.commentAllowed, commentAllowed > 0 {
                         VStack(alignment: .leading) {
                             CaptionMText(t("wallet__lnurl_pay_confirm__comment"))
@@ -166,6 +180,7 @@ struct LnurlPayConfirm: View {
                     ? t("subscriptions__swipe_to_subscribe_and_pay")
                     : t("wallet__send_swipe"),
                 accentColor: .greenAccent,
+                isDisabled: isSparkUpdateQuoting,
                 isLoading: hasStartedAutomaticPayment || isSubmittingPayment,
                 isSubmitted: hasStartedAutomaticPayment
             ) {
@@ -224,6 +239,8 @@ struct LnurlPayConfirm: View {
     }
 
     private func authorizeAndPerformPayment() async throws {
+        guard await confirmSparkUpdateQuote() else { throw CancellationError() }
+
         // Check if we need to show warning for amounts over $100 USD
         if settings.warnWhenSendingOver100 {
             let sats: UInt64 = if let invoice = app.scannedLightningInvoice {
@@ -343,6 +360,15 @@ struct LnurlPayConfirm: View {
                 }
             ) {
                 lightningPaymentHash = paymentHash
+                // After the allowance check above, so a refused request moves nothing.
+                try await MoveToSparkManager.shared.updateSpendingBalanceIfNeeded(
+                    bolt11: bolt11,
+                    amountSats: reviewedAmount,
+                    shown: sparkUpdateQuote,
+                    wallet: wallet,
+                    transfer: transfer,
+                    onUnseen: { sparkUpdateQuote = $0 }
+                )
                 privatePaymentListOutcome = .uncertain
                 try await wallet.sendWithTimeout(
                     bolt11: bolt11,
@@ -399,6 +425,10 @@ struct LnurlPayConfirm: View {
             if shouldCancelPaymentProof, let incomingPaymentRequest {
                 await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
             }
+            if error as? MoveToSparkError == .updateFeeUnseen {
+                // Nothing moved or paid: the new update fee shows and the swipe resets to pay with it.
+                throw CancellationError()
+            }
             Logger.error("LNURL payment failed: \(error)")
 
             navigationPath.append(.failure(SendFailureContext(
@@ -409,6 +439,44 @@ struct LnurlPayConfirm: View {
                 contactPaymentContext: contactPaymentContext
             )))
         }
+    }
+
+    private var sparkUpdateAmountSats: UInt64? {
+        guard let lnurlPayData = app.lnurlPayData else { return nil }
+        let amountSats = wallet.sendAmountSats ?? lnurlPayData.minSendableSat
+        return MoveToSparkMath.needsUpdateToSend(amountSats: amountSats) ? amountSats : nil
+    }
+
+    @MainActor
+    private func estimateSparkUpdateFee() async {
+        guard sparkUpdateAmountSats != nil else { return }
+        isSparkUpdateQuoting = true
+        defer { isSparkUpdateQuoting = false }
+        sparkUpdateQuote = try? await MoveToSparkManager.shared.updateQuote(wallet: wallet)
+    }
+
+    /// Quotes the update again at the swipe; a quote the user did not see, or a fee above the one shown, stops the swipe
+    /// and shows the new fee instead.
+    @MainActor
+    private func confirmSparkUpdateQuote() async -> Bool {
+        guard sparkUpdateAmountSats != nil, let lnurlPayData = app.lnurlPayData else { return true }
+        let fresh: MoveToSparkQuote
+        do {
+            fresh = try await MoveToSparkManager.shared.updateQuote(wallet: wallet)
+        } catch {
+            Logger.error("Failed to quote the spending balance update: \(error)", context: "LnurlPayConfirm")
+            navigationPath.append(.failure(SendFailureContext(
+                error: MoveToSparkError.updateFailed,
+                retryRoute: .lnurlPayConfirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: "LNURL: \(lnurlPayData.uri)",
+                contactPaymentContext: app.contactPaymentContext
+            )))
+            return false
+        }
+        let shown = sparkUpdateQuote
+        sparkUpdateQuote = fresh
+        return !MoveToSparkMath.isUpdateFeeUnseen(shownFeeSats: shown?.feeSats, freshFeeSats: fresh.feeSats)
     }
 
     private func validateIncomingPaymentRequest(_ context: ContactPaymentContext?, amountMsats: UInt64) throws {

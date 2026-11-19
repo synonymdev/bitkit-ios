@@ -573,7 +573,10 @@ struct SendAmountView: View {
             route,
             amountSats: amountSats,
             source: source,
-            lightningSpendableSats: source == .spending ? UInt64(max(0, wallet.maxSendLightningSats)) : 0,
+            // The hold payment goes out over one rail, never after a spending balance update.
+            lightningSpendableSats: source == .spending
+                ? min(UInt64(max(0, wallet.maxSendLightningSats)), MoveToSparkMath.singleRailSendableSats())
+                : 0,
             onchainSpendableSats: source == .savings ? maxSendableAmount ?? UInt64(max(0, wallet.spendableOnchainBalanceSats)) : 0,
             request: request,
             hasSwapFallback: hasSwapFallback
