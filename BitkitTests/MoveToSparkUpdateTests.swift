@@ -39,9 +39,10 @@ final class MoveToSparkUpdateTests: XCTestCase {
 
         XCTAssertTrue(MoveToSparkMath.needsUpdateToSend(amountSats: 50000, channels: channels, spark: spark))
         XCTAssertFalse(
-            MoveToSparkMath.needsUpdateToSend(amountSats: 32000, channels: channels, spark: spark),
+            MoveToSparkMath.needsUpdateToSend(amountSats: 31999, channels: channels, spark: spark),
             "A payment the channels cover alone was sent through an update"
         )
+        XCTAssertFalse(MoveToSparkMath.needsUpdateToSend(amountSats: spark.sendableSats, channels: channels, spark: spark))
         XCTAssertFalse(MoveToSparkMath.needsUpdateToSend(amountSats: combined + 1, channels: channels, spark: spark))
         XCTAssertEqual(MoveToSparkMath.maxSendSats(channels: channels, spark: spark), combined)
     }
@@ -62,6 +63,15 @@ final class MoveToSparkUpdateTests: XCTestCase {
             PaykitRouteService.isBalanceShort(amountSats: 50000, lightningSpendableSats: routed, onchainSpendableSats: 0),
             "A contact payment that needs the update was refused before it reached the update"
         )
+    }
+
+    /// `LightningService.canSend` sends over the channels only below their capacity, so the update takes over exactly there.
+    func testAnAmountEqualToTheChannelsCapacityNeedsTheUpdate() {
+        XCTAssertTrue(
+            MoveToSparkMath.needsUpdateToSend(amountSats: 32000, channels: channels, spark: spark),
+            "An amount equal to the channels' capacity fit neither the channels nor the update"
+        )
+        XCTAssertFalse(MoveToSparkMath.needsUpdateToSend(amountSats: 31999, channels: channels, spark: spark))
     }
 
     func testNoUpdateWhileSparkTakesNoMove() {

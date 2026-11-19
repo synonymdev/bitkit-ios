@@ -100,9 +100,12 @@ enum MoveToSparkMath {
         max(movableSats(channels: channels), spark.sendableSats)
     }
 
-    /// Whether `amountSats` fits neither the channels nor Spark alone, but fits Spark once the channels moved to it.
+    /// Whether `amountSats` fits neither the channels nor Spark alone, but fits Spark once the channels moved to it. The
+    /// channels send only below what they can send together, as `LightningService.canSend` reads them, so an amount
+    /// equal to it needs the update too.
     static func needsUpdateToSend(amountSats: UInt64, channels: [ChannelDetails]?, spark: SparkSendState) -> Bool {
-        amountSats > singleRailSendableSats(channels: channels, spark: spark)
+        let channelsSats = (channels ?? []).filter(\.isUsable).map(\.nextOutboundHtlcLimitMsat).reduce(0, +) / 1000
+        return amountSats >= channelsSats && !spark.canSend(amountSats)
             && amountSats <= combinedSendableSats(channels: channels, spark: spark)
     }
 
