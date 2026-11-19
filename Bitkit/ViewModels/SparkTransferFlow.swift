@@ -439,25 +439,29 @@ final class SparkTransferFlow {
         if let txid {
             watchTasks[txid]?.cancel()
             watchTasks[txid] = nil
-            if let offer = claimedOffers.removeValue(forKey: txid) {
-                let operations = operations
-                let attempts = max(pollAttempts, 1)
-                // Not awaited: the SDK call ignores cancellation and can take a while. Tried again while another claim of
-                // the deposit, such as Spark's own sync, leaves the cap in place.
-                Task {
-                    for attempt in 1 ... attempts {
-                        if await operations.releaseEarlyClaim(offer) {
-                            return
-                        }
-                        if attempt < attempts {
-                            await operations.sleep(Self.pollInterval)
-                        }
-                    }
-                    Logger.warn("Gave up clearing the early claim cap of Spark deposit \(offer.txid)", context: "SparkTransferFlow")
-                }
-            }
+            releaseEarlyClaimCap(txid: txid)
         }
         claimState = .later
+    }
+
+    /// Clears the fee cap an early claim attempt left on the deposit, so Spark no longer claims it early.
+    private func releaseEarlyClaimCap(txid: String) {
+        guard let offer = claimedOffers.removeValue(forKey: txid) else { return }
+        let operations = operations
+        let attempts = max(pollAttempts, 1)
+        // Not awaited: the SDK call ignores cancellation and can take a while. Tried again while another claim of the
+        // deposit, such as Spark's own sync, leaves the cap in place.
+        Task {
+            for attempt in 1 ... attempts {
+                if await operations.releaseEarlyClaim(offer) {
+                    return
+                }
+                if attempt < attempts {
+                    await operations.sleep(Self.pollInterval)
+                }
+            }
+            Logger.warn("Gave up clearing the early claim cap of Spark deposit \(offer.txid)", context: "SparkTransferFlow")
+        }
     }
 
     /// Waits for the current transfer's claim to settle; for tests.
@@ -543,6 +547,8 @@ final class SparkTransferFlow {
         // A deposit Spark listed whose early claim never came is waiting for its confirmations, not unseen.
         guard offers[txid] == nil else {
             Logger.info("No early claim for Spark deposit \(txid) within the polling window", context: "SparkTransferFlow")
+            // Shown at the normal speed, so Spark no longer claims it early at the approved fee.
+            releaseEarlyClaimCap(txid: txid)
             setClaimState(.unavailable, for: txid)
             return
         }
