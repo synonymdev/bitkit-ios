@@ -847,6 +847,29 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertEqual(store.spentCentsToday(), 0)
     }
 
+    func testFreshPaymentThatNeedsTheUpdateFallsBackToConfirmWithoutSending() async throws {
+        let invoiceHash = try Self.invoiceHash
+        var sent = false
+        let coordinator = QuickPayPaymentCoordinator(
+            store: store,
+            sendBolt11: { _ in
+                sent = true
+                return invoiceHash
+            },
+            listRows: { [] },
+            needsUpdateToSend: { $0 == 1000 }
+        )
+
+        let outcome = await firstOutcome(from: coordinator)
+
+        XCTAssertFalse(sent, "QuickPay paid from one rail a payment that needs the spending balance update")
+        guard case .confirm(.confirm) = outcome else {
+            return XCTFail("Expected confirm fallback, got \(String(describing: outcome))")
+        }
+        XCTAssertFalse(coordinator.hasOpen(invoiceHash))
+        XCTAssertEqual(store.spentCentsToday(), 0)
+    }
+
     func testDisabledRepayAfterFailedRecordIsReconciledAwayFallsBackToConfirm() async throws {
         let invoiceHash = try Self.invoiceHash
         try reserveSubmittedRecord(invoiceHash)
