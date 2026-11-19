@@ -229,6 +229,8 @@ extension ChannelFreeRailTests {
         service.nodePayments = { [] }
         _ = try await service.send(bolt11: Self.invoice)
         rail.sentBolt11 = nil
+        // Spark's next sync ends the expired send it took but never listed.
+        await service.endExpiredRailSendUncertainties()
         service.nodePayments = { nil }
         _ = try await service.send(bolt11: Self.invoice)
 
@@ -276,6 +278,8 @@ extension ChannelFreeRailTests {
         service.nodePayments = { [failed] }
         _ = try await service.send(bolt11: Self.invoice)
         rail.sentBolt11 = nil
+        // Spark's next sync ends the expired send it took but never listed.
+        await service.endExpiredRailSendUncertainties()
         service.nodePayments = { nil }
         _ = try await service.send(bolt11: Self.invoice)
 
@@ -1048,11 +1052,14 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(failed, [], "a retry Spark took ended at the invoice's expiry")
         XCTAssertTrue(service.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 900, paymentId: "earlier"))
 
-        // Past the grace, absence proves nothing until a sync that started since reached Spark.
+        // Past the grace, absence proves nothing until a sync that started since reached Spark, and a listing meanwhile, for
+        // another invoice's send, keeps the retry held, so the sweep still finds it.
         service.now = { Date(timeIntervalSince1970: TimeInterval(graceEnds)) }
         rail.syncedAfter = { ($0 ?? 0) < graceEnds }
         await service.endExpiredRailSendUncertainties()
         XCTAssertEqual(failed, [], "a partial sync's list ended a retry Spark took")
+        _ = try? await service.send(bolt11: "lnbcrt1rail", sats: 1000)
+        await assertRefusedAsDuplicate()
 
         // Spark listing the retry leaves it to its own outcome.
         rail.syncedAfter = { _ in true }
@@ -1206,13 +1213,13 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(expired, [hash], "the send stayed pending through the exit")
     }
 
-    func testAnExpiredHoldWritesSparksLatestSendOrFailsTheStoredOne() async {
+    func testAnExpiredHoldWritesSparksLiveSendOrFailsTheStoredOne() async {
         let hash = "ab"
         var recorded: [String] = []
         var failed: [String] = []
         let payments = [
             Self.sparkPayment(hash: hash, status: .failed, id: "earlier", timestamp: 1),
-            Self.sparkPayment(hash: hash, status: .failed, id: "retry", timestamp: 5),
+            Self.sparkPayment(hash: hash, status: .completed, id: "retry", timestamp: 5),
             Self.sparkPayment(hash: "cd", status: .completed, id: "other", timestamp: 9),
         ]
         _ = await SparkManager.recordExpiredHold(
@@ -1222,12 +1229,20 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(recorded, ["retry"])
         XCTAssertEqual(failed, [])
 
+        // Only failures listed: one may be an earlier attempt's, with its own amount and fee, so the stored row fails.
+        _ = await SparkManager.recordExpiredHold(
+            paymentHash: hash, payments: [Self.sparkPayment(hash: hash, status: .failed, id: "earlier", timestamp: 1)],
+            record: { recorded.append($0.id); return true }, failStoredSend: { failed.append($0); return true }
+        )
+        XCTAssertEqual(recorded, ["retry"], "an earlier attempt's failure replaced the held send's row")
+        XCTAssertEqual(failed, [hash])
+
         _ = await SparkManager.recordExpiredHold(
             paymentHash: "ef", payments: payments,
             record: { recorded.append($0.id); return true }, failStoredSend: { failed.append($0); return true }
         )
         XCTAssertEqual(recorded, ["retry"])
-        XCTAssertEqual(failed, ["ef"], "a send Spark lists none of stayed pending")
+        XCTAssertEqual(failed, [hash, "ef"], "a send Spark lists none of stayed pending")
     }
 
     func testAnExpiredHoldWritesALiveRetryOverAFailureWithTheSameTimestamp() async {
@@ -2228,6 +2243,9 @@ extension ChannelFreeRailTests {
         XCTAssertTrue(ActivityService.keepsLightningStatus(existing: .succeeded, update: .failed, isStaleRailFailure: false))
         XCTAssertTrue(ActivityService.keepsLightningStatus(existing: .pending, update: .failed, isStaleRailFailure: true))
         XCTAssertFalse(ActivityService.keepsLightningStatus(existing: .pending, update: .failed, isStaleRailFailure: false))
+        // A failed Spark send keeps its row against another attempt's failure, which carries that attempt's amount.
+        XCTAssertTrue(ActivityService.keepsLightningStatus(existing: .failed, update: .failed, isStaleRailFailure: false, isChannelFreeSend: true))
+        XCTAssertFalse(ActivityService.keepsLightningStatus(existing: .failed, update: .failed, isStaleRailFailure: false))
         XCTAssertFalse(ActivityService.keepsLightningStatus(existing: .failed, update: .succeeded, isStaleRailFailure: false))
         XCTAssertFalse(ActivityService.keepsLightningStatus(existing: .pending, update: .succeeded, isStaleRailFailure: true))
     }
