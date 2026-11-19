@@ -1876,9 +1876,11 @@ final class SparkManager: ChannelFreeLightningRail {
             guard payment.paymentType == .send, case let .lightning(_, _, _, htlcDetails, _, _, _, _) = payment.details else { return false }
             return htlcDetails.paymentHash.caseInsensitiveCompare(paymentHash) == .orderedSame
         }
-        // A live send wins over failed ones, then the newest, as a retry can share its earlier attempt's timestamp.
-        if let latest = sends.max(by: { ($0.status == .failed ? 0 : 1, $0.timestamp) < ($1.status == .failed ? 0 : 1, $1.timestamp) }) {
-            return await record(latest)
+        // A live send is the one that pays the invoice, the newest when a retry shares its earlier attempt's timestamp. A
+        // listed failure may be an earlier attempt's, whose amount and fee aren't the held send's, so without a live send
+        // the stored row is failed in place.
+        if let live = sends.filter({ $0.status != .failed }).max(by: { $0.timestamp < $1.timestamp }) {
+            return await record(live)
         }
         return await failStoredSend(paymentHash)
     }
