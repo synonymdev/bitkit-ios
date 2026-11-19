@@ -71,17 +71,33 @@ final class MoveToSparkMathTests: XCTestCase {
         var funded = channel("a", sendableSats: 0, capacitySats: 1300)
         funded.isOutbound = true
         funded.feerateSatPer1000Weight = 253
-        XCTAssertEqual(MoveToSparkMath.sendableAfterCommitmentFeeSats(funded), 929)
-        let before = [channel("a", sendableSats: 50000)]
-        XCTAssertEqual(MoveToSparkMath.emptiedChannels(before: before, after: [funded], payments: []).count, 1)
+        XCTAssertEqual(MoveToSparkMath.sendableAfterCommitmentFeeSats(funded, isLegacy: false), 929)
+        var anchorBefore = channel("a", sendableSats: 50000, capacitySats: 50371)
+        anchorBefore.isOutbound = true
+        anchorBefore.feerateSatPer1000Weight = 253
+        XCTAssertFalse(MoveToSparkMath.reservesLegacyFee(anchorBefore))
+        XCTAssertEqual(MoveToSparkMath.emptiedChannels(before: [anchorBefore], after: [funded], payments: []).count, 1)
         // 1 900 sats of capacity still send 1 529 once the move's HTLC clears, so the channel stays.
         funded.outboundCapacityMsat = 1_900_000
-        XCTAssertEqual(MoveToSparkMath.sendableAfterCommitmentFeeSats(funded), 1529)
-        XCTAssertTrue(MoveToSparkMath.emptiedChannels(before: before, after: [funded], payments: []).isEmpty)
+        XCTAssertEqual(MoveToSparkMath.sendableAfterCommitmentFeeSats(funded, isLegacy: false), 1529)
+        XCTAssertTrue(MoveToSparkMath.emptiedChannels(before: [anchorBefore], after: [funded], payments: []).isEmpty)
         // The peer pays the commitment fee of a channel it funded.
         funded.outboundCapacityMsat = 1_300_000
         funded.isOutbound = false
-        XCTAssertTrue(MoveToSparkMath.emptiedChannels(before: before, after: [funded], payments: []).isEmpty)
+        XCTAssertTrue(MoveToSparkMath.emptiedChannels(before: [anchorBefore], after: [funded], payments: []).isEmpty)
+    }
+
+    func testAMoveClosesALegacyChannelAtItsReserve() {
+        // 2 500 sat/kW: a legacy commitment keeps back 4 480 sats, so 5 342 sats of capacity send only 862.
+        var legacyBefore = channel("a", sendableSats: 50000, capacitySats: 54480)
+        legacyBefore.isOutbound = true
+        legacyBefore.feerateSatPer1000Weight = 2500
+        XCTAssertTrue(MoveToSparkMath.reservesLegacyFee(legacyBefore))
+        var after = channel("a", sendableSats: 0, capacitySats: 5342)
+        after.isOutbound = true
+        after.feerateSatPer1000Weight = 2500
+        XCTAssertEqual(MoveToSparkMath.sendableAfterCommitmentFeeSats(after, isLegacy: true), 862)
+        XCTAssertEqual(MoveToSparkMath.emptiedChannels(before: [legacyBefore], after: [after], payments: []).count, 1)
     }
 
     func testAMoveLeavesChannelsItDidNotKnowOrThatAreNotOpen() {

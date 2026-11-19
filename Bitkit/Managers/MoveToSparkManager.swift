@@ -74,22 +74,35 @@ enum MoveToSparkMath {
     /// until it settles, so a channel the move did not empty could look emptied. An on-chain send holds no HTLC.
     static func emptiedChannels(before: [ChannelDetails], after: [ChannelDetails]?, payments: [PaymentDetails]?) -> [ChannelDetails] {
         guard let payments, !payments.contains(where: isLightningInFlight) else { return [] }
-        let beforeSats = Dictionary(before.map { ($0.channelId, $0.nextOutboundHtlcLimitMsat / 1000) }, uniquingKeysWith: { first, _ in first })
+        let beforeById = Dictionary(before.map { ($0.channelId, $0) }, uniquingKeysWith: { first, _ in first })
         return (after ?? []).filter(\.isChannelReady).filter {
-            guard let wasSats = beforeSats[$0.channelId] else { return false }
+            guard let was = beforeById[$0.channelId] else { return false }
             // The outbound capacity too: an HTLC still counting against the peer's in-flight limit lowers only the send limit.
-            return wasSats >= minMoveSats && $0.nextOutboundHtlcLimitMsat / 1000 < minMoveSats
-                && sendableAfterCommitmentFeeSats($0) < minMoveSats
+            return was.nextOutboundHtlcLimitMsat / 1000 >= minMoveSats && $0.nextOutboundHtlcLimitMsat / 1000 < minMoveSats
+                && sendableAfterCommitmentFeeSats($0, isLegacy: reservesLegacyFee(was)) < minMoveSats
         }
     }
 
     /// The outbound capacity less the commitment fee the funder keeps back for its next HTLC, which LDK's capacity does
-    /// not count; LDK already took the anchors off. An anchor commitment with two HTLCs, as LDK reserves.
-    static func sendableAfterCommitmentFeeSats(_ channel: ChannelDetails) -> UInt64 {
+    /// not count, as LDK reserves it: an anchor commitment with two HTLCs (LDK already took the anchors off), or a legacy
+    /// one with one HTLC at twice the feerate.
+    static func sendableAfterCommitmentFeeSats(_ channel: ChannelDetails, isLegacy: Bool) -> UInt64 {
         let capacitySats = channel.outboundCapacityMsat / 1000
         guard channel.isOutbound else { return capacitySats }
-        let feeSats = UInt64(channel.feerateSatPer1000Weight) * (1124 + 2 * 172) / 1000
-        return capacitySats.saturatingSub(feeSats)
+        return capacitySats.saturatingSub(commitmentFeeSats(feerate: channel.feerateSatPer1000Weight, isLegacy: isLegacy))
+    }
+
+    /// ldk-node does not expose a channel's type, so it is read from the channel before the move, with no move HTLC in
+    /// flight: a legacy channel's send limit sits at least the legacy reserve under its capacity, an anchor one's less.
+    /// A limit capped lower by the peer also reads as legacy, which only takes a little more off.
+    static func reservesLegacyFee(_ channel: ChannelDetails) -> Bool {
+        guard channel.isOutbound else { return false }
+        let gapSats = channel.outboundCapacityMsat.saturatingSub(channel.nextOutboundHtlcLimitMsat) / 1000
+        return gapSats + 1 >= commitmentFeeSats(feerate: channel.feerateSatPer1000Weight, isLegacy: true)
+    }
+
+    private static func commitmentFeeSats(feerate: UInt32, isLegacy: Bool) -> UInt64 {
+        isLegacy ? 2 * UInt64(feerate) * (724 + 172) / 1000 : UInt64(feerate) * (1124 + 2 * 172) / 1000
     }
 
     /// The payments read before and after a read of the channels, or nil when a read failed or an outbound Lightning
