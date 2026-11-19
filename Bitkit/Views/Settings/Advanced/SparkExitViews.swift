@@ -356,15 +356,14 @@ struct SparkExitFundingView: View {
     }
 }
 
-/// The emergency fees paid from another wallet to the funding address: the force transfer starts on its own once a
-/// payment that covers them arrives here; fees already there wait for a tap on Continue.
+/// The emergency fees paid from another wallet to the funding address: the force transfer starts on its own once the
+/// funding address holds them, on entry too; a failed start shows Try again.
 struct SparkExitPayView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
 
-    /// The payments the first read of the funding address found this visit; only one arriving after them starts the
-    /// exit on its own.
-    @State private var entrySeenCount: Int?
+    /// The funding address was read this visit, so what it holds is current.
+    @State private var hasReadFunding = false
     /// A start ran this visit, on its own or from a tap: a failed one shows its error and waits for a tap, never
     /// retrying by itself.
     @State private var hasAutoStarted = false
@@ -395,8 +394,7 @@ struct SparkExitPayView: View {
             isFunded: isFunded,
             isStarting: isStarting,
             hasAutoStarted: hasAutoStarted,
-            entrySeenCount: entrySeenCount,
-            seenCount: exit.fundingSeenCount
+            hasReadFunding: hasReadFunding
         )
     }
 
@@ -425,11 +423,9 @@ struct SparkExitPayView: View {
                 .padding(.bottom, 32)
             }
 
-            // Funds already at the address on entry wait for a tap; a failed start offers Try Again.
-            if isFunded, !isStarting, !canAutoStart {
-                CustomButton(title: t(hasAutoStarted ? "common__try_again" : "common__continue")) {
-                    // The visit's start is spent: a payment arriving after a failed start never starts one by itself.
-                    hasAutoStarted = true
+            // A failed start offers Try again. A start can wait minutes for Spark, so its button spins until it ends.
+            if isStarting || (isFunded && hasAutoStarted) {
+                CustomButton(title: t("common__try_again"), isLoading: isStarting) {
                     start()
                 }
                 .padding(.bottom, 16)
@@ -445,12 +441,10 @@ struct SparkExitPayView: View {
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .task {
-            entrySeenCount = nil
+            hasReadFunding = false
             hasAutoStarted = false
             await exit.watchFundingAddress {
-                if entrySeenCount == nil {
-                    entrySeenCount = exit.fundingSeenCount
-                }
+                hasReadFunding = true
             }
         }
         .onChange(of: canAutoStart) { _, canAutoStart in
@@ -460,7 +454,7 @@ struct SparkExitPayView: View {
         }
     }
 
-    /// Claims the one start this screen runs at a time before its task begins, so neither a tap nor a payment can
+    /// Claims the one start this screen runs at a time before its task begins, so neither a tap nor the funding can
     /// launch a second.
     private func start() {
         guard !isStarting else { return }
@@ -574,28 +568,51 @@ struct SparkExitTxNote: View {
     }
 }
 
-/// Where the ended exit's leftover fee funding is: on its way to savings, sent, or too small to send.
+/// Where the ended exit's leftover fee funding is: on its way to savings, sent, or too small to send. Once the returned
+/// note counts what the sweeps sent back, it names only funding that has not reached savings yet.
 struct SparkExitLeftoverStatus: View {
     @EnvironmentObject var currency: CurrencyViewModel
 
     let record: SparkExitRecord
     let address: String
+    /// The returned note shows the unused fees, confirmed sweeps included, so their lines would repeat it.
+    var isSweptCounted = false
 
     private var path: String {
         SparkExitFundingKey.path(index: record.fundingIndex, network: Env.bitkitCoreNetwork)
     }
 
+    /// The line to show: none for a confirmed sweep the returned note already counts.
+    private var line: SparkExitRecord.LeftoverLine? {
+        switch record.leftoverLine {
+        case .swept: isSweptCounted ? nil : record.leftoverLine
+        default: record.leftoverLine
+        }
+    }
+
+    /// What earlier sweeps sent back, unless the returned note already counts it.
+    private var sweptEarlier: [SparkExitRecord.SweptLeftover] {
+        isSweptCounted ? [] : record.sweptLeftover ?? []
+    }
+
     /// One line with the total of every UTXO at the funding address, never one per UTXO, after what earlier sweeps sent.
     var body: some View {
+        if line != nil || !sweptEarlier.isEmpty {
+            lines
+                .padding(.top, 16)
+        }
+    }
+
+    private var lines: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(record.sweptLeftover ?? [], id: \.txid) { swept in
+            ForEach(sweptEarlier, id: \.txid) { swept in
                 SparkExitTxNote(
                     text: t("lightning__spark_exit__leftover_swept",
                             variables: ["amount": sparkExitAmountAccent(currency.primaryAmountText(sats: swept.valueSats))]),
                     txid: swept.txid
                 )
             }
-            switch record.leftoverLine {
+            switch line {
             case let .sending(sats, txid):
                 if let txid {
                     SparkExitTxNote(
@@ -766,8 +783,6 @@ struct SparkExitProgressView: View {
         case .done:
             [
                 t("lightning__spark_exit__done_text"),
-                (record?.skippedLeafCount ?? 0) > 0
-                    ? t("lightning__spark_exit__partial_text", variables: ["count": "\(record?.skippedLeafCount ?? 0)"]) : nil,
                 record.flatMap { $0.isFailedLeavesReleased == true && $0.failedLeavesSats > 0 ? $0.failedLeavesSats : nil }.map {
                     t("lightning__spark_exit__failed_leaves", variables: ["amount": sparkExitAmountAccent(currency.primaryAmountText(sats: $0))])
                 },
@@ -792,6 +807,12 @@ struct SparkExitProgressView: View {
             "lightning__spark_exit__done_returned_fees",
             variables: ["amount": amount, "fees": currency.primaryAmountText(sats: feesSats)]
         )
+    }
+
+    /// The returned note names the unused emergency fees, so a done exit's confirmed sweeps are counted there.
+    private var isReturnedFeesShown: Bool {
+        guard let record, record.phase == .done, let returned = SparkExitMath.returned(record) else { return false }
+        return returned.spendingSats > 0 && returned.feesSats > 0
     }
 
     private var isFailedOrMissing: Bool {
@@ -922,11 +943,8 @@ struct SparkExitProgressView: View {
                                 .padding(.top, 16)
                         }
 
-                        if !record.isActive, !record.leftover.isEmpty || !(record.sweptLeftover ?? []).isEmpty,
-                           let address = record.funding.first?.address
-                        {
-                            SparkExitLeftoverStatus(record: record, address: address)
-                                .padding(.top, 16)
+                        if !record.isActive, let address = record.funding.first?.address {
+                            SparkExitLeftoverStatus(record: record, address: address, isSweptCounted: isReturnedFeesShown)
                         }
                     }
                 }

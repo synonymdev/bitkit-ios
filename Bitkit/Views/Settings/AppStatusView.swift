@@ -159,7 +159,7 @@ struct AppStatusView: View {
             StatusRow(
                 imageName: "warning",
                 title: t("settings__status__spark__title"),
-                description: t(step == .funding ? "settings__status__exit__funding" : "settings__status__spark__exit"),
+                description: t(step.descriptionKey),
                 status: .pending,
                 onTap: {
                     navigation.navigate(.sparkExitProgress)

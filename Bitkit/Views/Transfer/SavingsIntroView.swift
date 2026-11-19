@@ -19,7 +19,7 @@ struct SavingsIntroView: View {
             },
             imagePosition: .center,
             titleDescriptionSpacing: 8,
-            buttonHorizontalPadding: 0,
+            contentHorizontalPadding: 0,
             maxImageSize: 256,
             testID: "SavingsIntro"
         )

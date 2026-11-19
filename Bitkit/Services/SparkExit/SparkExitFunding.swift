@@ -439,11 +439,11 @@ enum SparkExitMath {
         return SparkExitReturned(spendingSats: received - funding, feesSats: sweptLeftoverSats(record).saturatingAdd(funding))
     }
 
-    /// Pay to confirm starts the exit on its own, once, for a payment that arrived after its first read of the funding
-    /// address (`entrySeenCount`, nil until that read) and covers the funding. Funding already there when it opened
-    /// waits for a tap, so nothing starts unseen. A start already running, such as one Continue began, is the only one.
-    static func canAutoStartFunding(isFunded: Bool, isStarting: Bool, hasAutoStarted: Bool, entrySeenCount: Int?, seenCount: Int) -> Bool {
-        isFunded && !isStarting && !hasAutoStarted && entrySeenCount.map { seenCount > $0 } == true
+    /// Pay to confirm starts the exit on its own, once a visit, as soon as a read of the funding address this visit
+    /// finds the funding covered, funding already there on entry included. A failed start waits for Try again, and a
+    /// start already running is the only one.
+    static func canAutoStartFunding(isFunded: Bool, isStarting: Bool, hasAutoStarted: Bool, hasReadFunding: Bool) -> Bool {
+        isFunded && !isStarting && !hasAutoStarted && hasReadFunding
     }
 
     /// The exit's sweeps to savings: the recovery's, else the one that landed before a retry replaced it, and those of

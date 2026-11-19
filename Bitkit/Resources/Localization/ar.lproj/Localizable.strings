@@ -339,7 +339,6 @@
 "lightning__spark_exit__step_sweep" = "الإرسال إلى رصيد المدخرات";
 "lightning__spark_exit__done_title" = "اكتمل\n<accent>التحويل</accent>";
 "lightning__spark_exit__done_text" = "تم تحويل أموالك إلى رصيد مدخراتك.";
-"lightning__spark_exit__partial_text" = "بقيت {count} مبالغ صغيرة على Spark.";
 "lightning__spark_exit__failed_leaves" = "نقل مشغّلو Spark مبلغ {amount} إلى السلسلة وهو ليس على Spark. لا يزال بإمكان المشغّلين تحريره لك.";
 "lightning__spark_exit__leftover" = "ما زال {amount} من رسوم الطوارئ في {address}.";
 "lightning__spark_exit__leftover_swept" = "أُرسل {amount} من رسوم الطوارئ غير المستخدمة إلى المدخرات.";

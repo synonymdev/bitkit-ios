@@ -390,7 +390,6 @@
 "lightning__spark_exit__step_sweep" = "An Sparkonto gesendet";
 "lightning__spark_exit__done_title" = "Übertragung\n<accent>abgeschlossen</accent>";
 "lightning__spark_exit__done_text" = "Deine Mittel wurden auf dein Sparkonto übertragen.";
-"lightning__spark_exit__partial_text" = "{count} kleine Beträge sind auf Spark geblieben.";
 "lightning__spark_exit__failed_leaves" = "{amount} wurden von den Spark-Betreibern on-chain verschoben und sind nicht auf Spark. Die Betreiber können sie dir weiterhin freigeben.";
 "lightning__spark_exit__leftover" = "{amount} der Notfallgebühren liegt noch bei {address}.";
 "lightning__spark_exit__leftover_swept" = "{amount} nicht verbrauchte Notfallgebühren wurden an dein Sparkonto gesendet.";
