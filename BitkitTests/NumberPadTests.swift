@@ -73,6 +73,24 @@ final class NumberPadTests: XCTestCase {
         XCTAssertFalse(AmountInputViewModel.redrawsOnReturn(amountSats: 0, textUnit: fiat, currentUnit: classic))
     }
 
+    func testARejectedFiatKeyKeepsTheExactSats() throws {
+        let ratesKey = "cached_fx_rates"
+        let saved = UserDefaults.standard.data(forKey: ratesKey)
+        defer { UserDefaults.standard.set(saved, forKey: ratesKey) }
+        let rate = FxRate(
+            symbol: "BTCUSD", lastPrice: "100000", base: "BTC", baseName: "Bitcoin", quote: "USD", quoteName: "US Dollar",
+            currencySymbol: "$", currencyFlag: "🇺🇸", lastUpdatedAt: 0
+        )
+        try UserDefaults.standard.set(JSONEncoder().encode([rate]), forKey: ratesKey)
+        let currency = mockCurrency(primaryDisplay: .fiat)
+        let viewModel = AmountInputViewModel()
+        viewModel.updateFromSats(100_001, currency: currency)
+        XCTAssertEqual(viewModel.displayText, "100.00")
+        // A third decimal is refused, so the kept sats stay exact instead of the text read back as 100 000.
+        viewModel.handleNumberPadInput("5", currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 100_001, "A refused key rounded the amount to its fiat text")
+    }
+
     func testARedrawnAmountKeepsASCIIDigitsForTheNumberPad() {
         XCTAssertEqual(AmountInputViewModel.asciiDigits("٥٠٠٠"), "5000", "Arabic-Indic digits reached the raw input")
         XCTAssertEqual(AmountInputViewModel.asciiDigits("۱۲.۵۰"), "12.50")
