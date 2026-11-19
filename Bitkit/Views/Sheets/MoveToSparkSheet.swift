@@ -181,13 +181,14 @@ struct MoveToSparkSheet: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: navTitle)
-            // The illustration shrinks on small screens so the copy below it stays whole.
+            // The illustration shrinks on small screens so the copy below it stays whole. It sits 32 above the copy, as the
+            // frame bottom-aligns its content, so a taller sheet adds the space above it.
             Image(image)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(maxWidth: 256, maxHeight: 256)
                 .scaleEffect(Self.illustrationScale(image))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             VStack(alignment: .leading, spacing: 8) {
                 DisplayText(title, accentColor: .purpleAccent)
                     .fixedSize(horizontal: false, vertical: true)
