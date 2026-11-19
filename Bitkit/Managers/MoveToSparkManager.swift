@@ -70,15 +70,22 @@ enum MoveToSparkMath {
     }
 
     /// The open channels in `after` that could send at least `minMoveSats` in `before` and no longer can. None while
-    /// `payments` holds an outbound payment in flight, or can't be read: its HTLC lowers a channel's send limit until it
-    /// settles, so a channel the move did not empty could look emptied.
+    /// `payments` holds an outbound Lightning payment in flight, or can't be read: its HTLC lowers a channel's send limit
+    /// until it settles, so a channel the move did not empty could look emptied. An on-chain send holds no HTLC.
     static func emptiedChannels(before: [ChannelDetails], after: [ChannelDetails]?, payments: [PaymentDetails]?) -> [ChannelDetails] {
-        guard let payments, !payments.contains(where: { $0.direction == .outbound && $0.status == .pending }) else { return [] }
+        guard let payments, !payments.contains(where: isLightningInFlight) else { return [] }
         let beforeSats = Dictionary(before.map { ($0.channelId, $0.nextOutboundHtlcLimitMsat / 1000) }, uniquingKeysWith: { first, _ in first })
         return (after ?? []).filter(\.isChannelReady).filter {
             guard let wasSats = beforeSats[$0.channelId] else { return false }
             return wasSats >= minMoveSats && $0.nextOutboundHtlcLimitMsat / 1000 < minMoveSats
         }
+    }
+
+    private static func isLightningInFlight(_ payment: PaymentDetails) -> Bool {
+        if case .onchain = payment.kind {
+            return false
+        }
+        return payment.direction == .outbound && payment.status == .pending
     }
 
     /// The most a Lightning payment can send: over the channels, from Spark, or from Spark after an update.

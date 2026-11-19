@@ -74,11 +74,18 @@ final class MoveToSparkMathTests: XCTestCase {
             "A channel whose send limit an in-flight payment lowered was closed"
         )
         XCTAssertTrue(MoveToSparkMath.emptiedChannels(before: before, after: after, payments: nil).isEmpty)
+        // An unconfirmed on-chain send from savings holds no HTLC, so the emptied channel still closes.
+        let onchainSend = payment(.outbound, .pending, kind: .onchain(txid: "txid", status: .unconfirmed))
+        XCTAssertEqual(MoveToSparkMath.emptiedChannels(before: before, after: after, payments: [onchainSend]).count, 1)
     }
 
-    private func payment(_ direction: PaymentDirection, _ status: PaymentStatus) -> PaymentDetails {
+    private func payment(
+        _ direction: PaymentDirection,
+        _ status: PaymentStatus,
+        kind: PaymentKind = .spontaneous(hash: "hash", preimage: nil)
+    ) -> PaymentDetails {
         PaymentDetails(
-            id: UUID().uuidString, kind: .spontaneous(hash: "hash", preimage: nil),
+            id: UUID().uuidString, kind: kind,
             amountMsat: 1_000_000, feePaidMsat: nil, direction: direction, status: status, latestUpdateTimestamp: 0
         )
     }
