@@ -1053,6 +1053,20 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(failed, ["ef"], "a send Spark lists none of stayed pending")
     }
 
+    func testAnExpiredHoldWritesALiveRetryOverAFailureWithTheSameTimestamp() async {
+        let hash = "ab"
+        let failed = Self.sparkPayment(hash: hash, status: .failed, id: "earlier", timestamp: 5)
+        let pending = Self.sparkPayment(hash: hash, status: .pending, id: "retry", timestamp: 5)
+        for payments in [[failed, pending], [pending, failed]] {
+            var recorded: [String] = []
+            _ = await SparkManager.recordExpiredHold(
+                paymentHash: hash, payments: payments,
+                record: { recorded.append($0.id); return true }, failStoredSend: { _ in true }
+            )
+            XCTAssertEqual(recorded, ["retry"], "a failure tied with the live retry replaced its row")
+        }
+    }
+
     func testAnUnknownSparkSendStaysHeldAfterARelaunchWhenSparkListsOnlyAnOlderFailedAttempt() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         let service = Bitkit.LightningService.shared
