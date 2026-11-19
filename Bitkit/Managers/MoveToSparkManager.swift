@@ -83,21 +83,27 @@ enum MoveToSparkMath {
         }
     }
 
-    /// The outbound capacity less the commitment fee the funder keeps back, which LDK's capacity does not count: the
-    /// higher of an anchor commitment (two 330-sat anchors) and a legacy one at twice the feerate, each with one HTLC.
+    /// The outbound capacity less the commitment fee the funder keeps back for its next HTLC, which LDK's capacity does
+    /// not count; LDK already took the anchors off. An anchor commitment with two HTLCs, as LDK reserves.
     static func sendableAfterCommitmentFeeSats(_ channel: ChannelDetails) -> UInt64 {
         let capacitySats = channel.outboundCapacityMsat / 1000
         guard channel.isOutbound else { return capacitySats }
-        let feerate = UInt64(channel.feerateSatPer1000Weight)
-        let anchorFeeSats = feerate * (1124 + 172) / 1000 + 660
-        let legacyFeeSats = 2 * feerate * (724 + 172) / 1000
-        return capacitySats.saturatingSub(max(anchorFeeSats, legacyFeeSats))
+        let feeSats = UInt64(channel.feerateSatPer1000Weight) * (1124 + 2 * 172) / 1000
+        return capacitySats.saturatingSub(feeSats)
     }
 
-    /// The payments read before and after a read of the channels, or nil when either could not be read or an outbound
-    /// Lightning payment appeared or changed between them: it may have held an HTLC while the channels were read.
-    static func paymentsAround(channelsRead before: [PaymentDetails]?, _ after: [PaymentDetails]?) -> [PaymentDetails]? {
-        guard let before, let after, outboundLightning(before) == outboundLightning(after) else { return nil }
+    /// The payments read before and after a read of the channels, or nil when a read failed or an outbound Lightning
+    /// payment appeared or changed between them: it may have held an HTLC while the channels were read. Also nil when a
+    /// payment other than a move's changed since the move started (`moveStart`): it may have emptied another channel.
+    static func paymentsAround(
+        moveStart start: [PaymentDetails]?,
+        channelsRead before: [PaymentDetails]?,
+        _ after: [PaymentDetails]?,
+        isMovePayment: (String) -> Bool
+    ) -> [PaymentDetails]? {
+        guard let start, let before, let after, outboundLightning(before) == outboundLightning(after) else { return nil }
+        let othersAtStart = outboundLightning(start).filter { !isMovePayment($0.id) }
+        guard othersAtStart == outboundLightning(before).filter({ !isMovePayment($0.id) }) else { return nil }
         return before + after
     }
 
@@ -473,6 +479,8 @@ final class MoveToSparkManager {
         guard case let .confirm(quote, isMoving) = state, !isMoving else { return }
         let channelsBefore = wallet.channels ?? []
         let moveGeneration = beginMove()
+        state = .confirm(quote, isMoving: true)
+        let paymentsBefore = await LightningService.shared.listPayments()
         // A payment still unsettled after the wait keeps the move until its late outcome, so leaving and reopening the
         // screen shows it again instead of a new quote.
         var isSettled = true
@@ -481,7 +489,6 @@ final class MoveToSparkManager {
                 isMoveInFlight = false
             }
         }
-        state = .confirm(quote, isMoving: true)
         do {
             guard let settled = try await payOverChannels(
                 quote,
@@ -492,7 +499,7 @@ final class MoveToSparkManager {
                 onLateSuccess: { [weak self, weak wallet, weak transfer] settled in
                     guard let self, let wallet else { return }
                     if let transfer {
-                        closeEmptied(before: channelsBefore, wallet: wallet, transfer: transfer)
+                        closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
                     }
                     Task {
                         await self.lateSuccess(
@@ -507,7 +514,7 @@ final class MoveToSparkManager {
                 isSettled = false
                 return
             }
-            closeEmptied(before: channelsBefore, wallet: wallet, transfer: transfer)
+            closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
             guard moveGeneration == generation else { return }
             await wallet.syncStateAsync()
             guard moveGeneration == generation else { return }
@@ -603,17 +610,18 @@ final class MoveToSparkManager {
     ) async throws {
         try await checkCoverage(quote: quote, bolt11: bolt11, amountSats: amountSats)
         let channelsBefore = wallet.channels ?? []
+        let paymentsBefore = await LightningService.shared.listPayments()
         let settled = try await payOverChannels(
             quote,
             wallet: wallet,
             onLateSuccess: { [weak self, weak wallet, weak transfer] _ in
                 guard let self, let wallet, let transfer else { return }
-                closeEmptied(before: channelsBefore, wallet: wallet, transfer: transfer)
+                closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
             }
         )
         // Still in flight: the funds reach Spark or return to the channels on their own.
         guard settled != nil else { throw MoveToSparkError.updateUnsettled }
-        closeEmptied(before: channelsBefore, wallet: wallet, transfer: transfer)
+        closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
         try await waitForSpark(toSend: amountSats)
     }
 
@@ -638,7 +646,12 @@ final class MoveToSparkManager {
 
     /// Once a move settled, closes each channel it emptied, with the usual transfer to Savings; a close that fails leaves
     /// its channel for a manual close. Runs on its own, so it also finishes after the modal closes.
-    func closeEmptied(before: [ChannelDetails], wallet: WalletViewModel, transfer: TransferViewModel) {
+    func closeEmptied(
+        before: [ChannelDetails],
+        paymentsBefore moveStart: [PaymentDetails]?,
+        wallet: WalletViewModel,
+        transfer: TransferViewModel
+    ) {
         Task { @MainActor in
             // The channels are read between two reads of the payments, so a payment that starts or ends meanwhile
             // leaves no send limit it lowered in the channels read.
@@ -649,7 +662,12 @@ final class MoveToSparkManager {
             let emptied = MoveToSparkMath.emptiedChannels(
                 before: before,
                 after: channels,
-                payments: MoveToSparkMath.paymentsAround(channelsRead: paymentsBefore, paymentsAfter)
+                payments: MoveToSparkMath.paymentsAround(
+                    moveStart: moveStart,
+                    channelsRead: paymentsBefore,
+                    paymentsAfter,
+                    isMovePayment: MoveToSparkPayments.contains
+                )
             )
             guard !emptied.isEmpty else { return }
             do {

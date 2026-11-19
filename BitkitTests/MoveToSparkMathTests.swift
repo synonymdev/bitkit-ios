@@ -67,14 +67,19 @@ final class MoveToSparkMathTests: XCTestCase {
     }
 
     func testAMoveClosesAFundedChannelWhoseCapacityIsTheCommitmentFee() {
-        // 253 sat/kW: an anchor commitment keeps back 327 + 660 sats, so 1 900 sats of capacity send under 1 000.
-        var funded = channel("a", sendableSats: 0, capacitySats: 1900)
+        // 253 sat/kW: an anchor commitment with two HTLCs keeps back 371 sats; LDK already took the anchors off.
+        var funded = channel("a", sendableSats: 0, capacitySats: 1300)
         funded.isOutbound = true
         funded.feerateSatPer1000Weight = 253
-        XCTAssertEqual(MoveToSparkMath.sendableAfterCommitmentFeeSats(funded), 913)
+        XCTAssertEqual(MoveToSparkMath.sendableAfterCommitmentFeeSats(funded), 929)
         let before = [channel("a", sendableSats: 50000)]
         XCTAssertEqual(MoveToSparkMath.emptiedChannels(before: before, after: [funded], payments: []).count, 1)
+        // 1 900 sats of capacity still send 1 529 once the move's HTLC clears, so the channel stays.
+        funded.outboundCapacityMsat = 1_900_000
+        XCTAssertEqual(MoveToSparkMath.sendableAfterCommitmentFeeSats(funded), 1529)
+        XCTAssertTrue(MoveToSparkMath.emptiedChannels(before: before, after: [funded], payments: []).isEmpty)
         // The peer pays the commitment fee of a channel it funded.
+        funded.outboundCapacityMsat = 1_300_000
         funded.isOutbound = false
         XCTAssertTrue(MoveToSparkMath.emptiedChannels(before: before, after: [funded], payments: []).isEmpty)
     }
@@ -108,7 +113,9 @@ final class MoveToSparkMathTests: XCTestCase {
         let inFlight = [payment(.outbound, .pending)]
         func emptied(_ first: [PaymentDetails]?, _ second: [PaymentDetails]?) -> Int {
             MoveToSparkMath.emptiedChannels(
-                before: before, after: after, payments: MoveToSparkMath.paymentsAround(channelsRead: first, second)
+                before: before,
+                after: after,
+                payments: MoveToSparkMath.paymentsAround(moveStart: first, channelsRead: first, second, isMovePayment: { _ in false })
             ).count
         }
         XCTAssertEqual(emptied(settled, settled), 1)
@@ -126,6 +133,28 @@ final class MoveToSparkMathTests: XCTestCase {
         // An on-chain send or an incoming payment changing meanwhile holds no outbound HTLC.
         XCTAssertEqual(emptied(settled, settled + [payment(.inbound, .succeeded)]), 1)
         XCTAssertEqual(emptied(settled, settled + [payment(.outbound, .pending, kind: .onchain(txid: "t", status: .unconfirmed))]), 1)
+    }
+
+    func testAnotherSendDuringTheMoveHoldsTheCloseBack() {
+        let before = [channel("a", sendableSats: 50000), channel("b", sendableSats: 20000)]
+        let after = [channel("a", sendableSats: 0), channel("b", sendableSats: 0)]
+        let start = [payment(.outbound, .succeeded, id: "old")]
+        let move = payment(.outbound, .succeeded, id: "move")
+        func emptied(_ reads: [PaymentDetails]) -> Int {
+            MoveToSparkMath.emptiedChannels(
+                before: before,
+                after: after,
+                payments: MoveToSparkMath.paymentsAround(moveStart: start, channelsRead: reads, reads, isMovePayment: { $0 == "move" })
+            ).count
+        }
+        // The move's own payment settling is what empties its channels.
+        XCTAssertEqual(emptied(start + [move]), 2)
+        // A send the user made meanwhile, from another channel, settled before the move did.
+        XCTAssertEqual(emptied(start + [move, payment(.outbound, .succeeded, id: "other")]), 0, "A channel another send emptied was closed")
+        XCTAssertTrue(
+            MoveToSparkMath.paymentsAround(moveStart: nil, channelsRead: start, start, isMovePayment: { _ in false }) == nil,
+            "An unreadable start counted as nothing sent"
+        )
     }
 
     private func payment(
