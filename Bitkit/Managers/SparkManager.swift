@@ -1473,8 +1473,10 @@ final class SparkManager: ChannelFreeLightningRail {
         return try String(decoding: Data(contentsOf: file), as: UTF8.self)
     }
 
-    /// Drops restored exit data Spark rejected, once the backup set a copy of it aside.
-    func discardStagedExitState(walletIndex: Int) {
+    /// Drops restored exit data Spark rejected, once the backup set a copy of it aside, unless newer data was staged
+    /// meanwhile. Read and delete run on the main actor with no suspension between them, as staging does.
+    func discardStagedExitState(_ exitState: String, walletIndex: Int) {
+        guard (try? stagedExitState(walletIndex: walletIndex)) == exitState else { return }
         try? FileManager.default.removeItem(at: Env.sparkExitRestore(walletIndex: walletIndex))
     }
 

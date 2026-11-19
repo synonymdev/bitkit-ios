@@ -140,7 +140,7 @@ class BackupService {
     static let sparkExitRejectedKey = "SPARK_EXIT_REJECTED"
     private let backupData: ((BackupCategory) async throws -> Data)?
     private let importStagedSparkExit: () async -> SparkStagedExitImport
-    private let discardStagedSparkExit: () async -> Void
+    private let discardStagedSparkExit: (String) async -> Void
     private let stagedSparkExitState: () async throws -> String?
     private let restoreExitBackup: (SparkExitBackupV1) async throws -> Void
     private let isSparkExitActive: () async -> Bool
@@ -194,8 +194,8 @@ class BackupService {
         importStagedSparkExit: @escaping () async -> SparkStagedExitImport = { @MainActor in
             await SparkManager.shared.importStagedExitState(walletIndex: LightningService.shared.currentWalletIndex)
         },
-        discardStagedSparkExit: @escaping () async -> Void = { @MainActor in
-            SparkManager.shared.discardStagedExitState(walletIndex: LightningService.shared.currentWalletIndex)
+        discardStagedSparkExit: @escaping (String) async -> Void = { @MainActor exitState in
+            SparkManager.shared.discardStagedExitState(exitState, walletIndex: LightningService.shared.currentWalletIndex)
         },
         stagedSparkExitState: @escaping () async throws -> String? = { @MainActor in
             try SparkManager.shared.stagedExitState(walletIndex: LightningService.shared.currentWalletIndex)
@@ -465,7 +465,8 @@ class BackupService {
                     throw SparkExitBackupError.restorePending
                 case .rejected:
                     var isReplacedRemotely = false
-                    if let staged = try await stagedSparkExitState() {
+                    let staged = try await stagedSparkExitState()
+                    if let staged {
                         let copy = try await rejectedSparkExitCopy(staged: staged)
                         try await setAsideRejectedSparkExit(copy.data)
                         isReplacedRemotely = copy.isReplacedRemotely
@@ -475,7 +476,9 @@ class BackupService {
                     if isReplacedRemotely {
                         defaults.set(true, forKey: Self.sparkExitRestorePendingKey)
                     }
-                    await discardStagedSparkExit()
+                    if let staged {
+                        await discardStagedSparkExit(staged)
+                    }
                     if isReplacedRemotely {
                         await restoreSparkExit()
                         throw SparkExitBackupError.restorePending

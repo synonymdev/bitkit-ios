@@ -198,7 +198,7 @@ final class SparkExitBackupTests: XCTestCase {
             waitForTemporaryFailureDelay: { _ in },
             fetchBackup: { remote[$0] },
             importStagedSparkExit: { staged },
-            discardStagedSparkExit: { staged = .nothingStaged },
+            discardStagedSparkExit: { _ in staged = .nothingStaged },
             stagedSparkExitState: { "newer" },
             restoreExitBackup: { _ in }
         )
@@ -232,7 +232,7 @@ final class SparkExitBackupTests: XCTestCase {
             uploadBackup: { remote[$0] = $1 },
             fetchBackup: { remote[$0] },
             importStagedSparkExit: { staged },
-            discardStagedSparkExit: { staged = .nothingStaged },
+            discardStagedSparkExit: { _ in staged = .nothingStaged },
             stagedSparkExitState: { "later" }
         )
 
@@ -261,7 +261,7 @@ final class SparkExitBackupTests: XCTestCase {
             waitForTemporaryFailureDelay: { _ in },
             fetchBackup: { remote[$0] },
             importStagedSparkExit: { staged },
-            discardStagedSparkExit: { staged = .nothingStaged },
+            discardStagedSparkExit: { _ in staged = .nothingStaged },
             stagedSparkExitState: { "mine" },
             restoreExitBackup: { restored.append($0.exitState); staged = .pending }
         )
@@ -323,7 +323,7 @@ final class SparkExitBackupTests: XCTestCase {
             waitForTemporaryFailureDelay: { _ in },
             fetchBackup: { remote[$0] },
             importStagedSparkExit: { staged },
-            discardStagedSparkExit: {
+            discardStagedSparkExit: { _ in
                 // A stop here relaunches with whatever was saved before the staged copy went.
                 isRestorePendingWhenDiscarded = defaults.bool(forKey: "sparkExitRestorePending")
                 staged = .nothingStaged
@@ -353,7 +353,7 @@ final class SparkExitBackupTests: XCTestCase {
             waitForTemporaryFailureDelay: { _ in },
             fetchBackup: { remote[$0] },
             importStagedSparkExit: { .rejected },
-            discardStagedSparkExit: {},
+            discardStagedSparkExit: { _ in },
             stagedSparkExitState: { throw Unreadable() }
         )
 
@@ -407,5 +407,20 @@ final class SparkExitBackupTests: XCTestCase {
         SparkManager.notifyExitStateChanged()
 
         XCTAssertTrue(mark.claim(version: SparkManager.exitStateGeneration), "The restart kept the stale exit data backup")
+    }
+
+    @MainActor
+    func testDiscardingRejectedExitDataKeepsNewerDataStagedMeanwhile() throws {
+        let walletIndex = 9901
+        let file = Env.sparkExitRestore(walletIndex: walletIndex)
+        defer { try? FileManager.default.removeItem(at: file) }
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("newer".utf8).write(to: file)
+
+        SparkManager.shared.discardStagedExitState("rejected", walletIndex: walletIndex)
+        XCTAssertEqual(try SparkManager.shared.stagedExitState(walletIndex: walletIndex), "newer")
+
+        SparkManager.shared.discardStagedExitState("newer", walletIndex: walletIndex)
+        XCTAssertNil(try SparkManager.shared.stagedExitState(walletIndex: walletIndex))
     }
 }
