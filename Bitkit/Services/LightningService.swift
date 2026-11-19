@@ -1779,9 +1779,14 @@ class LightningService: NodeLifecycleService {
         if let paymentId, taken[hash] != nil || earlier[hash]?.contains(paymentId) == true {
             return Self.isEarlierRailAttempt(id: paymentId, hash: hash, taken: taken, earlier: earlier)
         }
-        // A send still in doubt has no id of its own yet, and the list read before it went out can lack an older attempt,
-        // so a failure that list doesn't name is told apart by when Spark created it.
         guard uncertainRailSendFailedAt()[hash] != nil else { return false }
+        // A send still in doubt has no id of its own yet, and the list read before it went out can lack an older attempt.
+        // Spark dates a payment at its start, so a failure that list doesn't name is an earlier attempt's only when created
+        // clearly before the send; one dated around it is the send's own.
+        if paymentId != nil, earlier[hash] != nil {
+            guard let startedAt = uncertainRailSendStartedAt()[hash] else { return true }
+            return Int64(clamping: createdAt) + Int64(Self.railClockSkewSeconds) <= Int64(startedAt)
+        }
         // A send in doubt saved before its start was recorded can't be told from an earlier attempt, so it stays held
         // until its invoice expires.
         guard let startedAt = uncertainRailSendStartedAt()[hash] else { return true }
