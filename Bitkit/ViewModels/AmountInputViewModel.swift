@@ -34,6 +34,24 @@ final class AmountInputViewModel {
     // MARK: - Private Properties
 
     private var rawInputText: String = ""
+    /// The unit `rawInputText` was written in, so the text is read again only in that unit.
+    private var rawInputUnit: InputUnit?
+
+    struct InputUnit: Equatable {
+        let display: PrimaryDisplay
+        let bitcoinUnit: BitcoinDisplayUnit
+
+        @MainActor
+        init(_ currency: CurrencyViewModel) {
+            display = currency.primaryDisplay
+            bitcoinUnit = currency.displayUnit
+        }
+
+        init(display: PrimaryDisplay, bitcoinUnit: BitcoinDisplayUnit) {
+            self.display = display
+            self.bitcoinUnit = bitcoinUnit
+        }
+    }
 
     init() {}
 
@@ -44,6 +62,7 @@ final class AmountInputViewModel {
     ///   - key: The key pressed on the number pad
     ///   - currency: The current currency settings
     func handleNumberPadInput(_ key: String, currency: CurrencyViewModel) {
+        defer { rawInputUnit = InputUnit(currency) }
         let maxLength = getMaxLength(currency: currency)
         let maxDecimals = getMaxDecimals(currency: currency)
 
@@ -118,6 +137,7 @@ final class AmountInputViewModel {
     ///   - newAmountSats: The new amount in satoshis
     ///   - currency: The current currency settings
     func updateFromSats(_ newAmountSats: UInt64, currency: CurrencyViewModel) {
+        defer { rawInputUnit = InputUnit(currency) }
         amountSats = newAmountSats
         displayText = formatDisplayTextFromAmount(newAmountSats, currency: currency)
         // Update raw input text based on the formatted display
@@ -132,16 +152,22 @@ final class AmountInputViewModel {
         }
     }
 
-    /// Shows the kept amount in the current display unit, after another screen switched it; typed text that still
-    /// reads as the kept amount stays as typed.
+    /// Shows the kept amount in the current display unit, after another screen switched it. Text typed in the unit
+    /// still shown stays as typed, also when its rate changed meanwhile; after a switch the kept sats are shown, never the
+    /// old text read in the new unit.
     func refreshDisplay(currency: CurrencyViewModel) {
-        guard amountSats > 0, convertToSats(rawInputText, currency: currency) != amountSats else { return }
+        guard Self.redrawsOnReturn(amountSats: amountSats, textUnit: rawInputUnit, currentUnit: InputUnit(currency)) else { return }
         updateFromSats(amountSats, currency: currency)
+    }
+
+    nonisolated static func redrawsOnReturn(amountSats: UInt64, textUnit: InputUnit?, currentUnit: InputUnit) -> Bool {
+        amountSats > 0 && textUnit != currentUnit
     }
 
     /// Toggles between Bitcoin and Fiat display modes while preserving input
     /// - Parameter currency: The current currency settings
     func togglePrimaryDisplay(currency: CurrencyViewModel) {
+        defer { rawInputUnit = InputUnit(currency) }
         // Store the current raw input before toggling
         let currentRawInput = rawInputText
 

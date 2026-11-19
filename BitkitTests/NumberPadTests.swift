@@ -61,6 +61,18 @@ final class NumberPadTests: XCTestCase {
         XCTAssertEqual(viewModel.displayText, "0.00010")
     }
 
+    func testReturnRedrawsOnlyAfterTheTextsUnitChanged() {
+        typealias Unit = AmountInputViewModel.InputUnit
+        let fiat = Unit(display: .fiat, bitcoinUnit: .classic)
+        let classic = Unit(display: .bitcoin, bitcoinUnit: .classic)
+        // Typed fiat stays as typed, also when its rate dropped meanwhile.
+        XCTAssertFalse(AmountInputViewModel.redrawsOnReturn(amountSats: 5000, textUnit: fiat, currentUnit: fiat))
+        // After a switch the kept sats are drawn, never the fiat digits read as bitcoin.
+        XCTAssertTrue(AmountInputViewModel.redrawsOnReturn(amountSats: 5000, textUnit: fiat, currentUnit: classic))
+        XCTAssertTrue(AmountInputViewModel.redrawsOnReturn(amountSats: 5000, textUnit: nil, currentUnit: classic))
+        XCTAssertFalse(AmountInputViewModel.redrawsOnReturn(amountSats: 0, textUnit: fiat, currentUnit: classic))
+    }
+
     // MARK: - Modern Bitcoin Tests
 
     func testModernBitcoinInput() {
