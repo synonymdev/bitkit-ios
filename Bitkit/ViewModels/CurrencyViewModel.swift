@@ -192,13 +192,10 @@ extension CurrencyViewModel {
         primaryDisplay: PrimaryDisplay,
         displayUnit: BitcoinDisplayUnit
     ) -> String {
-        guard let converted else { return "₿ \(CurrencyFormatter.formatSats(sats))" }
-        switch primaryDisplay {
-        case .fiat:
+        if primaryDisplay == .fiat, let converted {
             return converted.formattedWithSymbol()
-        case .bitcoin:
-            let components = converted.bitcoinDisplay(unit: displayUnit)
-            return "\(components.symbol) \(components.value)"
         }
+        let components = ConvertedAmount.bitcoinDisplay(sats: sats, unit: displayUnit)
+        return "\(components.symbol) \(components.value)"
     }
 }

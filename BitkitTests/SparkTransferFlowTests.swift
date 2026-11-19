@@ -546,5 +546,9 @@ final class SparkTransferFlowTests: XCTestCase {
         XCTAssertEqual(MoneyText.primaryUnit(.fiat, hasUsableRate: false), .bitcoin)
         XCTAssertEqual(MoneyText.primaryUnit(.fiat, hasUsableRate: true), .fiat)
         XCTAssertEqual(MoneyText.primaryUnit(.bitcoin, hasUsableRate: false), .bitcoin)
+        // The paired line shows the other unit, never bitcoin twice.
+        XCTAssertEqual(MoneyText.secondaryUnit(.fiat, hasUsableRate: false), .fiat)
+        XCTAssertEqual(MoneyText.secondaryUnit(.fiat, hasUsableRate: true), .bitcoin)
+        XCTAssertEqual(MoneyText.secondaryUnit(.bitcoin, hasUsableRate: false), .fiat)
     }
 }

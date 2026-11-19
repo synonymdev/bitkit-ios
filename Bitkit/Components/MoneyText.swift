@@ -47,7 +47,7 @@ struct MoneyText: View {
             return forceUnit
         }
         if unitType == .secondary {
-            return currency.primaryDisplay == .bitcoin ? .fiat : .bitcoin
+            return Self.secondaryUnit(currency.primaryDisplay, hasUsableRate: currency.hasUsableRate)
         }
         return Self.primaryUnit(currency.primaryDisplay, hasUsableRate: currency.hasUsableRate)
     }
@@ -55,6 +55,11 @@ struct MoneyText: View {
     /// The primary amount stays in bitcoin while the local currency has no usable rate, so it never reads zero in fiat.
     nonisolated static func primaryUnit(_ display: PrimaryDisplay, hasUsableRate: Bool) -> PrimaryDisplay {
         display == .fiat && !hasUsableRate ? .bitcoin : display
+    }
+
+    /// The other unit from the primary one, so a paired amount never shows bitcoin twice.
+    nonisolated static func secondaryUnit(_ display: PrimaryDisplay, hasUsableRate: Bool) -> PrimaryDisplay {
+        primaryUnit(display, hasUsableRate: hasUsableRate) == .bitcoin ? .fiat : .bitcoin
     }
 
     private var showSymbol: Bool {
@@ -215,12 +220,9 @@ extension MoneyText {
             }
         }
 
-        // Rates unavailable: show sats for bitcoin, "0" for fiat
+        // Rates unavailable: bitcoin needs no rate, fiat shows "0"
         if unit == .bitcoin {
-            let formatter = NumberFormatter()
-            formatter.numberStyle = .decimal
-            formatter.groupingSeparator = " "
-            return formatter.string(from: NSNumber(value: abs(sats))) ?? String(abs(sats))
+            return ConvertedAmount.bitcoinDisplay(sats: UInt64(abs(sats)), unit: forceDisplayUnit ?? currency.displayUnit).value
         }
         return "0"
     }
@@ -234,8 +236,11 @@ extension MoneyText {
         if !hideBalance, isUnavailable {
             return "—"
         }
-        guard !hideBalance, let converted = currency.convert(sats: UInt64(abs(sats))) else {
+        guard !hideBalance else {
             return prefixed(displayDots)
+        }
+        guard let converted = currency.convert(sats: UInt64(abs(sats))) else {
+            return prefixed(formattedValue)
         }
 
         let numeric: String = {
