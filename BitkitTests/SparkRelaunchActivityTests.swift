@@ -163,4 +163,19 @@ final class SparkRelaunchActivityTests: XCTestCase {
         current = try await row()
         XCTAssertEqual(current?.value, 700)
     }
+
+    func testChannelFreeRowAttemptsKeepTheLatestRowWritersUpToTheLimit() throws {
+        let suite = "ChannelFreeRowAttemptsTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let attempts = ChannelFreeRowAttempts(defaults: defaults)
+        for index in 0 ... ChannelFreeRowAttempts.limit {
+            attempts.remember("id\(index)", forPaymentHash: "hash\(index)")
+        }
+        attempts.remember("newer", forPaymentHash: "HASH1")
+
+        XCTAssertNil(attempts.attemptId(forPaymentHash: "hash0"))
+        XCTAssertEqual(attempts.attemptId(forPaymentHash: "hash1"), "newer")
+        XCTAssertEqual(attempts.attemptId(forPaymentHash: "hash\(ChannelFreeRowAttempts.limit)"), "id\(ChannelFreeRowAttempts.limit)")
+    }
 }
