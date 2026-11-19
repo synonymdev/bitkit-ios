@@ -962,18 +962,19 @@ class ActivityService {
     nonisolated(unsafe) static var sentPaymentContacts = SentPaymentContacts(defaults: .standard)
 
     /// Whether a Lightning activity keeps its status against an update: a settled payment stays settled, a failure from
-    /// the rail that didn't carry the latest attempt is stale, and a failed Spark send keeps its row, as Spark lists one
-    /// failure per attempt and an earlier one's carries that attempt's amount and fee.
+    /// the rail that didn't carry the latest attempt is stale, and a failed Spark send keeps its row against the failure
+    /// of an older attempt, as Spark lists one failure per attempt, each with its own amount and fee. The row's own
+    /// attempt and later ones still update it.
     static func keepsLightningStatus(
         existing: BitkitCore.PaymentState,
         update: BitkitCore.PaymentState,
         isStaleRailFailure: Bool,
-        isChannelFreeSend: Bool = false
+        isOlderChannelFreeAttempt: Bool = false
     ) -> Bool {
         if existing == .succeeded, update != .succeeded {
             return true
         }
-        if isChannelFreeSend, existing == .failed, update == .failed {
+        if isOlderChannelFreeAttempt, existing == .failed, update == .failed {
             return true
         }
         return update == .failed && existing != .failed && isStaleRailFailure
@@ -1020,7 +1021,8 @@ class ActivityService {
                        createdAt: paymentTimestamp,
                        paymentId: railPaymentId
                    )),
-               isChannelFreeSend: rail == .channelFree && payment.direction == .outbound
+               // Spark dates an attempt at its start, so an older one's failure is dated before the row's attempt.
+               isOlderChannelFreeAttempt: rail == .channelFree && payment.direction == .outbound && paymentTimestamp < existing.timestamp
            )
         {
             return

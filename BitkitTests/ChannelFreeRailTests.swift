@@ -2243,8 +2243,11 @@ extension ChannelFreeRailTests {
         XCTAssertTrue(ActivityService.keepsLightningStatus(existing: .succeeded, update: .failed, isStaleRailFailure: false))
         XCTAssertTrue(ActivityService.keepsLightningStatus(existing: .pending, update: .failed, isStaleRailFailure: true))
         XCTAssertFalse(ActivityService.keepsLightningStatus(existing: .pending, update: .failed, isStaleRailFailure: false))
-        // A failed Spark send keeps its row against another attempt's failure, which carries that attempt's amount.
-        XCTAssertTrue(ActivityService.keepsLightningStatus(existing: .failed, update: .failed, isStaleRailFailure: false, isChannelFreeSend: true))
+        // A failed Spark send keeps its row against an older attempt's failure, which carries that attempt's amount, and
+        // takes its own attempt's or a later one's.
+        XCTAssertTrue(ActivityService.keepsLightningStatus(
+            existing: .failed, update: .failed, isStaleRailFailure: false, isOlderChannelFreeAttempt: true
+        ))
         XCTAssertFalse(ActivityService.keepsLightningStatus(existing: .failed, update: .failed, isStaleRailFailure: false))
         XCTAssertFalse(ActivityService.keepsLightningStatus(existing: .failed, update: .succeeded, isStaleRailFailure: false))
         XCTAssertFalse(ActivityService.keepsLightningStatus(existing: .pending, update: .succeeded, isStaleRailFailure: true))
