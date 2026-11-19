@@ -81,12 +81,18 @@ enum MoveToSparkMath {
         }
     }
 
-    /// Whether an emptied channel still holds the move minimum in outbound capacity. Its send limit is then under the
-    /// minimum for one of two reasons ldk-node does not tell apart: the commitment fee its funder keeps back, which stays,
-    /// or the move's settled HTLC still counting against the peer's in-flight cap, which clears. Such a channel is read
-    /// again before it closes.
-    static func mayHoldTheMoveHtlc(_ emptied: [ChannelDetails]) -> Bool {
-        emptied.contains { $0.outboundCapacityMsat / 1000 >= minMoveSats }
+    /// Whether a channel's send limit may still be held under the minimum by the move's settled HTLC counting against the
+    /// peer's in-flight cap, which clears, rather than by what stays. ldk-node exposes neither the HTLCs nor the channel
+    /// type, so it can be ruled out only when the capacity itself is under the minimum, or when the gap between capacity
+    /// and limit is exactly the commitment fee LDK keeps back for a channel we funded: an anchor commitment with two
+    /// HTLCs, or a legacy one with one HTLC at twice the feerate, within a sat of rounding.
+    static func mayHoldTheMoveHtlc(_ channel: ChannelDetails) -> Bool {
+        guard channel.outboundCapacityMsat / 1000 >= minMoveSats else { return false }
+        guard channel.isOutbound else { return true }
+        let gapSats = Int64(channel.outboundCapacityMsat / 1000) - Int64(channel.nextOutboundHtlcLimitMsat / 1000)
+        let feerate = Int64(channel.feerateSatPer1000Weight)
+        let reserves = [feerate * (1124 + 2 * 172) / 1000, 2 * feerate * (724 + 172) / 1000]
+        return !reserves.contains { abs(gapSats - $0) <= 1 }
     }
 
     /// The payments read before and after a read of the channels, or nil when a read failed or an outbound Lightning
@@ -656,12 +662,14 @@ final class MoveToSparkManager {
             // The channels are read between two reads of the payments, so a payment that starts or ends meanwhile
             // leaves no send limit it lowered in the channels read.
             var emptied = await Self.readEmptied(before: before, moveStart: moveStart, wallet: wallet)
-            // A channel whose limit rises once the move's HTLC clears drops out; one still under it is its reserve.
+            // A channel whose limit rises once the move's HTLC clears drops out. One that may still hold it after the wait
+            // stays open for a manual close, so a close never starts on a reading the HTLC may have lowered.
             let deadline = ContinuousClock.now + Self.htlcClearWait
-            while MoveToSparkMath.mayHoldTheMoveHtlc(emptied), ContinuousClock.now < deadline {
+            while emptied.contains(where: MoveToSparkMath.mayHoldTheMoveHtlc), ContinuousClock.now < deadline {
                 try? await Task.sleep(for: Self.htlcClearRecheck)
                 emptied = await Self.readEmptied(before: before, moveStart: moveStart, wallet: wallet)
             }
+            emptied.removeAll(where: MoveToSparkMath.mayHoldTheMoveHtlc)
             guard !emptied.isEmpty else { return }
             do {
                 let failed = try await transfer.closeChannels(channels: emptied)
