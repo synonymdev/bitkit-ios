@@ -624,7 +624,7 @@ final class SparkManager: ChannelFreeLightningRail {
         sats: UInt64?,
         maxFeeSats: UInt64?,
         beforeSubmission: @escaping () throws -> Void
-    ) async throws -> PaymentHash {
+    ) async throws -> (paymentHash: PaymentHash, paymentId: String?) {
         let prepared: PrepareSendPaymentResponse
         let sdk: BreezSdk
         do {
@@ -664,7 +664,7 @@ final class SparkManager: ChannelFreeLightningRail {
             }
         }
         Logger.info("Sent Spark payment '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
-        return invoiceDetails.paymentHash
+        return (invoiceDetails.paymentHash, response.payment.id)
     }
 
     nonisolated static func checkSendFee(_ feeSats: UInt64, maxFeeSats: UInt64?) throws {
@@ -1849,14 +1849,20 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// Payment hashes whose every Lightning send failed, so a hold on a channel retry can be released. A failure of an
-    /// attempt listed before a send Spark took doesn't count: that send may still pay the invoice.
-    nonisolated static func failedSendHashes(_ payments: [Payment], earlierAttemptIds: [String: [String]] = [:]) -> [String] {
+    /// attempt before a send Spark took doesn't count: that send may still pay the invoice.
+    nonisolated static func failedSendHashes(
+        _ payments: [Payment],
+        earlierAttemptIds: [String: [String]] = [:],
+        takenIds: [String: String] = [:]
+    ) -> [String] {
         var failed: [String] = []
         var live: Set<String> = []
         for payment in payments where payment.paymentType == .send {
             guard case let .lightning(_, _, _, htlcDetails, _, _, _, _) = payment.details else { continue }
             if payment.status == .failed {
-                guard earlierAttemptIds[htlcDetails.paymentHash.lowercased()]?.contains(payment.id) != true else { continue }
+                guard !LightningService.isEarlierRailAttempt(
+                    id: payment.id, hash: htlcDetails.paymentHash.lowercased(), taken: takenIds, earlier: earlierAttemptIds
+                ) else { continue }
                 failed.append(htlcDetails.paymentHash)
             } else {
                 live.insert(htlcDetails.paymentHash)
@@ -1886,8 +1892,9 @@ final class SparkManager: ChannelFreeLightningRail {
     static func releaseFailedSendHolds(listPayments: () async throws -> [Payment]) async {
         let mark = LightningService.shared.attemptMark
         let earlier = LightningService.shared.railSendEarlierAttemptIds
+        let taken = LightningService.shared.railSendTakenIds
         guard let latest = try? await listPayments() else { return }
-        for paymentHash in failedSendHashes(latest, earlierAttemptIds: earlier) {
+        for paymentHash in failedSendHashes(latest, earlierAttemptIds: earlier, takenIds: taken) {
             LightningService.shared.releaseRailAttempt(paymentHash: paymentHash, since: mark)
         }
     }
