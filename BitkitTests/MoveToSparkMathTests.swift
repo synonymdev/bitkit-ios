@@ -96,6 +96,11 @@ final class MoveToSparkMathTests: XCTestCase {
         XCTAssertEqual(emptied(settled, nil), 0)
         // A payment that started after the first read and failed before the second was in flight in between.
         XCTAssertEqual(emptied(settled, settled + [payment(.outbound, .failed)]), 0)
+        // A failed payment retried under its id and failing again between the reads shows only as a later update.
+        let failed = payment(.outbound, .failed, id: "retried", updatedAt: 1)
+        XCTAssertEqual(emptied([failed], [failed]), 1)
+        XCTAssertEqual(emptied([failed], [payment(.outbound, .failed, id: "retried", updatedAt: 2)]), 0)
+        XCTAssertEqual(emptied([failed], [payment(.outbound, .succeeded, id: "retried", updatedAt: 1)]), 0)
         // An on-chain send or an incoming payment changing meanwhile holds no outbound HTLC.
         XCTAssertEqual(emptied(settled, settled + [payment(.inbound, .succeeded)]), 1)
         XCTAssertEqual(emptied(settled, settled + [payment(.outbound, .pending, kind: .onchain(txid: "t", status: .unconfirmed))]), 1)
@@ -104,11 +109,13 @@ final class MoveToSparkMathTests: XCTestCase {
     private func payment(
         _ direction: PaymentDirection,
         _ status: PaymentStatus,
-        kind: PaymentKind = .spontaneous(hash: "hash", preimage: nil)
+        kind: PaymentKind = .spontaneous(hash: "hash", preimage: nil),
+        id: String = UUID().uuidString,
+        updatedAt: UInt64 = 0
     ) -> PaymentDetails {
         PaymentDetails(
-            id: UUID().uuidString, kind: kind,
-            amountMsat: 1_000_000, feePaidMsat: nil, direction: direction, status: status, latestUpdateTimestamp: 0
+            id: id, kind: kind,
+            amountMsat: 1_000_000, feePaidMsat: nil, direction: direction, status: status, latestUpdateTimestamp: updatedAt
         )
     }
 
