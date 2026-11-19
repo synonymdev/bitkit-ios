@@ -46,6 +46,12 @@ final class MoveToSparkUpdateTests: XCTestCase {
         XCTAssertEqual(MoveToSparkMath.maxSendSats(channels: channels, spark: spark), combined)
     }
 
+    func testASwapSpendsOnlyWhatOneRailSends() {
+        let maxSendSats = MoveToSparkMath.maxSendSats(channels: channels, spark: spark)
+        XCTAssertEqual(MoveToSparkMath.swapSpendableSats(maxSendSats: maxSendSats, channels: channels, spark: spark), 32000)
+        XCTAssertEqual(MoveToSparkMath.swapSpendableSats(maxSendSats: 10000, channels: channels, spark: spark), 10000)
+    }
+
     func testNoUpdateWhileSparkTakesNoMove() {
         let exiting = SparkSendState(isReady: true, isExiting: true, balanceSats: 30000)
         XCTAssertEqual(MoveToSparkMath.combinedSendableSats(channels: channels, spark: exiting), 0)

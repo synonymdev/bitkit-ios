@@ -125,6 +125,17 @@ enum MoveToSparkMath {
         singleRailSendableSats(channels: LightningService.shared.channels, spark: .live)
     }
 
+    /// What a Pubky swap can spend of `maxSendSats`: its hold payment goes out over one rail, never after a spending
+    /// balance update.
+    static func swapSpendableSats(maxSendSats: UInt64, channels: [ChannelDetails]?, spark: SparkSendState) -> UInt64 {
+        min(maxSendSats, singleRailSendableSats(channels: channels, spark: spark))
+    }
+
+    @MainActor
+    static func swapSpendableSats(maxSendSats: UInt64) -> UInt64 {
+        swapSpendableSats(maxSendSats: maxSendSats, channels: LightningService.shared.channels, spark: .live)
+    }
+
     /// Whether Spark can pay `amountSats` and its `feeSats` for the payment once `quote` has moved to it.
     static func coversPayment(quote: MoveToSparkQuote, spark: SparkSendState, amountSats: UInt64, feeSats: UInt64) -> Bool {
         let (have, haveOverflow) = spark.balanceSats.addingReportingOverflow(quote.amountSats)
