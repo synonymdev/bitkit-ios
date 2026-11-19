@@ -1810,7 +1810,10 @@ class LightningService: NodeLifecycleService {
             uncertainRailSendFailedAt()[hash].map { (failedAt: UInt64($0), expiresAt: attemptExpiries(key: Self.railAttemptsKey)[hash]) }
         }
         guard let uncertain else { return true }
-        guard let rail = channelFreeRail, await rail.hasSynced(after: uncertain.failedAt) else { return false }
+        // During an exit Spark no longer sends but still syncs its history, which settles the send the same way.
+        guard let rail = channelFreeRail ?? channelFreePaymentHistory, await rail.hasSynced(after: uncertain.failedAt) else {
+            return false
+        }
         // Spark keeps a send it committed but didn't finish in a cache no call exposes, and a sync that reached Spark
         // can still fail to resume it, so only an expired invoice shows a missing send will never go out.
         guard let expiresAt = uncertain.expiresAt, Int(now().timeIntervalSince1970) >= expiresAt else { return false }
