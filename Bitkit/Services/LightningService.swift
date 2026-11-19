@@ -1816,13 +1816,17 @@ class LightningService: NodeLifecycleService {
 
     /// Spark's kept sends whose invoice is unexpired, or expired less than `unlistedRailSendGraceSeconds` ago. A sync can
     /// still resume one Spark committed but lists no row for, also after a relaunch, so it is pending until then, the rule
-    /// `railSyncedSinceUncertainSend` holds.
+    /// `railSyncedSinceUncertainSend` holds. A send Spark took stays in until the expiry sweep ends it, so no listing
+    /// drops its hash and expiry before the sweep has the sync it needs.
     private func unexpiredRailAttempts() -> Set<String> {
         let seconds = Int(now().timeIntervalSince1970)
         return eventCallbackLock.withLock {
             let expiries = attemptExpiries(key: Self.railAttemptsKey)
             let hashes = railAttemptsStore.stringArray(forKey: Self.railAttemptsKey) ?? []
-            return Set(hashes.filter { hash in expiries[hash].map { $0 > seconds - Self.unlistedRailSendGraceSeconds } ?? false })
+            let awaitingSweep = Set(takenRailSendIds().keys).union(uncertainRailSendEarlierAttempts().keys)
+            return Set(hashes.filter { hash in
+                expiries[hash].map { $0 > seconds - Self.unlistedRailSendGraceSeconds || awaitingSweep.contains(hash) } ?? false
+            })
         }
     }
 

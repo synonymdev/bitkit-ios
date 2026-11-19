@@ -961,10 +961,19 @@ class ActivityService {
     /// so a send recorded after the app was killed mid-payment still names its contact.
     nonisolated(unsafe) static var sentPaymentContacts = SentPaymentContacts(defaults: .standard)
 
-    /// Whether a Lightning activity keeps its status against an update: a settled payment stays settled, and a failure
-    /// from the rail that didn't carry the latest attempt is stale.
-    static func keepsLightningStatus(existing: BitkitCore.PaymentState, update: BitkitCore.PaymentState, isStaleRailFailure: Bool) -> Bool {
+    /// Whether a Lightning activity keeps its status against an update: a settled payment stays settled, a failure from
+    /// the rail that didn't carry the latest attempt is stale, and a failed Spark send keeps its row, as Spark lists one
+    /// failure per attempt and an earlier one's carries that attempt's amount and fee.
+    static func keepsLightningStatus(
+        existing: BitkitCore.PaymentState,
+        update: BitkitCore.PaymentState,
+        isStaleRailFailure: Bool,
+        isChannelFreeSend: Bool = false
+    ) -> Bool {
         if existing == .succeeded, update != .succeeded {
+            return true
+        }
+        if isChannelFreeSend, existing == .failed, update == .failed {
             return true
         }
         return update == .failed && existing != .failed && isStaleRailFailure
@@ -1010,7 +1019,8 @@ class ActivityService {
                        paymentHash: payment.id,
                        createdAt: paymentTimestamp,
                        paymentId: railPaymentId
-                   ))
+                   )),
+               isChannelFreeSend: rail == .channelFree && payment.direction == .outbound
            )
         {
             return
