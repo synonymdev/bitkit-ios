@@ -1,6 +1,10 @@
 import BitkitCore
 import Foundation
 
+private func hasElectrumConnectFailurePrefix(_ details: String) -> Bool {
+    details.lowercased().hasPrefix("failed to connect to electrum:")
+}
+
 extension BroadcastError {
     /// Whether this broadcast failure is likely transient connectivity (retry without re-signing).
     /// Core 0.4.1 maps both Electrum connect failures and node rejections to `ElectrumError`; rejections
@@ -21,7 +25,7 @@ extension BroadcastError {
         if lower.hasPrefix("broadcast failed:") {
             return false
         }
-        if lower.hasPrefix("failed to connect to electrum:") {
+        if hasElectrumConnectFailurePrefix(details) {
             return true
         }
         if lower.contains("offline")
@@ -99,6 +103,12 @@ extension Error {
         return false
     }
 
+    /// Whether core gave up connecting to Electrum, which it reports before sending any transaction bytes.
+    func isDefiniteElectrumConnectFailure() -> Bool {
+        guard case let .ElectrumError(details) = unwrappedBroadcastError else { return false }
+        return hasElectrumConnectFailurePrefix(details)
+    }
+
     func isBroadcastConnectivityFailure() -> Bool {
         if let broadcastError = self as? BroadcastError {
             return broadcastError.isConnectivityFailure
@@ -109,5 +119,9 @@ extension Error {
         }
 
         return false
+    }
+
+    private var unwrappedBroadcastError: BroadcastError? {
+        (self as? BroadcastError) ?? (self as? AppError)?.underlyingError?.unwrappedBroadcastError
     }
 }
