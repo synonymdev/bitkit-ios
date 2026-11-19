@@ -383,6 +383,11 @@ final class SparkManager: ChannelFreeLightningRail {
         .bolt11Invoice(preferSpark: prefersSpark, completionTimeoutSecs: nil)
     }
 
+    /// The network name an exit backup carries: Spark's, which names Bitcoin's main network `mainnet`.
+    nonisolated static func exitBackupNetworkName(_ network: LDKNode.Network) -> String {
+        network == .bitcoin ? "\(BreezSdkSpark.Network.mainnet)" : "\(network)"
+    }
+
     private static var sparkNetwork: BreezSdkSpark.Network? {
         switch Env.network {
         case .bitcoin: Env.breezApiKey == nil ? nil : .mainnet

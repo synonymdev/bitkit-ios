@@ -1029,6 +1029,34 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(expired, [hash, hash], "a saved activity was written again")
     }
 
+    func testAHoldEndsAtTheInvoicesExpiryDuringAnExit() async throws {
+        let invoice = try Bolt11Invoice.fromStr(invoiceStr: Self.invoice)
+        let hash = String(invoice.paymentHash())
+        let service = Bitkit.LightningService.shared
+        service.now = { Date(timeIntervalSince1970: 1000) }
+        rail.balanceSats = 100_000
+        rail.errorAfterSubmission = NSError(domain: "spark", code: 2)
+        _ = try? await service.send(bolt11: Self.invoice)
+        rail.errorAfterSubmission = nil
+        rail.syncedAfter = { _ in true }
+        var expired: [String] = []
+        let previousHook = service.railSendHoldExpired
+        let previousHistory = service.channelFreePaymentHistory
+        defer {
+            service.railSendHoldExpired = previousHook
+            service.channelFreePaymentHistory = previousHistory
+        }
+        service.railSendHoldExpired = { expired.append($0); return true }
+        // The exit takes Spark off sending and keeps its history.
+        service.channelFreePaymentHistory = rail
+        service.channelFreeRail = nil
+
+        let expiresAt = invoice.secondsSinceEpoch() + invoice.expiryTimeSeconds()
+        service.now = { Date(timeIntervalSince1970: TimeInterval(expiresAt)) }
+        await service.endExpiredRailSendUncertainties()
+        XCTAssertEqual(expired, [hash], "the send stayed pending through the exit")
+    }
+
     func testAnExpiredHoldWritesSparksLatestSendOrFailsTheStoredOne() async {
         let hash = "ab"
         var recorded: [String] = []

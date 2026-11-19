@@ -5,6 +5,11 @@ import XCTest
 
 @MainActor
 final class SparkExitBackupTests: XCTestCase {
+    func testAnExitBackupNamesTheNetworkAsSparkDoes() {
+        XCTAssertEqual(SparkManager.exitBackupNetworkName(.bitcoin), "mainnet")
+        XCTAssertEqual(SparkManager.exitBackupNetworkName(.regtest), "\(BreezSdkSpark.Network.regtest)")
+    }
+
     private let walletIndex = 99
 
     override func tearDown() {
