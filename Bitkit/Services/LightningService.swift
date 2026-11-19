@@ -1776,6 +1776,11 @@ class LightningService: NodeLifecycleService {
     /// finish: the rail's attempt `paymentId` is one listed before the send went out. Without both ids, a payment Spark
     /// created before the send or within `railClockSkewSeconds` after it (Spark's clock and this phone's may differ)
     /// may be earlier, so it keeps the hold too.
+    /// Spark's id of the taken send that still holds the invoice of `paymentHash`, if any.
+    func heldRailSendId(paymentHash: String) -> String? {
+        eventCallbackLock.withLock { takenRailSendIds()[paymentHash.lowercased()] }
+    }
+
     func isEarlierThanUncertainRailSend(paymentHash: String, createdAt: UInt64, paymentId: String? = nil) -> Bool {
         eventCallbackLock.withLock {
             isEarlierThanUncertainRailSendLocked(hash: paymentHash.lowercased(), createdAt: createdAt, paymentId: paymentId)

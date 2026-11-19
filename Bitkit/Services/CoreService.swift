@@ -1025,8 +1025,10 @@ class ActivityService {
                        paymentId: railPaymentId
                    )),
                // Spark dates an attempt at its start, so an older one's failure is dated before the row's attempt, or
-               // in the same second when the retry started at once; then the row's own Spark id tells them apart.
+               // in the same second when the retry started at once; then the row's own Spark id tells them apart. The
+               // held attempt's own failure always writes.
                isOlderChannelFreeAttempt: rail == .channelFree && payment.direction == .outbound
+                   && (railPaymentId == nil || railPaymentId != LightningService.shared.heldRailSendId(paymentHash: payment.id))
                    && (paymentTimestamp < existing.timestamp || paymentTimestamp == existing.timestamp && Self.isOtherRowAttempt(
                        railPaymentId,
                        rowAttemptId: Self.channelFreeRowAttempts.attemptId(forPaymentHash: payment.id)
@@ -2870,21 +2872,26 @@ struct SentPaymentContacts: @unchecked Sendable {
     }
 }
 
+/// Kept as `[hash, id]` pairs, oldest first, for the latest `limit` hashes.
 struct ChannelFreeRowAttempts: @unchecked Sendable {
     private static let key = "channelFreeRowAttemptIds"
     private static let lock = NSLock()
+    static let limit = 100
     let defaults: UserDefaults
 
     func remember(_ attemptId: String, forPaymentHash paymentHash: String) {
+        let hash = paymentHash.lowercased()
         Self.lock.withLock {
-            var attempts = defaults.dictionary(forKey: Self.key) as? [String: String] ?? [:]
-            guard attempts[paymentHash.lowercased()] != attemptId else { return }
-            attempts[paymentHash.lowercased()] = attemptId
-            defaults.set(attempts, forKey: Self.key)
+            var pairs = defaults.array(forKey: Self.key) as? [[String]] ?? []
+            guard pairs.last(where: { $0.first == hash })?.last != attemptId else { return }
+            pairs.removeAll { $0.first == hash }
+            pairs.append([hash, attemptId])
+            defaults.set(Array(pairs.suffix(Self.limit)), forKey: Self.key)
         }
     }
 
     func attemptId(forPaymentHash paymentHash: String) -> String? {
-        (defaults.dictionary(forKey: Self.key) as? [String: String])?[paymentHash.lowercased()]
+        let hash = paymentHash.lowercased()
+        return (defaults.array(forKey: Self.key) as? [[String]])?.last { $0.count == 2 && $0[0] == hash }?[1]
     }
 }
