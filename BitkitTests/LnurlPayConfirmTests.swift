@@ -284,4 +284,10 @@ final class LnurlPayConfirmTests: XCTestCase {
             isInitialSubscriptionPayment: false, hasConversion: false, needsUpdateConfirmation: false
         ))
     }
+
+    func testUpdateFeeRefusalRestoresOnlyTheCurrentLnurlSend() {
+        XCTAssertTrue(LnurlPayConfirm.isCurrentRefusedSend(uri: "lnurl1a", currentUri: "lnurl1a"))
+        XCTAssertFalse(LnurlPayConfirm.isCurrentRefusedSend(uri: "lnurl1a", currentUri: "lnurl1b"))
+        XCTAssertFalse(LnurlPayConfirm.isCurrentRefusedSend(uri: "lnurl1a", currentUri: nil))
+    }
 }

@@ -1936,6 +1936,7 @@ struct SendConfirmationView: View {
         var privatePaymentListOutcome = PrivatePaymentListSendOutcome.definitePreBroadcastFailure
         var manualAllowanceAttemptId: String?
         var onchainSend: (address: String, requestedSats: UInt64, isMaxAmount: Bool)?
+        var lightningBolt11: String?
 
         do {
             try validateIncomingPaymentRequestContext(contactPaymentContext)
@@ -1980,6 +1981,7 @@ struct SendConfirmationView: View {
             }
 
             if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
+                lightningBolt11 = invoice.bolt11
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 // Set the amount for other screens
                 wallet.sendAmountSats = amount
@@ -2296,6 +2298,10 @@ struct SendConfirmationView: View {
             }
             if error as? MoveToSparkError == .updateFeeUnseen {
                 // Nothing moved or paid: the new update fee shows in the details and the swipe resets to pay with it.
+                guard await Self.restoreRequestForAnotherSwipe(
+                    contactPaymentContext, app: app, manager: paykitPaymentRequestManager,
+                    isCurrentSend: { isCurrentRefusedLightningSend(bolt11: lightningBolt11) }
+                ) else { return }
                 if isAutomatic {
                     showManualConfirmation(reason: "update fee")
                     return
@@ -2370,6 +2376,14 @@ struct SendConfirmationView: View {
         return Self.isFeeRefusalCurrent(
             presentationID: presentationID, activePresentationID: sheets.activeSheetConfiguration?.presentationID,
             address: address, currentAddress: app.scannedOnchainInvoice?.address
+        )
+    }
+
+    private func isCurrentRefusedLightningSend(bolt11: String?) -> Bool {
+        guard let bolt11 else { return false }
+        return Self.isFeeRefusalCurrent(
+            presentationID: presentationID, activePresentationID: sheets.activeSheetConfiguration?.presentationID,
+            address: bolt11, currentAddress: app.scannedLightningInvoice?.bolt11
         )
     }
 

@@ -55,6 +55,11 @@ struct LnurlPayConfirm: View {
         )
     }
 
+    /// A refusal that returns after the send was closed or replaced has no review to go back to.
+    static func isCurrentRefusedSend(uri: String, currentUri: String?) -> Bool {
+        uri == currentUri
+    }
+
     static func shouldAutomaticallyPay(isInitialSubscriptionPayment: Bool, hasConversion: Bool, needsUpdateConfirmation: Bool) -> Bool {
         isInitialSubscriptionPayment && !hasConversion && !needsUpdateConfirmation
     }
@@ -441,6 +446,10 @@ struct LnurlPayConfirm: View {
             }
             if error as? MoveToSparkError == .updateFeeUnseen {
                 // Nothing moved or paid: the new update fee shows and the swipe resets to pay with it.
+                guard await SendConfirmationView.restoreRequestForAnotherSwipe(
+                    contactPaymentContext, app: app, manager: paykitPaymentRequestManager,
+                    isCurrentSend: { Self.isCurrentRefusedSend(uri: lnurlPayData.uri, currentUri: app.lnurlPayData?.uri) }
+                ) else { return }
                 throw CancellationError()
             }
             Logger.error("LNURL payment failed: \(error)")
