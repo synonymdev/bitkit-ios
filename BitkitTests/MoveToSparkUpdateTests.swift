@@ -132,6 +132,19 @@ final class MoveToSparkUpdateTests: XCTestCase {
         XCTAssertFalse(runs.isQuoting)
     }
 
+    func testSwapRoutesAndSparkLegsNeverNeedTheUpdate() {
+        func sats(_ walletType: WalletType, leg: Bool = false, swap: Bool = false, invoice: UInt64 = 0) -> UInt64? {
+            SendConfirmationView.sparkUpdatePaymentSats(
+                walletType: walletType, hasServiceLeg: leg, hasSwapRoute: swap, invoiceAmountSats: invoice, sendAmountSats: 40000
+            )
+        }
+        XCTAssertEqual(sats(.lightning), 40000)
+        XCTAssertEqual(sats(.lightning, invoice: 25000), 25000)
+        XCTAssertNil(sats(.lightning, swap: true))
+        XCTAssertNil(sats(.lightning, leg: true))
+        XCTAssertNil(sats(.onchain))
+    }
+
     private func assertFallsShort(_ operation: () async throws -> Void, line: UInt = #line) async {
         do {
             try await operation()

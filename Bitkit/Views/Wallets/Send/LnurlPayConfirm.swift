@@ -465,7 +465,8 @@ struct LnurlPayConfirm: View {
     }
 
     private var sparkUpdateAmountSats: UInt64? {
-        guard let lnurlPayData = app.lnurlPayData else { return nil }
+        // A swap route pays through its own service and never needs the update.
+        guard let lnurlPayData = app.lnurlPayData, app.paykitSwapRoute == nil else { return nil }
         let amountSats = wallet.sendAmountSats ?? lnurlPayData.minSendableSat
         return MoveToSparkMath.needsUpdateToSend(amountSats: amountSats) ? amountSats : nil
     }

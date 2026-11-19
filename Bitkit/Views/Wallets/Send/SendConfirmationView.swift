@@ -3032,12 +3032,25 @@ struct SendConfirmationView: View {
         }
     }
 
-    /// The Lightning payment Confirm sends from Spending, which may need the spending balance update first; a Spark leg
-    /// pays another endpoint and never does.
+    /// The Lightning payment Confirm sends from Spending, which may need the spending balance update first.
     private var sparkUpdatePayment: (bolt11: String, amountSats: UInt64)? {
-        guard app.selectedWalletToPayFrom == .lightning, app.paykitRoute?.serviceLeg == nil,
-              let invoice = app.scannedLightningInvoice else { return nil }
-        return (invoice.bolt11, invoice.amountSatoshis > 0 ? invoice.amountSatoshis : wallet.sendAmountSats ?? 0)
+        guard let invoice = app.scannedLightningInvoice, let amountSats = Self.sparkUpdatePaymentSats(
+            walletType: app.selectedWalletToPayFrom,
+            hasServiceLeg: app.paykitRoute?.serviceLeg != nil,
+            hasSwapRoute: app.paykitSwapRoute != nil,
+            invoiceAmountSats: invoice.amountSatoshis,
+            sendAmountSats: wallet.sendAmountSats
+        ) else { return nil }
+        return (invoice.bolt11, amountSats)
+    }
+
+    /// The amount a Lightning payment from Spending sends. A Spark leg or a swap route pays through its own service and
+    /// never needs the spending balance update.
+    static func sparkUpdatePaymentSats(
+        walletType: WalletType, hasServiceLeg: Bool, hasSwapRoute: Bool, invoiceAmountSats: UInt64, sendAmountSats: UInt64?
+    ) -> UInt64? {
+        guard walletType == .lightning, !hasServiceLeg, !hasSwapRoute else { return nil }
+        return invoiceAmountSats > 0 ? invoiceAmountSats : sendAmountSats ?? 0
     }
 
     private var needsSparkUpdate: Bool {
