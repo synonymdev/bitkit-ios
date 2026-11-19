@@ -1014,9 +1014,9 @@ class BackupService {
             }
             .store(in: cancellables)
 
-        // METADATA (moves to Spark)
+        // METADATA (moves to Spark). Marked as the hash is saved, so a stop right after can't leave a later Activity backup
+        // holding the move without the metadata that names it one.
         MoveToSparkPayments.savedPublisher
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .metadata)
@@ -1560,7 +1560,7 @@ class BackupService {
         let copy = try JSONEncoder().encode(SparkExitBackupV1(
             version: 1,
             createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
-            network: remoteBackup?.network ?? "\(Env.network)",
+            network: remoteBackup?.network ?? SparkManager.exitBackupNetworkName(Env.network),
             exitState: staged
         ))
         return (copy, remote != nil)
