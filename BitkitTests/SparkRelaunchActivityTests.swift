@@ -129,4 +129,38 @@ final class SparkRelaunchActivityTests: XCTestCase {
         current = try await row()
         XCTAssertEqual(current?.value, 700)
     }
+
+    func testAFailedSparkRowKeepsItsAttemptAgainstAnotherAttemptOfTheSameSecond() async throws {
+        let hash = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() + String(repeating: "e8", count: 16)
+        func failed(sats: UInt64, feeSats: UInt64, at timestamp: UInt64) -> PaymentDetails {
+            PaymentDetails(
+                id: hash,
+                kind: .bolt11(hash: hash, preimage: nil, secret: nil, description: nil, bolt11: "lnbcrt1"),
+                amountMsat: sats * 1000, feePaidMsat: feeSats * 1000, direction: .outbound, status: .failed, latestUpdateTimestamp: timestamp
+            )
+        }
+        func row() async throws -> LightningActivity? {
+            guard case let .lightning(lightning)? = try await CoreService.shared.activity.getActivity(id: hash) else { return nil }
+            return lightning
+        }
+        // A retry started in the same second as the first attempt, at another amount, failed and was recorded.
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(sats: 500, feeSats: 0, at: 200), railPaymentId: "retry")
+
+        // A replay of the first attempt's failure, dated the same second, leaves the retry's details.
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(sats: 300, feeSats: 1, at: 200), railPaymentId: "first")
+        var current = try await row()
+        XCTAssertEqual(current?.value, 500, "another attempt of the same second replaced the retry's amount")
+        XCTAssertEqual(current?.fee, 0, "another attempt of the same second replaced the retry's fee")
+
+        // The retry's own fee correction still lands.
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(sats: 500, feeSats: 3, at: 200), railPaymentId: "retry")
+        current = try await row()
+        XCTAssertEqual(current?.fee, 3)
+
+        // A later attempt's failure takes the row, and then owns it.
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(sats: 700, feeSats: 0, at: 300), railPaymentId: "third")
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(sats: 500, feeSats: 3, at: 300), railPaymentId: "retry")
+        current = try await row()
+        XCTAssertEqual(current?.value, 700)
+    }
 }
