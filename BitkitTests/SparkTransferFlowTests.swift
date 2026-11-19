@@ -173,6 +173,19 @@ final class SparkTransferFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testAWaitingEarlyClaimThePollGivesUpOnClearsItsFeeCap() async throws {
+        let calls = PollCalls()
+        let flow = pollingFlow(offers: [choice(earlyFee: 900)], claims: [.waiting], pollAttempts: 3, calls: calls)
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+        for _ in 0 ..< 100 where calls.released.isEmpty {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(flow.claimState, .unavailable)
+        XCTAssertEqual(calls.released, ["txid"], "Spark may still claim early while the transfer shows the normal speed")
+    }
+
+    @MainActor
     func testAWaitingEarlyClaimIsCappedAtTheApprovedFeeNotTheFirstQuote() async {
         let calls = PollCalls()
         let flow = pollingFlow(offers: [choice(earlyFee: 300)], claims: [.waiting], pollAttempts: 2, calls: calls)
@@ -497,6 +510,7 @@ final class SparkTransferFlowTests: XCTestCase {
         var claims = 0
         var unclaimedChecks = 0
         var ceilings: [UInt64] = []
+        var released: [String] = []
     }
 
     /// A flow whose poll answers with `offers` in turn (nil once they run out), whose claims answer with `claims`, and
@@ -528,7 +542,11 @@ final class SparkTransferFlowTests: XCTestCase {
                 return unclaimed.isEmpty ? true : unclaimed.removeFirst()
             },
             refresh: {},
-            sleep: { _ in }
+            sleep: { _ in },
+            releaseEarlyClaim: { offer in
+                calls.released.append(offer.txid)
+                return true
+            }
         )
         return SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: pollAttempts ?? offers.count + 1)
     }
