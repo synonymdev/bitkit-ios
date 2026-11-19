@@ -57,47 +57,29 @@ final class MoveToSparkMathTests: XCTestCase {
         XCTAssertEqual(emptied.map(\.channelId), ["a"], "A channel that could send less than the move minimum was closed")
     }
 
-    func testAMoveKeepsAChannelWhoseSendLimitAnInFlightHtlcLowered() {
+    func testAChannelThatStillHoldsCapacityIsReadAgainBeforeItCloses() {
         let before = [channel("a", sendableSats: 50000)]
-        let after = [channel("a", sendableSats: 0, capacitySats: 300_000)]
-        XCTAssertTrue(
-            MoveToSparkMath.emptiedChannels(before: before, after: after, payments: []).isEmpty,
-            "A channel that still holds its balance was closed"
+        // The move's settled HTLC still counts against the peer's in-flight cap: the send limit reads 0 over 5 002 sats.
+        let held = MoveToSparkMath.emptiedChannels(before: before, after: [channel("a", sendableSats: 0, capacitySats: 5002)], payments: [])
+        XCTAssertTrue(MoveToSparkMath.mayHoldTheMoveHtlc(held), "A channel with capacity left closed without a recheck")
+        // Once the HTLC clears, the limit shows what the channel can send, its reserve already taken off.
+        let cleared = MoveToSparkMath.emptiedChannels(
+            before: before,
+            after: [channel("a", sendableSats: 1332, capacitySats: 5002)],
+            payments: []
         )
-    }
-
-    func testAMoveClosesAFundedChannelWhoseCapacityIsTheCommitmentFee() {
-        // 253 sat/kW: an anchor commitment with two HTLCs keeps back 371 sats; LDK already took the anchors off.
-        var funded = channel("a", sendableSats: 0, capacitySats: 1300)
-        funded.isOutbound = true
-        funded.feerateSatPer1000Weight = 253
-        XCTAssertEqual(MoveToSparkMath.sendableAfterCommitmentFeeSats(funded, isLegacy: false), 929)
-        var anchorBefore = channel("a", sendableSats: 50000, capacitySats: 50371)
-        anchorBefore.isOutbound = true
-        anchorBefore.feerateSatPer1000Weight = 253
-        XCTAssertFalse(MoveToSparkMath.reservesLegacyFee(anchorBefore))
-        XCTAssertEqual(MoveToSparkMath.emptiedChannels(before: [anchorBefore], after: [funded], payments: []).count, 1)
-        // 1 900 sats of capacity still send 1 529 once the move's HTLC clears, so the channel stays.
-        funded.outboundCapacityMsat = 1_900_000
-        XCTAssertEqual(MoveToSparkMath.sendableAfterCommitmentFeeSats(funded, isLegacy: false), 1529)
-        XCTAssertTrue(MoveToSparkMath.emptiedChannels(before: [anchorBefore], after: [funded], payments: []).isEmpty)
-        // The peer pays the commitment fee of a channel it funded.
-        funded.outboundCapacityMsat = 1_300_000
-        funded.isOutbound = false
-        XCTAssertTrue(MoveToSparkMath.emptiedChannels(before: [anchorBefore], after: [funded], payments: []).isEmpty)
-    }
-
-    func testAMoveClosesALegacyChannelAtItsReserve() {
-        // 2 500 sat/kW: a legacy commitment keeps back 4 480 sats, so 5 342 sats of capacity send only 862.
-        var legacyBefore = channel("a", sendableSats: 50000, capacitySats: 54480)
-        legacyBefore.isOutbound = true
-        legacyBefore.feerateSatPer1000Weight = 2500
-        XCTAssertTrue(MoveToSparkMath.reservesLegacyFee(legacyBefore))
-        var after = channel("a", sendableSats: 0, capacitySats: 5342)
-        after.isOutbound = true
-        after.feerateSatPer1000Weight = 2500
-        XCTAssertEqual(MoveToSparkMath.sendableAfterCommitmentFeeSats(after, isLegacy: true), 862)
-        XCTAssertEqual(MoveToSparkMath.emptiedChannels(before: [legacyBefore], after: [after], payments: []).count, 1)
+        XCTAssertTrue(cleared.isEmpty, "A channel that can still send 1 332 sats was closed")
+        // A legacy channel's reserve keeps its limit under the minimum after the HTLC clears: it closes after the recheck.
+        let reserved = MoveToSparkMath.emptiedChannels(
+            before: before,
+            after: [channel("a", sendableSats: 862, capacitySats: 5342)],
+            payments: []
+        )
+        XCTAssertEqual(reserved.count, 1)
+        // Capacity under the minimum needs no recheck.
+        let empty = MoveToSparkMath.emptiedChannels(before: before, after: [channel("a", sendableSats: 0, capacitySats: 900)], payments: [])
+        XCTAssertEqual(empty.count, 1)
+        XCTAssertFalse(MoveToSparkMath.mayHoldTheMoveHtlc(empty))
     }
 
     func testAMoveLeavesChannelsItDidNotKnowOrThatAreNotOpen() {

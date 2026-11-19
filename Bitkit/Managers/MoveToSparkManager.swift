@@ -77,32 +77,16 @@ enum MoveToSparkMath {
         let beforeById = Dictionary(before.map { ($0.channelId, $0) }, uniquingKeysWith: { first, _ in first })
         return (after ?? []).filter(\.isChannelReady).filter {
             guard let was = beforeById[$0.channelId] else { return false }
-            // The outbound capacity too: an HTLC still counting against the peer's in-flight limit lowers only the send limit.
             return was.nextOutboundHtlcLimitMsat / 1000 >= minMoveSats && $0.nextOutboundHtlcLimitMsat / 1000 < minMoveSats
-                && sendableAfterCommitmentFeeSats($0, isLegacy: reservesLegacyFee(was)) < minMoveSats
         }
     }
 
-    /// The outbound capacity less the commitment fee the funder keeps back for its next HTLC, which LDK's capacity does
-    /// not count, as LDK reserves it: an anchor commitment with two HTLCs (LDK already took the anchors off), or a legacy
-    /// one with one HTLC at twice the feerate.
-    static func sendableAfterCommitmentFeeSats(_ channel: ChannelDetails, isLegacy: Bool) -> UInt64 {
-        let capacitySats = channel.outboundCapacityMsat / 1000
-        guard channel.isOutbound else { return capacitySats }
-        return capacitySats.saturatingSub(commitmentFeeSats(feerate: channel.feerateSatPer1000Weight, isLegacy: isLegacy))
-    }
-
-    /// ldk-node does not expose a channel's type, so it is read from the channel before the move, with no move HTLC in
-    /// flight: a legacy channel's send limit sits at least the legacy reserve under its capacity, an anchor one's less.
-    /// A limit capped lower by the peer also reads as legacy, which only takes a little more off.
-    static func reservesLegacyFee(_ channel: ChannelDetails) -> Bool {
-        guard channel.isOutbound else { return false }
-        let gapSats = channel.outboundCapacityMsat.saturatingSub(channel.nextOutboundHtlcLimitMsat) / 1000
-        return gapSats + 1 >= commitmentFeeSats(feerate: channel.feerateSatPer1000Weight, isLegacy: true)
-    }
-
-    private static func commitmentFeeSats(feerate: UInt32, isLegacy: Bool) -> UInt64 {
-        isLegacy ? 2 * UInt64(feerate) * (724 + 172) / 1000 : UInt64(feerate) * (1124 + 2 * 172) / 1000
+    /// Whether an emptied channel still holds the move minimum in outbound capacity. Its send limit is then under the
+    /// minimum for one of two reasons ldk-node does not tell apart: the commitment fee its funder keeps back, which stays,
+    /// or the move's settled HTLC still counting against the peer's in-flight cap, which clears. Such a channel is read
+    /// again before it closes.
+    static func mayHoldTheMoveHtlc(_ emptied: [ChannelDetails]) -> Bool {
+        emptied.contains { $0.outboundCapacityMsat / 1000 >= minMoveSats }
     }
 
     /// The payments read before and after a read of the channels, or nil when a read failed or an outbound Lightning
@@ -418,6 +402,9 @@ final class MoveToSparkManager {
     private static let sparkBalanceWait: Duration = .seconds(60)
     /// How often that wait reads Spark's balance again.
     private static let sparkBalanceRecheck: Duration = .seconds(2)
+    /// How long a close waits for a move's HTLC to stop counting against the peer's in-flight cap, rechecking every 2 s.
+    private static let htlcClearWait: Duration = .seconds(30)
+    private static let htlcClearRecheck: Duration = .seconds(2)
 
     private(set) var state: MoveToSparkState = .quoting
     /// A move was started and its outcome is still the modal's, so showing the modal again keeps it.
@@ -668,20 +655,13 @@ final class MoveToSparkManager {
         Task { @MainActor in
             // The channels are read between two reads of the payments, so a payment that starts or ends meanwhile
             // leaves no send limit it lowered in the channels read.
-            let paymentsBefore = await LightningService.shared.listPayments()
-            await wallet.syncStateAsync()
-            let channels = wallet.channels
-            let paymentsAfter = await LightningService.shared.listPayments()
-            let emptied = MoveToSparkMath.emptiedChannels(
-                before: before,
-                after: channels,
-                payments: MoveToSparkMath.paymentsAround(
-                    moveStart: moveStart,
-                    channelsRead: paymentsBefore,
-                    paymentsAfter,
-                    isMovePayment: MoveToSparkPayments.contains
-                )
-            )
+            var emptied = await Self.readEmptied(before: before, moveStart: moveStart, wallet: wallet)
+            // A channel whose limit rises once the move's HTLC clears drops out; one still under it is its reserve.
+            let deadline = ContinuousClock.now + Self.htlcClearWait
+            while MoveToSparkMath.mayHoldTheMoveHtlc(emptied), ContinuousClock.now < deadline {
+                try? await Task.sleep(for: Self.htlcClearRecheck)
+                emptied = await Self.readEmptied(before: before, moveStart: moveStart, wallet: wallet)
+            }
             guard !emptied.isEmpty else { return }
             do {
                 let failed = try await transfer.closeChannels(channels: emptied)
@@ -690,6 +670,27 @@ final class MoveToSparkManager {
                 Logger.warn("Failed to close the channels a move emptied: \(error)", context: "MoveToSpark")
             }
         }
+    }
+
+    private static func readEmptied(
+        before: [ChannelDetails],
+        moveStart: [PaymentDetails]?,
+        wallet: WalletViewModel
+    ) async -> [ChannelDetails] {
+        let paymentsBefore = await LightningService.shared.listPayments()
+        await wallet.syncStateAsync()
+        let channels = wallet.channels
+        let paymentsAfter = await LightningService.shared.listPayments()
+        return MoveToSparkMath.emptiedChannels(
+            before: before,
+            after: channels,
+            payments: MoveToSparkMath.paymentsAround(
+                moveStart: moveStart,
+                channelsRead: paymentsBefore,
+                paymentsAfter,
+                isMovePayment: { MoveToSparkPayments.contains($0) }
+            )
+        )
     }
 
     /// Starts a move: it keeps its outcome and stays in flight until it settles. Returns the move's generation.
