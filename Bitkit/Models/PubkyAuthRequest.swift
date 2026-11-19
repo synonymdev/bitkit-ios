@@ -1,4 +1,3 @@
-import BitkitCore
 import Foundation
 import Paykit
 
@@ -287,23 +286,15 @@ struct PubkyAuthRequest {
 
     private static func parseSignup(url: String, components: URLComponents) throws -> PubkyAuthRequest {
         let values = Dictionary(grouping: components.queryItems ?? [], by: \.name)
+        // Sign-up that also authorizes an app must use `signup_grant`, so legacy Ring and `signup` links with
+        // relay/secret/caps are rejected. `direct_signup` ignores those values, as Pubky Ring does.
+        let isLegacyAuthorizingSignup = components.scheme?.lowercased() == "pubkyring" ||
+            (components.host?.lowercased() == "signup" && ["relay", "secret", "caps"].contains { values[$0] != nil })
+        guard !isLegacyAuthorizingSignup else {
+            throw PubkyAuthRequestError.invalidUrl
+        }
         let homeserver = try requiredQueryValue("hs", from: values)
-        let authorizesApp = components.scheme?.lowercased() == "pubkyring" ||
-            (
-                components.scheme?.lowercased() == "pubkyauth" &&
-                    components.host?.lowercased() == "signup" &&
-                    ["relay", "secret", "caps"].contains { values[$0] != nil }
-            )
-        let relay = authorizesApp ? try requiredQueryValue("relay", from: values) : ""
-        let secret = authorizesApp ? try requiredQueryValue("secret", from: values) : ""
-        let capabilities = authorizesApp ? try requiredQueryValue("caps", from: values) : ""
-        let authorizationUrl = authorizesApp
-            ? ringAuthorizationUrl(relay: relay, secret: secret, capabilities: capabilities)
-            : nil
         do {
-            if let authorizationUrl {
-                _ = try BitkitCore.parsePubkyAuthUrl(authUrl: authorizationUrl)
-            }
             _ = try Paykit.normalizePubkyPublicKey(value: homeserver)
         } catch {
             throw PubkyAuthRequestError.invalidUrl
@@ -312,11 +303,11 @@ struct PubkyAuthRequest {
             url: url,
             kind: .signUp,
             clientID: "",
-            relay: relay,
-            capabilities: capabilities,
+            relay: "",
+            capabilities: "",
             homeserverPublicKey: homeserver,
             signupToken: optionalQueryValue("st", from: values),
-            authorizationUrl: authorizationUrl
+            authorizationUrl: nil
         )
         guard request.bitkitClaim == nil else {
             throw PubkyAuthRequestError.invalidUrl
@@ -354,16 +345,6 @@ struct PubkyAuthRequest {
             signupToken: signupToken,
             authorizationUrl: authorizationUrl
         )
-    }
-
-    private static func ringAuthorizationUrl(relay: String, secret: String, capabilities: String) -> String {
-        "pubkyauth:///?relay=\(encodeQueryComponent(relay))" +
-            "&secret=\(encodeQueryComponent(secret))&caps=\(encodeQueryComponent(capabilities))"
-    }
-
-    private static func encodeQueryComponent(_ value: String) -> String {
-        let unreserved = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
-        return value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
     }
 
     private static func requiredQueryValue(

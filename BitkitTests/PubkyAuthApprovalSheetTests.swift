@@ -38,12 +38,29 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
                 XCTAssertEqual(clientID, "paykit.test")
                 XCTAssertEqual(secretKey, "derived-secret")
                 approved = true
-            },
-            ringApproval: { _, _ in XCTFail("Grant signup must use the grant API") }
+            }
         )
 
         XCTAssertTrue(approved)
         XCTAssertEqual(PubkyAuthApprovalSheet.initialState(for: request), .authorize)
+    }
+
+    @MainActor
+    func testPlainSignupDoesNotAuthorizeAnApp() async throws {
+        let strayAuthorization = "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
+            "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&caps=%2Fpub%2Fexample%2F%3Arw"
+        let urls = ["direct_signup", "signup"].map { "pubkyauth://\($0)?hs=\(approvalTestClientPublicKey)&st=invite" } +
+            ["pubkyauth://direct_signup?hs=\(approvalTestClientPublicKey)&st=invite\(strayAuthorization)"]
+        for url in urls {
+            let request = try PubkyAuthRequest.parse(url: url)
+            XCTAssertNil(request.authorizationUrl, url)
+
+            try await PubkyService.approveSignupAuthorization(
+                request: request,
+                secretKeyHex: "derived-secret",
+                ordinaryApproval: { _, _, _, _ in XCTFail("Plain signup must not authorize an app") }
+            )
+        }
     }
 
     @MainActor
