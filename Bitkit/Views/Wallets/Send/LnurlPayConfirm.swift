@@ -26,6 +26,8 @@ struct LnurlPayConfirm: View {
     /// The spending balance update a payment that fits only across the channels and Spark runs first.
     @State private var sparkUpdateQuote: MoveToSparkQuote?
     @State private var isSparkUpdateQuoting = false
+    /// A first subscription payment that needs the update waits for a swipe on its update fee instead of paying by itself.
+    @State private var needsUpdateConfirmation = false
     @FocusState private var isCommentFocused: Bool
 
     static func sendLightningPayment<Result>(
@@ -46,8 +48,15 @@ struct LnurlPayConfirm: View {
     }
 
     private var shouldAutomaticallyPay: Bool {
-        app.contactPaymentContext?.isInitialSubscriptionPayment == true &&
-            app.contactPaymentContext?.incomingPaymentRequest?.pricing.conversion == nil
+        Self.shouldAutomaticallyPay(
+            isInitialSubscriptionPayment: app.contactPaymentContext?.isInitialSubscriptionPayment == true,
+            hasConversion: app.contactPaymentContext?.incomingPaymentRequest?.pricing.conversion != nil,
+            needsUpdateConfirmation: needsUpdateConfirmation
+        )
+    }
+
+    static func shouldAutomaticallyPay(isInitialSubscriptionPayment: Bool, hasConversion: Bool, needsUpdateConfirmation: Bool) -> Bool {
+        isInitialSubscriptionPayment && !hasConversion && !needsUpdateConfirmation
     }
 
     var body: some View {
@@ -202,6 +211,11 @@ struct LnurlPayConfirm: View {
               shouldAutomaticallyPay,
               !hasStartedAutomaticPayment
         else { return }
+        guard sparkUpdateAmountSats == nil else {
+            Logger.info("Opening manual confirmation for first subscription payment: update fee", context: "LnurlPayConfirm")
+            needsUpdateConfirmation = true
+            return
+        }
         hasStartedAutomaticPayment = true
         do {
             try await submitPayment()

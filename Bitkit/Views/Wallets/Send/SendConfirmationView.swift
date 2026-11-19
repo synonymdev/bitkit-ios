@@ -1107,6 +1107,11 @@ struct SendConfirmationView: View {
         if !isAutomatic, isPreparingOnchainSend {
             throw CancellationError()
         }
+        // The update fee is charged only after a swipe on the fee shown, so a payment needing the update waits for one.
+        if isAutomatic, needsSparkUpdate {
+            showManualConfirmation(reason: "update fee")
+            return
+        }
         if isAutomatic, isFeeRateMissing {
             guard !Self.automaticPaymentAwaitsFeeRate(isFeeRateMissing: isFeeRateMissing, feeRateLoadFailed: wallet.feeRateLoadFailed) else {
                 // The rate is still loading; the automatic start runs again when send setup finishes.
@@ -1146,7 +1151,7 @@ struct SendConfirmationView: View {
             }
         }
 
-        guard await confirmSparkUpdateQuote(isAutomatic: isAutomatic) else { throw CancellationError() }
+        guard await confirmSparkUpdateQuote() else { throw CancellationError() }
 
         // The fee the warnings and this approval are for; an estimate finishing later must not stand in for it.
         let reviewedFeeSats = UInt64(max(0, transactionFee))
@@ -2291,6 +2296,10 @@ struct SendConfirmationView: View {
             }
             if error as? MoveToSparkError == .updateFeeUnseen {
                 // Nothing moved or paid: the new update fee shows in the details and the swipe resets to pay with it.
+                if isAutomatic {
+                    showManualConfirmation(reason: "update fee")
+                    return
+                }
                 throw CancellationError()
             }
             Logger.error("Payment failed: \(error)")
@@ -2998,7 +3007,7 @@ struct SendConfirmationView: View {
             return
         }
 
-        if let payment = sparkUpdatePayment, MoveToSparkMath.needsUpdateToSend(amountSats: payment.amountSats) {
+        if needsSparkUpdate, let payment = sparkUpdatePayment {
             await estimateSparkUpdateFees(bolt11: payment.bolt11, amountSats: payment.amountSats)
         } else if canSwitchWallet || app.selectedWalletToPayFrom == .lightning {
             // For invoices with a built-in amount, pass nil so LDK uses native msat precision
@@ -3015,6 +3024,10 @@ struct SendConfirmationView: View {
         guard app.selectedWalletToPayFrom == .lightning, app.paykitRoute?.serviceLeg == nil,
               let invoice = app.scannedLightningInvoice else { return nil }
         return (invoice.bolt11, invoice.amountSatoshis > 0 ? invoice.amountSatoshis : wallet.sendAmountSats ?? 0)
+    }
+
+    private var needsSparkUpdate: Bool {
+        sparkUpdatePayment.map { MoveToSparkMath.needsUpdateToSend(amountSats: $0.amountSats) } ?? false
     }
 
     /// Quotes the update a payment of `amountSats` needs, and Spark's fee for the payment after it.
@@ -3046,8 +3059,8 @@ struct SendConfirmationView: View {
     /// Quotes the spending balance update again when the payment needs one, before anything is prepared or sent. A quote
     /// the user did not see, or a fee above the one shown, stops the swipe and shows the new fee instead.
     @MainActor
-    private func confirmSparkUpdateQuote(isAutomatic: Bool) async -> Bool {
-        guard let payment = sparkUpdatePayment, MoveToSparkMath.needsUpdateToSend(amountSats: payment.amountSats) else { return true }
+    private func confirmSparkUpdateQuote() async -> Bool {
+        guard needsSparkUpdate, let payment = sparkUpdatePayment else { return true }
         let fresh: MoveToSparkQuote
         do {
             fresh = try await MoveToSparkManager.shared.updateQuote(wallet: wallet)
@@ -3066,9 +3079,6 @@ struct SendConfirmationView: View {
         showSparkUpdateQuote(fresh)
         guard MoveToSparkMath.isUpdateFeeUnseen(shownFeeSats: shown?.feeSats, freshFeeSats: fresh.feeSats) else { return true }
         Logger.info("Stopped a payment to show the update fee '\(fresh.feeSats)'", context: "SendConfirmation")
-        if isAutomatic {
-            showManualConfirmation(reason: "update fee")
-        }
         return false
     }
 }
