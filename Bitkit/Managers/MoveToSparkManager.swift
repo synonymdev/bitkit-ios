@@ -191,7 +191,7 @@ enum MoveToSparkState: Equatable {
     case quoting
     case confirm(MoveToSparkQuote, isMoving: Bool)
     /// `hasRest`: the channels can still send enough to move again, as after a smaller amount.
-    case done(amountSats: UInt64, feeSats: UInt64, closeChannel: ChannelDetails?, hasRest: Bool)
+    case done(amountSats: UInt64, feeSats: UInt64, hasRest: Bool)
     /// The payment had no outcome within the wait; it may still settle or return to the channel.
     case inFlight(amountSats: UInt64)
     /// `amountSats` did not route in one payment; `smallerSats` is the next amount to try, if any is left.
@@ -202,7 +202,7 @@ enum MoveToSparkState: Equatable {
         switch (lhs, rhs) {
         case (.quoting, .quoting): true
         case let (.confirm(a, am), .confirm(b, bm)): a == b && am == bm
-        case let (.done(a, af, ac, ar), .done(b, bf, bc, br)): a == b && af == bf && ac?.channelId == bc?.channelId && ar == br
+        case let (.done(a, af, ar), .done(b, bf, br)): a == b && af == bf && ar == br
         case let (.inFlight(a), .inFlight(b)): a == b
         case let (.tooLarge(a, asm), .tooLarge(b, bsm)): a == b && asm == bsm
         case let (.failed(a), .failed(b)): a == b
@@ -215,22 +215,22 @@ enum MoveToSparkState: Equatable {
 /// Blocktank is closing its channels, and this is the cheapest way to keep the balance in Spending.
 @Observable @MainActor
 final class MoveToSparkManager {
-    /// Shared so a move and its outcome outlive the screen, which is rebuilt when the app is unlocked.
+    /// Shared so a move and its outcome outlive the Update Spending Balance modal.
     static let shared = MoveToSparkManager()
 
     private static let invoiceExpirySecs: UInt32 = 3600
     private static let maxQuoteRounds = 4
 
     private(set) var state: MoveToSparkState = .quoting
-    /// A move was started and its outcome is still the screen's, so showing the screen again keeps it.
+    /// A move was started and its outcome is still the modal's, so showing the modal again keeps it.
     private var keepsOutcome = false
     /// Counts quotes, moves and resets; a quote writes its result only while it is still the latest.
     private(set) var generation = 0
     private var isQuoting = false
-    /// A swiped payment that has not settled yet; leaving the screen keeps it, so it is never quoted over.
+    /// A move that has not settled yet; closing the modal keeps it, so it is never quoted over.
     private var isMoveInFlight = false
 
-    /// A move is kept for its result, so its screen stays reachable while the channels have nothing left to move.
+    /// A move is kept for its result, so its modal stays reachable while the channels have nothing left to move.
     var keepsMoveForItsResult: Bool {
         keepsOutcome || isMoveInFlight
     }
@@ -241,14 +241,14 @@ final class MoveToSparkManager {
         self.services = services
     }
 
-    /// Opens the screen: quotes a new move, unless a quote is still running or a move started earlier is still running
+    /// Opens the modal: quotes a new move, unless a quote is still running or a move started earlier is still running
     /// or showing its outcome.
     func start(wallet: WalletViewModel) async {
         guard !keepsOutcome, !isQuoting else { return }
         await quote(wallet: wallet)
     }
 
-    /// Forgets the last move once its screen is left, unless its payment is still in flight.
+    /// Forgets the last move once its modal is closed, unless its payment is still in flight.
     func reset() {
         guard !isMoveInFlight else { return }
         generation += 1
@@ -385,13 +385,11 @@ final class MoveToSparkManager {
         throw MoveToSparkError.tooLarge(amountSats: amountSats)
     }
 
-    /// The outcome of a move that paid `feeSats`: Close when one channel is left, Move The Rest when it can still send.
+    /// The outcome of a move that paid `feeSats`: Move Rest when the channels can still send enough to move again.
     nonisolated static func doneState(amountSats: UInt64, feeSats: UInt64, channels: [ChannelDetails]?) -> MoveToSparkState {
-        let openChannels = (channels ?? []).filter(\.isChannelReady)
-        return .done(
+        .done(
             amountSats: amountSats,
             feeSats: feeSats,
-            closeChannel: openChannels.count == 1 ? openChannels.first : nil,
             hasRest: MoveToSparkMath.hasMovableBalance(limitSats: MoveToSparkMath.movableSats(channels: channels))
         )
     }
