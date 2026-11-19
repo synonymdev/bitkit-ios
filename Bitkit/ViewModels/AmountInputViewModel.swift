@@ -73,7 +73,8 @@ final class AmountInputViewModel {
             maxDecimals: maxDecimals
         )
         // A rejected key leaves the text as it was; reading it again would round the kept sats to the text's precision.
-        guard newText != rawInputText else { return }
+        // Delete still applies, so it clears an amount kept without text (a preset in fiat with no rate).
+        guard newText != rawInputText || key == "delete" else { return }
 
         // Deletions must always apply, even when the amount is above the cap (e.g. a
         // prefilled invoice amount over the available balance, or a cap that dropped

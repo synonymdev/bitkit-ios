@@ -91,6 +91,20 @@ final class NumberPadTests: XCTestCase {
         XCTAssertEqual(viewModel.amountSats, 100_001, "A refused key rounded the amount to its fiat text")
     }
 
+    func testDeleteClearsAPresetFiatAmountWithNoRate() {
+        let ratesKey = "cached_fx_rates"
+        let saved = UserDefaults.standard.data(forKey: ratesKey)
+        defer { UserDefaults.standard.set(saved, forKey: ratesKey) }
+        UserDefaults.standard.removeObject(forKey: ratesKey)
+        let currency = mockCurrency(primaryDisplay: .fiat)
+        let viewModel = AmountInputViewModel()
+        viewModel.updateFromSats(50000, currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 50000)
+        XCTAssertEqual(viewModel.displayText, "", "The fiat field had text to delete, so this case was not staged")
+        viewModel.handleNumberPadInput("delete", currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 0, "Delete kept a preset amount the fiat field could not show")
+    }
+
     func testARedrawnAmountKeepsASCIIDigitsForTheNumberPad() {
         XCTAssertEqual(AmountInputViewModel.asciiDigits("٥٠٠٠"), "5000", "Arabic-Indic digits reached the raw input")
         XCTAssertEqual(AmountInputViewModel.asciiDigits("۱۲.۵۰"), "12.50")
