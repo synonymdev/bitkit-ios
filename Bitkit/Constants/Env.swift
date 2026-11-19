@@ -109,6 +109,11 @@ enum Env {
         isE2E && e2eBackend == "local"
     }
 
+    static var localSparkSettings: (configBase64: String?, chainURL: String?) {
+        guard isDebug, isLocalE2EBackend, network == .regtest else { return (nil, nil) }
+        return (infoPlistValue("SPARK_LOCAL_CONFIG_B64"), infoPlistValue("SPARK_LOCAL_CHAIN_URL"))
+    }
+
     private static var e2eLocalHost: String {
         configValue("E2E_LOCAL_HOST") ?? "127.0.0.1"
     }
