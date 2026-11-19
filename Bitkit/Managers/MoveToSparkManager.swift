@@ -68,6 +68,15 @@ enum MoveToSparkMath {
         let half = sats / 2
         return half >= minMoveSats ? half : nil
     }
+
+    /// The open channels in `after` that could send at least `minMoveSats` in `before` and no longer can.
+    static func emptiedChannels(before: [ChannelDetails], after: [ChannelDetails]?) -> [ChannelDetails] {
+        let beforeSats = Dictionary(before.map { ($0.channelId, $0.nextOutboundHtlcLimitMsat / 1000) }, uniquingKeysWith: { first, _ in first })
+        return (after ?? []).filter(\.isChannelReady).filter {
+            guard let wasSats = beforeSats[$0.channelId] else { return false }
+            return wasSats >= minMoveSats && $0.nextOutboundHtlcLimitMsat / 1000 < minMoveSats
+        }
+    }
 }
 
 struct MoveToSparkQuote: Equatable {
@@ -288,8 +297,9 @@ final class MoveToSparkManager {
         state = result
     }
 
-    func move(wallet: WalletViewModel) async {
+    func move(wallet: WalletViewModel, transfer: TransferViewModel) async {
         guard case let .confirm(quote, isMoving) = state, !isMoving else { return }
+        let channelsBefore = wallet.channels ?? []
         let moveGeneration = beginMove()
         // A payment still unsettled after the wait keeps the move until its late outcome, so leaving and reopening the
         // screen shows it again instead of a new quote.
@@ -310,8 +320,11 @@ final class MoveToSparkManager {
                 // Shown in the step that stops waiting, so a late outcome right after it finds this move in flight.
                 onTimeout: { [weak self] in self?.showInFlight(amountSats: quote.amountSats, moveGeneration: moveGeneration) },
                 onLateFailure: { [weak self] in self?.lateFailure(amountSats: quote.amountSats, moveGeneration: moveGeneration) },
-                onLateSuccess: { [weak self, weak wallet] settled in
+                onLateSuccess: { [weak self, weak wallet, weak transfer] settled in
                     guard let self, let wallet else { return }
+                    if let transfer {
+                        closeEmptied(before: channelsBefore, wallet: wallet, transfer: transfer)
+                    }
                     Task {
                         await self.lateSuccess(
                             amountSats: quote.amountSats,
@@ -325,6 +338,7 @@ final class MoveToSparkManager {
                 isSettled = false
                 return
             }
+            closeEmptied(before: channelsBefore, wallet: wallet, transfer: transfer)
             guard moveGeneration == generation else { return }
             await wallet.syncStateAsync()
             guard moveGeneration == generation else { return }
@@ -335,6 +349,22 @@ final class MoveToSparkManager {
             state = Self.isNoRoute(error) || Self.isSendWithoutRoute(error, invoice: quote.invoice)
                 ? .tooLarge(amountSats: quote.amountSats, smallerSats: MoveToSparkMath.smallerAmount(quote.amountSats))
                 : .failed(.unknown)
+        }
+    }
+
+    /// Once a move settled, closes each channel it emptied, with the usual transfer to Savings; a close that fails leaves
+    /// its channel for a manual close. Runs on its own, so it also finishes after the modal closes.
+    func closeEmptied(before: [ChannelDetails], wallet: WalletViewModel, transfer: TransferViewModel) {
+        Task { @MainActor in
+            await wallet.syncStateAsync()
+            let emptied = MoveToSparkMath.emptiedChannels(before: before, after: wallet.channels)
+            guard !emptied.isEmpty else { return }
+            do {
+                let failed = try await transfer.closeChannels(channels: emptied)
+                Logger.info("Closed '\(emptied.count - failed.count)' of '\(emptied.count)' channels a move emptied", context: "MoveToSpark")
+            } catch {
+                Logger.warn("Failed to close the channels a move emptied: \(error)", context: "MoveToSpark")
+            }
         }
     }
 

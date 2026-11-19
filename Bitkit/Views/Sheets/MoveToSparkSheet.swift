@@ -11,6 +11,7 @@ struct MoveToSparkSheet: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var transfer: TransferViewModel
     @EnvironmentObject private var wallet: WalletViewModel
     @State private var manager = MoveToSparkManager.shared
     let config: MoveToSparkSheetItem
@@ -75,7 +76,7 @@ struct MoveToSparkSheet: View {
                 isLoading: isLoading,
                 shouldExpand: true
             ) {
-                await manager.move(wallet: wallet)
+                await manager.move(wallet: wallet, transfer: transfer)
             }
             .accessibilityIdentifier("UpdateSpendingBalanceUpdate")
         }

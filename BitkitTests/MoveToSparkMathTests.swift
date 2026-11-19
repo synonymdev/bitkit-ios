@@ -49,4 +49,24 @@ final class MoveToSparkMathTests: XCTestCase {
         XCTAssertFalse(MoveToSparkMath.isSparkUsable(isReady: true, isExiting: true))
         XCTAssertFalse(MoveToSparkMath.isSparkUsable(isReady: false, isExiting: false))
     }
+
+    func testAMoveClosesOnlyTheChannelsItEmptied() {
+        let before = [channel("a", sendableSats: 50000), channel("b", sendableSats: 20000), channel("c", sendableSats: 900)]
+        let after = [channel("a", sendableSats: 0), channel("b", sendableSats: 20000), channel("c", sendableSats: 0)]
+        let emptied = MoveToSparkMath.emptiedChannels(before: before, after: after)
+        XCTAssertEqual(emptied.map(\.channelId), ["a"], "A channel that could send less than the move minimum was closed")
+    }
+
+    func testAMoveLeavesChannelsItDidNotKnowOrThatAreNotOpen() {
+        let before = [channel("a", sendableSats: 50000)]
+        let after = [channel("a", sendableSats: 0, isChannelReady: false), channel("new", sendableSats: 0)]
+        XCTAssertTrue(MoveToSparkMath.emptiedChannels(before: before, after: after).isEmpty)
+        XCTAssertTrue(MoveToSparkMath.emptiedChannels(before: before, after: nil).isEmpty)
+    }
+
+    private func channel(_ id: String, sendableSats: UInt64, isChannelReady: Bool = true) -> ChannelDetails {
+        var channel = ChannelDetails.mock(isChannelReady: isChannelReady, outboundCapacityMsat: sendableSats * 1000)
+        channel.channelId = id
+        return channel
+    }
 }
