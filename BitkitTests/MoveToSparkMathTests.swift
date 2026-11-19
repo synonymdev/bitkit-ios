@@ -72,6 +72,9 @@ final class MoveToSparkMathTests: XCTestCase {
         XCTAssertTrue(MoveToSparkMath.emptiedChannels(before: before, after: [cleared], payments: []).isEmpty)
         // A legacy reserve at 2 500 sat/kW is 4 480 sats: 5 342 of capacity sending 862 is what stays, so it closes.
         XCTAssertFalse(MoveToSparkMath.mayHoldTheMoveHtlc(funded(sendableSats: 862, capacitySats: 5342)))
+        // A legacy channel at 253 sat/kW reserves 540 sats above dust: 1 400 of capacity sends 860.
+        XCTAssertFalse(MoveToSparkMath.mayHoldTheMoveHtlc(funded(sendableSats: 860, capacitySats: 1400, feerate: 253)))
+        XCTAssertTrue(MoveToSparkMath.mayHoldTheMoveHtlc(funded(sendableSats: 947, capacitySats: 1400, feerate: 253)))
         // An anchor reserve at 253 sat/kW is 371 sats.
         XCTAssertFalse(MoveToSparkMath.mayHoldTheMoveHtlc(funded(sendableSats: 629, capacitySats: 1000, feerate: 253)))
         // Capacity under the minimum rules the HTLC out; a channel the peer funded keeps no reserve on our side.

@@ -83,16 +83,35 @@ enum MoveToSparkMath {
 
     /// Whether a channel's send limit may still be held under the minimum by the move's settled HTLC counting against the
     /// peer's in-flight cap, which clears, rather than by what stays. ldk-node exposes neither the HTLCs nor the channel
-    /// type, so it can be ruled out only when the capacity itself is under the minimum, or when the gap between capacity
-    /// and limit is exactly the commitment fee LDK keeps back for a channel we funded: an anchor commitment with two
-    /// HTLCs, or a legacy one with one HTLC at twice the feerate, within a sat of rounding.
+    /// type, so it can be ruled out only when the capacity itself is under the minimum, or when the limit read is, within
+    /// a sat, the one LDK leaves on a channel we funded once its HTLCs clear, for an anchor or a legacy commitment.
     static func mayHoldTheMoveHtlc(_ channel: ChannelDetails) -> Bool {
         guard channel.outboundCapacityMsat / 1000 >= minMoveSats else { return false }
         guard channel.isOutbound else { return true }
-        let gapSats = Int64(channel.outboundCapacityMsat / 1000) - Int64(channel.nextOutboundHtlcLimitMsat / 1000)
-        let feerate = Int64(channel.feerateSatPer1000Weight)
-        let reserves = [feerate * (1124 + 2 * 172) / 1000, 2 * feerate * (724 + 172) / 1000]
-        return !reserves.contains { abs(gapSats - $0) <= 1 }
+        let limitSats = Int64(channel.nextOutboundHtlcLimitMsat / 1000)
+        return ![false, true].contains { isLegacy in
+            let predictedSats = clearedLimitMsat(
+                capacityMsat: Int64(channel.outboundCapacityMsat),
+                feerate: Int64(channel.feerateSatPer1000Weight),
+                isLegacy: isLegacy
+            ) / 1000
+            return abs(limitSats - predictedSats) <= 1
+        }
+    }
+
+    /// The send limit LDK 0.2 leaves on a channel we funded with no HTLCs pending (`get_available_balances_for_scope`):
+    /// capacity less the commitment fee for an above-dust HTLC and its fee spike buffer HTLC, doubled for a legacy
+    /// commitment; under the dust limit it reserves one HTLC less and stays under the limit. The dust limit is LDK's
+    /// default 354 sats, plus the HTLC timeout transaction's fee on a legacy commitment.
+    static func clearedLimitMsat(capacityMsat: Int64, feerate: Int64, isLegacy: Bool) -> Int64 {
+        let baseWeight: Int64 = isLegacy ? 724 : 1124
+        func feeMsat(htlcs: Int64) -> Int64 {
+            feerate * (baseWeight + htlcs * 172) / 1000 * 1000 * (isLegacy ? 2 : 1)
+        }
+        let dustMsat = ((isLegacy ? feerate * 663 / 1000 : 0) + 354) * 1000
+        let aboveDust = capacityMsat - feeMsat(htlcs: 2)
+        guard aboveDust < dustMsat else { return aboveDust }
+        return max(0, min(capacityMsat - feeMsat(htlcs: 1), dustMsat - 1, capacityMsat))
     }
 
     /// Whether `channel` can close: its capacity is under the minimum, or its reserve explains its limit in this read and
