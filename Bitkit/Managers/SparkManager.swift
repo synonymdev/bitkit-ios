@@ -421,6 +421,9 @@ final class SparkManager: ChannelFreeLightningRail {
             // still go to LDK, even when that refresh or the activity sync fails. An emergency exit keeps it out.
             LightningService.shared.channelFreePaymentHistory = self
             LightningService.shared.railSendHoldExpired = { [weak self] hash in await self?.recordExpiredHold(paymentHash: hash) ?? false }
+            LightningService.shared.railTakenSendUnlisted = { hash in
+                await (try? CoreService.shared.activity.failPendingLightningSend(id: hash)) != nil
+            }
             if !isExiting {
                 LightningService.shared.channelFreeRail = self
             }

@@ -1029,34 +1029,53 @@ extension ChannelFreeRailTests {
         _ = try await service.send(bolt11: Self.invoice)
         rail.sentBolt11 = nil
         rail.balanceSats = 0
-        var expired: [String] = []
+        var replayed: [String] = []
+        var failed: [String] = []
+        var saves = false
         let previousHook = service.railSendHoldExpired
-        defer { service.railSendHoldExpired = previousHook }
-        service.railSendHoldExpired = { expired.append($0); return true }
+        let previousUnlisted = service.railTakenSendUnlisted
+        defer {
+            service.railSendHoldExpired = previousHook
+            service.railTakenSendUnlisted = previousUnlisted
+        }
+        service.railSendHoldExpired = { replayed.append($0); return true }
+        service.railTakenSendUnlisted = { failed.append($0); return saves }
 
         let expiresAt = invoice.secondsSinceEpoch() + invoice.expiryTimeSeconds()
+        let graceEnds = expiresAt + UInt64(Bitkit.LightningService.unlistedRailSendGraceSeconds)
         service.now = { Date(timeIntervalSince1970: TimeInterval(expiresAt)) }
         await service.endExpiredRailSendUncertainties()
-        XCTAssertEqual(expired, [], "a retry Spark took ended at the invoice's expiry")
+        XCTAssertEqual(failed, [], "a retry Spark took ended at the invoice's expiry")
         XCTAssertTrue(service.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 900, paymentId: "earlier"))
 
-        // Spark listing the retry leaves it to its own outcome.
-        let graceEnds = expiresAt + UInt64(Bitkit.LightningService.unlistedRailSendGraceSeconds)
+        // Past the grace, absence proves nothing until a sync that started since reached Spark.
         service.now = { Date(timeIntervalSince1970: TimeInterval(graceEnds)) }
+        rail.syncedAfter = { ($0 ?? 0) < graceEnds }
+        await service.endExpiredRailSendUncertainties()
+        XCTAssertEqual(failed, [], "a partial sync's list ended a retry Spark took")
+
+        // Spark listing the retry leaves it to its own outcome.
+        rail.syncedAfter = { _ in true }
         rail.payments = [
             earlier,
             Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .pending, preimage: nil, id: "retry"),
         ]
         await service.endExpiredRailSendUncertainties()
-        XCTAssertEqual(expired, [])
+        XCTAssertEqual(failed, [])
 
-        // Listing only the earlier failure past the grace ends it, and its row is written from that failure.
+        // Listing only the earlier failure ends it and fails the retry's own row, never replaying the earlier attempt.
         rail.payments = [earlier]
         await service.endExpiredRailSendUncertainties()
-        XCTAssertEqual(expired, [hash], "a retry Spark never lists stayed pending past its invoice's expiry")
+        XCTAssertEqual(failed, [hash], "a retry Spark never lists stayed pending past its invoice's expiry")
         XCTAssertFalse(service.isEarlierThanUncertainRailSend(paymentHash: hash, createdAt: 900, paymentId: "earlier"))
+
+        // The write failed, so the next sync tries it again, until it is saved.
+        saves = true
         await service.endExpiredRailSendUncertainties()
-        XCTAssertEqual(expired, [hash], "an ended hold was written again")
+        XCTAssertEqual(failed, [hash, hash], "a row that failed to save wasn't retried")
+        await service.endExpiredRailSendUncertainties()
+        XCTAssertEqual(failed, [hash, hash], "a saved row was failed again")
+        XCTAssertEqual(replayed, [], "the earlier attempt's row replaced the retry's")
     }
 
     func testAnOlderAttemptMissingFromTheListBeforeASendInDoubtKeepsItsHold() async throws {
