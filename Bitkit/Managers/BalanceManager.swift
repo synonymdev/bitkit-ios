@@ -195,7 +195,10 @@ class BalanceManager {
             )
             for sweep in heldSweeps {
                 if let share = Self.channelShareSats(channelId: channelId, sweep: sweep, pendingSweeps: pendingSweeps) {
-                    onchainToSubtract += share
+                    // Two transfers can track one channel, such as a local close and the peer's force close.
+                    if countedSweepTxids.insert("\(channelId):\(sweep.txid)").inserted {
+                        onchainToSubtract += share
+                    }
                 } else if countedSweepTxids.insert(sweep.txid).inserted {
                     onchainToSubtract += sweep.sats
                 }
