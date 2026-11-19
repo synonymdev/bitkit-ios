@@ -98,38 +98,35 @@ final class BalanceManagerSweepTests: XCTestCase {
         XCTAssertNil(BalanceManager.channelShareSats(channelId: channelId, sweep: ("earlier-txid", 810), pendingSweeps: sweeps))
     }
 
+    private func deduction(_ transfers: [BalanceManager.HeldTransfer], _ sweeps: [PendingSweepBalance]) -> UInt64 {
+        BalanceManager.heldSweepsDeduction(transfers: transfers, pendingSweeps: sweeps)
+    }
+
     func testHeldSweepTakesAtMostTheTransferAmountOutOfSavings() {
         // A peer force close records only its first claim; an HTLC claim can pay the wallet more than that.
-        let sweeps = [broadcastSweep(channel: channelId, txid: "sweep-txid")]
-        var counted = Set<String>()
+        let transfer = BalanceManager.HeldTransfer(channelId: channelId, amountSats: 1000, heldSweeps: [("sweep-txid", 4000)])
 
-        XCTAssertEqual(
-            BalanceManager.heldSweepDeduction(
-                channelId: channelId,
-                transferSats: 1000,
-                heldSweeps: [("sweep-txid", 4000)],
-                pendingSweeps: sweeps,
-                countedSweepTxids: &counted
-            ),
-            1000
-        )
+        XCTAssertEqual(deduction([transfer], [broadcastSweep(channel: channelId, txid: "sweep-txid")]), 1000)
     }
 
     func testEarlierBatchedSweepTakesAtMostTheTransferAmountOutOfSavings() {
-        // LDK reports only the replacement, so the earlier batched sweep's share is unknown.
-        let sweeps = [broadcastSweep(channel: channelId, txid: "regenerated-txid")]
-        var counted = Set<String>()
+        // LDK reports only the replacement, so the earlier batched sweep's shares are unknown.
+        let transfer = BalanceManager.HeldTransfer(channelId: channelId, amountSats: 540, heldSweeps: [("earlier-txid", 810)])
 
-        XCTAssertEqual(
-            BalanceManager.heldSweepDeduction(
-                channelId: channelId,
-                transferSats: 540,
-                heldSweeps: [("earlier-txid", 810)],
-                pendingSweeps: sweeps,
-                countedSweepTxids: &counted
-            ),
-            540
-        )
+        XCTAssertEqual(deduction([transfer], [broadcastSweep(channel: channelId, txid: "regenerated-txid")]), 540)
+    }
+
+    func testEarlierBatchedSweepOfTwoChannelsInTransferComesOutOnce() {
+        let sweeps = [
+            broadcastSweep(channel: channelId, txid: "regenerated-txid"),
+            broadcastSweep(channel: "other-channel", txid: "regenerated-txid"),
+        ]
+        let first = BalanceManager.HeldTransfer(channelId: channelId, amountSats: 540, heldSweeps: [("earlier-txid", 810)])
+        let second = BalanceManager.HeldTransfer(channelId: "other-channel", amountSats: 270, heldSweeps: [("earlier-txid", 810)])
+        let larger = BalanceManager.HeldTransfer(channelId: "other-channel", amountSats: 1000, heldSweeps: [("earlier-txid", 810)])
+
+        XCTAssertEqual(deduction([first, second], sweeps), 810)
+        XCTAssertEqual(deduction([first, larger], sweeps), 810)
     }
 
     func testTransferSavedBeforeSweepTxidsDecodes() throws {
