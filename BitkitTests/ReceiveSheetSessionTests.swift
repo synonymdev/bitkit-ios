@@ -48,7 +48,6 @@ final class ReceiveSheetSessionTests: XCTestCase {
             .edit(tab: .spending, onchainOnly: false),
             .edit(tab: .hardware, onchainOnly: true),
             .tag,
-            .transferUnavailable,
         ]
 
         for route in routes {
