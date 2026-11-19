@@ -64,4 +64,16 @@ final class BalanceManagerSweepTests: XCTestCase {
             ["batch-txid"]
         )
     }
+
+    func testEarlierSweepStillInTheWalletIsHeldAfterLdkRegeneratesIt() {
+        let sweeps = [broadcastSweep(channel: channelId, txid: "regenerated-txid")]
+        let outputs = [output(txid: "earlier-txid")]
+
+        XCTAssertEqual(held(sweeps, outputs), [])
+        XCTAssertEqual(
+            BalanceManager.heldSweeps(channelId: channelId, pendingSweeps: sweeps, earlierTxids: ["earlier-txid"], outputs: outputs)
+                .map(\.sats),
+            [389]
+        )
+    }
 }

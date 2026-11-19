@@ -1,6 +1,7 @@
 import BitkitCore
 import Foundation
 import LDKNode
+import os
 import SwiftUI
 
 /// Manages balance calculations including pending transfers
@@ -12,6 +13,10 @@ class BalanceManager {
     @AppStorage("onchainAddress") private var onchainAddress = ""
 
     private static let fallbackFeePercent: Double = 0.1
+
+    /// Every sweep txid seen per channel: LDK regenerates an unconfirmed sweep each block, and the wallet can still hold
+    /// the earlier one's output until it syncs the replacement.
+    private let sweepTxidsSeen = OSAllocatedUnfairLock(initialState: [String: Set<String>]())
 
     init(
         lightningService: LightningService = .shared,
@@ -184,7 +189,17 @@ class BalanceManager {
 
             // Once the wallet holds the channel's sweep, Savings includes its output: show that output as in transfer
             // until its activity syncs, and take it out of the on-chain total so it counts once.
-            let heldSweeps = Self.heldSweeps(channelId: channelId, pendingSweeps: pendingSweeps, outputs: outputs)
+            let latestTxids = Self.sweepTxids(channelId: channelId, pendingSweeps: pendingSweeps)
+            let earlierTxids = sweepTxidsSeen.withLock { seen in
+                defer { seen[channelId, default: []].formUnion(latestTxids) }
+                return seen[channelId, default: []]
+            }
+            let heldSweeps = Self.heldSweeps(
+                channelId: channelId,
+                pendingSweeps: pendingSweeps,
+                earlierTxids: earlierTxids,
+                outputs: outputs
+            )
             if heldSweeps.isEmpty {
                 pendingAmount += transfer.amountSats
             } else {
@@ -198,23 +213,28 @@ class BalanceManager {
         return (lightningToSubtract, onchainToSubtract, pendingAmount)
     }
 
-    /// The channel's sweep transactions whose outputs the on-chain wallet holds, confirmed or in the mempool, with what
-    /// each paid the wallet.
+    /// The channel's sweep transactions, current or earlier, whose outputs the on-chain wallet holds, confirmed or in the
+    /// mempool, with what each paid the wallet.
     static func heldSweeps(
         channelId: String,
         pendingSweeps: [PendingSweepBalance],
+        earlierTxids: Set<String> = [],
         outputs: [SpendableUtxo]
     ) -> [(txid: String, sats: UInt64)] {
-        let sweepTxids = pendingSweeps.compactMap { sweep -> String? in
-            guard sweepChannelId(of: sweep) == channelId else { return nil }
-            return sweepTxid(of: sweep)?.lowercased()
-        }
+        let txids = sweepTxids(channelId: channelId, pendingSweeps: pendingSweeps).union(earlierTxids)
 
-        return Set(sweepTxids).sorted().compactMap { txid in
+        return txids.sorted().compactMap { txid in
             let held = outputs.filter { $0.outpoint.txid.lowercased() == txid }
             guard !held.isEmpty else { return nil }
             return (txid, held.reduce(0) { $0 + $1.valueSats })
         }
+    }
+
+    static func sweepTxids(channelId: String, pendingSweeps: [PendingSweepBalance]) -> Set<String> {
+        Set(pendingSweeps.compactMap { sweep -> String? in
+            guard sweepChannelId(of: sweep) == channelId else { return nil }
+            return sweepTxid(of: sweep)?.lowercased()
+        })
     }
 
     private static func sweepChannelId(of sweep: PendingSweepBalance) -> ChannelId? {

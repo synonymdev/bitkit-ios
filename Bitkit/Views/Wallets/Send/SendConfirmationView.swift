@@ -2459,7 +2459,10 @@ struct SendConfirmationView: View {
                 warnings.append(.balance)
             }
         } else {
-            let onchainBalance = hwSend.isActive ? hwSend.availableSats : UInt64(clamping: wallet.totalOnchainSats)
+            // Savings can show a landed sweep as in transfer; warn against what the wallet holds.
+            let onchainBalance = hwSend.isActive
+                ? hwSend.availableSats
+                : max(UInt64(clamping: wallet.totalOnchainSats), UInt64(clamping: wallet.spendableOnchainBalanceSats))
             if amount > onchainBalance / 2 {
                 warnings.append(.balance)
             }
