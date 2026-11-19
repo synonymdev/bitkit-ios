@@ -119,12 +119,6 @@ enum MoveToSparkMath {
             || needsUpdateToSend(amountSats: amountSats, channels: lightningService.channels, spark: .live)
     }
 
-    /// The most a Lightning payment can send over the channels or Spark alone, without an update.
-    @MainActor
-    static func singleRailSendableSats() -> UInt64 {
-        singleRailSendableSats(channels: LightningService.shared.channels, spark: .live)
-    }
-
     /// What a Pubky swap can spend of `maxSendSats`: its hold payment goes out over one rail, never after a spending
     /// balance update.
     static func swapSpendableSats(maxSendSats: UInt64, channels: [ChannelDetails]?, spark: SparkSendState) -> UInt64 {

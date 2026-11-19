@@ -1723,10 +1723,7 @@ struct SendConfirmationView: View {
             route,
             amountSats: amountSats,
             source: source,
-            // The hold payment goes out over one rail, never after a spending balance update.
-            lightningSpendableSats: source == .spending
-                ? min(UInt64(max(0, wallet.maxSendLightningSats)), MoveToSparkMath.singleRailSendableSats())
-                : 0,
+            lightningSpendableSats: PaykitRouteService.lightningSpendableSats(source: source, maxSendLightningSats: wallet.maxSendLightningSats),
             onchainSpendableSats: source == .savings ? UInt64(max(0, wallet.spendableOnchainBalanceSats)) : 0,
             request: request
         )

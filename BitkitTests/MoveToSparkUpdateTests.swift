@@ -52,6 +52,18 @@ final class MoveToSparkUpdateTests: XCTestCase {
         XCTAssertEqual(MoveToSparkMath.swapSpendableSats(maxSendSats: 10000, channels: channels, spark: spark), 10000)
     }
 
+    func testAContactRouteSpendsWhatTheUpdateCanSend() {
+        let maxSendSats = MoveToSparkMath.maxSendSats(channels: channels, spark: spark)
+        let routed = PaykitRouteService.lightningSpendableSats(source: .spending, maxSendLightningSats: Int(maxSendSats))
+        XCTAssertEqual(routed, maxSendSats)
+        XCTAssertEqual(PaykitRouteService.lightningSpendableSats(source: .savings, maxSendLightningSats: Int(maxSendSats)), 0)
+        XCTAssertTrue(MoveToSparkMath.needsUpdateToSend(amountSats: 50000, channels: channels, spark: spark))
+        XCTAssertFalse(
+            PaykitRouteService.isBalanceShort(amountSats: 50000, lightningSpendableSats: routed, onchainSpendableSats: 0),
+            "A contact payment that needs the update was refused before it reached the update"
+        )
+    }
+
     func testNoUpdateWhileSparkTakesNoMove() {
         let exiting = SparkSendState(isReady: true, isExiting: true, balanceSats: 30000)
         XCTAssertEqual(MoveToSparkMath.combinedSendableSats(channels: channels, spark: exiting), 0)
