@@ -119,16 +119,13 @@ class TransferService {
 
         for transfer in toSavings {
             if let channelId = transfer.channelId {
-                // Keep the channel's sweep txids, and link each sweep's activity to the channel: once LDK regenerates
-                // a sweep, the earlier one is no longer among the pending sweeps its receipt is matched against.
+                // Keep the channel's sweep txids: LDK regenerates an unconfirmed sweep, and the wallet can hold an
+                // earlier one's output until it syncs the replacement.
                 let latestSweepTxids = balances.map {
                     BalanceManager.sweepTxids(channelId: channelId, pendingSweeps: $0.pendingBalancesFromChannelClosures)
                 } ?? []
                 if !latestSweepTxids.isEmpty {
                     try storage.addSweepTxids(id: transfer.id, txids: latestSweepTxids)
-                }
-                for sweepTxid in latestSweepTxids.union(transfer.sweepTxids ?? []).sorted() {
-                    await coreService.activity.markOnchainActivityAsTransfer(txId: sweepTxid, channelId: channelId)
                 }
 
                 let hasBalance = balances?.lightningBalances.contains(where: { balance in

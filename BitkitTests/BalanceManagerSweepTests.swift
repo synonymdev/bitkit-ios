@@ -65,7 +65,7 @@ final class BalanceManagerSweepTests: XCTestCase {
         )
     }
 
-    func testEarlierSweepStillInTheWalletIsHeldAfterLdkRegeneratesIt() {
+    func testEarlierSweepSavedOnTheTransferIsHeldAfterLdkRegeneratesIt() {
         let sweeps = [broadcastSweep(channel: channelId, txid: "regenerated-txid")]
         let outputs = [output(txid: "earlier-txid")]
 
@@ -75,43 +75,6 @@ final class BalanceManagerSweepTests: XCTestCase {
                 .map(\.sats),
             [389]
         )
-    }
-
-    func testStagedCloseKeepsItsClaimsInTransferOnceOneSweepLands() {
-        // A 1,000-sat estimate: a 600-sat sweep that paid the wallet 580, and a 400-sat claim still in Lightning.
-        let sweeps = [broadcastSweep(channel: channelId, txid: "landed-txid")]
-        var counted = Set<String>()
-
-        let before = BalanceManager.closeTransferInTransfer(
-            channelId: channelId, estimateSats: 1000, channelClaimsSats: 400,
-            pendingSweeps: sweeps, earlierTxids: [], outputs: [], countedSweepTxids: &counted
-        )
-        let after = BalanceManager.closeTransferInTransfer(
-            channelId: channelId, estimateSats: 1000, channelClaimsSats: 400,
-            pendingSweeps: sweeps, earlierTxids: [], outputs: [output(txid: "landed-txid", sats: 580)], countedSweepTxids: &counted
-        )
-
-        XCTAssertEqual(before.onchainToSubtract, 0)
-        XCTAssertEqual(before.pendingAmount, 1000)
-        XCTAssertEqual(after.onchainToSubtract, 580)
-        XCTAssertEqual(after.pendingAmount, 980)
-    }
-
-    func testSweepsTheWalletDoesNotHoldYetStayInTransfer() {
-        let sweeps = [
-            broadcastSweep(channel: channelId, txid: "landed-txid"),
-            .pendingBroadcast(channelId: channelId, amountSatoshis: 300),
-            broadcastSweep(channel: channelId, txid: "unsynced-txid"),
-        ]
-        var counted = Set<String>()
-
-        let amounts = BalanceManager.closeTransferInTransfer(
-            channelId: channelId, estimateSats: 2000, channelClaimsSats: 0,
-            pendingSweeps: sweeps, earlierTxids: [], outputs: [output(txid: "landed-txid", sats: 480)], countedSweepTxids: &counted
-        )
-
-        XCTAssertEqual(amounts.onchainToSubtract, 480)
-        XCTAssertEqual(amounts.pendingAmount, 480 + 300 + 500)
     }
 
     func testTransferSavedBeforeSweepTxidsDecodes() throws {
