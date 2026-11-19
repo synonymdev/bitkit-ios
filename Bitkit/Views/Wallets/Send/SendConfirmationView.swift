@@ -901,23 +901,15 @@ struct SendConfirmationView: View {
                 }
             }
 
-            HStack(alignment: .top, spacing: 16) {
-                SendSectionView(t("wallet__send_fee_and_speed")) {
-                    HStack(spacing: 0) {
-                        Image("bolt-hollow")
-                            .foregroundColor(.purpleAccent)
-                            .frame(width: 16, height: 16)
-                            .padding(.trailing, 4)
-                        BodySSBText("\(t("fee__instant__title")) (")
-                        MoneyText(sats: Int(totalFeeSat), size: .bodySSB, symbol: true, symbolColor: .textPrimary)
-                        BodySSBText(")")
-                    }
-                }
-
-                SendSectionView(t("wallet__send_swap_route")) {
-                    BodySSBText(Self.routeName(route))
-                        .lineLimit(2)
-                        .accessibilityIdentifier("ReviewSwapRoute")
+            SendSectionView(t("wallet__send_fee_and_speed")) {
+                HStack(spacing: 0) {
+                    Image("bolt-hollow")
+                        .foregroundColor(.purpleAccent)
+                        .frame(width: 16, height: 16)
+                        .padding(.trailing, 4)
+                    BodySSBText("\(t("fee__instant__title")) (")
+                    MoneyText(sats: Int(totalFeeSat), size: .bodySSB, symbol: true, symbolColor: .textPrimary)
+                    BodySSBText(")")
                 }
             }
 
@@ -937,10 +929,6 @@ struct SendConfirmationView: View {
                 PaymentRequestInvoiceNote(note: note)
             }
         }
-    }
-
-    private static func routeName(_ route: PaykitRouteUi) -> String {
-        route.serviceLeg?.service == SparkManager.routeService ? "Spark" : route.serviceLeg?.service ?? ""
     }
 
     func lightningView(_ invoice: LightningInvoice) -> some View {
