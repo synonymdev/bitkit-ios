@@ -89,9 +89,7 @@ struct SendConfirmationView: View {
 
     /// The spending balance update a Lightning payment that fits only across the channels and Spark runs first.
     @State private var sparkUpdateQuote: MoveToSparkQuote?
-    @State private var sparkUpdateQuoteRun = 0
-    /// The update quote still loading; only that run clears it, so an older quote never releases the swipe.
-    @State private var sparkUpdateQuotingRun: Int?
+    @State private var sparkUpdateQuoteRuns = SparkUpdateQuoteRuns()
 
     private struct WalletSwitchRun {
         let id: UUID
@@ -1456,7 +1454,7 @@ struct SendConfirmationView: View {
             isAmountReviewRequired: requiresAmountReview,
             isPreparingOnchainSend: isPreparingOnchainSend,
             isRouteRefused: refusedRouteSource == app.selectedWalletToPayFrom,
-            isUpdateQuoting: sparkUpdateQuotingRun != nil
+            isUpdateQuoting: sparkUpdateQuoteRuns.isQuoting
         )
     }
 
@@ -3014,6 +3012,8 @@ struct SendConfirmationView: View {
 
     @MainActor
     private func calculateRoutingFee() async {
+        // A quote still loading belongs to the previous estimate and must not write its fee over this one.
+        sparkUpdateQuoteRuns.invalidate()
         sparkUpdateQuote = nil
         guard !requiresAmountReview else { return }
         guard let bolt11 = app.scannedLightningInvoice?.bolt11 else {
@@ -3047,17 +3047,11 @@ struct SendConfirmationView: View {
     /// Quotes the update a payment of `amountSats` needs, and Spark's fee for the payment after it.
     @MainActor
     private func estimateSparkUpdateFees(bolt11: String, amountSats: UInt64) async {
-        sparkUpdateQuoteRun += 1
-        let run = sparkUpdateQuoteRun
-        sparkUpdateQuotingRun = run
-        defer {
-            if sparkUpdateQuotingRun == run {
-                sparkUpdateQuotingRun = nil
-            }
-        }
+        let run = sparkUpdateQuoteRuns.start()
+        defer { sparkUpdateQuoteRuns.finish(run) }
         let quote = try? await MoveToSparkManager.shared.updateQuote(wallet: wallet)
         let feeSats = await MoveToSparkManager.shared.estimateFeeAfterUpdate(bolt11: bolt11, amountSats: amountSats)
-        guard run == sparkUpdateQuoteRun else { return }
+        guard sparkUpdateQuoteRuns.isCurrent(run) else { return }
         wallet.routingFeeEstimateSats = feeSats
         showSparkUpdateQuote(quote)
     }
@@ -3094,6 +3088,39 @@ struct SendConfirmationView: View {
         guard MoveToSparkMath.isUpdateFeeUnseen(shownFeeSats: shown?.feeSats, freshFeeSats: fresh.feeSats) else { return true }
         Logger.info("Stopped a payment to show the update fee '\(fresh.feeSats)'", context: "SendConfirmation")
         return false
+    }
+}
+
+/// Tracks the newest spending balance update quote on Confirm, so an older quote finishing late writes neither its fee nor
+/// its quote, and only the newest one holds the swipe.
+struct SparkUpdateQuoteRuns: Equatable {
+    private(set) var latest = 0
+    private(set) var quoting: Int?
+
+    var isQuoting: Bool {
+        quoting != nil
+    }
+
+    mutating func start() -> Int {
+        latest += 1
+        quoting = latest
+        return latest
+    }
+
+    /// Supersedes any quote still loading, for an estimate that needs none.
+    mutating func invalidate() {
+        latest += 1
+        quoting = nil
+    }
+
+    mutating func finish(_ run: Int) {
+        if quoting == run {
+            quoting = nil
+        }
+    }
+
+    func isCurrent(_ run: Int) -> Bool {
+        run == latest
     }
 }
 

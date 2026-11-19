@@ -109,6 +109,29 @@ final class MoveToSparkUpdateTests: XCTestCase {
         ))
     }
 
+    func testAnEstimateWithoutTheUpdateSupersedesAQuoteStillLoading() {
+        var runs = SparkUpdateQuoteRuns()
+        let older = runs.start()
+        XCTAssertTrue(runs.isQuoting)
+        runs.invalidate()
+        XCTAssertFalse(runs.isCurrent(older))
+        XCTAssertFalse(runs.isQuoting)
+        runs.finish(older)
+        XCTAssertFalse(runs.isQuoting)
+    }
+
+    func testOnlyTheNewestUpdateQuoteHoldsTheSwipe() {
+        var runs = SparkUpdateQuoteRuns()
+        let older = runs.start()
+        let newer = runs.start()
+        runs.finish(older)
+        XCTAssertTrue(runs.isQuoting)
+        XCTAssertFalse(runs.isCurrent(older))
+        XCTAssertTrue(runs.isCurrent(newer))
+        runs.finish(newer)
+        XCTAssertFalse(runs.isQuoting)
+    }
+
     private func assertFallsShort(_ operation: () async throws -> Void, line: UInt = #line) async {
         do {
             try await operation()
