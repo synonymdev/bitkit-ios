@@ -143,13 +143,21 @@ final class AmountInputViewModel {
         // Update raw input text based on the formatted display
         // Remove formatting separators (spaces for modern Bitcoin, commas for fiat)
         if currency.primaryDisplay == .fiat {
-            rawInputText = displayText.replacingOccurrences(of: ",", with: "")
+            rawInputText = Self.asciiDigits(displayText.replacingOccurrences(of: ",", with: ""))
         } else if currency.displayUnit == .modern {
             // Modern Bitcoin uses spaces as grouping separators
-            rawInputText = displayText.replacingOccurrences(of: " ", with: "")
+            rawInputText = Self.asciiDigits(displayText.replacingOccurrences(of: " ", with: ""))
         } else {
-            rawInputText = displayText
+            rawInputText = Self.asciiDigits(displayText)
         }
+    }
+
+    /// The number pad's raw input reads ASCII digits only, while the display formats them in the device's numbering
+    /// system (Arabic-Indic digits, say); without this the next key parsed the amount as 0.
+    nonisolated static func asciiDigits(_ text: String) -> String {
+        String(text.map { character in
+            character.isNumber ? character.wholeNumberValue.map { Character(String($0)) } ?? character : character
+        })
     }
 
     /// Shows the kept amount in the current display unit, after another screen switched it. Text typed in the unit

@@ -73,6 +73,17 @@ final class NumberPadTests: XCTestCase {
         XCTAssertFalse(AmountInputViewModel.redrawsOnReturn(amountSats: 0, textUnit: fiat, currentUnit: classic))
     }
 
+    func testARedrawnAmountKeepsASCIIDigitsForTheNumberPad() {
+        XCTAssertEqual(AmountInputViewModel.asciiDigits("٥٠٠٠"), "5000", "Arabic-Indic digits reached the raw input")
+        XCTAssertEqual(AmountInputViewModel.asciiDigits("۱۲.۵۰"), "12.50")
+        XCTAssertEqual(AmountInputViewModel.asciiDigits("0.00012"), "0.00012")
+        let currency = mockCurrency(primaryDisplay: .bitcoin)
+        let viewModel = AmountInputViewModel()
+        viewModel.updateFromSats(5000, currency: currency)
+        viewModel.handleNumberPadInput("0", currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 50000, "The next key after a redraw did not extend the amount")
+    }
+
     // MARK: - Modern Bitcoin Tests
 
     func testModernBitcoinInput() {
