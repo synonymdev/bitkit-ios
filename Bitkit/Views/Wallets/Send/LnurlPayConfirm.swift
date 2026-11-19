@@ -259,6 +259,8 @@ struct LnurlPayConfirm: View {
 
     private func authorizeAndPerformPayment() async throws {
         guard await confirmSparkUpdateQuote() else { throw CancellationError() }
+        // The quote this swipe approved: the PIN screen reruns `.task`, which can replace `sparkUpdateQuote` meanwhile.
+        let approvedUpdateQuote = sparkUpdateQuote
 
         // Check if we need to show warning for amounts over $100 USD
         if settings.warnWhenSendingOver100 {
@@ -303,7 +305,7 @@ struct LnurlPayConfirm: View {
             }
         }
 
-        try await performPayment()
+        try await performPayment(approvedUpdateQuote: approvedUpdateQuote)
     }
 
     private func waitForAlertDismissal() async throws -> Bool {
@@ -312,7 +314,7 @@ struct LnurlPayConfirm: View {
         }
     }
 
-    private func performPayment() async throws {
+    private func performPayment(approvedUpdateQuote: MoveToSparkQuote?) async throws {
         guard let lnurlPayData = app.lnurlPayData else {
             throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing LNURL pay data"])
         }
@@ -383,7 +385,7 @@ struct LnurlPayConfirm: View {
                 try await MoveToSparkManager.shared.updateSpendingBalanceIfNeeded(
                     bolt11: bolt11,
                     amountSats: reviewedAmount,
-                    shown: sparkUpdateQuote,
+                    shown: approvedUpdateQuote,
                     wallet: wallet,
                     transfer: transfer,
                     onUnseen: { sparkUpdateQuote = $0 }

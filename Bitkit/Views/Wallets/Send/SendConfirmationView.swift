@@ -1150,6 +1150,8 @@ struct SendConfirmationView: View {
         }
 
         guard await confirmSparkUpdateQuote() else { throw CancellationError() }
+        // The quote this swipe approved: the PIN screen reruns `.task`, which can replace `sparkUpdateQuote` meanwhile.
+        let approvedUpdateQuote = sparkUpdateQuote
 
         // The fee the warnings and this approval are for; an estimate finishing later must not stand in for it.
         let reviewedFeeSats = UInt64(max(0, transactionFee))
@@ -1214,7 +1216,7 @@ struct SendConfirmationView: View {
         } else if !app.paykitUsesUsdt, let leg = app.paykitRoute?.serviceLeg {
             await performServiceRoutedPayment(leg)
         } else {
-            try await performPayment(isAutomatic: isAutomatic, reviewedFeeSats: reviewedFeeSats)
+            try await performPayment(isAutomatic: isAutomatic, reviewedFeeSats: reviewedFeeSats, approvedUpdateQuote: approvedUpdateQuote)
         }
     }
 
@@ -1914,7 +1916,7 @@ struct SendConfirmationView: View {
         }
     }
 
-    private func performPayment(isAutomatic: Bool, reviewedFeeSats: UInt64) async throws {
+    private func performPayment(isAutomatic: Bool, reviewedFeeSats: UInt64, approvedUpdateQuote: MoveToSparkQuote?) async throws {
         let paymentActivity = PaykitPaymentActivity.shared.begin()
         defer { PaykitPaymentActivity.shared.end(paymentActivity) }
         isSubmittingPayment = true
@@ -2017,7 +2019,7 @@ struct SendConfirmationView: View {
                         try await MoveToSparkManager.shared.updateSpendingBalanceIfNeeded(
                             bolt11: invoice.bolt11,
                             amountSats: amount,
-                            shown: sparkUpdateQuote,
+                            shown: approvedUpdateQuote,
                             wallet: wallet,
                             transfer: transfer,
                             onUnseen: { showSparkUpdateQuote($0) }
