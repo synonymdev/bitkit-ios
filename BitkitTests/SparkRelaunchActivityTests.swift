@@ -97,4 +97,36 @@ final class SparkRelaunchActivityTests: XCTestCase {
         guard case let .lightning(lightning)? = activity else { return XCTFail("The send wasn't recorded") }
         XCTAssertEqual(lightning.contact, "pk:contact")
     }
+
+    func testAFailedSparkRowKeepsItsDetailsAgainstAnOlderAttemptButTakesItsOwnAndLaterOnes() async throws {
+        let hash = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() + String(repeating: "e7", count: 16)
+        func failed(sats: UInt64, feeSats: UInt64, at timestamp: UInt64) -> PaymentDetails {
+            PaymentDetails(
+                id: hash,
+                kind: .bolt11(hash: hash, preimage: nil, secret: nil, description: nil, bolt11: "lnbcrt1"),
+                amountMsat: sats * 1000, feePaidMsat: feeSats * 1000, direction: .outbound, status: .failed, latestUpdateTimestamp: timestamp
+            )
+        }
+        func row() async throws -> LightningActivity? {
+            guard case let .lightning(lightning)? = try await CoreService.shared.activity.getActivity(id: hash) else { return nil }
+            return lightning
+        }
+        // An amountless invoice's retry, at another amount, failed and was recorded.
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(sats: 500, feeSats: 0, at: 200))
+
+        // A replay of the first attempt's failure leaves the retry's details.
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(sats: 300, feeSats: 0, at: 100))
+        var current = try await row()
+        XCTAssertEqual(current?.value, 500, "an older attempt's failure replaced the retry's amount")
+
+        // The retry's own fee correction still lands.
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(sats: 500, feeSats: 3, at: 200))
+        current = try await row()
+        XCTAssertEqual(current?.fee, 3)
+
+        // A later attempt's failure takes the row.
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(sats: 700, feeSats: 0, at: 300))
+        current = try await row()
+        XCTAssertEqual(current?.value, 700)
+    }
 }
