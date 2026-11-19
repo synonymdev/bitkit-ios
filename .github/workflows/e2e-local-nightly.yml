@@ -28,6 +28,8 @@ jobs:
     timeout-minutes: 80
     outputs:
       e2e-sha: ${{ steps.e2e.outputs.sha }}
+      spark-config: ${{ steps.settings.outputs.SPARK_LOCAL_CONFIG_B64 }}
+      spark-chain-url: ${{ steps.settings.outputs.SPARK_LOCAL_CHAIN_URL }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -50,6 +52,12 @@ jobs:
         if: steps.images.outputs.cache-hit != 'true'
         run: ./scripts/local-backend spark-pack "$RUNNER_TEMP/spark-images.tar"
 
+      - name: Generate pinned Spark app settings
+        id: settings
+        run: |
+          docker image load --quiet --input "$RUNNER_TEMP/spark-images.tar"
+          ./scripts/local-backend spark-init-env >> "$GITHUB_OUTPUT"
+
       - name: Compress the fixture archive for transfer
         run: gzip -1 -c "$RUNNER_TEMP/spark-images.tar" > "$RUNNER_TEMP/spark-images.tar.gz"
 
@@ -61,18 +69,60 @@ jobs:
           compression-level: 0
           retention-days: 3
 
-  e2e-spark:
+  build-spark-ios:
     needs: spark-images
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/checkout@v7
+        with:
+          repository: synonymdev/bitkit-e2e-tests
+          ref: ${{ needs.spark-images.outputs.e2e-sha }}
+          path: bitkit-e2e-tests
+          persist-credentials: false
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.6"
+
+      - name: Install xcbeautify
+        run: brew install xcbeautify
+
+      - name: Swift packages
+        uses: ./.github/actions/swift-packages
+
+      - name: Build iOS Spark app
+        working-directory: bitkit-e2e-tests
+        env:
+          IOS_ROOT: ${{ github.workspace }}
+          SPARK_LOCAL_CONFIG_B64: ${{ needs.spark-images.outputs.spark-config }}
+          SPARK_LOCAL_CHAIN_URL: ${{ needs.spark-images.outputs.spark-chain-url }}
+        run: |
+          test -n "$SPARK_LOCAL_CONFIG_B64"
+          test -n "$SPARK_LOCAL_CHAIN_URL"
+          ./scripts/build-ios-sim.sh
+          tar -C aut -czf "$RUNNER_TEMP/spark-ios-app.tar.gz" Bitkit.app
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: spark-ios-app
+          path: ${{ runner.temp }}/spark-ios-app.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+
+  e2e-spark:
+    needs: [spark-images, build-spark-ios]
     runs-on: [self-hosted, macOS]
     timeout-minutes: 120
     env:
       COMPOSE_PROJECT_NAME: bitkit-spark-e2e
     steps:
-      - uses: actions/checkout@v7
-        with:
-          path: bitkit-ios
-          persist-credentials: false
-
       - uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-e2e-tests
@@ -95,11 +145,24 @@ jobs:
           name: spark-fixture-images
           path: ${{ runner.temp }}
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: spark-ios-app
+          path: ${{ runner.temp }}
+
+      - name: Unpack the hosted simulator build
+        working-directory: bitkit-e2e-tests
+        run: |
+          mkdir -p aut
+          tar -C aut -xzf "$RUNNER_TEMP/spark-ios-app.tar.gz"
+
       - name: Start pinned Spark fixture
         id: spark
         working-directory: bitkit-e2e-tests
         env:
           SPARK_IMAGE_ARCHIVE: ${{ runner.temp }}/spark-images.tar.gz
+          SPARK_LOCAL_CONFIG_B64: ${{ needs.spark-images.outputs.spark-config }}
+          SPARK_LOCAL_CHAIN_URL: ${{ needs.spark-images.outputs.spark-chain-url }}
         run: |
           if [[ "$RUNNER_ARCH" != ARM64 ]]; then
             echo "::error::The Spark fixture archive requires an ARM64 Mac runner."
@@ -108,11 +171,11 @@ jobs:
           ./scripts/local-backend prepare
           (cd "$(./scripts/local-backend path)" && docker compose --profile spark down --remove-orphans -v)
           ./scripts/local-backend spark-up
-          ./scripts/local-backend spark-env >> "$GITHUB_ENV"
-
-      - name: Build iOS Spark app
-        working-directory: bitkit-e2e-tests
-        run: ./scripts/build-ios-sim.sh
+          expected="$(printf 'SPARK_LOCAL_CONFIG_B64=%s\nSPARK_LOCAL_CHAIN_URL=%s' "$SPARK_LOCAL_CONFIG_B64" "$SPARK_LOCAL_CHAIN_URL")"
+          if [[ "$(./scripts/local-backend spark-env)" != "$expected" ]]; then
+            echo "::error::The running Spark fixture differs from the simulator build settings."
+            exit 1
+          fi
 
       - name: Run @spark_1 (attempt 1)
         continue-on-error: true
@@ -154,9 +217,9 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: cd "$(./scripts/local-backend path)" && docker compose --profile spark down --remove-orphans -v
 
-      - name: Remove the imported image archive
+      - name: Remove the imported archives
         if: always()
-        run: rm -f "$RUNNER_TEMP/spark-images.tar.gz"
+        run: rm -f "$RUNNER_TEMP/spark-images.tar.gz" "$RUNNER_TEMP/spark-ios-app.tar.gz"
 
       # Preserve logs and recordings from failed attempts even when a retry passes.
       - uses: actions/upload-artifact@v7
