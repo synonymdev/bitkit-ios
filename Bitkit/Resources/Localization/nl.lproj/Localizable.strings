@@ -390,7 +390,6 @@
 "lightning__spark_exit__step_sweep" = "Naar spaargeld gestuurd";
 "lightning__spark_exit__done_title" = "Overboeking\n<accent>voltooid</accent>";
 "lightning__spark_exit__done_text" = "Uw geld is overgeboekt naar uw spaargeld.";
-"lightning__spark_exit__partial_text" = "{count} kleine bedragen zijn op Spark gebleven.";
 "lightning__spark_exit__failed_leaves" = "{amount} is door de Spark-operators on-chain gezet en staat niet op Spark. De operators kunnen het nog steeds aan je vrijgeven.";
 "lightning__spark_exit__leftover" = "{amount} aan noodkosten staat nog op {address}.";
 "lightning__spark_exit__leftover_swept" = "{amount} aan ongebruikte noodkosten is naar spaargeld gestuurd.";

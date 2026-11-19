@@ -386,7 +386,6 @@
 "lightning__spark_exit__step_sweep" = "Inviato al saldo dei risparmi";
 "lightning__spark_exit__done_title" = "Trasferimento\n<accent>completato</accent>";
 "lightning__spark_exit__done_text" = "I tuoi fondi sono stati trasferiti nel saldo dei tuoi risparmi.";
-"lightning__spark_exit__partial_text" = "{count} piccoli importi sono rimasti su Spark.";
 "lightning__spark_exit__failed_leaves" = "{amount} è stato spostato on-chain dagli operatori Spark e non è su Spark. Gli operatori possono ancora rilasciarlo a te.";
 "lightning__spark_exit__leftover" = "{amount} di commissioni di emergenza si trova ancora su {address}.";
 "lightning__spark_exit__leftover_swept" = "{amount} di commissioni di emergenza non utilizzate è stato inviato ai risparmi.";

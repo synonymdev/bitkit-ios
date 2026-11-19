@@ -363,7 +363,6 @@
 "lightning__spark_exit__step_sweep" = "Στάλθηκε στο υπόλοιπο αποταμιεύσεων";
 "lightning__spark_exit__done_title" = "Η μεταφορά\n<accent>ολοκληρώθηκε</accent>";
 "lightning__spark_exit__done_text" = "Τα κεφάλαιά σας μεταφέρθηκαν στο υπόλοιπο αποταμιεύσεών σας.";
-"lightning__spark_exit__partial_text" = "{count} μικρά ποσά παρέμειναν στο Spark.";
 "lightning__spark_exit__failed_leaves" = "{amount} μεταφέρθηκε on-chain από τους διαχειριστές του Spark και δεν βρίσκεται στο Spark. Οι διαχειριστές μπορούν ακόμη να το αποδεσμεύσουν σε εσάς.";
 "lightning__spark_exit__leftover" = "Τα {amount} έκτακτων τελών βρίσκονται ακόμα στη διεύθυνση {address}.";
 "lightning__spark_exit__leftover_swept" = "Τα {amount} αχρησιμοποίητων έκτακτων τελών στάλθηκαν στις αποταμιεύσεις.";

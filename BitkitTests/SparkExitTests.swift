@@ -3317,20 +3317,17 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.neededSats(record, state: .ask(sats: 500)), 500)
     }
 
-    /// Pay to confirm starts on its own only for a covering payment that arrives while it shows, and only once.
-    func testPayToConfirmAutoStartsOnlyForAPaymentThatArrivesWhileItShows() {
-        // Before its first read, and for funding already there on entry, it waits for a tap.
-        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: true, isStarting: false, hasAutoStarted: false, entrySeenCount: nil, seenCount: 1))
-        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: true, isStarting: false, hasAutoStarted: false, entrySeenCount: 1, seenCount: 1))
-        // A payment arriving after the first read starts it once it covers the funding.
-        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: false, isStarting: false, hasAutoStarted: false, entrySeenCount: 0, seenCount: 1))
-        XCTAssertTrue(SparkExitMath.canAutoStartFunding(isFunded: true, isStarting: false, hasAutoStarted: false, entrySeenCount: 0, seenCount: 1))
-        XCTAssertTrue(SparkExitMath.canAutoStartFunding(isFunded: true, isStarting: false, hasAutoStarted: false, entrySeenCount: 1, seenCount: 2))
-        // A failed auto-start waits for Try Again.
-        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: true, isStarting: false, hasAutoStarted: true, entrySeenCount: 0, seenCount: 2))
-        // A start already running, such as one Continue began, is never joined by a second.
-        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: true, isStarting: true, hasAutoStarted: false, entrySeenCount: 0, seenCount: 1))
-        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: true, isStarting: true, hasAutoStarted: false, entrySeenCount: 1, seenCount: 2))
+    /// Pay to confirm starts on its own once its read finds the funding covered, on entry too, and only once a visit.
+    func testPayToConfirmAutoStartsOnceTheFundingIsCovered() {
+        // Before its first read this visit, it waits.
+        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: true, isStarting: false, hasAutoStarted: false, hasReadFunding: false))
+        // Funding already there on entry, or arriving later, starts it once covered.
+        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: false, isStarting: false, hasAutoStarted: false, hasReadFunding: true))
+        XCTAssertTrue(SparkExitMath.canAutoStartFunding(isFunded: true, isStarting: false, hasAutoStarted: false, hasReadFunding: true))
+        // A failed start waits for Try again.
+        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: true, isStarting: false, hasAutoStarted: true, hasReadFunding: true))
+        // A start already running is never joined by a second.
+        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: true, isStarting: true, hasAutoStarted: false, hasReadFunding: true))
     }
 
     /// qa-03: 2,000 of 4,348 at the address showed no hint until the whole sum arrived.

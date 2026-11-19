@@ -393,7 +393,6 @@
 "lightning__spark_exit__step_sweep" = "Envoyé vers le solde d'épargne";
 "lightning__spark_exit__done_title" = "Transfert\n<accent>terminé</accent>";
 "lightning__spark_exit__done_text" = "Vos fonds ont été transférés vers votre solde d'épargne.";
-"lightning__spark_exit__partial_text" = "{count} petits montants sont restés sur Spark.";
 "lightning__spark_exit__failed_leaves" = "{amount} a été déplacé on-chain par les opérateurs Spark et n'est plus sur Spark. Les opérateurs peuvent encore vous le libérer.";
 "lightning__spark_exit__leftover" = "{amount} de frais d'urgence se trouvent encore à {address}.";
 "lightning__spark_exit__leftover_swept" = "{amount} de frais d'urgence inutilisés ont été envoyés vers l'épargne.";

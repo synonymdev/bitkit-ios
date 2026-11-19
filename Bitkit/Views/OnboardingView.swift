@@ -16,7 +16,7 @@ struct OnboardingView: View {
     let accentColor: Color
     let imagePosition: ImagePosition
     let titleDescriptionSpacing: CGFloat
-    let buttonHorizontalPadding: CGFloat
+    let contentHorizontalPadding: CGFloat
     let maxImageSize: CGFloat?
     let testID: String?
 
@@ -38,7 +38,7 @@ struct OnboardingView: View {
         accentColor: Color = .brandAccent,
         imagePosition: ImagePosition = .bottom,
         titleDescriptionSpacing: CGFloat = 14,
-        buttonHorizontalPadding: CGFloat = 16,
+        contentHorizontalPadding: CGFloat = 16,
         maxImageSize: CGFloat? = nil,
         testID: String? = nil
     ) {
@@ -54,7 +54,7 @@ struct OnboardingView: View {
         self.accentColor = accentColor
         self.imagePosition = imagePosition
         self.titleDescriptionSpacing = titleDescriptionSpacing
-        self.buttonHorizontalPadding = buttonHorizontalPadding
+        self.contentHorizontalPadding = contentHorizontalPadding
         self.maxImageSize = maxImageSize
         self.testID = testID
     }
@@ -93,13 +93,13 @@ struct OnboardingView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, contentHorizontalPadding)
 
                 CustomButton(title: buttonText) {
                     onButtonPress()
                 }
                 .padding(.top, 32)
-                .padding(.horizontal, buttonHorizontalPadding)
+                .padding(.horizontal, contentHorizontalPadding)
                 .accessibilityIdentifierIfPresent(testID.map { "\($0)-button" })
             }
         }

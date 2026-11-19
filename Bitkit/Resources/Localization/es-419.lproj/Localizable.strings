@@ -393,7 +393,6 @@
 "lightning__spark_exit__step_sweep" = "Enviado al saldo de ahorros";
 "lightning__spark_exit__done_title" = "Transferencia\n<accent>completada</accent>";
 "lightning__spark_exit__done_text" = "Tus fondos se transfirieron a tu saldo de ahorros.";
-"lightning__spark_exit__partial_text" = "{count} cantidades pequeñas se quedaron en Spark.";
 "lightning__spark_exit__failed_leaves" = "Los operadores de Spark movieron {amount} on-chain y ya no está en Spark. Los operadores todavía pueden liberártelo.";
 "lightning__spark_exit__leftover" = "{amount} de comisiones de emergencia sigue en {address}.";
 "lightning__spark_exit__leftover_swept" = "{amount} de comisiones de emergencia sin usar se envió a tus ahorros.";

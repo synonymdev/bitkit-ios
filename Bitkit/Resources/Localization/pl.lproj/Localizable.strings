@@ -392,7 +392,6 @@
 "lightning__spark_exit__step_sweep" = "Wysłano na saldo oszczędności";
 "lightning__spark_exit__done_title" = "Transfer\n<accent>zakończony</accent>";
 "lightning__spark_exit__done_text" = "Twoje środki zostały przesłane na saldo oszczędności.";
-"lightning__spark_exit__partial_text" = "Małe kwoty pozostałe na Spark: {count}.";
 "lightning__spark_exit__failed_leaves" = "{amount} zostało przeniesione on-chain przez operatorów Spark i nie jest na Spark. Operatorzy wciąż mogą Ci je wydać.";
 "lightning__spark_exit__leftover" = "{amount} opłat awaryjnych nadal znajduje się pod adresem {address}.";
 "lightning__spark_exit__leftover_swept" = "{amount} niewykorzystanych opłat awaryjnych zostało wysłane do oszczędności.";

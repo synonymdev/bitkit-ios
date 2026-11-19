@@ -108,9 +108,14 @@ struct SparkConnectionDetailView: View {
         spark.shownBalanceSats > 0 || spark.recoverableFundsSats > 0 || SparkExitManager.shared.showsResult
     }
 
-    /// Spark's connection state, worded and coloured like a channel's: open, connecting or offline.
+    /// Spark's connection state, worded and coloured like a channel's: open, connecting or offline; while a force
+    /// transfer runs, its pending state worded as on App Status.
     private var status: (text: String, color: Color) {
-        switch AppStatusHelper.sparkStatus(network: network) ?? .error {
+        let exit = SparkExitManager.shared
+        if let step = AppStatusHelper.exitStep(record: exit.record, fundingState: exit.fundingState) {
+            return (t(step.descriptionKey), .yellowAccent)
+        }
+        return switch AppStatusHelper.sparkStatus(network: network) ?? .error {
         case .ready: (t("lightning__order_state__open"), .greenAccent)
         case .pending: (t("settings__status__spark__pending"), .yellowAccent)
         case .error: (t("settings__status__spark__error"), .redAccent)
