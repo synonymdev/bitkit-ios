@@ -81,6 +81,12 @@ enum MoveToSparkMath {
         }
     }
 
+    /// The payments read before and after a read of the channels, or nil when either could not be read.
+    static func paymentsAround(channelsRead before: [PaymentDetails]?, _ after: [PaymentDetails]?) -> [PaymentDetails]? {
+        guard let before, let after else { return nil }
+        return before + after
+    }
+
     private static func isLightningInFlight(_ payment: PaymentDetails) -> Bool {
         if case .onchain = payment.kind {
             return false
@@ -605,11 +611,16 @@ final class MoveToSparkManager {
     /// its channel for a manual close. Runs on its own, so it also finishes after the modal closes.
     func closeEmptied(before: [ChannelDetails], wallet: WalletViewModel, transfer: TransferViewModel) {
         Task { @MainActor in
+            // The channels are read between two reads of the payments, so a payment that starts or ends meanwhile
+            // leaves no send limit it lowered in the channels read.
+            let paymentsBefore = await LightningService.shared.listPayments()
             await wallet.syncStateAsync()
-            let emptied = await MoveToSparkMath.emptiedChannels(
+            let channels = wallet.channels
+            let paymentsAfter = await LightningService.shared.listPayments()
+            let emptied = MoveToSparkMath.emptiedChannels(
                 before: before,
-                after: wallet.channels,
-                payments: LightningService.shared.listPayments()
+                after: channels,
+                payments: MoveToSparkMath.paymentsAround(channelsRead: paymentsBefore, paymentsAfter)
             )
             guard !emptied.isEmpty else { return }
             do {

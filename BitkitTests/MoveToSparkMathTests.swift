@@ -79,6 +79,23 @@ final class MoveToSparkMathTests: XCTestCase {
         XCTAssertEqual(MoveToSparkMath.emptiedChannels(before: before, after: after, payments: [onchainSend]).count, 1)
     }
 
+    func testAPaymentInFlightAroundTheChannelsReadHoldsTheCloseBack() {
+        let before = [channel("a", sendableSats: 50000)]
+        let after = [channel("a", sendableSats: 0)]
+        let settled = [payment(.outbound, .succeeded)]
+        let inFlight = [payment(.outbound, .pending)]
+        func emptied(_ first: [PaymentDetails]?, _ second: [PaymentDetails]?) -> Int {
+            MoveToSparkMath.emptiedChannels(
+                before: before, after: after, payments: MoveToSparkMath.paymentsAround(channelsRead: first, second)
+            ).count
+        }
+        XCTAssertEqual(emptied(settled, settled), 1)
+        // A payment that failed after the first read, or started before the second, lowered the limit read in between.
+        XCTAssertEqual(emptied(inFlight, settled), 0)
+        XCTAssertEqual(emptied(settled, inFlight), 0)
+        XCTAssertEqual(emptied(settled, nil), 0)
+    }
+
     private func payment(
         _ direction: PaymentDirection,
         _ status: PaymentStatus,
