@@ -117,6 +117,11 @@ struct AppStatusHelper {
         )
     }
 
+    /// Spark's detail shows a zero balance until Spark has read its state; once it has, the detail opens offline too.
+    nonisolated static func opensSparkDetail(status: HealthStatus, isReady: Bool) -> Bool {
+        status == .ready || isReady
+    }
+
     /// Spark carries Lightning when no channel can, so the connection is ready through it; red only when neither can pay.
     nonisolated static func channelsStatus(
         isOnline: Bool,
