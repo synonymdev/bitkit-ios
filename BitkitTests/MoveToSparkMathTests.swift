@@ -81,6 +81,25 @@ final class MoveToSparkMathTests: XCTestCase {
         XCTAssertTrue(MoveToSparkMath.mayHoldTheMoveHtlc(peerFunded))
     }
 
+    func testAReserveMatchClosesOnlyOnceItHoldsAcrossARecheck() {
+        func funded(sendableSats: UInt64, capacitySats: UInt64) -> ChannelDetails {
+            var channel = channel("a", sendableSats: sendableSats, capacitySats: capacitySats)
+            channel.isOutbound = true
+            channel.feerateSatPer1000Weight = 4000
+            return channel
+        }
+        // 4 000 sat/kW: a capped 2-sat limit on 7 170 sats of capacity matches the 7 168-sat legacy reserve by chance.
+        let capped = funded(sendableSats: 2, capacitySats: 7170)
+        XCTAssertFalse(MoveToSparkMath.mayHoldTheMoveHtlc(capped))
+        XCTAssertFalse(MoveToSparkMath.isEmptiedForGood(capped, previous: nil), "Closed on a first reading")
+        // Once the HTLC clears the limit rises, so the next read no longer matches the one before.
+        XCTAssertFalse(MoveToSparkMath.isEmptiedForGood(funded(sendableSats: 3500, capacitySats: 7170), previous: [capped]))
+        // A reserve that holds across the recheck is what stays.
+        XCTAssertTrue(MoveToSparkMath.isEmptiedForGood(capped, previous: [capped]))
+        // Capacity under the minimum closes on the first read.
+        XCTAssertTrue(MoveToSparkMath.isEmptiedForGood(funded(sendableSats: 0, capacitySats: 900), previous: nil))
+    }
+
     func testAMoveLeavesChannelsItDidNotKnowOrThatAreNotOpen() {
         let before = [channel("a", sendableSats: 50000)]
         let after = [channel("a", sendableSats: 0, isChannelReady: false), channel("new", sendableSats: 0)]

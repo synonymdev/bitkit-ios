@@ -95,6 +95,15 @@ enum MoveToSparkMath {
         return !reserves.contains { abs(gapSats - $0) <= 1 }
     }
 
+    /// Whether `channel` can close: its capacity is under the minimum, or its reserve explains its limit in this read and
+    /// in the one before (`previous`), unchanged. One read can match a reserve by chance while the move's HTLC still
+    /// counts against the peer's cap; the HTLC clears within the recheck, so a reading that holds across it is what stays.
+    static func isEmptiedForGood(_ channel: ChannelDetails, previous: [ChannelDetails]?) -> Bool {
+        guard channel.outboundCapacityMsat / 1000 >= minMoveSats else { return true }
+        guard !mayHoldTheMoveHtlc(channel), let was = previous?.first(where: { $0.channelId == channel.channelId }) else { return false }
+        return was.outboundCapacityMsat == channel.outboundCapacityMsat && was.nextOutboundHtlcLimitMsat == channel.nextOutboundHtlcLimitMsat
+    }
+
     /// The payments read before and after a read of the channels, or nil when a read failed or an outbound Lightning
     /// payment appeared or changed between them: it may have held an HTLC while the channels were read. Also nil when a
     /// payment other than a move's changed since the move started (`moveStart`): it may have emptied another channel.
@@ -662,14 +671,16 @@ final class MoveToSparkManager {
             // The channels are read between two reads of the payments, so a payment that starts or ends meanwhile
             // leaves no send limit it lowered in the channels read.
             var emptied = await Self.readEmptied(before: before, moveStart: moveStart, wallet: wallet)
-            // A channel whose limit rises once the move's HTLC clears drops out. One that may still hold it after the wait
+            var previous: [ChannelDetails]?
+            // A channel whose limit rises once the move's HTLC clears drops out. One not emptied for good after the wait
             // stays open for a manual close, so a close never starts on a reading the HTLC may have lowered.
             let deadline = ContinuousClock.now + Self.htlcClearWait
-            while emptied.contains(where: MoveToSparkMath.mayHoldTheMoveHtlc), ContinuousClock.now < deadline {
+            while emptied.contains(where: { !MoveToSparkMath.isEmptiedForGood($0, previous: previous) }), ContinuousClock.now < deadline {
                 try? await Task.sleep(for: Self.htlcClearRecheck)
+                previous = emptied
                 emptied = await Self.readEmptied(before: before, moveStart: moveStart, wallet: wallet)
             }
-            emptied.removeAll(where: MoveToSparkMath.mayHoldTheMoveHtlc)
+            emptied.removeAll { !MoveToSparkMath.isEmptiedForGood($0, previous: previous) }
             guard !emptied.isEmpty else { return }
             do {
                 let failed = try await transfer.closeChannels(channels: emptied)
