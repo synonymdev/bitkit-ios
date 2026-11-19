@@ -206,7 +206,7 @@ extension MoneyText {
         if hideBalance {
             return displayDots
         }
-        if isUnavailable {
+        if isUnavailable || unit == .fiat && !currency.hasUsableRate {
             return "—"
         }
 
@@ -233,7 +233,7 @@ extension MoneyText {
     }
 
     private var accessibilityValue: String {
-        if !hideBalance, isUnavailable {
+        if !hideBalance, isUnavailable || unit == .fiat && !currency.hasUsableRate {
             return "—"
         }
         guard !hideBalance else {
