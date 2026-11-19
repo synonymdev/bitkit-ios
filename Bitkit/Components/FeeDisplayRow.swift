@@ -3,8 +3,6 @@ import SwiftUI
 struct FeeDisplayRow: View {
     let label: String
     let amount: UInt64
-    /// Shown before the amount when it is a bound or an estimate ("±").
-    var prefix: String?
     /// Shimmers the amount while it is being priced.
     var isLoading = false
 
@@ -12,7 +10,7 @@ struct FeeDisplayRow: View {
         VStack(alignment: .leading, spacing: 0) {
             CaptionMText(label)
                 .padding(.bottom, 8)
-            MoneyText(sats: Int(amount), size: .bodySSB, symbol: true, prefix: prefix, shimmer: isLoading)
+            MoneyText(sats: Int(amount), size: .bodySSB, symbol: true, shimmer: isLoading)
                 .padding(.bottom, 16)
             Divider()
         }

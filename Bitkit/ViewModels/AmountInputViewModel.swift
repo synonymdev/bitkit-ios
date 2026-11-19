@@ -34,6 +34,24 @@ final class AmountInputViewModel {
     // MARK: - Private Properties
 
     private var rawInputText: String = ""
+    /// The unit `rawInputText` was written in, so the text is read again only in that unit.
+    private var rawInputUnit: InputUnit?
+
+    struct InputUnit: Equatable {
+        let display: PrimaryDisplay
+        let bitcoinUnit: BitcoinDisplayUnit
+
+        @MainActor
+        init(_ currency: CurrencyViewModel) {
+            display = currency.primaryDisplay
+            bitcoinUnit = currency.displayUnit
+        }
+
+        init(display: PrimaryDisplay, bitcoinUnit: BitcoinDisplayUnit) {
+            self.display = display
+            self.bitcoinUnit = bitcoinUnit
+        }
+    }
 
     init() {}
 
@@ -44,6 +62,7 @@ final class AmountInputViewModel {
     ///   - key: The key pressed on the number pad
     ///   - currency: The current currency settings
     func handleNumberPadInput(_ key: String, currency: CurrencyViewModel) {
+        defer { rawInputUnit = InputUnit(currency) }
         let maxLength = getMaxLength(currency: currency)
         let maxDecimals = getMaxDecimals(currency: currency)
 
@@ -53,6 +72,9 @@ final class AmountInputViewModel {
             maxLength: maxLength,
             maxDecimals: maxDecimals
         )
+        // A rejected key leaves the text as it was; reading it again would round the kept sats to the text's precision.
+        // Delete still applies, so it clears an amount kept without text (a preset in fiat with no rate).
+        guard newText != rawInputText || key == "delete" else { return }
 
         // Deletions must always apply, even when the amount is above the cap (e.g. a
         // prefilled invoice amount over the available balance, or a cap that dropped
@@ -118,23 +140,45 @@ final class AmountInputViewModel {
     ///   - newAmountSats: The new amount in satoshis
     ///   - currency: The current currency settings
     func updateFromSats(_ newAmountSats: UInt64, currency: CurrencyViewModel) {
+        defer { rawInputUnit = InputUnit(currency) }
         amountSats = newAmountSats
         displayText = formatDisplayTextFromAmount(newAmountSats, currency: currency)
         // Update raw input text based on the formatted display
         // Remove formatting separators (spaces for modern Bitcoin, commas for fiat)
         if currency.primaryDisplay == .fiat {
-            rawInputText = displayText.replacingOccurrences(of: ",", with: "")
+            rawInputText = Self.asciiDigits(displayText.replacingOccurrences(of: ",", with: ""))
         } else if currency.displayUnit == .modern {
             // Modern Bitcoin uses spaces as grouping separators
-            rawInputText = displayText.replacingOccurrences(of: " ", with: "")
+            rawInputText = Self.asciiDigits(displayText.replacingOccurrences(of: " ", with: ""))
         } else {
-            rawInputText = displayText
+            rawInputText = Self.asciiDigits(displayText)
         }
+    }
+
+    /// The number pad's raw input reads ASCII digits only, while the display formats them in the device's numbering
+    /// system (Arabic-Indic digits, say); without this the next key parsed the amount as 0.
+    nonisolated static func asciiDigits(_ text: String) -> String {
+        String(text.map { character in
+            character.isNumber ? character.wholeNumberValue.map { Character(String($0)) } ?? character : character
+        })
+    }
+
+    /// Shows the kept amount in the current display unit, after another screen switched it. Text typed in the unit
+    /// still shown stays as typed, also when its rate changed meanwhile; after a switch the kept sats are shown, never the
+    /// old text read in the new unit.
+    func refreshDisplay(currency: CurrencyViewModel) {
+        guard Self.redrawsOnReturn(amountSats: amountSats, textUnit: rawInputUnit, currentUnit: InputUnit(currency)) else { return }
+        updateFromSats(amountSats, currency: currency)
+    }
+
+    nonisolated static func redrawsOnReturn(amountSats: UInt64, textUnit: InputUnit?, currentUnit: InputUnit) -> Bool {
+        amountSats > 0 && textUnit != currentUnit
     }
 
     /// Toggles between Bitcoin and Fiat display modes while preserving input
     /// - Parameter currency: The current currency settings
     func togglePrimaryDisplay(currency: CurrencyViewModel) {
+        defer { rawInputUnit = InputUnit(currency) }
         // Store the current raw input before toggling
         let currentRawInput = rawInputText
 
@@ -146,12 +190,12 @@ final class AmountInputViewModel {
             // Update raw input text based on the formatted display
             // Remove formatting separators (spaces for modern Bitcoin, commas for fiat)
             if currency.primaryDisplay == .fiat {
-                rawInputText = displayText.replacingOccurrences(of: ",", with: "")
+                rawInputText = Self.asciiDigits(displayText.replacingOccurrences(of: ",", with: ""))
             } else if currency.displayUnit == .modern {
                 // Modern Bitcoin uses spaces as grouping separators
-                rawInputText = displayText.replacingOccurrences(of: " ", with: "")
+                rawInputText = Self.asciiDigits(displayText.replacingOccurrences(of: " ", with: ""))
             } else {
-                rawInputText = displayText
+                rawInputText = Self.asciiDigits(displayText)
             }
         } else if !currentRawInput.isEmpty {
             // Convert the raw input from the old currency to the new currency
@@ -160,7 +204,7 @@ final class AmountInputViewModel {
                 // First convert the Bitcoin input to sats, then to fiat
                 let sats = convertBitcoinToSats(currentRawInput, isModern: currency.displayUnit == .modern)
                 if let converted = currency.convert(sats: sats) {
-                    rawInputText = converted.formatted.replacingOccurrences(of: ",", with: "")
+                    rawInputText = Self.asciiDigits(converted.formatted.replacingOccurrences(of: ",", with: ""))
                     displayText = formatFiatGroupingOnly(rawInputText)
                 }
             } else {
@@ -172,9 +216,9 @@ final class AmountInputViewModel {
                     displayText = formatted
                     // Remove spaces from rawInputText for modern Bitcoin
                     if currency.displayUnit == .modern {
-                        rawInputText = formatted.replacingOccurrences(of: " ", with: "")
+                        rawInputText = Self.asciiDigits(formatted.replacingOccurrences(of: " ", with: ""))
                     } else {
-                        rawInputText = formatted
+                        rawInputText = Self.asciiDigits(formatted)
                     }
                 }
             }

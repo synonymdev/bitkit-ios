@@ -141,6 +141,7 @@ extension CurrencyViewModel {
         return rate.currencySymbol
     }
 
+    /// Nil without a usable rate: a missing ticker, or a price that is zero or unreadable, so no amount reads zero in it.
     func convert(sats: UInt64, to currency: String? = nil) -> ConvertedAmount? {
         let targetCurrency = currency ?? selectedCurrency
         guard let rate = currencyService.getCurrentRate(for: targetCurrency, from: rates) else {
@@ -156,17 +157,33 @@ extension CurrencyViewModel {
             return nil
         }
 
-        // Convert fiat amount to sats
-        // First convert to BTC using the rate, then to sats
-        let btc = fiatAmount / Double(truncating: rate.rate as NSNumber)
-        let sats = (btc * 100_000_000).rounded()
+        return Self.sats(fiatAmount: fiatAmount, rate: rate.rate)
+    }
+
+    /// The sats `fiatAmount` buys at `rate`; nil for a rate that is not positive or a result out of range.
+    nonisolated static func sats(fiatAmount: Double, rate: Decimal) -> UInt64? {
+        let price = Double(truncating: rate as NSNumber)
+        guard price > 0 else { return nil }
+        let sats = (fiatAmount / price * 100_000_000).rounded()
+        guard sats.isFinite, sats >= 0, sats < Double(UInt64.max) else { return nil }
         return UInt64(sats)
+    }
+
+    /// Whether the selected currency has a usable rate, so amounts can show in it.
+    var hasUsableRate: Bool {
+        guard let rate = currencyService.getCurrentRate(for: selectedCurrency, from: rates) else { return false }
+        return rate.rate > 0
     }
 }
 
 extension CurrencyViewModel {
     func primaryAmountText(sats: UInt64) -> String {
-        Self.primaryAmountText(sats: sats, converted: convert(sats: sats), primaryDisplay: primaryDisplay, displayUnit: displayUnit)
+        Self.primaryAmountText(
+            sats: sats,
+            converted: hasUsableRate ? convert(sats: sats) : nil,
+            primaryDisplay: primaryDisplay,
+            displayUnit: displayUnit
+        )
     }
 
     /// An amount the user sends from another wallet, always in bitcoin: it must be exact, which a fiat figure converted
@@ -181,13 +198,10 @@ extension CurrencyViewModel {
         primaryDisplay: PrimaryDisplay,
         displayUnit: BitcoinDisplayUnit
     ) -> String {
-        guard let converted else { return "₿ \(CurrencyFormatter.formatSats(sats))" }
-        switch primaryDisplay {
-        case .fiat:
+        if primaryDisplay == .fiat, let converted {
             return converted.formattedWithSymbol()
-        case .bitcoin:
-            let components = converted.bitcoinDisplay(unit: displayUnit)
-            return "\(components.symbol) \(components.value)"
         }
+        let components = ConvertedAmount.bitcoinDisplay(sats: sats, unit: displayUnit)
+        return "\(components.symbol) \(components.value)"
     }
 }

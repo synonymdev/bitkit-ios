@@ -403,6 +403,8 @@ final class SparkTransferFlow {
         return seenTxid == txid || deposits.contains { $0.isListed && $0.txid.caseInsensitiveCompare(txid) == .orderedSame }
     }
 
+    /// Notes from Spark's deposit list that it saw this transfer's deposit, and ends the transfer once Spark lists the
+    /// deposit as claimed.
     func noteSettled(_ deposits: [SparkDeposit]) {
         if let txid, deposits.contains(where: { $0.isListed && $0.txid.caseInsensitiveCompare(txid) == .orderedSame }) {
             seenTxid = txid
