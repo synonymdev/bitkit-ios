@@ -124,7 +124,7 @@ struct SavingsProgressContentView: View {
             Spacer()
 
             if progressState != .inProgress {
-                CustomButton(title: t("common__ok")) {
+                CustomButton(title: t(progressState == .success ? "common__continue" : "common__ok")) {
                     navigation.reset()
                 }
                 .accessibilityIdentifierIfPresent(imageIdentifier.map { "\($0)-button" })

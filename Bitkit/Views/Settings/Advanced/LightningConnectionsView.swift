@@ -7,6 +7,7 @@ struct LightningConnectionsView: View {
     @EnvironmentObject var blocktank: BlocktankViewModel
     @EnvironmentObject var channelDetails: ChannelDetailsViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var network: NetworkMonitor
     @EnvironmentObject var wallet: WalletViewModel
 
     @State private var showClosedConnections = false
@@ -56,7 +57,9 @@ struct LightningConnectionsView: View {
                                         .foregroundColor(.white)
                                     // Spark receives without inbound liquidity, so no channel caps receiving.
                                     TitleText(
-                                        SparkManager.shared.isReady ? t("lightning__spark_receiving_unlimited") : formatNumber(receivingCapacity),
+                                        AppStatusHelper
+                                            .isSparkReceiving(network: network) ? t("lightning__spark_receiving_unlimited") :
+                                            formatNumber(receivingCapacity),
                                         textColor: .white
                                     )
                                 }
@@ -71,12 +74,6 @@ struct LightningConnectionsView: View {
                             EmptyStateView()
                                 .padding(.top, 16)
                         } else {
-                            if SparkConnectionRow.isVisible {
-                                SettingsSectionHeader(t("lightning__spark"))
-                                SparkConnectionRow()
-                                    .padding(.bottom, 16)
-                            }
-
                             // Pending Connections section
                             if !pendingConnections.isEmpty {
                                 SettingsSectionHeader(t("lightning__conn_pending"))
@@ -117,8 +114,8 @@ struct LightningConnectionsView: View {
                                 .padding(.bottom, 16)
                             }
 
-                            // Open Connections section
-                            if !openChannels.isEmpty {
+                            // Open Connections section, with Spark after the channels
+                            if !openChannels.isEmpty || SparkConnectionRow.isVisible {
                                 SettingsSectionHeader(t("lightning__conn_open"))
 
                                 VStack(alignment: .leading, spacing: 16) {
@@ -151,6 +148,10 @@ struct LightningConnectionsView: View {
                                             .opacity((!channel.isChannelReady || !channel.isUsable) ? 0.64 : 1.0)
                                         }
                                         .accessibilityIdentifier("Channel")
+                                    }
+
+                                    if SparkConnectionRow.isVisible {
+                                        SparkConnectionRow()
                                     }
                                 }
                             }

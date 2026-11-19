@@ -5,6 +5,7 @@ struct SpendingWalletScreen: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var transfer: TransferViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
     private var canMoveToSpark: Bool {
@@ -145,7 +146,7 @@ struct SpendingWalletScreen: View {
                 .foregroundColor(.white80)
         ) {
             if app.hasSeenTransferToSavingsIntro {
-                navigation.navigate(.savingsAvailability)
+                navigation.navigateToTransferSavings(wallet: wallet, transfer: transfer)
             } else {
                 navigation.navigate(.savingsIntro)
             }
@@ -162,5 +163,6 @@ struct SpendingWalletScreen: View {
     .environmentObject(AppViewModel())
     .environmentObject(CurrencyViewModel())
     .environmentObject(ActivityListViewModel())
+    .environmentObject(TransferViewModel())
     .preferredColorScheme(.dark)
 }

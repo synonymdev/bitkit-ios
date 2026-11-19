@@ -6,13 +6,33 @@ import LDKNode
 protocol OnchainSending {
     var currentWalletIndex: Int { get }
     var onchainDispatchNode: AnyObject? { get }
+    /// The coins the wallet can spend now, nil when the sender cannot tell.
+    func spendableOnchainInputs() async throws -> Set<OnchainSendInput>?
+    /// Runs `action` before the node stops, while its wallet is still the live one.
+    func beforeOnchainNodeStops(_ action: @escaping () async -> Void)
     func prepareOnchainSend(address: String, sats: UInt64, satsPerVbyte: UInt32,
                             utxosToSpend: [SpendableUtxo]?, isMaxAmount: Bool,
                             expectedWalletIndex: Int, expectedNode: AnyObject?, paymentDeadline: PaykitPreciseInstant?) async throws
         -> PreparedOnchainSendDispatch
 }
 
+extension OnchainSending {
+    func spendableOnchainInputs() async throws -> Set<OnchainSendInput>? {
+        nil
+    }
+
+    func beforeOnchainNodeStops(_: @escaping () async -> Void) {}
+}
+
 extension LightningService: OnchainSending {
+    func spendableOnchainInputs() async throws -> Set<OnchainSendInput>? {
+        try await Set(listSpendableOutputs().map { OnchainSendInput(txid: $0.outpoint.txid, vout: $0.outpoint.vout) })
+    }
+
+    func beforeOnchainNodeStops(_ action: @escaping () async -> Void) {
+        beforeNodeStop = action
+    }
+
     func prepareOnchainSend(
         address: String, sats: UInt64, satsPerVbyte: UInt32,
         utxosToSpend: [SpendableUtxo]?, isMaxAmount: Bool,
@@ -357,6 +377,22 @@ struct SparkFundingChanged: Error {
     var preparedFeeSats: UInt64?
 }
 
+/// An initial send refused before broadcast because its prepared transaction pays a higher mining fee than the user
+/// reviewed. The service keeps that transaction, so the approval of this fee sends it and not another one.
+struct OnchainSendFeeIncreased: Error, Equatable {
+    let candidateTxid: String
+    let miningFeeSats: UInt64
+    let recipientAmountSats: UInt64
+}
+
+/// The transaction kept for a renewed approval is gone, belongs to another payment, or spends coins the wallet no
+/// longer has. Nothing was sent, and nothing is prepared in its place.
+struct OnchainSendCandidateUnavailable: LocalizedError {
+    var errorDescription: String? {
+        t("wallet__send_fee_candidate_unavailable")
+    }
+}
+
 struct OnchainSendTransferContext: Codable, Equatable {
     let clientBalanceSats: UInt64
     let txTotalSats: UInt64
@@ -537,6 +573,8 @@ actor OnchainSendAttemptService {
     private let winningFee: (OnchainSendAttempt) async throws -> UInt64?
     private let store: any OnchainSendAttemptStoring
     private var knownAttempt: OnchainSendAttempt?
+    private var heldCandidate: HeldCandidate?
+    private weak var stoppingNode: AnyObject?
     private var nativeDispatchInProgress: UUID?
     private var requestFollowupInProgress: UUID?
     private var ordinaryFollowupInProgress: UUID?
@@ -594,6 +632,45 @@ actor OnchainSendAttemptService {
         knownAttempt = restored
     }
 
+    /// A prepared transaction refused for its higher fee, with the payment it was prepared for.
+    private struct HeldCandidate {
+        let prepared: PreparedOnchainSendDispatch
+        let payment: Payment
+        /// The node that prepared it, the only one that can send it.
+        let node: AnyObject?
+
+        struct Payment: Equatable {
+            let walletIndex: Int
+            let address: String
+            let amountSats: UInt64
+            let satsPerVbyte: UInt32
+            let inputs: Set<OnchainSendInput>?
+            let isMaxAmount: Bool
+            let requestId: PaykitPaymentRequest.ID?
+            let paymentIdentity: String?
+            let paymentDeadline: PaykitPreciseInstant?
+        }
+    }
+
+    /// Drops the transaction kept for a renewed approval, as when its send flow is left or its node stops. With a
+    /// `txid`, only that transaction is dropped.
+    func discardHeldCandidate(txid: String? = nil) {
+        guard txid == nil || heldCandidate?.prepared.txid == txid else { return }
+        heldCandidate = nil
+    }
+
+    /// Dropping a kept transaction persists through the wallet that prepared it, so it is dropped before that wallet's
+    /// node stops, and a send still preparing on that node keeps nothing afterwards.
+    private func nodeStopping(_ node: AnyObject?) {
+        heldCandidate = nil
+        stoppingNode = node
+    }
+
+    /// - Parameters:
+    ///   - reviewedMiningFeeSats: The mining fee the user approved. A prepared transaction paying more is kept and
+    ///     refused with `OnchainSendFeeIncreased` before any broadcast side effect.
+    ///   - reapprovedCandidateTxid: The kept transaction the user approved at its actual fee. Only that transaction is
+    ///     sent; when it cannot be, the send fails with `OnchainSendCandidateUnavailable`.
     func send(
         using lightningService: any OnchainSending,
         address: String,
@@ -608,6 +685,8 @@ actor OnchainSendAttemptService {
         transferContext: OnchainSendTransferContext? = nil,
         isSparkFunding: Bool = false,
         approvedMiningFeeSats: UInt64? = nil,
+        reviewedMiningFeeSats: UInt64? = nil,
+        reapprovedCandidateTxid: String? = nil,
         paymentDeadline: PaykitPreciseInstant? = nil,
         beforeBroadcastAttempt: () async throws -> Void = {},
         onPreDispatchFailure: (Error) async throws -> Void = { _ in throw OnchainSendAttemptError.preDispatchCleanupFailed }
@@ -615,12 +694,33 @@ actor OnchainSendAttemptService {
         guard nativeDispatchInProgress == nil else { throw OnchainSendAttemptError.blocked(try? currentAttempt()) }
         let walletIndex = lightningService.currentWalletIndex
         let dispatchNode = lightningService.onchainDispatchNode
+        // Every send either sends the kept transaction or drops it, so it never outlives a later spend of its coins.
+        let held = heldCandidate
+        heldCandidate = nil
         if let prior = try currentAdmissionAttempt(), prior.status == .accepted, let txid = prior.txid,
            prior.walletId == Self.walletId(index: walletIndex),
            prior.recoveryContext?.paymentIdentity == nil || prior.recoveryContext?.paymentIdentity == paymentIdentity,
            (requestId != nil && prior.requestId == requestId) || (orderId != nil && prior.orderId == orderId)
         {
             return .accepted(txid: txid)
+        }
+        let payment = HeldCandidate.Payment(
+            walletIndex: walletIndex, address: address, amountSats: amountSats, satsPerVbyte: satsPerVbyte,
+            inputs: utxosToSpend.map { Set($0.map { OnchainSendInput(txid: $0.outpoint.txid, vout: $0.outpoint.vout) }) },
+            isMaxAmount: isMaxAmount, requestId: requestId, paymentIdentity: paymentIdentity, paymentDeadline: paymentDeadline
+        )
+        var reapproved: PreparedOnchainSendDispatch?
+        if let reapprovedCandidateTxid {
+            // Checked before admission, so a transaction that cannot be sent leaves no attempt and starts no request payment.
+            guard let held, held.prepared.txid == reapprovedCandidateTxid, held.payment == payment, held.node === dispatchNode,
+                  (try? PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)) != nil
+            else {
+                throw OnchainSendAttemptError.preDispatch(OnchainSendCandidateUnavailable())
+            }
+            reapproved = held.prepared
+        }
+        if reviewedMiningFeeSats != nil {
+            lightningService.beforeOnchainNodeStops { [weak self, weak dispatchNode] in await self?.nodeStopping(dispatchNode) }
         }
         let attemptId = try admit(
             walletId: Self.walletId(index: walletIndex),
@@ -637,11 +737,22 @@ actor OnchainSendAttemptService {
         defer { nativeDispatchInProgress = nil }
         let prepared: PreparedOnchainSendDispatch
         do {
-            prepared = try await lightningService.prepareOnchainSend(
-                address: address, sats: amountSats, satsPerVbyte: satsPerVbyte,
-                utxosToSpend: utxosToSpend, isMaxAmount: isMaxAmount,
-                expectedWalletIndex: walletIndex, expectedNode: dispatchNode, paymentDeadline: paymentDeadline
-            )
+            if let reapproved {
+                // The approved transaction is sent as it is, or not at all.
+                try checkWallet(lightningService, index: walletIndex, node: dispatchNode)
+                if let spendable = try await lightningService.spendableOnchainInputs(),
+                   !Set(reapproved.inputs).isSubset(of: spendable)
+                {
+                    throw OnchainSendCandidateUnavailable()
+                }
+                prepared = reapproved
+            } else {
+                prepared = try await lightningService.prepareOnchainSend(
+                    address: address, sats: amountSats, satsPerVbyte: satsPerVbyte,
+                    utxosToSpend: utxosToSpend, isMaxAmount: isMaxAmount,
+                    expectedWalletIndex: walletIndex, expectedNode: dispatchNode, paymentDeadline: paymentDeadline
+                )
+            }
             do {
                 try validateReceipt(prepared, amount: isMaxAmount && requestId == nil ? nil : amountSats,
                                     inputs: isMaxAmount ? nil : utxosToSpend?
@@ -661,6 +772,19 @@ actor OnchainSendAttemptService {
                     guard prepared.recipientAmountSats == amountSats, let miningFee = prepared.miningFeeSats,
                           let approvedFee = approvedMiningFeeSats ?? followupContext?.feeSats, miningFee <= approvedFee
                     else { throw SparkFundingChanged(preparedFeeSats: prepared.miningFeeSats) }
+                }
+                if let reviewedMiningFeeSats {
+                    guard let miningFee = prepared.miningFeeSats else { throw OnchainSendAttemptError.unresolved }
+                    if miningFee > reviewedMiningFeeSats {
+                        // A node that began stopping while this was prepared can no longer send it.
+                        guard lightningService.onchainDispatchNode === dispatchNode, stoppingNode !== dispatchNode else {
+                            throw OnchainSendCandidateUnavailable()
+                        }
+                        heldCandidate = HeldCandidate(prepared: prepared, payment: payment, node: dispatchNode)
+                        throw OnchainSendFeeIncreased(
+                            candidateTxid: prepared.txid, miningFeeSats: miningFee, recipientAmountSats: prepared.recipientAmountSats
+                        )
+                    }
                 }
                 attempt.amountSats = prepared.recipientAmountSats
                 attempt.txid = prepared.txid

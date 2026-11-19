@@ -3,9 +3,17 @@ import SwiftUI
 struct LinkSuggestionsSheet: View {
     @Environment(\.dismiss) private var dismiss
 
+    var webLinksOnly = false
     let onSelect: (String) -> Void
 
-    private let suggestions = [
+    /// Suggestions whose links are not web links, which social v1 profiles reject.
+    private static let nonWebSuggestions: Set = ["Email", "Phone"]
+
+    private var suggestions: [String] {
+        webLinksOnly ? Self.allSuggestions.filter { !Self.nonWebSuggestions.contains($0) } : Self.allSuggestions
+    }
+
+    private static let allSuggestions = [
         "Email", "Phone", "Website", "Twitter",
         "Telegram", "Instagram", "Facebook",
         "LinkedIn", "Github", "Calendly",
