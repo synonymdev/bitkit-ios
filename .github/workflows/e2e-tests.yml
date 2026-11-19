@@ -23,7 +23,43 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  spark-images:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 80
+    outputs:
+      e2e-sha: ${{ steps.e2e.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: synonymdev/bitkit-e2e-tests
+          ref: ${{ inputs.e2e_branch || 'main' }}
+          persist-credentials: false
+
+      - name: Record shared E2E revision
+        id: e2e
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pinned Spark fixture images
+        id: images
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/spark-images.tar
+          key: spark-fixture-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('BITKIT_DOCKER_REVISION') }}
+
+      - name: Package pinned Spark fixture images
+        if: steps.images.outputs.cache-hit != 'true'
+        run: ./scripts/local-backend spark-pack "$RUNNER_TEMP/spark-images.tar"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: spark-fixture-images
+          path: ${{ runner.temp }}/spark-images.tar
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+
   e2e-spark:
+    needs: spark-images
     runs-on: [self-hosted, macOS]
     timeout-minutes: 120
     env:
@@ -37,7 +73,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-e2e-tests
-          ref: ${{ inputs.e2e_branch || 'main' }}
+          ref: ${{ needs.spark-images.outputs.e2e-sha }}
           path: bitkit-e2e-tests
           persist-credentials: false
 
@@ -51,10 +87,21 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: npm ci
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: spark-fixture-images
+          path: ${{ runner.temp }}
+
       - name: Start pinned Spark fixture
         id: spark
         working-directory: bitkit-e2e-tests
+        env:
+          SPARK_IMAGE_ARCHIVE: ${{ runner.temp }}/spark-images.tar
         run: |
+          if [[ "$RUNNER_ARCH" != ARM64 ]]; then
+            echo "::error::The Spark fixture archive requires an ARM64 Mac runner."
+            exit 1
+          fi
           ./scripts/local-backend prepare
           (cd "$(./scripts/local-backend path)" && docker compose --profile spark down --remove-orphans -v)
           ./scripts/local-backend spark-up
@@ -103,6 +150,10 @@ jobs:
         if: always() && steps.spark.outcome != 'skipped'
         working-directory: bitkit-e2e-tests
         run: cd "$(./scripts/local-backend path)" && docker compose --profile spark down --remove-orphans -v
+
+      - name: Remove the imported image archive
+        if: always()
+        run: rm -f "$RUNNER_TEMP/spark-images.tar"
 
       # Preserve logs and recordings from failed attempts even when a retry passes.
       - uses: actions/upload-artifact@v7
