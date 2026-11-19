@@ -53,15 +53,34 @@ final class MoveToSparkMathTests: XCTestCase {
     func testAMoveClosesOnlyTheChannelsItEmptied() {
         let before = [channel("a", sendableSats: 50000), channel("b", sendableSats: 20000), channel("c", sendableSats: 900)]
         let after = [channel("a", sendableSats: 0), channel("b", sendableSats: 20000), channel("c", sendableSats: 0)]
-        let emptied = MoveToSparkMath.emptiedChannels(before: before, after: after)
+        let emptied = MoveToSparkMath.emptiedChannels(before: before, after: after, payments: [])
         XCTAssertEqual(emptied.map(\.channelId), ["a"], "A channel that could send less than the move minimum was closed")
     }
 
     func testAMoveLeavesChannelsItDidNotKnowOrThatAreNotOpen() {
         let before = [channel("a", sendableSats: 50000)]
         let after = [channel("a", sendableSats: 0, isChannelReady: false), channel("new", sendableSats: 0)]
-        XCTAssertTrue(MoveToSparkMath.emptiedChannels(before: before, after: after).isEmpty)
-        XCTAssertTrue(MoveToSparkMath.emptiedChannels(before: before, after: nil).isEmpty)
+        XCTAssertTrue(MoveToSparkMath.emptiedChannels(before: before, after: after, payments: []).isEmpty)
+        XCTAssertTrue(MoveToSparkMath.emptiedChannels(before: before, after: nil, payments: []).isEmpty)
+    }
+
+    func testAMoveClosesNoChannelWhileAnotherPaymentIsInFlight() {
+        let before = [channel("a", sendableSats: 50000)]
+        let after = [channel("a", sendableSats: 0)]
+        XCTAssertEqual(MoveToSparkMath.emptiedChannels(before: before, after: after, payments: [payment(.outbound, .succeeded)]).count, 1)
+        XCTAssertEqual(MoveToSparkMath.emptiedChannels(before: before, after: after, payments: [payment(.inbound, .pending)]).count, 1)
+        XCTAssertTrue(
+            MoveToSparkMath.emptiedChannels(before: before, after: after, payments: [payment(.outbound, .pending)]).isEmpty,
+            "A channel whose send limit an in-flight payment lowered was closed"
+        )
+        XCTAssertTrue(MoveToSparkMath.emptiedChannels(before: before, after: after, payments: nil).isEmpty)
+    }
+
+    private func payment(_ direction: PaymentDirection, _ status: PaymentStatus) -> PaymentDetails {
+        PaymentDetails(
+            id: UUID().uuidString, kind: .spontaneous(hash: "hash", preimage: nil),
+            amountMsat: 1_000_000, feePaidMsat: nil, direction: direction, status: status, latestUpdateTimestamp: 0
+        )
     }
 
     private func channel(_ id: String, sendableSats: UInt64, isChannelReady: Bool = true) -> ChannelDetails {

@@ -69,8 +69,11 @@ enum MoveToSparkMath {
         return half >= minMoveSats ? half : nil
     }
 
-    /// The open channels in `after` that could send at least `minMoveSats` in `before` and no longer can.
-    static func emptiedChannels(before: [ChannelDetails], after: [ChannelDetails]?) -> [ChannelDetails] {
+    /// The open channels in `after` that could send at least `minMoveSats` in `before` and no longer can. None while
+    /// `payments` holds an outbound payment in flight, or can't be read: its HTLC lowers a channel's send limit until it
+    /// settles, so a channel the move did not empty could look emptied.
+    static func emptiedChannels(before: [ChannelDetails], after: [ChannelDetails]?, payments: [PaymentDetails]?) -> [ChannelDetails] {
+        guard let payments, !payments.contains(where: { $0.direction == .outbound && $0.status == .pending }) else { return [] }
         let beforeSats = Dictionary(before.map { ($0.channelId, $0.nextOutboundHtlcLimitMsat / 1000) }, uniquingKeysWith: { first, _ in first })
         return (after ?? []).filter(\.isChannelReady).filter {
             guard let wasSats = beforeSats[$0.channelId] else { return false }
@@ -583,7 +586,11 @@ final class MoveToSparkManager {
     func closeEmptied(before: [ChannelDetails], wallet: WalletViewModel, transfer: TransferViewModel) {
         Task { @MainActor in
             await wallet.syncStateAsync()
-            let emptied = MoveToSparkMath.emptiedChannels(before: before, after: wallet.channels)
+            let emptied = await MoveToSparkMath.emptiedChannels(
+                before: before,
+                after: wallet.channels,
+                payments: LightningService.shared.listPayments()
+            )
             guard !emptied.isEmpty else { return }
             do {
                 let failed = try await transfer.closeChannels(channels: emptied)
