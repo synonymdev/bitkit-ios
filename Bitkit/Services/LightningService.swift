@@ -1716,6 +1716,11 @@ class LightningService: NodeLifecycleService {
         }
     }
 
+    /// The rail's ids of the attempts before each send in doubt or that Spark took, by hash.
+    var railSendEarlierAttemptIds: [String: [String]] {
+        eventCallbackLock.withLock { uncertainRailSendEarlierAttempts() }
+    }
+
     /// Callers hold `eventCallbackLock`.
     private func uncertainRailSendEarlierAttempts() -> [String: [String]] {
         railAttemptsStore.dictionary(forKey: Self.uncertainRailSendsEarlierAttemptsKey) as? [String: [String]] ?? [:]

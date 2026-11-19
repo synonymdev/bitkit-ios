@@ -1874,13 +1874,15 @@ final class SparkManager: ChannelFreeLightningRail {
         return await failStoredSend(paymentHash)
     }
 
-    /// Payment hashes whose every Lightning send failed, so a hold on a channel retry can be released.
-    nonisolated static func failedSendHashes(_ payments: [Payment]) -> [String] {
+    /// Payment hashes whose every Lightning send failed, so a hold on a channel retry can be released. A failure of an
+    /// attempt listed before a send Spark took doesn't count: that send may still pay the invoice.
+    nonisolated static func failedSendHashes(_ payments: [Payment], earlierAttemptIds: [String: [String]] = [:]) -> [String] {
         var failed: [String] = []
         var live: Set<String> = []
         for payment in payments where payment.paymentType == .send {
             guard case let .lightning(_, _, _, htlcDetails, _, _, _, _) = payment.details else { continue }
             if payment.status == .failed {
+                guard earlierAttemptIds[htlcDetails.paymentHash.lowercased()]?.contains(payment.id) != true else { continue }
                 failed.append(htlcDetails.paymentHash)
             } else {
                 live.insert(htlcDetails.paymentHash)
@@ -1909,8 +1911,9 @@ final class SparkManager: ChannelFreeLightningRail {
     /// so a retry the user started meanwhile keeps its hold, as does one recorded or ending while the list is read.
     static func releaseFailedSendHolds(listPayments: () async throws -> [Payment]) async {
         let mark = LightningService.shared.attemptMark
+        let earlier = LightningService.shared.railSendEarlierAttemptIds
         guard let latest = try? await listPayments() else { return }
-        for paymentHash in failedSendHashes(latest) {
+        for paymentHash in failedSendHashes(latest, earlierAttemptIds: earlier) {
             LightningService.shared.releaseRailAttempt(paymentHash: paymentHash, since: mark)
         }
     }
