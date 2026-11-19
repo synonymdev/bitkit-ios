@@ -961,6 +961,9 @@ class ActivityService {
     /// so a send recorded after the app was killed mid-payment still names its contact.
     nonisolated(unsafe) static var sentPaymentContacts = SentPaymentContacts(defaults: .standard)
 
+    /// The Spark id of the attempt each channel-free send row was last written from, by payment hash.
+    nonisolated(unsafe) static var channelFreeRowAttempts = ChannelFreeRowAttempts(defaults: .standard)
+
     /// Whether a Lightning activity keeps its status against an update: a settled payment stays settled, a failure from
     /// the rail that didn't carry the latest attempt is stale, and a failed Spark send keeps its row against the failure
     /// of an older attempt, as Spark lists one failure per attempt, each with its own amount and fee. The row's own
@@ -1021,8 +1024,13 @@ class ActivityService {
                        createdAt: paymentTimestamp,
                        paymentId: railPaymentId
                    )),
-               // Spark dates an attempt at its start, so an older one's failure is dated before the row's attempt.
-               isOlderChannelFreeAttempt: rail == .channelFree && payment.direction == .outbound && paymentTimestamp < existing.timestamp
+               // Spark dates an attempt at its start, so an older one's failure is dated before the row's attempt, or
+               // in the same second when the retry started at once; then the row's own Spark id tells them apart.
+               isOlderChannelFreeAttempt: rail == .channelFree && payment.direction == .outbound
+                   && (paymentTimestamp < existing.timestamp || paymentTimestamp == existing.timestamp && Self.isOtherRowAttempt(
+                       railPaymentId,
+                       rowAttemptId: Self.channelFreeRowAttempts.attemptId(forPaymentHash: payment.id)
+                   ))
            )
         {
             return
@@ -1095,6 +1103,14 @@ class ActivityService {
         if payment.direction == .outbound, ln.contact != nil, payment.status != .pending {
             Self.sentPaymentContacts.forget(paymentHash: payment.id)
         }
+        if rail == .channelFree, payment.direction == .outbound, let railPaymentId {
+            Self.channelFreeRowAttempts.remember(railPaymentId, forPaymentHash: payment.id)
+        }
+    }
+
+    static func isOtherRowAttempt(_ railPaymentId: String?, rowAttemptId: String?) -> Bool {
+        guard let railPaymentId, let rowAttemptId else { return false }
+        return railPaymentId != rowAttemptId
     }
 
     /// A succeeded Spark receive proves the move's LDK send settled, so the send's row becomes succeeded and keeps its amount and fee.
@@ -2853,5 +2869,24 @@ struct SentPaymentContacts: @unchecked Sendable {
             else { return }
             defaults.set(contacts, forKey: Self.key)
         }
+    }
+}
+
+struct ChannelFreeRowAttempts: @unchecked Sendable {
+    private static let key = "channelFreeRowAttemptIds"
+    private static let lock = NSLock()
+    let defaults: UserDefaults
+
+    func remember(_ attemptId: String, forPaymentHash paymentHash: String) {
+        Self.lock.withLock {
+            var attempts = defaults.dictionary(forKey: Self.key) as? [String: String] ?? [:]
+            guard attempts[paymentHash.lowercased()] != attemptId else { return }
+            attempts[paymentHash.lowercased()] = attemptId
+            defaults.set(attempts, forKey: Self.key)
+        }
+    }
+
+    func attemptId(forPaymentHash paymentHash: String) -> String? {
+        (defaults.dictionary(forKey: Self.key) as? [String: String])?[paymentHash.lowercased()]
     }
 }
