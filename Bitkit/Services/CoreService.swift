@@ -1031,7 +1031,8 @@ class ActivityService {
                    && (railPaymentId == nil || railPaymentId != LightningService.shared.heldRailSendId(paymentHash: payment.id))
                    && (paymentTimestamp < existing.timestamp || paymentTimestamp == existing.timestamp && Self.isOtherRowAttempt(
                        railPaymentId,
-                       rowAttemptId: Self.channelFreeRowAttempts.attemptId(forPaymentHash: payment.id)
+                       rowAttemptId: Self.channelFreeRowAttempts.attemptId(forPaymentHash: payment.id),
+                       earlierAttemptIds: LightningService.shared.railSendEarlierAttemptIds[payment.id.lowercased()]
                    ))
            )
         {
@@ -1110,9 +1111,12 @@ class ActivityService {
         }
     }
 
-    static func isOtherRowAttempt(_ railPaymentId: String?, rowAttemptId: String?) -> Bool {
-        guard let railPaymentId, let rowAttemptId else { return false }
-        return railPaymentId != rowAttemptId
+    /// Whether `railPaymentId` is another attempt than the row's, and not the send that went out after it: the send in
+    /// flight lists the attempts before it, and its failure is recorded before that list goes.
+    static func isOtherRowAttempt(_ railPaymentId: String?, rowAttemptId: String?, earlierAttemptIds: [String]? = nil) -> Bool {
+        guard let railPaymentId, let rowAttemptId, railPaymentId != rowAttemptId else { return false }
+        let isLaterSend = earlierAttemptIds.map { $0.contains(rowAttemptId) && !$0.contains(railPaymentId) } ?? false
+        return !isLaterSend
     }
 
     /// A succeeded Spark receive proves the move's LDK send settled, so the send's row becomes succeeded and keeps its amount and fee.

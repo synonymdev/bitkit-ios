@@ -675,8 +675,12 @@ extension ChannelFreeRailTests {
         Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: expiresAt) }
         // An HTLC under way at the expiry can still settle a little after it.
         await assertRefusedAsDuplicate()
-        Bitkit.LightningService.shared
-            .now = { Date(timeIntervalSince1970: expiresAt + TimeInterval(Bitkit.LightningService.unlistedRailSendGraceSeconds)) }
+        let graceEnds = expiresAt + TimeInterval(Bitkit.LightningService.unlistedRailSendGraceSeconds)
+        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: graceEnds) }
+        // Absence proves nothing until a sync that started past the grace reached Spark.
+        rail.syncedAfter = { ($0 ?? 0) < UInt64(graceEnds) }
+        await assertRefusedAsDuplicate()
+        rail.syncedAfter = { _ in true }
         await assertReachesTheNode()
     }
 
@@ -696,8 +700,12 @@ extension ChannelFreeRailTests {
         Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: expiresAt) }
         // An HTLC under way at the expiry can still settle a little after it.
         await assertRefusedAsDuplicate()
-        Bitkit.LightningService.shared
-            .now = { Date(timeIntervalSince1970: expiresAt + TimeInterval(Bitkit.LightningService.unlistedRailSendGraceSeconds)) }
+        let graceEnds = expiresAt + TimeInterval(Bitkit.LightningService.unlistedRailSendGraceSeconds)
+        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: graceEnds) }
+        // Absence proves nothing until a sync that started past the grace reached Spark.
+        rail.syncedAfter = { ($0 ?? 0) < UInt64(graceEnds) }
+        await assertRefusedAsDuplicate()
+        rail.syncedAfter = { _ in true }
         await assertReachesTheNode()
     }
 
