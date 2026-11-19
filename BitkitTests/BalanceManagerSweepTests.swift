@@ -98,6 +98,40 @@ final class BalanceManagerSweepTests: XCTestCase {
         XCTAssertNil(BalanceManager.channelShareSats(channelId: channelId, sweep: ("earlier-txid", 810), pendingSweeps: sweeps))
     }
 
+    func testHeldSweepTakesAtMostTheTransferAmountOutOfSavings() {
+        // A peer force close records only its first claim; an HTLC claim can pay the wallet more than that.
+        let sweeps = [broadcastSweep(channel: channelId, txid: "sweep-txid")]
+        var counted = Set<String>()
+
+        XCTAssertEqual(
+            BalanceManager.heldSweepDeduction(
+                channelId: channelId,
+                transferSats: 1000,
+                heldSweeps: [("sweep-txid", 4000)],
+                pendingSweeps: sweeps,
+                countedSweepTxids: &counted
+            ),
+            1000
+        )
+    }
+
+    func testEarlierBatchedSweepTakesAtMostTheTransferAmountOutOfSavings() {
+        // LDK reports only the replacement, so the earlier batched sweep's share is unknown.
+        let sweeps = [broadcastSweep(channel: channelId, txid: "regenerated-txid")]
+        var counted = Set<String>()
+
+        XCTAssertEqual(
+            BalanceManager.heldSweepDeduction(
+                channelId: channelId,
+                transferSats: 540,
+                heldSweeps: [("earlier-txid", 810)],
+                pendingSweeps: sweeps,
+                countedSweepTxids: &counted
+            ),
+            540
+        )
+    }
+
     func testTransferSavedBeforeSweepTxidsDecodes() throws {
         let json = #"[{"id":"old","type":"FORCE_CLOSE","amountSats":1000,"channelId":"c","isSettled":false,"createdAt":1}]"#
         let transfers = try JSONDecoder().decode([Bitkit.Transfer].self, from: Data(json.utf8))

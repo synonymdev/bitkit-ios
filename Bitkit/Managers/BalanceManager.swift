@@ -185,7 +185,8 @@ class BalanceManager {
             }
 
             // The transfer stays in transfer at its amount until its activity syncs. Once the wallet holds one of the
-            // channel's sweeps, Savings includes its output too: take that output out of Savings so it counts once.
+            // channel's sweeps, Savings includes its output too: take that output out of Savings so it counts once, but
+            // never more than the transfer adds to In Transfer, so sats it does not count stay in Savings.
             pendingAmount += transfer.amountSats
             let heldSweeps = Self.heldSweeps(
                 channelId: channelId,
@@ -193,19 +194,39 @@ class BalanceManager {
                 earlierTxids: Set(transfer.sweepTxids ?? []),
                 outputs: outputs
             )
-            for sweep in heldSweeps {
-                if let share = Self.channelShareSats(channelId: channelId, sweep: sweep, pendingSweeps: pendingSweeps) {
-                    // Two transfers can track one channel, such as a local close and the peer's force close.
-                    if countedSweepTxids.insert("\(channelId):\(sweep.txid)").inserted {
-                        onchainToSubtract += share
-                    }
-                } else if countedSweepTxids.insert(sweep.txid).inserted {
-                    onchainToSubtract += sweep.sats
-                }
-            }
+            onchainToSubtract += Self.heldSweepDeduction(
+                channelId: channelId,
+                transferSats: transfer.amountSats,
+                heldSweeps: heldSweeps,
+                pendingSweeps: pendingSweeps,
+                countedSweepTxids: &countedSweepTxids
+            )
         }
 
         return (lightningToSubtract, onchainToSubtract, pendingAmount)
+    }
+
+    /// What a transfer's held sweeps take out of Savings: this channel's share of each sweep not counted yet, at most the
+    /// transfer's own amount.
+    static func heldSweepDeduction(
+        channelId: String,
+        transferSats: UInt64,
+        heldSweeps: [(txid: String, sats: UInt64)],
+        pendingSweeps: [PendingSweepBalance],
+        countedSweepTxids: inout Set<String>
+    ) -> UInt64 {
+        var heldSats: UInt64 = 0
+        for sweep in heldSweeps {
+            if let share = channelShareSats(channelId: channelId, sweep: sweep, pendingSweeps: pendingSweeps) {
+                // Two transfers can track one channel, such as a local close and the peer's force close.
+                if countedSweepTxids.insert("\(channelId):\(sweep.txid)").inserted {
+                    heldSats += share
+                }
+            } else if countedSweepTxids.insert(sweep.txid).inserted {
+                heldSats += sweep.sats
+            }
+        }
+        return min(heldSats, transferSats)
     }
 
     /// The channel's sweep transactions, current or earlier, whose outputs the on-chain wallet holds, confirmed or in the
