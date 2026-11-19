@@ -81,10 +81,26 @@ enum MoveToSparkMath {
         }
     }
 
-    /// The payments read before and after a read of the channels, or nil when either could not be read.
+    /// The payments read before and after a read of the channels, or nil when either could not be read or an outbound
+    /// Lightning payment appeared or changed between them: it may have held an HTLC while the channels were read.
     static func paymentsAround(channelsRead before: [PaymentDetails]?, _ after: [PaymentDetails]?) -> [PaymentDetails]? {
-        guard let before, let after else { return nil }
+        guard let before, let after, outboundLightning(before) == outboundLightning(after) else { return nil }
         return before + after
+    }
+
+    private struct PaymentMark: Hashable {
+        let id: String
+        let status: PaymentStatus
+        let updatedAt: UInt64
+    }
+
+    private static func outboundLightning(_ payments: [PaymentDetails]) -> Set<PaymentMark> {
+        Set(payments.filter { payment in
+            if case .onchain = payment.kind {
+                return false
+            }
+            return payment.direction == .outbound
+        }.map { PaymentMark(id: $0.id, status: $0.status, updatedAt: $0.latestUpdateTimestamp) })
     }
 
     private static func isLightningInFlight(_ payment: PaymentDetails) -> Bool {

@@ -94,6 +94,11 @@ final class MoveToSparkMathTests: XCTestCase {
         XCTAssertEqual(emptied(inFlight, settled), 0)
         XCTAssertEqual(emptied(settled, inFlight), 0)
         XCTAssertEqual(emptied(settled, nil), 0)
+        // A payment that started after the first read and failed before the second was in flight in between.
+        XCTAssertEqual(emptied(settled, settled + [payment(.outbound, .failed)]), 0)
+        // An on-chain send or an incoming payment changing meanwhile holds no outbound HTLC.
+        XCTAssertEqual(emptied(settled, settled + [payment(.inbound, .succeeded)]), 1)
+        XCTAssertEqual(emptied(settled, settled + [payment(.outbound, .pending, kind: .onchain(txid: "t", status: .unconfirmed))]), 1)
     }
 
     private func payment(
