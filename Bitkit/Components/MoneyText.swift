@@ -46,7 +46,15 @@ struct MoneyText: View {
         if let forceUnit {
             return forceUnit
         }
-        return unitType == .secondary ? (currency.primaryDisplay == .bitcoin ? .fiat : .bitcoin) : currency.primaryDisplay
+        if unitType == .secondary {
+            return currency.primaryDisplay == .bitcoin ? .fiat : .bitcoin
+        }
+        return Self.primaryUnit(currency.primaryDisplay, hasUsableRate: currency.hasUsableRate)
+    }
+
+    /// The primary amount stays in bitcoin while the local currency has no usable rate, so it never reads zero in fiat.
+    nonisolated static func primaryUnit(_ display: PrimaryDisplay, hasUsableRate: Bool) -> PrimaryDisplay {
+        display == .fiat && !hasUsableRate ? .bitcoin : display
     }
 
     private var showSymbol: Bool {

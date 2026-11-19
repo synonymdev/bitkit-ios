@@ -141,9 +141,10 @@ extension CurrencyViewModel {
         return rate.currencySymbol
     }
 
+    /// Nil without a usable rate: a missing ticker, or a price that is zero or unreadable, so no amount reads zero in it.
     func convert(sats: UInt64, to currency: String? = nil) -> ConvertedAmount? {
         let targetCurrency = currency ?? selectedCurrency
-        guard let rate = currencyService.getCurrentRate(for: targetCurrency, from: rates) else {
+        guard let rate = currencyService.getCurrentRate(for: targetCurrency, from: rates), rate.rate > 0 else {
             return nil
         }
 
@@ -170,8 +171,7 @@ extension CurrencyViewModel {
 
     /// Whether the selected currency has a usable rate, so amounts can show in it.
     var hasUsableRate: Bool {
-        guard let rate = currencyService.getCurrentRate(for: selectedCurrency, from: rates) else { return false }
-        return rate.rate > 0
+        convert(sats: 0) != nil
     }
 }
 
