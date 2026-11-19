@@ -1,7 +1,59 @@
 @testable import Bitkit
+import Paykit
 import XCTest
 
 final class PubkyAppProfileStoreTests: XCTestCase {
+    func testSavingOriginalRestoreFormAfterRefreshPublishesExistingAndNewTags() async throws {
+        let ownersKey = "pubky_app_profile_owners"
+        let avatarPendingKey = "pubky_app_avatar_pending"
+        let defaults = UserDefaults.standard
+        let previousOwners = defaults.object(forKey: ownersKey)
+        let previousPendingAvatars = defaults.object(forKey: avatarPendingKey)
+        defer {
+            defaults.set(previousOwners, forKey: ownersKey)
+            defaults.set(previousPendingAvatars, forKey: avatarPendingKey)
+        }
+
+        let publicKey = String(repeating: "b", count: 52)
+        let existingTags = ["friend", "work"]
+        let paykitCopy = PubkyProfileData(name: "Alice", bio: "", image: nil, links: [], tags: existingTags)
+        let profile = Paykit.PubkyProfile(name: "Alice", bio: nil, image: nil, links: [], status: nil)
+        let snapshot = Paykit.PubkyProfileSnapshot(publicKey: publicKey, profile: profile, revision: "original", fetchedAt: "")
+        let paykit = try RestoreProfileCopyStub(record: .init(
+            publicKey: publicKey,
+            profile: paykitCopy.toPaykitProfile(),
+            path: "/pub/paykit/profile.json",
+            revision: "copy",
+            updatedAt: ""
+        ))
+        let store = PubkyAppProfileStore(profileIO: .init(
+            currentPublicKey: { publicKey },
+            fetchPaykitProfile: { _ in try await paykit.fetch() },
+            fetchPubkyProfile: { _ in snapshot },
+            publishPubkyProfile: { _, _, _ in snapshot },
+            publishPaykitProfile: { profile, _ in await paykit.publish(profile) }
+        ))
+
+        let original = try await store.load(publicKey: publicKey)
+        XCTAssertTrue(original.tagsUnread)
+        XCTAssertEqual(original.tags, [])
+        let revision = try XCTUnwrap(original.revision)
+
+        let refreshed = try await store.load(publicKey: publicKey)
+        XCTAssertFalse(refreshed.tagsUnread)
+        XCTAssertEqual(refreshed.tags, existingTags)
+        let writesBeforeSave = await paykit.publishedTags.count
+
+        var form = PubkyProfileData.from(profile: original)
+        form.baseRevision = revision
+        form.baseTagsUnread = original.tagsUnread
+        form.tags.append("vip")
+        try await store.save(form, expectedIdentity: publicKey)
+
+        let writesFromSave = await paykit.publishedTags.dropFirst(writesBeforeSave)
+        XCTAssertEqual(Array(writesFromSave), [existingTags + ["vip"]])
+    }
+
     private let base = PubkyProfile(
         publicKey: "pubkytest",
         name: "Alice",
@@ -120,6 +172,28 @@ final class PubkyAppProfileStoreTests: XCTestCase {
 
         XCTAssertEqual(fitted.links.map(\.url), ["https://example.com", "https://example.com", "http://example.com/path"])
         XCTAssertTrue(links.filter(\.url.isWebLink).allSatisfy { link in fitted.links.contains { $0.label == link.label } })
+    }
+}
+
+private actor RestoreProfileCopyStub {
+    let record: Paykit.PaykitProfileRecord
+    private var isFirstRead = true
+    private(set) var publishedTags: [[String]] = []
+
+    init(record: Paykit.PaykitProfileRecord) {
+        self.record = record
+    }
+
+    func fetch() throws -> Paykit.PaykitProfileRecord {
+        if isFirstRead {
+            isFirstRead = false
+            throw URLError(.notConnectedToInternet)
+        }
+        return record
+    }
+
+    func publish(_ profile: Paykit.PaykitProfile) {
+        publishedTags.append(PubkyProfileData.from(paykitProfile: profile).tags)
     }
 }
 
