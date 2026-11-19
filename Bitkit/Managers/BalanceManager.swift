@@ -40,7 +40,7 @@ class BalanceManager {
         // with the balances.
         var outputs: [SpendableUtxo] = []
         let hasSweepTxid = balanceDetails.pendingBalancesFromChannelClosures.contains { Self.sweepTxid(of: $0) != nil }
-            || activeTransfers.contains { $0.sweepTxids?.isEmpty == false }
+            || activeTransfers.contains { $0.sweepShares?.isEmpty == false }
         if hasSweepTxid, let snapshot = await lightningService.balancesAndOutputs() {
             balanceDetails = snapshot.balances
             outputs = snapshot.outputs
@@ -190,10 +190,15 @@ class BalanceManager {
             let heldSweeps = Self.heldSweeps(
                 channelId: channelId,
                 pendingSweeps: pendingSweeps,
-                earlierTxids: Set(transfer.sweepTxids ?? []),
+                earlierTxids: Set((transfer.sweepShares ?? [:]).keys),
                 outputs: outputs
             )
-            heldTransfers.append(HeldTransfer(channelId: channelId, amountSats: transfer.amountSats, heldSweeps: heldSweeps))
+            heldTransfers.append(HeldTransfer(
+                channelId: channelId,
+                amountSats: transfer.amountSats,
+                heldSweeps: heldSweeps,
+                savedShares: transfer.sweepShares ?? [:]
+            ))
         }
 
         let onchainToSubtract = Self.heldSweepsDeduction(transfers: heldTransfers, pendingSweeps: pendingSweeps)
@@ -204,46 +209,29 @@ class BalanceManager {
         let channelId: String
         let amountSats: UInt64
         let heldSweeps: [(txid: String, sats: UInt64)]
+        var savedShares: [String: SweepShare] = [:]
     }
 
-    /// What the in-transfer closes' held sweeps take out of Savings, never more than those transfers add to In Transfer.
-    /// A sweep LDK still reports takes each channel's share once, up to that transfer's amount. A sweep LDK no longer
-    /// reports has no known shares: it comes out once, up to what the transfers recording it have left.
+    /// What the in-transfer closes' held sweeps take out of Savings: each channel's share of each sweep once, never more
+    /// than its transfer adds to In Transfer.
     static func heldSweepsDeduction(transfers: [HeldTransfer], pendingSweeps: [PendingSweepBalance]) -> UInt64 {
-        var deduction: UInt64 = 0
-        var remainingSats = transfers.map(\.amountSats)
         var countedShares = Set<String>()
-        var unknownShareSweeps: [String: (sats: UInt64, holders: [Int])] = [:]
 
-        for (index, transfer) in transfers.enumerated() {
-            var sharesSats: UInt64 = 0
-            for sweep in transfer.heldSweeps {
-                if let share = channelShareSats(channelId: transfer.channelId, sweep: sweep, pendingSweeps: pendingSweeps) {
-                    // Two transfers can track one channel, such as a local close and the peer's force close.
-                    if countedShares.insert("\(transfer.channelId):\(sweep.txid)").inserted {
-                        sharesSats += share
-                    }
-                } else {
-                    unknownShareSweeps[sweep.txid, default: (sweep.sats, [])].holders.append(index)
-                }
+        return transfers.reduce(0) { deduction, transfer in
+            let sharesSats = transfer.heldSweeps.reduce(UInt64(0)) { sum, sweep in
+                // Two transfers can track one channel, such as a local close and the peer's force close.
+                guard countedShares.insert("\(transfer.channelId):\(sweep.txid)").inserted,
+                      let share = channelShareSats(
+                          channelId: transfer.channelId,
+                          sweep: sweep,
+                          pendingSweeps: pendingSweeps,
+                          savedShares: transfer.savedShares
+                      )
+                else { return sum }
+                return sum + share
             }
-            let taken = min(sharesSats, transfer.amountSats)
-            deduction += taken
-            remainingSats[index] -= taken
+            return deduction + min(sharesSats, transfer.amountSats)
         }
-
-        for txid in unknownShareSweeps.keys.sorted() {
-            guard let sweep = unknownShareSweeps[txid] else { continue }
-            var toTake = min(sweep.sats, sweep.holders.reduce(0) { $0 + remainingSats[$1] })
-            deduction += toTake
-            for holder in sweep.holders where toTake > 0 {
-                let taken = min(toTake, remainingSats[holder])
-                remainingSats[holder] -= taken
-                toTake -= taken
-            }
-        }
-
-        return deduction
     }
 
     /// The channel's sweep transactions, current or earlier, whose outputs the on-chain wallet holds, confirmed or in the
@@ -254,7 +242,7 @@ class BalanceManager {
         earlierTxids: Set<String> = [],
         outputs: [SpendableUtxo]
     ) -> [(txid: String, sats: UInt64)] {
-        let txids = sweepTxids(channelId: channelId, pendingSweeps: pendingSweeps).union(earlierTxids)
+        let txids = Set(sweepShares(channelId: channelId, pendingSweeps: pendingSweeps).keys).union(earlierTxids)
 
         return txids.sorted().compactMap { txid in
             let held = outputs.filter { $0.outpoint.txid.lowercased() == txid }
@@ -264,25 +252,34 @@ class BalanceManager {
     }
 
     /// The part of a held sweep's output that pays this channel, by what LDK reports each channel sweeps in it, so a sweep
-    /// shared with a channel whose activity already synced takes only this channel's part out of Savings. Nil when LDK no
-    /// longer reports the sweep.
+    /// shared with a channel whose activity already synced takes only this channel's part out of Savings. Once LDK no
+    /// longer reports the sweep, the part saved on the transfer counts; nil when neither has it.
     static func channelShareSats(
         channelId: String,
         sweep: (txid: String, sats: UInt64),
-        pendingSweeps: [PendingSweepBalance]
+        pendingSweeps: [PendingSweepBalance],
+        savedShares: [String: SweepShare] = [:]
     ) -> UInt64? {
-        let inSweep = pendingSweeps.filter { sweepTxid(of: $0)?.lowercased() == sweep.txid }
-        let totalSats = inSweep.reduce(0) { $0 + sweepAmountSats(of: $1) }
-        guard totalSats > 0 else { return nil }
-        let channelSats = inSweep.filter { sweepChannelId(of: $0) == channelId }.reduce(0) { $0 + sweepAmountSats(of: $1) }
-        return UInt64((Double(sweep.sats) * Double(channelSats) / Double(totalSats)).rounded())
+        guard let share = sweepShares(channelId: channelId, pendingSweeps: pendingSweeps)[sweep.txid] ?? savedShares[sweep.txid],
+              share.totalSats > 0
+        else { return nil }
+        return UInt64((Double(sweep.sats) * Double(share.channelSats) / Double(share.totalSats)).rounded())
     }
 
-    static func sweepTxids(channelId: String, pendingSweeps: [PendingSweepBalance]) -> Set<String> {
-        Set(pendingSweeps.compactMap { sweep -> String? in
-            guard sweepChannelId(of: sweep) == channelId else { return nil }
-            return sweepTxid(of: sweep)?.lowercased()
-        })
+    /// The channel's sweeps LDK reports, by lowercased txid, with what the channel and all channels sweep in each.
+    static func sweepShares(channelId: String, pendingSweeps: [PendingSweepBalance]) -> [String: SweepShare] {
+        var channelSats: [String: UInt64] = [:]
+        var totalSats: [String: UInt64] = [:]
+        for sweep in pendingSweeps {
+            guard let txid = sweepTxid(of: sweep)?.lowercased() else { continue }
+            totalSats[txid, default: 0] += sweepAmountSats(of: sweep)
+            if sweepChannelId(of: sweep) == channelId {
+                channelSats[txid, default: 0] += sweepAmountSats(of: sweep)
+            }
+        }
+        return channelSats.reduce(into: [:]) { shares, entry in
+            shares[entry.key] = SweepShare(channelSats: entry.value, totalSats: totalSats[entry.key] ?? entry.value)
+        }
     }
 
     private static func sweepChannelId(of sweep: PendingSweepBalance) -> ChannelId? {

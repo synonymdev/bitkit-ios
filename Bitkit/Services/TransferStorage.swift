@@ -103,7 +103,7 @@ class TransferStorage {
                 claimableAtHeight: transfer.claimableAtHeight,
                 txTotalSats: transfer.txTotalSats,
                 preTransferOnchainSats: transfer.preTransferOnchainSats,
-                sweepTxids: transfer.sweepTxids
+                sweepShares: transfer.sweepShares
             )
             try save(transfers)
             Logger.info("Marked transfer as settled: id=\(id)", context: "TransferStorage")
@@ -131,22 +131,22 @@ class TransferStorage {
             claimableAtHeight: claimableAtHeight,
             txTotalSats: transfer.txTotalSats,
             preTransferOnchainSats: transfer.preTransferOnchainSats,
-            sweepTxids: transfer.sweepTxids
+            sweepShares: transfer.sweepShares
         )
         try save(transfers)
         transfersChangedSubject.send()
     }
 
-    /// Adds sweep txids LDK reported for a close transfer's channel, keeping the ones recorded before.
-    func addSweepTxids(id: String, txids: Set<String>) throws {
+    /// Adds the sweeps LDK reported for a close transfer's channel, keeping the ones recorded before.
+    func addSweepShares(id: String, shares: [String: SweepShare]) throws {
         lock.lock()
         defer { lock.unlock() }
         var transfers = try getAll()
         guard let index = transfers.firstIndex(where: { $0.id == id }) else { return }
         let transfer = transfers[index]
-        let recorded = Set(transfer.sweepTxids ?? [])
-        let added = Set(txids.map { $0.lowercased() })
-        guard !added.isSubset(of: recorded) else { return }
+        let recorded = transfer.sweepShares ?? [:]
+        let merged = recorded.merging(shares.map { ($0.key.lowercased(), $0.value) }) { _, latest in latest }
+        guard merged != recorded else { return }
         transfers[index] = Transfer(
             id: transfer.id,
             type: transfer.type,
@@ -160,7 +160,7 @@ class TransferStorage {
             claimableAtHeight: transfer.claimableAtHeight,
             txTotalSats: transfer.txTotalSats,
             preTransferOnchainSats: transfer.preTransferOnchainSats,
-            sweepTxids: recorded.union(added).sorted()
+            sweepShares: merged
         )
         try save(transfers)
         transfersChangedSubject.send()

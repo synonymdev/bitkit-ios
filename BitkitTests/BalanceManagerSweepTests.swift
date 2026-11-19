@@ -102,18 +102,34 @@ final class BalanceManagerSweepTests: XCTestCase {
         BalanceManager.heldSweepsDeduction(transfers: transfers, pendingSweeps: sweeps)
     }
 
-    func testHeldSweepTakesAtMostTheTransferAmountOutOfSavings() {
-        // A peer force close records only its first claim; an HTLC claim can pay the wallet more than that.
-        let transfer = BalanceManager.HeldTransfer(channelId: channelId, amountSats: 1000, heldSweeps: [("sweep-txid", 4000)])
-
-        XCTAssertEqual(deduction([transfer], [broadcastSweep(channel: channelId, txid: "sweep-txid")]), 1000)
+    private func transfer(
+        _ channel: String,
+        _ amountSats: UInt64,
+        _ heldSweeps: [(txid: String, sats: UInt64)],
+        saved: [String: Bitkit.SweepShare] = [:]
+    ) -> BalanceManager.HeldTransfer {
+        BalanceManager.HeldTransfer(channelId: channel, amountSats: amountSats, heldSweeps: heldSweeps, savedShares: saved)
     }
 
-    func testEarlierBatchedSweepTakesAtMostTheTransferAmountOutOfSavings() {
-        // LDK reports only the replacement, so the earlier batched sweep's shares are unknown.
-        let transfer = BalanceManager.HeldTransfer(channelId: channelId, amountSats: 540, heldSweeps: [("earlier-txid", 810)])
+    func testHeldSweepTakesAtMostTheTransferAmountOutOfSavings() {
+        // A peer force close records only its first claim; an HTLC claim can pay the wallet more than that.
+        let held = transfer(channelId, 1000, [("sweep-txid", 4000)])
 
-        XCTAssertEqual(deduction([transfer], [broadcastSweep(channel: channelId, txid: "regenerated-txid")]), 540)
+        XCTAssertEqual(deduction([held], [broadcastSweep(channel: channelId, txid: "sweep-txid")]), 1000)
+    }
+
+    func testEarlierBatchedSweepTakesTheShareSavedWithIt() {
+        // LDK reports only the replacement; the batch paid 10,000 of 100,000 sats for this channel, the rest for a
+        // channel whose activity already synced.
+        let sweeps = [broadcastSweep(channel: channelId, txid: "regenerated-txid")]
+        let held = transfer(
+            channelId,
+            60000,
+            [("earlier-txid", 100_000)],
+            saved: ["earlier-txid": .init(channelSats: 10000, totalSats: 100_000)]
+        )
+
+        XCTAssertEqual(deduction([held], sweeps), 10000)
     }
 
     func testEarlierBatchedSweepOfTwoChannelsInTransferComesOutOnce() {
@@ -121,34 +137,70 @@ final class BalanceManagerSweepTests: XCTestCase {
             broadcastSweep(channel: channelId, txid: "regenerated-txid"),
             broadcastSweep(channel: "other-channel", txid: "regenerated-txid"),
         ]
-        let first = BalanceManager.HeldTransfer(channelId: channelId, amountSats: 540, heldSweeps: [("earlier-txid", 810)])
-        let second = BalanceManager.HeldTransfer(channelId: "other-channel", amountSats: 270, heldSweeps: [("earlier-txid", 810)])
-        let larger = BalanceManager.HeldTransfer(channelId: "other-channel", amountSats: 1000, heldSweeps: [("earlier-txid", 810)])
+        let first = transfer(channelId, 540, [("earlier-txid", 810)], saved: ["earlier-txid": .init(channelSats: 600, totalSats: 900)])
+        let second = transfer(
+            "other-channel",
+            270,
+            [("earlier-txid", 810)],
+            saved: ["earlier-txid": .init(channelSats: 300, totalSats: 900)]
+        )
 
         XCTAssertEqual(deduction([first, second], sweeps), 810)
-        XCTAssertEqual(deduction([first, larger], sweeps), 810)
     }
 
-    func testTransferSavedBeforeSweepTxidsDecodes() throws {
+    func testBatchedAndSeparateSweepBothHeldComeOutWhateverTheOrder() {
+        // A batch paid 10,000 sats for A and 50,000 for B; a separate sweep paid 50,000 for A alone.
+        let shares: [String: Bitkit.SweepShare] = [
+            "a-batch": .init(channelSats: 10000, totalSats: 60000),
+            "a-separate": .init(channelSats: 50000, totalSats: 50000),
+        ]
+        let channelA = transfer("a", 60000, [("a-batch", 60000), ("a-separate", 50000)], saved: shares)
+        let channelB = transfer("b", 60000, [("a-batch", 60000)], saved: ["a-batch": .init(channelSats: 50000, totalSats: 60000)])
+
+        XCTAssertEqual(deduction([channelA, channelB], []), 110_000)
+        XCTAssertEqual(deduction([channelB, channelA], []), 110_000)
+    }
+
+    func testSweepWithNoKnownShareComesOutOfNothing() {
+        XCTAssertEqual(deduction([transfer(channelId, 1000, [("unknown-txid", 810)])], []), 0)
+    }
+
+    func testSharesAreTakenFromWhatLdkReportsForEachChannel() {
+        let sweeps = [
+            broadcastSweep(channel: channelId, txid: "BATCH-TXID"),
+            broadcastSweep(channel: "other-channel", txid: "batch-txid"),
+            .pendingBroadcast(channelId: channelId, amountSatoshis: 700),
+        ]
+
+        XCTAssertEqual(
+            BalanceManager.sweepShares(channelId: channelId, pendingSweeps: sweeps),
+            ["batch-txid": .init(channelSats: 500, totalSats: 1000)]
+        )
+    }
+
+    func testTransferSavedBeforeSweepSharesDecodes() throws {
         let json = #"[{"id":"old","type":"FORCE_CLOSE","amountSats":1000,"channelId":"c","isSettled":false,"createdAt":1}]"#
         let transfers = try JSONDecoder().decode([Bitkit.Transfer].self, from: Data(json.utf8))
 
-        XCTAssertNil(transfers.first?.sweepTxids)
+        XCTAssertNil(transfers.first?.sweepShares)
     }
 
-    func testAddingSweepTxidsKeepsTheStoredTransfer() throws {
+    func testAddingSweepSharesKeepsTheStoredTransfer() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "BalanceManagerSweepTests"))
         defaults.removePersistentDomain(forName: "BalanceManagerSweepTests")
         let storage = TransferStorage(defaults: defaults)
         try storage.insert(Transfer(id: "t", type: .forceClose, amountSats: 1000, channelId: channelId, createdAt: 1))
         try storage.markSettled(id: "t", settledAt: 2)
 
-        try storage.addSweepTxids(id: "t", txids: ["SWEEP-A"])
-        try storage.addSweepTxids(id: "t", txids: ["sweep-b"])
+        try storage.addSweepShares(id: "t", shares: ["SWEEP-A": SweepShare(channelSats: 500, totalSats: 500)])
+        try storage.addSweepShares(id: "t", shares: ["sweep-b": SweepShare(channelSats: 300, totalSats: 900)])
 
         let stored = try XCTUnwrap(storage.getById("t"))
         XCTAssertTrue(stored.isSettled)
-        XCTAssertEqual(stored.sweepTxids, ["sweep-a", "sweep-b"])
+        XCTAssertEqual(
+            stored.sweepShares,
+            ["sweep-a": SweepShare(channelSats: 500, totalSats: 500), "sweep-b": SweepShare(channelSats: 300, totalSats: 900)]
+        )
         defaults.removePersistentDomain(forName: "BalanceManagerSweepTests")
     }
 }

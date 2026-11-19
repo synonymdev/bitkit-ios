@@ -15,9 +15,10 @@ struct Transfer: Codable, Identifiable {
     let txTotalSats: UInt64?
     /// On-chain balance before the tx was sent. If current >= this, LDK has not yet reflected the tx.
     let preTransferOnchainSats: UInt64?
-    /// Every sweep txid LDK has reported for a closed channel, lowercased. LDK regenerates an unconfirmed sweep each
-    /// block, and the wallet can hold an earlier one's output until it syncs the replacement.
-    let sweepTxids: [String]?
+    /// Every sweep LDK has reported for a closed channel, by lowercased txid, with the channel's part of it. LDK
+    /// regenerates an unconfirmed sweep each block, and the wallet can hold an earlier one's output until it syncs the
+    /// replacement.
+    let sweepShares: [String: SweepShare]?
 
     init(
         id: String,
@@ -32,7 +33,7 @@ struct Transfer: Codable, Identifiable {
         claimableAtHeight: UInt32? = nil,
         txTotalSats: UInt64? = nil,
         preTransferOnchainSats: UInt64? = nil,
-        sweepTxids: [String]? = nil
+        sweepShares: [String: SweepShare]? = nil
     ) {
         self.id = id
         self.type = type
@@ -46,6 +47,12 @@ struct Transfer: Codable, Identifiable {
         self.claimableAtHeight = claimableAtHeight
         self.txTotalSats = txTotalSats
         self.preTransferOnchainSats = preTransferOnchainSats
-        self.sweepTxids = sweepTxids
+        self.sweepShares = sweepShares
     }
+}
+
+/// What a closed channel sweeps in one transaction and what all channels sweep in it, as LDK reported them.
+struct SweepShare: Codable, Equatable {
+    let channelSats: UInt64
+    let totalSats: UInt64
 }
