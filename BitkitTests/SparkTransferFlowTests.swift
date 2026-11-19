@@ -533,4 +533,12 @@ final class SparkTransferFlowTests: XCTestCase {
         XCTAssertTrue(SpendingConfirmFees.togglesDisplay(from: .bitcoin, hasRate: true))
         XCTAssertTrue(SpendingConfirmFees.togglesDisplay(from: .fiat, hasRate: false))
     }
+
+    func testFiatConversionRejectsUnusableRates() {
+        XCTAssertNil(CurrencyViewModel.sats(fiatAmount: 10, rate: 0))
+        XCTAssertNil(CurrencyViewModel.sats(fiatAmount: 10, rate: -1))
+        XCTAssertNil(CurrencyViewModel.sats(fiatAmount: -10, rate: 100_000))
+        XCTAssertNil(CurrencyViewModel.sats(fiatAmount: .greatestFiniteMagnitude, rate: 1))
+        XCTAssertEqual(CurrencyViewModel.sats(fiatAmount: 50, rate: 100_000), 50000)
+    }
 }

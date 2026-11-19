@@ -156,11 +156,22 @@ extension CurrencyViewModel {
             return nil
         }
 
-        // Convert fiat amount to sats
-        // First convert to BTC using the rate, then to sats
-        let btc = fiatAmount / Double(truncating: rate.rate as NSNumber)
-        let sats = (btc * 100_000_000).rounded()
+        return Self.sats(fiatAmount: fiatAmount, rate: rate.rate)
+    }
+
+    /// The sats `fiatAmount` buys at `rate`; nil for a rate that is not positive or a result out of range.
+    nonisolated static func sats(fiatAmount: Double, rate: Decimal) -> UInt64? {
+        let price = Double(truncating: rate as NSNumber)
+        guard price > 0 else { return nil }
+        let sats = (fiatAmount / price * 100_000_000).rounded()
+        guard sats.isFinite, sats >= 0, sats < Double(UInt64.max) else { return nil }
         return UInt64(sats)
+    }
+
+    /// Whether the selected currency has a usable rate, so amounts can show in it.
+    var hasUsableRate: Bool {
+        guard let rate = currencyService.getCurrentRate(for: selectedCurrency, from: rates) else { return false }
+        return rate.rate > 0
     }
 }
 

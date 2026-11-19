@@ -288,15 +288,15 @@ struct SpendingConfirmFees: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            guard Self.togglesDisplay(from: currency.primaryDisplay, hasRate: currency.convert(sats: 0) != nil) else { return }
+            guard Self.togglesDisplay(from: currency.primaryDisplay, hasRate: currency.hasUsableRate) else { return }
             withAnimation { currency.togglePrimaryDisplay() }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("SpendingConfirmFees")
     }
 
-    /// Without a rate for the local currency every amount would read zero in it, so the tap stays in bitcoin.
-    static func togglesDisplay(from display: PrimaryDisplay, hasRate: Bool) -> Bool {
+    /// Without a positive rate for the local currency every amount would read zero in it, so the tap stays in bitcoin.
+    nonisolated static func togglesDisplay(from display: PrimaryDisplay, hasRate: Bool) -> Bool {
         display == .fiat || hasRate
     }
 }
