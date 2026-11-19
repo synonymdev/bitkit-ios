@@ -49,7 +49,7 @@ env:
   GIT_LFS_SKIP_SMUDGE: "1"
 
 concurrency:
-  group: e2e-tests-${{ github.event.pull_request.number || inputs.pr || github.ref }}
+  group: e2e-tests-${{ github.event.pull_request.number || inputs.pr || github.ref }}${{ inputs.spark_only && '-spark' || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -59,6 +59,11 @@ jobs:
     outputs:
       code: ${{ (github.event_name == 'workflow_dispatch' && !inputs.pr) || steps.filter.outputs.code == 'true' }}
     steps:
+      - name: Check Spark dispatch inputs
+        if: inputs.spark_only && inputs.pr
+        run: |
+          echo "::error::spark_only runs against the dispatched branch. Leave the pr input empty."
+          exit 1
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.merge_commit || (inputs.pr && format('refs/pull/{0}/merge', inputs.pr)) || '' }}
@@ -447,7 +452,7 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: |
           ./scripts/local-backend prepare
-          ./scripts/local-backend spark-down --remove-orphans -v
+          (cd "$(./scripts/local-backend path)" && docker compose --profile spark down --remove-orphans -v)
           ./scripts/local-backend spark-up
           ./scripts/local-backend spark-env >> "$GITHUB_ENV"
 
@@ -469,7 +474,7 @@ jobs:
       - name: Stop Spark fixture
         if: always() && steps.spark.outcome != 'skipped'
         working-directory: bitkit-e2e-tests
-        run: ./scripts/local-backend spark-down --remove-orphans -v
+        run: cd "$(./scripts/local-backend path)" && docker compose --profile spark down --remove-orphans -v
 
       - uses: actions/upload-artifact@v7
         if: always()
