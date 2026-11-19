@@ -2081,16 +2081,24 @@ extension LightningService {
         cachedChannels
     }
 
-    /// The wallet's balances with the spendable outputs it held both before and after reading them. Both come from the
-    /// wallet's current view, which drops a transaction evicted from the mempool, unlike the payment store. An output a
-    /// sync adds or removes between the reads is left out, so no output counts that the balances may not include.
+    /// The wallet's balances with its spendable outputs, read until the outputs before and after the balances agree, so
+    /// the outputs match what the balances include. Both come from the wallet's current view, which drops a transaction
+    /// evicted from the mempool, unlike the payment store. After three tries the last outputs read are used.
     func balancesAndOutputs() async -> (balances: BalanceDetails, outputs: [SpendableUtxo])? {
         try? await ServiceQueue.background(.ldk) { [self] in
             guard let node else { return nil }
-            let before = try node.onchainPayment().listSpendableOutputs()
-            let balances = node.listBalances()
-            let after = try Set(node.onchainPayment().listSpendableOutputs().map { "\($0.outpoint.txid):\($0.outpoint.vout)" })
-            return (balances, before.filter { after.contains("\($0.outpoint.txid):\($0.outpoint.vout)") })
+            let outpoints: ([SpendableUtxo]) -> Set<String> = { Set($0.map { "\($0.outpoint.txid):\($0.outpoint.vout)" }) }
+            var outputs = try node.onchainPayment().listSpendableOutputs()
+            var balances = node.listBalances()
+            for _ in 0 ..< 3 {
+                let outputsAfter = try node.onchainPayment().listSpendableOutputs()
+                if outpoints(outputsAfter) == outpoints(outputs) {
+                    break
+                }
+                outputs = outputsAfter
+                balances = node.listBalances()
+            }
+            return (balances, outputs)
         }
     }
 

@@ -91,7 +91,8 @@ class TransferStorage {
                 settledAt: settledAt,
                 claimableAtHeight: transfer.claimableAtHeight,
                 txTotalSats: transfer.txTotalSats,
-                preTransferOnchainSats: transfer.preTransferOnchainSats
+                preTransferOnchainSats: transfer.preTransferOnchainSats,
+                sweepTxids: transfer.sweepTxids
             )
             try save(transfers)
             Logger.info("Marked transfer as settled: id=\(id)", context: "TransferStorage")
@@ -116,7 +117,35 @@ class TransferStorage {
             settledAt: transfer.settledAt,
             claimableAtHeight: claimableAtHeight,
             txTotalSats: transfer.txTotalSats,
-            preTransferOnchainSats: transfer.preTransferOnchainSats
+            preTransferOnchainSats: transfer.preTransferOnchainSats,
+            sweepTxids: transfer.sweepTxids
+        )
+        try save(transfers)
+        transfersChangedSubject.send()
+    }
+
+    /// Adds sweep txids LDK reported for a close transfer's channel, keeping the ones recorded before.
+    func addSweepTxids(id: String, txids: Set<String>) throws {
+        var transfers = try getAll()
+        guard let index = transfers.firstIndex(where: { $0.id == id }) else { return }
+        let transfer = transfers[index]
+        let recorded = Set(transfer.sweepTxids ?? [])
+        let added = Set(txids.map { $0.lowercased() })
+        guard !added.isSubset(of: recorded) else { return }
+        transfers[index] = Transfer(
+            id: transfer.id,
+            type: transfer.type,
+            amountSats: transfer.amountSats,
+            channelId: transfer.channelId,
+            fundingTxId: transfer.fundingTxId,
+            lspOrderId: transfer.lspOrderId,
+            isSettled: transfer.isSettled,
+            createdAt: transfer.createdAt,
+            settledAt: transfer.settledAt,
+            claimableAtHeight: transfer.claimableAtHeight,
+            txTotalSats: transfer.txTotalSats,
+            preTransferOnchainSats: transfer.preTransferOnchainSats,
+            sweepTxids: recorded.union(added).sorted()
         )
         try save(transfers)
         transfersChangedSubject.send()

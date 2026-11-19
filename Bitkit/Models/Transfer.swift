@@ -15,6 +15,9 @@ struct Transfer: Codable, Identifiable {
     let txTotalSats: UInt64?
     /// On-chain balance before the tx was sent. If current >= this, LDK has not yet reflected the tx.
     let preTransferOnchainSats: UInt64?
+    /// Every sweep txid LDK has reported for a closed channel, lowercased. LDK regenerates an unconfirmed sweep each
+    /// block, and the wallet can hold an earlier one's output until it syncs the replacement.
+    let sweepTxids: [String]?
 
     init(
         id: String,
@@ -28,7 +31,8 @@ struct Transfer: Codable, Identifiable {
         settledAt: UInt64? = nil,
         claimableAtHeight: UInt32? = nil,
         txTotalSats: UInt64? = nil,
-        preTransferOnchainSats: UInt64? = nil
+        preTransferOnchainSats: UInt64? = nil,
+        sweepTxids: [String]? = nil
     ) {
         self.id = id
         self.type = type
@@ -42,5 +46,6 @@ struct Transfer: Codable, Identifiable {
         self.claimableAtHeight = claimableAtHeight
         self.txTotalSats = txTotalSats
         self.preTransferOnchainSats = preTransferOnchainSats
+        self.sweepTxids = sweepTxids
     }
 }

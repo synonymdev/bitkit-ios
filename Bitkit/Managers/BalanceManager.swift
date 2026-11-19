@@ -14,10 +14,6 @@ class BalanceManager {
 
     private static let fallbackFeePercent: Double = 0.1
 
-    /// Every sweep txid seen per channel: LDK regenerates an unconfirmed sweep each block, and the wallet can still hold
-    /// the earlier one's output until it syncs the replacement.
-    private let sweepTxidsSeen = OSAllocatedUnfairLock(initialState: [String: Set<String>]())
-
     init(
         lightningService: LightningService = .shared,
         transferService: TransferService,
@@ -172,11 +168,9 @@ class BalanceManager {
             }
             guard let channelId = transfer.channelId else { continue }
 
-            let balanceFromLdk = balanceDetails.lightningBalances
-                .first { $0.channelIdString == channelId }?.amountSats
-
-            if let amount = balanceFromLdk {
-                lightningToSubtract += amount
+            let channelClaimsSats = Self.channelClaimsSats(channelId: channelId, lightningBalances: balanceDetails.lightningBalances)
+            if channelClaimsSats > 0 {
+                lightningToSubtract += channelClaimsSats
             } else {
                 Logger.debug(
                     "Close transfer \(transfer.id): channel \(channelId) not in lightningBalances, not subtracting from lightning"
@@ -187,30 +181,52 @@ class BalanceManager {
                 continue
             }
 
-            // Once the wallet holds the channel's sweep, Savings includes its output: show that output as in transfer
-            // until its activity syncs, and take it out of the on-chain total so it counts once.
-            let latestTxids = Self.sweepTxids(channelId: channelId, pendingSweeps: pendingSweeps)
-            let earlierTxids = sweepTxidsSeen.withLock { seen in
-                defer { seen[channelId, default: []].formUnion(latestTxids) }
-                return seen[channelId, default: []]
-            }
-            let heldSweeps = Self.heldSweeps(
+            let (onchainSats, pendingSats) = Self.closeTransferInTransfer(
                 channelId: channelId,
+                estimateSats: transfer.amountSats,
+                channelClaimsSats: channelClaimsSats,
                 pendingSweeps: pendingSweeps,
-                earlierTxids: earlierTxids,
-                outputs: outputs
+                earlierTxids: Set(transfer.sweepTxids ?? []),
+                outputs: outputs,
+                countedSweepTxids: &countedSweepTxids
             )
-            if heldSweeps.isEmpty {
-                pendingAmount += transfer.amountSats
-            } else {
-                for sweep in heldSweeps where countedSweepTxids.insert(sweep.txid.lowercased()).inserted {
-                    onchainToSubtract += sweep.sats
-                    pendingAmount += sweep.sats
-                }
-            }
+            onchainToSubtract += onchainSats
+            pendingAmount += pendingSats
         }
 
         return (lightningToSubtract, onchainToSubtract, pendingAmount)
+    }
+
+    /// What the channel's claims still in Lightning add up to.
+    static func channelClaimsSats(channelId: String, lightningBalances: [LightningBalance]) -> UInt64 {
+        lightningBalances.filter { $0.channelIdString == channelId }.reduce(0) { $0 + $1.amountSats }
+    }
+
+    /// What a close transfer shows in transfer, and what of it Savings already includes. Until the wallet holds one of
+    /// the channel's sweeps, that is the transfer's estimate. Once it holds one, Savings includes its output: show that
+    /// output in transfer instead, counted once, together with the channel's claims still in Lightning and its sweeps
+    /// the wallet does not hold yet.
+    static func closeTransferInTransfer(
+        channelId: String,
+        estimateSats: UInt64,
+        channelClaimsSats: UInt64,
+        pendingSweeps: [PendingSweepBalance],
+        earlierTxids: Set<String>,
+        outputs: [SpendableUtxo],
+        countedSweepTxids: inout Set<String>
+    ) -> (onchainToSubtract: UInt64, pendingAmount: UInt64) {
+        let held = heldSweeps(channelId: channelId, pendingSweeps: pendingSweeps, earlierTxids: earlierTxids, outputs: outputs)
+        guard !held.isEmpty else { return (0, estimateSats) }
+
+        var onchainToSubtract: UInt64 = 0
+        for sweep in held where countedSweepTxids.insert(sweep.txid).inserted {
+            onchainToSubtract += sweep.sats
+        }
+        let heldTxids = Set(held.map(\.txid))
+        let sweepsNotHeldSats = pendingSweeps
+            .filter { sweepChannelId(of: $0) == channelId && !heldTxids.contains(sweepTxid(of: $0)?.lowercased() ?? "") }
+            .reduce(0) { $0 + sweepAmountSats(of: $1) }
+        return (onchainToSubtract, onchainToSubtract + channelClaimsSats + sweepsNotHeldSats)
     }
 
     /// The channel's sweep transactions, current or earlier, whose outputs the on-chain wallet holds, confirmed or in the
@@ -242,6 +258,14 @@ class BalanceManager {
         case let .pendingBroadcast(channelId, _): channelId
         case let .broadcastAwaitingConfirmation(channelId, _, _, _): channelId
         case let .awaitingThresholdConfirmations(channelId, _, _, _, _): channelId
+        }
+    }
+
+    private static func sweepAmountSats(of sweep: PendingSweepBalance) -> UInt64 {
+        switch sweep {
+        case let .pendingBroadcast(_, amountSatoshis): amountSatoshis
+        case let .broadcastAwaitingConfirmation(_, _, _, amountSatoshis): amountSatoshis
+        case let .awaitingThresholdConfirmations(_, _, _, _, amountSatoshis): amountSatoshis
         }
     }
 
