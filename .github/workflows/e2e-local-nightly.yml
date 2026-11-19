@@ -1,0 +1,87 @@
+name: Local E2E Nightly (iOS)
+
+on:
+  schedule:
+    - cron: "35 5 * * *"
+  workflow_dispatch:
+    inputs:
+      e2e_branch:
+        description: "Ref in synonymdev/bitkit-e2e-tests"
+        type: string
+        default: main
+
+permissions:
+  contents: read
+
+env:
+  TERM: xterm-256color
+  FORCE_COLOR: 1
+  GIT_LFS_SKIP_SMUDGE: "1"
+
+concurrency:
+  group: bitkit-local-e2e-nightly-ios
+  cancel-in-progress: false
+
+jobs:
+  e2e-spark:
+    runs-on: [self-hosted, macOS]
+    timeout-minutes: 120
+    env:
+      COMPOSE_PROJECT_NAME: bitkit-spark-e2e
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: bitkit-ios
+          persist-credentials: false
+
+      - uses: actions/checkout@v7
+        with:
+          repository: synonymdev/bitkit-e2e-tests
+          ref: ${{ inputs.e2e_branch || 'main' }}
+          path: bitkit-e2e-tests
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: bitkit-e2e-tests/package-lock.json
+
+      - name: Install Appium dependencies
+        working-directory: bitkit-e2e-tests
+        run: npm ci
+
+      - name: Start pinned Spark fixture
+        id: spark
+        working-directory: bitkit-e2e-tests
+        run: |
+          ./scripts/local-backend prepare
+          (cd "$(./scripts/local-backend path)" && docker compose --profile spark down --remove-orphans -v)
+          ./scripts/local-backend spark-up
+          ./scripts/local-backend spark-env >> "$GITHUB_ENV"
+
+      - name: Build iOS Spark app
+        working-directory: bitkit-e2e-tests
+        run: ./scripts/build-ios-sim.sh
+
+      - name: Run @spark_1
+        working-directory: bitkit-e2e-tests
+        run: ./scripts/run-spark-e2e.sh ios
+
+      - name: Collect Spark logs
+        if: failure()
+        working-directory: bitkit-e2e-tests
+        run: |
+          mkdir -p artifacts
+          ./scripts/local-backend spark-logs --tail 200 > artifacts/spark-docker.log 2>&1 || true
+
+      - name: Stop Spark fixture
+        if: always() && steps.spark.outcome != 'skipped'
+        working-directory: bitkit-e2e-tests
+        run: cd "$(./scripts/local-backend path)" && docker compose --profile spark down --remove-orphans -v
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: spark-ios-${{ github.run_number }}
+          path: bitkit-e2e-tests/artifacts/

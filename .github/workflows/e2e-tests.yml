@@ -5,10 +5,6 @@ run-name: >-
 on:
   workflow_dispatch:
     inputs:
-      spark_only:
-        description: "Run only @spark_1 on pinned local Spark"
-        type: boolean
-        default: false
       e2e_branch:
         description: "Branch of synonymdev/bitkit-e2e-tests to use (main | default-feature-branch | custom branch name)"
         required: false
@@ -49,7 +45,7 @@ env:
   GIT_LFS_SKIP_SMUDGE: "1"
 
 concurrency:
-  group: e2e-tests-${{ github.event.pull_request.number || inputs.pr || github.ref }}${{ inputs.spark_only && '-spark' || '' }}
+  group: e2e-tests-${{ github.event.pull_request.number || inputs.pr || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -59,11 +55,6 @@ jobs:
     outputs:
       code: ${{ (github.event_name == 'workflow_dispatch' && !inputs.pr) || steps.filter.outputs.code == 'true' }}
     steps:
-      - name: Check Spark dispatch inputs
-        if: inputs.spark_only && inputs.pr
-        run: |
-          echo "::error::spark_only runs against the dispatched branch. Leave the pr input empty."
-          exit 1
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.merge_commit || (inputs.pr && format('refs/pull/{0}/merge', inputs.pr)) || '' }}
@@ -100,7 +91,7 @@ jobs:
       pull-requests: read
       checks: write
       actions: write
-    if: "!inputs.spark_only && github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'"
+    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: macos-26
 
     steps:
@@ -410,80 +401,8 @@ jobs:
             (cd docker && docker compose --profile trezor down --remove-orphans -v) || true
           fi
 
-  e2e-spark:
-    if: inputs.spark_only && !inputs.pr
-    needs: e2e-branch
-    runs-on: [self-hosted, macOS]
-    timeout-minutes: 120
-    env:
-      COMPOSE_PROJECT_NAME: bitkit-spark-e2e
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          path: bitkit-ios
-          persist-credentials: false
-
-      - name: Resolve E2E tests ref
-        id: e2e-ref
-        uses: synonymdev/bitkit-e2e-tests/.github/actions/resolve-e2e-ref@main
-        with:
-          selected: ${{ needs.e2e-branch.outputs.branch }}
-          e2e_branch_input: ${{ inputs.e2e_branch }}
-
-      - uses: actions/checkout@v7
-        with:
-          repository: synonymdev/bitkit-e2e-tests
-          ref: ${{ steps.e2e-ref.outputs.ref }}
-          path: bitkit-e2e-tests
-          persist-credentials: false
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: bitkit-e2e-tests/package-lock.json
-
-      - name: Install Appium dependencies
-        working-directory: bitkit-e2e-tests
-        run: npm ci
-
-      - name: Start pinned Spark fixture
-        id: spark
-        working-directory: bitkit-e2e-tests
-        run: |
-          ./scripts/local-backend prepare
-          (cd "$(./scripts/local-backend path)" && docker compose --profile spark down --remove-orphans -v)
-          ./scripts/local-backend spark-up
-          ./scripts/local-backend spark-env >> "$GITHUB_ENV"
-
-      - name: Build iOS Spark app
-        working-directory: bitkit-e2e-tests
-        run: ./scripts/build-ios-sim.sh
-
-      - name: Run @spark_1
-        working-directory: bitkit-e2e-tests
-        run: ./scripts/run-spark-e2e.sh ios
-
-      - name: Collect Spark logs
-        if: failure()
-        working-directory: bitkit-e2e-tests
-        run: |
-          mkdir -p artifacts
-          ./scripts/local-backend spark-logs --tail 200 > artifacts/spark-docker.log 2>&1 || true
-
-      - name: Stop Spark fixture
-        if: always() && steps.spark.outcome != 'skipped'
-        working-directory: bitkit-e2e-tests
-        run: cd "$(./scripts/local-backend path)" && docker compose --profile spark down --remove-orphans -v
-
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: spark-ios-${{ github.run_number }}
-          path: bitkit-e2e-tests/artifacts/
-
   e2e-status:
-    if: always() && !inputs.spark_only && github.event.pull_request.draft == false
+    if: always() && github.event.pull_request.draft == false
     name: e2e-status
     runs-on: ubuntu-24.04
     needs: [detect-changes, e2e-tests-local]
