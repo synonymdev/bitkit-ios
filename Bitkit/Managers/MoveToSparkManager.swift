@@ -79,8 +79,19 @@ enum MoveToSparkMath {
             guard let wasSats = beforeSats[$0.channelId] else { return false }
             // The outbound capacity too: an HTLC still counting against the peer's in-flight limit lowers only the send limit.
             return wasSats >= minMoveSats && $0.nextOutboundHtlcLimitMsat / 1000 < minMoveSats
-                && $0.outboundCapacityMsat / 1000 < minMoveSats
+                && sendableAfterCommitmentFeeSats($0) < minMoveSats
         }
+    }
+
+    /// The outbound capacity less the commitment fee the funder keeps back, which LDK's capacity does not count: the
+    /// higher of an anchor commitment (two 330-sat anchors) and a legacy one at twice the feerate, each with one HTLC.
+    static func sendableAfterCommitmentFeeSats(_ channel: ChannelDetails) -> UInt64 {
+        let capacitySats = channel.outboundCapacityMsat / 1000
+        guard channel.isOutbound else { return capacitySats }
+        let feerate = UInt64(channel.feerateSatPer1000Weight)
+        let anchorFeeSats = feerate * (1124 + 172) / 1000 + 660
+        let legacyFeeSats = 2 * feerate * (724 + 172) / 1000
+        return capacitySats.saturatingSub(max(anchorFeeSats, legacyFeeSats))
     }
 
     /// The payments read before and after a read of the channels, or nil when either could not be read or an outbound

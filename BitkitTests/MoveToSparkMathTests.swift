@@ -66,6 +66,19 @@ final class MoveToSparkMathTests: XCTestCase {
         )
     }
 
+    func testAMoveClosesAFundedChannelWhoseCapacityIsTheCommitmentFee() {
+        // 253 sat/kW: an anchor commitment keeps back 327 + 660 sats, so 1 900 sats of capacity send under 1 000.
+        var funded = channel("a", sendableSats: 0, capacitySats: 1900)
+        funded.isOutbound = true
+        funded.feerateSatPer1000Weight = 253
+        XCTAssertEqual(MoveToSparkMath.sendableAfterCommitmentFeeSats(funded), 913)
+        let before = [channel("a", sendableSats: 50000)]
+        XCTAssertEqual(MoveToSparkMath.emptiedChannels(before: before, after: [funded], payments: []).count, 1)
+        // The peer pays the commitment fee of a channel it funded.
+        funded.isOutbound = false
+        XCTAssertTrue(MoveToSparkMath.emptiedChannels(before: before, after: [funded], payments: []).isEmpty)
+    }
+
     func testAMoveLeavesChannelsItDidNotKnowOrThatAreNotOpen() {
         let before = [channel("a", sendableSats: 50000)]
         let after = [channel("a", sendableSats: 0, isChannelReady: false), channel("new", sendableSats: 0)]
