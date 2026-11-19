@@ -130,11 +130,16 @@ enum MoveToSparkMath {
         swapSpendableSats(maxSendSats: maxSendSats, channels: LightningService.shared.channels, spark: .live)
     }
 
-    /// Whether Spark can pay `amountSats` and its `feeSats` for the payment once `quote` has moved to it.
+    /// Whether Spark can pay `amountSats` and its `feeSats` for the payment once `quote` has moved to it, by the rule the
+    /// wait after the move uses too, which keeps Spark's service fee.
     static func coversPayment(quote: MoveToSparkQuote, spark: SparkSendState, amountSats: UInt64, feeSats: UInt64) -> Bool {
         let (have, haveOverflow) = spark.balanceSats.addingReportingOverflow(quote.amountSats)
         let (need, needOverflow) = amountSats.addingReportingOverflow(feeSats)
-        return spark.isUsable && !needOverflow && (haveOverflow || have >= need)
+        guard spark.isUsable, !needOverflow else { return false }
+        guard !haveOverflow else { return true }
+        var moved = spark
+        moved.balanceSats = have
+        return have >= need && moved.canSend(amountSats)
     }
 
     /// The update fee guard: nothing is charged that the user did not see, so a fresh quote with no fee shown before it,

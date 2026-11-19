@@ -74,8 +74,15 @@ final class MoveToSparkUpdateTests: XCTestCase {
 
     func testTheUpdateMustCoverThePaymentAndSparksFee() {
         let quote = MoveToSparkQuote(invoice: "lnbcrt1move", amountSats: 20000, feeSats: 32)
-        XCTAssertTrue(MoveToSparkMath.coversPayment(quote: quote, spark: spark, amountSats: 49998, feeSats: 2))
-        XCTAssertFalse(MoveToSparkMath.coversPayment(quote: quote, spark: spark, amountSats: 49999, feeSats: 2))
+        // Spark keeps its service fee from the 50,000 it then holds, as the wait after the move does.
+        let sendable = ChannelFreeRailFees.sendableSats(balanceSats: 50000)
+        XCTAssertEqual(sendable, 49875)
+        XCTAssertTrue(MoveToSparkMath.coversPayment(quote: quote, spark: spark, amountSats: sendable, feeSats: 2))
+        XCTAssertFalse(
+            MoveToSparkMath.coversPayment(quote: quote, spark: spark, amountSats: sendable + 1, feeSats: 2),
+            "An update went ahead for a payment the wait after it never accepts"
+        )
+        XCTAssertFalse(MoveToSparkMath.coversPayment(quote: quote, spark: spark, amountSats: 49000, feeSats: 1001))
         let notReady = SparkSendState(isReady: false, isExiting: false, balanceSats: 30000)
         XCTAssertFalse(MoveToSparkMath.coversPayment(quote: quote, spark: notReady, amountSats: 1000, feeSats: 2))
     }
@@ -92,8 +99,8 @@ final class MoveToSparkUpdateTests: XCTestCase {
         let manager = MoveToSparkManager(services: services)
         let quote = MoveToSparkQuote(invoice: "lnbcrt1move", amountSats: 20000, feeSats: 32)
 
-        await assertNoThrow { try await manager.checkCoverage(quote: quote, bolt11: "lnbcrt1pay", amountSats: 49998) }
-        await assertFallsShort { try await manager.checkCoverage(quote: quote, bolt11: "lnbcrt1pay", amountSats: 49999) }
+        await assertNoThrow { try await manager.checkCoverage(quote: quote, bolt11: "lnbcrt1pay", amountSats: 49875) }
+        await assertFallsShort { try await manager.checkCoverage(quote: quote, bolt11: "lnbcrt1pay", amountSats: 49876) }
 
         services.sparkFee = { throw SparkCannotPrice() }
         await assertFallsShort { try await manager.checkCoverage(quote: quote, bolt11: "lnbcrt1pay", amountSats: 1000) }
