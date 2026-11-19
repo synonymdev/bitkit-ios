@@ -30,6 +30,7 @@ jobs:
       e2e-sha: ${{ steps.e2e.outputs.sha }}
       spark-config: ${{ steps.settings.outputs.SPARK_LOCAL_CONFIG_B64 }}
       spark-chain-url: ${{ steps.settings.outputs.SPARK_LOCAL_CHAIN_URL }}
+      image-fingerprint: ${{ steps.settings.outputs.image-fingerprint }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -57,6 +58,8 @@ jobs:
         run: |
           docker image load --quiet --input "$RUNNER_TEMP/spark-images.tar"
           ./scripts/local-backend spark-init-env >> "$GITHUB_OUTPUT"
+          fingerprint="$(./scripts/local-backend spark-image-fingerprint)"
+          echo "image-fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
 
       - name: Compress the fixture archive for transfer
         run: gzip -1 -c "$RUNNER_TEMP/spark-images.tar" > "$RUNNER_TEMP/spark-images.tar.gz"
@@ -141,10 +144,35 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: npm ci
 
+      - name: Check the local Spark images
+        id: local-images
+        working-directory: bitkit-e2e-tests
+        env:
+          SPARK_IMAGE_FINGERPRINT: ${{ needs.spark-images.outputs.image-fingerprint }}
+        run: |
+          if [[ "$RUNNER_ARCH" != ARM64 ]]; then
+            echo "::error::The Spark fixture archive requires an ARM64 Mac runner."
+            exit 1
+          fi
+          test -n "$SPARK_IMAGE_FINGERPRINT"
+          ./scripts/local-backend prepare
+          if actual="$(./scripts/local-backend spark-image-fingerprint 2>/dev/null)" &&
+            [[ "$actual" == "$SPARK_IMAGE_FINGERPRINT" ]]; then
+            echo 'Reusing the exact pinned Spark images on this runner.'
+            echo 'match=true' >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/download-artifact@v8
+        if: steps.local-images.outputs.match != 'true'
         with:
           name: spark-fixture-images
           path: ${{ runner.temp }}
+
+      - name: Load the pinned Spark images
+        if: steps.local-images.outputs.match != 'true'
+        run: |
+          docker image load --input "$RUNNER_TEMP/spark-images.tar.gz"
+          rm -f "$RUNNER_TEMP/spark-images.tar.gz"
 
       - uses: actions/download-artifact@v8
         with:
@@ -156,20 +184,16 @@ jobs:
         run: |
           mkdir -p aut
           tar -C aut -xzf "$RUNNER_TEMP/spark-ios-app.tar.gz"
+          rm -f "$RUNNER_TEMP/spark-ios-app.tar.gz"
 
       - name: Start pinned Spark fixture
         id: spark
         working-directory: bitkit-e2e-tests
         env:
-          SPARK_IMAGE_ARCHIVE: ${{ runner.temp }}/spark-images.tar.gz
+          SPARK_IMAGE_FINGERPRINT: ${{ needs.spark-images.outputs.image-fingerprint }}
           SPARK_LOCAL_CONFIG_B64: ${{ needs.spark-images.outputs.spark-config }}
           SPARK_LOCAL_CHAIN_URL: ${{ needs.spark-images.outputs.spark-chain-url }}
         run: |
-          if [[ "$RUNNER_ARCH" != ARM64 ]]; then
-            echo "::error::The Spark fixture archive requires an ARM64 Mac runner."
-            exit 1
-          fi
-          ./scripts/local-backend prepare
           (cd "$(./scripts/local-backend path)" && docker compose --profile spark down --remove-orphans -v)
           ./scripts/local-backend spark-up
           expected="$(printf 'SPARK_LOCAL_CONFIG_B64=%s\nSPARK_LOCAL_CHAIN_URL=%s' "$SPARK_LOCAL_CONFIG_B64" "$SPARK_LOCAL_CHAIN_URL")"
