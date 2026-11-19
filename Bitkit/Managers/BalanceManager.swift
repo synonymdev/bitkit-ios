@@ -193,8 +193,12 @@ class BalanceManager {
                 earlierTxids: Set(transfer.sweepTxids ?? []),
                 outputs: outputs
             )
-            for sweep in heldSweeps where countedSweepTxids.insert(sweep.txid).inserted {
-                onchainToSubtract += sweep.sats
+            for sweep in heldSweeps {
+                if let share = Self.channelShareSats(channelId: channelId, sweep: sweep, pendingSweeps: pendingSweeps) {
+                    onchainToSubtract += share
+                } else if countedSweepTxids.insert(sweep.txid).inserted {
+                    onchainToSubtract += sweep.sats
+                }
             }
         }
 
@@ -218,6 +222,21 @@ class BalanceManager {
         }
     }
 
+    /// The part of a held sweep's output that pays this channel, by what LDK reports each channel sweeps in it, so a sweep
+    /// shared with a channel whose activity already synced takes only this channel's part out of Savings. Nil when LDK no
+    /// longer reports the sweep.
+    static func channelShareSats(
+        channelId: String,
+        sweep: (txid: String, sats: UInt64),
+        pendingSweeps: [PendingSweepBalance]
+    ) -> UInt64? {
+        let inSweep = pendingSweeps.filter { sweepTxid(of: $0)?.lowercased() == sweep.txid }
+        let totalSats = inSweep.reduce(0) { $0 + sweepAmountSats(of: $1) }
+        guard totalSats > 0 else { return nil }
+        let channelSats = inSweep.filter { sweepChannelId(of: $0) == channelId }.reduce(0) { $0 + sweepAmountSats(of: $1) }
+        return UInt64((Double(sweep.sats) * Double(channelSats) / Double(totalSats)).rounded())
+    }
+
     static func sweepTxids(channelId: String, pendingSweeps: [PendingSweepBalance]) -> Set<String> {
         Set(pendingSweeps.compactMap { sweep -> String? in
             guard sweepChannelId(of: sweep) == channelId else { return nil }
@@ -230,6 +249,14 @@ class BalanceManager {
         case let .pendingBroadcast(channelId, _): channelId
         case let .broadcastAwaitingConfirmation(channelId, _, _, _): channelId
         case let .awaitingThresholdConfirmations(channelId, _, _, _, _): channelId
+        }
+    }
+
+    private static func sweepAmountSats(of sweep: PendingSweepBalance) -> UInt64 {
+        switch sweep {
+        case let .pendingBroadcast(_, amountSatoshis): amountSatoshis
+        case let .broadcastAwaitingConfirmation(_, _, _, amountSatoshis): amountSatoshis
+        case let .awaitingThresholdConfirmations(_, _, _, _, amountSatoshis): amountSatoshis
         }
     }
 

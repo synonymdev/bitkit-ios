@@ -77,6 +77,27 @@ final class BalanceManagerSweepTests: XCTestCase {
         )
     }
 
+    func testSharedSweepTakesOnlyThisChannelsPartOutOfSavings() {
+        let sweeps: [PendingSweepBalance] = [
+            .broadcastAwaitingConfirmation(
+                channelId: channelId,
+                latestBroadcastHeight: 800_000,
+                latestSpendingTxid: "batch-txid",
+                amountSatoshis: 600
+            ),
+            .broadcastAwaitingConfirmation(
+                channelId: "other-channel",
+                latestBroadcastHeight: 800_000,
+                latestSpendingTxid: "batch-txid",
+                amountSatoshis: 300
+            ),
+        ]
+
+        XCTAssertEqual(BalanceManager.channelShareSats(channelId: channelId, sweep: ("batch-txid", 810), pendingSweeps: sweeps), 540)
+        XCTAssertEqual(BalanceManager.channelShareSats(channelId: "other-channel", sweep: ("batch-txid", 810), pendingSweeps: sweeps), 270)
+        XCTAssertNil(BalanceManager.channelShareSats(channelId: channelId, sweep: ("earlier-txid", 810), pendingSweeps: sweeps))
+    }
+
     func testTransferSavedBeforeSweepTxidsDecodes() throws {
         let json = #"[{"id":"old","type":"FORCE_CLOSE","amountSats":1000,"channelId":"c","isSettled":false,"createdAt":1}]"#
         let transfers = try JSONDecoder().decode([Bitkit.Transfer].self, from: Data(json.utf8))
