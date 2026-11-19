@@ -77,7 +77,9 @@ enum MoveToSparkMath {
         let beforeSats = Dictionary(before.map { ($0.channelId, $0.nextOutboundHtlcLimitMsat / 1000) }, uniquingKeysWith: { first, _ in first })
         return (after ?? []).filter(\.isChannelReady).filter {
             guard let wasSats = beforeSats[$0.channelId] else { return false }
+            // The outbound capacity too: an HTLC still counting against the peer's in-flight limit lowers only the send limit.
             return wasSats >= minMoveSats && $0.nextOutboundHtlcLimitMsat / 1000 < minMoveSats
+                && $0.outboundCapacityMsat / 1000 < minMoveSats
         }
     }
 

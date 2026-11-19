@@ -57,6 +57,15 @@ final class MoveToSparkMathTests: XCTestCase {
         XCTAssertEqual(emptied.map(\.channelId), ["a"], "A channel that could send less than the move minimum was closed")
     }
 
+    func testAMoveKeepsAChannelWhoseSendLimitAnInFlightHtlcLowered() {
+        let before = [channel("a", sendableSats: 50000)]
+        let after = [channel("a", sendableSats: 0, capacitySats: 300_000)]
+        XCTAssertTrue(
+            MoveToSparkMath.emptiedChannels(before: before, after: after, payments: []).isEmpty,
+            "A channel that still holds its balance was closed"
+        )
+    }
+
     func testAMoveLeavesChannelsItDidNotKnowOrThatAreNotOpen() {
         let before = [channel("a", sendableSats: 50000)]
         let after = [channel("a", sendableSats: 0, isChannelReady: false), channel("new", sendableSats: 0)]
@@ -119,8 +128,9 @@ final class MoveToSparkMathTests: XCTestCase {
         )
     }
 
-    private func channel(_ id: String, sendableSats: UInt64, isChannelReady: Bool = true) -> ChannelDetails {
-        var channel = ChannelDetails.mock(isChannelReady: isChannelReady, outboundCapacityMsat: sendableSats * 1000)
+    private func channel(_ id: String, sendableSats: UInt64, capacitySats: UInt64? = nil, isChannelReady: Bool = true) -> ChannelDetails {
+        var channel = ChannelDetails.mock(isChannelReady: isChannelReady, outboundCapacityMsat: (capacitySats ?? sendableSats) * 1000)
+        channel.nextOutboundHtlcLimitMsat = sendableSats * 1000
         channel.channelId = id
         return channel
     }
