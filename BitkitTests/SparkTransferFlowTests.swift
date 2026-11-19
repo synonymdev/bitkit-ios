@@ -527,4 +527,10 @@ final class SparkTransferFlowTests: XCTestCase {
             claimFees: SparkClaimFees(instantMaxSats: 1093, laterSats: 198)
         )
     }
+
+    func testFeeGridTapStaysInBitcoinWithoutARate() {
+        XCTAssertFalse(SpendingConfirmFees.togglesDisplay(from: .bitcoin, hasRate: false))
+        XCTAssertTrue(SpendingConfirmFees.togglesDisplay(from: .bitcoin, hasRate: true))
+        XCTAssertTrue(SpendingConfirmFees.togglesDisplay(from: .fiat, hasRate: false))
+    }
 }
