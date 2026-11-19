@@ -178,4 +178,18 @@ final class SparkRelaunchActivityTests: XCTestCase {
         XCTAssertEqual(attempts.attemptId(forPaymentHash: "hash1"), "newer")
         XCTAssertEqual(attempts.attemptId(forPaymentHash: "hash\(ChannelFreeRowAttempts.limit)"), "id\(ChannelFreeRowAttempts.limit)")
     }
+
+    func testASameSecondFailureTakesTheRowOnlyAsTheSendAfterTheRowsAttempt() {
+        // The row's own attempt, and a row or failure without an id, write it.
+        XCTAssertFalse(ActivityService.isOtherRowAttempt("first", rowAttemptId: "first"))
+        XCTAssertFalse(ActivityService.isOtherRowAttempt(nil, rowAttemptId: "first"))
+        XCTAssertFalse(ActivityService.isOtherRowAttempt("retry", rowAttemptId: nil))
+        // Another attempt of the same second keeps the row when nothing orders the two.
+        XCTAssertTrue(ActivityService.isOtherRowAttempt("first", rowAttemptId: "retry"))
+        XCTAssertTrue(ActivityService.isOtherRowAttempt("first", rowAttemptId: "retry", earlierAttemptIds: ["older"]))
+        // The retry in flight lists the row's attempt before it, so its failure takes the row.
+        XCTAssertFalse(ActivityService.isOtherRowAttempt("retry", rowAttemptId: "first", earlierAttemptIds: ["first"]))
+        // While it is in flight, an attempt it lists as earlier still keeps the row.
+        XCTAssertTrue(ActivityService.isOtherRowAttempt("older", rowAttemptId: "first", earlierAttemptIds: ["first", "older"]))
+    }
 }

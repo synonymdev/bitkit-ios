@@ -1767,15 +1767,15 @@ class LightningService: NodeLifecycleService {
         return ids.count == attempts.count ? ids : nil
     }
 
-    /// Whether a failure of `paymentHash` may have ended an attempt before the send still in doubt, which Spark may still
-    /// finish: the rail's attempt `paymentId` is one listed before the send went out. Without both ids, a payment Spark
-    /// created before the send or within `railClockSkewSeconds` after it (Spark's clock and this phone's may differ)
-    /// may be earlier, so it keeps the hold too.
     /// Spark's id of the taken send that still holds the invoice of `paymentHash`, if any.
     func heldRailSendId(paymentHash: String) -> String? {
         eventCallbackLock.withLock { takenRailSendIds()[paymentHash.lowercased()] }
     }
 
+    /// Whether a failure of `paymentHash` may have ended an attempt before the send still in doubt, which Spark may still
+    /// finish: the rail's attempt `paymentId` is one listed before the send went out. Without both ids, a payment Spark
+    /// created before the send or within `railClockSkewSeconds` after it (Spark's clock and this phone's may differ)
+    /// may be earlier, so it keeps the hold too.
     func isEarlierThanUncertainRailSend(paymentHash: String, createdAt: UInt64, paymentId: String? = nil) -> Bool {
         eventCallbackLock.withLock {
             isEarlierThanUncertainRailSendLocked(hash: paymentHash.lowercased(), createdAt: createdAt, paymentId: paymentId)
@@ -1880,14 +1880,16 @@ class LightningService: NodeLifecycleService {
             uncertainRailSendFailedAt()[hash].map { (failedAt: UInt64($0), expiresAt: attemptExpiries(key: Self.railAttemptsKey)[hash]) }
         }
         guard let uncertain else { return true }
-        // During an exit Spark no longer sends but still syncs its history, which settles the send the same way.
-        guard let rail = channelFreeRail ?? channelFreePaymentHistory, await rail.hasSynced(after: uncertain.failedAt) else {
-            return false
-        }
         // Spark keeps a send it committed but didn't finish in a cache no call exposes, and a sync that reached Spark
         // can still fail to resume it, so only an expired invoice shows a missing send will never go out.
         guard let expiresAt = uncertain.expiresAt, Int(now().timeIntervalSince1970) - Self.unlistedRailSendGraceSeconds >= expiresAt
         else { return false }
+        // Absence proves nothing until a sync that started past the grace reached Spark. During an exit Spark no longer
+        // sends but still syncs its history, which settles the send the same way.
+        let settledAfter = max(uncertain.failedAt, UInt64(max(0, expiresAt + Self.unlistedRailSendGraceSeconds)))
+        guard let rail = channelFreeRail ?? channelFreePaymentHistory, await rail.hasSynced(after: settledAfter) else {
+            return false
+        }
         eventCallbackLock.withLock {
             clearRailSendUncertainty(hash: hash)
             var unrecorded = Set(railAttemptsStore.stringArray(forKey: Self.expiredRailHoldsUnrecordedKey) ?? [])
