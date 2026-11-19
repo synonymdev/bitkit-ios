@@ -1790,9 +1790,11 @@ class LightningService: NodeLifecycleService {
         // Known until the latest send settles, also once Spark took it, so its earlier attempts are told apart by id.
         let taken = takenRailSendIds()
         let earlier = uncertainRailSendEarlierAttempts()
-        if let paymentId, taken[hash] != nil || earlier[hash] != nil {
+        if let paymentId, taken[hash] != nil || earlier[hash]?.contains(paymentId) == true {
             return Self.isEarlierRailAttempt(id: paymentId, hash: hash, taken: taken, earlier: earlier)
         }
+        // A send still in doubt has no id of its own yet, and the list read before it went out can lack an older attempt,
+        // so a failure that list doesn't name is told apart by when Spark created it.
         guard uncertainRailSendFailedAt()[hash] != nil else { return false }
         // A send in doubt saved before its start was recorded can't be told from an earlier attempt, so it stays held
         // until its invoice expires.
