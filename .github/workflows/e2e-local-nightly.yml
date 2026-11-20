@@ -141,7 +141,8 @@ jobs:
     runs-on: [self-hosted, macOS]
     timeout-minutes: 120
     env:
-      COMPOSE_PROJECT_NAME: bitkit-spark-e2e
+      # The PR suite uses the same fixed Bitcoin and Electrum ports on this Mac.
+      COMPOSE_PROJECT_NAME: docker
     steps:
       - uses: actions/checkout@v7
         with:
