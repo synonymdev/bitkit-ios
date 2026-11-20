@@ -44,11 +44,15 @@ jobs:
 
       - name: Record shared E2E revision
         id: e2e
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if [[ "$(git symbolic-ref --quiet HEAD)" == refs/heads/main ]]; then
+            echo 'save-cache=true' >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Cache pinned Spark fixture images
+      - name: Restore pinned Spark fixture images
         id: images
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: ${{ runner.temp }}/spark-images.tar
           key: spark-fixture-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('BITKIT_DOCKER_REVISION') }}
@@ -64,6 +68,14 @@ jobs:
           ./scripts/local-backend spark-init-env >> "$GITHUB_OUTPUT"
           fingerprint="$(./scripts/local-backend spark-image-fingerprint)"
           echo "image-fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+
+      - name: Save pinned Spark fixture images
+        if: steps.images.outputs.cache-hit != 'true' && steps.e2e.outputs.save-cache == 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/spark-images.tar
+          key: ${{ steps.images.outputs.cache-primary-key }}
 
       - name: Compress the fixture archive for transfer
         run: gzip -1 -c "$RUNNER_TEMP/spark-images.tar" > "$RUNNER_TEMP/spark-images.tar.gz"
@@ -235,7 +247,7 @@ jobs:
           ATTEMPT: 3
 
       - name: Collect Spark logs
-        if: failure()
+        if: failure() || steps.test1.outcome == 'failure'
         working-directory: bitkit-e2e-tests
         run: |
           mkdir -p artifacts
