@@ -1721,6 +1721,7 @@
 "subscriptions__allowance_error_not_linked" = "Este contacto ainda não está ligado. Tente novamente daqui a pouco.";
 "subscriptions__allowance_error_unavailable" = "Esta pré-aprovação não está disponível de momento.";
 "subscriptions__allowance_payment_in_progress" = "Este pedido já está a ser pago.";
+"subscriptions__allowance_request_already_paid" = "Este pedido já foi pago.";
 "subscriptions__allowance_executed_title" = "Pagamento executado";
 "subscriptions__allowance_executed_description" = "O pagamento automático enviou {amount} para {name}";
 "subscriptions__allowance_offer_accepted_title" = "Pré-aprovação adicionada";

@@ -2069,6 +2069,7 @@
 "subscriptions__allowance_error_not_linked" = "Dit contact is nog niet verbonden. Probeer het zo opnieuw.";
 "subscriptions__allowance_error_unavailable" = "Deze toelage is momenteel niet beschikbaar.";
 "subscriptions__allowance_payment_in_progress" = "Dit verzoek wordt al betaald.";
+"subscriptions__allowance_request_already_paid" = "Dit verzoek is al betaald.";
 "subscriptions__allowance_executed_title" = "Betaling uitgevoerd";
 "subscriptions__allowance_executed_description" = "Automatisch betalen heeft {amount} naar {name} gestuurd";
 "subscriptions__allowance_offer_accepted_title" = "Toelage toegevoegd";
