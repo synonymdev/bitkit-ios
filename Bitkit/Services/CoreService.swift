@@ -1111,7 +1111,7 @@ class ActivityService {
             Self.sentPaymentContacts.forget(paymentHash: payment.id)
         }
         if rail == .channelFree, payment.direction == .outbound, let railPaymentId {
-            Self.channelFreeRowAttempts.remember(railPaymentId, forPaymentHash: payment.id)
+            Self.channelFreeRowAttempts.remember(railPaymentId, forPaymentHash: payment.id, stamp: ChannelFreeRowAttempts.stamp(ln))
         }
     }
 
@@ -1461,10 +1461,13 @@ class ActivityService {
                   activity.txType == .sent, activity.status == .pending
             else { return }
             if let ownAttemptId {
-                Self.channelFreeRowAttempts.remember(ownAttemptId, forPaymentHash: id)
+                Self.channelFreeRowAttempts.remember(ownAttemptId, forPaymentHash: id, stamp: ChannelFreeRowAttempts.stamp(activity))
             } else if let rowAttemptId = Self.channelFreeRowAttempts.attemptId(forPaymentHash: id),
-                      earlierAttemptIds.contains(rowAttemptId)
+                      earlierAttemptIds.contains(rowAttemptId),
+                      !Self.channelFreeRowAttempts.isUnchanged(activity, forPaymentHash: id)
             {
+                // A retry wrote over the earlier attempt's row. One the earlier attempt still owns keeps its writer, so
+                // that attempt's final fee still lands.
                 Self.channelFreeRowAttempts.forget(paymentHash: id)
             }
             activity.status = .failed
@@ -2904,15 +2907,28 @@ struct ChannelFreeRowAttempts: @unchecked Sendable {
     static let limit = 100
     let defaults: UserDefaults
 
-    func remember(_ attemptId: String, forPaymentHash paymentHash: String) {
+    /// The row as its writer left it, so a later write by another payment shows.
+    static func stamp(_ row: LightningActivity) -> String {
+        "\(row.timestamp):\(row.value):\(row.fee ?? 0)"
+    }
+
+    func remember(_ attemptId: String, forPaymentHash paymentHash: String, stamp: String) {
         let hash = paymentHash.lowercased()
+        let entry = [hash, attemptId, stamp]
         Self.lock.withLock {
-            var pairs = defaults.array(forKey: Self.key) as? [[String]] ?? []
-            guard pairs.last(where: { $0.first == hash })?.last != attemptId else { return }
-            pairs.removeAll { $0.first == hash }
-            pairs.append([hash, attemptId])
-            defaults.set(Array(pairs.suffix(Self.limit)), forKey: Self.key)
+            var entries = defaults.array(forKey: Self.key) as? [[String]] ?? []
+            guard entries.last(where: { $0.first == hash }) != entry else { return }
+            entries.removeAll { $0.first == hash }
+            entries.append(entry)
+            defaults.set(Array(entries.suffix(Self.limit)), forKey: Self.key)
         }
+    }
+
+    /// Whether `row` is as its writer left it.
+    func isUnchanged(_ row: LightningActivity, forPaymentHash paymentHash: String) -> Bool {
+        let hash = paymentHash.lowercased()
+        let entry = (defaults.array(forKey: Self.key) as? [[String]])?.last { $0.first == hash }
+        return entry?.count == 3 && entry?[2] == Self.stamp(row)
     }
 
     func forget(paymentHash: String) {
@@ -2926,6 +2942,6 @@ struct ChannelFreeRowAttempts: @unchecked Sendable {
 
     func attemptId(forPaymentHash paymentHash: String) -> String? {
         let hash = paymentHash.lowercased()
-        return (defaults.array(forKey: Self.key) as? [[String]])?.last { $0.count == 2 && $0[0] == hash }?[1]
+        return (defaults.array(forKey: Self.key) as? [[String]])?.last { $0.count >= 2 && $0[0] == hash }?[1]
     }
 }
