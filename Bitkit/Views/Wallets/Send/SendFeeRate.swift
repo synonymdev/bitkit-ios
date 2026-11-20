@@ -43,7 +43,7 @@ struct SendFeeRate: View {
 
         let fee = getFee(for: speed)
         let totalSats = hwSend.walletId.map { hwWalletManager.fundingBalance(walletId: $0) }
-            ?? UInt64(clamping: wallet.totalOnchainSats)
+            ?? UInt64(clamping: wallet.spendableOnchainBalanceSats)
         return totalSats < amount + fee && wallet.selectedSpeed != speed
     }
 

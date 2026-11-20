@@ -9,7 +9,7 @@ struct SavingsWalletScreen: View {
 
     private var shouldShowOnboarding: Bool {
         let hasOnchainActivities = activity.onchainActivities?.isEmpty == false
-        return wallet.totalOnchainSats == 0 && !hasOnchainActivities
+        return wallet.totalOnchainSats == 0 && wallet.spendableOnchainBalanceSats == 0 && !hasOnchainActivities
     }
 
     /// Calculate remaining duration for force close transfers

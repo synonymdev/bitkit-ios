@@ -23,7 +23,7 @@ struct PrimaryButtonView: View {
                 ProgressView()
                     .progressViewStyle(CircularProgressViewStyle(tint: .textPrimary))
                     .frame(width: 20, height: 20)
-            } else {
+            } else if !title.isEmpty {
                 if size == .small {
                     CaptionBText(title, textColor: .textPrimary, kerning: titleKerning, lineHeight: titleLineHeight)
                 } else {

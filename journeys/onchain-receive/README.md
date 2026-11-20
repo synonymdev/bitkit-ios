@@ -27,7 +27,7 @@ and restores a public test seed; the rest is covered by `ConfirmedOnlyReceiveGua
 - `confirmed-only-background-notification.xml` is not ported. It covers Android's
   `LightningNodeService` foreground service, which posts a "Payment Received" notification while the
   app is in the background. iOS has no foreground node service and the notification extension only
-  handles Blocktank pushes, so there is no iOS path to drive.
+  acknowledges wake pushes without starting the node, so there is no iOS path to drive.
 - `mempool-then-confirmed-single-sheet.xml` drops the final "no Payment Received notification" check
   for the same reason.
 - Android skips confirmed-only receives while a backup restore runs; iOS relies on the restore hold

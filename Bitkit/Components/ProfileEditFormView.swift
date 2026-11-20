@@ -18,6 +18,10 @@ struct ProfileEditFormView<Avatar: View>: View {
     let bioPlaceholder: String
     let isSaving: Bool
     var maxLinks: Int?
+    /// Whether links must be http(s), as social v1 profiles require; contact links accept any text.
+    var webLinksOnly = false
+    /// Links loaded with the profile; with `webLinksOnly`, only links added or edited here must be web links.
+    var storedLinkUrls: Set<String> = []
     /// Whether the name can be saved; contact edits accept any non-empty name.
     var isNameValid: (String) -> Bool = { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     let footerNote: String?
@@ -34,6 +38,10 @@ struct ProfileEditFormView<Avatar: View>: View {
     @State private var showAddLinkSheet = false
     @FocusState private var isBioFocused: Bool
     @State private var showAddTagSheet = false
+
+    private var hasOnlyWebLinks: Bool {
+        !webLinksOnly || links.allSatisfy { storedLinkUrls.contains($0.url) || $0.url.isWebLink }
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -53,7 +61,7 @@ struct ProfileEditFormView<Avatar: View>: View {
             }
         }
         .sheet(isPresented: $showAddLinkSheet, onDismiss: dismissKeyboard) {
-            AddLinkSheet { label, url in
+            AddLinkSheet(webLinksOnly: webLinksOnly) { label, url in
                 links.append(ProfileLinkInput(label: label, url: url))
             }
         }
@@ -299,7 +307,7 @@ struct ProfileEditFormView<Avatar: View>: View {
                 await onSave()
             }
             .accessibilityIdentifier("ProfileEditSave")
-            .disabled(!isNameValid(name))
+            .disabled(!isNameValid(name) || !hasOnlyWebLinks)
         }
         .padding(.horizontal, 16)
         .padding(.top, 16)

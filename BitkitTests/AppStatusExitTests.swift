@@ -20,6 +20,11 @@ final class AppStatusExitTests: XCTestCase {
         XCTAssertEqual(AppStatusHelper.exitStep(record: record(.needsFunding(requiredSats: 1000)), fundingState: .seen(txid: "txid")), .pending)
     }
 
+    func testExitStepWordsTheSparkRow() {
+        XCTAssertEqual(ExitStatusStep.funding.descriptionKey, "settings__status__exit__funding")
+        XCTAssertEqual(ExitStatusStep.pending.descriptionKey, "settings__status__spark__exit")
+    }
+
     func testExitStepIsPendingWithNothingToFund() {
         XCTAssertEqual(AppStatusHelper.exitStep(record: record(.awaitingFunding(requiredSats: 0))), .pending)
     }
