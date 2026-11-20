@@ -112,6 +112,7 @@ class SettingsViewModel: NSObject, ObservableObject {
     @AppStorage("warnWhenSendingOver100") var warnWhenSendingOver100: Bool = false
     // QuickPay: change only through `changeQuickpaySetting`, which asks for the payment PIN before QuickPay may spend more.
     @AppStorage("enableQuickpay") private(set) var enableQuickpay: Bool = false
+    @AppStorage("enableNearbyPayments") var enableNearbyPayments: Bool = true
     @AppStorage("quickpayAmount") private(set) var quickpayAmount: Double = 5
     @AppStorage("quickpayDailyLimitMultiplier") private(set) var quickpayDailyLimitMultiplier: Double = 5
     private var pendingQuickpayChangeID: UUID?
@@ -234,6 +235,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         readClipboard = false
         warnWhenSendingOver100 = false
         enableQuickpay = false
+        enableNearbyPayments = true
         quickpayAmount = 5
         quickpayDailyLimitMultiplier = 5
         enableNotifications = false
@@ -1045,6 +1047,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         readClipboard = defaults.bool(forKey: "readClipboard")
         warnWhenSendingOver100 = defaults.bool(forKey: "warnWhenSendingOver100")
         reloadQuickpaySettingsFromDefaults()
+        enableNearbyPayments = defaults.object(forKey: "enableNearbyPayments") as? Bool ?? true
         enableNotifications = defaults.bool(forKey: "enableNotifications")
         requirePinForPayments = defaults.bool(forKey: "requirePinForPayments")
         useBiometrics = defaults.bool(forKey: "useBiometrics")

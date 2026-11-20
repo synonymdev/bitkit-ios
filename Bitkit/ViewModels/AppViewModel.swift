@@ -211,6 +211,21 @@ class AppViewModel: ObservableObject {
         lockedDeepLinkRoutesInFlight > 0
     }
 
+    private var quickPaySuppressions: Set<UUID> = []
+    /// True while a payment request that must always be reviewed (for example one read over Bluetooth) routes.
+    var isQuickPaySuppressed: Bool {
+        !quickPaySuppressions.isEmpty
+    }
+
+    func suppressQuickPay(_ id: UUID) {
+        quickPaySuppressions.insert(id)
+    }
+
+    /// Releasing an id that is no longer held does nothing.
+    func releaseQuickPaySuppression(_ id: UUID) {
+        quickPaySuppressions.remove(id)
+    }
+
     /// The last routed deep link. On a cold start the same link reaches the app twice (`onOpenURL` and the scene
     /// delegate replay), and the startup gates can route the first delivery before the second arrives.
     private var lastRoutedDeepLink: (url: URL, date: Date)?
@@ -223,6 +238,7 @@ class AppViewModel: ObservableObject {
     @AppStorage("hasSeenProfileIntro") var hasSeenProfileIntro: Bool = false
     @AppStorage("hasSeenNotificationsIntro") var hasSeenNotificationsIntro: Bool = false
     @AppStorage("hasSeenQuickpayIntro") var hasSeenQuickpayIntro: Bool = false
+    @AppStorage("hasSeenNfcIntro") var hasSeenNfcIntro: Bool = false
     @AppStorage("hasSeenMoveToSparkIntro") var hasSeenMoveToSparkIntro: Bool = false
     @AppStorage("hasSeenShopIntro") var hasSeenShopIntro: Bool = false
     @AppStorage("hasSeenTransferIntro") var hasSeenTransferIntro: Bool = false
@@ -579,6 +595,7 @@ class AppViewModel: ObservableObject {
         hasSeenProfileIntro = false
         hasSeenNotificationsIntro = false
         hasSeenQuickpayIntro = false
+        hasSeenNfcIntro = false
         hasSeenMoveToSparkIntro = false
         hasSeenShopIntro = false
         hasSeenTransferIntro = false

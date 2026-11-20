@@ -14,10 +14,14 @@ struct SendOptionsView: View {
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
     @Environment(HwWalletManager.self) private var hwWalletManager
+    @Environment(\.isCoveredByOfflineSheet) private var isCoveredByOfflineSheet
 
     @Binding var navigationPath: [SendRoute]
     let hwSend: HwSendCoordinator
     @State private var selectedItem: PhotosPickerItem?
+    /// Bumped each time Send leaves Options or the connection-issues screen covers it, so a read started before
+    /// can't route after the user comes back.
+    @State private var scannerVisit = 0
 
     private var scanScope: ScanHandlingScope {
         hwSend.isActive ? .onchainPayments : .unrestricted
@@ -51,7 +55,31 @@ struct SendOptionsView: View {
                                     handleRoute(route)
                                 }
                             }
-                        }
+                        },
+                        onNfcRead: scanner.isNfcReadingAvailable
+                            ? {
+                                // Moving on (e.g. to Enter Manually) keeps the sheet open, so check its own path too.
+                                await scanner.handleSendNfcRead(scope: scanScope, isCurrent: isOnThisScannerVisit()) { route in
+                                    if let route {
+                                        handleRoute(route)
+                                    }
+                                }
+                            }
+                            : nil,
+                        onNearbyRequest: { request, isScanning in
+                            // Moving on (e.g. to Enter Manually) keeps the sheet open, so check its own path too.
+                            let isOnVisit = isOnThisScannerVisit()
+                            return await scanner.handleSendNearbyRequest(
+                                request,
+                                scope: scanScope,
+                                isCurrent: { isOnVisit() && isScanning() }
+                            ) { route in
+                                if let route {
+                                    handleRoute(route)
+                                }
+                            }
+                        },
+                        isNearbyPaused: !navigationPath.isEmpty || isCoveredByOfflineSheet
                     )
 
                     RectangleButton(
@@ -100,6 +128,24 @@ struct SendOptionsView: View {
                 hwWalletManager: hwWalletManager
             )
         }
+        .onChange(of: navigationPath.isEmpty) { _, isOnOptions in
+            if !isOnOptions {
+                scannerVisit += 1
+            }
+        }
+        .onChange(of: isCoveredByOfflineSheet) { _, isCovered in
+            // A read that started before the connection-issues screen covered Options can't route behind it.
+            if isCovered {
+                scannerVisit += 1
+            }
+        }
+    }
+
+    /// True while Send still shows Options in the same visit as when this is called. A visit ends when Send moves on
+    /// or the connection-issues screen covers Options.
+    private func isOnThisScannerVisit() -> () -> Bool {
+        let visit = scannerVisit
+        return { navigationPath.isEmpty && scannerVisit == visit }
     }
 
     func handlePaste() {

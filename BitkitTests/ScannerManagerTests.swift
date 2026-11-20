@@ -379,3 +379,534 @@ final class ScannerManagerTests: XCTestCase {
         return app
     }
 }
+
+// MARK: - NFC
+
+extension ScannerManagerTests {
+    func testNfcAvailabilityFollowsReader() {
+        let reader = FakeNfcReader(.success(""))
+        reader.isAvailable = false
+        XCTAssertFalse(ScannerManager(nfcReader: reader) {}.isNfcReadingAvailable)
+        reader.isAvailable = true
+        XCTAssertTrue(ScannerManager(nfcReader: reader) {}.isNfcReadingAvailable)
+    }
+
+    func testNfcSendReadRoutesLikeAScannedQrCode() async {
+        var hapticCount = 0
+        let reader = FakeNfcReader(.success(paymentURI))
+        let scanner = ScannerManager(nfcReader: reader) { hapticCount += 1 }
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        let app = configure(scanner, sheets: sheets)
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        var routes: [SendRoute?] = []
+
+        await scanner.handleSendNfcRead { routes.append($0) }
+
+        XCTAssertEqual(reader.alertMessages, [t("other__nfc_alert")])
+        XCTAssertEqual(routes, [.amount])
+        XCTAssertEqual(hapticCount, 1)
+        XCTAssertNotNil(app.scannedOnchainInvoice)
+    }
+
+    func testNfcGenericReadRoutesLikeAScannedQrCode() async {
+        var hapticCount = 0
+        let scanner = ScannerManager(nfcReader: FakeNfcReader(.success(paymentURI))) { hapticCount += 1 }
+        let app = configure(scanner)
+
+        await scanner.handleNfcRead(context: .send)
+
+        XCTAssertEqual(hapticCount, 1)
+        XCTAssertNotNil(app.scannedOnchainInvoice)
+    }
+
+    func testFailedNfcReadCompletesWithoutRoute() async {
+        for error in [NfcReadError.cancelled, .timedOut, .noPaymentRequest, .multiplePaymentRequests, .unavailable] {
+            let scanner = ScannerManager(nfcReader: FakeNfcReader(.failure(error))) {
+                XCTFail("A failed NFC read must not play a success haptic")
+            }
+            let app = configure(scanner)
+            var routes: [SendRoute?] = []
+
+            await scanner.handleSendNfcRead { routes.append($0) }
+
+            XCTAssertEqual(routes, [nil], "\(error)")
+            XCTAssertNil(app.scannedOnchainInvoice, "\(error)")
+        }
+    }
+
+    func testNearbyRequestRoutesWithQuickPaySuppressed() async {
+        var hapticCount = 0
+        let scanner = ScannerManager { hapticCount += 1 }
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        let app = configure(scanner, sheets: sheets)
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        var suppressedAtRoute: [Bool] = []
+        var routes: [SendRoute?] = []
+
+        await scanner.handleSendNearbyRequest(paymentURI) { route in
+            routes.append(route)
+            suppressedAtRoute.append(app.isQuickPaySuppressed)
+        }
+
+        XCTAssertEqual(routes, [.amount])
+        XCTAssertEqual(suppressedAtRoute, [true])
+        XCTAssertFalse(app.isQuickPaySuppressed)
+        XCTAssertEqual(hapticCount, 1)
+    }
+
+    func testNearbyAllowlistAcceptsPaymentSchemesOnly() {
+        for uri in ["bitcoin:bcrt1qexample", "BITCOIN:BCRT1Q", "lightning:lnbcrt1", "ethereum:0xabc@42161",
+                    " bitcoin:bcrt1q?lightning=lnbcrt1 ", "bitcoin:bcrt1q?amount=0.1&label=lightning",
+                    PosNfcFixtures.squareUri, PosNfcFixtures.bip321Uri]
+        {
+            XCTAssertTrue(ScannerManager.isNearbyPaymentRequest(uri), uri)
+        }
+        for uri in authURIs + nearbyNetworkLookups + ["lnurlw://example.com/w", "lnurlc://example.com/c", "LNURL1DP68GURN8GHJ7",
+                                                      "lightning:lno1qgsqvgnwgcg35z6ee2h3yczraddm72xrfua9uve2rlrm9deu7xyfzr",
+                                                      "bcrt1qexample",
+                                                      "lnbcrt10u1pjexample", "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw374y",
+                                                      "https://example.com", "bitkit://contact/abc", "02aaaa@127.0.0.1:9735", ""]
+        {
+            XCTAssertFalse(ScannerManager.isNearbyPaymentRequest(uri), uri)
+        }
+    }
+
+    /// Requests the decoder would resolve over the network before the user picked them.
+    private var nearbyNetworkLookups: [String] {
+        [
+            "LIGHTNING:LNURL1DP68GURN8GHJ7", "lnurlp://example.com/pay", "lightning:alice@example.com",
+            "bitcoin:bcrt1q?amount=0.1&lightning=LNURL1DP68GURN8GHJ7", "bitcoin:?lightning=lnurl1dp68gurn8ghj7",
+        ]
+    }
+
+    func testNearbyRequestDoesNotResolveAnLnurlBeforeReview() async {
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { uri in
+            XCTFail("Bluetooth discovery alone must not decode \(uri)")
+            return .gift(code: "gift-code", amount: 1000)
+        })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+
+        for uri in nearbyNetworkLookups {
+            let sendWasTaken = await scanner.handleSendNearbyRequest(uri) { XCTAssertNil($0, uri) }
+            let mainWasTaken = await scanner.handleNearbyRequest(uri, context: .main)
+            XCTAssertFalse(sendWasTaken, uri)
+            XCTAssertFalse(mainWasTaken, uri)
+        }
+    }
+
+    func testNearbyRequestRefusesNonPaymentPayloads() async {
+        let scanner = ScannerManager { XCTFail("A refused Bluetooth payload must not play a success haptic") }
+        let app = configure(scanner)
+        var routes: [SendRoute?] = []
+
+        for uri in authURIs + ["lnurlw://example.com/withdraw", "bitkit://contact/abc"] {
+            let wasTaken = await scanner.handleSendNearbyRequest(uri) { routes.append($0) }
+            XCTAssertFalse(wasTaken, uri)
+        }
+        let mainWasTaken = await scanner.handleNearbyRequest("pubkyauth://signin", context: .main)
+
+        XCTAssertFalse(mainWasTaken)
+        XCTAssertEqual(routes, Array(repeating: nil, count: authURIs.count + 2))
+        XCTAssertNil(app.scannedOnchainInvoice)
+    }
+
+    func testNearbyRequestRefusesDecodedNonPaymentTypes() async {
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { _ in .gift(code: "gift-code", amount: 1000) })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        var routes: [SendRoute?] = []
+
+        let wasTaken = await scanner.handleSendNearbyRequest("lightning:lnbcrt1gift") { routes.append($0) }
+
+        XCTAssertFalse(wasTaken)
+        XCTAssertEqual(routes, [nil])
+    }
+
+    func testNearbyRequestCannotRouteAfterItsScannerCloses() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        let started = expectation(description: "Nearby request decoding suspended")
+        var continuation: CheckedContinuation<BitkitCore.Scanner, Error>?
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { _ in
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        var routes: [SendRoute?] = []
+        let task = Task { await scanner.handleSendNearbyRequest(paymentURI) { routes.append($0) } }
+
+        await fulfillment(of: [started], timeout: 2)
+        sheets.hideSheet(reason: "User left the scanner during a nearby request")
+        try XCTUnwrap(continuation).resume(returning: decoded)
+        let wasTaken = await task.value
+
+        XCTAssertFalse(wasTaken)
+        XCTAssertTrue(routes.isEmpty)
+        XCTAssertNil(app.scannedOnchainInvoice)
+    }
+
+    func testNearbyRequestCannotRouteAfterTheSendSheetMovesOn() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        let started = expectation(description: "Nearby request decoding suspended")
+        var continuation: CheckedContinuation<BitkitCore.Scanner, Error>?
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { _ in
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        var navigationPath: [SendRoute] = []
+        var routes: [SendRoute?] = []
+        let task = Task {
+            await scanner.handleSendNearbyRequest(paymentURI, isCurrent: { navigationPath.isEmpty }) { routes.append($0) }
+        }
+
+        await fulfillment(of: [started], timeout: 2)
+        navigationPath.append(.manual)
+        try XCTUnwrap(continuation).resume(returning: decoded)
+        let wasTaken = await task.value
+
+        XCTAssertFalse(wasTaken)
+        XCTAssertTrue(routes.isEmpty)
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .send)
+    }
+
+    func testNfcReadCannotRouteAfterItsSendSheetCloses() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        let started = expectation(description: "NFC request decoding suspended")
+        var continuation: CheckedContinuation<BitkitCore.Scanner, Error>?
+        let scanner = ScannerManager(nfcReader: FakeNfcReader(.success(paymentURI))) {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { _ in
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        var routes: [SendRoute?] = []
+        let task = Task { await scanner.handleSendNfcRead { routes.append($0) } }
+
+        await fulfillment(of: [started], timeout: 2)
+        sheets.hideSheet(reason: "User left the Send sheet during an NFC request")
+        try XCTUnwrap(continuation).resume(returning: decoded)
+        await task.value
+
+        XCTAssertTrue(routes.allSatisfy { $0 == nil })
+        XCTAssertNil(app.scannedOnchainInvoice)
+    }
+
+    func testNfcReadCannotRouteAfterTheSendSheetMovesOn() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        let started = expectation(description: "NFC request decoding suspended")
+        var continuation: CheckedContinuation<BitkitCore.Scanner, Error>?
+        let scanner = ScannerManager(nfcReader: FakeNfcReader(.success(paymentURI))) {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { _ in
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        var navigationPath: [SendRoute] = []
+        var routes: [SendRoute?] = []
+        let task = Task {
+            await scanner.handleSendNfcRead(isCurrent: { navigationPath.isEmpty }) { routes.append($0) }
+        }
+
+        await fulfillment(of: [started], timeout: 2)
+        navigationPath.append(.manual)
+        try XCTUnwrap(continuation).resume(returning: decoded)
+        await task.value
+
+        XCTAssertTrue(routes.allSatisfy { $0 == nil })
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .send)
+    }
+
+    func testNfcReadCannotRouteAfterLeavingAndReturningToTheScanner() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        let navigation = NavigationViewModel()
+        let started = expectation(description: "NFC request decoding suspended")
+        var continuation: CheckedContinuation<BitkitCore.Scanner, Error>?
+        let scanner = ScannerManager(nfcReader: FakeNfcReader(.success(paymentURI))) {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { _ in
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, navigation: navigation, sheets: sheets
+        )
+        sheets.showSheet(.scanner)
+        let task = Task { await scanner.handleNfcRead(context: .main) }
+
+        await fulfillment(of: [started], timeout: 2)
+        navigation.path.append(.savingsWallet)
+        navigation.path.removeLast()
+        try XCTUnwrap(continuation).resume(returning: decoded)
+        await task.value
+
+        XCTAssertTrue(navigation.path.isEmpty)
+        XCTAssertNil(app.scannedOnchainInvoice, "A read from an earlier visit must not route")
+    }
+
+    func testRefusedNearbyRequestOnMainScannerIsNotTaken() async {
+        let sheets = SheetViewModel()
+        sheets.showSheet(.scanner)
+        let scanner = ScannerManager {}
+        let expired = LightningInvoice(
+            bolt11: "lnbcrt1expired",
+            paymentHash: Data(repeating: 1, count: 32),
+            amountSatoshis: 1000,
+            timestampSeconds: 0,
+            expirySeconds: 0,
+            isExpired: true,
+            description: nil,
+            networkType: .regtest,
+            payeeNodeId: nil
+        )
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { _ in .lightning(invoice: expired) })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+
+        let wasTaken = await scanner.handleNearbyRequest("lightning:lnbcrt1expired", context: .main)
+
+        XCTAssertFalse(wasTaken)
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .scanner)
+    }
+
+    func testNearbyRequestReportsTakenWhenItRoutes() async {
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets)
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+
+        let wasTaken = await scanner.handleSendNearbyRequest(paymentURI) { _ in }
+
+        XCTAssertTrue(wasTaken)
+    }
+
+    func testUserScanTakesOverFromADecodingNearbyRequest() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let nearbyURI = "bitcoin:bcrt1qnearbyrequest"
+        let sheets = SheetViewModel()
+        let started = expectation(description: "Nearby request decoding suspended")
+        var continuation: CheckedContinuation<BitkitCore.Scanner, Error>?
+        let scanner = ScannerManager(nfcReader: FakeNfcReader(.success(paymentURI))) {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { input in
+            guard input.contains("nearbyrequest") else { return decoded }
+            return try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        var nearbyRoutes: [SendRoute?] = []
+        let task = Task {
+            await scanner.handleSendNearbyRequest(nearbyURI) { nearbyRoutes.append($0) }
+        }
+        await fulfillment(of: [started], timeout: 2)
+
+        var routes: [SendRoute?] = []
+        var suppressedAtUserRoute: [Bool] = []
+        await scanner.handleSendNfcRead { route in
+            routes.append(route)
+            suppressedAtUserRoute.append(app.isQuickPaySuppressed)
+        }
+        try XCTUnwrap(continuation).resume(returning: decoded)
+        let wasTaken = await task.value
+
+        XCTAssertEqual(routes, [.amount])
+        XCTAssertEqual(suppressedAtUserRoute, [false], "QuickPay must apply to the user's own read")
+        XCTAssertFalse(wasTaken)
+        XCTAssertTrue(nearbyRoutes.allSatisfy { $0 == nil })
+        XCTAssertFalse(app.isQuickPaySuppressed)
+
+        // The lock is free again for the next read.
+        var nextRoutes: [SendRoute?] = []
+        await scanner.handleSendScan(paymentURI) { nextRoutes.append($0) }
+        XCTAssertEqual(nextRoutes, [.amount])
+    }
+
+    func testMainScannerQrTakesOverFromADecodingNearbyRequest() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        sheets.showSheet(.scanner)
+        let started = expectation(description: "Nearby request decoding suspended")
+        var continuation: CheckedContinuation<BitkitCore.Scanner, Error>?
+        var decodedInputs: [String] = []
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { input in
+            decodedInputs.append(input)
+            guard input.contains("nearbyrequest") else { return decoded }
+            return try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        let task = Task {
+            await scanner.handleNearbyRequest("bitcoin:bcrt1qnearbyrequest", context: .main)
+        }
+        await fulfillment(of: [started], timeout: 2)
+
+        await scanner.handleScan(paymentURI, context: .main)
+        try XCTUnwrap(continuation).resume(returning: decoded)
+        let wasTaken = await task.value
+
+        XCTAssertFalse(wasTaken)
+        XCTAssertEqual(decodedInputs.count, 2, "The QR code must be decoded while the nearby request is pending")
+        XCTAssertNotNil(app.scannedOnchainInvoice)
+    }
+
+    func testBluetoothRequestCannotRouteWhileAnNfcReadIsOpen() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        let reader = HeldNfcReader()
+        let scanner = ScannerManager(nfcReader: reader) {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { _ in decoded })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        var nfcRoutes: [SendRoute?] = []
+        let nfcTask = Task { await scanner.handleSendNfcRead { nfcRoutes.append($0) } }
+        await fulfillment(of: [reader.started], timeout: 2)
+
+        var nearbyRoutes: [SendRoute?] = []
+        let wasTaken = await scanner.handleSendNearbyRequest("bitcoin:bcrt1qnearbyrequest") { nearbyRoutes.append($0) }
+        reader.finish(.success(paymentURI))
+        await nfcTask.value
+
+        XCTAssertFalse(wasTaken, "The Bluetooth request must wait for the open NFC read")
+        XCTAssertTrue(nearbyRoutes.allSatisfy { $0 == nil })
+        XCTAssertEqual(nfcRoutes, [.amount])
+    }
+
+    func testFailedNfcReadReleasesTheScanLock() async {
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        let scanner = ScannerManager(nfcReader: FakeNfcReader(.failure(.cancelled))) {}
+        let app = configure(scanner, sheets: sheets)
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        var nfcRoutes: [SendRoute?] = []
+        await scanner.handleSendNfcRead { nfcRoutes.append($0) }
+
+        let wasTaken = await scanner.handleSendNearbyRequest(paymentURI) { _ in }
+
+        XCTAssertEqual(nfcRoutes, [nil])
+        XCTAssertTrue(wasTaken)
+    }
+
+    func testNfcErrorMessages() {
+        XCTAssertEqual(NfcReadError.noPaymentRequest.message, t("other__nfc_error_text"))
+        XCTAssertEqual(NfcReadError.multiplePaymentRequests.message, t("other__nfc_error_multiple"))
+        XCTAssertEqual(NfcReadError.unavailable.message, t("other__nfc_error_unavailable"))
+        XCTAssertEqual(NfcReadError.failed("Tag connection lost").message, t("other__nfc_error_read_failed"))
+    }
+
+    func testCancelledAndTimedOutNfcReadsAreSilent() {
+        XCTAssertTrue(NfcReadError.cancelled.isSilent)
+        XCTAssertTrue(NfcReadError.timedOut.isSilent)
+        XCTAssertFalse(NfcReadError.noPaymentRequest.isSilent)
+        XCTAssertFalse(NfcReadError.failed("x").isSilent)
+    }
+}
+
+@MainActor
+private final class FakeNfcReader: NfcPaymentReading {
+    var isAvailable = true
+    private let result: Result<String, NfcReadError>
+    private(set) var alertMessages: [String] = []
+
+    init(_ result: Result<String, NfcReadError>) {
+        self.result = result
+    }
+
+    func readPaymentRequest(alertMessage: String) async throws -> String {
+        alertMessages.append(alertMessage)
+        return try result.get()
+    }
+}
+
+/// Holds the NFC read open until the test finishes it, like the system NFC sheet waiting for a tag.
+@MainActor
+private final class HeldNfcReader: NfcPaymentReading {
+    var isAvailable = true
+    let started = XCTestExpectation(description: "NFC read open")
+    private var continuation: CheckedContinuation<String, Error>?
+
+    func readPaymentRequest(alertMessage _: String) async throws -> String {
+        try await withCheckedThrowingContinuation {
+            continuation = $0
+            started.fulfill()
+        }
+    }
+
+    func finish(_ result: Result<String, NfcReadError>) {
+        continuation?.resume(with: result)
+        continuation = nil
+    }
+}
