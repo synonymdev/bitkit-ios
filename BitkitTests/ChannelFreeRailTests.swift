@@ -1766,7 +1766,7 @@ extension ChannelFreeRailTests {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         var release: CheckedContinuation<Void, Never>?
         rail.sendGate = { await withCheckedContinuation { release = $0 } }
-        rail.sentFailed = true
+        rail.sentStatus = .failed
         rail.sentPaymentId = "retry"
         rail.balanceSats = 100_000
         var failures = 0
@@ -1796,6 +1796,58 @@ extension ChannelFreeRailTests {
         rail.balanceSats = 0
 
         await assertReachesTheNode()
+    }
+
+    func testASendReturnedPendingAfterSparkFailedItDuringTheCallReleasesTheHold() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        rail.sentPaymentId = "retry"
+        rail.balanceSats = 100_000
+        var failures = 0
+        Bitkit.LightningService.shared.setEventCallback { event in
+            if case .paymentFailed = event {
+                failures += 1
+            }
+        }
+        // Spark fails the attempt while its send call hands it over, and the call returns it pending.
+        rail.sendGate = {
+            Bitkit.LightningService.shared.emitChannelFreeRailEvent(
+                .paymentFailed(paymentId: hash, paymentHash: hash, reason: nil),
+                railPaymentId: "retry"
+            )
+        }
+
+        _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+        XCTAssertEqual(failures, 1, "The failure didn't reach watchers exactly once")
+        rail.listError = NSError(domain: "spark", code: 1)
+        rail.balanceSats = 0
+
+        await assertReachesTheNode()
+    }
+
+    func testAnEarlierAttemptsFailureDuringTheCallLeavesAPendingSendHeld() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        rail.sentPaymentId = "retry"
+        rail.balanceSats = 100_000
+        var failures = 0
+        Bitkit.LightningService.shared.setEventCallback { event in
+            if case .paymentFailed = event {
+                failures += 1
+            }
+        }
+        rail.sendGate = {
+            Bitkit.LightningService.shared.emitChannelFreeRailEvent(
+                .paymentFailed(paymentId: hash, paymentHash: hash, reason: nil),
+                railPaymentId: "earlier"
+            )
+        }
+
+        _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+        XCTAssertEqual(failures, 0, "An earlier attempt's failure was reported for the pending send")
+        rail.sentBolt11 = nil
+        rail.listError = NSError(domain: "spark", code: 1)
+        rail.balanceSats = 0
+
+        await assertRefusedAsDuplicate()
     }
 
     // MARK: - Restore
@@ -2538,8 +2590,8 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     var sentBolt11: String?
     /// The rail's id of the attempt a send returns.
     var sentPaymentId: String?
-    /// Whether a send returns its attempt as failed.
-    var sentFailed = false
+    /// The status a send returns its attempt with.
+    var sentStatus: LDKNode.PaymentStatus = .pending
     var sends = 0
     var sentFeeLimitSats: UInt64?
     var sendGate: (() async -> Void)?
@@ -2569,7 +2621,7 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     }
 
     func send(bolt11: String, sats: UInt64?, maxFeeSats: UInt64?, beforeSubmission: @escaping () throws -> Void) async throws
-        -> (paymentHash: PaymentHash, paymentId: String?, isFailed: Bool)
+        -> (paymentHash: PaymentHash, paymentId: String?, status: LDKNode.PaymentStatus)
     {
         if let refusal {
             throw refusal
@@ -2587,7 +2639,7 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
         sentFeeLimitSats = maxFeeSats
         sentBolt11 = bolt11
         sends += 1
-        return ("ee", sentPaymentId, sentFailed)
+        return ("ee", sentPaymentId, sentStatus)
     }
 
     func estimateRoutingFees(bolt11: String, amountSats: UInt64?) async throws -> UInt64 {

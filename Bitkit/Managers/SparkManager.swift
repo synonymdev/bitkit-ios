@@ -627,7 +627,7 @@ final class SparkManager: ChannelFreeLightningRail {
         sats: UInt64?,
         maxFeeSats: UInt64?,
         beforeSubmission: @escaping () throws -> Void
-    ) async throws -> (paymentHash: PaymentHash, paymentId: String?, isFailed: Bool) {
+    ) async throws -> (paymentHash: PaymentHash, paymentId: String?, status: LDKNode.PaymentStatus) {
         let prepared: PrepareSendPaymentResponse
         let sdk: BreezSdk
         do {
@@ -667,7 +667,7 @@ final class SparkManager: ChannelFreeLightningRail {
             }
         }
         Logger.info("Sent Spark payment '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
-        return (invoiceDetails.paymentHash, response.payment.id, response.payment.status == .failed)
+        return (invoiceDetails.paymentHash, response.payment.id, Self.ldkStatus(response.payment.status))
     }
 
     nonisolated static func checkSendFee(_ feeSats: UInt64, maxFeeSats: UInt64?) throws {
