@@ -1051,7 +1051,7 @@ extension ChannelFreeRailTests {
             service.railTakenSendUnlisted = previousUnlisted
         }
         service.railSendHoldExpired = { replayed.append($0); return true }
-        service.railTakenSendUnlisted = { failed.append($0); return saves }
+        service.railTakenSendUnlisted = { hash, _ in failed.append(hash); return saves }
 
         let expiresAt = invoice.secondsSinceEpoch() + invoice.expiryTimeSeconds()
         let graceEnds = expiresAt + UInt64(Bitkit.LightningService.unlistedRailSendGraceSeconds)

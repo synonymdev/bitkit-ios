@@ -1450,16 +1450,23 @@ class ActivityService {
     }
 
     /// Marks the stored Lightning send `id` failed while it is still pending.
-    /// Read, checked and written in one core-queue operation, so a change saved meanwhile isn't overwritten.
-    func failPendingLightningSend(id: String) async throws {
+    /// Read, checked and written in one core-queue operation, so a change saved meanwhile isn't overwritten. The row is
+    /// the held send's now: it takes `ownAttemptId` as the attempt that wrote it when known, and otherwise drops one of
+    /// `earlierAttemptIds`. Saved before the row fails, so a stop in between finds the row pending and redoes both.
+    func failPendingLightningSend(id: String, ownAttemptId: String? = nil, earlierAttemptIds: Set<String> = []) async throws {
         try await ServiceQueue.background(.core) {
             guard case var .lightning(activity) = try getActivityById(walletId: WalletScope.default, activityId: id),
                   activity.txType == .sent, activity.status == .pending
             else { return }
+            if let ownAttemptId {
+                Self.channelFreeRowAttempts.remember(ownAttemptId, forPaymentHash: id)
+            } else if let rowAttemptId = Self.channelFreeRowAttempts.attemptId(forPaymentHash: id),
+                      earlierAttemptIds.contains(rowAttemptId)
+            {
+                Self.channelFreeRowAttempts.forget(paymentHash: id)
+            }
             activity.status = .failed
             try updateActivity(activityId: id, activity: .lightning(activity))
-            // The held send failed in place, so whichever attempt last wrote the row no longer owns it.
-            Self.channelFreeRowAttempts.forget(paymentHash: id)
             self.activitiesChangedSubject.send()
         }
     }
