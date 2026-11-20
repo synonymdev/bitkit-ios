@@ -1253,6 +1253,40 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(failed, [hash, "ef"], "a send Spark lists none of stayed pending")
     }
 
+    func testAnExpiredHoldWritesTheHeldSendOverALiveAttemptItFollowed() async {
+        let hash = "ab"
+        let earlier = Self.sparkPayment(hash: hash, status: .pending, id: "earlier", timestamp: 5)
+        let retry = Self.sparkPayment(hash: hash, status: .pending, id: "retry", timestamp: 5)
+        for payments in [[earlier, retry], [retry, earlier]] {
+            var recorded: [String] = []
+            _ = await SparkManager.recordExpiredHold(
+                paymentHash: hash, payments: payments, earlierAttemptIds: ["earlier"],
+                record: { recorded.append($0.id); return true }, failStoredSend: { _ in true }
+            )
+            XCTAssertEqual(recorded, ["retry"])
+        }
+    }
+
+    func testASendsEarlierAttemptsAreKeptPastItsHoldForTheLatestInvoices() throws {
+        let service = Bitkit.LightningService.shared
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "KeptEarlierAttempts-\(UUID().uuidString)"))
+        let previousStore = service.railAttemptsStore
+        defer { service.railAttemptsStore = previousStore }
+        service.railAttemptsStore = defaults
+        for index in 0 ... Bitkit.LightningService.keptEarlierAttemptsLimit {
+            service.keepEarlierAttemptsForTesting(hash: "hash\(index)", ids: ["a\(index)"])
+        }
+        service.keepEarlierAttemptsForTesting(hash: "hash1", ids: ["b1"])
+
+        XCTAssertEqual(service.keptRailSendEarlierAttemptIds(paymentHash: "hash0"), [])
+        XCTAssertEqual(service.keptRailSendEarlierAttemptIds(paymentHash: "HASH1"), ["a1", "b1"])
+        // A known earlier attempt's failure keeps the row whatever its date; the row's own attempt still writes it.
+        XCTAssertTrue(ActivityService.isKnownEarlierAttempt("a1", rowAttemptId: "retry", keptEarlierAttemptIds: ["a1"]))
+        XCTAssertFalse(ActivityService.isKnownEarlierAttempt("a1", rowAttemptId: "a1", keptEarlierAttemptIds: ["a1"]))
+        XCTAssertFalse(ActivityService.isKnownEarlierAttempt("later", rowAttemptId: "retry", keptEarlierAttemptIds: ["a1"]))
+        XCTAssertFalse(ActivityService.isKnownEarlierAttempt(nil, rowAttemptId: "retry", keptEarlierAttemptIds: ["a1"]))
+    }
+
     func testAnExpiredHoldWritesALiveRetryOverAFailureWithTheSameTimestamp() async {
         let hash = "ab"
         let failed = Self.sparkPayment(hash: hash, status: .failed, id: "earlier", timestamp: 5)

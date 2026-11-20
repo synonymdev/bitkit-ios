@@ -1831,6 +1831,7 @@ final class SparkManager: ChannelFreeLightningRail {
         return await Self.recordExpiredHold(
             paymentHash: paymentHash,
             payments: payments,
+            earlierAttemptIds: LightningService.shared.keptRailSendEarlierAttemptIds(paymentHash: paymentHash),
             record: { await self.recordActivity($0) },
             failStoredSend: { await (try? CoreService.shared.activity.failPendingLightningSend(id: $0)) != nil }
         )
@@ -1839,6 +1840,7 @@ final class SparkManager: ChannelFreeLightningRail {
     static func recordExpiredHold(
         paymentHash: String,
         payments: [Payment],
+        earlierAttemptIds: Set<String> = [],
         record: (Payment) async -> Bool,
         failStoredSend: (String) async -> Bool
     ) async -> Bool {
@@ -1846,10 +1848,12 @@ final class SparkManager: ChannelFreeLightningRail {
             guard payment.paymentType == .send, case let .lightning(_, _, _, htlcDetails, _, _, _, _) = payment.details else { return false }
             return htlcDetails.paymentHash.caseInsensitiveCompare(paymentHash) == .orderedSame
         }
-        // A live send is the one that pays the invoice, the newest when a retry shares its earlier attempt's timestamp. A
-        // listed failure may be an earlier attempt's, whose amount and fee aren't the held send's, so without a live send
-        // the stored row is failed in place.
-        if let live = sends.filter({ $0.status != .failed }).max(by: { $0.timestamp < $1.timestamp }) {
+        // A live send is the one that pays the invoice: not one the held send followed, then the newest. A listed failure
+        // may be an earlier attempt's, whose amount and fee aren't the held send's, so without a live send the stored row
+        // is failed in place.
+        if let live = sends.filter({ $0.status != .failed })
+            .max(by: { (earlierAttemptIds.contains($0.id) ? 0 : 1, $0.timestamp) < (earlierAttemptIds.contains($1.id) ? 0 : 1, $1.timestamp) })
+        {
             return await record(live)
         }
         return await failStoredSend(paymentHash)
