@@ -5,13 +5,23 @@ enum ScannedPaymentRequest {
     private static let bitcoinWithoutAddress = "bitcoin:?"
     private static let lightningParams = ["lightning", "lno"]
     private static let requiredParamPrefix = "req-"
+    /// BOLT11 prefixes, longest first so `lnbcrt` is not read as `lnbc` with an amount.
+    private static let bolt11Prefixes = ["lnbcrt", "lntbs", "lnbc", "lntb", "lnsb"]
+    private static let bolt11Multipliers: [Character: Decimal] = [
+        "m": Decimal(string: "0.001")!,
+        "u": Decimal(string: "0.000001")!,
+        "n": Decimal(string: "0.000000001")!,
+        "p": Decimal(string: "0.000000000001")!,
+    ]
 
     /// A BIP 321 URI may leave the address out and carry only a Lightning request
     /// (`bitcoin:?lightning=<invoice>`, used by Numo and planned by Square). The scanner rejects a `bitcoin:` URI
     /// without an address, so that form becomes `lightning:<invoice>`. A URI with a required (`req-`) parameter is
     /// kept, since BIP 321 forbids paying it without handling that parameter and the rewrite would drop it. So is a URI
     /// that repeats a parameter, which BIP 321 makes invalid, so the scanner rejects it instead of paying the invoice
-    /// alone. Anything else is returned trimmed and unchanged.
+    /// alone. A URI whose `amount` differs from the invoice's, or that sets an amount for an amountless invoice, is kept
+    /// too: the scanner cannot carry the outer amount, so it rejects the request instead of asking for a different one.
+    /// Anything else is returned trimmed and unchanged.
     static func normalized(_ text: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.lowercased().hasPrefix(bitcoinWithoutAddress) else { return trimmed }
@@ -30,6 +40,27 @@ enum ScannedPaymentRequest {
             params[key] = String(parts[1])
         }
         guard let request = lightningParams.lazy.compactMap({ params[$0] }).first else { return trimmed }
+        if let amount = params["amount"] {
+            guard let btc = Decimal(string: amount), btc == bolt11Amount(request) else { return trimmed }
+        }
         return "lightning:\(request)"
+    }
+
+    /// The amount in BTC that a BOLT11 invoice states in its human-readable part, or nil when it states none.
+    private static func bolt11Amount(_ invoice: String) -> Decimal? {
+        let lowercase = invoice.lowercased()
+        guard let separator = lowercase.lastIndex(of: "1") else { return nil }
+        let hrp = lowercase[..<separator]
+        guard let prefix = bolt11Prefixes.first(where: { hrp.hasPrefix($0) }) else { return nil }
+        var digits = hrp.dropFirst(prefix.count)
+        var multiplier: Decimal = 1
+        if let last = digits.last, let value = bolt11Multipliers[last] {
+            multiplier = value
+            digits = digits.dropLast()
+        }
+        guard !digits.isEmpty, digits.allSatisfy({ $0.isASCII && $0.isNumber }), let value = Decimal(string: String(digits)) else {
+            return nil
+        }
+        return value * multiplier
     }
 }

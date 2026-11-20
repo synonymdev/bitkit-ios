@@ -46,6 +46,32 @@ final class ScannedPaymentRequestTests: XCTestCase {
         await assertScannerRejects("bitcoin:?amount=0.01&AMOUNT=0.02&lightning=\(invoice)")
     }
 
+    func testRequestWhoseAmountTheInvoiceDoesNotStateIsKept() {
+        XCTAssertEqual(
+            ScannedPaymentRequest.normalized("bitcoin:?amount=0.000799&lightning=\(invoice)"),
+            "bitcoin:?amount=0.000799&lightning=\(invoice)"
+        )
+        XCTAssertEqual(
+            ScannedPaymentRequest.normalized("bitcoin:?amount=0.00007990&lightning=\(invoice)"),
+            "lightning:\(invoice)"
+        )
+        let amountless = "lnbcrt1pjqwerty"
+        XCTAssertEqual(
+            ScannedPaymentRequest.normalized("bitcoin:?amount=0.0001&lightning=\(amountless)"),
+            "bitcoin:?amount=0.0001&lightning=\(amountless)"
+        )
+        XCTAssertEqual(ScannedPaymentRequest.normalized("bitcoin:?lightning=\(amountless)"), "lightning:\(amountless)")
+        XCTAssertEqual(
+            ScannedPaymentRequest.normalized("bitcoin:?amount=0.0025&lightning=lnbcrt2500u1pjq"),
+            "lightning:lnbcrt2500u1pjq"
+        )
+        XCTAssertEqual(ScannedPaymentRequest.normalized("bitcoin:?amount=x&lightning=\(invoice)"), "bitcoin:?amount=x&lightning=\(invoice)")
+    }
+
+    func testScannerRejectsAnAmountTheInvoiceDoesNotState() async {
+        await assertScannerRejects("bitcoin:?amount=0.000799&lightning=\(invoice)")
+    }
+
     private func assertScannerRejects(_ request: String, file: StaticString = #filePath, line: UInt = #line) async {
         do {
             let decoded = try await decode(invoice: ScannedPaymentRequest.normalized(request))
