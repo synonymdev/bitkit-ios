@@ -220,14 +220,15 @@ struct WakeRegistrar {
                 topics: WakeConfig.topics
             )
         }
-        if !force, let device = record.device, device.gatewayUrl == gatewayUrl, device.content == content(device.content.audience) {
+        let isFresh = !WakeTimestamp.isRegistrationDue(now: now(), last: record.lastTimestamp)
+        if !force, isFresh, let device = record.device, device.gatewayUrl == gatewayUrl, device.content == content(device.content.audience) {
             return .unchanged
         }
 
         // The audience is the gateway's, never a constant.
         let info = try await serverInfo(gatewayUrl)
         let registeredDevice = WakeRegisteredDevice(gatewayUrl: gatewayUrl, content: content(info.audience))
-        if !force, record.device == registeredDevice {
+        if !force, isFresh, record.device == registeredDevice {
             return .unchanged
         }
 
@@ -249,13 +250,12 @@ struct WakeRegistrar {
                 )
             }
             let proofs = try await sign(request)
-            // Kept before sending, since the gateway may accept it even when its answer is lost. What it held before
-            // then no longer counts as unchanged.
+            // Kept before sending, since the gateway may accept it even when its answer is lost. The device is cleared
+            // until the gateway answers: with `lastTimestamp` already advanced, a kept one would read as fresh and
+            // unchanged, so a failed renewal would wait another max age.
             record.lastTimestamp = request.timestamp
             record.sentToGatewayUrl = gatewayUrl
-            if record.device != registeredDevice {
-                record.device = nil
-            }
+            record.device = nil
             try saveRegistration(record)
             return try await send(gatewayUrl, request, proofs)
         }
@@ -432,6 +432,18 @@ final class WakeManager {
     /// Tells the gateway the app is open, so it holds back wakes and fallback alerts meant for an app in the background.
     func sceneBecameActive() {
         isSceneActive = true
+        renewRegistrationIfDue()
+        startPresence()
+    }
+
+    /// The scene registers again only when its inputs change, so a registration that reached its max age while the app
+    /// stayed in memory is sent from here.
+    private func renewRegistrationIfDue() {
+        guard gatewayUrl != nil, latestInputs != nil else { return }
+        Task { await serialized { await self.register(force: false) } }
+    }
+
+    private func startPresence() {
         endPresenceClearTask()
         let previous = presenceTask
         previous?.cancel()
@@ -470,7 +482,7 @@ final class WakeManager {
 
     private func refreshPresence() {
         guard isSceneActive else { return }
-        sceneBecameActive()
+        startPresence()
     }
 
     /// Ends the background task clearing presence, or only `identifier` when given, so an older clear cannot end a newer one.
