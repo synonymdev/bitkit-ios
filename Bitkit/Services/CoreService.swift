@@ -1091,27 +1091,35 @@ class ActivityService {
                 try self.settleMove(latest, receiveState: state)
                 return
             }
-            guard let latestActivity else {
-                try upsertActivity(activity: .lightning(ln))
-                self.updateBoostTxIdsCache(for: .lightning(ln))
+            // The writer is kept before the row is written, so a stop between the two never leaves the row to an earlier
+            // writer, and put back when the write fails.
+            let previousWriter = Self.channelFreeRowAttempts.entry(forPaymentHash: payment.id)
+            if rail == .channelFree, payment.direction == .outbound, let railPaymentId {
+                Self.channelFreeRowAttempts.remember(railPaymentId, forPaymentHash: payment.id, stamp: ChannelFreeRowAttempts.stamp(ln))
+            }
+            do {
+                guard let latestActivity else {
+                    try upsertActivity(activity: .lightning(ln))
+                    self.updateBoostTxIdsCache(for: .lightning(ln))
+                    self.activitiesChangedSubject.send()
+                    return
+                }
+                var updated = ln
+                if case let .lightning(latest) = latestActivity, latest.contact != existingLightning?.contact {
+                    updated.contact = latest.contact
+                }
+                if self.isContactDetached(activityId: payment.id, walletId: ln.walletId) {
+                    updated.contact = nil
+                }
+                try updateActivity(activityId: payment.id, activity: .lightning(updated))
                 self.activitiesChangedSubject.send()
-                return
+            } catch {
+                Self.channelFreeRowAttempts.restore(previousWriter, forPaymentHash: payment.id)
+                throw error
             }
-            var updated = ln
-            if case let .lightning(latest) = latestActivity, latest.contact != existingLightning?.contact {
-                updated.contact = latest.contact
-            }
-            if self.isContactDetached(activityId: payment.id, walletId: ln.walletId) {
-                updated.contact = nil
-            }
-            try updateActivity(activityId: payment.id, activity: .lightning(updated))
-            self.activitiesChangedSubject.send()
         }
         if payment.direction == .outbound, ln.contact != nil, payment.status != .pending {
             Self.sentPaymentContacts.forget(paymentHash: payment.id)
-        }
-        if rail == .channelFree, payment.direction == .outbound, let railPaymentId {
-            Self.channelFreeRowAttempts.remember(railPaymentId, forPaymentHash: payment.id, stamp: ChannelFreeRowAttempts.stamp(ln))
         }
     }
 
@@ -1460,6 +1468,7 @@ class ActivityService {
             guard case var .lightning(activity) = try getActivityById(walletId: WalletScope.default, activityId: id),
                   activity.txType == .sent, activity.status == .pending
             else { return }
+            let previousWriter = Self.channelFreeRowAttempts.entry(forPaymentHash: id)
             if let ownAttemptId {
                 Self.channelFreeRowAttempts.remember(ownAttemptId, forPaymentHash: id, stamp: ChannelFreeRowAttempts.stamp(activity))
             } else if let rowAttemptId = Self.channelFreeRowAttempts.attemptId(forPaymentHash: id),
@@ -1471,7 +1480,12 @@ class ActivityService {
                 Self.channelFreeRowAttempts.forget(paymentHash: id)
             }
             activity.status = .failed
-            try updateActivity(activityId: id, activity: .lightning(activity))
+            do {
+                try updateActivity(activityId: id, activity: .lightning(activity))
+            } catch {
+                Self.channelFreeRowAttempts.restore(previousWriter, forPaymentHash: id)
+                throw error
+            }
             self.activitiesChangedSubject.send()
         }
     }
@@ -2920,6 +2934,24 @@ struct ChannelFreeRowAttempts: @unchecked Sendable {
             guard entries.last(where: { $0.first == hash }) != entry else { return }
             entries.removeAll { $0.first == hash }
             entries.append(entry)
+            defaults.set(Array(entries.suffix(Self.limit)), forKey: Self.key)
+        }
+    }
+
+    /// The kept `[hash, id, stamp]` of the row of `paymentHash`, to put back with `restore`.
+    func entry(forPaymentHash paymentHash: String) -> [String]? {
+        let hash = paymentHash.lowercased()
+        return (defaults.array(forKey: Self.key) as? [[String]])?.last { $0.first == hash }
+    }
+
+    func restore(_ entry: [String]?, forPaymentHash paymentHash: String) {
+        let hash = paymentHash.lowercased()
+        Self.lock.withLock {
+            var entries = defaults.array(forKey: Self.key) as? [[String]] ?? []
+            entries.removeAll { $0.first == hash }
+            if let entry {
+                entries.append(entry)
+            }
             defaults.set(Array(entries.suffix(Self.limit)), forKey: Self.key)
         }
     }
