@@ -107,13 +107,31 @@ jobs:
                   raise SystemExit(f'Docker reports running containers outside the Spark test project: {", ".join(other)}.')
 
           try:
-              result = run(['docker', 'desktop', 'restart', '--timeout', '90'], 105)
-              print(result.stdout.strip())
-          except subprocess.CalledProcessError as error:
-              print(f'Docker Desktop restart returned exit code {error.returncode}.')
-              print((error.stderr or error.stdout).strip())
-          except subprocess.TimeoutExpired:
-              print('Docker Desktop restart exceeded the command timeout.')
+              print(run(['docker', 'desktop', 'status'], 10).stdout.strip())
+          except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+              print('Docker Desktop status did not respond.')
+
+          processes = run(['ps', '-axo', 'pid=,state=,comm='], 10).stdout.splitlines()
+          desktop_prefix = '/Applications/Docker.app/Contents/MacOS/'
+          for process in processes:
+              if desktop_prefix in process:
+                  print(process.strip())
+
+          vm_disk = home / 'Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw'
+          try:
+              print(run(['du', '-sh', str(vm_disk)], 15).stdout.strip())
+          except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+              print('The Docker VM disk could not be measured within the probe limits.')
+
+          for action, limit in [('stop', 180), ('start', 120)]:
+              try:
+                  result = run(['docker', 'desktop', action, '--timeout', str(limit)], limit + 15)
+                  print(result.stdout.strip())
+              except subprocess.CalledProcessError as error:
+                  print((error.stderr or error.stdout).strip())
+                  raise SystemExit(f'Docker Desktop {action} returned exit code {error.returncode}.')
+              except subprocess.TimeoutExpired:
+                  raise SystemExit(f'Docker Desktop {action} exceeded the command timeout.')
 
           deadline = time.monotonic() + 120
           while time.monotonic() < deadline:
