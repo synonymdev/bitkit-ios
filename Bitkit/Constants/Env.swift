@@ -243,9 +243,24 @@ enum Env {
 
     static var electrumServerUrl: String {
         if isE2E, e2eBackend == "local" {
-            return "tcp://\(e2eLocalHost):60001"
+            return localElectrumServerUrl(host: e2eLocalHost)
         }
         return electrumServerUrl(for: network)
+    }
+
+    /// The pinned fixture's Spark REST and Savings Electrum endpoints serve the same regtest.
+    static func sharesLocalSparkChain(
+        sparkURL: String,
+        nodeElectrumURL: String?,
+        hardwareElectrumURL: String,
+        fixtureHost: String = e2eLocalHost
+    ) -> Bool {
+        let electrumURL = localElectrumServerUrl(host: fixtureHost)
+        return sparkURL == "http://\(fixtureHost):23090/api" && nodeElectrumURL == electrumURL && hardwareElectrumURL == electrumURL
+    }
+
+    private static func localElectrumServerUrl(host: String) -> String {
+        "tcp://\(host):60001"
     }
 
     /// Whether a Paykit payment may route through a Pubky Swaps provider when no balance reaches the contact's
