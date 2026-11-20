@@ -173,6 +173,13 @@ final class SparkRelaunchActivityTests: XCTestCase {
             attempts.remember("id\(index)", forPaymentHash: "hash\(index)", stamp: "1:2:3")
         }
         attempts.remember("newer", forPaymentHash: "HASH1", stamp: "1:2:3")
+        // A failed row write puts the writer before it back, or removes the one it added.
+        let before = attempts.entry(forPaymentHash: "hash1")
+        attempts.remember("failed-write", forPaymentHash: "hash1", stamp: "4:5:6")
+        attempts.restore(before, forPaymentHash: "hash1")
+        attempts.remember("unwritten", forPaymentHash: "fresh", stamp: "1:2:3")
+        attempts.restore(nil, forPaymentHash: "fresh")
+        XCTAssertNil(attempts.attemptId(forPaymentHash: "fresh"))
 
         XCTAssertNil(attempts.attemptId(forPaymentHash: "hash0"))
         XCTAssertEqual(attempts.attemptId(forPaymentHash: "hash1"), "newer")
