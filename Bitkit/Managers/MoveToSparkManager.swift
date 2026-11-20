@@ -707,8 +707,11 @@ final class MoveToSparkManager {
     }
 
     /// Quotes moving everything the channels can send, for a payment that needs the update.
+    /// The update moves the balance in one payment; a balance that takes several parts goes through the modal.
     func updateQuote(wallet: WalletViewModel) async throws -> MoveToSparkQuote {
-        try await makeQuote(channels: wallet.channels)
+        let quote = try await makeQuote(channels: wallet.channels)
+        guard quote.partSats == quote.amountSats else { throw MoveToSparkError.noRoute }
+        return quote
     }
 
     /// Spark's fee for a payment of `amountSats` once the spending balance is updated; Spark's service fee alone when
@@ -762,22 +765,17 @@ final class MoveToSparkManager {
         try await checkCoverage(quote: quote, bolt11: bolt11, amountSats: amountSats)
         let channelsBefore = wallet.channels ?? []
         let paymentsBefore = await LightningService.shared.listPayments()
-        let outcome = try await payParts(
+        let settled = try await payOverChannels(
             quote,
             wallet: wallet,
-            onLateSuccess: { [weak self, weak wallet, weak transfer] _, _ in
+            onLateSuccess: { [weak self, weak wallet, weak transfer] _ in
                 guard let self, let wallet, let transfer else { return }
                 closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
             }
         )
         // Still in flight: the funds reach Spark or return to the channels on their own.
-        guard case let .settled(_, _, isComplete) = outcome else { throw MoveToSparkError.updateUnsettled }
+        guard settled != nil else { throw MoveToSparkError.updateUnsettled }
         closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
-        // A move stopped early may still cover the payment with Spark's balance; otherwise it is not sent.
-        if !isComplete {
-            await services.refreshSpark()
-            guard services.spark.canSend(amountSats) else { throw MoveToSparkError.updateFailed }
-        }
         try await waitForSpark(toSend: amountSats)
     }
 
