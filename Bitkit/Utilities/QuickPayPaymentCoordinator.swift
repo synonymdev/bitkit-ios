@@ -70,7 +70,7 @@ final class QuickPayPaymentCoordinator {
         }
         self.listRows = listRows ?? {
             try await Self.reconcileRows(
-                railPayments: { try await LightningService.shared.channelFreeRailSendStatuses() },
+                railPayments: { try await LightningService.shared.channelFreeRailPayments() },
                 nodePayments: { await LightningService.shared.listPayments() }
             )
         }
