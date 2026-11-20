@@ -299,6 +299,19 @@ final class SparkRelaunchActivityTests: XCTestCase {
         XCTAssertEqual(attempts.attemptId(forPaymentHash: hash, row: row), "earlier")
         XCTAssertTrue(attempts.isUnchanged(row, forPaymentHash: hash))
 
+        // A second write cut off the same way, or one alike the row, still leaves it to its real writer.
+        attempts.remember("third", forPaymentHash: hash, stamp: "400:800:0", previousRowStamp: ChannelFreeRowAttempts.stamp(row))
+        XCTAssertEqual(attempts.attemptId(forPaymentHash: hash, row: row), "earlier")
+        attempts.remember(
+            "alike",
+            forPaymentHash: hash,
+            stamp: ChannelFreeRowAttempts.stamp(row),
+            previousRowStamp: ChannelFreeRowAttempts.stamp(row)
+        )
+        XCTAssertEqual(attempts.attemptId(forPaymentHash: hash, row: row), "earlier")
+        attempts.remember("retry", forPaymentHash: hash, stamp: "300:700:0", previousRowStamp: ChannelFreeRowAttempts.stamp(row))
+        XCTAssertEqual(attempts.attemptId(forPaymentHash: hash, row: row), "earlier")
+
         // Once the retry's row is saved, it is the retry's.
         attempts.commit(forPaymentHash: hash)
         XCTAssertEqual(attempts.attemptId(forPaymentHash: hash, row: row), "retry")

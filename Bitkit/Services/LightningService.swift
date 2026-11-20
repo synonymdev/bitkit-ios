@@ -1174,9 +1174,10 @@ class LightningService: NodeLifecycleService {
                 guard let paid = try await settledRecordedRailSend(paymentHash: paymentHash, since: mark) else { throw error }
                 return paid
             } catch {
-                // A send that failed once submitted may still go out, so its outcome waits for a later sync.
+                // A send that failed once submitted may still go out, so its outcome waits for a later sync, unless an
+                // outcome or sync already settled it while the call returned.
                 if let paymentHash {
-                    markRailSendUncertain(paymentHash: paymentHash, since: mark, earlierAttemptIds: earlierAttemptIds)
+                    markRailSendUncertain(paymentHash: paymentHash, since: mark, earlierAttemptIds: earlierAttemptIds, ifStillInDoubt: true)
                 }
                 throw error
             }
@@ -1392,7 +1393,9 @@ class LightningService: NodeLifecycleService {
             if let mark, attemptsLive(since: mark, key: Self.railAttemptsKey).contains(hash) {
                 return
             }
+            // The send's own outcome is known: its hold ends with the expiry the sweep would have ended it by.
             removeAttempt(paymentHash: hash, key: Self.railAttemptsKey)
+            clearRailSendUncertainty(hash: hash)
         }
     }
 
@@ -1510,12 +1513,29 @@ class LightningService: NodeLifecycleService {
         let outbound = payments.filter { $0.direction == .outbound }
         let hashes = { (status: PaymentStatus) in Set(outbound.filter { $0.status == status }.map { $0.paymentHash.lowercased() }) }
         return eventCallbackLock.withLock {
+            // A held send's earlier attempts settle nothing: only its own failure, or any payment of the invoice, does.
+            let taken = takenRailSendIds()
+            let earlier = uncertainRailSendEarlierAttempts()
+            let held = Set(taken.keys).union(earlier.keys)
+            let ownFailed = Set(outbound.filter { payment in
+                let hash = payment.paymentHash.lowercased()
+                guard payment.status == .failed else { return false }
+                guard let id = payment.id else { return true }
+                return !Self.isEarlierRailAttempt(id: id, hash: hash, taken: taken, earlier: earlier)
+            }.map { $0.paymentHash.lowercased() })
             let live = hashes(.pending).union(attemptsLive(since: mark, key: Self.railAttemptsKey))
+                .union(held.subtracting(ownFailed).subtracting(hashes(.succeeded)))
             let paid = hashes(.succeeded).subtracting(live)
             let listed = Set(outbound.map { $0.paymentHash.lowercased() })
+            let before = Set(railAttemptsStore.stringArray(forKey: Self.railAttemptsKey) ?? [])
             trimSettledAttempts(
-                paid: paid, failed: hashes(.failed).subtracting(paid).subtracting(live), listed: listed, live: live, key: Self.railAttemptsKey
+                paid: paid, failed: ownFailed.subtracting(paid).subtracting(live), listed: listed, live: live, key: Self.railAttemptsKey
             )
+            // A hold ends with the record and expiry its sweep needs.
+            let after = Set(railAttemptsStore.stringArray(forKey: Self.railAttemptsKey) ?? [])
+            for hash in held.intersection(before.subtracting(after)) {
+                clearRailSendUncertainty(hash: hash)
+            }
             return live
         }
     }
@@ -1677,12 +1697,18 @@ class LightningService: NodeLifecycleService {
 
     /// A rail send about to be submitted, or that failed after it was, until a sync after it and its invoice's expiry
     /// settle it. The expiry is the one kept beside the hash.
-    private func markRailSendUncertain(paymentHash: String, since mark: AttemptMark, earlierAttemptIds: [String]?) {
+    private func markRailSendUncertain(
+        paymentHash: String,
+        since mark: AttemptMark,
+        earlierAttemptIds: [String]?,
+        ifStillInDoubt: Bool = false
+    ) {
         let hash = paymentHash.lowercased()
         let failedAt = Int(max(0, now().timeIntervalSince1970))
         eventCallbackLock.withLock {
             guard attemptsRecorded(since: mark.records, key: Self.railAttemptsKey).contains(hash) else { return }
             var uncertain = uncertainRailSendFailedAt()
+            guard !ifStillInDoubt || uncertain[hash] != nil else { return }
             if uncertain[hash] == nil {
                 var started = uncertainRailSendStartedAt()
                 started[hash] = failedAt
@@ -1784,8 +1810,10 @@ class LightningService: NodeLifecycleService {
     /// holds the invoice, so a failure that ended it meanwhile leaves no id behind.
     private func takeRailSend(hash: String, paymentId: String?, since mark: AttemptMark) {
         eventCallbackLock.withLock {
+            // An outcome delivered before the send returned already ended its doubt and hold.
+            let isUnsettled = uncertainRailSendFailedAt()[hash] != nil
             clearRailSendUncertainty(hash: hash, keepingEarlierAttempts: true)
-            guard let paymentId, attemptsRecorded(since: mark.records, key: Self.railAttemptsKey).contains(hash) else { return }
+            guard isUnsettled, let paymentId, attemptsRecorded(since: mark.records, key: Self.railAttemptsKey).contains(hash) else { return }
             var taken = takenRailSendIds()
             taken[hash] = paymentId
             railAttemptsStore.set(taken, forKey: Self.takenRailSendsKey)
@@ -1805,16 +1833,30 @@ class LightningService: NodeLifecycleService {
         return ids.count == attempts.count ? ids : nil
     }
 
-    /// Spark's id of the taken send that still holds the invoice of `paymentHash`, if any.
     /// Spark's payments as the app's status lookups read them: a send still held reads as pending while Spark lists none
     /// of its own attempts, only earlier failed ones or nothing, until its hold ends past the invoice's expiry.
     func channelFreeRailSendStatuses() async throws -> [ChannelFreeRailPayment] {
-        try await withHeldRailSends(channelFreeRailPayments())
+        let heldBefore = heldRailSendHashes()
+        let payments = try await channelFreeRailPayments()
+        // A hold that ended while the list was read ended on an outcome the list may not show yet.
+        guard heldBefore.isSubset(of: heldRailSendHashes()) else {
+            return try await withHeldRailSends(channelFreeRailPayments())
+        }
+        return withHeldRailSends(payments)
+    }
+
+    private func heldRailSendHashes() -> Set<String> {
+        eventCallbackLock.withLock { heldRailSendHashesLocked() }
+    }
+
+    /// Callers hold `eventCallbackLock`.
+    private func heldRailSendHashesLocked() -> Set<String> {
+        Set(takenRailSendIds().keys).union(uncertainRailSendEarlierAttempts().keys).union(uncertainRailSendFailedAt().keys)
     }
 
     func withHeldRailSends(_ payments: [ChannelFreeRailPayment]) -> [ChannelFreeRailPayment] {
         eventCallbackLock.withLock {
-            let held = Set(takenRailSendIds().keys).union(uncertainRailSendEarlierAttempts().keys).union(uncertainRailSendFailedAt().keys)
+            let held = heldRailSendHashesLocked()
             guard !held.isEmpty else { return payments }
             var statuses = payments.filter { payment in
                 let hash = payment.paymentHash.lowercased()
@@ -1832,6 +1874,7 @@ class LightningService: NodeLifecycleService {
         }
     }
 
+    /// Spark's id of the taken send that still holds the invoice of `paymentHash`, if any.
     func heldRailSendId(paymentHash: String) -> String? {
         eventCallbackLock.withLock { takenRailSendIds()[paymentHash.lowercased()] }
     }
