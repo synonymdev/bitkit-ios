@@ -531,6 +531,10 @@ final class MoveToSparkManager {
         }
         guard quoteGeneration == generation else { return }
         isQuoting = false
+        // Shown in place of a quote after a move, the balance updated is that move's outcome, kept as a settled one is.
+        if case .done = result {
+            keepsOutcome = true
+        }
         state = result
     }
 
