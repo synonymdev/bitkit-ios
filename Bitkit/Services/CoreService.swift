@@ -3001,13 +3001,13 @@ struct ChannelFreeRowAttempts: @unchecked Sendable {
         }
     }
 
-    /// Drops the oldest writers past `limit`, keeping those of retried sends while their earlier attempts are kept.
+    /// Keeps the latest `limit` writers of sends without kept earlier attempts, and those of retried sends, which the
+    /// earlier attempts' own cap bounds.
     private func capped(_ entries: [[String]]) -> [[String]] {
-        let excess = entries.count - Self.limit
-        guard excess > 0 else { return entries }
+        guard entries.count > Self.limit else { return entries }
         let kept = defaults.array(forKey: LightningService.keptRailSendEarlierAttemptsKey) as? [[String]] ?? []
         let retried = Set(kept.compactMap(\.first))
-        let dropped = Set(entries.compactMap(\.first).filter { !retried.contains($0) }.prefix(excess))
+        let dropped = Set(entries.compactMap(\.first).filter { !retried.contains($0) }.dropLast(Self.limit))
         return entries.filter { !dropped.contains($0.first ?? "") }
     }
 
