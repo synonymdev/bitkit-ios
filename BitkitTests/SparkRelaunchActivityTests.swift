@@ -193,7 +193,7 @@ final class SparkRelaunchActivityTests: XCTestCase {
         XCTAssertTrue(ActivityService.isOtherRowAttempt("older", rowAttemptId: "first", earlierAttemptIds: ["first", "older"]))
     }
 
-    func testFailingAHeldSparkRowInPlaceDropsTheAttemptThatWroteIt() async throws {
+    func testFailingAHeldSparkRowInPlaceKeepsAWriterItDidntFollow() async throws {
         let hash = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() + String(repeating: "e9", count: 16)
         let pending = PaymentDetails(
             id: hash,
@@ -203,8 +203,30 @@ final class SparkRelaunchActivityTests: XCTestCase {
         try await CoreService.shared.activity.recordChannelFreeRailPayment(pending, railPaymentId: "earlier")
         XCTAssertEqual(ActivityService.channelFreeRowAttempts.attemptId(forPaymentHash: hash), "earlier")
 
-        try await CoreService.shared.activity.failPendingLightningSend(id: hash)
-        // The row is the held send's now, so the attempt that wrote it before no longer counts as its own.
-        XCTAssertNil(ActivityService.channelFreeRowAttempts.attemptId(forPaymentHash: hash))
+        // An attempt that isn't one the held send followed stays the row's writer.
+        try await CoreService.shared.activity.failPendingLightningSend(id: hash, earlierAttemptIds: ["older"])
+        XCTAssertEqual(ActivityService.channelFreeRowAttempts.attemptId(forPaymentHash: hash), "earlier")
+    }
+
+    func testFailingAHeldSparkRowInPlaceMakesItTheHeldAttemptsOwn() async throws {
+        func pendingRow(_ hash: String) async throws {
+            let pending = PaymentDetails(
+                id: hash,
+                kind: .bolt11(hash: hash, preimage: nil, secret: nil, description: nil, bolt11: "lnbcrt1"),
+                amountMsat: 500_000, feePaidMsat: 0, direction: .outbound, status: .pending, latestUpdateTimestamp: 200
+            )
+            try await CoreService.shared.activity.recordChannelFreeRailPayment(pending, railPaymentId: "earlier")
+        }
+        let taken = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() + String(repeating: "ea", count: 16)
+        try await pendingRow(taken)
+        // The held send's own id becomes the writer, so it keeps the row against an older failure of the same second.
+        try await CoreService.shared.activity.failPendingLightningSend(id: taken, ownAttemptId: "retry", earlierAttemptIds: ["earlier"])
+        XCTAssertEqual(ActivityService.channelFreeRowAttempts.attemptId(forPaymentHash: taken), "retry")
+
+        let inDoubt = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() + String(repeating: "eb", count: 16)
+        try await pendingRow(inDoubt)
+        // Without its own id, an earlier attempt that wrote the row no longer counts as the row's own.
+        try await CoreService.shared.activity.failPendingLightningSend(id: inDoubt, earlierAttemptIds: ["earlier"])
+        XCTAssertNil(ActivityService.channelFreeRowAttempts.attemptId(forPaymentHash: inDoubt))
     }
 }
