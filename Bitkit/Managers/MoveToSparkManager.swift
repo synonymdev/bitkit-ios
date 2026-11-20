@@ -23,9 +23,10 @@ enum MoveToSparkMath {
     }
 
     /// What the usable channels can send in all, which a paid part lowers even where a peer's HTLC cap keeps the
-    /// next-HTLC limit flat. A channel we funded holds back its commitment fee: its limit is the total when it matches
-    /// the limit LDK leaves for either commitment type; a peer's HTLC cap below both hides the type, so it counts the
-    /// higher one, which prices every part that can route and at most one more.
+    /// next-HTLC limit flat. A channel we funded holds back its commitment fee: when its limit matches the limit LDK
+    /// leaves for a commitment type, the total is that limit and the below-dust part LDK then still leaves for the rest;
+    /// a peer's HTLC cap below both hides the type, so it counts the higher one, which prices every part that can route
+    /// and at most one more.
     static func outboundSats(channels: [ChannelDetails]?) -> UInt64 {
         (channels ?? []).filter(\.isUsable).map(sendableSats).reduce(0, +)
     }
@@ -34,15 +35,19 @@ enum MoveToSparkMath {
         let outboundSats = channel.outboundCapacityMsat / 1000
         guard channel.isOutbound else { return outboundSats }
         let limitSats = Int64(channel.nextOutboundHtlcLimitMsat / 1000)
-        let clearedSats = [false, true].map { isLegacy in
-            max(0, clearedLimitMsat(
-                capacityMsat: Int64(channel.outboundCapacityMsat),
-                feerate: Int64(channel.feerateSatPer1000Weight),
-                isLegacy: isLegacy
-            )) / 1000
+        let feerate = Int64(channel.feerateSatPer1000Weight)
+        let capacityMsat = Int64(channel.outboundCapacityMsat)
+        func clearedSats(capacityMsat: Int64, isLegacy: Bool) -> Int64 {
+            max(0, clearedLimitMsat(capacityMsat: capacityMsat, feerate: feerate, isLegacy: isLegacy)) / 1000
         }
-        let isUncapped = clearedSats.contains { abs(limitSats - $0) <= 1 }
-        let totalSats = isUncapped ? limitSats : max(limitSats, clearedSats.max() ?? 0)
+        let types = [false, true]
+        let matched = types.filter { abs(limitSats - clearedSats(capacityMsat: capacityMsat, isLegacy: $0)) <= 1 }
+        let totalSats: Int64 = if matched.isEmpty {
+            max(limitSats, types.map { clearedSats(capacityMsat: capacityMsat, isLegacy: $0) }.max() ?? 0)
+        } else {
+            // Once the above-dust limit has gone, LDK still leaves a below-dust HTLC for the rest.
+            limitSats + (matched.map { clearedSats(capacityMsat: capacityMsat - limitSats * 1000, isLegacy: $0) }.min() ?? 0)
+        }
         return min(outboundSats, UInt64(totalSats))
     }
 

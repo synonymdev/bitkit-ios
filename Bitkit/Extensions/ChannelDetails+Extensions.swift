@@ -20,6 +20,7 @@ extension ChannelDetails {
         channelValueSats: UInt64 = 100_000,
         outboundCapacityMsat: UInt64 = 50_000_000, // 50,000 sats in msat
         nextOutboundHtlcLimitMsat: UInt64? = nil, // the outbound capacity when nil
+        feerateSatPer1000Weight: UInt32 = 2500,
         inboundCapacityMsat: UInt64 = 50_000_000, // 50,000 sats in msat
         shortChannelId: UInt64? = 123_456_789
     ) -> ChannelDetails {
@@ -36,7 +37,7 @@ extension ChannelDetails {
             channelValueSats: channelValueSats,
             unspendablePunishmentReserve: 1000,
             userChannelId: "123abc",
-            feerateSatPer1000Weight: 2500,
+            feerateSatPer1000Weight: feerateSatPer1000Weight,
             outboundCapacityMsat: outboundCapacityMsat,
             inboundCapacityMsat: inboundCapacityMsat,
             confirmationsRequired: isChannelReady ? 3 : nil,

@@ -77,6 +77,18 @@ final class MoveToSparkQuoteTests: XCTestCase {
         XCTAssertEqual(quote.feeSats, 32, "One part: the commitment fee the channel holds back is not balance to move")
     }
 
+    func testALegacyFundedChannelPricesTheBelowDustPartItLeaves() async throws {
+        let capacityMsat: UInt64 = 100_000_000
+        let limitMsat = UInt64(MoveToSparkMath.clearedLimitMsat(capacityMsat: Int64(capacityMsat), feerate: 4000, isLegacy: true))
+        let funded = [ChannelDetails.mock(
+            outboundCapacityMsat: capacityMsat,
+            nextOutboundHtlcLimitMsat: limitMsat,
+            feerateSatPer1000Weight: 4000
+        )]
+        let quote = try await MoveToSparkManager(services: FakeServices()).makeQuote(channels: funded)
+        XCTAssertEqual(quote.feeSats, 2 * 32, "The below-dust part the legacy reserve leaves is priced too")
+    }
+
     func testAFundedChannelWithAPeerHtlcCapPricesItsLastPart() async throws {
         let capped = [ChannelDetails.mock(outboundCapacityMsat: 65_000_000, nextOutboundHtlcLimitMsat: 30_032_000)]
         let quote = try await MoveToSparkManager(services: FakeServices()).makeQuote(channels: capped)
