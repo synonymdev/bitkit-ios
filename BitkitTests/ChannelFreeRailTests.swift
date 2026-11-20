@@ -1182,6 +1182,26 @@ extension ChannelFreeRailTests {
         XCTAssertNil(service.heldRailSendId(paymentHash: hash))
     }
 
+    func testASendCallFailingAfterItsOutcomeArrivedLeavesItSettled() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        service.now = { Date(timeIntervalSince1970: 1000) }
+        rail.balanceSats = 100_000
+        rail.afterSubmission = {
+            service.emitChannelFreeRailEvent(
+                .paymentSuccessful(paymentId: hash, paymentHash: hash, paymentPreimage: "pp", feePaidMsat: 1000), railPaymentId: "sent"
+            )
+        }
+        rail.errorAfterSubmission = NSError(domain: "spark", code: 2)
+        defer {
+            rail.afterSubmission = nil
+            rail.errorAfterSubmission = nil
+        }
+        _ = try? await service.send(bolt11: Self.invoice)
+
+        XCTAssertNil(Bitkit.ChannelFreeRailPayment.latestOutboundAttempt(service.withHeldRailSends([]), paymentHash: hash))
+    }
+
     func testAnOlderAttemptMissingFromTheListBeforeASendInDoubtKeepsItsHold() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         let service = Bitkit.LightningService.shared
@@ -2475,6 +2495,8 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     var onList: (() -> Void)?
     /// Runs as a send is about to be submitted, before `beforeSubmission`.
     var beforeSubmit: (() -> Void)?
+    /// Runs once the send was submitted, before `errorAfterSubmission`.
+    var afterSubmission: (() -> Void)?
     /// Thrown after the send was submitted, as when the connection drops inside Spark's send.
     var errorAfterSubmission: Error?
     /// Whether the rail's last sync reached it, after the given seconds when there are any.
@@ -2500,6 +2522,7 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
         }
         beforeSubmit?()
         try beforeSubmission()
+        afterSubmission?()
         if let refusalAfterSubmission {
             throw refusalAfterSubmission
         }
