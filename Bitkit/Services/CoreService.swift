@@ -1460,6 +1460,8 @@ class ActivityService {
             else { return }
             activity.status = .failed
             try updateActivity(activityId: id, activity: .lightning(activity))
+            // The held send failed in place, so whichever attempt last wrote the row no longer owns it.
+            Self.channelFreeRowAttempts.forget(paymentHash: id)
             self.activitiesChangedSubject.send()
         }
     }
@@ -2903,6 +2905,15 @@ struct ChannelFreeRowAttempts: @unchecked Sendable {
             pairs.removeAll { $0.first == hash }
             pairs.append([hash, attemptId])
             defaults.set(Array(pairs.suffix(Self.limit)), forKey: Self.key)
+        }
+    }
+
+    func forget(paymentHash: String) {
+        let hash = paymentHash.lowercased()
+        Self.lock.withLock {
+            guard var pairs = defaults.array(forKey: Self.key) as? [[String]], pairs.contains(where: { $0.first == hash }) else { return }
+            pairs.removeAll { $0.first == hash }
+            defaults.set(pairs, forKey: Self.key)
         }
     }
 
