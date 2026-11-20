@@ -1197,8 +1197,10 @@ extension ChannelFreeRailTests {
             rail.afterSubmission = nil
             rail.errorAfterSubmission = nil
         }
-        _ = try? await service.send(bolt11: Self.invoice)
+        // The call's failure gives way to the outcome already delivered, so its caller reads that outcome.
+        let sent = try await service.send(bolt11: Self.invoice)
 
+        XCTAssertEqual(sent, hash)
         XCTAssertNil(Bitkit.ChannelFreeRailPayment.latestOutboundAttempt(service.withHeldRailSends([]), paymentHash: hash))
     }
 
