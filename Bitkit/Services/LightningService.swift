@@ -183,7 +183,7 @@ class LightningService: NodeLifecycleService {
     var railSendHoldExpired: ((String) async -> Bool)?
     /// Fails the stored Activity row of a send Spark took but never listed, once its hold ends past its invoice's expiry,
     /// keeping the row's own amount and fee. Returns whether the row was saved.
-    var railTakenSendUnlisted: ((String) async -> Bool)?
+    var railTakenSendUnlisted: ((_ paymentHash: String, _ ownAttemptId: String?) async -> Bool)?
     var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
     var onchainTransactionReceived: (@Sendable (String) async -> Void)?
     typealias OnchainActivityCompletion = @MainActor () async -> Void
@@ -2013,12 +2013,12 @@ class LightningService: NodeLifecycleService {
                 unfailed.insert(hash)
                 railAttemptsStore.set(Array(unfailed), forKey: Self.unlistedTakenRailSendsUnfailedKey)
             }
-            await failUnlistedTakenRailSend(hash)
+            await failUnlistedTakenRailSend(hash, ownAttemptId: taken[hash])
         }
     }
 
-    private func failUnlistedTakenRailSend(_ hash: String) async {
-        guard let fail = railTakenSendUnlisted, await fail(hash) else { return }
+    private func failUnlistedTakenRailSend(_ hash: String, ownAttemptId: String? = nil) async {
+        guard let fail = railTakenSendUnlisted, await fail(hash, ownAttemptId) else { return }
         eventCallbackLock.withLock {
             let unfailed = railAttemptsStore.stringArray(forKey: Self.unlistedTakenRailSendsUnfailedKey) ?? []
             railAttemptsStore.set(unfailed.filter { $0 != hash }, forKey: Self.unlistedTakenRailSendsUnfailedKey)

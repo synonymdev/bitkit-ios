@@ -421,8 +421,8 @@ final class SparkManager: ChannelFreeLightningRail {
             // still go to LDK, even when that refresh or the activity sync fails. An emergency exit keeps it out.
             LightningService.shared.channelFreePaymentHistory = self
             LightningService.shared.railSendHoldExpired = { [weak self] hash in await self?.recordExpiredHold(paymentHash: hash) ?? false }
-            LightningService.shared.railTakenSendUnlisted = { hash in
-                await (try? CoreService.shared.activity.failPendingLightningSend(id: hash)) != nil
+            LightningService.shared.railTakenSendUnlisted = { hash, ownAttemptId in
+                await Self.failHeldSendRow(paymentHash: hash, ownAttemptId: ownAttemptId)
             }
             if !isExiting {
                 LightningService.shared.channelFreeRail = self
@@ -1865,8 +1865,16 @@ final class SparkManager: ChannelFreeLightningRail {
             payments: payments,
             earlierAttemptIds: LightningService.shared.keptRailSendEarlierAttemptIds(paymentHash: paymentHash),
             record: { await self.recordActivity($0) },
-            failStoredSend: { await (try? CoreService.shared.activity.failPendingLightningSend(id: $0)) != nil }
+            failStoredSend: { await Self.failHeldSendRow(paymentHash: $0, ownAttemptId: nil) }
         )
+    }
+
+    private static func failHeldSendRow(paymentHash: String, ownAttemptId: String?) async -> Bool {
+        await (try? CoreService.shared.activity.failPendingLightningSend(
+            id: paymentHash,
+            ownAttemptId: ownAttemptId,
+            earlierAttemptIds: LightningService.shared.keptRailSendEarlierAttemptIds(paymentHash: paymentHash)
+        )) != nil
     }
 
     static func recordExpiredHold(
