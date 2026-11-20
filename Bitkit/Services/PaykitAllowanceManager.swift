@@ -578,6 +578,11 @@ final class PaykitAllowanceManager {
         request.direction == .incoming && request.billingPeriod == nil && localState.hasSentPayment(request.id)
     }
 
+    /// Whether this wallet's records show the payment of the request succeeded, not just that it left.
+    func hasSettledPayment(_ request: PaykitPaymentRequest) -> Bool {
+        hasSentPayment(request) && (autoPaidRequestIds.contains(request.id) || localState.hasSettledPayment(request.id))
+    }
+
     /// Whether an allowance this wallet grants, or was asked to grant, could start covering the request's contact.
     func mayCover(_ request: PaykitPaymentRequest) -> Bool {
         allowances.contains {

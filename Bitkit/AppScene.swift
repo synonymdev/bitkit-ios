@@ -1879,7 +1879,10 @@ struct AppScene: View {
                 // A request this wallet already paid never opens, and holds back no other request.
                 if paykitAllowanceManager.hasSentPayment(request) {
                     if paykitPaymentRequestManager.requestedPresentationId == request.id {
-                        app.toast(type: .info, title: t("subscriptions__allowance_request_already_paid"))
+                        // A payment the node may still fail reads as in progress; only a settled one is "already paid".
+                        let title = paykitAllowanceManager.hasSettledPayment(request)
+                            ? "subscriptions__allowance_request_already_paid" : "subscriptions__allowance_payment_in_progress"
+                        app.toast(type: .info, title: t(title))
                         paykitPaymentRequestManager.releaseRequestedPresentation(request)
                     }
                     continue

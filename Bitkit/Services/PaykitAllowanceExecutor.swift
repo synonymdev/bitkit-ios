@@ -122,6 +122,14 @@ struct PaykitAllowanceLocalState: Codable, Equatable {
         }
     }
 
+    /// Whether this wallet's journal shows the payment of the request succeeded, not just that it left.
+    func hasSettledPayment(_ requestId: PaykitPaymentRequest.ID) -> Bool {
+        journal.contains {
+            $0.stage == .succeeded && $0.requestId.paymentRequestId == requestId.paymentRequestId &&
+                PubkyPublicKeyFormat.matches($0.requestId.counterparty, requestId.counterparty)
+        }
+    }
+
     /// Keeps the higher floor, every spend and every ended allowance of both states, so a restore never lowers them.
     func withChecks(from other: PaykitAllowanceLocalState) -> PaykitAllowanceLocalState {
         var merged = self
@@ -463,6 +471,8 @@ actor PaykitAllowanceExecutor {
     /// Held from an automatic payment's ended check to its handoff, and from saving an End to the SDK's End.
     private let handoffLock = PaykitAllowanceHandoffLock()
     private var inFlightRequestIds = Set<PaykitPaymentRequest.ID>()
+    /// Requests whose payment in progress already sent its acceptance on failure, so autoPay does not send it again.
+    private var acceptanceSentRequestIds = Set<PaykitPaymentRequest.ID>()
     private(set) var activeIdentity: String?
 
     init(
@@ -830,6 +840,9 @@ actor PaykitAllowanceExecutor {
     /// the failure. Sent on its own task, so a slow send never holds up settling other payments.
     private func sendQueuedAcceptance(of entry: PaykitAllowanceLocalState.JournalEntry?) {
         guard let entry, entry.isAutomatic else { return }
+        if inFlightRequestIds.contains(entry.requestId) {
+            acceptanceSentRequestIds.insert(entry.requestId)
+        }
         let sdk = sdk
         let counterparty = entry.requestId.counterparty
         Task.detached {
@@ -1127,10 +1140,12 @@ actor PaykitAllowanceExecutor {
                 identity: identity
             )
         } catch {
-            _ = try? await sdk.processOutboundPrivateMessages(counterparty: request.counterparty)
+            if acceptanceSentRequestIds.remove(request.id) == nil {
+                _ = try? await sdk.processOutboundPrivateMessages(counterparty: request.counterparty)
+            }
             throw error
         }
-        if result != .started {
+        if acceptanceSentRequestIds.remove(request.id) == nil, result != .started {
             _ = try? await sdk.processOutboundPrivateMessages(counterparty: request.counterparty)
         }
         return result

@@ -1160,6 +1160,17 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertEqual(outcomes, [Paykit.PaymentOutcomeReport(attemptId: AllowanceSdkMock.automaticAttemptId, outcome: .failed)])
     }
 
+    func testAPaymentThatFailsInsideAutoPaySendsItsAcceptanceOnce() async throws {
+        let harness = AllowanceHarness()
+        harness.store.failSavesOnceSpent()
+
+        _ = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        await Self.waitUntil { harness.log.entries.contains("processOutboundPrivateMessages") }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(harness.log.entries.filter { $0 == "processOutboundPrivateMessages" }.count, 1)
+    }
+
     func testPaymentIsNotSentWhenTheSendingStageCannotBeSaved() async throws {
         let harness = AllowanceHarness()
         harness.store.failSavesOnceSpent()
