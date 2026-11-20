@@ -532,8 +532,8 @@ final class MoveToSparkManager {
         MoveToSparkPayments.removeAll()
     }
 
-    /// Quotes moving everything the channels can send. After a move that moved `afterMove`, a rest that does not route
-    /// shows the balance updated, since a retry cannot move it either.
+    /// Quotes moving everything the channels can send. After a move that moved `afterMove`, a quote for the rest that
+    /// fails shows the balance updated, the outcome of that move.
     func quote(wallet: WalletViewModel, afterMove: (movedSats: UInt64, feeSats: UInt64)? = nil) async {
         generation += 1
         let quoteGeneration = generation
@@ -546,7 +546,7 @@ final class MoveToSparkManager {
             result = try await .confirm(makeQuote(channels: wallet.channels), isMoving: false)
         } catch {
             Logger.warn("Failed to quote move to Spark: \(error)", context: "MoveToSpark")
-            if let afterMove, case MoveToSparkError.noRoute = error {
+            if let afterMove {
                 result = .done(amountSats: afterMove.movedSats, feeSats: afterMove.feeSats)
             } else {
                 result = Self.state(for: error)
@@ -771,11 +771,12 @@ final class MoveToSparkManager {
             } catch {
                 lastError = error
                 guard isNoRoute(error) || isSendWithoutRoute(error, invoice: bolt11) else { break }
+                // The channels are read again, so a send limit an earlier part's HTLC held down does not size what follows.
+                limitSats = await movableSats()
                 guard let halfSats = MoveToSparkMath.smallerAmount(part.amountSats) else {
                     // No smaller part is left to try. A fresh quote priced above the fee left means the fee rose, so the
                     // modal quotes the rest again; otherwise the send failed for another reason, and the move stops.
-                    let freshLimitSats = await movableSats()
-                    if let fresh = try? await quotePart(bolt11, freshLimitSats, freshLimitSats),
+                    if let fresh = try? await quotePart(bolt11, limitSats, limitSats),
                        MoveToSparkMath.feeCapMsat(feeSats: fresh.feeSats) > feeLeftMsat
                     {
                         throw MoveToSparkError.feeRose(movedSats: movedSats, feeSats: feeMsat / 1000)
