@@ -1879,7 +1879,7 @@ struct AppScene: View {
                 // A request this wallet already paid never opens, and holds back no other request.
                 if paykitAllowanceManager.hasSentPayment(request) {
                     if paykitPaymentRequestManager.requestedPresentationId == request.id {
-                        app.toast(type: .info, title: t("subscriptions__allowance_payment_in_progress"))
+                        app.toast(type: .info, title: t("subscriptions__allowance_request_already_paid"))
                         paykitPaymentRequestManager.releaseRequestedPresentation(request)
                     }
                     continue
@@ -2107,10 +2107,11 @@ struct AppScene: View {
             }
         }
 
+        // A request this wallet already paid never opens, so it alone schedules no further pass.
         guard attemptedPresentation,
               shouldPresentNextRequest,
               paykitPaymentRequestManager.requestedPresentationId != nil ||
-              !paykitPaymentRequestManager.requestsForPresentation().isEmpty,
+              !paykitAllowanceManager.payable(paykitPaymentRequestManager.requestsForPresentation()).isEmpty,
               sheets.activeSheetConfiguration == nil,
               !sheets.isReplacingSheet,
               app.contactPaymentContext == nil
@@ -2315,12 +2316,13 @@ struct AppScene: View {
             Task { await paykitAllowanceManager.refresh() }
         case .paymentLeaving:
             Task {
+                // The journal now shows the payment, so the pending views drop the request before the backup runs.
+                await paykitAllowanceManager.reloadLocalState()
                 do {
                     try await BackupService.shared.persistWalletBackup()
                 } catch {
                     Logger.warn("Failed to back up an automatic allowance payment: \(error)", context: "AppScene")
                 }
-                await paykitAllowanceManager.reloadLocalState()
             }
         }
     }

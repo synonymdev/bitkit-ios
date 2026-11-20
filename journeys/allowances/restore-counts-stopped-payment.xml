@@ -1,0 +1,27 @@
+<journey name="Restore Counts Stopped Payment">
+  <description>
+    A payer stopped right after handing an automatic payment to the node, then wiped and restored
+    from its recovery phrase, still counts that payment: the app backs up the spend as the payment
+    leaves, before its usual scheduled backup. The payer is never launched again between the stop and
+    the wipe, so only that immediate backup can carry the spend. The stop follows the app log's
+    "Handed an allowance payment to the node" by about 1.5 seconds. Requires the Active allowance from
+    set-and-accept.xml. The journey wipes the payer, so do not run it against a wallet whose funds
+    matter.
+  </description>
+  <actions>
+    <action>Launch the E2E Bitkit app on both instances with the $5 a payment, $50 a month allowance from set-and-accept.xml Active</action>
+    <action>On the payer instance, open the menu, navigate to Settings, then the "Security" tab (id "Tab-security"), then tap "Back Up Your Money" (id "BackupWallet"), continue past the intro (id "BackupIntroViewContinue"), tap to reveal the phrase (id "TapToReveal") and record the phrase from the word grid (id "SeedContainer")</action>
+    <action>Open the drawer menu, tap Subscriptions, tap the Allowances tab (id "Tab-allowances"), tap the payee's row (id "AllowanceRow-&lt;entryId&gt;") and record the amount under PAID AUTOMATICALLY (id "AllowancePaidSoFar"), then close the sheet and return to the home screen</action>
+    <action>On the payer instance, start tailing the simulator log (`xcrun simctl spawn &lt;udid&gt; log stream --predicate 'subsystem == "to.bitkit"'`) for "Handed an allowance payment to the node" so the stop can follow it at once</action>
+    <action>On the payee instance, send the payer a one-time Payment Request for about $0.60 with the note "Stopped"</action>
+    <action>1.5 seconds after the log line appears on the payer, run `xcrun simctl terminate &lt;udid&gt; to.bitkit`</action>
+    <action>Without launching the payer again, wipe it: `xcrun simctl uninstall &lt;udid&gt; to.bitkit` and `xcrun simctl keychain &lt;udid&gt; reset`, then install the same build again with `xcrun simctl install &lt;udid&gt; &lt;path to Bitkit.app&gt;` and launch it with `xcrun simctl launch &lt;udid&gt; to.bitkit`, keeping the E2E launch environment</action>
+    <action>On the onboarding screen tap "Restore" (id "RestoreWallet"), then "MultipleDevices-button", enter the recorded words into the word inputs (id "Word-0" onwards) and tap Restore (id "RestoreButton")</action>
+    <action>Wait for the restore to finish and tap "Get Started" (id "GetStartedButton")</action>
+    <action>Open the drawer menu, tap Subscriptions and tap the Allowances tab (id "Tab-allowances")</action>
+    <action>Verify the paused notice (id "AllowancesPaused") reads "Automatic payments paused" and "This wallet was restored from a backup. Requests ask for your approval until you resume."</action>
+    <action>Tap the payee's row (id "AllowanceRow-&lt;entryId&gt;") and verify PAID AUTOMATICALLY (id "AllowancePaidSoFar") equals the amount recorded before the stop plus the stopped payment, then close the sheet</action>
+    <action>On the payee instance, verify exactly one payment arrived for "Stopped"</action>
+    <action>On the payer instance, tap Resume (id "AllowancesResume") and, if the PIN pad shows, enter the PIN; verify the paused notice (id "AllowancesPaused") is gone</action>
+  </actions>
+</journey>

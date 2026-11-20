@@ -2034,6 +2034,7 @@
 "subscriptions__allowance_error_not_linked" = "Questo contatto non è ancora collegato. Riprova tra un momento.";
 "subscriptions__allowance_error_unavailable" = "Questo plafond non è disponibile al momento.";
 "subscriptions__allowance_payment_in_progress" = "Questa richiesta è già in fase di pagamento.";
+"subscriptions__allowance_request_already_paid" = "Questa richiesta è già stata pagata.";
 "subscriptions__allowance_executed_title" = "Pagamento Eseguito";
 "subscriptions__allowance_executed_description" = "Il pagamento automatico ha inviato {amount} a {name}";
 "subscriptions__allowance_offer_accepted_title" = "Plafond Aggiunto";

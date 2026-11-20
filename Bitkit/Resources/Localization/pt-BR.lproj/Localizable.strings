@@ -2075,6 +2075,7 @@
 "subscriptions__allowance_error_not_linked" = "Este contato ainda não está conectado. Tente novamente em instantes.";
 "subscriptions__allowance_error_unavailable" = "Esta pré-aprovação não está disponível no momento.";
 "subscriptions__allowance_payment_in_progress" = "Esta solicitação já está sendo paga.";
+"subscriptions__allowance_request_already_paid" = "Esta solicitação já foi paga.";
 "subscriptions__allowance_executed_title" = "Pagamento Executado";
 "subscriptions__allowance_executed_description" = "O pagamento automático enviou {amount} para {name}";
 "subscriptions__allowance_offer_accepted_title" = "Pré-aprovação Adicionada";

@@ -87,6 +87,10 @@ final class PaykitAllowanceManager {
     /// Observed, so a request found manual comes back to the pending views.
     private var manualRequestIds: [PaykitPaymentRequest.ID: Int] = [:]
 
+    /// Requests an automatic payment pass is paying now, kept until the journal shows the payment, so the pending views
+    /// never show a request while an allowance pays it.
+    private var payingRequestIds: Set<PaykitPaymentRequest.ID> = []
+
     enum AutomaticPaymentPause: Equatable {
         /// The allowance ledger is behind one this wallet has read.
         case ledgerBehind
@@ -186,11 +190,21 @@ final class PaykitAllowanceManager {
     }
 
     /// Hides allowances and stops new automatic payments, while payments already sent still settle. `identity` lets the
-    /// executor settle attempts left open before allowances were turned off; nil keeps its current one.
+    /// executor settle attempts left open before allowances were turned off; nil keeps its current one. This wallet's
+    /// records stay loaded, so a request it already paid stays off the pending views.
     func pause(identity: String?) {
         executor.stopAdmitting()
-        Task { await executor.pause(identity: identity) }
+        let recordsIdentity = identity ?? self.identity
         clear()
+        let pauseActivation = activation
+        Task {
+            await executor.pause(identity: identity)
+            let fallbackIdentity = await executor.activeIdentity
+            guard let recordsIdentity = recordsIdentity ?? fallbackIdentity else { return }
+            let state = await executor.localState(identity: recordsIdentity)
+            guard activation == pauseActivation else { return }
+            localState = state
+        }
     }
 
     private func clear() {
@@ -202,6 +216,7 @@ final class PaykitAllowanceManager {
         autoPaidSatsByScopedId = [:]
         automaticPaymentPause = nil
         manualRequestIds = [:]
+        payingRequestIds = []
         announcedOfferIds = []
     }
 
@@ -503,25 +518,36 @@ final class PaykitAllowanceManager {
         }
 
         isProcessingRequests = true
-        defer { isProcessingRequests = false }
-        var handledAny = false
+        var started: Set<PaykitPaymentRequest.ID> = []
+        defer {
+            isProcessingRequests = false
+            // Kept until the refresh below has read the journal, which then keeps a started request off the pending views.
+            if activation == passActivation {
+                payingRequestIds.subtract(started)
+            }
+        }
         for request in payable {
             guard activation == passActivation else { break }
+            payingRequestIds.insert(request.id)
             let result = await executor.autoPay(request, allowances: allowances, identity: identity)
             Logger.info("Automatic payment pass for a covered request ended as \(result)", context: "PaykitAllowance")
             switch result {
             case .started:
-                handledAny = true
+                started.insert(request.id)
+                continue
             case .manual, .notCovered:
                 manualRequestIds[request.id] = signature
             case .deferred:
                 break
             }
+            if activation == passActivation {
+                payingRequestIds.remove(request.id)
+            }
         }
-        if handledAny {
+        if !started.isEmpty {
             await refresh()
         }
-        return handledAny || handedBack
+        return !started.isEmpty || handedBack
     }
 
     /// Whether the allowance flow owns the request, so no sheet may open for it. A covered request belongs to the flow
@@ -533,9 +559,9 @@ final class PaykitAllowanceManager {
         return await executor.isHandling(request.id)
     }
 
-    /// Pending requests, without those this wallet already paid.
+    /// Pending requests, without those an allowance is paying now and those this wallet already paid.
     func payable(_ requests: [PaykitPaymentRequest]) -> [PaykitPaymentRequest] {
-        requests.filter { !hasSentPayment($0) }
+        requests.filter { !payingRequestIds.contains($0.id) && !hasSentPayment($0) }
     }
 
     /// Whether this wallet's records show it already paid the request, even while the ledger read back has no record of it.

@@ -269,6 +269,32 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertEqual(manager.payable([paid, unpaid]).map(\.id), [unpaid.id])
         XCTAssertTrue(manager.hasSentPayment(paid))
         XCTAssertFalse(manager.hasSentPayment(unpaid))
+
+        // Turning automatic payments off keeps this wallet's records, so the paid request stays off the pending views.
+        manager.pause(identity: nil)
+        await Self.waitUntilOnMain { manager.hasSentPayment(paid) }
+        XCTAssertEqual(manager.payable([paid, unpaid]).map(\.id), [unpaid.id])
+    }
+
+    @MainActor
+    func testManagerLoadsThisWalletsPaidRecordsWhenItStartsWithAllowancesOff() async throws {
+        let harness = AllowanceHarness()
+        let paid = try Fixtures.paymentRequest()
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "paid", request: paid, stage: .succeeded)]),
+            identity: Fixtures.identityKey
+        )
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            payableNow: { $0 }
+        )
+
+        manager.pause(identity: Fixtures.identityKey)
+
+        await Self.waitUntilOnMain { manager.hasSentPayment(paid) }
+        XCTAssertTrue(manager.payable([paid]).isEmpty)
     }
 
     @MainActor
@@ -917,6 +943,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(harness.log.entries.contains("processOutboundPrivateMessages"))
         await harness.executor.lightningPaymentSettled(paymentHash: AllowanceHarness.paymentHash, succeeded: false)
 
+        await Self.waitUntil { harness.log.entries.contains("processOutboundPrivateMessages") }
         XCTAssertEqual(harness.log.entries.filter { $0 == "processOutboundPrivateMessages" }.count, 1)
     }
 
@@ -1155,8 +1182,10 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         let harness = AllowanceHarness()
         let request = try Fixtures.paymentRequest()
         let sentBeforeBackup = AllowanceFlags()
+        let associatedBeforeBackup = AllowanceFlags()
         let subscription = PaykitAllowanceExecutor.eventPublisher.filter { $0 == .paymentLeaving }.sink { _ in
             sentBeforeBackup.append(harness.log.entries.contains("payLightning"))
+            associatedBeforeBackup.append(harness.log.entries.contains("associateLightningPayment"))
         }
         defer { subscription.cancel() }
 
@@ -1164,6 +1193,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
 
         XCTAssertEqual(result, .started)
         XCTAssertEqual(sentBeforeBackup.values, [false], "The backup is asked for once, before the payment is sent")
+        XCTAssertEqual(associatedBeforeBackup.values, [true], "The backup holds a proof that already knows the payment hash")
         let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
         XCTAssertEqual(journal.map(\.stage), [.sent])
     }
@@ -1699,6 +1729,10 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertEqual(journal.map(\.stage), [.failed])
         let released = await harness.payer.releasedLists
         XCTAssertEqual(released, [.init(publicKey: Fixtures.counterpartyKey, version: 5, previousVersion: 4)])
+        // No proof follows the failure, so the acceptance queued for it goes out once.
+        await Self.waitUntil { harness.log.entries.contains("processOutboundPrivateMessages") }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(harness.log.entries.filter { $0 == "processOutboundPrivateMessages" }.count, 1)
     }
 
     func testRecoveryNeverReleasesAListASettlementReleasedWhileItWaited() async throws {
@@ -2680,6 +2714,14 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertNil(request.createdAt)
 
         XCTAssertFalse(manager.coversRequest(request))
+    }
+
+    @MainActor
+    private static func waitUntilOnMain(timeout: TimeInterval = 5, _ condition: @MainActor () -> Bool) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
     }
 
     private static func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) async {

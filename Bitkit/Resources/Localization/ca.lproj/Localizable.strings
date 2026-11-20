@@ -1925,6 +1925,7 @@
 "subscriptions__allowance_error_not_linked" = "Aquest contacte encara no està connectat. Torna-ho a provar d'aquí a un moment.";
 "subscriptions__allowance_error_unavailable" = "Aquesta assignació no està disponible ara mateix.";
 "subscriptions__allowance_payment_in_progress" = "Aquesta sol·licitud ja s'està pagant.";
+"subscriptions__allowance_request_already_paid" = "Aquesta sol·licitud ja s'ha pagat.";
 "subscriptions__allowance_executed_title" = "Pagament executat";
 "subscriptions__allowance_executed_description" = "El pagament automàtic ha enviat {amount} a {name}";
 "subscriptions__allowance_offer_accepted_title" = "Assignació afegida";

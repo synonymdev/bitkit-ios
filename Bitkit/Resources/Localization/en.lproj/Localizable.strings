@@ -1971,6 +1971,7 @@
 "subscriptions__allowance_error_not_linked" = "This contact is not connected yet. Try again in a moment.";
 "subscriptions__allowance_error_unavailable" = "This allowance is not available right now.";
 "subscriptions__allowance_payment_in_progress" = "This request is already being paid.";
+"subscriptions__allowance_request_already_paid" = "This request is already paid.";
 "subscriptions__allowance_executed_title" = "Payment Executed";
 "subscriptions__allowance_executed_description" = "Auto-pay sent {amount} to {name}";
 "subscriptions__allowance_limit_title" = "Limit Reached";

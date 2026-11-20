@@ -692,6 +692,7 @@ actor PaykitAllowanceExecutor {
                            let entry = applyJournalOutcome(attemptId: attempt.attemptId, outcome: outcome, identity: identity, onlyIfOpen: true),
                            outcome == .failed
                         {
+                            sendQueuedAcceptance(of: entry)
                             await releaseConsumedPaymentList(of: entry, identity: identity)
                         }
                     }
@@ -820,7 +821,19 @@ actor PaykitAllowanceExecutor {
         // A settlement and recovery can both record one failure; only the call that ends the attempt releases its list.
         let entry = applyJournalOutcome(attemptId: attemptId, outcome: outcome, identity: identity, onlyIfOpen: outcome == .failed)
         if outcome == .failed {
+            sendQueuedAcceptance(of: entry)
             await releaseConsumedPaymentList(of: entry, identity: identity)
+        }
+    }
+
+    /// No proof follows a failed automatic payment, so the acceptance queued for it is sent now, whichever path recorded
+    /// the failure. Sent on its own task, so a slow send never holds up settling other payments.
+    private func sendQueuedAcceptance(of entry: PaykitAllowanceLocalState.JournalEntry?) {
+        guard let entry, entry.isAutomatic else { return }
+        let sdk = sdk
+        let counterparty = entry.requestId.counterparty
+        Task.detached {
+            _ = try? await sdk.processOutboundPrivateMessages(counterparty: counterparty)
         }
     }
 
@@ -1282,9 +1295,10 @@ actor PaykitAllowanceExecutor {
     ) async throws -> PaykitAllowanceAutoPayResult {
         do {
             try setStageDurably(.sending, attemptId: attemptId, identity: identity)
-            // Back up the spend now, so a wallet restored later still counts it.
-            Self.eventSubject.send(.paymentLeaving)
             try await payer.associateLightningPayment(request, paymentHash: paymentHash)
+            // Back up the spend now, with its proof already holding the hash, so a wallet restored later still counts the
+            // spend and delivers the proof.
+            Self.eventSubject.send(.paymentLeaving)
         } catch {
             await payer.cancelProofPreparation(request)
             await releasePaymentList(request, payment: payment, attemptId: listAttemptId, outcome: .definitePreBroadcastFailure)
@@ -1327,15 +1341,11 @@ actor PaykitAllowanceExecutor {
         }
         for entry in entries {
             do {
+                // A failure sends the queued acceptance from `record`.
                 try await record(attemptId: entry.attemptId, outcome: succeeded ? .succeeded : .failed, identity: identity)
             } catch {
                 Logger.warn("Failed to record an allowance payment outcome: \(error)", context: "PaykitAllowance")
             }
-        }
-        // No proof follows a failed automatic payment, so its queued acceptance is sent now.
-        guard !succeeded else { return }
-        for counterparty in Set(entries.filter(\.isAutomatic).map(\.requestId.counterparty)) {
-            _ = try? await sdk.processOutboundPrivateMessages(counterparty: counterparty)
         }
     }
 

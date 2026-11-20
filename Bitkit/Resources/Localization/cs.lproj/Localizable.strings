@@ -2064,6 +2064,7 @@
 "subscriptions__allowance_error_not_linked" = "Tento kontakt zatím není propojen. Zkuste to znovu za chvíli.";
 "subscriptions__allowance_error_unavailable" = "Toto povolení není momentálně k dispozici.";
 "subscriptions__allowance_payment_in_progress" = "Tato žádost se již platí.";
+"subscriptions__allowance_request_already_paid" = "Tato žádost je již zaplacena.";
 "subscriptions__allowance_executed_title" = "Platba provedena";
 "subscriptions__allowance_executed_description" = "Automatická platba odeslala {amount} uživateli {name}";
 "subscriptions__allowance_offer_accepted_title" = "Povolení plateb přidáno";

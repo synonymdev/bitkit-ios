@@ -459,8 +459,9 @@ struct PaymentRequestsView: View {
 
     private var activeRequests: [PaykitPaymentRequest] {
         let pending = allowances.payable(paymentRequests.pendingRequests)
+        // A stale proposal this wallet already paid stays in history, like the pending request it came from.
         let historical = paymentRequests.historyRequests.filter {
-            ($0.lifecycleState == .proposed && !$0.isExpired(at: Date()))
+            ($0.lifecycleState == .proposed && !$0.isExpired(at: Date()) && !allowances.hasSentPayment($0))
                 || ($0.direction == .outgoing && $0.lifecycleState == .accepted)
         }
         var requestIds = Set<PaykitPaymentRequest.ID>()

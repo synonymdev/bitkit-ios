@@ -1796,6 +1796,7 @@
 "subscriptions__allowance_error_not_linked" = "Αυτή η επαφή δεν έχει συνδεθεί ακόμη. Δοκίμασε ξανά σε λίγο.";
 "subscriptions__allowance_error_unavailable" = "Αυτή η προέγκριση δεν είναι διαθέσιμη αυτή τη στιγμή.";
 "subscriptions__allowance_payment_in_progress" = "Αυτό το αίτημα πληρώνεται ήδη.";
+"subscriptions__allowance_request_already_paid" = "Αυτό το αίτημα έχει ήδη πληρωθεί.";
 "subscriptions__allowance_executed_title" = "Η πληρωμή εκτελέστηκε";
 "subscriptions__allowance_executed_description" = "Η αυτόματη πληρωμή έστειλε {amount} σε {name}";
 "subscriptions__allowance_offer_accepted_title" = "Η προέγκριση προστέθηκε";
