@@ -24,6 +24,15 @@ final class SparkConfigTests: XCTestCase {
 
     func testChainServiceIsBitkitElectrsOnMainnetOnly() {
         XCTAssertEqual(Env.sparkChainServiceUrl(for: .bitcoin), "https://bitkit.to/electrs")
-        XCTAssertNil(Env.sparkChainServiceUrl(for: .regtest))
+        XCTAssertNil(Env.sparkChainServiceUrl(for: .regtest, localRegtestURL: nil, configuredURL: nil))
+    }
+
+    func testLocalChainServiceTakesPrecedenceOnlyOnRegtest() {
+        let local = "http://127.0.0.1:23090/api"
+        let configured = "https://example.com/electrs"
+        XCTAssertEqual(Env.sparkChainServiceUrl(for: .regtest, localRegtestURL: local, configuredURL: configured), local)
+        XCTAssertEqual(Env.sparkChainServiceUrl(for: .regtest, localRegtestURL: nil, configuredURL: configured), configured)
+        XCTAssertEqual(Env.sparkChainServiceUrl(for: .bitcoin, localRegtestURL: local, configuredURL: configured), "https://bitkit.to/electrs")
+        XCTAssertEqual(Env.sparkChainServiceUrl(for: .signet, localRegtestURL: local, configuredURL: configured), configured)
     }
 }

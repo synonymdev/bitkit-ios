@@ -452,16 +452,14 @@ final class SparkManager: ChannelFreeLightningRail {
         }
         let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
         var config = Self.sdkConfig(network: network, apiKey: Env.breezApiKey, isExiting: isExiting)
-        let localChainURL = try Self.configureLocalSpark(&config)
+        let chainAPI = try Self.configureLocalSpark(&config)
         let storageDir = Env.sparkStorage(walletIndex: walletIndex)
         try FileManager.default.createDirectory(at: storageDir, withIntermediateDirectories: true)
         // What `BreezSdkSpark.connect` builds, plus our own chain service where Env names one.
         let builder = SdkBuilder(config: config, seed: .mnemonic(mnemonic: mnemonic, passphrase: passphrase))
         await builder.withDefaultStorage(storageDir: storageDir.path)
-        if let localChainURL {
-            await builder.withRestChainService(url: localChainURL, apiType: .mempoolSpace, credentials: nil)
-        } else if let chainServiceUrl = Env.sparkChainServiceUrl(for: Env.network) {
-            await builder.withRestChainService(url: chainServiceUrl, apiType: .esplora, credentials: nil)
+        if let chainServiceUrl = Env.sparkChainServiceUrl(for: Env.network) {
+            await builder.withRestChainService(url: chainServiceUrl, apiType: chainAPI, credentials: nil)
         }
         syncedThisRun = false
         let connected = try await builder.build()
@@ -478,15 +476,15 @@ final class SparkManager: ChannelFreeLightningRail {
         Self.notifyExitStateChanged()
     }
 
-    private nonisolated static func configureLocalSpark(_ config: inout BreezSdkSpark.Config) throws -> String? {
+    private nonisolated static func configureLocalSpark(_ config: inout BreezSdkSpark.Config) throws -> ChainApiType {
         let settings = Env.localSparkSettings
         if settings.configBase64 == nil, settings.chainURL == nil {
-            return nil
+            return .esplora
         }
         guard let encoded = settings.configBase64,
               let data = Data(base64Encoded: encoded),
               let json = String(data: data, encoding: .utf8),
-              let chainURL = settings.chainURL
+              settings.chainURL != nil
         else {
             throw NSError(domain: "LocalSparkConfiguration", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: "Local Spark requires a valid SPARK_LOCAL_CONFIG_B64 and SPARK_LOCAL_CHAIN_URL",
@@ -495,7 +493,7 @@ final class SparkManager: ChannelFreeLightningRail {
         config.sparkConfig = try parseSparkConfig(json: json)
         // The pinned regtest operators require anchored refunds.
         config.watchtowerFeeLadderEnabled = false
-        return chainURL
+        return .mempoolSpace
     }
 
     /// The SDK config Bitkit connects with.
