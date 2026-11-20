@@ -1743,7 +1743,11 @@ class LightningService: NodeLifecycleService {
                 var earlier = uncertainRailSendEarlierAttempts()
                 earlier[hash] = earlierAttemptIds.map { ids in takenBefore.map { ids.contains($0) ? ids : ids + [$0] } ?? ids }
                 railAttemptsStore.set(earlier, forKey: Self.uncertainRailSendsEarlierAttemptsKey)
-                keepEarlierAttempts(hash: hash, ids: (earlierAttemptIds ?? []) + (takenBefore.map { [$0] } ?? []))
+                // The send Spark took last goes after the ones it listed.
+                keepEarlierAttempts(
+                    hash: hash,
+                    ids: (earlierAttemptIds ?? []).filter { $0 != takenBefore } + (takenBefore.map { [$0] } ?? [])
+                )
             }
             uncertain[hash] = failedAt
             railAttemptsStore.set(uncertain, forKey: Self.uncertainRailSendsKey)
@@ -1768,12 +1772,13 @@ class LightningService: NodeLifecycleService {
         }
     #endif
 
-    /// Spark's ids of every attempt a send of `paymentHash` followed, kept past its hold.
-    func keptRailSendEarlierAttemptIds(paymentHash: String) -> Set<String> {
+    /// Spark's ids of every attempt a send of `paymentHash` followed, kept past its hold in the order they went out: each
+    /// send adds the attempts before it as it goes out.
+    func keptRailSendEarlierAttemptIds(paymentHash: String) -> [String] {
         let hash = paymentHash.lowercased()
         return eventCallbackLock.withLock {
             let entries = railAttemptsStore.array(forKey: Self.keptRailSendEarlierAttemptsKey) as? [[String]] ?? []
-            return Set(entries.last { $0.first == hash }?.dropFirst() ?? [])
+            return Array(entries.last { $0.first == hash }?.dropFirst() ?? [])
         }
     }
 
