@@ -1085,7 +1085,11 @@ class WalletViewModel: ObservableObject {
 
     struct SettledLightningPayment {
         let paymentHash: PaymentHash
-        let feePaidSats: UInt64
+        let feePaidMsat: UInt64
+
+        var feePaidSats: UInt64 {
+            feePaidMsat / 1000
+        }
     }
 
     /// Waits for probe results that match one of the returned probe `paymentId`s.
@@ -1290,7 +1294,7 @@ class WalletViewModel: ObservableObject {
                     let outcome: Result<SettledLightningPayment?, Error>
                     switch event {
                     case let .paymentSuccessful(_, paymentHash, _, feePaidMsat) where paymentHash == id:
-                        outcome = .success(SettledLightningPayment(paymentHash: paymentHash, feePaidSats: (feePaidMsat ?? 0) / 1000))
+                        outcome = .success(SettledLightningPayment(paymentHash: paymentHash, feePaidMsat: feePaidMsat ?? 0))
                     case let .paymentFailed(paymentId, paymentHash, reason) where paymentHash == id || paymentId == id:
                         outcome = .failure(AppError(paymentFailureReason: reason))
                     default:
@@ -1337,7 +1341,7 @@ class WalletViewModel: ObservableObject {
                         if paymentHash == hash {
                             self?.finishWatchSend(id: eventId, result: .success(SettledLightningPayment(
                                 paymentHash: paymentHash,
-                                feePaidSats: (feePaidMsat ?? 0) / 1000
+                                feePaidMsat: feePaidMsat ?? 0
                             )))
                         }
                     case .paymentFailed(paymentId: _, let paymentHash, let reason):
@@ -1368,7 +1372,7 @@ class WalletViewModel: ObservableObject {
         if let paid = await lightningService.nodePayments()?.first(where: {
             $0.direction == .outbound && $0.status == .succeeded && $0.id.caseInsensitiveCompare(hash) == .orderedSame
         }) {
-            finishWatchSend(id: eventId, result: .success(SettledLightningPayment(paymentHash: hash, feePaidSats: (paid.feePaidMsat ?? 0) / 1000)))
+            finishWatchSend(id: eventId, result: .success(SettledLightningPayment(paymentHash: hash, feePaidMsat: paid.feePaidMsat ?? 0)))
             return
         }
         // A retry over a channel settles from LDK; an earlier Spark attempt's outcome doesn't decide it.
@@ -1377,7 +1381,7 @@ class WalletViewModel: ObservableObject {
         let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: hash)
         switch payment?.status {
         case .succeeded:
-            finishWatchSend(id: eventId, result: .success(SettledLightningPayment(paymentHash: hash, feePaidSats: payment?.feeSats ?? 0)))
+            finishWatchSend(id: eventId, result: .success(SettledLightningPayment(paymentHash: hash, feePaidMsat: (payment?.feeSats ?? 0) * 1000)))
         case .failed:
             finishWatchSend(id: eventId, result: .failure(AppError(paymentFailureReason: nil)))
         case .pending, nil:
