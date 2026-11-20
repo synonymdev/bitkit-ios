@@ -1480,13 +1480,19 @@ class ActivityService {
     /// `earlierAttemptIds`. Saved before the row fails, so a stop in between finds the row pending and redoes both.
     func failPendingLightningSend(id: String, ownAttemptId: String? = nil, earlierAttemptIds: Set<String> = []) async throws {
         try await ServiceQueue.background(.core) {
-            guard case var .lightning(activity) = try getActivityById(walletId: WalletScope.default, activityId: id),
+            guard case let .lightning(activity) = try getActivityById(walletId: WalletScope.default, activityId: id),
                   activity.txType == .sent, activity.status == .pending
             else { return }
             let previousWriter = Self.channelFreeRowAttempts.entry(forPaymentHash: id)
+            var failed = activity
+            failed.status = .failed
             if let ownAttemptId {
-                let stamp = ChannelFreeRowAttempts.stamp(activity)
-                Self.channelFreeRowAttempts.remember(ownAttemptId, forPaymentHash: id, stamp: stamp, previousRowStamp: stamp)
+                Self.channelFreeRowAttempts.remember(
+                    ownAttemptId,
+                    forPaymentHash: id,
+                    stamp: ChannelFreeRowAttempts.stamp(failed),
+                    previousRowStamp: ChannelFreeRowAttempts.stamp(activity)
+                )
             } else if let rowAttemptId = Self.channelFreeRowAttempts.attemptId(forPaymentHash: id, row: activity),
                       earlierAttemptIds.contains(rowAttemptId),
                       !Self.channelFreeRowAttempts.isUnchanged(activity, forPaymentHash: id)
@@ -1495,9 +1501,8 @@ class ActivityService {
                 // that attempt's final fee still lands.
                 Self.channelFreeRowAttempts.forget(paymentHash: id)
             }
-            activity.status = .failed
             do {
-                try updateActivity(activityId: id, activity: .lightning(activity))
+                try updateActivity(activityId: id, activity: .lightning(failed))
                 Self.channelFreeRowAttempts.commit(forPaymentHash: id)
             } catch {
                 Self.channelFreeRowAttempts.restore(previousWriter, forPaymentHash: id)
@@ -2938,9 +2943,9 @@ struct ChannelFreeRowAttempts: @unchecked Sendable {
     static let limit = 100
     let defaults: UserDefaults
 
-    /// The row as its writer left it, so a later write by another payment shows.
+    /// The row as its writer left it, so a later write by another payment shows, even one alike but for its status.
     static func stamp(_ row: LightningActivity) -> String {
-        "\(row.timestamp):\(row.value):\(row.fee ?? 0)"
+        "\(row.timestamp):\(row.value):\(row.fee ?? 0):\(row.status)"
     }
 
     /// Kept ahead of the row it writes, beside the previous writer and its stamp (none: an empty id and the row's stamp
