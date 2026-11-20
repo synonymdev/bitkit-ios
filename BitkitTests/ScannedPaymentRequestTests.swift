@@ -1,4 +1,5 @@
 @testable import Bitkit
+import BitkitCore
 import XCTest
 
 final class ScannedPaymentRequestTests: XCTestCase {
@@ -28,6 +29,28 @@ final class ScannedPaymentRequestTests: XCTestCase {
         for empty in ["bitcoin:?lightning=\(invoice)&req-foo=", "bitcoin:?lightning=\(invoice)&req-foo"] {
             XCTAssertEqual(ScannedPaymentRequest.normalized(empty), empty)
         }
+    }
+
+    func testRequestWithARepeatedParameterIsKept() {
+        for repeated in [
+            "bitcoin:?amount=0.01&AMOUNT=0.02&lightning=\(invoice)",
+            "bitcoin:?lightning=\(invoice)&amount=0.0000799&amount=0.0000799",
+            "bitcoin:?lightning=\(invoice)&lightning=\(invoice)",
+            "bitcoin:?amount=&amount=0.02&lightning=\(invoice)",
+        ] {
+            XCTAssertEqual(ScannedPaymentRequest.normalized(repeated), repeated)
+        }
+    }
+
+    func testScannerRejectsARepeatedParameter() async {
+        await assertScannerRejects("bitcoin:?amount=0.01&AMOUNT=0.02&lightning=\(invoice)")
+    }
+
+    private func assertScannerRejects(_ request: String, file: StaticString = #filePath, line: UInt = #line) async {
+        do {
+            let decoded = try await decode(invoice: ScannedPaymentRequest.normalized(request))
+            XCTFail("Decoded \(decoded)", file: file, line: line)
+        } catch {}
     }
 
     func testOtherBitcoinRequestsAreKept() {
