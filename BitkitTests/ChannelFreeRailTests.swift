@@ -1182,6 +1182,40 @@ extension ChannelFreeRailTests {
         XCTAssertNil(service.heldRailSendId(paymentHash: hash))
     }
 
+    func testAFailureDuringTheSendCallLeavesTheCallsResultToSettleIt() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        service.now = { Date(timeIntervalSince1970: 1000) }
+        rail.balanceSats = 100_000
+        rail.sentPaymentId = "sent"
+        rail.afterSubmission = {
+            service.emitChannelFreeRailEvent(
+                .paymentFailed(paymentId: hash, paymentHash: hash, reason: nil), paymentCreatedAt: 1000, railPaymentId: "earlier"
+            )
+        }
+        defer { rail.afterSubmission = nil }
+        _ = try await service.send(bolt11: Self.invoice)
+
+        // Spark took the send, so it is held, whatever failure arrived while its call ran.
+        XCTAssertEqual(service.heldRailSendId(paymentHash: hash), "sent")
+    }
+
+    func testASendInDoubtReadsPendingWhateverFailureSparkLists() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        service.now = { Date(timeIntervalSince1970: 1000) }
+        rail.balanceSats = 100_000
+        rail.errorAfterSubmission = NSError(domain: "spark", code: 2)
+        defer { rail.errorAfterSubmission = nil }
+        _ = try? await service.send(bolt11: Self.invoice)
+
+        let failed = Bitkit.ChannelFreeRailPayment(
+            paymentHash: hash, direction: .outbound, status: .failed, preimage: nil, timestamp: 1005, id: "own"
+        )
+        let send = Bitkit.ChannelFreeRailPayment.latestOutboundAttempt(service.withHeldRailSends([failed]), paymentHash: hash)
+        XCTAssertEqual(send?.status, .pending)
+    }
+
     func testASendCallFailingAfterItsOutcomeArrivedLeavesItSettled() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         let service = Bitkit.LightningService.shared
@@ -1396,6 +1430,8 @@ extension ChannelFreeRailTests {
         XCTAssertFalse(ActivityService.isKnownEarlierAttempt("a1", rowAttemptId: "a1", keptEarlierAttemptIds: ["a1"]))
         XCTAssertFalse(ActivityService.isKnownEarlierAttempt("later", rowAttemptId: "retry", keptEarlierAttemptIds: ["a1"]))
         XCTAssertFalse(ActivityService.isKnownEarlierAttempt(nil, rowAttemptId: "retry", keptEarlierAttemptIds: ["a1"]))
+        // Two attempts a later send both followed aren't ordered by it.
+        XCTAssertFalse(ActivityService.isKnownEarlierAttempt("a2", rowAttemptId: "a1", keptEarlierAttemptIds: ["a1", "a2"]))
     }
 
     func testAnExpiredHoldWritesALiveRetryOverAFailureWithTheSameTimestamp() async {
@@ -1726,11 +1762,19 @@ extension ChannelFreeRailTests {
         await assertRefusedAsDuplicate()
     }
 
-    func testASparkFailureReportedWhileItsSendIsInFlightStillReleasesTheHold() async throws {
+    func testASendWhoseCallReturnsTheFailureSparkReportedDuringItReleasesTheHold() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         var release: CheckedContinuation<Void, Never>?
         rail.sendGate = { await withCheckedContinuation { release = $0 } }
+        rail.sentFailed = true
+        rail.sentPaymentId = "retry"
         rail.balanceSats = 100_000
+        var failures = 0
+        Bitkit.LightningService.shared.setEventCallback { event in
+            if case .paymentFailed = event {
+                failures += 1
+            }
+        }
         let send = Task { try await Bitkit.LightningService.shared.send(bolt11: Self.invoice) }
         var waited = 0
         while release == nil, waited < 500 {
@@ -1742,6 +1786,12 @@ extension ChannelFreeRailTests {
         Bitkit.LightningService.shared.emitChannelFreeRailEvent(.paymentFailed(paymentId: hash, paymentHash: hash, reason: nil))
         release?.resume()
         _ = try await send.value
+        // Spark's own event for the attempt, arriving after the call returned it, isn't reported again.
+        Bitkit.LightningService.shared.emitChannelFreeRailEvent(
+            .paymentFailed(paymentId: hash, paymentHash: hash, reason: nil),
+            railPaymentId: "retry"
+        )
+        XCTAssertEqual(failures, 1, "The failure didn't reach watchers exactly once")
         rail.listError = NSError(domain: "spark", code: 1)
         rail.balanceSats = 0
 
@@ -2488,6 +2538,8 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     var sentBolt11: String?
     /// The rail's id of the attempt a send returns.
     var sentPaymentId: String?
+    /// Whether a send returns its attempt as failed.
+    var sentFailed = false
     var sends = 0
     var sentFeeLimitSats: UInt64?
     var sendGate: (() async -> Void)?
@@ -2517,7 +2569,7 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     }
 
     func send(bolt11: String, sats: UInt64?, maxFeeSats: UInt64?, beforeSubmission: @escaping () throws -> Void) async throws
-        -> (paymentHash: PaymentHash, paymentId: String?)
+        -> (paymentHash: PaymentHash, paymentId: String?, isFailed: Bool)
     {
         if let refusal {
             throw refusal
@@ -2535,7 +2587,7 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
         sentFeeLimitSats = maxFeeSats
         sentBolt11 = bolt11
         sends += 1
-        return ("ee", sentPaymentId)
+        return ("ee", sentPaymentId, sentFailed)
     }
 
     func estimateRoutingFees(bolt11: String, amountSats: UInt64?) async throws -> UInt64 {
