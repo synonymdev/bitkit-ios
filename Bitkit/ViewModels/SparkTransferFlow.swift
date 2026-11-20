@@ -349,9 +349,14 @@ final class SparkTransferFlow {
     }
 
     /// Records the early-claim ceiling and speed the user swiped, as the confirm screen keeps requoting while a payment
-    /// whose outcome is unknown waits on the pending screen.
-    func approveSwipe() {
-        approved = (ceilingSats: quote?.claimFees.instantMaxSats ?? 0, speed: speed)
+    /// whose outcome is unknown waits on the pending screen. The ceiling is never above `shownCeilingSats`, the one the
+    /// swiped quote showed, as the requote before sending can raise it. Returns the approved ceiling.
+    @discardableResult
+    func approveSwipe(shownCeilingSats: UInt64? = nil) -> UInt64 {
+        let current = quote?.claimFees.instantMaxSats ?? 0
+        let ceilingSats = shownCeilingSats.map { min($0, current) } ?? current
+        approved = (ceilingSats: ceilingSats, speed: speed)
+        return ceilingSats
     }
 
     /// Ties the last swipe's approval to the funding it left unresolved. A later swipe rejected while that funding is
