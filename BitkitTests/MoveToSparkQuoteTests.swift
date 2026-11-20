@@ -91,7 +91,13 @@ final class MoveToSparkQuoteTests: XCTestCase {
 
     /// Pays like the channels would: `routes` is the largest amount that routes, each paid part leaves the channels.
     private final class FakeChannels {
-        var movableSats: UInt64
+        var outboundSats: UInt64
+        /// A peer's HTLC cap, which keeps the next-HTLC limit flat while the channels hold more.
+        var htlcCapSats: UInt64 = .max
+        var movableSats: UInt64 {
+            min(outboundSats, htlcCapSats)
+        }
+
         var routes: UInt64 = .max
         var paidFee: UInt64 = 30
         var failAfter: Int?
@@ -99,7 +105,7 @@ final class MoveToSparkQuoteTests: XCTestCase {
         private(set) var paid: [(bolt11: String, amountSats: UInt64, feeCapMsat: UInt64)] = []
 
         init(movableSats: UInt64) {
-            self.movableSats = movableSats
+            outboundSats = movableSats
         }
 
         func quotePart(limitSats: UInt64, wantedSats: UInt64) -> MoveToSparkPart? {
@@ -116,7 +122,7 @@ final class MoveToSparkQuoteTests: XCTestCase {
             if paid.count == inFlightAt {
                 return nil
             }
-            movableSats -= amountSats + paidFee
+            outboundSats -= amountSats + paidFee
             return paidFee * 1000
         }
 
@@ -124,6 +130,7 @@ final class MoveToSparkQuoteTests: XCTestCase {
             try await MoveToSparkManager.payParts(
                 quote,
                 movableSats: { self.movableSats },
+                outboundSats: { self.outboundSats },
                 newInvoice: { "lnbcrt1next" },
                 quotePart: { self.quotePart(limitSats: $1, wantedSats: $2) },
                 pay: { bolt11, amount, cap, _, _ in try self.pay(bolt11, amount, cap) }
@@ -174,11 +181,12 @@ final class MoveToSparkQuoteTests: XCTestCase {
         _ = try? await MoveToSparkManager.payParts(
             MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 30000, feeSats: 64, firstFeeSats: 32),
             movableSats: { channels.movableSats },
+            outboundSats: { channels.outboundSats },
             newInvoice: { "lnbcrt1next" },
             quotePart: { channels.quotePart(limitSats: $1, wantedSats: $2) },
             pay: { _, amount, cap, _, _ in
                 caps.append(cap)
-                channels.movableSats -= amount + 32
+                channels.outboundSats -= amount + 32
                 return 31900
             }
         )
@@ -203,6 +211,7 @@ final class MoveToSparkQuoteTests: XCTestCase {
         let outcome = try await MoveToSparkManager.payParts(
             MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 39968, feeSats: 200, firstFeeSats: 32),
             movableSats: { channels.movableSats },
+            outboundSats: { channels.outboundSats },
             newInvoice: { "lnbcrt1next" },
             quotePart: { channels.quotePart(limitSats: $1, wantedSats: $2) },
             pay: { bolt11, amount, cap, _, _ in
@@ -213,6 +222,32 @@ final class MoveToSparkQuoteTests: XCTestCase {
         )
         XCTAssertEqual(Array(tried.prefix(3)), [39968, 19984, 9992])
         XCTAssertEqual(outcome, .settled(movedSats: 39878, feeSats: 120))
+    }
+
+    func testAPeerHtlcCapThatKeepsTheLimitFlatDoesNotStopTheMove() async throws {
+        let channels = FakeChannels(movableSats: 100_000)
+        channels.htlcCapSats = 30032
+        channels.routes = 30000
+        let outcome = try await channels.run(plan)
+        XCTAssertEqual(channels.paid.map(\.amountSats), [30000, 30000, 30000, 9878])
+        XCTAssertEqual(outcome, .settled(movedSats: 99878, feeSats: 120))
+    }
+
+    func testAPartThatDoesNotRouteBelowTheMinimumShowsTheNewFee() async throws {
+        let channels = FakeChannels(movableSats: 40000)
+        do {
+            _ = try await MoveToSparkManager.payParts(
+                MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 1500, feeSats: 200, firstFeeSats: 32),
+                movableSats: { channels.movableSats },
+                outboundSats: { channels.outboundSats },
+                newInvoice: { "lnbcrt1next" },
+                quotePart: { channels.quotePart(limitSats: $1, wantedSats: $2) },
+                pay: { _, _, _, _, _ in throw NodeError.RouteNotFound(message: "no route") }
+            )
+            XCTFail("Expected the modal to quote the rest again")
+        } catch let MoveToSparkError.feeRose(movedSats) {
+            XCTAssertEqual(movedSats, 0)
+        }
     }
 
     func testAFailureAfterAPartMovedStopsWithWhatMoved() async throws {
@@ -248,6 +283,7 @@ final class MoveToSparkQuoteTests: XCTestCase {
         let outcome = try await MoveToSparkManager.payParts(
             plan,
             movableSats: { 100_000 },
+            outboundSats: { 100_000 },
             newInvoice: { "lnbcrt1next" },
             quotePart: { channels.quotePart(limitSats: $1, wantedSats: $2) },
             pay: { _, _, _, _, _ in

@@ -22,6 +22,12 @@ enum MoveToSparkMath {
         (channels ?? []).filter(\.isUsable).map { $0.nextOutboundHtlcLimitMsat / 1000 }.reduce(0, +)
     }
 
+    /// What the usable channels hold on our side, which a paid part lowers even where a peer's HTLC cap keeps the
+    /// next-HTLC limit flat.
+    static func outboundSats(channels: [ChannelDetails]?) -> UInt64 {
+        (channels ?? []).filter(\.isUsable).map { $0.outboundCapacityMsat / 1000 }.reduce(0, +)
+    }
+
     /// Whether Spark can take a move; every Move to Spark check goes through here.
     @MainActor
     static func isSparkUsable(_ spark: SparkManager) -> Bool {
@@ -603,6 +609,7 @@ final class MoveToSparkManager {
         return try await Self.payParts(
             quote,
             movableSats: { await self.movableSatsAfterSync(wallet: wallet) },
+            outboundSats: { MoveToSparkMath.outboundSats(channels: wallet.channels) },
             newInvoice: {
                 try await services.receiveInvoice(description: MoveToSparkMath.invoiceDescription, expirySecs: Self.invoiceExpirySecs)
             },
@@ -656,14 +663,17 @@ final class MoveToSparkManager {
 
     /// Moves the whole balance as `quote` planned: pays its first part, then quotes and pays the next on `newInvoice`
     /// from what `movableSats` shows the channels can still send, no larger than the last part, halving a part that does
-    /// not route, until less than the minimum is left. Each part's fee cap is what is left of the fee shown, kept in msat
+    /// not route, until less than the minimum is left; a part that does not route below the minimum throws `feeRose`, so
+    /// the modal quotes the rest again. Each part's fee cap is what is left of the fee shown, kept in msat
     /// so rounding never lets the parts pay more than the user saw; a part quoted above it throws `feeRose`, so the user
-    /// can see the new fee, also once that fee is spent. It stops after `maxParts` paid parts, when a paid part leaves the
-    /// balance where it was, or on any other failure, which it throws when nothing moved. `pay` returns the fee paid in msat, or `nil` while the part
+    /// can see the new fee, also once that fee is spent. It stops after `maxParts` paid parts, when a paid part leaves what
+    /// `outboundSats` shows where it was, or on any other failure, which it throws when nothing moved. `pay` returns the fee paid in msat, or `nil`
+    /// while the part
     /// is still in flight, which ends the move in flight.
     static func payParts(
         _ quote: MoveToSparkQuote,
         movableSats: () async -> UInt64,
+        outboundSats: () -> UInt64,
         newInvoice: () async throws -> String,
         quotePart: (_ invoice: String, _ limitSats: UInt64, _ wantedSats: UInt64) async throws -> MoveToSparkPart?,
         pay: (_ bolt11: String, _ amountSats: UInt64, _ feeCapMsat: UInt64, _ movedSats: UInt64, _ feeSats: UInt64) async throws
@@ -678,7 +688,8 @@ final class MoveToSparkManager {
         var movedSats: UInt64 = 0
         var feeMsat: UInt64 = 0
         var lastError: Error?
-        var lastMovableSats = await movableSats()
+        _ = await movableSats()
+        var lastOutboundSats = outboundSats()
         var paidParts = 0
         while paidParts < MoveToSparkMath.maxParts {
             let bolt11: String
@@ -709,15 +720,19 @@ final class MoveToSparkManager {
                 movedSats += part.amountSats
                 feeMsat += paidMsat
                 feeLeftMsat -= min(feeLeftMsat, paidMsat)
-                // A part the channels do not show as gone would be paid again, so the move stops there.
-                let nowSats = await movableSats()
-                guard nowSats < lastMovableSats else { break }
-                lastMovableSats = nowSats
+                // A part the channels do not show as gone would be paid again, so the move stops there. The check reads
+                // what the channels hold, since a peer's HTLC cap can keep the next-HTLC limit flat as parts move.
+                _ = await movableSats()
+                let nowSats = outboundSats()
+                guard nowSats < lastOutboundSats else { break }
+                lastOutboundSats = nowSats
             } catch {
                 lastError = error
-                guard isNoRoute(error) || isSendWithoutRoute(error, invoice: bolt11),
-                      let halfSats = MoveToSparkMath.smallerAmount(part.amountSats)
-                else { break }
+                guard isNoRoute(error) || isSendWithoutRoute(error, invoice: bolt11) else { break }
+                // No part that routes is left to try, so the modal quotes the rest again.
+                guard let halfSats = MoveToSparkMath.smallerAmount(part.amountSats) else {
+                    throw MoveToSparkError.feeRose(movedSats: movedSats)
+                }
                 partSats = halfSats
             }
         }
