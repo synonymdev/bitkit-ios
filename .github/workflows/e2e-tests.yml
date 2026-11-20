@@ -1,21 +1,43 @@
-name: Local E2E Nightly (iOS)
+name: e2e-tests
+run-name: >-
+  ${{ inputs.retarget_run && format('Retarget E2E for PR #{0}', inputs.pr) || github.event.pull_request.title || github.event.head_commit.message || github.workflow }}
 
 on:
-  schedule:
-    - cron: "35 5 * * *"
   workflow_dispatch:
     inputs:
       e2e_branch:
-        description: "Ref in synonymdev/bitkit-e2e-tests"
-        type: string
-        default: main
-      post_to_slack:
-        description: "Post Local E2E Nightly summary to Slack (#bitkit-staging-nightly)"
-        type: boolean
-        default: false
-
-permissions:
-  contents: read
+        description: "Branch of synonymdev/bitkit-e2e-tests to use (main | default-feature-branch | custom branch name)"
+        required: false
+        default: "default-feature-branch"
+      pr:
+        description: "PR number to test as merged into master"
+        required: false
+        default: ""
+      merge_commit:
+        description: "Pinned PR merge commit for retarget validation"
+        default: ""
+      head_sha:
+        description: "PR head verified by the retarget dispatcher"
+        default: ""
+      app_branch:
+        description: "PR branch for selecting matching E2E coverage"
+        default: ""
+      check_run_id:
+        description: "PR check owned by this retarget validation"
+        default: ""
+      retarget_run:
+        description: "Retarget status owner (set by e2e-retarget.yml)"
+        default: ""
+      workflow_ref:
+        description: "Workflow source recorded for this validation generation"
+        default: master
+      helper_ref:
+        description: "Recovery helper branch or tag"
+        default: master
+  # PRs stacked on another branch run no E2E until they target master; e2e-retarget.yml starts it on retarget
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [master]
 
 env:
   TERM: xterm-256color
@@ -23,282 +45,413 @@ env:
   GIT_LFS_SKIP_SMUDGE: "1"
 
 concurrency:
-  group: bitkit-local-e2e-nightly-ios
-  cancel-in-progress: false
+  group: e2e-tests-${{ github.event.pull_request.number || inputs.pr || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  spark-images:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 80
+  detect-changes:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
     outputs:
-      e2e-sha: ${{ steps.e2e.outputs.sha }}
-      spark-config: ${{ steps.settings.outputs.SPARK_LOCAL_CONFIG_B64 }}
-      spark-chain-url: ${{ steps.settings.outputs.SPARK_LOCAL_CHAIN_URL }}
-      image-fingerprint: ${{ steps.settings.outputs.image-fingerprint }}
+      code: ${{ (github.event_name == 'workflow_dispatch' && !inputs.pr) || steps.filter.outputs.code == 'true' }}
     steps:
       - uses: actions/checkout@v7
         with:
-          repository: synonymdev/bitkit-e2e-tests
-          ref: ${{ inputs.e2e_branch || 'main' }}
-          persist-credentials: false
-
-      - name: Record shared E2E revision
-        id: e2e
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache pinned Spark fixture images
-        id: images
-        uses: actions/cache@v6
-        with:
-          path: ${{ runner.temp }}/spark-images.tar
-          key: spark-fixture-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('BITKIT_DOCKER_REVISION') }}
-
-      - name: Package pinned Spark fixture images
-        if: steps.images.outputs.cache-hit != 'true'
-        run: ./scripts/local-backend spark-pack "$RUNNER_TEMP/spark-images.tar"
-
-      - name: Generate pinned Spark app settings
-        id: settings
+          ref: ${{ inputs.merge_commit || (inputs.pr && format('refs/pull/{0}/merge', inputs.pr)) || '' }}
+          fetch-depth: 2
+      - name: Resolve tested PR merge commits
+        if: inputs.pr != ''
+        id: merge-base
         run: |
-          docker image load --quiet --input "$RUNNER_TEMP/spark-images.tar"
-          ./scripts/local-backend spark-init-env >> "$GITHUB_OUTPUT"
-          fingerprint="$(./scripts/local-backend spark-image-fingerprint)"
-          echo "image-fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
-
-      - name: Compress the fixture archive for transfer
-        run: gzip -1 -c "$RUNNER_TEMP/spark-images.tar" > "$RUNNER_TEMP/spark-images.tar.gz"
-
-      - uses: actions/upload-artifact@v7
+          echo "base=$(git rev-parse HEAD^1)" >> "$GITHUB_OUTPUT"
+          echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: dorny/paths-filter@v4
+        # Retarget filters the exact tested merge against its first parent.
+        if: github.event_name == 'pull_request' || inputs.pr
+        id: filter
         with:
-          name: spark-fixture-images
-          path: ${{ runner.temp }}/spark-images.tar.gz
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 3
+          base: ${{ steps.merge-base.outputs.base || 'master' }}
+          ref: ${{ steps.merge-base.outputs.head || '' }}
+          filters: |
+            code:
+              - 'Bitkit/**'
+              - 'BitkitNotification/**'
+              - 'Bitkit.xcodeproj/**'
+              - 'Package.swift'
+              - '.github/workflows/e2e-tests.yml'
+              - '.github/scripts/**'
 
-  build-spark-ios:
-    needs: spark-images
+  build-local:
+    needs: detect-changes
+    # PR code must not publish dependency caches into the dispatch ref's scope.
+    cache-mode: read
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: read
+      checks: write
+      actions: write
+    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: macos-26
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
 
-      - uses: actions/checkout@v7
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
         with:
-          repository: synonymdev/bitkit-e2e-tests
-          ref: ${{ needs.spark-images.outputs.e2e-sha }}
-          path: bitkit-e2e-tests
-          persist-credentials: false
+          ref: ${{ inputs.merge_commit || (inputs.pr && format('refs/pull/{0}/merge', inputs.pr)) || '' }}
+
+      - name: Checkout retarget reporter
+        if: inputs.retarget_run != ''
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: retarget-ci
+          sparse-checkout: .github/scripts
+      - name: Report retarget tests running
+        if: inputs.retarget_run != ''
+        uses: actions/github-script@v9
+        env:
+          RETARGET_CHECK_RUN_ID: ${{ inputs.check_run_id }}
+          RETARGET_RUN: ${{ inputs.retarget_run }}
+          RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
+          RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
+          RETARGET_PR: ${{ inputs.pr }}
+          RETARGET_HELPER_REF: ${{ inputs.helper_ref }}
+        with:
+          script: |
+            const {reportRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
+            await reportRetargetResult({github, context, core, name: 'e2e-status', phase: 'start'});
 
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.6"
 
+      - name: System Information
+        run: |
+          echo "=== System Information ==="
+          echo "macOS Version:"
+          sw_vers
+          echo ""
+          echo "Xcode Version:"
+          xcodebuild -version
+
+      - name: Verify current PR merge checkout
+        if: github.event_name == 'pull_request' || inputs.pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr }}
+        run: |
+          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]] || exit 1
+          tested=$(git rev-parse HEAD)
+          head=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq 'select(.base.ref == "master") | .head.sha')
+          base=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/master" --jq '.object.sha')
+          expected="$base $head"
+          actual=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tested" --jq '[.parents[].sha] | join(" ")')
+          if [[ ! "$expected" =~ ^[0-9a-f]{40}\ [0-9a-f]{40}$ || "$actual" != "$expected" ]]; then
+            echo "::error::Checked-out merge does not match the PR's current base and head"
+            exit 1
+          fi
+
       - name: Install xcbeautify
-        run: brew install xcbeautify
+        run: |
+          brew install xcbeautify
 
       - name: Swift packages
         uses: ./.github/actions/swift-packages
 
-      - name: Build iOS Spark app
-        working-directory: bitkit-e2e-tests
-        env:
-          IOS_ROOT: ${{ github.workspace }}
-          IOS_SIMULATOR_ARCH: arm64
-          SPARK_LOCAL_CONFIG_B64: ${{ needs.spark-images.outputs.spark-config }}
-          SPARK_LOCAL_CHAIN_URL: ${{ needs.spark-images.outputs.spark-chain-url }}
+      - name: Pre-start simulator
         run: |
-          test -n "$SPARK_LOCAL_CONFIG_B64"
-          test -n "$SPARK_LOCAL_CHAIN_URL"
-          ./scripts/build-ios-sim.sh
-          tar -C aut -czf "$RUNNER_TEMP/spark-ios-app.tar.gz" Bitkit.app
+          echo "⏱️  Starting simulator at $(date)"
+          xcrun simctl boot "iPhone 17" || true
+          echo "✅ Simulator started at $(date)"
 
-      - uses: actions/upload-artifact@v7
+      - name: Build iOS app (local)
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHATWOOT_API: ${{ secrets.CHATWOOT_API }}
+          SIMULATOR_NAME: "iPhone 17"
+          OS_VERSION: "26.5"
+        run: |
+          echo "=== Building iOS app (local) ==="
+          echo "Using simulator: $SIMULATOR_NAME (iOS $OS_VERSION)"
+
+          if xcodebuild -showsdks | grep -q "iOS Simulator"; then
+            echo "✅ iOS Simulator platform already installed"
+          else
+            echo "⚙️  iOS Simulator platform not found — downloading..."
+            xcodebuild -downloadPlatform iOS
+          fi
+
+          xcodebuild -workspace Bitkit.xcodeproj/project.xcworkspace \
+            -scheme Bitkit \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,name=$SIMULATOR_NAME,OS=$OS_VERSION" \
+            -derivedDataPath DerivedData \
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
+            -disablePackageRepositoryCache \
+            -disableAutomaticPackageResolution \
+            -skipPackageUpdates \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG E2E_BUILD' \
+            TREZOR_BRIDGE=true \
+            TREZOR_BRIDGE_URL=http://127.0.0.1:21325 \
+            -allowProvisioningUpdates \
+            build
+
+      - name: Prepare app for E2E tests (local)
+        run: |
+          # Copy the .app bundle to the expected location and name
+          mkdir -p e2e-app
+          cp -r DerivedData/Build/Products/Debug-iphonesimulator/Bitkit.app e2e-app/bitkit.app
+
+      - name: Upload iOS app (local)
+        uses: actions/upload-artifact@v7
         with:
-          name: spark-ios-app
-          path: ${{ runner.temp }}/spark-ios-app.tar.gz
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 3
+          name: bitkit-e2e-ios_${{ github.run_number }}
+          path: e2e-app/
 
-  e2e-spark:
-    needs: [spark-images, build-spark-ios]
+  e2e-branch:
+    needs: detect-changes
+    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
+    uses: synonymdev/bitkit-e2e-tests/.github/workflows/determine-e2e-branch.yml@main
+    with:
+      app_branch: ${{ inputs.app_branch || github.head_ref || github.ref_name }}
+      e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
+
+  e2e-tests-local:
+    cache-mode: read
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: read
+      checks: write
+      actions: write
+    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: [self-hosted, macOS]
-    timeout-minutes: 120
-    outputs:
-      spark-case: >-
-        ${{ contains(steps.*.outputs.spark-case, 'passed') && 'passed' ||
-            contains(steps.*.outputs.spark-case, 'failed') && 'failed' ||
-            contains(steps.*.outputs.spark-case, 'started') && 'started' || '' }}
-      spark-app-setup: >-
-        ${{ contains(steps.*.outputs.spark-case, 'setup-failed') && 'failure' ||
-            contains(steps.*.outputs.spark-case, 'setup') && 'interrupted' || '' }}
-      spark-fixture: ${{ steps.spark.outcome }}
+    needs: [detect-changes, build-local, e2e-branch]
     env:
-      COMPOSE_PROJECT_NAME: bitkit-spark-e2e
+      # Reuse the legacy project so reset also clears containers left after a ref switch.
+      COMPOSE_PROJECT_NAME: docker
+      # Match the legacy fixture for the iOS manual channel funding Max case.
+      BITCOIN_FALLBACK_FEE: "0.00001"
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          # - { name: onboarding_backup_numberpad, grep: "@onboarding|@backup|@numberpad" }
+          # - { name: onchain_boost_receive_widgets, grep: "@onchain|@boost|@receive|@widgets" }
+          # - { name: settings, grep: "@settings" }
+          # - { name: security, grep: "@security" }
+          - { name: e2e, grep: '@ios_gate' }
+
+    name: e2e-tests-local - ${{ matrix.shard.name }}
+
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout retarget reporter
+        if: inputs.retarget_run != ''
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: retarget-ci
+          sparse-checkout: .github/scripts
+      - name: Report retarget tests running
+        if: inputs.retarget_run != ''
+        uses: actions/github-script@v9
+        env:
+          RETARGET_CHECK_RUN_ID: ${{ inputs.check_run_id }}
+          RETARGET_RUN: ${{ inputs.retarget_run }}
+          RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
+          RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
+          RETARGET_PR: ${{ inputs.pr }}
+          RETARGET_HELPER_REF: ${{ inputs.helper_ref }}
+        with:
+          script: |
+            const {reportRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
+            await reportRetargetResult({github, context, core, name: 'e2e-status', phase: 'start'});
+
+      - name: Resolve E2E tests ref
+        id: e2e-ref
+        uses: synonymdev/bitkit-e2e-tests/.github/actions/resolve-e2e-ref@main
+        with:
+          selected: ${{ needs.e2e-branch.outputs.branch }}
+          e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
+
+      - name: Clone E2E tests
+        uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-e2e-tests
-          ref: ${{ needs.spark-images.outputs.e2e-sha }}
           path: bitkit-e2e-tests
-          persist-credentials: false
+          ref: ${{ steps.e2e-ref.outputs.ref }}
 
-      - uses: actions/setup-node@v7
+      - name: Download iOS app
+        uses: actions/download-artifact@v8
+        with:
+          name: bitkit-e2e-ios_${{ github.run_number }}
+          path: bitkit-e2e-tests/aut
+
+      - name: List iOS app directory contents
+        run: ls -l bitkit-e2e-tests/aut
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: bitkit-e2e-tests/package-lock.json
 
-      - name: Install Appium dependencies
+      - name: Cache npm cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('bitkit-e2e-tests/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
         working-directory: bitkit-e2e-tests
         run: npm ci
 
-      - name: Check the local Spark images
-        id: local-images
-        working-directory: bitkit-e2e-tests
-        env:
-          SPARK_IMAGE_FINGERPRINT: ${{ needs.spark-images.outputs.image-fingerprint }}
+      - name: Docker info
         run: |
-          if [[ "$RUNNER_ARCH" != ARM64 ]]; then
-            echo "::error::The Spark fixture archive requires an ARM64 Mac runner."
-            exit 1
-          fi
-          test -n "$SPARK_IMAGE_FINGERPRINT"
-          ./scripts/local-backend prepare
-          if actual="$(./scripts/local-backend spark-image-fingerprint 2>/dev/null)" &&
-            [[ "$actual" == "$SPARK_IMAGE_FINGERPRINT" ]]; then
-            echo 'Reusing the exact pinned Spark images on this runner.'
-            echo 'match=true' >> "$GITHUB_OUTPUT"
-          fi
+          docker --version
+          docker info
+          docker ps
+          docker compose version
 
-      - uses: actions/download-artifact@v8
-        if: steps.local-images.outputs.match != 'true'
-        with:
-          name: spark-fixture-images
-          path: ${{ runner.temp }}
-
-      - name: Load the pinned Spark images
-        if: steps.local-images.outputs.match != 'true'
-        run: |
-          docker image load --input "$RUNNER_TEMP/spark-images.tar.gz"
-          rm -f "$RUNNER_TEMP/spark-images.tar.gz"
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: spark-ios-app
-          path: ${{ runner.temp }}
-
-      - name: Unpack the hosted simulator build
+      - name: Run regtest setup
         working-directory: bitkit-e2e-tests
         run: |
-          mkdir -p aut
-          tar -C aut -xzf "$RUNNER_TEMP/spark-ios-app.tar.gz"
-          rm -f "$RUNNER_TEMP/spark-ios-app.tar.gz"
-
-      - name: Start pinned Spark fixture
-        id: spark
-        working-directory: bitkit-e2e-tests
-        env:
-          SPARK_IMAGE_FINGERPRINT: ${{ needs.spark-images.outputs.image-fingerprint }}
-          SPARK_LOCAL_CONFIG_B64: ${{ needs.spark-images.outputs.spark-config }}
-          SPARK_LOCAL_CHAIN_URL: ${{ needs.spark-images.outputs.spark-chain-url }}
-        run: |
-          (cd "$(./scripts/local-backend path)" && docker compose --profile spark down --remove-orphans -v)
-          ./scripts/local-backend spark-up
-          expected="$(printf 'SPARK_LOCAL_CONFIG_B64=%s\nSPARK_LOCAL_CHAIN_URL=%s' "$SPARK_LOCAL_CONFIG_B64" "$SPARK_LOCAL_CHAIN_URL")"
-          if [[ "$(./scripts/local-backend spark-env)" != "$expected" ]]; then
-            echo "::error::The running Spark fixture differs from the simulator build settings."
-            exit 1
+          if [ -x ./scripts/local-backend ]; then
+            ./scripts/local-backend prepare
+            ./scripts/local-backend down --remove-orphans -v -t 300
+            ./scripts/local-backend up
+            ./scripts/local-backend github-env >> "$GITHUB_ENV"
+          else
+            # Older E2E refs still carry the bundled stack.
+            cd docker
+            docker compose --verbose --profile trezor down --remove-orphans -v -t 300 || true
+            mkdir -p lnd && chmod 777 lnd
+            docker compose --verbose up --force-recreate -d
           fi
 
-      - name: Run @spark_1 (attempt 1)
+      - name: Wait for electrum server
+        run: |
+          for _ in $(seq 1 60); do
+            python3 -c 'import socket; s = socket.create_connection(("127.0.0.1", 60001), 10); s.sendall(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"blockchain.headers.subscribe\",\"params\":[]}\n"); assert b"height" in s.recv(4096)' && exit 0
+            sleep 5
+          done
+          exit 1
+
+      - name: Clear previous E2E artifacts
+        working-directory: bitkit-e2e-tests
+        run: |
+          rm -rf artifacts/
+          rm -rf /tmp/lock/
+
+      - name: Clear iOS Simulator environment
+        run: |
+          xcrun simctl shutdown all || true
+          xcrun simctl erase "iPhone 17" || true
+          defaults write com.apple.iphonesimulator DisableAllNotifications -bool true
+
+      - name: Run E2E Tests 1 (${{ matrix.shard.name }})
         continue-on-error: true
         id: test1
         working-directory: bitkit-e2e-tests
-        run: ./scripts/run-spark-e2e.sh ios
+        run: ./ci_run_ios.sh --mochaOpts.grep '${{ matrix.shard.grep }}'
         env:
           RECORD_VIDEO: true
           ATTEMPT: 1
 
-      - name: Run @spark_1 (attempt 2)
+      - name: Run E2E Tests 2 (${{ matrix.shard.name }})
         continue-on-error: true
         if: steps.test1.outcome != 'success'
         id: test2
         working-directory: bitkit-e2e-tests
-        run: ./scripts/run-spark-e2e.sh ios
+        run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
         env:
           RECORD_VIDEO: true
           ATTEMPT: 2
 
-      - name: Run @spark_1 (attempt 3)
+      - name: Run E2E Tests 3 (${{ matrix.shard.name }})
         if: steps.test1.outcome != 'success' && steps.test2.outcome != 'success'
         id: test3
         working-directory: bitkit-e2e-tests
-        run: ./scripts/run-spark-e2e.sh ios
+        run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
         env:
           RECORD_VIDEO: true
           ATTEMPT: 3
 
-      - name: Collect Spark logs
-        if: failure()
-        working-directory: bitkit-e2e-tests
-        run: |
-          mkdir -p artifacts
-          ./scripts/local-backend spark-logs --tail 200 > artifacts/spark-docker.log 2>&1 || true
-
-      - name: Stop Spark fixture
-        if: always() && steps.spark.outcome != 'skipped'
-        working-directory: bitkit-e2e-tests
-        run: cd "$(./scripts/local-backend path)" && docker compose --profile spark down --remove-orphans -v
-
-      - name: Remove the imported archives
+      - name: Upload E2E Artifacts (${{ matrix.shard.name }})
+        # Preserve failed-attempt evidence even when a retry passes.
         if: always()
-        run: rm -f "$RUNNER_TEMP/spark-images.tar.gz" "$RUNNER_TEMP/spark-ios-app.tar.gz"
-
-      # Preserve logs and recordings from failed attempts even when a retry passes.
-      - uses: actions/upload-artifact@v7
-        if: always()
+        uses: actions/upload-artifact@v7
         with:
-          name: spark-ios-${{ github.run_number }}
+          name: e2e-artifacts_${{ matrix.shard.name }}_${{ github.run_number }}
           path: bitkit-e2e-tests/artifacts/
           retention-days: 7
 
-  slack-report:
-    if: >-
-      always() &&
-      (github.event_name == 'schedule' ||
-       (github.event_name == 'workflow_dispatch' && inputs.post_to_slack == true))
-    needs: [spark-images, build-spark-ios, e2e-spark]
+      - name: Cleanup Docker containers
+        if: always()
+        working-directory: bitkit-e2e-tests
+        run: |
+          if [ -x ./scripts/local-backend ]; then
+            ./scripts/local-backend down --remove-orphans -v || true
+          else
+            (cd docker && docker compose --profile trezor down --remove-orphans -v) || true
+          fi
+
+  e2e-status:
+    if: always() && github.event.pull_request.draft == false
+    name: e2e-status
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    needs: [detect-changes, e2e-tests-local]
+    steps:
+      - name: Verify change detection succeeded
+        if: needs.detect-changes.result != 'success'
+        run: |
+          echo "Change detection failed or did not complete."
+          exit 1
+
+      - name: E2E skipped - no code changes
+        if: needs.detect-changes.outputs.code != 'true'
+        run: echo "✅ E2E skipped - no code changes"
+
+      - name: Verify all E2E shards succeeded
+        if: needs.detect-changes.outputs.code == 'true'
+        run: |
+          if [ "${{ needs.e2e-tests-local.result }}" != "success" ]; then
+            echo "❌ Some E2E shards failed."
+            exit 1
+          fi
+          echo "✅ All E2E shards passed!"
+
+  report-retarget-result:
+    name: Report retarget E2E result
+    if: always() && inputs.retarget_run != ''
+    needs: [detect-changes, build-local, e2e-branch, e2e-tests-local, e2e-status]
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
+      pull-requests: read
+      checks: write
     steps:
-      - name: Checkout shared Slack reporter
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
-          repository: synonymdev/bitkit-e2e-tests
-          ref: b7e445ad080827421f427fd26ae04b1782d8409c
-          persist-credentials: false
-
-      - name: Post Slack summary
-        run: python3 scripts/slack_summary.py e2e-local-nightly
+          ref: ${{ github.workflow_sha }}
+          path: retarget-ci
+          sparse-checkout: .github/scripts
+      - uses: actions/github-script@v9
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_STAGING }}
-          PLATFORM: ios
-          LOCAL_NIGHTLY_RESULT: >-
-            ${{ contains(needs.*.result, 'failure') && 'failure' ||
-                contains(needs.*.result, 'cancelled') && 'cancelled' || needs.e2e-spark.result }}
-          SPARK_IMAGES_RESULT: ${{ needs.spark-images.result }}
-          BUILD_RESULT: ${{ needs.build-spark-ios.result }}
-          E2E_TESTS_REF: ${{ needs.spark-images.outputs.e2e-sha || inputs.e2e_branch || 'main' }}
-          SPARK_FIXTURE_RESULT: ${{ needs.e2e-spark.outputs.spark-fixture }}
-          SPARK_APP_SETUP_RESULT: ${{ needs.e2e-spark.outputs.spark-app-setup }}
-          E2E_TESTS_RESULT: ${{ needs.e2e-spark.result }}
-          SPARK_CASE_RESULT: ${{ needs.e2e-spark.outputs.spark-case }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RETARGET_CHECK_RUN_ID: ${{ inputs.check_run_id }}
+          RETARGET_RUN: ${{ inputs.retarget_run }}
+          RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
+          RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
+          RETARGET_PR: ${{ inputs.pr }}
+          RETARGET_HELPER_REF: ${{ inputs.helper_ref }}
+          TEST_RESULTS: ${{ toJSON(needs) }}
+        with:
+          script: |
+            const {reportRetargetResult, e2eRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
+            const result = e2eRetargetResult(JSON.parse(process.env.TEST_RESULTS));
+            await reportRetargetResult({github, context, core, name: 'e2e-status', phase: 'complete', result});
