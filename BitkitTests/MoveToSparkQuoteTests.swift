@@ -35,17 +35,9 @@ final class MoveToSparkQuoteTests: XCTestCase {
 
     func testQuoteGrowsToFitTheRealFee() async throws {
         let services = FakeServices()
-        let quote = try await MoveToSparkManager(services: services).makeQuote(channels: channels, targetSats: nil)
+        let quote = try await MoveToSparkManager(services: services).makeQuote(channels: channels)
         XCTAssertEqual(quote, MoveToSparkQuote(invoice: "lnbcrt1move", amountSats: 99968, feeSats: 32))
         XCTAssertEqual(services.quotedAmounts, [99498, 99968])
-    }
-
-    func testQuoteKeepsASmallerTarget() async throws {
-        let services = FakeServices()
-        let quote = try await MoveToSparkManager(services: services).makeQuote(channels: channels, targetSats: 50000)
-        XCTAssertEqual(quote.amountSats, 50000)
-        XCTAssertEqual(quote.feeSats, 32)
-        XCTAssertEqual(services.quotedAmounts, [50000])
     }
 
     func testQuoteFallsBackToTheLastFittingAmount() async throws {
@@ -54,33 +46,125 @@ final class MoveToSparkQuoteTests: XCTestCase {
             guard amount == 99498 else { throw NodeError.RouteNotFound(message: "no route") }
             return 30
         }
-        let quote = try await MoveToSparkManager(services: services).makeQuote(channels: channels, targetSats: nil)
-        XCTAssertEqual(quote.amountSats, 99498)
-        XCTAssertEqual(quote.feeSats, 32)
+        let quote = try await MoveToSparkManager(services: services).makeQuote(channels: channels)
+        XCTAssertEqual(quote, MoveToSparkQuote(invoice: "lnbcrt1move", amountSats: 99498, feeSats: 32))
     }
 
-    func testNoRouteOnTheFirstRoundIsTooLarge() async {
+    func testABalanceThatDoesNotRouteAtOnceIsQuotedInParts() async throws {
+        let services = FakeServices()
+        services.estimate = { amount in
+            guard amount <= 30000 else { throw NodeError.RouteNotFound(message: "no route") }
+            return 30
+        }
+        let quote = try await MoveToSparkManager(services: services).makeQuote(channels: channels)
+        // Halved twice to a part that routes, then parts no larger until less than the minimum is left.
+        XCTAssertEqual(quote.parts, Array(repeating: MoveToSparkPart(amountSats: 24874, feeSats: 32), count: 4))
+        XCTAssertEqual(quote.amountSats, 99496)
+        XCTAssertEqual(quote.feeSats, 128, "The fee shown is the total of the parts")
+    }
+
+    func testNoPartThatRoutesIsNoRoute() async {
         let services = FakeServices()
         services.estimate = { _ in throw NodeError.RouteNotFound(message: "no route") }
-        await assertQuoteThrows(services, expected: .tooLarge(amountSats: 99498))
+        await assertQuoteThrows(services, expected: .noRoute)
+        XCTAssertEqual(services.quotedAmounts.last.map { $0 < 2 * MoveToSparkMath.minMoveSats }, true, "Halving stopped above the minimum")
     }
 
-    func testAFeeThatNeverFitsIsTooLarge() async {
+    func testAFeeThatNeverFitsIsHalvedUntilNoPartIsLeft() async {
         let services = FakeServices()
-        var estimate: UInt64 = 500
-        services.estimate = { _ in
-            estimate += 100
-            return estimate
+        services.estimate = { _ in 100_000 }
+        await assertQuoteThrows(services, expected: .noRoute)
+        XCTAssertEqual(Array(services.quotedAmounts.prefix(3)), [99498, 49749, 24874])
+    }
+
+    func testALaterPartThatCannotBePricedKeepsTheEarlierParts() async throws {
+        let services = FakeServices()
+        services.estimate = { amount in
+            if amount > 60000 {
+                throw NodeError.RouteNotFound(message: "no route")
+            }
+            if services.quotedAmounts.count > 2 {
+                throw OtherError()
+            }
+            return 30
         }
-        await assertQuoteThrows(services, expected: .tooLarge(amountSats: 99098))
-        XCTAssertEqual(services.quotedAmounts, [99498, 99398, 99298, 99198])
+        let quote = try await MoveToSparkManager(services: services).makeQuote(channels: channels)
+        XCTAssertEqual(quote.parts.count, 1)
+    }
+
+    // MARK: - Paying the parts
+
+    func testEveryPartPaysUnderTheTotalFeeShown() async throws {
+        let quote = MoveToSparkQuote(invoice: "lnbcrt1first", parts: [
+            MoveToSparkPart(amountSats: 30000, feeSats: 32),
+            MoveToSparkPart(amountSats: 30000, feeSats: 32),
+        ])
+        var paid: [(String, UInt64, UInt64)] = []
+        let outcome = try await MoveToSparkManager.payParts(quote, newInvoice: { "lnbcrt1next" }) { bolt11, amount, cap, _, _ in
+            paid.append((bolt11, amount, cap))
+            return 30
+        }
+        XCTAssertEqual(outcome, .settled(movedSats: 60000, feeSats: 60, isComplete: true))
+        XCTAssertEqual(paid.map(\.0), ["lnbcrt1first", "lnbcrt1next"])
+        XCTAssertEqual(paid.map(\.2), [64, 34], "A part may spend only what is left of the total fee shown")
+    }
+
+    func testAPartThatDoesNotRouteIsPaidInHalves() async throws {
+        let quote = MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 40000, feeSats: 40)
+        var amounts: [UInt64] = []
+        let outcome = try await MoveToSparkManager.payParts(quote, newInvoice: { "lnbcrt1next" }) { _, amount, _, _, _ in
+            amounts.append(amount)
+            guard amount <= 10000 else { throw NodeError.RouteNotFound(message: "no route") }
+            return 5
+        }
+        XCTAssertEqual(amounts, [40000, 20000, 10000, 10000, 20000, 10000, 10000])
+        XCTAssertEqual(outcome, .settled(movedSats: 40000, feeSats: 20, isComplete: true))
+    }
+
+    func testAFailureAfterAPartMovedStopsWithWhatMoved() async throws {
+        let quote = MoveToSparkQuote(invoice: "lnbcrt1first", parts: [
+            MoveToSparkPart(amountSats: 30000, feeSats: 32),
+            MoveToSparkPart(amountSats: 30000, feeSats: 32),
+        ])
+        var calls = 0
+        let outcome = try await MoveToSparkManager.payParts(quote, newInvoice: { "lnbcrt1next" }) { _, _, _, _, _ in
+            calls += 1
+            guard calls == 1 else { throw OtherError() }
+            return 30
+        }
+        XCTAssertEqual(outcome, .settled(movedSats: 30000, feeSats: 30, isComplete: false))
+    }
+
+    func testAFirstPartThatFailsMovesNothing() async {
+        let quote = MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 30000, feeSats: 32)
+        do {
+            _ = try await MoveToSparkManager.payParts(quote, newInvoice: { "lnbcrt1next" }) { _, _, _, _, _ in throw OtherError() }
+            XCTFail("Expected the failure")
+        } catch {
+            XCTAssertTrue(error is OtherError)
+        }
+    }
+
+    func testAPartInFlightEndsThePartsWithWhatMovedBeforeIt() async throws {
+        let quote = MoveToSparkQuote(invoice: "lnbcrt1first", parts: [
+            MoveToSparkPart(amountSats: 30000, feeSats: 32),
+            MoveToSparkPart(amountSats: 20000, feeSats: 32),
+            MoveToSparkPart(amountSats: 10000, feeSats: 32),
+        ])
+        var calls = 0
+        let outcome = try await MoveToSparkManager.payParts(quote, newInvoice: { "lnbcrt1next" }) { _, _, _, _, _ in
+            calls += 1
+            return calls == 1 ? 30 : nil
+        }
+        XCTAssertEqual(outcome, .inFlight(movedSats: 30000, feeSats: 30, partSats: 20000))
+        XCTAssertEqual(calls, 2, "A part was paid after one still in flight")
     }
 
     func testOtherEstimateErrorsAreRethrown() async {
         let services = FakeServices()
         services.estimate = { _ in throw OtherError() }
         do {
-            _ = try await MoveToSparkManager(services: services).makeQuote(channels: channels, targetSats: nil)
+            _ = try await MoveToSparkManager(services: services).makeQuote(channels: channels)
             XCTFail("Expected an error")
         } catch {
             XCTAssertTrue(error is OtherError)
@@ -105,12 +189,11 @@ final class MoveToSparkQuoteTests: XCTestCase {
         line: UInt = #line
     ) async {
         do {
-            _ = try await MoveToSparkManager(services: services).makeQuote(channels: channels ?? self.channels, targetSats: nil)
+            _ = try await MoveToSparkManager(services: services).makeQuote(channels: channels ?? self.channels)
             XCTFail("Expected \(expected)", line: line)
         } catch let error as MoveToSparkError {
             switch (error, expected) {
-            case let (.tooLarge(a), .tooLarge(b)): XCTAssertEqual(a, b, line: line)
-            case (.nothingToMove, .nothingToMove), (.sparkUnavailable, .sparkUnavailable): break
+            case (.noRoute, .noRoute), (.nothingToMove, .nothingToMove), (.sparkUnavailable, .sparkUnavailable): break
             default: XCTFail("Expected \(expected), got \(error)", line: line)
             }
         } catch {
