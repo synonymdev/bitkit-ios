@@ -60,7 +60,8 @@ final class WakeRegistrationPolicyTests: XCTestCase {
                 "\(status.rawValue)"
             )
         }
-        // A reinstall: the keychain outlives the app, so the old install's registration may still be on the gateway.
+        // The state after a reinstall. This covers the policy check only: `OrphanedKeychainGuard` wipes the wake credentials
+        // before they can unregister the old install, so its registration stays on the gateway.
         XCTAssertTrue(WakeRegistrationPolicy.isOptedOut(authorizationStatus: .notDetermined, notificationsEnabled: false, isE2E: false))
         XCTAssertFalse(WakeRegistrationPolicy.isOptedOut(authorizationStatus: .authorized, notificationsEnabled: true, isE2E: false))
     }
