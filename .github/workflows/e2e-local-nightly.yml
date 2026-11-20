@@ -228,6 +228,14 @@ jobs:
           RECORD_VIDEO: true
           ATTEMPT: 1
 
+      - name: Collect Spark logs after attempt 1
+        if: steps.test1.outcome == 'failure'
+        continue-on-error: true
+        working-directory: bitkit-e2e-tests
+        run: |
+          mkdir -p artifacts/attempt-1
+          ./scripts/local-backend spark-logs --tail 200 > artifacts/attempt-1/spark-docker.log 2>&1
+
       - name: Run E2E tests (attempt 2)
         continue-on-error: true
         if: steps.test1.outcome != 'success'
@@ -237,6 +245,14 @@ jobs:
         env:
           RECORD_VIDEO: true
           ATTEMPT: 2
+
+      - name: Collect Spark logs after attempt 2
+        if: steps.test2.outcome == 'failure'
+        continue-on-error: true
+        working-directory: bitkit-e2e-tests
+        run: |
+          mkdir -p artifacts/attempt-2
+          ./scripts/local-backend spark-logs --tail 200 > artifacts/attempt-2/spark-docker.log 2>&1
 
       - name: Run E2E tests (attempt 3)
         if: steps.test1.outcome != 'success' && steps.test2.outcome != 'success'
@@ -248,7 +264,7 @@ jobs:
           ATTEMPT: 3
 
       - name: Collect Spark logs
-        if: failure() || steps.test1.outcome == 'failure'
+        if: failure()
         working-directory: bitkit-e2e-tests
         run: |
           mkdir -p artifacts
