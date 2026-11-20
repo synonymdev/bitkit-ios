@@ -463,17 +463,48 @@ extension ScannerManagerTests {
     }
 
     func testNearbyAllowlistAcceptsPaymentSchemesOnly() {
-        for uri in ["bitcoin:bcrt1qexample", "BITCOIN:BCRT1Q", "lightning:lnbcrt1", "LIGHTNING:LNURL1DP68", "ethereum:0xabc@42161",
-                    "lnurlp://example.com/pay", " bitcoin:bcrt1q?lightning=lnbcrt1 ",
+        for uri in ["bitcoin:bcrt1qexample", "BITCOIN:BCRT1Q", "lightning:lnbcrt1", "ethereum:0xabc@42161",
+                    " bitcoin:bcrt1q?lightning=lnbcrt1 ", "bitcoin:bcrt1q?amount=0.1&label=lightning",
                     PosNfcFixtures.squareUri, PosNfcFixtures.bip321Uri]
         {
             XCTAssertTrue(ScannerManager.isNearbyPaymentRequest(uri), uri)
         }
-        for uri in authURIs + ["lnurlw://example.com/w", "lnurlc://example.com/c", "LNURL1DP68GURN8GHJ7", "bcrt1qexample",
-                               "lnbcrt10u1pjexample", "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw374y",
-                               "https://example.com", "bitkit://contact/abc", "02aaaa@127.0.0.1:9735", ""]
+        for uri in authURIs + nearbyNetworkLookups + ["lnurlw://example.com/w", "lnurlc://example.com/c", "LNURL1DP68GURN8GHJ7",
+                                                      "lightning:lno1qgsqvgnwgcg35z6ee2h3yczraddm72xrfua9uve2rlrm9deu7xyfzr",
+                                                      "bcrt1qexample",
+                                                      "lnbcrt10u1pjexample", "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw374y",
+                                                      "https://example.com", "bitkit://contact/abc", "02aaaa@127.0.0.1:9735", ""]
         {
             XCTAssertFalse(ScannerManager.isNearbyPaymentRequest(uri), uri)
+        }
+    }
+
+    /// Requests the decoder would resolve over the network before the user picked them.
+    private var nearbyNetworkLookups: [String] {
+        [
+            "LIGHTNING:LNURL1DP68GURN8GHJ7", "lnurlp://example.com/pay", "lightning:alice@example.com",
+            "bitcoin:bcrt1q?amount=0.1&lightning=LNURL1DP68GURN8GHJ7", "bitcoin:?lightning=lnurl1dp68gurn8ghj7",
+        ]
+    }
+
+    func testNearbyRequestDoesNotResolveAnLnurlBeforeReview() async {
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { uri in
+            XCTFail("Bluetooth discovery alone must not decode \(uri)")
+            return .gift(code: "gift-code", amount: 1000)
+        })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+
+        for uri in nearbyNetworkLookups {
+            let sendWasTaken = await scanner.handleSendNearbyRequest(uri) { XCTAssertNil($0, uri) }
+            let mainWasTaken = await scanner.handleNearbyRequest(uri, context: .main)
+            XCTAssertFalse(sendWasTaken, uri)
+            XCTAssertFalse(mainWasTaken, uri)
         }
     }
 
@@ -504,7 +535,7 @@ extension ScannerManagerTests {
         )
         var routes: [SendRoute?] = []
 
-        let wasTaken = await scanner.handleSendNearbyRequest("lightning:LNURL1GIFT") { routes.append($0) }
+        let wasTaken = await scanner.handleSendNearbyRequest("lightning:lnbcrt1gift") { routes.append($0) }
 
         XCTAssertFalse(wasTaken)
         XCTAssertEqual(routes, [nil])

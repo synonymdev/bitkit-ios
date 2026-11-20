@@ -321,17 +321,34 @@ class ScannerManager: ObservableObject {
         await processSendScan(uri, scope: scope, isCurrent: isStillCurrent, completion: completion)
     }
 
-    /// Schemes accepted from Bluetooth: payment requests only. Unlike a camera or NFC read, a Bluetooth request can
-    /// come from any nearby device, so sign-in, setup, withdraw and contact links are refused.
-    nonisolated static let nearbyPaymentSchemes = ["bitcoin:", "lightning:", "ethereum:", "lnurlp:"]
+    /// Covers `lnbcrt`, `lntbs` and amounts after the network.
+    private nonisolated static let bolt11Prefixes = ["lnbc", "lntb", "lnsb"]
 
+    /// Whether a request read over Bluetooth is accepted: a `bitcoin:` URI, a `lightning:` BOLT11 invoice or a USDT
+    /// `ethereum:` request. Unlike a camera or NFC read, a Bluetooth request can come from any nearby device before the
+    /// user picks it, so nothing that is resolved over the network before review is taken: LNURL and Lightning
+    /// addresses, also as a unified URI's `lightning` part, are refused. So are sign-in, setup, withdraw and contact
+    /// links, and BOLT12 offers, which the decoder does not read.
     nonisolated static func isNearbyPaymentRequest(_ uri: String) -> Bool {
         let lowercase = uri.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return nearbyPaymentSchemes.contains { lowercase.hasPrefix($0) }
+        func isBolt11(_ value: Substring) -> Bool {
+            bolt11Prefixes.contains { value.hasPrefix($0) }
+        }
+        if lowercase.hasPrefix("ethereum:") {
+            return true
+        }
+        if lowercase.hasPrefix("lightning:") {
+            return isBolt11(lowercase.dropFirst("lightning:".count))
+        }
+        guard lowercase.hasPrefix("bitcoin:") else { return false }
+        let query = lowercase.split(separator: "?", maxSplits: 1).dropFirst().first ?? ""
+        return query.split(separator: "&").allSatisfy { pair in
+            !pair.hasPrefix("lightning=") || isBolt11(pair.dropFirst("lightning=".count))
+        }
     }
 
     /// Handles a request read over Bluetooth. It always opens the normal review (QuickPay does not apply) and is
-    /// limited to on-chain, Lightning, LNURL-pay and USDT requests.
+    /// limited to on-chain, BOLT11 Lightning and USDT requests.
     /// - Returns: false when the request was not taken (refused, or another scan is being handled), so the caller
     ///   can keep listening.
     @discardableResult
