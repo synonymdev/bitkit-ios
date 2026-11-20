@@ -2955,7 +2955,10 @@ struct ChannelFreeRowAttempts: @unchecked Sendable {
         Self.lock.withLock {
             var entries = defaults.array(forKey: Self.key) as? [[String]] ?? []
             let previous = entries.last { $0.first == hash }
-            let entry = if let previous, previous.count >= 3 {
+            let entry = if let previous, previous.count == 5, previousRowStamp == previous[4] {
+                // A write cut off before its row was saved: the row is still the previous writer's.
+                [hash, attemptId, stamp, previous[3], previous[4]]
+            } else if let previous, previous.count >= 3 {
                 [hash, attemptId, stamp, previous[1], previous[2]]
             } else {
                 [hash, attemptId, stamp, "", previousRowStamp ?? ""]
@@ -2979,10 +2982,11 @@ struct ChannelFreeRowAttempts: @unchecked Sendable {
         }
     }
 
-    /// The writer of `row`: the kept one, unless `row` still matches the previous writer's stamp and not the kept one's.
+    /// The writer of `row`: the kept one, unless `row` still matches the previous writer's stamp, as a write cut off
+    /// before its row was saved leaves it.
     private func writer(forPaymentHash paymentHash: String, row: LightningActivity?) -> (id: String, stamp: String)? {
         guard let entry = entry(forPaymentHash: paymentHash), entry.count >= 3 else { return nil }
-        if entry.count == 5, let row, Self.stamp(row) != entry[2], Self.stamp(row) == entry[4] {
+        if entry.count == 5, let row, Self.stamp(row) == entry[4] {
             return entry[3].isEmpty ? nil : (entry[3], entry[4])
         }
         return (entry[1], entry[2])
