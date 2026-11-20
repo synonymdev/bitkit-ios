@@ -2,6 +2,12 @@ name: Spark Mac maintenance
 
 on:
   workflow_dispatch:
+    inputs:
+      force_stop:
+        description: Force stop Docker Desktop after graceful shutdown has failed
+        type: boolean
+        required: true
+        default: false
 
 permissions:
   contents: read
@@ -13,6 +19,8 @@ jobs:
     steps:
       - name: Check the runner and recover Docker Desktop
         shell: bash
+        env:
+          FORCE_STOP: ${{ inputs.force_stop }}
         run: |
           if [[ "$RUNNER_NAME" != macmini1 ]]; then
             echo "::error::Maintenance is scoped to macmini1. This job landed on $RUNNER_NAME."
@@ -45,6 +53,10 @@ jobs:
 
 
           before = disk_free()
+          force_stop = os.environ['FORCE_STOP'] == 'true'
+          if force_stop and os.environ['GITHUB_RUN_ATTEMPT'] != '1':
+              raise SystemExit('A force stop requires a new manual dispatch.')
+
           context = run(['docker', 'context', 'show'], 10).stdout.strip()
           if context != 'desktop-linux':
               raise SystemExit(f'Expected local Docker Desktop context, found {context!r}.')
@@ -123,9 +135,12 @@ jobs:
           except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
               print('The Docker VM disk could not be measured within the probe limits.')
 
-          for action, limit in [('stop', 180), ('start', 120)]:
+          stop_flags = ['--force'] if force_stop else []
+          stop_limit = 60 if force_stop else 180
+          desktop_commands = [('stop', stop_limit, stop_flags), ('start', 120, [])]
+          for action, limit, flags in desktop_commands:
               try:
-                  result = run(['docker', 'desktop', action, '--timeout', str(limit)], limit + 15)
+                  result = run(['docker', 'desktop', action, *flags, '--timeout', str(limit)], limit + 15)
                   print(result.stdout.strip())
               except subprocess.CalledProcessError as error:
                   print((error.stderr or error.stdout).strip())
