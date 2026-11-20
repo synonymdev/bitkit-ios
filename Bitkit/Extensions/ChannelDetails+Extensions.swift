@@ -21,6 +21,7 @@ extension ChannelDetails {
         outboundCapacityMsat: UInt64 = 50_000_000, // 50,000 sats in msat
         nextOutboundHtlcLimitMsat: UInt64? = nil, // the outbound capacity when nil
         feerateSatPer1000Weight: UInt32 = 2500,
+        nextOutboundHtlcMinimumMsat: UInt64 = 1000,
         inboundCapacityMsat: UInt64 = 50_000_000, // 50,000 sats in msat
         shortChannelId: UInt64? = 123_456_789
     ) -> ChannelDetails {
@@ -54,7 +55,7 @@ extension ChannelDetails {
             counterpartyForwardingInfoFeeProportionalMillionths: 100,
             counterpartyForwardingInfoCltvExpiryDelta: 144,
             nextOutboundHtlcLimitMsat: nextOutboundHtlcLimitMsat ?? outboundCapacityMsat,
-            nextOutboundHtlcMinimumMsat: 1000,
+            nextOutboundHtlcMinimumMsat: nextOutboundHtlcMinimumMsat,
             forceCloseSpendDelay: nil,
             inboundHtlcMinimumMsat: 1000,
             inboundHtlcMaximumMsat: inboundCapacityMsat > 0 ? inboundCapacityMsat : nil,

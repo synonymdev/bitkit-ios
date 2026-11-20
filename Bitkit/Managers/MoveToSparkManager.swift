@@ -45,10 +45,18 @@ enum MoveToSparkMath {
         let totalSats: Int64 = if matched.isEmpty {
             max(limitSats, types.map { clearedSats(capacityMsat: capacityMsat, isLegacy: $0) }.max() ?? 0)
         } else {
-            // Once the above-dust limit has gone, LDK still leaves a below-dust HTLC for the rest.
-            limitSats + (matched.map { clearedSats(capacityMsat: capacityMsat - limitSats * 1000, isLegacy: $0) }.min() ?? 0)
+            // Once the above-dust limit has gone, LDK still leaves a below-dust HTLC for the rest, which counts only when a
+            // part can carry it: at least the move minimum and the channel's HTLC minimum.
+            limitSats + Self.sendableRestSats(
+                matched.map { clearedSats(capacityMsat: capacityMsat - limitSats * 1000, isLegacy: $0) }.min() ?? 0,
+                htlcMinimumMsat: channel.nextOutboundHtlcMinimumMsat
+            )
         }
         return min(outboundSats, UInt64(totalSats))
+    }
+
+    private static func sendableRestSats(_ restSats: Int64, htlcMinimumMsat: UInt64) -> Int64 {
+        restSats >= Int64(minMoveSats) && UInt64(restSats) * 1000 >= htlcMinimumMsat ? restSats : 0
     }
 
     /// Whether Spark can take a move; every Move to Spark check goes through here.
