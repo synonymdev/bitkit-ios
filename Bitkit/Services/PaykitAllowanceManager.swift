@@ -592,7 +592,9 @@ final class PaykitAllowanceManager {
     }
 
     private func isAwaitingAutomaticPayment(_ request: PaykitPaymentRequest) -> Bool {
+        // A failed automatic payment hands the request to the user, as its acceptance did before it was deferred.
         request.requiresAcceptance && request.billingPeriod == nil && coversRequest(request) && manualRequestIds[request.id] != allowancesSignature
+            && !localState.hasFailedAutomaticPayment(request.id)
     }
 
     static let acceptanceClockTolerance: TimeInterval = 30

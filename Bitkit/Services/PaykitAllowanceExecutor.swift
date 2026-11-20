@@ -122,6 +122,17 @@ struct PaykitAllowanceLocalState: Codable, Equatable {
         }
     }
 
+    /// Whether the automatic payment of the request failed and nothing else was sent for it, so it is the user's to pay.
+    func hasFailedAutomaticPayment(_ requestId: PaykitPaymentRequest.ID) -> Bool {
+        let entries = journal.filter {
+            $0.requestId.paymentRequestId == requestId.paymentRequestId && PubkyPublicKeyFormat.matches(
+                $0.requestId.counterparty,
+                requestId.counterparty
+            )
+        }
+        return entries.contains { $0.isAutomatic && $0.stage == .failed } && entries.allSatisfy { $0.stage == .failed }
+    }
+
     /// Whether an automatic payment of the request has left the wallet and not settled yet.
     func isPayingAutomatically(_ requestId: PaykitPaymentRequest.ID) -> Bool {
         journal.contains {

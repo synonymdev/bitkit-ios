@@ -352,6 +352,30 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     @MainActor
+    func testManagerHandsARequestBackOnceItsAutomaticPaymentFailed() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
+        let request = try Fixtures.paymentRequest()
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "failed", request: request, stage: .failed)]),
+            identity: Fixtures.identityKey
+        )
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            payableNow: { $0 }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+
+        let isHandling = await manager.isAutomaticallyHandling(request)
+        XCTAssertFalse(isHandling)
+        let handled = await manager.processIncomingRequests([request])
+        XCTAssertFalse(handled)
+        XCTAssertFalse(harness.log.entries.contains("acceptPaymentRequestAutomatically"))
+    }
+
+    @MainActor
     func testManagerHidesEveryRequestOfAPassFromItsStart() async throws {
         let harness = AllowanceHarness()
         try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
