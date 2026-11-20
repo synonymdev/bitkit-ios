@@ -246,6 +246,26 @@ final class SparkRelaunchActivityTests: XCTestCase {
         XCTAssertEqual(replayed.value, 500)
     }
 
+    func testANewerFailureTakesTheRowWhateverTheKeptOrder() async throws {
+        let hash = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() + String(repeating: "ed", count: 16)
+        func failed(sats: UInt64, feeSats: UInt64, at timestamp: UInt64) -> PaymentDetails {
+            PaymentDetails(
+                id: hash,
+                kind: .bolt11(hash: hash, preimage: nil, secret: nil, description: nil, bolt11: "lnbcrt1"),
+                amountMsat: sats * 1000, feePaidMsat: feeSats * 1000, direction: .outbound, status: .failed, latestUpdateTimestamp: timestamp
+            )
+        }
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(sats: 300, feeSats: 1, at: 200), railPaymentId: "first")
+        // A send's read missed the first attempt, so a later send kept it after the second.
+        LightningService.shared.keepEarlierAttemptsForTesting(hash: hash, ids: ["second", "first"])
+
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(sats: 500, feeSats: 2, at: 300), railPaymentId: "second")
+        guard case let .lightning(row)? = try await CoreService.shared.activity.getActivity(id: hash) else {
+            return XCTFail("the row is missing")
+        }
+        XCTAssertEqual(row.value, 500, "the kept order outranked Spark's dates")
+    }
+
     func testChannelFreeRowAttemptsKeepTheLatestRowWritersUpToTheLimit() throws {
         let suite = "ChannelFreeRowAttemptsTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
