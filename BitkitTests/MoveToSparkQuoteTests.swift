@@ -61,6 +61,13 @@ final class MoveToSparkQuoteTests: XCTestCase {
         XCTAssertEqual(quote, MoveToSparkQuote(invoice: "lnbcrt1move", amountSats: 24874, feeSats: 128, firstFeeSats: 32))
     }
 
+    func testAPeerHtlcCapSizesThePartsNotTheTotal() async throws {
+        let capped = [ChannelDetails.mock(outboundCapacityMsat: 100_000_000, nextOutboundHtlcLimitMsat: 30_032_000)]
+        let quote = try await MoveToSparkManager(services: FakeServices()).makeQuote(channels: capped)
+        XCTAssertEqual(quote.amountSats, 30000)
+        XCTAssertEqual(quote.feeSats, 4 * 32, "Every part of the balance the channels hold is priced")
+    }
+
     func testNoPartThatRoutesIsNoRoute() async {
         let services = FakeServices()
         services.estimate = { _ in throw NodeError.RouteNotFound(message: "no route") }
@@ -167,7 +174,7 @@ final class MoveToSparkQuoteTests: XCTestCase {
         do {
             _ = try await channels.run(MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 30000, feeSats: 70, firstFeeSats: 32))
             XCTFail("Expected the fee to rise")
-        } catch let MoveToSparkError.feeRose(movedSats) {
+        } catch let MoveToSparkError.feeRose(movedSats, _) {
             XCTAssertEqual(movedSats, 60000)
             XCTAssertEqual(channels.paid.count, 2, "A part was paid above the fee shown")
         }
@@ -199,7 +206,7 @@ final class MoveToSparkQuoteTests: XCTestCase {
         do {
             _ = try await channels.run(MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 30000, feeSats: 64, firstFeeSats: 32))
             XCTFail("Expected the fee to rise for what is left")
-        } catch let MoveToSparkError.feeRose(movedSats) {
+        } catch let MoveToSparkError.feeRose(movedSats, _) {
             XCTAssertEqual(movedSats, 60000)
         }
     }
@@ -250,21 +257,36 @@ final class MoveToSparkQuoteTests: XCTestCase {
         XCTAssertEqual(outcome, .settled(movedSats: 99878, feeSats: 120))
     }
 
-    func testAPartThatDoesNotRouteBelowTheMinimumShowsTheNewFee() async throws {
+    func testAPartThatDoesNotRouteBelowTheMinimumShowsANewFeeAboveTheFeeLeft() async throws {
         let channels = FakeChannels(movableSats: 40000)
         do {
-            _ = try await MoveToSparkManager.payParts(
-                MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 1500, feeSats: 200, firstFeeSats: 32),
-                movableSats: { channels.movableSats },
-                outboundSats: { channels.outboundSats },
-                newInvoice: { "lnbcrt1next" },
-                quotePart: { channels.quotePart(limitSats: $1, wantedSats: $2) },
-                pay: { _, _, _, _, _ in throw NodeError.RouteNotFound(message: "no route") }
-            )
+            _ = try await payUnroutable(channels, freshFeeSats: 300)
             XCTFail("Expected the modal to quote the rest again")
-        } catch let MoveToSparkError.feeRose(movedSats) {
+        } catch let MoveToSparkError.feeRose(movedSats, _) {
             XCTAssertEqual(movedSats, 0)
         }
+    }
+
+    func testAPartThatDoesNotRouteBelowTheMinimumWithinTheFeeLeftFailsTheSend() async {
+        let channels = FakeChannels(movableSats: 40000)
+        do {
+            _ = try await payUnroutable(channels, freshFeeSats: 32)
+            XCTFail("Expected the send error")
+        } catch {
+            XCTAssertTrue(MoveToSparkManager.isNoRoute(error))
+        }
+    }
+
+    /// Pays a 1,500-sat first part that never routes, under a 200-sat fee, where a fresh quote prices `freshFeeSats`.
+    private func payUnroutable(_ channels: FakeChannels, freshFeeSats: UInt64) async throws -> MoveToSparkPartsOutcome {
+        try await MoveToSparkManager.payParts(
+            MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 1500, feeSats: 200, firstFeeSats: 32),
+            movableSats: { channels.movableSats },
+            outboundSats: { channels.outboundSats },
+            newInvoice: { "lnbcrt1next" },
+            quotePart: { _, _, _ in MoveToSparkPart(amountSats: 1500, feeSats: freshFeeSats) },
+            pay: { _, _, _, _, _ in throw NodeError.RouteNotFound(message: "no route") }
+        )
     }
 
     func testAFailureAfterAPartMovedStopsWithWhatMoved() async throws {

@@ -310,8 +310,8 @@ enum MoveToSparkError: Error, Equatable {
     case sparkUnavailable
     /// No part of the channels' balance, down to the minimum, routes to Spark.
     case noRoute
-    /// The next part's fee would pass what is left of the fee the user saw, after `movedSats` had moved.
-    case feeRose(movedSats: UInt64)
+    /// The next part's fee would pass what is left of the fee the user saw, after `movedSats` had moved for `feeSats`.
+    case feeRose(movedSats: UInt64, feeSats: UInt64)
     /// The quoted move, with Spark's balance, would not cover a payment of `amountSats`, so nothing moved.
     case updateFallsShort(amountSats: UInt64)
     /// The update's fee is new or above the one the user saw, so nothing moved until they see it.
@@ -580,7 +580,7 @@ final class MoveToSparkManager {
             }
             closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
             await finishMove(movedSats: movedSats, feeSats: feeSats, moveGeneration: moveGeneration, wallet: wallet)
-        } catch let MoveToSparkError.feeRose(movedSats) {
+        } catch let MoveToSparkError.feeRose(movedSats, feeSats) {
             // As elsewhere when a fee rises, the modal shows the new fee for what is left.
             Logger.info("Stopped a move to show a fee that rose, '\(movedSats)' sats moved", context: "MoveToSpark")
             if movedSats > 0 {
@@ -588,7 +588,7 @@ final class MoveToSparkManager {
             }
             guard moveGeneration == generation else { return }
             isMoveInFlight = false
-            await self.quote(wallet: wallet)
+            await self.quote(wallet: wallet, afterMove: movedSats > 0 ? (movedSats, feeSats) : nil)
         } catch {
             Logger.error("Failed to move '\(quote.amountSats)' sats to Spark: \(error)", context: "MoveToSpark")
             guard moveGeneration == generation else { return }
@@ -676,8 +676,9 @@ final class MoveToSparkManager {
 
     /// Moves the whole balance as `quote` planned: pays its first part, then quotes and pays the next on `newInvoice`
     /// from what `movableSats` shows the channels can still send, no larger than the last part, halving a part that does
-    /// not route, until less than the minimum is left; a part that does not route below the minimum throws `feeRose`, so
-    /// the modal quotes the rest again. Each part's fee cap is what is left of the fee shown, kept in msat
+    /// not route, until less than the minimum is left. A part that does not route below the minimum throws `feeRose` when a
+    /// fresh quote prices the rest above the fee left, so the modal quotes it again; else the move stops there. Each part's fee cap is what is left
+    /// of the fee shown, kept in msat
     /// so rounding never lets the parts pay more than the user saw; a part quoted above it throws `feeRose`, so the user
     /// can see the new fee, also once that fee is spent. It stops after `maxParts` paid parts, when a paid part leaves what
     /// `outboundSats` shows where it was, or on any other failure, which it throws when nothing moved. `pay` returns the fee paid in msat, or `nil`
@@ -723,7 +724,7 @@ final class MoveToSparkManager {
                 }
             }
             if MoveToSparkMath.feeCapMsat(feeSats: part.feeSats) > feeLeftMsat {
-                throw MoveToSparkError.feeRose(movedSats: movedSats)
+                throw MoveToSparkError.feeRose(movedSats: movedSats, feeSats: feeMsat / 1000)
             }
             do {
                 guard let paidMsat = try await pay(bolt11, part.amountSats, feeLeftMsat, movedSats, feeMsat / 1000) else {
@@ -744,9 +745,16 @@ final class MoveToSparkManager {
             } catch {
                 lastError = error
                 guard isNoRoute(error) || isSendWithoutRoute(error, invoice: bolt11) else { break }
-                // No part that routes is left to try, so the modal quotes the rest again.
                 guard let halfSats = MoveToSparkMath.smallerAmount(part.amountSats) else {
-                    throw MoveToSparkError.feeRose(movedSats: movedSats)
+                    // No smaller part is left to try. A fresh quote priced above the fee left means the fee rose, so the
+                    // modal quotes the rest again; otherwise the send failed for another reason, and the move stops.
+                    let freshLimitSats = await movableSats()
+                    if let fresh = try? await quotePart(bolt11, freshLimitSats, freshLimitSats),
+                       MoveToSparkMath.feeCapMsat(feeSats: fresh.feeSats) > feeLeftMsat
+                    {
+                        throw MoveToSparkError.feeRose(movedSats: movedSats, feeSats: feeMsat / 1000)
+                    }
+                    break
                 }
                 partSats = halfSats
             }
@@ -942,14 +950,16 @@ final class MoveToSparkManager {
     /// routes and no larger than the last, priced on one invoice until less than the minimum is left or `maxParts` are
     /// planned. The fee is the sum of the parts' fees, the most the move pays.
     func makeQuote(channels: [ChannelDetails]?) async throws -> MoveToSparkQuote {
-        let (invoice, limitSats) = try await moveInvoice(channels: channels)
+        let (invoice, partLimitSats) = try await moveInvoice(channels: channels)
         var parts: [MoveToSparkPart] = []
-        var leftSats = limitSats
-        var wantedSats = limitSats
+        // What the channels hold is the total to move; the next-HTLC limit, which a peer's HTLC cap can hold below it,
+        // sizes each part.
+        var leftSats = max(MoveToSparkMath.outboundSats(channels: channels), partLimitSats)
+        var wantedSats = partLimitSats
         // Every part is at least the minimum, so this ends once what is left falls below it or at the part cap.
         while parts.count < MoveToSparkMath.maxParts,
               MoveToSparkMath.hasMovableBalance(limitSats: leftSats),
-              let part = try await quotePart(invoice: invoice, limitSats: leftSats, wantedSats: wantedSats)
+              let part = try await quotePart(invoice: invoice, limitSats: min(leftSats, partLimitSats), wantedSats: wantedSats)
         {
             parts.append(part)
             leftSats -= min(leftSats, part.amountSats + part.feeSats)
