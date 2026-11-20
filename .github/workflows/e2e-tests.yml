@@ -323,7 +323,8 @@ jobs:
         run: |
           if [ -x ./scripts/local-backend ]; then
             ./scripts/local-backend prepare
-            ./scripts/local-backend down --remove-orphans -v -t 300
+            # Include services left by an interrupted Spark nightly on this Mac.
+            COMPOSE_PROFILES=spark ./scripts/local-backend down --remove-orphans -v -t 300
             ./scripts/local-backend up
             ./scripts/local-backend github-env >> "$GITHUB_ENV"
           else
@@ -396,7 +397,7 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: |
           if [ -x ./scripts/local-backend ]; then
-            ./scripts/local-backend down --remove-orphans -v || true
+            COMPOSE_PROFILES=spark ./scripts/local-backend down --remove-orphans -v || true
           else
             (cd docker && docker compose --profile trezor down --remove-orphans -v) || true
           fi
