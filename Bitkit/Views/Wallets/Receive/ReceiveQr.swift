@@ -32,6 +32,7 @@ struct ReceiveQr: View {
     @State private var engagedSession = HwEngagedSession()
     @State private var nearbyAdvertiser = NearbyPaymentAdvertiser()
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.isCoveredByOfflineSheet) private var isCoveredByOfflineSheet
 
     init(
         navigationPath: Binding<[ReceiveRoute]>,
@@ -461,9 +462,11 @@ struct ReceiveQr: View {
         }
     }
 
-    /// The request offered to nearby phones over Bluetooth, or nil when nothing should be advertised.
+    /// The request offered to nearby phones over Bluetooth, or nil when nothing should be advertised. Only a request
+    /// the payer can check on screen is offered: none while the connection-issues screen covers Receive or the page
+    /// shows a spinner, Retry or an error in its place.
     private var nearbyRequest: String? {
-        guard settings.enableNearbyPayments, !showingSpendingOnboarding else { return nil }
+        guard settings.enableNearbyPayments, !showingSpendingOnboarding, !isCoveredByOfflineSheet else { return nil }
         switch selectedTab {
         case .usdt:
             return nil
@@ -475,9 +478,18 @@ struct ReceiveQr: View {
                 message: wallet.invoiceNote
             ))
         default:
-            guard !receiveUnavailable(for: selectedTab) else { return nil }
+            guard Self.showsRequest(
+                needsInvoiceRefresh: needsInvoiceRefresh,
+                isReceiveUnavailable: receiveUnavailable(for: selectedTab)
+            ) else { return nil }
             return NearbyPaymentUri.from(qrConfig(for: selectedTab).uri)
         }
+    }
+
+    /// Whether a Savings, Spending or Unified page shows its request, as `tabContent` decides: a page waiting for
+    /// its first refresh shows a spinner or Retry, and an updating or failed invoice shows its status instead.
+    static func showsRequest(needsInvoiceRefresh: Bool, isReceiveUnavailable: Bool) -> Bool {
+        !needsInvoiceRefresh && !isReceiveUnavailable
     }
 
     private func updateNearbyAdvertising() {
