@@ -1033,6 +1033,10 @@ class ActivityService {
                        railPaymentId,
                        rowAttemptId: Self.channelFreeRowAttempts.attemptId(forPaymentHash: payment.id),
                        earlierAttemptIds: LightningService.shared.railSendEarlierAttemptIds[payment.id.lowercased()]
+                   ) || Self.isKnownEarlierAttempt(
+                       railPaymentId,
+                       rowAttemptId: Self.channelFreeRowAttempts.attemptId(forPaymentHash: payment.id),
+                       keptEarlierAttemptIds: LightningService.shared.keptRailSendEarlierAttemptIds(paymentHash: payment.id)
                    ))
            )
         {
@@ -1109,6 +1113,12 @@ class ActivityService {
         if rail == .channelFree, payment.direction == .outbound, let railPaymentId {
             Self.channelFreeRowAttempts.remember(railPaymentId, forPaymentHash: payment.id)
         }
+    }
+
+    /// Whether `railPaymentId` is an attempt a send of the invoice followed, other than the row's, whatever Spark's dates.
+    static func isKnownEarlierAttempt(_ railPaymentId: String?, rowAttemptId: String?, keptEarlierAttemptIds: Set<String>) -> Bool {
+        guard let railPaymentId, railPaymentId != rowAttemptId else { return false }
+        return keptEarlierAttemptIds.contains(railPaymentId)
     }
 
     /// Whether `railPaymentId` is another attempt than the row's, and not the send that went out after it: the send in
