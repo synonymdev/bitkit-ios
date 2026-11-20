@@ -1213,7 +1213,8 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
 
     func testAPaymentThatFailsInsideAutoPaySendsItsAcceptanceOnce() async throws {
         let harness = AllowanceHarness()
-        harness.store.failSavesOnceSpent()
+        // The payee's list cannot be consumed after the attempt's journal entry is saved, so the failure is recorded with it.
+        await harness.payer.setConsumeError(AllowanceMockError.unsupported)
 
         _ = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
 
