@@ -76,6 +76,17 @@ final class MoveToSparkQuoteTests: XCTestCase {
         XCTAssertEqual(Array(services.quotedAmounts.prefix(3)), [99498, 49749, 24874])
     }
 
+    func testAPlanStopsAtTheMostParts() async throws {
+        let services = FakeServices()
+        services.estimate = { amount in
+            guard amount <= 5000 else { throw NodeError.RouteNotFound(message: "no route") }
+            return 30
+        }
+        let quote = try await MoveToSparkManager(services: services).makeQuote(channels: channels)
+        XCTAssertEqual(quote.feeSats, UInt64(MoveToSparkMath.maxParts) * 32, "The fee covers only the parts a swipe pays")
+        XCTAssertEqual(quote.firstFeeSats, 32)
+    }
+
     // MARK: - Paying the parts
 
     /// Pays like the channels would: `routes` is the largest amount that routes, each paid part leaves the channels.
@@ -134,6 +145,14 @@ final class MoveToSparkQuoteTests: XCTestCase {
             "A part may spend only what is left of the fee shown"
         )
         XCTAssertEqual(outcome, .settled(movedSats: 99878, feeSats: 120))
+    }
+
+    func testASwipePaysAtMostTheMostParts() async throws {
+        let channels = FakeChannels(movableSats: 100_000)
+        channels.routes = 5000
+        let outcome = try await channels.run(MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 5000, feeSats: 1000, firstFeeSats: 32))
+        XCTAssertEqual(channels.paid.count, MoveToSparkMath.maxParts)
+        XCTAssertEqual(outcome, .settled(movedSats: UInt64(MoveToSparkMath.maxParts) * 5000, feeSats: UInt64(MoveToSparkMath.maxParts) * 30))
     }
 
     func testAPartQuotedAboveTheFeeLeftStopsTheMoveToShowTheNewFee() async throws {
