@@ -1491,6 +1491,9 @@ struct AppScene: View {
         }
 
         if newPhase == .active {
+            // Refreshed here rather than only in `MainNavView`, which is not mounted behind the PIN screen,
+            // so wake registration sees a permission revoked in iOS Settings.
+            pushManager.updateNotificationPermission()
             WakeManager.shared.sceneBecameActive()
         } else if newPhase == .background {
             WakeManager.shared.sceneEnteredBackground()
