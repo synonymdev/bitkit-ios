@@ -640,7 +640,7 @@ struct AppScene: View {
                     navigation.navigate(.sparkExitProgress)
                 }
             }
-            .task(id: wakeRegistrationInputs) { await WakeManager.shared.registerIfAllowed(wakeRegistrationInputs) }
+            .task(id: wakeRegistrationInputs) { await WakeManager.shared.syncRegistration(wakeRegistrationInputs) }
             .task(id: foregroundContactSession) {
                 shopContactImport?.task.cancel()
                 shopContactImport = nil

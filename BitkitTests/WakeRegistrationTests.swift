@@ -52,6 +52,29 @@ final class WakeRegistrationPolicyTests: XCTestCase {
         XCTAssertFalse(WakeRegistrationPolicy.allowsRegistration(authorizationStatus: .authorized, notificationsEnabled: true, isE2E: true))
     }
 
+    func testTurningNotificationsOffInBitkitOrInIOSIsAnOptOut() {
+        XCTAssertTrue(WakeRegistrationPolicy.isOptedOut(authorizationStatus: .authorized, notificationsEnabled: false, isE2E: false))
+        for status: UNAuthorizationStatus in [.notDetermined, .denied, .provisional, .ephemeral] {
+            XCTAssertTrue(
+                WakeRegistrationPolicy.isOptedOut(authorizationStatus: status, notificationsEnabled: true, isE2E: false),
+                "\(status.rawValue)"
+            )
+        }
+        // A reinstall: the keychain outlives the app, so the old install's registration may still be on the gateway.
+        XCTAssertTrue(WakeRegistrationPolicy.isOptedOut(authorizationStatus: .notDetermined, notificationsEnabled: false, isE2E: false))
+        XCTAssertFalse(WakeRegistrationPolicy.isOptedOut(authorizationStatus: .authorized, notificationsEnabled: true, isE2E: false))
+    }
+
+    func testAnOptOutIsNotKnownBeforeIOSReportsTheStatus() {
+        for enabled in [true, false] {
+            XCTAssertFalse(WakeRegistrationPolicy.allowsRegistration(authorizationStatus: nil, notificationsEnabled: enabled, isE2E: false))
+            XCTAssertFalse(
+                WakeRegistrationPolicy.isOptedOut(authorizationStatus: nil, notificationsEnabled: enabled, isE2E: false),
+                "Each launch starts here, and would otherwise unregister and register again"
+            )
+        }
+    }
+
     func testWakesAreOffWithoutAGateway() {
         // Unit tests run on regtest but never reach the staging gateway.
         XCTAssertNil(Env.wakeGatewayUrl)
@@ -70,7 +93,7 @@ final class WakeRegistrationPolicyTests: XCTestCase {
             isNodeReady: true, pushToken: "00ff", authorizationStatus: .authorized, notificationsEnabled: true, pubkyPublicKey: nil
         )
 
-        let result = await WakeManager.shared.registerIfAllowed(inputs)
+        let result = await WakeManager.shared.syncRegistration(inputs)
 
         XCTAssertEqual(result, .notConfigured)
     }

@@ -4,7 +4,8 @@ import SwiftUI
 final class PushNotificationManager: ObservableObject {
     static let shared = PushNotificationManager()
     @Published var deviceToken: String? = nil
-    @Published var authorizationStatus: UNAuthorizationStatus = .notDetermined
+    /// Nil until iOS reports it after a launch.
+    @Published var authorizationStatus: UNAuthorizationStatus?
 
     private init() {}
 

@@ -7,12 +7,23 @@ import UserNotifications
 /// registers only once the user has turned notifications on and iOS allows them. Widen it here.
 enum WakeRegistrationPolicy {
     static func allowsRegistration(
-        authorizationStatus: UNAuthorizationStatus,
+        authorizationStatus: UNAuthorizationStatus?,
         notificationsEnabled: Bool,
         isE2E: Bool = Env.isE2E
     ) -> Bool {
         // E2E installs are wiped after each run and would leave dead push tokens behind.
         !isE2E && authorizationStatus == .authorized && notificationsEnabled
+    }
+
+    /// Whether the user is known to have opted out, so a registration the gateway may still hold has to be removed. iOS
+    /// reports the authorization status only after a launch, and until then (nil) an opt-out is not known.
+    static func isOptedOut(
+        authorizationStatus: UNAuthorizationStatus?,
+        notificationsEnabled: Bool,
+        isE2E: Bool = Env.isE2E
+    ) -> Bool {
+        authorizationStatus != nil
+            && !allowsRegistration(authorizationStatus: authorizationStatus, notificationsEnabled: notificationsEnabled, isE2E: isE2E)
     }
 }
 
@@ -20,9 +31,18 @@ enum WakeRegistrationPolicy {
 struct WakeRegistrationInputs: Hashable {
     var isNodeReady: Bool
     var pushToken: String?
-    var authorizationStatus: UNAuthorizationStatus
+    /// Nil until iOS reports it after a launch.
+    var authorizationStatus: UNAuthorizationStatus?
     var notificationsEnabled: Bool
     var pubkyPublicKey: String?
+
+    var allowsRegistration: Bool {
+        WakeRegistrationPolicy.allowsRegistration(authorizationStatus: authorizationStatus, notificationsEnabled: notificationsEnabled)
+    }
+
+    var isOptedOut: Bool {
+        WakeRegistrationPolicy.isOptedOut(authorizationStatus: authorizationStatus, notificationsEnabled: notificationsEnabled)
+    }
 }
 
 enum WakeIdentitySelection: Equatable {
@@ -101,6 +121,7 @@ enum WakeRegistrationResult: Equatable {
     case waitingForIdentity
     case unchanged
     case registered(deviceId: String, unknownTopics: [String])
+    case unregistered
     case failed(String)
 }
 
@@ -335,38 +356,40 @@ final class WakeManager {
 
     // MARK: - Registration
 
+    /// Registers when the inputs allow it, and once the user is known to have opted out, unregisters an install the
+    /// gateway may still hold. Failures worth trying again are tried again until the inputs change.
     @discardableResult
-    func registerIfAllowed(_ inputs: WakeRegistrationInputs) async -> WakeRegistrationResult {
+    func syncRegistration(_ inputs: WakeRegistrationInputs) async -> WakeRegistrationResult {
         latestInputs = inputs
         guard gatewayUrl != nil else { return .notConfigured }
         // Runs inside the scene's `.task(id:)`, so a change of inputs cancels the waiting.
-        return await WakeRetry.run { await self.serialized { await self.register(force: false) } }
+        return await WakeRetry.run { await self.serialized { await self.sync(force: false) } }
     }
 
     /// Registers again with the latest inputs even when nothing changed.
     func registerNow() async -> WakeRegistrationResult {
-        await serialized { await self.register(force: true) }.result
+        await serialized { await self.sync(force: true) }.result
     }
 
-    private func register(force: Bool) async -> (result: WakeRegistrationResult, error: Error?) {
+    private func sync(force: Bool) async -> (result: WakeRegistrationResult, error: Error?) {
         let result: WakeRegistrationResult
         do {
-            result = try await registerOrThrow(force: force)
+            result = try await syncOrThrow(force: force)
         } catch {
-            Logger.error("Failed to register for wakes: \(error)", context: "Wake")
+            Logger.error("Failed to sync the wake registration: \(error)", context: "Wake")
             return (.failed(error.localizedDescription), error)
         }
         return (result, nil)
     }
 
-    private func registerOrThrow(force: Bool) async throws -> WakeRegistrationResult {
+    private func syncOrThrow(force: Bool) async throws -> WakeRegistrationResult {
         guard let gatewayUrl else { return .notConfigured }
-        guard let inputs = latestInputs,
-              WakeRegistrationPolicy.allowsRegistration(
-                  authorizationStatus: inputs.authorizationStatus,
-                  notificationsEnabled: inputs.notificationsEnabled
-              )
-        else { return .notAllowed }
+        guard let inputs = latestInputs else { return .notAllowed }
+        guard inputs.allowsRegistration else {
+            guard inputs.isOptedOut, try await WakeUnregistrar().run() else { return .notAllowed }
+            Logger.info("Unregistered from wakes", context: "Wake")
+            return .unregistered
+        }
         guard inputs.isNodeReady, let nodeId = LightningService.shared.nodeId else { return .waitingForNode }
         guard let pushToken = inputs.pushToken?.lowercased(), !pushToken.isEmpty else { return .waitingForPushToken }
         let selection = WakeIdentityResolver.select(profilePublicKey: inputs.pubkyPublicKey)
@@ -412,7 +435,8 @@ final class WakeManager {
     // MARK: - Unregistering
 
     /// Removes the device from the gateway it registered with, so its secret stops working and no wake reaches it. A
-    /// device the gateway no longer knows counts as removed.
+    /// device the gateway no longer knows counts as removed. Tried once, for the wipe: an opt-out unregisters through
+    /// `syncRegistration`, which tries again.
     func unregister() async {
         await serialized { await self.unregisterRegisteredDevice() }
     }
@@ -432,15 +456,15 @@ final class WakeManager {
     /// Tells the gateway the app is open, so it holds back wakes and fallback alerts meant for an app in the background.
     func sceneBecameActive() {
         isSceneActive = true
-        renewRegistrationIfDue()
+        resyncRegistration()
         startPresence()
     }
 
-    /// The scene registers again only when its inputs change, so a registration that reached its max age while the app
-    /// stayed in memory is sent from here.
-    private func renewRegistrationIfDue() {
+    /// The scene syncs again only when its inputs change, so a registration that reached its max age while the app stayed
+    /// in memory, or an unregister that gave up, is sent from here.
+    private func resyncRegistration() {
         guard gatewayUrl != nil, latestInputs != nil else { return }
-        Task { await serialized { await self.register(force: false) } }
+        Task { await serialized { await self.sync(force: false) } }
     }
 
     private func startPresence() {
@@ -493,7 +517,8 @@ final class WakeManager {
     }
 
     private func setPresence() async {
-        guard let install = try? registeredInstall() else { return }
+        // After an opt-out the device stops telling the gateway it is open, even while its unregister is still pending.
+        guard latestInputs?.isOptedOut != true, let install = try? registeredInstall() else { return }
         do {
             _ = try await ServiceQueue.background(.core, wrapErrors: false) {
                 try await wakeSetPresence(gatewayUrl: install.gatewayUrl, deviceSecret: install.deviceSecret, ttlSecs: WakeConfig.presenceTtlSecs)

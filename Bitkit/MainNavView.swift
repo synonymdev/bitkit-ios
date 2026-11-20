@@ -385,15 +385,15 @@ struct MainNavView: View {
                 guard newPhase == .active else { return }
                 handleClipboardIfEnabled()
             }
-            .onChange(of: notificationManager.authorizationStatus) { _, newStatus in
+            .onChange(of: notificationManager.authorizationStatus ?? .notDetermined) { _, newStatus in
                 // Handle notification permission changes
                 if newStatus == .authorized {
                     settings.enableNotifications = true
                     notificationManager.requestPermission()
                 } else {
+                    // Wakes unregister from the registration task in `AppScene`, which tries again after a failure.
                     settings.enableNotifications = false
                     notificationManager.unregister()
-                    Task { await WakeManager.shared.unregister() }
                 }
             }
             .onChange(of: settings.enableNotifications) { _, newValue in
@@ -405,9 +405,8 @@ struct MainNavView: View {
                     // Request permission in case user was not prompted yet
                     notificationManager.requestPermission()
                 } else {
-                    // Disable notifications (unregister)
+                    // Disable notifications (unregister). Wakes unregister from the registration task in `AppScene`.
                     notificationManager.unregister()
-                    Task { await WakeManager.shared.unregister() }
                 }
             }
             .task(id: canHandleDeepLinks) {
