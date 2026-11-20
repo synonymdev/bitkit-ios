@@ -1,165 +1,73 @@
-name: Spark Mac maintenance
+name: Start Docker Desktop on the Spark Mac
 
 on:
   workflow_dispatch:
-    inputs:
-      force_stop:
-        description: Force stop Docker Desktop after graceful shutdown has failed
-        type: boolean
-        required: true
-        default: false
 
 permissions:
   contents: read
 
 jobs:
-  recover-docker:
+  start-docker:
     runs-on: [self-hosted, macOS]
-    timeout-minutes: 12
+    timeout-minutes: 5
     steps:
-      - name: Check the runner and recover Docker Desktop
-        shell: bash
-        env:
-          FORCE_STOP: ${{ inputs.force_stop }}
+      - name: Start Docker Desktop for the runner account
         run: |
-          if [[ "$RUNNER_NAME" != macmini1 ]]; then
-            echo "::error::Maintenance is scoped to macmini1. This job landed on $RUNNER_NAME."
-            exit 1
-          fi
-
+          test "$RUNNER_NAME" = macmini1
           python3 -u - <<'PY'
-          import json
           import os
-          from pathlib import Path
-          import shutil
+          import pathlib
           import subprocess
           import time
 
-
-          def run(args, timeout):
-              return subprocess.run(args, text=True, capture_output=True, timeout=timeout, check=True)
-
-
-          def disk_free():
-              print(run(['df', '-h', '/System/Volumes/Data'], 10).stdout.strip())
-              return shutil.disk_usage('/System/Volumes/Data').free
-
-
-          def disposable(root, relative):
-              candidate = root / relative
-              if candidate.resolve() == candidate and candidate.exists():
-                  return candidate
-              return None
-
-
-          before = disk_free()
-          force_stop = os.environ['FORCE_STOP'] == 'true'
-          if force_stop and os.environ['GITHUB_RUN_ATTEMPT'] != '1':
-              raise SystemExit('A force stop requires a new manual dispatch.')
-
-          context = run(['docker', 'context', 'show'], 10).stdout.strip()
+          docker_info = ['docker', 'info', '--format', '{{.ServerVersion}} {{.OSType}}/{{.Architecture}}']
+          context = subprocess.check_output(['docker', 'context', 'show'], text=True, timeout=10).strip()
           if context != 'desktop-linux':
               raise SystemExit(f'Expected local Docker Desktop context, found {context!r}.')
 
-          active_workers = [
-              name for name in run(['ps', '-axo', 'comm='], 10).stdout.splitlines()
-              if Path(name.strip()).name == 'Runner.Worker'
-          ]
-          if len(active_workers) != 1:
-              raise SystemExit(f'Expected only this Actions worker, saw {len(active_workers)}.')
-
-          temp = Path(os.environ['RUNNER_TEMP']).resolve()
-          workspace = Path(os.environ['GITHUB_WORKSPACE']).resolve()
-          home = Path.home().resolve()
-          files = [disposable(temp, archive) for archive in (
-              'spark-images.tar', 'spark-images.tar.gz', 'spark-ios-app.tar.gz',
-          )]
-          for target in files:
-              if target and target.is_file():
-                  print(f'Removing generated Spark archive {target.name} ({target.stat().st_size / 2**20:.0f} MiB).')
-                  target.unlink()
-
-          e2e = workspace / 'bitkit-e2e-tests'
-          if (e2e / '.git').exists() and e2e.resolve() == e2e:
-              for relative in ('aut/Bitkit.app', 'aut/bitkit.app'):
-                  app = disposable(e2e, relative)
-                  if not app or not (app / 'Info.plist').is_file():
-                      continue
-                  status = run(['git', '-C', str(e2e), 'ls-files', '--', relative], 10)
-                  if not status.stdout:
-                      print(f'Removing generated iOS simulator app {app.name}.')
-                      shutil.rmtree(app)
-
-          if shutil.disk_usage('/System/Volumes/Data').free < 10 * 2**30:
-              cache = disposable(home, '.npm/_cacache')
-              if cache and cache.is_dir() and cache.stat().st_uid == os.getuid():
-                  try:
-                      print(run(['du', '-sh', str(cache)], 30).stdout.strip())
-                  except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-                      print('The npm download cache could not be measured within the probe limits.')
-                  print('Removing the runner account npm download cache under disk pressure.')
-                  shutil.rmtree(cache)
-
-          after = disk_free()
-          print(f'Host space recovered before restart: {(after - before) / 2**30:.2f} GiB.')
-
-          def running_containers():
-              result = run(['docker', 'ps', '--format', '{{json .}}'], 10)
-              return [json.loads(line) for line in result.stdout.splitlines()]
-
+          workers = subprocess.check_output(['ps', '-axo', 'comm='], text=True, timeout=10).splitlines()
+          if sum(pathlib.Path(worker.strip()).name == 'Runner.Worker' for worker in workers) != 1:
+              raise SystemExit('Expected only the current Actions worker.')
 
           try:
-              active = running_containers()
-          except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-              print('Docker could not enumerate running containers. Proceeding with graceful Desktop recovery.')
-          else:
-              other = [container['Names'] for container in active if 'com.docker.compose.project=bitkit-spark-e2e'
-                       not in container.get('Labels', '').split(',')]
-              if other:
-                  raise SystemExit(f'Docker reports running containers outside the Spark test project: {", ".join(other)}.')
+              already_healthy = subprocess.run(docker_info, timeout=8, check=False).returncode == 0
+          except subprocess.TimeoutExpired:
+              already_healthy = False
+          if already_healthy:
+              raise SystemExit(0)
 
-          try:
-              print(run(['docker', 'desktop', 'status'], 10).stdout.strip())
-          except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-              print('Docker Desktop status did not respond.')
-
-          processes = run(['ps', '-axo', 'pid=,state=,comm='], 10).stdout.splitlines()
-          desktop_prefix = '/Applications/Docker.app/Contents/MacOS/'
-          for process in processes:
-              if desktop_prefix in process:
-                  print(process.strip())
-
-          vm_disk = home / 'Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw'
-          try:
-              print(run(['du', '-sh', str(vm_disk)], 15).stdout.strip())
-          except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-              print('The Docker VM disk could not be measured within the probe limits.')
-
-          stop_flags = ['--force'] if force_stop else []
-          stop_limit = 60 if force_stop else 180
-          desktop_commands = [('stop', stop_limit, stop_flags), ('start', 120, [])]
-          for action, limit, flags in desktop_commands:
-              try:
-                  result = run(['docker', 'desktop', action, *flags, '--timeout', str(limit)], limit + 15)
-                  print(result.stdout.strip())
-              except subprocess.CalledProcessError as error:
-                  print((error.stderr or error.stdout).strip())
-                  raise SystemExit(f'Docker Desktop {action} returned exit code {error.returncode}.')
-              except subprocess.TimeoutExpired:
-                  raise SystemExit(f'Docker Desktop {action} exceeded the command timeout.')
-
-          deadline = time.monotonic() + 120
+          # Start the existing host service with only the account environment.
+          # Docker Desktop should outlive this maintenance job.
+          host_environment = {
+              name: os.environ[name]
+              for name in ('HOME', 'USER', 'LOGNAME', 'PATH', 'TMPDIR')
+              if name in os.environ
+          }
+          subprocess.run(['docker', 'desktop', 'start', '--timeout', '75'],
+                         check=True, env=host_environment, timeout=90)
+          deadline = time.monotonic() + 60
           while time.monotonic() < deadline:
               try:
-                  health = run(['docker', 'info', '--format', '{{.ServerVersion}} {{.OSType}}/{{.Architecture}}'], 8)
-                  active = running_containers()
-              except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-                  time.sleep(5)
-              else:
-                  print(f'Docker Engine is responding: {health.stdout.strip()} ({len(active)} active containers).')
-                  disk_free()
+                  subprocess.run(docker_info, check=True, timeout=8)
                   break
+              except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                  time.sleep(3)
           else:
-              disk_free()
-              raise SystemExit('Docker Engine remains unavailable after graceful restart.')
+              raise SystemExit('Docker Engine did not come up.')
+          PY
+
+  verify-docker:
+    needs: start-docker
+    runs-on: [self-hosted, macOS]
+    timeout-minutes: 2
+    steps:
+      - name: Verify Docker survived maintenance job cleanup
+        run: |
+          test "$RUNNER_NAME" = macmini1
+          python3 -u - <<'PY'
+          import subprocess
+          subprocess.run(['docker', 'info', '--format', '{{.ServerVersion}} {{.OSType}}/{{.Architecture}}'],
+                         check=True, timeout=10)
+          subprocess.run(['docker', 'ps', '--format', '{{.Names}}'], check=True, timeout=10)
+          subprocess.run(['df', '-h', '/System/Volumes/Data'], check=True, timeout=10)
           PY
