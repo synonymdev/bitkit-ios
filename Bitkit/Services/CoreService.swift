@@ -1025,14 +1025,15 @@ class ActivityService {
                        paymentId: railPaymentId
                    )),
                // Spark dates an attempt at its start, so an older one's failure is dated before the row's attempt, or
-               // in the same second when the retry started at once; then the row's own Spark id tells them apart. The
-               // held attempt's own failure always writes.
+               // in the same second when the retry started at once; then the row's own Spark id tells them apart, with the
+               // send's earlier attempts kept past its hold. The held attempt's own failure always writes.
                isOlderChannelFreeAttempt: rail == .channelFree && payment.direction == .outbound
                    && (railPaymentId == nil || railPaymentId != LightningService.shared.heldRailSendId(paymentHash: payment.id))
                    && (paymentTimestamp < existing.timestamp || paymentTimestamp == existing.timestamp && Self.isOtherRowAttempt(
                        railPaymentId,
                        rowAttemptId: Self.channelFreeRowAttempts.attemptId(forPaymentHash: payment.id, row: existing),
-                       earlierAttemptIds: LightningService.shared.railSendEarlierAttemptIds[payment.id.lowercased()]
+                       earlierAttemptIds: (LightningService.shared.railSendEarlierAttemptIds[payment.id.lowercased()] ?? [])
+                           + LightningService.shared.keptRailSendEarlierAttemptIds(paymentHash: payment.id)
                    ) || Self.isKnownEarlierAttempt(
                        railPaymentId,
                        rowAttemptId: Self.channelFreeRowAttempts.attemptId(forPaymentHash: payment.id, row: existing),
