@@ -132,8 +132,10 @@ jobs:
       spark-case: >-
         ${{ contains(steps.*.outputs.spark-case, 'passed') && 'passed' ||
             contains(steps.*.outputs.spark-case, 'failed') && 'failed' ||
-            contains(steps.*.outputs.spark-case, 'started') && 'started' ||
-            contains(steps.*.outputs.spark-case, 'setup') && 'setup' || '' }}
+            contains(steps.*.outputs.spark-case, 'started') && 'started' || '' }}
+      spark-app-setup: >-
+        ${{ contains(steps.*.outputs.spark-case, 'setup-failed') && 'failure' ||
+            contains(steps.*.outputs.spark-case, 'setup') && 'interrupted' || '' }}
       spark-fixture: ${{ steps.spark.outcome }}
     env:
       COMPOSE_PROJECT_NAME: bitkit-spark-e2e
@@ -295,6 +297,7 @@ jobs:
           BUILD_RESULT: ${{ needs.build-spark-ios.result }}
           E2E_TESTS_REF: ${{ needs.spark-images.outputs.e2e-sha || inputs.e2e_branch || 'main' }}
           SPARK_FIXTURE_RESULT: ${{ needs.e2e-spark.outputs.spark-fixture }}
+          SPARK_APP_SETUP_RESULT: ${{ needs.e2e-spark.outputs.spark-app-setup }}
           E2E_TESTS_RESULT: ${{ needs.e2e-spark.result }}
           SPARK_CASE_RESULT: ${{ needs.e2e-spark.outputs.spark-case }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
