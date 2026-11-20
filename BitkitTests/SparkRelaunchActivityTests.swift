@@ -247,4 +247,27 @@ final class SparkRelaunchActivityTests: XCTestCase {
         try await CoreService.shared.activity.failPendingLightningSend(id: overwritten, earlierAttemptIds: ["earlier"])
         XCTAssertNil(ActivityService.channelFreeRowAttempts.attemptId(forPaymentHash: overwritten))
     }
+
+    func testAStopBetweenKeepingAWriterAndSavingItsRowLeavesTheRowToItsRealWriter() async throws {
+        let hash = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() + String(repeating: "ed", count: 16)
+        let pending = PaymentDetails(
+            id: hash,
+            kind: .bolt11(hash: hash, preimage: nil, secret: nil, description: nil, bolt11: "lnbcrt1"),
+            amountMsat: 500_000, feePaidMsat: 0, direction: .outbound, status: .pending, latestUpdateTimestamp: 200
+        )
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(pending, railPaymentId: "earlier")
+        guard case let .lightning(row)? = try await CoreService.shared.activity.getActivity(id: hash) else {
+            return XCTFail("the earlier payment's row is missing")
+        }
+        let attempts = ActivityService.channelFreeRowAttempts
+        // The retry's writer was kept, then the app stopped before its row was saved.
+        attempts.remember("retry", forPaymentHash: hash, stamp: "300:700:0", previousRowStamp: ChannelFreeRowAttempts.stamp(row))
+        XCTAssertEqual(attempts.attemptId(forPaymentHash: hash, row: row), "earlier")
+        XCTAssertTrue(attempts.isUnchanged(row, forPaymentHash: hash))
+
+        // Once the retry's row is saved, it is the retry's.
+        attempts.commit(forPaymentHash: hash)
+        XCTAssertEqual(attempts.attemptId(forPaymentHash: hash, row: row), "retry")
+        XCTAssertFalse(attempts.isUnchanged(row, forPaymentHash: hash))
+    }
 }
