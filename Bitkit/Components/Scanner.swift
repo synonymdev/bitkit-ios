@@ -339,9 +339,9 @@ struct Scanner: View {
     let onImageSelection: (PhotosPickerItem?) async -> Void
     /// Starts an NFC read; nil hides the NFC control (non-payment scanners, devices without NFC).
     var onNfcRead: (() async -> Void)?
-    /// Receives a request read over Bluetooth from a nearby phone and returns whether it was taken; nil turns
-    /// Bluetooth scanning off.
-    var onNearbyRequest: ((String) async -> Bool)?
+    /// Receives a request read over Bluetooth from a nearby phone, with a check that turns false once scanning stops
+    /// (scanner hidden, paused, or the app inactive), and returns whether it was taken; nil turns Bluetooth scanning off.
+    var onNearbyRequest: ((String, @escaping () -> Bool) async -> Bool)?
     /// Pauses Bluetooth scanning while something covers the scanner (for example the payment sheet it opened).
     var isNearbyPaused = false
 

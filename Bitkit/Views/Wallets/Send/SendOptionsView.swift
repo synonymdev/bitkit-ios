@@ -64,12 +64,13 @@ struct SendOptionsView: View {
                                 }
                             }
                             : nil,
-                        onNearbyRequest: { request in
+                        onNearbyRequest: { request, isScanning in
                             // Moving on (e.g. to Enter Manually) keeps the sheet open, so check its own path too.
-                            await scanner.handleSendNearbyRequest(
+                            let isOnVisit = isOnThisScannerVisit()
+                            return await scanner.handleSendNearbyRequest(
                                 request,
                                 scope: scanScope,
-                                isCurrent: isOnThisScannerVisit()
+                                isCurrent: { isOnVisit() && isScanning() }
                             ) { route in
                                 if let route {
                                     handleRoute(route)

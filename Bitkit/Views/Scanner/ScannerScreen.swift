@@ -41,7 +41,7 @@ struct ScannerScreen: View {
                     ? { await scanner.handleNfcRead(context: scannerContext) }
                     : nil,
                 onNearbyRequest: scannerContext == .main
-                    ? { await scanner.handleNearbyRequest($0, context: scannerContext) }
+                    ? { await scanner.handleNearbyRequest($0, context: scannerContext, isCurrent: $1) }
                     : nil,
                 isNearbyPaused: sheets.activeSheetConfiguration != nil
             )

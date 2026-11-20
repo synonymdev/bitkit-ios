@@ -37,7 +37,7 @@ struct ScannerSheet: View {
                         onNfcRead: scanner.isNfcReadingAvailable
                             ? { await scanner.handleNfcRead(context: .main) }
                             : nil,
-                        onNearbyRequest: { await scanner.handleNearbyRequest($0, context: .main) },
+                        onNearbyRequest: { await scanner.handleNearbyRequest($0, context: .main, isCurrent: $1) },
                         isNearbyPaused: sheets.activeSheetConfiguration?.id != .scanner
                     )
                     .padding(.bottom, 16)

@@ -19,7 +19,7 @@ final class NearbyPaymentScanner: NSObject {
     private static let connectTimeout: TimeInterval = 8
 
     @ObservationIgnored private var central: CBCentralManager?
-    @ObservationIgnored private var onRequest: ((String) async -> Bool)?
+    @ObservationIgnored private var onRequest: ((String, @escaping () -> Bool) async -> Bool)?
     @ObservationIgnored private var candidates: [UUID: (peripheral: CBPeripheral, rssi: Int)] = [:]
     @ObservationIgnored private var lastAttempts: [UUID: Date] = [:]
     @ObservationIgnored private var selectionTask: Task<Void, Never>?
@@ -27,15 +27,17 @@ final class NearbyPaymentScanner: NSObject {
     @ObservationIgnored private var connected: CBPeripheral?
     @ObservationIgnored private var expectedLength: Int?
     @ObservationIgnored private var chunks: [Data] = []
-    @ObservationIgnored private var isDelivering = false
+    /// The delivery in progress. `stop` clears it, so a request handed over before then can no longer act.
+    @ObservationIgnored private var deliveryID: UUID?
 
     var isAuthorized: Bool {
         authorization == .allowedAlways
     }
 
     /// Starts scanning when Bluetooth is already authorized. It never prompts; see `requestAuthorization`.
-    /// `onRequest` returns whether the request was taken; scanning resumes when it was not.
-    func start(onRequest: @escaping (String) async -> Bool) {
+    /// `onRequest` gets the request and a check that turns false once the scanner stops (for example when the app
+    /// goes inactive), and returns whether the request was taken; scanning resumes when it was not.
+    func start(onRequest: @escaping (String, @escaping () -> Bool) async -> Bool) {
         self.onRequest = onRequest
         authorization = CBManager.authorization
         guard isAuthorized else { return }
@@ -44,7 +46,7 @@ final class NearbyPaymentScanner: NSObject {
 
     func stop() {
         onRequest = nil
-        isDelivering = false
+        deliveryID = nil
         selectionTask?.cancel()
         selectionTask = nil
         disconnect()
@@ -88,7 +90,7 @@ final class NearbyPaymentScanner: NSObject {
     }
 
     private func scanIfReady(_ central: CBCentralManager) {
-        guard central.state == .poweredOn, onRequest != nil, connected == nil, !isDelivering else {
+        guard central.state == .poweredOn, onRequest != nil, connected == nil, deliveryID == nil else {
             isScanning = false
             return
         }
@@ -208,12 +210,13 @@ final class NearbyPaymentScanner: NSObject {
     private func deliver(_ request: String) {
         guard let onRequest else { return }
         disconnect()
-        isDelivering = true
+        let id = UUID()
+        deliveryID = id
         isScanning = false
         Task { [weak self] in
-            let wasTaken = await onRequest(request)
-            guard let self, isDelivering else { return }
-            isDelivering = false
+            let wasTaken = await onRequest(request) { [weak self] in self?.deliveryID == id }
+            guard let self, deliveryID == id else { return }
+            deliveryID = nil
             if wasTaken {
                 // Wait for the scanner to be shown again (`start`) before reading another phone.
                 self.onRequest = nil
@@ -221,6 +224,11 @@ final class NearbyPaymentScanner: NSObject {
                 scanIfReady(central)
             }
         }
+    }
+
+    /// Test seam: hands `request` to the handler as a completed read would.
+    func deliverForTesting(_ request: String) {
+        deliver(request)
     }
 
     private func handleValue(_ peripheral: CBPeripheral, characteristic: CBCharacteristic, error: Error?) {
