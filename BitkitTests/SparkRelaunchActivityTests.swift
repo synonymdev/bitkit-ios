@@ -215,6 +215,37 @@ final class SparkRelaunchActivityTests: XCTestCase {
         XCTAssertEqual(replayed.value, 500)
     }
 
+    func testASameSecondLaterAttemptsReplayTakesTheRowWhenAThirdSendNeverWroteOne() async throws {
+        let hash = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() + String(repeating: "ec", count: 16)
+        func failed(sats: UInt64, feeSats: UInt64) -> PaymentDetails {
+            PaymentDetails(
+                id: hash,
+                kind: .bolt11(hash: hash, preimage: nil, secret: nil, description: nil, bolt11: "lnbcrt1"),
+                amountMsat: sats * 1000, feePaidMsat: feeSats * 1000, direction: .outbound, status: .failed, latestUpdateTimestamp: 200
+            )
+        }
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(sats: 300, feeSats: 1), railPaymentId: "first")
+        // The second attempt went out in the same second and kept the first as earlier; its row write failed. A third
+        // send, which never wrote a row, followed both.
+        LightningService.shared.keepEarlierAttemptsForTesting(hash: hash, ids: ["first"])
+        LightningService.shared.keepEarlierAttemptsForTesting(hash: hash, ids: ["second", "first"])
+
+        // After a restart, the second attempt's replay went out after the row's attempt, so it takes the row.
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(sats: 500, feeSats: 2), railPaymentId: "second")
+        guard case let .lightning(row)? = try await CoreService.shared.activity.getActivity(id: hash) else {
+            return XCTFail("the row is missing")
+        }
+        XCTAssertEqual(row.value, 500, "the first attempt's amount stayed over the second's")
+        XCTAssertEqual(row.fee, 2)
+
+        // The first attempt's replay doesn't take it back.
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(sats: 300, feeSats: 1), railPaymentId: "first")
+        guard case let .lightning(replayed)? = try await CoreService.shared.activity.getActivity(id: hash) else {
+            return XCTFail("the row is missing")
+        }
+        XCTAssertEqual(replayed.value, 500)
+    }
+
     func testChannelFreeRowAttemptsKeepTheLatestRowWritersUpToTheLimit() throws {
         let suite = "ChannelFreeRowAttemptsTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -279,6 +310,13 @@ final class SparkRelaunchActivityTests: XCTestCase {
         // Another attempt of the same second keeps the row when nothing orders the two.
         XCTAssertTrue(ActivityService.isOtherRowAttempt("first", rowAttemptId: "retry"))
         XCTAssertTrue(ActivityService.isOtherRowAttempt("first", rowAttemptId: "retry", earlierAttemptIds: ["older"]))
+        // Two kept attempts are ordered by the kept list, whatever else lists them.
+        XCTAssertFalse(ActivityService.isOtherRowAttempt(
+            "second", rowAttemptId: "first", earlierAttemptIds: ["first", "second"], keptEarlierAttemptIds: ["first", "second"]
+        ))
+        XCTAssertTrue(ActivityService.isOtherRowAttempt(
+            "first", rowAttemptId: "second", earlierAttemptIds: ["first", "second"], keptEarlierAttemptIds: ["first", "second"]
+        ))
         // The retry in flight lists the row's attempt before it, so its failure takes the row.
         XCTAssertFalse(ActivityService.isOtherRowAttempt("retry", rowAttemptId: "first", earlierAttemptIds: ["first"]))
         // While it is in flight, an attempt it lists as earlier still keeps the row.
