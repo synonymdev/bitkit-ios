@@ -186,6 +186,35 @@ final class SparkRelaunchActivityTests: XCTestCase {
         XCTAssertEqual(row.fee, 0)
     }
 
+    func testALaterAttemptsReplayTakesTheRowWhenAThirdSendNeverWroteOne() async throws {
+        let hash = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() + String(repeating: "eb", count: 16)
+        func failed(sats: UInt64, feeSats: UInt64, at timestamp: UInt64) -> PaymentDetails {
+            PaymentDetails(
+                id: hash,
+                kind: .bolt11(hash: hash, preimage: nil, secret: nil, description: nil, bolt11: "lnbcrt1"),
+                amountMsat: sats * 1000, feePaidMsat: feeSats * 1000, direction: .outbound, status: .failed, latestUpdateTimestamp: timestamp
+            )
+        }
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(sats: 300, feeSats: 1, at: 200), railPaymentId: "first")
+        // The second attempt's row write failed, and a third send, which never wrote a row, followed both.
+        LightningService.shared.keepEarlierAttemptsForTesting(hash: hash, ids: ["first", "second"])
+
+        // After a restart, the second attempt's replay is newer than the row's attempt, so it takes the row.
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(sats: 500, feeSats: 2, at: 300), railPaymentId: "second")
+        guard case let .lightning(row)? = try await CoreService.shared.activity.getActivity(id: hash) else {
+            return XCTFail("the row is missing")
+        }
+        XCTAssertEqual(row.value, 500, "the first attempt's amount stayed over the second's")
+        XCTAssertEqual(row.fee, 2)
+
+        // The first attempt's replay doesn't take it back.
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(sats: 300, feeSats: 1, at: 200), railPaymentId: "first")
+        guard case let .lightning(replayed)? = try await CoreService.shared.activity.getActivity(id: hash) else {
+            return XCTFail("the row is missing")
+        }
+        XCTAssertEqual(replayed.value, 500)
+    }
+
     func testChannelFreeRowAttemptsKeepTheLatestRowWritersUpToTheLimit() throws {
         let suite = "ChannelFreeRowAttemptsTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
