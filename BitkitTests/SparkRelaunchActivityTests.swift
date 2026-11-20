@@ -164,6 +164,28 @@ final class SparkRelaunchActivityTests: XCTestCase {
         XCTAssertEqual(current?.value, 700)
     }
 
+    func testASameSecondRetryTakesTheRowAfterItsHoldEnded() async throws {
+        let hash = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() + String(repeating: "ea", count: 16)
+        func failed(sats: UInt64, feeSats: UInt64, at timestamp: UInt64) -> PaymentDetails {
+            PaymentDetails(
+                id: hash,
+                kind: .bolt11(hash: hash, preimage: nil, secret: nil, description: nil, bolt11: "lnbcrt1"),
+                amountMsat: sats * 1000, feePaidMsat: feeSats * 1000, direction: .outbound, status: .failed, latestUpdateTimestamp: timestamp
+            )
+        }
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(sats: 300, feeSats: 1, at: 200), railPaymentId: "first")
+        // A retry in the same second followed the first attempt, and a listing that showed it failed ended its hold
+        // before its own failure was recorded: only the attempts kept past the hold still order the two.
+        LightningService.shared.keepEarlierAttemptsForTesting(hash: hash, ids: ["first"])
+
+        try await CoreService.shared.activity.recordChannelFreeRailPayment(failed(sats: 500, feeSats: 0, at: 200), railPaymentId: "retry")
+        guard case let .lightning(row)? = try await CoreService.shared.activity.getActivity(id: hash) else {
+            return XCTFail("the row is missing")
+        }
+        XCTAssertEqual(row.value, 500, "the first attempt's amount stayed over the retry's")
+        XCTAssertEqual(row.fee, 0)
+    }
+
     func testChannelFreeRowAttemptsKeepTheLatestRowWritersUpToTheLimit() throws {
         let suite = "ChannelFreeRowAttemptsTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
