@@ -114,6 +114,14 @@ struct PaykitAllowanceLocalState: Codable, Equatable {
         let admittedAt: Date
     }
 
+    /// Whether this wallet's journal shows a payment of the request that may have left the wallet.
+    func hasSentPayment(_ requestId: PaykitPaymentRequest.ID) -> Bool {
+        journal.contains {
+            [.sending, .sent, .unknown, .succeeded].contains($0.stage) && $0.requestId.paymentRequestId == requestId.paymentRequestId &&
+                PubkyPublicKeyFormat.matches($0.requestId.counterparty, requestId.counterparty)
+        }
+    }
+
     /// Keeps the higher floor, every spend and every ended allowance of both states, so a restore never lowers them.
     func withChecks(from other: PaykitAllowanceLocalState) -> PaykitAllowanceLocalState {
         var merged = self
@@ -408,6 +416,8 @@ enum PaykitAllowanceEvent: Equatable {
     case paidAutomatically(counterparty: String, amountSats: UInt64, paymentId: String)
     case limitReached(counterparty: String, amountSats: UInt64)
     case ledgerChanged
+    /// An automatic payment is about to leave the wallet; its spend is backed up at once.
+    case paymentLeaving
 }
 
 enum PaykitAllowanceAutoPayResult: Equatable {
@@ -1090,8 +1100,40 @@ actor PaykitAllowanceExecutor {
             }
             throw error
         }
-        _ = try? await sdk.processOutboundPrivateMessages(counterparty: request.counterparty)
+        // A paid request's proof delivery sends the queued acceptance with it, so only a request left unpaid sends now.
+        let result: PaykitAllowanceAutoPayResult
+        do {
+            result = try await reserveAndPay(
+                request,
+                scope: scope,
+                candidate: candidate,
+                association: association,
+                payment: payment,
+                paymentHash: paymentHash,
+                paymentAppId: paymentAppId,
+                identity: identity
+            )
+        } catch {
+            _ = try? await sdk.processOutboundPrivateMessages(counterparty: request.counterparty)
+            throw error
+        }
+        if result != .started {
+            _ = try? await sdk.processOutboundPrivateMessages(counterparty: request.counterparty)
+        }
+        return result
+    }
 
+    private func reserveAndPay(
+        _ request: PaykitPaymentRequest,
+        scope: Paykit.PaymentRequestScope,
+        candidate: Paykit.AllowanceCandidate,
+        association: Paykit.AllowanceAssociationRecord,
+        payment: PrivatePaykitAllowancePayment,
+        paymentHash: String,
+        paymentAppId: String,
+        identity: String
+    ) async throws -> PaykitAllowanceAutoPayResult {
+        let endpointIdentifier = payment.endpoint.methodId.rawValue
         let occurrence = Paykit.PaymentOccurrence(request: scope, billingPeriod: nil)
         let reservation = try await sdk.reserveAutomaticPayment(
             occurrence: occurrence,
@@ -1240,6 +1282,8 @@ actor PaykitAllowanceExecutor {
     ) async throws -> PaykitAllowanceAutoPayResult {
         do {
             try setStageDurably(.sending, attemptId: attemptId, identity: identity)
+            // Back up the spend now, so a wallet restored later still counts it.
+            Self.eventSubject.send(.paymentLeaving)
             try await payer.associateLightningPayment(request, paymentHash: paymentHash)
         } catch {
             await payer.cancelProofPreparation(request)
@@ -1288,12 +1332,18 @@ actor PaykitAllowanceExecutor {
                 Logger.warn("Failed to record an allowance payment outcome: \(error)", context: "PaykitAllowance")
             }
         }
+        // No proof follows a failed automatic payment, so its queued acceptance is sent now.
+        guard !succeeded else { return }
+        for counterparty in Set(entries.filter(\.isAutomatic).map(\.requestId.counterparty)) {
+            _ = try? await sdk.processOutboundPrivateMessages(counterparty: counterparty)
+        }
     }
 
     // MARK: Manual payments
 
     /// Reports a user-approved payment of an incoming request to the shared ledger before it leaves the wallet.
-    /// Throws `alreadyRecorded` when another live attempt exists for the request, so the same request is never paid twice.
+    /// Throws `alreadyRecorded` when another live attempt exists for the request, or this wallet's records show it already
+    /// paid the request, so the same request is never paid twice.
     /// A Lightning payment passes its `paymentHash`, so a backup taken before the send still lets the node settle it.
     func beginManualPayment(
         _ request: PaykitPaymentRequest,
@@ -1304,6 +1354,11 @@ actor PaykitAllowanceExecutor {
         guard let identity = activeIdentity, request.billingPeriod == nil, request.direction == .incoming,
               request.isAllowancePayable, PublicPaykitService.MethodId(rawValue: paymentEndpointIdentifier).map({ $0 != .usdtArbitrum }) == true
         else { return nil }
+        // A ledger read back older than this wallet's records may offer the request again; it is never paid twice.
+        if localState(identity: identity).hasSentPayment(request.id) {
+            Logger.info("Stopped a manual payment: this wallet already paid the request", context: "PaykitAllowance")
+            throw PaykitAllowanceManualPaymentError.alreadyRecorded
+        }
         do {
             try await ensureReconciled(identity: identity)
             let scope = Paykit.PaymentRequestScope(

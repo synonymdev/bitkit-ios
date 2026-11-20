@@ -84,7 +84,8 @@ final class PaykitAllowanceManager {
         updateDepth > 0
     }
 
-    @ObservationIgnored private var manualRequestIds: [PaykitPaymentRequest.ID: Int] = [:]
+    /// Observed, so a request found manual comes back to the pending views.
+    private var manualRequestIds: [PaykitPaymentRequest.ID: Int] = [:]
 
     enum AutomaticPaymentPause: Equatable {
         /// The allowance ledger is behind one this wallet has read.
@@ -239,6 +240,15 @@ final class PaykitAllowanceManager {
             totals[PaykitAllowance.scopedId(counterparty: payment.requestId.counterparty, allowanceId: payment.allowanceId), default: 0] +=
                 payment.amountSats
         }
+    }
+
+    /// Reads this wallet's own allowance records again, without the SDK, so the views follow a payment as it leaves.
+    func reloadLocalState() async {
+        guard let identity else { return }
+        let reloadActivation = activation
+        let state = await executor.localState(identity: identity)
+        guard activation == reloadActivation else { return }
+        localState = state
     }
 
     func autoPaidSats(for entry: PaykitAllowanceEntry) -> UInt64 {
@@ -521,6 +531,16 @@ final class PaykitAllowanceManager {
             return true
         }
         return await executor.isHandling(request.id)
+    }
+
+    /// Pending requests, without those this wallet already paid.
+    func payable(_ requests: [PaykitPaymentRequest]) -> [PaykitPaymentRequest] {
+        requests.filter { !hasSentPayment($0) }
+    }
+
+    /// Whether this wallet's records show it already paid the request, even while the ledger read back has no record of it.
+    func hasSentPayment(_ request: PaykitPaymentRequest) -> Bool {
+        request.direction == .incoming && request.billingPeriod == nil && localState.hasSentPayment(request.id)
     }
 
     /// Whether an allowance this wallet grants, or was asked to grant, could start covering the request's contact.

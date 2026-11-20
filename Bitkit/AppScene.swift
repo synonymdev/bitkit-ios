@@ -1876,6 +1876,14 @@ struct AppScene: View {
             else { return }
             for request in requests {
                 guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
+                // A request this wallet already paid never opens, and holds back no other request.
+                if paykitAllowanceManager.hasSentPayment(request) {
+                    if paykitPaymentRequestManager.requestedPresentationId == request.id {
+                        app.toast(type: .info, title: t("subscriptions__allowance_payment_in_progress"))
+                        paykitPaymentRequestManager.releaseRequestedPresentation(request)
+                    }
+                    continue
+                }
                 if await paykitAllowanceManager.isAutomaticallyHandling(request) {
                     // The next refresh presents it if the allowance flow hands it back; presenting again now would spin on it.
                     if paykitPaymentRequestManager.requestedPresentationId == request.id {
@@ -2305,6 +2313,15 @@ struct AppScene: View {
             })
         case .ledgerChanged:
             Task { await paykitAllowanceManager.refresh() }
+        case .paymentLeaving:
+            Task {
+                do {
+                    try await BackupService.shared.persistWalletBackup()
+                } catch {
+                    Logger.warn("Failed to back up an automatic allowance payment: \(error)", context: "AppScene")
+                }
+                await paykitAllowanceManager.reloadLocalState()
+            }
         }
     }
 
