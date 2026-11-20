@@ -22,10 +22,25 @@ enum MoveToSparkMath {
         (channels ?? []).filter(\.isUsable).map { $0.nextOutboundHtlcLimitMsat / 1000 }.reduce(0, +)
     }
 
-    /// What the usable channels hold on our side, which a paid part lowers even where a peer's HTLC cap keeps the
-    /// next-HTLC limit flat.
+    /// What the usable channels can send in all, which a paid part lowers even where a peer's HTLC cap keeps the
+    /// next-HTLC limit flat. A channel we funded holds back its commitment fee, so it counts the lower of the limits LDK
+    /// leaves for either commitment type, and at least its next-HTLC limit.
     static func outboundSats(channels: [ChannelDetails]?) -> UInt64 {
-        (channels ?? []).filter(\.isUsable).map { $0.outboundCapacityMsat / 1000 }.reduce(0, +)
+        (channels ?? []).filter(\.isUsable).map(sendableSats).reduce(0, +)
+    }
+
+    private static func sendableSats(_ channel: ChannelDetails) -> UInt64 {
+        let outboundSats = channel.outboundCapacityMsat / 1000
+        guard channel.isOutbound else { return outboundSats }
+        let clearedMsat = [false, true].map { isLegacy in
+            clearedLimitMsat(
+                capacityMsat: Int64(channel.outboundCapacityMsat),
+                feerate: Int64(channel.feerateSatPer1000Weight),
+                isLegacy: isLegacy
+            )
+        }.min() ?? 0
+        let clearedSats = UInt64(max(0, clearedMsat)) / 1000
+        return min(outboundSats, max(channel.nextOutboundHtlcLimitMsat / 1000, clearedSats))
     }
 
     /// Whether Spark can take a move; every Move to Spark check goes through here.
@@ -678,16 +693,15 @@ final class MoveToSparkManager {
         await quote(wallet: wallet, afterMove: (movedSats, feeSats))
     }
 
-    /// Moves the whole balance as `quote` planned: pays its first part, then quotes and pays the next on `newInvoice`
-    /// from what `movableSats` shows the channels can still send, no larger than the last part, halving a part that does
-    /// not route, until less than the minimum is left. A part that does not route below the minimum throws `feeRose` when a
-    /// fresh quote prices the rest above the fee left, so the modal quotes it again; else the move stops there. Each part's fee cap is what is left
-    /// of the fee shown, kept in msat
-    /// so rounding never lets the parts pay more than the user saw; a part quoted above it throws `feeRose`, so the user
-    /// can see the new fee, also once that fee is spent. It stops after `maxParts` paid parts, when a paid part leaves what
-    /// `outboundSats` shows where it was, or on any other failure, which it throws when nothing moved. `pay` returns the fee paid in msat, or `nil`
-    /// while the part
-    /// is still in flight, which ends the move in flight.
+    /// Moves the whole balance as `quote` planned: pays its first part, then quotes and pays the next on `newInvoice` from
+    /// what `movableSats` shows the channels can still send, no larger than the last part, halving a part that does not
+    /// route, until less than the minimum is left. A part that does not route below the minimum throws `feeRose` when a
+    /// fresh quote prices the rest above the fee left, so the modal quotes it again; else the move stops there. Each part's
+    /// fee cap is what is left of the fee shown, kept in msat so rounding never lets the parts pay more than the user saw;
+    /// a part quoted above it throws `feeRose`, so the user can see the new fee, also once that fee is spent. It stops
+    /// after `maxParts` paid parts, when a paid part leaves what `outboundSats` shows where it was, or on any other
+    /// failure, which it throws when nothing moved. `pay` returns the fee paid in msat, or `nil` while the part is still in
+    /// flight, which ends the move in flight.
     static func payParts(
         _ quote: MoveToSparkQuote,
         movableSats: () async -> UInt64,
