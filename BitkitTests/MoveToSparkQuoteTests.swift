@@ -57,13 +57,9 @@ final class MoveToSparkQuoteTests: XCTestCase {
             return 30
         }
         let quote = try await MoveToSparkManager(services: services).makeQuote(channels: channels)
-        // Halved twice to a part that routes; 100 000 sats take four such parts with their fees, so the fee shown is four
-        // parts' fee.
-        XCTAssertEqual(quote.partSats, 24874)
-        XCTAssertEqual(quote.feeSats, 128)
-        XCTAssertEqual(quote.amountSats, 99870)
-        let part = MoveToSparkPart(amountSats: 1000, feeSats: 2)
-        XCTAssertEqual(MoveToSparkMath.partCount(limitSats: 10_000_000, part: part), 16, "The parts are capped")
+        // Halved twice to a part that routes, then parts no larger until less than the minimum is left: four parts.
+        XCTAssertEqual(quote, MoveToSparkQuote(invoice: "lnbcrt1move", amountSats: 24874, feeSats: 128, firstFeeSats: 32))
+        XCTAssertFalse(quote.isSinglePart)
     }
 
     func testNoPartThatRoutesIsNoRoute() async {
@@ -95,11 +91,12 @@ final class MoveToSparkQuoteTests: XCTestCase {
             self.movableSats = movableSats
         }
 
-        func quotePart(_: String, limitSats: UInt64, wantedSats: UInt64) -> MoveToSparkPart? {
+        func quotePart(limitSats: UInt64, wantedSats: UInt64) -> MoveToSparkPart? {
             let amount = min(wantedSats, limitSats - 32, routes)
             return amount >= MoveToSparkMath.minMoveSats ? MoveToSparkPart(amountSats: amount, feeSats: 32) : nil
         }
 
+        /// `part.feeSats` is the fee cap the move paid it under.
         func pay(_ bolt11: String, _ part: MoveToSparkPart) throws -> UInt64? {
             if let failAfter, paid.count >= failAfter {
                 throw OtherError()
@@ -117,61 +114,60 @@ final class MoveToSparkQuoteTests: XCTestCase {
                 quote,
                 movableSats: { self.movableSats },
                 newInvoice: { "lnbcrt1next" },
-                quotePart: { self.quotePart($0, limitSats: $1, wantedSats: $2) },
+                quotePart: { self.quotePart(limitSats: $1, wantedSats: $2) },
                 pay: { bolt11, part, _, _ in try self.pay(bolt11, part) }
             )
         }
     }
 
+    private let plan = MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 30000, feeSats: 128, firstFeeSats: 32)
+
     func testTheWholeBalanceMovesInPartsUnderTheFeeShown() async throws {
         let channels = FakeChannels(movableSats: 100_000)
         channels.routes = 30000
-        let quote = MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 99840, feeSats: 160, partSats: 30000)
-        let outcome = try await channels.run(quote)
+        let outcome = try await channels.run(plan)
         XCTAssertEqual(channels.paid.map(\.part.amountSats), [30000, 30000, 30000, 9878])
         XCTAssertEqual(channels.paid.map(\.bolt11), ["lnbcrt1first", "lnbcrt1next", "lnbcrt1next", "lnbcrt1next"])
-        XCTAssertEqual(outcome, .settled(movedSats: 99878, feeSats: 120, isComplete: true))
+        XCTAssertEqual(channels.paid.map(\.part.feeSats), [128, 98, 68, 38], "A part may spend only what is left of the fee shown")
+        XCTAssertEqual(outcome, .settled(movedSats: 99878, feeSats: 120))
+    }
+
+    func testAPartQuotedAboveTheFeeLeftStopsTheMoveToShowTheNewFee() async throws {
+        let channels = FakeChannels(movableSats: 100_000)
+        channels.routes = 30000
+        do {
+            _ = try await channels.run(MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 30000, feeSats: 70, firstFeeSats: 32))
+            XCTFail("Expected the fee to rise")
+        } catch let MoveToSparkError.feeRose(movedSats) {
+            XCTAssertEqual(movedSats, 60000)
+            XCTAssertEqual(channels.paid.count, 2, "A part was paid above the fee shown")
+        }
     }
 
     func testAPartThatDoesNotSendIsHalved() async throws {
         let channels = FakeChannels(movableSats: 40000)
-        var sendable: UInt64 = 10000
-        let quote = MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 39968, feeSats: 200, partSats: 39968)
         var tried: [UInt64] = []
         let outcome = try await MoveToSparkManager.payParts(
-            quote,
+            MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 39968, feeSats: 200, firstFeeSats: 32),
             movableSats: { channels.movableSats },
             newInvoice: { "lnbcrt1next" },
-            quotePart: { channels.quotePart($0, limitSats: $1, wantedSats: $2) },
+            quotePart: { channels.quotePart(limitSats: $1, wantedSats: $2) },
             pay: { bolt11, part, _, _ in
                 tried.append(part.amountSats)
-                guard part.amountSats <= sendable else { throw NodeError.RouteNotFound(message: "no route") }
-                sendable = 10000
+                guard part.amountSats <= 10000 else { throw NodeError.RouteNotFound(message: "no route") }
                 return try channels.pay(bolt11, part)
             }
         )
         XCTAssertEqual(Array(tried.prefix(3)), [39968, 19984, 9992])
-        guard case let .settled(movedSats, _, isComplete) = outcome else { return XCTFail("Expected settled, got \(outcome)") }
-        XCTAssertGreaterThan(movedSats, 30000)
-        XCTAssertTrue(isComplete)
-    }
-
-    func testAMoveStopsOnceAPartFeeNoLongerFitsTheFeeShown() async throws {
-        let channels = FakeChannels(movableSats: 100_000)
-        channels.routes = 30000
-        let quote = MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 99900, feeSats: 70, partSats: 30000)
-        let outcome = try await channels.run(quote)
-        XCTAssertEqual(channels.paid.count, 2, "A part was paid above the fee shown")
-        XCTAssertEqual(outcome, .settled(movedSats: 60000, feeSats: 60, isComplete: false))
+        XCTAssertEqual(outcome, .settled(movedSats: 39878, feeSats: 120))
     }
 
     func testAFailureAfterAPartMovedStopsWithWhatMoved() async throws {
         let channels = FakeChannels(movableSats: 100_000)
         channels.routes = 30000
         channels.failAfter = 1
-        let quote = MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 99840, feeSats: 160, partSats: 30000)
-        let outcome = try await channels.run(quote)
-        XCTAssertEqual(outcome, .settled(movedSats: 30000, feeSats: 30, isComplete: false))
+        let outcome = try await channels.run(plan)
+        XCTAssertEqual(outcome, .settled(movedSats: 30000, feeSats: 30))
     }
 
     func testAFirstPartThatFailsMovesNothing() async {
@@ -189,28 +185,25 @@ final class MoveToSparkQuoteTests: XCTestCase {
         let channels = FakeChannels(movableSats: 100_000)
         channels.routes = 30000
         channels.inFlightAt = 2
-        let quote = MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 99840, feeSats: 160, partSats: 30000)
-        let outcome = try await channels.run(quote)
+        let outcome = try await channels.run(plan)
         XCTAssertEqual(outcome, .inFlight(movedSats: 30000, feeSats: 30, partSats: 30000))
     }
 
     func testAPartThatLeavesTheBalanceWhereItWasStopsTheMove() async throws {
         let channels = FakeChannels(movableSats: 100_000)
-        channels.routes = 30000
-        channels.paidFee = 0
         var calls = 0
         let outcome = try await MoveToSparkManager.payParts(
-            MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 99840, feeSats: 160, partSats: 30000),
+            plan,
             movableSats: { 100_000 },
             newInvoice: { "lnbcrt1next" },
-            quotePart: { channels.quotePart($0, limitSats: $1, wantedSats: $2) },
+            quotePart: { channels.quotePart(limitSats: $1, wantedSats: $2) },
             pay: { _, _, _, _ in
                 calls += 1
                 return 0
             }
         )
         XCTAssertEqual(calls, 1)
-        XCTAssertEqual(outcome, .settled(movedSats: 30000, feeSats: 0, isComplete: false))
+        XCTAssertEqual(outcome, .settled(movedSats: 30000, feeSats: 0))
     }
 
     func testOtherEstimateErrorsAreRethrown() async {

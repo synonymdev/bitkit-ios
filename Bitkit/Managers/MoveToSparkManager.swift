@@ -63,23 +63,6 @@ enum MoveToSparkMath {
         feeSats * 1000
     }
 
-    /// The most parts one move pays.
-    static let maxParts = 16
-
-    /// How many parts of `part` the balance under `limitSats` takes, at most `maxParts`: each takes its amount and fee,
-    /// and a rest that cannot be moved takes none.
-    static func partCount(limitSats: UInt64, part: MoveToSparkPart) -> UInt64 {
-        let stepSats = part.amountSats + part.feeSats
-        guard stepSats > 0 else { return 1 }
-        var count: UInt64 = 1
-        var restSats = limitSats - min(limitSats, stepSats)
-        while hasMovableBalance(limitSats: restSats), count < UInt64(maxParts) {
-            count += 1
-            restSats -= min(restSats, stepSats)
-        }
-        return count
-    }
-
     /// The next amount to try after one did not route: half of it, or nothing below the minimum.
     static func smallerAmount(_ sats: UInt64) -> UInt64? {
         let half = sats / 2
@@ -281,26 +264,30 @@ struct MoveToSparkPart: Equatable {
     let feeSats: UInt64
 }
 
-/// A move of the channels' whole balance. `partSats` is the largest payment that routes; a balance larger than that
-/// moves in parts. `feeSats` is the fee shown, a ceiling: the part's fee for each part it takes.
+/// A move of the channels' whole balance: its first part, of `amountSats` to `invoice` under `firstFeeSats`, and
+/// `feeSats`, the sum of every part's fee: the fee shown and the most the move pays. One part when the balance routes.
 struct MoveToSparkQuote: Equatable {
     let invoice: String
     let amountSats: UInt64
     let feeSats: UInt64
-    let partSats: UInt64
+    let firstFeeSats: UInt64
 
-    init(invoice: String, amountSats: UInt64, feeSats: UInt64, partSats: UInt64? = nil) {
+    var isSinglePart: Bool {
+        feeSats == firstFeeSats
+    }
+
+    init(invoice: String, amountSats: UInt64, feeSats: UInt64, firstFeeSats: UInt64? = nil) {
         self.invoice = invoice
         self.amountSats = amountSats
         self.feeSats = feeSats
-        self.partSats = partSats ?? amountSats
+        self.firstFeeSats = firstFeeSats ?? feeSats
     }
 }
 
 /// What paying a move's parts came to.
 enum MoveToSparkPartsOutcome: Equatable {
-    /// The parts settled, moving `movedSats` for `feeSats`; `isComplete` once the channels have less than the minimum left.
-    case settled(movedSats: UInt64, feeSats: UInt64, isComplete: Bool)
+    /// The parts settled, moving `movedSats` for `feeSats`.
+    case settled(movedSats: UInt64, feeSats: UInt64)
     /// `partSats` was still unsettled after the wait; the parts before it moved `movedSats` for `feeSats`.
     case inFlight(movedSats: UInt64, feeSats: UInt64, partSats: UInt64)
 }
@@ -319,6 +306,8 @@ enum MoveToSparkError: Error, Equatable {
     case sparkUnavailable
     /// No part of the channels' balance, down to the minimum, routes to Spark.
     case noRoute
+    /// The next part's fee would pass what is left of the fee the user saw, after `movedSats` had moved.
+    case feeRose(movedSats: UInt64)
     /// The quoted move, with Spark's balance, would not cover a payment of `amountSats`, so nothing moved.
     case updateFallsShort(amountSats: UInt64)
     /// The update's fee is new or above the one the user saw, so nothing moved until they see it.
@@ -556,8 +545,13 @@ final class MoveToSparkManager {
                 wallet: wallet,
                 // Shown in the step that stops waiting, so a late outcome right after it finds this move in flight.
                 onTimeout: { [weak self] movedSats in self?.showInFlight(amountSats: movedSats, moveGeneration: moveGeneration) },
-                onLateFailure: { [weak self] movedSats, feeSats in
-                    self?.lateFailure(movedSats: movedSats, feeSats: feeSats, moveGeneration: moveGeneration)
+                onLateFailure: { [weak self, weak wallet, weak transfer] movedSats, feeSats in
+                    guard let self else { return }
+                    // Earlier parts may have emptied channels even when this last one failed.
+                    if movedSats > 0, let wallet, let transfer {
+                        closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
+                    }
+                    lateFailure(movedSats: movedSats, feeSats: feeSats, moveGeneration: moveGeneration)
                 },
                 onLateSuccess: { [weak self, weak wallet, weak transfer] movedSats, feeSats in
                     guard let self, let wallet else { return }
@@ -569,7 +563,7 @@ final class MoveToSparkManager {
                     }
                 }
             )
-            guard case let .settled(movedSats, feeSats, isComplete) = outcome else {
+            guard case let .settled(movedSats, feeSats) = outcome else {
                 isSettled = false
                 return
             }
@@ -577,8 +571,16 @@ final class MoveToSparkManager {
             guard moveGeneration == generation else { return }
             await wallet.syncStateAsync()
             guard moveGeneration == generation else { return }
-            // A move that stopped with balance left shows Failed, whose Try again quotes what is left.
-            state = isComplete ? .done(amountSats: movedSats, feeSats: feeSats) : .failed(.unknown)
+            state = .done(amountSats: movedSats, feeSats: feeSats)
+        } catch let MoveToSparkError.feeRose(movedSats) {
+            // As elsewhere when a fee rises, the modal shows the new fee for what is left.
+            Logger.info("Stopped a move to show a fee that rose, '\(movedSats)' sats moved", context: "MoveToSpark")
+            if movedSats > 0 {
+                closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
+            }
+            guard moveGeneration == generation else { return }
+            isMoveInFlight = false
+            await self.quote(wallet: wallet)
         } catch {
             Logger.error("Failed to move '\(quote.amountSats)' sats to Spark: \(error)", context: "MoveToSpark")
             guard moveGeneration == generation else { return }
@@ -622,12 +624,12 @@ final class MoveToSparkManager {
         )
     }
 
-    /// Pays the channels' balance in parts until less than the minimum is left: each part is quoted from `movableSats`,
-    /// no larger than the last, the first to the quote's invoice and each later one to `newInvoice`. A part that does
-    /// not route, quoted or sent, is halved. Each part's fee cap is its quoted fee, within what is left of the fee shown,
-    /// so the move never pays more than the user saw. It stops when a part's fee no longer fits, a part leaves the
-    /// balance where it was, after `maxParts` parts, or on any other failure, which it throws when nothing moved. `pay`
-    /// returns the fee paid, or `nil` while the part is still in flight, which ends the parts.
+    /// Moves the whole balance as `quote` planned: pays its first part, then quotes and pays the next on `newInvoice`
+    /// from what `movableSats` shows the channels can still send, no larger than the last part, halving a part that does
+    /// not route, until less than the minimum is left. Each part's fee cap is what is left of the fee shown, so the move
+    /// never pays more than the user saw; a part quoted above it throws `feeRose`, so the user can see the new fee. It
+    /// stops when a paid part leaves the balance where it was, or on any other failure, which it throws when nothing
+    /// moved. `pay` returns the fee paid, or `nil` while the part is still in flight, which ends the move in flight.
     static func payParts(
         _ quote: MoveToSparkQuote,
         movableSats: () async -> UInt64,
@@ -635,48 +637,59 @@ final class MoveToSparkManager {
         quotePart: (_ invoice: String, _ limitSats: UInt64, _ wantedSats: UInt64) async throws -> MoveToSparkPart?,
         pay: (_ bolt11: String, _ part: MoveToSparkPart, _ movedSats: UInt64, _ feeSats: UInt64) async throws -> UInt64?
     ) async throws -> MoveToSparkPartsOutcome {
-        var wantedSats = quote.partSats
-        var firstInvoice: String? = quote.invoice
+        var next: (bolt11: String, part: MoveToSparkPart)? = (
+            quote.invoice,
+            MoveToSparkPart(amountSats: quote.amountSats, feeSats: quote.firstFeeSats)
+        )
+        var partSats = quote.amountSats
+        var feeLeftSats = quote.feeSats
         var movedSats: UInt64 = 0
         var feeSats: UInt64 = 0
-        var lastLimitSats: UInt64?
-        var stopError: Error = MoveToSparkError.noRoute
-        for _ in 0 ..< MoveToSparkMath.maxParts {
-            let limitSats = await movableSats()
-            guard MoveToSparkMath.hasMovableBalance(limitSats: limitSats) else {
-                return .settled(movedSats: movedSats, feeSats: feeSats, isComplete: true)
-            }
-            if let lastLimitSats, limitSats >= lastLimitSats {
-                break
-            }
-            var bolt11 = ""
-            var part: MoveToSparkPart?
-            do {
-                if let invoice = firstInvoice {
-                    bolt11 = invoice
-                    firstInvoice = nil
-                } else {
+        var lastError: Error?
+        var lastMovableSats = await movableSats()
+        while feeLeftSats > 0 {
+            let bolt11: String
+            let part: MoveToSparkPart
+            if let planned = next {
+                (bolt11, part) = planned
+                next = nil
+            } else {
+                let limitSats = await movableSats()
+                guard MoveToSparkMath.hasMovableBalance(limitSats: limitSats) else { break }
+                do {
                     bolt11 = try await newInvoice()
+                    guard let quoted = try await quotePart(bolt11, limitSats, min(partSats, limitSats)) else { break }
+                    part = quoted
+                } catch {
+                    lastError = error
+                    break
                 }
-                part = try await quotePart(bolt11, limitSats, min(wantedSats, limitSats))
-                guard let part, part.feeSats <= quote.feeSats - feeSats else { break }
-                guard let paidSats = try await pay(bolt11, part, movedSats, feeSats) else {
+            }
+            if part.feeSats > feeLeftSats {
+                throw MoveToSparkError.feeRose(movedSats: movedSats)
+            }
+            do {
+                let capped = MoveToSparkPart(amountSats: part.amountSats, feeSats: feeLeftSats)
+                guard let paidSats = try await pay(bolt11, capped, movedSats, feeSats) else {
                     return .inFlight(movedSats: movedSats, feeSats: feeSats, partSats: part.amountSats)
                 }
                 movedSats += part.amountSats
                 feeSats += paidSats
-                wantedSats = part.amountSats
-                lastLimitSats = limitSats
+                feeLeftSats -= min(feeLeftSats, paidSats)
+                // A part the channels do not show as gone would be paid again, so the move stops there.
+                let nowSats = await movableSats()
+                guard nowSats < lastMovableSats else { break }
+                lastMovableSats = nowSats
             } catch {
-                stopError = error
-                guard let part, isNoRoute(error) || isSendWithoutRoute(error, invoice: bolt11),
+                lastError = error
+                guard isNoRoute(error) || isSendWithoutRoute(error, invoice: bolt11),
                       let halfSats = MoveToSparkMath.smallerAmount(part.amountSats)
                 else { break }
-                wantedSats = halfSats
+                partSats = halfSats
             }
         }
-        guard movedSats > 0 else { throw stopError }
-        return .settled(movedSats: movedSats, feeSats: feeSats, isComplete: false)
+        guard movedSats > 0 else { throw lastError ?? MoveToSparkError.nothingToMove }
+        return .settled(movedSats: movedSats, feeSats: feeSats)
     }
 
     /// Pays `quote` over the channels, after any move still paying, and waits for its outcome; `nil` means it is still in
@@ -710,7 +723,7 @@ final class MoveToSparkManager {
     /// The update moves the balance in one payment; a balance that takes several parts goes through the modal.
     func updateQuote(wallet: WalletViewModel) async throws -> MoveToSparkQuote {
         let quote = try await makeQuote(channels: wallet.channels)
-        guard quote.partSats == quote.amountSats else { throw MoveToSparkError.noRoute }
+        guard quote.isSinglePart else { throw MoveToSparkError.noRoute }
         return quote
     }
 
@@ -859,25 +872,32 @@ final class MoveToSparkManager {
         return generation
     }
 
-    /// Quotes moving everything the channels can send: the largest part that routes, halving one that does not, and as
-    /// fee the part's fee for each part the balance takes.
+    /// Quotes moving everything the channels can send: one payment when it routes, else parts, each halved until it
+    /// routes and no larger than the last, priced on one invoice until less than the minimum is left. The fee is the sum
+    /// of the parts' fees, the most the move pays.
     func makeQuote(channels: [ChannelDetails]?) async throws -> MoveToSparkQuote {
         let limitSats = MoveToSparkMath.movableSats(channels: channels)
         guard MoveToSparkMath.hasMovableBalance(limitSats: limitSats) else { throw MoveToSparkError.nothingToMove }
         guard services.isSparkUsable else { throw MoveToSparkError.sparkUnavailable }
 
         let invoice = try await services.receiveInvoice(description: MoveToSparkMath.invoiceDescription, expirySecs: Self.invoiceExpirySecs)
-        guard let part = try await quotePart(invoice: invoice, limitSats: limitSats, wantedSats: limitSats) else {
-            throw MoveToSparkError.noRoute
+        var parts: [MoveToSparkPart] = []
+        var leftSats = limitSats
+        var wantedSats = limitSats
+        // Every part is at least the minimum, so this ends once what is left falls below it.
+        while MoveToSparkMath.hasMovableBalance(limitSats: leftSats),
+              let part = try await quotePart(invoice: invoice, limitSats: leftSats, wantedSats: wantedSats)
+        {
+            parts.append(part)
+            leftSats -= min(leftSats, part.amountSats + part.feeSats)
+            wantedSats = part.amountSats
         }
-        let partCount = MoveToSparkMath.partCount(limitSats: limitSats, part: part)
-        guard partCount > 1 else { return MoveToSparkQuote(invoice: invoice, amountSats: part.amountSats, feeSats: part.feeSats) }
-        let feeSats = part.feeSats * partCount
+        guard let first = parts.first else { throw MoveToSparkError.noRoute }
         return MoveToSparkQuote(
             invoice: invoice,
-            amountSats: MoveToSparkMath.amountAfterFee(limitSats: limitSats, feeSats: feeSats),
-            feeSats: feeSats,
-            partSats: part.amountSats
+            amountSats: first.amountSats,
+            feeSats: parts.map(\.feeSats).reduce(0, +),
+            firstFeeSats: first.feeSats
         )
     }
 
@@ -950,18 +970,18 @@ final class MoveToSparkManager {
         state = .done(amountSats: amountSats, feeSats: feeSats)
     }
 
-    /// A part that was still in flight failed after the wait: its amount stays in the channel, so the screen, if it still
-    /// shows that same move, says it could not move, with Try again for what is left, and a toast tells the user wherever
-    /// they are.
-    private func lateFailure(movedSats: UInt64, feeSats _: UInt64, moveGeneration: Int) {
+    /// A part that was still in flight failed after the wait: its amount stays in the channel. The screen, if it still
+    /// shows that same move, shows the balance updated when earlier parts moved, else says it could not move, with a
+    /// toast wherever the user is.
+    private func lateFailure(movedSats: UInt64, feeSats: UInt64, moveGeneration: Int) {
         Logger.warn("A Move to Spark part failed after the wait, '\(movedSats)' sats moved before it", context: "MoveToSpark")
         if generation == moveGeneration {
             isMoveInFlight = false
         }
         if Self.showsInFlightMove(state, generation: generation, moveGeneration: moveGeneration) {
-            state = .failed(.unknown)
+            state = movedSats > 0 ? .done(amountSats: movedSats, feeSats: feeSats) : .failed(.unknown)
         }
-        guard !ToastWindowManager.areToastsDisabled() else { return }
+        guard movedSats == 0, !ToastWindowManager.areToastsDisabled() else { return }
         Haptics.notify(.error)
         ToastWindowManager.shared.showToast(Toast(
             type: .error,
@@ -993,7 +1013,7 @@ final class MoveToSparkManager {
         switch error as? MoveToSparkError {
         case .nothingToMove: .failed(.nothingToMove)
         case .sparkUnavailable: .failed(.sparkUnavailable)
-        case .noRoute, .updateFallsShort, .updateFeeUnseen, .updateUnsettled, .updateFailed, nil: .failed(.unknown)
+        case .noRoute, .feeRose, .updateFallsShort, .updateFeeUnseen, .updateUnsettled, .updateFailed, nil: .failed(.unknown)
         }
     }
 }
