@@ -1373,7 +1373,7 @@ class WalletViewModel: ObservableObject {
         }
         // A retry over a channel settles from LDK; an earlier Spark attempt's outcome doesn't decide it.
         guard lightningService.attemptRail(paymentHash: hash) != .ldk else { return }
-        let payments = await (try? lightningService.channelFreeRailSendStatuses()) ?? []
+        let payments = await (try? lightningService.channelFreeRailPayments()) ?? []
         let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: hash)
         switch payment?.status {
         case .succeeded:

@@ -951,9 +951,9 @@ class ActivityService {
 
     /// Records a Lightning payment the channel-free rail sent or received the way an LDK payment is recorded, so it keeps
     /// its Paykit contact and seen state across syncs.
-    func recordChannelFreeRailPayment(_ payment: PaymentDetails, railPaymentId: String? = nil) async throws {
+    func recordChannelFreeRailPayment(_ payment: PaymentDetails) async throws {
         try await ServiceQueue.background(.core) {
-            try await self.processLightningPayment(payment, rail: .channelFree, railPaymentId: railPaymentId)
+            try await self.processLightningPayment(payment, rail: .channelFree)
         }
     }
 
@@ -961,30 +961,16 @@ class ActivityService {
     /// so a send recorded after the app was killed mid-payment still names its contact.
     nonisolated(unsafe) static var sentPaymentContacts = SentPaymentContacts(defaults: .standard)
 
-    /// The Spark id of the attempt each channel-free send row was last written from, by payment hash.
-    nonisolated(unsafe) static var channelFreeRowAttempts = ChannelFreeRowAttempts(defaults: .standard)
-
-    /// Whether a Lightning activity keeps its status against an update: a settled payment stays settled, a failure from
-    /// the rail that didn't carry the latest attempt is stale, and a failed Spark send keeps its row against the failure
-    /// of an older attempt, as Spark lists one failure per attempt, each with its own amount and fee. The row's own
-    /// attempt and later ones still update it.
-    static func keepsLightningStatus(
-        existing: BitkitCore.PaymentState,
-        update: BitkitCore.PaymentState,
-        isStaleRailFailure: Bool,
-        isOlderChannelFreeAttempt: Bool = false
-    ) -> Bool {
+    /// Whether a Lightning activity keeps its status against an update: a settled payment stays settled, and a failure
+    /// from the rail that didn't carry the latest attempt is stale.
+    static func keepsLightningStatus(existing: BitkitCore.PaymentState, update: BitkitCore.PaymentState, isStaleRailFailure: Bool) -> Bool {
         if existing == .succeeded, update != .succeeded {
-            return true
-        }
-        if isOlderChannelFreeAttempt, existing == .failed, update == .failed {
             return true
         }
         return update == .failed && existing != .failed && isStaleRailFailure
     }
 
-    /// `railPaymentId` is the channel-free rail's id of the attempt, which a retried invoice lists once per attempt.
-    private func processLightningPayment(_ payment: PaymentDetails, rail: LightningPaymentRail = .ldk, railPaymentId: String? = nil) async throws {
+    private func processLightningPayment(_ payment: PaymentDetails, rail: LightningPaymentRail = .ldk) async throws {
         guard case let .bolt11(_, preimage, _, description, bolt11) = payment.kind else { return }
 
         // Skip pending inbound payments - just means they created an invoice
@@ -1018,28 +1004,6 @@ class ActivityService {
                existing: existing.status,
                update: state,
                isStaleRailFailure: LightningService.shared.isStaleFailure(paymentHash: payment.id, from: rail)
-                   // Spark's failure of an attempt it created before a retry still in doubt went out.
-                   || (rail == .channelFree && LightningService.shared.isEarlierThanUncertainRailSend(
-                       paymentHash: payment.id,
-                       createdAt: paymentTimestamp,
-                       paymentId: railPaymentId
-                   )),
-               // Spark dates an attempt at its start, so an older one's failure is dated before the row's attempt, or
-               // in the same second when the retry started at once; then the row's own Spark id tells them apart, with the
-               // send's earlier attempts kept past its hold. The held attempt's own failure always writes.
-               isOlderChannelFreeAttempt: rail == .channelFree && payment.direction == .outbound
-                   && (railPaymentId == nil || railPaymentId != LightningService.shared.heldRailSendId(paymentHash: payment.id))
-                   && (paymentTimestamp < existing.timestamp || paymentTimestamp == existing.timestamp && Self.isOtherRowAttempt(
-                       railPaymentId,
-                       rowAttemptId: Self.channelFreeRowAttempts.attemptId(forPaymentHash: payment.id, row: existing),
-                       earlierAttemptIds: (LightningService.shared.railSendEarlierAttemptIds[payment.id.lowercased()] ?? [])
-                           + LightningService.shared.keptRailSendEarlierAttemptIds(paymentHash: payment.id),
-                       keptEarlierAttemptIds: LightningService.shared.keptRailSendEarlierAttemptIds(paymentHash: payment.id)
-                   ) || Self.isKnownEarlierAttempt(
-                       railPaymentId,
-                       rowAttemptId: Self.channelFreeRowAttempts.attemptId(forPaymentHash: payment.id, row: existing),
-                       keptEarlierAttemptIds: LightningService.shared.keptRailSendEarlierAttemptIds(paymentHash: payment.id)
-                   ))
            )
         {
             return
@@ -1093,79 +1057,25 @@ class ActivityService {
                 try self.settleMove(latest, receiveState: state)
                 return
             }
-            // The writer is kept before the row is written, so a stop between the two never leaves the row to an earlier
-            // writer, and put back when the write fails.
-            let previousWriter = Self.channelFreeRowAttempts.entry(forPaymentHash: payment.id)
-            let isWriterKept = rail == .channelFree && payment.direction == .outbound && railPaymentId != nil
-            if isWriterKept, let railPaymentId {
-                let previousRow: LightningActivity? = if case let .lightning(latest)? = latestActivity {
-                    latest
-                } else {
-                    nil
-                }
-                Self.channelFreeRowAttempts.remember(
-                    railPaymentId,
-                    forPaymentHash: payment.id,
-                    stamp: ChannelFreeRowAttempts.stamp(ln),
-                    previousRowStamp: previousRow.map(ChannelFreeRowAttempts.stamp)
-                )
-            }
-            do {
-                guard let latestActivity else {
-                    try upsertActivity(activity: .lightning(ln))
-                    if isWriterKept {
-                        Self.channelFreeRowAttempts.commit(forPaymentHash: payment.id)
-                    }
-                    self.updateBoostTxIdsCache(for: .lightning(ln))
-                    self.activitiesChangedSubject.send()
-                    return
-                }
-                var updated = ln
-                if case let .lightning(latest) = latestActivity, latest.contact != existingLightning?.contact {
-                    updated.contact = latest.contact
-                }
-                if self.isContactDetached(activityId: payment.id, walletId: ln.walletId) {
-                    updated.contact = nil
-                }
-                try updateActivity(activityId: payment.id, activity: .lightning(updated))
-                if isWriterKept {
-                    Self.channelFreeRowAttempts.commit(forPaymentHash: payment.id)
-                }
+            guard let latestActivity else {
+                try upsertActivity(activity: .lightning(ln))
+                self.updateBoostTxIdsCache(for: .lightning(ln))
                 self.activitiesChangedSubject.send()
-            } catch {
-                Self.channelFreeRowAttempts.restore(previousWriter, forPaymentHash: payment.id)
-                throw error
+                return
             }
+            var updated = ln
+            if case let .lightning(latest) = latestActivity, latest.contact != existingLightning?.contact {
+                updated.contact = latest.contact
+            }
+            if self.isContactDetached(activityId: payment.id, walletId: ln.walletId) {
+                updated.contact = nil
+            }
+            try updateActivity(activityId: payment.id, activity: .lightning(updated))
+            self.activitiesChangedSubject.send()
         }
         if payment.direction == .outbound, ln.contact != nil, payment.status != .pending {
             Self.sentPaymentContacts.forget(paymentHash: payment.id)
         }
-    }
-
-    /// Whether `railPaymentId` is an attempt a send of the invoice followed, before the row's, whatever Spark's dates. When
-    /// the row's attempt is one such send followed too, a send's read can miss an earlier attempt, so their dates decide.
-    static func isKnownEarlierAttempt(_ railPaymentId: String?, rowAttemptId: String?, keptEarlierAttemptIds: [String]) -> Bool {
-        guard let railPaymentId, railPaymentId != rowAttemptId else { return false }
-        return keptEarlierAttemptIds.contains(railPaymentId) && !(rowAttemptId.map(keptEarlierAttemptIds.contains) ?? false)
-    }
-
-    /// Whether `railPaymentId` is another attempt than the row's, and not the send that went out after it: the send in
-    /// flight lists the attempts before it, and its failure is recorded before that list goes. Of two attempts in the same
-    /// second both kept past a later send's hold, the kept list's order, the order they went out, tells the later.
-    static func isOtherRowAttempt(
-        _ railPaymentId: String?,
-        rowAttemptId: String?,
-        earlierAttemptIds: [String]? = nil,
-        keptEarlierAttemptIds: [String] = []
-    ) -> Bool {
-        guard let railPaymentId, let rowAttemptId, railPaymentId != rowAttemptId else { return false }
-        if let index = keptEarlierAttemptIds.firstIndex(of: railPaymentId),
-           let rowIndex = keptEarlierAttemptIds.firstIndex(of: rowAttemptId)
-        {
-            return index < rowIndex
-        }
-        let isLaterSend = earlierAttemptIds.map { $0.contains(rowAttemptId) && !$0.contains(railPaymentId) } ?? false
-        return !isLaterSend
     }
 
     /// A succeeded Spark receive proves the move's LDK send settled, so the send's row becomes succeeded and keeps its amount and fee.
@@ -1490,40 +1400,16 @@ class ActivityService {
         return !onchain.doesExist && onchain.txType == .sent && txIdsInBoostTxIds.contains(onchain.txId)
     }
 
-    /// Marks the stored Lightning send `id` failed while it is still pending.
-    /// Read, checked and written in one core-queue operation, so a change saved meanwhile isn't overwritten. The row is
-    /// the held send's now: it takes `ownAttemptId` as the attempt that wrote it when known, and otherwise drops one of
-    /// `earlierAttemptIds`. Saved before the row fails, so a stop in between finds the row pending and redoes both.
-    func failPendingLightningSend(id: String, ownAttemptId: String? = nil, earlierAttemptIds: Set<String> = []) async throws {
+    /// Marks the stored Lightning send `id` failed while it is still pending, read, checked and written in one core-queue
+    /// operation, so a change saved meanwhile isn't overwritten.
+    func failPendingLightningSend(id: String) async throws {
         try await ServiceQueue.background(.core) {
             guard case let .lightning(activity) = try getActivityById(walletId: WalletScope.default, activityId: id),
                   activity.txType == .sent, activity.status == .pending
             else { return }
-            let previousWriter = Self.channelFreeRowAttempts.entry(forPaymentHash: id)
             var failed = activity
             failed.status = .failed
-            if let ownAttemptId {
-                Self.channelFreeRowAttempts.remember(
-                    ownAttemptId,
-                    forPaymentHash: id,
-                    stamp: ChannelFreeRowAttempts.stamp(failed),
-                    previousRowStamp: ChannelFreeRowAttempts.stamp(activity)
-                )
-            } else if let rowAttemptId = Self.channelFreeRowAttempts.attemptId(forPaymentHash: id, row: activity),
-                      earlierAttemptIds.contains(rowAttemptId),
-                      !Self.channelFreeRowAttempts.isUnchanged(activity, forPaymentHash: id)
-            {
-                // A retry wrote over the earlier attempt's row. One the earlier attempt still owns keeps its writer, so
-                // that attempt's final fee still lands.
-                Self.channelFreeRowAttempts.forget(paymentHash: id)
-            }
-            do {
-                try updateActivity(activityId: id, activity: .lightning(failed))
-                Self.channelFreeRowAttempts.commit(forPaymentHash: id)
-            } catch {
-                Self.channelFreeRowAttempts.restore(previousWriter, forPaymentHash: id)
-                throw error
-            }
+            try updateActivity(activityId: id, activity: .lightning(failed))
             self.activitiesChangedSubject.send()
         }
     }
@@ -2949,108 +2835,5 @@ struct SentPaymentContacts: @unchecked Sendable {
             else { return }
             defaults.set(contacts, forKey: Self.key)
         }
-    }
-}
-
-/// Kept as `[hash, id]` pairs, oldest first, for the latest `limit` hashes and those of sends with kept earlier attempts.
-struct ChannelFreeRowAttempts: @unchecked Sendable {
-    private static let key = "channelFreeRowAttemptIds"
-    private static let lock = NSLock()
-    static let limit = 100
-    let defaults: UserDefaults
-
-    /// The row as its writer left it, so a later write by another payment shows, even one alike but for its status.
-    static func stamp(_ row: LightningActivity) -> String {
-        "\(row.timestamp):\(row.value):\(row.fee ?? 0):\(row.status)"
-    }
-
-    /// Kept ahead of the row it writes, beside the previous writer and its stamp (none: an empty id and the row's stamp
-    /// then), until `commit` once the row is saved, so a stop in between still finds the row's real writer.
-    func remember(_ attemptId: String, forPaymentHash paymentHash: String, stamp: String, previousRowStamp: String? = nil) {
-        let hash = paymentHash.lowercased()
-        Self.lock.withLock {
-            var entries = defaults.array(forKey: Self.key) as? [[String]] ?? []
-            let previous = entries.last { $0.first == hash }
-            let entry = if let previous, previous.count == 5, previousRowStamp == previous[4] {
-                // A write cut off before its row was saved: the row is still the previous writer's.
-                [hash, attemptId, stamp, previous[3], previous[4]]
-            } else if let previous, previous.count >= 3 {
-                [hash, attemptId, stamp, previous[1], previous[2]]
-            } else {
-                [hash, attemptId, stamp, "", previousRowStamp ?? ""]
-            }
-            guard previous != entry, previous.map({ Array($0.prefix(3)) }) != [hash, attemptId, stamp] else { return }
-            entries.removeAll { $0.first == hash }
-            entries.append(entry)
-            defaults.set(capped(entries), forKey: Self.key)
-        }
-    }
-
-    /// The row is saved: its writer no longer needs the previous one beside it.
-    func commit(forPaymentHash paymentHash: String) {
-        let hash = paymentHash.lowercased()
-        Self.lock.withLock {
-            guard var entries = defaults.array(forKey: Self.key) as? [[String]],
-                  let index = entries.lastIndex(where: { $0.first == hash }), entries[index].count > 3
-            else { return }
-            entries[index] = Array(entries[index].prefix(3))
-            defaults.set(entries, forKey: Self.key)
-        }
-    }
-
-    /// The writer of `row`: the kept one, unless `row` still matches the previous writer's stamp, as a write cut off
-    /// before its row was saved leaves it.
-    private func writer(forPaymentHash paymentHash: String, row: LightningActivity?) -> (id: String, stamp: String)? {
-        guard let entry = entry(forPaymentHash: paymentHash), entry.count >= 3 else { return nil }
-        if entry.count == 5, let row, Self.stamp(row) == entry[4] {
-            return entry[3].isEmpty ? nil : (entry[3], entry[4])
-        }
-        return (entry[1], entry[2])
-    }
-
-    /// The kept entry of the row of `paymentHash`, to put back with `restore`.
-    func entry(forPaymentHash paymentHash: String) -> [String]? {
-        let hash = paymentHash.lowercased()
-        return (defaults.array(forKey: Self.key) as? [[String]])?.last { $0.first == hash }
-    }
-
-    func restore(_ entry: [String]?, forPaymentHash paymentHash: String) {
-        let hash = paymentHash.lowercased()
-        Self.lock.withLock {
-            var entries = defaults.array(forKey: Self.key) as? [[String]] ?? []
-            entries.removeAll { $0.first == hash }
-            if let entry {
-                entries.append(entry)
-            }
-            defaults.set(capped(entries), forKey: Self.key)
-        }
-    }
-
-    /// Keeps the latest `limit` writers of sends without kept earlier attempts, and those of retried sends, which the
-    /// earlier attempts' own cap bounds.
-    private func capped(_ entries: [[String]]) -> [[String]] {
-        guard entries.count > Self.limit else { return entries }
-        let kept = defaults.array(forKey: LightningService.keptRailSendEarlierAttemptsKey) as? [[String]] ?? []
-        let retried = Set(kept.compactMap(\.first))
-        let dropped = Set(entries.compactMap(\.first).filter { !retried.contains($0) }.dropLast(Self.limit))
-        return entries.filter { !dropped.contains($0.first ?? "") }
-    }
-
-    /// Whether `row` is as its writer left it.
-    func isUnchanged(_ row: LightningActivity, forPaymentHash paymentHash: String) -> Bool {
-        writer(forPaymentHash: paymentHash, row: row)?.stamp == Self.stamp(row)
-    }
-
-    func forget(paymentHash: String) {
-        let hash = paymentHash.lowercased()
-        Self.lock.withLock {
-            guard var pairs = defaults.array(forKey: Self.key) as? [[String]], pairs.contains(where: { $0.first == hash }) else { return }
-            pairs.removeAll { $0.first == hash }
-            defaults.set(pairs, forKey: Self.key)
-        }
-    }
-
-    func attemptId(forPaymentHash paymentHash: String, row: LightningActivity? = nil) -> String? {
-        writer(forPaymentHash: paymentHash, row: row)?.id
     }
 }
