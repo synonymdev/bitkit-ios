@@ -1253,6 +1253,10 @@ class LightningService: NodeLifecycleService {
     private static let uncertainRailSendsStartedKey = "channelFreeRailUncertainSendStartedAt"
     /// The rail's ids of the attempts each of those sends followed, so a failure of one is told from the send's own.
     private static let uncertainRailSendsEarlierAttemptsKey = "channelFreeRailUncertainSendEarlierAttempts"
+    /// The rail's ids of the attempts each send followed, kept past its hold as `[hash, ids…]` for the latest
+    /// `keptEarlierAttemptsLimit` hashes, so a failure of one never writes over the send's own row after a restart.
+    private static let keptRailSendEarlierAttemptsKey = "channelFreeRailKeptSendEarlierAttempts"
+    static let keptEarlierAttemptsLimit = 100
     /// The rail's id of each send Spark took, by hash, until it settles: any other attempt's failure is an earlier one's.
     private static let takenRailSendsKey = "channelFreeRailTakenSendIds"
     /// Hashes of taken sends Spark never listed whose hold ended before their row was failed, retried on each rail sync.
@@ -1452,6 +1456,7 @@ class LightningService: NodeLifecycleService {
             railAttemptsStore.removeObject(forKey: Self.uncertainRailSendsKey)
             railAttemptsStore.removeObject(forKey: Self.uncertainRailSendsStartedKey)
             railAttemptsStore.removeObject(forKey: Self.uncertainRailSendsEarlierAttemptsKey)
+            railAttemptsStore.removeObject(forKey: Self.keptRailSendEarlierAttemptsKey)
             railAttemptsStore.removeObject(forKey: Self.takenRailSendsKey)
             railAttemptsStore.removeObject(forKey: Self.unlistedTakenRailSendsUnfailedKey)
             railAttemptsStore.removeObject(forKey: Self.expiredRailHoldsUnrecordedKey)
@@ -1697,9 +1702,36 @@ class LightningService: NodeLifecycleService {
                 var earlier = uncertainRailSendEarlierAttempts()
                 earlier[hash] = earlierAttemptIds.map { ids in takenBefore.map { ids.contains($0) ? ids : ids + [$0] } ?? ids }
                 railAttemptsStore.set(earlier, forKey: Self.uncertainRailSendsEarlierAttemptsKey)
+                keepEarlierAttempts(hash: hash, ids: (earlierAttemptIds ?? []) + (takenBefore.map { [$0] } ?? []))
             }
             uncertain[hash] = failedAt
             railAttemptsStore.set(uncertain, forKey: Self.uncertainRailSendsKey)
+        }
+    }
+
+    /// Callers hold `eventCallbackLock`.
+    private func keepEarlierAttempts(hash: String, ids: [String]) {
+        var entries = railAttemptsStore.array(forKey: Self.keptRailSendEarlierAttemptsKey) as? [[String]] ?? []
+        let kept = entries.last { $0.first == hash }.map { Array($0.dropFirst()) } ?? []
+        let merged = kept + ids.filter { !kept.contains($0) }
+        guard !merged.isEmpty, merged != kept else { return }
+        entries.removeAll { $0.first == hash }
+        entries.append([hash] + merged)
+        railAttemptsStore.set(Array(entries.suffix(Self.keptEarlierAttemptsLimit)), forKey: Self.keptRailSendEarlierAttemptsKey)
+    }
+
+    #if DEBUG
+        func keepEarlierAttemptsForTesting(hash: String, ids: [String]) {
+            eventCallbackLock.withLock { keepEarlierAttempts(hash: hash.lowercased(), ids: ids) }
+        }
+    #endif
+
+    /// Spark's ids of every attempt a send of `paymentHash` followed, kept past its hold.
+    func keptRailSendEarlierAttemptIds(paymentHash: String) -> Set<String> {
+        let hash = paymentHash.lowercased()
+        return eventCallbackLock.withLock {
+            let entries = railAttemptsStore.array(forKey: Self.keptRailSendEarlierAttemptsKey) as? [[String]] ?? []
+            return Set(entries.last { $0.first == hash }?.dropFirst() ?? [])
         }
     }
 
