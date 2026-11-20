@@ -298,6 +298,59 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     @MainActor
+    func testManagerShowsAPaymentThatFailsWhileAllowancesAreOffAgain() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "leaving", request: request, stage: .sent)]),
+            identity: Fixtures.identityKey
+        )
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            payableNow: { $0 }
+        )
+        manager.pause(identity: Fixtures.identityKey)
+        await Self.waitUntilOnMain { manager.hasSentPayment(request) }
+
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "leaving", request: request, stage: .failed)]),
+            identity: Fixtures.identityKey
+        )
+        await manager.refresh()
+
+        XCTAssertFalse(manager.hasSentPayment(request))
+        XCTAssertEqual(manager.payable([request]).map(\.id), [request.id])
+    }
+
+    @MainActor
+    func testManagerHidesEveryRequestOfAPassFromItsStart() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            payableNow: { $0 }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+        let first = try Fixtures.paymentRequest()
+        let second = try Fixtures.paymentRequest(id: "550e8400-e29b-41d4-a716-446655440002")
+        let shownDuringFirstPayment = PayableProbe()
+        await harness.sdk.setBeforeAcceptance {
+            let shown = await MainActor.run { manager.payable([first, second]).map(\.id) }
+            shownDuringFirstPayment.record(shown)
+        }
+
+        _ = await manager.processIncomingRequests([first, second])
+
+        XCTAssertEqual(shownDuringFirstPayment.first, [])
+        XCTAssertFalse(manager.isPaying(first))
+        XCTAssertFalse(manager.isPaying(second))
+    }
+
+    @MainActor
     func testManagerHandsBackARequestAboveTheLimitsWhileWaitingForAChannel() async throws {
         let harness = AllowanceHarness()
         try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
@@ -3641,5 +3694,18 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
             associationRevision: nil,
             attempts: []
         )
+    }
+}
+
+private final class PayableProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [[PaykitPaymentRequest.ID]] = []
+
+    var first: [PaykitPaymentRequest.ID]? {
+        lock.withLock { recorded.first }
+    }
+
+    func record(_ ids: [PaykitPaymentRequest.ID]) {
+        lock.withLock { recorded.append(ids) }
     }
 }

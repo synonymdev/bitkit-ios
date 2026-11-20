@@ -71,6 +71,8 @@ final class PaykitAllowanceManager {
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let payableNow: @MainActor ([PaykitPaymentRequest]) -> [PaykitPaymentRequest]
     @ObservationIgnored private var identity: String?
+    /// The identity whose records stay loaded while allowances are off, so a payment settling then still updates them.
+    @ObservationIgnored private var pausedIdentity: String?
     /// Changes on every activation and deactivation, so work started under an earlier one drops its results.
     @ObservationIgnored private var activation = 0
     @ObservationIgnored private var isProcessingRequests = false
@@ -202,12 +204,14 @@ final class PaykitAllowanceManager {
             guard let recordsIdentity = recordsIdentity ?? fallbackIdentity else { return }
             let state = await executor.localState(identity: recordsIdentity)
             guard activation == pauseActivation else { return }
+            pausedIdentity = recordsIdentity
             localState = state
         }
     }
 
     private func clear() {
         identity = nil
+        pausedIdentity = nil
         activation += 1
         allowances = []
         localState = PaykitAllowanceLocalState()
@@ -220,7 +224,11 @@ final class PaykitAllowanceManager {
     }
 
     func refresh() async {
-        guard let identity else { return }
+        guard let identity else {
+            // While allowances are off only this wallet's records are shown; a payment settling then still updates them.
+            await reloadLocalState()
+            return
+        }
         let refreshActivation = activation
         updateDepth += 1
         defer { updateDepth -= 1 }
@@ -258,7 +266,7 @@ final class PaykitAllowanceManager {
 
     /// Reads this wallet's own allowance records again, without the SDK, so the views follow a payment as it leaves.
     func reloadLocalState() async {
-        guard let identity else { return }
+        guard let identity = identity ?? pausedIdentity else { return }
         let reloadActivation = activation
         let state = await executor.localState(identity: identity)
         guard activation == reloadActivation else { return }
@@ -518,16 +526,15 @@ final class PaykitAllowanceManager {
 
         isProcessingRequests = true
         var started: Set<PaykitPaymentRequest.ID> = []
+        // The whole pass is hidden from its start, so a request waiting its turn never shows while an earlier one is paid.
+        payingRequestIds.formUnion(payableIds)
         defer {
             isProcessingRequests = false
             // Kept until the refresh below has read the journal, which then keeps a started request off the pending views.
-            if activation == passActivation {
-                payingRequestIds.subtract(started)
-            }
+            payingRequestIds.subtract(payableIds)
         }
         for request in payable {
             guard activation == passActivation else { break }
-            payingRequestIds.insert(request.id)
             let result = await executor.autoPay(request, allowances: allowances, identity: identity)
             Logger.info("Automatic payment pass for a covered request ended as \(result)", context: "PaykitAllowance")
             switch result {
@@ -539,9 +546,7 @@ final class PaykitAllowanceManager {
             case .deferred:
                 break
             }
-            if activation == passActivation {
-                payingRequestIds.remove(request.id)
-            }
+            payingRequestIds.remove(request.id)
         }
         if !started.isEmpty {
             await refresh()
@@ -560,7 +565,12 @@ final class PaykitAllowanceManager {
 
     /// Pending requests, without those an allowance is paying now and those this wallet already paid.
     func payable(_ requests: [PaykitPaymentRequest]) -> [PaykitPaymentRequest] {
-        requests.filter { !payingRequestIds.contains($0.id) && !hasSentPayment($0) }
+        requests.filter { !isPaying($0) && !hasSentPayment($0) }
+    }
+
+    /// Whether an automatic payment pass is paying the request now, before the journal shows the payment.
+    func isPaying(_ request: PaykitPaymentRequest) -> Bool {
+        payingRequestIds.contains(request.id)
     }
 
     /// Whether this wallet's records show it already paid the request, even while the ledger read back has no record of it.
