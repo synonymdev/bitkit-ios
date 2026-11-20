@@ -84,8 +84,7 @@ final class PaykitAllowanceManager {
         updateDepth > 0
     }
 
-    /// Observed, so a request found manual comes back to the pending views.
-    private var manualRequestIds: [PaykitPaymentRequest.ID: Int] = [:]
+    @ObservationIgnored private var manualRequestIds: [PaykitPaymentRequest.ID: Int] = [:]
 
     /// Requests an automatic payment pass is paying now, kept until the journal shows the payment, so the pending views
     /// never show a request while an allowance pays it.
