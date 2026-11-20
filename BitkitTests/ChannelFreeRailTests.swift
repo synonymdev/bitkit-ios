@@ -1099,6 +1099,33 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(replayed, [], "the earlier attempt's row replaced the retry's")
     }
 
+    func testAHeldTakenRetryReadsPendingWhileSparkListsOnlyAnEarlierFailure() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        service.now = { Date(timeIntervalSince1970: 1000) }
+        let earlier = Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil, id: "earlier")
+        let other = Bitkit.ChannelFreeRailPayment(paymentHash: "other", direction: .outbound, status: .failed, preimage: nil, id: "o")
+        rail.payments = [earlier]
+        rail.balanceSats = 100_000
+        rail.sentPaymentId = "retry"
+        _ = try await service.send(bolt11: Self.invoice)
+
+        // Spark lists only the earlier failure, or nothing: the retry it took reads as pending, and other sends as they are.
+        for listed in [[earlier, other], [other]] {
+            let statuses = service.withHeldRailSends(listed)
+            let send = Bitkit.ChannelFreeRailPayment.latestOutboundAttempt(statuses, paymentHash: hash)
+            XCTAssertEqual(send?.status, .pending)
+            XCTAssertEqual(send?.id, "retry")
+            XCTAssertFalse(statuses.contains(earlier))
+            XCTAssertTrue(statuses.contains(other))
+        }
+
+        // Spark listing the retry's own outcome decides it.
+        let failedRetry = Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil, id: "retry")
+        let statuses = service.withHeldRailSends([earlier, failedRetry])
+        XCTAssertEqual(Bitkit.ChannelFreeRailPayment.latestOutboundAttempt(statuses, paymentHash: hash), failedRetry)
+    }
+
     func testAnOlderAttemptMissingFromTheListBeforeASendInDoubtKeepsItsHold() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         let service = Bitkit.LightningService.shared

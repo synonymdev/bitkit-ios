@@ -308,10 +308,10 @@ struct PaykitLightningPaymentProofLookup: PaykitLightningPaymentProofLookingUp {
         }
     }
 
-    /// Spark payments are not in LDK's list, so a proof whose completion event was missed settles from Spark's own record.
-    /// Unavailable while Spark can't list its payments.
+    /// Spark payments are not in LDK's list, so a proof whose completion event was missed settles from Spark's own record,
+    /// with a send still held read as pending. Unavailable while Spark can't list its payments.
     static func railStatus(paymentHash: String) async -> PaykitLightningPaymentProofStatus {
-        guard let payments = try? await LightningService.shared.channelFreeRailPayments() else {
+        guard let payments = try? await LightningService.shared.channelFreeRailSendStatuses() else {
             return .unavailable
         }
         guard let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: paymentHash) else {
