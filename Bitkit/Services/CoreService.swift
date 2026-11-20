@@ -2931,7 +2931,7 @@ struct SentPaymentContacts: @unchecked Sendable {
     }
 }
 
-/// Kept as `[hash, id]` pairs, oldest first, for the latest `limit` hashes.
+/// Kept as `[hash, id]` pairs, oldest first, for the latest `limit` hashes and those of sends with kept earlier attempts.
 struct ChannelFreeRowAttempts: @unchecked Sendable {
     private static let key = "channelFreeRowAttemptIds"
     private static let lock = NSLock()
@@ -2958,7 +2958,7 @@ struct ChannelFreeRowAttempts: @unchecked Sendable {
             guard previous != entry, previous.map({ Array($0.prefix(3)) }) != [hash, attemptId, stamp] else { return }
             entries.removeAll { $0.first == hash }
             entries.append(entry)
-            defaults.set(Array(entries.suffix(Self.limit)), forKey: Self.key)
+            defaults.set(capped(entries), forKey: Self.key)
         }
     }
 
@@ -2997,8 +2997,18 @@ struct ChannelFreeRowAttempts: @unchecked Sendable {
             if let entry {
                 entries.append(entry)
             }
-            defaults.set(Array(entries.suffix(Self.limit)), forKey: Self.key)
+            defaults.set(capped(entries), forKey: Self.key)
         }
+    }
+
+    /// Drops the oldest writers past `limit`, keeping those of retried sends while their earlier attempts are kept.
+    private func capped(_ entries: [[String]]) -> [[String]] {
+        let excess = entries.count - Self.limit
+        guard excess > 0 else { return entries }
+        let kept = defaults.array(forKey: LightningService.keptRailSendEarlierAttemptsKey) as? [[String]] ?? []
+        let retried = Set(kept.compactMap(\.first))
+        let dropped = Set(entries.compactMap(\.first).filter { !retried.contains($0) }.prefix(excess))
+        return entries.filter { !dropped.contains($0.first ?? "") }
     }
 
     /// Whether `row` is as its writer left it.
