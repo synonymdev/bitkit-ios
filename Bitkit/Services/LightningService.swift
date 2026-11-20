@@ -1245,8 +1245,9 @@ class LightningService: NodeLifecycleService {
     static let keptEarlierAttemptsLimit = 100
     /// The rail's id of each send Spark took, by hash, until it settles: any other attempt's failure is an earlier one's.
     private static let takenRailSendsKey = "channelFreeRailTakenSendIds"
-    /// Hashes of taken sends Spark never listed whose hold ended before their row was failed, retried on each rail sync.
-    private static let unlistedTakenRailSendsUnfailedKey = "channelFreeRailUnlistedTakenSendsUnfailed"
+    /// Taken sends Spark never listed whose hold ended before their row was failed, with the attempt each took, by hash,
+    /// retried on each rail sync.
+    private static let unlistedTakenRailSendsUnfailedKey = "channelFreeRailUnlistedTakenSendsUnfailedIds"
     /// Hashes whose hold ended at their invoice's expiry before their activity was saved, retried on each rail sync.
     private static let expiredRailHoldsUnrecordedKey = "channelFreeRailExpiredHoldsUnrecorded"
     /// A listing drops the hashes it shows failed only, or paid once the invoice has expired, so the other rail can't
@@ -1923,10 +1924,10 @@ class LightningService: NodeLifecycleService {
             return false
         }
         eventCallbackLock.withLock {
-            clearRailSendUncertainty(hash: hash)
             var unrecorded = Set(railAttemptsStore.stringArray(forKey: Self.expiredRailHoldsUnrecordedKey) ?? [])
             unrecorded.insert(hash)
             railAttemptsStore.set(Array(unrecorded), forKey: Self.expiredRailHoldsUnrecordedKey)
+            clearRailSendUncertainty(hash: hash)
         }
         await recordExpiredRailHold(hash)
         return true
@@ -1955,9 +1956,9 @@ class LightningService: NodeLifecycleService {
     /// their stored Activity row, as an earlier attempt's row would bring its own amount and fee. A send Spark lists is
     /// left to its own outcome.
     private func endExpiredUnlistedTakenRailSends() async {
-        let unfailed = eventCallbackLock.withLock { railAttemptsStore.stringArray(forKey: Self.unlistedTakenRailSendsUnfailedKey) ?? [] }
-        for hash in unfailed {
-            await failUnlistedTakenRailSend(hash)
+        let unfailed = eventCallbackLock.withLock { unlistedTakenRailSendsUnfailed() }
+        for (hash, ownAttemptId) in unfailed {
+            await failUnlistedTakenRailSend(hash, ownAttemptId: ownAttemptId.isEmpty ? nil : ownAttemptId)
         }
         let nowSeconds = Int(now().timeIntervalSince1970)
         let (expired, taken, earlier) = eventCallbackLock.withLock {
@@ -1989,16 +1990,18 @@ class LightningService: NodeLifecycleService {
                     && !(payment.id.map { Self.isEarlierRailAttempt(id: $0, hash: hash, taken: taken, earlier: earlier) } ?? false)
             }
             guard !isListed else { continue }
-            eventCallbackLock.withLock {
+            let isEnded = eventCallbackLock.withLock {
                 // Left alone if a new send of the invoice started meanwhile.
                 guard takenRailSendIds()[hash] == taken[hash], uncertainRailSendEarlierAttempts()[hash] == earlier[hash],
-                      uncertainRailSendFailedAt()[hash] == nil else { return }
+                      uncertainRailSendFailedAt()[hash] == nil else { return false }
+                var unfailed = unlistedTakenRailSendsUnfailed()
+                unfailed[hash] = taken[hash] ?? ""
+                railAttemptsStore.set(unfailed, forKey: Self.unlistedTakenRailSendsUnfailedKey)
                 clearRailSendUncertainty(hash: hash)
                 removeAttempt(paymentHash: hash, key: Self.railAttemptsKey)
-                var unfailed = Set(railAttemptsStore.stringArray(forKey: Self.unlistedTakenRailSendsUnfailedKey) ?? [])
-                unfailed.insert(hash)
-                railAttemptsStore.set(Array(unfailed), forKey: Self.unlistedTakenRailSendsUnfailedKey)
+                return true
             }
+            guard isEnded else { continue }
             await failUnlistedTakenRailSend(hash, ownAttemptId: taken[hash])
         }
     }
@@ -2006,9 +2009,16 @@ class LightningService: NodeLifecycleService {
     private func failUnlistedTakenRailSend(_ hash: String, ownAttemptId: String? = nil) async {
         guard let fail = railTakenSendUnlisted, await fail(hash, ownAttemptId) else { return }
         eventCallbackLock.withLock {
-            let unfailed = railAttemptsStore.stringArray(forKey: Self.unlistedTakenRailSendsUnfailedKey) ?? []
-            railAttemptsStore.set(unfailed.filter { $0 != hash }, forKey: Self.unlistedTakenRailSendsUnfailedKey)
+            var unfailed = unlistedTakenRailSendsUnfailed()
+            unfailed.removeValue(forKey: hash)
+            railAttemptsStore.set(unfailed, forKey: Self.unlistedTakenRailSendsUnfailedKey)
         }
+    }
+
+    /// Sends whose hold ended but whose Activity row isn't failed yet, each with Spark's id of the attempt it took (empty
+    /// when none). Callers hold `eventCallbackLock`.
+    private func unlistedTakenRailSendsUnfailed() -> [String: String] {
+        railAttemptsStore.dictionary(forKey: Self.unlistedTakenRailSendsUnfailedKey) as? [String: String] ?? [:]
     }
 
     private func recordExpiredRailHold(_ hash: String) async {

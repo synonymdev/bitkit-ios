@@ -1043,6 +1043,7 @@ extension ChannelFreeRailTests {
         rail.balanceSats = 0
         var replayed: [String] = []
         var failed: [String] = []
+        var failedAttemptIds: [String?] = []
         var saves = false
         let previousHook = service.railSendHoldExpired
         let previousUnlisted = service.railTakenSendUnlisted
@@ -1051,7 +1052,11 @@ extension ChannelFreeRailTests {
             service.railTakenSendUnlisted = previousUnlisted
         }
         service.railSendHoldExpired = { replayed.append($0); return true }
-        service.railTakenSendUnlisted = { hash, _ in failed.append(hash); return saves }
+        service.railTakenSendUnlisted = { hash, ownAttemptId in
+            failed.append(hash)
+            failedAttemptIds.append(ownAttemptId)
+            return saves
+        }
 
         let expiresAt = invoice.secondsSinceEpoch() + invoice.expiryTimeSeconds()
         let graceEnds = expiresAt + UInt64(Bitkit.LightningService.unlistedRailSendGraceSeconds)
@@ -1088,6 +1093,7 @@ extension ChannelFreeRailTests {
         saves = true
         await service.endExpiredRailSendUncertainties()
         XCTAssertEqual(failed, [hash, hash], "a row that failed to save wasn't retried")
+        XCTAssertEqual(failedAttemptIds, ["retry", "retry"], "the retried write lost the taken attempt's id")
         await service.endExpiredRailSendUncertainties()
         XCTAssertEqual(failed, [hash, hash], "a saved row was failed again")
         XCTAssertEqual(replayed, [], "the earlier attempt's row replaced the retry's")
