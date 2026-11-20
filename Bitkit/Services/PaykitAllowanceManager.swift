@@ -530,7 +530,6 @@ final class PaykitAllowanceManager {
         payingRequestIds.formUnion(payableIds)
         defer {
             isProcessingRequests = false
-            // Kept until the refresh below has read the journal, which then keeps a started request off the pending views.
             payingRequestIds.subtract(payableIds)
         }
         for request in payable {
@@ -540,7 +539,8 @@ final class PaykitAllowanceManager {
             switch result {
             case .started:
                 started.insert(request.id)
-                continue
+                // Released only once the journal it left is loaded, which then keeps it hidden.
+                await reloadLocalState()
             case .manual, .notCovered:
                 manualRequestIds[request.id] = signature
             case .deferred:
@@ -578,9 +578,9 @@ final class PaykitAllowanceManager {
         request.direction == .incoming && request.billingPeriod == nil && localState.hasSentPayment(request.id)
     }
 
-    /// Whether this wallet's records show the payment of the request succeeded, not just that it left.
-    func hasSettledPayment(_ request: PaykitPaymentRequest) -> Bool {
-        hasSentPayment(request) && (autoPaidRequestIds.contains(request.id) || localState.hasSettledPayment(request.id))
+    /// Whether an automatic payment of the request has left the wallet and not settled yet.
+    func isPayingAutomatically(_ request: PaykitPaymentRequest) -> Bool {
+        localState.isPayingAutomatically(request.id)
     }
 
     /// Whether an allowance this wallet grants, or was asked to grant, could start covering the request's contact.

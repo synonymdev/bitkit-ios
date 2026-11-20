@@ -325,6 +325,33 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     @MainActor
+    func testManagerReleasesAStartedRequestWithItsRecordLoadedBeforeThePassEnds() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            payableNow: { $0 }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+        let first = try Fixtures.paymentRequest()
+        let second = try Fixtures.paymentRequest(id: "550e8400-e29b-41d4-a716-446655440002")
+        let firstState = StateProbe()
+        await harness.sdk.setBeforeAcceptance {
+            let state = await MainActor.run { (manager.isPaying(first), manager.hasSentPayment(first)) }
+            firstState.record(state)
+        }
+
+        _ = await manager.processIncomingRequests([first, second])
+
+        let states = firstState.all
+        XCTAssertEqual(states.count, 2)
+        XCTAssertEqual(states.last?.0, false, "The started request is released before the next one pays")
+        XCTAssertEqual(states.last?.1, true, "Its record is loaded by then, so it stays hidden")
+    }
+
+    @MainActor
     func testManagerHidesEveryRequestOfAPassFromItsStart() async throws {
         let harness = AllowanceHarness()
         try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
@@ -3718,5 +3745,18 @@ private final class PayableProbe: @unchecked Sendable {
 
     func record(_ ids: [PaykitPaymentRequest.ID]) {
         lock.withLock { recorded.append(ids) }
+    }
+}
+
+private final class StateProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [(Bool, Bool)] = []
+
+    var all: [(Bool, Bool)] {
+        lock.withLock { recorded }
+    }
+
+    func record(_ state: (Bool, Bool)) {
+        lock.withLock { recorded.append(state) }
     }
 }

@@ -122,10 +122,10 @@ struct PaykitAllowanceLocalState: Codable, Equatable {
         }
     }
 
-    /// Whether this wallet's journal shows the payment of the request succeeded, not just that it left.
-    func hasSettledPayment(_ requestId: PaykitPaymentRequest.ID) -> Bool {
+    /// Whether an automatic payment of the request has left the wallet and not settled yet.
+    func isPayingAutomatically(_ requestId: PaykitPaymentRequest.ID) -> Bool {
         journal.contains {
-            $0.stage == .succeeded && $0.requestId.paymentRequestId == requestId.paymentRequestId &&
+            $0.isAutomatic && [.sending, .sent, .unknown].contains($0.stage) && $0.requestId.paymentRequestId == requestId.paymentRequestId &&
                 PubkyPublicKeyFormat.matches($0.requestId.counterparty, requestId.counterparty)
         }
     }
