@@ -186,6 +186,24 @@ final class SparkRelaunchActivityTests: XCTestCase {
         XCTAssertEqual(attempts.attemptId(forPaymentHash: "hash\(ChannelFreeRowAttempts.limit)"), "id\(ChannelFreeRowAttempts.limit)")
     }
 
+    func testChannelFreeRowAttemptsKeepARetriedSendsWriterPastTheLatestSends() throws {
+        let suite = "ChannelFreeRowAttemptsTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set([["retried", "earlier"]], forKey: LightningService.keptRailSendEarlierAttemptsKey)
+        let attempts = ChannelFreeRowAttempts(defaults: defaults)
+        attempts.remember("original", forPaymentHash: "retried", stamp: "1:2:3")
+        attempts.remember("id", forPaymentHash: "plain", stamp: "1:2:3")
+        for index in 0 ..< ChannelFreeRowAttempts.limit {
+            attempts.remember("id\(index)", forPaymentHash: "later\(index)", stamp: "1:2:3")
+        }
+
+        XCTAssertEqual(attempts.entry(forPaymentHash: "retried"), ["retried", "original", "1:2:3", "", ""])
+        XCTAssertNil(attempts.entry(forPaymentHash: "plain"))
+        XCTAssertNil(attempts.entry(forPaymentHash: "later0"))
+        XCTAssertEqual((defaults.array(forKey: "channelFreeRowAttemptIds") as? [[String]])?.count, ChannelFreeRowAttempts.limit)
+    }
+
     func testASameSecondFailureTakesTheRowOnlyAsTheSendAfterTheRowsAttempt() {
         // The row's own attempt, and a row or failure without an id, write it.
         XCTAssertFalse(ActivityService.isOtherRowAttempt("first", rowAttemptId: "first"))

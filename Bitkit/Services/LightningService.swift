@@ -1255,7 +1255,7 @@ class LightningService: NodeLifecycleService {
     private static let uncertainRailSendsEarlierAttemptsKey = "channelFreeRailUncertainSendEarlierAttempts"
     /// The rail's ids of the attempts each send followed, kept past its hold as `[hash, ids…]` for the latest
     /// `keptEarlierAttemptsLimit` hashes, so a failure of one never writes over the send's own row after a restart.
-    private static let keptRailSendEarlierAttemptsKey = "channelFreeRailKeptSendEarlierAttempts"
+    static let keptRailSendEarlierAttemptsKey = "channelFreeRailKeptSendEarlierAttempts"
     static let keptEarlierAttemptsLimit = 100
     /// The rail's id of each send Spark took, by hash, until it settles: any other attempt's failure is an earlier one's.
     private static let takenRailSendsKey = "channelFreeRailTakenSendIds"
