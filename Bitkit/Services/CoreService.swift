@@ -1141,10 +1141,11 @@ class ActivityService {
         }
     }
 
-    /// Whether `railPaymentId` is an attempt a send of the invoice followed, other than the row's, whatever Spark's dates.
+    /// Whether `railPaymentId` is an attempt a send of the invoice followed, before the row's, whatever Spark's dates. When
+    /// the row's attempt is one such send followed too, the list doesn't order the two, so their dates do.
     static func isKnownEarlierAttempt(_ railPaymentId: String?, rowAttemptId: String?, keptEarlierAttemptIds: Set<String>) -> Bool {
         guard let railPaymentId, railPaymentId != rowAttemptId else { return false }
-        return keptEarlierAttemptIds.contains(railPaymentId)
+        return keptEarlierAttemptIds.contains(railPaymentId) && !(rowAttemptId.map(keptEarlierAttemptIds.contains) ?? false)
     }
 
     /// Whether `railPaymentId` is another attempt than the row's, and not the send that went out after it: the send in

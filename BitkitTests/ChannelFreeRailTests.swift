@@ -1396,6 +1396,8 @@ extension ChannelFreeRailTests {
         XCTAssertFalse(ActivityService.isKnownEarlierAttempt("a1", rowAttemptId: "a1", keptEarlierAttemptIds: ["a1"]))
         XCTAssertFalse(ActivityService.isKnownEarlierAttempt("later", rowAttemptId: "retry", keptEarlierAttemptIds: ["a1"]))
         XCTAssertFalse(ActivityService.isKnownEarlierAttempt(nil, rowAttemptId: "retry", keptEarlierAttemptIds: ["a1"]))
+        // Two attempts a later send both followed aren't ordered by it.
+        XCTAssertFalse(ActivityService.isKnownEarlierAttempt("a2", rowAttemptId: "a1", keptEarlierAttemptIds: ["a1", "a2"]))
     }
 
     func testAnExpiredHoldWritesALiveRetryOverAFailureWithTheSameTimestamp() async {
