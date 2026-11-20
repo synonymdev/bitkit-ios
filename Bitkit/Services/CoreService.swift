@@ -1015,8 +1015,14 @@ class ActivityService {
             // The Spark receive of a move can settle the send before the node's routing fee is recorded.
             let feeChanging = payment.feePaidMsat.map { $0 / 1000 != existing.fee } ?? false
             let needsPrivateContactAttribution = existing.contact == nil && payment.direction == .inbound
+            // Spark dates each attempt at its start: of two failed attempts, the later one's amount, fee and time stay.
+            let isRailFailureOverFailure = rail == .channelFree && state == .failed && existing.status == .failed
+            if isRailFailureOverFailure, existing.timestamp > paymentTimestamp {
+                return
+            }
+            let isLaterRailFailure = isRailFailureOverFailure && paymentTimestamp > existing.timestamp
             if existingUpdatedAt > paymentTimestamp && !statusChanging && !feeChanging && !needsPrivateContactAttribution
-                && !replacesSelfReceive
+                && !replacesSelfReceive && !isLaterRailFailure
             {
                 return
             }
