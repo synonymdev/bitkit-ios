@@ -23,8 +23,9 @@ enum MoveToSparkMath {
     }
 
     /// What the usable channels can send in all, which a paid part lowers even where a peer's HTLC cap keeps the
-    /// next-HTLC limit flat. A channel we funded holds back its commitment fee, so it counts the lower of the limits LDK
-    /// leaves for either commitment type, and at least its next-HTLC limit.
+    /// next-HTLC limit flat. A channel we funded holds back its commitment fee: its limit is the total when it matches
+    /// the limit LDK leaves for either commitment type; a peer's HTLC cap below both hides the type, so it counts the
+    /// higher one, which prices every part that can route and at most one more.
     static func outboundSats(channels: [ChannelDetails]?) -> UInt64 {
         (channels ?? []).filter(\.isUsable).map(sendableSats).reduce(0, +)
     }
@@ -32,15 +33,17 @@ enum MoveToSparkMath {
     private static func sendableSats(_ channel: ChannelDetails) -> UInt64 {
         let outboundSats = channel.outboundCapacityMsat / 1000
         guard channel.isOutbound else { return outboundSats }
-        let clearedMsat = [false, true].map { isLegacy in
-            clearedLimitMsat(
+        let limitSats = Int64(channel.nextOutboundHtlcLimitMsat / 1000)
+        let clearedSats = [false, true].map { isLegacy in
+            max(0, clearedLimitMsat(
                 capacityMsat: Int64(channel.outboundCapacityMsat),
                 feerate: Int64(channel.feerateSatPer1000Weight),
                 isLegacy: isLegacy
-            )
-        }.min() ?? 0
-        let clearedSats = UInt64(max(0, clearedMsat)) / 1000
-        return min(outboundSats, max(channel.nextOutboundHtlcLimitMsat / 1000, clearedSats))
+            )) / 1000
+        }
+        let isUncapped = clearedSats.contains { abs(limitSats - $0) <= 1 }
+        let totalSats = isUncapped ? limitSats : max(limitSats, clearedSats.max() ?? 0)
+        return min(outboundSats, UInt64(totalSats))
     }
 
     /// Whether Spark can take a move; every Move to Spark check goes through here.

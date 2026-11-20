@@ -77,6 +77,12 @@ final class MoveToSparkQuoteTests: XCTestCase {
         XCTAssertEqual(quote.feeSats, 32, "One part: the commitment fee the channel holds back is not balance to move")
     }
 
+    func testAFundedChannelWithAPeerHtlcCapPricesItsLastPart() async throws {
+        let capped = [ChannelDetails.mock(outboundCapacityMsat: 65_000_000, nextOutboundHtlcLimitMsat: 30_032_000)]
+        let quote = try await MoveToSparkManager(services: FakeServices()).makeQuote(channels: capped)
+        XCTAssertEqual(quote.feeSats, 3 * 32, "The anchor commitment's smaller reserve leaves a third part to price")
+    }
+
     func testNoPartThatRoutesIsNoRoute() async {
         let services = FakeServices()
         services.estimate = { _ in throw NodeError.RouteNotFound(message: "no route") }
