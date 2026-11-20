@@ -1824,6 +1824,34 @@ extension ChannelFreeRailTests {
         await assertReachesTheNode()
     }
 
+    func testAFailureDuringASendCallThatThenThrowsSettlesTheSendInDoubt() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        rail.balanceSats = 100_000
+        var failures = 0
+        Bitkit.LightningService.shared.setEventCallback { event in
+            if case .paymentFailed = event {
+                failures += 1
+            }
+        }
+        // Spark fails the attempt during its send call, and the call then loses its connection.
+        rail.afterSubmission = {
+            Bitkit.LightningService.shared.emitChannelFreeRailEvent(.paymentFailed(paymentId: hash, paymentHash: hash, reason: nil))
+        }
+        rail.errorAfterSubmission = NSError(domain: "spark", code: 2)
+
+        do {
+            _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+            XCTFail("The send call's error was swallowed")
+        } catch {}
+        XCTAssertEqual(failures, 1, "The failure held during the call was lost")
+        rail.afterSubmission = nil
+        rail.errorAfterSubmission = nil
+        rail.listError = NSError(domain: "spark", code: 1)
+        rail.balanceSats = 0
+
+        await assertReachesTheNode()
+    }
+
     func testAnEarlierAttemptsFailureDuringTheCallLeavesAPendingSendHeld() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         rail.sentPaymentId = "retry"
