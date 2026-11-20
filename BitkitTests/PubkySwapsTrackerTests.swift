@@ -170,6 +170,87 @@ final class PubkySwapsTrackerTests: XCTestCase {
         XCTAssertNil(store.holdPayment(for: "swap"))
     }
 
+    // MARK: - Wake grants
+
+    func testASwapThatStopsBeingTrackedRevokesItsGrant() async throws {
+        let finished = FinishedSwaps()
+        let advance = ScriptedAdvance([.success(.claimed(txid: "tx"))])
+        let tracker = makeTracker(advance, didFinish: { await finished.add($0) })
+        await tracker.didCommit("confirmed")
+        await tracker.resume()
+        try await waitUntilFinished(tracker, "confirmed")
+
+        await tracker.didCommit("dropped")
+        await tracker.drop("dropped")
+
+        try await waitUntil { await finished.swapIds == ["confirmed", "dropped"] }
+    }
+
+    // MARK: - Claimable wakes
+
+    func testAClaimableWakeWithNoOpenSwapIsHandled() async {
+        let tracker = makeTracker(ScriptedAdvance([.success(.awaitingPayment)]))
+
+        let isHandled = await tracker.advanceForClaimableWake(timeout: .seconds(1), interval: .milliseconds(5))
+
+        XCTAssertTrue(isHandled)
+    }
+
+    func testAClaimableWakeIsHandledOnceAClaimGoesOutAndKeepsAdvancing() async throws {
+        let advance = ScriptedAdvance([
+            .success(.awaitingLockup(confirmations: 0, required: 1)),
+            .success(.claimBroadcast(txid: "tx")),
+            .success(.claimed(txid: "tx")),
+        ])
+        let tracker = makeTracker(advance)
+        store.track(["swap"])
+
+        let isHandled = await tracker.advanceForClaimableWake(timeout: .seconds(2), interval: .milliseconds(5))
+
+        XCTAssertTrue(isHandled)
+        try await waitUntilFinished(tracker, "swap")
+    }
+
+    func testAClaimableWakeFailsWhenNoClaimGoesOutInTime() async {
+        let tracker = makeTracker(ScriptedAdvance([.success(.awaitingLockup(confirmations: 0, required: 1))]))
+        store.track(["swap"])
+
+        let isHandled = await tracker.advanceForClaimableWake(timeout: .milliseconds(50), interval: .milliseconds(5))
+
+        XCTAssertFalse(isHandled)
+        let isAdvancing = await tracker.isAdvancing("swap")
+        XCTAssertTrue(isAdvancing)
+        await tracker.resetForWipe()
+    }
+
+    func testAClaimableWakeWhoseSwapsAllEndedIsHandled() async {
+        let outcomes: [Result<PubkySwapRouteState, Error>] = [
+            .success(.failed(reason: "refunded")),
+            .success(.claimed(txid: "tx")),
+            .failure(PubkySwapError.NotFound(errorDetails: "swap")),
+        ]
+        for outcome in outcomes {
+            let tracker = makeTracker(ScriptedAdvance([outcome]))
+            store.track(["swap"])
+
+            let isHandled = await tracker.advanceForClaimableWake(timeout: .seconds(1), interval: .milliseconds(5))
+
+            XCTAssertTrue(isHandled, "\(outcome)")
+            await tracker.resetForWipe()
+        }
+    }
+
+    func testAClaimableWakeKeepsTryingAfterATransientFailure() async {
+        let advance = ScriptedAdvance([.failure(PubkySwapError.Transport(errorDetails: "offline")), .success(.claimBroadcast(txid: "tx"))])
+        let tracker = makeTracker(advance)
+        store.track(["swap"])
+
+        let isHandled = await tracker.advanceForClaimableWake(timeout: .seconds(2), interval: .milliseconds(5))
+
+        XCTAssertTrue(isHandled)
+        await tracker.resetForWipe()
+    }
+
     // MARK: - Helpers
 
     private var store: UnfinishedPubkySwapsStore {
@@ -178,15 +259,27 @@ final class PubkySwapsTrackerTests: XCTestCase {
 
     private func makeTracker(
         _ advance: ScriptedAdvance,
-        isHoldPaymentFailed: @escaping @Sendable (PubkySwapHoldPayment) async -> Bool = { _ in false }
+        isHoldPaymentFailed: @escaping @Sendable (PubkySwapHoldPayment) async -> Bool = { _ in false },
+        didFinish: @escaping @Sendable (String) async -> Void = { _ in }
     ) -> PubkySwapsTracker {
         PubkySwapsTracker(
             store: store,
             advance: { _ in try await advance.next() },
             isHoldPaymentFailed: isHoldPaymentFailed,
+            didFinish: didFinish,
             claimPollInterval: .milliseconds(5),
             confirmationPollInterval: .milliseconds(5)
         )
+    }
+
+    private func waitUntil(_ condition: () async -> Bool) async throws {
+        for _ in 0 ..< 400 {
+            if await condition() {
+                return
+            }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTFail("Condition not met in time")
     }
 
     private func waitUntilFinished(_ tracker: PubkySwapsTracker, _ swapId: String) async throws {
@@ -213,5 +306,14 @@ actor ScriptedAdvance {
     func next() throws -> PubkySwapRouteState {
         defer { calls += 1 }
         return try outcomes[min(calls, outcomes.count - 1)].get()
+    }
+}
+
+/// The swaps a tracker reported finished, in order.
+actor FinishedSwaps {
+    private(set) var swapIds: [String] = []
+
+    func add(_ swapId: String) {
+        swapIds.append(swapId)
     }
 }

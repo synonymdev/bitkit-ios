@@ -66,15 +66,19 @@ struct UnfinishedPubkySwapsStore {
 actor PubkySwapsTracker {
     typealias Advance = @Sendable (_ swapId: String) async throws -> PubkySwapRouteState
     typealias HoldPaymentCheck = @Sendable (PubkySwapHoldPayment) async -> Bool
+    typealias Finished = @Sendable (_ swapId: String) async -> Void
 
-    static let shared = PubkySwapsTracker(
+    static let shared: PubkySwapsTracker = .init(
         advance: { try await PubkySwapsRouteService.advance(swapId: $0) },
-        isHoldPaymentFailed: { await PubkySwapsRouteService.isHoldPaymentFailed($0) }
+        isHoldPaymentFailed: { await PubkySwapsRouteService.isHoldPaymentFailed($0) },
+        didFinish: { await PubkySwapsWakeGrants.shared.revoke(swapId: $0) }
     )
 
     private let store: UnfinishedPubkySwapsStore
     private let advance: Advance
     private let isHoldPaymentFailed: HoldPaymentCheck
+    /// Runs once a swap stops being tracked, so its wake grant is revoked.
+    private let didFinish: Finished
     private let claimPollInterval: Duration
     private let confirmationPollInterval: Duration
 
@@ -91,12 +95,14 @@ actor PubkySwapsTracker {
         store: UnfinishedPubkySwapsStore = UnfinishedPubkySwapsStore(),
         advance: @escaping Advance,
         isHoldPaymentFailed: @escaping HoldPaymentCheck,
+        didFinish: @escaping Finished = { _ in },
         claimPollInterval: Duration = .seconds(2),
         confirmationPollInterval: Duration = .seconds(30)
     ) {
         self.store = store
         self.advance = advance
         self.isHoldPaymentFailed = isHoldPaymentFailed
+        self.didFinish = didFinish
         self.claimPollInterval = claimPollInterval
         self.confirmationPollInterval = confirmationPollInterval
     }
@@ -139,7 +145,7 @@ actor PubkySwapsTracker {
     func drop(_ swapId: String) {
         dropped.insert(swapId)
         advancing.removeValue(forKey: swapId)?.cancel()
-        store.untrack(swapId)
+        finish(swapId)
     }
 
     /// Stops the wiped wallet's swaps, so a wallet restored next starts from nothing.
@@ -170,7 +176,7 @@ actor PubkySwapsTracker {
             advanceInBackground(swapId)
             throw CancellationError()
         } catch {
-            store.untrack(swapId)
+            finish(swapId)
             throw error
         }
     }
@@ -195,7 +201,52 @@ actor PubkySwapsTracker {
         // A drop or a wipe that cancelled this loop already removed it.
         guard !Task.isCancelled else { return }
         advancing[swapId] = nil
+        finish(swapId)
+    }
+
+    private func finish(_ swapId: String) {
         store.untrack(swapId)
+        let didFinish = didFinish
+        Task { await didFinish(swapId) }
+    }
+
+    /// A `swap.claimable` wake names no swap, and wakes on the topic collapse, so one may stand for several swaps. Every
+    /// unfinished swap is advanced until each has its claim broadcast or has ended, or `timeout` passes, and then keeps
+    /// advancing in the background. Returns whether a claim went out or no swap is left open.
+    func advanceForClaimableWake(timeout: Duration, interval: Duration) async -> Bool {
+        let run = ClaimableWakeRun(open: Set(store.swapIds))
+        _ = await withDeadline(timeout) { await self.advanceOpenSwaps(run, interval: interval) }
+        for swapId in store.swapIds where !claiming.contains(swapId) {
+            advanceInBackground(swapId)
+        }
+        return run.isClaimBroadcast || run.open.isEmpty
+    }
+
+    private func advanceOpenSwaps(_ run: ClaimableWakeRun, interval: Duration) async {
+        while !run.open.isEmpty, !Task.isCancelled {
+            for swapId in run.open.sorted() {
+                guard !Task.isCancelled else { return }
+                do {
+                    switch try await advance(swapId) {
+                    case .claimBroadcast:
+                        run.isClaimBroadcast = true
+                        run.open.remove(swapId)
+                    case .claimed, .failed:
+                        run.open.remove(swapId)
+                    case .awaitingPayment, .awaitingLockup:
+                        break
+                    }
+                } catch {
+                    if PubkySwapsRouteService.isUnknownSwap(error) {
+                        run.open.remove(swapId)
+                    } else {
+                        Logger.warn("Failed to advance Pubky Swaps route \(swapId) for a wake: \(error)", context: "PubkySwapsRoute")
+                    }
+                }
+            }
+            guard !run.open.isEmpty else { return }
+            try? await Task.sleep(for: interval)
+        }
     }
 
     private func pollClaim(swapId: String, interval: Duration, timeout: TimeInterval?, untilConfirmed: Bool) async throws -> String {
@@ -241,5 +292,15 @@ actor PubkySwapsTracker {
             }
             try await Task.sleep(for: interval)
         }
+    }
+}
+
+/// What a `swap.claimable` wake reached so far, read once its deadline passes.
+private final class ClaimableWakeRun {
+    var open: Set<String>
+    var isClaimBroadcast = false
+
+    init(open: Set<String>) {
+        self.open = open
     }
 }
