@@ -313,12 +313,12 @@ final class WakeReceiverTests: XCTestCase {
         XCTAssertEqual(other, .noHandler)
     }
 
-    func testTheAppHasNoBackgroundHandlersYet() async {
+    func testTheAppHandlesSwapClaimsAndNoPaykitSyncYet() async {
         let paykitSync = await WakeHandlerRegistry.app.outcome(for: Self.envelope(topic: "paykit.sync"))
         let swapClaimable = await WakeHandlerRegistry.app.outcome(for: Self.envelope(topic: "swap.claimable"))
 
         XCTAssertEqual(paykitSync, .noHandler)
-        XCTAssertEqual(swapClaimable, .noHandler)
+        XCTAssertNotEqual(swapClaimable, .noHandler)
     }
 
     func testBackgroundFetchResultFollowsTheAck() {

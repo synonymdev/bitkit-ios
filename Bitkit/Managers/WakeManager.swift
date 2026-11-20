@@ -171,7 +171,9 @@ enum WakeRetry {
 
 extension WakeHandlerRegistry {
     /// Background wakes the app delegate handles. Any other topic is acknowledged `noHandler`.
-    static let app = WakeHandlerRegistry([:])
+    static let app = WakeHandlerRegistry([
+        WakeTopics.swapClaimable: { _ in try await PubkySwapsRouteService.handleClaimableWake() },
+    ])
 }
 
 /// Sends a registration unless the gateway already holds the same one, signed at a timestamp that only increases.

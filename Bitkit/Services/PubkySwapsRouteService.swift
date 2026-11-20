@@ -22,6 +22,9 @@ enum PubkySwapClaimError: Error {
 enum PubkySwapsRouteService {
     private static let claimFeeRateSatVb: UInt64 = 2
     private static let claimTimeout: TimeInterval = 10 * 60
+    /// Within the 30 seconds iOS gives a background push, leaving time to acknowledge the wake.
+    private static let claimableWakeTimeout: Duration = .seconds(18)
+    private static let claimableWakePollInterval: Duration = .seconds(3)
 
     static var isEnabled: Bool {
         Env.isPubkySwapsRouteEnabled
@@ -126,6 +129,10 @@ enum PubkySwapsRouteService {
             bip39Passphrase: passphrase
         )
         await PubkySwapsTracker.shared.didCommit(payment.swapId)
+        // Never holds up or fails the send: without a wake, the wallet claims when it next runs.
+        Task.detached {
+            await PubkySwapsWakeGrants.shared.handOver(swapId: payment.swapId, providerTakesWake: payment.providerTakesWake)
+        }
         return payment
     }
 
@@ -148,6 +155,19 @@ enum PubkySwapsRouteService {
 
     static func resetForWipe() async {
         await PubkySwapsTracker.shared.resetForWipe()
+        await PubkySwapsWakeGrants.shared.resetForWipe()
+    }
+
+    /// Claims the swaps a `swap.claimable` wake stands for, from the app delegate. Throws when no claim went out and a
+    /// swap is still open, so the wake is acknowledged `failed`.
+    static func handleClaimableWake() async throws {
+        let isHandled = await PubkySwapsTracker.shared.advanceForClaimableWake(
+            timeout: claimableWakeTimeout,
+            interval: claimableWakePollInterval
+        )
+        guard isHandled else {
+            throw AppError(message: "No swap claim went out for the wake", debugMessage: nil)
+        }
     }
 
     /// Advance the swap until bitkit-core broadcasts the claim to the contact, returning the claim txid. The provider
