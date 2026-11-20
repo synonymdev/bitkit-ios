@@ -393,6 +393,20 @@ final class SparkTransferFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testASwipeApprovesNoHigherCeilingThanTheQuoteItShowed() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
+        // The requote before sending raised the ceiling over the one the swiped quote showed.
+        flow.quote = quote(instantMax: 3010)
+        let ceilingSats = flow.approveSwipe(shownCeilingSats: 337)
+        XCTAssertEqual(ceilingSats, 337)
+
+        flow.onBroadcast(txid: "txid", ceilingSats: ceilingSats)
+        await flow.waitForClaim()
+
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 800), "Claimed early at a ceiling the swipe never showed")
+    }
+
+    @MainActor
     func testARecoveredFundingKeepsItsOwnApprovalWhenALaterSwipeIsRejected() async {
         let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
         let first = UUID()

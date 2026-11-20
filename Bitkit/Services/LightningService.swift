@@ -1174,10 +1174,13 @@ class LightningService: NodeLifecycleService {
                 guard let paid = try await settledRecordedRailSend(paymentHash: paymentHash, since: mark) else { throw error }
                 return paid
             } catch {
-                // A send that failed once submitted may still go out, so its outcome waits for a later sync, unless an
-                // outcome or sync already settled it while the call returned.
-                if let paymentHash {
-                    markRailSendUncertain(paymentHash: paymentHash, since: mark, earlierAttemptIds: earlierAttemptIds, ifStillInDoubt: true)
+                // A send that failed once submitted may still go out, so its outcome waits for a later sync. One an outcome
+                // already settled while the call returned is read as sent, so its caller reads that outcome.
+                if let paymentHash,
+                   markRailSendUncertain(paymentHash: paymentHash, since: mark, earlierAttemptIds: earlierAttemptIds, ifStillInDoubt: true)
+                {
+                    Logger.info("Spark's send call of '\(paymentHash)' failed after its outcome arrived: \(error)", context: "LightningService")
+                    return paymentHash
                 }
                 throw error
             }
@@ -1697,18 +1700,20 @@ class LightningService: NodeLifecycleService {
 
     /// A rail send about to be submitted, or that failed after it was, until a sync after it and its invoice's expiry
     /// settle it. The expiry is the one kept beside the hash.
+    /// True when `ifStillInDoubt` found the send already settled.
+    @discardableResult
     private func markRailSendUncertain(
         paymentHash: String,
         since mark: AttemptMark,
         earlierAttemptIds: [String]?,
         ifStillInDoubt: Bool = false
-    ) {
+    ) -> Bool {
         let hash = paymentHash.lowercased()
         let failedAt = Int(max(0, now().timeIntervalSince1970))
-        eventCallbackLock.withLock {
-            guard attemptsRecorded(since: mark.records, key: Self.railAttemptsKey).contains(hash) else { return }
+        return eventCallbackLock.withLock {
+            guard attemptsRecorded(since: mark.records, key: Self.railAttemptsKey).contains(hash) else { return false }
             var uncertain = uncertainRailSendFailedAt()
-            guard !ifStillInDoubt || uncertain[hash] != nil else { return }
+            guard !ifStillInDoubt || uncertain[hash] != nil else { return true }
             if uncertain[hash] == nil {
                 var started = uncertainRailSendStartedAt()
                 started[hash] = failedAt
@@ -1724,6 +1729,7 @@ class LightningService: NodeLifecycleService {
             }
             uncertain[hash] = failedAt
             railAttemptsStore.set(uncertain, forKey: Self.uncertainRailSendsKey)
+            return false
         }
     }
 
