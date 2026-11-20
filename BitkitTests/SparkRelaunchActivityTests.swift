@@ -170,9 +170,9 @@ final class SparkRelaunchActivityTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let attempts = ChannelFreeRowAttempts(defaults: defaults)
         for index in 0 ... ChannelFreeRowAttempts.limit {
-            attempts.remember("id\(index)", forPaymentHash: "hash\(index)")
+            attempts.remember("id\(index)", forPaymentHash: "hash\(index)", stamp: "1:2:3")
         }
-        attempts.remember("newer", forPaymentHash: "HASH1")
+        attempts.remember("newer", forPaymentHash: "HASH1", stamp: "1:2:3")
 
         XCTAssertNil(attempts.attemptId(forPaymentHash: "hash0"))
         XCTAssertEqual(attempts.attemptId(forPaymentHash: "hash1"), "newer")
@@ -223,10 +223,21 @@ final class SparkRelaunchActivityTests: XCTestCase {
         try await CoreService.shared.activity.failPendingLightningSend(id: taken, ownAttemptId: "retry", earlierAttemptIds: ["earlier"])
         XCTAssertEqual(ActivityService.channelFreeRowAttempts.attemptId(forPaymentHash: taken), "retry")
 
-        let inDoubt = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() + String(repeating: "eb", count: 16)
-        try await pendingRow(inDoubt)
-        // Without its own id, an earlier attempt that wrote the row no longer counts as the row's own.
-        try await CoreService.shared.activity.failPendingLightningSend(id: inDoubt, earlierAttemptIds: ["earlier"])
-        XCTAssertNil(ActivityService.channelFreeRowAttempts.attemptId(forPaymentHash: inDoubt))
+        let owned = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() + String(repeating: "eb", count: 16)
+        try await pendingRow(owned)
+        // Without its own id, a row the earlier attempt still owns keeps its writer, so that attempt's final fee lands.
+        try await CoreService.shared.activity.failPendingLightningSend(id: owned, earlierAttemptIds: ["earlier"])
+        XCTAssertEqual(ActivityService.channelFreeRowAttempts.attemptId(forPaymentHash: owned), "earlier")
+
+        let overwritten = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() + String(repeating: "ec", count: 16)
+        try await pendingRow(overwritten)
+        // The retry's send wrote over the earlier attempt's row without a Spark id, so that attempt no longer owns it.
+        guard case var .lightning(row)? = try await CoreService.shared.activity.getActivity(id: overwritten) else {
+            return XCTFail("the earlier attempt's row is missing")
+        }
+        row.value = 700
+        try await CoreService.shared.activity.update(id: overwritten, activity: .lightning(row))
+        try await CoreService.shared.activity.failPendingLightningSend(id: overwritten, earlierAttemptIds: ["earlier"])
+        XCTAssertNil(ActivityService.channelFreeRowAttempts.attemptId(forPaymentHash: overwritten))
     }
 }
