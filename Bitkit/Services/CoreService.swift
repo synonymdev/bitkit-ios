@@ -1033,7 +1033,8 @@ class ActivityService {
                        railPaymentId,
                        rowAttemptId: Self.channelFreeRowAttempts.attemptId(forPaymentHash: payment.id, row: existing),
                        earlierAttemptIds: (LightningService.shared.railSendEarlierAttemptIds[payment.id.lowercased()] ?? [])
-                           + LightningService.shared.keptRailSendEarlierAttemptIds(paymentHash: payment.id)
+                           + LightningService.shared.keptRailSendEarlierAttemptIds(paymentHash: payment.id),
+                       keptEarlierAttemptIds: LightningService.shared.keptRailSendEarlierAttemptIds(paymentHash: payment.id)
                    ) || Self.isKnownEarlierAttempt(
                        railPaymentId,
                        rowAttemptId: Self.channelFreeRowAttempts.attemptId(forPaymentHash: payment.id, row: existing),
@@ -1142,16 +1143,29 @@ class ActivityService {
     }
 
     /// Whether `railPaymentId` is an attempt a send of the invoice followed, before the row's, whatever Spark's dates. When
-    /// the row's attempt is one such send followed too, the list doesn't order the two, so their dates do.
-    static func isKnownEarlierAttempt(_ railPaymentId: String?, rowAttemptId: String?, keptEarlierAttemptIds: Set<String>) -> Bool {
-        guard let railPaymentId, railPaymentId != rowAttemptId else { return false }
-        return keptEarlierAttemptIds.contains(railPaymentId) && !(rowAttemptId.map(keptEarlierAttemptIds.contains) ?? false)
+    /// the row's attempt is one such send followed too, the kept list's order, which is the order they went out, decides.
+    static func isKnownEarlierAttempt(_ railPaymentId: String?, rowAttemptId: String?, keptEarlierAttemptIds: [String]) -> Bool {
+        guard let railPaymentId, railPaymentId != rowAttemptId,
+              let index = keptEarlierAttemptIds.firstIndex(of: railPaymentId) else { return false }
+        guard let rowIndex = rowAttemptId.flatMap(keptEarlierAttemptIds.firstIndex(of:)) else { return true }
+        return index < rowIndex
     }
 
     /// Whether `railPaymentId` is another attempt than the row's, and not the send that went out after it: the send in
-    /// flight lists the attempts before it, and its failure is recorded before that list goes.
-    static func isOtherRowAttempt(_ railPaymentId: String?, rowAttemptId: String?, earlierAttemptIds: [String]? = nil) -> Bool {
+    /// flight lists the attempts before it, and its failure is recorded before that list goes. Two attempts both kept past
+    /// a later send's hold are ordered by the kept list.
+    static func isOtherRowAttempt(
+        _ railPaymentId: String?,
+        rowAttemptId: String?,
+        earlierAttemptIds: [String]? = nil,
+        keptEarlierAttemptIds: [String] = []
+    ) -> Bool {
         guard let railPaymentId, let rowAttemptId, railPaymentId != rowAttemptId else { return false }
+        if let index = keptEarlierAttemptIds.firstIndex(of: railPaymentId),
+           let rowIndex = keptEarlierAttemptIds.firstIndex(of: rowAttemptId)
+        {
+            return index < rowIndex
+        }
         let isLaterSend = earlierAttemptIds.map { $0.contains(rowAttemptId) && !$0.contains(railPaymentId) } ?? false
         return !isLaterSend
     }

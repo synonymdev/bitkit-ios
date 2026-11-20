@@ -1863,7 +1863,7 @@ final class SparkManager: ChannelFreeLightningRail {
         return await Self.recordExpiredHold(
             paymentHash: paymentHash,
             payments: payments,
-            earlierAttemptIds: LightningService.shared.keptRailSendEarlierAttemptIds(paymentHash: paymentHash),
+            earlierAttemptIds: Set(LightningService.shared.keptRailSendEarlierAttemptIds(paymentHash: paymentHash)),
             record: { await self.recordActivity($0) },
             failStoredSend: { await Self.failHeldSendRow(paymentHash: $0, ownAttemptId: nil) }
         )
@@ -1873,7 +1873,7 @@ final class SparkManager: ChannelFreeLightningRail {
         await (try? CoreService.shared.activity.failPendingLightningSend(
             id: paymentHash,
             ownAttemptId: ownAttemptId,
-            earlierAttemptIds: LightningService.shared.keptRailSendEarlierAttemptIds(paymentHash: paymentHash)
+            earlierAttemptIds: Set(LightningService.shared.keptRailSendEarlierAttemptIds(paymentHash: paymentHash))
         )) != nil
     }
 
