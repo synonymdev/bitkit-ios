@@ -157,6 +157,9 @@ class LightningService: NodeLifecycleService {
     private var attemptRails: [String: LightningPaymentRail] = [:]
     /// Payment hashes inside a rail send, which Spark lists only once it returns.
     private var railSendsInFlight: Set<String> = []
+    /// Per payment hash, the latest time Spark dated a failed attempt of it, from its list or its events, so a send's
+    /// start is saved after it and that failure never reads as the send's own.
+    private var railFailureCreatedAt: [String: UInt64] = [:]
     /// Counts attempts recorded in this run, so a listing drops a hash just when the hash was recorded before the
     /// listing was read, never a retry recorded while it was read.
     private var attemptRecords = 0
@@ -1420,6 +1423,7 @@ class LightningService: NodeLifecycleService {
             railAttemptsStore.removeObject(forKey: Self.railAttemptsKey)
             railAttemptsStore.removeObject(forKey: Self.expiriesKey(Self.railAttemptsKey))
             attemptRecordedAt[Self.railAttemptsKey] = nil
+            railFailureCreatedAt = [:]
         }
     }
 
@@ -1642,15 +1646,17 @@ class LightningService: NodeLifecycleService {
 
     /// A rail send about to be submitted, or that failed after it was, until Spark settles its attempt or a sync after its
     /// invoice's expiry settles it. The expiry is the one kept beside the hash, and the time the one it was submitted at,
-    /// which a later failure of its call leaves as it is.
+    /// which a later failure of its call leaves as it is. That time is past the clock margin after any failed attempt
+    /// Spark dated for the hash so far, so that failure reads as an earlier attempt's, also after a relaunch.
     private func markRailSendUncertain(paymentHash: String, since mark: AttemptMark) {
         let hash = paymentHash.lowercased()
-        let startedAt = Int(max(0, now().timeIntervalSince1970))
+        let now = Int64(max(0, now().timeIntervalSince1970))
         eventCallbackLock.withLock {
             guard attemptsRecorded(since: mark.records, key: Self.railAttemptsKey).contains(hash) else { return }
             var uncertain = uncertainRailSendFailedAt()
             guard uncertain[hash] == nil else { return }
-            uncertain[hash] = startedAt
+            let afterKnownFailure = railFailureCreatedAt[hash].map { Int64(clamping: $0) + Self.railClockSkewSeconds + 1 } ?? 0
+            uncertain[hash] = Int(clamping: max(now, afterKnownFailure))
             railAttemptsStore.set(uncertain, forKey: Self.uncertainRailSendsKey)
         }
     }
@@ -1674,8 +1680,11 @@ class LightningService: NodeLifecycleService {
     }
 
     /// Ends the sends Spark lists a settled attempt of: a success, or a failure of the send's own attempt.
-    private func settleListedRailSends(_ payments: [ChannelFreeRailPayment]) {
+    func settleListedRailSends(_ payments: [ChannelFreeRailPayment]) {
         let settled = eventCallbackLock.withLock {
+            for payment in payments where payment.direction == .outbound && payment.status == .failed {
+                noteRailFailure(paymentHash: payment.paymentHash, createdAt: payment.timestamp)
+            }
             let uncertain = uncertainRailSendFailedAt()
             return payments.reduce(into: [String: Int]()) { settled, payment in
                 let hash = payment.paymentHash.lowercased()
@@ -1734,6 +1743,12 @@ class LightningService: NodeLifecycleService {
         }
     }
 
+    /// Callers hold `eventCallbackLock`.
+    private func noteRailFailure(paymentHash: String, createdAt: UInt64) {
+        let hash = paymentHash.lowercased()
+        railFailureCreatedAt[hash] = max(railFailureCreatedAt[hash] ?? 0, createdAt)
+    }
+
     /// Whether a Spark failure, of an attempt created at `createdAt`, is the failure of the invoice's send, ending its hold
     /// if it has one, in one step, so a retry that holds the invoice meanwhile is judged by its own hold. Not when Spark
     /// dated it before the send Spark hasn't settled yet, or while a send in Spark's send call wasn't submitted yet, as
@@ -1741,6 +1756,9 @@ class LightningService: NodeLifecycleService {
     private func endRailSendByFailure(paymentHash: String, createdAt: UInt64?) -> Bool {
         let hash = paymentHash.lowercased()
         return eventCallbackLock.withLock {
+            if let createdAt {
+                noteRailFailure(paymentHash: hash, createdAt: createdAt)
+            }
             var uncertain = uncertainRailSendFailedAt()
             guard let startedAt = uncertain[hash] else { return !railSendsInFlight.contains(hash) }
             if let createdAt, !Self.isOwnRailAttempt(createdAt: createdAt, startedAt: startedAt) {
