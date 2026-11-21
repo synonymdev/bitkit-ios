@@ -1919,8 +1919,9 @@ final class SparkManager: ChannelFreeLightningRail {
     /// retry the user started meanwhile keeps its hold, as does one recorded or ending while the list is read.
     static func releaseFailedSendHolds(listPayments: () async throws -> [Payment]) async {
         let mark = LightningService.shared.attemptMark
+        let heldBefore = LightningService.shared.railSendHolds
         guard let latest = try? await listPayments() else { return }
-        LightningService.shared.settleListedRailSends(latest.compactMap(railPayment))
+        LightningService.shared.settleListedRailSends(latest.compactMap(railPayment), heldBefore: heldBefore)
         let isEarlierAttempt = { LightningService.shared.isEarlierRailAttempt(paymentHash: $0, createdAt: $1) }
         for paymentHash in failedSendHashes(latest, isEarlierAttempt: isEarlierAttempt) {
             LightningService.shared.releaseRailAttempt(paymentHash: paymentHash, since: mark)
