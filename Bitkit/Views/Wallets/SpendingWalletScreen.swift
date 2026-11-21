@@ -49,7 +49,7 @@ struct SpendingWalletScreen: View {
                     if !shouldShowOnboarding {
                         if canMoveToSpark {
                             CustomButton(title: t("lightning__move_to_spark__nav_title")) {
-                                navigation.navigate(.moveToSpark)
+                                sheets.showSheet(.moveToSpark)
                             }
                             .accessibilityIdentifier("MoveToSpark")
                             .padding(.top, 28)

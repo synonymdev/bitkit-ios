@@ -1602,8 +1602,11 @@ class WalletViewModel: ObservableObject {
             totalOnchainSats = Int(state.totalOnchainSats)
             totalLightningSats = Int(state.totalLightningSats + sparkBalanceSats)
             totalBalanceSats = Int(state.totalBalanceSats + sparkBalanceSats + spark.pendingDepositSats)
-            // A payment goes over one rail, so the larger of the two balances caps it.
-            maxSendLightningSats = Int(max(state.maxSendLightningSats, spark.isExiting ? 0 : spark.sendableSats))
+            // A payment goes over one rail, or over Spark once the channels' balance is updated to it.
+            maxSendLightningSats = Int(max(
+                state.maxSendLightningSats,
+                MoveToSparkMath.maxSendSats(channels: lightningService.channels, spark: .live)
+            ))
 
             // Update channel fundable balance (excludes Legacy UTXOs and accounts for funding tx fee)
             let (selectedType, monitoredTypes) = LightningService.addressTypeStateFromUserDefaults()

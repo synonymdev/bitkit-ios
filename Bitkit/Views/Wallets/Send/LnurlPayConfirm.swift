@@ -9,6 +9,7 @@ struct LnurlPayConfirm: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var transfer: TransferViewModel
 
     @Binding var navigationPath: [SendRoute]
     @Binding var isSubmittingPayment: Bool
@@ -22,6 +23,11 @@ struct LnurlPayConfirm: View {
     @State private var biometricErrorMessage = ""
     @State private var comment = ""
     @State private var hasStartedAutomaticPayment = false
+    /// The spending balance update a payment that fits only across the channels and Spark runs first.
+    @State private var sparkUpdateQuote: MoveToSparkQuote?
+    @State private var isSparkUpdateQuoting = false
+    /// A first subscription payment that needs the update waits for a swipe on its update fee instead of paying by itself.
+    @State private var needsUpdateConfirmation = false
     @FocusState private var isCommentFocused: Bool
 
     static func sendLightningPayment<Result>(
@@ -42,8 +48,20 @@ struct LnurlPayConfirm: View {
     }
 
     private var shouldAutomaticallyPay: Bool {
-        app.contactPaymentContext?.isInitialSubscriptionPayment == true &&
-            app.contactPaymentContext?.incomingPaymentRequest?.pricing.conversion == nil
+        Self.shouldAutomaticallyPay(
+            isInitialSubscriptionPayment: app.contactPaymentContext?.isInitialSubscriptionPayment == true,
+            hasConversion: app.contactPaymentContext?.incomingPaymentRequest?.pricing.conversion != nil,
+            needsUpdateConfirmation: needsUpdateConfirmation
+        )
+    }
+
+    /// A refusal that returns after the send was closed or replaced has no review to go back to.
+    static func isCurrentRefusedSend(uri: String, currentUri: String?) -> Bool {
+        uri == currentUri
+    }
+
+    static func shouldAutomaticallyPay(isInitialSubscriptionPayment: Bool, hasConversion: Bool, needsUpdateConfirmation: Bool) -> Bool {
+        isInitialSubscriptionPayment && !hasConversion && !needsUpdateConfirmation
     }
 
     var body: some View {
@@ -78,6 +96,8 @@ struct LnurlPayConfirm: View {
             Text(biometricErrorMessage)
         }
         .task {
+            // The invoice comes only with the swipe, so the update is quoted before the callback.
+            await estimateSparkUpdateFee()
             guard !Task.isCancelled else { return }
             // PIN navigation can cancel the view task while authorization is awaiting its result.
             Task { @MainActor in await startAutomaticPaymentIfNeeded() }
@@ -131,6 +151,14 @@ struct LnurlPayConfirm: View {
 
                     Divider()
 
+                    if let feeSats = sparkUpdateQuote?.feeSats {
+                        SendUpdateFeeSection(feeSats: feeSats)
+                            .padding(.vertical)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Divider()
+                    }
+
                     if let commentAllowed = lnurlPayData.commentAllowed, commentAllowed > 0 {
                         VStack(alignment: .leading) {
                             CaptionMText(t("wallet__lnurl_pay_confirm__comment"))
@@ -166,6 +194,7 @@ struct LnurlPayConfirm: View {
                     ? t("subscriptions__swipe_to_subscribe_and_pay")
                     : t("wallet__send_swipe"),
                 accentColor: .greenAccent,
+                isDisabled: isSparkUpdateQuoting,
                 isLoading: hasStartedAutomaticPayment || isSubmittingPayment,
                 isSubmitted: hasStartedAutomaticPayment
             ) {
@@ -187,6 +216,11 @@ struct LnurlPayConfirm: View {
               shouldAutomaticallyPay,
               !hasStartedAutomaticPayment
         else { return }
+        guard sparkUpdateAmountSats == nil else {
+            Logger.info("Opening manual confirmation for first subscription payment: update fee", context: "LnurlPayConfirm")
+            needsUpdateConfirmation = true
+            return
+        }
         hasStartedAutomaticPayment = true
         do {
             try await submitPayment()
@@ -224,6 +258,10 @@ struct LnurlPayConfirm: View {
     }
 
     private func authorizeAndPerformPayment() async throws {
+        guard await confirmSparkUpdateQuote() else { throw CancellationError() }
+        // The quote this swipe approved: the PIN screen reruns `.task`, which can replace `sparkUpdateQuote` meanwhile.
+        let approvedUpdateQuote = sparkUpdateQuote
+
         // Check if we need to show warning for amounts over $100 USD
         if settings.warnWhenSendingOver100 {
             let sats: UInt64 = if let invoice = app.scannedLightningInvoice {
@@ -267,7 +305,7 @@ struct LnurlPayConfirm: View {
             }
         }
 
-        try await performPayment()
+        try await performPayment(approvedUpdateQuote: approvedUpdateQuote)
     }
 
     private func waitForAlertDismissal() async throws -> Bool {
@@ -276,7 +314,7 @@ struct LnurlPayConfirm: View {
         }
     }
 
-    private func performPayment() async throws {
+    private func performPayment(approvedUpdateQuote: MoveToSparkQuote?) async throws {
         guard let lnurlPayData = app.lnurlPayData else {
             throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing LNURL pay data"])
         }
@@ -343,6 +381,15 @@ struct LnurlPayConfirm: View {
                 }
             ) {
                 lightningPaymentHash = paymentHash
+                // After the allowance check above, so a refused request moves nothing.
+                try await MoveToSparkManager.shared.updateSpendingBalanceIfNeeded(
+                    bolt11: bolt11,
+                    amountSats: reviewedAmount,
+                    shown: approvedUpdateQuote,
+                    wallet: wallet,
+                    transfer: transfer,
+                    onUnseen: { sparkUpdateQuote = $0 }
+                )
                 privatePaymentListOutcome = .uncertain
                 try await wallet.sendWithTimeout(
                     bolt11: bolt11,
@@ -399,6 +446,14 @@ struct LnurlPayConfirm: View {
             if shouldCancelPaymentProof, let incomingPaymentRequest {
                 await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
             }
+            if error as? MoveToSparkError == .updateFeeUnseen {
+                // Nothing moved or paid: the new update fee shows and the swipe resets to pay with it.
+                guard await SendConfirmationView.restoreRequestForAnotherSwipe(
+                    contactPaymentContext, app: app, manager: paykitPaymentRequestManager,
+                    isCurrentSend: { Self.isCurrentRefusedSend(uri: lnurlPayData.uri, currentUri: app.lnurlPayData?.uri) }
+                ) else { return }
+                throw CancellationError()
+            }
             Logger.error("LNURL payment failed: \(error)")
 
             navigationPath.append(.failure(SendFailureContext(
@@ -409,6 +464,45 @@ struct LnurlPayConfirm: View {
                 contactPaymentContext: contactPaymentContext
             )))
         }
+    }
+
+    private var sparkUpdateAmountSats: UInt64? {
+        // A swap route pays through its own service and never needs the update.
+        guard let lnurlPayData = app.lnurlPayData, app.paykitSwapRoute == nil else { return nil }
+        let amountSats = wallet.sendAmountSats ?? lnurlPayData.minSendableSat
+        return MoveToSparkMath.needsUpdateToSend(amountSats: amountSats) ? amountSats : nil
+    }
+
+    @MainActor
+    private func estimateSparkUpdateFee() async {
+        guard sparkUpdateAmountSats != nil else { return }
+        isSparkUpdateQuoting = true
+        defer { isSparkUpdateQuoting = false }
+        sparkUpdateQuote = try? await MoveToSparkManager.shared.updateQuote(wallet: wallet)
+    }
+
+    /// Quotes the update again at the swipe; a quote the user did not see, or a fee above the one shown, stops the swipe
+    /// and shows the new fee instead.
+    @MainActor
+    private func confirmSparkUpdateQuote() async -> Bool {
+        guard sparkUpdateAmountSats != nil, let lnurlPayData = app.lnurlPayData else { return true }
+        let fresh: MoveToSparkQuote
+        do {
+            fresh = try await MoveToSparkManager.shared.updateQuote(wallet: wallet)
+        } catch {
+            Logger.error("Failed to quote the spending balance update: \(error)", context: "LnurlPayConfirm")
+            navigationPath.append(.failure(SendFailureContext(
+                error: MoveToSparkError.updateFailed,
+                retryRoute: .lnurlPayConfirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: "LNURL: \(lnurlPayData.uri)",
+                contactPaymentContext: app.contactPaymentContext
+            )))
+            return false
+        }
+        let shown = sparkUpdateQuote
+        sparkUpdateQuote = fresh
+        return !MoveToSparkMath.isUpdateFeeUnseen(shownFeeSats: shown?.feeSats, freshFeeSats: fresh.feeSats)
     }
 
     private func validateIncomingPaymentRequest(_ context: ContactPaymentContext?, amountMsats: UInt64) throws {

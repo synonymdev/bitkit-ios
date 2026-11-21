@@ -46,6 +46,11 @@ enum ChannelFreeRailFees {
         let fee = sendable / 1_000_000 * serviceFeePpm + (sendable % 1_000_000 * serviceFeePpm + 999_999) / 1_000_000
         return sendable + fee <= balanceSats || sendable == 0 ? sendable : sendable - 1
     }
+
+    /// Spark's service fee on a Lightning send of `amountSats`, rounded up.
+    static func serviceFeeSats(amountSats: UInt64) -> UInt64 {
+        amountSats / 1_000_000 * serviceFeePpm + (amountSats % 1_000_000 * serviceFeePpm + 999_999) / 1_000_000
+    }
 }
 
 /// The channel-free rail refused a payment before anything left the wallet: the rail was not connected, could not

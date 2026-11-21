@@ -269,4 +269,25 @@ final class LnurlPayConfirmTests: XCTestCase {
         XCTAssertTrue(navigationPath.isEmpty)
         XCTAssertFalse(isSubmittingPayment)
     }
+
+    func testFirstSubscriptionPaymentNeedingTheUpdateWaitsForASwipe() {
+        XCTAssertTrue(LnurlPayConfirm.shouldAutomaticallyPay(
+            isInitialSubscriptionPayment: true, hasConversion: false, needsUpdateConfirmation: false
+        ))
+        XCTAssertFalse(LnurlPayConfirm.shouldAutomaticallyPay(
+            isInitialSubscriptionPayment: true, hasConversion: false, needsUpdateConfirmation: true
+        ))
+        XCTAssertFalse(LnurlPayConfirm.shouldAutomaticallyPay(
+            isInitialSubscriptionPayment: true, hasConversion: true, needsUpdateConfirmation: false
+        ))
+        XCTAssertFalse(LnurlPayConfirm.shouldAutomaticallyPay(
+            isInitialSubscriptionPayment: false, hasConversion: false, needsUpdateConfirmation: false
+        ))
+    }
+
+    func testUpdateFeeRefusalRestoresOnlyTheCurrentLnurlSend() {
+        XCTAssertTrue(LnurlPayConfirm.isCurrentRefusedSend(uri: "lnurl1a", currentUri: "lnurl1a"))
+        XCTAssertFalse(LnurlPayConfirm.isCurrentRefusedSend(uri: "lnurl1a", currentUri: "lnurl1b"))
+        XCTAssertFalse(LnurlPayConfirm.isCurrentRefusedSend(uri: "lnurl1a", currentUri: nil))
+    }
 }
