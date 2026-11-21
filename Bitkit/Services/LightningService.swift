@@ -1846,6 +1846,13 @@ class LightningService: NodeLifecycleService {
         eventCallbackLock.withLock { railSendsInFlight.contains(paymentHash.lowercased()) }
     }
 
+    /// A send in Spark's send call that wasn't submitted yet: nothing of it reached Spark, so any failure is an earlier
+    /// attempt's.
+    private func isUnsubmittedRailSendInFlight(paymentHash: String) -> Bool {
+        let hash = paymentHash.lowercased()
+        return eventCallbackLock.withLock { railSendsInFlight.contains(hash) && uncertainRailSendFailedAt()[hash] == nil }
+    }
+
     static func submitPayment<Result>(
         beforeSubmission: @escaping () throws -> Void,
         send: @escaping () throws -> Result
@@ -2389,7 +2396,9 @@ extension LightningService {
         switch event {
         case let .paymentFailed(_, paymentHash?, _):
             // An attempt before the send Spark hasn't settled yet ended: that send may still pay, so nothing changes.
-            guard !isEarlierRailAttempt(paymentHash: paymentHash, createdAt: paymentCreatedAt) else {
+            guard !isEarlierRailAttempt(paymentHash: paymentHash, createdAt: paymentCreatedAt),
+                  !isUnsubmittedRailSendInFlight(paymentHash: paymentHash)
+            else {
                 Logger.info("Ignored a Spark failure of an attempt before an unsettled send: \(event)", context: "LightningService")
                 return
             }
