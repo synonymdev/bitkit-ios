@@ -1501,6 +1501,17 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(rail.sendStatusFetches, 1)
     }
 
+    func testAPreRestoreInvoiceTheOperatorsShowFailedIsRefusedOverAnUnsyncedSpark() async throws {
+        try restore(secondsAfterTheInvoice: 60)
+        try pinTheClockWhileTheInvoiceIsValid()
+        leaveSparkUnsyncedAndEmpty()
+        rail.balanceSats = 100_000
+        // Earlier attempts exist, and Spark can't list them yet to date the send after them.
+        rail.sendStatus = .success(.failed)
+
+        await assertRefusedAsUnverifiedPreRestoreInvoice()
+    }
+
     func testAPreRestoreInvoiceSparkMayHavePaidByTransferIsRefusedOnBothRails() async throws {
         for sparkFunded in [false, true] {
             try await holdForTheOperators(sparkFunded: sparkFunded)
