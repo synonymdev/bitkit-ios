@@ -1750,6 +1750,24 @@ extension ChannelFreeRailTests {
         await assertReachesTheNode()
     }
 
+    func testARetrySentWhileSparkCantListStaysHeldByAFailureDatedBeforeIt() async throws {
+        let invoice = try Bolt11Invoice.fromStr(invoiceStr: Self.invoice)
+        let hash = String(invoice.paymentHash())
+        let startedAt = invoice.secondsSinceEpoch() + 60
+        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: TimeInterval(startedAt)) }
+        // After a relaunch the run knows no earlier failure, and Spark's list can't be read as the retry goes out.
+        rail.listError = NSError(domain: "spark", code: 3)
+        try await sendOverSpark()
+        rail.listError = nil
+        rail.balanceSats = 0
+
+        Bitkit.LightningService.shared.emitChannelFreeRailEvent(
+            .paymentFailed(paymentId: hash, paymentHash: hash, reason: nil),
+            paymentCreatedAt: startedAt - 5
+        )
+        await assertRefusedAsDuplicate()
+    }
+
     func testAnExpiredRetryFailsItsOwnRowWhenSparkListsOnlyTheFailureFiveSecondsBeforeIt() async throws {
         let (hash, startedAt) = try await sendARetryFiveSecondsAfterAFailedAttempt()
         let service = Bitkit.LightningService.shared
