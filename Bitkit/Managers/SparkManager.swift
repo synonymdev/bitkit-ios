@@ -772,17 +772,19 @@ final class SparkManager: ChannelFreeLightningRail {
 
     nonisolated func lightningPayments() async throws -> [ChannelFreeRailPayment] {
         let payments = try await requireSdk().listPayments(request: ListPaymentsRequest(sortAscending: false)).payments
-        return payments.compactMap { payment in
-            guard case let .lightning(_, _, _, htlcDetails, _, _, _, _) = payment.details else { return nil }
-            return ChannelFreeRailPayment(
-                paymentHash: htlcDetails.paymentHash,
-                direction: payment.paymentType == .send ? .outbound : .inbound,
-                status: Self.ldkStatus(payment.status),
-                preimage: htlcDetails.preimage,
-                timestamp: payment.timestamp,
-                feeSats: Self.sats(payment.fees)
-            )
-        }
+        return payments.compactMap(Self.railPayment)
+    }
+
+    nonisolated static func railPayment(_ payment: Payment) -> ChannelFreeRailPayment? {
+        guard case let .lightning(_, _, _, htlcDetails, _, _, _, _) = payment.details else { return nil }
+        return ChannelFreeRailPayment(
+            paymentHash: htlcDetails.paymentHash,
+            direction: payment.paymentType == .send ? .outbound : .inbound,
+            status: ldkStatus(payment.status),
+            preimage: htlcDetails.preimage,
+            timestamp: payment.timestamp,
+            feeSats: sats(payment.fees)
+        )
     }
 
     nonisolated func estimateRoutingFees(bolt11: String, amountSats: UInt64?) async throws -> UInt64 {
@@ -1856,15 +1858,24 @@ final class SparkManager: ChannelFreeLightningRail {
     /// listed before it went out, or a failure of the stored pending send when Spark lists none. Returns whether it was saved.
     private func recordExpiredSend(paymentHash: String) async -> Bool {
         guard let payments = try? await requireSdk().listPayments(request: ListPaymentsRequest()).payments else { return false }
-        let own = payments.filter { payment in
-            guard payment.paymentType == .send, case let .lightning(_, _, _, htlcDetails, _, _, _, _) = payment.details,
-                  htlcDetails.paymentHash.caseInsensitiveCompare(paymentHash) == .orderedSame else { return false }
-            return !LightningService.shared.isEarlierRailAttempt(paymentHash: paymentHash, createdAt: payment.timestamp)
-        }
-        if let latest = own.max(by: { $0.timestamp < $1.timestamp }) {
-            return await recordActivity(latest)
+        let isEarlierAttempt = { LightningService.shared.isEarlierRailAttempt(paymentHash: $0, createdAt: $1) }
+        if let own = Self.expiredSendAttempt(payments, paymentHash: paymentHash, isEarlierAttempt: isEarlierAttempt) {
+            return await recordActivity(own)
         }
         return await (try? CoreService.shared.activity.failPendingLightningSend(id: paymentHash)) != nil
+    }
+
+    /// The latest of Spark's attempts of a send whose invoice expired, none when Spark lists only attempts before it.
+    nonisolated static func expiredSendAttempt(
+        _ payments: [Payment],
+        paymentHash: String,
+        isEarlierAttempt: (_ hash: String, _ createdAt: UInt64) -> Bool
+    ) -> Payment? {
+        payments.filter { payment in
+            guard payment.paymentType == .send, case let .lightning(_, _, _, htlcDetails, _, _, _, _) = payment.details,
+                  htlcDetails.paymentHash.caseInsensitiveCompare(paymentHash) == .orderedSame else { return false }
+            return !isEarlierAttempt(paymentHash, payment.timestamp)
+        }.max { $0.timestamp < $1.timestamp }
     }
 
     /// Payment hashes whose every Lightning send failed, so a hold on a channel retry can be released. A failure of an
@@ -1903,11 +1914,13 @@ final class SparkManager: ChannelFreeLightningRail {
         }
     }
 
-    /// Releases the holds of the sends Spark's list shows failed. The list is read after the activities were recorded,
-    /// so a retry the user started meanwhile keeps its hold, as does one recorded or ending while the list is read.
+    /// Releases the holds of the sends Spark's list shows failed, first ending those it shows settled, so a later read
+    /// of Spark's history that fails doesn't hold them again. The list is read after the activities were recorded, so a
+    /// retry the user started meanwhile keeps its hold, as does one recorded or ending while the list is read.
     static func releaseFailedSendHolds(listPayments: () async throws -> [Payment]) async {
         let mark = LightningService.shared.attemptMark
         guard let latest = try? await listPayments() else { return }
+        LightningService.shared.settleListedRailSends(latest.compactMap(railPayment))
         let isEarlierAttempt = { LightningService.shared.isEarlierRailAttempt(paymentHash: $0, createdAt: $1) }
         for paymentHash in failedSendHashes(latest, isEarlierAttempt: isEarlierAttempt) {
             LightningService.shared.releaseRailAttempt(paymentHash: paymentHash, since: mark)
