@@ -898,6 +898,7 @@ extension ChannelFreeRailTests {
 
     private static let ldkAttemptsKey = "ldkAttemptedPaymentHashes"
     private static let railAttemptsKey = "channelFreeRailAttemptedPaymentHashes"
+    private static let uncertainRailSendsKey = "channelFreeRailUncertainSendFailedAt"
 
     private static func nodePayment(_ hash: String, status: LDKNode.PaymentStatus) -> LDKNode.PaymentDetails {
         LDKNode.PaymentDetails(
@@ -1750,22 +1751,35 @@ extension ChannelFreeRailTests {
         await assertReachesTheNode()
     }
 
-    func testARetrySentWhileSparkCantListStaysHeldByAFailureDatedBeforeIt() async throws {
-        let invoice = try Bolt11Invoice.fromStr(invoiceStr: Self.invoice)
-        let hash = String(invoice.paymentHash())
-        let startedAt = invoice.secondsSinceEpoch() + 60
-        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: TimeInterval(startedAt)) }
-        // After a relaunch the run knows no earlier failure, and Spark's list can't be read as the retry goes out.
+    func testASparkSendIsRefusedWhileSparkCantList() async throws {
+        // After a relaunch only Spark's list shows the failures Spark dated for the invoice, so the send can't be dated.
         rail.listError = NSError(domain: "spark", code: 3)
-        try await sendOverSpark()
-        rail.listError = nil
-        rail.balanceSats = 0
+        rail.balanceSats = 100_000
 
-        Bitkit.LightningService.shared.emitChannelFreeRailEvent(
-            .paymentFailed(paymentId: hash, paymentHash: hash, reason: nil),
-            paymentCreatedAt: startedAt - 5
-        )
-        await assertRefusedAsDuplicate()
+        do {
+            _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+            XCTFail("Expected the Spark send to be refused")
+        } catch {
+            XCTAssertTrue(error is Bitkit.ChannelFreeRailSendRefused, "\(error)")
+        }
+        XCTAssertNil(rail.sentBolt11)
+    }
+
+    func testASendHeldWhileSparksListIsReadIsNotSettledFromThatList() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        let startedAt = 1000
+        rail.payments = [
+            Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil, timestamp: UInt64(startedAt)),
+        ]
+        // A send of the invoice is held while the list is read, so the list was read before it started.
+        rail.onList = {
+            service.railAttemptsStore.set([hash: startedAt], forKey: Self.uncertainRailSendsKey)
+        }
+
+        _ = try await service.channelFreeRailPayments()
+
+        XCTAssertEqual(service.railSendHolds[hash], startedAt, "a list read before the send settled it")
     }
 
     func testAnExpiredRetryFailsItsOwnRowWhenSparkListsOnlyTheFailureFiveSecondsBeforeIt() async throws {
