@@ -1572,15 +1572,17 @@ class LightningService: NodeLifecycleService {
             } else if isPaidOverTheNode {
                 Logger.info("Skipped Spark's restore checks of '\(paymentHash)', the node already paid it", context: "LightningService")
             } else {
-                let hasNoSparkSend = try await refuseUnverifiedRestoredInvoice(
+                let restoredSends = try await refuseUnverifiedRestoredInvoice(
                     paymentHash: paymentHash, bolt11: bolt11, sats: sats,
                     invoiceCreatedAt: invoiceCreatedAt, invoiceExpiresAt: invoiceExpiresAt
                 )
                 // A Spark send's start must come after every failure Spark dated for the invoice, which only its list
                 // shows after a relaunch, so it doesn't go out unlisted, unless Spark's operators show no send of it.
-                if sendsOverRail, !hasNoSparkSend {
+                if sendsOverRail, restoredSends != .noSend {
                     Logger.warn("Refused paying '\(paymentHash)' over Spark, Spark can't list its payments now", context: "LightningService")
-                    throw ChannelFreeRailSendRefused(reason: t("wallet__payment_failed_description"))
+                    throw restoredSends == .allFailed
+                        ? ChannelFreeRailSendRefused.restoredInvoiceUnverified()
+                        : ChannelFreeRailSendRefused(reason: t("wallet__payment_failed_description"))
                 }
             }
         }
@@ -1599,7 +1601,7 @@ class LightningService: NodeLifecycleService {
     /// unless Spark's operators show no live or paid Lightning send of it and it can't have been paid by a direct Spark
     /// transfer, which they can't see. A send they show sent or pending, or no answer, refuses it until it expires. A
     /// failed one counts as unsent, as they show it failed only once every attempt at the hash was returned. Returns
-    /// whether they show no send of it at all, so there is no earlier attempt.
+    /// what they show of a pre-restore invoice's sends, nil for any other invoice.
     @discardableResult
     private func refuseUnverifiedRestoredInvoice(
         paymentHash: String,
@@ -1607,16 +1609,16 @@ class LightningService: NodeLifecycleService {
         sats: UInt64?,
         invoiceCreatedAt: UInt64?,
         invoiceExpiresAt: Int?
-    ) async throws -> Bool {
+    ) async throws -> RestoredInvoiceSends? {
         guard let restoredAt = sparkRestoredAt, Self.holdsRestoredInvoice(
             restoredAt: restoredAt,
             invoiceCreatedAt: invoiceCreatedAt,
             invoiceExpiresAt: invoiceExpiresAt,
             now: Int(now().timeIntervalSince1970)
-        ) else { return false }
+        ) else { return nil }
         let rail = channelFreeRail ?? channelFreePaymentHistory
         let sparkRuns = rail != nil ? true : await channelFreeRailSupported()
-        guard sparkRuns else { return false }
+        guard sparkRuns else { return nil }
         do {
             guard let rail else { throw ChannelFreeRailUnavailable() }
             let status = try await rail.lightningSendStatus(bolt11: bolt11)
@@ -1629,7 +1631,7 @@ class LightningService: NodeLifecycleService {
                 throw ChannelFreeRailSendRefused.restoredInvoiceUnverified()
             }
             Logger.info("Found no live or paid Spark operator send of pre-restore invoice '\(paymentHash)'", context: "LightningService")
-            return status == nil
+            return status == nil ? .noSend : .allFailed
         } catch let refusal as ChannelFreeRailSendRefused {
             throw refusal
         } catch {
@@ -1639,6 +1641,14 @@ class LightningService: NodeLifecycleService {
             )
             throw ChannelFreeRailSendRefused.restoredInvoiceUnverified()
         }
+    }
+
+    /// What Spark's operators show of a pre-restore invoice's sends that leaves it payable.
+    enum RestoredInvoiceSends {
+        /// No send of it.
+        case noSend
+        /// Sends that all failed.
+        case allFailed
     }
 
     /// An unknown time counts as before the restore and never expiring.
