@@ -1015,8 +1015,14 @@ class ActivityService {
             // The Spark receive of a move can settle the send before the node's routing fee is recorded.
             let feeChanging = payment.feePaidMsat.map { $0 / 1000 != existing.fee } ?? false
             let needsPrivateContactAttribution = existing.contact == nil && payment.direction == .inbound
+            // Spark dates each attempt at its start: of two failed attempts, the later one's amount, fee and time stay.
+            let isRailFailureOverFailure = rail == .channelFree && state == .failed && existing.status == .failed
+            if isRailFailureOverFailure, existing.timestamp > paymentTimestamp {
+                return
+            }
+            let isLaterRailFailure = isRailFailureOverFailure && paymentTimestamp > existing.timestamp
             if existingUpdatedAt > paymentTimestamp && !statusChanging && !feeChanging && !needsPrivateContactAttribution
-                && !replacesSelfReceive
+                && !replacesSelfReceive && !isLaterRailFailure
             {
                 return
             }
@@ -1396,6 +1402,20 @@ class ActivityService {
     private func isReplacedSentTransaction(_ activity: Activity, txIdsInBoostTxIds: Set<String>) -> Bool {
         guard case let .onchain(onchain) = activity else { return false }
         return !onchain.doesExist && onchain.txType == .sent && txIdsInBoostTxIds.contains(onchain.txId)
+    }
+
+    /// Marks the stored Lightning send `id` failed while it is still pending, read, checked and written in one core-queue
+    /// operation, so a change saved meanwhile isn't overwritten.
+    func failPendingLightningSend(id: String) async throws {
+        try await ServiceQueue.background(.core) {
+            guard case let .lightning(activity) = try getActivityById(walletId: WalletScope.default, activityId: id),
+                  activity.txType == .sent, activity.status == .pending
+            else { return }
+            var failed = activity
+            failed.status = .failed
+            try updateActivity(activityId: id, activity: .lightning(failed))
+            self.activitiesChangedSubject.send()
+        }
     }
 
     func update(id: String, activity: Activity) async throws {

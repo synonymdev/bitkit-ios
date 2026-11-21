@@ -1,8 +1,12 @@
+import BitkitCore
+import Combine
 import Foundation
 import LDKNode
 
 /// The amounts behind moving the channels' balance to Spark, kept apart so they can be tested without a node.
 enum MoveToSparkMath {
+    /// The move invoice's description.
+    static let invoiceDescription = "Move to Spark"
     /// Below this a move is not offered: what is left is about the routing fee.
     static let minMoveSats: UInt64 = 1000
     /// The fee guessed for the first quote of a full move, as a share of the amount in parts per million.
@@ -72,6 +76,15 @@ struct MoveToSparkQuote: Equatable {
     let feeSats: UInt64
 }
 
+@MainActor
+extension LightningActivity {
+    /// The channel send of a move to Spark, which Activity shows as a transfer rather than a payment. Known by its payment
+    /// hash, so a paid outside invoice that happens to carry the move's description stays a payment.
+    var isMoveToSpark: Bool {
+        txType == .sent && MoveToSparkPayments.contains(id)
+    }
+}
+
 enum MoveToSparkError: Error {
     case nothingToMove
     case sparkUnavailable
@@ -80,20 +93,91 @@ enum MoveToSparkError: Error {
 }
 
 /// The payments that move a channel balance to Spark, whose send and receive the app does not announce as payments.
+/// Kept on disk until a wipe and in the metadata backup, so a move that settles after a relaunch, and its Activity row after
+/// a restore, stay known as one.
 @MainActor
 enum MoveToSparkPayments {
-    private static var paymentHashes = Set<String>()
+    private static let storageKey = "moveToSparkPaymentHashes"
+    static var defaults: UserDefaults = .standard {
+        didSet { cached = nil }
+    }
 
-    static func insert(_ paymentHash: String) {
-        paymentHashes.insert(paymentHash.lowercased())
+    /// Read once, as Activity asks for every row it draws.
+    private static var cached: [String: Double]?
+    /// Outside the main actor, so the backup observers can subscribe from anywhere.
+    nonisolated static var savedPublisher: AnyPublisher<Void, Never> {
+        MoveToSparkPaymentsSaved.subject.eraseToAnyPublisher()
+    }
+
+    static func insert(_ paymentHash: String, now: Date = Date()) {
+        var hashes = stored
+        hashes[paymentHash.lowercased()] = now.timeIntervalSince1970
+        save(hashes)
+        MoveToSparkPaymentsSaved.subject.send()
+    }
+
+    /// Sorted, so an unchanged store backs up byte for byte the same.
+    static func backupSnapshot() -> [String] {
+        stored.keys.sorted()
+    }
+
+    /// Adds the restored hashes to any already known.
+    static func restore(_ paymentHashes: [String]?, now: Date = Date()) {
+        guard let paymentHashes, !paymentHashes.isEmpty else { return }
+        var hashes = stored
+        for hash in paymentHashes where hashes[hash.lowercased()] == nil {
+            hashes[hash.lowercased()] = now.timeIntervalSince1970
+        }
+        save(hashes)
     }
 
     static func contains(_ paymentHash: String?) -> Bool {
-        paymentHash.map { paymentHashes.contains($0.lowercased()) } ?? false
+        paymentHash.map { stored[$0.lowercased()] != nil } ?? false
+    }
+
+    private static func save(_ hashes: [String: Double]) {
+        defaults.set(hashes, forKey: storageKey)
+        cached = hashes
     }
 
     static func removeAll() {
-        paymentHashes.removeAll()
+        defaults.removeObject(forKey: storageKey)
+        cached = nil
+    }
+
+    private static var stored: [String: Double] {
+        if let cached {
+            return cached
+        }
+        let hashes = defaults.dictionary(forKey: storageKey) as? [String: Double] ?? [:]
+        cached = hashes
+        return hashes
+    }
+}
+
+private enum MoveToSparkPaymentsSaved {
+    static let subject = PassthroughSubject<Void, Never>()
+}
+
+/// What a move quote needs from Spark and the channels, apart so the quote can be tested without either.
+protocol MoveToSparkServices {
+    @MainActor var isSparkUsable: Bool { get }
+    func receiveInvoice(description: String, expirySecs: UInt32) async throws -> String
+    /// The routing fee LDK estimates for paying `bolt11` with `amountSats` over the channels only.
+    func estimateChannelFee(bolt11: String, amountSats: UInt64) async throws -> UInt64
+}
+
+struct LiveMoveToSparkServices: MoveToSparkServices {
+    @MainActor var isSparkUsable: Bool {
+        MoveToSparkMath.isSparkUsable(SparkManager.shared)
+    }
+
+    func receiveInvoice(description: String, expirySecs: UInt32) async throws -> String {
+        try await SparkManager.shared.receive(amountSats: nil, description: description, expirySecs: expirySecs)
+    }
+
+    func estimateChannelFee(bolt11: String, amountSats: UInt64) async throws -> UInt64 {
+        try await LightningService.shared.estimateRoutingFees(bolt11: bolt11, amountSats: amountSats, channelsOnly: true)
     }
 }
 
@@ -134,7 +218,6 @@ final class MoveToSparkManager {
     /// Shared so a move and its outcome outlive the screen, which is rebuilt when the app is unlocked.
     static let shared = MoveToSparkManager()
 
-    private static let invoiceDescription = "Move to Spark"
     private static let invoiceExpirySecs: UInt32 = 3600
     private static let maxQuoteRounds = 4
 
@@ -147,12 +230,15 @@ final class MoveToSparkManager {
     /// A swiped payment that has not settled yet; leaving the screen keeps it, so it is never quoted over.
     private var isMoveInFlight = false
 
-    private let lightningService: LightningService
-    private let spark: SparkManager
+    /// A move is kept for its result, so its screen stays reachable while the channels have nothing left to move.
+    var keepsMoveForItsResult: Bool {
+        keepsOutcome || isMoveInFlight
+    }
 
-    init() {
-        lightningService = .shared
-        spark = .shared
+    private let services: any MoveToSparkServices
+
+    init(services: any MoveToSparkServices = LiveMoveToSparkServices()) {
+        self.services = services
     }
 
     /// Opens the screen: quotes a new move, unless a quote is still running or a move started earlier is still running
@@ -266,20 +352,16 @@ final class MoveToSparkManager {
         guard wantedSats >= MoveToSparkMath.minMoveSats, MoveToSparkMath.hasMovableBalance(limitSats: limitSats) else {
             throw MoveToSparkError.nothingToMove
         }
-        guard MoveToSparkMath.isSparkUsable(spark) else { throw MoveToSparkError.sparkUnavailable }
+        guard services.isSparkUsable else { throw MoveToSparkError.sparkUnavailable }
 
-        let invoice = try await spark.receive(
-            amountSats: nil,
-            description: Self.invoiceDescription,
-            expirySecs: Self.invoiceExpirySecs
-        )
+        let invoice = try await services.receiveInvoice(description: MoveToSparkMath.invoiceDescription, expirySecs: Self.invoiceExpirySecs)
         var amountSats = MoveToSparkMath.firstCandidate(wantedSats: wantedSats, limitSats: limitSats)
         var fitting: MoveToSparkQuote?
         // The first amount leaves room for a guessed fee; once the real fee is known, the amount grows to fit it.
         for _ in 0 ..< Self.maxQuoteRounds where amountSats >= MoveToSparkMath.minMoveSats {
             let estimateSats: UInt64
             do {
-                estimateSats = try await lightningService.estimateRoutingFees(bolt11: invoice, amountSats: amountSats, channelsOnly: true)
+                estimateSats = try await services.estimateChannelFee(bolt11: invoice, amountSats: amountSats)
             } catch {
                 if let fitting {
                     return fitting

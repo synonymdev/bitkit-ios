@@ -124,6 +124,10 @@ struct ActivityItemView: View {
             return t("wallet__activity_boost_fee")
         }
 
+        if case let .lightning(activity) = viewModel.activity, activity.isMoveToSpark {
+            return t("wallet__activity_move_to_spark")
+        }
+
         if case let .lightning(activity) = viewModel.activity, activity.status == .pending {
             return t("wallet__activity_pending_nav_title")
         }
