@@ -1661,6 +1661,33 @@ extension ChannelFreeRailTests {
         await assertReachesTheNode()
     }
 
+    func testAnEarlierFailureWhileARetryEntersSparksSendCallStaysOffItsScreen() async throws {
+        let invoice = try Bolt11Invoice.fromStr(invoiceStr: Self.invoice)
+        let hash = String(invoice.paymentHash())
+        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: TimeInterval(invoice.secondsSinceEpoch() + 60)) }
+        final class Failures: @unchecked Sendable { var count = 0 }
+        let failures = Failures()
+        Bitkit.LightningService.shared.setEventCallback { event in
+            if case .paymentFailed = event {
+                failures.count += 1
+            }
+        }
+        // The earlier attempt's failure arrives while the retry is in Spark's send call, before it is submitted.
+        rail.beforeSubmit = {
+            Bitkit.LightningService.shared.emitChannelFreeRailEvent(
+                .paymentFailed(paymentId: hash, paymentHash: hash, reason: nil),
+                paymentCreatedAt: 100
+            )
+        }
+
+        try await sendOverSpark()
+
+        XCTAssertEqual(failures.count, 0, "an earlier attempt's failure reached the retry's screen")
+        rail.beforeSubmit = nil
+        rail.balanceSats = 0
+        await assertRefusedAsDuplicate()
+    }
+
     func testARetryIsRefusedWhileSparkListsAnyAttemptPending() async throws {
         let invoice = try Bolt11Invoice.fromStr(invoiceStr: Self.invoice)
         let hash = String(invoice.paymentHash())
