@@ -9,6 +9,8 @@ enum MoveToSparkMath {
     static let invoiceDescription = "Move to Spark"
     /// Below this a move is not offered: what is left is about the routing fee.
     static let minMoveSats: UInt64 = 1000
+    /// The most parts a move plans and pays in one swipe.
+    static let maxParts = 16
     /// The fee guessed for the first quote of a full move, as a share of the amount in parts per million.
     private static let firstFeeGuessPpm: UInt64 = 5000
     /// The least fee guessed for the first quote of a full move.
@@ -18,6 +20,43 @@ enum MoveToSparkMath {
 
     static func movableSats(channels: [ChannelDetails]?) -> UInt64 {
         (channels ?? []).filter(\.isUsable).map { $0.nextOutboundHtlcLimitMsat / 1000 }.reduce(0, +)
+    }
+
+    /// What the usable channels can send in all, which a paid part lowers even where a peer's HTLC cap keeps the
+    /// next-HTLC limit flat. A channel we funded holds back its commitment fee: when its limit matches the limit LDK
+    /// leaves for a commitment type, the total is that limit and the below-dust part LDK then still leaves for the rest;
+    /// a peer's HTLC cap below both hides the type, so it counts the higher one, which prices every part that can route
+    /// and at most one more.
+    static func outboundSats(channels: [ChannelDetails]?) -> UInt64 {
+        (channels ?? []).filter(\.isUsable).map(sendableSats).reduce(0, +)
+    }
+
+    private static func sendableSats(_ channel: ChannelDetails) -> UInt64 {
+        let outboundSats = channel.outboundCapacityMsat / 1000
+        guard channel.isOutbound else { return outboundSats }
+        let limitSats = Int64(channel.nextOutboundHtlcLimitMsat / 1000)
+        let feerate = Int64(channel.feerateSatPer1000Weight)
+        let capacityMsat = Int64(channel.outboundCapacityMsat)
+        func clearedSats(capacityMsat: Int64, isLegacy: Bool) -> Int64 {
+            max(0, clearedLimitMsat(capacityMsat: capacityMsat, feerate: feerate, isLegacy: isLegacy)) / 1000
+        }
+        let types = [false, true]
+        let matched = types.filter { abs(limitSats - clearedSats(capacityMsat: capacityMsat, isLegacy: $0)) <= 1 }
+        let totalSats: Int64 = if matched.isEmpty {
+            max(limitSats, types.map { clearedSats(capacityMsat: capacityMsat, isLegacy: $0) }.max() ?? 0)
+        } else {
+            // Once the above-dust limit has gone, LDK still leaves a below-dust HTLC for the rest, which counts only when a
+            // part can carry it: at least the move minimum and the channel's HTLC minimum.
+            limitSats + Self.sendableRestSats(
+                matched.map { clearedSats(capacityMsat: capacityMsat - limitSats * 1000, isLegacy: $0) }.min() ?? 0,
+                htlcMinimumMsat: channel.nextOutboundHtlcMinimumMsat
+            )
+        }
+        return min(outboundSats, UInt64(totalSats))
+    }
+
+    private static func sendableRestSats(_ restSats: Int64, htlcMinimumMsat: UInt64) -> Int64 {
+        restSats >= Int64(minMoveSats) && UInt64(restSats) * 1000 >= htlcMinimumMsat ? restSats : 0
     }
 
     /// Whether Spark can take a move; every Move to Spark check goes through here.
@@ -63,7 +102,7 @@ enum MoveToSparkMath {
         feeSats * 1000
     }
 
-    /// The smaller amount to offer after one did not route: half of it, or nothing below the minimum.
+    /// The next amount to try after one did not route: half of it, or nothing below the minimum.
     static func smallerAmount(_ sats: UInt64) -> UInt64? {
         let half = sats / 2
         return half >= minMoveSats ? half : nil
@@ -258,10 +297,34 @@ struct SparkSendState: Equatable {
     }
 }
 
+/// One payment of a move, under its quoted routing fee.
+struct MoveToSparkPart: Equatable {
+    let amountSats: UInt64
+    let feeSats: UInt64
+}
+
+/// A move of the channels' whole balance: its first part, of `amountSats` to `invoice` under `firstFeeSats`, and
+/// `feeSats`, the sum of every part's fee: the fee shown and the most the move pays. One part when the balance routes.
 struct MoveToSparkQuote: Equatable {
     let invoice: String
     let amountSats: UInt64
     let feeSats: UInt64
+    let firstFeeSats: UInt64
+
+    init(invoice: String, amountSats: UInt64, feeSats: UInt64, firstFeeSats: UInt64? = nil) {
+        self.invoice = invoice
+        self.amountSats = amountSats
+        self.feeSats = feeSats
+        self.firstFeeSats = firstFeeSats ?? feeSats
+    }
+}
+
+/// What paying a move's parts came to.
+enum MoveToSparkPartsOutcome: Equatable {
+    /// The parts settled, moving `movedSats` for `feeSats`.
+    case settled(movedSats: UInt64, feeSats: UInt64)
+    /// `partSats` was still unsettled after the wait; the parts before it moved `movedSats` for `feeSats`.
+    case inFlight(movedSats: UInt64, feeSats: UInt64, partSats: UInt64)
 }
 
 @MainActor
@@ -276,8 +339,10 @@ extension LightningActivity {
 enum MoveToSparkError: Error, Equatable {
     case nothingToMove
     case sparkUnavailable
-    /// `amountSats` did not route from the channels to Spark in one payment.
-    case tooLarge(amountSats: UInt64)
+    /// No part of the channels' balance, down to the minimum, routes to Spark.
+    case noRoute
+    /// The next part's fee would pass what is left of the fee the user saw, after `movedSats` had moved for `feeSats`.
+    case feeRose(movedSats: UInt64, feeSats: UInt64)
     /// The quoted move, with Spark's balance, would not cover a payment of `amountSats`, so nothing moved.
     case updateFallsShort(amountSats: UInt64)
     /// The update's fee is new or above the one the user saw, so nothing moved until they see it.
@@ -401,26 +466,12 @@ enum MoveToSparkFailure {
 
 enum MoveToSparkState: Equatable {
     case quoting
+    /// `isMoving`: Update was tapped and the parts are paying.
     case confirm(MoveToSparkQuote, isMoving: Bool)
-    /// `hasRest`: the channels can still send enough to move again, as after a smaller amount.
-    case done(amountSats: UInt64, feeSats: UInt64, hasRest: Bool)
-    /// The payment had no outcome within the wait; it may still settle or return to the channel.
+    case done(amountSats: UInt64, feeSats: UInt64)
+    /// A part had no outcome within the wait; it may still settle or return to the channel.
     case inFlight(amountSats: UInt64)
-    /// `amountSats` did not route in one payment; `smallerSats` is the next amount to try, if any is left.
-    case tooLarge(amountSats: UInt64, smallerSats: UInt64?)
     case failed(MoveToSparkFailure)
-
-    static func == (lhs: MoveToSparkState, rhs: MoveToSparkState) -> Bool {
-        switch (lhs, rhs) {
-        case (.quoting, .quoting): true
-        case let (.confirm(a, am), .confirm(b, bm)): a == b && am == bm
-        case let (.done(a, af, ar), .done(b, bf, br)): a == b && af == bf && ar == br
-        case let (.inFlight(a), .inFlight(b)): a == b
-        case let (.tooLarge(a, asm), .tooLarge(b, bsm)): a == b && asm == bsm
-        case let (.failed(a), .failed(b)): a == b
-        default: false
-        }
-    }
 }
 
 /// Moves the channels' balance to the user's own Spark wallet, paying a Spark invoice over the channels only.
@@ -489,8 +540,9 @@ final class MoveToSparkManager {
         MoveToSparkPayments.removeAll()
     }
 
-    /// Quotes moving `targetSats`, or everything the channels can send.
-    func quote(wallet: WalletViewModel, targetSats: UInt64? = nil) async {
+    /// Quotes moving everything the channels can send. After a move that moved `afterMove`, a quote for the rest that
+    /// fails shows the balance updated, the outcome of that move.
+    func quote(wallet: WalletViewModel, afterMove: (movedSats: UInt64, feeSats: UInt64)? = nil) async {
         generation += 1
         let quoteGeneration = generation
         isQuoting = true
@@ -499,13 +551,21 @@ final class MoveToSparkManager {
         await wallet.syncStateAsync()
         let result: MoveToSparkState
         do {
-            result = try await .confirm(makeQuote(channels: wallet.channels, targetSats: targetSats), isMoving: false)
+            result = try await .confirm(makeQuote(channels: wallet.channels), isMoving: false)
         } catch {
-            Logger.warn("Failed to quote move to Spark of '\(String(describing: targetSats))': \(error)", context: "MoveToSpark")
-            result = Self.state(for: error)
+            Logger.warn("Failed to quote move to Spark: \(error)", context: "MoveToSpark")
+            if let afterMove {
+                result = .done(amountSats: afterMove.movedSats, feeSats: afterMove.feeSats)
+            } else {
+                result = Self.state(for: error)
+            }
         }
         guard quoteGeneration == generation else { return }
         isQuoting = false
+        // Shown in place of a quote after a move, the balance updated is that move's outcome, kept as a settled one is.
+        if case .done = result {
+            keepsOutcome = true
+        }
         state = result
     }
 
@@ -515,7 +575,7 @@ final class MoveToSparkManager {
         let moveGeneration = beginMove()
         state = .confirm(quote, isMoving: true)
         let paymentsBefore = await LightningService.shared.listPayments()
-        // A payment still unsettled after the wait keeps the move until its late outcome, so leaving and reopening the
+        // A part still unsettled after the wait keeps the move until its late outcome, so leaving and reopening the
         // screen shows it again instead of a new quote.
         var isSettled = true
         defer {
@@ -524,48 +584,225 @@ final class MoveToSparkManager {
             }
         }
         do {
-            guard let settled = try await payOverChannels(
+            let outcome = try await payParts(
                 quote,
                 wallet: wallet,
                 // Shown in the step that stops waiting, so a late outcome right after it finds this move in flight.
-                onTimeout: { [weak self] in self?.showInFlight(amountSats: quote.amountSats, moveGeneration: moveGeneration) },
-                onLateFailure: { [weak self] in self?.lateFailure(amountSats: quote.amountSats, moveGeneration: moveGeneration) },
-                onLateSuccess: { [weak self, weak wallet, weak transfer] settled in
+                onTimeout: { [weak self] movedSats in self?.showInFlight(amountSats: movedSats, moveGeneration: moveGeneration) },
+                onLateFailure: { [weak self, weak wallet, weak transfer] movedSats, feeSats in
+                    guard let self, let wallet else { return }
+                    // Earlier parts may have emptied channels even when this last one failed.
+                    if movedSats > 0, let transfer {
+                        closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
+                    }
+                    Task {
+                        await self.lateFailure(movedSats: movedSats, feeSats: feeSats, moveGeneration: moveGeneration, wallet: wallet)
+                    }
+                },
+                onLateSuccess: { [weak self, weak wallet, weak transfer] movedSats, feeSats in
                     guard let self, let wallet else { return }
                     if let transfer {
                         closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
                     }
                     Task {
-                        await self.lateSuccess(
-                            amountSats: quote.amountSats,
-                            feeSats: settled.feePaidSats,
-                            moveGeneration: moveGeneration,
-                            wallet: wallet
-                        )
+                        await self.lateSuccess(amountSats: movedSats, feeSats: feeSats, moveGeneration: moveGeneration, wallet: wallet)
                     }
                 }
-            ) else {
+            )
+            guard case let .settled(movedSats, feeSats) = outcome else {
                 isSettled = false
                 return
             }
             closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
+            await finishMove(movedSats: movedSats, feeSats: feeSats, moveGeneration: moveGeneration, wallet: wallet)
+        } catch let MoveToSparkError.feeRose(movedSats, feeSats) {
+            // As elsewhere when a fee rises, the modal shows the new fee for what is left.
+            Logger.info("Stopped a move to show a fee that rose, '\(movedSats)' sats moved", context: "MoveToSpark")
+            if movedSats > 0 {
+                closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
+            }
             guard moveGeneration == generation else { return }
-            await wallet.syncStateAsync()
-            guard moveGeneration == generation else { return }
-            state = Self.doneState(amountSats: quote.amountSats, feeSats: settled.feePaidSats, channels: wallet.channels)
+            isMoveInFlight = false
+            await self.quote(wallet: wallet, afterMove: movedSats > 0 ? (movedSats, feeSats) : nil)
         } catch {
             Logger.error("Failed to move '\(quote.amountSats)' sats to Spark: \(error)", context: "MoveToSpark")
             guard moveGeneration == generation else { return }
-            state = Self.isNoRoute(error) || Self.isSendWithoutRoute(error, invoice: quote.invoice)
-                ? .tooLarge(amountSats: quote.amountSats, smallerSats: MoveToSparkMath.smallerAmount(quote.amountSats))
-                : .failed(.unknown)
+            state = .failed(.unknown)
         }
+    }
+
+    /// Pays the parts of `quote` over the channels, each quoted afresh from the balance a node sync shows, with
+    /// `payOverChannels`. `onTimeout` gets the total including the part left in flight, and the late outcomes the totals
+    /// as they then stand.
+    private func payParts(
+        _ quote: MoveToSparkQuote,
+        wallet: WalletViewModel,
+        onTimeout: @escaping @MainActor (UInt64) -> Void = { _ in },
+        onLateFailure: @escaping @MainActor (UInt64, UInt64) -> Void = { _, _ in },
+        onLateSuccess: @escaping @MainActor (UInt64, UInt64) -> Void = { _, _ in }
+    ) async throws -> MoveToSparkPartsOutcome {
+        let services = services
+        return try await Self.payParts(
+            quote,
+            movableSats: { await self.movableSatsAfterSync(wallet: wallet) },
+            outboundSats: { MoveToSparkMath.outboundSats(channels: wallet.channels) },
+            newInvoice: {
+                try await services.receiveInvoice(description: MoveToSparkMath.invoiceDescription, expirySecs: Self.invoiceExpirySecs)
+            },
+            quotePart: { invoice, limitSats, wantedSats in
+                try await self.quotePart(invoice: invoice, limitSats: limitSats, wantedSats: wantedSats)
+            },
+            pay: { bolt11, amountSats, feeCapMsat, movedSats, feeSats in
+                let settled = try await self.payOverChannels(
+                    MoveToSparkQuote(invoice: bolt11, amountSats: amountSats, feeSats: feeCapMsat / 1000),
+                    feeCapMsat: feeCapMsat,
+                    wallet: wallet,
+                    onTimeout: { onTimeout(movedSats + amountSats) },
+                    onLateFailure: { onLateFailure(movedSats, feeSats) },
+                    onLateSuccess: { onLateSuccess(movedSats + amountSats, feeSats + $0.feePaidSats) }
+                )
+                return settled?.feePaidMsat
+            }
+        )
+    }
+
+    /// What the channels can still send after a node sync. A part that just settled can hold a channel's send limit down
+    /// until its HTLC clears, so a read below the minimum counts only once no channel can still be holding one, or after
+    /// the wait the close uses.
+    private func movableSatsAfterSync(wallet: WalletViewModel) async -> UInt64 {
+        await wallet.syncStateAsync()
+        let deadline = ContinuousClock.now + Self.htlcClearWait
+        while !MoveToSparkMath.hasMovableBalance(limitSats: MoveToSparkMath.movableSats(channels: wallet.channels)),
+              (wallet.channels ?? []).filter(\.isUsable).contains(where: MoveToSparkMath.mayHoldTheMoveHtlc),
+              ContinuousClock.now < deadline
+        {
+            try? await Task.sleep(for: Self.htlcClearRecheck)
+            await wallet.syncStateAsync()
+        }
+        return MoveToSparkMath.movableSats(channels: wallet.channels)
+    }
+
+    /// A move of `movedSats` ended: the modal shows the fee for what is left when the channels can still move some, else
+    /// the balance updated. The parts' loop already waited out their HTLCs, so only a late outcome waits here.
+    private func finishMove(
+        movedSats: UInt64,
+        feeSats: UInt64,
+        moveGeneration: Int,
+        wallet: WalletViewModel,
+        waitsForHtlcs: Bool = false
+    ) async {
+        guard moveGeneration == generation else { return }
+        let leftSats: UInt64
+        if waitsForHtlcs {
+            leftSats = await movableSatsAfterSync(wallet: wallet)
+        } else {
+            await wallet.syncStateAsync()
+            leftSats = MoveToSparkMath.movableSats(channels: wallet.channels)
+        }
+        guard moveGeneration == generation else { return }
+        guard MoveToSparkMath.hasMovableBalance(limitSats: leftSats) else {
+            state = .done(amountSats: movedSats, feeSats: feeSats)
+            return
+        }
+        Logger.info("Moved '\(movedSats)' sats with '\(leftSats)' sats left, quoting the rest", context: "MoveToSpark")
+        isMoveInFlight = false
+        await quote(wallet: wallet, afterMove: (movedSats, feeSats))
+    }
+
+    /// Moves the whole balance as `quote` planned: pays its first part, then quotes and pays the next on `newInvoice` from
+    /// what `movableSats` shows the channels can still send, no larger than the last part, halving a part that does not
+    /// route, until less than the minimum is left. A part that does not route below the minimum throws `feeRose` when a
+    /// fresh quote prices the rest above the fee left, so the modal quotes it again; else the move stops there. Each part's
+    /// fee cap is what is left of the fee shown, kept in msat so rounding never lets the parts pay more than the user saw;
+    /// a part quoted above it throws `feeRose`, so the user can see the new fee, also once that fee is spent. It stops
+    /// after `maxParts` paid parts, when a paid part leaves what `outboundSats` shows where it was, or on any other
+    /// failure, which it throws when nothing moved. `pay` returns the fee paid in msat, or `nil` while the part is still in
+    /// flight, which ends the move in flight.
+    static func payParts(
+        _ quote: MoveToSparkQuote,
+        movableSats: () async -> UInt64,
+        outboundSats: () -> UInt64,
+        newInvoice: () async throws -> String,
+        quotePart: (_ invoice: String, _ limitSats: UInt64, _ wantedSats: UInt64) async throws -> MoveToSparkPart?,
+        pay: (_ bolt11: String, _ amountSats: UInt64, _ feeCapMsat: UInt64, _ movedSats: UInt64, _ feeSats: UInt64) async throws
+            -> UInt64?
+    ) async throws -> MoveToSparkPartsOutcome {
+        var next: (bolt11: String, part: MoveToSparkPart)? = (
+            quote.invoice,
+            MoveToSparkPart(amountSats: quote.amountSats, feeSats: quote.firstFeeSats)
+        )
+        var partSats = quote.amountSats
+        var feeLeftMsat = MoveToSparkMath.feeCapMsat(feeSats: quote.feeSats)
+        var movedSats: UInt64 = 0
+        var feeMsat: UInt64 = 0
+        var lastError: Error?
+        // The latest read since the last payment, so a read after a part is not taken again before the next.
+        var limitSats = await movableSats()
+        var lastOutboundSats = outboundSats()
+        var paidParts = 0
+        while paidParts < MoveToSparkMath.maxParts {
+            let bolt11: String
+            let part: MoveToSparkPart
+            if let planned = next {
+                (bolt11, part) = planned
+                next = nil
+            } else {
+                guard MoveToSparkMath.hasMovableBalance(limitSats: limitSats) else { break }
+                do {
+                    bolt11 = try await newInvoice()
+                    guard let quoted = try await quotePart(bolt11, limitSats, min(partSats, limitSats)) else { break }
+                    part = quoted
+                } catch {
+                    lastError = error
+                    break
+                }
+            }
+            if MoveToSparkMath.feeCapMsat(feeSats: part.feeSats) > feeLeftMsat {
+                throw MoveToSparkError.feeRose(movedSats: movedSats, feeSats: feeMsat / 1000)
+            }
+            do {
+                guard let paidMsat = try await pay(bolt11, part.amountSats, feeLeftMsat, movedSats, feeMsat / 1000) else {
+                    return .inFlight(movedSats: movedSats, feeSats: feeMsat / 1000, partSats: part.amountSats)
+                }
+                paidParts += 1
+                // As in the plan, the next part is no larger than the last one paid.
+                partSats = part.amountSats
+                movedSats += part.amountSats
+                feeMsat += paidMsat
+                feeLeftMsat -= min(feeLeftMsat, paidMsat)
+                // A part the channels do not show as gone would be paid again, so the move stops there. The check reads
+                // what the channels hold, since a peer's HTLC cap can keep the next-HTLC limit flat as parts move.
+                limitSats = await movableSats()
+                let nowSats = outboundSats()
+                guard nowSats < lastOutboundSats else { break }
+                lastOutboundSats = nowSats
+            } catch {
+                lastError = error
+                guard isNoRoute(error) || isSendWithoutRoute(error, invoice: bolt11) else { break }
+                // The channels are read again, so a send limit an earlier part's HTLC held down does not size what follows.
+                limitSats = await movableSats()
+                guard let halfSats = MoveToSparkMath.smallerAmount(part.amountSats) else {
+                    // No smaller part is left to try. A fresh quote priced above the fee left means the fee rose, so the
+                    // modal quotes the rest again; otherwise the send failed for another reason, and the move stops.
+                    if let fresh = try? await quotePart(bolt11, limitSats, limitSats),
+                       MoveToSparkMath.feeCapMsat(feeSats: fresh.feeSats) > feeLeftMsat
+                    {
+                        throw MoveToSparkError.feeRose(movedSats: movedSats, feeSats: feeMsat / 1000)
+                    }
+                    break
+                }
+                partSats = halfSats
+            }
+        }
+        guard movedSats > 0 else { throw lastError ?? MoveToSparkError.nothingToMove }
+        return .settled(movedSats: movedSats, feeSats: feeMsat / 1000)
     }
 
     /// Pays `quote` over the channels, after any move still paying, and waits for its outcome; `nil` means it is still in
     /// flight, and its late outcome goes to `onLateFailure` or `onLateSuccess`.
     private func payOverChannels(
         _ quote: MoveToSparkQuote,
+        feeCapMsat: UInt64? = nil,
         wallet: WalletViewModel,
         onTimeout: @escaping @MainActor () -> Void = {},
         onLateFailure: @escaping @MainActor () -> Void = {},
@@ -579,7 +816,7 @@ final class MoveToSparkManager {
             return try await wallet.sendOverChannels(
                 bolt11: quote.invoice,
                 sats: quote.amountSats,
-                maxFeeMsat: MoveToSparkMath.feeCapMsat(feeSats: quote.feeSats),
+                maxFeeMsat: feeCapMsat ?? MoveToSparkMath.feeCapMsat(feeSats: quote.feeSats),
                 onTimeout: onTimeout,
                 onLateFailure: onLateFailure,
                 onLateSuccess: onLateSuccess
@@ -589,9 +826,14 @@ final class MoveToSparkManager {
         return try await payment.value
     }
 
-    /// Quotes moving everything the channels can send, for a payment that needs the update.
+    /// Quotes moving the channels' balance in one payment, for a payment that needs the update: the most of it that
+    /// routes at once, which `checkCoverage` then checks against the payment. Several parts go through the modal.
     func updateQuote(wallet: WalletViewModel) async throws -> MoveToSparkQuote {
-        try await makeQuote(channels: wallet.channels, targetSats: nil)
+        let (invoice, limitSats) = try await moveInvoice(channels: wallet.channels)
+        guard let part = try await fittingPart(invoice: invoice, limitSats: limitSats, wantedSats: limitSats) else {
+            throw MoveToSparkError.noRoute
+        }
+        return MoveToSparkQuote(invoice: invoice, amountSats: part.amountSats, feeSats: part.feeSats)
     }
 
     /// Spark's fee for a payment of `amountSats` once the spending balance is updated; Spark's service fee alone when
@@ -739,52 +981,83 @@ final class MoveToSparkManager {
         return generation
     }
 
-    func makeQuote(channels: [ChannelDetails]?, targetSats: UInt64?) async throws -> MoveToSparkQuote {
-        let limitSats = MoveToSparkMath.movableSats(channels: channels)
-        let wantedSats = min(targetSats ?? limitSats, limitSats)
-        guard wantedSats >= MoveToSparkMath.minMoveSats, MoveToSparkMath.hasMovableBalance(limitSats: limitSats) else {
-            throw MoveToSparkError.nothingToMove
+    /// Quotes moving everything the channels can send: one payment when it routes, else parts, each halved until it
+    /// routes and no larger than the last, priced on one invoice until less than the minimum is left or `maxParts` are
+    /// planned. The fee is the sum of the parts' fees, the most the move pays.
+    func makeQuote(channels: [ChannelDetails]?) async throws -> MoveToSparkQuote {
+        let (invoice, partLimitSats) = try await moveInvoice(channels: channels)
+        var parts: [MoveToSparkPart] = []
+        // What the channels hold is the total to move; the next-HTLC limit, which a peer's HTLC cap can hold below it,
+        // sizes each part.
+        var leftSats = max(MoveToSparkMath.outboundSats(channels: channels), partLimitSats)
+        var wantedSats = partLimitSats
+        // Every part is at least the minimum, so this ends once what is left falls below it or at the part cap.
+        while parts.count < MoveToSparkMath.maxParts,
+              MoveToSparkMath.hasMovableBalance(limitSats: leftSats),
+              let part = try await quotePart(invoice: invoice, limitSats: min(leftSats, partLimitSats), wantedSats: wantedSats)
+        {
+            parts.append(part)
+            leftSats -= min(leftSats, part.amountSats + part.feeSats)
+            wantedSats = part.amountSats
         }
-        guard services.isSparkUsable else { throw MoveToSparkError.sparkUnavailable }
+        guard let first = parts.first else { throw MoveToSparkError.noRoute }
+        return MoveToSparkQuote(
+            invoice: invoice,
+            amountSats: first.amountSats,
+            feeSats: parts.map(\.feeSats).reduce(0, +),
+            firstFeeSats: first.feeSats
+        )
+    }
 
+    /// A Spark invoice for a move, with what the channels can send.
+    private func moveInvoice(channels: [ChannelDetails]?) async throws -> (invoice: String, limitSats: UInt64) {
+        let limitSats = MoveToSparkMath.movableSats(channels: channels)
+        guard MoveToSparkMath.hasMovableBalance(limitSats: limitSats) else { throw MoveToSparkError.nothingToMove }
+        guard services.isSparkUsable else { throw MoveToSparkError.sparkUnavailable }
         let invoice = try await services.receiveInvoice(description: MoveToSparkMath.invoiceDescription, expirySecs: Self.invoiceExpirySecs)
+        return (invoice, limitSats)
+    }
+
+    /// The largest part up to `wantedSats` that routes with its fee under `limitSats`, halving an amount that does not;
+    /// `nil` once the amount falls below the minimum.
+    func quotePart(invoice: String, limitSats: UInt64, wantedSats: UInt64) async throws -> MoveToSparkPart? {
+        var wantedSats = wantedSats
+        while true {
+            let candidateSats = MoveToSparkMath.firstCandidate(wantedSats: wantedSats, limitSats: limitSats)
+            guard candidateSats >= MoveToSparkMath.minMoveSats else { return nil }
+            if let part = try await fittingPart(invoice: invoice, limitSats: limitSats, wantedSats: wantedSats) {
+                return part
+            }
+            guard let smallerSats = MoveToSparkMath.smallerAmount(candidateSats) else { return nil }
+            wantedSats = smallerSats
+        }
+    }
+
+    /// Prices up to `wantedSats` under `limitSats`; `nil` when it does not route or its fee never fits.
+    private func fittingPart(invoice: String, limitSats: UInt64, wantedSats: UInt64) async throws -> MoveToSparkPart? {
         var amountSats = MoveToSparkMath.firstCandidate(wantedSats: wantedSats, limitSats: limitSats)
-        var fitting: MoveToSparkQuote?
+        var fitting: MoveToSparkPart?
         // The first amount leaves room for a guessed fee; once the real fee is known, the amount grows to fit it.
         for _ in 0 ..< Self.maxQuoteRounds where amountSats >= MoveToSparkMath.minMoveSats {
             let estimateSats: UInt64
             do {
                 estimateSats = try await services.estimateChannelFee(bolt11: invoice, amountSats: amountSats)
             } catch {
-                if let fitting {
-                    return fitting
-                }
-                throw Self.isNoRoute(error) ? MoveToSparkError.tooLarge(amountSats: amountSats) : error
+                guard fitting != nil || Self.isNoRoute(error) else { throw error }
+                return fitting
             }
             let feeSats = MoveToSparkMath.quotedFeeSats(estimateSats: estimateSats)
             let nextSats = min(wantedSats, MoveToSparkMath.amountAfterFee(limitSats: limitSats, feeSats: estimateSats))
             if amountSats + feeSats <= limitSats {
-                let quote = MoveToSparkQuote(invoice: invoice, amountSats: amountSats, feeSats: feeSats)
-                fitting = quote
+                let part = MoveToSparkPart(amountSats: amountSats, feeSats: feeSats)
+                fitting = part
                 if nextSats <= amountSats {
-                    return quote
+                    return part
                 }
             }
             amountSats = nextSats
         }
-        if let fitting {
-            return fitting
-        }
-        throw MoveToSparkError.tooLarge(amountSats: amountSats)
-    }
-
-    /// The outcome of a move that paid `feeSats`: Move Rest when the channels can still send enough to move again.
-    nonisolated static func doneState(amountSats: UInt64, feeSats: UInt64, channels: [ChannelDetails]?) -> MoveToSparkState {
-        .done(
-            amountSats: amountSats,
-            feeSats: feeSats,
-            hasRest: MoveToSparkMath.hasMovableBalance(limitSats: MoveToSparkMath.movableSats(channels: channels))
-        )
+        return fitting
     }
 
     /// Whether the screen still shows the in-flight move of `moveGeneration`: a later move counts a new generation.
@@ -809,22 +1082,25 @@ final class MoveToSparkManager {
             }
         }
         guard Self.showsInFlightMove(state, generation: generation, moveGeneration: moveGeneration) else { return }
-        await wallet.syncStateAsync()
-        guard Self.showsInFlightMove(state, generation: generation, moveGeneration: moveGeneration) else { return }
-        state = Self.doneState(amountSats: amountSats, feeSats: feeSats, channels: wallet.channels)
+        await finishMove(movedSats: amountSats, feeSats: feeSats, moveGeneration: moveGeneration, wallet: wallet, waitsForHtlcs: true)
     }
 
-    /// A move that was still in flight failed after the wait: its amount stays in the channel, so the screen, if it still
-    /// shows that same move, says it could not move, and a toast tells the user wherever they are.
-    private func lateFailure(amountSats: UInt64, moveGeneration: Int) {
-        Logger.warn("Move to Spark of '\(amountSats)' sats failed after the wait", context: "MoveToSpark")
+    /// A part that was still in flight failed after the wait: its amount stays in the channel. The screen, if it still
+    /// shows that same move, finishes it as any move that moved some when earlier parts moved, else says it could not
+    /// move, with a toast wherever the user is.
+    private func lateFailure(movedSats: UInt64, feeSats: UInt64, moveGeneration: Int, wallet: WalletViewModel) async {
+        Logger.warn("A Move to Spark part failed after the wait, '\(movedSats)' sats moved before it", context: "MoveToSpark")
         if generation == moveGeneration {
             isMoveInFlight = false
         }
         if Self.showsInFlightMove(state, generation: generation, moveGeneration: moveGeneration) {
-            state = .failed(.unknown)
+            if movedSats > 0 {
+                await finishMove(movedSats: movedSats, feeSats: feeSats, moveGeneration: moveGeneration, wallet: wallet, waitsForHtlcs: true)
+            } else {
+                state = .failed(.unknown)
+            }
         }
-        guard !ToastWindowManager.areToastsDisabled() else { return }
+        guard movedSats == 0, !ToastWindowManager.areToastsDisabled() else { return }
         Haptics.notify(.error)
         ToastWindowManager.shared.showToast(Toast(
             type: .error,
@@ -835,7 +1111,7 @@ final class MoveToSparkManager {
     }
 
     /// Whether the payment failed for want of a route that carries the amount, so a smaller one may route.
-    private static func isNoRoute(_ error: Error) -> Bool {
+    static func isNoRoute(_ error: Error) -> Bool {
         let appError = error as? AppError
         if case .RouteNotFound = (appError?.underlyingError ?? error) as? NodeError {
             return true
@@ -847,17 +1123,16 @@ final class MoveToSparkManager {
     }
 
     /// LDK reports a route lost since the quote, before any payment exists, as a sending failure on a live invoice.
-    private static func isSendWithoutRoute(_ error: Error, invoice: String) -> Bool {
+    static func isSendWithoutRoute(_ error: Error, invoice: String) -> Bool {
         guard case .PaymentSendingFailed = ((error as? AppError)?.underlyingError ?? error) as? NodeError else { return false }
         return (try? Bolt11Invoice.fromStr(invoiceStr: invoice).isExpired()) == false
     }
 
     private static func state(for error: Error) -> MoveToSparkState {
         switch error as? MoveToSparkError {
-        case let .tooLarge(amountSats): .tooLarge(amountSats: amountSats, smallerSats: MoveToSparkMath.smallerAmount(amountSats))
         case .nothingToMove: .failed(.nothingToMove)
         case .sparkUnavailable: .failed(.sparkUnavailable)
-        case .updateFallsShort, .updateFeeUnseen, .updateUnsettled, .updateFailed, nil: .failed(.unknown)
+        case .noRoute, .feeRose, .updateFallsShort, .updateFeeUnseen, .updateUnsettled, .updateFailed, nil: .failed(.unknown)
         }
     }
 }

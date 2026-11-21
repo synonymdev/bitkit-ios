@@ -17,19 +17,8 @@ final class MoveToSparkLateOutcomeTests: XCTestCase {
         XCTAssertFalse(manager.keepsMoveForItsResult)
     }
 
-    func testLateSuccessOfTheInFlightMoveShowsItMovedWithItsFee() {
-        let state = MoveToSparkState.inFlight(amountSats: 40000)
-        XCTAssertTrue(MoveToSparkManager.showsInFlightMove(state, generation: 3, moveGeneration: 3))
-
-        let emptied = ChannelDetails.mock(outboundCapacityMsat: 500_000)
-        let done = MoveToSparkManager.doneState(amountSats: 40000, feeSats: 12, channels: [emptied])
-        XCTAssertEqual(done, .done(amountSats: 40000, feeSats: 12, hasRest: false))
-    }
-
-    func testLateSuccessOfAPartialMoveOffersTheRest() {
-        let channel = ChannelDetails.mock(outboundCapacityMsat: 50_000_000)
-        let done = MoveToSparkManager.doneState(amountSats: 25000, feeSats: 7, channels: [channel])
-        XCTAssertEqual(done, .done(amountSats: 25000, feeSats: 7, hasRest: true))
+    func testTheInFlightMoveIsTheOneOnScreen() {
+        XCTAssertTrue(MoveToSparkManager.showsInFlightMove(.inFlight(amountSats: 40000), generation: 3, moveGeneration: 3))
     }
 
     func testLateOutcomeOfAnOlderMoveLeavesTheScreen() {

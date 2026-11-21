@@ -5,17 +5,15 @@
     Connections show a "Move To Spark" button (id "MoveToSpark") that opens the same modal while the channel can
     still send. The modal quotes the routing fee over the channel only and shows it as "Update fee: " in the primary
     currency (id "UpdateSpendingBalanceUpdate" is the Update button, loading while it quotes and moves). Update
-    pays the amount to a new invoice of the user's own Spark wallet and shows "Spending Balance Updated" (id
-    "SpendingBalanceUpdated"); once the move settles, the app closes the emptied channel cooperatively in the
-    background, which writes a transfer to Savings. A wallet without such a channel never gets the modal or the button.
+    pays the whole balance to the user's own Spark wallet, in as many payments as it takes when one does not route,
+    without telling the user how many, and shows "Spending Balance Updated" (id "SpendingBalanceUpdated"); once the move
+    settles, the app closes the emptied channel cooperatively in the background, which writes a transfer to Savings. A
+    wallet without such a channel never gets the modal or the button.
 
-    The modal has one container per state without an Update action: payment in flight (id "MoveToSparkInFlight"),
-    partly moved (id "MoveToSparkPartlyMoved", with the move-the-rest button, id "MoveToSparkMoveRest"), too large to route
-    (id "MoveToSparkTooLarge", with the try-smaller button, id "MoveToSparkTrySmaller") and failed (id "MoveToSparkFailed",
-    with the retry button, id "MoveToSparkRetry"). Each closes with the dismiss button (id "UpdateSpendingBalanceDismiss", OK,
-    Later or Cancel). A route that cannot carry the balance is needed for the "too large to route" state; on a direct
-    channel to the Spark service provider every amount routes, so these states are covered by the quote's unit tests
-    and the PR's manual test rather than here.
+    The modal has one container per state without an Update action: payment in flight (id "MoveToSparkInFlight") and
+    failed (id "MoveToSparkFailed", with the retry button, id "MoveToSparkRetry"). Each closes with the dismiss button (id
+    "UpdateSpendingBalanceDismiss", OK or Cancel). On a direct channel to the Spark service provider every amount routes in
+    one payment, so the split into parts is covered by the quote's unit tests rather than here.
 
     Precondition: dev build pointed at a local Spark regtest (spark-sdk regtest/local), and a wallet with an open
     channel to that stack's SSP Lightning node that holds most of its capacity on the wallet's side (open it from
