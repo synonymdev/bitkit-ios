@@ -1534,7 +1534,14 @@ class LightningService: NodeLifecycleService {
         let isPaidOverTheNode = statuses.contains(.succeeded)
         if rails.contains(.channelFree) {
             let mark = attemptMark
-            if let payments = await readableRailPayments() {
+            let payments = await readableRailPayments()
+            if payments == nil {
+                // Spark may have dated a failure of the invoice up to now that this run hasn't seen, so a send now
+                // starts past it.
+                let seconds = UInt64(max(0, now().timeIntervalSince1970))
+                eventCallbackLock.withLock { noteRailFailure(paymentHash: paymentHash, createdAt: seconds) }
+            }
+            if let payments {
                 let live = keepRailAttempts(from: payments, since: mark)
                 let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: paymentHash)
                 if let payment {
