@@ -106,7 +106,17 @@ protocol NodeLifecycleService: AnyObject {
 class LightningService: NodeLifecycleService {
     private static let watchOnlyAccountHighestPreRevealedAddressIndex: UInt32 = 999
 
-    private var node: Node?
+    private var node: Node? {
+        didSet {
+            if node !== oldValue {
+                cancelEventLoop()
+            }
+        }
+    }
+
+    private let eventLoopLock = NSLock()
+    private var eventLoopTask: Task<Void, Never>?
+    private static let eventPollInterval: Duration = .milliseconds(100)
     private let beforeNodeStopLock = NSLock()
     private var beforeNodeStopAction: (() async -> Void)?
     /// Runs before the node stops, while its wallet can still release what was prepared on it.
@@ -388,8 +398,13 @@ class LightningService: NodeLifecycleService {
         listenForEvents(onEvent: eventCallbackLock.withLock { storedEventCallback })
 
         Logger.debug("Starting node...")
-        try await ServiceQueue.background(.ldk) {
-            try node.start()
+        do {
+            try await ServiceQueue.background(.ldk) {
+                try node.start()
+            }
+        } catch {
+            cancelEventLoop()
+            throw error
         }
 
         #if !BITKIT_NOTIFICATION_EXTENSION
@@ -2420,15 +2435,23 @@ extension LightningService {
         await completion?()
     }
 
+    /// Polls instead of awaiting `nextEventAsync()`: that call cannot be cancelled and never returns once its node stops, so it would keep
+    /// the stopped node, its runtime and this loop alive. The loop ends once `node` is no longer the current node.
     func listenForEvents(onEvent: ((Event) -> Void)? = nil) {
-        Task {
-            while true {
-                guard let node = self.node else {
-                    Logger.error("LDK node not started")
-                    return
-                }
+        guard let node else {
+            Logger.error("LDK node not started")
+            return
+        }
 
-                let event = await node.nextEventAsync()
+        eventLoopLock.lock()
+        defer { eventLoopLock.unlock() }
+        eventLoopTask?.cancel()
+        eventLoopTask = Task {
+            while !Task.isCancelled, self.node === node {
+                guard let event = node.nextEvent() else {
+                    try? await Task.sleep(for: Self.eventPollInterval)
+                    continue
+                }
 
                 do {
                     try node.eventHandled()
@@ -2628,6 +2651,13 @@ extension LightningService {
                         )
                 }
             }
+        }
+    }
+
+    private func cancelEventLoop() {
+        eventLoopLock.withLock {
+            eventLoopTask?.cancel()
+            eventLoopTask = nil
         }
     }
 
