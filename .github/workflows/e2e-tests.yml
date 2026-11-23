@@ -1,10 +1,10 @@
-name: macmini1 simulator and WebDriverAgent diagnostics
+name: macmini1 WebDriverAgent smoke test
 on: workflow_dispatch
 permissions: {}
 jobs:
   inventory:
     runs-on: [self-hosted, macOS]
-    timeout-minutes: 4
+    timeout-minutes: 10
     steps:
       - name: List installed runtimes and iPhone 17 simulators
         shell: bash
@@ -79,4 +79,84 @@ jobs:
               for crash in sorted(directory.glob('WebDriverAgent*.ips')):
                   if not crash.is_symlink() and start <= crash.stat().st_mtime <= end:
                       print('WebDriverAgent crash report:', crash.name)
+          PY
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Start one verbose Appium session on the iPhone 17 Pro
+        shell: bash
+        working-directory: bitkit-e2e-tests
+        run: |
+          test "$RUNNER_NAME" = macmini1
+          test "$(git rev-parse HEAD)" = bed683b581721716e6f870594c414288cbace935
+          test -x node_modules/.bin/appium
+          python3 -B -u - <<'PY'
+          import json
+          from pathlib import Path
+          import socket
+          import subprocess
+          import tempfile
+          import time
+          from urllib.error import HTTPError, URLError
+          from urllib.request import Request, urlopen
+
+          udid = '49F264CE-5A7C-4CF9-B1E5-A83C06AF670B'
+          appium_port = 14723
+          wda_port = 8100
+          for port in (appium_port, wda_port):
+              with socket.socket() as probe:
+                  probe.settimeout(2)
+                  if probe.connect_ex(('127.0.0.1', port)) == 0:
+                      raise SystemExit(f'Port {port} is already listening.')
+
+          subprocess.run(['xcrun', 'simctl', 'bootstatus', udid, '-b'], check=True, timeout=90)
+          base = f'http://127.0.0.1:{appium_port}'
+          with tempfile.TemporaryDirectory(prefix='wda-1371-') as work:
+              server = subprocess.Popen(['node_modules/.bin/appium', '--address', '127.0.0.1',
+                                         '--port', str(appium_port), '--log-level', 'info', '--log-no-colors'])
+              try:
+                  for _ in range(30):
+                      if server.poll() is not None:
+                          raise SystemExit(f'Appium exited before startup: {server.returncode}')
+                      try:
+                          with urlopen(base + '/status', timeout=2):
+                              break
+                      except URLError:
+                          time.sleep(1)
+                  else:
+                      raise SystemExit('Appium server did not start.')
+
+                  capabilities = {
+                      'platformName': 'iOS',
+                      'appium:automationName': 'XCUITest',
+                      'appium:udid': udid,
+                      'appium:deviceName': 'iPhone 17 Pro',
+                      'appium:platformVersion': '26.0.1',
+                      'appium:bundleId': 'com.apple.Preferences',
+                      'appium:noReset': True,
+                      'appium:showXcodeLog': True,
+                      'appium:derivedDataPath': str(Path(work) / 'DerivedData'),
+                      'appium:wdaLocalPort': wda_port,
+                      'appium:wdaLaunchTimeout': 240000,
+                      'appium:wdaConnectionTimeout': 30000,
+                      'appium:wdaStartupRetries': 1,
+                  }
+                  body = json.dumps({'capabilities': {'alwaysMatch': capabilities}}).encode()
+                  request = Request(base + '/session', data=body, headers={'Content-Type': 'application/json'})
+                  try:
+                      with urlopen(request, timeout=360) as response:
+                          session_id = json.load(response)['value']['sessionId']
+                  except HTTPError as error:
+                      print(error.read().decode(errors='replace')[:6000])
+                      raise SystemExit(f'Appium session failed with HTTP {error.code}.')
+                  print('WebDriverAgent and the Appium session are ready.')
+                  with urlopen(Request(base + '/session/' + session_id, method='DELETE'), timeout=30):
+                      pass
+              finally:
+                  server.terminate()
+                  try:
+                      server.wait(timeout=10)
+                  except subprocess.TimeoutExpired:
+                      server.kill()
+                      server.wait()
           PY
