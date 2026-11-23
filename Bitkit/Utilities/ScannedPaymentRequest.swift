@@ -83,15 +83,21 @@ enum ScannedPaymentRequest {
         return value * multiplier
     }
 
+    /// Prefixes the app or the decoder removes before reading a request.
+    private static let decoderWrappers = ["bitkit://", "lightning:", "lnurl:", "lnurlw:", "lnurlc:", "lnurlp:"]
     private static let bech32Charset = Array("qpzry9x8gf2tvdw0s3jn54khce6mua7l")
     private static let bech32Generator: [UInt32] = [0x3B6A_57B2, 0x2650_8E6D, 0x1EA1_19FA, 0x3D42_33DD, 0x2A14_62B3]
 
     /// Whether a `bitcoin:` request carries a required (`req-`) parameter. The app does not support any, and
     /// bitkit-core rc15 ignores them on a URI with an address, so a request from a nearby source that has one is
-    /// refused rather than paid without the parameter. The scanner strips Lightning schemes before decoding, so
-    /// `lightning:bitcoin:…` is checked as the `bitcoin:` request the decoder receives.
+    /// refused rather than paid without the parameter. The app and the decoder strip wrappers (`bitkit://` and the
+    /// Lightning schemes) before decoding, repeatedly in the decoder's case, so every wrapper is removed here and the
+    /// request is checked as the `bitcoin:` URI the decoder receives.
     nonisolated static func hasRequiredParameter(_ uri: String) -> Bool {
-        let lowercase = uri.removingLightningSchemes().lowercased()
+        var lowercase = uri.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        while let wrapper = decoderWrappers.first(where: { lowercase.hasPrefix($0) }) {
+            lowercase = String(lowercase.dropFirst(wrapper.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         guard lowercase.hasPrefix("bitcoin:"), let query = lowercase.split(separator: "?", maxSplits: 1).dropFirst().first else {
             return false
         }

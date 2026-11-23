@@ -119,7 +119,11 @@ final class ScannedPaymentRequestTests: XCTestCase {
         // The scanner strips `lightning:` before decoding, so the wrapped request is checked as a Bitcoin one.
         XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("lightning:\(request)"))
         XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("LIGHTNING:\(request)"))
+        for wrapped in ["bitkit://\(request)", "bitkit://lightning:\(request)", "lightning:lightning:\(request)", "lnurl:lightning:\(request)"] {
+            XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter(wrapped), wrapped)
+        }
         XCTAssertFalse(ScannedPaymentRequest.hasRequiredParameter("lightning:bitcoin:bcrt1qtest?amount=0.001"))
+        XCTAssertFalse(ScannedPaymentRequest.hasRequiredParameter("bitkit://bitcoin:bcrt1qtest?amount=0.001"))
         XCTAssertFalse(ScannedPaymentRequest.hasRequiredParameter("https://pay.example.com/lnurlp?req-x=1"))
     }
 }
