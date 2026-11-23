@@ -106,17 +106,22 @@ jobs:
         if: inputs.run_appium_smoke
         with:
           node-version: 22
-      - name: Start one verbose Appium session on iOS 27.2
+      - name: Start a fresh Appium session with Device Hub support
         if: inputs.run_appium_smoke
         shell: bash
         env:
           SMOKE_DEVICE: ${{ inputs.simulator }}
-        working-directory: bitkit-e2e-tests
         run: |
           test "$RUNNER_NAME" = macmini1
           xcodebuild -version | grep -Eq '^Xcode 27\.2([.]|$)'
-          test "$(git rev-parse HEAD)" = bed683b581721716e6f870594c414288cbace935
-          test -x node_modules/.bin/appium
+          probe_dir=$(mktemp -d "$RUNNER_TEMP/bitkit-device-hub.XXXXXX")
+          trap 'rm -rf -- "$probe_dir"' EXIT
+          cd "$probe_dir"
+          cat > package.json <<'JSON'
+          {"name":"bitkit-appium-device-hub-smoke","private":true,"dependencies":{"appium":"3.0.0","appium-xcuitest-driver":"12.20.0"}}
+          JSON
+          npm install --no-audit --no-fund --package-lock=false
+          unset APPIUM_HOME
           python3 -B -u - <<'PY'
           import json
           import os
@@ -155,9 +160,10 @@ jobs:
                   if probe.connect_ex(('127.0.0.1', port)) == 0:
                       raise SystemExit(f'Port {port} is already listening.')
 
-          subprocess.run(['xcrun', 'simctl', 'bootstatus', udid, '-b'], check=True, timeout=90)
+          if device['state'] == 'Booted':
+              subprocess.run(['xcrun', 'simctl', 'shutdown', udid], check=True, timeout=60)
           base = f'http://127.0.0.1:{appium_port}'
-          with tempfile.TemporaryDirectory(prefix='wda-1371-') as work:
+          with tempfile.TemporaryDirectory(prefix='wda-1371-', ignore_cleanup_errors=True) as work:
               server = subprocess.Popen(['node_modules/.bin/appium', '--address', '127.0.0.1',
                                          '--port', str(appium_port), '--log-level', 'info', '--log-no-colors'])
               try:
@@ -179,7 +185,7 @@ jobs:
                       'appium:deviceName': device_name,
                       'appium:platformVersion': platform_version,
                       'appium:bundleId': 'com.apple.Preferences',
-                      'appium:noReset': True,
+                      'appium:noReset': False,
                       'appium:showXcodeLog': True,
                       'appium:derivedDataPath': str(Path(work) / 'DerivedData'),
                       'appium:wdaLocalPort': wda_port,
