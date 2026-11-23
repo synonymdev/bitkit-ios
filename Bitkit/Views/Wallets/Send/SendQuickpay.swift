@@ -49,6 +49,7 @@ struct SendQuickpay: View {
             if displayedSats == nil {
                 displayedSats = app.lnurlPayData?.minSendableSat ?? app.scannedLightningInvoice?.amountSatoshis
             }
+            let recoveryOnly = Self.isRecoveryOnly(app: app, sessionID: sessionID)
             QuickPayPaymentCoordinator.shared.pay(
                 app: app,
                 wallet: wallet,
@@ -61,7 +62,7 @@ struct SendQuickpay: View {
                     routingCacheResetAttempted: routingCacheResetAttempted
                 ),
                 sessionID: sessionID,
-                recoveryOnly: Self.isRecoveryOnly(app: app, sessionID: sessionID)
+                recoveryOnly: recoveryOnly
             )
         }
     }
