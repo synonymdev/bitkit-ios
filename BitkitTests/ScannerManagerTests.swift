@@ -891,6 +891,51 @@ extension ScannerManagerTests {
         XCTAssertEqual(nextRoutes, [.amount])
     }
 
+    func testNearbyRequestWaitsForASelectedPhoto() async throws {
+        let sheets = SheetViewModel()
+        sheets.showSheet(.scanner)
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets)
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        let started = expectation(description: "Photo loading suspended")
+        var continuation: CheckedContinuation<QRCodePayload, Error>?
+        let photo = Task {
+            await scanner.handleImageScan(context: .main, decode: {
+                try await withCheckedThrowingContinuation {
+                    continuation = $0
+                    started.fulfill()
+                }
+            })
+        }
+        await fulfillment(of: [started], timeout: 2)
+
+        let nearbyURI = "bitcoin:bcrt1q59y53uy2h02dlqn76n824ns3maupd3mx4lfm0y"
+        let wasTaken = await scanner.handleNearbyRequest(nearbyURI, context: .main)
+        XCTAssertFalse(wasTaken, "A nearby request must not open while the selected photo loads")
+
+        try XCTUnwrap(continuation).resume(returning: QRCodePayload(string: paymentURI, data: nil))
+        await photo.value
+        XCTAssertEqual(app.scannedOnchainInvoice?.address, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x")
+    }
+
+    func testPhotoWithoutAQrCodeReleasesNearbyRequests() async {
+        let sheets = SheetViewModel()
+        sheets.showSheet(.scanner)
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets)
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        await scanner.handleImageScan(context: .main, decode: { throw QRCodeImageDecoderError.noQRCode })
+
+        let wasTaken = await scanner.handleNearbyRequest(paymentURI, context: .main)
+        XCTAssertTrue(wasTaken)
+    }
+
     func testMainScannerQrTakesOverFromADecodingNearbyRequest() async throws {
         let decoded = try await decode(invoice: paymentURI)
         let sheets = SheetViewModel()

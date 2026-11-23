@@ -22,6 +22,8 @@ class ScannerManager: ObservableObject {
     private weak var hwWalletManager: HwWalletManager?
     private let nfcReader: NfcPaymentReading
     private var isHandlingScan = false
+    /// Photos the user picked that are still loading or decoding. A nearby request waits until they are handled.
+    private var pendingImageScans = 0
     /// Set while a Bluetooth request holds the scan lock. A QR code or NFC read the user starts takes the lock from it.
     private var nearbyScanID: UUID?
     /// Whether the last main scan opened a payment flow, so a Bluetooth read knows the request was taken.
@@ -438,7 +440,7 @@ class ScannerManager: ObservableObject {
     }
 
     private func beginNearbyScan() -> UUID? {
-        guard !isHandlingScan else { return nil }
+        guard !isHandlingScan, pendingImageScans == 0 else { return nil }
         let scanID = UUID()
         isHandlingScan = true
         nearbyScanID = scanID
@@ -562,7 +564,7 @@ class ScannerManager: ObservableObject {
         }
 
         do {
-            let payload = try await decode()
+            let payload = try await decodeBeforeNearbyRequests(decode)
             guard isCurrentOrigin(), context != .send || app.sendStateGeneration == inputGeneration else { return }
             if context == .send {
                 await handleSendScan(payload, scope: scope, isCurrent: isCurrentOrigin, completion: completion)
@@ -594,6 +596,13 @@ class ScannerManager: ObservableObject {
                 )
             }
         }
+    }
+
+    /// Loads and decodes a picked photo. A nearby request can't open Send meanwhile, which would discard the photo.
+    private func decodeBeforeNearbyRequests(_ decode: () async throws -> QRCodePayload) async throws -> QRCodePayload {
+        pendingImageScans += 1
+        defer { pendingImageScans -= 1 }
+        return try await decode()
     }
 
     /// True while the sheet and navigation path shown when this is called are still shown, without having left them.
