@@ -230,6 +230,42 @@ final class ClipboardPromptValidatorTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testLegacyPubkySignupLinksAreNotOfferedEvenWhenCoreRecognisesThem() async {
+        snapshotAppDefaults(PaykitFeatureFlags.uiEnabledKey)
+        UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        let legacyQuery = "signup?hs=\(pubkyHomeserver)&relay=https%3A%2F%2Frelay.example%2Finbox%2F" +
+            "&secret=\(pubkyAuthSecret)&caps=%2Fpub%2Fexample.app%2F%3Arw"
+        for uri in ["pubkyauth://\(legacyQuery)", "pubkyring://\(legacyQuery)", "pubkyring://signup?hs=\(pubkyHomeserver)"] {
+            let supported = await ClipboardPromptValidator.isSupportedURI(uri, ownPublicKey: nil, contacts: [], isUsdtEnabled: false) { _ in
+                XCTFail("A recognised Pubky link must not fall through to the core decoder")
+                return true
+            }
+            XCTAssertFalse(supported, uri)
+        }
+    }
+
+    @MainActor
+    func testValidPubkySignupLinksAreOfferedWithoutDecoding() async {
+        snapshotAppDefaults(PaykitFeatureFlags.uiEnabledKey)
+        UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        for uri in [
+            "pubkyauth://signup?hs=\(pubkyHomeserver)",
+            "pubkyauth://direct_signup?hs=\(pubkyHomeserver)&st=invite",
+            "pubkyauth://signup_grant?caps=/pub/pubky.app/:rw&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
+                "&secret=\(pubkyAuthSecret)&hs=\(pubkyHomeserver)&st=invite&cid=shop.pubky.app&cpk=\(pubkyHomeserver)",
+        ] {
+            let supported = await ClipboardPromptValidator.isSupportedURI(uri, ownPublicKey: nil, contacts: [], isUsdtEnabled: false) { _ in
+                XCTFail("A valid Pubky link must be accepted by the Pubky parser alone")
+                return false
+            }
+            XCTAssertTrue(supported, uri)
+        }
+    }
+
+    private let pubkyHomeserver = "5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo"
+    private let pubkyAuthSecret = "e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s"
+
     private func wrappedLnurls(_ lnurl: String) -> [String] {
         [
             lnurl,
