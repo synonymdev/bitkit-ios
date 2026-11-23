@@ -24,7 +24,7 @@ jobs:
           print('iOS runtimes:')
           for runtime in runtimes:
               if runtime['identifier'].startswith('com.apple.CoreSimulator.SimRuntime.iOS-'):
-                  print(runtime['identifier'], 'build=' + runtime['buildversion'],
+                  print(runtime['identifier'], 'version=' + runtime['version'], 'build=' + runtime['buildversion'],
                         'available=' + str(runtime['isAvailable']))
 
           devices = simctl_json('devices')['devices']
