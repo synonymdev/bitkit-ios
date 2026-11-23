@@ -63,6 +63,11 @@ final class SparkManager: ChannelFreeLightningRail {
         keptBalanceSats ?? balanceSats
     }
 
+    /// Spark can take payments: connected, and no force transfer to savings running.
+    var isReceiving: Bool {
+        isReady && !isExiting
+    }
+
     /// The balance Spending and its connections show: 0 during an emergency exit, whose amount shows in transfer to
     /// savings instead.
     var shownSpendingSats: UInt64 {

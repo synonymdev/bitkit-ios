@@ -730,6 +730,7 @@ struct MainNavView: View {
                 case .sparkExitIntro: SparkExitIntroView()
                 case .sparkExitQuote: SparkExitQuoteView()
                 case .sparkExitFunding: SparkExitFundingView()
+                case .sparkExitPay: SparkExitPayView()
                 case .sparkExitConfirm: SparkExitConfirmView()
                 case .sparkExitProgress: SparkExitProgressView()
                 case .sparkExitFeeBump: SparkExitFeeBumpView()

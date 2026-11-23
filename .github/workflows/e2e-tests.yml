@@ -230,6 +230,11 @@ jobs:
     if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: [self-hosted, macOS]
     needs: [detect-changes, build-local, e2e-branch]
+    env:
+      # Reuse the legacy project so reset also clears containers left after a ref switch.
+      COMPOSE_PROJECT_NAME: docker
+      # Match the legacy fixture for the iOS manual channel funding Max case.
+      BITCOIN_FALLBACK_FEE: "0.00001"
 
     strategy:
       fail-fast: false
@@ -298,7 +303,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          key: ${{ runner.os }}-node-${{ hashFiles('bitkit-e2e-tests/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
 
@@ -313,16 +318,21 @@ jobs:
           docker ps
           docker compose version
 
-      - name: Reset regtest environment
-        working-directory: bitkit-e2e-tests/docker
-        continue-on-error: true
-        run: docker compose --verbose down -v -t 300
-
       - name: Run regtest setup
-        working-directory: bitkit-e2e-tests/docker
+        working-directory: bitkit-e2e-tests
         run: |
-          mkdir -p lnd && chmod 777 lnd
-          docker compose --verbose up --force-recreate -d
+          if [ -x ./scripts/local-backend ]; then
+            ./scripts/local-backend prepare
+            ./scripts/local-backend down --remove-orphans -v -t 300
+            ./scripts/local-backend up
+            ./scripts/local-backend github-env >> "$GITHUB_ENV"
+          else
+            # Older E2E refs still carry the bundled stack.
+            cd docker
+            docker compose --verbose --profile trezor down --remove-orphans -v -t 300 || true
+            mkdir -p lnd && chmod 777 lnd
+            docker compose --verbose up --force-recreate -d
+          fi
 
       - name: Wait for electrum server
         run: |
@@ -383,8 +393,13 @@ jobs:
 
       - name: Cleanup Docker containers
         if: always()
-        working-directory: bitkit-e2e-tests/docker
-        run: docker compose down -v || true
+        working-directory: bitkit-e2e-tests
+        run: |
+          if [ -x ./scripts/local-backend ]; then
+            ./scripts/local-backend down --remove-orphans -v || true
+          else
+            (cd docker && docker compose --profile trezor down --remove-orphans -v) || true
+          fi
 
   e2e-status:
     if: always() && github.event.pull_request.draft == false

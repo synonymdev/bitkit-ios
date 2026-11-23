@@ -48,7 +48,7 @@ struct FundingOptions: View {
                     RectangleButton(icon: "transfer", title: t("lightning__funding__button1"), testID: "FundTransfer") {
                         if !SparkManager.shared.canFundFromChain {
                             sheets.showSheet(.transferUnavailable)
-                        } else if wallet.totalOnchainSats == 0 {
+                        } else if wallet.spendableOnchainBalanceSats == 0 {
                             showNoFundsAlert = true
                         } else if app.hasSeenTransferToSpendingIntro {
                             navigation.navigate(.spendingAmount)

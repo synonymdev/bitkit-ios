@@ -107,6 +107,14 @@ class LightningService: NodeLifecycleService {
     private static let watchOnlyAccountHighestPreRevealedAddressIndex: UInt32 = 999
 
     private var node: Node?
+    private let beforeNodeStopLock = NSLock()
+    private var beforeNodeStopAction: (() async -> Void)?
+    /// Runs before the node stops, while its wallet can still release what was prepared on it.
+    var beforeNodeStop: (() async -> Void)? {
+        get { beforeNodeStopLock.withLock { beforeNodeStopAction } }
+        set { beforeNodeStopLock.withLock { beforeNodeStopAction = newValue } }
+    }
+
     var onchainDispatchNode: AnyObject? {
         node
     }
@@ -426,6 +434,7 @@ class LightningService: NodeLifecycleService {
         }
 
         Logger.debug("Stopping node...")
+        await beforeNodeStop?()
         try await ServiceQueue.background(.ldk) {
             try Self.stopReleasingFinishedNode(node.stop)
         }
@@ -2070,6 +2079,27 @@ extension LightningService {
 
     @MainActor var channels: [ChannelDetails]? {
         cachedChannels
+    }
+
+    /// The wallet's balances with its spendable outputs, read until the outputs before and after the balances agree, so
+    /// the outputs match what the balances include. Both come from the wallet's current view, which drops a transaction
+    /// evicted from the mempool, unlike the payment store. After three tries the last outputs read are used.
+    func balancesAndOutputs() async -> (balances: BalanceDetails, outputs: [SpendableUtxo])? {
+        try? await ServiceQueue.background(.ldk) { [self] in
+            guard let node else { return nil }
+            let outpoints: ([SpendableUtxo]) -> Set<String> = { Set($0.map { "\($0.outpoint.txid):\($0.outpoint.vout)" }) }
+            var outputs = try node.onchainPayment().listSpendableOutputs()
+            var balances = node.listBalances()
+            for _ in 0 ..< 3 {
+                let outputsAfter = try node.onchainPayment().listSpendableOutputs()
+                if outpoints(outputsAfter) == outpoints(outputs) {
+                    break
+                }
+                outputs = outputsAfter
+                balances = node.listBalances()
+            }
+            return (balances, outputs)
+        }
     }
 
     func listPayments() async -> [PaymentDetails]? {

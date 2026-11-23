@@ -3279,12 +3279,6 @@ final class SparkExitMathTests: XCTestCase {
         record.lostLeaves = [.init(leafId: "lost-before", valueSats: 65536), .init(leafId: "lost", valueSats: 65536)]
         XCTAssertEqual(SparkExitMath.staysOnSparkSats(sparkBalanceSats: 68928, record: record), 3392)
         XCTAssertEqual(SparkExitMath.staysOnSparkSats(sparkBalanceSats: 3392, record: record), 3392)
-
-        var prepared = SparkExitFixtures.prepared(leaves: [])
-        prepared.skipped = [SkippedLeaf(leafId: "small", valueSats: 3392, reason: .feeExceedsValue)]
-        let quote = SparkExitQuote(prepared: prepared, lostLeafSats: [65536, 65536])
-        XCTAssertEqual(SparkExitMath.unexitableSats(sparkBalanceSats: 68928, quote: quote), 3392)
-        XCTAssertEqual(SparkExitMath.unexitableSats(sparkBalanceSats: 3392, quote: quote), 3392)
     }
 
     /// qa-03: once Bitkit paid the funding from savings, or a payment covering it is seen, the exit waits for it
@@ -3323,6 +3317,19 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.neededSats(record, state: .ask(sats: 500)), 500)
     }
 
+    /// Pay to confirm starts on its own once its read finds the funding covered, on entry too, and only once a visit.
+    func testPayToConfirmAutoStartsOnceTheFundingIsCovered() {
+        // Before its first read this visit, it waits.
+        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: true, isStarting: false, hasAutoStarted: false, hasReadFunding: false))
+        // Funding already there on entry, or arriving later, starts it once covered.
+        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: false, isStarting: false, hasAutoStarted: false, hasReadFunding: true))
+        XCTAssertTrue(SparkExitMath.canAutoStartFunding(isFunded: true, isStarting: false, hasAutoStarted: false, hasReadFunding: true))
+        // A failed start waits for Try again.
+        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: true, isStarting: false, hasAutoStarted: true, hasReadFunding: true))
+        // A start already running is never joined by a second.
+        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: true, isStarting: true, hasAutoStarted: false, hasReadFunding: true))
+    }
+
     /// qa-03: 2,000 of 4,348 at the address showed no hint until the whole sum arrived.
     func testAPartialPaymentNamesWhatIsStillMissing() {
         XCTAssertNil(SparkExitMath.partialFundingSats(receivedSats: 0, requiredSats: 4348))
@@ -3351,15 +3358,6 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.nextFundingIndex(counter: 3, record: record), 3)
         record.funding[0] = .init(index: 4, address: "a", pubkey: "02ab")
         XCTAssertEqual(SparkExitMath.nextFundingIndex(counter: 1, record: record), 5)
-    }
-
-    /// qa-03: value the quote cannot exit, such as a counter-swap still unclaimed, is said on the quote screen.
-    func testQuoteNamesTheBalanceItCannotExit() {
-        let quote = SparkExitQuote(prepared: SparkExitFixtures.prepared())
-
-        XCTAssertEqual(SparkExitMath.unexitableSats(sparkBalanceSats: 133_068, quote: quote), 300 + 32768)
-        XCTAssertEqual(SparkExitMath.unexitableSats(sparkBalanceSats: 100_300, quote: quote), 300, "the skipped leaves")
-        XCTAssertEqual(SparkExitMath.unexitableSats(sparkBalanceSats: 90000, quote: quote), 300)
     }
 
     func testReadsTheLeafAnUnexitableErrorNames() {

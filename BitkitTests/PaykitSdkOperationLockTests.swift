@@ -395,14 +395,15 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                     XCTAssertEqual(nativeOperation, operation == "orderedProof" ? "proof" : operation)
                     await recorder.record("payment")
                 }
-                let service = PaykitSdkService(sdkFactory: { sdk })
+                let lock = PaykitSdkOperationLock()
+                let service = PaykitSdkService(operationLock: lock, sdkFactory: { sdk })
                 let active = Task { _ = try await service.contactRecords() }
                 await fulfillment(of: [started], timeout: 2)
                 let intake = Task { _ = try await service.receivePrivateMessagesFromLinkedPeers(priority: .background) }
-                try await Task.sleep(for: .milliseconds(50))
+                await waitForWaiters(lock, count: 1)
                 let barrier = orderedBarrier ? Task { _ = try await service.contactRecords() } : nil
-                if barrier != nil {
-                    try await Task.sleep(for: .milliseconds(50))
+                if orderedBarrier {
+                    await waitForWaiters(lock, count: 2)
                 }
                 let payment = Task {
                     do {
@@ -426,7 +427,7 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                         XCTFail("Expected the SDK test operation to throw")
                     } catch PaymentMutationReached.reached {}
                 }
-                try await Task.sleep(for: .milliseconds(50))
+                await waitForWaiters(lock, count: orderedBarrier ? 3 : 2)
                 release.finish()
                 try await active.value
                 try await intake.value
@@ -435,7 +436,7 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                 let events = await recorder.events
                 let expected = orderedBarrier ? ["active", "intake", "ordered", "payment"] :
                     operation == "orderedProof" ? ["active", "intake", "payment"] : ["active", "payment", "intake"]
-                XCTAssertEqual(events, expected)
+                XCTAssertEqual(events, expected, "Operation: \(operation), ordered barrier: \(orderedBarrier)")
             }
         }
     }
@@ -522,8 +523,7 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         )
         _ = try await service.syncPrivatePaymentListsWithReservations([], clearUnlistedLinkedPeers: true)
         let events = await recorder.events
-        // The publication first sends what is already queued; the two withdrawals do not.
-        XCTAssertEqual(events, Array(repeating: "published", count: 4))
+        XCTAssertEqual(events, Array(repeating: "published", count: 3))
     }
 
     @MainActor
@@ -545,9 +545,7 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                 )
             }),
         ]
-        for (index, operation) in operations.enumerated() {
-            // The payment-list sync, last, first sends what is already queued, so it reaches the fake twice per run.
-            let reads = index == operations.count - 1 ? 2 : 1
+        for operation in operations {
             for queued in operation.readsRevision ? [true, false] : [true] {
                 let (gate, release) = AsyncStream<Void>.makeStream()
                 defer { release.finish() }
@@ -601,7 +599,7 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                 PaykitPaymentActivity.shared.end(payment)
                 try await operation.run(service, .background)
                 let completedEvents = await recorder.events
-                XCTAssertEqual(completedEvents, ["waiting"] + Array(repeating: "refresh", count: 2 * reads))
+                XCTAssertEqual(completedEvents, ["waiting"] + Array(repeating: "refresh", count: 2))
             }
         }
     }
