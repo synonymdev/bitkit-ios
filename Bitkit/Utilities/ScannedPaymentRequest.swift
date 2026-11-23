@@ -88,9 +88,10 @@ enum ScannedPaymentRequest {
 
     /// Whether a `bitcoin:` request carries a required (`req-`) parameter. The app does not support any, and
     /// bitkit-core rc15 ignores them on a URI with an address, so a request from a nearby source that has one is
-    /// refused rather than paid without the parameter.
+    /// refused rather than paid without the parameter. The scanner strips Lightning schemes before decoding, so
+    /// `lightning:bitcoin:…` is checked as the `bitcoin:` request the decoder receives.
     nonisolated static func hasRequiredParameter(_ uri: String) -> Bool {
-        let lowercase = uri.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let lowercase = uri.removingLightningSchemes().lowercased()
         guard lowercase.hasPrefix("bitcoin:"), let query = lowercase.split(separator: "?", maxSplits: 1).dropFirst().first else {
             return false
         }

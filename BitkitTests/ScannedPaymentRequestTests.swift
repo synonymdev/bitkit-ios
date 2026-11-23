@@ -112,4 +112,14 @@ final class ScannedPaymentRequestTests: XCTestCase {
         XCTAssertEqual(ScannedPaymentRequest.normalized("bitcoin:?amount=0.001"), "bitcoin:?amount=0.001")
         XCTAssertEqual(ScannedPaymentRequest.normalized("bitcoin:?lightning="), "bitcoin:?lightning=")
     }
+
+    func testRequiredParameterIsFoundBehindALightningScheme() {
+        let request = "bitcoin:bcrt1qtest?amount=0.001&req-pop=callback%3a"
+        XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter(request))
+        // The scanner strips `lightning:` before decoding, so the wrapped request is checked as a Bitcoin one.
+        XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("lightning:\(request)"))
+        XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("LIGHTNING:\(request)"))
+        XCTAssertFalse(ScannedPaymentRequest.hasRequiredParameter("lightning:bitcoin:bcrt1qtest?amount=0.001"))
+        XCTAssertFalse(ScannedPaymentRequest.hasRequiredParameter("https://pay.example.com/lnurlp?req-x=1"))
+    }
 }
