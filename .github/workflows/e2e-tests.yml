@@ -13,9 +13,14 @@ on:
         options:
           - iPhone 17 Pro
           - iPhone 17
+      time_send:
+        description: Time the Send test with the dependency update from E2E PR 320
+        type: boolean
+        default: false
 permissions: {}
 jobs:
   inventory:
+    if: ${{ !inputs.time_send }}
     runs-on: [self-hosted, macOS]
     timeout-minutes: 10
     steps:
@@ -61,6 +66,7 @@ jobs:
           if not count:
               print('None')
           PY
+
       - name: Read WebDriverAgent results from the failed PR job
         shell: bash
         run: |
@@ -212,3 +218,70 @@ jobs:
                       server.kill()
                       server.wait()
           PY
+
+  time-send:
+    if: inputs.time_send
+    runs-on: [self-hosted, macOS]
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+    env:
+      COMPOSE_PROJECT_NAME: bitkit-xcode27-timing
+      SIMULATOR_NAME: iPhone 17 PR 320
+      SIMULATOR_OS_VERSION: '27.2'
+      BITCOIN_FALLBACK_FEE: '0.00001'
+    steps:
+      - name: Verify host and Xcode
+        run: |
+          test "$RUNNER_NAME" = macmini1
+          xcodebuild -version | grep -Eq '^Xcode 27\.2([.]|$)'
+      - uses: actions/checkout@v7
+        with:
+          repository: synonymdev/bitkit-e2e-tests
+          ref: 07fd6e727bfb1980bfa7340f641c7c68438cf10a
+          path: xcode27-timing
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: bitkit-e2e-ios_4656
+          path: xcode27-timing/aut
+          run-id: 45179069929
+          github-token: ${{ github.token }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Install the candidate lockfile
+        working-directory: xcode27-timing
+        run: |
+          npm ci
+          npm ls --depth=0 appium appium-xcuitest-driver
+      - name: Start disposable regtest fixture
+        id: backend
+        working-directory: xcode27-timing
+        run: |
+          ./scripts/local-backend prepare
+          echo 'prepared=true' >> "$GITHUB_OUTPUT"
+          ./scripts/local-backend up
+          ./scripts/local-backend github-env >> "$GITHUB_ENV"
+      - name: Run the timed Send test on a fresh iPhone 17
+        working-directory: xcode27-timing
+        env:
+          RECORD_VIDEO: 'true'
+          ATTEMPT: '1'
+        run: |
+          udid=$(xcrun simctl create "$SIMULATOR_NAME" com.apple.CoreSimulator.SimDeviceType.iPhone-17 com.apple.CoreSimulator.SimRuntime.iOS-27-2)
+          echo "Created test device $udid"
+          trap 'xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true; xcrun simctl delete "$udid"' EXIT
+          /usr/bin/time -p env -u CI ./ci_run_ios.sh --spec ./test/specs/send.e2e.ts --mochaOpts.grep '@send_1\b'
+      - name: Upload timing test artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: xcode27-send-timing
+          path: xcode27-timing/artifacts/
+          retention-days: 3
+      - name: Remove the disposable regtest fixture
+        if: always() && steps.backend.outputs.prepared == 'true'
+        working-directory: xcode27-timing
+        run: ./scripts/local-backend down --remove-orphans -v
