@@ -63,6 +63,16 @@ final class RetiredElectrumServerTests: XCTestCase {
         XCTAssertNil(service.getCustomServerForBackup(), "retired default")
     }
 
+    func testDefaultHostCaseVariantIsNotBackedUp() throws {
+        let (service, _) = try makeService()
+        let defaultServer = service.getDefaultServer()
+        service.saveServerConfig(
+            ElectrumServer(host: defaultServer.host.uppercased(), port: defaultServer.port, protocolType: defaultServer.protocolType)
+        )
+
+        XCTAssertNil(service.getCustomServerForBackup())
+    }
+
     // MARK: - SETTINGS backup and restore
 
     func testBackupOmitsDefaultServerAndKeepsCustomServer() {
@@ -97,6 +107,18 @@ final class RetiredElectrumServerTests: XCTestCase {
         let service = settings.electrumConfigService
 
         settings.restoreSettingsDictionary(["electrumServer": service.getDefaultServer().fullUrl])
+
+        XCTAssertNil(UserDefaults.standard.data(forKey: "electrumServer"))
+    }
+
+    func testRestoreOfDefaultHostCaseVariantLeavesNoStoredServer() {
+        snapshotAppDefaultsDomain()
+        let settings = SettingsViewModel.shared
+        let service = settings.electrumConfigService
+        let defaultServer = service.getDefaultServer()
+        let variant = ElectrumServer(host: defaultServer.host.uppercased(), port: defaultServer.port, protocolType: defaultServer.protocolType)
+
+        settings.restoreSettingsDictionary(["electrumServer": variant.fullUrl])
 
         XCTAssertNil(UserDefaults.standard.data(forKey: "electrumServer"))
     }

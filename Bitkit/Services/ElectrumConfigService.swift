@@ -46,8 +46,13 @@ class ElectrumConfigService {
     /// The server a SETTINGS backup should carry: only one the user chose, never the default, so a restore follows
     /// whatever the default is at that time.
     func getCustomServerForBackup() -> ElectrumServer? {
-        guard let server = getStoredServer(), server != getDefaultServer() else { return nil }
+        guard let server = getStoredServer(), !isDefault(server) else { return nil }
         return server
+    }
+
+    /// Hostnames are case-insensitive, so a case variant of the default host is the default.
+    func isDefault(_ server: ElectrumServer) -> Bool {
+        server.fullUrl.lowercased() == getDefaultServer().fullUrl.lowercased()
     }
 
     func isRetiredDefault(_ server: ElectrumServer) -> Bool {

@@ -1014,7 +1014,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         if let electrumServerUrl = dict["electrumServer"] as? String, !electrumServerUrl.isEmpty,
            let server = parseElectrumServerUrlForRestore(electrumServerUrl),
            !electrumConfigService.isRetiredDefault(server),
-           server != electrumConfigService.getDefaultServer()
+           !electrumConfigService.isDefault(server)
         {
             electrumConfigService.saveServerConfig(server)
         } else {
