@@ -696,6 +696,36 @@ extension ScannerManagerTests {
         XCTAssertNil(locked, "A request routed just before the lock must not open after it")
     }
 
+    func testASheetThatReplacedTheScannerDuringADecodeSurvivesALock() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        sheets.showSheet(.scanner)
+        let started = expectation(description: "Nearby request decoding suspended")
+        var continuation: CheckedContinuation<BitkitCore.Scanner, Error>?
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { _ in
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        let task = Task { await scanner.handleNearbyRequest(paymentURI, context: .main) }
+        await fulfillment(of: [started], timeout: 2)
+
+        // A received payment replaces the scanner while the request decodes; the request then routes nothing.
+        sheets.showSheet(.receivedTx)
+        try XCTUnwrap(continuation).resume(returning: decoded)
+        _ = await task.value
+        scanner.invalidateScansForAppLock()
+        try await Task.sleep(nanoseconds: UInt64((SheetViewModel.replacementDelaySeconds + 0.3) * 1_000_000_000))
+
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .receivedTx, "A lock must cancel only the scan's own route")
+    }
+
     func testNfcReadCannotRouteAfterTheSendSheetMovesOn() async throws {
         let decoded = try await decode(invoice: paymentURI)
         let sheets = SheetViewModel()

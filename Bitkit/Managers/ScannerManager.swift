@@ -118,22 +118,16 @@ class ScannerManager: ObservableObject {
     private func handleMainScan(_ uri: String, scope: ScanHandlingScope = .unrestricted, isCurrent: () -> Bool) async {
         didOpenScanFlow = false
         guard let app else { return }
-        // The scanner sheet closes before the route opens. Remember that deferred step so a lock in between drops it.
-        let replacementBefore = sheets?.latestReplacementID
-        defer {
-            if let replacement = sheets?.latestReplacementID, replacement != replacementBefore {
-                pendingRouteReplacement = replacement
-            }
-        }
-
         do {
             if let route = try resolveUsdtPaymentRoute(input: uri) {
                 guard app.contactPaymentContext == nil, wallet?.usdtWallet.isSendPresented == false else { return }
                 let path = navigation?.path
-                sheets?.hideSheetBeforePerforming(reason: "Scanner routed USDT payment") { [weak self] in
-                    guard let self, app.contactPaymentContext == nil, wallet?.usdtWallet.isSendPresented == false,
-                          navigation?.path == path else { return }
-                    navigation?.navigate(route)
+                recordingRouteReplacement {
+                    sheets?.hideSheetBeforePerforming(reason: "Scanner routed USDT payment") { [weak self] in
+                        guard let self, app.contactPaymentContext == nil, wallet?.usdtWallet.isSendPresented == false,
+                              navigation?.path == path else { return }
+                        navigation?.navigate(route)
+                    }
                 }
                 didOpenScanFlow = true
                 return
@@ -152,12 +146,14 @@ class ScannerManager: ObservableObject {
 
             if let currency, let settings, let sheets {
                 let presentationBefore = sheets.activeSheetConfiguration?.presentationID
-                PaymentNavigationHelper.openPaymentSheet(
-                    app: app,
-                    currency: currency,
-                    settings: settings,
-                    sheetViewModel: sheets
-                )
+                recordingRouteReplacement {
+                    PaymentNavigationHelper.openPaymentSheet(
+                        app: app,
+                        currency: currency,
+                        settings: settings,
+                        sheetViewModel: sheets
+                    )
+                }
                 // A refused request (e.g. an expired invoice) only shows a toast and opens no sheet.
                 didOpenScanFlow = !app.didRejectScannedPayment &&
                     sheets.activeSheetConfiguration?.presentationID != presentationBefore
@@ -170,6 +166,17 @@ class ScannerManager: ObservableObject {
                 title: t("other__qr_error_header"),
                 description: t("other__qr_error_text")
             )
+        }
+    }
+
+    /// Runs a route that closes the scanner sheet before it opens, and remembers the replacement that route started
+    /// so a lock in between drops it. Only this synchronous call is observed, so a sheet that replaced the scanner
+    /// while the scan was decoding (e.g. a received payment) is not claimed.
+    private func recordingRouteReplacement(_ route: () -> Void) {
+        let before = sheets?.latestReplacementID
+        route()
+        if let replacement = sheets?.latestReplacementID, replacement != before {
+            pendingRouteReplacement = replacement
         }
     }
 
