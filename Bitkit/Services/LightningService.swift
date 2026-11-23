@@ -2,6 +2,7 @@ import BitkitCore
 import Combine
 import Foundation
 import LDKNode
+import os
 
 // TODO: catch all errors and pass a readable error message to the UI
 
@@ -117,6 +118,8 @@ class LightningService: NodeLifecycleService {
     private let eventLoopLock = NSLock()
     private var eventLoopTask: Task<Void, Never>?
     private static let eventPollInterval: Duration = .milliseconds(100)
+    // Bounds the wait for the loop's last iteration, as `eventHandled()` can block on a stuck VSS write.
+    private static let eventLoopStopTimeout: Duration = .seconds(5)
     private let beforeNodeStopLock = NSLock()
     private var beforeNodeStopAction: (() async -> Void)?
     /// Runs before the node stops, while its wallet can still release what was prepared on it.
@@ -403,7 +406,13 @@ class LightningService: NodeLifecycleService {
                 try node.start()
             }
         } catch {
-            cancelEventLoop()
+            switch error {
+            case NodeError.AlreadyRunning:
+                // The node keeps running, so it keeps the loop started above.
+                break
+            default:
+                cancelEventLoop()
+            }
             throw error
         }
 
@@ -453,7 +462,12 @@ class LightningService: NodeLifecycleService {
         try await ServiceQueue.background(.ldk) {
             try Self.stopReleasingFinishedNode(node.stop)
         }
+        let eventLoop = cancelEventLoop()
         self.node = nil
+        // An event the loop took is handled, and its removal from the queue persisted, before the next node loads that queue.
+        if let eventLoop, await !Self.waitForEnd(of: eventLoop, timeout: Self.eventLoopStopTimeout) {
+            Logger.warn("Event loop of the stopped node did not end in time", context: "LightningService")
+        }
 
         if clearEventCallback {
             self.clearEventCallback()
@@ -2654,10 +2668,37 @@ extension LightningService {
         }
     }
 
-    private func cancelEventLoop() {
+    @discardableResult
+    private func cancelEventLoop() -> Task<Void, Never>? {
         eventLoopLock.withLock {
-            eventLoopTask?.cancel()
+            let task = eventLoopTask
+            task?.cancel()
             eventLoopTask = nil
+            return task
+        }
+    }
+
+    /// Returns whether `task` ended within `timeout`.
+    static func waitForEnd(of task: Task<Void, Never>, timeout: Duration) async -> Bool {
+        let resumed = OSAllocatedUnfairLock(initialState: false)
+        return await withCheckedContinuation { continuation in
+            let resume = { (ended: Bool) in
+                let first = resumed.withLock { resumed in
+                    defer { resumed = true }
+                    return !resumed
+                }
+                if first {
+                    continuation.resume(returning: ended)
+                }
+            }
+            Task {
+                await task.value
+                resume(true)
+            }
+            Task {
+                try? await Task.sleep(for: timeout)
+                resume(false)
+            }
         }
     }
 

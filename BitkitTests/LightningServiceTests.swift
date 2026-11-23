@@ -21,4 +21,21 @@ final class LightningServiceTests: XCTestCase {
     func testStopKeepsANodeWhoseStopFailedOtherwise() {
         XCTAssertThrowsError(try Bitkit.LightningService.stopReleasingFinishedNode { throw NodeError.ConnectionFailed(message: "") })
     }
+
+    func testWaitForEndReturnsOnceTheTaskEnds() async {
+        let task = Task<Void, Never> { try? await Task.sleep(for: .milliseconds(50)) }
+        let ended = await Bitkit.LightningService.waitForEnd(of: task, timeout: .seconds(10))
+        XCTAssertTrue(ended)
+    }
+
+    func testWaitForEndGivesUpOnATaskThatDoesNotEnd() async {
+        let release = AsyncStream<Void>.makeStream()
+        let task = Task {
+            for await _ in release.stream {}
+        }
+        let ended = await Bitkit.LightningService.waitForEnd(of: task, timeout: .milliseconds(50))
+        XCTAssertFalse(ended)
+        release.continuation.finish()
+        await task.value
+    }
 }
