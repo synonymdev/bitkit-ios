@@ -171,6 +171,38 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertNotNil(store.record(matching: invoiceHash))
     }
 
+    func testRecoveryOnlyStartWhoseRecordIsGoneOpensReviewWithoutSending() async throws {
+        let invoiceHash = try Self.invoiceHash
+        var sendCount = 0
+        // The screen allowed the start only because the invoice was tracked after a lock; reconciliation removed
+        // the record before the coordinator ran.
+        XCTAssertNil(store.record(matching: invoiceHash))
+        let coordinator = QuickPayPaymentCoordinator(store: store, sendBolt11: { _ in
+            sendCount += 1
+            return invoiceHash
+        }, listRows: { [] })
+        let reviewed = expectation(description: "Falls back to review")
+        coordinator.pay(
+            app: appWithInvoice,
+            wallet: WalletViewModel(),
+            settings: settings,
+            currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            presentation: presentation(onRoute: { XCTFail("Unexpected route \($0)") }, onConfirm: { reviewed.fulfill() }),
+            recoveryOnly: true
+        )
+        await fulfillment(of: [reviewed], timeout: 2)
+        XCTAssertEqual(sendCount, 0)
+        XCTAssertNil(store.record(matching: invoiceHash))
+
+        // A normal start still sends.
+        let route = await firstRoute(sendBolt11: { [store] _ in
+            sendCount += 1
+            store?.signalCompletion(paymentId: nil, paymentHash: invoiceHash, success: true)
+            return invoiceHash
+        })
+        XCTAssertEqual(sendCount, 1, "A normal start sends; got \(String(describing: route))")
+    }
+
     func testSendAfterSignalCompletionGoesToSuccess() async throws {
         let invoiceHash = try Self.invoiceHash
         let route = await firstRoute(

@@ -60,7 +60,8 @@ struct SendQuickpay: View {
                     addPendingPaymentHash: { app.addPendingPaymentHash($0) },
                     routingCacheResetAttempted: routingCacheResetAttempted
                 ),
-                sessionID: sessionID
+                sessionID: sessionID,
+                recoveryOnly: Self.isRecoveryOnly(app: app, sessionID: sessionID)
             )
         }
     }
@@ -77,5 +78,17 @@ struct SendQuickpay: View {
         let coordinator = coordinator ?? .shared
         let paymentHash = app.scannedLightningInvoice?.paymentHash.hex ?? ""
         return coordinator.isAttached(to: sessionID) || coordinator.hasOpen(paymentHash) || !app.didLockSinceQuickPayWasChosen
+    }
+
+    /// Whether a start may only replay a tracked payment: after a lock, a new submission needs review, so a payment
+    /// that is no longer tracked by the time the coordinator runs falls back to it instead of being sent.
+    @MainActor
+    static func isRecoveryOnly(
+        app: AppViewModel,
+        sessionID: QuickPayPaymentCoordinator.SessionID,
+        coordinator: QuickPayPaymentCoordinator? = nil
+    ) -> Bool {
+        let coordinator = coordinator ?? .shared
+        return !coordinator.isAttached(to: sessionID) && app.didLockSinceQuickPayWasChosen
     }
 }

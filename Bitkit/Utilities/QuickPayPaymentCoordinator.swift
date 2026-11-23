@@ -115,7 +115,8 @@ final class QuickPayPaymentCoordinator {
         settings: SettingsViewModel,
         currency: CurrencyViewModel,
         presentation: Presentation,
-        sessionID: SessionID? = nil
+        sessionID: SessionID? = nil,
+        recoveryOnly: Bool = false
     ) {
         if let sessionID {
             if self.sessionID == sessionID {
@@ -138,7 +139,8 @@ final class QuickPayPaymentCoordinator {
                 app: app,
                 wallet: wallet,
                 settings: settings,
-                currency: currency
+                currency: currency,
+                recoveryOnly: recoveryOnly
             )
         }
     }
@@ -243,7 +245,8 @@ final class QuickPayPaymentCoordinator {
         app: AppViewModel,
         wallet: WalletViewModel,
         settings: SettingsViewModel,
-        currency: CurrencyViewModel
+        currency: CurrencyViewModel,
+        recoveryOnly: Bool
     ) async {
         guard generation == self.generation, app.sendStateGeneration == sendStateGeneration else { return }
 
@@ -301,6 +304,13 @@ final class QuickPayPaymentCoordinator {
             register(op)
             await settleRecovered(op)
             op.runActive = false
+            return
+        }
+
+        // Allowed only to replay a payment already tracked: if it is gone by now, the payer reviews it instead.
+        if recoveryOnly {
+            app.resetQuickPay()
+            presentation.replaceQuickPay(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
             return
         }
 
