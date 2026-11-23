@@ -139,13 +139,15 @@ jobs:
           SMOKE_PLATFORM: ${{ inputs.hosted_smoke && '26.5' || '27.2' }}
           SMOKE_HOSTED: ${{ inputs.hosted_smoke }}
         run: |
+          xcode_version=$(xcodebuild -version)
+          printf '%s\n' "$xcode_version"
           if [[ "$SMOKE_HOSTED" == true ]]; then
-            xcodebuild -version | grep -Eq '^Xcode 26\.6([.]|$)'
+            grep -Eq '^Xcode 26\.6([.]|$)' <<< "$xcode_version"
             cd "$GITHUB_WORKSPACE/hosted-compatibility"
             npm ci --no-audit --no-fund
           else
             test "$RUNNER_NAME" = macmini1
-            xcodebuild -version | grep -Eq '^Xcode 27\.2([.]|$)'
+            grep -Eq '^Xcode 27\.2([.]|$)' <<< "$xcode_version"
             probe_dir=$(mktemp -d "$RUNNER_TEMP/bitkit-device-hub.XXXXXX")
             trap 'rm -rf -- "$probe_dir"' EXIT
             cd "$probe_dir"
@@ -154,7 +156,6 @@ jobs:
           JSON
             npm install --no-audit --no-fund --package-lock=false
           fi
-          xcodebuild -version
           unset APPIUM_HOME
           python3 -B -u - <<'PY'
           import json
@@ -261,9 +262,12 @@ jobs:
       BITCOIN_FALLBACK_FEE: '0.00001'
     steps:
       - name: Verify host and Xcode
+        shell: bash
         run: |
           test "$RUNNER_NAME" = macmini1
-          xcodebuild -version | grep -Eq '^Xcode 27\.2([.]|$)'
+          xcode_version=$(xcodebuild -version)
+          printf '%s\n' "$xcode_version"
+          grep -Eq '^Xcode 27\.2([.]|$)' <<< "$xcode_version"
       - uses: actions/checkout@v7
         with:
           repository: synonymdev/bitkit-e2e-tests
