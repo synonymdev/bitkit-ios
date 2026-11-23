@@ -2528,14 +2528,29 @@ extension LightningService {
             // nothing.
             guard await rail.hasSynced(after: nil) else { throw ChannelFreeRailUnavailable() }
             // Read before the listing, so a sync that ends while it is read can't settle a send the listing predates.
-            let unsettledBefore = await unsettledUncertainRailSends()
-            let kept = unexpiredRailAttempts()
-            let heldBefore = railSendHolds
-            let payments = try await rail.lightningPayments()
+            var unsettledBefore: [ChannelFreeRailPayment]
+            var kept: Set<String>
+            var heldBefore: [String: Int]
+            var payments: [ChannelFreeRailPayment]
+            var endedDuringRead: Set<String>
+            var reads = 0
+            // A hold that ended while the list was read (a success event) may have no row in it yet, so the list is
+            // read again; one still ending after the last read stays pending.
+            repeat {
+                unsettledBefore = await unsettledUncertainRailSends()
+                kept = unexpiredRailAttempts()
+                heldBefore = railSendHolds
+                payments = try await rail.lightningPayments()
+                reads += 1
+                let heldAfter = railSendHolds
+                endedDuringRead = Set(heldBefore.filter { heldAfter[$0.key] != $0.value }.keys)
+            } while !endedDuringRead.isEmpty && reads < 3
             // A send Spark lists a settled attempt of is no longer held; the others read pending until then.
             settleListedRailSends(payments, heldBefore: heldBefore)
             let stillUnsettled = eventCallbackLock.withLock { Set(uncertainRailSendFailedAt().keys) }
-            let unsettled = unsettledBefore.filter { stillUnsettled.contains($0.paymentHash) }
+            let unsettled = unsettledBefore.filter {
+                stillUnsettled.contains($0.paymentHash) || endedDuringRead.contains($0.paymentHash)
+            }
             if let since = sparkHistoryUnseededSince, await rail.hasSynced(after: UInt64(clamping: since)) {
                 // Kept, so after a relaunch the sends Spark listed hold the node until Spark syncs again.
                 let seeded = payments.filter { $0.direction == .outbound && $0.status != .failed }.map { $0.paymentHash.lowercased() }
