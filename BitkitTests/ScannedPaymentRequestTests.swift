@@ -133,5 +133,9 @@ final class ScannedPaymentRequestTests: XCTestCase {
         XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("\(address)&bitkit://req-pop=callback"))
         XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("\(address)&rebitkit://q-pop=callback"))
         XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("bitkit://bitkit://bitcoin:bcrt1qtest?REBITKIT://Q-POP=callback"))
+        // The decoder deletes them again while the text starts with `bitkit://`, so a nested one is removed too.
+        let required = "bitcoin:bcrt1qtest?amount=0.001&req-pop=x"
+        XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("bitkit://bitbitkit://kit://\(required)"))
+        XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("bitkit://lightning:bitbitkit://kit://\(required)"))
     }
 }
