@@ -670,6 +670,32 @@ extension ScannerManagerTests {
         XCTAssertNil(app.scannedOnchainInvoice)
     }
 
+    func testMainScannerRouteDoesNotOpenOnceTheAppLocks() async throws {
+        func routeFromTheScanner(lockingBeforeTheSheetOpens: Bool) async throws -> SheetConfiguration? {
+            let sheets = SheetViewModel()
+            sheets.showSheet(.scanner)
+            let scanner = ScannerManager {}
+            let app = configure(scanner, sheets: sheets)
+            scanner.configure(
+                app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+                settings: SettingsViewModel.shared, sheets: sheets
+            )
+            await scanner.handleNearbyRequest(paymentURI, context: .main)
+            // The scanner sheet is closing; the payment sheet opens after the replacement delay.
+            XCTAssertNil(sheets.activeSheetConfiguration)
+            if lockingBeforeTheSheetOpens {
+                scanner.invalidateScansForAppLock()
+            }
+            try await Task.sleep(nanoseconds: UInt64((SheetViewModel.replacementDelaySeconds + 0.3) * 1_000_000_000))
+            return sheets.activeSheetConfiguration
+        }
+
+        let unlocked = try await routeFromTheScanner(lockingBeforeTheSheetOpens: false)
+        XCTAssertNotNil(unlocked, "Without a lock the request opens its payment sheet")
+        let locked = try await routeFromTheScanner(lockingBeforeTheSheetOpens: true)
+        XCTAssertNil(locked, "A request routed just before the lock must not open after it")
+    }
+
     func testNfcReadCannotRouteAfterTheSendSheetMovesOn() async throws {
         let decoded = try await decode(invoice: paymentURI)
         let sheets = SheetViewModel()

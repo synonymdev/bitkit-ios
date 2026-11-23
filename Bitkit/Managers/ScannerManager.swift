@@ -28,6 +28,8 @@ class ScannerManager: ObservableObject {
     private var didOpenScanFlow = false
     /// Raised when the app locks, so a scan still decoding cannot open a payment behind the PIN screen or after it.
     private var lockGeneration = 0
+    /// A sheet replacement a scan started that has not run yet, so a lock can cancel the route it would open.
+    private var pendingRouteReplacement: Int?
 
     init(
         nfcReader: NfcPaymentReading? = nil,
@@ -116,6 +118,13 @@ class ScannerManager: ObservableObject {
     private func handleMainScan(_ uri: String, scope: ScanHandlingScope = .unrestricted, isCurrent: () -> Bool) async {
         didOpenScanFlow = false
         guard let app else { return }
+        // The scanner sheet closes before the route opens. Remember that deferred step so a lock in between drops it.
+        let replacementBefore = sheets?.latestReplacementID
+        defer {
+            if let replacement = sheets?.latestReplacementID, replacement != replacementBefore {
+                pendingRouteReplacement = replacement
+            }
+        }
 
         do {
             if let route = try resolveUsdtPaymentRoute(input: uri) {
@@ -590,9 +599,14 @@ class ScannerManager: ObservableObject {
         }
     }
 
-    /// Drops every scan still being handled. Called when the app locks behind the PIN.
+    /// Drops every scan still being handled, and a route a scan opens once its sheet has closed. Called when the app
+    /// locks behind the PIN.
     func invalidateScansForAppLock() {
         lockGeneration += 1
+        if let pendingRouteReplacement {
+            sheets?.cancelReplacement(pendingRouteReplacement)
+            self.pendingRouteReplacement = nil
+        }
     }
 
     private func showUnsupportedQRCodeError() {
