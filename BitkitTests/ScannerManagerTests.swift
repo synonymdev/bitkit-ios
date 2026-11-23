@@ -438,6 +438,21 @@ extension ScannerManagerTests {
         }
     }
 
+    func testNearbyRequestWithARequiredParameterIsRefused() async {
+        let required = "\(paymentURI)?amount=0.001&REQ-POP=callback%3a"
+        XCTAssertFalse(ScannerManager.isNearbyPaymentRequest(required))
+        XCTAssertTrue(ScannerManager.isNearbyPaymentRequest("\(paymentURI)?amount=0.001&pop=callback%3a"))
+
+        let scanner = ScannerManager(nfcReader: FakeNfcReader(.success(required))) {
+            XCTFail("An NFC request with a required parameter must not play a success haptic")
+        }
+        let app = configure(scanner)
+        var routes: [SendRoute?] = []
+        await scanner.handleSendNfcRead { routes.append($0) }
+        XCTAssertEqual(routes, [nil])
+        XCTAssertNil(app.scannedOnchainInvoice)
+    }
+
     func testNearbyRequestRoutesWithQuickPaySuppressed() async {
         var hapticCount = 0
         let scanner = ScannerManager { hapticCount += 1 }

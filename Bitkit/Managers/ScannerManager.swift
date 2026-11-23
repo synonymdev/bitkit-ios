@@ -344,7 +344,8 @@ class ScannerManager: ObservableObject {
     /// user picks it, so nothing that is resolved over the network before review is taken: LNURL and Lightning
     /// addresses, also as a unified URI's `lightning` part, are refused. So are sign-in, setup, withdraw and contact
     /// links, and BOLT12 offers, which the decoder does not read. An invoice is checked locally
-    /// (`ScannedPaymentRequest.isBolt11Invoice`), since a Lightning address can begin like one.
+    /// (`ScannedPaymentRequest.isBolt11Invoice`), since a Lightning address can begin like one. A `bitcoin:` request
+    /// with a required (`req-`) parameter is refused, since none is supported.
     nonisolated static func isNearbyPaymentRequest(_ uri: String) -> Bool {
         let lowercase = uri.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         func isBolt11(_ value: Substring) -> Bool {
@@ -356,7 +357,7 @@ class ScannerManager: ObservableObject {
         if lowercase.hasPrefix("lightning:") {
             return isBolt11(lowercase.dropFirst("lightning:".count))
         }
-        guard lowercase.hasPrefix("bitcoin:") else { return false }
+        guard lowercase.hasPrefix("bitcoin:"), !ScannedPaymentRequest.hasRequiredParameter(lowercase) else { return false }
         let query = lowercase.split(separator: "?", maxSplits: 1).dropFirst().first ?? ""
         return query.split(separator: "&").allSatisfy { pair in
             !pair.hasPrefix("lightning=") || isBolt11(pair.dropFirst("lightning=".count))
@@ -461,7 +462,10 @@ class ScannerManager: ObservableObject {
     private func readNfcPaymentRequest() async -> String? {
         do {
             let request = try await nfcReader.readPaymentRequest(alertMessage: t("other__nfc_alert"))
-            return ScannedPaymentRequest.normalized(request)
+            let uri = ScannedPaymentRequest.normalized(request)
+            // A QR code with a required parameter still goes to the decoder; core handles those after its bump (#1344).
+            guard !ScannedPaymentRequest.hasRequiredParameter(uri) else { throw NfcReadError.noPaymentRequest }
+            return uri
         } catch let error as NfcReadError {
             Logger.warn("NFC read failed: \(error)", context: "ScannerManager")
             showNfcReadError(error)

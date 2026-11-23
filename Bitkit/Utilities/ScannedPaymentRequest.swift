@@ -86,6 +86,17 @@ enum ScannedPaymentRequest {
     private static let bech32Charset = Array("qpzry9x8gf2tvdw0s3jn54khce6mua7l")
     private static let bech32Generator: [UInt32] = [0x3B6A_57B2, 0x2650_8E6D, 0x1EA1_19FA, 0x3D42_33DD, 0x2A14_62B3]
 
+    /// Whether a `bitcoin:` request carries a required (`req-`) parameter. The app does not support any, and
+    /// bitkit-core rc15 ignores them on a URI with an address, so a request from a nearby source that has one is
+    /// refused rather than paid without the parameter.
+    nonisolated static func hasRequiredParameter(_ uri: String) -> Bool {
+        let lowercase = uri.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard lowercase.hasPrefix("bitcoin:"), let query = lowercase.split(separator: "?", maxSplits: 1).dropFirst().first else {
+            return false
+        }
+        return query.split(separator: "&").contains { $0.hasPrefix(requiredParamPrefix) }
+    }
+
     /// Whether `value` is a BOLT11 invoice for a network the decoder reads as one (`lnbc`, `lnbcrt`, `lntb`,
     /// `lntbs`): its human-readable part is the network and an optional amount, and its bech32 checksum holds. Checked
     /// without the decoder, which would resolve a Lightning address such as `lnbc@example.com` over the network.
