@@ -1793,31 +1793,17 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(service.railSendHolds[hash], startedAt, "a list read before the send settled it")
     }
 
-    func testARetrySucceedingWhileSparksListIsReadNeverReadsAsFailed() async throws {
-        let (hash, startedAt) = try await sendARetryFiveSecondsAfterAFailedAttempt()
+    func testARetryWhoseHoldEndsDuringTheReadWithoutItsResultListedStaysPending() async throws {
+        let (hash, _) = try await sendARetryFiveSecondsAfterAFailedAttempt()
         let service = Bitkit.LightningService.shared
-        let rail = try XCTUnwrap(rail)
-        final class Reads: @unchecked Sendable { var count = 0 }
-        let reads = Reads()
-        // The retry's success event ends its hold while the first read lists only A's failure; Spark lists the success
-        // from the next read on.
+        // The retry's success event ends its hold during the read, and Spark lists only A's failure on every read.
         rail.onList = {
-            reads.count += 1
-            if reads.count == 1 {
-                service.railAttemptsStore.set([String: Int](), forKey: Self.uncertainRailSendsKey)
-            } else {
-                rail.payments.append(
-                    Bitkit.ChannelFreeRailPayment(
-                        paymentHash: hash, direction: .outbound, status: .succeeded, preimage: nil, timestamp: startedAt
-                    )
-                )
-            }
+            service.railAttemptsStore.set([String: Int](), forKey: Self.uncertainRailSendsKey)
         }
 
         let payments = try await service.channelFreeRailPayments().filter { $0.paymentHash == hash }
 
-        XCTAssertEqual(reads.count, 2)
-        XCTAssertTrue(payments.contains { $0.status == .succeeded }, "the retry's success was read as A's failure")
+        XCTAssertTrue(payments.contains { $0.status == .pending }, "the retry read as A's failure")
     }
 
     func testAnExpiredRetryFailsItsOwnRowWhenSparkListsOnlyTheFailureFiveSecondsBeforeIt() async throws {
