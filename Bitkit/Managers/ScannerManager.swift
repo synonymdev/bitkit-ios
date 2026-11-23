@@ -603,9 +603,9 @@ class ScannerManager: ObservableObject {
     /// locks behind the PIN.
     func invalidateScansForAppLock() {
         lockGeneration += 1
-        if let pendingRouteReplacement {
-            sheets?.cancelReplacement(pendingRouteReplacement)
-            self.pendingRouteReplacement = nil
+        if let replacement = pendingRouteReplacement {
+            sheets?.cancelReplacement(replacement)
+            pendingRouteReplacement = nil
         }
     }
 

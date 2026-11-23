@@ -42,7 +42,7 @@ enum ScannedPaymentRequest {
             }
             guard !key.isEmpty else { continue }
             // BOLT12 offers (`lno`) may repeat beside the invoice; only a second BOLT11 invoice is ambiguous.
-            guard keys.insert(key).inserted || !singletonParams.contains(key) && key != "lightning" else {
+            guard keys.insert(key).inserted || (!singletonParams.contains(key) && key != "lightning") else {
                 return trimmed
             }
             guard parts.count == 2, !parts[1].isEmpty else { continue }
