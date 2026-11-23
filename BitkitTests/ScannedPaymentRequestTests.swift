@@ -53,6 +53,14 @@ final class ScannedPaymentRequestTests: XCTestCase {
         )
     }
 
+    func testRepeatedOffersBesideOneInvoiceAreSkipped() {
+        let offers = "lno=lno1qgsqvgnwgcg35z6ee2h3yczraddm72xrfua9uve2rlrm9deu7xyfzr&LNO=lno1pqps7sjqpgt"
+        XCTAssertEqual(ScannedPaymentRequest.normalized("bitcoin:?\(offers)&lightning=\(invoice)"), "lightning:\(invoice)")
+        XCTAssertTrue(ScannerManager.isNearbyPaymentRequest(ScannedPaymentRequest.normalized("bitcoin:?lightning=\(invoice)&\(offers)")))
+        // Offers alone are still refused over Bluetooth.
+        XCTAssertFalse(ScannerManager.isNearbyPaymentRequest(ScannedPaymentRequest.normalized("bitcoin:?\(offers)")))
+    }
+
     func testScannerRejectsARepeatedParameter() async {
         await assertScannerRejects("bitcoin:?amount=0.01&AMOUNT=0.02&lightning=\(invoice)")
     }

@@ -22,8 +22,9 @@ enum ScannedPaymentRequest {
     /// without an address, so that form becomes `lightning:<invoice>`. A URI with a required (`req-`) parameter is
     /// kept, since BIP 321 forbids paying it without handling that parameter and the rewrite would drop it. So is a URI
     /// that repeats `amount`, `label`, `message` or `pop`, which BIP 321 makes invalid, so the scanner rejects it
-    /// instead of paying the invoice alone. A repeated Lightning request is valid BIP 321 but not supported here, since
-    /// the rewrite would have to pick one of them, so that URI is kept too. A URI whose `amount` differs from the
+    /// instead of paying the invoice alone. A repeated `lightning` invoice is valid BIP 321 but not supported here,
+    /// since the rewrite would have to pick one of them, so that URI is kept too. Offers (`lno`), which the decoder
+    /// does not read, may repeat and are skipped when an invoice is present. A URI whose `amount` differs from the
     /// invoice's, or that sets an amount for an amountless invoice, is kept too: the scanner cannot carry the outer
     /// amount, so it rejects the request instead of asking for a different one.
     /// Anything else is returned trimmed and unchanged.
@@ -40,7 +41,8 @@ enum ScannedPaymentRequest {
                 return trimmed
             }
             guard !key.isEmpty else { continue }
-            guard keys.insert(key).inserted || !singletonParams.contains(key) && !lightningParams.contains(key) else {
+            // BOLT12 offers (`lno`) may repeat beside the invoice; only a second BOLT11 invoice is ambiguous.
+            guard keys.insert(key).inserted || !singletonParams.contains(key) && key != "lightning" else {
                 return trimmed
             }
             guard parts.count == 2, !parts[1].isEmpty else { continue }
