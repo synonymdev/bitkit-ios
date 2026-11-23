@@ -463,16 +463,19 @@ extension ScannerManagerTests {
     }
 
     func testNearbyAllowlistAcceptsPaymentSchemesOnly() {
-        for uri in ["bitcoin:bcrt1qexample", "BITCOIN:BCRT1Q", "lightning:lnbcrt1", "ethereum:0xabc@42161",
-                    " bitcoin:bcrt1q?lightning=lnbcrt1 ", "bitcoin:bcrt1q?amount=0.1&label=lightning",
-                    PosNfcFixtures.squareUri, PosNfcFixtures.bip321Uri]
+        let invoice = PosNfcFixtures.squareInvoice
+        for uri in ["bitcoin:bcrt1qexample", "BITCOIN:BCRT1Q", "lightning:\(invoice)", "lightning:\(invoice.lowercased())",
+                    "ethereum:0xabc@42161", " bitcoin:bcrt1q?lightning=\(invoice) ", "bitcoin:bcrt1q?amount=0.1&label=lightning",
+                    "lightning:\(ChannelFreeRailTests.invoice)", PosNfcFixtures.squareUri, PosNfcFixtures.bip321Uri]
         {
             XCTAssertTrue(ScannerManager.isNearbyPaymentRequest(uri), uri)
         }
         for uri in authURIs + nearbyNetworkLookups + ["lnurlw://example.com/w", "lnurlc://example.com/c", "LNURL1DP68GURN8GHJ7",
                                                       "lightning:lno1qgsqvgnwgcg35z6ee2h3yczraddm72xrfua9uve2rlrm9deu7xyfzr",
                                                       "bcrt1qexample",
-                                                      "lnbcrt10u1pjexample", "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw374y",
+                                                      "lnbcrt10u1pjexample", "lightning:lnbcrt1", "lightning:lnsb1qqqqqq",
+                                                      "lightning:\(PosNfcFixtures.squareInvoice.dropLast())x",
+                                                      "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw374y",
                                                       "https://example.com", "bitkit://contact/abc", "02aaaa@127.0.0.1:9735", ""]
         {
             XCTAssertFalse(ScannerManager.isNearbyPaymentRequest(uri), uri)
@@ -484,6 +487,10 @@ extension ScannerManagerTests {
         [
             "LIGHTNING:LNURL1DP68GURN8GHJ7", "lnurlp://example.com/pay", "lightning:alice@example.com",
             "bitcoin:bcrt1q?amount=0.1&lightning=LNURL1DP68GURN8GHJ7", "bitcoin:?lightning=lnurl1dp68gurn8ghj7",
+            "lightning:lnsb@example.com", "bitcoin:?lightning=lnsb@example.com", "bitcoin:bcrt1q?lightning=lnsb@example.com",
+            "lightning:lnbc@example.com", "bitcoin:bcrt1q?lightning=lntb1@example.com",
+            // Each repeated Lightning value is checked, since the decoder takes the last one.
+            "bitcoin:bcrt1q?lightning=\(PosNfcFixtures.squareInvoice)&lightning=LNURL1DP68GURN8GHJ7",
         ]
     }
 
@@ -535,7 +542,7 @@ extension ScannerManagerTests {
         )
         var routes: [SendRoute?] = []
 
-        let wasTaken = await scanner.handleSendNearbyRequest("lightning:lnbcrt1gift") { routes.append($0) }
+        let wasTaken = await scanner.handleSendNearbyRequest("lightning:\(PosNfcFixtures.squareInvoice)") { routes.append($0) }
 
         XCTAssertFalse(wasTaken)
         XCTAssertEqual(routes, [nil])
@@ -716,7 +723,7 @@ extension ScannerManagerTests {
             settings: SettingsViewModel.shared, sheets: sheets
         )
 
-        let wasTaken = await scanner.handleNearbyRequest("lightning:lnbcrt1expired", context: .main)
+        let wasTaken = await scanner.handleNearbyRequest("lightning:\(PosNfcFixtures.squareInvoice)", context: .main)
 
         XCTAssertFalse(wasTaken)
         XCTAssertEqual(sheets.activeSheetConfiguration?.id, .scanner)

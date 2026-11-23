@@ -80,4 +80,38 @@ enum ScannedPaymentRequest {
         }
         return value * multiplier
     }
+
+    private static let bech32Charset = Array("qpzry9x8gf2tvdw0s3jn54khce6mua7l")
+    private static let bech32Generator: [UInt32] = [0x3B6A_57B2, 0x2650_8E6D, 0x1EA1_19FA, 0x3D42_33DD, 0x2A14_62B3]
+
+    /// Whether `value` is a BOLT11 invoice for a network the decoder reads as one (`lnbc`, `lnbcrt`, `lntb`,
+    /// `lntbs`): its human-readable part is the network and an optional amount, and its bech32 checksum holds. Checked
+    /// without the decoder, which would resolve a Lightning address such as `lnbc@example.com` over the network.
+    nonisolated static func isBolt11Invoice(_ value: some StringProtocol) -> Bool {
+        let lowercase = value.lowercased()
+        guard let separator = lowercase.lastIndex(of: "1") else { return false }
+        let hrp = lowercase[..<separator]
+        let network = ["lnbcrt", "lntbs", "lnbc", "lntb"].first { hrp.hasPrefix($0) }
+        guard let network else { return false }
+        var amount = hrp.dropFirst(network.count)
+        if let last = amount.last, "munp".contains(last) {
+            amount = amount.dropLast()
+        }
+        guard amount.allSatisfy({ $0.isASCII && $0.isNumber }) else { return false }
+        let data = lowercase[lowercase.index(after: separator)...].compactMap { bech32Charset.firstIndex(of: $0) }
+        guard data.count >= 6, data.count == lowercase.distance(from: separator, to: lowercase.endIndex) - 1 else {
+            return false
+        }
+        let hrpBytes = hrp.unicodeScalars.map { UInt32($0.value) }
+        let values = hrpBytes.map { $0 >> 5 } + [0] + hrpBytes.map { $0 & 31 } + data.map { UInt32($0) }
+        var checksum: UInt32 = 1
+        for value in values {
+            let top = checksum >> 25
+            checksum = (checksum & 0x1FFFFFF) << 5 ^ value
+            for (bit, generator) in bech32Generator.enumerated() where (top >> bit) & 1 == 1 {
+                checksum ^= generator
+            }
+        }
+        return checksum == 1
+    }
 }

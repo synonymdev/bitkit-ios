@@ -321,18 +321,16 @@ class ScannerManager: ObservableObject {
         await processSendScan(uri, scope: scope, isCurrent: isStillCurrent, completion: completion)
     }
 
-    /// Covers `lnbcrt`, `lntbs` and amounts after the network.
-    private nonisolated static let bolt11Prefixes = ["lnbc", "lntb", "lnsb"]
-
     /// Whether a request read over Bluetooth is accepted: a `bitcoin:` URI, a `lightning:` BOLT11 invoice or a USDT
     /// `ethereum:` request. Unlike a camera or NFC read, a Bluetooth request can come from any nearby device before the
     /// user picks it, so nothing that is resolved over the network before review is taken: LNURL and Lightning
     /// addresses, also as a unified URI's `lightning` part, are refused. So are sign-in, setup, withdraw and contact
-    /// links, and BOLT12 offers, which the decoder does not read.
+    /// links, and BOLT12 offers, which the decoder does not read. An invoice is checked locally
+    /// (`ScannedPaymentRequest.isBolt11Invoice`), since a Lightning address can begin like one.
     nonisolated static func isNearbyPaymentRequest(_ uri: String) -> Bool {
         let lowercase = uri.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         func isBolt11(_ value: Substring) -> Bool {
-            bolt11Prefixes.contains { value.hasPrefix($0) }
+            ScannedPaymentRequest.isBolt11Invoice(value)
         }
         if lowercase.hasPrefix("ethereum:") {
             return true
