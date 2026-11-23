@@ -5,6 +5,9 @@ enum ScannedPaymentRequest {
     private static let bitcoinWithoutAddress = "bitcoin:?"
     private static let lightningParams = ["lightning", "lno"]
     private static let requiredParamPrefix = "req-"
+    /// Keys BIP 321 ("Query Keys") says must not repeat. `pop` with `req-pop` also counts as a repeat, and any
+    /// `req-` key already keeps the URI. Unknown optional keys may repeat.
+    private static let singletonParams: Set = ["amount", "label", "message", "pop"]
     /// BOLT11 prefixes, longest first so `lnbcrt` is not read as `lnbc` with an amount.
     private static let bolt11Prefixes = ["lnbcrt", "lntbs", "lnbc", "lntb", "lnsb"]
     private static let bolt11Multipliers: [Character: Decimal] = [
@@ -18,9 +21,11 @@ enum ScannedPaymentRequest {
     /// (`bitcoin:?lightning=<invoice>`, used by Numo and planned by Square). The scanner rejects a `bitcoin:` URI
     /// without an address, so that form becomes `lightning:<invoice>`. A URI with a required (`req-`) parameter is
     /// kept, since BIP 321 forbids paying it without handling that parameter and the rewrite would drop it. So is a URI
-    /// that repeats a parameter, which BIP 321 makes invalid, so the scanner rejects it instead of paying the invoice
-    /// alone. A URI whose `amount` differs from the invoice's, or that sets an amount for an amountless invoice, is kept
-    /// too: the scanner cannot carry the outer amount, so it rejects the request instead of asking for a different one.
+    /// that repeats `amount`, `label`, `message` or `pop`, which BIP 321 makes invalid, so the scanner rejects it
+    /// instead of paying the invoice alone. A repeated Lightning request is valid BIP 321 but not supported here, since
+    /// the rewrite would have to pick one of them, so that URI is kept too. A URI whose `amount` differs from the
+    /// invoice's, or that sets an amount for an amountless invoice, is kept too: the scanner cannot carry the outer
+    /// amount, so it rejects the request instead of asking for a different one.
     /// Anything else is returned trimmed and unchanged.
     static func normalized(_ text: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -35,7 +40,9 @@ enum ScannedPaymentRequest {
                 return trimmed
             }
             guard !key.isEmpty else { continue }
-            guard keys.insert(key).inserted else { return trimmed }
+            guard keys.insert(key).inserted || !singletonParams.contains(key) && !lightningParams.contains(key) else {
+                return trimmed
+            }
             guard parts.count == 2, !parts[1].isEmpty else { continue }
             params[key] = String(parts[1])
         }

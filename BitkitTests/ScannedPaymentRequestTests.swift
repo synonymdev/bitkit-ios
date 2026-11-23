@@ -35,11 +35,22 @@ final class ScannedPaymentRequestTests: XCTestCase {
         for repeated in [
             "bitcoin:?amount=0.01&AMOUNT=0.02&lightning=\(invoice)",
             "bitcoin:?lightning=\(invoice)&amount=0.0000799&amount=0.0000799",
+            // Valid BIP 321, but which invoice to pay is not chosen here.
             "bitcoin:?lightning=\(invoice)&lightning=\(invoice)",
             "bitcoin:?amount=&amount=0.02&lightning=\(invoice)",
+            "bitcoin:?label=a&lightning=\(invoice)&Label=a",
+            "bitcoin:?message=a&message=b&lightning=\(invoice)",
+            "bitcoin:?pop=a%3a&pop=b%3a&lightning=\(invoice)",
         ] {
             XCTAssertEqual(ScannedPaymentRequest.normalized(repeated), repeated)
         }
+    }
+
+    func testRequestRepeatingAnOptionalExtensionIsUnwrapped() {
+        XCTAssertEqual(
+            ScannedPaymentRequest.normalized("bitcoin:?x-shop=a&lightning=\(invoice)&X-SHOP=b&amount=0.0000799"),
+            "lightning:\(invoice)"
+        )
     }
 
     func testScannerRejectsARepeatedParameter() async {
