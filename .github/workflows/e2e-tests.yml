@@ -26,7 +26,7 @@ jobs:
   inventory:
     if: ${{ !inputs.time_send }}
     runs-on: ${{ inputs.hosted_smoke && fromJSON('["macos-26"]') || fromJSON('["self-hosted", "macOS"]') }}
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -170,15 +170,20 @@ jobs:
 
           device_name = os.environ['SMOKE_DEVICE']
           platform_version = os.environ['SMOKE_PLATFORM']
-          inventory = json.loads(subprocess.check_output(
-              ['xcrun', 'simctl', 'list', '-j'], text=True, timeout=30,
-          ))
+
+          def simctl_list(resource):
+              return json.loads(subprocess.check_output(
+                  ['xcrun', 'simctl', 'list', '-j', resource], text=True, timeout=150,
+              ))[resource]
+
+          runtimes = simctl_list('runtimes')
+          simulator_devices = simctl_list('devices')
           devices = [
               device
-              for runtime in inventory['runtimes']
+              for runtime in runtimes
               if runtime['isAvailable'] and runtime['version'] == platform_version
               and runtime['identifier'].startswith('com.apple.CoreSimulator.SimRuntime.iOS-')
-              for device in inventory['devices'].get(runtime['identifier'], [])
+              for device in simulator_devices.get(runtime['identifier'], [])
               if device['isAvailable'] and device['name'] == device_name
           ]
           if not devices:
