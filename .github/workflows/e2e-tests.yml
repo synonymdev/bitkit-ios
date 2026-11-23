@@ -1,10 +1,10 @@
-name: macmini1 simulator inventory
+name: macmini1 simulator and WebDriverAgent diagnostics
 on: workflow_dispatch
 permissions: {}
 jobs:
   inventory:
     runs-on: [self-hosted, macOS]
-    timeout-minutes: 3
+    timeout-minutes: 4
     steps:
       - name: List installed runtimes and iPhone 17 simulators
         shell: bash
@@ -38,4 +38,45 @@ jobs:
                   count += 1
           if not count:
               print('None')
+          PY
+      - name: Read WebDriverAgent results from the failed PR job
+        shell: bash
+        run: |
+          test "$RUNNER_NAME" = macmini1
+          df -h /System/Volumes/Data
+          xcode-select -p
+          python3 -B -u - <<'PY'
+          from datetime import datetime
+          import json
+          from pathlib import Path
+          import subprocess
+
+          start = datetime.fromisoformat('2026-11-23T11:24:00+00:00').timestamp()
+          end = datetime.fromisoformat('2026-11-23T11:44:00+00:00').timestamp()
+          roots = (
+              Path.home() / 'Library/Developer/Xcode/DerivedData',
+              Path.home() / 'Library/Developer/CoreSimulator/Devices/49F264CE-5A7C-4CF9-B1E5-A83C06AF670B/data/Library/Logs/DiagnosticReports',
+          )
+          results = roots[0].glob('WebDriverAgent-*/Logs/Test/*.xcresult')
+          results = [path for path in results if not path.is_symlink() and start <= path.stat().st_mtime <= end]
+          if not results:
+              print('No WebDriverAgent result bundles retained for this time window.')
+          for path in sorted(results, key=lambda item: item.stat().st_mtime):
+              print(path.name)
+              result = subprocess.run(
+                  ['xcrun', 'xcresulttool', 'get', 'test-results', 'summary', '--path', str(path)],
+                  text=True, capture_output=True, timeout=30,
+              )
+              if result.returncode:
+                  print(result.stderr.strip()[:1200])
+                  continue
+              summary = json.loads(result.stdout)
+              for field in ('result', 'failedTests', 'testFailures'):
+                  if field in summary:
+                      print(field, json.dumps(summary[field])[:6000])
+
+          for directory in (roots[1], Path.home() / 'Library/Logs/DiagnosticReports'):
+              for crash in sorted(directory.glob('WebDriverAgent*.ips')):
+                  if not crash.is_symlink() and start <= crash.stat().st_mtime <= end:
+                      print('WebDriverAgent crash report:', crash.name)
           PY
