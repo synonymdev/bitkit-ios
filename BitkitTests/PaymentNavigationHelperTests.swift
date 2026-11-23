@@ -147,7 +147,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
         settings.storeQuickpaySettings(enabled: false)
         let hash = "aabbccdd"
         let rates = QuickPaySpendRates.live(CurrencyViewModel(currencyService: OfflineCurrencyService()))
-        XCTAssertNotNil(try spendStore.reserveBound(paymentHash: hash, amountSats: 1000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        XCTAssertNotNil(try spendStore.reserveBound(paymentHash: hash, amountSats: 1000, enabled: true, thresholdUsd: 5, multiplier: 5, rates: rates))
         let coordinator = QuickPayPaymentCoordinator(store: spendStore, sendBolt11: { _ in hash }, listRows: { [] })
         let app = appWithInvoice(paymentHash: hash)
         // A new Send presentation for the rescanned invoice, so a session the coordinator has not seen.

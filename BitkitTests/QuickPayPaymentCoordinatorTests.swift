@@ -188,7 +188,7 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
             wallet: WalletViewModel(),
             settings: settings,
             currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
-            presentation: presentation(onRoute: { XCTFail("Unexpected route \($0)") }, onConfirm: { reviewed.fulfill() }),
+            presentation: presentation(onRoute: { XCTFail("Unexpected route \($0)") }, onConfirm: { _ in reviewed.fulfill() }),
             recoveryOnly: true
         )
         await fulfillment(of: [reviewed], timeout: 2)
