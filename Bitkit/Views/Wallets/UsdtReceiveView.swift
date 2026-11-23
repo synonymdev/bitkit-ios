@@ -9,6 +9,7 @@ struct UsdtReceiveView: View {
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.isCoveredByOfflineSheet) private var isCoveredByOfflineSheet
     @EnvironmentObject private var settings: SettingsViewModel
     @State private var nearbyAdvertiser = NearbyPaymentAdvertiser()
     @State private var networks: [UsdtDepositNetwork] = []
@@ -78,10 +79,21 @@ struct UsdtReceiveView: View {
         .onDisappear { nearbyAdvertiser.stop() }
     }
 
-    /// The Arbitrum EIP-681 request offered to nearby phones over Bluetooth. Deposit addresses on other networks
-    /// are not offered, because nearby phones pay USDT on Arbitrum only.
     private var nearbyRequest: String? {
-        guard settings.enableNearbyPayments, page == .address, deposit == nil, !receiveUri.isEmpty else { return nil }
+        Self.nearbyRequest(
+            receiveUri: receiveUri,
+            isEnabled: settings.enableNearbyPayments,
+            showsAddress: page == .address,
+            hasDeposit: deposit != nil,
+            isCovered: isCoveredByOfflineSheet
+        )
+    }
+
+    /// The Arbitrum EIP-681 request offered to nearby phones over Bluetooth. Deposit addresses on other networks
+    /// are not offered, because nearby phones pay USDT on Arbitrum only. Nothing is offered while the
+    /// connection-issues screen covers the QR, so the payer cannot read a request the receiver cannot see.
+    static func nearbyRequest(receiveUri: String, isEnabled: Bool, showsAddress: Bool, hasDeposit: Bool, isCovered: Bool) -> String? {
+        guard isEnabled, showsAddress, !hasDeposit, !isCovered, !receiveUri.isEmpty else { return nil }
         return NearbyPaymentUri.from(receiveUri)
     }
 
