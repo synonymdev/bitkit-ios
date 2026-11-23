@@ -11,6 +11,18 @@ enum PaymentRequestDisplay {
         return t(statusKey(for: request, isActionable: isActionable))
     }
 
+    /// History rows: requests not listed as active, without the pending requests the allowance hides, so none lists as
+    /// unavailable.
+    static func historyRequests(
+        _ history: [PaykitPaymentRequest],
+        activeIds: Set<PaykitPaymentRequest.ID>,
+        pending: [PaykitPaymentRequest],
+        isKeptOffPending: (PaykitPaymentRequest) -> Bool
+    ) -> [PaykitPaymentRequest] {
+        let hiddenIds = Set(pending.filter(isKeptOffPending).map(\.id))
+        return history.filter { !activeIds.contains($0.id) && !hiddenIds.contains($0.id) }
+    }
+
     static func paymentDirection(for request: PaykitPaymentRequest) -> PaykitPaymentRequest.Direction? {
         request.lifecycleState == .proofSubmitted ? request.direction : nil
     }
@@ -402,7 +414,7 @@ struct PaymentRequestsView: View {
 
     var body: some View {
         Group {
-            if activeRequests.isEmpty, paymentRequests.historyRequests.isEmpty {
+            if activeRequests.isEmpty, historicalRequests.isEmpty {
                 emptyState
             } else {
                 LazyVStack(alignment: .leading, spacing: 16) {
@@ -459,9 +471,9 @@ struct PaymentRequestsView: View {
 
     private var activeRequests: [PaykitPaymentRequest] {
         let pending = allowances.payable(paymentRequests.pendingRequests)
-        // A stale proposal this wallet is paying or already paid stays in history, like the pending request it came from.
+        // A stale proposal stays active unless the allowance hides it, as the pending request it came from.
         let historical = paymentRequests.historyRequests.filter {
-            ($0.lifecycleState == .proposed && !$0.isExpired(at: Date()) && !allowances.isPaying($0) && !allowances.hasSentPayment($0))
+            ($0.lifecycleState == .proposed && !$0.isExpired(at: Date()) && !allowances.isKeptOffPending($0))
                 || ($0.direction == .outgoing && $0.lifecycleState == .accepted)
         }
         var requestIds = Set<PaykitPaymentRequest.ID>()
@@ -471,8 +483,12 @@ struct PaymentRequestsView: View {
     }
 
     private var historicalRequests: [PaykitPaymentRequest] {
-        let activeIds = Set(activeRequests.map(\.id))
-        return paymentRequests.historyRequests.filter { !activeIds.contains($0.id) }
+        PaymentRequestDisplay.historyRequests(
+            paymentRequests.historyRequests,
+            activeIds: Set(activeRequests.map(\.id)),
+            pending: paymentRequests.pendingRequests,
+            isKeptOffPending: allowances.isKeptOffPending
+        )
     }
 
     private var historySections: [HistorySection] {

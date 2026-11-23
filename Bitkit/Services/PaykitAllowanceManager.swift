@@ -92,6 +92,9 @@ final class PaykitAllowanceManager {
     /// never show a request while an allowance pays it.
     private var payingRequestIds: Set<PaykitPaymentRequest.ID> = []
 
+    /// Covered requests the last pass deferred, kept hidden between passes so they don't blink on every poll.
+    private var deferredRequestIds: Set<PaykitPaymentRequest.ID> = []
+
     enum AutomaticPaymentPause: Equatable {
         /// The allowance ledger is behind one this wallet has read.
         case ledgerBehind
@@ -169,6 +172,7 @@ final class PaykitAllowanceManager {
         let identityChanged = self.identity != identity
         self.identity = identity
         activation += 1
+        deferredRequestIds = []
         await executor.activate(identity: identity)
         if identityChanged {
             manualRequestIds = [:]
@@ -220,6 +224,7 @@ final class PaykitAllowanceManager {
         automaticPaymentPause = nil
         manualRequestIds = [:]
         payingRequestIds = []
+        deferredRequestIds = []
         announcedOfferIds = []
     }
 
@@ -507,9 +512,11 @@ final class PaykitAllowanceManager {
         defer { updateDepth -= 1 }
         let signature = allowancesSignature
         let covered = requests.filter(isAwaitingAutomaticPayment)
-        guard !covered.isEmpty else { return false }
-        let payable = payableNow(covered)
+        let payable = covered.isEmpty ? [] : payableNow(covered)
         let payableIds = Set(payable.map(\.id))
+        // A deferral stays hidden only while the request is payable now; one waiting for the node or handed back shows.
+        deferredRequestIds.formIntersection(payableIds)
+        guard !covered.isEmpty else { return false }
         let waiting = covered.filter { !payableIds.contains($0.id) }
         // A request over the limits needs the user anyway, so it is handed back before waiting for a channel.
         var handedBack = false
@@ -546,6 +553,12 @@ final class PaykitAllowanceManager {
             case .deferred:
                 break
             }
+            // A pass that outlived its activation, as when allowances were turned off, keeps no deferral.
+            if result == .deferred, activation == passActivation {
+                deferredRequestIds.insert(request.id)
+            } else {
+                deferredRequestIds.remove(request.id)
+            }
             payingRequestIds.remove(request.id)
         }
         if !started.isEmpty {
@@ -563,9 +576,19 @@ final class PaykitAllowanceManager {
         return await executor.isHandling(request.id)
     }
 
-    /// Pending requests, without those an allowance is paying now and those this wallet already paid.
+    /// Pending requests, without those an allowance is paying now or waiting to pay and those this wallet already paid.
     func payable(_ requests: [PaykitPaymentRequest]) -> [PaykitPaymentRequest] {
-        requests.filter { !isPaying($0) && !hasSentPayment($0) }
+        requests.filter { !isKeptOffPending($0) }
+    }
+
+    /// Whether the pending views hide the request: an allowance is paying it, waits to pay it, or this wallet paid it.
+    func isKeptOffPending(_ request: PaykitPaymentRequest) -> Bool {
+        isPaying(request) || isDeferred(request) || hasSentPayment(request)
+    }
+
+    /// Whether the last pass deferred the request and an allowance still covers it.
+    private func isDeferred(_ request: PaykitPaymentRequest) -> Bool {
+        deferredRequestIds.contains(request.id) && isAwaitingAutomaticPayment(request)
     }
 
     /// Whether an automatic payment pass is paying the request now, before the journal shows the payment.
