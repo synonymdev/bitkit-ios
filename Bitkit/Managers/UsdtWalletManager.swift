@@ -281,7 +281,9 @@ final class UsdtWalletManager {
             if recipient.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(wallet.receiveAddress()) == .orderedSame {
                 throw UsdtWalletError.selfSend
             }
-            return try await wallet.quoteTransfer(recipient: recipient, amount: value, destination: destination)
+            return try await BackgroundTime.during("usdt quoteTransfer") {
+                try await wallet.quoteTransfer(recipient: recipient, amount: value, destination: destination)
+            }
         }
     }
 
@@ -293,7 +295,9 @@ final class UsdtWalletManager {
             if recipient.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(wallet.receiveAddress()) == .orderedSame {
                 throw UsdtWalletError.selfSend
             }
-            return try await wallet.quoteMaxTransfer(recipient: recipient, destination: destination)
+            return try await BackgroundTime.during("usdt quoteMaxTransfer") {
+                try await wallet.quoteMaxTransfer(recipient: recipient, destination: destination)
+            }
         }
     }
 
