@@ -184,7 +184,9 @@ final class BackgroundTime: @unchecked Sendable {
     private var identifier: UIBackgroundTaskIdentifier = .invalid
     private var ended = false
 
-    init(name: String, begin: Begin = BackgroundTime.beginTask, end: @escaping End = BackgroundTime.endTask) {
+    init(name: String, begin: Begin? = nil, end: End? = nil) {
+        let begin = begin ?? BackgroundTime.beginTask
+        let end = end ?? BackgroundTime.endTask
         endTask = end
         let identifier = begin(name) { [weak self] in
             self?.end()
@@ -230,17 +232,8 @@ final class BackgroundTime: @unchecked Sendable {
         return try body()
     }
 
-    static func beginTask(name: String, expiration: @escaping () -> Void) -> UIBackgroundTaskIdentifier {
-        #if BITKIT_NOTIFICATION_EXTENSION
-            return .invalid
-        #else
-            return UIApplication.shared.beginBackgroundTask(withName: name, expirationHandler: expiration)
-        #endif
-    }
-
-    static func endTask(_ identifier: UIBackgroundTaskIdentifier) {
-        #if !BITKIT_NOTIFICATION_EXTENSION
-            UIApplication.shared.endBackgroundTask(identifier)
-        #endif
-    }
+    /// The app sets these at launch. The notification extension, which compiles this file too, has no `UIApplication`, so its
+    /// work runs without background time.
+    nonisolated(unsafe) static var beginTask: Begin = { _, _ in .invalid }
+    nonisolated(unsafe) static var endTask: End = { _ in }
 }
