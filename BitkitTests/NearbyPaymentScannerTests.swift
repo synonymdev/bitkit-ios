@@ -28,4 +28,22 @@ final class NearbyPaymentScannerTests: XCTestCase {
         XCTAssertEqual(isCurrent?(), false, "Scanning again must not revive the earlier request")
         release?.resume()
     }
+
+    func testARequestDeliveredJustBeforeStoppingReachesNoHandler() async {
+        let scanner = NearbyPaymentScanner()
+        var handled: [String] = []
+        scanner.start { request, _ in
+            handled.append(request)
+            return false
+        }
+
+        // The read completes, then the scene goes inactive before the delivery task runs.
+        scanner.deliverForTesting("pubkyauth://signin")
+        scanner.stop()
+        for _ in 0 ..< 10 {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(handled, [], "A revoked request must not reach the handler or show its error")
+    }
 }

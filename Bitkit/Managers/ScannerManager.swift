@@ -354,7 +354,9 @@ class ScannerManager: ObservableObject {
         guard app != nil, context == .main || context == .send else { return false }
         let uri = ScannedPaymentRequest.normalized(request)
         guard Self.isNearbyPaymentRequest(uri) else {
-            showUnsupportedQRCodeError()
+            if isCurrent() {
+                showUnsupportedQRCodeError()
+            }
             return false
         }
         // A request arrives unprompted, so it must not open anything once the user has left the scanner or started
@@ -384,7 +386,9 @@ class ScannerManager: ObservableObject {
     ) async -> Bool {
         let uri = ScannedPaymentRequest.normalized(request)
         guard app != nil, Self.isNearbyPaymentRequest(uri) else {
-            showUnsupportedQRCodeError()
+            if isCurrent() {
+                showUnsupportedQRCodeError()
+            }
             completion(nil)
             return false
         }

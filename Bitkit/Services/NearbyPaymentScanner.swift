@@ -214,6 +214,8 @@ final class NearbyPaymentScanner: NSObject {
         deliveryID = id
         isScanning = false
         Task { [weak self] in
+            // The scanner may have stopped before this task ran; the request then reaches no handler.
+            guard self?.deliveryID == id else { return }
             let wasTaken = await onRequest(request) { [weak self] in self?.deliveryID == id }
             guard let self, deliveryID == id else { return }
             deliveryID = nil
