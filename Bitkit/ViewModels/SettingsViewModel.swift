@@ -879,9 +879,8 @@ class SettingsViewModel: NSObject, ObservableObject {
             }
         }
 
-        let electrumServerUrl = electrumConfigService.getCurrentServer().fullUrl
-        if !electrumServerUrl.isEmpty {
-            dict["electrumServer"] = electrumServerUrl
+        if let customServer = electrumConfigService.getCustomServerForBackup() {
+            dict["electrumServer"] = customServer.fullUrl
         }
 
         let rgsServerUrl = rgsConfigService.getCurrentServerUrl()
@@ -1011,11 +1010,17 @@ class SettingsViewModel: NSObject, ObservableObject {
     func restoreSettingsDictionary(_ dict: [String: Any]) {
         Self.writeRestoredSettings(dict, to: defaults)
 
+        // Older backups carry the default of their time; a retired or current default restores as no custom server.
         if let electrumServerUrl = dict["electrumServer"] as? String, !electrumServerUrl.isEmpty,
-           let server = parseElectrumServerUrlForRestore(electrumServerUrl)
+           let server = parseElectrumServerUrlForRestore(electrumServerUrl),
+           !electrumConfigService.isRetiredDefault(server),
+           server != electrumConfigService.getDefaultServer()
         {
             electrumConfigService.saveServerConfig(server)
+        } else {
+            electrumConfigService.clearStoredServer()
         }
+        electrumCurrentServer = electrumConfigService.getCurrentServer()
 
         if let rgsServerUrl = dict["rgsServerUrl"] as? String, !rgsServerUrl.isEmpty {
             rgsConfigService.saveServerUrl(rgsServerUrl)
