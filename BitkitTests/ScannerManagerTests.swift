@@ -936,6 +936,12 @@ extension ScannerManagerTests {
         XCTAssertTrue(wasTaken)
     }
 
+    func testNodeSetupScannerDoesNotReadNearbyRequests() {
+        XCTAssertTrue(ScannerScreen.readsNearby(context: .main, path: [.scanner]))
+        XCTAssertFalse(ScannerScreen.readsNearby(context: .main, path: [.fundManual(nodeUri: nil), .scanner]))
+        XCTAssertFalse(ScannerScreen.readsNearby(context: .electrum, path: [.electrumSettings, .scanner]))
+    }
+
     func testMainScannerQrTakesOverFromADecodingNearbyRequest() async throws {
         let decoded = try await decode(invoice: paymentURI)
         let sheets = SheetViewModel()
