@@ -6,6 +6,13 @@ on:
         description: Run the single Appium session after collecting diagnostics
         type: boolean
         default: false
+      simulator:
+        description: Simulator model for the Appium session
+        type: choice
+        default: iPhone 17 Pro
+        options:
+          - iPhone 17 Pro
+          - iPhone 17
 permissions: {}
 jobs:
   inventory:
@@ -99,16 +106,20 @@ jobs:
         if: inputs.run_appium_smoke
         with:
           node-version: 22
-      - name: Start one verbose Appium session on the iPhone 17 Pro
+      - name: Start one verbose Appium session on iOS 27.2
         if: inputs.run_appium_smoke
         shell: bash
+        env:
+          SMOKE_DEVICE: ${{ inputs.simulator }}
         working-directory: bitkit-e2e-tests
         run: |
           test "$RUNNER_NAME" = macmini1
+          xcodebuild -version | grep -Eq '^Xcode 27\.2([.]|$)'
           test "$(git rev-parse HEAD)" = bed683b581721716e6f870594c414288cbace935
           test -x node_modules/.bin/appium
           python3 -B -u - <<'PY'
           import json
+          import os
           from pathlib import Path
           import socket
           import subprocess
@@ -117,7 +128,25 @@ jobs:
           from urllib.error import HTTPError, URLError
           from urllib.request import Request, urlopen
 
-          udid = '49F264CE-5A7C-4CF9-B1E5-A83C06AF670B'
+          device_name = os.environ['SMOKE_DEVICE']
+          platform_version = '27.2'
+          inventory = json.loads(subprocess.check_output(
+              ['xcrun', 'simctl', 'list', '-j'], text=True, timeout=30,
+          ))
+          devices = [
+              device
+              for runtime in inventory['runtimes']
+              if runtime['isAvailable'] and runtime['version'] == platform_version
+              and runtime['identifier'].startswith('com.apple.CoreSimulator.SimRuntime.iOS-')
+              for device in inventory['devices'].get(runtime['identifier'], [])
+              if device['isAvailable'] and device['name'] == device_name
+          ]
+          if not devices:
+              raise SystemExit(f'No available {device_name} on iOS {platform_version}.')
+          device = next((device for device in devices if device['state'] == 'Booted'), devices[0])
+          udid = device['udid']
+          print(f'Using {device_name} ({udid}) on iOS {platform_version}.')
+
           appium_port = 14723
           wda_port = 8100
           for port in (appium_port, wda_port):
@@ -147,8 +176,8 @@ jobs:
                       'platformName': 'iOS',
                       'appium:automationName': 'XCUITest',
                       'appium:udid': udid,
-                      'appium:deviceName': 'iPhone 17 Pro',
-                      'appium:platformVersion': '26.0.1',
+                      'appium:deviceName': device_name,
+                      'appium:platformVersion': platform_version,
                       'appium:bundleId': 'com.apple.Preferences',
                       'appium:noReset': True,
                       'appium:showXcodeLog': True,
