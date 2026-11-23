@@ -650,7 +650,7 @@ struct PaymentRequestDetailView: View {
                 }
             }
             BodyMText(
-                PaymentRequestDisplay.status(for: request, isActionable: isActionable(request),
+                PaymentRequestDisplay.status(for: request, isActionable: isPending(request),
                                              receipt: PaykitUsdtPaymentService.shared.receipt(for: request)),
                 textColor: .white64
             )
@@ -746,6 +746,11 @@ struct PaymentRequestDetailView: View {
 
     private func isActionable(_ request: PaykitPaymentRequest) -> Bool {
         allowances.payable(paymentRequests.pendingRequests).contains { $0.id == request.id }
+    }
+
+    /// A request an allowance is handling is still pending, though it offers no Pay or Dismiss.
+    private func isPending(_ request: PaykitPaymentRequest) -> Bool {
+        paymentRequests.pendingRequests.contains { $0.id == request.id }
     }
 
     private static let dateFormatter: DateFormatter = {

@@ -277,6 +277,33 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     @MainActor
+    func testDetailsOfARequestKeptOffPendingShowItWaitingWithoutActions() async throws {
+        let harness = AllowanceHarness()
+        let paid = try Fixtures.paymentRequest()
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "paid", request: paid, stage: .sent)]),
+            identity: Fixtures.identityKey
+        )
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            payableNow: { $0 }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+        let pending = [paid]
+
+        // As PaymentRequestDetailView splits them: actions follow the payable subset, the status line raw pending.
+        let isActionable = manager.payable(pending).contains { $0.id == paid.id }
+        let isPending = pending.contains { $0.id == paid.id }
+        XCTAssertFalse(isActionable)
+        XCTAssertEqual(
+            PaymentRequestDisplay.statusKey(for: paid, isActionable: isPending, now: PaykitAllowanceFixtures.now),
+            "wallet__payment_request_waiting"
+        )
+    }
+
+    @MainActor
     func testManagerLoadsThisWalletsPaidRecordsWhenItStartsWithAllowancesOff() async throws {
         let harness = AllowanceHarness()
         let paid = try Fixtures.paymentRequest()
