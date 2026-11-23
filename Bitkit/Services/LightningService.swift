@@ -406,11 +406,8 @@ class LightningService: NodeLifecycleService {
                 try node.start()
             }
         } catch {
-            switch error {
-            case NodeError.AlreadyRunning:
-                // The node keeps running, so it keeps the loop started above.
-                break
-            default:
+            // A node that is already running keeps the loop started above.
+            if !Self.isAlreadyRunning(error) {
                 cancelEventLoop()
             }
             throw error
@@ -462,12 +459,12 @@ class LightningService: NodeLifecycleService {
         try await ServiceQueue.background(.ldk) {
             try Self.stopReleasingFinishedNode(node.stop)
         }
-        let eventLoop = cancelEventLoop()
-        self.node = nil
-        // An event the loop took is handled, and its removal from the queue persisted, before the next node loads that queue.
-        if let eventLoop, await !Self.waitForEnd(of: eventLoop, timeout: Self.eventLoopStopTimeout) {
+        // An event the loop took is handled, and its removal from the queue persisted, before the node is cleared and a next node
+        // can load that queue.
+        if let eventLoop = cancelEventLoop(), await !Self.waitForEnd(of: eventLoop, timeout: Self.eventLoopStopTimeout) {
             Logger.warn("Event loop of the stopped node did not end in time", context: "LightningService")
         }
+        self.node = nil
 
         if clearEventCallback {
             self.clearEventCallback()
@@ -2459,8 +2456,11 @@ extension LightningService {
 
         eventLoopLock.lock()
         defer { eventLoopLock.unlock() }
-        eventLoopTask?.cancel()
+        let previousLoop = eventLoopTask
+        previousLoop?.cancel()
         eventLoopTask = Task {
+            // The previous loop finishes the event it took first, so both never handle the same event.
+            await previousLoop?.value
             while !Task.isCancelled, self.node === node {
                 guard let event = node.nextEvent() else {
                     try? await Task.sleep(for: Self.eventPollInterval)
@@ -2691,15 +2691,27 @@ extension LightningService {
                     continuation.resume(returning: ended)
                 }
             }
-            Task {
-                await task.value
-                resume(true)
-            }
-            Task {
+            let timer = Task {
                 try? await Task.sleep(for: timeout)
                 resume(false)
             }
+            Task {
+                await task.value
+                timer.cancel()
+                resume(true)
+            }
         }
+    }
+
+    /// Whether `error` from `node.start()`, possibly wrapped by `ServiceQueue`, says the node is already running.
+    static func isAlreadyRunning(_ error: Error) -> Bool {
+        guard let nodeError = ((error as? AppError)?.underlyingError ?? error) as? NodeError else {
+            return false
+        }
+        if case .AlreadyRunning = nodeError {
+            return true
+        }
+        return false
     }
 
     private func registerClosedChannel(
