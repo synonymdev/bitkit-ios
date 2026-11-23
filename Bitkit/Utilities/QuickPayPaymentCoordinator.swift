@@ -87,6 +87,11 @@ final class QuickPayPaymentCoordinator {
         return ldkRows + railRows
     }
 
+    /// Whether `sessionID` is the session whose payment this coordinator already started.
+    func isAttached(to sessionID: SessionID) -> Bool {
+        payRequested && self.sessionID == sessionID
+    }
+
     func hasOpen(_ paymentHash: String) -> Bool {
         guard !paymentHash.isEmpty else { return false }
         return operations[paymentHash] != nil || store.record(matching: paymentHash) != nil

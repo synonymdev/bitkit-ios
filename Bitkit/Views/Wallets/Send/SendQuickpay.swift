@@ -41,6 +41,11 @@ struct SendQuickpay: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             guard isCurrentPresentation(), !app.isHandlingScannedData else { return }
+            guard Self.startsAutomatically(app: app, sessionID: sessionID) else {
+                // Chosen before the app locked: the payer reviews it instead.
+                replaceQuickPay(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
+                return
+            }
             if displayedSats == nil {
                 displayedSats = app.lnurlPayData?.minSendableSat ?? app.scannedLightningInvoice?.amountSatoshis
             }
@@ -58,5 +63,17 @@ struct SendQuickpay: View {
                 sessionID: sessionID
             )
         }
+    }
+
+    /// Whether the payment starts as the screen appears. A payment already started reattaches; one chosen before the
+    /// app locked waits for review.
+    @MainActor
+    static func startsAutomatically(
+        app: AppViewModel,
+        sessionID: QuickPayPaymentCoordinator.SessionID,
+        coordinator: QuickPayPaymentCoordinator? = nil
+    ) -> Bool {
+        let coordinator = coordinator ?? .shared
+        return coordinator.isAttached(to: sessionID) || !app.didLockSinceQuickPayWasChosen
     }
 }

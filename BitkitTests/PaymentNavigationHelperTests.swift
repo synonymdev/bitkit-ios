@@ -73,6 +73,22 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertEqual(PaymentNavigationHelper.contactPaymentErrorDescription(error), error.localizedDescription)
     }
 
+    func testQuickpayChosenBeforeALockWaitsForReview() {
+        let app = appWithEligibleInvoice
+        let session = QuickPayPaymentCoordinator.SessionID(presentationID: UUID(), sendStateGeneration: UUID(), attempt: 0)
+        let coordinator = QuickPayPaymentCoordinator(store: spendStore, sendBolt11: { _ in "" }, listRows: { [] })
+        XCTAssertEqual(sendRoute(for: app), .quickpay)
+        XCTAssertTrue(SendQuickpay.startsAutomatically(app: app, sessionID: session, coordinator: coordinator))
+
+        // The Send sheet waits for the node, and the app locks and unlocks before the QuickPay screen appears.
+        app.noteAppLocked()
+        XCTAssertFalse(SendQuickpay.startsAutomatically(app: app, sessionID: session, coordinator: coordinator))
+
+        // A request routed after the unlock starts as usual.
+        XCTAssertEqual(sendRoute(for: app), .quickpay)
+        XCTAssertTrue(SendQuickpay.startsAutomatically(app: app, sessionID: session, coordinator: coordinator))
+    }
+
     func testEligibleInvoiceUsesQuickpayUnderDailyCap() {
         XCTAssertEqual(sendRoute(for: appWithEligibleInvoice), .quickpay)
     }

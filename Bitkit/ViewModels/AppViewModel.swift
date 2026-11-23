@@ -211,6 +211,27 @@ class AppViewModel: ObservableObject {
     }
 
     private var quickPaySuppressions: Set<UUID> = []
+    /// Raised each time the app locks behind the PIN.
+    private var appLockGeneration = 0
+    /// The lock generation when QuickPay was last chosen for a request.
+    private var quickPayChosenAtLockGeneration: Int?
+
+    /// Called when the app locks behind the PIN.
+    func noteAppLocked() {
+        appLockGeneration += 1
+    }
+
+    /// Called when a request is routed to QuickPay.
+    func noteQuickPayChosen() {
+        quickPayChosenAtLockGeneration = appLockGeneration
+    }
+
+    /// Whether the app locked after QuickPay was chosen. The QuickPay screen can appear only later (for example once
+    /// the node is ready), and a payment chosen before a lock must not start on its own after the unlock.
+    var didLockSinceQuickPayWasChosen: Bool {
+        quickPayChosenAtLockGeneration.map { $0 != appLockGeneration } ?? false
+    }
+
     /// True while a payment request that must always be reviewed (for example one read over Bluetooth) routes.
     var isQuickPaySuppressed: Bool {
         !quickPaySuppressions.isEmpty

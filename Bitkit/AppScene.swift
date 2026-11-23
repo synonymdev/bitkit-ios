@@ -1470,6 +1470,7 @@ struct AppScene: View {
                 // If PIN is enabled, lock the app when the app goes to the background
                 incomingPaymentRequestPreparation?.suspendForAppLock(sheets: sheets)
                 scannerManager.invalidateScansForAppLock()
+                app.noteAppLocked()
                 isPinVerified = false
             }
             hwWalletManager.onAppBackgrounded()
