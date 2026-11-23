@@ -126,4 +126,12 @@ final class ScannedPaymentRequestTests: XCTestCase {
         XCTAssertFalse(ScannedPaymentRequest.hasRequiredParameter("bitkit://bitcoin:bcrt1qtest?amount=0.001"))
         XCTAssertFalse(ScannedPaymentRequest.hasRequiredParameter("https://pay.example.com/lnurlp?req-x=1"))
     }
+
+    func testRequiredParameterIsFoundBehindAnInnerBitkitScheme() {
+        // The decoder deletes every `bitkit://` in a deep link, which can turn a key into `req-`.
+        let address = "bitkit://bitcoin:bcrt1qtest?amount=0.001"
+        XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("\(address)&bitkit://req-pop=callback"))
+        XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("\(address)&rebitkit://q-pop=callback"))
+        XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("bitkit://bitkit://bitcoin:bcrt1qtest?REBITKIT://Q-POP=callback"))
+    }
 }

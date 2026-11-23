@@ -83,8 +83,8 @@ enum ScannedPaymentRequest {
         return value * multiplier
     }
 
-    /// Prefixes the app or the decoder removes before reading a request.
-    private static let decoderWrappers = ["bitkit://", "lightning:", "lnurl:", "lnurlw:", "lnurlc:", "lnurlp:"]
+    /// Prefixes the app or the decoder removes from the front of a request, after deleting every `bitkit://`.
+    private static let decoderWrappers = ["lightning:", "lnurl:", "lnurlw:", "lnurlc:", "lnurlp:"]
     private static let bech32Charset = Array("qpzry9x8gf2tvdw0s3jn54khce6mua7l")
     private static let bech32Generator: [UInt32] = [0x3B6A_57B2, 0x2650_8E6D, 0x1EA1_19FA, 0x3D42_33DD, 0x2A14_62B3]
 
@@ -94,7 +94,8 @@ enum ScannedPaymentRequest {
     /// Lightning schemes) before decoding, repeatedly in the decoder's case, so every wrapper is removed here and the
     /// request is checked as the `bitcoin:` URI the decoder receives.
     nonisolated static func hasRequiredParameter(_ uri: String) -> Bool {
-        var lowercase = uri.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        // The decoder deletes every `bitkit://` in a deep link, which can turn a key into `req-`.
+        var lowercase = uri.lowercased().replacingOccurrences(of: "bitkit://", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
         while let wrapper = decoderWrappers.first(where: { lowercase.hasPrefix($0) }) {
             lowercase = String(lowercase.dropFirst(wrapper.count)).trimmingCharacters(in: .whitespacesAndNewlines)
         }
