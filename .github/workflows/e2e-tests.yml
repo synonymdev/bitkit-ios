@@ -231,8 +231,8 @@ jobs:
     runs-on: [self-hosted, macOS]
     needs: [detect-changes, build-local, e2e-branch]
     env:
-      SIMULATOR_NAME: "iPhone 17 Pro"
-      SIMULATOR_OS_VERSION: "26.0.1"
+      SIMULATOR_NAME: "iPhone 17"
+      SIMULATOR_OS_VERSION: "27.2"
       # Reuse the legacy project so reset also clears containers left after a ref switch.
       COMPOSE_PROJECT_NAME: docker
       # Match the legacy fixture for the iOS manual channel funding Max case.

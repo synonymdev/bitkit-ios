@@ -141,8 +141,8 @@ jobs:
     runs-on: [self-hosted, macOS]
     timeout-minutes: 120
     env:
-      SIMULATOR_NAME: "iPhone 17 Pro"
-      SIMULATOR_OS_VERSION: "26.0.1"
+      SIMULATOR_NAME: "iPhone 17"
+      SIMULATOR_OS_VERSION: "27.2"
       # The PR suite uses the same fixed Bitcoin and Electrum ports on this Mac.
       COMPOSE_PROJECT_NAME: docker
     steps:
