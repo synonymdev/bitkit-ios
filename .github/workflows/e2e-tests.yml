@@ -17,14 +17,21 @@ on:
         description: Time the Send test with the dependency update from E2E PR 320
         type: boolean
         default: false
+      hosted_smoke:
+        description: Test the PR 320 lockfile on the hosted staging simulator
+        type: boolean
+        default: false
 permissions: {}
 jobs:
   inventory:
     if: ${{ !inputs.time_send }}
-    runs-on: [self-hosted, macOS]
+    runs-on: ${{ inputs.hosted_smoke && fromJSON('["macos-26"]') || fromJSON('["self-hosted", "macOS"]') }}
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - name: List installed runtimes and iPhone 17 simulators
+        if: ${{ !inputs.hosted_smoke }}
         shell: bash
         run: |
           test "$RUNNER_NAME" = macmini1
@@ -68,6 +75,7 @@ jobs:
           PY
 
       - name: Read WebDriverAgent results from the failed PR job
+        if: ${{ !inputs.hosted_smoke }}
         shell: bash
         run: |
           test "$RUNNER_NAME" = macmini1
@@ -108,25 +116,45 @@ jobs:
                   if not crash.is_symlink() and start <= crash.stat().st_mtime <= end:
                       print('WebDriverAgent crash report:', crash.name)
           PY
+      - uses: actions/checkout@v7
+        if: inputs.hosted_smoke
+        with:
+          repository: synonymdev/bitkit-e2e-tests
+          ref: 07fd6e727bfb1980bfa7340f641c7c68438cf10a
+          path: hosted-compatibility
+          persist-credentials: false
+      - uses: maxim-lobanov/setup-xcode@v1
+        if: inputs.hosted_smoke
+        with:
+          xcode-version: '26.6'
       - uses: actions/setup-node@v7
-        if: inputs.run_appium_smoke
+        if: inputs.run_appium_smoke || inputs.hosted_smoke
         with:
           node-version: 22
-      - name: Start a fresh Appium session with Device Hub support
-        if: inputs.run_appium_smoke
+      - name: Start a fresh Appium session
+        if: inputs.run_appium_smoke || inputs.hosted_smoke
         shell: bash
         env:
-          SMOKE_DEVICE: ${{ inputs.simulator }}
+          SMOKE_DEVICE: ${{ inputs.hosted_smoke && 'iPhone 17' || inputs.simulator }}
+          SMOKE_PLATFORM: ${{ inputs.hosted_smoke && '26.5' || '27.2' }}
+          SMOKE_HOSTED: ${{ inputs.hosted_smoke }}
         run: |
-          test "$RUNNER_NAME" = macmini1
-          xcodebuild -version | grep -Eq '^Xcode 27\.2([.]|$)'
-          probe_dir=$(mktemp -d "$RUNNER_TEMP/bitkit-device-hub.XXXXXX")
-          trap 'rm -rf -- "$probe_dir"' EXIT
-          cd "$probe_dir"
-          cat > package.json <<'JSON'
+          if [[ "$SMOKE_HOSTED" == true ]]; then
+            xcodebuild -version | grep -Eq '^Xcode 26\.6([.]|$)'
+            cd "$GITHUB_WORKSPACE/hosted-compatibility"
+            npm ci --no-audit --no-fund
+          else
+            test "$RUNNER_NAME" = macmini1
+            xcodebuild -version | grep -Eq '^Xcode 27\.2([.]|$)'
+            probe_dir=$(mktemp -d "$RUNNER_TEMP/bitkit-device-hub.XXXXXX")
+            trap 'rm -rf -- "$probe_dir"' EXIT
+            cd "$probe_dir"
+            cat > package.json <<'JSON'
           {"name":"bitkit-appium-device-hub-smoke","private":true,"dependencies":{"appium":"3.0.0","appium-xcuitest-driver":"12.20.0"}}
           JSON
-          npm install --no-audit --no-fund --package-lock=false
+            npm install --no-audit --no-fund --package-lock=false
+          fi
+          xcodebuild -version
           unset APPIUM_HOME
           python3 -B -u - <<'PY'
           import json
@@ -140,7 +168,7 @@ jobs:
           from urllib.request import Request, urlopen
 
           device_name = os.environ['SMOKE_DEVICE']
-          platform_version = '27.2'
+          platform_version = os.environ['SMOKE_PLATFORM']
           inventory = json.loads(subprocess.check_output(
               ['xcrun', 'simctl', 'list', '-j'], text=True, timeout=30,
           ))
