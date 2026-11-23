@@ -1,76 +1,41 @@
-name: macmini1 disk inventory
+name: macmini1 simulator inventory
 on: workflow_dispatch
 permissions: {}
 jobs:
   inventory:
     runs-on: [self-hosted, macOS]
-    timeout-minutes: 12
+    timeout-minutes: 3
     steps:
-      - name: Measure the runner disk and known CI directories
+      - name: List installed runtimes and iPhone 17 simulators
         shell: bash
         run: |
           test "$RUNNER_NAME" = macmini1
+          xcodebuild -version
           python3 -B -u - <<'PY'
-          import os
-          from pathlib import Path
-          import shutil
+          import json
           import subprocess
-          import time
 
-          host = Path('/System/Volumes/Data')
-          home = Path.home().resolve()
-          workspace = Path(os.environ['GITHUB_WORKSPACE']).resolve()
-          temp = Path(os.environ['RUNNER_TEMP']).resolve()
-          e2e = workspace / 'bitkit-e2e-tests'
-          gib = 1024 ** 3
+          def simctl_json(resource):
+              return json.loads(subprocess.check_output(
+                  ['xcrun', 'simctl', 'list', '-j', resource], text=True, timeout=30,
+              ))
 
-          def capacity():
-              total, used, free = shutil.disk_usage(host)
-              print(f'Data volume: {free / gib:.2f} GiB free of {total / gib:.1f} GiB', flush=True)
+          runtimes = simctl_json('runtimes')['runtimes']
+          print('iOS runtimes:')
+          for runtime in runtimes:
+              if runtime['identifier'].startswith('com.apple.CoreSimulator.SimRuntime.iOS-'):
+                  print(runtime['identifier'], 'build=' + runtime['buildversion'],
+                        'available=' + str(runtime['isAvailable']))
 
-          def measure(label, path):
-              if path.is_symlink() or path.resolve() != path:
-                  print(f'{label}: symbolic link, skipped')
-                  return
-              try:
-                  info = path.stat()
-              except FileNotFoundError:
-                  print(f'{label}: absent')
-                  return
-              except OSError:
-                  print(f'{label}: inaccessible')
-                  return
-              try:
-                  result = subprocess.run(['/usr/bin/du', '-skx', str(path)], capture_output=True,
-                                          text=True, check=True, timeout=40)
-              except (subprocess.SubprocessError, OSError):
-                  print(f'{label}: size unavailable')
-                  return
-              mib = int(result.stdout.split()[0]) / 1024
-              age = (time.time() - info.st_mtime) / 86400
-              print(f'{label}: {mib:.1f} MiB allocated, owner matches runner={info.st_uid == os.getuid()}, directory entry age={age:.1f} days')
-
-          capacity()
-          names = subprocess.check_output(['/bin/ps', '-axo', 'comm='], text=True).splitlines()
-          for process in ['Runner.Worker', 'xcodebuild', 'XCBBuildService', 'npm', 'node', 'Simulator']:
-              print(f'{process} process count: {sum(Path(name.strip()).name == process for name in names)}')
-
-          candidates = {
-              'npm download cache': home / '.npm/_cacache',
-              'E2E dependencies': e2e / 'node_modules',
-              'downloaded E2E app': e2e / 'aut/Bitkit.app',
-              'Spark fixture archive': temp / 'spark-images.tar',
-              'compressed Spark fixture archive': temp / 'spark-images.tar.gz',
-              'Spark simulator archive': temp / 'spark-ios-app.tar.gz',
-              'workspace Xcode intermediates': workspace / 'DerivedData/Build/Intermediates.noindex',
-              'workspace Xcode products': workspace / 'DerivedData/Build/Products',
-              'workspace Xcode index': workspace / 'DerivedData/Index.noindex',
-              'workspace Xcode module cache': workspace / 'DerivedData/ModuleCache.noindex',
-              'runner Xcode DerivedData total': home / 'Library/Developer/Xcode/DerivedData',
-              'Homebrew download cache': home / 'Library/Caches/Homebrew/downloads',
-              'Docker disk allocated (inventory only)': home / 'Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw',
-          }
-          for label, path in candidates.items():
-              measure(label, path)
-          capacity()
+          devices = simctl_json('devices')['devices']
+          print('iPhone 17 devices visible to the runner account:')
+          count = 0
+          for runtime, entries in devices.items():
+              for device in entries:
+                  if 'iPhone 17' not in device['name']:
+                      continue
+                  print(runtime, device['name'], device['state'], 'available=' + str(device['isAvailable']))
+                  count += 1
+          if not count:
+              print('None')
           PY
