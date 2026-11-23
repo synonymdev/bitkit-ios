@@ -393,6 +393,7 @@ struct MainNavView: View {
                 } else {
                     settings.enableNotifications = false
                     notificationManager.unregister()
+                    Task { await WakeManager.shared.unregister() }
                 }
             }
             .onChange(of: settings.enableNotifications) { _, newValue in
@@ -406,6 +407,7 @@ struct MainNavView: View {
                 } else {
                     // Disable notifications (unregister)
                     notificationManager.unregister()
+                    Task { await WakeManager.shared.unregister() }
                 }
             }
             .task(id: canHandleDeepLinks) {
@@ -719,6 +721,7 @@ struct MainNavView: View {
                 case .sparkExitIntro: SparkExitIntroView()
                 case .sparkExitQuote: SparkExitQuoteView()
                 case .sparkExitFunding: SparkExitFundingView()
+                case .sparkExitPay: SparkExitPayView()
                 case .sparkExitConfirm: SparkExitConfirmView()
                 case .sparkExitProgress: SparkExitProgressView()
                 case .sparkExitFeeBump: SparkExitFeeBumpView()

@@ -212,6 +212,9 @@
 				Services/LightningService.swift,
 				Services/ServiceQueue.swift,
 				Services/VssStoreIdProvider.swift,
+				Services/Wake/WakeReceiver.swift,
+				Services/Wake/WakeSeenStore.swift,
+				Services/Wake/WakeStorage.swift,
 				Services/WatchOnlyAccountService.swift,
 				Utilities/Crypto.swift,
 				Utilities/Errors.swift,
@@ -396,6 +399,7 @@
 				751000000000000000000001 /* Generate Plural Localizations */,
 				961058E72C355B5500E1F1D8 /* Embed Foundation Extensions */,
 				96EMBED0012026012000FRAME /* Remove Static Framework Stubs */,
+				B17C0F1A2EAE000000000003 /* Breez API Key From Keychain */,
 			);
 			buildRules = (
 			);
@@ -598,7 +602,28 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ \"$CONFIGURATION\" = \"Release\" ] && [ -z \"$(echo \"${BREEZ_API_KEY}\" | tr -d ' ')\" ]; then\n  echo \"error: BREEZ_API_KEY is empty. Copy Secrets.xcconfig.template to Secrets.xcconfig and set the key before a Release build or archive (Docs/RELEASE.md).\"\n  exit 1\nfi\n";
+			shellScript = "if [ \"$CONFIGURATION\" = \"Release\" ] && [ -z \"$(echo \"${BREEZ_API_KEY}\" | tr -d ' ')\" ] && ! /usr/bin/security find-generic-password -a \"$USER\" -s BREEZ_API_KEY >/dev/null 2>&1; then\n  echo \"error: BREEZ_API_KEY is empty. Store it in the keychain item BREEZ_API_KEY or set it in Secrets.xcconfig before a Release build or archive (Docs/RELEASE.md).\"\n  exit 1\nfi\n";
+			showEnvVarsInLog = 0;
+		};
+		B17C0F1A2EAE000000000003 /* Breez API Key From Keychain */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+			);
+			name = "Breez API Key From Keychain";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Breez's API key is a base64 DER certificate. It comes from the build setting BREEZ_API_KEY\n# (Secrets.xcconfig, xcodebuild NAME=value), else from the macOS keychain item BREEZ_API_KEY, which is written into\n# the built Info.plist before signing. A set key that is not strict base64, or whose decoded size differs from the\n# size its own DER header declares, stops the build, since a cut-short key turns Spark off at start. Release builds\n# also fail when no key is set; other builds keep Spark off on mainnet. Never printed.\nfail() {\n  if [ -n \"$from_keychain\" ]; then\n    printf '%s\\n' \"error: $1. Copy the key, then run: printf 'add-generic-password -U -a %s -s BREEZ_API_KEY -w %s\\\\n' \\\"\\$USER\\\" \\\"\\$(pbpaste)\\\" | security -i && pbcopy </dev/null (Docs/RELEASE.md).\"\n  else\n    printf '%s\\n' \"error: $1. Fix or clear BREEZ_API_KEY in Secrets.xcconfig or the xcodebuild arguments; a set build setting wins over the keychain item (Docs/RELEASE.md).\"\n  fi\n  exit 1\n}\nrelease_fail() {\n  [ \"$CONFIGURATION\" = \"Release\" ] || exit 0\n  fail \"$1\"\n}\nkey=$(printf '%s' \"${BREEZ_API_KEY}\" | tr -d ' ')\nsrc=\"build setting BREEZ_API_KEY\"\nif [ -z \"$key\" ]; then\n  src=\"keychain item BREEZ_API_KEY\"\n  from_keychain=1\n  [ -x /usr/bin/security ] || release_fail \"BREEZ_API_KEY is empty and /usr/bin/security is missing\"\n  key=$(/usr/bin/security find-generic-password -a \"$USER\" -s BREEZ_API_KEY -w 2>/dev/null) || release_fail \"Could not read the keychain item BREEZ_API_KEY\"\n  key=$(printf '%s' \"$key\" | tr -d ' ')\n  [ -n \"$key\" ] || release_fail \"The keychain item BREEZ_API_KEY is empty\"\nfi\ncase \"$key\" in *[!A-Za-z0-9+/=]* | *=*[!=]* | *===) fail \"The $src has ${#key} characters and is not valid base64\" ;; esac\n[ $((${#key} % 4)) -eq 0 ] || fail \"The $src has ${#key} characters and is not valid base64\"\nbytes=$(printf '%s' \"$key\" | /usr/bin/base64 -D 2>/dev/null | wc -c | tr -d ' ')\nset -- $(printf '%s' \"$key\" | /usr/bin/base64 -D 2>/dev/null | od -An -tu1 -N5)\nwant=\nif [ \"$1\" = 48 ] && [ -n \"$2\" ]; then\n  if [ \"$2\" -lt 128 ]; then\n    want=$((2 + $2))\n  else\n    case $(($2 - 128)) in\n      1) want=$((3 + ${3:-0})) ;;\n      2) want=$((4 + ${3:-0} * 256 + ${4:-0})) ;;\n      3) want=$((5 + ${3:-0} * 65536 + ${4:-0} * 256 + ${5:-0})) ;;\n    esac\n  fi\nfi\n[ -n \"$want\" ] || fail \"The $src has ${#key} characters and decodes to $bytes bytes that are not a certificate\"\n[ \"$bytes\" = \"$want\" ] || fail \"The $src has ${#key} characters and decodes to $bytes bytes, but its certificate header declares $want, so it was cut short\"\n[ -n \"$from_keychain\" ] || exit 0\n/usr/libexec/PlistBuddy -c \"Set :BREEZ_API_KEY $key\" \"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n";
 			showEnvVarsInLog = 0;
 		};
 		751000000000000000000001 /* Generate Plural Localizations */ = {
@@ -734,7 +759,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = BitkitWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 203;
+				CURRENT_PROJECT_VERSION = 204;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitWidget/Info.plist;
@@ -746,7 +771,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.1.0;
+				MARKETING_VERSION = 3.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -767,7 +792,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = BitkitWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 203;
+				CURRENT_PROJECT_VERSION = 204;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitWidget/Info.plist;
@@ -779,7 +804,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.1.0;
+				MARKETING_VERSION = 3.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -799,7 +824,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = BitkitNotification/BitkitNotification.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 203;
+				CURRENT_PROJECT_VERSION = 204;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitNotification/Info.plist;
@@ -811,7 +836,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.1.0;
+				MARKETING_VERSION = 3.1.1;
 				OTHER_LDFLAGS = (
 					"-framework",
 					CoreBluetooth,
@@ -832,7 +857,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = BitkitNotification/BitkitNotification.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 203;
+				CURRENT_PROJECT_VERSION = 204;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitNotification/Info.plist;
@@ -844,7 +869,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.1.0;
+				MARKETING_VERSION = 3.1.1;
 				OTHER_LDFLAGS = (
 					"-framework",
 					CoreBluetooth,
@@ -986,7 +1011,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Bitkit/Bitkit.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 203;
+				CURRENT_PROJECT_VERSION = 204;
 				DEVELOPMENT_ASSET_PATHS = "\"Bitkit/Preview Content\"";
 				DEVELOPMENT_TEAM = KYH47R284B;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1013,7 +1038,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 3.1.0;
+				MARKETING_VERSION = 3.1.1;
 				OTHER_LDFLAGS = (
 					"-framework",
 					CoreBluetooth,
@@ -1040,7 +1065,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Bitkit/Bitkit.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 203;
+				CURRENT_PROJECT_VERSION = 204;
 				DEVELOPMENT_ASSET_PATHS = "\"Bitkit/Preview Content\"";
 				DEVELOPMENT_TEAM = KYH47R284B;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1067,7 +1092,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 3.1.0;
+				MARKETING_VERSION = 3.1.1;
 				OTHER_LDFLAGS = (
 					"-framework",
 					CoreBluetooth,
@@ -1238,7 +1263,7 @@
 			repositoryURL = "https://github.com/pubky/paykit-rs";
 			requirement = {
 				kind = exactVersion;
-				version = "0.1.1-rc8";
+				version = "0.1.1-rc9";
 			};
 		};
 		18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */ = {
@@ -1262,7 +1287,7 @@
 			repositoryURL = "https://github.com/breez/breez-sdk-spark-swift";
 			requirement = {
 				kind = exactVersion;
-				version = 0.28.2;
+				version = 0.28.3;
 			};
 		};
 		968FE13E2DFB016B0053CD7F /* XCRemoteSwiftPackageReference "ldk-node" */ = {

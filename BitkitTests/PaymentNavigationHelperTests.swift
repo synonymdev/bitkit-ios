@@ -34,9 +34,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
         spendDefaults = UserDefaults(suiteName: spendSuiteName)
         spendStore = QuickPaySpendStore(defaults: spendDefaults)
 
-        settings.enableQuickpay = true
-        settings.quickpayAmount = 5
-        settings.quickpayDailyLimitMultiplier = 5
+        settings.storeQuickpaySettings(enabled: true, amount: 5, dailyLimitMultiplier: 5)
         guard let encodedRates = try? JSONEncoder().encode([usdRate]) else {
             XCTFail("Failed to encode the QuickPay test exchange rate")
             return
@@ -86,6 +84,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
                 try spendStore.reserveBound(
                     paymentHash: "cap\(i)",
                     amountSats: 5000,
+                    enabled: true,
                     thresholdUsd: 5,
                     multiplier: 5,
                     rates: rates
@@ -99,20 +98,25 @@ final class PaymentNavigationHelperTests: XCTestCase {
     func testAllowsQuickpayWhenSpendPlusAmountEqualsDailyCap() throws {
         let rates = QuickPaySpendRates.live(CurrencyViewModel(currencyService: OfflineCurrencyService()))
         for i in 0 ..< 4 {
-            XCTAssertNotNil(try spendStore.reserveBound(paymentHash: "under\(i)", amountSats: 5000, thresholdUsd: 5, multiplier: 5, rates: rates))
+            XCTAssertNotNil(
+                try spendStore.reserveBound(paymentHash: "under\(i)", amountSats: 5000, enabled: true, thresholdUsd: 5, multiplier: 5, rates: rates)
+            )
         }
-        XCTAssertNotNil(try spendStore.reserveBound(paymentHash: "under4", amountSats: 4000, thresholdUsd: 5, multiplier: 5, rates: rates))
+        XCTAssertNotNil(
+            try spendStore.reserveBound(paymentHash: "under4", amountSats: 4000, enabled: true, thresholdUsd: 5, multiplier: 5, rates: rates)
+        )
 
         XCTAssertEqual(sendRoute(for: appWithEligibleInvoice), .quickpay)
     }
 
     func testUsesQuickpayWhenHashIsAlreadyOpenEvenIfDisabled() throws {
-        settings.enableQuickpay = false
+        settings.storeQuickpaySettings(enabled: false)
         let hash = "aabbccdd"
         XCTAssertNotNil(
             try spendStore.reserveBound(
                 paymentHash: hash,
                 amountSats: 1000,
+                enabled: true,
                 thresholdUsd: 5,
                 multiplier: 5,
                 rates: QuickPaySpendRates.live(CurrencyViewModel(currencyService: OfflineCurrencyService()))
@@ -124,11 +128,13 @@ final class PaymentNavigationHelperTests: XCTestCase {
     }
 
     func testUsesQuickpayWhenHashIsOpenEvenIfDailyCapIsExceeded() throws {
-        settings.quickpayDailyLimitMultiplier = 1
+        settings.storeQuickpaySettings(dailyLimitMultiplier: 1)
         let rates = QuickPaySpendRates.live(CurrencyViewModel(currencyService: OfflineCurrencyService()))
         let hash = "aabbccdd"
-        XCTAssertNotNil(try spendStore.reserveBound(paymentHash: hash, amountSats: 1000, thresholdUsd: 5, multiplier: 1, rates: rates))
-        XCTAssertNotNil(try spendStore.reserveBound(paymentHash: "cap0", amountSats: 4000, thresholdUsd: 5, multiplier: 1, rates: rates))
+        XCTAssertNotNil(try spendStore.reserveBound(paymentHash: hash, amountSats: 1000, enabled: true, thresholdUsd: 5, multiplier: 1, rates: rates))
+        XCTAssertNotNil(
+            try spendStore.reserveBound(paymentHash: "cap0", amountSats: 4000, enabled: true, thresholdUsd: 5, multiplier: 1, rates: rates)
+        )
         let coordinator = QuickPayPaymentCoordinator(store: spendStore, sendBolt11: { _ in hash }, listRows: { [] })
 
         XCTAssertEqual(sendRoute(for: appWithInvoice(paymentHash: hash), coordinator: coordinator), .quickpay)
@@ -140,6 +146,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
             try spendStore.reserveBound(
                 paymentHash: hash,
                 amountSats: 1000,
+                enabled: true,
                 thresholdUsd: 5,
                 multiplier: 5,
                 rates: QuickPaySpendRates.live(CurrencyViewModel(currencyService: OfflineCurrencyService()))

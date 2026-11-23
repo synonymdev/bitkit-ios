@@ -330,6 +330,7 @@ final class SparkExitRecordTests: XCTestCase {
         XCTAssertNil(record.broadcastLog[0].isInputSpent)
         XCTAssertNil(record.leftoverSweep?.isConfirmed)
         XCTAssertNil(record.fundingPaymentTxid)
+        XCTAssertNil(record.redoHeldSince)
         XCTAssertTrue(record.showsResult, "an accepted sweep not known to be confirmed keeps the result")
 
         record.broadcastLog[0].isInputSpent = true
@@ -338,6 +339,7 @@ final class SparkExitRecordTests: XCTestCase {
         record.spentStepStrikes = ["r1": 1]
         record.lostLeaves = [.init(leafId: "leaf-1", valueSats: 5000)]
         record.outsideSats = 14167
+        record.redoHeldSince = 1000
         XCTAssertEqual(try SparkExitRecordCoder.decode(SparkExitRecordCoder.encode(record)), record)
     }
 
@@ -1380,6 +1382,219 @@ final class SparkExitDriverTests: XCTestCase {
             record.strikes(rebuiltInto: SparkExitFixtures.recovery([SparkExitFixtures.refund("r1", leafId: "leaf-1", dependsOn: [])])),
             ["r1": 1]
         )
+    }
+
+    /// Since SDK 0.28.2 a lost fee race comes as `Redo`. The refund whose input was spent is struck once; once the
+    /// rebuild's refund is sent, the next Redo strikes nothing and no leaf is lost.
+    func testARedoAfterALostFeeRaceStrikesTheSpentRefundOnlyOnce() async throws {
+        var record = SparkExitFixtures.record(phase: .running)
+        record.funding[0] = .init(index: 0, address: "bcrt1qfunding", pubkey: "02ab", txid: "f0", vout: 1, valueSats: 20000)
+        let raced = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 10)),
+            SparkExitFixtures.refund("r1", leafId: "leaf-1", dependsOn: ["n1"]),
+        ])
+        record.adopt(raced, at: .distantPast)
+        record.broadcastLog = [.init(
+            generation: 1,
+            txid: "r1",
+            attempts: 1,
+            rejections: 0,
+            lastAttemptAt: clock,
+            lastOutcome: "inputs missing",
+            isAccepted: false,
+            isInputSpent: true
+        )]
+        // The refund keeps its txid; its rebuilt child spends the funding that is still there.
+        var rebuilt = raced
+        rebuilt.transactions[1].cpfpTxHex = "03r1b"
+        sdk.checks = [
+            CheckRecoverFundsResponse(recovery: raced, verdict: .redo(reason: .onChainStateDiverged)),
+            CheckRecoverFundsResponse(recovery: rebuilt, verdict: .redo(reason: .onChainStateDiverged)),
+        ]
+        sdk.builds = [rebuilt, rebuilt]
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.generation, 2)
+        XCTAssertEqual(record.spentStepStrikes, ["r1": 1])
+        XCTAssertEqual(chain.broadcasts.last?.cpfpTxHex, "03r1b", "the rebuilt refund was not sent")
+        XCTAssertEqual(record.broadcastLog.first { $0.txid == "r1" }?.isAccepted, true)
+
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.generation, 3)
+        XCTAssertNil(record.spentStepStrikes, "a second strike in a row for a refund its rebuild sent")
+        XCTAssertNil(record.lostLeaves)
+    }
+
+    /// A Redo whose rebuild skips leaf-2, unread once, while the diverged generation recovers it: the rebuild is not
+    /// adopted, so leaf-2 is not left unsent until the rest of the exit is done. It is built again at the rebuild pace
+    /// and adopted with both leaves once leaf-2 reads.
+    func testARedoRebuildBesideAWaitingLeafHoldsUntilTheLeafReads() async throws {
+        var record = try await heldRedoRebuild()
+        XCTAssertEqual(record.generation, 1, "the Redo rebuild without leaf-2 was adopted")
+        XCTAssertEqual(record.redoHeldSince, 1000)
+        XCTAssertEqual(saved.last?.redoHeldSince, 1000, "a relaunch would start the hold again")
+        XCTAssertTrue(record.isRebuilding)
+        XCTAssertTrue(chain.broadcasts.isEmpty, "the diverged generation was sent")
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(sdk.recoverRequests.count, 1, "built again before the rebuild interval")
+
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+        var both = SparkExitFixtures.prepared(leaves: ["leaf-1", "leaf-2"])
+        both.skipped = []
+        sdk.preparedResponse = both
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1b"), SparkExitFixtures.tx("m1b")])]
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(sdk.recoverRequests.last?.prepared.leaves.map(\.leafId), ["leaf-1", "leaf-2"])
+        XCTAssertEqual(record.generation, 2)
+        XCTAssertNil(record.waitingLeafIds)
+        XCTAssertNil(record.redoHeldSince)
+        XCTAssertFalse(record.isRebuilding)
+    }
+
+    /// A leaf that stays unread holds the Redo rebuild for `redoHoldBlocks` only: then it is adopted with the leaf
+    /// waiting, tried again on its own before the exit ends. A tick whose tip cannot be read holds, uncounted.
+    func testARedoRebuildBesideALeafThatStaysUnreadAdoptsAfterTheHold() async throws {
+        var record = try await heldRedoRebuild()
+        sdk.builds = Array(repeating: SparkExitFixtures.recovery([SparkExitFixtures.tx("n1b")]), count: 3)
+
+        chain.isTipUnreadable = true
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+        record = try await driver().tick(record)
+        XCTAssertEqual(sdk.recoverRequests.count, 2)
+        XCTAssertEqual(record.generation, 1, "adopted on a tick whose tip could not be read")
+        XCTAssertEqual(record.redoHeldSince, 1000)
+        chain.isTipUnreadable = false
+
+        chain.tip = 1000 + SparkExitDriver.redoHoldBlocks - 1
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.generation, 1, "adopted before the hold ended")
+        XCTAssertEqual(record.redoHeldSince, 1000)
+
+        chain.tip = 1000 + SparkExitDriver.redoHoldBlocks
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.generation, 2)
+        XCTAssertEqual(record.waitingLeafIds, ["leaf-2"])
+        XCTAssertNil(record.redoHeldSince)
+        XCTAssertFalse(record.isRebuilding)
+    }
+
+    /// A Redo hold whose top-up was funded runs at the rebuild pace: it leaves the funding phase, so no fee ask stays on
+    /// screen and the next tick does not build again before the rebuild interval.
+    func testARedoHoldAfterAFundedTopUpRunsAtTheRebuildPace() async throws {
+        var record = try await heldRedoRebuild()
+        record.phase = .needsFunding(requiredSats: 23000)
+        chain.utxosByAddress["bcrt1qfunding"] = [
+            SparkExitFixtures.utxo("f0", vout: 1, value: 20000),
+            SparkExitFixtures.utxo("topup", value: 3000),
+        ]
+        sdk.builds = Array(repeating: SparkExitFixtures.recovery([SparkExitFixtures.tx("n1b")]), count: 2)
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+
+        let asked = record
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.funding.compactMap(\.txid), ["f0", "topup"])
+        XCTAssertFalse(SparkExitManager.isFundingAskWithdrawn(record, previous: asked), "a top-up answered the ask")
+        XCTAssertEqual(record.generation, 1, "the Redo rebuild without leaf-2 was adopted")
+        XCTAssertEqual(record.phase, .running, "a funded hold still asks for fees")
+        XCTAssertEqual(record.redoHeldSince, 1000)
+        let requests = sdk.recoverRequests.count
+
+        record = try await driver().tick(record)
+        XCTAssertEqual(sdk.recoverRequests.count, requests, "built again before the rebuild interval")
+    }
+
+    /// An empty prepare during a Redo hold keeps the hold's own bound: the waiting leaf's retry clock is not started.
+    func testAnEmptyPrepareDuringARedoHoldLeavesTheRetryClockAlone() async throws {
+        var record = try await heldRedoRebuild()
+        var none = SparkExitFixtures.prepared(leaves: [])
+        none.skipped = [SkippedLeaf(leafId: "leaf-2", valueSats: 50000, reason: .unverified)]
+        sdk.preparedResponse = none
+
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+        record = try await driver().tick(record)
+        XCTAssertNil(record.retrySince, "the hold started the waiting leaf's retry clock")
+        XCTAssertEqual(record.redoHeldSince, 1000)
+        XCTAssertEqual(record.generation, 1)
+        XCTAssertTrue(record.isRebuilding)
+
+        chain.tip = 1000 + SparkExitDriver.redoHoldBlocks
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+        record = try await driver().tick(record)
+        XCTAssertEqual(record.retrySince, chain.tip, "the waiting leaf's retry clock starts once the hold ends")
+    }
+
+    /// A Redo hold whose build the held funding paid for runs at the rebuild pace, whatever the old shortfall, and its
+    /// fee ask is withdrawn. A later build of the hold that comes up short asks again.
+    func testARedoHoldBuiltFromTheHeldFundingWithdrawsTheFeeAsk() async throws {
+        var record = try await heldRedoRebuild()
+        record.phase = .needsFunding(requiredSats: 23000)
+        let asked = record
+        chain.utxosByAddress["bcrt1qfunding"] = [SparkExitFixtures.utxo("f0", vout: 1, value: 20000)]
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1b")])]
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+
+        record = try await driver().tick(record)
+
+        XCTAssertEqual(sdk.recoverRequests.count, 2, "the held funding did not build the rebuild")
+        XCTAssertEqual(record.generation, 1, "the Redo rebuild without leaf-2 was adopted")
+        XCTAssertEqual(record.phase, .running, "a hold the held funding paid for still asks for fees")
+        XCTAssertEqual(record.redoHeldSince, 1000)
+        XCTAssertTrue(SparkExitManager.isFundingAskWithdrawn(record, previous: asked), "the fee ask's notification stayed")
+
+        sdk.recoverError = SdkError.InsufficientCpfpFunds(requiredSats: 30000, docsUrl: "")
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+        record = try await driver().tick(record)
+
+        guard case .needsFunding = record.phase else { return XCTFail("a later short build of the hold did not ask: \(record.phase)") }
+        XCTAssertEqual(record.generation, 1)
+    }
+
+    /// A Redo hold's own build that comes up short asks for fees; a later build the held funding pays withdraws the ask.
+    func testARedoHoldThroughAShortBuildWithdrawsTheAskOnceTheHeldFundingPays() async throws {
+        let held = try await heldRedoRebuild()
+        XCTAssertEqual(held.phase, .running)
+        chain.utxosByAddress["bcrt1qfunding"] = [SparkExitFixtures.utxo("f0", vout: 1, value: 20000)]
+        sdk.recoverErrors = [SdkError.InsufficientCpfpFunds(requiredSats: 30000, docsUrl: "")]
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+        let asked = try await driver().tick(held)
+        guard case .needsFunding = asked.phase else { return XCTFail("the hold's short build did not ask: \(asked.phase)") }
+
+        // The next build needs less, which the held funding pays.
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1b")])]
+        clock = clock.addingTimeInterval(SparkExitDriver.rebuildInterval)
+        let record = try await driver().tick(asked)
+
+        XCTAssertEqual(record.phase, .running, "a hold the held funding paid for still asks for fees")
+        XCTAssertEqual(record.generation, 1)
+        XCTAssertEqual(record.funding, asked.funding)
+        XCTAssertTrue(SparkExitManager.isFundingAskWithdrawn(record, previous: asked), "the fee ask's notification stayed")
+    }
+
+    /// A Redo over a generation that recovers both leaves, whose rebuild skips leaf-2 as unread, at tip 1000.
+    private func heldRedoRebuild() async throws -> SparkExitRecord {
+        var record = twoLeafRecord()
+        var diverged = SparkExitFixtures.recovery([
+            SparkExitFixtures.tx("n1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.refund("r1", leafId: "leaf-1", dependsOn: ["n1"]),
+            SparkExitFixtures.tx("m1", status: .confirmed(blockHeight: 900)),
+            SparkExitFixtures.refund("r2", leafId: "leaf-2", dependsOn: ["m1"]),
+        ])
+        diverged.leaves = [
+            RecoverFundsLeaf(leafId: "leaf-1", valueSats: 100_000, method: .unilateral),
+            RecoverFundsLeaf(leafId: "leaf-2", valueSats: 50000, method: .unilateral),
+        ]
+        record.adopt(diverged, at: .distantPast)
+        sdk.checks = [CheckRecoverFundsResponse(recovery: diverged, verdict: .redo(reason: .onChainStateDiverged))]
+        var skipsLeafTwo = SparkExitFixtures.prepared(leaves: ["leaf-1"])
+        skipsLeafTwo.skipped = [SkippedLeaf(leafId: "leaf-2", valueSats: 50000, reason: .unverified)]
+        sdk.preparedResponse = skipsLeafTwo
+        sdk.builds = [SparkExitFixtures.recovery([SparkExitFixtures.tx("n1b")])]
+        return try await driver().tick(record)
     }
 
     /// Top-ups join the exit under its own funding index, and the build signs with that index's key.
@@ -3064,12 +3279,6 @@ final class SparkExitMathTests: XCTestCase {
         record.lostLeaves = [.init(leafId: "lost-before", valueSats: 65536), .init(leafId: "lost", valueSats: 65536)]
         XCTAssertEqual(SparkExitMath.staysOnSparkSats(sparkBalanceSats: 68928, record: record), 3392)
         XCTAssertEqual(SparkExitMath.staysOnSparkSats(sparkBalanceSats: 3392, record: record), 3392)
-
-        var prepared = SparkExitFixtures.prepared(leaves: [])
-        prepared.skipped = [SkippedLeaf(leafId: "small", valueSats: 3392, reason: .feeExceedsValue)]
-        let quote = SparkExitQuote(prepared: prepared, lostLeafSats: [65536, 65536])
-        XCTAssertEqual(SparkExitMath.unexitableSats(sparkBalanceSats: 68928, quote: quote), 3392)
-        XCTAssertEqual(SparkExitMath.unexitableSats(sparkBalanceSats: 3392, quote: quote), 3392)
     }
 
     /// qa-03: once Bitkit paid the funding from savings, or a payment covering it is seen, the exit waits for it
@@ -3108,6 +3317,19 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.neededSats(record, state: .ask(sats: 500)), 500)
     }
 
+    /// Pay to confirm starts on its own once its read finds the funding covered, on entry too, and only once a visit.
+    func testPayToConfirmAutoStartsOnceTheFundingIsCovered() {
+        // Before its first read this visit, it waits.
+        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: true, isStarting: false, hasAutoStarted: false, hasReadFunding: false))
+        // Funding already there on entry, or arriving later, starts it once covered.
+        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: false, isStarting: false, hasAutoStarted: false, hasReadFunding: true))
+        XCTAssertTrue(SparkExitMath.canAutoStartFunding(isFunded: true, isStarting: false, hasAutoStarted: false, hasReadFunding: true))
+        // A failed start waits for Try again.
+        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: true, isStarting: false, hasAutoStarted: true, hasReadFunding: true))
+        // A start already running is never joined by a second.
+        XCTAssertFalse(SparkExitMath.canAutoStartFunding(isFunded: true, isStarting: true, hasAutoStarted: false, hasReadFunding: true))
+    }
+
     /// qa-03: 2,000 of 4,348 at the address showed no hint until the whole sum arrived.
     func testAPartialPaymentNamesWhatIsStillMissing() {
         XCTAssertNil(SparkExitMath.partialFundingSats(receivedSats: 0, requiredSats: 4348))
@@ -3138,15 +3360,6 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.nextFundingIndex(counter: 1, record: record), 5)
     }
 
-    /// qa-03: value the quote cannot exit, such as a counter-swap still unclaimed, is said on the quote screen.
-    func testQuoteNamesTheBalanceItCannotExit() {
-        let quote = SparkExitQuote(prepared: SparkExitFixtures.prepared())
-
-        XCTAssertEqual(SparkExitMath.unexitableSats(sparkBalanceSats: 133_068, quote: quote), 300 + 32768)
-        XCTAssertEqual(SparkExitMath.unexitableSats(sparkBalanceSats: 100_300, quote: quote), 300, "the skipped leaves")
-        XCTAssertEqual(SparkExitMath.unexitableSats(sparkBalanceSats: 90000, quote: quote), 300)
-    }
-
     func testReadsTheLeafAnUnexitableErrorNames() {
         let message = "Leaf 0193a7c2-11aa-7bbb-8ccc-1234567890ab cannot be exited: its refund cannot pay its own fee at this fee rate"
         XCTAssertTrue(SparkExitMath.isUnexitableLeafError("SparkError: " + message))
@@ -3172,6 +3385,27 @@ final class SparkExitMathTests: XCTestCase {
         XCTAssertNil(first.remembered, "a date guessed without the tip was kept")
         XCTAssertEqual(second.fireAt, known.fireAt, "the reminder at maturity was taken early")
         XCTAssertEqual(third.fireAt, known.fireAt)
+    }
+
+    /// A fee ask the exit withdrew is forgotten as fired, so a later ask for the same amount posts a reminder again.
+    func testAFeeAskAskedAgainAfterAWithdrawalPostsAReminder() throws {
+        let asked = SparkExitFixtures.record(phase: .needsFunding(requiredSats: 5000))
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let ask = try XCTUnwrap(SparkExitMath.reminders(asked, tip: 1000, now: now, network: .bitcoin).first { $0.isFunding })
+        let id = SparkExitManager.notificationId(ask, record: asked)
+        let firedAt = try XCTUnwrap(SparkExitManager.reminderDate(ask, rememberedAt: nil, now: now).remembered)
+        let otherStep = SparkExitManager.notificationId(SparkExitReminder(id: "1-h3000", fireAt: now), record: asked)
+        let remembered = [id: firedAt.timeIntervalSince1970, otherStep: firedAt.timeIntervalSince1970]
+        let later = now.addingTimeInterval(60 * 60)
+        XCTAssertNil(SparkExitManager.reminderDate(ask, rememberedAt: firedAt, now: later).fireAt, "a fired ask posted twice")
+
+        let forgotten = SparkExitManager.forgettingFundingReminders(remembered, record: asked)
+        let kept = SparkExitManager.keepingFired([:], remembered: forgotten, now: later)
+
+        XCTAssertNil(kept[id], "the withdrawn ask stayed remembered as fired")
+        XCTAssertNotNil(kept[otherStep], "another step's fired reminder was forgotten")
+        let again = SparkExitManager.reminderDate(ask, rememberedAt: kept[id].map(Date.init(timeIntervalSince1970:)), now: later)
+        XCTAssertNotNil(again.fireAt, "the ask asked again posted no reminder")
     }
 
     /// With the operators down an older state's refund can take a leaf 100 blocks after ours matures, and the

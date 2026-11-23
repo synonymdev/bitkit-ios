@@ -5,6 +5,7 @@ struct SpendingWalletScreen: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var transfer: TransferViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
     private var canMoveToSpark: Bool {
@@ -38,7 +39,7 @@ struct SpendingWalletScreen: View {
                             .padding(.top, 16)
                     }
 
-                    if shouldShowOnboarding && wallet.totalOnchainSats > 0 {
+                    if shouldShowOnboarding && (wallet.totalOnchainSats > 0 || wallet.spendableOnchainBalanceSats > 0) {
                         transferFromSavingsButton
                             .transition(.move(edge: .leading).combined(with: .opacity))
                             .padding(.top, 28)
@@ -144,7 +145,7 @@ struct SpendingWalletScreen: View {
                 .foregroundColor(.white80)
         ) {
             if app.hasSeenTransferToSavingsIntro {
-                navigation.navigate(.savingsAvailability)
+                navigation.navigateToTransferSavings(wallet: wallet, transfer: transfer)
             } else {
                 navigation.navigate(.savingsIntro)
             }
@@ -161,5 +162,6 @@ struct SpendingWalletScreen: View {
     .environmentObject(AppViewModel())
     .environmentObject(CurrencyViewModel())
     .environmentObject(ActivityListViewModel())
+    .environmentObject(TransferViewModel())
     .preferredColorScheme(.dark)
 }

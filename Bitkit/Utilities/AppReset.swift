@@ -76,6 +76,10 @@ final class AppReset: WipeStepExecutor {
             await Self.runRemoteCleanup {
                 await PubkyProfileManager.removePrivatePaykitEndpointsForWipe(context: "AppReset.wipe")
             }
+            // Before the keychain wipe, which deletes the device secret it needs.
+            await Self.runRemoteCleanup {
+                await WakeManager.shared.unregister()
+            }
         case .resetLocalServices:
             await VssBackupClient.shared.reset()
             VssStoreIdProvider.shared.clearCache()
@@ -103,6 +107,7 @@ final class AppReset: WipeStepExecutor {
         case .wipeKeychain:
             try Self.wipeKeychain()
             PaykitUsdtPaymentService.shared.resetForWipe()
+            PaykitReceiptService.shared.resetForWipe()
         case .resetSettings:
             if let bundleID = Bundle.main.bundleIdentifier {
                 UserDefaults.standard.removePersistentDomain(forName: bundleID)
@@ -156,7 +161,11 @@ final class AppReset: WipeStepExecutor {
 
     /// A hung remote cleanup must not hold the wipe; what it leaves behind is recoverable from the seed.
     static func runRemoteCleanup(timeout: Duration = .seconds(15), _ cleanup: @escaping () async -> Void) async {
-        guard await withDeadline(timeout, cleanup) == nil else { return }
+        await runRemoteCleanup(until: { try await Task.sleep(for: timeout) }, cleanup)
+    }
+
+    static func runRemoteCleanup(until deadline: @escaping () async throws -> Void, _ cleanup: @escaping () async -> Void) async {
+        guard await withDeadline(until: deadline, cleanup) == nil else { return }
         Logger.warn("Remote cleanup timed out, continuing the wipe", context: "AppReset")
     }
 
@@ -172,7 +181,7 @@ final class AppReset: WipeStepExecutor {
         let path = Env.logDirectory
         if FileManager.default.fileExists(atPath: path) {
             Logger.warn("Wiping entire logs directory...")
-            try FileManager.default.removeItem(at: URL(fileURLWithPath: path))
+            try Logger.removeLogDirectory(atPath: path)
         } else {
             Logger.warn("No logs directory found to wipe: \(path)")
         }

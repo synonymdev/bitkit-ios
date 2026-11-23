@@ -238,6 +238,19 @@ enum Env {
         return electrumServerUrl(for: network)
     }
 
+    /// Whether a Paykit payment may route through a Pubky Swaps provider when no balance reaches the contact's
+    /// endpoints. Regtest debug builds with `PUBKY_SWAPS_ROUTES=true` only.
+    static var isPubkySwapsRouteEnabled: Bool {
+        isDebug && network == .regtest && boolConfigValue("PUBKY_SWAPS_ROUTES")
+    }
+
+    /// Swap providers to ask besides the user's contacts, from `PUBKY_SWAPS_PROVIDERS` (comma-separated pubkys).
+    static var pubkySwapsProviders: [String] {
+        (configValue("PUBKY_SWAPS_PROVIDERS") ?? "").split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
     static var trezorBridgeEnabled: Bool {
         (isDebug || isE2E) && boolConfigValue("TREZOR_BRIDGE")
     }
@@ -363,6 +376,18 @@ enum Env {
         switch network {
         case .bitcoin: "\(blocktankBaseUrl)/api"
         default: "\(blocktankBaseUrl)/blocktank/api/v2"
+        }
+    }
+
+    /// The wake gateway the app registers with for background pushes. Wakes do nothing without one. No gateway is
+    /// deployed yet, so only a debug build given `WAKE_GATEWAY_URL` in its environment or launch arguments has one.
+    static var wakeGatewayUrl: String? {
+        if isDebug, let override = configValue("WAKE_GATEWAY_URL") {
+            return override
+        }
+        switch network {
+        case .bitcoin: return nil
+        case .testnet, .signet, .regtest: return nil
         }
     }
 

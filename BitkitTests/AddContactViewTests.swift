@@ -15,7 +15,7 @@ final class AddContactViewTests: XCTestCase {
         let started = expectation(description: "Endpoint lookup starts")
         let finished = expectation(description: "Endpoint lookup returns")
         var continuation: CheckedContinuation<Bool, Never>?
-        let window = host { _ in
+        let window = try host { _ in
             started.fulfill()
             let result = await withCheckedContinuation { continuation = $0 }
             finished.fulfill()
@@ -38,14 +38,12 @@ final class AddContactViewTests: XCTestCase {
     }
 
     func testEndpointFailureKeepsContactPreviewVisible() async throws {
-        let attempted = expectation(description: "Endpoint lookup fails")
-        let window = host { _ in
-            attempted.fulfill()
+        let completed = expectation(description: "Contact preview handles the failed endpoint lookup")
+        let window = try host(onPaymentEndpointLookupCompleted: { completed.fulfill() }) { _ in
             throw TestError.offline
         }
         defer { close(window) }
-        await fulfillment(of: [attempted], timeout: 3)
-        try await Task.sleep(for: .milliseconds(100))
+        await fulfillment(of: [completed], timeout: 10)
         let labels = try renderedLabels(window, name: "Contact after failed endpoint lookup")
         XCTAssertTrue(labels.contains("alice"), "Missing profile: \(labels)")
         XCTAssertTrue(labels.contains(t("common__save").lowercased()), "Missing Save: \(labels)")
@@ -57,7 +55,7 @@ final class AddContactViewTests: XCTestCase {
         let finished = expectation(description: "Non-cancellable lookup returns")
         var continuation: CheckedContinuation<Bool, Never>?
         var wasCancelled = false
-        let window = host { _ in
+        let window = try host { _ in
             started.fulfill()
             let result = await withCheckedContinuation { continuation = $0 }
             wasCancelled = Task.isCancelled
@@ -75,24 +73,40 @@ final class AddContactViewTests: XCTestCase {
         XCTAssertFalse(labels.contains(t("common__pay").lowercased()))
     }
 
-    private func host(endpoint: @escaping (String) async throws -> Bool) -> UIWindow {
+    private func host(
+        onPaymentEndpointLookupCompleted: (() -> Void)? = nil,
+        endpoint: @escaping (String) async throws -> Bool
+    ) throws -> UIWindow {
         let profile = PubkyProfileManager()
         profile.publicKey = "pubky" + String(repeating: "y", count: 52)
-        let view = AddContactView(publicKey: PreviewContactsManager.publicKey, loadPaymentEndpoint: endpoint)
-            .environmentObject(AppViewModel())
-            .environmentObject(CurrencyViewModel(currencyService: OfflineCurrencyService()))
-            .environmentObject(NavigationViewModel())
-            .environmentObject(PreviewContactsManager() as ContactsManager)
-            .environmentObject(profile)
-            .environmentObject(SettingsViewModel.shared)
-            .environmentObject(SheetViewModel())
-            .environmentObject(WalletViewModel())
-            .environment(HwWalletManager())
-            .preferredColorScheme(.dark)
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let view = AddContactView(
+            publicKey: PreviewContactsManager.publicKey,
+            loadPaymentEndpoint: endpoint,
+            onPaymentEndpointLookupCompleted: onPaymentEndpointLookupCompleted
+        )
+        .environmentObject(AppViewModel())
+        .environmentObject(CurrencyViewModel(currencyService: OfflineCurrencyService()))
+        .environmentObject(NavigationViewModel())
+        .environmentObject(PreviewContactsManager() as ContactsManager)
+        .environmentObject(profile)
+        .environmentObject(SettingsViewModel.shared)
+        .environmentObject(SheetViewModel())
+        .environmentObject(WalletViewModel())
+        .environment(HwWalletManager())
+        .preferredColorScheme(.dark)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive })
+        let previousKeyWindow = scene.keyWindow
+        addTeardownBlock {
+            await MainActor.run { previousKeyWindow?.makeKey() }
+        }
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
         window.overrideUserInterfaceStyle = .dark
         window.rootViewController = UIHostingController(rootView: view)
         window.makeKeyAndVisible()
+        window.rootViewController?.view.layoutIfNeeded()
         return window
     }
 

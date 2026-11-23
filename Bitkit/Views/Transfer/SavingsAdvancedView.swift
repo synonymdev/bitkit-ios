@@ -38,7 +38,7 @@ struct SavingsAdvancedView: View {
                 .padding(.bottom, 16)
 
             BodyMText(t("lightning__savings_advanced__text"))
-                .padding(.bottom, 16)
+                .padding(.bottom, 8)
 
             ForEach(Array(channels.enumerated()), id: \.element.channelId) { index, channel in
                 channelView(channel: channel, index: index, isLast: index == channels.count - 1)

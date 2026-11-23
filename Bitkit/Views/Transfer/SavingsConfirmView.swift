@@ -70,7 +70,6 @@ struct SavingsConfirmView: View {
             NavigationBar(title: t("lightning__transfer__nav_title"))
                 .padding(.bottom, 16)
 
-            // The piggybank keeps its size; when the fees, slider and Spark row make the content tall, it scrolls above the swipe.
             GeometryReader { geo in
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
@@ -104,22 +103,6 @@ struct SavingsConfirmView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, 32)
                         }
-
-                        Spacer(minLength: 0)
-
-                        // A spinner stands in for the piggybank while the quote loads.
-                        Group {
-                            if swapState.quote == nil, swapState.isLoading {
-                                ProgressView()
-                            } else {
-                                Image("piggybank-right")
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(width: 256, height: 256)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
 
                         Spacer(minLength: 0)
                     }
@@ -199,7 +182,7 @@ struct SavingsConfirmView: View {
                 amount: transfer.sparkWithdrawFeeSats ?? 0,
                 isLoading: transfer.isPricingSparkWithdrawal
             )
-            .padding(.top, swapState.quote == nil ? 40 : 16)
+            .padding(.top, swapState.quote == nil ? 32 : 16)
             .accessibilityIdentifier("SavingsSparkFee")
         } else if selection.withdrawsSpark || selection.isEmpty && pricesSpark && transfer.isSparkWithdrawTooSmall {
             sparkFeeError

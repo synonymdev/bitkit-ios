@@ -132,14 +132,9 @@ struct SparkExitQuote: Equatable {
     }
 
     /// The on-chain payment that funds the CPFP fees, or 0 when every leaf is recovered cooperatively. One payment,
-    /// from savings or another wallet: the SDK splits it into one output per fee-bumped transaction (`fundedSteps`).
+    /// from savings or another wallet: the SDK splits it into one output per fee-bumped transaction.
     var fundingSats: UInt64 {
         prepared.funding?.singleUtxoSats ?? 0
-    }
-
-    /// The transactions the funding pays a fee for, each from its own share.
-    var fundedSteps: Int {
-        prepared.funding?.perBranch.count ?? 0
     }
 
     /// What the sweep and the cooperative recoveries pay to savings: `receiveSats` plus the fee funding the exit
@@ -209,6 +204,12 @@ struct SparkExitFeeBumpOption: Equatable, Identifiable {
         }
         return options
     }
+}
+
+/// What an ended exit returned to savings: `spendingSats` of spending balance, `feesSats` of unspent emergency fees.
+struct SparkExitReturned: Equatable {
+    let spendingSats: UInt64
+    let feesSats: UInt64
 }
 
 /// A local notification that brings the user back to an exit; `id` is stable across runs for the same step.
@@ -379,6 +380,70 @@ enum SparkExitMath {
         let sats = paid.values.reduce(0, +)
         guard sats > 0 else { return nil }
         return (sats, transactions.first { $0.kind == .sweep }?.txid ?? record.landedSweepTxid)
+    }
+
+    /// The unspent fee funding the SWEEP steps of `record`'s recovery return to savings: the value of their inputs that
+    /// spend the funding address, which are funding UTXOs and the outputs of a CPFP child or the fan-out. An input whose
+    /// parent this recovery does not hold, such as an earlier generation's CPFP change, is not counted, nor is the sweep
+    /// of a replaced generation: the record keeps what it paid (`earlierReceivedSats`) and returned
+    /// (`earlierReturnedFundingSats`).
+    static func returnedFundingSats(_ record: SparkExitRecord) -> UInt64 {
+        guard let recovery = record.recovery?.response else { return 0 }
+        var funding: [String: UInt64] = [:]
+        for input in record.fundingInputs + recovery.fundingInputs {
+            if case let .p2wpkh(txid, vout, valueSats, _) = input {
+                funding["\(txid):\(vout)"] = valueSats
+            }
+        }
+        var parents: [String: String] = [:]
+        for tx in recovery.transactions {
+            if let hex = tx.cpfpTxHex, let txid = SparkExitTxid.txid(hex: hex) {
+                parents[txid] = hex
+            }
+        }
+        for tx in recovery.transactions where tx.kind == .fanOut {
+            parents[tx.txid] = tx.txHex
+        }
+        var seen: Set<String> = []
+        var sats: UInt64 = 0
+        for sweep in recovery.transactions where sweep.kind == .sweep {
+            for input in SparkExitTxid.inputOutpoints(hex: sweep.txHex) ?? [] {
+                let outpoint = "\(input.txid):\(input.vout)"
+                guard seen.insert(outpoint).inserted else { continue }
+                let parentOutputs = parents[input.txid].flatMap { SparkExitTxid.outputs(hex: $0) }
+                let value = funding[outpoint] ?? parentOutputs.flatMap { Int(input.vout) < $0.count ? $0[Int(input.vout)].value : nil }
+                sats = sats.saturatingAdd(value ?? 0)
+            }
+        }
+        return sats
+    }
+
+    /// The leftover fee funding the ended exit swept back on its own: earlier sweeps and the confirmed last one.
+    static func sweptLeftoverSats(_ record: SparkExitRecord) -> UInt64 {
+        let swept = (record.sweptLeftover ?? []).reduce(UInt64(0)) { $0.saturatingAdd($1.valueSats) }
+        let sending = record.leftoverSweep?.isConfirmed == true ? record.leftoverSweep?.valueSats ?? 0 : 0
+        return swept.saturatingAdd(sending)
+    }
+
+    /// What the ended exit returned to savings, split as the done screen names it: `received` less the fee funding the
+    /// main sweep returned is the spending balance, which bears the sweep's own fee; that funding and
+    /// `sweptLeftoverSats` are the emergency fees it did not spend, with what sweeps of replaced generations returned.
+    /// Nil before it ended done or when no output to savings can be read.
+    static func returned(_ record: SparkExitRecord) -> SparkExitReturned? {
+        guard let received = received(record)?.sats else { return nil }
+        let current = Set((record.recovery?.response.transactions ?? []).filter { $0.kind == .sweep }.map(\.txid))
+        let earlier = (record.earlierReturnedFundingSats ?? [:]).filter { !current.contains($0.key) }.values
+            .reduce(UInt64(0)) { $0.saturatingAdd($1) }
+        // Capped at what was received, so the two parts always add up to what reached savings.
+        let funding = min(returnedFundingSats(record).saturatingAdd(earlier), received)
+        return SparkExitReturned(spendingSats: received - funding, feesSats: sweptLeftoverSats(record).saturatingAdd(funding))
+    }
+
+    /// Pay to confirm starts the exit on its own, once a visit, as soon as a read of the funding address this visit
+    /// finds the funding covered, funding already there on entry included. A failed start waits for Try again, and a
+    /// start already running is the only one.
+    static func canAutoStartFunding(isFunded: Bool, isStarting: Bool, hasAutoStarted: Bool, hasReadFunding: Bool) -> Bool {
+        isFunded && !isStarting && !hasAutoStarted && hasReadFunding
     }
 
     /// The exit's sweeps to savings: the recovery's, else the one that landed before a retry replaced it, and those of
@@ -614,15 +679,6 @@ enum SparkExitMath {
     static func outsideSats(sparkBalanceSats: UInt64, quote: SparkExitQuote) -> UInt64? {
         let outside = beyondLostLeaves(sparkBalanceSats.saturatingSub(quote.leafTotalSats), lostLeafSats: quote.lostLeafSats)
         return outside > 0 ? outside : nil
-    }
-
-    /// The Spark balance a quote cannot exit: the leaves it skips, and what the balance holds beyond every leaf the
-    /// SDK lists, such as a counter-swap still unclaimed. Nil when there is none.
-    static func unexitableSats(sparkBalanceSats: UInt64, quote: SparkExitQuote) -> UInt64? {
-        let listed = quote.leafTotalSats + quote.leftBehindSats
-        let beyond = beyondLostLeaves(sparkBalanceSats.saturatingSub(listed), lostLeafSats: quote.lostLeafSats)
-        let unexitable = quote.leftBehindSats + beyond
-        return unexitable > 0 ? unexitable : nil
     }
 
     /// `sats` less the lost leaves it still holds. Spark's balance keeps a leaf an older state claimed until a later

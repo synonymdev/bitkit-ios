@@ -415,6 +415,8 @@ final class PaykitContactLifecycleTests: XCTestCase {
         XCTAssertEqual(report?.cleared.map(\.counterparty), keys)
         XCTAssertTrue(report?.failedToQueue.isEmpty == true)
         XCTAssertTrue(try XCTUnwrap(sdk.withdrawals.first?.first).reservations.isEmpty)
+        // A withdrawal supersedes a queued list instead of sending it first.
+        XCTAssertEqual(sdk.events, ["sync", "sync"])
     }
 }
 
@@ -522,6 +524,7 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
         let failed = updates.filter { update in
             peers.contains { $0.counterparty == update.counterparty && $0.state == .recoveryRequired }
         }
+        events.append("sync")
         withdrawals.append(updates)
         return .init(
             queued: [],
@@ -531,6 +534,11 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
             failedToQueue: failed.map { .init(counterparty: $0.counterparty, outboundMessageId: nil, error: nil) },
             failedToDeliver: []
         )
+    }
+
+    override func processPendingPrivateMessages() async throws -> [OutboundPrivateCounterpartySendReport] {
+        events.append("send-pending")
+        return []
     }
 
     override func clearPrivatePaymentListAndProcessOutbound(

@@ -42,6 +42,7 @@ enum ReceiveTagMutation {
 
 class ActivityService {
     private let coreService: CoreService
+    private let bumpFeeByRbf: (String, UInt32) async throws -> String
     private static let detachedContactsKey = "activityDetachedContacts"
 
     func isContactDetached(activityId: String, walletId: String) -> Bool {
@@ -119,34 +120,27 @@ class ActivityService {
 
     /// Cached transaction IDs that appear in boostTxIds, per wallet id (for filtering replaced
     /// transactions). Scoped because a boost chain only ever exists within one wallet.
-    ///
-    /// Lock-guarded rather than actor- or `MainActor`-isolated: `updateBoostTxIdsCache` is called
-    /// from inside the synchronous `ServiceQueue.background(.core)` blocks below, which must stay
-    /// non-async (see `replaceHwSnapshot`), while readers run on whichever executor calls
-    /// `getTxIdsInBoostTxIds`. Never hold the lock across an `await`.
-    private let cachedTxIdsInBoostTxIds = OSAllocatedUnfairLock(initialState: [String: Set<String>]())
+    private let boostTxIdsCache = BoostTxIdsCache()
 
     /// Get the set of transaction IDs that appear in boostTxIds (cached for performance)
     func getTxIdsInBoostTxIds(walletId: String = WalletScope.default) async -> Set<String> {
-        if let cached = cachedTxIdsInBoostTxIds.withLock({ $0[walletId] }) {
-            return cached
+        await boostTxIdsCache.get(walletId: walletId) { [self] in
+            await loadBoostTxIds(walletId: walletId)
         }
-        await refreshBoostTxIdsCache(walletId: walletId)
-        return cachedTxIdsInBoostTxIds.withLock { $0[walletId] ?? [] }
     }
 
     private func updateBoostTxIdsCache(for activity: Activity) {
         guard case let .onchain(onchain) = activity, !onchain.boostTxIds.isEmpty else { return }
-        cachedTxIdsInBoostTxIds.withLock {
-            // Only merge into an already-warmed wallet. Seeding a cold one would make
-            // `getTxIdsInBoostTxIds` treat this single activity's ids as the whole set and skip its
-            // refresh, so the rest of the wallet's boost chain would be invisible.
-            guard $0[onchain.walletId] != nil else { return }
-            $0[onchain.walletId, default: []].formUnion(onchain.boostTxIds)
-        }
+        boostTxIdsCache.merge(onchain.boostTxIds, walletId: onchain.walletId)
     }
 
     private func refreshBoostTxIdsCache(walletId: String = WalletScope.default) async {
+        _ = await boostTxIdsCache.get(walletId: walletId, forceRefresh: true) { [self] in
+            await loadBoostTxIds(walletId: walletId)
+        }
+    }
+
+    private func loadBoostTxIds(walletId: String) async -> Set<String>? {
         do {
             let allOnchainActivities = try await get(filter: .onchain, walletId: walletId)
             var txIds: Set<String> = []
@@ -155,10 +149,10 @@ class ActivityService {
                     txIds.formUnion(onchain.boostTxIds)
                 }
             }
-            let txIdsToCache = txIds
-            cachedTxIdsInBoostTxIds.withLock { $0[walletId] = txIdsToCache }
+            return txIds
         } catch {
             Logger.error("Failed to refresh boostTxIds cache for '\(walletId)': \(error)", context: "ActivityService")
+            return nil
         }
     }
 
@@ -426,11 +420,15 @@ class ActivityService {
     init(
         coreService: CoreService,
         channelLookup: ((String, PaymentDirection, BitkitCore.TransactionDetails?) async -> String?)? = nil,
-        nodeTransactionLookup: ((String) async -> LDKNode.TransactionDetails?)? = nil
+        nodeTransactionLookup: ((String) async -> LDKNode.TransactionDetails?)? = nil,
+        bumpFeeByRbf: @escaping (String, UInt32) async throws -> String = { txid, feeRate in
+            try await LightningService.shared.bumpFeeByRbf(txid: txid, satsPerVbyte: feeRate)
+        }
     ) {
         self.coreService = coreService
         self.channelLookup = channelLookup
         self.nodeTransactionLookup = nodeTransactionLookup
+        self.bumpFeeByRbf = bumpFeeByRbf
         addressSearchCoordinator = AddressSearchCoordinator()
     }
 
@@ -457,7 +455,7 @@ class ActivityService {
             }
 
             // Clear cache since all activities are deleted
-            self.cachedTxIdsInBoostTxIds.withLock { $0.removeAll() }
+            self.boostTxIdsCache.invalidateAll()
             self.activitiesChangedSubject.send()
         }
     }
@@ -512,7 +510,7 @@ class ActivityService {
         // (boosting is gated off for watch-only wallets), and `getTxIdsInBoostTxIds` rebuilds
         // lazily on the next read. Rebuilding inside the block above would also deadlock — it
         // re-enters the core queue.
-        cachedTxIdsInBoostTxIds.withLock { $0[walletId] = nil }
+        boostTxIdsCache.invalidate(walletId: walletId)
         activitiesChangedSubject.send()
 
         // A deletion cascades into `activity_tags`, so the metadata envelope carrying this wallet's
@@ -765,11 +763,7 @@ class ActivityService {
                 seenAt: seenAt
             )
 
-            if let existingOnchain {
-                try updateActivity(activityId: existingOnchain.id, activity: .onchain(onchain))
-            } else {
-                try upsertActivity(activity: .onchain(onchain))
-            }
+            try BitkitCore.upsertOnchainActivityPreservingFeeRate(activity: onchain)
             self.updateBoostTxIdsCache(for: .onchain(onchain))
             self.activitiesChangedSubject.send()
         }
@@ -832,7 +826,7 @@ class ActivityService {
                 existing.doesExist = false
                 existing.isBoosted = false
                 existing.updatedAt = UInt64(Date().timeIntervalSince1970)
-                try await self.update(id: existing.id, activity: .onchain(existing))
+                try await self.upsertOnchainActivityPreservingFeeRate(existing)
                 Logger.info("Marked transaction \(txid) as replaced", context: "CoreService.handleOnchainTransactionReplaced")
             } else {
                 Logger.info(
@@ -879,7 +873,7 @@ class ActivityService {
                     activity.isBoosted = true
                     activity.contact = activity.contact ?? replacedActivity?.contact
                     activity.updatedAt = UInt64(Date().timeIntervalSince1970)
-                    try await self.update(id: activity.id, activity: .onchain(activity))
+                    try await self.upsertOnchainActivityPreservingFeeRate(activity)
 
                     // Move tags from the replaced transaction
                     if let replacedActivity {
@@ -918,7 +912,7 @@ class ActivityService {
             onchain.confirmTimestamp = nil
             onchain.updatedAt = UInt64(Date().timeIntervalSince1970)
 
-            try await self.update(id: onchain.id, activity: .onchain(onchain))
+            try await self.upsertOnchainActivityPreservingFeeRate(onchain)
         }
     }
 
@@ -932,7 +926,7 @@ class ActivityService {
             onchain.doesExist = false
             onchain.updatedAt = UInt64(Date().timeIntervalSince1970)
 
-            try await self.update(id: onchain.id, activity: .onchain(onchain))
+            try await self.upsertOnchainActivityPreservingFeeRate(onchain)
         }
     }
 
@@ -1420,6 +1414,25 @@ class ActivityService {
         }
     }
 
+    func upsertOnchainActivityPreservingFeeRate(_ onchain: OnchainActivity) async throws {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.upsertOnchainActivityPreservingFeeRate(activity: onchain)
+            self.updateBoostTxIdsCache(for: .onchain(onchain))
+            self.activitiesChangedSubject.send()
+        }
+    }
+
+    private func recordRbfBoost(originalActivityId: String, replacementTxid: String, feeRate: UInt32) async throws {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.recordRbfBoost(
+                walletId: WalletScope.default, originalActivityId: originalActivityId,
+                replacementTxId: replacementTxid, feeRate: UInt64(feeRate)
+            )
+            self.metadataChangedSubject.send()
+            self.activitiesChangedSubject.send()
+        }
+    }
+
     /// Create sent onchain activity from send result so it appears immediately; LDK events update it later (e.g. confirmation).
     ///
     /// `walletId` scopes the row: a transfer funded from a watch-only hardware wallet is written
@@ -1900,22 +1913,23 @@ class ActivityService {
                 Logger.debug("Original transaction ID: \(onchainActivity.txId)", context: "CoreService.boostOnchainTransaction")
 
                 // Use RBF for outgoing transactions
-                txid = try await LightningService.shared.bumpFeeByRbf(
-                    txid: onchainActivity.txId,
-                    satsPerVbyte: feeRate
-                )
+                txid = try await self.bumpFeeByRbf(onchainActivity.txId, feeRate)
 
                 Logger.info("RBF transaction created successfully: \(txid)", context: "CoreService.boostOnchainTransaction")
 
-                // For RBF, mark the original activity as boosted and update the fee rate
-                // so the UI shows the correct confirmation time estimate until the replacement arrives
-                onchainActivity.isBoosted = true
-                onchainActivity.feeRate = UInt64(feeRate)
-                try await self.update(id: activityId, activity: .onchain(onchainActivity))
-                Logger.info(
-                    "Successfully marked activity \(activityId) as replaced by fee",
-                    context: "CoreService.boostOnchainTransaction"
-                )
+                // The replacement is already broadcast, so a failed record must not report the boost as failed.
+                do {
+                    try await self.recordRbfBoost(originalActivityId: activityId, replacementTxid: txid, feeRate: feeRate)
+                    Logger.info(
+                        "Successfully marked activity \(activityId) as replaced by fee",
+                        context: "CoreService.boostOnchainTransaction"
+                    )
+                } catch {
+                    Logger.warn(
+                        "Failed to record RBF boost of activity \(activityId) for broadcast replacement \(txid): \(error)",
+                        context: "CoreService.boostOnchainTransaction"
+                    )
+                }
             }
 
             return txid
@@ -1997,6 +2011,107 @@ class ActivityService {
 
             Logger.info("Generated \(activityId) test activities across all time periods", context: "CoreService")
             self.activitiesChangedSubject.send()
+        }
+    }
+}
+
+// MARK: - Boost history cache
+
+/// Coalesces cold boost-history reads per wallet without holding a lock across an await.
+/// Synchronous mutations also use this lock because they run inside the core service queue.
+final class BoostTxIdsCache: @unchecked Sendable {
+    enum LoadResult: Sendable {
+        case loaded(Set<String>)
+        case invalidated
+    }
+
+    enum Read: Sendable {
+        case cached(Set<String>)
+        case loading(Task<LoadResult, Never>)
+    }
+
+    private struct Flight {
+        let id: UUID
+        let task: Task<LoadResult, Never>
+    }
+
+    private struct Entry {
+        var value: Set<String>?
+        var flight: Flight?
+        var pendingTxIds: Set<String> = []
+    }
+
+    private let entries = OSAllocatedUnfairLock(initialState: [String: Entry]())
+
+    func get(walletId: String, forceRefresh: Bool = false, load: @escaping @Sendable () async -> Set<String>?) async -> Set<String> {
+        var nextRead = read(walletId: walletId, forceRefresh: forceRefresh, load: load)
+        while true {
+            switch nextRead {
+            case let .cached(value):
+                return value
+            case let .loading(task):
+                switch await task.value {
+                case let .loaded(value): return value
+                case .invalidated: nextRead = read(walletId: walletId, load: load)
+                }
+            }
+        }
+    }
+
+    func read(walletId: String, forceRefresh: Bool = false, load: @escaping @Sendable () async -> Set<String>?) -> Read {
+        entries.withLock { entries in
+            if !forceRefresh {
+                if let flight = entries[walletId]?.flight {
+                    return .loading(flight.task)
+                }
+                if let value = entries[walletId]?.value {
+                    return .cached(value)
+                }
+            }
+
+            let id = UUID()
+            let task = Task {
+                let value = await load()
+                return self.complete(value, walletId: walletId, flightId: id)
+            }
+            // Preserve the last successful value only for refresh failures; invalidation removes it entirely.
+            entries[walletId] = Entry(value: entries[walletId]?.value, flight: Flight(id: id, task: task))
+            return .loading(task)
+        }
+    }
+
+    func merge(_ txIds: [String], walletId: String) {
+        entries.withLock { entries in
+            // A cold cache must not be seeded with a partial, single-activity snapshot.
+            guard var entry = entries[walletId] else { return }
+            if entry.value != nil {
+                entry.value?.formUnion(txIds)
+            }
+            if entry.flight != nil {
+                entry.pendingTxIds.formUnion(txIds)
+            }
+            entries[walletId] = entry
+        }
+    }
+
+    func invalidate(walletId: String) {
+        entries.withLock { $0[walletId] = nil }
+    }
+
+    func invalidateAll() {
+        entries.withLock { $0.removeAll() }
+    }
+
+    private func complete(_ value: Set<String>?, walletId: String, flightId: UUID) -> LoadResult {
+        entries.withLock { entries in
+            guard let entry = entries[walletId], entry.flight?.id == flightId else { return .invalidated }
+            guard let value else {
+                entries[walletId] = entry.value.map { Entry(value: $0) }
+                return .loaded(entry.value ?? [])
+            }
+            let mergedValue = value.union(entry.pendingTxIds)
+            entries[walletId] = Entry(value: mergedValue)
+            return .loaded(mergedValue)
         }
     }
 }

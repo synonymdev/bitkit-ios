@@ -13,6 +13,7 @@ struct AddContactView: View {
 
     let publicKey: String
     var loadPaymentEndpoint: (String) async throws -> Bool = PublicPaykitService.hasPayablePublicEndpoint
+    var onPaymentEndpointLookupCompleted: (() -> Void)?
 
     @State private var fetchedProfile: PubkyProfile?
     @State private var isLoading = true
@@ -62,6 +63,7 @@ struct AddContactView: View {
             let hasEndpoint = await (try? loadPaymentEndpoint(profileKey)) == true
             guard !Task.isCancelled, fetchedProfile?.publicKey == profileKey else { return }
             hasPayableEndpoint = hasEndpoint
+            onPaymentEndpointLookupCompleted?()
         }
     }
 

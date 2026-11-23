@@ -63,6 +63,11 @@ final class SparkManager: ChannelFreeLightningRail {
         keptBalanceSats ?? balanceSats
     }
 
+    /// Spark can take payments: connected, and no force transfer to savings running.
+    var isReceiving: Bool {
+        isReady && !isExiting
+    }
+
     /// The balance Spending and its connections show: 0 during an emergency exit, whose amount shows in transfer to
     /// savings instead.
     var shownSpendingSats: UInt64 {
@@ -706,6 +711,25 @@ final class SparkManager: ChannelFreeLightningRail {
         guard syncedThisRun, !lastSyncFailed, let lastSyncedAt else { return false }
         guard let seconds else { return true }
         return lastSyncedAt > seconds
+    }
+
+    nonisolated func lightningSendStatus(bolt11: String) async throws -> LDKNode.PaymentStatus? {
+        let response = try await requireSdk().fetchLightningSendStatus(request: FetchLightningSendStatusRequest(invoice: bolt11))
+        return response.status.map(Self.ldkStatus)
+    }
+
+    nonisolated func mayPayBySparkTransfer(bolt11: String, sats: UInt64?) async throws -> Bool {
+        // Only then does the invoice's Spark address matter, so no other network prepares the payment for it.
+        guard Self.prefersSpark else { return false }
+        let prepared = try await prepareSend(paymentRequest: bolt11, amountSats: sats)
+        guard case let .bolt11Invoice(_, sparkTransferFeeSats, _) = prepared.paymentMethod else { return false }
+        return Self.paysBySparkTransfer(prefersSpark: Self.prefersSpark, sparkTransferFeeSats: sparkTransferFeeSats)
+    }
+
+    /// The SDK quotes a Spark transfer fee only for an invoice that carries a Spark address, and sends to that address
+    /// only when the send prefers Spark.
+    nonisolated static func paysBySparkTransfer(prefersSpark: Bool, sparkTransferFeeSats: UInt64?) -> Bool {
+        prefersSpark && sparkTransferFeeSats != nil
     }
 
     nonisolated func lightningPayments() async throws -> [ChannelFreeRailPayment] {
@@ -1490,7 +1514,7 @@ final class SparkManager: ChannelFreeLightningRail {
         let known = Set(deposits.map(\.txid))
         let local = broadcastDeposits
             .filter { !known.contains($0.key) }
-            .map { SparkDeposit(txid: $0.key, amountSats: $0.value, isClaimed: false, confirmations: 0) }
+            .map { SparkDeposit(txid: $0.key, amountSats: $0.value, isClaimed: false, confirmations: 0, isListed: false) }
         guard !local.isEmpty else { return }
         deposits = local + deposits
         pendingDepositSats = deposits.filter { !$0.isClaimed }.reduce(0) { $0 + $1.amountSats }
@@ -1960,9 +1984,18 @@ struct SparkDeposit: Identifiable, Equatable {
     var claimedAt: UInt64?
     /// On-chain confirmations, known for deposits this wallet sent.
     var confirmations: UInt32?
+    /// Whether Spark lists it, rather than only the app that just broadcast it.
+    var isListed = true
 
     var id: String {
         "\(txid)-\(isClaimed)"
+    }
+}
+
+extension [SparkDeposit] {
+    /// The deposit whose progress the transfer banner opens: the first one Spark has not claimed yet.
+    var inProgressTxid: String? {
+        first { !$0.isClaimed }?.txid
     }
 }
 
