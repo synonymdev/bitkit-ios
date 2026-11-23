@@ -1,5 +1,11 @@
 name: macmini1 WebDriverAgent smoke test
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      run_appium_smoke:
+        description: Run the single Appium session after collecting diagnostics
+        type: boolean
+        default: false
 permissions: {}
 jobs:
   inventory:
@@ -10,10 +16,19 @@ jobs:
         shell: bash
         run: |
           test "$RUNNER_NAME" = macmini1
+          sw_vers
           xcodebuild -version
           python3 -B -u - <<'PY'
           import json
+          from pathlib import Path
+          import plistlib
           import subprocess
+
+          for bundle in sorted(Path('/Applications').glob('Xcode*.app')):
+              info = bundle / 'Contents/Info.plist'
+              if info.is_file():
+                  with info.open('rb') as file:
+                      print(bundle.name, plistlib.load(file).get('CFBundleShortVersionString', 'unknown'))
 
           def simctl_json(resource):
               return json.loads(subprocess.check_output(
@@ -81,9 +96,11 @@ jobs:
                       print('WebDriverAgent crash report:', crash.name)
           PY
       - uses: actions/setup-node@v7
+        if: inputs.run_appium_smoke
         with:
           node-version: 22
       - name: Start one verbose Appium session on the iPhone 17 Pro
+        if: inputs.run_appium_smoke
         shell: bash
         working-directory: bitkit-e2e-tests
         run: |
