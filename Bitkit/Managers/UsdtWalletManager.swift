@@ -102,7 +102,7 @@ final class UsdtWalletManager {
         guard !isSendPresented else { throw UsdtWalletError.cannotDisable }
         let wallet = try await wallet()
         balance = try await wallet.balance()
-        transfers = try await wallet.refreshTransfers()
+        transfers = try await BackgroundTime.during("usdt refreshTransfers") { try await wallet.refreshTransfers() }
         guard !UsdtPreference.protectsFunds(balance: balance, transfers: transfers) else { throw UsdtWalletError.cannotDisable }
         if depositsConfigured {
             var offset: UInt32 = 0
@@ -194,7 +194,7 @@ final class UsdtWalletManager {
             var settlementError: Error?
             do {
                 balance = try await wallet.balance()
-                transfers = try await wallet.refreshTransfers()
+                transfers = try await BackgroundTime.during("usdt refreshTransfers") { try await wallet.refreshTransfers() }
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
@@ -207,7 +207,7 @@ final class UsdtWalletManager {
             if historyRefreshRequested, !isSendPresented, now() >= nextHistoryRefresh {
                 historyRefreshRequested = false
                 nextHistoryRefresh = now().addingTimeInterval(10)
-                let complete = try await wallet.syncHistory()
+                let complete = try await BackgroundTime.during("usdt syncHistory") { try await wallet.syncHistory() }
                 historyComplete = historyComplete || complete
                 transfers = try await ServiceQueue.background(.core, wrapErrors: false) { try wallet.history() }
                 let received = Self.newIncomingTransfers(
@@ -309,12 +309,12 @@ final class UsdtWalletManager {
         try beginOperation(requiresNetwork: false)
         defer { finishOperation() }
         let wallet = try await wallet(requiresNetwork: false)
-        try await wallet.restoreBackup(snapshot: snapshot)
+        try await BackgroundTime.during("usdt restoreBackup") { try await wallet.restoreBackup(snapshot: snapshot) }
         displayBalanceCache.clear()
         cachedBalance = nil
         balance = nil
         pendingDepositIds.removeAll()
-        transfers = try wallet.history()
+        transfers = try BackgroundTime.during("usdt history") { try wallet.history() }
         historyComplete = false
         if receiptsSince == nil {
             receiptsSince = Self.receiptBaseline(now())
@@ -373,7 +373,9 @@ final class UsdtWalletManager {
         defer { finishOperation() }
         let core = try await wallet()
         let credentials = try await loadCredentials()
-        return try await core.createPaymentProof(transferId: quoteId, binding: binding, mnemonic: credentials.0, passphrase: credentials.1)
+        return try await BackgroundTime.during("usdt createPaymentProof") {
+            try await core.createPaymentProof(transferId: quoteId, binding: binding, mnemonic: credentials.0, passphrase: credentials.1)
+        }
     }
 
     func storedTransfer(_ id: String) async throws -> UsdtTransfer? {
@@ -391,9 +393,10 @@ final class UsdtWalletManager {
         defer { refreshing = false }
         try await withRateLimit {
             let wallet = try await wallet()
-            guard let transfer = try wallet.history().first(where: { $0.id == id }) else { throw UsdtError.InvalidBackup }
+            guard let transfer = try BackgroundTime.during("usdt history") { try wallet.history() }.first(where: { $0.id == id })
+            else { throw UsdtError.InvalidBackup }
             guard transfer.status == .pending else { return }
-            transfers = try await wallet.refreshTransfers()
+            transfers = try await BackgroundTime.during("usdt refreshTransfers") { try await wallet.refreshTransfers() }
         }
     }
 
@@ -415,7 +418,8 @@ final class UsdtWalletManager {
             let deadline = clock.now.advanced(by: .seconds(5))
             while clock.now < deadline {
                 try Task.checkCancellation()
-                let transfer = try await Task.detached { try await wallet.checkRecentExecution(id: id) }.value
+                let transfer = try await Task
+                    .detached { try await BackgroundTime.during("usdt checkRecentExecution") { try await wallet.checkRecentExecution(id: id) } }.value
                 try Task.checkCancellation()
                 guard let transfer else { return }
                 transfers.removeAll { $0.id == transfer.id }

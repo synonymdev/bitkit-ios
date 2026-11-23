@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// Handles app services each on it's own dedicated queue
 class ServiceQueue {
@@ -31,6 +32,16 @@ class ServiceQueue {
                 return ServiceQueue.backupQueue
             }
         }
+
+        /// bitkit-core's SQLite databases live in the app group container, and iOS kills an app suspended while it holds a lock on
+        /// such a file (0xdead10cc). Work on these queues therefore keeps the app running in the background until it ends.
+        var usesDatabases: Bool {
+            self == .core || self == .migration
+        }
+    }
+
+    private static func requestBackgroundTime(for service: ServiceTypes, functionName: String) -> BackgroundTime? {
+        service.usesDatabases ? BackgroundTime(name: "\(service) \(functionName)") : nil
     }
 
     /// Executes a thread blocking function on chosen service queue
@@ -43,8 +54,10 @@ class ServiceQueue {
                               functionName: String = #function) async throws -> T
     {
         let startTime = CFAbsoluteTimeGetCurrent()
+        let backgroundTime = requestBackgroundTime(for: service, functionName: functionName)
         let result = try await withCheckedThrowingContinuation { continuation in
             service.queue.async {
+                defer { backgroundTime?.end() }
                 do {
                     let res = try blocking()
                     continuation.resume(with: .success(res))
@@ -71,9 +84,11 @@ class ServiceQueue {
     {
         let startTime = CFAbsoluteTimeGetCurrent()
 
+        let backgroundTime = requestBackgroundTime(for: service, functionName: functionName)
         return try await withCheckedThrowingContinuation { continuation in
             service.queue.async {
                 Task {
+                    defer { backgroundTime?.end() }
                     do {
                         let result = try await execute()
                         continuation.resume(returning: result)
@@ -111,7 +126,9 @@ class ServiceQueue {
     ) {
         let startTime = CFAbsoluteTimeGetCurrent()
 
+        let backgroundTime = requestBackgroundTime(for: service, functionName: functionName)
         service.queue.async {
+            defer { backgroundTime?.end() }
             do {
                 let result = try execute()
                 let timeElapsed = Double(round(100 * (CFAbsoluteTimeGetCurrent() - startTime)) / 100)
@@ -137,8 +154,10 @@ class ServiceQueue {
     ) {
         let startTime = CFAbsoluteTimeGetCurrent()
 
+        let backgroundTime = requestBackgroundTime(for: service, functionName: functionName)
         service.queue.async {
             Task {
+                defer { backgroundTime?.end() }
                 do {
                     let result = try await execute()
                     let timeElapsed = Double(round(100 * (CFAbsoluteTimeGetCurrent() - startTime)) / 100)
@@ -151,5 +170,77 @@ class ServiceQueue {
                 }
             }
         }
+    }
+}
+
+/// Asks iOS for background running time until `end()` is called, the instance is released or the time expires.
+/// Its state is guarded by `lock`.
+final class BackgroundTime: @unchecked Sendable {
+    typealias Begin = (_ name: String, _ expiration: @escaping () -> Void) -> UIBackgroundTaskIdentifier
+    typealias End = (UIBackgroundTaskIdentifier) -> Void
+
+    private let lock = NSLock()
+    private let endTask: End
+    private var identifier: UIBackgroundTaskIdentifier = .invalid
+    private var ended = false
+
+    init(name: String, begin: Begin = BackgroundTime.beginTask, end: @escaping End = BackgroundTime.endTask) {
+        endTask = end
+        let identifier = begin(name) { [weak self] in
+            self?.end()
+        }
+        // The expiration handler can run before the identifier is stored.
+        let endedAlready = lock.withLock {
+            if !ended {
+                self.identifier = identifier
+            }
+            return ended
+        }
+        if endedAlready, identifier != .invalid {
+            end(identifier)
+        }
+    }
+
+    deinit {
+        end()
+    }
+
+    func end() {
+        let identifier = lock.withLock {
+            ended = true
+            defer { self.identifier = .invalid }
+            return self.identifier
+        }
+        if identifier != .invalid {
+            endTask(identifier)
+        }
+    }
+
+    /// Runs `body` with background running time, for database work outside `ServiceQueue`'s database queues.
+    static func during<T>(_ name: String, _ body: () async throws -> T) async rethrows -> T {
+        let backgroundTime = BackgroundTime(name: name)
+        defer { backgroundTime.end() }
+        return try await body()
+    }
+
+    /// Runs `body` with background running time, for database work outside `ServiceQueue`'s database queues.
+    static func during<T>(_ name: String, _ body: () throws -> T) rethrows -> T {
+        let backgroundTime = BackgroundTime(name: name)
+        defer { backgroundTime.end() }
+        return try body()
+    }
+
+    static func beginTask(name: String, expiration: @escaping () -> Void) -> UIBackgroundTaskIdentifier {
+        #if BITKIT_NOTIFICATION_EXTENSION
+            return .invalid
+        #else
+            return UIApplication.shared.beginBackgroundTask(withName: name, expirationHandler: expiration)
+        #endif
+    }
+
+    static func endTask(_ identifier: UIBackgroundTaskIdentifier) {
+        #if !BITKIT_NOTIFICATION_EXTENSION
+            UIApplication.shared.endBackgroundTask(identifier)
+        #endif
     }
 }
