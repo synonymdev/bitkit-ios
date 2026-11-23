@@ -640,6 +640,36 @@ extension ScannerManagerTests {
         XCTAssertNil(app.scannedOnchainInvoice)
     }
 
+    func testNfcReadCannotRouteAfterTheAppLocks() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        let started = expectation(description: "NFC request decoding suspended")
+        var continuation: CheckedContinuation<BitkitCore.Scanner, Error>?
+        let scanner = ScannerManager(nfcReader: FakeNfcReader(.success(paymentURI))) {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { _ in
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        var routes: [SendRoute?] = []
+        let task = Task { await scanner.handleSendNfcRead { routes.append($0) } }
+
+        await fulfillment(of: [started], timeout: 2)
+        // The payer leaves the app mid-decode, and it locks behind the PIN with the Send sheet still set.
+        scanner.invalidateScansForAppLock()
+        try XCTUnwrap(continuation).resume(returning: decoded)
+        await task.value
+
+        XCTAssertTrue(routes.allSatisfy { $0 == nil })
+        XCTAssertNil(app.scannedOnchainInvoice)
+    }
+
     func testNfcReadCannotRouteAfterTheSendSheetMovesOn() async throws {
         let decoded = try await decode(invoice: paymentURI)
         let sheets = SheetViewModel()

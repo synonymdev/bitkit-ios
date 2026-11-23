@@ -26,6 +26,8 @@ class ScannerManager: ObservableObject {
     private var nearbyScanID: UUID?
     /// Whether the last main scan opened a payment flow, so a Bluetooth read knows the request was taken.
     private var didOpenScanFlow = false
+    /// Raised when the app locks, so a scan still decoding cannot open a payment behind the PIN screen or after it.
+    private var lockGeneration = 0
 
     init(
         nfcReader: NfcPaymentReading? = nil,
@@ -581,10 +583,16 @@ class ScannerManager: ObservableObject {
     private func originCheck() -> () -> Bool {
         let presentationID = sheets?.activeSheetConfiguration?.presentationID
         let pathGeneration = navigation?.pathGeneration
+        let lockGeneration = lockGeneration
         return { [weak self] in
             !Task.isCancelled && self?.sheets?.activeSheetConfiguration?.presentationID == presentationID &&
-                self?.navigation?.pathGeneration == pathGeneration
+                self?.navigation?.pathGeneration == pathGeneration && self?.lockGeneration == lockGeneration
         }
+    }
+
+    /// Drops every scan still being handled. Called when the app locks behind the PIN.
+    func invalidateScansForAppLock() {
+        lockGeneration += 1
     }
 
     private func showUnsupportedQRCodeError() {
