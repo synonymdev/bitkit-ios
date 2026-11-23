@@ -10,7 +10,6 @@ final class NearbyProtocolTests: XCTestCase {
             NearbyProtocol.dataUUIDs.map(\.uuidString),
             (1 ... 8).map { String(format: "69A713E5-B0A7-42F1-8B7F-FA0BDA119C%02X", $0) }
         )
-        XCTAssertEqual(NearbyProtocol.dataUUIDs.last?.uuidString, "69A713E5-B0A7-42F1-8B7F-FA0BDA119C08")
         XCTAssertEqual(NearbyProtocol.minRssi, -60)
         XCTAssertEqual(NearbyProtocol.maxRequestBytes, 4096)
     }
