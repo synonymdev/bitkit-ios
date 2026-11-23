@@ -68,6 +68,48 @@ final class BackgroundTimeTests: XCTestCase {
         XCTAssertEqual(tasks.ended, [UIBackgroundTaskIdentifier(rawValue: 7)])
     }
 
+    func testWithoutTheAppsHooksNoTaskIsEnded() {
+        let tasks = FakeTasks()
+        let backgroundTime = BackgroundTime(name: "work", begin: { _, _ in .invalid }, end: tasks.end)
+
+        backgroundTime.end()
+
+        XCTAssertEqual(tasks.ended, [])
+    }
+
+    /// Runs `body` with `tasks` installed as the app's hooks.
+    private func withHooks(_ tasks: FakeTasks, _ body: () async throws -> Void) async rethrows {
+        let (begin, end) = (BackgroundTime.beginTask, BackgroundTime.endTask)
+        BackgroundTime.beginTask = tasks.begin
+        BackgroundTime.endTask = tasks.end
+        defer { (BackgroundTime.beginTask, BackgroundTime.endTask) = (begin, end) }
+        try await body()
+    }
+
+    func testDuringEndsTheTaskAlsoWhenTheBodyThrows() async {
+        struct Failure: Error {}
+        let tasks = FakeTasks()
+
+        await withHooks(tasks) {
+            _ = try? await BackgroundTime.during("quote") { () async throws -> Int in throw Failure() }
+        }
+
+        XCTAssertEqual(tasks.began, ["quote"])
+        XCTAssertEqual(tasks.ended, [UIBackgroundTaskIdentifier(rawValue: 7)])
+    }
+
+    func testDatabaseQueueWorkHoldsBackgroundTimeUntilItEnds() async throws {
+        let tasks = FakeTasks()
+
+        try await withHooks(tasks) {
+            _ = try await ServiceQueue.background(.core) { 1 }
+            _ = try await ServiceQueue.background(.ldk) { 1 }
+        }
+
+        XCTAssertEqual(tasks.began.count, 1)
+        XCTAssertEqual(tasks.ended, [UIBackgroundTaskIdentifier(rawValue: 7)])
+    }
+
     func testOnlyDatabaseQueuesAskForBackgroundTime() {
         XCTAssertTrue(ServiceQueue.ServiceTypes.core.usesDatabases)
         XCTAssertTrue(ServiceQueue.ServiceTypes.migration.usesDatabases)
