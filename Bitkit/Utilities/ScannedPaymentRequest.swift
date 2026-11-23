@@ -48,9 +48,19 @@ enum ScannedPaymentRequest {
         }
         guard let request = lightningParams.lazy.compactMap({ params[$0] }).first else { return trimmed }
         if let amount = params["amount"] {
-            guard let btc = Decimal(string: amount), btc == bolt11Amount(request) else { return trimmed }
+            guard let btc = btcAmount(amount), btc == bolt11Amount(request) else { return trimmed }
         }
         return "lightning:\(request)"
+    }
+
+    /// A BIP 321 `amount` in BTC: digits with an optional decimal point. `Decimal(string:)` alone would read the
+    /// leading number of `0.0000799BTC` or `0.0000799,50`.
+    private static func btcAmount(_ value: String) -> Decimal? {
+        let parts = value.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+        guard value.contains(where: \.isNumber),
+              parts.allSatisfy({ $0.allSatisfy { $0.isASCII && $0.isNumber } })
+        else { return nil }
+        return Decimal(string: value)
     }
 
     /// The amount in BTC that a BOLT11 invoice states in its human-readable part, or nil when it states none.

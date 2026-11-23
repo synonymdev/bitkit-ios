@@ -79,6 +79,14 @@ final class ScannedPaymentRequestTests: XCTestCase {
         XCTAssertEqual(ScannedPaymentRequest.normalized("bitcoin:?amount=x&lightning=\(invoice)"), "bitcoin:?amount=x&lightning=\(invoice)")
     }
 
+    func testRequestWithAMalformedAmountIsKept() {
+        for amount in ["0.0000799BTC", "0.0000799,50", "0.0000799.0", "-0.0000799", ".", "0x1"] {
+            let request = "bitcoin:?amount=\(amount)&lightning=\(invoice)"
+            XCTAssertEqual(ScannedPaymentRequest.normalized(request), request, amount)
+        }
+        XCTAssertEqual(ScannedPaymentRequest.normalized("bitcoin:?amount=.0000799&lightning=\(invoice)"), "lightning:\(invoice)")
+    }
+
     func testScannerRejectsAnAmountTheInvoiceDoesNotState() async {
         await assertScannerRejects("bitcoin:?amount=0.000799&lightning=\(invoice)")
     }
