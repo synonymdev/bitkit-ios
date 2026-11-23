@@ -393,8 +393,8 @@ final class UsdtWalletManager {
         defer { refreshing = false }
         try await withRateLimit {
             let wallet = try await wallet()
-            guard let transfer = try BackgroundTime.during("usdt history") { try wallet.history() }.first(where: { $0.id == id })
-            else { throw UsdtError.InvalidBackup }
+            let history = try BackgroundTime.during("usdt history") { try wallet.history() }
+            guard let transfer = history.first(where: { $0.id == id }) else { throw UsdtError.InvalidBackup }
             guard transfer.status == .pending else { return }
             transfers = try await BackgroundTime.during("usdt refreshTransfers") { try await wallet.refreshTransfers() }
         }
