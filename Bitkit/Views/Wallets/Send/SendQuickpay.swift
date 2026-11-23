@@ -65,8 +65,9 @@ struct SendQuickpay: View {
         }
     }
 
-    /// Whether the payment starts as the screen appears. A payment already started reattaches; one chosen before the
-    /// app locked waits for review.
+    /// Whether the payment starts as the screen appears. A payment already started reattaches, and an invoice the
+    /// coordinator already tracks (a rescan of a payment in progress) replays its status. Only a new submission chosen
+    /// before the app locked waits for review.
     @MainActor
     static func startsAutomatically(
         app: AppViewModel,
@@ -74,6 +75,7 @@ struct SendQuickpay: View {
         coordinator: QuickPayPaymentCoordinator? = nil
     ) -> Bool {
         let coordinator = coordinator ?? .shared
-        return coordinator.isAttached(to: sessionID) || !app.didLockSinceQuickPayWasChosen
+        let paymentHash = app.scannedLightningInvoice?.paymentHash.hex ?? ""
+        return coordinator.isAttached(to: sessionID) || coordinator.hasOpen(paymentHash) || !app.didLockSinceQuickPayWasChosen
     }
 }
