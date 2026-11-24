@@ -310,6 +310,12 @@ struct ReceiveQr: View {
 
             applyDefaultTabIfNeeded()
         }
+        .onChange(of: canShowUnifiedReceive) { _, canShow in
+            // Auto and Spending also hide when Lightning stops receiving with no invoice change, as when Spark disconnects.
+            if !canShow && (selectedTab == .unified || selectedTab == .spending) {
+                selectedTab = .savings
+            }
+        }
         .onDisappear {
             verifyTask?.cancel()
             verifyTask = nil

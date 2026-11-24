@@ -482,6 +482,7 @@
 "lightning__spark_exit__fees_text" = "K zahájení vynuceného převodu musíte zaplatit nouzové poplatky, které pokryjí on-chain transakce potřebné k dokončení procesu.";
 "lightning__spark_exit__fees_title" = "Nouzové\n<accent>poplatky</accent>";
 "lightning__spark_exit__fees_unused" = "*Nepoužité poplatky se vrátí do vašich úspor";
+"lightning__spark_exit__note_notifications_button" = "Zapnout oznámení";
 "lightning__spark_exit__overview" = "Přehled";
 "lightning__spark_exit__pay_amount" = "Částka k zaplacení";
 "lightning__spark_exit__pay_text" = "<accent>Zaplaťte poplatky a zahajte vynucený převod.</accent>\nVynucený převod začne, jakmile se platba potvrdí na blockchainu.";

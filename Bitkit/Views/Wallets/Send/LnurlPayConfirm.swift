@@ -506,11 +506,14 @@ struct LnurlPayConfirm: View {
     @MainActor
     private func confirmSparkUpdateQuote() async -> Bool {
         guard sparkUpdateAmountSats != nil, let lnurlPayData = app.lnurlPayData else { return true }
+        let swipe = swipedPayment
         let fresh: MoveToSparkQuote
         do {
             fresh = try await MoveToSparkManager.shared.updateQuote(wallet: wallet)
         } catch {
             Logger.error("Failed to quote the spending balance update: \(error)", context: "LnurlPayConfirm")
+            // An amount or LNURL changed while quoting is no longer this swipe's, so its failure stays off the new one.
+            guard swipedPayment == swipe else { return false }
             navigationPath.append(.failure(SendFailureContext(
                 error: MoveToSparkError.updateFailed,
                 retryRoute: .lnurlPayConfirm,
@@ -520,6 +523,8 @@ struct LnurlPayConfirm: View {
             )))
             return false
         }
+        // A quote for an edited payment would show this swipe's fee on it.
+        guard swipedPayment == swipe else { return false }
         let shown = sparkUpdateQuote
         sparkUpdateQuote = fresh
         return !MoveToSparkMath.isUpdateFeeUnseen(shownFeeSats: shown?.feeSats, freshFeeSats: fresh.feeSats)

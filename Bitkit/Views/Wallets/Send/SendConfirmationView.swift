@@ -3108,6 +3108,8 @@ struct SendConfirmationView: View {
             }
         } catch {
             Logger.error("Failed to quote the spending balance update: \(error)", context: "SendConfirmation")
+            // A payment changed while quoting is no longer this swipe's, so its failure stays off the new one.
+            guard sparkUpdateSwipe == swipe else { return false }
             navigationPath.append(.failure(SendFailureContext(
                 error: MoveToSparkError.updateFailed,
                 retryRoute: .confirm,

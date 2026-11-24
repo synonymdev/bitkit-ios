@@ -454,6 +454,7 @@
 "lightning__spark_exit__fees_text" = "Για να ξεκινήσει η αναγκαστική μεταφορά, πρέπει να πληρώσετε έκτακτα τέλη που καλύπτουν τις συναλλαγές on-chain που απαιτούνται για την ολοκλήρωση της διαδικασίας.";
 "lightning__spark_exit__fees_title" = "Έκτακτα\n<accent>τέλη</accent>";
 "lightning__spark_exit__fees_unused" = "*Τα αχρησιμοποίητα τέλη θα επιστραφούν στις αποταμιεύσεις σας";
+"lightning__spark_exit__note_notifications_button" = "Ενεργοποίηση ειδοποιήσεων";
 "lightning__spark_exit__overview" = "Επισκόπηση";
 "lightning__spark_exit__pay_amount" = "Ποσό πληρωμής";
 "lightning__spark_exit__pay_text" = "<accent>Πληρώστε τα τέλη για να ξεκινήσει η αναγκαστική μεταφορά.</accent>\nΗ αναγκαστική μεταφορά ξεκινά μόλις η πληρωμή επιβεβαιωθεί στο blockchain.";

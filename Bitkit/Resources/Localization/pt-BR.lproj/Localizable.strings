@@ -482,6 +482,7 @@
 "lightning__spark_exit__fees_text" = "Para iniciar a transferência forçada, você precisa pagar taxas de emergência para cobrir as transações on-chain necessárias para concluir o processo.";
 "lightning__spark_exit__fees_title" = "Taxas de\n<accent>emergência</accent>";
 "lightning__spark_exit__fees_unused" = "*As taxas não utilizadas voltam para a sua poupança";
+"lightning__spark_exit__note_notifications_button" = "Ativar notificações";
 "lightning__spark_exit__overview" = "Visão geral";
 "lightning__spark_exit__pay_amount" = "Valor a pagar";
 "lightning__spark_exit__pay_text" = "<accent>Pague as taxas para iniciar a transferência forçada.</accent>\nA transferência forçada começa quando o pagamento for confirmado na blockchain.";

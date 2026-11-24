@@ -482,6 +482,7 @@
 "lightning__spark_exit__fees_text" = "Aby rozpocząć wymuszony transfer, musisz zapłacić opłaty awaryjne pokrywające transakcje on-chain potrzebne do zakończenia procesu.";
 "lightning__spark_exit__fees_title" = "Opłaty\n<accent>awaryjne</accent>";
 "lightning__spark_exit__fees_unused" = "*Niewykorzystane opłaty wrócą na Twoje oszczędności";
+"lightning__spark_exit__note_notifications_button" = "Włącz powiadomienia";
 "lightning__spark_exit__overview" = "Przegląd";
 "lightning__spark_exit__pay_amount" = "Kwota do zapłaty";
 "lightning__spark_exit__pay_text" = "<accent>Zapłać opłaty, aby rozpocząć wymuszony transfer.</accent>\nWymuszony transfer rozpocznie się po potwierdzeniu płatności w blockchainie.";
