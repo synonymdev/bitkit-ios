@@ -216,6 +216,8 @@ struct SendSheet: View {
 
     let config: SendSheetItem
     let isEmbedded: Bool
+    /// Tells a sheet embedding this flow when Confirm holds the drag, as its own dismiss rule wins.
+    var onConfirmLockChange: (Bool) -> Void = { _ in }
 
     @State private var flow: SendPresentationState
     @State private var hwSend: HwSendCoordinator
@@ -227,9 +229,10 @@ struct SendSheet: View {
         return sheets.activeSheetConfiguration?.presentationID == presentationID
     }
 
-    init(config: SendSheetItem, isEmbedded: Bool = false) {
+    init(config: SendSheetItem, isEmbedded: Bool = false, onConfirmLockChange: @escaping (Bool) -> Void = { _ in }) {
         self.config = config
         self.isEmbedded = isEmbedded
+        self.onConfirmLockChange = onConfirmLockChange
         _flow = State(initialValue: config.state)
         let hwSend = config.state.hwSend ?? HwSendCoordinator(walletId: config.hardwareWalletId)
         config.state.hwSend = hwSend
@@ -376,6 +379,7 @@ struct SendSheet: View {
         }
         .animation(.easeInOut(duration: 0.3), value: shouldShowSyncOverlay)
         .interactiveDismissDisabled(!hwSend.canLeave || flow.isConfirmLocked)
+        .onChange(of: flow.isConfirmLocked) { _, isLocked in onConfirmLockChange(isLocked) }
         .sheet(isPresented: reconnectPairingBinding) {
             HardwarePairingSheet(config: HardwarePairingSheetItem())
         }

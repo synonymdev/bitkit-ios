@@ -7,20 +7,25 @@ final class SendConfirmationSwipeTests: XCTestCase {
     func testARunningSwipeHoldsConfirmUntilItMovesOnOrReturns() {
         var lock = ConfirmSwipeLock()
         lock.isVisible = true
-        XCTAssertFalse(lock.isLocked)
+        XCTAssertFalse(lock.isLocked(isSubmittingPayment: false))
 
         lock.begin()
-        XCTAssertTrue(lock.isLocked, "A running swipe holds Back, the sheet's drag and the inputs")
+        XCTAssertTrue(lock.isLocked(isSubmittingPayment: false), "A running swipe holds Back, the sheet's drag and the inputs")
         lock.isVisible = false
-        XCTAssertFalse(lock.isLocked, "The screen the swipe moves on to, such as the PIN, is free")
+        XCTAssertFalse(lock.isLocked(isSubmittingPayment: false), "The screen the swipe moves on to, such as the PIN, is free")
         lock.isVisible = true
-        XCTAssertTrue(lock.isLocked, "Returning to Confirm while the swipe still runs holds it again")
+        XCTAssertTrue(lock.isLocked(isSubmittingPayment: false), "Returning to Confirm while the swipe still runs holds it again")
 
         lock.end()
-        XCTAssertFalse(lock.isLocked, "A finished swipe frees Confirm")
+        XCTAssertFalse(lock.isLocked(isSubmittingPayment: false), "A finished swipe frees Confirm")
         lock.end()
         lock.begin()
-        XCTAssertTrue(lock.isLocked, "An extra end never frees a later swipe early")
+        XCTAssertTrue(lock.isLocked(isSubmittingPayment: false), "An extra end never frees a later swipe early")
+
+        lock.end()
+        XCTAssertTrue(lock.isLocked(isSubmittingPayment: true), "A payment still running holds a Confirm rebuilt without the swipe")
+        lock.isVisible = false
+        XCTAssertFalse(lock.isLocked(isSubmittingPayment: true), "The screen the payment moves on to is free")
     }
 
     @MainActor

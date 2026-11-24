@@ -410,7 +410,7 @@ struct SendConfirmationView: View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(
                 title: reviewTitle,
-                showBackButton: !navigationPath.isEmpty && !swipeLock.isLocked,
+                showBackButton: !navigationPath.isEmpty && !isSwipeLocked,
                 action: AnyView(SendContactHeaderAvatar(publicKey: preparingRequest?.counterparty))
             )
 
@@ -533,7 +533,7 @@ struct SendConfirmationView: View {
             }
         }
         // The payment's inputs stay as swiped while the swipe runs
-        .allowsHitTesting(!swipeLock.isLocked)
+        .allowsHitTesting(!isSwipeLocked)
     }
 
     private var confirmationPresentation: some View {
@@ -628,7 +628,7 @@ struct SendConfirmationView: View {
                     screenVisit = ConfirmScreenVisit()
                 }
             }
-            .confirmSwipeLock($swipeLock, onLockChange: onLockChange)
+            .confirmSwipeLock($swipeLock, isSubmittingPayment: isSubmittingPayment, onLockChange: onLockChange)
             .onDisappear {
                 screenVisit.leave()
                 startWalletSwitch(context: nil)
@@ -1109,6 +1109,10 @@ struct SendConfirmationView: View {
             )
             app.selectedWalletToPayFrom = .onchain
         }
+    }
+
+    private var isSwipeLocked: Bool {
+        swipeLock.isLocked(isSubmittingPayment: isSubmittingPayment)
     }
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
@@ -3172,14 +3176,15 @@ final class ConfirmScreenVisit {
     }
 }
 
-/// Holds a confirm screen while a swipe of it runs, until the swipe moves on to the next screen or returns to Confirm:
-/// Back, swipe back, the sheet's drag and the payment's inputs wait meanwhile.
+/// Holds a confirm screen while a swipe of it, or the payment it started, runs, until it moves on to the next screen or
+/// returns to Confirm: Back, swipe back, the sheet's drag and the payment's inputs wait meanwhile.
 struct ConfirmSwipeLock: Equatable {
     private(set) var runs = 0
     var isVisible = false
 
-    var isLocked: Bool {
-        runs > 0 && isVisible
+    /// The sheet's `isSubmittingPayment` outlives this screen's state, so a payment still holds a rebuilt Confirm.
+    func isLocked(isSubmittingPayment: Bool) -> Bool {
+        (runs > 0 || isSubmittingPayment) && isVisible
     }
 
     mutating func begin() {
@@ -3193,27 +3198,36 @@ struct ConfirmSwipeLock: Equatable {
 
 extension View {
     /// Tracks the screen's stay for `lock`, holds swipe back while it locks, and reports each change to the sheet.
-    func confirmSwipeLock(_ lock: Binding<ConfirmSwipeLock>, onLockChange: @escaping (Bool) -> Void) -> some View {
-        modifier(ConfirmSwipeLockModifier(lock: lock, onLockChange: onLockChange))
+    func confirmSwipeLock(
+        _ lock: Binding<ConfirmSwipeLock>,
+        isSubmittingPayment: Bool,
+        onLockChange: @escaping (Bool) -> Void
+    ) -> some View {
+        modifier(ConfirmSwipeLockModifier(lock: lock, isSubmittingPayment: isSubmittingPayment, onLockChange: onLockChange))
     }
 }
 
 private struct ConfirmSwipeLockModifier: ViewModifier {
     @Binding var lock: ConfirmSwipeLock
+    let isSubmittingPayment: Bool
     let onLockChange: (Bool) -> Void
+
+    private var isLocked: Bool {
+        lock.isLocked(isSubmittingPayment: isSubmittingPayment)
+    }
 
     func body(content: Content) -> some View {
         content
             .onAppear { lock.isVisible = true }
             .onDisappear {
-                if lock.isLocked {
-                    SwipeBackState.allowSwipeBack = true
+                if isLocked {
+                    SwipeBackState.isHeldByConfirmSwipe = false
                     onLockChange(false)
                 }
                 lock.isVisible = false
             }
-            .onChange(of: lock.isLocked) { _, isLocked in
-                SwipeBackState.allowSwipeBack = !isLocked
+            .onChange(of: isLocked) { _, isLocked in
+                SwipeBackState.isHeldByConfirmSwipe = isLocked
                 onLockChange(isLocked)
             }
     }

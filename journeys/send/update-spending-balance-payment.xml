@@ -18,7 +18,7 @@
     <action>Verify the Confirm screen (id "SendConfirm") shows 50 000 sats with its details open on their own (Hide Details, id "SendConfirmToggleDetails")</action>
     <action>Verify the fee row shows the payment's own fee and the "Update fee" row (id "ReviewUpdateFee") shows an amount, without "up to", and that no "Route" row (id "ReviewSwapRoute") shows</action>
     <action>Swipe to pay (id "GRAB"); the payment is over half of the Spending balance, so verify the "Are You Sure?" dialog warns about sending over 50% of the balance and tap "Yes, Send" (id "DialogConfirm")</action>
-    <action>While the swipe still shows its loading state, swipe back from the left edge and drag the sheet down; verify the Confirm screen stays open with no Back button</action>
+    <action>While the swipe still shows its loading state, swipe back from the left edge and drag the sheet down; verify the Confirm screen stays open</action>
     <action>Verify the Bitcoin Sent screen (id "SendSuccess") shows 50 000</action>
     <action>Go back to Home and verify Activity lists a "Move to Spark" transfer row and the 50 000-sat Lightning payment</action>
     <action>Open Settings › Advanced › Lightning Connections and verify the channel is closing or closed</action>

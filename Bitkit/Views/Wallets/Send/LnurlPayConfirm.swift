@@ -111,7 +111,7 @@ struct LnurlPayConfirm: View {
                 screenVisit = ConfirmScreenVisit()
             }
         }
-        .confirmSwipeLock($swipeLock, onLockChange: onLockChange)
+        .confirmSwipeLock($swipeLock, isSubmittingPayment: isSubmittingPayment, onLockChange: onLockChange)
         .onDisappear {
             screenVisit.leave()
         }
@@ -121,7 +121,7 @@ struct LnurlPayConfirm: View {
         VStack {
             SheetHeader(
                 title: reviewTitle,
-                showBackButton: !swipeLock.isLocked,
+                showBackButton: !isSwipeLocked,
                 action: AnyView(SendContactHeaderAvatar())
             )
 
@@ -188,7 +188,7 @@ struct LnurlPayConfirm: View {
                             .dismissKeyboardOnReturn(text: $comment, isFocused: $isCommentFocused)
                             .lineLimit(3 ... 3)
                             // The comment stays as swiped while the swipe runs
-                            .disabled(swipeLock.isLocked)
+                            .disabled(isSwipeLocked)
                             .onChange(of: comment) { _, newValue in
                                 let maxLength = Int(commentAllowed)
                                 if newValue.count > maxLength {
@@ -221,6 +221,10 @@ struct LnurlPayConfirm: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .sheetBackground()
+    }
+
+    private var isSwipeLocked: Bool {
+        swipeLock.isLocked(isSubmittingPayment: isSubmittingPayment)
     }
 
     private var reviewTitle: String {
