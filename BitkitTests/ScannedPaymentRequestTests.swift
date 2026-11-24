@@ -137,5 +137,9 @@ final class ScannedPaymentRequestTests: XCTestCase {
         let required = "bitcoin:bcrt1qtest?amount=0.001&req-pop=x"
         XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("bitkit://bitbitkit://kit://\(required)"))
         XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("bitkit://lightning:bitbitkit://kit://\(required)"))
+        // Once the text starts with `bitcoin:` the decoder deletes nothing more, so this key is not `req-`.
+        let payable = "bitcoin:bcrt1qtest?amount=0.001&bitbitkit://kit://req-pop=x"
+        XCTAssertFalse(ScannedPaymentRequest.hasRequiredParameter(payable))
+        XCTAssertFalse(ScannedPaymentRequest.hasRequiredParameter("bitkit://\(payable)"))
     }
 }
