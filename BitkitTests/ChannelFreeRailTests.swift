@@ -1709,12 +1709,13 @@ extension ChannelFreeRailTests {
         defer { service.railSendExpired = previousRecord }
         let expiresAt = try Self.invoiceExpiresAt()
         service.now = { Date(timeIntervalSince1970: expiresAt) }
-        // Spark's last sync came before the retry, so only a lost hold lets the invoice go out again.
-        rail.syncedAfter = { seconds in seconds.map { $0 < UInt64(expiresAt) } ?? true }
+        // Spark's last sync came after the expiry but before the retry, so only a lost hold lets the invoice go out again.
+        rail.syncedAfter = { seconds in seconds.map { $0 <= UInt64(expiresAt) } ?? true }
         // While the expired send's row is written, its own failure ends it and a retry of the invoice goes to Spark.
         service.railSendExpired = { [self] _ in
             service.railSendExpired = nil
             service.emitChannelFreeRailEvent(.paymentFailed(paymentId: hash, paymentHash: hash, reason: nil), paymentCreatedAt: Self.sparkNow())
+            service.now = { Date(timeIntervalSince1970: expiresAt + 5) }
             try? await sendOverSpark()
             return true
         }

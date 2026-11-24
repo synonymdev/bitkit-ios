@@ -17,9 +17,12 @@ final class TimedSheetManagerTests: XCTestCase {
     }
 
     override func tearDown() async throws {
-        TimedSheetManager.shared.onPrimaryScreenExited()
-        TimedSheetManager.shared.removeSheet(withId: .appUpdate)
-        TimedSheetManager.shared.removeSheet(withId: .moveToSpark)
+        let manager = TimedSheetManager.shared
+        manager.onPrimaryScreenExited()
+        manager.onSheetDismissed()
+        for id in manager.getQueueStatus().map(\.id) {
+            manager.removeSheet(withId: id)
+        }
         try await super.tearDown()
     }
 
@@ -33,7 +36,8 @@ final class TimedSheetManagerTests: XCTestCase {
                 transferService: transfers,
                 sheetViewModel: sheets, feeEstimatesManager: FeeEstimatesManager()
             ),
-            currencyViewModel: CurrencyViewModel(), paykitPaymentRequestManager: PaykitPaymentRequestManager()
+            currencyViewModel: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            paykitPaymentRequestManager: PaykitPaymentRequestManager()
         )
         manager.registerSheet(FakeSheet(id: .appUpdate, priority: .critical, sheetItem: AppUpdateSheetItem()))
         manager.registerSheet(FakeSheet(id: .moveToSpark, priority: .low, sheetItem: MoveToSparkSheetItem()))

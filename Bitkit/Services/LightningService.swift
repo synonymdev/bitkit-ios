@@ -1177,8 +1177,9 @@ class LightningService: NodeLifecycleService {
                 guard let paid = try await settledRecordedRailSend(paymentHash: paymentHash, since: mark) else { throw error }
                 return paid
             } catch {
-                // A send that failed once submitted may still go out, so its outcome waits for a later sync.
-                if let paymentHash {
+                // A send that failed once submitted may still go out, so its outcome waits for a later sync. One that
+                // failed before it recorded its attempt never reached Spark.
+                if let paymentHash, didRecordAttempt {
                     markRailSendUncertain(paymentHash: paymentHash, since: mark)
                 }
                 throw error
@@ -2547,10 +2548,11 @@ extension LightningService {
             // A restored wallet fills its list on its first sync, so before a sync reaches Spark a missing send proves
             // nothing.
             guard await rail.hasSynced(after: nil) else { throw ChannelFreeRailUnavailable() }
-            // Read before the listing, so a sync that ends while it is read can't settle a send the listing predates.
+            // Read before the listing, so a sync that ends while it is read can't settle a send the listing predates,
+            // and a hold taken meanwhile reads as taken during the read.
+            let heldBefore = railSendHolds
             let unsettledBefore = await unsettledUncertainRailSends()
             let kept = unexpiredRailAttempts()
-            let heldBefore = railSendHolds
             let payments = try await rail.lightningPayments()
             // A send Spark lists a settled attempt of is no longer held; the others read pending until then.
             settleListedRailSends(payments, heldBefore: heldBefore)
