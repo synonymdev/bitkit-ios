@@ -1013,6 +1013,7 @@ final class MoveToSparkManager {
         transfer: TransferViewModel
     ) {
         Task { @MainActor in
+            let started = generation
             // The channels are read between two reads of the payments, so a payment that starts or ends meanwhile
             // leaves no send limit it lowered in the channels read.
             var emptied = await Self.readEmptied(before: before, moveStart: moveStart, wallet: wallet)
@@ -1026,7 +1027,8 @@ final class MoveToSparkManager {
                 emptied = await Self.readEmptied(before: before, moveStart: moveStart, wallet: wallet)
             }
             emptied.removeAll { !MoveToSparkMath.isEmptiedForGood($0, previous: previous) }
-            guard !emptied.isEmpty else { return }
+            // A wipe during the wait leaves the next wallet's channels open.
+            guard !emptied.isEmpty, generation == started else { return }
             do {
                 let failed = try await transfer.closeChannels(channels: emptied)
                 Logger.info("Closed '\(emptied.count - failed.count)' of '\(emptied.count)' channels a move emptied", context: "MoveToSpark")
@@ -1188,7 +1190,8 @@ final class MoveToSparkManager {
                 state = .failed(.unknown)
             }
         }
-        guard movedSats == 0, !ToastWindowManager.areToastsDisabled() else { return }
+        // A wipe since the move started leaves its failure off the next wallet.
+        guard generation == moveGeneration, movedSats == 0, !ToastWindowManager.areToastsDisabled() else { return }
         Haptics.notify(.error)
         ToastWindowManager.shared.showToast(Toast(
             type: .error,

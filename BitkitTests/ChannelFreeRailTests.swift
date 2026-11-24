@@ -45,6 +45,14 @@ final class ChannelFreeRailTests: XCTestCase {
         super.tearDown()
     }
 
+    func testOnlyAnExitStartCountsAsAnExitForPaymentParts() {
+        let before = SparkManager.exitStarts
+        SparkManager.notifyExitStateChanged()
+        XCTAssertEqual(SparkManager.exitStarts, before, "Exit data changes such as a recovery event do not stop payment parts")
+        SparkManager.shared.detachForExit()
+        XCTAssertEqual(SparkManager.exitStarts, before + 1)
+    }
+
     func testRailEventsBeforeTheNodeCallbackAreDeliveredOnceItIsSet() {
         let hash = "aa"
         Bitkit.LightningService.shared.emitChannelFreeRailEvent(
