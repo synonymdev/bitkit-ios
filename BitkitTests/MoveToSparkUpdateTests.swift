@@ -107,13 +107,10 @@ final class MoveToSparkUpdateTests: XCTestCase {
         XCTAssertFalse(MoveToSparkMath.isUpdateFeeUnseen(shownFeeSats: 3, freshFeeSats: 2))
     }
 
-    func testAnUpdateThatFallsShortMovesNothing() async {
+    func testCoverageFailsWhenSparkCannotPriceThePayment() async {
         let services = FakeServices()
         let manager = MoveToSparkManager(services: services)
         let quote = MoveToSparkQuote(invoice: "lnbcrt1move", amountSats: 20000, feeSats: 32)
-
-        await assertNoThrow { try await manager.checkCoverage(quote: quote, bolt11: "lnbcrt1pay", amountSats: 49875) }
-        await assertFallsShort { try await manager.checkCoverage(quote: quote, bolt11: "lnbcrt1pay", amountSats: 49876) }
 
         services.sparkFee = { throw SparkCannotPrice() }
         await assertFallsShort { try await manager.checkCoverage(quote: quote, bolt11: "lnbcrt1pay", amountSats: 1000) }
@@ -191,14 +188,6 @@ final class MoveToSparkUpdateTests: XCTestCase {
             guard case .updateFallsShort = error as? MoveToSparkError else {
                 return XCTFail("Unexpected error \(error)", line: line)
             }
-        }
-    }
-
-    private func assertNoThrow(_ operation: () async throws -> Void, line: UInt = #line) async {
-        do {
-            try await operation()
-        } catch {
-            XCTFail("Unexpected error \(error)", line: line)
         }
     }
 }

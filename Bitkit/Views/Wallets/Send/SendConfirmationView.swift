@@ -3053,6 +3053,18 @@ struct SendConfirmationView: View {
         return invoiceAmountSats > 0 ? invoiceAmountSats : sendAmountSats ?? 0
     }
 
+    /// What a swipe that needs the update pays, compared after the update quote so a swipe never pays a changed payment.
+    private var sparkUpdateSwipe: SparkUpdateSwipe {
+        SparkUpdateSwipe(
+            walletType: app.selectedWalletToPayFrom,
+            bolt11: app.scannedLightningInvoice?.bolt11,
+            onchainAddress: app.scannedOnchainInvoice?.address,
+            amountSats: wallet.sendAmountSats,
+            hasServiceLeg: app.paykitRoute?.serviceLeg != nil,
+            hasSwapRoute: app.paykitSwapRoute != nil
+        )
+    }
+
     private var needsSparkUpdate: Bool {
         sparkUpdatePayment.map { MoveToSparkMath.needsUpdateToSend(amountSats: $0.amountSats) } ?? false
     }
@@ -3082,9 +3094,15 @@ struct SendConfirmationView: View {
     @MainActor
     private func confirmSparkUpdateQuote() async -> Bool {
         guard needsSparkUpdate, let payment = sparkUpdatePayment else { return true }
+        let swipe = sparkUpdateSwipe
         let fresh: MoveToSparkQuote
         do {
             fresh = try await MoveToSparkManager.shared.updateQuote(wallet: wallet)
+            // The swipe is for the payment it started on: a source, route or amount changed while quoting stops it.
+            guard sparkUpdateSwipe == swipe else {
+                Logger.info("Stopped a swipe whose payment changed while the update was quoted", context: "SendConfirmation")
+                return false
+            }
         } catch {
             Logger.error("Failed to quote the spending balance update: \(error)", context: "SendConfirmation")
             navigationPath.append(.failure(SendFailureContext(
@@ -3102,6 +3120,16 @@ struct SendConfirmationView: View {
         Logger.info("Stopped a payment to show the update fee '\(fresh.feeSats)'", context: "SendConfirmation")
         return false
     }
+}
+
+/// The payment a swipe on Confirm started on: its source, route, invoices and amount.
+struct SparkUpdateSwipe: Equatable {
+    let walletType: WalletType
+    let bolt11: String?
+    let onchainAddress: String?
+    let amountSats: UInt64?
+    let hasServiceLeg: Bool
+    let hasSwapRoute: Bool
 }
 
 /// Tracks the newest spending balance update quote on Confirm, so an older quote finishing late writes neither its fee nor
