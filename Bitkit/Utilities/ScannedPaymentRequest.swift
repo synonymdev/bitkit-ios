@@ -41,6 +41,10 @@ enum ScannedPaymentRequest {
                 return trimmed
             }
             guard !key.isEmpty else { continue }
+            // An `amount` key with no value is a malformed amount, not a missing one.
+            if key == "amount", parts.count < 2 || parts[1].isEmpty {
+                return trimmed
+            }
             // BOLT12 offers (`lno`) may repeat beside the invoice; only a second BOLT11 invoice is ambiguous.
             guard keys.insert(key).inserted || (!singletonParams.contains(key) && key != "lightning") else {
                 return trimmed

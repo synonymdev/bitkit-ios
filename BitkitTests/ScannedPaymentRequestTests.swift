@@ -65,6 +65,12 @@ final class ScannedPaymentRequestTests: XCTestCase {
         await assertScannerRejects("bitcoin:?amount=0.01&AMOUNT=0.02&lightning=\(invoice)")
     }
 
+    func testRequestWithAnEmptyAmountIsKept() {
+        for empty in ["bitcoin:?amount=&lightning=\(invoice)", "bitcoin:?lightning=\(invoice)&amount"] {
+            XCTAssertEqual(ScannedPaymentRequest.normalized(empty), empty)
+        }
+    }
+
     func testRequestWhoseAmountTheInvoiceDoesNotStateIsKept() {
         XCTAssertEqual(
             ScannedPaymentRequest.normalized("bitcoin:?amount=0.000799&lightning=\(invoice)"),
