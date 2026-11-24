@@ -30,6 +30,9 @@ struct MetadataBackupV1: Codable {
     /// The earlier Spark exit addresses each wallet watches, keyed `<network>/wallet<n>` as bitkit-android keys them.
     /// Nil in envelopes written before this field.
     var sparkExitEarlierAddresses: [String: [SparkExitEarlierAddressBackupV1]]?
+    /// The payment hashes of moves to Spark, lowercase hex, which Activity shows as transfers. Nil in envelopes written
+    /// before this field.
+    var moveToSparkPaymentHashes: [String]?
 
     init(
         version: Int,
@@ -39,7 +42,8 @@ struct MetadataBackupV1: Codable {
         pubkySession: PubkySessionBackupV1?,
         pubkyContactProfileOverrides: [String: PubkyProfileData]?,
         hwWalletNames: [String: String]? = nil,
-        sparkExitEarlierAddresses: [String: [SparkExitEarlierAddressBackupV1]]? = nil
+        sparkExitEarlierAddresses: [String: [SparkExitEarlierAddressBackupV1]]? = nil,
+        moveToSparkPaymentHashes: [String]? = nil
     ) {
         self.version = version
         self.createdAt = createdAt
@@ -49,6 +53,7 @@ struct MetadataBackupV1: Codable {
         self.pubkyContactProfileOverrides = pubkyContactProfileOverrides
         self.hwWalletNames = hwWalletNames
         self.sparkExitEarlierAddresses = sparkExitEarlierAddresses
+        self.moveToSparkPaymentHashes = moveToSparkPaymentHashes
     }
 }
 
@@ -67,6 +72,7 @@ extension MetadataBackupV1 {
             [String: [SparkExitEarlierAddressBackupV1]].self,
             forKey: .sparkExitEarlierAddresses
         )
+        moveToSparkPaymentHashes = try? c.decodeIfPresent([String].self, forKey: .moveToSparkPaymentHashes)
     }
 }
 

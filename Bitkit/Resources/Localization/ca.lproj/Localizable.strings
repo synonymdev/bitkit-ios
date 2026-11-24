@@ -201,7 +201,7 @@
 "lightning__funding__nav_title" = "Saldo de despesa";
 "lightning__funding__text" = "La forma més fàcil és utilitzar els teus estalvis de Bitkit o enviar bitcoin des d\'una altra cartera.";
 "lightning__funding__title" = "Finança el teu <accent>saldo de despesa</accent>";
-"lightning__funding__button1" = "Transferir des d\'estalvis";
+"lightning__funding__button1" = "Transferir des d'estalvis";
 "lightning__funding__button2" = "Utilitza un altre moneder";
 "lightning__funding__button3" = "Configuració manual";
 "lightning__funding_advanced__button_short" = "Configuració avançada";
@@ -227,6 +227,7 @@
 "lightning__spending_intro__button" = "Començar";
 "lightning__transfer_failed__continue" = "Torna a intentar";
 "lightning__spending_amount__quarter" = "25%";
+"lightning__spending_amount__error_min__title" = "Mínim del saldo d'estalvis";
 "lightning__spending_amount__error_max__title" = "Màxim del saldo de despesa";
 "lightning__spending_amount__error_max__description" = "L'import que pots transferir al teu saldo de despesa està limitat a ₿ {amount}.";
 "lightning__spending_amount__error_fee" = "No s'ha pogut obtenir la comissió de xarxa. Toca per tornar-ho a provar.";
@@ -342,6 +343,29 @@
 "lightning__transaction" = "Transacció";
 "lightning__order_fee" = "Comissió de comanda";
 "lightning__balance" = "Saldo";
+"lightning__move_to_spark__amount" = "Import";
+"lightning__move_to_spark__confirm_text" = "El teu saldo es mou a Spark a través de Lightning, la manera amb menys comissions de mantenir-lo a Despesa. La comissió d'encaminament de sota és el màxim que pagues.";
+"lightning__move_to_spark__confirm_title" = "Moure a\n<accent>Spark</accent>";
+"lightning__move_to_spark__done_rest_text" = "Part del teu saldo ja és a Spark. Mou la resta de la mateixa manera i després tanca la connexió buidada.";
+"lightning__move_to_spark__done_text" = "El teu saldo ja és a Spark. Tanca la connexió buidada per retornar-ne la reserva a Estalvis.";
+"lightning__move_to_spark__done_title" = "Mogut a\n<accent>Spark</accent>";
+"lightning__move_to_spark__failed_nothing" = "Les teves connexions Lightning no tenen saldo per moure.";
+"lightning__move_to_spark__failed_spark" = "Spark encara no està preparat per rebre. Torna-ho a provar d'aquí a un moment.";
+"lightning__move_to_spark__failed_title" = "No s'ha pogut\n<accent>moure</accent>";
+"lightning__move_to_spark__failed_unknown" = "Alguna cosa ha fallat en preparar el moviment. Torna-ho a provar.";
+"lightning__move_to_spark__fee" = "Comissió d'encaminament";
+"lightning__move_to_spark__intro_text" = "Blocktank està tancant les seves connexions Lightning. Mou ara el teu saldo a Spark: és l'opció amb menys comissions i es queda a Despesa.";
+"lightning__move_to_spark__intro_title" = "La teva connexió\n<accent>es tanca</accent>";
+"lightning__move_to_spark__move_half" = "Mou la meitat";
+"lightning__move_to_spark__move_now" = "Mou ara";
+"lightning__move_to_spark__move_rest" = "Mou la resta";
+"lightning__move_to_spark__nav_title" = "Moure a Spark";
+"lightning__move_to_spark__quoting" = "Cercant una ruta i la seva comissió…";
+"lightning__move_to_spark__swipe" = "Llisca per moure";
+"lightning__move_to_spark__too_large_none" = "Tanca la connexió en lloc d'això per retornar el saldo a Estalvis.";
+"lightning__move_to_spark__too_large_smaller" = "El pots moure en parts més petites.";
+"lightning__move_to_spark__too_large_text" = "{amount} és massa per encaminar-lo a Spark en un sol pagament.";
+"lightning__move_to_spark__too_large_title" = "Import\n<accent>massa gran</accent>";
 "lightning__spark" = "Spark";
 "lightning__spark_claim_fee" = "Comissió de reclamació";
 "lightning__spark_confirmations" = "{count}/3 confirmacions";
@@ -395,6 +419,7 @@
 "lightning__spark_exit__leftover_swept" = "{amount} de comissions d'emergència no utilitzades s'han enviat als estalvis.";
 "lightning__spark_exit__leftover_sending" = "S'estan enviant {amount} de comissions d'emergència no utilitzades als estalvis.";
 "lightning__spark_exit__leftover_dust" = "{amount} de comissions d'emergència no utilitzades són massa petits per enviar-se i es queden a {address}, camí de derivació {path}.";
+"lightning__spark_exit__earlier_path" = "Camí de derivació";
 "lightning__spark_exit__lost_leaves" = "Un propietari anterior d'aquests fons ha reclamat {amount} on-chain i no es pot recuperar.";
 "lightning__spark_exit__notification_lost" = "{amount} de la teva transferència forçosa no es pot recuperar. Obre Bitkit per veure'n el motiu.";
 "lightning__spark_exit__notification_failed" = "La teva transferència forçosa s'ha aturat. Obre Bitkit per veure'n el motiu.";
@@ -1302,6 +1327,7 @@
 "wallet__swap_route_restored_title" = "Pagament retornat a Estalvis";
 "wallet__send_paykit_no_route__title" = "No es pot pagar aquest contacte";
 "wallet__send_paykit_no_route__description" = "Aquest contacte no té cap mètode de pagament que Bitkit pugui fer servir ara mateix.";
+"wallet__send_paykit_withdrawal_settling__description" = "Una retirada anterior del teu saldo de despesa encara s'està liquidant. Torna-ho a provar quan s'hagi completat.";
 "wallet__recipient_contact" = "Contacte";
 "wallet__recipient_invoice" = "Enganxa factura";
 "wallet__recipient_manual" = "Introdueix manualment";
@@ -1386,6 +1412,7 @@
 "wallet__payment_recipient_rejected" = "El destinatari ha rebutjat aquest pagament Lightning. Comprova la factura i torna-ho a provar.";
 "wallet__payment_abandoned" = "El pagament Lightning s'ha aturat abans de completar-se.";
 "wallet__payment_expired" = "Aquest pagament Lightning ha caducat. Demana una factura nova.";
+"wallet__payment_restored_invoice" = "Bitkit no pot confirmar que aquesta factura no s'hagués pagat abans que restauressis la teva cartera. Demana una factura nova.";
 "wallet__payment_timeout" = "El pagament ha esgotat el temps d'espera. Torna-ho a provar.";
 "wallet__payment_route_not_found" = "Bitkit no ha pogut trobar cap ruta Lightning per a aquest pagament.";
 "wallet__payment_retries_exhausted" = "Bitkit ha provat diverses rutes Lightning, però el pagament no s'ha pogut completar.";
@@ -1414,7 +1441,7 @@
 "wallet__receive_note_placeholder" = "Nota opcional per al pagador";
 "wallet__receive_show_qr" = "Mostra el codi QR";
 "wallet__receive_spending" = "Rebre fons Lightning";
-"wallet__receive_spending_text" = "Gaudeix de pagaments de bitcoin instantanis i barats a la xarxa Lightning.";
+"wallet__receive_spending_text" = "Gaudeix de transaccions instantànies i barates amb amics, família i comerços.";
 "wallet__receive_spending_title" = "Rebre al <accent>saldo de despesa</accent>";
 "wallet__receive_cjit_error" = "Transacció fallida";
 "wallet__minimum" = "MÍNIM";
@@ -1429,6 +1456,7 @@
 "wallet__activity_failed" = "Fallit";
 "wallet__activity_transfer" = "Transferència";
 "wallet__activity_transferring" = "Transferint";
+"wallet__activity_move_to_spark" = "Moure a Spark";
 "wallet__activity_transfer_savings_pending" = "Des de despesa ({duration})";
 "wallet__activity_transfer_savings_done" = "Des de despesa";
 "wallet__activity_transfer_spending_pending" = "Des d\'estalvis ({duration})";
@@ -1952,5 +1980,7 @@
 "subscriptions__allowance_auto_paid" = "Pagat automàticament";
 
 "wallet__balance_updating" = "S’està actualitzant el saldo…";
+"lightning__move_to_spark__in_flight_text" = "El pagament està en camí i apareixerà a Spark quan es liquidi. Si falla, l'import es queda a la teva connexió.";
+"lightning__move_to_spark__in_flight_title" = "Movent a\n<accent>Spark</accent>";
 "other__error_keychain" = "Problema de connexió de dades";
 "other__error_keychain_msg" = "No s'ha pogut carregar la clau principal del clauer.";

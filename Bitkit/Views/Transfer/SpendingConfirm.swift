@@ -141,7 +141,7 @@ struct SpendingConfirm: View {
             throw SpendingFeesIncreasedError()
         }
 
-        flow.approveSwipe()
+        let ceilingSats = flow.approveSwipe(shownCeilingSats: shown.claimFees.instantMaxSats)
         do {
             let txid = try await transfer.fundSpark(
                 address: fresh.address,
@@ -150,7 +150,7 @@ struct SpendingConfirm: View {
                 txFee: fresh.networkFeeSats,
                 isMaxAmount: flow.isMaxAmount
             )
-            flow.onBroadcast(txid: txid)
+            flow.onBroadcast(txid: txid, ceilingSats: ceilingSats)
             await wallet.updateBalanceState()
             navigation.navigate(.settingUp)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {

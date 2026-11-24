@@ -32,7 +32,7 @@ struct ActivityIcon: View {
             confirmed = nil
             txType = ln.txType
             isBoosted = false
-            isTransfer = false
+            isTransfer = ln.isMoveToSpark
             doesExist = true
         case let .onchain(onchain):
             isLightning = false
@@ -100,7 +100,7 @@ struct ActivityIcon: View {
             CircularIcon(icon: "hourglass-simple", iconColor: .purpleAccent, backgroundColor: .purple16, size: size)
         } else {
             CircularIcon(
-                icon: txType == .sent ? "arrow-up" : "arrow-down",
+                icon: isTransfer ? "arrow-up-down" : txType == .sent ? "arrow-up" : "arrow-down",
                 iconColor: .purpleAccent,
                 backgroundColor: .purple16,
                 size: size

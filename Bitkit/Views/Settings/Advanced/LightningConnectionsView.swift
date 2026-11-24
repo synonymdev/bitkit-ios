@@ -156,7 +156,7 @@ struct LightningConnectionsView: View {
                                 }
                             }
 
-                            if MoveToSparkMath.canMove(
+                            if MoveToSparkManager.shared.keepsMoveForItsResult || MoveToSparkMath.canMove(
                                 channels: wallet.channels,
                                 isSparkUsable: MoveToSparkMath.isSparkUsable(SparkManager.shared)
                             ) {

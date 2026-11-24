@@ -356,6 +356,29 @@
 "lightning__transaction" = "Transactie";
 "lightning__order_fee" = "Order kosten";
 "lightning__balance" = "Saldo";
+"lightning__move_to_spark__amount" = "Bedrag";
+"lightning__move_to_spark__confirm_text" = "Je saldo gaat via Lightning naar Spark, de goedkoopste manier om het in je bestedingssaldo te houden. De routeringsvergoeding hieronder is het maximum dat je betaalt.";
+"lightning__move_to_spark__confirm_title" = "Verplaatsen naar\n<accent>Spark</accent>";
+"lightning__move_to_spark__done_rest_text" = "Een deel van je saldo staat nu op Spark. Verplaats de rest op dezelfde manier en sluit daarna de leeggemaakte verbinding.";
+"lightning__move_to_spark__done_text" = "Je saldo staat nu op Spark. Sluit de leeggemaakte verbinding om de reserve ervan terug te zetten naar je spaargeld.";
+"lightning__move_to_spark__done_title" = "Verplaatst naar\n<accent>Spark</accent>";
+"lightning__move_to_spark__failed_nothing" = "Je Lightning-verbindingen hebben geen saldo meer om te verplaatsen.";
+"lightning__move_to_spark__failed_spark" = "Spark is nog niet klaar om te ontvangen. Probeer het zo opnieuw.";
+"lightning__move_to_spark__failed_title" = "Verplaatsen\n<accent>mislukt</accent>";
+"lightning__move_to_spark__failed_unknown" = "Er ging iets mis bij het voorbereiden van de verplaatsing. Probeer het opnieuw.";
+"lightning__move_to_spark__fee" = "Routeringsvergoeding";
+"lightning__move_to_spark__intro_text" = "Blocktank sluit zijn Lightning-verbindingen. Verplaats je saldo nu naar Spark: dat is de goedkoopste optie, en het blijft in je bestedingssaldo.";
+"lightning__move_to_spark__intro_title" = "Je verbinding\n<accent>wordt gesloten</accent>";
+"lightning__move_to_spark__move_half" = "Helft Verplaatsen";
+"lightning__move_to_spark__move_now" = "Nu Verplaatsen";
+"lightning__move_to_spark__move_rest" = "Rest Verplaatsen";
+"lightning__move_to_spark__nav_title" = "Verplaatsen Naar Spark";
+"lightning__move_to_spark__quoting" = "Route en vergoeding zoeken…";
+"lightning__move_to_spark__swipe" = "Veeg Om Te Verplaatsen";
+"lightning__move_to_spark__too_large_none" = "Sluit in plaats daarvan de verbinding om het saldo terug te zetten naar je spaargeld.";
+"lightning__move_to_spark__too_large_smaller" = "Je kunt het in kleinere delen verplaatsen.";
+"lightning__move_to_spark__too_large_text" = "{amount} is te groot om in één betaling naar Spark te routeren.";
+"lightning__move_to_spark__too_large_title" = "Bedrag\n<accent>te groot</accent>";
 "lightning__spark" = "Spark";
 "lightning__spark_claim_fee" = "Claimkosten";
 "lightning__spark_confirmations" = "{count}/3 bevestigingen";
@@ -409,6 +432,7 @@
 "lightning__spark_exit__leftover_swept" = "{amount} aan ongebruikte noodkosten is naar spaargeld gestuurd.";
 "lightning__spark_exit__leftover_sending" = "{amount} aan ongebruikte noodkosten wordt naar spaargeld gestuurd.";
 "lightning__spark_exit__leftover_dust" = "{amount} aan ongebruikte noodkosten is te klein om te versturen en blijft op {address}, afleidingspad {path}.";
+"lightning__spark_exit__earlier_path" = "Afleidingspad";
 "lightning__spark_exit__lost_leaves" = "{amount} is on-chain geclaimd door een eerdere eigenaar van dit geld en kan niet worden teruggehaald.";
 "lightning__spark_exit__notification_lost" = "{amount} van uw geforceerde overboeking kan niet worden hersteld. Open Bitkit om te zien waarom.";
 "lightning__spark_exit__notification_failed" = "Uw geforceerde overboeking is gestopt. Open Bitkit om te zien waarom.";
@@ -1415,6 +1439,7 @@
 "wallet__swap_route_restored_title" = "Betaling teruggestort naar Spaargeld";
 "wallet__send_paykit_no_route__title" = "Kan dit contact niet betalen";
 "wallet__send_paykit_no_route__description" = "Dit contact heeft op dit moment geen betaalmethode die Bitkit kan gebruiken.";
+"wallet__send_paykit_withdrawal_settling__description" = "Een eerdere opname van je bestedingssaldo wordt nog verwerkt. Probeer het opnieuw zodra die is voltooid.";
 "wallet__recipient_contact" = "Contact";
 "wallet__recipient_invoice" = "Factuur Plakken";
 "wallet__recipient_manual" = "Handmatig Invoeren";
@@ -1505,6 +1530,7 @@
 "wallet__payment_recipient_rejected" = "De ontvanger heeft deze Lightning-betaling geweigerd. Controleer de factuur en probeer het opnieuw.";
 "wallet__payment_abandoned" = "De Lightning-betaling is gestopt voordat deze was voltooid.";
 "wallet__payment_expired" = "Deze Lightning-betaling is verlopen. Vraag een nieuwe factuur aan.";
+"wallet__payment_restored_invoice" = "Bitkit kan niet bevestigen dat deze factuur niet is betaald voordat je je wallet herstelde. Vraag een nieuwe factuur aan.";
 "wallet__payment_timeout" = "Time-out voor betaling. Probeer het opnieuw.";
 "wallet__payment_route_not_found" = "Bitkit kon geen Lightning-route voor deze betaling vinden.";
 "wallet__payment_retries_exhausted" = "Bitkit heeft meerdere Lightning-routes geprobeerd, maar de betaling kon niet worden voltooid.";
@@ -1534,7 +1560,7 @@
 "wallet__receive_show_qr" = "Toon QR Code";
 "wallet__receive_text_lnfunds" = "Wilt u <accent>Lightning</accent> ₿ ontvangen?";
 "wallet__receive_spending" = "Ontvang Lightning-geld";
-"wallet__receive_spending_text" = "Geniet van directe en goedkope bitcoin-betalingen op het Lightning Network.";
+"wallet__receive_spending_text" = "Geniet van directe en goedkope transacties met vrienden, familie en winkeliers.";
 "wallet__receive_spending_title" = "Ontvang op <accent>bestedingssaldo</accent>";
 "wallet__receive_cjit_error" = "Transactie Mislukt";
 "wallet__receive_cjit_error_msg" = "Fehler beim Senden der Gelder auf dein Ausgabenkonto.";
@@ -1551,6 +1577,7 @@
 "wallet__activity_failed" = "Mislukt";
 "wallet__activity_transfer" = "Overboeken";
 "wallet__activity_transferring" = "Overboeken";
+"wallet__activity_move_to_spark" = "Verplaatsen naar Spark";
 "wallet__activity_transfer_savings_pending" = "Van Bestedingssaldo ({duration})";
 "wallet__activity_transfer_savings_done" = "Van Bestedingssaldo";
 "wallet__activity_transfer_spending_pending" = "Van Spaargeld ({duration})";
@@ -2096,3 +2123,5 @@
 "subscriptions__allowance_auto_paid" = "Automatisch betaald";
 
 "wallet__balance_updating" = "Saldo bijwerken…";
+"lightning__move_to_spark__in_flight_text" = "De betaling is onderweg en verschijnt in Spark zodra die is afgerond. Als die mislukt, blijft het bedrag in je verbinding.";
+"lightning__move_to_spark__in_flight_title" = "Onderweg naar\n<accent>Spark</accent>";
