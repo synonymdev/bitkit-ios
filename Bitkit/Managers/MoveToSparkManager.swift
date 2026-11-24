@@ -256,7 +256,8 @@ enum MoveToSparkMath {
     static func coversPayment(quote: MoveToSparkQuote, spark: SparkSendState, amountSats: UInt64, feeSats: UInt64) -> Bool {
         let (have, haveOverflow) = spark.balanceSats.addingReportingOverflow(quote.amountSats)
         let (need, needOverflow) = amountSats.addingReportingOverflow(feeSats)
-        guard spark.isUsable, !needOverflow else { return false }
+        // Spark refuses a send whose fee passes the limit the payment then gets, so no move goes ahead for it.
+        guard spark.isUsable, !needOverflow, feeSats <= LightningService.defaultMaxFeeSats(amountSats: amountSats) else { return false }
         guard !haveOverflow else { return true }
         var moved = spark
         moved.balanceSats = have
@@ -430,6 +431,14 @@ protocol MoveToSparkServices {
     /// Spark's fee for paying `bolt11` with `amountSats`, from Spark's own quote, which prices the amount whatever its balance.
     func estimateSparkFee(bolt11: String, amountSats: UInt64) async throws -> UInt64
     func refreshSpark() async
+    /// Throws while an earlier attempt of `bolt11` is pending, and returns `true` once one settled.
+    func hasSettledEarlierAttempt(bolt11: String, amountSats: UInt64) async throws -> Bool
+}
+
+extension MoveToSparkServices {
+    func hasSettledEarlierAttempt(bolt11: String, amountSats: UInt64) async throws -> Bool {
+        false
+    }
 }
 
 struct LiveMoveToSparkServices: MoveToSparkServices {
@@ -455,6 +464,10 @@ struct LiveMoveToSparkServices: MoveToSparkServices {
 
     func refreshSpark() async {
         await SparkManager.shared.refreshState()
+    }
+
+    func hasSettledEarlierAttempt(bolt11: String, amountSats: UInt64) async throws -> Bool {
+        try await LightningService.shared.hasSettledEarlierAttempt(bolt11: bolt11, sats: amountSats)
     }
 }
 
@@ -874,11 +887,14 @@ final class MoveToSparkManager {
         bolt11: String,
         amountSats: UInt64,
         shown: MoveToSparkQuote?,
+        paymentDeadline: PaykitPreciseInstant? = nil,
         wallet: WalletViewModel,
         transfer: TransferViewModel,
         onUnseen: (MoveToSparkQuote) -> Void
     ) async throws {
         guard MoveToSparkMath.needsUpdateToSend(amountSats: amountSats) else { return }
+        // A repeat of an invoice paid or still paying moves nothing: the send returns the earlier outcome, or refuses it.
+        guard try await !services.hasSettledEarlierAttempt(bolt11: bolt11, amountSats: amountSats) else { return }
         do {
             let fresh = try await updateQuote(wallet: wallet)
             if MoveToSparkMath.isUpdateFeeUnseen(shownFeeSats: shown?.feeSats, freshFeeSats: fresh.feeSats) {
@@ -886,8 +902,17 @@ final class MoveToSparkManager {
                 onUnseen(fresh)
                 throw MoveToSparkError.updateFeeUnseen
             }
-            try await updateToSend(quote: fresh, bolt11: bolt11, amountSats: amountSats, wallet: wallet, transfer: transfer)
+            try await updateToSend(
+                quote: fresh,
+                bolt11: bolt11,
+                amountSats: amountSats,
+                paymentDeadline: paymentDeadline,
+                wallet: wallet,
+                transfer: transfer
+            )
         } catch let error as MoveToSparkError {
+            throw error
+        } catch let error as PaykitPaymentRequestError {
             throw error
         } catch {
             Logger.warn("Failed to update the spending balance for '\(amountSats)' sats: \(error)", context: "MoveToSpark")
@@ -901,10 +926,13 @@ final class MoveToSparkManager {
         quote: MoveToSparkQuote,
         bolt11: String,
         amountSats: UInt64,
+        paymentDeadline: PaykitPreciseInstant? = nil,
         wallet: WalletViewModel,
         transfer: TransferViewModel
     ) async throws {
         try await checkCoverage(quote: quote, bolt11: bolt11, amountSats: amountSats)
+        // A request that expired while the update was quoted moves nothing, as its payment would be refused.
+        try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)
         let channelsBefore = wallet.channels ?? []
         let paymentsBefore = await LightningService.shared.listPayments()
         let settled = try await payOverChannels(

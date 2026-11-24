@@ -2020,6 +2020,7 @@ struct SendConfirmationView: View {
                             bolt11: invoice.bolt11,
                             amountSats: amount,
                             shown: approvedUpdateQuote,
+                            paymentDeadline: incomingPaymentRequest?.submissionDeadline(quoteId: app.paykitPaymentTerms?.quoteId),
                             wallet: wallet,
                             transfer: transfer,
                             onUnseen: { showSparkUpdateQuote($0) }
