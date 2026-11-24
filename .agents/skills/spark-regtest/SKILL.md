@@ -36,6 +36,8 @@ the named docs and script headers for details. The steps below are what is not o
    - Script: `SPARK_REGTEST_MNEMONIC=… uv run ../bitkit-android/scripts/spark-regtest-fund.py <bcrt1… address> [sats]`.
      The mnemonic is a GitHub secret; ask the user, never print it.
 4. Lightspark mines about once a minute. Spark claims a deposit after 3 confirmations.
+5. Two-device payment: fund the payer's Spark balance, copy the invoice from Receive › Spending on the other dev build,
+   and pay it from the payer. It goes over Lightning through Lightspark's provider.
 
 ## Local `./spark` stack
 
