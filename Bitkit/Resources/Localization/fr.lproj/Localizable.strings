@@ -2091,6 +2091,7 @@
 "subscriptions__allowance_error_not_linked" = "Ce contact n'est pas encore connecté. Réessayez dans un instant.";
 "subscriptions__allowance_error_unavailable" = "Cette allocation n'est pas disponible pour le moment.";
 "subscriptions__allowance_payment_in_progress" = "Cette demande est déjà en cours de paiement.";
+"subscriptions__allowance_request_already_paid" = "Cette demande est déjà payée.";
 "subscriptions__allowance_executed_title" = "Paiement effectué";
 "subscriptions__allowance_executed_description" = "Le paiement automatique a envoyé {amount} à {name}";
 "subscriptions__allowance_offer_accepted_title" = "Allocation ajoutée";

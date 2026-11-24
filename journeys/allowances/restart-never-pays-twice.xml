@@ -9,7 +9,7 @@
   </description>
   <actions>
     <action>Launch the E2E Bitkit app on both instances with the $5 a payment, $50 a month allowance Active, per set-and-accept.xml</action>
-    <action>On the payer instance, start tailing the simulator log (`xcrun simctl spawn &lt;udid&gt; log stream --predicate 'subsystem == "to.bitkit"'`) for "Handed an allowance payment to the node" so the kill can follow it at once</action>
+    <action>On the payer instance, start tailing the app's newest session log (`tail -F "$(ls -t "$(xcrun simctl get_app_container &lt;udid&gt; to.bitkit group.bitkit)"/logs/bitkit_*.log | head -1)"`) for "Handed an allowance payment to the node" so the kill can follow it at once</action>
     <action>On the payee instance, send the payer a one-time Payment Request for $2 with the note "Devlog3"</action>
     <action>As soon as the log line appears on the payer, run `xcrun simctl terminate &lt;udid&gt; to.bitkit`</action>
     <action>Relaunch the payer with `xcrun simctl launch &lt;udid&gt; to.bitkit` and wait for the node to come back up</action>

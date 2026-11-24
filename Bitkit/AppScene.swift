@@ -1876,6 +1876,17 @@ struct AppScene: View {
             else { return }
             for request in requests {
                 guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
+                // A request this wallet already paid never opens, and holds back no other request.
+                if paykitAllowanceManager.hasSentPayment(request) {
+                    if paykitPaymentRequestManager.requestedPresentationId == request.id {
+                        // An automatic payment the node may still fail reads as in progress; any other payment is "already paid".
+                        let title = paykitAllowanceManager.isPayingAutomatically(request)
+                            ? "subscriptions__allowance_payment_in_progress" : "subscriptions__allowance_request_already_paid"
+                        app.toast(type: .info, title: t(title))
+                        paykitPaymentRequestManager.releaseRequestedPresentation(request)
+                    }
+                    continue
+                }
                 if await paykitAllowanceManager.isAutomaticallyHandling(request) {
                     // The next refresh presents it if the allowance flow hands it back; presenting again now would spin on it.
                     if paykitPaymentRequestManager.requestedPresentationId == request.id {
@@ -2099,10 +2110,11 @@ struct AppScene: View {
             }
         }
 
+        // A request this wallet already paid never opens, so it alone schedules no further pass.
         guard attemptedPresentation,
               shouldPresentNextRequest,
               paykitPaymentRequestManager.requestedPresentationId != nil ||
-              !paykitPaymentRequestManager.requestsForPresentation().isEmpty,
+              !paykitAllowanceManager.payable(paykitPaymentRequestManager.requestsForPresentation()).isEmpty,
               sheets.activeSheetConfiguration == nil,
               !sheets.isReplacingSheet,
               app.contactPaymentContext == nil
@@ -2305,6 +2317,16 @@ struct AppScene: View {
             })
         case .ledgerChanged:
             Task { await paykitAllowanceManager.refresh() }
+        case .paymentLeaving:
+            Task {
+                // The journal now shows the payment, so the pending views drop the request before the backup runs.
+                await paykitAllowanceManager.reloadLocalState()
+                do {
+                    try await BackupService.shared.persistWalletBackup()
+                } catch {
+                    Logger.warn("Failed to back up an automatic allowance payment: \(error)", context: "AppScene")
+                }
+            }
         }
     }
 

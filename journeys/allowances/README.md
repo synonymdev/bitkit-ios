@@ -8,7 +8,8 @@ The PIN journey checks that the payer's grant, accept and end ask for the paymen
 user requires one, while automatic payments never prompt.
 The restore journey checks that a payer restored from its recovery phrase keeps its allowance history.
 `allowance-paused-after-restore.xml` checks that the restored payer pays nothing automatically until it
-taps Resume, also after a relaunch.
+taps Resume, also after a relaunch. `restore-counts-stopped-payment.xml` checks that a payer stopped
+right after handing a payment to the node, then wiped and restored, still counts that payment.
 
 ## Setup
 

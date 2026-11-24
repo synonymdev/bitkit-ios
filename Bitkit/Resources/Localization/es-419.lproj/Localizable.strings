@@ -2083,6 +2083,7 @@
 "subscriptions__allowance_error_not_linked" = "Este contacto aún no está conectado. Inténtelo de nuevo en un momento.";
 "subscriptions__allowance_error_unavailable" = "Esta asignación no está disponible en este momento.";
 "subscriptions__allowance_payment_in_progress" = "Esta solicitud ya se está pagando.";
+"subscriptions__allowance_request_already_paid" = "Esta solicitud ya está pagada.";
 "subscriptions__allowance_executed_title" = "Pago ejecutado";
 "subscriptions__allowance_executed_description" = "El pago automático envió {amount} a {name}";
 "subscriptions__allowance_offer_accepted_title" = "Asignación agregada";

@@ -1757,6 +1757,7 @@
 "subscriptions__allowance_error_not_linked" = "جهة الاتصال هذه غير متصلة بعد. حاول مرة أخرى بعد قليل.";
 "subscriptions__allowance_error_unavailable" = "هذا المخصص غير متاح حاليًا.";
 "subscriptions__allowance_payment_in_progress" = "يجري دفع هذا الطلب بالفعل.";
+"subscriptions__allowance_request_already_paid" = "تم دفع هذا الطلب بالفعل.";
 "subscriptions__allowance_executed_title" = "تم تنفيذ الدفع";
 "subscriptions__allowance_executed_description" = "أرسل الدفع التلقائي {amount} إلى {name}";
 "subscriptions__allowance_offer_accepted_title" = "تمت إضافة مخصص";

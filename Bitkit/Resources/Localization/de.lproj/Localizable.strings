@@ -2077,6 +2077,7 @@
 "subscriptions__allowance_error_not_linked" = "Dieser Kontakt ist noch nicht verbunden. Versuche es gleich noch einmal.";
 "subscriptions__allowance_error_unavailable" = "Dieses Kontingent ist gerade nicht verfügbar.";
 "subscriptions__allowance_payment_in_progress" = "Diese Anforderung wird bereits bezahlt.";
+"subscriptions__allowance_request_already_paid" = "Diese Anforderung ist bereits bezahlt.";
 "subscriptions__allowance_executed_title" = "Zahlung ausgeführt";
 "subscriptions__allowance_executed_description" = "Auto-Pay hat {amount} an {name} gesendet";
 "subscriptions__allowance_offer_accepted_title" = "Kontingent hinzugefügt";
