@@ -374,6 +374,18 @@ class LightningService: NodeLifecycleService {
         passphrase = nil
     }
 
+    /// Runs `reconcile` before a wallet sync. A Paykit Server account that fails to load must not stop the wallet from
+    /// syncing, so its error is logged and the next sync retries it; a cancelled caller still stops here.
+    static func reconcileBeforeSync(_ reconcile: () async throws -> Void) async throws {
+        do {
+            try await reconcile()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            Logger.error(error, context: "Failed to reconcile Paykit Server accounts before sync")
+        }
+    }
+
     /// Builds with `config`, and when ldk-node rejects a configured Paykit Server account (its xpub does not match the
     /// seed, which fails the whole build) builds again without those accounts, so the wallet still starts. The
     /// reconcile on start then adds each account the node accepts.
@@ -730,12 +742,7 @@ class LightningService: NodeLifecycleService {
         }
 
         #if !BITKIT_NOTIFICATION_EXTENSION
-            // A Paykit Server account the node rejects must not stop the wallet from syncing; the next sync retries it.
-            do {
-                try await reconcileWatchOnlyAccounts()
-            } catch {
-                Logger.error(error, context: "Failed to reconcile Paykit Server accounts before sync")
-            }
+            try await Self.reconcileBeforeSync { try await self.reconcileWatchOnlyAccounts() }
         #endif
 
         Logger.debug("Syncing LDK...")

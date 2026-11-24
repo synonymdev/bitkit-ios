@@ -5,6 +5,19 @@ import XCTest
 final class LightningServiceConfigTests: XCTestCase {
     private struct BuildAttemptEnded: Error {}
 
+    func testReconcileBeforeSyncContinuesAfterAnAccountFailure() async throws {
+        try await LightningService.reconcileBeforeSync { throw BuildAttemptEnded() }
+    }
+
+    func testReconcileBeforeSyncStopsWhenCancelled() async {
+        do {
+            try await LightningService.reconcileBeforeSync { throw CancellationError() }
+            XCTFail("Expected cancellation to propagate")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+    }
+
     func testBuildRetriesWithoutPaykitServerAccountsWhenTheNodeRejectsOne() {
         var config = LightningService.nodeConfig(walletIndex: 0)
         config.onchainWalletAccounts = [OnchainWalletAccountConfig(addressType: .nativeSegwit, accountIndex: 1, xpub: "xpub-1")]
