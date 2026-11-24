@@ -35,6 +35,22 @@ final class LightningServiceTests: XCTestCase {
         XCTAssertTrue(ended)
     }
 
+    func testStopWithoutANodeLeavesTheLightningLockToItsHolder() async throws {
+        try XCTSkipIf(Bitkit.LightningService.shared.onchainDispatchNode != nil, "a node is configured in the test host")
+        try await StateLocker.lock(.lightning, wait: 1)
+        defer { try? StateLocker.unlock(.lightning) }
+        try await Bitkit.LightningService.shared.stop()
+        XCTAssertTrue(StateLocker.isLocked(.lightning))
+    }
+
+    func testWaitForEndNeverReportsAnEndedTaskAsTimedOut() async {
+        for _ in 0 ..< 200 {
+            let task = Task {}
+            let ended = await Bitkit.LightningService.waitForEnd(of: task, timeout: .seconds(10))
+            XCTAssertTrue(ended)
+        }
+    }
+
     func testWaitForEndGivesUpOnATaskThatDoesNotEnd() async {
         let release = AsyncStream<Void>.makeStream()
         let task = Task {
