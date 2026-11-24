@@ -573,7 +573,8 @@ final class MoveToSparkManager {
             result = try await .confirm(makeQuote(channels: wallet.channels), isMoving: false)
         } catch {
             Logger.warn("Failed to quote move to Spark: \(error)", context: "MoveToSpark")
-            if let afterMove {
+            // Spark exiting is no balance updated: the rest stays in the channels until Spark is usable again.
+            if let afterMove, (error as? MoveToSparkError) != .sparkUnavailable {
                 result = .done(amountSats: afterMove.movedSats, feeSats: afterMove.feeSats)
             } else {
                 result = Self.state(for: error)
@@ -598,7 +599,8 @@ final class MoveToSparkManager {
         // screen shows it again instead of a new quote.
         var isSettled = true
         defer {
-            if isSettled {
+            // A move started since, or a wipe, owns the flag now.
+            if isSettled, moveGeneration == generation {
                 isMoveInFlight = false
             }
         }
@@ -611,8 +613,8 @@ final class MoveToSparkManager {
                 onTimeout: { [weak self] movedSats in self?.showInFlight(amountSats: movedSats, moveGeneration: moveGeneration) },
                 onLateFailure: { [weak self, weak wallet, weak transfer] movedSats, feeSats in
                     guard let self, let wallet else { return }
-                    // Earlier parts may have emptied channels even when this last one failed.
-                    if movedSats > 0, let transfer {
+                    // Earlier parts may have emptied channels even when this last one failed; a wiped wallet's are gone.
+                    if movedSats > 0, moveGeneration == generation, let transfer {
                         closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
                     }
                     Task {
@@ -621,7 +623,7 @@ final class MoveToSparkManager {
                 },
                 onLateSuccess: { [weak self, weak wallet, weak transfer] movedSats, feeSats in
                     guard let self, let wallet else { return }
-                    if let transfer {
+                    if moveGeneration == generation, let transfer {
                         closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
                     }
                     Task {
@@ -633,21 +635,24 @@ final class MoveToSparkManager {
                 isSettled = false
                 return
             }
-            closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
+            // A wipe during the move leaves the next wallet's channels alone.
+            if moveGeneration == generation {
+                closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
+            }
             await finishMove(movedSats: movedSats, feeSats: feeSats, moveGeneration: moveGeneration, wallet: wallet)
         } catch let MoveToSparkError.feeRose(movedSats, feeSats) {
             // As elsewhere when a fee rises, the modal shows the new fee for what is left.
             Logger.info("Stopped a move to show a fee that rose, '\(movedSats)' sats moved", context: "MoveToSpark")
+            guard moveGeneration == generation else { return }
             if movedSats > 0 {
                 closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
             }
-            guard moveGeneration == generation else { return }
             isMoveInFlight = false
             await self.quote(wallet: wallet, afterMove: movedSats > 0 ? (movedSats, feeSats) : nil)
         } catch {
             Logger.error("Failed to move '\(quote.amountSats)' sats to Spark: \(error)", context: "MoveToSpark")
             guard moveGeneration == generation else { return }
-            state = .failed(.unknown)
+            state = Self.state(for: error)
         }
     }
 
@@ -777,6 +782,8 @@ final class MoveToSparkManager {
         while paidParts < MoveToSparkMath.maxParts {
             let bolt11: String
             let part: MoveToSparkPart
+            // Set when a send limit, which an earlier part's HTLC can hold down, sized this part rather than routing.
+            var isLimitSized = false
             if let planned = next {
                 (bolt11, part) = planned
                 next = nil
@@ -788,8 +795,11 @@ final class MoveToSparkManager {
                 }
                 do {
                     bolt11 = try await newInvoice()
-                    guard let quoted = try await quotePart(bolt11, limitSats, min(partSats, limitSats)) else { break }
+                    let wantedSats = min(partSats, limitSats)
+                    guard let quoted = try await quotePart(bolt11, limitSats, wantedSats) else { break }
                     part = quoted
+                    // Routing halves a part, while fitting its fee under the limit trims it only a little.
+                    isLimitSized = wantedSats < partSats && part.amountSats > wantedSats / 2
                 } catch {
                     lastError = error
                     break
@@ -803,8 +813,10 @@ final class MoveToSparkManager {
                     return .inFlight(movedSats: movedSats, feeSats: feeMsat / 1000, partSats: part.amountSats)
                 }
                 paidParts += 1
-                // As in the plan, the next part is no larger than the last one paid.
-                partSats = part.amountSats
+                // As in the plan, the next part is no larger than the last one paid, unless only a send limit sized it.
+                if !isLimitSized {
+                    partSats = part.amountSats
+                }
                 movedSats += part.amountSats
                 feeMsat += paidMsat
                 feeLeftMsat -= min(feeLeftMsat, paidMsat)
@@ -856,9 +868,9 @@ final class MoveToSparkManager {
             if let isWanted, !isWanted() {
                 throw MoveToSparkError.sparkUnavailable
             }
-            // LDK submits on its own queue, off the main actor: an exit starting after the check above changes Spark's
-            // exit state, which stops the part there.
-            let exitState = SparkManager.exitStateGeneration
+            // LDK submits on its own queue, off the main actor: an exit starting after the check above stops the part
+            // there.
+            let exitStarts = SparkManager.exitStarts
             let stopsOnExit = isWanted != nil
             let paymentHash = try Bolt11Invoice.fromStr(invoiceStr: quote.invoice).paymentHash()
             MoveToSparkPayments.insert(String(describing: paymentHash))
@@ -867,7 +879,7 @@ final class MoveToSparkManager {
                 sats: quote.amountSats,
                 maxFeeMsat: feeCapMsat ?? MoveToSparkMath.feeCapMsat(feeSats: quote.feeSats),
                 beforeSubmission: {
-                    if stopsOnExit, SparkManager.exitStateGeneration != exitState {
+                    if stopsOnExit, SparkManager.exitStarts != exitStarts {
                         throw MoveToSparkError.sparkUnavailable
                     }
                     try beforeSubmission()

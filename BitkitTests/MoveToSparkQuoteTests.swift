@@ -300,6 +300,28 @@ final class MoveToSparkQuoteTests: XCTestCase {
         XCTAssertEqual(Array(wanted.prefix(2)), [30000, 15000])
     }
 
+    func testALimitAnHtlcHeldDownDoesNotShrinkTheLaterParts() async throws {
+        let channels = FakeChannels(movableSats: 100_000)
+        var wanted: [UInt64] = []
+        var reads = 0
+        _ = try await MoveToSparkManager.payParts(
+            MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 30000, feeSats: 1000, firstFeeSats: 32),
+            movableSats: {
+                reads += 1
+                // The read after the first part sees its HTLC still holding the send limit down.
+                return reads == 2 ? 20000 : channels.movableSats
+            },
+            outboundSats: { channels.outboundSats },
+            newInvoice: { "lnbcrt1next" },
+            quotePart: { _, limitSats, wantedSats in
+                wanted.append(wantedSats)
+                return channels.quotePart(limitSats: limitSats, wantedSats: wantedSats)
+            },
+            pay: { bolt11, amount, cap, _, _ in try channels.pay(bolt11, amount, cap) }
+        )
+        XCTAssertEqual(Array(wanted.prefix(2)), [20000, 30000], "A part sized by a held-down limit shrank the ones after it")
+    }
+
     func testAPeerHtlcCapThatKeepsTheLimitFlatDoesNotStopTheMove() async throws {
         let channels = FakeChannels(movableSats: 100_000)
         channels.htlcCapSats = 30032
