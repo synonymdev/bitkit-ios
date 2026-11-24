@@ -3218,18 +3218,21 @@ private struct ConfirmSwipeLockModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onAppear { lock.isVisible = true }
+            // Applied directly on appear and disappear: a screen covered by the PIN may see no change in between.
+            .onAppear {
+                lock.isVisible = true
+                hold(lock.runs > 0 || isSubmittingPayment)
+            }
             .onDisappear {
-                if isLocked {
-                    SwipeBackState.isHeldByConfirmSwipe = false
-                    onLockChange(false)
-                }
                 lock.isVisible = false
+                hold(false)
             }
-            .onChange(of: isLocked) { _, isLocked in
-                SwipeBackState.isHeldByConfirmSwipe = isLocked
-                onLockChange(isLocked)
-            }
+            .onChange(of: isLocked) { _, isLocked in hold(isLocked) }
+    }
+
+    private func hold(_ isLocked: Bool) {
+        SwipeBackState.isHeldByConfirmSwipe = isLocked
+        onLockChange(isLocked)
     }
 }
 

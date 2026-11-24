@@ -29,6 +29,34 @@ final class SendConfirmationSwipeTests: XCTestCase {
     }
 
     @MainActor
+    func testConfirmTakesItsHoldBackWhenARunningSwipeReturnsToIt() async throws {
+        var lock = ConfirmSwipeLock()
+        lock.begin()
+        var reported: [Bool] = []
+        let confirm = Color.black.confirmSwipeLock(.constant(lock), isSubmittingPayment: false) { reported.append($0) }
+        let controller = UIHostingController(rootView: AnyView(confirm))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.windowScene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; SwipeBackState.isHeldByConfirmSwipe = false }
+
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(reported.last, true, "Showing Confirm while its swipe runs holds the sheet")
+        XCTAssertTrue(SwipeBackState.isHeldByConfirmSwipe)
+
+        controller.rootView = AnyView(Color.black)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(reported.last, false, "The screen the swipe moves on to, such as the PIN, is free")
+        XCTAssertFalse(SwipeBackState.isHeldByConfirmSwipe)
+
+        controller.rootView = AnyView(confirm)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(reported.last, true, "Returning to Confirm while the swipe still runs holds it again")
+        XCTAssertTrue(SwipeBackState.isHeldByConfirmSwipe)
+    }
+
+    @MainActor
     func testRestoredLoadingSwipeKeepsItsSpinnerInTheKnob() async throws {
         let confirmation = NavigationStack(path: .constant([true])) {
             Color.black
