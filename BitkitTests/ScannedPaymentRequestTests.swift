@@ -138,7 +138,9 @@ final class ScannedPaymentRequestTests: XCTestCase {
         let address = "bitkit://bitcoin:bcrt1qtest?amount=0.001"
         XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("\(address)&bitkit://req-pop=callback"))
         XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("\(address)&rebitkit://q-pop=callback"))
-        XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("bitkit://bitkit://bitcoin:bcrt1qtest?REBITKIT://Q-POP=callback"))
+        // The decoder deletes only lowercase `bitkit://`, so a mixed-case one stays part of an optional key.
+        XCTAssertFalse(ScannedPaymentRequest.hasRequiredParameter("bitkit://bitkit://bitcoin:bcrt1qtest?REBITKIT://Q-POP=callback"))
+        XCTAssertFalse(ScannedPaymentRequest.hasRequiredParameter("\(address)&reBitkit://q-x=1"))
         // The decoder deletes them again while the text starts with `bitkit://`, so a nested one is removed too.
         let required = "bitcoin:bcrt1qtest?amount=0.001&req-pop=x"
         XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("bitkit://bitbitkit://kit://\(required)"))

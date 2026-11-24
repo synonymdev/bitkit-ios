@@ -99,17 +99,20 @@ enum ScannedPaymentRequest {
     /// request is checked as the `bitcoin:` URI the decoder receives.
     nonisolated static func hasRequiredParameter(_ uri: String) -> Bool {
         // The app and the decoder strip the Lightning wrappers from the front. While the text starts with `bitkit://`,
-        // the decoder deletes every `bitkit://` in it, which can turn a key into `req-`, and decodes again.
-        var lowercase = uri.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        // the decoder deletes every `bitkit://` in it, which can turn a key into `req-`, and decodes again. Its deletion
+        // is case-sensitive, so it runs on the text as read.
+        var text = uri.trimmingCharacters(in: .whitespacesAndNewlines)
         while true {
-            if let wrapper = decoderWrappers.first(where: { lowercase.hasPrefix($0) }) {
-                lowercase = String(lowercase.dropFirst(wrapper.count)).trimmingCharacters(in: .whitespacesAndNewlines)
-            } else if lowercase.hasPrefix("bitkit://") {
-                lowercase = lowercase.replacingOccurrences(of: "bitkit://", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let lowercaseText = text.lowercased()
+            if let wrapper = decoderWrappers.first(where: { lowercaseText.hasPrefix($0) }) {
+                text = String(text.dropFirst(wrapper.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            } else if text.hasPrefix("bitkit://") {
+                text = text.replacingOccurrences(of: "bitkit://", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
             } else {
                 break
             }
         }
+        let lowercase = text.lowercased()
         guard lowercase.hasPrefix("bitcoin:"), let query = lowercase.split(separator: "?", maxSplits: 1).dropFirst().first else {
             return false
         }
