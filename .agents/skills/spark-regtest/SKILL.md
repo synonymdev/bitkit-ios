@@ -60,6 +60,7 @@ SPARK_LOCAL_CHAIN_URL=http://127.0.0.1:23090/api BACKEND=local ./scripts/build-i
 - `IOS_ROOT` keeps the script on this checkout; it defaults to `../bitkit-ios`, which in a worktree is another commit.
 - A simulator that already chose an Electrum server keeps it, and Savings then misses the fixture chain. Use a fresh
   simulator, or Settings › Advanced › Electrum Server › Reset To Default.
+- Fund Spark with `./spark send <deposit address> <sats>` or `./spark pay <Spending invoice> [sats]`.
 - A deposit is claimed after 1 block here.
 - Mine with `./spark mine`, not `./bitcoin-cli mine`: only `spark-bitcoind` relays Spark's v3 packages.
 - bitkit-e2e-tests' `README.md` (Spark tests on local regtest) runs the same stack from its pinned
