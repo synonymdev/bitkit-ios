@@ -587,6 +587,7 @@ final class MoveToSparkManager {
             let outcome = try await payParts(
                 quote,
                 wallet: wallet,
+                moveGeneration: moveGeneration,
                 // Shown in the step that stops waiting, so a late outcome right after it finds this move in flight.
                 onTimeout: { [weak self] movedSats in self?.showInFlight(amountSats: movedSats, moveGeneration: moveGeneration) },
                 onLateFailure: { [weak self, weak wallet, weak transfer] movedSats, feeSats in
@@ -637,13 +638,20 @@ final class MoveToSparkManager {
     private func payParts(
         _ quote: MoveToSparkQuote,
         wallet: WalletViewModel,
+        moveGeneration: Int,
         onTimeout: @escaping @MainActor (UInt64) -> Void = { _ in },
         onLateFailure: @escaping @MainActor (UInt64, UInt64) -> Void = { _, _ in },
         onLateSuccess: @escaping @MainActor (UInt64, UInt64) -> Void = { _, _ in }
     ) async throws -> MoveToSparkPartsOutcome {
         let services = services
+        // A wipe makes a new generation, and an exit makes Spark unusable: either ends the move before its next part.
+        let isWanted: @MainActor () -> Bool = { [weak self] in
+            guard let self else { return false }
+            return moveGeneration == generation && services.isSparkUsable
+        }
         return try await Self.payParts(
             quote,
+            isWanted: isWanted,
             movableSats: { await self.movableSatsAfterSync(wallet: wallet) },
             outboundSats: { MoveToSparkMath.outboundSats(channels: wallet.channels) },
             newInvoice: {
@@ -652,14 +660,16 @@ final class MoveToSparkManager {
             quotePart: { invoice, limitSats, wantedSats in
                 try await self.quotePart(invoice: invoice, limitSats: limitSats, wantedSats: wantedSats)
             },
-            pay: { bolt11, amountSats, feeCapMsat, movedSats, feeSats in
+            pay: { bolt11, amountSats, feeCapMsat, movedSats, feeMsat in
                 let settled = try await self.payOverChannels(
                     MoveToSparkQuote(invoice: bolt11, amountSats: amountSats, feeSats: feeCapMsat / 1000),
                     feeCapMsat: feeCapMsat,
                     wallet: wallet,
+                    isWanted: isWanted,
                     onTimeout: { onTimeout(movedSats + amountSats) },
-                    onLateFailure: { onLateFailure(movedSats, feeSats) },
-                    onLateSuccess: { onLateSuccess(movedSats + amountSats, feeSats + $0.feePaidSats) }
+                    onLateFailure: { onLateFailure(movedSats, feeMsat / 1000) },
+                    // Summed in msat before rounding, as when the parts settle within the wait.
+                    onLateSuccess: { onLateSuccess(movedSats + amountSats, (feeMsat + $0.feePaidMsat) / 1000) }
                 )
                 return settled?.feePaidMsat
             }
@@ -717,14 +727,16 @@ final class MoveToSparkManager {
     /// a part quoted above it throws `feeRose`, so the user can see the new fee, also once that fee is spent. It stops
     /// after `maxParts` paid parts, when a paid part leaves what `outboundSats` shows where it was, or on any other
     /// failure, which it throws when nothing moved. `pay` returns the fee paid in msat, or `nil` while the part is still in
-    /// flight, which ends the move in flight.
+    /// flight, which ends the move in flight. A later part is made only while `isWanted`, so a move whose wallet was wiped
+    /// or whose Spark became unusable stops with what moved; `pay` checks it again when the part is sent.
     static func payParts(
         _ quote: MoveToSparkQuote,
+        isWanted: () -> Bool = { true },
         movableSats: () async -> UInt64,
         outboundSats: () -> UInt64,
         newInvoice: () async throws -> String,
         quotePart: (_ invoice: String, _ limitSats: UInt64, _ wantedSats: UInt64) async throws -> MoveToSparkPart?,
-        pay: (_ bolt11: String, _ amountSats: UInt64, _ feeCapMsat: UInt64, _ movedSats: UInt64, _ feeSats: UInt64) async throws
+        pay: (_ bolt11: String, _ amountSats: UInt64, _ feeCapMsat: UInt64, _ movedSats: UInt64, _ feeMsat: UInt64) async throws
             -> UInt64?
     ) async throws -> MoveToSparkPartsOutcome {
         var next: (bolt11: String, part: MoveToSparkPart)? = (
@@ -748,6 +760,10 @@ final class MoveToSparkManager {
                 next = nil
             } else {
                 guard MoveToSparkMath.hasMovableBalance(limitSats: limitSats) else { break }
+                guard isWanted() else {
+                    lastError = MoveToSparkError.sparkUnavailable
+                    break
+                }
                 do {
                     bolt11 = try await newInvoice()
                     guard let quoted = try await quotePart(bolt11, limitSats, min(partSats, limitSats)) else { break }
@@ -761,7 +777,7 @@ final class MoveToSparkManager {
                 throw MoveToSparkError.feeRose(movedSats: movedSats, feeSats: feeMsat / 1000)
             }
             do {
-                guard let paidMsat = try await pay(bolt11, part.amountSats, feeLeftMsat, movedSats, feeMsat / 1000) else {
+                guard let paidMsat = try await pay(bolt11, part.amountSats, feeLeftMsat, movedSats, feeMsat) else {
                     return .inFlight(movedSats: movedSats, feeSats: feeMsat / 1000, partSats: part.amountSats)
                 }
                 paidParts += 1
@@ -799,11 +815,13 @@ final class MoveToSparkManager {
     }
 
     /// Pays `quote` over the channels, after any move still paying, and waits for its outcome; `nil` means it is still in
-    /// flight, and its late outcome goes to `onLateFailure` or `onLateSuccess`.
+    /// flight, and its late outcome goes to `onLateFailure` or `onLateSuccess`. It throws without sending when `isWanted`
+    /// no longer holds after the wait.
     private func payOverChannels(
         _ quote: MoveToSparkQuote,
         feeCapMsat: UInt64? = nil,
         wallet: WalletViewModel,
+        isWanted: @escaping @MainActor () -> Bool = { true },
         onTimeout: @escaping @MainActor () -> Void = {},
         onLateFailure: @escaping @MainActor () -> Void = {},
         onLateSuccess: @escaping @MainActor (WalletViewModel.SettledLightningPayment) -> Void = { _ in }
@@ -811,6 +829,8 @@ final class MoveToSparkManager {
         let previous = moveTail
         let payment = Task { @MainActor in
             await previous?.value
+            // Checked again after the wait, as the wallet or Spark can change while an earlier move pays.
+            guard isWanted() else { throw MoveToSparkError.sparkUnavailable }
             let paymentHash = try Bolt11Invoice.fromStr(invoiceStr: quote.invoice).paymentHash()
             MoveToSparkPayments.insert(String(describing: paymentHash))
             return try await wallet.sendOverChannels(

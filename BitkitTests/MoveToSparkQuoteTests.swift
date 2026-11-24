@@ -341,6 +341,45 @@ final class MoveToSparkQuoteTests: XCTestCase {
         )
     }
 
+    func testAMoveNoLongerWantedStopsBeforeItsNextPart() async throws {
+        let channels = FakeChannels(movableSats: 100_000)
+        channels.routes = 30000
+        var invoices = 0
+        let outcome = try await MoveToSparkManager.payParts(
+            plan,
+            isWanted: { channels.paid.isEmpty },
+            movableSats: { channels.movableSats },
+            outboundSats: { channels.outboundSats },
+            newInvoice: {
+                invoices += 1
+                return "lnbcrt1next"
+            },
+            quotePart: { channels.quotePart(limitSats: $1, wantedSats: $2) },
+            pay: { bolt11, amount, cap, _, _ in try channels.pay(bolt11, amount, cap) }
+        )
+        XCTAssertEqual(invoices, 0, "A wiped wallet or an exiting Spark got another part")
+        XCTAssertEqual(outcome, .settled(movedSats: 30000, feeSats: 30))
+    }
+
+    func testALaterPartGetsThePaidFeeInMsat() async {
+        let channels = FakeChannels(movableSats: 100_000)
+        channels.routes = 30000
+        var paidFees: [UInt64] = []
+        _ = try? await MoveToSparkManager.payParts(
+            MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 30000, feeSats: 128, firstFeeSats: 32),
+            movableSats: { channels.movableSats },
+            outboundSats: { channels.outboundSats },
+            newInvoice: { "lnbcrt1next" },
+            quotePart: { channels.quotePart(limitSats: $1, wantedSats: $2) },
+            pay: { _, amount, _, _, feeMsat in
+                paidFees.append(feeMsat)
+                channels.outboundSats -= amount + 32
+                return 31900
+            }
+        )
+        XCTAssertEqual(Array(paidFees.prefix(3)), [0, 31900, 63800], "A late outcome would round each part's fee apart")
+    }
+
     func testAFailureAfterAPartMovedStopsWithWhatMoved() async throws {
         let channels = FakeChannels(movableSats: 100_000)
         channels.routes = 30000
