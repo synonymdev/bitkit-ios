@@ -862,6 +862,11 @@ extension ChannelFreeRailTests {
         rail.balanceSats = 0
 
         await assertReachesTheNode()
+
+        // The listed failure released the hold, so a retry still reaches the node once Spark's history can't be read.
+        rail.listError = NSError(domain: "spark", code: 1)
+
+        await assertReachesTheNode()
     }
 
     /// Keeps only what the service stores across launches: the rail's kept keys survive, everything in memory goes.
@@ -1806,6 +1811,66 @@ extension ChannelFreeRailTests {
         XCTAssertTrue(payments.contains { $0.status == .pending }, "the retry read as A's failure")
     }
 
+    func testARetryHeldWhileSparksListIsReadReadsPending() async throws {
+        let (hash, startedAt) = try await sendARetryFiveSecondsAfterAFailedAttempt()
+        let service = Bitkit.LightningService.shared
+        // No hold before the read; a retry takes one while Spark's list, showing only A's failure, is read.
+        service.railAttemptsStore.set([String: Int](), forKey: Self.uncertainRailSendsKey)
+        rail.onList = {
+            service.railAttemptsStore.set([hash: Int(startedAt) + 30], forKey: Self.uncertainRailSendsKey)
+        }
+
+        let payments = try await service.channelFreeRailPayments().filter { $0.paymentHash == hash }
+
+        XCTAssertTrue(payments.contains { $0.status == .pending }, "the retry held during the read read as A's failure")
+    }
+
+    func testAnExpiredSendStaysHeldUntilASyncAfterItsExpiry() async throws {
+        let (hash, _) = try await sendARetryFiveSecondsAfterAFailedAttempt()
+        let service = Bitkit.LightningService.shared
+        let previousRecord = service.railSendExpired
+        defer { service.railSendExpired = previousRecord }
+        final class Calls: @unchecked Sendable { var count = 0 }
+        let calls = Calls()
+        service.railSendExpired = { _ in
+            calls.count += 1
+            return true
+        }
+        let expiresAt = try Self.invoiceExpiresAt()
+        service.now = { Date(timeIntervalSince1970: expiresAt) }
+        // Spark's last sync came after the send, but before its invoice expired.
+        rail.syncedAfter = { ($0 ?? 0) < UInt64(expiresAt) }
+
+        await service.endExpiredRailSendUncertainties()
+
+        XCTAssertEqual(calls.count, 0, "a sync before the expiry settled the send")
+        XCTAssertNotNil(service.railSendHolds[hash])
+
+        rail.syncedAfter = { _ in true }
+        await service.endExpiredRailSendUncertainties()
+
+        XCTAssertEqual(calls.count, 1)
+        XCTAssertNil(service.railSendHolds[hash])
+    }
+
+    func testASparkSendRefusedBeforeSubmissionKeepsAnotherSendsAttemptAndHold() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        rail.balanceSats = 100_000
+        // Send A of the invoice went out and returned after this send's checks, then Spark refuses this one before
+        // submission, as A spent the balance.
+        rail.onSend = {
+            service.railAttemptsStore.set([hash], forKey: Self.railAttemptsKey)
+            service.railAttemptsStore.set([hash: 1000], forKey: Self.uncertainRailSendsKey)
+        }
+        rail.refusal = Bitkit.ChannelFreeRailSendRefused(reason: "insufficient balance")
+
+        _ = try? await service.send(bolt11: Self.invoice)
+
+        XCTAssertEqual(service.railAttemptsStore.stringArray(forKey: Self.railAttemptsKey), [hash], "A's attempt was released")
+        XCTAssertNotNil(service.railSendHolds[hash], "A's hold was ended")
+    }
+
     func testAnExpiredRetryFailsItsOwnRowWhenSparkListsOnlyTheFailureFiveSecondsBeforeIt() async throws {
         let (hash, startedAt) = try await sendARetryFiveSecondsAfterAFailedAttempt()
         let service = Bitkit.LightningService.shared
@@ -2162,6 +2227,8 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     var refusalAfterSubmission: Bitkit.ChannelFreeRailSendRefused?
     /// Runs while a listing is read, before it returns `payments`.
     var onList: (() -> Void)?
+    /// Runs as a send enters Spark, before `refusal`.
+    var onSend: (() -> Void)?
     /// Runs as a send is about to be submitted, before `beforeSubmission`.
     var beforeSubmit: (() -> Void)?
     /// Thrown after the send was submitted, as when the connection drops inside Spark's send.
@@ -2182,6 +2249,7 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     }
 
     func send(bolt11: String, sats: UInt64?, maxFeeSats: UInt64?, beforeSubmission: @escaping () throws -> Void) async throws -> PaymentHash {
+        onSend?()
         if let refusal {
             throw refusal
         }
