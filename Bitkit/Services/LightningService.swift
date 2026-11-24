@@ -2550,8 +2550,8 @@ extension LightningService {
             guard await rail.hasSynced(after: nil) else { throw ChannelFreeRailUnavailable() }
             // Read before the listing, so a sync that ends while it is read can't settle a send the listing predates,
             // and a hold taken meanwhile reads as taken during the read.
-            let heldBefore = railSendHolds
             let mark = attemptMark
+            let heldBefore = railSendHolds
             let unsettledBefore = await unsettledUncertainRailSends()
             let kept = unexpiredRailAttempts()
             let payments = try await rail.lightningPayments()
@@ -2565,10 +2565,10 @@ extension LightningService {
                 stillUnsettled.contains($0.paymentHash)
                     || !Self.listsResult(payments, paymentHash: $0.paymentHash, startedAt: heldBefore[$0.paymentHash])
             }
-            // A retry that took a hold or recorded its attempt during the read is one this list predates, so it reads
-            // pending until a later list shows its result, also when it already ended.
+            // A retry in flight during the read, or that took a hold or recorded its attempt meanwhile, is one this list
+            // predates, so it reads pending until a later list shows its result, also when it already ended.
             let unsettledHashes = Set(unsettled.map { $0.paymentHash.lowercased() })
-            let recordedDuringRead = eventCallbackLock.withLock { attemptsRecorded(since: mark.records, key: Self.railAttemptsKey) }
+            let recordedDuringRead = eventCallbackLock.withLock { attemptsLive(since: mark, key: Self.railAttemptsKey) }
             let paidHashes = Set(payments.filter { $0.direction == .outbound && $0.status == .succeeded }.map { $0.paymentHash.lowercased() })
             let heldDuringRead = Set(holdsAfter.filter { heldBefore[$0.key] != $0.value }.keys)
                 .union(recordedDuringRead.subtracting(paidHashes))

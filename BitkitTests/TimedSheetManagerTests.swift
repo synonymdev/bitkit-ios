@@ -41,11 +41,10 @@ final class TimedSheetManagerTests: XCTestCase {
         )
         manager.registerSheet(FakeSheet(id: .appUpdate, priority: .critical, sheetItem: AppUpdateSheetItem()))
         manager.registerSheet(FakeSheet(id: .moveToSpark, priority: .low, sheetItem: MoveToSparkSheetItem()))
-        // A sheet shown at cold start keeps the first check from showing anything.
-        sheets.showSheet(.receive)
+        // A sheet shown at cold start cancels the first check.
         manager.onPrimaryScreenEntered()
-        try await Task.sleep(nanoseconds: 2_500_000_000)
-        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .receive)
+        sheets.showSheet(.receive)
+        manager.onSheetShown()
 
         sheets.hideSheet()
         manager.onSheetDismissed()

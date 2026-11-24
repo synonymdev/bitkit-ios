@@ -1846,12 +1846,21 @@ extension ChannelFreeRailTests {
         let service = Bitkit.LightningService.shared
         rail.balanceSats = 100_000
         // Another send records its attempt after this one's checks; this one's own check then fails before submission.
+        final class Entered: @unchecked Sendable { var value = false }
+        let entered = Entered()
         rail.onSend = {
+            entered.value = true
             service.recordRailAttempt(paymentHash: hash)
         }
 
-        _ = try? await service.send(bolt11: Self.invoice, beforeSubmission: { throw NSError(domain: "request", code: 1) })
+        do {
+            _ = try await service.send(bolt11: Self.invoice, beforeSubmission: { throw NSError(domain: "request", code: 1) })
+            XCTFail("Expected the send's own check to fail")
+        } catch {
+            XCTAssertEqual((error as NSError).domain, "request", "\(error)")
+        }
 
+        XCTAssertTrue(entered.value, "the send never reached Spark's send call")
         XCTAssertNil(service.railSendHolds[hash], "a send that never reached Spark took a hold")
     }
 
