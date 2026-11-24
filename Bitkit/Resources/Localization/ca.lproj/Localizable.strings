@@ -1286,6 +1286,7 @@
 "profile__unlink_error_title" = "No s'ha pogut desvincular el pubky";
 "profile__unlink_error_description" = "No hem pogut eliminar les teves dades de Paykit. Torna-ho a provar o desconnecta aquest pubky de Bitkit.";
 "profile__unlink_label" = "Desvincular el pubky";
+"profile__update_required" = "Aquest perfil necessita una versió més recent de Bitkit. Actualitza l'aplicació per fer-lo servir.";
 "profile__edit" = "Editar";
 "profile__pay_contacts_nav_title" = "Pagar contactes";
 "profile__pay_contacts_title" = "Deixa que els teus contactes\n<accent>et paguin</accent>";

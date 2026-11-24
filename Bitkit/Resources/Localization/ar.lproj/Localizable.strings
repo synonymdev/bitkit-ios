@@ -1171,6 +1171,7 @@
 "profile__unlink_error_title" = "تعذر إلغاء ربط الـ pubky";
 "profile__unlink_error_description" = "تعذر علينا حذف بيانات Paykit الخاصة بك. أعد المحاولة، أو افصل هذا الـ pubky عن Bitkit.";
 "profile__unlink_label" = "إلغاء ربط الـ pubky";
+"profile__update_required" = "يحتاج هذا الملف الشخصي إلى إصدار أحدث من Bitkit. حدّث التطبيق لاستخدامه.";
 "profile__edit" = "تعديل";
 "profile__pay_contacts_nav_title" = "الدفع لجهات الاتصال";
 "profile__pay_contacts_title" = "دع جهات اتصالك\n<accent>تدفع لك</accent>";

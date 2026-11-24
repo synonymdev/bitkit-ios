@@ -1396,6 +1396,7 @@
 "profile__unlink_error_title" = "Kan pubky niet ontkoppelen";
 "profile__unlink_error_description" = "We konden uw Paykit-gegevens niet verwijderen. Probeer het opnieuw, of ontkoppel deze pubky van Bitkit.";
 "profile__unlink_label" = "pubky ontkoppelen";
+"profile__update_required" = "Dit profiel vereist een nieuwere versie van Bitkit. Werk de app bij om het te gebruiken.";
 "profile__edit" = "Bewerken";
 "profile__pay_contacts_nav_title" = "Contacten betalen";
 "profile__pay_contacts_title" = "Laat uw contacten\n<accent>u betalen</accent>";

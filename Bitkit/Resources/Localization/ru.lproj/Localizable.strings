@@ -1387,6 +1387,7 @@
 "profile__unlink_error_title" = "Не Удалось Отвязать pubky";
 "profile__unlink_error_description" = "Не удалось удалить ваши данные Paykit. Повторите попытку или отключите этот pubky от Bitkit.";
 "profile__unlink_label" = "Отвязать pubky";
+"profile__update_required" = "Для этого профиля нужна более новая версия Bitkit. Обновите приложение, чтобы использовать его.";
 "profile__edit" = "Редактировать";
 "profile__pay_contacts_nav_title" = "Платежи Контактам";
 "profile__pay_contacts_title" = "Пусть ваши контакты\n<accent>платят вам</accent>";

@@ -212,7 +212,7 @@ struct PubkyChoiceView: View {
         } catch is CancellationError {
             return
         } catch {
-            app.toast(type: .error, title: t("profile__adopt_error_title"), description: error.localizedDescription)
+            app.toast(type: .error, title: t("profile__adopt_error_title"), description: error.profileErrorDescription)
         }
     }
 
