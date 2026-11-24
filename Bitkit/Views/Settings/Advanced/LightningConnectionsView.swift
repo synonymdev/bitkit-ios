@@ -8,6 +8,7 @@ struct LightningConnectionsView: View {
     @EnvironmentObject var channelDetails: ChannelDetailsViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var network: NetworkMonitor
+    @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
     @State private var showClosedConnections = false
@@ -161,7 +162,7 @@ struct LightningConnectionsView: View {
                                 isSparkUsable: MoveToSparkMath.isSparkUsable(SparkManager.shared)
                             ) {
                                 CustomButton(title: t("lightning__move_to_spark__nav_title")) {
-                                    navigation.navigate(.moveToSpark)
+                                    sheets.showSheet(.moveToSpark)
                                 }
                                 .accessibilityIdentifier("MoveToSpark")
                                 .padding(.vertical, 16)

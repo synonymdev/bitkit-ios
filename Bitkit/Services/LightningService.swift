@@ -47,6 +47,11 @@ enum ChannelFreeRailFees {
         let fee = sendable / 1_000_000 * serviceFeePpm + (sendable % 1_000_000 * serviceFeePpm + 999_999) / 1_000_000
         return sendable + fee <= balanceSats || sendable == 0 ? sendable : sendable - 1
     }
+
+    /// Spark's service fee on a Lightning send of `amountSats`, rounded up.
+    static func serviceFeeSats(amountSats: UInt64) -> UInt64 {
+        amountSats / 1_000_000 * serviceFeePpm + (amountSats % 1_000_000 * serviceFeePpm + 999_999) / 1_000_000
+    }
 }
 
 /// The channel-free rail refused a payment before anything left the wallet: the rail was not connected, could not
@@ -1052,7 +1057,7 @@ class LightningService: NodeLifecycleService {
     }
 
     /// LDK's routing fee limit when a caller sets none, 1% + 50 sats, so a send over the rail is capped the same way.
-    private static func defaultMaxFeeSats(amountSats: UInt64) -> UInt64 {
+    static func defaultMaxFeeSats(amountSats: UInt64) -> UInt64 {
         amountSats / 100 + 50
     }
 
@@ -1918,6 +1923,22 @@ class LightningService: NodeLifecycleService {
         for hash in hashes {
             _ = await railSyncedSinceUncertainSend(paymentHash: hash)
         }
+    }
+
+    /// The check `send` makes against earlier attempts of `bolt11` on both rails, for a step that must not run for a
+    /// repeat: throws while one is still pending, and returns `true` once one settled, whose outcome `send` returns.
+    func hasSettledEarlierAttempt(bolt11: String, sats: UInt64?) async throws -> Bool {
+        let invoice = try? Bolt11Invoice.fromStr(invoiceStr: bolt11)
+        let expiresAt = invoice.map { Int(clamping: min($0.secondsSinceEpoch(), .max - $0.expiryTimeSeconds()) + $0.expiryTimeSeconds()) }
+        return try await settledEarlierAttempt(
+            paymentHash: invoice.map { String($0.paymentHash()) },
+            on: [.ldk, .channelFree],
+            bolt11: bolt11,
+            sats: sats,
+            invoiceCreatedAt: invoice?.secondsSinceEpoch(),
+            invoiceExpiresAt: expiresAt,
+            sendsOverRail: true
+        ) != nil
     }
 
     private static func pendingDuplicate(paymentHash: String?) -> NodeError {

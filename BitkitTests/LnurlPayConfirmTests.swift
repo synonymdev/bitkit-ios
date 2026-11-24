@@ -269,4 +269,44 @@ final class LnurlPayConfirmTests: XCTestCase {
         XCTAssertTrue(navigationPath.isEmpty)
         XCTAssertFalse(isSubmittingPayment)
     }
+
+    func testFirstSubscriptionPaymentNeedingTheUpdateWaitsForASwipe() {
+        XCTAssertTrue(LnurlPayConfirm.shouldAutomaticallyPay(
+            isInitialSubscriptionPayment: true, hasConversion: false, needsUpdateConfirmation: false
+        ))
+        XCTAssertFalse(LnurlPayConfirm.shouldAutomaticallyPay(
+            isInitialSubscriptionPayment: true, hasConversion: false, needsUpdateConfirmation: true
+        ))
+        XCTAssertFalse(LnurlPayConfirm.shouldAutomaticallyPay(
+            isInitialSubscriptionPayment: true, hasConversion: true, needsUpdateConfirmation: false
+        ))
+        XCTAssertFalse(LnurlPayConfirm.shouldAutomaticallyPay(
+            isInitialSubscriptionPayment: false, hasConversion: false, needsUpdateConfirmation: false
+        ))
+    }
+
+    func testUpdateFeeRefusalRestoresOnlyTheCurrentLnurlSend() {
+        XCTAssertTrue(LnurlPayConfirm.isCurrentRefusedSend(uri: "lnurl1a", currentUri: "lnurl1a"))
+        XCTAssertFalse(LnurlPayConfirm.isCurrentRefusedSend(uri: "lnurl1a", currentUri: "lnurl1b"))
+        XCTAssertFalse(LnurlPayConfirm.isCurrentRefusedSend(uri: "lnurl1a", currentUri: nil))
+    }
+
+    func testAnUpdateSwipeEndsWithItsScreenStayOrAChangedPayment() {
+        let visit = ConfirmScreenVisit()
+        XCTAssertFalse(visit.isLeft)
+        visit.leave()
+        XCTAssertTrue(visit.isLeft, "Leaving the screen ends its swipe even when the next stay shows an equal payment")
+
+        let swipe = SwipedLnurlPayment(uri: "lnurl1a", amountSats: 1000)
+        XCTAssertEqual(swipe, SwipedLnurlPayment(uri: "lnurl1a", amountSats: 1000))
+        XCTAssertNotEqual(swipe, SwipedLnurlPayment(uri: "lnurl1a", amountSats: 2000))
+        XCTAssertNotEqual(swipe, SwipedLnurlPayment(uri: "lnurl1b", amountSats: 1000))
+
+        let confirm = SparkUpdateSwipe(
+            walletType: .lightning, bolt11: "lnbc1", onchainAddress: nil, amountSats: 1000, hasServiceLeg: false, hasSwapRoute: false
+        )
+        XCTAssertNotEqual(confirm, SparkUpdateSwipe(
+            walletType: .onchain, bolt11: "lnbc1", onchainAddress: nil, amountSats: 1000, hasServiceLeg: false, hasSwapRoute: false
+        ))
+    }
 }

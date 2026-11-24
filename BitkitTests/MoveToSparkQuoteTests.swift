@@ -18,6 +18,14 @@ final class MoveToSparkQuoteTests: XCTestCase {
             quotedAmounts.append(amountSats)
             return try estimate(amountSats)
         }
+
+        var spark = SparkSendState(isReady: true, isExiting: false, balanceSats: 0)
+
+        func estimateSparkFee(bolt11 _: String, amountSats _: UInt64) async throws -> UInt64 {
+            0
+        }
+
+        func refreshSpark() async {}
     }
 
     private struct OtherError: Error {}

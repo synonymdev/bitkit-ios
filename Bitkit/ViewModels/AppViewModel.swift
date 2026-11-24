@@ -142,7 +142,7 @@ struct ScanPaymentOperations {
                     channelOutboundSats: (channels ?? []).map(\.outboundCapacityMsat).reduce(0, +) / 1000
                 )
             },
-            canSendLightning: lightningService.canSend
+            canSendLightning: { MoveToSparkMath.canSendLightning(amountSats: $0, lightningService: lightningService) }
         )
     }
 }

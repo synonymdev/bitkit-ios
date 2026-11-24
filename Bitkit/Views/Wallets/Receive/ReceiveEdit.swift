@@ -26,19 +26,6 @@ struct ReceiveEdit: View {
         amountViewModel.amountSats
     }
 
-    private var liquiditySource: ReceiveLiquiditySource {
-        switch sourceTab {
-        case .savings:
-            return .savings
-        case .unified:
-            return .auto
-        case .spending:
-            return .spending
-        case .hardware, .usdt:
-            return .savings
-        }
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             SheetHeader(title: t("wallet__receive_specify"), showBackButton: true)
@@ -198,13 +185,8 @@ struct ReceiveEdit: View {
         // Wait until node is running if it's in starting state
         if await wallet.waitForNodeToRun() {
             do {
-                switch additionalLiquidityAction() {
-                case .none:
-                    try await wallet.refreshBip21(forceRefreshBolt11: true)
-                    dismiss()
-                case .transferUnavailable:
-                    navigationPath.append(.transferUnavailable)
-                }
+                try await wallet.refreshBip21(forceRefreshBolt11: true)
+                dismiss()
             } catch {
                 app.toast(error)
             }
@@ -228,18 +210,6 @@ struct ReceiveEdit: View {
         } catch {
             app.toast(type: .error, title: "Failed to delete tag", description: error.localizedDescription)
         }
-    }
-
-    private func additionalLiquidityAction() -> ReceiveAdditionalLiquidityAction {
-        // Spark receives any amount without inbound liquidity, so no channel is needed.
-        if SparkManager.shared.isReady {
-            return .none
-        }
-        return ReceiveLiquidityDecision.additionalLiquidityAction(
-            source: liquiditySource,
-            invoiceAmountSats: amountViewModel.amountSats,
-            inboundCapacitySats: wallet.totalReadyInboundLightningSats
-        )
     }
 
     @ViewBuilder

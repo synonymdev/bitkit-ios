@@ -46,6 +46,7 @@ final class QuickPayPaymentCoordinator {
     private let store: QuickPaySpendStore
     private let sendBolt11: (String) async throws -> String
     private let listRows: () async throws -> [QuickPayReconcileRow]?
+    private let needsUpdateToSend: (UInt64) -> Bool
 
     private var operations: [String: InFlightOp] = [:]
     private var generation = UUID()
@@ -62,9 +63,11 @@ final class QuickPayPaymentCoordinator {
     init(
         store: QuickPaySpendStore = .shared,
         sendBolt11: ((String) async throws -> String)? = nil,
-        listRows: (() async throws -> [QuickPayReconcileRow]?)? = nil
+        listRows: (() async throws -> [QuickPayReconcileRow]?)? = nil,
+        needsUpdateToSend: ((UInt64) -> Bool)? = nil
     ) {
         self.store = store
+        self.needsUpdateToSend = needsUpdateToSend ?? { MoveToSparkMath.needsUpdateToSend(amountSats: $0) }
         self.sendBolt11 = sendBolt11 ?? { bolt11 in
             try await String(LightningService.shared.send(bolt11: bolt11))
         }
@@ -308,6 +311,12 @@ final class QuickPayPaymentCoordinator {
         guard generation == self.generation else { return }
 
         let amountSats = wallet.sendAmountSats ?? 0
+        // Checked again here, as QuickPay may have been picked before the node synced: QuickPay has no confirm screen to
+        // show the update fee, so a payment that needs the update is reviewed.
+        if needsUpdateToSend(amountSats) {
+            presentation.replaceQuickPay(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
+            return
+        }
         let op = InFlightOp(invoiceHash: invoiceHash, bolt11: bolt11, presentation: presentation)
         op.runActive = true
         register(op)

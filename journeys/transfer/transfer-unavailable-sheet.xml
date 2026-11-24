@@ -5,13 +5,17 @@
     at once, with no network check first. The
     sheet shows "MANUAL SETUP REQUIRED" (testTag "TransferUnavailableTitle") and the buttons "Learn More"
     (testTag "TransferUnavailableLearnMore"), which opens https://blog.bitkit.to/ in the browser, and "Continue"
-    (testTag "TransferUnavailableContinue"), which opens the existing Manual Setup screen. Receive's Lightning
-    path shows the same sheet content.
+    (testTag "TransferUnavailableContinue"), which opens the existing Manual Setup screen. Receive has no Lightning
+    path here: without a usable Spark wallet or channel its Spending and Auto tabs are hidden.
 
-    Precondition: onboarded wallet with a positive on-chain Savings balance, no channels and Spark
-    not running (a build without a Breez API key, or Spark's regtest unreachable); with Spark ready, see
-    spark-transfer-to-spending.xml. Start on the
-    wallet home screen.
+    Precondition: dev build, onboarded wallet with a positive on-chain Savings balance, an empty Spending
+    balance, no channels and Spark failing to start. On regtest Spark needs no Breez key and starts from local
+    state even when its servers are blocked; to stop it, replace the app's `regtest/wallet0/spark` directory in
+    the app group container (`xcrun simctl get_app_container &lt;udid&gt; to.bitkit groups`, the `group.bitkit`
+    entry) with a plain file, then relaunch (the log shows "Failed to start Spark wallet"). A build without
+    `SPARK_CHAIN_SERVICE_URL` reaches the sheet from the Transfer To Spending entries, but Lightning
+    Connections and Receive need Spark down; with Spark connected, see spark-transfer-to-spending.xml. Start on
+    the wallet home screen.
   </description>
   <actions>
     <action>Tap the Savings balance card (testTag "ActivitySavings") and verify "Transfer To Spending" (testTag "TransferToSpending") is shown</action>
@@ -22,8 +26,6 @@
     <action>Open Settings › Advanced › Lightning Connections, tap add connection (testTag "add_connection_button") and verify the screen text reads "Automatic transfers to your spending balance are no longer available. Use your own node, or set up a connection with another provider."</action>
     <action>Verify "Manual setup" (testTag "FundManual") is the first option and enabled, and "Transfer from Savings" (testTag "FundTransfer"), "Transfer from HW wallet" (testTag "FundHardware") and "Use other wallet" (testTag "FundReceive") below it are disabled; tap "Transfer from Savings" and verify nothing opens</action>
     <action>Tap "Learn More" (testTag "FundLearnMore") at the bottom and verify the browser opens blog.bitkit.to, then return to Bitkit and go back to the wallet home</action>
-    <action>Tap "Receive" (testTag "Receive"), select the Spending tab (testTag "Tab-spending") and tap "Receive Lightning funds"</action>
-    <action>Verify the screen titled "Transfer Unavailable" shows "MANUAL SETUP REQUIRED" and "Automatic transfers to your spending balance are no longer available. Use your own node, or set up a connection with another provider.", with a back button</action>
-    <action>Tap "Continue" and verify the sheet closes and the "MANUAL SETUP" screen opens</action>
+    <action>Tap "Receive" (id "Receive") and verify the tab row shows Savings (id "Tab-savings") but no Spending tab (id "Tab-spending" absent) and no Auto tab (id "Tab-auto" absent)</action>
   </actions>
 </journey>

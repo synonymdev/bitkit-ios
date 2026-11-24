@@ -111,8 +111,10 @@ struct SendAmountView: View {
         if hwSend.isActive {
             return hwSend.availableSats
         } else if app.selectedWalletToPayFrom == .lightning {
-            let maxSendLightning = UInt64(wallet.maxSendLightningSats)
-            return maxSendLightning >= routingFee ? maxSendLightning - routingFee : 0
+            let maxSendLightning = UInt64(max(0, wallet.maxSendLightningSats))
+            // A swap pays over one rail, so it offers only what one rail sends, as Continue checks.
+            let spendable = app.paykitSwapRoute == nil ? maxSendLightning : MoveToSparkMath.swapSpendableSats(maxSendSats: maxSendLightning)
+            return spendable >= routingFee ? spendable - routingFee : 0
         } else {
             // For onchain, show max sendable amount if calculated, otherwise fall back to total balance
             return maxSendableAmount ?? UInt64(wallet.spendableOnchainBalanceSats)
@@ -445,7 +447,8 @@ struct SendAmountView: View {
 
             // Lightning payment
             if app.selectedWalletToPayFrom == .lightning {
-                if UInt64(wallet.maxSendLightningSats) < amountSats {
+                let maxSendSats = UInt64(max(0, wallet.maxSendLightningSats))
+                if (app.paykitSwapRoute == nil ? maxSendSats : MoveToSparkMath.swapSpendableSats(maxSendSats: maxSendSats)) < amountSats {
                     app.toast(
                         type: .error,
                         title: "Insufficient Funds",
@@ -518,7 +521,7 @@ struct SendAmountView: View {
             let paykitRoute = try await PubkySwapsRouteService.quote(
                 amountSats: quotedAmountSats,
                 endpoint: route.endpoint,
-                lightningSpendableSats: UInt64(wallet.maxSendLightningSats),
+                lightningSpendableSats: MoveToSparkMath.swapSpendableSats(maxSendSats: UInt64(max(0, wallet.maxSendLightningSats))),
                 onchainSpendableSats: UInt64(wallet.spendableOnchainBalanceSats),
                 contacts: contactsManager.contacts.map(\.publicKey)
             )
@@ -573,7 +576,7 @@ struct SendAmountView: View {
             route,
             amountSats: amountSats,
             source: source,
-            lightningSpendableSats: source == .spending ? UInt64(max(0, wallet.maxSendLightningSats)) : 0,
+            lightningSpendableSats: PaykitRouteService.lightningSpendableSats(source: source, maxSendLightningSats: wallet.maxSendLightningSats),
             onchainSpendableSats: source == .savings ? maxSendableAmount ?? UInt64(max(0, wallet.spendableOnchainBalanceSats)) : 0,
             request: request,
             hasSwapFallback: hasSwapFallback
