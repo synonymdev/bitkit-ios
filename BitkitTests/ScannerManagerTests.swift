@@ -449,6 +449,24 @@ extension ScannerManagerTests {
         }
     }
 
+    func testNfcReadErrorAfterTheScannerVisitEndsShowsNoToast() async {
+        let previousToast = ToastWindowManager.shared.currentToast
+        defer { ToastWindowManager.shared.currentToast = previousToast }
+        ToastWindowManager.shared.currentToast = nil
+        let scanner = ScannerManager(nfcReader: FakeNfcReader(.failure(.noPaymentRequest))) {}
+        _ = configure(scanner)
+        var checks = 0
+        // The payer leaves the scanner, or the app locks, while the NFC sheet is up.
+        func isOnVisit() -> Bool {
+            checks += 1
+            return checks == 1
+        }
+
+        await scanner.handleSendNfcRead(isCurrent: isOnVisit) { _ in }
+
+        XCTAssertNil(ToastWindowManager.shared.currentToast, "A read that ends after its visit must not show an error")
+    }
+
     func testCameraScanFromBeforeALockDoesNotRoute() async throws {
         let decoded = try await decode(invoice: paymentURI)
         let sheets = SheetViewModel()

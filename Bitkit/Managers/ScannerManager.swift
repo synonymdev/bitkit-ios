@@ -321,7 +321,7 @@ class ScannerManager: ObservableObject {
         }
         guard isStillCurrent(), beginUserScan() else { return }
         defer { isHandlingScan = false }
-        guard let uri = await readNfcPaymentRequest(), isStillCurrent() else { return }
+        guard let uri = await readNfcPaymentRequest(isCurrent: isStillCurrent), isStillCurrent() else { return }
         await processScan(uri, context: context, isCurrent: isStillCurrent)
     }
 
@@ -340,7 +340,7 @@ class ScannerManager: ObservableObject {
             return
         }
         defer { isHandlingScan = false }
-        guard let uri = await readNfcPaymentRequest(), isStillCurrent() else {
+        guard let uri = await readNfcPaymentRequest(isCurrent: isStillCurrent), isStillCurrent() else {
             completion(nil)
             return
         }
@@ -467,7 +467,9 @@ class ScannerManager: ObservableObject {
         isHandlingScan = false
     }
 
-    private func readNfcPaymentRequest() async -> String? {
+    /// Reads a payment request over NFC. A failure shows its error only while [isCurrent] holds: a read that ends after
+    /// the payer left the scanner, or the app locked, ends quietly.
+    private func readNfcPaymentRequest(isCurrent: () -> Bool) async -> String? {
         do {
             let request = try await nfcReader.readPaymentRequest(alertMessage: t("other__nfc_alert"))
             let uri = ScannedPaymentRequest.normalized(request)
@@ -476,11 +478,15 @@ class ScannerManager: ObservableObject {
             return uri
         } catch let error as NfcReadError {
             Logger.warn("NFC read failed: \(error)", context: "ScannerManager")
-            showNfcReadError(error)
+            if isCurrent() {
+                showNfcReadError(error)
+            }
             return nil
         } catch {
             Logger.error(error, context: "ScannerManager NFC read")
-            app?.toast(error)
+            if isCurrent() {
+                app?.toast(error)
+            }
             return nil
         }
     }
