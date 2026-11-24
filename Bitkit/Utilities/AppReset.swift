@@ -98,7 +98,7 @@ final class AppReset: WipeStepExecutor {
         case .wipeDatabases:
             // bitkit-core wipes only databases it has opened, which `CoreService` does when it is created.
             _ = CoreService.shared
-            let coreWipeResult = try await wipeAllDatabases()
+            let coreWipeResult = try await BackgroundTime.during("wipeAllDatabases") { try await wipeAllDatabases() }
             Logger.info("Core DB wipe: \(coreWipeResult)")
         case .clearPubkyState:
             // Clear any live Pubky runtime state and cached profile images.

@@ -72,6 +72,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool
     {
+        BackgroundTime.beginTask = { name, expiration in
+            UIApplication.shared.beginBackgroundTask(withName: name, expirationHandler: expiration)
+        }
+        BackgroundTime.endTask = { UIApplication.shared.endBackgroundTask($0) }
         UNUserNotificationCenter.current().delegate = self
         SparkExitManager.registerBackgroundTask()
 
