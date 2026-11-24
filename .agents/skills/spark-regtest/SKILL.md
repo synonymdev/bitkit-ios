@@ -21,8 +21,9 @@ staging regtest (`stag0.blocktank.to`). Coins and Lightning payments never cross
 | Funding | Faucet | `./spark pay`, `./spark send` |
 | Docs | bitkit-android `scripts/spark-regtest-fund.py` (header) | `bitkit-docker/docs/spark-regtest.md` |
 
-Sibling checkouts are assumed next to this repo (`../bitkit-android`, `../bitkit-docker`, `../bitkit-e2e-tests`). Read
-the named docs and script headers for details. The steps below are what is not obvious from them.
+Sibling checkouts are assumed next to this repo (`../bitkit-android`, `../bitkit-docker`, `../bitkit-e2e-tests`); from a
+worktree, use the main checkout's siblings. Run `./spark` commands from bitkit-docker. Read the named docs and script
+headers for details. The steps below are what is not obvious from them.
 
 ## Lightspark hosted regtest
 
@@ -35,7 +36,8 @@ the named docs and script headers for details. The steps below are what is not o
      browser.
    - Script: `SPARK_REGTEST_MNEMONIC=… uv run ../bitkit-android/scripts/spark-regtest-fund.py <bcrt1… address> [sats]`.
      The mnemonic is a GitHub secret; ask the user, never print it.
-4. Lightspark mines about once a minute. Spark claims a deposit after 3 confirmations.
+4. Lightspark mines about once a minute. Spark claims a deposit after 3 confirmations unless an Instant transfer claims
+   it early.
 5. Two-device payment: fund the payer's Spark balance, copy the invoice from Receive › Spending on the other dev build,
    and pay it from the payer. It goes over Lightning through Lightspark's provider.
 
@@ -51,15 +53,16 @@ build script sets all of that:
 IOS_ROOT="$PWD"; cd ../bitkit-e2e-tests
 IOS_ROOT="$IOS_ROOT" SPARK_LOCAL_CONFIG_B64="$(../bitkit-docker/spark config --base64)" \
 SPARK_LOCAL_CHAIN_URL=http://127.0.0.1:23090/api BACKEND=local ./scripts/build-ios-sim.sh
+xcrun simctl install booted aut/Bitkit.app
 ```
 
 - The two settings are `Info.plist` build settings, baked in at build time. `SIMCTL_CHILD_` launch variables don't set
   them, despite what `docs/spark-regtest.md` says.
 - The simulator shares the Mac's loopback, so the `127.0.0.1` URLs work as they are. Savings uses bitkit-docker's
   Electrum, the same chain, so Transfer to Spending and Savings-paid exit fees work (`Env.sharesLocalSparkChain`).
-- `IOS_ROOT` keeps the script on this checkout; it defaults to `../bitkit-ios`, which in a worktree is another commit.
-- A simulator that already chose an Electrum server keeps it, and Savings then misses the fixture chain. Use a fresh
-  simulator, or Settings › Advanced › Electrum Server › Reset To Default.
+- `IOS_ROOT` keeps the script on this checkout; it defaults to the `bitkit-ios` checkout next to bitkit-e2e-tests.
+- A simulator that already chose an Electrum server keeps it, and Savings then misses the fixture chain. Uninstall the
+  app first, or use Settings › Advanced › Electrum Server › Reset To Default.
 - Fund Spark with `./spark send <deposit address> <sats>` or `./spark pay <Spending invoice> [sats]`.
 - A deposit is claimed after 1 block here.
 - Mine with `./spark mine`, not `./bitcoin-cli mine`: only `spark-bitcoind` relays Spark's v3 packages.
