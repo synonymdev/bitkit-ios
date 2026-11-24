@@ -51,10 +51,11 @@ struct NumberPadTextField: View {
                 )
             } else {
                 if showConversion {
-                    // Secondary display (bitcoin)
+                    // Secondary display: the editor's other unit, bitcoin while fiat is edited without a usable rate
                     MoneyText(
                         sats: Int(viewModel.amountSats),
                         unitType: .secondary,
+                        forceUnit: currency.primaryDisplay == .bitcoin ? .fiat : .bitcoin,
                         size: .caption,
                         symbol: true,
                         color: .textSecondary

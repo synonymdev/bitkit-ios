@@ -83,7 +83,7 @@ struct OnboardingView: View {
                 .frame(maxWidth: .infinity)
                 .frame(maxHeight: .infinity)
                 .layoutPriority(1)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, contentHorizontalPadding)
 
                 VStack(alignment: .leading, spacing: titleDescriptionSpacing) {
                     DisplayText(title, textColor: titleColor, accentColor: accentColor)

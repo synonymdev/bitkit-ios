@@ -64,6 +64,12 @@ struct ConvertedAmount {
     }
 
     func bitcoinDisplay(unit: BitcoinDisplayUnit) -> BitcoinDisplayComponents {
+        Self.bitcoinDisplay(sats: sats, unit: unit)
+    }
+
+    /// A bitcoin amount in the given unit; it needs no exchange rate, so it also serves when none is usable.
+    static func bitcoinDisplay(sats: UInt64, unit: BitcoinDisplayUnit) -> BitcoinDisplayComponents {
+        let btcValue = Decimal(sats) / 100_000_000
         switch unit {
         case .modern:
             let formatter = NumberFormatter()

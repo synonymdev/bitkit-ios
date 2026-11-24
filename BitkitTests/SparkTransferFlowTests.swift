@@ -527,4 +527,28 @@ final class SparkTransferFlowTests: XCTestCase {
             claimFees: SparkClaimFees(instantMaxSats: 1093, laterSats: 198)
         )
     }
+
+    func testFeeGridTapStaysInBitcoinWithoutARate() {
+        XCTAssertFalse(SpendingConfirmFees.togglesDisplay(from: .bitcoin, hasRate: false))
+        XCTAssertTrue(SpendingConfirmFees.togglesDisplay(from: .bitcoin, hasRate: true))
+        XCTAssertTrue(SpendingConfirmFees.togglesDisplay(from: .fiat, hasRate: false))
+    }
+
+    func testFiatConversionRejectsUnusableRates() {
+        XCTAssertNil(CurrencyViewModel.sats(fiatAmount: 10, rate: 0))
+        XCTAssertNil(CurrencyViewModel.sats(fiatAmount: 10, rate: -1))
+        XCTAssertNil(CurrencyViewModel.sats(fiatAmount: -10, rate: 100_000))
+        XCTAssertNil(CurrencyViewModel.sats(fiatAmount: .greatestFiniteMagnitude, rate: 1))
+        XCTAssertEqual(CurrencyViewModel.sats(fiatAmount: 50, rate: 100_000), 50000)
+    }
+
+    func testPrimaryAmountsStayInBitcoinWithoutAUsableRate() {
+        XCTAssertEqual(MoneyText.primaryUnit(.fiat, hasUsableRate: false), .bitcoin)
+        XCTAssertEqual(MoneyText.primaryUnit(.fiat, hasUsableRate: true), .fiat)
+        XCTAssertEqual(MoneyText.primaryUnit(.bitcoin, hasUsableRate: false), .bitcoin)
+        // The paired line shows the other unit, never bitcoin twice.
+        XCTAssertEqual(MoneyText.secondaryUnit(.fiat, hasUsableRate: false), .fiat)
+        XCTAssertEqual(MoneyText.secondaryUnit(.fiat, hasUsableRate: true), .bitcoin)
+        XCTAssertEqual(MoneyText.secondaryUnit(.bitcoin, hasUsableRate: false), .fiat)
+    }
 }
