@@ -1,6 +1,7 @@
 import BitkitCore
 import Combine
 import LDKNode
+import os
 import enum Paykit.PaykitError
 import SwiftUI
 
@@ -217,9 +218,23 @@ class AppViewModel: ObservableObject {
     /// The lock generation when QuickPay was last chosen for a request.
     private var quickPayChosenAtLockGeneration: Int?
 
+    /// Counts app locks for checks that run off the main actor, such as the one right before a payment is submitted.
+    private let appLocks = OSAllocatedUnfairLock(initialState: 0)
+
     /// Called when the app locks behind the PIN.
     func noteAppLocked() {
         appLockGeneration += 1
+        appLocks.withLock { $0 += 1 }
+    }
+
+    /// A check for the moment a QuickPay payment is submitted, which can come after waits that outlast a lock and runs
+    /// off the main actor: it throws once the app has locked since this call.
+    func quickPaySubmissionCheck() -> @Sendable () throws -> Void {
+        let appLocks = appLocks
+        let seen = appLocks.withLock { $0 }
+        return {
+            guard appLocks.withLock({ $0 }) == seen else { throw SendStoppedBeforeSubmission() }
+        }
     }
 
     /// Called when a request is routed to QuickPay.

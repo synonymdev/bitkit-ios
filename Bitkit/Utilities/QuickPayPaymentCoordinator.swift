@@ -44,7 +44,8 @@ final class QuickPayPaymentCoordinator {
     }
 
     private let store: QuickPaySpendStore
-    private let sendBolt11: (String) async throws -> String
+    /// Submits a BOLT11 payment, running the check it is given right before the payment leaves.
+    private let submit: (String, @escaping () throws -> Void) async throws -> String
     private let listRows: () async throws -> [QuickPayReconcileRow]?
 
     private var operations: [String: InFlightOp] = [:]
@@ -62,11 +63,22 @@ final class QuickPayPaymentCoordinator {
     init(
         store: QuickPaySpendStore = .shared,
         sendBolt11: ((String) async throws -> String)? = nil,
+        submit: ((String, @escaping () throws -> Void) async throws -> String)? = nil,
         listRows: (() async throws -> [QuickPayReconcileRow]?)? = nil
     ) {
         self.store = store
-        self.sendBolt11 = sendBolt11 ?? { bolt11 in
-            try await String(LightningService.shared.send(bolt11: bolt11))
+        if let submit {
+            self.submit = submit
+        } else if let sendBolt11 {
+            // A test that fakes only the send runs the check right before it.
+            self.submit = { bolt11, beforeSubmission in
+                try beforeSubmission()
+                return try await sendBolt11(bolt11)
+            }
+        } else {
+            self.submit = { bolt11, beforeSubmission in
+                try await String(LightningService.shared.send(bolt11: bolt11, beforeSubmission: beforeSubmission))
+            }
         }
         self.listRows = listRows ?? {
             try await Self.reconcileRows(
@@ -359,14 +371,22 @@ final class QuickPayPaymentCoordinator {
             return
         }
 
+        let beforeSubmission = app.quickPaySubmissionCheck()
         op.dispatched = true
         do {
-            let paymentId = try await sendBolt11(bolt11)
+            let paymentId = try await submit(bolt11, beforeSubmission)
             store.markSubmitted(invoicePaymentHash: invoiceHash, paymentId: paymentId)
             op.paymentId = paymentId
             if !paymentId.isEmpty, paymentId != invoiceHash {
                 operations[paymentId] = op
             }
+        } catch is SendStoppedBeforeSubmission {
+            // The app locked while the payment waited to be submitted. Nothing left, so the payer reviews it.
+            store.releaseBound(paymentHash: invoiceHash)
+            removeOp(op)
+            app.resetQuickPay()
+            presentation.replaceQuickPay(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
+            return
         } catch {
             await handleDispatchError(error, op: op)
             return
