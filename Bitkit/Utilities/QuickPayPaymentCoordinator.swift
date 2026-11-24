@@ -313,8 +313,9 @@ final class QuickPayPaymentCoordinator {
             return
         }
 
-        // Allowed only to replay a payment already tracked: if it is gone by now, the payer reviews it instead.
-        if recoveryOnly {
+        // Allowed only to replay a payment already tracked: if it is gone by now, the payer reviews it instead. The same
+        // holds when the app locked while the invoice was prepared (for example an LNURL fetch) after the screen started.
+        if recoveryOnly || app.didLockSinceQuickPayWasChosen {
             app.resetQuickPay()
             presentation.replaceQuickPay(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
             return

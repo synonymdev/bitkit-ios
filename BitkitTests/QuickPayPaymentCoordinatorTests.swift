@@ -172,6 +172,26 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertNotNil(store.record(matching: invoiceHash))
     }
 
+    func testLockWhileTheInvoiceIsPreparedOpensReviewWithoutSending() async throws {
+        let invoiceHash = try Self.invoiceHash
+        var sendCount = 0
+        let app = appWithInvoice
+        app.noteQuickPayChosen()
+        // The screen allowed the start; the app then locked while the invoice was prepared (for example an LNURL
+        // fetch), so whoever unlocks did not choose this payment.
+        app.noteAppLocked()
+        let coordinator = QuickPayPaymentCoordinator(store: store, sendBolt11: { _ in
+            sendCount += 1
+            return invoiceHash
+        }, listRows: { [] })
+        let outcome = await firstOutcome(from: coordinator, app: app)
+        guard case .confirm = outcome else {
+            return XCTFail("Expected the review, got \(String(describing: outcome))")
+        }
+        XCTAssertEqual(sendCount, 0)
+        XCTAssertNil(store.record(matching: invoiceHash))
+    }
+
     func testRecoveryOnlyStartWhoseRecordIsGoneOpensReviewWithoutSending() async throws {
         let invoiceHash = try Self.invoiceHash
         var sendCount = 0
