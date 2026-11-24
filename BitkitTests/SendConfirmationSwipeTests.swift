@@ -4,6 +4,25 @@ import SwiftUI
 import XCTest
 
 final class SendConfirmationSwipeTests: XCTestCase {
+    func testARunningSwipeHoldsConfirmUntilItMovesOnOrReturns() {
+        var lock = ConfirmSwipeLock()
+        lock.isVisible = true
+        XCTAssertFalse(lock.isLocked)
+
+        lock.begin()
+        XCTAssertTrue(lock.isLocked, "A running swipe holds Back, the sheet's drag and the inputs")
+        lock.isVisible = false
+        XCTAssertFalse(lock.isLocked, "The screen the swipe moves on to, such as the PIN, is free")
+        lock.isVisible = true
+        XCTAssertTrue(lock.isLocked, "Returning to Confirm while the swipe still runs holds it again")
+
+        lock.end()
+        XCTAssertFalse(lock.isLocked, "A finished swipe frees Confirm")
+        lock.end()
+        lock.begin()
+        XCTAssertTrue(lock.isLocked, "An extra end never frees a later swipe early")
+    }
+
     @MainActor
     func testRestoredLoadingSwipeKeepsItsSpinnerInTheKnob() async throws {
         let confirmation = NavigationStack(path: .constant([true])) {

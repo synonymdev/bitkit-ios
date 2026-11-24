@@ -96,6 +96,8 @@ final class SendPresentationState {
     var hasValidatedAfterSync = false
     var incomingPaymentRequest: PaykitPaymentRequest?
     var isSubmittingPayment = false
+    /// True while a running swipe holds Confirm; the sheet's drag waits for it too.
+    var isConfirmLocked = false
     var isAmountReviewRequired = false
     var paymentReview: UUID?
     var isReviewingUsdtPayment = false
@@ -373,7 +375,7 @@ struct SendSheet: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: shouldShowSyncOverlay)
-        .interactiveDismissDisabled(!hwSend.canLeave)
+        .interactiveDismissDisabled(!hwSend.canLeave || flow.isConfirmLocked)
         .sheet(isPresented: reconnectPairingBinding) {
             HardwarePairingSheet(config: HardwarePairingSheetItem())
         }
@@ -1124,7 +1126,8 @@ struct SendSheet: View {
                 preparingRequest: isPreparingRequest ? config.preparation?.request : nil,
                 isAmountReviewRequired: $flow.isAmountReviewRequired,
                 amountIsRoot: currentRoot == .amount,
-                isSetupPending: flow.isSetupPending || flow.isFallbackFundingPending
+                isSetupPending: flow.isSetupPending || flow.isFallbackFundingPending,
+                onLockChange: { flow.isConfirmLocked = $0 }
             )
         case .hardwareSign:
             let contactContext = app.contactPaymentContext
@@ -1258,7 +1261,8 @@ struct SendSheet: View {
                 isSubmittingPayment: $flow.isSubmittingPayment,
                 requestPinCheck: requestPinCheck,
                 prepareIncomingPaymentRequest: prepareIncomingPaymentRequest,
-                routingCacheResetAttempted: flow.routingCacheResetAttempted
+                routingCacheResetAttempted: flow.routingCacheResetAttempted,
+                onLockChange: { flow.isConfirmLocked = $0 }
             )
         case .lnurlWithdrawAmount:
             LnurlWithdrawAmount {
