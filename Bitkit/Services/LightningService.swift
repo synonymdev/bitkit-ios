@@ -127,8 +127,19 @@ class LightningService: NodeLifecycleService {
         setupLock.withLock { configuredNode = nil }
     }
 
+    /// Releases `node` only while it is still the configured one, so a stop that finishes late cannot clear its replacement.
+    private func release(_ node: Node) {
+        setupLock.withLock {
+            if configuredNode?.node === node {
+                configuredNode = nil
+            }
+        }
+    }
+
     private let eventLoopLock = NSLock()
     private var eventLoopTask: Task<Void, Never>?
+    /// The loop a stop cancelled, so a concurrent stop of the same node waits for it too.
+    private var stoppedEventLoopTask: Task<Void, Never>?
     private static let eventPollInterval: Duration = .milliseconds(100)
     /// Bounds the wait for the loop's last iteration, as `eventHandled()` can block on a stuck VSS write.
     private static let eventLoopStopTimeout: Duration = .seconds(5)
@@ -475,10 +486,11 @@ class LightningService: NodeLifecycleService {
         }
         // An event the loop took is handled, and its removal from the queue persisted, before the node is cleared and a next node
         // can load that queue.
-        if let eventLoop = cancelEventLoop(), await !Self.waitForEnd(of: eventLoop, timeout: Self.eventLoopStopTimeout) {
+        if let eventLoop = takeEventLoopToStop(), await !Self.waitForEnd(of: eventLoop, timeout: Self.eventLoopStopTimeout) {
             Logger.warn("Event loop of the stopped node did not end in time", context: "LightningService")
         }
-        releaseNode()
+        clearStoppedEventLoop()
+        release(node)
 
         if clearEventCallback {
             self.clearEventCallback()
@@ -2680,6 +2692,21 @@ extension LightningService {
                 }
             }
         }
+    }
+
+    private func takeEventLoopToStop() -> Task<Void, Never>? {
+        eventLoopLock.withLock {
+            if let task = eventLoopTask {
+                task.cancel()
+                eventLoopTask = nil
+                stoppedEventLoopTask = task
+            }
+            return stoppedEventLoopTask
+        }
+    }
+
+    private func clearStoppedEventLoop() {
+        eventLoopLock.withLock { stoppedEventLoopTask = nil }
     }
 
     @discardableResult
