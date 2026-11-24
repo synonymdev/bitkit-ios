@@ -1841,6 +1841,22 @@ extension ChannelFreeRailTests {
         XCTAssertTrue(payments.contains { $0.status == .pending }, "the retry read as A's failure")
     }
 
+    func testARetryInFlightWhenSparksListIsReadReadsPendingAfterItEnds() async throws {
+        let (hash, _) = try await sendARetryFiveSecondsAfterAFailedAttempt()
+        let service = Bitkit.LightningService.shared
+        // No hold before the read; a retry in flight when it starts ends while the list, showing only A's failure, is read.
+        service.railAttemptsStore.set([String: Int](), forKey: Self.uncertainRailSendsKey)
+        XCTAssertTrue(service.beginRailSend(paymentHash: hash))
+        defer { service.endRailSend(paymentHash: hash) }
+        rail.onList = {
+            service.endRailSend(paymentHash: hash)
+        }
+
+        let payments = try await service.channelFreeRailPayments().filter { $0.paymentHash == hash }
+
+        XCTAssertTrue(payments.contains { $0.status == .pending }, "the retry read as A's failure")
+    }
+
     func testASparkSendFailingBeforeItRecordsItsAttemptTakesNoHold() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         let service = Bitkit.LightningService.shared

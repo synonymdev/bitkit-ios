@@ -41,12 +41,9 @@ final class TimedSheetManagerTests: XCTestCase {
         )
         manager.registerSheet(FakeSheet(id: .appUpdate, priority: .critical, sheetItem: AppUpdateSheetItem()))
         manager.registerSheet(FakeSheet(id: .moveToSpark, priority: .low, sheetItem: MoveToSparkSheetItem()))
-        // A sheet shown at cold start cancels the first check.
+        // A sheet shown at cold start cancels the first check, then is dismissed.
         manager.onPrimaryScreenEntered()
-        sheets.showSheet(.receive)
         manager.onSheetShown()
-
-        sheets.hideSheet()
         manager.onSheetDismissed()
         let deadline = Date().addingTimeInterval(10)
         while sheets.activeSheetConfiguration?.id != .moveToSpark, Date() < deadline {
