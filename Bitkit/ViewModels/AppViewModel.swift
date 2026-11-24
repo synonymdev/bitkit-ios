@@ -231,10 +231,16 @@ class AppViewModel: ObservableObject {
     /// off the main actor: it throws once the app has locked since this call.
     func quickPaySubmissionCheck() -> @Sendable () throws -> Void {
         let appLocks = appLocks
-        let seen = appLocks.withLock { $0 }
+        let seen = Self.count(appLocks)
         return {
-            guard appLocks.withLock({ $0 }) == seen else { throw SendStoppedBeforeSubmission() }
+            if Self.count(appLocks) != seen {
+                throw SendStoppedBeforeSubmission()
+            }
         }
+    }
+
+    private nonisolated static func count(_ locks: OSAllocatedUnfairLock<Int>) -> Int {
+        locks.withLock { $0 }
     }
 
     /// Called when a request is routed to QuickPay.

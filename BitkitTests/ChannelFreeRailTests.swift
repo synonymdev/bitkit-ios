@@ -1050,12 +1050,13 @@ extension ChannelFreeRailTests {
         await assertReachesTheNode()
     }
 
+    private nonisolated static func stopBeforeSubmission() throws {
+        throw Bitkit.SendStoppedBeforeSubmission()
+    }
+
     func testASendStoppedBeforeSubmissionIsNotHeldWhileSparkCannotList() async {
         rail.balanceSats = 100_000
-        _ = try? await Bitkit.LightningService.shared.send(
-            bolt11: Self.invoice,
-            beforeSubmission: { throw Bitkit.SendStoppedBeforeSubmission() }
-        )
+        _ = try? await Bitkit.LightningService.shared.send(bolt11: Self.invoice, beforeSubmission: Self.stopBeforeSubmission)
         XCTAssertEqual(rail.sends, 0)
         rail.listError = NSError(domain: "spark", code: 1)
 
