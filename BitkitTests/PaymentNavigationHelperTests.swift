@@ -73,6 +73,15 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertEqual(PaymentNavigationHelper.contactPaymentErrorDescription(error), error.localizedDescription)
     }
 
+    func testLockCheckTurnsFalseOnceTheAppLocks() {
+        let app = AppViewModel()
+        let isBeforeLock = app.lockCheck()
+        XCTAssertTrue(isBeforeLock())
+        app.noteAppLocked()
+        XCTAssertFalse(isBeforeLock(), "Work started before the lock must drop its result")
+        XCTAssertTrue(app.lockCheck()())
+    }
+
     func testQuickpayChosenBeforeALockWaitsForReview() {
         let app = appWithEligibleInvoice
         let session = QuickPayPaymentCoordinator.SessionID(presentationID: UUID(), sendStateGeneration: UUID(), attempt: 0)

@@ -221,6 +221,14 @@ class AppViewModel: ObservableObject {
     /// Counts app locks for checks that run off the main actor, such as the one right before a payment is submitted.
     private let appLocks = OSAllocatedUnfairLock(initialState: 0)
 
+    /// True until the app locks behind the PIN after this call, so work that outlasts a lock can drop its result.
+    func lockCheck() -> () -> Bool {
+        let lockGeneration = appLockGeneration
+        return { [weak self] in
+            self?.appLockGeneration == lockGeneration
+        }
+    }
+
     /// Called when the app locks behind the PIN.
     func noteAppLocked() {
         appLockGeneration += 1
