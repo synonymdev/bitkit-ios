@@ -9,6 +9,8 @@ This file is symlinked for cross-agents compatibility to the following paths:
 
 Durable shared agent command specs live in `.agents/commands/`. For PR creation, follow `.agents/commands/pr.md`; `.claude/commands` is a compatibility symlink and Cursor command entries under `.cursor/commands/` resolve to the same files.
 
+Agent skills live in `.agents/skills/`, with `.claude/skills` as a compatibility symlink. For running a dev build on Spark's regtest, follow `.agents/skills/spark-regtest/SKILL.md`.
+
 ## Agent workflow
 
 ### Verification
