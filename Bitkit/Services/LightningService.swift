@@ -2,6 +2,7 @@ import BitkitCore
 import Combine
 import Foundation
 import LDKNode
+import os
 
 // TODO: catch all errors and pass a readable error message to the UI
 
@@ -111,7 +112,14 @@ protocol NodeLifecycleService: AnyObject {
 class LightningService: NodeLifecycleService {
     private static let watchOnlyAccountHighestPreRevealedAddressIndex: UInt32 = 999
 
-    private var configuredNode: (node: Node, electrumServerUrl: String)?
+    private var configuredNode: (node: Node, electrumServerUrl: String)? {
+        didSet {
+            if configuredNode?.node !== oldValue?.node {
+                cancelEventLoop()
+            }
+        }
+    }
+
     private var node: Node? {
         setupLock.withLock { configuredNode?.node }
     }
@@ -123,6 +131,29 @@ class LightningService: NodeLifecycleService {
     private func releaseNode() {
         setupLock.withLock { configuredNode = nil }
     }
+
+    /// Releases `node` only while it is still the configured one, so a stop that finishes late cannot clear its replacement.
+    /// Returns false when another node replaced it.
+    @discardableResult
+    private func release(_ node: Node) -> Bool {
+        setupLock.withLock {
+            guard let configured = configuredNode?.node else { return true }
+            guard configured === node else { return false }
+            configuredNode = nil
+            return true
+        }
+    }
+
+    private let restartLock = NSLock()
+    private var lastRestart: Task<Void, Error>?
+
+    private let eventLoopLock = NSLock()
+    private var eventLoopTask: Task<Void, Never>?
+    /// The loop a stop cancelled, so a concurrent stop of the same node waits for it too.
+    private var stoppedEventLoopTask: Task<Void, Never>?
+    private static let eventPollInterval: Duration = .milliseconds(100)
+    /// Bounds the wait for the loop's last iteration, as `eventHandled()` can block on a stuck VSS write.
+    private static let eventLoopStopTimeout: Duration = .seconds(5)
 
     private let beforeNodeStopLock = NSLock()
     private var beforeNodeStopAction: (() async -> Void)?
@@ -177,8 +208,9 @@ class LightningService: NodeLifecycleService {
     private var attemptRecords = 0
     /// Per store key, the `attemptRecords` count at each hash's latest record.
     private var attemptRecordedAt: [String: [String: Int]] = [:]
-    /// Node sends under way, so a listing that shows only an earlier failed attempt doesn't drop their hash.
-    private var ldkSendsInFlight: Set<String> = []
+    /// Node sends under way, counted per hash, so a listing that shows only an earlier failed attempt doesn't drop their
+    /// hash, and one send ending leaves a repeat send of the invoice in flight.
+    private var ldkSendsInFlight: [String: Int] = [:]
     weak var channelFreeRail: ChannelFreeLightningRail?
     /// The rail whose payments the duplicate-payment check reads, kept while an emergency exit takes Spark off
     /// Lightning: an invoice Spark paid or is paying is never paid again over a channel.
@@ -336,7 +368,21 @@ class LightningService: NodeLifecycleService {
         passphrase = nil
     }
 
+    /// Runs after any restart already in progress, so overlapping restarts cannot stop or replace each other's node midway.
     func restart(electrumServerUrl: String? = nil, rgsServerUrl: String? = nil) async throws {
+        let restart: Task<Void, Error> = restartLock.withLock {
+            let previous = lastRestart
+            let restart = Task {
+                _ = await previous?.result
+                try await self.restartNode(electrumServerUrl: electrumServerUrl, rgsServerUrl: rgsServerUrl)
+            }
+            lastRestart = restart
+            return restart
+        }
+        try await restart.value
+    }
+
+    private func restartNode(electrumServerUrl: String?, rgsServerUrl: String?) async throws {
         Logger.info("Restarting node with current configuration")
 
         // Stop the current node if it exists, ignore errors if already stopped
@@ -413,8 +459,16 @@ class LightningService: NodeLifecycleService {
         listenForEvents(onEvent: eventCallbackLock.withLock { storedEventCallback })
 
         Logger.debug("Starting node...")
-        try await ServiceQueue.background(.ldk) {
-            try node.start()
+        do {
+            try await ServiceQueue.background(.ldk) {
+                try node.start()
+            }
+        } catch {
+            // A node that is already running keeps the loop started above.
+            if !Self.isAlreadyRunning(error) {
+                cancelEventLoop()
+            }
+            throw error
         }
 
         #if !BITKIT_NOTIFICATION_EXTENSION
@@ -448,9 +502,12 @@ class LightningService: NodeLifecycleService {
     }
 
     func stop(clearEventCallback: Bool = false) async throws {
+        var wasReplaced = false
         defer {
-            // Always try to unlock, even if stopping fails
-            try? StateLocker.unlock(.lightning)
+            // Always try to unlock, even if stopping fails, unless a replacement node holds the lock by now
+            if !wasReplaced {
+                try? StateLocker.unlock(.lightning)
+            }
         }
 
         guard let node else {
@@ -463,7 +520,13 @@ class LightningService: NodeLifecycleService {
         try await ServiceQueue.background(.ldk) {
             try Self.stopReleasingFinishedNode(node.stop)
         }
-        releaseNode()
+        // An event the loop took is handled, and its removal from the queue persisted, before the node is cleared and a next node
+        // can load that queue.
+        if let eventLoop = takeEventLoopToStop(), await !Self.waitForEnd(of: eventLoop, timeout: Self.eventLoopStopTimeout) {
+            Logger.warn("Event loop of the stopped node did not end in time", context: "LightningService")
+        }
+        clearStoppedEventLoop()
+        wasReplaced = !release(node)
 
         if clearEventCallback {
             self.clearEventCallback()
@@ -1203,12 +1266,19 @@ class LightningService: NodeLifecycleService {
         Logger.info("Paying bolt11: \(bolt11)")
 
         let sendKey = paymentHash?.lowercased()
-        defer { endLdkSend(paymentHash: sendKey) }
+        // Only an admitted send is counted in flight, so a refused one must not end another's.
+        var isAdmitted = false
+        defer {
+            if isAdmitted {
+                endLdkSend(paymentHash: sendKey)
+            }
+        }
         do {
             return try await Self.submitPayment(beforeSubmission: { [weak self] in
                 try beforeSubmission()
                 guard let self else { return }
                 try admitSend(paymentHash: sendKey, on: .ldk, since: mark)
+                isAdmitted = true
                 noteAttempt(on: .ldk, bolt11: bolt11)
                 recordLdkAttempt(paymentHash: paymentHash, expiresAt: expiresAt)
             }) {
@@ -1388,7 +1458,7 @@ class LightningService: NodeLifecycleService {
     /// The attempts recorded so far and the sends in flight, read before a listing so a trim or release from it skips
     /// the retries recorded since, and the ones in flight then that ended while it was read.
     var attemptMark: AttemptMark {
-        eventCallbackLock.withLock { AttemptMark(records: attemptRecords, railInFlight: railSendsInFlight, ldkInFlight: ldkSendsInFlight) }
+        eventCallbackLock.withLock { AttemptMark(records: attemptRecords, railInFlight: railSendsInFlight, ldkInFlight: Set(ldkSendsInFlight.keys)) }
     }
 
     private func releaseLdkAttempt(paymentHash: String) {
@@ -1417,7 +1487,7 @@ class LightningService: NodeLifecycleService {
     /// The hashes under `key` that may still be pending since `mark`: in flight now or then, or recorded after it.
     /// Callers hold `eventCallbackLock`.
     private func attemptsLive(since mark: AttemptMark, key: String) -> Set<String> {
-        let inFlight = key == Self.railAttemptsKey ? railSendsInFlight.union(mark.railInFlight) : ldkSendsInFlight.union(mark.ldkInFlight)
+        let inFlight = key == Self.railAttemptsKey ? railSendsInFlight.union(mark.railInFlight) : mark.ldkInFlight.union(ldkSendsInFlight.keys)
         return inFlight.union(attemptsRecorded(since: mark.records, key: key))
     }
 
@@ -1887,7 +1957,7 @@ class LightningService: NodeLifecycleService {
     func admitSend(paymentHash: String?, on rail: LightningPaymentRail, since mark: AttemptMark) throws {
         guard let hash = paymentHash?.lowercased() else { return }
         try eventCallbackLock.withLock {
-            let otherInFlight = rail == .ldk ? railSendsInFlight : ldkSendsInFlight
+            let otherInFlight = rail == .ldk ? railSendsInFlight : Set(ldkSendsInFlight.keys)
             let otherKey = rail == .ldk ? Self.railAttemptsKey : Self.ldkAttemptsKey
             if otherInFlight.contains(hash) || attemptsRecorded(since: mark.records, key: otherKey).contains(hash) {
                 Logger.warn("Refused paying '\(hash)', the other rail sent it meanwhile", context: "LightningService")
@@ -1898,7 +1968,7 @@ class LightningService: NodeLifecycleService {
                 throw Self.pendingDuplicate(paymentHash: hash)
             }
             if rail == .ldk {
-                ldkSendsInFlight.insert(hash)
+                ldkSendsInFlight[hash, default: 0] += 1
             }
         }
     }
@@ -1932,19 +2002,23 @@ class LightningService: NodeLifecycleService {
     /// Whether a send of `hash` is in flight on either rail, or the node recorded one since `mark`.
     private func isSendLive(paymentHash hash: String, since mark: AttemptMark) -> Bool {
         eventCallbackLock.withLock {
-            railSendsInFlight.contains(hash) || ldkSendsInFlight.contains(hash)
+            railSendsInFlight.contains(hash) || ldkSendsInFlight[hash] != nil
                 || attemptsRecorded(since: mark.records, key: Self.ldkAttemptsKey).contains(hash)
         }
     }
 
     func beginLdkSend(paymentHash: String?) {
         guard let paymentHash else { return }
-        _ = eventCallbackLock.withLock { ldkSendsInFlight.insert(paymentHash.lowercased()) }
+        eventCallbackLock.withLock { ldkSendsInFlight[paymentHash.lowercased(), default: 0] += 1 }
     }
 
     func endLdkSend(paymentHash: String?) {
         guard let paymentHash else { return }
-        _ = eventCallbackLock.withLock { ldkSendsInFlight.remove(paymentHash.lowercased()) }
+        let hash = paymentHash.lowercased()
+        eventCallbackLock.withLock {
+            guard let count = ldkSendsInFlight[hash] else { return }
+            ldkSendsInFlight[hash] = count > 1 ? count - 1 : nil
+        }
     }
 
     func endRailSend(paymentHash: String?) {
@@ -2612,15 +2686,26 @@ extension LightningService {
         await completion?()
     }
 
+    /// Polls instead of awaiting `nextEventAsync()`: that call cannot be cancelled and never returns once its node stops, so it would keep
+    /// the stopped node, its runtime and this loop alive. The loop ends once `node` is no longer the current node.
     func listenForEvents(onEvent: ((Event) -> Void)? = nil) {
-        Task {
-            while true {
-                guard let node = self.node else {
-                    Logger.error("LDK node not started")
-                    return
-                }
+        guard let node else {
+            Logger.error("LDK node not started")
+            return
+        }
 
-                let event = await node.nextEventAsync()
+        eventLoopLock.lock()
+        defer { eventLoopLock.unlock() }
+        let previousLoop = eventLoopTask
+        previousLoop?.cancel()
+        eventLoopTask = Task {
+            // The previous loop finishes the event it took first, so both never handle the same event.
+            await previousLoop?.value
+            while !Task.isCancelled, self.node === node {
+                guard let event = node.nextEvent() else {
+                    try? await Task.sleep(for: Self.eventPollInterval)
+                    continue
+                }
 
                 do {
                     try node.eventHandled()
@@ -2821,6 +2906,67 @@ extension LightningService {
                 }
             }
         }
+    }
+
+    private func takeEventLoopToStop() -> Task<Void, Never>? {
+        eventLoopLock.withLock {
+            if let task = eventLoopTask {
+                task.cancel()
+                eventLoopTask = nil
+                stoppedEventLoopTask = task
+            }
+            return stoppedEventLoopTask
+        }
+    }
+
+    private func clearStoppedEventLoop() {
+        eventLoopLock.withLock { stoppedEventLoopTask = nil }
+    }
+
+    @discardableResult
+    private func cancelEventLoop() -> Task<Void, Never>? {
+        eventLoopLock.withLock {
+            let task = eventLoopTask
+            task?.cancel()
+            eventLoopTask = nil
+            return task
+        }
+    }
+
+    /// Returns whether `task` ended within `timeout`.
+    static func waitForEnd(of task: Task<Void, Never>, timeout: Duration) async -> Bool {
+        let resumed = OSAllocatedUnfairLock(initialState: false)
+        return await withCheckedContinuation { continuation in
+            let resume = { (ended: Bool) in
+                let first = resumed.withLock { resumed in
+                    defer { resumed = true }
+                    return !resumed
+                }
+                if first {
+                    continuation.resume(returning: ended)
+                }
+            }
+            let timer = Task {
+                try? await Task.sleep(for: timeout)
+                resume(false)
+            }
+            Task {
+                await task.value
+                timer.cancel()
+                resume(true)
+            }
+        }
+    }
+
+    /// Whether `error` from `node.start()`, possibly wrapped by `ServiceQueue`, says the node is already running.
+    static func isAlreadyRunning(_ error: Error) -> Bool {
+        guard let nodeError = ((error as? AppError)?.underlyingError ?? error) as? NodeError else {
+            return false
+        }
+        if case .AlreadyRunning = nodeError {
+            return true
+        }
+        return false
     }
 
     private func registerClosedChannel(
