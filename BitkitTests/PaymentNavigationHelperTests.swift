@@ -93,6 +93,16 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertEqual(sendRoute(for: appWithEligibleInvoice), .quickpay)
     }
 
+    func testSuppressedRequestNeverChoosesQuickpay() {
+        let app = appWithEligibleInvoice
+        let scanID = UUID()
+        // A Bluetooth request routes with QuickPay suppressed: the payer reviews it.
+        app.suppressQuickPay(scanID)
+        XCTAssertNotEqual(sendRoute(for: app), .quickpay)
+        app.releaseQuickPaySuppression(scanID)
+        XCTAssertEqual(sendRoute(for: app), .quickpay)
+    }
+
     func testSkipsQuickpayWhenDailySpendCapIsExceeded() throws {
         let rates = QuickPaySpendRates.live(CurrencyViewModel(currencyService: OfflineCurrencyService()))
         for i in 0 ..< 5 {

@@ -424,7 +424,10 @@ extension ScannerManagerTests {
     }
 
     func testFailedNfcReadCompletesWithoutRoute() async {
+        let previousToast = ToastWindowManager.shared.currentToast
+        defer { ToastWindowManager.shared.currentToast = previousToast }
         for error in [NfcReadError.cancelled, .timedOut, .noPaymentRequest, .multiplePaymentRequests, .unavailable] {
+            ToastWindowManager.shared.currentToast = nil
             let scanner = ScannerManager(nfcReader: FakeNfcReader(.failure(error))) {
                 XCTFail("A failed NFC read must not play a success haptic")
             }
@@ -435,6 +438,14 @@ extension ScannerManagerTests {
 
             XCTAssertEqual(routes, [nil], "\(error)")
             XCTAssertNil(app.scannedOnchainInvoice, "\(error)")
+            // The payer sees why the read failed, except when they cancelled it or it timed out.
+            let shown = ToastWindowManager.shared.currentToast
+            if error.isSilent {
+                XCTAssertNil(shown, "\(error)")
+            } else {
+                XCTAssertEqual(shown?.title, t("other__nfc_error_header"), "\(error)")
+                XCTAssertEqual(shown?.description, error.message, "\(error)")
+            }
         }
     }
 
