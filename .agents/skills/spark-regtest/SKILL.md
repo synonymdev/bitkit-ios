@@ -48,8 +48,8 @@ build script sets all of that:
 
 ```bash
 ../bitkit-docker/spark up
-cd ../bitkit-e2e-tests
-SPARK_LOCAL_CONFIG_B64="$(../bitkit-docker/spark config --base64)" \
+IOS_ROOT="$PWD"; cd ../bitkit-e2e-tests
+IOS_ROOT="$IOS_ROOT" SPARK_LOCAL_CONFIG_B64="$(../bitkit-docker/spark config --base64)" \
 SPARK_LOCAL_CHAIN_URL=http://127.0.0.1:23090/api BACKEND=local ./scripts/build-ios-sim.sh
 ```
 
@@ -57,6 +57,7 @@ SPARK_LOCAL_CHAIN_URL=http://127.0.0.1:23090/api BACKEND=local ./scripts/build-i
   them, despite what `docs/spark-regtest.md` says.
 - The simulator shares the Mac's loopback, so the `127.0.0.1` URLs work as they are. Savings uses bitkit-docker's
   Electrum, the same chain, so Transfer to Spending and Savings-paid exit fees work (`Env.sharesLocalSparkChain`).
+- `IOS_ROOT` keeps the script on this checkout; it defaults to `../bitkit-ios`, which in a worktree is another commit.
 - A deposit is claimed after 1 block here.
 - Mine with `./spark mine`, not `./bitcoin-cli mine`: only `spark-bitcoind` relays Spark's v3 packages.
 - bitkit-e2e-tests' `README.md` (Spark tests on local regtest) runs the same stack from its pinned
