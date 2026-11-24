@@ -455,7 +455,6 @@
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit nemohl přečíst uložený průběh tohoto převodu, proto ho znovu sestaví z blockchainu.";
 "lightning__spark_exit__leftover_rejected" = "{amount} nepoužitých nouzových poplatků se nepodařilo odeslat a zůstává na adrese {address}, derivační cesta {path}.";
 "lightning__spark_exit__notification_not_moving" = "Váš vynucený převod nepostupuje. Otevřete Bitkit a zjistěte proč.";
-"lightning__spark_exit__note_notifications_button" = "Zapnout oznámení";
 "lightning__spark_exit__waiting_operators" = "{amount}, které operátoři Spark přesunuli na blockchain, čeká, až je uvolní. Bitkit se bude ptát znovu až týden.";
 "lightning__spark_exit__fee_rose" = "Síťové poplatky vzrostly nad poplatek tohoto převodu. Může se zpomalit.";
 "lightning__spark_exit__fee_bump_button" = "Zaplatit vyšší poplatek";

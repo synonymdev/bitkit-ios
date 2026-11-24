@@ -455,7 +455,6 @@
 "lightning__spark_exit__rebuilt_from_chain" = "A Bitkit não conseguiu ler o progresso guardado desta transferência, por isso reconstrói-o a partir da blockchain.";
 "lightning__spark_exit__leftover_rejected" = "{amount} de taxas de emergência não utilizadas não pôde ser enviado e fica em {address}, caminho de derivação {path}.";
 "lightning__spark_exit__notification_not_moving" = "A sua transferência forçada não está a avançar. Abra a Bitkit para ver porquê.";
-"lightning__spark_exit__note_notifications_button" = "Ativar notificações";
 "lightning__spark_exit__waiting_operators" = "{amount} que os operadores da Spark moveram on-chain aguarda que o libertem. A Bitkit volta a pedir durante até uma semana.";
 "lightning__spark_exit__fee_rose" = "As taxas de rede subiram acima da taxa desta transferência. Pode ficar mais lenta.";
 "lightning__spark_exit__fee_bump_button" = "Pagar uma taxa mais alta";
