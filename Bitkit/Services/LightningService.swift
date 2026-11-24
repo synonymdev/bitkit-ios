@@ -2,6 +2,7 @@ import BitkitCore
 import Combine
 import Foundation
 import LDKNode
+import os
 
 // TODO: catch all errors and pass a readable error message to the UI
 
@@ -106,7 +107,14 @@ protocol NodeLifecycleService: AnyObject {
 class LightningService: NodeLifecycleService {
     private static let watchOnlyAccountHighestPreRevealedAddressIndex: UInt32 = 999
 
-    private var configuredNode: (node: Node, electrumServerUrl: String)?
+    private var configuredNode: (node: Node, electrumServerUrl: String)? {
+        didSet {
+            if configuredNode?.node !== oldValue?.node {
+                cancelEventLoop()
+            }
+        }
+    }
+
     private var node: Node? {
         setupLock.withLock { configuredNode?.node }
     }
@@ -118,6 +126,29 @@ class LightningService: NodeLifecycleService {
     private func releaseNode() {
         setupLock.withLock { configuredNode = nil }
     }
+
+    /// Releases `node` only while it is still the configured one, so a stop that finishes late cannot clear its replacement.
+    /// Returns false when another node replaced it.
+    @discardableResult
+    private func release(_ node: Node) -> Bool {
+        setupLock.withLock {
+            guard let configured = configuredNode?.node else { return true }
+            guard configured === node else { return false }
+            configuredNode = nil
+            return true
+        }
+    }
+
+    private let restartLock = NSLock()
+    private var lastRestart: Task<Void, Error>?
+
+    private let eventLoopLock = NSLock()
+    private var eventLoopTask: Task<Void, Never>?
+    /// The loop a stop cancelled, so a concurrent stop of the same node waits for it too.
+    private var stoppedEventLoopTask: Task<Void, Never>?
+    private static let eventPollInterval: Duration = .milliseconds(100)
+    /// Bounds the wait for the loop's last iteration, as `eventHandled()` can block on a stuck VSS write.
+    private static let eventLoopStopTimeout: Duration = .seconds(5)
 
     private let beforeNodeStopLock = NSLock()
     private var beforeNodeStopAction: (() async -> Void)?
@@ -332,7 +363,21 @@ class LightningService: NodeLifecycleService {
         passphrase = nil
     }
 
+    /// Runs after any restart already in progress, so overlapping restarts cannot stop or replace each other's node midway.
     func restart(electrumServerUrl: String? = nil, rgsServerUrl: String? = nil) async throws {
+        let restart: Task<Void, Error> = restartLock.withLock {
+            let previous = lastRestart
+            let restart = Task {
+                _ = await previous?.result
+                try await self.restartNode(electrumServerUrl: electrumServerUrl, rgsServerUrl: rgsServerUrl)
+            }
+            lastRestart = restart
+            return restart
+        }
+        try await restart.value
+    }
+
+    private func restartNode(electrumServerUrl: String?, rgsServerUrl: String?) async throws {
         Logger.info("Restarting node with current configuration")
 
         // Stop the current node if it exists, ignore errors if already stopped
@@ -409,8 +454,16 @@ class LightningService: NodeLifecycleService {
         listenForEvents(onEvent: eventCallbackLock.withLock { storedEventCallback })
 
         Logger.debug("Starting node...")
-        try await ServiceQueue.background(.ldk) {
-            try node.start()
+        do {
+            try await ServiceQueue.background(.ldk) {
+                try node.start()
+            }
+        } catch {
+            // A node that is already running keeps the loop started above.
+            if !Self.isAlreadyRunning(error) {
+                cancelEventLoop()
+            }
+            throw error
         }
 
         #if !BITKIT_NOTIFICATION_EXTENSION
@@ -444,9 +497,12 @@ class LightningService: NodeLifecycleService {
     }
 
     func stop(clearEventCallback: Bool = false) async throws {
+        var wasReplaced = false
         defer {
-            // Always try to unlock, even if stopping fails
-            try? StateLocker.unlock(.lightning)
+            // Always try to unlock, even if stopping fails, unless a replacement node holds the lock by now
+            if !wasReplaced {
+                try? StateLocker.unlock(.lightning)
+            }
         }
 
         guard let node else {
@@ -459,7 +515,13 @@ class LightningService: NodeLifecycleService {
         try await ServiceQueue.background(.ldk) {
             try Self.stopReleasingFinishedNode(node.stop)
         }
-        releaseNode()
+        // An event the loop took is handled, and its removal from the queue persisted, before the node is cleared and a next node
+        // can load that queue.
+        if let eventLoop = takeEventLoopToStop(), await !Self.waitForEnd(of: eventLoop, timeout: Self.eventLoopStopTimeout) {
+            Logger.warn("Event loop of the stopped node did not end in time", context: "LightningService")
+        }
+        clearStoppedEventLoop()
+        wasReplaced = !release(node)
 
         if clearEventCallback {
             self.clearEventCallback()
@@ -2603,15 +2665,26 @@ extension LightningService {
         await completion?()
     }
 
+    /// Polls instead of awaiting `nextEventAsync()`: that call cannot be cancelled and never returns once its node stops, so it would keep
+    /// the stopped node, its runtime and this loop alive. The loop ends once `node` is no longer the current node.
     func listenForEvents(onEvent: ((Event) -> Void)? = nil) {
-        Task {
-            while true {
-                guard let node = self.node else {
-                    Logger.error("LDK node not started")
-                    return
-                }
+        guard let node else {
+            Logger.error("LDK node not started")
+            return
+        }
 
-                let event = await node.nextEventAsync()
+        eventLoopLock.lock()
+        defer { eventLoopLock.unlock() }
+        let previousLoop = eventLoopTask
+        previousLoop?.cancel()
+        eventLoopTask = Task {
+            // The previous loop finishes the event it took first, so both never handle the same event.
+            await previousLoop?.value
+            while !Task.isCancelled, self.node === node {
+                guard let event = node.nextEvent() else {
+                    try? await Task.sleep(for: Self.eventPollInterval)
+                    continue
+                }
 
                 do {
                     try node.eventHandled()
@@ -2812,6 +2885,67 @@ extension LightningService {
                 }
             }
         }
+    }
+
+    private func takeEventLoopToStop() -> Task<Void, Never>? {
+        eventLoopLock.withLock {
+            if let task = eventLoopTask {
+                task.cancel()
+                eventLoopTask = nil
+                stoppedEventLoopTask = task
+            }
+            return stoppedEventLoopTask
+        }
+    }
+
+    private func clearStoppedEventLoop() {
+        eventLoopLock.withLock { stoppedEventLoopTask = nil }
+    }
+
+    @discardableResult
+    private func cancelEventLoop() -> Task<Void, Never>? {
+        eventLoopLock.withLock {
+            let task = eventLoopTask
+            task?.cancel()
+            eventLoopTask = nil
+            return task
+        }
+    }
+
+    /// Returns whether `task` ended within `timeout`.
+    static func waitForEnd(of task: Task<Void, Never>, timeout: Duration) async -> Bool {
+        let resumed = OSAllocatedUnfairLock(initialState: false)
+        return await withCheckedContinuation { continuation in
+            let resume = { (ended: Bool) in
+                let first = resumed.withLock { resumed in
+                    defer { resumed = true }
+                    return !resumed
+                }
+                if first {
+                    continuation.resume(returning: ended)
+                }
+            }
+            let timer = Task {
+                try? await Task.sleep(for: timeout)
+                resume(false)
+            }
+            Task {
+                await task.value
+                timer.cancel()
+                resume(true)
+            }
+        }
+    }
+
+    /// Whether `error` from `node.start()`, possibly wrapped by `ServiceQueue`, says the node is already running.
+    static func isAlreadyRunning(_ error: Error) -> Bool {
+        guard let nodeError = ((error as? AppError)?.underlyingError ?? error) as? NodeError else {
+            return false
+        }
+        if case .AlreadyRunning = nodeError {
+            return true
+        }
+        return false
     }
 
     private func registerClosedChannel(
