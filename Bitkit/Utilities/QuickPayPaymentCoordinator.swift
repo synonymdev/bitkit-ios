@@ -387,11 +387,14 @@ final class QuickPayPaymentCoordinator {
                 operations[paymentId] = op
             }
         } catch where Self.isStoppedBeforeSubmission(error) {
-            // The app locked while the payment waited to be submitted. Nothing left, so the payer reviews it.
+            // The app locked while the payment waited to be submitted. Nothing left, so the payer reviews it on the
+            // QuickPay screen attached now, and only while this send still owns the send state.
+            let attached = op.presentation
             store.releaseBound(paymentHash: invoiceHash)
             removeOp(op)
+            guard let attached, app.sendStateGeneration == sendStateGeneration else { return }
             app.resetQuickPay()
-            presentation.replaceQuickPay(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
+            attached.replaceQuickPay(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
             return
         } catch {
             await handleDispatchError(error, op: op)

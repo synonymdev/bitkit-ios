@@ -233,6 +233,83 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertNil(store.record(matching: invoiceHash))
     }
 
+    func testLockStopOnAReattachedQuickPayOpensReviewOnTheCurrentScreen() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let app = appWithInvoice
+        app.noteQuickPayChosen()
+        let session = QuickPayPaymentCoordinator.SessionID(
+            presentationID: UUID(), sendStateGeneration: app.sendStateGeneration, attempt: 0
+        )
+        let started = expectation(description: "Submission waiting")
+        let reviewed = expectation(description: "Current screen opens the review")
+        var continuation: CheckedContinuation<Void, Never>?
+        func waitToSubmit() async {
+            await withCheckedContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        }
+        let coordinator = QuickPayPaymentCoordinator(store: store, submit: { _, beforeSubmission in
+            await waitToSubmit()
+            try beforeSubmission()
+            return invoiceHash
+        }, listRows: { [] })
+        defer { coordinator.detach() }
+        let wallet = WalletViewModel()
+        let currency = CurrencyViewModel(currencyService: OfflineCurrencyService())
+        coordinator.pay(app: app, wallet: wallet, settings: settings, currency: currency,
+                        presentation: presentation(onRoute: { _ in }, onConfirm: { _ in XCTFail("Retired screen must not navigate") }),
+                        sessionID: session)
+        await fulfillment(of: [started], timeout: 2)
+        // The QuickPay screen reattaches while the payment waits to be submitted, then the app locks.
+        coordinator.pay(app: app, wallet: wallet, settings: settings, currency: currency,
+                        presentation: presentation(onRoute: { _ in }, onConfirm: { _ in reviewed.fulfill() }),
+                        sessionID: session)
+        app.noteAppLocked()
+        try XCTUnwrap(continuation).resume()
+
+        await fulfillment(of: [reviewed], timeout: 2)
+        XCTAssertNil(store.record(matching: invoiceHash))
+    }
+
+    func testLockStopAfterAnotherSendTookOverLeavesItAlone() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let app = appWithInvoice
+        app.noteQuickPayChosen()
+        let started = expectation(description: "Submission waiting")
+        let stopped = expectation(description: "Submission stopped")
+        var continuation: CheckedContinuation<Void, Never>?
+        func waitToSubmit() async {
+            await withCheckedContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        }
+        let coordinator = QuickPayPaymentCoordinator(store: store, submit: { _, beforeSubmission in
+            await waitToSubmit()
+            defer { stopped.fulfill() }
+            try beforeSubmission()
+            return invoiceHash
+        }, listRows: { [] })
+        defer { coordinator.detach() }
+        coordinator.pay(
+            app: app, wallet: WalletViewModel(), settings: settings,
+            currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            presentation: presentation(onRoute: { _ in }, onConfirm: { _ in XCTFail("A replaced send must not navigate") })
+        )
+        await fulfillment(of: [started], timeout: 2)
+        // Another send takes over and starts its own QuickPay, then the app locks.
+        app.resetSendState()
+        app.beginQuickPay(paymentHash: "other")
+        app.noteAppLocked()
+        try XCTUnwrap(continuation).resume()
+        await fulfillment(of: [stopped], timeout: 2)
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertTrue(app.isQuickPayActive, "The other send's QuickPay must stay marked")
+        XCTAssertNil(store.record(matching: invoiceHash))
+    }
+
     func testRecoveryOnlyStartWhoseRecordIsGoneOpensReviewWithoutSending() async throws {
         let invoiceHash = try Self.invoiceHash
         var sendCount = 0
