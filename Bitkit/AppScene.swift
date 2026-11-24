@@ -873,6 +873,12 @@ struct AppScene: View {
                     app.toast(type: .error, title: t("profile__session_expired_title"), description: t("profile__session_expired_description"))
                 }
             }
+            .onChange(of: pubkyProfile.sessionRestorationNeedsUpdate) { _, needsUpdate in
+                if needsUpdate {
+                    pubkyProfile.sessionRestorationNeedsUpdate = false
+                    app.toast(type: .error, title: t("common__error"), description: t("profile__update_required"))
+                }
+            }
             .onChange(of: pubkyProfile.adoptedSourceLost) { _, lost in
                 if lost {
                     pubkyProfile.adoptedSourceLost = false

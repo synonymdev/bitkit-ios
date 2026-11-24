@@ -56,6 +56,8 @@ class PubkyProfileManager: ObservableObject {
         case restored(publicKey: String)
         case restorationDeferred
         case restorationFailed
+        /// The identity's shared Paykit state was saved by a newer Paykit, so only an app update can restore it.
+        case restorationNeedsUpdate
     }
 
     typealias RemoteProfileResolver = @Sendable (String) async throws -> PubkyProfile
@@ -92,6 +94,7 @@ class PubkyProfileManager: ObservableObject {
     @Published var isInitialized = false
     @Published var initializationErrorMessage: String?
     @Published var sessionRestorationFailed = false
+    @Published var sessionRestorationNeedsUpdate = false
     @Published var adoptedSourceLost = false
     @Published private(set) var cachedName: String?
     @Published private(set) var cachedImageUri: String?
@@ -319,6 +322,7 @@ class PubkyProfileManager: ObservableObject {
             isInitialized = false
             initializationErrorMessage = nil
             sessionRestorationFailed = false
+            sessionRestorationNeedsUpdate = false
         }
 
         let result: SessionInitializationResult
@@ -339,7 +343,7 @@ class PubkyProfileManager: ObservableObject {
                 sessionRestorationDeferred = false
                 readOnlyProfile = nil
                 if case .userVisible = mode {
-                    initializationErrorMessage = error.localizedDescription
+                    initializationErrorMessage = error.profileErrorDescription
                 }
                 return
             }
@@ -370,11 +374,15 @@ class PubkyProfileManager: ObservableObject {
             sessionRestorationFailed = false
             Logger.info("Paykit session restored for \(pk)", context: "PubkyProfileManager")
             Task { await loadProfile() }
-        case .restorationFailed:
+        case .restorationFailed, .restorationNeedsUpdate:
             sessionRestorationDeferred = false
             clearAuthenticatedState(clearCachedProfile: false)
             if case .userVisible = mode {
-                sessionRestorationFailed = true
+                if result == .restorationNeedsUpdate {
+                    sessionRestorationNeedsUpdate = true
+                } else {
+                    sessionRestorationFailed = true
+                }
             }
         case .restorationDeferred:
             clearAuthenticatedState(clearCachedProfile: false, clearReadOnlyProfile: false)
@@ -2130,6 +2138,10 @@ class PubkyProfileManager: ObservableObject {
                     Logger.warn("Deferred session restoration, keeping saved session", context: "PubkyProfileManager")
                     return .restorationDeferred
                 }
+                if error.isPaykitStateFromNewerVersion() {
+                    Logger.warn("Kept saved session, Paykit state needs an app update: \(error)", context: "PubkyProfileManager")
+                    return .restorationNeedsUpdate
+                }
                 Logger.warn("Failed to import saved session, attempting re-sign-in: \(error)", context: "PubkyProfileManager")
             }
         }
@@ -2155,6 +2167,9 @@ class PubkyProfileManager: ObservableObject {
             return .restored(publicKey: publicKey)
         } catch {
             Logger.warn("Re-sign-in failed, keeping saved session for retry: \(error)", context: "PubkyProfileManager")
+            if error.isPaykitStateFromNewerVersion() {
+                return .restorationNeedsUpdate
+            }
             return isTemporarySessionRestorationError(error) ? .restorationDeferred : .restorationFailed
         }
     }

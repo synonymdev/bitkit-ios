@@ -19,4 +19,17 @@ final class PaykitNewerStateTests: XCTestCase {
         XCTAssertFalse(corrupted.isPaykitStateFromNewerVersion())
         XCTAssertEqual(corrupted.profileErrorDescription, corrupted.localizedDescription)
     }
+
+    func testSessionRestoreWithNewerPaykitStateNeedsAnUpdate() async {
+        let newerState = PaykitError.Storage(code: "storage_error", context: "unsupported SDK state blob version 6, expected 4")
+
+        let result = await PubkyProfileManager.resolveSessionInitialization(
+            savedSessionSecret: "session",
+            storedSecretKeyHex: "00",
+            importSession: { _ in throw newerState },
+            signInWithSecretKey: { _ in XCTFail("Re-sign-in cannot read newer state either"); return "" }
+        )
+
+        XCTAssertEqual(result, .restorationNeedsUpdate)
+    }
 }
