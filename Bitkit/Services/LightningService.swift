@@ -274,6 +274,7 @@ class LightningService: NodeLifecycleService {
             additionalWalletFullScanBatchSize: 100,
             additionalWalletFullScanStopGap: 1000
         )
+        Logger.info("Using Electrum server: \(resolvedElectrumServerUrl)")
         builder.setChainSourceElectrum(serverUrl: resolvedElectrumServerUrl, config: electrumConfig)
 
         // Set pathfinding scores source from external scorer
