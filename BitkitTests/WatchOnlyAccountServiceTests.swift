@@ -99,6 +99,9 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
     /// m/84'/1'/1' of the same mnemonic with tpub version bytes, as ldk-node exports it on regtest; derived independently of bitkit-core.
     private let regtestAccount1Tpub =
         "tpubDC8msFGeGuwnP2xwTZBBZSie1BLgRAkJhgzpFYTdpGgZNzguXQhNDVWp7mJbHJUjQQvV2myLU9dkx67a7VAUnzY7yT7nvhHj7FgS4oNivvq"
+    /// m/84'/0'/1' of the same mnemonic; ldk-node only accepts watch-only accounts from index 1. Derived independently of bitkit-core.
+    private let mainnetAccount1Xpub =
+        "xpub6CatWdiZiodmYVtWLtEQsAg1H9ooS1bmsJUBwQ83FE1Fyk386FWcyicJgEZv3quZSJKA5dh5Lo2PbubMGxCfZtRthV6ST2qquL9w3HSzcUn"
     private let abandonMnemonic =
         "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
 
@@ -139,10 +142,10 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
             network: .bitcoin,
             bip39Passphrase: nil,
             accountType: .nativeSegwit,
-            accountIndex: 0
+            accountIndex: 1
         )
 
-        XCTAssertEqual(try WatchOnlyAccountClaimCodec.accountXpub(fromDescriptor: descriptor, network: .bitcoin), bip84Account0Xpub)
+        XCTAssertEqual(try WatchOnlyAccountClaimCodec.accountXpub(fromDescriptor: descriptor, network: .bitcoin), mainnetAccount1Xpub)
     }
 
     // MARK: - serializedXpub
