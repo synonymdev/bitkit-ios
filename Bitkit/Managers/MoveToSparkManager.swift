@@ -853,7 +853,9 @@ final class MoveToSparkManager {
         let payment = Task { @MainActor in
             await previous?.value
             // Checked again after the wait, as the wallet or Spark can change while an earlier move pays.
-            if let isWanted, !isWanted() { throw MoveToSparkError.sparkUnavailable }
+            if let isWanted, !isWanted() {
+                throw MoveToSparkError.sparkUnavailable
+            }
             // LDK submits on its own queue, off the main actor: an exit starting after the check above changes Spark's
             // exit state, which stops the part there.
             let exitState = SparkManager.exitStateGeneration
@@ -865,7 +867,9 @@ final class MoveToSparkManager {
                 sats: quote.amountSats,
                 maxFeeMsat: feeCapMsat ?? MoveToSparkMath.feeCapMsat(feeSats: quote.feeSats),
                 beforeSubmission: {
-                    if stopsOnExit, SparkManager.exitStateGeneration != exitState { throw MoveToSparkError.sparkUnavailable }
+                    if stopsOnExit, SparkManager.exitStateGeneration != exitState {
+                        throw MoveToSparkError.sparkUnavailable
+                    }
                     try beforeSubmission()
                 },
                 onTimeout: onTimeout,
