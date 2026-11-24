@@ -440,7 +440,9 @@ struct ReceiveQr: View {
     private func receiveUnavailable(for tab: ReceiveTab) -> Bool {
         guard tab == .unified || tab == .spending else { return false }
         return wallet.isReceiveInvoiceUpdating || wallet.receiveInvoiceError != nil ||
-            (tab == .unified && !wallet.hasCoherentReceiveInvoice)
+            (tab == .unified && !wallet.hasCoherentReceiveInvoice) ||
+            // A cached invoice keeps Spending shown until the refresh, but with no way to receive it may have expired.
+            (tab == .spending && !wallet.canCreateReceiveLightningInvoice)
     }
 
     private func receiveRefreshStatus(for tab: ReceiveTab) -> some View {

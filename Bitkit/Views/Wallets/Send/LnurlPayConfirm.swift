@@ -386,6 +386,7 @@ struct LnurlPayConfirm: View {
                     bolt11: bolt11,
                     amountSats: reviewedAmount,
                     shown: approvedUpdateQuote,
+                    paymentDeadline: incomingPaymentRequest?.submissionDeadline(quoteId: app.paykitPaymentTerms?.quoteId),
                     wallet: wallet,
                     transfer: transfer,
                     onUnseen: { sparkUpdateQuote = $0 }

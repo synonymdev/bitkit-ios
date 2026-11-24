@@ -111,8 +111,10 @@ struct SendAmountView: View {
         if hwSend.isActive {
             return hwSend.availableSats
         } else if app.selectedWalletToPayFrom == .lightning {
-            let maxSendLightning = UInt64(wallet.maxSendLightningSats)
-            return maxSendLightning >= routingFee ? maxSendLightning - routingFee : 0
+            let maxSendLightning = UInt64(max(0, wallet.maxSendLightningSats))
+            // A swap pays over one rail, so it offers only what one rail sends, as Continue checks.
+            let spendable = app.paykitSwapRoute == nil ? maxSendLightning : MoveToSparkMath.swapSpendableSats(maxSendSats: maxSendLightning)
+            return spendable >= routingFee ? spendable - routingFee : 0
         } else {
             // For onchain, show max sendable amount if calculated, otherwise fall back to total balance
             return maxSendableAmount ?? UInt64(wallet.spendableOnchainBalanceSats)

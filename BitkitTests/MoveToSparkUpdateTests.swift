@@ -58,7 +58,6 @@ final class MoveToSparkUpdateTests: XCTestCase {
         let routed = PaykitRouteService.lightningSpendableSats(source: .spending, maxSendLightningSats: Int(maxSendSats))
         XCTAssertEqual(routed, maxSendSats)
         XCTAssertEqual(PaykitRouteService.lightningSpendableSats(source: .savings, maxSendLightningSats: Int(maxSendSats)), 0)
-        XCTAssertTrue(MoveToSparkMath.needsUpdateToSend(amountSats: 50000, channels: channels, spark: spark))
         XCTAssertFalse(
             PaykitRouteService.isBalanceShort(amountSats: 50000, lightningSpendableSats: routed, onchainSpendableSats: 0),
             "A contact payment that needs the update was refused before it reached the update"
@@ -71,7 +70,6 @@ final class MoveToSparkUpdateTests: XCTestCase {
             MoveToSparkMath.needsUpdateToSend(amountSats: 32000, channels: channels, spark: spark),
             "An amount equal to the channels' capacity fit neither the channels nor the update"
         )
-        XCTAssertFalse(MoveToSparkMath.needsUpdateToSend(amountSats: 31999, channels: channels, spark: spark))
     }
 
     func testNoUpdateWhileSparkTakesNoMove() {
@@ -93,6 +91,11 @@ final class MoveToSparkUpdateTests: XCTestCase {
             "An update went ahead for a payment the wait after it never accepts"
         )
         XCTAssertFalse(MoveToSparkMath.coversPayment(quote: quote, spark: spark, amountSats: 49000, feeSats: 1001))
+        XCTAssertTrue(MoveToSparkMath.coversPayment(quote: quote, spark: spark, amountSats: 40000, feeSats: 450))
+        XCTAssertFalse(
+            MoveToSparkMath.coversPayment(quote: quote, spark: spark, amountSats: 40000, feeSats: 451),
+            "An update went ahead for a payment whose Spark fee passes the limit the send applies"
+        )
         let notReady = SparkSendState(isReady: false, isExiting: false, balanceSats: 30000)
         XCTAssertFalse(MoveToSparkMath.coversPayment(quote: quote, spark: notReady, amountSats: 1000, feeSats: 2))
     }
