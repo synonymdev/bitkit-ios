@@ -3076,7 +3076,8 @@ struct SendConfirmationView: View {
             walletType: app.selectedWalletToPayFrom,
             bolt11: app.scannedLightningInvoice?.bolt11,
             onchainAddress: app.scannedOnchainInvoice?.address,
-            amountSats: wallet.sendAmountSats,
+            // An invoice's own amount, which stays the same while the send amount is filled in from it after PIN.
+            amountSats: sparkUpdatePayment?.amountSats ?? wallet.sendAmountSats,
             hasServiceLeg: app.paykitRoute?.serviceLeg != nil,
             hasSwapRoute: app.paykitSwapRoute != nil
         )
