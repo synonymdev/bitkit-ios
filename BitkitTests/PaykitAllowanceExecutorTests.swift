@@ -56,6 +56,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         let acceptIndex = try XCTUnwrap(log.firstIndex(of: "acceptPaymentRequestAutomatically"))
         XCTAssertLessThan(resolveIndex, acceptIndex)
         XCTAssertFalse(log.contains("recordPaymentOutcome"))
+        XCTAssertFalse(log.contains("processOutboundPrivateMessages"), "A paid request's proof delivery sends the acceptance with it")
 
         let evaluatedTimes = await harness.sdk.evaluatedTrustedTimes
         XCTAssertEqual(evaluatedTimes, [PaykitAllowanceTime.format(Fixtures.now)])
@@ -249,6 +250,212 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     @MainActor
+    func testManagerKeepsARequestThisWalletAlreadyPaidOffThePendingRequests() async throws {
+        let harness = AllowanceHarness()
+        let paid = try Fixtures.paymentRequest()
+        let unpaid = try Fixtures.paymentRequest(id: "550e8400-e29b-41d4-a716-446655440002")
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "paid", request: paid, stage: .sent)]),
+            identity: Fixtures.identityKey
+        )
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            payableNow: { $0 }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+
+        XCTAssertEqual(manager.payable([paid, unpaid]).map(\.id), [unpaid.id])
+        XCTAssertTrue(manager.hasSentPayment(paid))
+        XCTAssertFalse(manager.hasSentPayment(unpaid))
+
+        // Turning automatic payments off keeps this wallet's records, so the paid request stays off the pending views.
+        manager.pause(identity: nil)
+        await Self.waitUntilOnMain { manager.hasSentPayment(paid) }
+        XCTAssertEqual(manager.payable([paid, unpaid]).map(\.id), [unpaid.id])
+    }
+
+    @MainActor
+    func testDetailsOfARequestKeptOffPendingShowItWaitingWithoutActions() async throws {
+        let harness = AllowanceHarness()
+        let paid = try Fixtures.paymentRequest()
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "paid", request: paid, stage: .sent)]),
+            identity: Fixtures.identityKey
+        )
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            payableNow: { $0 }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+        let pending = [paid]
+
+        // As PaymentRequestDetailView splits them: actions follow the payable subset, the status line raw pending.
+        let isActionable = manager.payable(pending).contains { $0.id == paid.id }
+        let isPending = pending.contains { $0.id == paid.id }
+        XCTAssertFalse(isActionable)
+        XCTAssertEqual(
+            PaymentRequestDisplay.statusKey(for: paid, isActionable: isPending, now: PaykitAllowanceFixtures.now),
+            "wallet__payment_request_waiting"
+        )
+    }
+
+    @MainActor
+    func testHistoryLeavesOutAPendingRequestTheAllowanceHides() async throws {
+        let harness = AllowanceHarness()
+        let paid = try Fixtures.paymentRequest()
+        let settled = try Fixtures.paymentRequest(id: "550e8400-e29b-41d4-a716-446655440002")
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "paid", request: paid, stage: .sent)]),
+            identity: Fixtures.identityKey
+        )
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            payableNow: { $0 }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+
+        let history = PaymentRequestDisplay.historyRequests(
+            [paid, settled],
+            activeIds: [],
+            pending: [paid],
+            isKeptOffPending: manager.isKeptOffPending
+        )
+
+        XCTAssertEqual(history.map(\.id), [settled.id])
+    }
+
+    @MainActor
+    func testManagerLoadsThisWalletsPaidRecordsWhenItStartsWithAllowancesOff() async throws {
+        let harness = AllowanceHarness()
+        let paid = try Fixtures.paymentRequest()
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "paid", request: paid, stage: .succeeded)]),
+            identity: Fixtures.identityKey
+        )
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            payableNow: { $0 }
+        )
+
+        manager.pause(identity: Fixtures.identityKey)
+
+        await Self.waitUntilOnMain { manager.hasSentPayment(paid) }
+        XCTAssertTrue(manager.payable([paid]).isEmpty)
+    }
+
+    @MainActor
+    func testManagerShowsAPaymentThatFailsWhileAllowancesAreOffAgain() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "leaving", request: request, stage: .sent)]),
+            identity: Fixtures.identityKey
+        )
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            payableNow: { $0 }
+        )
+        manager.pause(identity: Fixtures.identityKey)
+        await Self.waitUntilOnMain { manager.hasSentPayment(request) }
+
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "leaving", request: request, stage: .failed)]),
+            identity: Fixtures.identityKey
+        )
+        await manager.refresh()
+
+        XCTAssertFalse(manager.hasSentPayment(request))
+        XCTAssertEqual(manager.payable([request]).map(\.id), [request.id])
+    }
+
+    @MainActor
+    func testManagerReleasesAStartedRequestWithItsRecordLoadedBeforeThePassEnds() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            payableNow: { $0 }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+        let first = try Fixtures.paymentRequest()
+        let second = try Fixtures.paymentRequest(id: "550e8400-e29b-41d4-a716-446655440002")
+        let firstState = StateProbe()
+        await harness.sdk.setBeforeAcceptance {
+            let state = await MainActor.run { (manager.isPaying(first), manager.hasSentPayment(first)) }
+            firstState.record(state)
+        }
+
+        _ = await manager.processIncomingRequests([first, second])
+
+        let states = firstState.all
+        XCTAssertEqual(states.count, 2)
+        XCTAssertEqual(states.last?.0, false, "The started request is released before the next one pays")
+        XCTAssertEqual(states.last?.1, true, "Its record is loaded by then, so it stays hidden")
+    }
+
+    @MainActor
+    func testManagerHandsARequestBackOnceItsAutomaticPaymentFailed() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
+        let request = try Fixtures.paymentRequest()
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "failed", request: request, stage: .failed)]),
+            identity: Fixtures.identityKey
+        )
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            payableNow: { $0 }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+
+        let isHandling = await manager.isAutomaticallyHandling(request)
+        XCTAssertFalse(isHandling)
+        let handled = await manager.processIncomingRequests([request])
+        XCTAssertFalse(handled)
+        XCTAssertFalse(harness.log.entries.contains("acceptPaymentRequestAutomatically"))
+    }
+
+    @MainActor
+    func testManagerHidesEveryRequestOfAPassFromItsStart() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            payableNow: { $0 }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+        let first = try Fixtures.paymentRequest()
+        let second = try Fixtures.paymentRequest(id: "550e8400-e29b-41d4-a716-446655440002")
+        let shownDuringFirstPayment = PayableProbe()
+        await harness.sdk.setBeforeAcceptance {
+            let shown = await MainActor.run { manager.payable([first, second]).map(\.id) }
+            shownDuringFirstPayment.record(shown)
+        }
+
+        _ = await manager.processIncomingRequests([first, second])
+
+        XCTAssertEqual(shownDuringFirstPayment.first, [])
+        XCTAssertFalse(manager.isPaying(first))
+        XCTAssertFalse(manager.isPaying(second))
+    }
+
+    @MainActor
     func testManagerHandsBackARequestAboveTheLimitsWhileWaitingForAChannel() async throws {
         let harness = AllowanceHarness()
         try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
@@ -321,6 +528,123 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(handled)
         let waiting = await manager.isAutomaticallyHandling(request)
         XCTAssertTrue(waiting)
+    }
+
+    @MainActor
+    func testManagerKeepsADeferredRequestHiddenAcrossPolls() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
+        await harness.payer.setResolveError(PaykitAllowanceError.paymentListPending)
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            payableNow: { $0 }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+        let request = try Fixtures.paymentRequest()
+
+        for _ in 0 ..< 3 {
+            _ = await manager.processIncomingRequests([request])
+            XCTAssertTrue(manager.payable([request]).isEmpty, "A deferred request never shows between polls")
+        }
+    }
+
+    @MainActor
+    func testManagerShowsADeferredRequestWhileItWaitsForTheNode() async throws {
+        final class NodeState {
+            var canPay = true
+        }
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
+        await harness.payer.setResolveError(PaykitAllowanceError.paymentListPending)
+        let node = NodeState()
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            payableNow: { node.canPay ? $0 : [] }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+        let request = try Fixtures.paymentRequest()
+        _ = await manager.processIncomingRequests([request])
+        XCTAssertTrue(manager.payable([request]).isEmpty)
+
+        node.canPay = false
+        _ = await manager.processIncomingRequests([request])
+
+        XCTAssertEqual(manager.payable([request]).map(\.id), [request.id])
+    }
+
+    @MainActor
+    func testManagerShowsADeferredRequestALaterPassHandsBack() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
+        await harness.payer.setResolveError(PaykitAllowanceError.paymentListPending)
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            payableNow: { $0 }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+        let request = try Fixtures.paymentRequest()
+        _ = await manager.processIncomingRequests([request])
+        XCTAssertTrue(manager.payable([request]).isEmpty)
+
+        await harness.sdk.setCandidates([AllowanceHarness.candidate(blocked: .sharedRule(code: "amount_outside_range"))])
+        _ = await manager.processIncomingRequests([request])
+
+        XCTAssertEqual(manager.payable([request]).map(\.id), [request.id])
+    }
+
+    @MainActor
+    func testManagerShowsADeferredRequestOnceAllowancesAreTurnedOff() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
+        await harness.payer.setResolveError(PaykitAllowanceError.paymentListPending)
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            payableNow: { $0 }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+        let request = try Fixtures.paymentRequest()
+        _ = await manager.processIncomingRequests([request])
+        XCTAssertTrue(manager.payable([request]).isEmpty)
+
+        manager.pause(identity: nil)
+
+        XCTAssertEqual(manager.payable([request]).map(\.id), [request.id])
+    }
+
+    @MainActor
+    func testManagerKeepsNoDeferralFromAPassAllowancesWereTurnedOffDuring() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
+        await harness.payer.setResolveError(PaykitAllowanceError.paymentListPending)
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            payableNow: { $0 }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+        let request = try Fixtures.paymentRequest()
+        let gate = await harness.payer.holdNextResolve()
+
+        let pass = Task { await manager.processIncomingRequests([request]) }
+        while !harness.log.entries.contains("resolve") {
+            await Task.yield()
+        }
+        manager.pause(identity: nil)
+        // Turned back on before the pass ends, so the request is covered again and only the stale activation drops it.
+        await manager.activate(identity: Fixtures.identityKey)
+        gate.open()
+        _ = await pass.value
+
+        XCTAssertEqual(manager.payable([request]).map(\.id), [request.id])
     }
 
     func testBlockedCandidateStaysManualWithoutAcceptance() async throws {
@@ -886,6 +1210,18 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertTrue(remaining.isEmpty)
     }
 
+    func testAFailedAutomaticPaymentSendsItsAcceptanceOnceItSettles() async throws {
+        let harness = AllowanceHarness()
+        await harness.executor.activate(identity: Fixtures.identityKey)
+
+        _ = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+        XCTAssertFalse(harness.log.entries.contains("processOutboundPrivateMessages"))
+        await harness.executor.lightningPaymentSettled(paymentHash: AllowanceHarness.paymentHash, succeeded: false)
+
+        await Self.waitUntil { harness.log.entries.contains("processOutboundPrivateMessages") }
+        XCTAssertEqual(harness.log.entries.filter { $0 == "processOutboundPrivateMessages" }.count, 1)
+    }
+
     func testRecoveryDropsTheSpendOfAFailedAttemptTheJournalNoLongerHolds() async throws {
         let harness = AllowanceHarness()
         let spend = PaykitAllowanceLocalState.AutomaticSpend(
@@ -1046,6 +1382,18 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertEqual(outcomes, [Paykit.PaymentOutcomeReport(attemptId: AllowanceSdkMock.automaticAttemptId, outcome: .failed)])
     }
 
+    func testAPaymentThatFailsInsideAutoPaySendsItsAcceptanceOnce() async throws {
+        let harness = AllowanceHarness()
+        // The payee's list cannot be consumed after the attempt's journal entry is saved, so the failure is recorded with it.
+        await harness.payer.setConsumeError(AllowanceMockError.unsupported)
+
+        _ = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        await Self.waitUntil { harness.log.entries.contains("processOutboundPrivateMessages") }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(harness.log.entries.filter { $0 == "processOutboundPrivateMessages" }.count, 1)
+    }
+
     func testPaymentIsNotSentWhenTheSendingStageCannotBeSaved() async throws {
         let harness = AllowanceHarness()
         harness.store.failSavesOnceSpent()
@@ -1101,6 +1449,51 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(log.contains("payLightning"))
         let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
         XCTAssertEqual(journal, [])
+    }
+
+    func testARequestKeptManualAfterItsAcceptanceSendsTheAcceptanceAtOnce() async throws {
+        let harness = AllowanceHarness()
+        await harness.sdk.setAutomaticReservation(.blocked(reason: .sharedRule(code: "period_amount_limit")))
+        let request = try Fixtures.paymentRequest()
+
+        let result = await harness.executor.autoPay(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(result, .manual)
+        let log = harness.log.entries
+        let acceptIndex = try XCTUnwrap(log.firstIndex(of: "acceptPaymentRequestAutomatically"))
+        let sendIndex = try XCTUnwrap(log.firstIndex(of: "processOutboundPrivateMessages"))
+        XCTAssertLessThan(acceptIndex, sendIndex)
+    }
+
+    func testAnAutomaticPaymentAsksForABackupBeforeItLeavesTheWallet() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        let sentBeforeBackup = AllowanceFlags()
+        let associatedBeforeBackup = AllowanceFlags()
+        let subscription = PaykitAllowanceExecutor.eventPublisher.filter { $0 == .paymentLeaving }.sink { _ in
+            sentBeforeBackup.append(harness.log.entries.contains("payLightning"))
+            associatedBeforeBackup.append(harness.log.entries.contains("associateLightningPayment"))
+        }
+        defer { subscription.cancel() }
+
+        let result = await harness.executor.autoPay(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(result, .started)
+        XCTAssertEqual(sentBeforeBackup.values, [false], "The backup is asked for once, before the payment is sent")
+        XCTAssertEqual(associatedBeforeBackup.values, [true], "The backup holds a proof that already knows the payment hash")
+        let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
+        XCTAssertEqual(journal.map(\.stage), [.sent])
+    }
+
+    func testARequestCountsAsPaidOnlyOnceItsPaymentMayHaveLeft() throws {
+        let request = try Fixtures.paymentRequest()
+        let other = try Fixtures.paymentRequest(id: "550e8400-e29b-41d4-a716-446655440002")
+        let stages: [PaykitAllowanceLocalState.Stage] = [.prepared, .submitted, .sending, .sent, .succeeded, .failed, .unknown]
+        for stage in stages {
+            let state = PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "attempt", request: request, stage: stage)])
+            XCTAssertEqual(state.hasSentPayment(request.id), [.sending, .sent, .succeeded, .unknown].contains(stage), "\(stage)")
+            XCTAssertFalse(state.hasSentPayment(other.id), "\(stage)")
+        }
     }
 
     func testBlockedBeginRecordsAFailedOutcome() async throws {
@@ -1623,6 +2016,10 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertEqual(journal.map(\.stage), [.failed])
         let released = await harness.payer.releasedLists
         XCTAssertEqual(released, [.init(publicKey: Fixtures.counterpartyKey, version: 5, previousVersion: 4)])
+        // No proof follows the failure, so the acceptance queued for it goes out once.
+        await Self.waitUntil { harness.log.entries.contains("processOutboundPrivateMessages") }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(harness.log.entries.filter { $0 == "processOutboundPrivateMessages" }.count, 1)
     }
 
     func testRecoveryNeverReleasesAListASettlementReleasedWhileItWaited() async throws {
@@ -1790,6 +2187,26 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         }
         let log = harness.log.entries
         XCTAssertFalse(log.contains("beginPaymentExecution"))
+    }
+
+    func testAManualPaymentOfARequestThisWalletAlreadyPaidFailsWhileTheLedgerHasNoRecordOfIt() async throws {
+        let harness = AllowanceHarness()
+        await harness.executor.activate(identity: Fixtures.identityKey)
+        let request = try Fixtures.paymentRequest()
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "paid", request: request, stage: .succeeded)]),
+            identity: Fixtures.identityKey
+        )
+
+        do {
+            _ = try await harness.executor.beginManualPayment(request, paymentEndpointIdentifier: Fixtures.lightningIdentifier)
+            XCTFail("Expected alreadyRecorded")
+        } catch PaykitAllowanceManualPaymentError.alreadyRecorded {
+            // expected
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        XCTAssertFalse(harness.log.entries.contains("reserveManualPayment"))
     }
 
     func testManualPaymentOfARequestNotPricedInBitcoinStaysOutOfTheLedger() async throws {
@@ -2586,6 +3003,14 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(manager.coversRequest(request))
     }
 
+    @MainActor
+    private static func waitUntilOnMain(timeout: TimeInterval = 5, _ condition: @MainActor () -> Bool) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
+
     private static func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) async {
         let deadline = Date().addingTimeInterval(timeout)
         while !condition(), Date() < deadline {
@@ -2801,6 +3226,19 @@ private struct AllowanceFailingPauseStore: PaykitAllowanceStoring {
 
     func setPausedAfterRestore(_: Bool) throws {
         throw AllowanceMockError.unsupported
+    }
+}
+
+private final class AllowanceFlags: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [Bool] = []
+
+    var values: [Bool] {
+        lock.withLock { storage }
+    }
+
+    func append(_ value: Bool) {
+        lock.withLock { storage.append(value) }
     }
 }
 
@@ -3490,5 +3928,31 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
             associationRevision: nil,
             attempts: []
         )
+    }
+}
+
+private final class PayableProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [[PaykitPaymentRequest.ID]] = []
+
+    var first: [PaykitPaymentRequest.ID]? {
+        lock.withLock { recorded.first }
+    }
+
+    func record(_ ids: [PaykitPaymentRequest.ID]) {
+        lock.withLock { recorded.append(ids) }
+    }
+}
+
+private final class StateProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [(Bool, Bool)] = []
+
+    var all: [(Bool, Bool)] {
+        lock.withLock { recorded }
+    }
+
+    func record(_ state: (Bool, Bool)) {
+        lock.withLock { recorded.append(state) }
     }
 }

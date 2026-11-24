@@ -223,7 +223,7 @@ class ActivityService {
 
     func isActivitySeen(id: String, walletId: String = WalletScope.default) async -> Bool {
         do {
-            if let activity = try getActivityById(walletId: walletId, activityId: id) {
+            if let activity = try BackgroundTime.during("isActivitySeen", { try getActivityById(walletId: walletId, activityId: id) }) {
                 switch activity {
                 case let .onchain(onchain):
                     return onchain.seenAt != nil
@@ -1190,7 +1190,9 @@ class ActivityService {
                 }
             }
 
-            let closedChannels = try getAllClosedChannels(sortDirection: .desc)
+            let closedChannels = try BackgroundTime.during("findClosedChannelForTransaction") {
+                try getAllClosedChannels(sortDirection: .desc)
+            }
             guard !closedChannels.isEmpty else { return nil }
 
             let details = if let provided = transactionDetails {
@@ -2785,7 +2787,7 @@ class CoreService {
     private init(walletIndex: Int = 0) {
         self.walletIndex = walletIndex
 
-        _ = try! initDb(basePath: Env.bitkitCoreStorage(walletIndex: walletIndex).path)
+        _ = try! BackgroundTime.during("initDb") { try initDb(basePath: Env.bitkitCoreStorage(walletIndex: walletIndex).path) }
 
         // First thing ever added to the core queue so guarenteed to run first before any of above functions on the same queue
         ServiceQueue.background(.core) {

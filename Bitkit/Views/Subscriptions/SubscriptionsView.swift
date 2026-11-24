@@ -42,6 +42,7 @@ struct SubscriptionsView: View {
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
+    @Environment(PaykitAllowanceManager.self) private var allowances
     @AppStorage("showDevSettings") private var showDevSettings = Env.isDebug
     @AppStorage(PaykitFeatureFlags.allowancesEnabledKey) private var allowancesOverride: Bool?
 
@@ -139,7 +140,7 @@ struct SubscriptionsView: View {
                 tabItems: [
                     TabItem(Tab.overview),
                     TabItem(Tab.allowances),
-                    TabItem(Tab.payments, badge: paymentRequests.pendingRequests.count),
+                    TabItem(Tab.payments, badge: allowances.payable(paymentRequests.pendingRequests).count),
                 ].filter { areAllowancesEnabled || $0.tab != .allowances },
                 inactiveColor: .white.opacity(0.5)
             )

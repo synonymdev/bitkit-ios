@@ -143,7 +143,18 @@ final class SparkManager: ChannelFreeLightningRail {
 
     /// Whether savings or a hardware wallet can fund Spark: its deposit goes out on Bitkit's chain, which Spark must read.
     var canFundFromChain: Bool {
-        isReady && Self.readsBitkitChain(network: Env.network, chainServiceUrl: Env.sparkChainServiceUrl(for: Env.network))
+        isReady && readsSavingsChain
+    }
+
+    var readsSavingsChain: Bool {
+        if let fixtureURL = Env.localSparkSettings.chainURL {
+            return Env.sharesLocalSparkChain(
+                sparkURL: fixtureURL,
+                nodeElectrumURL: LightningService.shared.activeElectrumServerUrl,
+                hardwareElectrumURL: OnChainHwService.getElectrumUrl()
+            )
+        }
+        return Self.readsBitkitChain(network: Env.network, chainServiceUrl: Env.sparkChainServiceUrl(for: Env.network))
     }
 
     /// On mainnet both read Bitcoin; Spark's default regtest is its own chain, so a regtest deposit reaches Spark only
@@ -459,14 +470,15 @@ final class SparkManager: ChannelFreeLightningRail {
             throw CustomServiceError.mnemonicNotFound
         }
         let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
-        let config = Self.sdkConfig(network: network, apiKey: Env.breezApiKey, isExiting: isExiting)
+        var config = Self.sdkConfig(network: network, apiKey: Env.breezApiKey, isExiting: isExiting)
+        let chainAPI = try Self.configureLocalSpark(&config)
         let storageDir = Env.sparkStorage(walletIndex: walletIndex)
         try FileManager.default.createDirectory(at: storageDir, withIntermediateDirectories: true)
         // What `BreezSdkSpark.connect` builds, plus our own chain service where Env names one.
         let builder = SdkBuilder(config: config, seed: .mnemonic(mnemonic: mnemonic, passphrase: passphrase))
         await builder.withDefaultStorage(storageDir: storageDir.path)
         if let chainServiceUrl = Env.sparkChainServiceUrl(for: Env.network) {
-            await builder.withRestChainService(url: chainServiceUrl, apiType: .esplora, credentials: nil)
+            await builder.withRestChainService(url: chainServiceUrl, apiType: chainAPI, credentials: nil)
         }
         syncedThisRun = false
         let connected = try await builder.build()
@@ -481,6 +493,26 @@ final class SparkManager: ChannelFreeLightningRail {
         Logger.info("Connected Spark wallet on '\(network)'", context: "SparkManager")
         await importRestoredExitState(walletIndex: walletIndex)
         Self.notifyExitStateChanged()
+    }
+
+    private nonisolated static func configureLocalSpark(_ config: inout BreezSdkSpark.Config) throws -> ChainApiType {
+        let settings = Env.localSparkSettings
+        if settings.configBase64 == nil, settings.chainURL == nil {
+            return .esplora
+        }
+        guard let encoded = settings.configBase64,
+              let data = Data(base64Encoded: encoded),
+              let json = String(data: data, encoding: .utf8),
+              settings.chainURL != nil
+        else {
+            throw NSError(domain: "LocalSparkConfiguration", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Local Spark requires a valid SPARK_LOCAL_CONFIG_B64 and SPARK_LOCAL_CHAIN_URL",
+            ])
+        }
+        config.sparkConfig = try parseSparkConfig(json: json)
+        // The pinned regtest operators require anchored refunds.
+        config.watchtowerFeeLadderEnabled = false
+        return .mempoolSpace
     }
 
     /// The SDK config Bitkit connects with.

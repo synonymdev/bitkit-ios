@@ -111,7 +111,19 @@ protocol NodeLifecycleService: AnyObject {
 class LightningService: NodeLifecycleService {
     private static let watchOnlyAccountHighestPreRevealedAddressIndex: UInt32 = 999
 
-    private var node: Node?
+    private var configuredNode: (node: Node, electrumServerUrl: String)?
+    private var node: Node? {
+        setupLock.withLock { configuredNode?.node }
+    }
+
+    var activeElectrumServerUrl: String? {
+        setupLock.withLock { configuredNode?.electrumServerUrl }
+    }
+
+    private func releaseNode() {
+        setupLock.withLock { configuredNode = nil }
+    }
+
     private let beforeNodeStopLock = NSLock()
     private var beforeNodeStopAction: (() async -> Void)?
     /// Runs before the node stops, while its wallet can still release what was prepared on it.
@@ -218,7 +230,7 @@ class LightningService: NodeLifecycleService {
     ) async throws {
         // Guard against concurrent setup calls
         let shouldProceed: Bool = setupLock.withLock {
-            guard !isSettingUp && node == nil else {
+            guard !isSettingUp && configuredNode == nil else {
                 Logger.debug("Node already setting up or already set up, skipping")
                 return false
             }
@@ -273,6 +285,7 @@ class LightningService: NodeLifecycleService {
             additionalWalletFullScanBatchSize: 100,
             additionalWalletFullScanStopGap: 1000
         )
+        Logger.info("Using Electrum server: \(resolvedElectrumServerUrl)")
         builder.setChainSourceElectrum(serverUrl: resolvedElectrumServerUrl, config: electrumConfig)
 
         // Set pathfinding scores source from external scorer
@@ -306,12 +319,13 @@ class LightningService: NodeLifecycleService {
         }
 
         try await ServiceQueue.background(.ldk) {
-            self.node = try builder.buildWithVssStore(
+            let node = try builder.buildWithVssStore(
                 vssUrl: vssUrl,
                 storeId: storeId,
                 lnurlAuthServerUrl: lnurlAuthServerUrl,
                 fixedHeaders: [:]
             )
+            self.setupLock.withLock { self.configuredNode = (node, resolvedElectrumServerUrl) }
         }
         shouldReleaseLightningLock = false
 
@@ -332,7 +346,7 @@ class LightningService: NodeLifecycleService {
             } catch {
                 Logger.debug("Node was already stopped or failed to stop: \(error)")
                 // Clear the node reference anyway
-                node = nil
+                releaseNode()
                 try? StateLocker.unlock(.lightning)
             }
         }
@@ -367,7 +381,7 @@ class LightningService: NodeLifecycleService {
                 try await stop()
             } catch {
                 Logger.error("Failed to stop node during recovery: \(error)")
-                node = nil
+                releaseNode()
                 try? StateLocker.unlock(.lightning)
             }
         }
@@ -449,7 +463,7 @@ class LightningService: NodeLifecycleService {
         try await ServiceQueue.background(.ldk) {
             try Self.stopReleasingFinishedNode(node.stop)
         }
-        self.node = nil
+        releaseNode()
 
         if clearEventCallback {
             self.clearEventCallback()
@@ -2242,6 +2256,27 @@ extension LightningService {
 
     @MainActor var channels: [ChannelDetails]? {
         cachedChannels
+    }
+
+    /// The wallet's balances with its spendable outputs, read until the outputs before and after the balances agree, so
+    /// the outputs match what the balances include. Both come from the wallet's current view, which drops a transaction
+    /// evicted from the mempool, unlike the payment store. After three tries the last outputs read are used.
+    func balancesAndOutputs() async -> (balances: BalanceDetails, outputs: [SpendableUtxo])? {
+        try? await ServiceQueue.background(.ldk) { [self] in
+            guard let node else { return nil }
+            let outpoints: ([SpendableUtxo]) -> Set<String> = { Set($0.map { "\($0.outpoint.txid):\($0.outpoint.vout)" }) }
+            var outputs = try node.onchainPayment().listSpendableOutputs()
+            var balances = node.listBalances()
+            for _ in 0 ..< 3 {
+                let outputsAfter = try node.onchainPayment().listSpendableOutputs()
+                if outpoints(outputsAfter) == outpoints(outputs) {
+                    break
+                }
+                outputs = outputsAfter
+                balances = node.listBalances()
+            }
+            return (balances, outputs)
+        }
     }
 
     func listPayments() async -> [PaymentDetails]? {

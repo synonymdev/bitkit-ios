@@ -14,7 +14,7 @@
   <actions>
     <action>Open Settings, then the "Advanced" tab, then "Lightning Connections"</action>
     <action>Tap "Get Started" to open the funding options screen</action>
-    <action>Tap "Manual Setup" (id "FundManual")</action>
+    <action>Tap "Manual setup" (id "FundManual")</action>
     <action>Type the node id into the node id field (id "NodeIdInput")</action>
     <action>Type the host into the host field (id "HostInput")</action>
     <action>Type the port into the port field (id "PortInput")</action>

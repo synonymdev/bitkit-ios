@@ -56,9 +56,7 @@ class TransferViewModel: ObservableObject {
     /// Sends Spark's balance to the address, refusing above the shown fee; tests replace it.
     var withdrawSpark: @MainActor (String, UInt64) async throws -> Void = { try await SparkManager.shared.withdrawAll(to: $0, maxFeeSats: $1) }
     /// Whether Spark reads Savings' chain, so its withdrawal reaches Savings; tests replace it.
-    var sparkReadsSavingsChain: @MainActor () -> Bool = {
-        SparkManager.readsBitkitChain(network: Env.network, chainServiceUrl: Env.sparkChainServiceUrl(for: Env.network))
-    }
+    var sparkReadsSavingsChain: @MainActor () -> Bool = { SparkManager.shared.readsSavingsChain }
 
     /// How long the confirm screen waits for Spark's withdrawal fee before offering to retry; a full-balance quote can
     /// take minutes.

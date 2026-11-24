@@ -99,6 +99,30 @@ struct ProfileWriteGate {
 actor PubkyAppProfileStore {
     static let shared = PubkyAppProfileStore()
 
+    struct ProfileIO: Sendable {
+        let currentPublicKey: @Sendable () async -> String?
+        let fetchPaykitProfile: @Sendable (String) async throws -> Paykit.PaykitProfileRecord?
+        let fetchPubkyProfile: @Sendable (String) async throws -> Paykit.PubkyProfileSnapshot?
+        let publishPubkyProfile: @Sendable (Paykit.PubkyProfileUpdate, String?, String) async throws -> Paykit.PubkyProfileSnapshot
+        let publishPaykitProfile: @Sendable (Paykit.PaykitProfile, String) async throws -> Void
+
+        static let live = Self(
+            currentPublicKey: { await PubkyService.currentPublicKey() },
+            fetchPaykitProfile: { try await PubkyService.fetchPaykitProfile(publicKey: $0) },
+            fetchPubkyProfile: { try await PubkyService.fetchPubkyProfileWithRevision(publicKey: $0) },
+            publishPubkyProfile: { update, revision, identity in
+                try await PubkyService.publishPubkyProfile(update, expectedRevision: revision, expectedIdentity: identity)
+            },
+            publishPaykitProfile: { try await PubkyService.publishPaykitProfile($0, expectedIdentity: $1) }
+        )
+    }
+
+    private let profileIO: ProfileIO
+
+    init(profileIO: ProfileIO = .live) {
+        self.profileIO = profileIO
+    }
+
     // pubky.app profile limits (pubky-app-specs), applied when moving a Bitkit profile there.
     private static let nameMaxLength = 50
     private static let bioMaxLength = 160
@@ -145,7 +169,7 @@ actor PubkyAppProfileStore {
         let paykitData: PubkyProfileData?
         var paykitReadError: Error?
         do {
-            paykitData = try await PubkyService.fetchPaykitProfile(publicKey: key).map {
+            paykitData = try await profileIO.fetchPaykitProfile(key).map {
                 PubkyProfileData.from(paykitProfile: $0.profile)
             }
             tagsUnavailable.remove(key)
@@ -157,9 +181,9 @@ actor PubkyAppProfileStore {
             tagsUnavailable.insert(key)
             tagsReadEpochs[key, default: 0] += 1
         }
-        let fetched = try await PubkyService.fetchPubkyProfileWithRevision(publicKey: key)
+        let fetched = try await profileIO.fetchPubkyProfile(key)
         var snapshot = fetched
-        let isSignedIn = await Self.isSignedIn(key)
+        let isSignedIn = await isSignedIn(key)
         // Once a pubky.app profile was seen, one missing there was deleted there, so it is not moved back from Bitkit.
         let hadPubkyAppProfile = Self.pubkyAppProfileOwners.contains(key)
         if fetched == nil, isSignedIn, !hadPubkyAppProfile, let paykitData {
@@ -211,7 +235,7 @@ actor PubkyAppProfileStore {
     /// the profile since that revision.
     func save(_ data: PubkyProfileData, expectedIdentity: String?) async throws {
         let data = Self.normalized(data)
-        let key = try await Self.identity(expectedIdentity)
+        let key = try await identity(expectedIdentity)
         let generation = writeGate.generation(key)
         writeGate.beginSave(key)
         defer { writeGate.endSave(key) }
@@ -225,7 +249,7 @@ actor PubkyAppProfileStore {
                 throw PubkyAppProfileError.changedElsewhere
             }
             base = known
-        } else if try await PubkyService.fetchPubkyProfileWithRevision(publicKey: key) != nil {
+        } else if try await profileIO.fetchPubkyProfile(key) != nil {
             _ = try? await load(publicKey: key)
             throw PubkyAppProfileError.changedElsewhere
         }
@@ -239,7 +263,7 @@ actor PubkyAppProfileStore {
         do {
             snapshot = try await admitted(key, generation: generation) {
                 try await withPubkyAppScope(key) {
-                    try await PubkyService.publishPubkyProfile(update, expectedRevision: data.baseRevision, expectedIdentity: key)
+                    try await profileIO.publishPubkyProfile(update, data.baseRevision, key)
                 }
             }
         } catch PaykitError.ConcurrentUpdate {
@@ -334,7 +358,7 @@ actor PubkyAppProfileStore {
     private func storedCopy(for key: String, copyUnread: Bool) async -> (tags: [String]?, image: String?)? {
         guard copyUnread else { return (nil, nil) }
         do {
-            let data = try await PubkyService.fetchPaykitProfile(publicKey: key).map { PubkyProfileData.from(paykitProfile: $0.profile) }
+            let data = try await profileIO.fetchPaykitProfile(key).map { PubkyProfileData.from(paykitProfile: $0.profile) }
             return (data?.tags ?? [], data?.image)
         } catch {
             return nil
@@ -349,7 +373,7 @@ actor PubkyAppProfileStore {
 
     /// Uploads a JPEG avatar as a pubky.app blob and file and returns the file URI for the profile image.
     func uploadAvatar(_ jpegData: Data, expectedIdentity: String?) async throws -> String {
-        let key = try await Self.identity(expectedIdentity)
+        let key = try await identity(expectedIdentity)
         return try await withPubkyAppScope(key) {
             try await PubkyService.uploadPubkyAppAvatar(bytes: jpegData, contentType: "image/jpeg", expectedIdentity: key)
         }
@@ -464,10 +488,7 @@ actor PubkyAppProfileStore {
     private func publishCopy(_ profile: PubkyProfile, expectedIdentity: String, generation: Int) async throws {
         do {
             try await admitted(expectedIdentity, generation: generation) {
-                try await PubkyService.publishPaykitProfile(
-                    PubkyProfileData.from(profile: profile).toPaykitProfile(),
-                    expectedIdentity: expectedIdentity
-                )
+                try await profileIO.publishPaykitProfile(PubkyProfileData.from(profile: profile).toPaykitProfile(), expectedIdentity)
             }
         } catch {
             Logger.warn("Failed to update Bitkit profile copy: \(error)", context: "PubkyAppProfileStore")
@@ -598,16 +619,16 @@ actor PubkyAppProfileStore {
             && uri.unicodeScalars.count <= linkUrlMaxLength
     }
 
-    private static func identity(_ expectedIdentity: String?) async throws -> String {
+    private func identity(_ expectedIdentity: String?) async throws -> String {
         if let expectedIdentity {
-            return normalized(expectedIdentity)
+            return Self.normalized(expectedIdentity)
         }
-        guard let current = await PubkyService.currentPublicKey() else { throw PubkyServiceError.sessionNotActive }
-        return normalized(current)
+        guard let current = await profileIO.currentPublicKey() else { throw PubkyServiceError.sessionNotActive }
+        return Self.normalized(current)
     }
 
-    private static func isSignedIn(_ publicKey: String) async -> Bool {
-        guard let current = await PubkyService.currentPublicKey() else { return false }
+    private func isSignedIn(_ publicKey: String) async -> Bool {
+        guard let current = await profileIO.currentPublicKey() else { return false }
         return PubkyPublicKeyFormat.matches(current, publicKey)
     }
 

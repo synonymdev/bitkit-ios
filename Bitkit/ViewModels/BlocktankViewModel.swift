@@ -65,8 +65,9 @@ class BlocktankViewModel: ObservableObject {
     }
 
     func refreshInfo() async throws {
-        info = try await getInfo(refresh: false) // Instant set cached info to state before refreshing
-        info = try await getInfo(refresh: true)
+        info = try await BackgroundTime
+            .during("blocktank getInfo") { try await getInfo(refresh: false) } // Instant set cached info to state before refreshing
+        info = try await BackgroundTime.during("blocktank getInfo") { try await getInfo(refresh: true) }
         coreService.blocktank.notifyStateChanged()
     }
 

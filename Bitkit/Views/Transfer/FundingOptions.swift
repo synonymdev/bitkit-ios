@@ -28,6 +28,45 @@ struct FundingOptions: View {
         }
     }
 
+    private var transferFromSavingsButton: some View {
+        RectangleButton(icon: "transfer", title: t("lightning__funding__button1"), isDisabled: !canFundWithSpark, testID: "FundTransfer") {
+            if !SparkManager.shared.canFundFromChain {
+                sheets.showSheet(.transferUnavailable)
+            } else if wallet.spendableOnchainBalanceSats == 0 {
+                showNoFundsAlert = true
+            } else if app.hasSeenTransferToSpendingIntro {
+                navigation.navigate(.spendingAmount)
+            } else {
+                navigation.navigate(.spendingIntro)
+            }
+        }
+    }
+
+    private var transferFromHardwareButton: some View {
+        RectangleButton(
+            icon: "device-tablet-speaker",
+            title: t("lightning__funding__button_hw"),
+            // A hardware wallet's deposit goes out on Bitkit's chain, which Spark must read.
+            isDisabled: !SparkManager.shared.canFundFromChain,
+            testID: "FundHardware"
+        ) {
+            fundWithHardware()
+        }
+    }
+
+    private var useOtherWalletButton: some View {
+        RectangleButton(icon: "qr", title: t("lightning__funding__button2"), isDisabled: !canFundWithSpark, testID: "FundReceive") {
+            navigation.reset()
+            sheets.showSheet(.receive)
+        }
+    }
+
+    private var manualSetupButton: some View {
+        RectangleButton(icon: "pencil", title: t("lightning__funding__button3"), testID: "FundManual") {
+            navigation.navigate(.fundManual(nodeUri: nil))
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             NavigationBar(title: t("lightning__funding__nav_title"))
@@ -45,57 +84,29 @@ struct FundingOptions: View {
 
             VStack(spacing: 8) {
                 if canFundWithSpark {
-                    RectangleButton(icon: "transfer", title: t("lightning__funding__button1"), testID: "FundTransfer") {
-                        if !SparkManager.shared.canFundFromChain {
-                            sheets.showSheet(.transferUnavailable)
-                        } else if wallet.totalOnchainSats == 0 {
-                            showNoFundsAlert = true
-                        } else if app.hasSeenTransferToSpendingIntro {
-                            navigation.navigate(.spendingAmount)
-                        } else {
-                            navigation.navigate(.spendingIntro)
-                        }
-                    }
-                    RectangleButton(icon: "qr", title: t("lightning__funding__button2"), testID: "FundReceive") {
-                        navigation.reset()
-                        sheets.showSheet(.receive)
-                    }
-                }
-
-                RectangleButton(
-                    icon: "pencil",
-                    title: t("lightning__funding__button3"),
-                    testID: "FundManual"
-                ) {
-                    navigation.navigate(.fundManual(nodeUri: nil))
-                }
-
-                if !canFundWithSpark {
-                    RectangleButton(icon: "transfer", title: t("lightning__funding__button1"), isDisabled: true, testID: "FundTransfer") {}
-                }
-                RectangleButton(
-                    icon: "device-tablet-speaker",
-                    title: t("lightning__funding__button_hw"),
-                    // A hardware wallet's deposit goes out on Bitkit's chain, which Spark must read.
-                    isDisabled: !SparkManager.shared.canFundFromChain,
-                    testID: "FundHardware"
-                ) {
-                    fundWithHardware()
-                }
-                if !canFundWithSpark {
-                    RectangleButton(icon: "qr", title: t("lightning__funding__button2"), isDisabled: true, testID: "FundReceive") {}
+                    transferFromSavingsButton
+                    transferFromHardwareButton
+                    useOtherWalletButton
+                    manualSetupButton
+                } else {
+                    manualSetupButton
+                    transferFromSavingsButton
+                    transferFromHardwareButton
+                    useOtherWalletButton
                 }
             }
 
             Spacer()
 
-            CustomButton(title: t("common__learn_more"), variant: .secondary) {
-                if let url = URL(string: Env.blocktankSunsetUrl) {
-                    UIApplication.shared.open(url)
+            if !canFundWithSpark {
+                CustomButton(title: t("common__learn_more"), variant: .secondary) {
+                    if let url = URL(string: Env.blocktankSunsetUrl) {
+                        UIApplication.shared.open(url)
+                    }
                 }
+                .accessibilityIdentifier("FundLearnMore")
+                .padding(.bottom, 16)
             }
-            .accessibilityIdentifier("FundLearnMore")
-            .padding(.bottom, 16)
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)

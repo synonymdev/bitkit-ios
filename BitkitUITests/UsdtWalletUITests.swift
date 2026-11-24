@@ -196,7 +196,8 @@ final class UsdtWalletUITests: XCTestCase {
         XCTAssertTrue(wait(for: app.buttons["UsdtReceive"], toMatch: "hittable == true"), file: file, line: line)
     }
 
-    private func wait(for element: XCUIElement, toMatch predicate: String, timeout: TimeInterval = 5) -> Bool {
+    /// On CI one accessibility snapshot can take over 4 s right after a push, so a 5 s wait ends before its first answer.
+    private func wait(for element: XCUIElement, toMatch predicate: String, timeout: TimeInterval = 30) -> Bool {
         let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: predicate), object: element)
         return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
     }
