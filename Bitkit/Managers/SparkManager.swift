@@ -103,6 +103,8 @@ final class SparkManager: ChannelFreeLightningRail {
     /// Payments whose activity failed to save, written again at the next refresh.
     @ObservationIgnored private var unsavedPayments: Set<String> = []
     @ObservationIgnored private var sdk: BreezSdk?
+    /// The connected wallet's `SparkSendKey.secret`, derived once at connect.
+    @ObservationIgnored private var sendKeySecret: Data?
     /// Whether a wallet sync ended since this run connected, so the SDK's sync error describes this run.
     @ObservationIgnored private var syncedThisRun = false
     /// The last withdrawal quote, which the withdrawal reuses while it holds.
@@ -220,6 +222,7 @@ final class SparkManager: ChannelFreeLightningRail {
             try? await sdk.disconnect()
         }
         sdk = nil
+        sendKeySecret = nil
         listenerId = nil
         do {
             let generation = connectGeneration
@@ -477,6 +480,7 @@ final class SparkManager: ChannelFreeLightningRail {
             throw CustomServiceError.mnemonicNotFound
         }
         let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
+        let secret = try SparkSendKey.secret(seed: mnemonicToSeed(mnemonicPhrase: mnemonic, passphrase: passphrase))
         var config = Self.sdkConfig(network: network, apiKey: Env.breezApiKey, isExiting: isExiting)
         let chainAPI = try Self.configureLocalSpark(&config)
         let storageDir = Env.sparkStorage(walletIndex: walletIndex)
@@ -497,6 +501,7 @@ final class SparkManager: ChannelFreeLightningRail {
             await self?.onSdkEvent(event)
         })
         sdk = connected
+        sendKeySecret = secret
         Logger.info("Connected Spark wallet on '\(network)'", context: "SparkManager")
         await importRestoredExitState(walletIndex: walletIndex)
         Self.notifyExitStateChanged()
@@ -603,6 +608,7 @@ final class SparkManager: ChannelFreeLightningRail {
             }
         }
         sdk = nil
+        sendKeySecret = nil
         listenerId = nil
         refreshAgain = false
         activitiesSynced = false
@@ -626,6 +632,7 @@ final class SparkManager: ChannelFreeLightningRail {
         unsavedPayments = []
         sentWithdrawalTxIds = []
         preparedWithdrawal = nil
+        SparkSendAttempts.clear()
         Self.pendingContactWithdrawal = nil
         Self.contactWithdrawalTxIds = []
         onStateChanged?()
@@ -691,17 +698,37 @@ final class SparkManager: ChannelFreeLightningRail {
         }
         // The fee limit is checked on the quote that is sent, not only on the earlier estimate.
         try Self.checkSendFee(feeSats, maxFeeSats: maxFeeSats)
+        guard let secret = await sendKeySecret else {
+            throw ChannelFreeRailSendRefused(reason: t("wallet__payment_failed_description"))
+        }
+        // A retry keeps the latest attempt's key, so Spark returns that attempt's payment instead of paying again, and
+        // moves past each attempt Spark lists failed, as a failed key can't send again. A list that can't be read
+        // keeps the latest key, which can't pay twice either.
+        let failed = try? await sdk.listPayments(request: ListPaymentsRequest(typeFilter: [.send], statusFilter: [.failed]))
+        let paymentHash = invoiceDetails.paymentHash
+        let attempt = SparkSendAttempts.next(
+            paymentHash: paymentHash,
+            secret: secret,
+            failedIds: Set(failed?.payments.map(\.id) ?? [])
+        )
+        let idempotencyKey = SparkSendKey.key(secret: secret, paymentHash: paymentHash, attempt: attempt)
+        let isReusedKey = SparkSendAttempts.latest(paymentHash: paymentHash) == attempt
+        let (expiresAt, overflows) = invoiceDetails.timestamp.addingReportingOverflow(invoiceDetails.expiry)
+        SparkSendAttempts.set(paymentHash: paymentHash, attempt: attempt, expiresAt: overflows ? .max : expiresAt, now: Self.nowSecs())
         // An exit that started while the quote was prepared refuses it here, before its hash is recorded.
         let response: SendPaymentResponse = try await spends.run {
             // A deadline that passed while the quote was prepared stops the payment here, before anything leaves.
             try beforeSubmission()
             do {
-                return try await sdk.sendPayment(request: SendPaymentRequest(
-                    prepareResponse: prepared,
-                    options: Self.bolt11SendOptions
-                ))
+                return try await Self.sendRetryingLeafSelection(canRetry: { (try? beforeSubmission()) != nil }) {
+                    try await sdk.sendPayment(request: SendPaymentRequest(
+                        prepareResponse: prepared,
+                        options: Self.bolt11SendOptions,
+                        idempotencyKey: idempotencyKey
+                    ))
+                }
             } catch {
-                throw Self.sendPaymentFailure(error)
+                throw Self.bolt11SendFailure(error, isReusedKey: isReusedKey)
             }
         }
         Logger.info("Sent Spark payment '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
@@ -719,6 +746,51 @@ final class SparkManager: ChannelFreeLightningRail {
     nonisolated static func fitsBalance(amountSats: UInt64, feeSats: UInt64, balanceSats: UInt64) -> Bool {
         let (total, overflow) = amountSats.addingReportingOverflow(feeSats)
         return !overflow && total <= balanceSats
+    }
+
+    /// What a failure inside the BOLT11 `sendPayment` means for the caller. Spark picks the leaves to spend before the
+    /// operators see the key, so a short balance or leaves Spark can't select left nothing under a new key. Under a key an
+    /// earlier attempt used, either can hide the transfer that attempt committed: the send stays in doubt until Spark
+    /// syncs, rather than refused.
+    nonisolated static func bolt11SendFailure(_ error: Error, isReusedKey: Bool) -> Error {
+        if isReusedKey, case SdkError.InsufficientFunds = error {
+            return error
+        }
+        if isLeafSelectionFailure(error) {
+            return isReusedKey ? error : ChannelFreeRailSendRefused(reason: t("wallet__payment_failed_description"), underlying: error)
+        }
+        return sendPaymentFailure(error)
+    }
+
+    /// Sends again under the same key while Spark can't select the leaves to spend, as right after a move to Spark lands.
+    /// Spark selects them before anything reaches the operators, so a retry under the key can't pay twice. `canRetry`
+    /// is checked before each retry, which otherwise ends with the last failure.
+    nonisolated static func sendRetryingLeafSelection<T>(
+        retryDelay: Duration = .seconds(2),
+        canRetry: () -> Bool,
+        _ send: () async throws -> T
+    ) async throws -> T {
+        var retries = 0
+        while true {
+            do {
+                return try await send()
+            } catch {
+                guard isLeafSelectionFailure(error), retries < leafSelectionRetries else { throw error }
+                retries += 1
+                Logger.info("Retrying a Spark send as Spark could not select its leaves", context: "SparkManager")
+                try? await Task.sleep(for: retryDelay)
+                guard !Task.isCancelled, canRetry() else { throw error }
+            }
+        }
+    }
+
+    nonisolated static let leafSelectionRetries = 3
+
+    /// Spark fails a send with this error when it holds the balance but can't select leaves to spend, before anything
+    /// reaches the operators (`select_leaves_with_retry` in the 0.28.3 SDK's `spark-wallet/src/wallet.rs`).
+    nonisolated static func isLeafSelectionFailure(_ error: Error) -> Bool {
+        guard case let SdkError.SparkError(message) = error else { return false }
+        return message.localizedCaseInsensitiveContains("Failed to select leaves after all retries")
     }
 
     /// What a failure inside `sendPayment` means for the caller.
