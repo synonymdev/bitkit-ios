@@ -198,7 +198,7 @@ struct LnurlPayConfirm: View {
                 isLoading: hasStartedAutomaticPayment || isSubmittingPayment,
                 isSubmitted: hasStartedAutomaticPayment
             ) {
-                try await submitPayment()
+                try await submitPayment(isAutomatic: false)
             }
         }
         .navigationBarHidden(true)
@@ -223,7 +223,7 @@ struct LnurlPayConfirm: View {
         }
         hasStartedAutomaticPayment = true
         do {
-            try await submitPayment()
+            try await submitPayment(isAutomatic: true)
         } catch is CancellationError {
             navigationPath.append(.failure(SendFailureContext(
                 error: CancellationError(),
@@ -251,14 +251,25 @@ struct LnurlPayConfirm: View {
         try await operation()
     }
 
-    private func submitPayment() async throws {
+    private func submitPayment(isAutomatic: Bool) async throws {
         try await Self.withSubmissionLock(isSubmitting: $isSubmittingPayment) {
-            try await authorizeAndPerformPayment()
+            try await authorizeAndPerformPayment(isAutomatic: isAutomatic)
         }
     }
 
-    private func authorizeAndPerformPayment() async throws {
+    /// The payment a swipe started on, so a swipe never pays an amount or LNURL edited while it waited.
+    private var swipedPayment: SwipedLnurlPayment {
+        SwipedLnurlPayment(uri: app.lnurlPayData?.uri, amountSats: wallet.sendAmountSats)
+    }
+
+    private func authorizeAndPerformPayment(isAutomatic: Bool) async throws {
+        let swipe = swipedPayment
         guard await confirmSparkUpdateQuote() else { throw CancellationError() }
+        // Going Back and continuing with another amount while the update was quoted stops this swipe.
+        guard swipedPayment == swipe else {
+            Logger.info("Stopped a swipe whose amount changed while the update was quoted", context: "LnurlPayConfirm")
+            throw CancellationError()
+        }
         // The quote this swipe approved: the PIN screen reruns `.task`, which can replace `sparkUpdateQuote` meanwhile.
         let approvedUpdateQuote = sparkUpdateQuote
 
@@ -305,7 +316,8 @@ struct LnurlPayConfirm: View {
             }
         }
 
-        try await performPayment(approvedUpdateQuote: approvedUpdateQuote)
+        guard swipedPayment == swipe else { throw CancellationError() }
+        try await performPayment(approvedUpdateQuote: approvedUpdateQuote, isAutomatic: isAutomatic)
     }
 
     private func waitForAlertDismissal() async throws -> Bool {
@@ -314,7 +326,7 @@ struct LnurlPayConfirm: View {
         }
     }
 
-    private func performPayment(approvedUpdateQuote: MoveToSparkQuote?) async throws {
+    private func performPayment(approvedUpdateQuote: MoveToSparkQuote?, isAutomatic: Bool) async throws {
         guard let lnurlPayData = app.lnurlPayData else {
             throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing LNURL pay data"])
         }
@@ -453,6 +465,13 @@ struct LnurlPayConfirm: View {
                     contactPaymentContext, app: app, manager: paykitPaymentRequestManager,
                     isCurrentSend: { Self.isCurrentRefusedSend(uri: lnurlPayData.uri, currentUri: app.lnurlPayData?.uri) }
                 ) else { return }
+                if isAutomatic {
+                    // As for an invoice: the first subscription payment waits for a swipe on the new fee.
+                    Logger.info("Opening manual confirmation for first subscription payment: update fee", context: "LnurlPayConfirm")
+                    needsUpdateConfirmation = true
+                    hasStartedAutomaticPayment = false
+                    return
+                }
                 throw CancellationError()
             }
             Logger.error("LNURL payment failed: \(error)")
@@ -519,4 +538,10 @@ struct LnurlPayConfirm: View {
             throw PaykitPaymentRequestError.amountMismatch
         }
     }
+}
+
+/// The LNURL and amount a swipe on LNURL Confirm started on.
+struct SwipedLnurlPayment: Equatable {
+    let uri: String?
+    let amountSats: UInt64?
 }

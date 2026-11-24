@@ -580,6 +580,7 @@ final class MoveToSparkManager {
     private func payOverChannels(
         _ quote: MoveToSparkQuote,
         wallet: WalletViewModel,
+        beforeSubmission: @escaping () throws -> Void = {},
         onTimeout: @escaping @MainActor () -> Void = {},
         onLateFailure: @escaping @MainActor () -> Void = {},
         onLateSuccess: @escaping @MainActor (WalletViewModel.SettledLightningPayment) -> Void = { _ in }
@@ -593,6 +594,7 @@ final class MoveToSparkManager {
                 bolt11: quote.invoice,
                 sats: quote.amountSats,
                 maxFeeMsat: MoveToSparkMath.feeCapMsat(feeSats: quote.feeSats),
+                beforeSubmission: beforeSubmission,
                 onTimeout: onTimeout,
                 onLateFailure: onLateFailure,
                 onLateSuccess: onLateSuccess
@@ -676,6 +678,8 @@ final class MoveToSparkManager {
         let settled = try await payOverChannels(
             quote,
             wallet: wallet,
+            // Checked again at submission, after the payment-list read and any earlier move's wait.
+            beforeSubmission: { try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline) },
             onLateSuccess: { [weak self, weak wallet, weak transfer] _ in
                 guard let self, let wallet, let transfer else { return }
                 closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)

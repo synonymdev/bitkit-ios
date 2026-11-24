@@ -1231,6 +1231,7 @@ class WalletViewModel: ObservableObject {
         sats: UInt64,
         maxFeeMsat: UInt64,
         timeout: Duration = .seconds(120),
+        beforeSubmission: @escaping () throws -> Void = {},
         onTimeout: @escaping @MainActor () -> Void = {},
         onLateFailure: @escaping @MainActor () -> Void = {},
         onLateSuccess: @escaping @MainActor (SettledLightningPayment) -> Void = { _ in }
@@ -1248,7 +1249,13 @@ class WalletViewModel: ObservableObject {
         moveEventSinks[listenerId] = sink
         let id: String
         do {
-            id = try await String(lightningService.send(bolt11: bolt11, sats: sats, params: params, channelsOnly: true))
+            id = try await String(lightningService.send(
+                bolt11: bolt11,
+                sats: sats,
+                params: params,
+                channelsOnly: true,
+                beforeSubmission: beforeSubmission
+            ))
         } catch {
             removeOnEvent(id: listenerId)
             moveEventSinks.removeValue(forKey: listenerId)
