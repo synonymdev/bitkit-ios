@@ -189,13 +189,17 @@ private final class QRCodeScannerViewController: UIViewController, AVCaptureVide
 private struct ScannerCornerButtons: View {
     @Binding var isTorchOn: Bool
     let onImageSelection: (PhotosPickerItem?) async -> Void
+    /// True while the photo picker is open.
+    @Binding var isPickingPhoto: Bool
 
     @State private var selectedItem: PhotosPickerItem?
 
     var body: some View {
         GeometryReader { _ in
             HStack {
-                PhotosPicker(selection: $selectedItem, matching: .images) {
+                Button {
+                    isPickingPhoto = true
+                } label: {
                     Image("picture")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -205,6 +209,7 @@ private struct ScannerCornerButtons: View {
                         .background(Color.white16)
                         .clipShape(Circle())
                 }
+                .photosPicker(isPresented: $isPickingPhoto, selection: $selectedItem, matching: .images)
                 .onChange(of: selectedItem) { _, item in
                     Task { await onImageSelection(item) }
                 }
@@ -346,6 +351,8 @@ struct Scanner: View {
     var isNearbyPaused = false
 
     @State private var isTorchOn = false
+    /// The photo picker covers the scanner too: a Bluetooth request must not open Send behind it.
+    @State private var isPickingPhoto = false
     @State private var nearby = NearbyPaymentScanner()
 
     private var isPaymentScanner: Bool {
@@ -381,7 +388,8 @@ struct Scanner: View {
                     isTorchOn: $isTorchOn,
                     onImageSelection: { item in
                         await onImageSelection(item)
-                    }
+                    },
+                    isPickingPhoto: $isPickingPhoto
                 )
 
                 if isPaymentScanner {
@@ -427,7 +435,7 @@ struct Scanner: View {
                 nearby.stop()
             }
         }
-        .onChange(of: isNearbyPaused) { _, isPaused in
+        .onChange(of: isNearbyHeld) { _, isPaused in
             if isPaused {
                 nearby.stop()
             } else {
@@ -436,8 +444,12 @@ struct Scanner: View {
         }
     }
 
+    private var isNearbyHeld: Bool {
+        isNearbyPaused || isPickingPhoto
+    }
+
     private func startNearbyScanning() {
-        guard let onNearbyRequest, !isNearbyPaused, scenePhase == .active else { return }
+        guard let onNearbyRequest, !isNearbyHeld, scenePhase == .active else { return }
         nearby.start(onRequest: onNearbyRequest)
     }
 }
