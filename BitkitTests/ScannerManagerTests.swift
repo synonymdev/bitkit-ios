@@ -438,6 +438,66 @@ extension ScannerManagerTests {
         }
     }
 
+    func testCameraScanFromBeforeALockDoesNotRoute() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        sheets.showSheet(.scanner)
+        let started = expectation(description: "Lookup suspended")
+        var continuation: CheckedContinuation<BitkitCore.Scanner, Error>?
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { _ in
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        let scan = Task { await scanner.handleScan(paymentURI, context: .main) }
+        await fulfillment(of: [started], timeout: 2)
+
+        // The app locks while the lookup runs, and the payer unlocks before it returns.
+        scanner.invalidateScansForAppLock()
+        try XCTUnwrap(continuation).resume(returning: decoded)
+        await scan.value
+
+        XCTAssertNil(app.scannedOnchainInvoice, "A scan from before the lock must not open Send after the unlock")
+    }
+
+    func testSendScanFromBeforeALockDoesNotRoute() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        let started = expectation(description: "Lookup suspended")
+        var continuation: CheckedContinuation<BitkitCore.Scanner, Error>?
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { _ in
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        var routes: [SendRoute?] = []
+        func record(_ route: SendRoute?) {
+            routes.append(route)
+        }
+        let scan = Task { await scanner.handleSendScan(paymentURI, completion: record) }
+        await fulfillment(of: [started], timeout: 2)
+
+        scanner.invalidateScansForAppLock()
+        try XCTUnwrap(continuation).resume(returning: decoded)
+        await scan.value
+
+        XCTAssertTrue(routes.allSatisfy { $0 == nil }, "A scan from before the lock must not route after the unlock")
+        XCTAssertNil(app.scannedOnchainInvoice)
+    }
+
     func testNearbyRequestWithARequiredParameterIsRefused() async {
         let required = "\(paymentURI)?amount=0.001&REQ-POP=callback%3a"
         XCTAssertFalse(ScannerManager.isNearbyPaymentRequest(required))

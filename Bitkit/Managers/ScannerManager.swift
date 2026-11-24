@@ -78,7 +78,9 @@ class ScannerManager: ObservableObject {
         guard isCurrent(), beginUserScan() else { return }
         defer { isHandlingScan = false }
 
-        await processScan(uri, context: context, isCurrent: isCurrent)
+        // A lookup can outlast a PIN lock; its result must not route, or choose QuickPay, after the unlock.
+        let isBeforeLock = lockCheck()
+        await processScan(uri, context: context, isCurrent: { isCurrent() && isBeforeLock() })
     }
 
     private func processScan(
@@ -220,7 +222,8 @@ class ScannerManager: ObservableObject {
         guard isCurrent(), beginUserScan() else { return }
         defer { isHandlingScan = false }
 
-        await processSendScan(uri, scope: scope, isCurrent: isCurrent, completion: completion)
+        let isBeforeLock = lockCheck()
+        await processSendScan(uri, scope: scope, isCurrent: { isCurrent() && isBeforeLock() }, completion: completion)
     }
 
     private func processSendScan(
@@ -620,6 +623,14 @@ class ScannerManager: ObservableObject {
         pendingImageScans[id] = isCurrent
         defer { pendingImageScans[id] = nil }
         return try await decode()
+    }
+
+    /// True until the app locks behind the PIN after this call.
+    private func lockCheck() -> () -> Bool {
+        let lockGeneration = lockGeneration
+        return { [weak self] in
+            self?.lockGeneration == lockGeneration
+        }
     }
 
     /// True while the sheet and navigation path shown when this is called are still shown, without having left them.
