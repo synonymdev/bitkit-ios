@@ -3211,6 +3211,7 @@ private struct ConfirmSwipeLockModifier: ViewModifier {
     @Binding var lock: ConfirmSwipeLock
     let isSubmittingPayment: Bool
     let onLockChange: (Bool) -> Void
+    @State private var isHolding = false
 
     private var isLocked: Bool {
         lock.isLocked(isSubmittingPayment: isSubmittingPayment)
@@ -3231,6 +3232,9 @@ private struct ConfirmSwipeLockModifier: ViewModifier {
     }
 
     private func hold(_ isLocked: Bool) {
+        // Only the screen holding the sheet frees it: the next confirm may already hold it.
+        guard isLocked || isHolding else { return }
+        isHolding = isLocked
         SwipeBackState.isHeldByConfirmSwipe = isLocked
         onLockChange(isLocked)
     }

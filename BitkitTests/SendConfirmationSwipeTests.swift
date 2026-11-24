@@ -33,7 +33,7 @@ final class SendConfirmationSwipeTests: XCTestCase {
         var lock = ConfirmSwipeLock()
         lock.begin()
         var reported: [Bool] = []
-        let confirm = Color.black.confirmSwipeLock(.constant(lock), isSubmittingPayment: false) { reported.append($0) }
+        let confirm = SwipeLockHost(lock: lock) { reported.append($0) }
         let controller = UIHostingController(rootView: AnyView(confirm))
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         window.windowScene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
@@ -432,5 +432,14 @@ final class SendConfirmationSwipeTests: XCTestCase {
                 }
             }
         }
+    }
+}
+
+private struct SwipeLockHost: View {
+    @State var lock: ConfirmSwipeLock
+    let onLockChange: (Bool) -> Void
+
+    var body: some View {
+        Color.black.confirmSwipeLock($lock, isSubmittingPayment: false, onLockChange: onLockChange)
     }
 }
