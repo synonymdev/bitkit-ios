@@ -172,6 +172,8 @@ struct SparkConnectionDetailView: View {
                             detailRow(label: t("lightning__receiving_label"), value: t("lightning__spark_receiving_unlimited"))
                         }
                         amountRow(label: t("lightning__spending_label"), amount: spark.shownBalanceSats)
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("SparkBalance")
                     }
 
                     if !spark.deposits.isEmpty {

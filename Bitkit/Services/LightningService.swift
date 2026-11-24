@@ -106,7 +106,19 @@ protocol NodeLifecycleService: AnyObject {
 class LightningService: NodeLifecycleService {
     private static let watchOnlyAccountHighestPreRevealedAddressIndex: UInt32 = 999
 
-    private var node: Node?
+    private var configuredNode: (node: Node, electrumServerUrl: String)?
+    private var node: Node? {
+        setupLock.withLock { configuredNode?.node }
+    }
+
+    var activeElectrumServerUrl: String? {
+        setupLock.withLock { configuredNode?.electrumServerUrl }
+    }
+
+    private func releaseNode() {
+        setupLock.withLock { configuredNode = nil }
+    }
+
     private let beforeNodeStopLock = NSLock()
     private var beforeNodeStopAction: (() async -> Void)?
     /// Runs before the node stops, while its wallet can still release what was prepared on it.
@@ -207,7 +219,7 @@ class LightningService: NodeLifecycleService {
     ) async throws {
         // Guard against concurrent setup calls
         let shouldProceed: Bool = setupLock.withLock {
-            guard !isSettingUp && node == nil else {
+            guard !isSettingUp && configuredNode == nil else {
                 Logger.debug("Node already setting up or already set up, skipping")
                 return false
             }
@@ -296,12 +308,13 @@ class LightningService: NodeLifecycleService {
         }
 
         try await ServiceQueue.background(.ldk) {
-            self.node = try builder.buildWithVssStore(
+            let node = try builder.buildWithVssStore(
                 vssUrl: vssUrl,
                 storeId: storeId,
                 lnurlAuthServerUrl: lnurlAuthServerUrl,
                 fixedHeaders: [:]
             )
+            self.setupLock.withLock { self.configuredNode = (node, resolvedElectrumServerUrl) }
         }
         shouldReleaseLightningLock = false
 
@@ -322,7 +335,7 @@ class LightningService: NodeLifecycleService {
             } catch {
                 Logger.debug("Node was already stopped or failed to stop: \(error)")
                 // Clear the node reference anyway
-                node = nil
+                releaseNode()
                 try? StateLocker.unlock(.lightning)
             }
         }
@@ -357,7 +370,7 @@ class LightningService: NodeLifecycleService {
                 try await stop()
             } catch {
                 Logger.error("Failed to stop node during recovery: \(error)")
-                node = nil
+                releaseNode()
                 try? StateLocker.unlock(.lightning)
             }
         }
@@ -439,7 +452,7 @@ class LightningService: NodeLifecycleService {
         try await ServiceQueue.background(.ldk) {
             try Self.stopReleasingFinishedNode(node.stop)
         }
-        self.node = nil
+        releaseNode()
 
         if clearEventCallback {
             self.clearEventCallback()

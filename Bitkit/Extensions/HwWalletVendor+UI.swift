@@ -18,6 +18,14 @@ extension HwWalletVendor {
         }
     }
 
+    /// The angled device on the transfer to spending sign screen, partly behind its button.
+    var transferSignImageName: String {
+        switch self {
+        case .trezor: "trezor-angled"
+        case .blockstream: "jade-card"
+        }
+    }
+
     var modelName: String {
         switch self {
         case .trezor: t("hardware__device_model_trezor")

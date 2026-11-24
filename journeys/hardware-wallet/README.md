@@ -134,7 +134,7 @@ Walked as far as a simulator allows, against a wallet with two Trezor identities
 - Transfer: `HardwareTransferToSpending`, `HardwareTransferAmount`,
   `HardwareTransferAmountAvailable`/`Quarter`/`Max`/`Continue`/`Retry`,
   over-max toast `HardwareTransferAmountExceededToast`, `HardwareTransferSign`,
-  `HardwareTransferSignLearnMore`, speed rows `SpendingConfirmInstant`/`SpendingConfirmLater`,
+  Spark deposit address `SpendingConfirmAddress`, speed rows `SpendingConfirmInstant`/`SpendingConfirmLater`,
   `HardwareTransferOpenTrezorConnect`, `HardwareTransferSigned`,
   `HwTransferPassphraseSheet`/`Input`/`Continue`/`Cancel`.
 - Activity: `ActivityShowAll` (home only). Rows use **two different schemes** — `ActivityShort-<index>`

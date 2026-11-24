@@ -24,6 +24,29 @@ final class SparkConfigTests: XCTestCase {
 
     func testChainServiceIsBitkitElectrsOnMainnetOnly() {
         XCTAssertEqual(Env.sparkChainServiceUrl(for: .bitcoin), "https://bitkit.to/electrs")
-        XCTAssertNil(Env.sparkChainServiceUrl(for: .regtest))
+        XCTAssertNil(Env.sparkChainServiceUrl(for: .regtest, localRegtestURL: nil, configuredURL: nil))
+    }
+
+    func testLocalChainServiceTakesPrecedenceOnlyOnRegtest() {
+        let local = "http://127.0.0.1:23090/api"
+        let configured = "https://example.com/electrs"
+        XCTAssertEqual(Env.sparkChainServiceUrl(for: .regtest, localRegtestURL: local, configuredURL: configured), local)
+        XCTAssertEqual(Env.sparkChainServiceUrl(for: .regtest, localRegtestURL: nil, configuredURL: configured), configured)
+        XCTAssertEqual(Env.sparkChainServiceUrl(for: .bitcoin, localRegtestURL: local, configuredURL: configured), "https://bitkit.to/electrs")
+        XCTAssertEqual(Env.sparkChainServiceUrl(for: .signet, localRegtestURL: local, configuredURL: configured), configured)
+    }
+
+    func testLocalSparkSharesSavingsOnlyOnTheFixtureElectrumEndpoint() {
+        let spark = "http://127.0.0.1:23090/api"
+        let electrum = "tcp://127.0.0.1:60001"
+        func shares(_ sparkURL: String, _ node: String?, _ hardware: String) -> Bool {
+            Env.sharesLocalSparkChain(sparkURL: sparkURL, nodeElectrumURL: node, hardwareElectrumURL: hardware, fixtureHost: "127.0.0.1")
+        }
+        XCTAssertTrue(shares(spark, electrum, electrum))
+        XCTAssertFalse(shares(spark, nil, electrum))
+        XCTAssertFalse(shares(spark, "tcp://regtest.example:60001", electrum))
+        XCTAssertFalse(shares(spark, electrum, "tcp://regtest.example:60001"))
+        XCTAssertFalse(shares(spark, "tcp://127.0.0.1:60002", electrum))
+        XCTAssertFalse(shares("http://127.0.0.1:23091/api", electrum, electrum))
     }
 }
