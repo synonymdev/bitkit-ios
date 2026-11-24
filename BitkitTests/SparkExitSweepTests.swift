@@ -931,9 +931,17 @@ final class SparkExitSweepTests: XCTestCase {
             offset += 34
             XCTAssertEqual(signature.last, 0x01, "SIGHASH_ALL")
 
-            let preimage = le32(2) + dsha(outpoints.flatMap { $0 }) + dsha(Array(repeating: sequence, count: utxos.count).flatMap { $0 })
-                + outpoints[i] + [0x19, 0x76, 0xA9, 0x14] + pubkeyHash + [0x88, 0xAC] + le64(utxo.value) + sequence
-                + dsha(outputs) + le32(0) + le32(1)
+            let scriptCode: [UInt8] = [0x19, 0x76, 0xA9, 0x14] + pubkeyHash + [0x88, 0xAC]
+            var preimage = le32(2)
+            preimage.append(contentsOf: dsha(outpoints.flatMap { $0 }))
+            preimage.append(contentsOf: dsha(Array(repeating: sequence, count: utxos.count).flatMap { $0 }))
+            preimage.append(contentsOf: outpoints[i])
+            preimage.append(contentsOf: scriptCode)
+            preimage.append(contentsOf: le64(utxo.value))
+            preimage.append(contentsOf: sequence)
+            preimage.append(contentsOf: dsha(outputs))
+            preimage.append(contentsOf: le32(0))
+            preimage.append(contentsOf: le32(1))
             let digest = dsha(preimage)
             var parsed = secp256k1_ecdsa_signature()
             let der = Array(signature.dropLast())
