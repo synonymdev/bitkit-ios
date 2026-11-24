@@ -447,7 +447,6 @@
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit nie mógł odczytać zapisanego postępu tego transferu, więc odbudowuje go z łańcucha.";
 "lightning__spark_exit__leftover_rejected" = "{amount} niewykorzystanych opłat awaryjnych nie udało się wysłać i pozostaje pod adresem {address}, ścieżka derywacji {path}.";
 "lightning__spark_exit__notification_not_moving" = "Twój wymuszony transfer nie postępuje. Otwórz Bitkit, aby sprawdzić dlaczego.";
-"lightning__spark_exit__note_notifications_button" = "Włącz powiadomienia";
 "lightning__spark_exit__waiting_operators" = "{amount} przeniesione on-chain przez operatorów Spark czeka, aż je wydadzą. Bitkit będzie pytać ponownie przez maksymalnie tydzień.";
 "lightning__spark_exit__fee_rose" = "Opłaty sieciowe wzrosły powyżej opłaty tego transferu. Może on zwolnić.";
 "lightning__spark_exit__fee_bump_button" = "Zapłać wyższą opłatę";

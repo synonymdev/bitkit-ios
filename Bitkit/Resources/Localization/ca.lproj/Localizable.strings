@@ -432,7 +432,6 @@
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit no ha pogut llegir el progrés desat d'aquesta transferència, així que el reconstrueix a partir de la cadena.";
 "lightning__spark_exit__leftover_rejected" = "{amount} de comissions d'emergència no utilitzades no s'han pogut enviar i es queden a {address}, camí de derivació {path}.";
 "lightning__spark_exit__notification_not_moving" = "La teva transferència forçosa no avança. Obre Bitkit per saber per què.";
-"lightning__spark_exit__note_notifications_button" = "Activa les notificacions";
 "lightning__spark_exit__waiting_operators" = "{amount} que els operadors de Spark han mogut on-chain espera que l'alliberin. Bitkit ho torna a demanar durant una setmana com a màxim.";
 "lightning__spark_exit__fee_rose" = "Les comissions de xarxa han superat la comissió d'aquesta transferència. Pot alentir-se.";
 "lightning__spark_exit__fee_bump_button" = "Paga una comissió més alta";

@@ -448,7 +448,6 @@
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit n'a pas pu lire la progression enregistrée de ce transfert, il la reconstruit donc à partir de la chaîne.";
 "lightning__spark_exit__leftover_rejected" = "{amount} de frais d'urgence inutilisés n'a pas pu être envoyé et reste à {address}, chemin de dérivation {path}.";
 "lightning__spark_exit__notification_not_moving" = "Votre transfert forcé n'avance pas. Ouvrez Bitkit pour savoir pourquoi.";
-"lightning__spark_exit__note_notifications_button" = "Activer les notifications";
 "lightning__spark_exit__waiting_operators" = "{amount} que les opérateurs Spark ont déplacé on-chain attend qu'ils le libèrent. Bitkit redemande pendant une semaine au maximum.";
 "lightning__spark_exit__fee_rose" = "Les frais de réseau ont dépassé ceux de ce transfert. Il peut ralentir.";
 "lightning__spark_exit__fee_bump_button" = "Payer des frais plus élevés";

@@ -443,7 +443,6 @@
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit не смог прочитать сохранённый прогресс этого перевода, поэтому восстанавливает его по блокчейну.";
 "lightning__spark_exit__leftover_rejected" = "Неиспользованные экстренные комиссии в размере {amount} не удалось отправить, они остаются на {address}, путь деривации {path}.";
 "lightning__spark_exit__notification_not_moving" = "Ваш принудительный перевод не продвигается. Откройте Bitkit, чтобы узнать причину.";
-"lightning__spark_exit__note_notifications_button" = "Включить уведомления";
 "lightning__spark_exit__waiting_operators" = "{amount}, которые операторы Spark перевели ончейн, ждут, пока операторы их выдадут. Bitkit будет запрашивать снова в течение недели.";
 "lightning__spark_exit__fee_rose" = "Сетевые комиссии превысили комиссию этого перевода. Он может замедлиться.";
 "lightning__spark_exit__fee_bump_button" = "Заплатить больше";

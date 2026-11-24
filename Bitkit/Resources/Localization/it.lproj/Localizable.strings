@@ -442,7 +442,6 @@
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit non è riuscito a leggere l'avanzamento salvato di questo trasferimento, quindi lo ricostruisce dalla blockchain.";
 "lightning__spark_exit__leftover_rejected" = "{amount} di commissioni di emergenza non utilizzate non ha potuto essere inviato e resta su {address}, percorso di derivazione {path}.";
 "lightning__spark_exit__notification_not_moving" = "Il tuo trasferimento forzato non avanza. Apri Bitkit per scoprire perché.";
-"lightning__spark_exit__note_notifications_button" = "Attiva le notifiche";
 "lightning__spark_exit__waiting_operators" = "{amount} che gli operatori Spark hanno spostato on-chain attende che lo rilascino. Bitkit lo richiede per un massimo di una settimana.";
 "lightning__spark_exit__fee_rose" = "Le commissioni di rete hanno superato quella di questo trasferimento. Potrebbe rallentare.";
 "lightning__spark_exit__fee_bump_button" = "Paga una commissione più alta";
