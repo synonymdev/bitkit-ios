@@ -17,6 +17,18 @@ final class MoveToSparkLateOutcomeTests: XCTestCase {
         XCTAssertFalse(manager.keepsMoveForItsResult)
     }
 
+    @MainActor
+    func testOnlyAWipeStopsClosingTheChannelsAMoveEmptied() {
+        let manager = MoveToSparkManager()
+        let wipe = manager.wipes
+        _ = manager.beginMove()
+        manager.resetForWipe()
+        XCTAssertEqual(manager.wipes, wipe + 1)
+        manager.reset()
+        _ = manager.beginMove()
+        XCTAssertEqual(manager.wipes, wipe + 1, "Closing the modal or a new move stopped the closes of an earlier move")
+    }
+
     func testTheInFlightMoveIsTheOneOnScreen() {
         XCTAssertTrue(MoveToSparkManager.showsInFlightMove(.inFlight(amountSats: 40000), generation: 3, moveGeneration: 3))
     }

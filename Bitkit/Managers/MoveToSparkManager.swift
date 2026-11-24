@@ -515,6 +515,8 @@ final class MoveToSparkManager {
     private var keepsOutcome = false
     /// Counts quotes, moves and resets; a quote writes its result only while it is still the latest.
     private(set) var generation = 0
+    /// Counts wipes only, so work that outlives a quote or a closed modal still stops at a wipe.
+    private(set) var wipes = 0
     private var isQuoting = false
     /// A move that has not settled yet; closing the modal keeps it, so it is never quoted over.
     private var isMoveInFlight = false
@@ -552,6 +554,7 @@ final class MoveToSparkManager {
     /// and late outcome leave the screen of the next wallet alone.
     func resetForWipe() {
         generation += 1
+        wipes += 1
         isQuoting = false
         keepsOutcome = false
         isMoveInFlight = false
@@ -592,6 +595,7 @@ final class MoveToSparkManager {
     func move(wallet: WalletViewModel, transfer: TransferViewModel) async {
         guard case let .confirm(quote, isMoving) = state, !isMoving else { return }
         let channelsBefore = wallet.channels ?? []
+        let wipe = wipes
         let moveGeneration = beginMove()
         state = .confirm(quote, isMoving: true)
         let paymentsBefore = await LightningService.shared.listPayments()
@@ -615,7 +619,7 @@ final class MoveToSparkManager {
                     guard let self, let wallet else { return }
                     // Earlier parts may have emptied channels even when this last one failed; a wiped wallet's are gone.
                     if movedSats > 0, moveGeneration == generation, let transfer {
-                        closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
+                        closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wipe: wipe, wallet: wallet, transfer: transfer)
                     }
                     Task {
                         await self.lateFailure(movedSats: movedSats, feeSats: feeSats, moveGeneration: moveGeneration, wallet: wallet)
@@ -624,7 +628,7 @@ final class MoveToSparkManager {
                 onLateSuccess: { [weak self, weak wallet, weak transfer] movedSats, feeSats in
                     guard let self, let wallet else { return }
                     if moveGeneration == generation, let transfer {
-                        closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
+                        closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wipe: wipe, wallet: wallet, transfer: transfer)
                     }
                     Task {
                         await self.lateSuccess(amountSats: movedSats, feeSats: feeSats, moveGeneration: moveGeneration, wallet: wallet)
@@ -637,7 +641,7 @@ final class MoveToSparkManager {
             }
             // A wipe during the move leaves the next wallet's channels alone.
             if moveGeneration == generation {
-                closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
+                closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wipe: wipe, wallet: wallet, transfer: transfer)
             }
             await finishMove(movedSats: movedSats, feeSats: feeSats, moveGeneration: moveGeneration, wallet: wallet)
         } catch let MoveToSparkError.feeRose(movedSats, feeSats) {
@@ -645,7 +649,7 @@ final class MoveToSparkManager {
             Logger.info("Stopped a move to show a fee that rose, '\(movedSats)' sats moved", context: "MoveToSpark")
             guard moveGeneration == generation else { return }
             if movedSats > 0 {
-                closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
+                closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wipe: wipe, wallet: wallet, transfer: transfer)
             }
             isMoveInFlight = false
             await self.quote(wallet: wallet, afterMove: movedSats > 0 ? (movedSats, feeSats) : nil)
@@ -968,6 +972,7 @@ final class MoveToSparkManager {
         // A request that expired while the update was quoted moves nothing, as its payment would be refused.
         try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)
         let channelsBefore = wallet.channels ?? []
+        let wipe = wipes
         let paymentsBefore = await LightningService.shared.listPayments()
         let settled = try await payOverChannels(
             quote,
@@ -976,12 +981,12 @@ final class MoveToSparkManager {
             beforeSubmission: { try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline) },
             onLateSuccess: { [weak self, weak wallet, weak transfer] _ in
                 guard let self, let wallet, let transfer else { return }
-                closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
+                closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wipe: wipe, wallet: wallet, transfer: transfer)
             }
         )
         // Still in flight: the funds reach Spark or return to the channels on their own.
         guard settled != nil else { throw MoveToSparkError.updateUnsettled }
-        closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wallet: wallet, transfer: transfer)
+        closeEmptied(before: channelsBefore, paymentsBefore: paymentsBefore, wipe: wipe, wallet: wallet, transfer: transfer)
         try await waitForSpark(toSend: amountSats)
     }
 
@@ -1005,15 +1010,16 @@ final class MoveToSparkManager {
     }
 
     /// Once a move settled, closes each channel it emptied, with the usual transfer to Savings; a close that fails leaves
-    /// its channel for a manual close. Runs on its own, so it also finishes after the modal closes.
+    /// its channel for a manual close. Runs on its own, so it also finishes after the modal closes; a wipe since `wipe`,
+    /// the wipe count when the move started, leaves the next wallet's channels open.
     func closeEmptied(
         before: [ChannelDetails],
         paymentsBefore moveStart: [PaymentDetails]?,
+        wipe: Int,
         wallet: WalletViewModel,
         transfer: TransferViewModel
     ) {
         Task { @MainActor in
-            let started = generation
             // The channels are read between two reads of the payments, so a payment that starts or ends meanwhile
             // leaves no send limit it lowered in the channels read.
             var emptied = await Self.readEmptied(before: before, moveStart: moveStart, wallet: wallet)
@@ -1028,7 +1034,7 @@ final class MoveToSparkManager {
             }
             emptied.removeAll { !MoveToSparkMath.isEmptiedForGood($0, previous: previous) }
             // A wipe during the wait leaves the next wallet's channels open.
-            guard !emptied.isEmpty, generation == started else { return }
+            guard !emptied.isEmpty, wipes == wipe else { return }
             do {
                 let failed = try await transfer.closeChannels(channels: emptied)
                 Logger.info("Closed '\(emptied.count - failed.count)' of '\(emptied.count)' channels a move emptied", context: "MoveToSpark")
