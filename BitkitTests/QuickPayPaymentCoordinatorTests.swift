@@ -272,6 +272,55 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertNil(store.record(matching: invoiceHash))
     }
 
+    func testLockStopAfterARescanOpensReviewOnTheRescannedScreen() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let app = appWithInvoice
+        let invoice = app.scannedLightningInvoice
+        app.noteQuickPayChosen()
+        let started = expectation(description: "Submission waiting")
+        let reviewed = expectation(description: "Rescanned screen opens the review")
+        var continuation: CheckedContinuation<Void, Never>?
+        func waitToSubmit() async {
+            await withCheckedContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        }
+        let coordinator = QuickPayPaymentCoordinator(store: store, submit: { _, beforeSubmission in
+            await waitToSubmit()
+            try beforeSubmission()
+            return invoiceHash
+        }, listRows: { [] })
+        defer { coordinator.detach() }
+        let wallet = WalletViewModel()
+        let currency = CurrencyViewModel(currencyService: OfflineCurrencyService())
+        let firstSession = QuickPayPaymentCoordinator.SessionID(
+            presentationID: UUID(), sendStateGeneration: app.sendStateGeneration, attempt: 0
+        )
+        coordinator.pay(app: app, wallet: wallet, settings: settings, currency: currency,
+                        presentation: presentation(onRoute: { _ in }, onConfirm: { _ in XCTFail("Retired screen must not navigate") }),
+                        sessionID: firstSession)
+        await fulfillment(of: [started], timeout: 2)
+
+        // The payer rescans the same invoice while its payment waits: a new send attaches to the open payment.
+        app.resetSendState()
+        app.scannedLightningInvoice = invoice
+        app.noteQuickPayChosen()
+        let rescanSession = QuickPayPaymentCoordinator.SessionID(
+            presentationID: UUID(), sendStateGeneration: app.sendStateGeneration, attempt: 0
+        )
+        coordinator.pay(app: app, wallet: wallet, settings: settings, currency: currency,
+                        presentation: presentation(onRoute: { _ in }, onConfirm: { _ in reviewed.fulfill() }),
+                        sessionID: rescanSession)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        app.noteAppLocked()
+        try XCTUnwrap(continuation).resume()
+
+        await fulfillment(of: [reviewed], timeout: 2)
+        XCTAssertFalse(app.isQuickPayActive)
+        XCTAssertNil(store.record(matching: invoiceHash))
+    }
+
     func testLockStopAfterAnotherSendTookOverLeavesItAlone() async throws {
         let invoiceHash = try Self.invoiceHash
         let app = appWithInvoice

@@ -22,6 +22,9 @@ final class QuickPayPaymentCoordinator {
         let invoiceHash: String
         let bolt11: String
         var presentation: Presentation?
+        /// The send state that owns the screen in `presentation`: the run that started the payment, or a rescan that
+        /// attached to it since.
+        var ownerSendStateGeneration: UUID?
         var paymentId: String?
         var dispatched = false
         var emitted = false
@@ -313,6 +316,7 @@ final class QuickPayPaymentCoordinator {
         if let existing = operations[invoiceHash] {
             currentOperation = existing
             existing.presentation = presentation
+            existing.ownerSendStateGeneration = sendStateGeneration
             if existing.emitted {
                 replayPending(existing)
             } else if !existing.runActive {
@@ -343,6 +347,7 @@ final class QuickPayPaymentCoordinator {
 
         let amountSats = wallet.sendAmountSats ?? 0
         let op = InFlightOp(invoiceHash: invoiceHash, bolt11: bolt11, presentation: presentation)
+        op.ownerSendStateGeneration = sendStateGeneration
         op.runActive = true
         register(op)
         defer { op.runActive = false }
@@ -388,11 +393,11 @@ final class QuickPayPaymentCoordinator {
             }
         } catch where Self.isStoppedBeforeSubmission(error) {
             // The app locked while the payment waited to be submitted. Nothing left, so the payer reviews it on the
-            // QuickPay screen attached now, and only while this send still owns the send state.
+            // QuickPay screen attached now, and only while the send that attached it still owns the send state.
             let attached = op.presentation
             store.releaseBound(paymentHash: invoiceHash)
             removeOp(op)
-            guard let attached, app.sendStateGeneration == sendStateGeneration else { return }
+            guard let attached, app.sendStateGeneration == op.ownerSendStateGeneration else { return }
             app.resetQuickPay()
             attached.replaceQuickPay(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
             return
