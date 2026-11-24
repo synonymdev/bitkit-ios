@@ -434,8 +434,6 @@
 "lightning__spark_exit__leftover_swept" = "{amount} de taxas de emergência não utilizadas foi enviado para a poupança.";
 "lightning__spark_exit__leftover_sending" = "A enviar {amount} de taxas de emergência não utilizadas para a poupança.";
 "lightning__spark_exit__leftover_dust" = "{amount} de taxas de emergência não utilizadas é demasiado pequeno para enviar e fica em {address}, caminho de derivação {path}.";
-"lightning__spark_exit__earlier_addresses" = "Endereços de saída anteriores";
-"lightning__spark_exit__earlier_addresses_text" = "As saídas de emergência anteriores usaram estes endereços de financiamento. As moedas deixadas num deles continuam a ser suas: gaste-as com a sua frase de recuperação e o respetivo caminho de derivação.";
 "lightning__spark_exit__earlier_path" = "Caminho de derivação";
 "lightning__spark_exit__lost_leaves" = "{amount} foi reclamado on-chain por um antigo dono destes fundos e não pode ser recuperado.";
 "lightning__spark_exit__notification_lost" = "{amount} da sua transferência forçada não pode ser recuperado. Abra a Bitkit para ver porquê.";
@@ -459,7 +457,6 @@
 "lightning__spark_exit__rebuilt_from_chain" = "A Bitkit não conseguiu ler o progresso guardado desta transferência, por isso reconstrói-o a partir da blockchain.";
 "lightning__spark_exit__leftover_rejected" = "{amount} de taxas de emergência não utilizadas não pôde ser enviado e fica em {address}, caminho de derivação {path}.";
 "lightning__spark_exit__notification_not_moving" = "A sua transferência forçada não está a avançar. Abra a Bitkit para ver porquê.";
-"lightning__spark_exit__note_notifications_button" = "Ativar notificações";
 "lightning__spark_exit__waiting_operators" = "{amount} que os operadores da Spark moveram on-chain aguarda que o libertem. A Bitkit volta a pedir durante até uma semana.";
 "lightning__spark_exit__fee_rose" = "As taxas de rede subiram acima da taxa desta transferência. Pode ficar mais lenta.";
 "lightning__spark_exit__fee_bump_button" = "Pagar uma taxa mais alta";

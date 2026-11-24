@@ -382,8 +382,6 @@
 "lightning__spark_exit__leftover_swept" = "أُرسل {amount} من رسوم الطوارئ غير المستخدمة إلى المدخرات.";
 "lightning__spark_exit__leftover_sending" = "جارٍ إرسال {amount} من رسوم الطوارئ غير المستخدمة إلى المدخرات.";
 "lightning__spark_exit__leftover_dust" = "{amount} من رسوم الطوارئ غير المستخدمة أصغر من أن يُرسل ويبقى في {address}، مسار الاشتقاق {path}.";
-"lightning__spark_exit__earlier_addresses" = "عناوين الخروج السابقة";
-"lightning__spark_exit__earlier_addresses_text" = "استخدمت عمليات الخروج الطارئ السابقة عناوين التمويل هذه. تبقى العملات المتروكة في أحدها ملكًا لك: أنفقها باستخدام عبارة الاسترداد ومسار الاشتقاق.";
 "lightning__spark_exit__earlier_path" = "مسار الاشتقاق";
 "lightning__spark_exit__lost_leaves" = "طالب مالك سابق لهذه الأموال بمبلغ {amount} على السلسلة ولا يمكن استرداده.";
 "lightning__spark_exit__notification_lost" = "لا يمكن استرداد {amount} من تحويلك القسري. افتح Bitkit لمعرفة السبب.";
@@ -407,7 +405,6 @@
 "lightning__spark_exit__rebuilt_from_chain" = "تعذّر على Bitkit قراءة التقدم المحفوظ لهذا التحويل، لذا يعيد بناءه من السلسلة.";
 "lightning__spark_exit__leftover_rejected" = "تعذّر إرسال {amount} من رسوم الطوارئ غير المستخدمة ويبقى في {address}، مسار الاشتقاق {path}.";
 "lightning__spark_exit__notification_not_moving" = "التحويل القسري لا يتقدم. افتح Bitkit لمعرفة السبب.";
-"lightning__spark_exit__note_notifications_button" = "تفعيل الإشعارات";
 "lightning__spark_exit__waiting_operators" = "{amount} الذي نقله مشغّلو Spark إلى السلسلة ينتظر أن يحرروه. يطلب Bitkit ذلك مجددًا لمدة تصل إلى أسبوع.";
 "lightning__spark_exit__fee_rose" = "ارتفعت رسوم الشبكة فوق رسوم هذا التحويل. قد يتباطأ.";
 "lightning__spark_exit__fee_bump_button" = "ادفع رسومًا أعلى";

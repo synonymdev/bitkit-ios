@@ -419,8 +419,6 @@
 "lightning__spark_exit__leftover_swept" = "{amount} de comissions d'emergència no utilitzades s'han enviat als estalvis.";
 "lightning__spark_exit__leftover_sending" = "S'estan enviant {amount} de comissions d'emergència no utilitzades als estalvis.";
 "lightning__spark_exit__leftover_dust" = "{amount} de comissions d'emergència no utilitzades són massa petits per enviar-se i es queden a {address}, camí de derivació {path}.";
-"lightning__spark_exit__earlier_addresses" = "Adreces de sortida anteriors";
-"lightning__spark_exit__earlier_addresses_text" = "Les sortides d'emergència anteriors van fer servir aquestes adreces de finançament. Les monedes que hi quedin continuen sent teves: gasta-les amb la teva frase de recuperació i el camí de derivació.";
 "lightning__spark_exit__earlier_path" = "Camí de derivació";
 "lightning__spark_exit__lost_leaves" = "Un propietari anterior d'aquests fons ha reclamat {amount} on-chain i no es pot recuperar.";
 "lightning__spark_exit__notification_lost" = "{amount} de la teva transferència forçosa no es pot recuperar. Obre Bitkit per veure'n el motiu.";
@@ -444,7 +442,6 @@
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit no ha pogut llegir el progrés desat d'aquesta transferència, així que el reconstrueix a partir de la cadena.";
 "lightning__spark_exit__leftover_rejected" = "{amount} de comissions d'emergència no utilitzades no s'han pogut enviar i es queden a {address}, camí de derivació {path}.";
 "lightning__spark_exit__notification_not_moving" = "La teva transferència forçosa no avança. Obre Bitkit per saber per què.";
-"lightning__spark_exit__note_notifications_button" = "Activa les notificacions";
 "lightning__spark_exit__waiting_operators" = "{amount} que els operadors de Spark han mogut on-chain espera que l'alliberin. Bitkit ho torna a demanar durant una setmana com a màxim.";
 "lightning__spark_exit__fee_rose" = "Les comissions de xarxa han superat la comissió d'aquesta transferència. Pot alentir-se.";
 "lightning__spark_exit__fee_bump_button" = "Paga una comissió més alta";

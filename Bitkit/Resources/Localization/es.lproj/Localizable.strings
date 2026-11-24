@@ -420,8 +420,6 @@
 "lightning__spark_exit__leftover_swept" = "Se han enviado a tus ahorros {amount} de comisiones de emergencia sin usar.";
 "lightning__spark_exit__leftover_sending" = "Enviando {amount} de comisiones de emergencia sin usar a tus ahorros.";
 "lightning__spark_exit__leftover_dust" = "{amount} de comisiones de emergencia sin usar es demasiado poco para enviarse y se queda en {address}, ruta de derivación {path}.";
-"lightning__spark_exit__earlier_addresses" = "Direcciones de salida anteriores";
-"lightning__spark_exit__earlier_addresses_text" = "Las salidas de emergencia anteriores usaron estas direcciones de fondeo. Las monedas que queden en una siguen siendo tuyas: gástalas con tu frase de recuperación y su ruta de derivación.";
 "lightning__spark_exit__earlier_path" = "Ruta de derivación";
 "lightning__spark_exit__lost_leaves" = "Un propietario anterior de estos fondos reclamó {amount} on-chain y no se puede recuperar.";
 "lightning__spark_exit__notification_lost" = "{amount} de tu transferencia forzada no se puede recuperar. Abre Bitkit para ver el motivo.";
@@ -445,7 +443,6 @@
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit no pudo leer el progreso guardado de esta transferencia, así que lo reconstruye a partir de la cadena.";
 "lightning__spark_exit__leftover_rejected" = "{amount} de comisiones de emergencia sin usar no se pudo enviar y se queda en {address}, ruta de derivación {path}.";
 "lightning__spark_exit__notification_not_moving" = "Tu transferencia forzada no avanza. Abre Bitkit para ver por qué.";
-"lightning__spark_exit__note_notifications_button" = "Activar notificaciones";
 "lightning__spark_exit__waiting_operators" = "{amount} que los operadores de Spark movieron on-chain espera a que lo liberen. Bitkit vuelve a pedirlo durante hasta una semana.";
 "lightning__spark_exit__fee_rose" = "Las comisiones de la red superaron la comisión de esta transferencia. Puede ralentizarse.";
 "lightning__spark_exit__fee_bump_button" = "Pagar una comisión más alta";

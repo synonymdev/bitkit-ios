@@ -432,8 +432,6 @@
 "lightning__spark_exit__leftover_swept" = "{amount} nicht verbrauchte Notfallgebühren wurden an dein Sparkonto gesendet.";
 "lightning__spark_exit__leftover_sending" = "{amount} nicht verbrauchte Notfallgebühren werden an dein Sparkonto gesendet.";
 "lightning__spark_exit__leftover_dust" = "{amount} nicht verbrauchte Notfallgebühren sind zu klein zum Senden und bleiben bei {address}, Ableitungspfad {path}.";
-"lightning__spark_exit__earlier_addresses" = "Frühere Ausstiegsadressen";
-"lightning__spark_exit__earlier_addresses_text" = "Frühere Notausstiege nutzten diese Finanzierungsadressen. Coins, die auf einer zurückbleiben, gehören weiterhin dir: Gib sie mit deiner Wiederherstellungsphrase und ihrem Ableitungspfad aus.";
 "lightning__spark_exit__earlier_path" = "Ableitungspfad";
 "lightning__spark_exit__lost_leaves" = "{amount} wurden von einem früheren Besitzer dieser Mittel on-chain beansprucht und können nicht wiederhergestellt werden.";
 "lightning__spark_exit__notification_lost" = "{amount} deiner forcierten Übertragung können nicht zurückgeholt werden. Öffne Bitkit, um den Grund zu sehen.";
@@ -457,7 +455,6 @@
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit konnte den gespeicherten Fortschritt dieser Übertragung nicht lesen und stellt ihn daher aus der Chain wieder her.";
 "lightning__spark_exit__leftover_rejected" = "{amount} nicht verbrauchte Notfallgebühren konnten nicht gesendet werden und bleiben bei {address}, Ableitungspfad {path}.";
 "lightning__spark_exit__notification_not_moving" = "Deine forcierte Übertragung kommt nicht voran. Öffne Bitkit, um den Grund zu sehen.";
-"lightning__spark_exit__note_notifications_button" = "Benachrichtigungen aktivieren";
 "lightning__spark_exit__waiting_operators" = "{amount}, die die Spark-Betreiber on-chain verschoben haben, warten darauf, dass sie sie freigeben. Bitkit fragt bis zu einer Woche lang erneut nach.";
 "lightning__spark_exit__fee_rose" = "Die Netzgebühren sind über die Gebühr dieser Übertragung gestiegen. Sie kann sich verlangsamen.";
 "lightning__spark_exit__fee_bump_button" = "Höhere Gebühr zahlen";

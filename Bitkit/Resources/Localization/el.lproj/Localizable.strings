@@ -406,8 +406,6 @@
 "lightning__spark_exit__leftover_swept" = "Τα {amount} αχρησιμοποίητων έκτακτων τελών στάλθηκαν στις αποταμιεύσεις.";
 "lightning__spark_exit__leftover_sending" = "Αποστολή {amount} αχρησιμοποίητων έκτακτων τελών στις αποταμιεύσεις.";
 "lightning__spark_exit__leftover_dust" = "Τα {amount} αχρησιμοποίητων έκτακτων τελών είναι πολύ μικρά για αποστολή και παραμένουν στη διεύθυνση {address}, διαδρομή παραγωγής {path}.";
-"lightning__spark_exit__earlier_addresses" = "Προηγούμενες διευθύνσεις εξόδου";
-"lightning__spark_exit__earlier_addresses_text" = "Οι προηγούμενες έξοδοι έκτακτης ανάγκης χρησιμοποίησαν αυτές τις διευθύνσεις χρηματοδότησης. Τα νομίσματα που έμειναν σε μία παραμένουν δικά σας: ξοδέψτε τα με τη φράση ανάκτησης και τη διαδρομή παραγωγής.";
 "lightning__spark_exit__earlier_path" = "Διαδρομή παραγωγής";
 "lightning__spark_exit__lost_leaves" = "{amount} διεκδικήθηκε on-chain από προηγούμενο κάτοχο αυτών των κεφαλαίων και δεν μπορεί να ανακτηθεί.";
 "lightning__spark_exit__notification_lost" = "Τα {amount} της αναγκαστικής μεταφοράς σας δεν μπορούν να ανακτηθούν. Ανοίξτε το Bitkit για να δείτε γιατί.";
@@ -431,7 +429,6 @@
 "lightning__spark_exit__rebuilt_from_chain" = "Το Bitkit δεν μπόρεσε να διαβάσει την αποθηκευμένη πρόοδο αυτής της μεταφοράς, γι' αυτό την ανακατασκευάζει από την αλυσίδα.";
 "lightning__spark_exit__leftover_rejected" = "Τα {amount} αχρησιμοποίητων έκτακτων τελών δεν μπόρεσαν να σταλούν και παραμένουν στη διεύθυνση {address}, διαδρομή παραγωγής {path}.";
 "lightning__spark_exit__notification_not_moving" = "Η αναγκαστική μεταφορά σας δεν προχωρά. Ανοίξτε το Bitkit για να δείτε γιατί.";
-"lightning__spark_exit__note_notifications_button" = "Ενεργοποίηση ειδοποιήσεων";
 "lightning__spark_exit__waiting_operators" = "{amount} που μετέφεραν on-chain οι διαχειριστές του Spark περιμένει να το αποδεσμεύσουν. Το Bitkit ζητά ξανά για έως μία εβδομάδα.";
 "lightning__spark_exit__fee_rose" = "Τα τέλη δικτύου ανέβηκαν πάνω από το τέλος αυτής της μεταφοράς. Μπορεί να καθυστερήσει.";
 "lightning__spark_exit__fee_bump_button" = "Πληρωμή υψηλότερου τέλους";

@@ -429,8 +429,6 @@
 "lightning__spark_exit__leftover_swept" = "{amount} di commissioni di emergenza non utilizzate è stato inviato ai risparmi.";
 "lightning__spark_exit__leftover_sending" = "Invio di {amount} di commissioni di emergenza non utilizzate ai risparmi.";
 "lightning__spark_exit__leftover_dust" = "{amount} di commissioni di emergenza non utilizzate è troppo poco per essere inviato e resta su {address}, percorso di derivazione {path}.";
-"lightning__spark_exit__earlier_addresses" = "Indirizzi di uscita precedenti";
-"lightning__spark_exit__earlier_addresses_text" = "Le precedenti uscite di emergenza hanno usato questi indirizzi di finanziamento. Le monete rimaste su uno restano tue: spendile con la tua recovery phrase e il suo percorso di derivazione.";
 "lightning__spark_exit__earlier_path" = "Percorso di derivazione";
 "lightning__spark_exit__lost_leaves" = "{amount} è stato riscattato on-chain da un precedente proprietario di questi fondi e non può essere recuperato.";
 "lightning__spark_exit__notification_lost" = "{amount} del tuo trasferimento forzato non può essere recuperato. Apri Bitkit per scoprire perché.";
@@ -454,7 +452,6 @@
 "lightning__spark_exit__rebuilt_from_chain" = "Bitkit non è riuscito a leggere l'avanzamento salvato di questo trasferimento, quindi lo ricostruisce dalla blockchain.";
 "lightning__spark_exit__leftover_rejected" = "{amount} di commissioni di emergenza non utilizzate non ha potuto essere inviato e resta su {address}, percorso di derivazione {path}.";
 "lightning__spark_exit__notification_not_moving" = "Il tuo trasferimento forzato non avanza. Apri Bitkit per scoprire perché.";
-"lightning__spark_exit__note_notifications_button" = "Attiva le notifiche";
 "lightning__spark_exit__waiting_operators" = "{amount} che gli operatori Spark hanno spostato on-chain attende che lo rilascino. Bitkit lo richiede per un massimo di una settimana.";
 "lightning__spark_exit__fee_rose" = "Le commissioni di rete hanno superato quella di questo trasferimento. Potrebbe rallentare.";
 "lightning__spark_exit__fee_bump_button" = "Paga una commissione più alta";
