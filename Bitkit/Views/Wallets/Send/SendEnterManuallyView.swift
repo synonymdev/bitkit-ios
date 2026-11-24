@@ -127,6 +127,8 @@ struct SendEnterManuallyView: View {
             }
         } catch {
             Logger.error(error, context: "Failed to read data from clipboard")
+            // A lookup from before a lock that fails after the unlock is dropped without a toast.
+            guard isBeforeLock() else { return }
             app.toast(error)
         }
     }
