@@ -22,8 +22,9 @@ class ScannerManager: ObservableObject {
     private weak var hwWalletManager: HwWalletManager?
     private let nfcReader: NfcPaymentReading
     private var isHandlingScan = false
-    /// Photos the user picked that are still loading or decoding. A nearby request waits until they are handled.
-    private var pendingImageScans = 0
+    /// A photo the user picked that is still loading or decoding, with a check that turns false once its scanner
+    /// visit ends. A nearby request waits until the photo is handled or its visit ends.
+    private var pendingImageScan: (id: UUID, isCurrent: () -> Bool)?
     /// Set while a Bluetooth request holds the scan lock. A QR code or NFC read the user starts takes the lock from it.
     private var nearbyScanID: UUID?
     /// Whether the last main scan opened a payment flow, so a Bluetooth read knows the request was taken.
@@ -440,7 +441,7 @@ class ScannerManager: ObservableObject {
     }
 
     private func beginNearbyScan() -> UUID? {
-        guard !isHandlingScan, pendingImageScans == 0 else { return nil }
+        guard !isHandlingScan, pendingImageScan?.isCurrent() != true else { return nil }
         let scanID = UUID()
         isHandlingScan = true
         nearbyScanID = scanID
@@ -598,10 +599,21 @@ class ScannerManager: ObservableObject {
         }
     }
 
-    /// Loads and decodes a picked photo. A nearby request can't open Send meanwhile, which would discard the photo.
+    /// Loads and decodes a picked photo. Like the user's other scans, the photo takes over a nearby request still
+    /// decoding, and it holds off new ones, since either would open Send and discard the photo.
     private func decodeBeforeNearbyRequests(_ decode: () async throws -> QRCodePayload) async throws -> QRCodePayload {
-        pendingImageScans += 1
-        defer { pendingImageScans -= 1 }
+        if let nearbyScanID {
+            app?.releaseQuickPaySuppression(nearbyScanID)
+            self.nearbyScanID = nil
+            isHandlingScan = false
+        }
+        let id = UUID()
+        pendingImageScan = (id, originCheck())
+        defer {
+            if pendingImageScan?.id == id {
+                pendingImageScan = nil
+            }
+        }
         return try await decode()
     }
 

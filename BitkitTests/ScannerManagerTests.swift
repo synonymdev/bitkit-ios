@@ -902,14 +902,13 @@ extension ScannerManagerTests {
         )
         let started = expectation(description: "Photo loading suspended")
         var continuation: CheckedContinuation<QRCodePayload, Error>?
-        let photo = Task {
-            await scanner.handleImageScan(context: .main, decode: {
-                try await withCheckedThrowingContinuation {
-                    continuation = $0
-                    started.fulfill()
-                }
-            })
+        func loadPhoto() async throws -> QRCodePayload {
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
         }
+        let photo = Task { await scanner.handleImageScan(context: .main, decode: loadPhoto) }
         await fulfillment(of: [started], timeout: 2)
 
         let nearbyURI = "bitcoin:bcrt1q59y53uy2h02dlqn76n824ns3maupd3mx4lfm0y"
@@ -921,6 +920,79 @@ extension ScannerManagerTests {
         XCTAssertEqual(app.scannedOnchainInvoice?.address, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x")
     }
 
+    func testPhotoTakesOverABluetoothRequestAlreadyDecoding() async throws {
+        let nearbyURI = "bitcoin:bcrt1q59y53uy2h02dlqn76n824ns3maupd3mx4lfm0y"
+        let nearbyDecoded = try await decode(invoice: nearbyURI)
+        let sheets = SheetViewModel()
+        sheets.showSheet(.scanner)
+        let scanner = ScannerManager {}
+        let nearbyStarted = expectation(description: "Bluetooth request decoding suspended")
+        var nearbyContinuation: CheckedContinuation<BitkitCore.Scanner, Error>?
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { input in
+            guard input.contains("59y53uy2") else { return try await decode(invoice: input) }
+            return try await withCheckedThrowingContinuation {
+                nearbyContinuation = $0
+                nearbyStarted.fulfill()
+            }
+        })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        let nearby = Task { await scanner.handleNearbyRequest(nearbyURI, context: .main) }
+        await fulfillment(of: [nearbyStarted], timeout: 2)
+
+        let photoStarted = expectation(description: "Photo loading suspended")
+        var photoContinuation: CheckedContinuation<QRCodePayload, Error>?
+        func loadPhoto() async throws -> QRCodePayload {
+            try await withCheckedThrowingContinuation {
+                photoContinuation = $0
+                photoStarted.fulfill()
+            }
+        }
+        let photo = Task { await scanner.handleImageScan(context: .main, decode: loadPhoto) }
+        await fulfillment(of: [photoStarted], timeout: 2)
+
+        // The Bluetooth request finishes decoding while the photo still loads.
+        try XCTUnwrap(nearbyContinuation).resume(returning: nearbyDecoded)
+        let wasTaken = await nearby.value
+        XCTAssertFalse(wasTaken, "The picked photo takes over a Bluetooth request still decoding")
+
+        try XCTUnwrap(photoContinuation).resume(returning: QRCodePayload(string: paymentURI, data: nil))
+        await photo.value
+        XCTAssertEqual(app.scannedOnchainInvoice?.address, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x")
+    }
+
+    func testPhotoStillLoadingFromAClosedScannerDoesNotHoldTheNextOne() async throws {
+        let sheets = SheetViewModel()
+        sheets.showSheet(.scanner)
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets)
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        let started = expectation(description: "Photo loading suspended")
+        var continuation: CheckedContinuation<QRCodePayload, Error>?
+        func loadPhoto() async throws -> QRCodePayload {
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        }
+        let photo = Task { await scanner.handleImageScan(context: .main, decode: loadPhoto) }
+        await fulfillment(of: [started], timeout: 2)
+
+        // The user closes that scanner and opens it again; the old photo is still loading.
+        sheets.hideSheet()
+        sheets.showSheet(.scanner)
+        let wasTaken = await scanner.handleNearbyRequest(paymentURI, context: .main)
+        XCTAssertTrue(wasTaken, "A photo from a closed scanner must not hold Bluetooth on the next visit")
+
+        try XCTUnwrap(continuation).resume(returning: QRCodePayload(string: paymentURI, data: nil))
+        await photo.value
+    }
+
     func testPhotoWithoutAQrCodeReleasesNearbyRequests() async {
         let sheets = SheetViewModel()
         sheets.showSheet(.scanner)
@@ -930,7 +1002,10 @@ extension ScannerManagerTests {
             app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
             settings: SettingsViewModel.shared, sheets: sheets
         )
-        await scanner.handleImageScan(context: .main, decode: { throw QRCodeImageDecoderError.noQRCode })
+        func loadPhoto() async throws -> QRCodePayload {
+            throw QRCodeImageDecoderError.noQRCode
+        }
+        await scanner.handleImageScan(context: .main, decode: loadPhoto)
 
         let wasTaken = await scanner.handleNearbyRequest(paymentURI, context: .main)
         XCTAssertTrue(wasTaken)
