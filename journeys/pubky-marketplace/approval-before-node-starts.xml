@@ -13,7 +13,7 @@
     <action>Before the app log shows "Node started", tap Approve on the receiving-details introduction</action>
     <action>Tap Authorize and complete PIN or biometrics if asked</action>
     <action>Verify the success screen appears and no node or wallet error toast is shown</action>
-    <action>Right after the success screen appears, verify the app log for this launch has no "LDK node setup" line yet, so the approval completed before the node existed. If the node was set up first, the run is inconclusive: repeat it from the terminate step</action>
+    <action>Verify the app log for this launch has "Paykit Server account N tracking stored without a node" for the new account, written before the success screen. It is logged only when the approval found no node, so it proves the approval did not wait for node setup. If the line is missing, the node was set up first and the run is inconclusive: repeat it from the terminate step</action>
     <action>Verify the Shop dialog or the fixture reports the setup as complete</action>
     <action>Wait for the wallet to finish syncing, then open the watch-only accounts list in Settings</action>
     <action>Verify exactly one new account was added, named after the requesting service, with tracking on</action>

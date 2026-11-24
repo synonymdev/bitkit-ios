@@ -801,6 +801,8 @@ class LightningService: NodeLifecycleService {
         // Without a node (not built yet, or stopped) only the caller's store changes: the next build loads tracked
         // accounts from the store, and `reconcileWatchOnlyAccounts` on start adds or removes any it missed.
         guard let node else {
+            // Journeys read this line to prove an approval finished before the node was built.
+            Logger.info("Paykit Server account \(accountIndex) tracking stored without a node; it loads when the node starts")
             return
         }
 
