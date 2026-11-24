@@ -1060,6 +1060,40 @@ extension ScannerManagerTests {
         XCTAssertNil(app.scannedOnchainInvoice, "The earlier visit's photo must not open its payment")
     }
 
+    func testBluetoothWaitsForEveryPickedPhoto() async throws {
+        let sheets = SheetViewModel()
+        sheets.showSheet(.scanner)
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets)
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        let started = expectation(description: "First photo loading suspended")
+        var continuation: CheckedContinuation<QRCodePayload, Error>?
+        func loadSlowPhoto() async throws -> QRCodePayload {
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        }
+        func loadPhotoWithoutQrCode() async throws -> QRCodePayload {
+            throw QRCodeImageDecoderError.noQRCode
+        }
+        let slowPhoto = Task { await scanner.handleImageScan(context: .main, decode: loadSlowPhoto) }
+        await fulfillment(of: [started], timeout: 2)
+
+        // A second photo finishes first; the first one is still loading.
+        await scanner.handleImageScan(context: .main, decode: loadPhotoWithoutQrCode)
+        let nearbyURI = "bitcoin:bcrt1q59y53uy2h02dlqn76n824ns3maupd3mx4lfm0y"
+        let wasTaken = await scanner.handleNearbyRequest(nearbyURI, context: .main)
+        XCTAssertFalse(wasTaken, "Bluetooth must wait while any picked photo still loads")
+
+        try XCTUnwrap(continuation).resume(returning: QRCodePayload(string: paymentURI, data: nil))
+        await slowPhoto.value
+        XCTAssertEqual(app.scannedOnchainInvoice?.address, "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x")
+    }
+
     func testPhotoWithoutAQrCodeReleasesNearbyRequests() async {
         let sheets = SheetViewModel()
         sheets.showSheet(.scanner)

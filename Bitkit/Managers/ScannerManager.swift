@@ -22,9 +22,14 @@ class ScannerManager: ObservableObject {
     private weak var hwWalletManager: HwWalletManager?
     private let nfcReader: NfcPaymentReading
     private var isHandlingScan = false
-    /// A photo the user picked that is still loading or decoding, with a check that turns false once its scanner
-    /// visit ends. A nearby request waits until the photo is handled or its visit ends.
-    private var pendingImageScan: (id: UUID, isCurrent: () -> Bool)?
+    /// Photos the user picked that are still loading or decoding, each with a check that turns false once its scanner
+    /// visit ends. A nearby request waits until every photo is handled or its visit ends.
+    private var pendingImageScans: [UUID: () -> Bool] = [:]
+
+    private var isImageScanPending: Bool {
+        pendingImageScans.values.contains { $0() }
+    }
+
     /// Set while a Bluetooth request holds the scan lock. A QR code or NFC read the user starts takes the lock from it.
     private var nearbyScanID: UUID?
     /// Whether the last main scan opened a payment flow, so a Bluetooth read knows the request was taken.
@@ -441,7 +446,7 @@ class ScannerManager: ObservableObject {
     }
 
     private func beginNearbyScan() -> UUID? {
-        guard !isHandlingScan, pendingImageScan?.isCurrent() != true else { return nil }
+        guard !isHandlingScan, !isImageScanPending else { return nil }
         let scanID = UUID()
         isHandlingScan = true
         nearbyScanID = scanID
@@ -612,12 +617,8 @@ class ScannerManager: ObservableObject {
             isHandlingScan = false
         }
         let id = UUID()
-        pendingImageScan = (id, isCurrent)
-        defer {
-            if pendingImageScan?.id == id {
-                pendingImageScan = nil
-            }
-        }
+        pendingImageScans[id] = isCurrent
+        defer { pendingImageScans[id] = nil }
         return try await decode()
     }
 
