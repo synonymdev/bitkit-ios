@@ -212,6 +212,27 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertNil(store.record(matching: invoiceHash))
     }
 
+    func testStopWrappedByTheLdkQueueOpensReviewWithoutSending() async throws {
+        let invoiceHash = try Self.invoiceHash
+        var sendCount = 0
+        let app = appWithInvoice
+        app.noteQuickPayChosen()
+        let coordinator = QuickPayPaymentCoordinator(store: store, submit: { _, beforeSubmission in
+            app.noteAppLocked()
+            // The LDK send runs its check on `ServiceQueue`, which wraps what it throws.
+            return try await Bitkit.LightningService.submitPayment(beforeSubmission: beforeSubmission) {
+                sendCount += 1
+                return invoiceHash
+            }
+        }, listRows: { [] })
+        let outcome = await firstOutcome(from: coordinator, app: app)
+        guard case .confirm = outcome else {
+            return XCTFail("Expected the review, got \(String(describing: outcome))")
+        }
+        XCTAssertEqual(sendCount, 0)
+        XCTAssertNil(store.record(matching: invoiceHash))
+    }
+
     func testRecoveryOnlyStartWhoseRecordIsGoneOpensReviewWithoutSending() async throws {
         let invoiceHash = try Self.invoiceHash
         var sendCount = 0

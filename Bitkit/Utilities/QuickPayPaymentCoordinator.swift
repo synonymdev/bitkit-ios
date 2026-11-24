@@ -88,6 +88,12 @@ final class QuickPayPaymentCoordinator {
         }
     }
 
+    /// Whether a send stopped at its submission check. The LDK send runs that check on `ServiceQueue`, which wraps
+    /// what it throws in `AppError`.
+    nonisolated static func isStoppedBeforeSubmission(_ error: Error) -> Bool {
+        ((error as? AppError)?.underlyingError ?? error) is SendStoppedBeforeSubmission
+    }
+
     /// Both rails' payments, nil while the node can't list its own, so reconciling waits rather than reading them as none.
     static func reconcileRows(
         railPayments: () async throws -> [ChannelFreeRailPayment],
@@ -380,7 +386,7 @@ final class QuickPayPaymentCoordinator {
             if !paymentId.isEmpty, paymentId != invoiceHash {
                 operations[paymentId] = op
             }
-        } catch is SendStoppedBeforeSubmission {
+        } catch where Self.isStoppedBeforeSubmission(error) {
             // The app locked while the payment waited to be submitted. Nothing left, so the payer reviews it.
             store.releaseBound(paymentHash: invoiceHash)
             removeOp(op)
