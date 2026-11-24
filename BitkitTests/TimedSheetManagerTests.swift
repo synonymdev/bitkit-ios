@@ -49,7 +49,10 @@ final class TimedSheetManagerTests: XCTestCase {
 
         sheets.hideSheet()
         manager.onSheetDismissed()
-        try await Task.sleep(nanoseconds: 2_500_000_000)
+        let deadline = Date().addingTimeInterval(10)
+        while sheets.activeSheetConfiguration?.id != .moveToSpark, Date() < deadline {
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
 
         XCTAssertEqual(sheets.activeSheetConfiguration?.id, .moveToSpark)
     }

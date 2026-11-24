@@ -1826,6 +1826,35 @@ extension ChannelFreeRailTests {
         XCTAssertTrue(payments.contains { $0.status == .pending }, "the retry held during the read read as A's failure")
     }
 
+    func testARetryThatStartsAndEndsWhileSparksListIsReadReadsPending() async throws {
+        let (hash, _) = try await sendARetryFiveSecondsAfterAFailedAttempt()
+        let service = Bitkit.LightningService.shared
+        // No hold before the read; a retry records its attempt and its success ends its hold while the list, showing
+        // only A's failure, is read.
+        service.railAttemptsStore.set([String: Int](), forKey: Self.uncertainRailSendsKey)
+        rail.onList = {
+            service.recordRailAttempt(paymentHash: hash)
+        }
+
+        let payments = try await service.channelFreeRailPayments().filter { $0.paymentHash == hash }
+
+        XCTAssertTrue(payments.contains { $0.status == .pending }, "the retry read as A's failure")
+    }
+
+    func testASparkSendFailingBeforeItRecordsItsAttemptTakesNoHold() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        rail.balanceSats = 100_000
+        // Another send records its attempt after this one's checks; this one's own check then fails before submission.
+        rail.onSend = {
+            service.recordRailAttempt(paymentHash: hash)
+        }
+
+        _ = try? await service.send(bolt11: Self.invoice, beforeSubmission: { throw NSError(domain: "request", code: 1) })
+
+        XCTAssertNil(service.railSendHolds[hash], "a send that never reached Spark took a hold")
+    }
+
     func testAnExpiredSendStaysHeldUntilASyncAfterItsExpiry() async throws {
         let (hash, _) = try await sendARetryFiveSecondsAfterAFailedAttempt()
         let service = Bitkit.LightningService.shared

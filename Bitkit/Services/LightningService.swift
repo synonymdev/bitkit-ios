@@ -2551,6 +2551,7 @@ extension LightningService {
             // Read before the listing, so a sync that ends while it is read can't settle a send the listing predates,
             // and a hold taken meanwhile reads as taken during the read.
             let heldBefore = railSendHolds
+            let mark = attemptMark
             let unsettledBefore = await unsettledUncertainRailSends()
             let kept = unexpiredRailAttempts()
             let payments = try await rail.lightningPayments()
@@ -2564,9 +2565,14 @@ extension LightningService {
                 stillUnsettled.contains($0.paymentHash)
                     || !Self.listsResult(payments, paymentHash: $0.paymentHash, startedAt: heldBefore[$0.paymentHash])
             }
-            // A hold taken during the read is a retry this list predates, so it reads pending until a later list settles it.
+            // A retry that took a hold or recorded its attempt during the read is one this list predates, so it reads
+            // pending until a later list shows its result, also when it already ended.
             let unsettledHashes = Set(unsettled.map { $0.paymentHash.lowercased() })
-            let heldDuringRead = holdsAfter.filter { heldBefore[$0.key] != $0.value && !unsettledHashes.contains($0.key) }.keys.sorted()
+            let recordedDuringRead = eventCallbackLock.withLock { attemptsRecorded(since: mark.records, key: Self.railAttemptsKey) }
+            let paidHashes = Set(payments.filter { $0.direction == .outbound && $0.status == .succeeded }.map { $0.paymentHash.lowercased() })
+            let heldDuringRead = Set(holdsAfter.filter { heldBefore[$0.key] != $0.value }.keys)
+                .union(recordedDuringRead.subtracting(paidHashes))
+                .subtracting(unsettledHashes).sorted()
                 .map { ChannelFreeRailPayment(paymentHash: $0, direction: .outbound, status: .pending, preimage: nil) }
             if let since = sparkHistoryUnseededSince, await rail.hasSynced(after: UInt64(clamping: since)) {
                 // Kept, so after a relaunch the sends Spark listed hold the node until Spark syncs again.
