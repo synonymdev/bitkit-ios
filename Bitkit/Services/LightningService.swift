@@ -130,7 +130,7 @@ class LightningService: NodeLifecycleService {
     private let eventLoopLock = NSLock()
     private var eventLoopTask: Task<Void, Never>?
     private static let eventPollInterval: Duration = .milliseconds(100)
-    // Bounds the wait for the loop's last iteration, as `eventHandled()` can block on a stuck VSS write.
+    /// Bounds the wait for the loop's last iteration, as `eventHandled()` can block on a stuck VSS write.
     private static let eventLoopStopTimeout: Duration = .seconds(5)
 
     private let beforeNodeStopLock = NSLock()
