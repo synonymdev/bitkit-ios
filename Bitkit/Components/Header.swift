@@ -10,6 +10,7 @@ struct Header: View {
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject private var sheets: SheetViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
+    @Environment(PaykitAllowanceManager.self) private var allowances
 
     /// When true, shows the widget edit button (only on the widgets tab).
     var showWidgetEditButton: Bool = false
@@ -23,6 +24,10 @@ struct Header: View {
     init(showWidgetEditButton: Bool = false, isEditingWidgets: Binding<Bool> = .constant(false)) {
         self.showWidgetEditButton = showWidgetEditButton
         _isEditingWidgets = isEditingWidgets
+    }
+
+    private var pendingRequests: [PaykitPaymentRequest] {
+        allowances.payable(paymentRequests.pendingRequests)
     }
 
     var body: some View {
@@ -45,7 +50,7 @@ struct Header: View {
                     }
                 )
 
-                if isPaykitUIActive, !paymentRequests.pendingRequests.isEmpty {
+                if isPaykitUIActive, !pendingRequests.isEmpty {
                     Button {
                         if dismissCalculatorIfNeeded() {
                             return
@@ -65,7 +70,7 @@ struct Header: View {
                     .accessibilityValue(
                         t(
                             "wallet__payment_requests_pending_count",
-                            variables: ["count": "\(paymentRequests.pendingRequests.count)"]
+                            variables: ["count": "\(pendingRequests.count)"]
                         )
                     )
                     .accessibilityIdentifier("PaymentRequestsBell")

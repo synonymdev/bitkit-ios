@@ -31,59 +31,65 @@ struct SpendingHwSign: View {
                 .disabled(!hwSend.canLeave)
                 .padding(.bottom, 16)
 
-            GeometryReader { geometry in
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        DisplayText(
-                            t(hwSend.hasPendingBroadcast ? "lightning__transfer_hw__signed_title" : "lightning__transfer_hw__sign_title"),
-                            accentColor: .purpleAccent
-                        )
+            ZStack(alignment: .bottom) {
+                GeometryReader { geometry in
+                    ScrollView(showsIndicators: false) {
+                        // As in the frame: 32 under the title, 10 between the fee rows and 10 above the speed rows.
+                        VStack(alignment: .leading, spacing: 0) {
+                            DisplayText(
+                                t(hwSend.hasPendingBroadcast ? "lightning__transfer_hw__signed_title" : "lightning__transfer_hw__sign_title"),
+                                accentColor: .purpleAccent
+                            )
 
-                        SpendingConfirmFees(quote: flow.quote, speed: flow.speed, isLoading: flow.quote == nil && flow.quoteError == nil)
-                            .padding(.top, 16)
+                            SpendingConfirmFees(
+                                quote: flow.quote,
+                                speed: flow.speed,
+                                isLoading: flow.quote == nil && flow.quoteError == nil,
+                                address: flow.quote?.address,
+                                rowSpacing: 10
+                            )
+                            .padding(.top, 32)
 
-                        if let error = flow.quoteError {
-                            BodyMText(error, textColor: .redAccent)
-                                .padding(.bottom, 16)
-                        }
+                            if let error = flow.quoteError {
+                                BodyMText(error, textColor: .redAccent)
+                                    .padding(.top, 10)
+                            }
 
-                        SpendingSpeedPicker(quote: flow.quote, speed: Bindable(flow).speed)
+                            SpendingSpeedPicker(
+                                quote: flow.quote,
+                                speed: Bindable(flow).speed,
+                                isLoading: flow.quote == nil && flow.quoteError == nil
+                            )
                             .disabled(isBusy || hwSend.hasPendingBroadcast)
-                            .padding(.horizontal, -16)
-                            .padding(.bottom, 16)
+                            .padding(.top, 10)
 
-                        CustomButton(title: t("common__learn_more"), size: .small, isDisabled: isBusy || hwSend.hasPendingBroadcast) {
-                            navigation.navigate(.transferLearnMore)
+                            // At least 56 above the device on short screens.
+                            Spacer(minLength: 56)
+
+                            // As in the frame: the device's top 187 of 254 points shows, its lower part behind the button.
+                            Image(vendor.transferSignImageName)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 254, height: 254)
+                                .frame(height: 187, alignment: .top)
+                                .clipped()
+                                .frame(maxWidth: .infinity)
+                                .accessibilityHidden(true)
                         }
-                        .accessibilityIdentifier("HardwareTransferSignLearnMore")
-
-                        Spacer(minLength: 16)
-
-                        Image(vendor.signImageName)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: 200, maxHeight: 200)
-                            .frame(maxWidth: .infinity)
-                            .accessibilityHidden(true)
-
-                        Spacer(minLength: 16)
+                        // Fills the free space on tall screens so the device sits at the bottom, and scrolls on short ones.
+                        .frame(minHeight: geometry.size.height)
                     }
-                    // Fills the free space on tall screens so the picture sits centred in it, and scrolls on short ones.
-                    .frame(minHeight: geometry.size.height)
-                    // The speed rows run edge to edge, so the scroll spans the screen and pads its own content.
-                    .padding(.horizontal, 16)
                 }
-                .padding(.horizontal, -16)
-            }
 
-            CustomButton(
-                title: hwSend.hasPendingBroadcast ? t("common__retry") : vendor.sendSignButtonTitle,
-                isDisabled: isBusy || flow.quote == nil,
-                isLoading: isBusy
-            ) {
-                startSigning()
+                CustomButton(
+                    title: hwSend.hasPendingBroadcast ? t("common__retry") : vendor.sendSignButtonTitle,
+                    isDisabled: isBusy || flow.quote == nil,
+                    isLoading: isBusy
+                ) {
+                    startSigning()
+                }
+                .accessibilityIdentifier("HardwareTransferOpenTrezorConnect")
             }
-            .accessibilityIdentifier("HardwareTransferOpenTrezorConnect")
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("HardwareTransferSign")

@@ -8,6 +8,9 @@ class TransferStorage {
     private let defaults: UserDefaults
     private let transfersKey = "transfers"
 
+    /// Serializes each read-modify-write of the stored list, so concurrent writers don't drop each other's changes.
+    private let lock = NSRecursiveLock()
+
     private let transfersChangedSubject = PassthroughSubject<Void, Never>()
 
     var transfersChangedPublisher: AnyPublisher<Void, Never> {
@@ -20,6 +23,8 @@ class TransferStorage {
 
     /// Insert a new transfer
     func insert(_ transfer: Transfer) throws {
+        lock.lock()
+        defer { lock.unlock() }
         var transfers = try getAll()
         transfers.append(transfer)
         try save(transfers)
@@ -29,6 +34,8 @@ class TransferStorage {
 
     /// Update an existing transfer
     func update(_ transfer: Transfer) throws {
+        lock.lock()
+        defer { lock.unlock() }
         var transfers = try getAll()
         if let index = transfers.firstIndex(where: { $0.id == transfer.id }) {
             transfers[index] = transfer
@@ -40,6 +47,8 @@ class TransferStorage {
 
     /// Upsert a list of transfers (insert or update)
     func upsertList(_ transfers: [Transfer]) throws {
+        lock.lock()
+        defer { lock.unlock() }
         var allTransfers = try getAll()
         var hasChanges = false
 
@@ -76,6 +85,8 @@ class TransferStorage {
 
     /// Mark a transfer as settled
     func markSettled(id: String, settledAt: UInt64) throws {
+        lock.lock()
+        defer { lock.unlock() }
         var transfers = try getAll()
         if let index = transfers.firstIndex(where: { $0.id == id }) {
             let transfer = transfers[index]
@@ -91,7 +102,8 @@ class TransferStorage {
                 settledAt: settledAt,
                 claimableAtHeight: transfer.claimableAtHeight,
                 txTotalSats: transfer.txTotalSats,
-                preTransferOnchainSats: transfer.preTransferOnchainSats
+                preTransferOnchainSats: transfer.preTransferOnchainSats,
+                sweepShares: transfer.sweepShares
             )
             try save(transfers)
             Logger.info("Marked transfer as settled: id=\(id)", context: "TransferStorage")
@@ -101,6 +113,8 @@ class TransferStorage {
 
     /// Moves a transfer's countdown target, as a Spark exit learns when its timelocks mature.
     func updateClaimableAtHeight(id: String, claimableAtHeight: UInt32?) throws {
+        lock.lock()
+        defer { lock.unlock() }
         var transfers = try getAll()
         guard let index = transfers.firstIndex(where: { $0.id == id }), transfers[index].claimableAtHeight != claimableAtHeight else { return }
         let transfer = transfers[index]
@@ -116,7 +130,37 @@ class TransferStorage {
             settledAt: transfer.settledAt,
             claimableAtHeight: claimableAtHeight,
             txTotalSats: transfer.txTotalSats,
-            preTransferOnchainSats: transfer.preTransferOnchainSats
+            preTransferOnchainSats: transfer.preTransferOnchainSats,
+            sweepShares: transfer.sweepShares
+        )
+        try save(transfers)
+        transfersChangedSubject.send()
+    }
+
+    /// Adds the sweeps LDK reported for a close transfer's channel, keeping the ones recorded before.
+    func addSweepShares(id: String, shares: [String: SweepShare]) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        var transfers = try getAll()
+        guard let index = transfers.firstIndex(where: { $0.id == id }) else { return }
+        let transfer = transfers[index]
+        let recorded = transfer.sweepShares ?? [:]
+        let merged = recorded.merging(shares.map { ($0.key.lowercased(), $0.value) }) { _, latest in latest }
+        guard merged != recorded else { return }
+        transfers[index] = Transfer(
+            id: transfer.id,
+            type: transfer.type,
+            amountSats: transfer.amountSats,
+            channelId: transfer.channelId,
+            fundingTxId: transfer.fundingTxId,
+            lspOrderId: transfer.lspOrderId,
+            isSettled: transfer.isSettled,
+            createdAt: transfer.createdAt,
+            settledAt: transfer.settledAt,
+            claimableAtHeight: transfer.claimableAtHeight,
+            txTotalSats: transfer.txTotalSats,
+            preTransferOnchainSats: transfer.preTransferOnchainSats,
+            sweepShares: merged
         )
         try save(transfers)
         transfersChangedSubject.send()
@@ -124,6 +168,8 @@ class TransferStorage {
 
     /// Delete old settled transfers
     func deleteOldSettled(expirationTimestamp: UInt64) throws {
+        lock.lock()
+        defer { lock.unlock() }
         var transfers = try getAll()
         let originalCount = transfers.count
         transfers.removeAll { transfer in
@@ -138,6 +184,8 @@ class TransferStorage {
     }
 
     func getAll() throws -> [Transfer] {
+        lock.lock()
+        defer { lock.unlock() }
         guard let data = defaults.data(forKey: transfersKey) else {
             return []
         }

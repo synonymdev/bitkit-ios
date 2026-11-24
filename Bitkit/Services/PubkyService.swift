@@ -495,7 +495,7 @@ actor PaykitSdkService {
 
     private let sessionProvider = PaykitSdkSessionProvider()
     private let paymentAdapter = PaykitSdkPaymentAdapter()
-    private let operationLock = PaykitSdkOperationLock()
+    private let operationLock: PaykitSdkOperationLock
     private let publicReadSlots = PaykitPublicReadSlots()
     private let pubkyClientConfig = PaykitSdkService.makePubkyClientConfig(localTestnetHost: Env.pubkyLocalTestnetHost)
     private let sdkFactory: (() throws -> PaykitSdk)?
@@ -515,9 +515,11 @@ actor PaykitSdkService {
     private var runtimeGeneration: UInt64 = 0
 
     init(
+        operationLock: PaykitSdkOperationLock = PaykitSdkOperationLock(),
         sdkFactory: (() throws -> PaykitSdk)? = nil,
         bootstrapFactory: @escaping BootstrapFactory = PubkySessionBootstrap.withPubkyClientConfig(clientId:pubkyClient:)
     ) {
+        self.operationLock = operationLock
         self.sdkFactory = sdkFactory
         self.bootstrapFactory = bootstrapFactory
     }

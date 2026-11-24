@@ -40,7 +40,7 @@ struct SpendingWalletScreen: View {
                             .padding(.top, 16)
                     }
 
-                    if shouldShowOnboarding && wallet.totalOnchainSats > 0 {
+                    if shouldShowOnboarding && (wallet.totalOnchainSats > 0 || wallet.spendableOnchainBalanceSats > 0) {
                         transferFromSavingsButton
                             .transition(.move(edge: .leading).combined(with: .opacity))
                             .padding(.top, 28)
@@ -116,7 +116,7 @@ struct SpendingWalletScreen: View {
 
     var transferFromSavingsButton: some View {
         CustomButton(
-            title: t("lightning__funding__button1"),
+            title: t("lightning__transfer_from_savings_button"),
             variant: .secondary,
             icon: Image("arrow-up-down")
                 .resizable()

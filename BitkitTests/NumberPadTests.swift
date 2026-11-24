@@ -34,6 +34,88 @@ final class NumberPadTests: XCTestCase {
         XCTAssertEqual(viewModel.displayText, "1.0")
     }
 
+    func testRefreshDisplayFollowsUnitSwitchedElsewhere() {
+        let viewModel = AmountInputViewModel()
+        let currency = mockCurrency(primaryDisplay: .bitcoin, displayUnit: .modern)
+        viewModel.updateFromSats(5000, currency: currency)
+        XCTAssertEqual(viewModel.displayText, "5 000")
+
+        currency.displayUnit = .classic
+        viewModel.refreshDisplay(currency: currency)
+
+        XCTAssertEqual(viewModel.amountSats, 5000)
+        XCTAssertEqual(viewModel.displayText, "0.00005")
+    }
+
+    func testRefreshDisplayKeepsTypedTextInSameUnit() {
+        let viewModel = AmountInputViewModel()
+        let currency = mockCurrency(primaryDisplay: .bitcoin, displayUnit: .classic)
+        for key in ["0", ".", "0", "0", "0", "1", "0"] {
+            viewModel.handleNumberPadInput(key, currency: currency)
+        }
+        XCTAssertEqual(viewModel.displayText, "0.00010")
+
+        viewModel.refreshDisplay(currency: currency)
+
+        XCTAssertEqual(viewModel.amountSats, 10000)
+        XCTAssertEqual(viewModel.displayText, "0.00010")
+    }
+
+    func testReturnRedrawsOnlyAfterTheTextsUnitChanged() {
+        typealias Unit = AmountInputViewModel.InputUnit
+        let fiat = Unit(display: .fiat, bitcoinUnit: .classic)
+        let classic = Unit(display: .bitcoin, bitcoinUnit: .classic)
+        // Typed fiat stays as typed, also when its rate dropped meanwhile.
+        XCTAssertFalse(AmountInputViewModel.redrawsOnReturn(amountSats: 5000, textUnit: fiat, currentUnit: fiat))
+        // After a switch the kept sats are drawn, never the fiat digits read as bitcoin.
+        XCTAssertTrue(AmountInputViewModel.redrawsOnReturn(amountSats: 5000, textUnit: fiat, currentUnit: classic))
+        XCTAssertTrue(AmountInputViewModel.redrawsOnReturn(amountSats: 5000, textUnit: nil, currentUnit: classic))
+        XCTAssertFalse(AmountInputViewModel.redrawsOnReturn(amountSats: 0, textUnit: fiat, currentUnit: classic))
+    }
+
+    func testARejectedFiatKeyKeepsTheExactSats() throws {
+        let ratesKey = "cached_fx_rates"
+        let saved = UserDefaults.standard.data(forKey: ratesKey)
+        defer { UserDefaults.standard.set(saved, forKey: ratesKey) }
+        let rate = FxRate(
+            symbol: "BTCUSD", lastPrice: "100000", base: "BTC", baseName: "Bitcoin", quote: "USD", quoteName: "US Dollar",
+            currencySymbol: "$", currencyFlag: "🇺🇸", lastUpdatedAt: 0
+        )
+        try UserDefaults.standard.set(JSONEncoder().encode([rate]), forKey: ratesKey)
+        let currency = mockCurrency(primaryDisplay: .fiat)
+        let viewModel = AmountInputViewModel()
+        viewModel.updateFromSats(100_001, currency: currency)
+        XCTAssertEqual(viewModel.displayText, "100.00")
+        // A third decimal is refused, so the kept sats stay exact instead of the text read back as 100 000.
+        viewModel.handleNumberPadInput("5", currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 100_001, "A refused key rounded the amount to its fiat text")
+    }
+
+    func testDeleteClearsAPresetFiatAmountWithNoRate() {
+        let ratesKey = "cached_fx_rates"
+        let saved = UserDefaults.standard.data(forKey: ratesKey)
+        defer { UserDefaults.standard.set(saved, forKey: ratesKey) }
+        UserDefaults.standard.removeObject(forKey: ratesKey)
+        let currency = mockCurrency(primaryDisplay: .fiat)
+        let viewModel = AmountInputViewModel()
+        viewModel.updateFromSats(50000, currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 50000)
+        XCTAssertEqual(viewModel.displayText, "", "The fiat field had text to delete, so this case was not staged")
+        viewModel.handleNumberPadInput("delete", currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 0, "Delete kept a preset amount the fiat field could not show")
+    }
+
+    func testARedrawnAmountKeepsASCIIDigitsForTheNumberPad() {
+        XCTAssertEqual(AmountInputViewModel.asciiDigits("٥٠٠٠"), "5000", "Arabic-Indic digits reached the raw input")
+        XCTAssertEqual(AmountInputViewModel.asciiDigits("۱۲.۵۰"), "12.50")
+        XCTAssertEqual(AmountInputViewModel.asciiDigits("0.00012"), "0.00012")
+        let currency = mockCurrency(primaryDisplay: .bitcoin)
+        let viewModel = AmountInputViewModel()
+        viewModel.updateFromSats(5000, currency: currency)
+        viewModel.handleNumberPadInput("0", currency: currency)
+        XCTAssertEqual(viewModel.amountSats, 50000, "The next key after a redraw did not extend the amount")
+    }
+
     // MARK: - Modern Bitcoin Tests
 
     func testModernBitcoinInput() {

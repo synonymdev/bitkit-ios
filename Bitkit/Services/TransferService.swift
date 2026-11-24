@@ -119,6 +119,15 @@ class TransferService {
 
         for transfer in toSavings {
             if let channelId = transfer.channelId {
+                // Keep the channel's sweeps with its part of each: LDK regenerates an unconfirmed sweep, and the wallet
+                // can hold an earlier one's output until it syncs the replacement.
+                let latestSweepShares = balances.map {
+                    BalanceManager.sweepShares(channelId: channelId, pendingSweeps: $0.pendingBalancesFromChannelClosures)
+                } ?? [:]
+                if !latestSweepShares.isEmpty {
+                    try storage.addSweepShares(id: transfer.id, shares: latestSweepShares)
+                }
+
                 let hasBalance = balances?.lightningBalances.contains(where: { balance in
                     balance.channelIdString == channelId
                 }) ?? false
