@@ -55,6 +55,10 @@
 	<string>$(E2E_LOCAL_HOST)</string>
 	<key>E2E_NETWORK</key>
 	<string>$(E2E_NETWORK)</string>
+	<key>SPARK_LOCAL_CONFIG_B64</key>
+	<string>$(SPARK_LOCAL_CONFIG_B64)</string>
+	<key>SPARK_LOCAL_CHAIN_URL</key>
+	<string>$(SPARK_LOCAL_CHAIN_URL)</string>
 	<key>TREZOR_BRIDGE</key>
 	<string>$(TREZOR_BRIDGE)</string>
 	<key>TREZOR_BRIDGE_URL</key>

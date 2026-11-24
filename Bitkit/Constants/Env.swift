@@ -109,6 +109,11 @@ enum Env {
         isE2E && e2eBackend == "local"
     }
 
+    static var localSparkSettings: (configBase64: String?, chainURL: String?) {
+        guard isDebug, isLocalE2EBackend, network == .regtest else { return (nil, nil) }
+        return (infoPlistValue("SPARK_LOCAL_CONFIG_B64"), infoPlistValue("SPARK_LOCAL_CHAIN_URL"))
+    }
+
     private static var e2eLocalHost: String {
         configValue("E2E_LOCAL_HOST") ?? "127.0.0.1"
     }
@@ -222,20 +227,40 @@ enum Env {
     }
 
     /// Esplora REST API Spark reads the chain from and broadcasts through, in place of the SDK's default
-    /// (mempool.space with blockstream as fallback on mainnet); nil keeps the default. On regtest a debug or E2E build
-    /// can point Spark at Bitkit's own chain with `SPARK_CHAIN_SERVICE_URL`, so a Savings deposit reaches it.
-    static func sparkChainServiceUrl(for network: LDKNode.Network) -> String? {
+    /// (mempool.space with blockstream as fallback on mainnet); nil keeps the default. A local E2E build uses its
+    /// pinned regtest fixture for both deposits and exits.
+    static func sparkChainServiceUrl(
+        for network: LDKNode.Network,
+        localRegtestURL: String? = localSparkSettings.chainURL,
+        configuredURL: String? = configValue("SPARK_CHAIN_SERVICE_URL")
+    ) -> String? {
         switch network {
         case .bitcoin: "https://bitkit.to/electrs"
-        default: configValue("SPARK_CHAIN_SERVICE_URL")
+        case .regtest: localRegtestURL ?? configuredURL
+        default: configuredURL
         }
     }
 
     static var electrumServerUrl: String {
         if isE2E, e2eBackend == "local" {
-            return "tcp://\(e2eLocalHost):60001"
+            return localElectrumServerUrl(host: e2eLocalHost)
         }
         return electrumServerUrl(for: network)
+    }
+
+    /// The pinned fixture's Spark REST and Savings Electrum endpoints serve the same regtest.
+    static func sharesLocalSparkChain(
+        sparkURL: String,
+        nodeElectrumURL: String?,
+        hardwareElectrumURL: String,
+        fixtureHost: String = e2eLocalHost
+    ) -> Bool {
+        let electrumURL = localElectrumServerUrl(host: fixtureHost)
+        return sparkURL == "http://\(fixtureHost):23090/api" && nodeElectrumURL == electrumURL && hardwareElectrumURL == electrumURL
+    }
+
+    private static func localElectrumServerUrl(host: String) -> String {
+        "tcp://\(host):60001"
     }
 
     /// Whether a Paykit payment may route through a Pubky Swaps provider when no balance reaches the contact's
