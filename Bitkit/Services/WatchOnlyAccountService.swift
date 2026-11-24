@@ -950,6 +950,54 @@ enum WatchOnlyAccountClaimCodec {
         [0x04, 0x35, 0x87, 0xCF],
     ]
 
+    private static let testnetXpubVersion: [UInt8] = [0x04, 0x35, 0x87, 0xCF]
+
+    /// The account xpub in a bitkit-core `deriveOnchainDescriptor` result, with the version bytes ldk-node uses for
+    /// `network`. bitkit-core always serializes with mainnet `xpub` bytes; ldk-node's
+    /// `exportOnchainWalletAccountXpub` uses `tpub` on every test network, and `addOnchainWalletAccount` compares
+    /// the strings exactly.
+    static func accountXpub(fromDescriptor descriptor: String, network: LDKNode.Network) throws -> String {
+        guard let start = descriptor.firstIndex(of: "]") else {
+            throw WatchOnlyAccountError.invalidExtendedPublicKey
+        }
+        let key = descriptor[descriptor.index(after: start)...].prefix { $0 != "/" }
+        guard key.hasPrefix("xpub") else {
+            throw WatchOnlyAccountError.invalidExtendedPublicKey
+        }
+        let xpub = String(key)
+        guard network != .bitcoin else {
+            return xpub
+        }
+
+        let payload = try base58CheckDecode(xpub)
+        guard payload.count == serializedXpubLength else {
+            throw WatchOnlyAccountError.invalidExtendedPublicKey
+        }
+        return base58CheckEncode(Data(testnetXpubVersion) + payload.dropFirst(4))
+    }
+
+    private static func base58CheckEncode(_ payload: Data) -> String {
+        let checksum = Data(SHA256.hash(data: Data(SHA256.hash(data: payload)))).prefix(4)
+        let bytes = [UInt8](payload + checksum)
+        var digits: [UInt8] = [0]
+        for byte in bytes {
+            var carry = Int(byte)
+            for index in digits.indices.reversed() {
+                carry += Int(digits[index]) << 8
+                digits[index] = UInt8(carry % 58)
+                carry /= 58
+            }
+            while carry > 0 {
+                digits.insert(UInt8(carry % 58), at: 0)
+                carry /= 58
+            }
+        }
+        let leadingZeros = bytes.prefix { $0 == 0 }.count
+        let significant = digits.drop { $0 == 0 }
+        let encoded = [UInt8](repeating: base58Alphabet[0], count: leadingZeros) + significant.map { base58Alphabet[Int($0)] }
+        return String(decoding: encoded, as: UTF8.self)
+    }
+
     private static let base58Alphabet = Array("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".utf8)
 
     private static func base58CheckDecode(_ string: String) throws -> Data {

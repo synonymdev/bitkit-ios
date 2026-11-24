@@ -1,0 +1,20 @@
+<journey name="paykit server approval before the node starts">
+  <description>
+    Verifies that a Bitcoin watch-only Paykit Server setup approved before the Lightning node has started completes on
+    the first Authorize, and that the node tracks the new account once it starts.
+    Precondition: an isolated wallet with a Pubky identity, on the integration fixture runtime described in this
+    README, and a fresh setup auth URL with x-bitkit-claim=watch-only-account-v1 from the Shop's Connect Bitkit
+    dialog or the Paykit Server setup fixture. iOS keeps the node running in the background, so the window is a cold start.
+  </description>
+  <actions>
+    <action>Record the current wallet's watch-only account names and derivation paths</action>
+    <action>Terminate Bitkit</action>
+    <action>Open the fixture's bitkit://pubky-auth/setup URL with `xcrun simctl openurl &lt;simulator-id&gt; "&lt;url&gt;"` so it cold-starts the app, and unlock it</action>
+    <action>Before the app log shows "Node started", tap Approve on the receiving-details introduction</action>
+    <action>Tap Authorize and complete PIN or biometrics if asked</action>
+    <action>Verify the success screen appears and no node or wallet error toast is shown</action>
+    <action>Verify the Shop dialog or the fixture reports the setup as complete</action>
+    <action>Wait for the wallet to finish syncing, then open the watch-only accounts list in Settings</action>
+    <action>Verify exactly one new account was added, named after the requesting service, with tracking on</action>
+  </actions>
+</journey>

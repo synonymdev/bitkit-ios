@@ -659,14 +659,30 @@ class LightningService: NodeLifecycleService {
         }
     }
 
+    /// Derives the account xpub from the wallet mnemonic instead of asking the node, so a Pubky auth approval does not
+    /// depend on the node being built and started. The result must equal `Node.exportOnchainWalletAccountXpub`, which
+    /// `Node.addOnchainWalletAccount` compares as a string; see `WatchOnlyAccountClaimCodec.accountXpub(fromDescriptor:network:)`.
     func exportWatchOnlyAccountXpub(accountIndex: UInt32, addressType: LDKNode.AddressType) async throws -> String {
-        guard let node else {
-            throw AppError(serviceError: .nodeNotSetup)
+        guard addressType == .nativeSegwit else {
+            throw WatchOnlyAccountError.invalidExtendedPublicKey
         }
+        let walletIndex = currentWalletIndex
+        guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
+            throw CustomServiceError.mnemonicNotFound
+        }
+        let passphraseRaw = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
+        let passphrase = passphraseRaw?.isEmpty == true ? nil : passphraseRaw
 
-        return try await ServiceQueue.background(.ldk) {
-            try node.exportOnchainWalletAccountXpub(addressType: addressType, accountIndex: accountIndex)
+        let descriptor = try await ServiceQueue.background(.core) {
+            try BitkitCore.deriveOnchainDescriptor(
+                mnemonicPhrase: mnemonic,
+                network: Env.bitkitCoreNetwork,
+                bip39Passphrase: passphrase,
+                accountType: .nativeSegwit,
+                accountIndex: accountIndex
+            )
         }
+        return try WatchOnlyAccountClaimCodec.accountXpub(fromDescriptor: descriptor, network: Env.network)
     }
 
     func setWatchOnlyAccountTracking(
@@ -675,8 +691,10 @@ class LightningService: NodeLifecycleService {
         xpub: String,
         enabled: Bool
     ) async throws {
+        // Without a node (not built yet, or stopped) only the caller's store changes: the next build loads tracked
+        // accounts from the store, and `reconcileWatchOnlyAccounts` on start adds or removes any it missed.
         guard let node else {
-            throw AppError(serviceError: .nodeNotSetup)
+            return
         }
 
         try await ServiceQueue.background(.ldk) {

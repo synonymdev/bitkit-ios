@@ -1,4 +1,5 @@
 @testable import Bitkit
+import BitkitCore
 import CryptoKit
 import LDKNode
 import Paykit
@@ -86,6 +87,62 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
         XCTAssertThrowsError(try WatchOnlyAccountClaimCodec.encode(record: makeRecord(accountIndex: 1, xpub: invalidXpub))) {
             XCTAssertEqual($0 as? WatchOnlyAccountError, .invalidExtendedPublicKey)
         }
+    }
+
+    // MARK: - accountXpub(fromDescriptor:network:)
+
+    /// BIP84 test vector ("abandon … about", m/84'/0'/0') with xpub and tpub version bytes.
+    private let bip84Account0Xpub =
+        "xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V"
+    private let bip84Account0Tpub =
+        "tpubDCxX2sYFS5bDkSe5GKKYHjBW7tgyN1R3UchpLJvdbf54ohxeGRtd8MbDUe1cguVHe4vnK68DsuD5MXjxi9EXx16rb9EnNsaF5KT99CinaJz"
+    /// m/84'/1'/1' of the same mnemonic with tpub version bytes, as ldk-node exports it on regtest; derived independently of bitkit-core.
+    private let regtestAccount1Tpub =
+        "tpubDC8msFGeGuwnP2xwTZBBZSie1BLgRAkJhgzpFYTdpGgZNzguXQhNDVWp7mJbHJUjQQvV2myLU9dkx67a7VAUnzY7yT7nvhHj7FgS4oNivvq"
+    private let abandonMnemonic =
+        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+
+    func testAccountXpubKeepsMainnetVersionOnBitcoin() throws {
+        let descriptor = "wpkh([73c5da0a/84'/0'/0']\(bip84Account0Xpub)/0/*)"
+
+        XCTAssertEqual(try WatchOnlyAccountClaimCodec.accountXpub(fromDescriptor: descriptor, network: .bitcoin), bip84Account0Xpub)
+    }
+
+    func testAccountXpubUsesTpubVersionOnTestNetworks() throws {
+        let descriptor = "wpkh([73c5da0a/84'/1'/0']\(bip84Account0Xpub)/0/*)"
+
+        XCTAssertEqual(try WatchOnlyAccountClaimCodec.accountXpub(fromDescriptor: descriptor, network: .regtest), bip84Account0Tpub)
+        XCTAssertEqual(try WatchOnlyAccountClaimCodec.accountXpub(fromDescriptor: descriptor, network: .testnet), bip84Account0Tpub)
+    }
+
+    func testAccountXpubRejectsDescriptorWithoutXpub() {
+        XCTAssertThrowsError(try WatchOnlyAccountClaimCodec.accountXpub(fromDescriptor: "wpkh(tpubABC/0/*)", network: .regtest)) {
+            XCTAssertEqual($0 as? WatchOnlyAccountError, .invalidExtendedPublicKey)
+        }
+    }
+
+    func testCoreDerivationMatchesTheRegtestAccountXpubLdkNodeExports() throws {
+        let descriptor = try BitkitCore.deriveOnchainDescriptor(
+            mnemonicPhrase: abandonMnemonic,
+            network: .regtest,
+            bip39Passphrase: nil,
+            accountType: .nativeSegwit,
+            accountIndex: 1
+        )
+
+        XCTAssertEqual(try WatchOnlyAccountClaimCodec.accountXpub(fromDescriptor: descriptor, network: .regtest), regtestAccount1Tpub)
+    }
+
+    func testCoreDerivationMatchesTheMainnetAccountXpub() throws {
+        let descriptor = try BitkitCore.deriveOnchainDescriptor(
+            mnemonicPhrase: abandonMnemonic,
+            network: .bitcoin,
+            bip39Passphrase: nil,
+            accountType: .nativeSegwit,
+            accountIndex: 0
+        )
+
+        XCTAssertEqual(try WatchOnlyAccountClaimCodec.accountXpub(fromDescriptor: descriptor, network: .bitcoin), bip84Account0Xpub)
     }
 
     // MARK: - serializedXpub
