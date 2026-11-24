@@ -459,6 +459,7 @@
 "lightning__spark_exit__fees_text" = "Per iniciar la transferència forçosa, has de pagar comissions d'emergència que cobreixin les transaccions on-chain necessàries per completar el procés.";
 "lightning__spark_exit__fees_title" = "Comissions\n<accent>d'emergència</accent>";
 "lightning__spark_exit__fees_unused" = "*Les comissions no utilitzades tornaran als teus estalvis";
+"lightning__spark_exit__note_notifications_button" = "Activa les notificacions";
 "lightning__spark_exit__overview" = "Resum";
 "lightning__spark_exit__pay_amount" = "Import a pagar";
 "lightning__spark_exit__pay_text" = "<accent>Paga les comissions per iniciar la transferència forçosa.</accent>\nLa transferència forçosa comença quan el pagament es confirma a la blockchain.";

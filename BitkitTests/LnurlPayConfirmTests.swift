@@ -290,4 +290,23 @@ final class LnurlPayConfirmTests: XCTestCase {
         XCTAssertFalse(LnurlPayConfirm.isCurrentRefusedSend(uri: "lnurl1a", currentUri: "lnurl1b"))
         XCTAssertFalse(LnurlPayConfirm.isCurrentRefusedSend(uri: "lnurl1a", currentUri: nil))
     }
+
+    func testAnUpdateSwipeEndsWithItsScreenStayOrAChangedPayment() {
+        let visit = ConfirmScreenVisit()
+        XCTAssertFalse(visit.isLeft)
+        visit.leave()
+        XCTAssertTrue(visit.isLeft, "Leaving the screen ends its swipe even when the next stay shows an equal payment")
+
+        let swipe = SwipedLnurlPayment(uri: "lnurl1a", amountSats: 1000)
+        XCTAssertEqual(swipe, SwipedLnurlPayment(uri: "lnurl1a", amountSats: 1000))
+        XCTAssertNotEqual(swipe, SwipedLnurlPayment(uri: "lnurl1a", amountSats: 2000))
+        XCTAssertNotEqual(swipe, SwipedLnurlPayment(uri: "lnurl1b", amountSats: 1000))
+
+        let confirm = SparkUpdateSwipe(
+            walletType: .lightning, bolt11: "lnbc1", onchainAddress: nil, amountSats: 1000, hasServiceLeg: false, hasSwapRoute: false
+        )
+        XCTAssertNotEqual(confirm, SparkUpdateSwipe(
+            walletType: .onchain, bolt11: "lnbc1", onchainAddress: nil, amountSats: 1000, hasServiceLeg: false, hasSwapRoute: false
+        ))
+    }
 }

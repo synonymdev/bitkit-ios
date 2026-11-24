@@ -472,6 +472,7 @@
 "lightning__spark_exit__fees_text" = "Um die forcierte Übertragung zu starten, musst du Notfallgebühren zahlen, die die On-Chain-Transaktionen decken, die zum Abschluss des Vorgangs nötig sind.";
 "lightning__spark_exit__fees_title" = "Notfall-\n<accent>gebühren</accent>";
 "lightning__spark_exit__fees_unused" = "*Nicht verbrauchte Gebühren gehen zurück auf dein Sparkonto";
+"lightning__spark_exit__note_notifications_button" = "Benachrichtigungen aktivieren";
 "lightning__spark_exit__overview" = "Übersicht";
 "lightning__spark_exit__pay_amount" = "Zu zahlender Betrag";
 "lightning__spark_exit__pay_text" = "<accent>Zahle die Gebühren, um die forcierte Übertragung zu starten.</accent>\nDie forcierte Übertragung beginnt, sobald die Zahlung auf der Blockchain bestätigt ist.";

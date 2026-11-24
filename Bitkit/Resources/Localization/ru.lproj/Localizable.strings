@@ -470,6 +470,7 @@
 "lightning__spark_exit__fees_text" = "Чтобы начать принудительный перевод, нужно оплатить экстренные комиссии за ончейн-транзакции, необходимые для завершения процесса.";
 "lightning__spark_exit__fees_title" = "Экстренные\n<accent>комиссии</accent>";
 "lightning__spark_exit__fees_unused" = "*Неиспользованные комиссии вернутся в сбережения";
+"lightning__spark_exit__note_notifications_button" = "Включить уведомления";
 "lightning__spark_exit__overview" = "Обзор";
 "lightning__spark_exit__pay_amount" = "Сумма к оплате";
 "lightning__spark_exit__pay_text" = "<accent>Оплатите комиссии, чтобы начать принудительный перевод.</accent>\nОн начнётся, когда платёж подтвердится в блокчейне.";

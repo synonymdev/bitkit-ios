@@ -475,6 +475,7 @@
 "lightning__spark_exit__fees_text" = "Pour lancer le transfert forcé, vous devez payer des frais d'urgence couvrant les transactions on-chain nécessaires à son exécution.";
 "lightning__spark_exit__fees_title" = "Frais\n<accent>d'urgence</accent>";
 "lightning__spark_exit__fees_unused" = "*Les frais inutilisés reviendront à votre épargne";
+"lightning__spark_exit__note_notifications_button" = "Activer les notifications";
 "lightning__spark_exit__overview" = "Aperçu";
 "lightning__spark_exit__pay_amount" = "Montant à payer";
 "lightning__spark_exit__pay_text" = "<accent>Payez les frais pour lancer le transfert forcé.</accent>\nLe transfert forcé démarre une fois le paiement confirmé sur la blockchain.";

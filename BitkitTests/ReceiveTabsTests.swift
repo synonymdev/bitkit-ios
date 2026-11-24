@@ -20,4 +20,11 @@ final class ReceiveTabsTests: XCTestCase {
             [.savings, .unified, .spending]
         )
     }
+
+    func testAutoAndSpendingFallBackToSavingsWhenLightningReceiveHides() {
+        XCTAssertEqual(ReceiveQr.tab(.unified, canShowUnifiedReceive: false), .savings)
+        XCTAssertEqual(ReceiveQr.tab(.spending, canShowUnifiedReceive: false), .savings)
+        XCTAssertEqual(ReceiveQr.tab(.usdt, canShowUnifiedReceive: false), .usdt)
+        XCTAssertEqual(ReceiveQr.tab(.spending, canShowUnifiedReceive: true), .spending)
+    }
 }

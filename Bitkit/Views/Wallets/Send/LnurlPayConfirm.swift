@@ -26,6 +26,7 @@ struct LnurlPayConfirm: View {
     /// The spending balance update a payment that fits only across the channels and Spark runs first.
     @State private var sparkUpdateQuote: MoveToSparkQuote?
     @State private var isSparkUpdateQuoting = false
+    @State private var screenVisit = ConfirmScreenVisit()
     /// A first subscription payment that needs the update waits for a swipe on its update fee instead of paying by itself.
     @State private var needsUpdateConfirmation = false
     @FocusState private var isCommentFocused: Bool
@@ -101,6 +102,14 @@ struct LnurlPayConfirm: View {
             guard !Task.isCancelled else { return }
             // PIN navigation can cancel the view task while authorization is awaiting its result.
             Task { @MainActor in await startAutomaticPaymentIfNeeded() }
+        }
+        .onAppear {
+            if screenVisit.isLeft {
+                screenVisit = ConfirmScreenVisit()
+            }
+        }
+        .onDisappear {
+            screenVisit.leave()
         }
     }
 
@@ -506,11 +515,15 @@ struct LnurlPayConfirm: View {
     @MainActor
     private func confirmSparkUpdateQuote() async -> Bool {
         guard sparkUpdateAmountSats != nil, let lnurlPayData = app.lnurlPayData else { return true }
+        let swipe = swipedPayment
+        let visit = screenVisit
         let fresh: MoveToSparkQuote
         do {
             fresh = try await MoveToSparkManager.shared.updateQuote(wallet: wallet)
         } catch {
             Logger.error("Failed to quote the spending balance update: \(error)", context: "LnurlPayConfirm")
+            // An amount or LNURL changed while quoting is no longer this swipe's, so its failure stays off the new one.
+            guard !visit.isLeft, swipedPayment == swipe else { return false }
             navigationPath.append(.failure(SendFailureContext(
                 error: MoveToSparkError.updateFailed,
                 retryRoute: .lnurlPayConfirm,
@@ -520,6 +533,8 @@ struct LnurlPayConfirm: View {
             )))
             return false
         }
+        // A quote for an edited payment, or one finishing after LNURL Confirm was left, would show this swipe's fee on it.
+        guard !visit.isLeft, swipedPayment == swipe else { return false }
         let shown = sparkUpdateQuote
         sparkUpdateQuote = fresh
         return !MoveToSparkMath.isUpdateFeeUnseen(shownFeeSats: shown?.feeSats, freshFeeSats: fresh.feeSats)

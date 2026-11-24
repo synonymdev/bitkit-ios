@@ -422,6 +422,7 @@
 "lightning__spark_exit__fees_text" = "لبدء التحويل القسري، عليك دفع رسوم الطوارئ لتغطية معاملات السلسلة اللازمة لإتمام العملية.";
 "lightning__spark_exit__fees_title" = "رسوم\n<accent>الطوارئ</accent>";
 "lightning__spark_exit__fees_unused" = "*أي رسوم غير مستخدمة تعود إلى مدخراتك";
+"lightning__spark_exit__note_notifications_button" = "تفعيل الإشعارات";
 "lightning__spark_exit__overview" = "نظرة عامة";
 "lightning__spark_exit__pay_amount" = "المبلغ المطلوب دفعه";
 "lightning__spark_exit__pay_text" = "<accent>ادفع الرسوم لبدء التحويل القسري.</accent>\nيبدأ التحويل القسري بمجرد تأكيد الدفعة على البلوكتشين.";

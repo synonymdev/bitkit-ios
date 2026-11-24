@@ -469,6 +469,7 @@
 "lightning__spark_exit__fees_text" = "Per avviare il trasferimento forzato devi pagare le commissioni di emergenza, che coprono le transazioni on-chain necessarie per completare il processo.";
 "lightning__spark_exit__fees_title" = "Commissioni\n<accent>di emergenza</accent>";
 "lightning__spark_exit__fees_unused" = "*Le commissioni non utilizzate torneranno ai tuoi risparmi";
+"lightning__spark_exit__note_notifications_button" = "Attiva le notifiche";
 "lightning__spark_exit__overview" = "Panoramica";
 "lightning__spark_exit__pay_amount" = "Importo da pagare";
 "lightning__spark_exit__pay_text" = "<accent>Paga le commissioni per avviare il trasferimento forzato.</accent>\nIl trasferimento forzato parte quando il pagamento è confermato sulla blockchain.";

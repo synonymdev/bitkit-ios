@@ -90,6 +90,7 @@ struct SendConfirmationView: View {
     /// The spending balance update a Lightning payment that fits only across the channels and Spark runs first.
     @State private var sparkUpdateQuote: MoveToSparkQuote?
     @State private var sparkUpdateQuoteRuns = SparkUpdateQuoteRuns()
+    @State private var screenVisit = ConfirmScreenVisit()
 
     private struct WalletSwitchRun {
         let id: UUID
@@ -615,7 +616,13 @@ struct SendConfirmationView: View {
                 guard previous != nil, context == nil, confirmationContext != nil, preparingRequest == nil else { return }
                 Task { @MainActor in await startAutomaticPaymentIfNeeded() }
             }
+            .onAppear {
+                if screenVisit.isLeft {
+                    screenVisit = ConfirmScreenVisit()
+                }
+            }
             .onDisappear {
+                screenVisit.leave()
                 startWalletSwitch(context: nil)
                 if !isEditingSendDetails || sendContext != walletSwitchContext {
                     walletSwitchContext = nil
@@ -1149,6 +1156,7 @@ struct SendConfirmationView: View {
             }
         }
 
+        let swipe = sparkUpdateSwipe
         guard await confirmSparkUpdateQuote() else { throw CancellationError() }
         // The quote this swipe approved: the PIN screen reruns `.task`, which can replace `sparkUpdateQuote` meanwhile.
         let approvedUpdateQuote = sparkUpdateQuote
@@ -1207,6 +1215,12 @@ struct SendConfirmationView: View {
         if requiresManualConfirmation(isAutomatic: isAutomatic) {
             showManualConfirmation(reason: "hardware wallet")
             return
+        }
+
+        // An update approved for this swipe pays only the payment it was approved for, after warnings and PIN too.
+        if approvedUpdateQuote != nil, sparkUpdateSwipe != swipe {
+            Logger.info("Stopped a swipe whose payment changed before it was sent", context: "SendConfirmation")
+            throw CancellationError()
         }
 
         if hwSend.isActive {
@@ -3098,16 +3112,20 @@ struct SendConfirmationView: View {
     private func confirmSparkUpdateQuote() async -> Bool {
         guard needsSparkUpdate, let payment = sparkUpdatePayment else { return true }
         let swipe = sparkUpdateSwipe
+        let visit = screenVisit
         let fresh: MoveToSparkQuote
         do {
             fresh = try await MoveToSparkManager.shared.updateQuote(wallet: wallet)
-            // The swipe is for the payment it started on: a source, route or amount changed while quoting stops it.
-            guard sparkUpdateSwipe == swipe else {
+            // The swipe is for the payment and the stay on Confirm it started on: leaving or a changed source, route or
+            // amount stops it.
+            guard !visit.isLeft, sparkUpdateSwipe == swipe else {
                 Logger.info("Stopped a swipe whose payment changed while the update was quoted", context: "SendConfirmation")
                 return false
             }
         } catch {
             Logger.error("Failed to quote the spending balance update: \(error)", context: "SendConfirmation")
+            // A payment changed while quoting is no longer this swipe's, so its failure stays off the new one.
+            guard !visit.isLeft, sparkUpdateSwipe == swipe else { return false }
             navigationPath.append(.failure(SendFailureContext(
                 error: MoveToSparkError.updateFailed,
                 retryRoute: .confirm,
@@ -3133,6 +3151,16 @@ struct SparkUpdateSwipe: Equatable {
     let amountSats: UInt64?
     let hasServiceLeg: Bool
     let hasSwapRoute: Bool
+}
+
+/// One stay of a confirm screen on top of the send flow. Going Back, closing the sheet or opening the next screen leaves
+/// it, so an update quote that finishes after that neither shows its failure nor continues, even for an equal payment.
+final class ConfirmScreenVisit {
+    private(set) var isLeft = false
+
+    func leave() {
+        isLeft = true
+    }
 }
 
 /// Tracks the newest spending balance update quote on Confirm, so an older quote finishing late writes neither its fee nor

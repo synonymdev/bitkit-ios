@@ -82,6 +82,12 @@ struct ReceiveQr: View {
     }
 
     /// The receive tabs in order. Without a Lightning invoice, from a usable Spark wallet or channel, Auto and Spending hide.
+    /// Auto and Spending hide when Lightning stops receiving with no invoice change, as when Spark disconnects, so their
+    /// selection goes to Savings.
+    static func tab(_ selected: ReceiveTab, canShowUnifiedReceive: Bool) -> ReceiveTab {
+        !canShowUnifiedReceive && (selected == .unified || selected == .spending) ? .savings : selected
+    }
+
     static func visibleTabs(hasHardwareWallet: Bool, canReceiveLightning: Bool, isUsdtEnabled: Bool) -> [ReceiveTab] {
         var tabs: [ReceiveTab] = hasHardwareWallet ? [.hardware, .savings] : [.savings]
         if canReceiveLightning {
@@ -309,6 +315,9 @@ struct ReceiveQr: View {
             }
 
             applyDefaultTabIfNeeded()
+        }
+        .onChange(of: canShowUnifiedReceive, initial: true) { _, canShow in
+            selectedTab = Self.tab(selectedTab, canShowUnifiedReceive: canShow)
         }
         .onDisappear {
             verifyTask?.cancel()
