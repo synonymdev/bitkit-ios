@@ -1136,7 +1136,7 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
-    func testRecoveryAsksForAnUpdateEachTimeAndStopsRetryingWhenPaykitStateIsNewer() async {
+    func testRecoveryAsksForAnUpdateOnceAndStopsRetryingWhenPaykitStateIsNewer() async {
         let manager = RecoveryProfileManager()
         manager.isInitialized = true
 
@@ -1152,7 +1152,7 @@ final class PubkyProfileManagerTests: XCTestCase {
         }
         let attemptCount = await attempts.next() - 1
         XCTAssertEqual(attemptCount, 1)
-        XCTAssertTrue(manager.sessionRestorationNeedsUpdate)
+        XCTAssertFalse(manager.sessionRestorationNeedsUpdate)
     }
 
     @MainActor

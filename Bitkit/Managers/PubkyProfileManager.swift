@@ -97,6 +97,8 @@ class PubkyProfileManager: ObservableObject {
     @Published var sessionRestorationNeedsUpdate = false
     /// Retrying cannot read state saved by a newer Paykit, so the retry loop stops once a restore finds it.
     private var restorationNeedsUpdate = false
+    /// Foreground polling restores the saved session every minute, so each saved identity asks for the update once.
+    private var updatePromptRevision: UUID?
     @Published var adoptedSourceLost = false
     @Published private(set) var cachedName: String?
     @Published private(set) var cachedImageUri: String?
@@ -374,6 +376,8 @@ class PubkyProfileManager: ObservableObject {
             publicKey = pk
             authState = .authenticated
             sessionRestorationFailed = false
+            restorationNeedsUpdate = false
+            updatePromptRevision = nil
             Logger.info("Paykit session restored for \(pk)", context: "PubkyProfileManager")
             Task { await loadProfile() }
         case .restorationFailed, .restorationNeedsUpdate:
@@ -381,7 +385,10 @@ class PubkyProfileManager: ObservableObject {
             clearAuthenticatedState(clearCachedProfile: false)
             restorationNeedsUpdate = result == .restorationNeedsUpdate
             if restorationNeedsUpdate {
-                sessionRestorationNeedsUpdate = true
+                if updatePromptRevision != Self.sessionRevision {
+                    updatePromptRevision = Self.sessionRevision
+                    sessionRestorationNeedsUpdate = true
+                }
             } else if case .userVisible = mode {
                 sessionRestorationFailed = true
             }
