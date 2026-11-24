@@ -167,6 +167,8 @@ final class SparkManager: ChannelFreeLightningRail {
         if LightningService.shared.channelFreeRail === self {
             LightningService.shared.channelFreeRail = nil
         }
+        // Read off the main actor, so a channel payment LDK is about to submit for a move sees the exit at once.
+        Self.notifyExitStateChanged()
     }
 
     /// Saves the kept balance as an exit starts, before a refresh reads Spark as exiting and drops it: a cancelled

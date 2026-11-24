@@ -31,6 +31,12 @@ enum MoveToSparkMath {
         (channels ?? []).filter(\.isUsable).map(sendableSats).reduce(0, +)
     }
 
+    /// What the usable channels hold, which every settled part lowers by its amount and fee. Unlike `outboundSats`, it
+    /// infers no commitment type, so a peer's HTLC cap can never make it rise after a payment.
+    static func heldSats(channels: [ChannelDetails]?) -> UInt64 {
+        (channels ?? []).filter(\.isUsable).map { $0.outboundCapacityMsat / 1000 }.reduce(0, +)
+    }
+
     private static func sendableSats(_ channel: ChannelDetails) -> UInt64 {
         let outboundSats = channel.outboundCapacityMsat / 1000
         guard channel.isOutbound else { return outboundSats }
@@ -666,7 +672,7 @@ final class MoveToSparkManager {
             quote,
             isWanted: isWanted,
             movableSats: { await self.movableSatsAfterSync(wallet: wallet) },
-            outboundSats: { MoveToSparkMath.outboundSats(channels: wallet.channels) },
+            outboundSats: { MoveToSparkMath.heldSats(channels: wallet.channels) },
             newInvoice: {
                 try await services.receiveInvoice(description: MoveToSparkMath.invoiceDescription, expirySecs: Self.invoiceExpirySecs)
             },
@@ -690,15 +696,18 @@ final class MoveToSparkManager {
     }
 
     /// What the channels can still send after a node sync. A part that just settled can hold a channel's send limit down
-    /// until its HTLC clears, so a read below the minimum counts only once no channel can still be holding one, or after
-    /// the wait the close uses.
+    /// until its HTLC clears, so a read below the minimum counts only once every channel reads emptied for good, as the
+    /// close checks it: a reserve match holds across a recheck, since one read can match by chance while the HTLC still
+    /// counts against the peer's cap. Else it counts after the wait the close uses.
     private func movableSatsAfterSync(wallet: WalletViewModel) async -> UInt64 {
         await wallet.syncStateAsync()
         let deadline = ContinuousClock.now + Self.htlcClearWait
+        var previous: [ChannelDetails]?
         while !MoveToSparkMath.hasMovableBalance(limitSats: MoveToSparkMath.movableSats(channels: wallet.channels)),
-              (wallet.channels ?? []).filter(\.isUsable).contains(where: MoveToSparkMath.mayHoldTheMoveHtlc),
+              (wallet.channels ?? []).filter(\.isUsable).contains(where: { !MoveToSparkMath.isEmptiedForGood($0, previous: previous) }),
               ContinuousClock.now < deadline
         {
+            previous = wallet.channels
             try? await Task.sleep(for: Self.htlcClearRecheck)
             await wallet.syncStateAsync()
         }
@@ -828,13 +837,13 @@ final class MoveToSparkManager {
     }
 
     /// Pays `quote` over the channels, after any move still paying, and waits for its outcome; `nil` means it is still in
-    /// flight, and its late outcome goes to `onLateFailure` or `onLateSuccess`. It throws without sending when `isWanted`
-    /// no longer holds after the wait.
+    /// flight, and its late outcome goes to `onLateFailure` or `onLateSuccess`. With `isWanted`, it throws without sending
+    /// when that no longer holds after the wait, or when an exit changed Spark by the time LDK submits the part.
     private func payOverChannels(
         _ quote: MoveToSparkQuote,
         feeCapMsat: UInt64? = nil,
         wallet: WalletViewModel,
-        isWanted: @escaping @MainActor () -> Bool = { true },
+        isWanted: (@MainActor () -> Bool)? = nil,
         beforeSubmission: @escaping () throws -> Void = {},
         onTimeout: @escaping @MainActor () -> Void = {},
         onLateFailure: @escaping @MainActor () -> Void = {},
@@ -844,14 +853,21 @@ final class MoveToSparkManager {
         let payment = Task { @MainActor in
             await previous?.value
             // Checked again after the wait, as the wallet or Spark can change while an earlier move pays.
-            guard isWanted() else { throw MoveToSparkError.sparkUnavailable }
+            if let isWanted, !isWanted() { throw MoveToSparkError.sparkUnavailable }
+            // LDK submits on its own queue, off the main actor: an exit starting after the check above changes Spark's
+            // exit state, which stops the part there.
+            let exitState = SparkManager.exitStateGeneration
+            let stopsOnExit = isWanted != nil
             let paymentHash = try Bolt11Invoice.fromStr(invoiceStr: quote.invoice).paymentHash()
             MoveToSparkPayments.insert(String(describing: paymentHash))
             return try await wallet.sendOverChannels(
                 bolt11: quote.invoice,
                 sats: quote.amountSats,
                 maxFeeMsat: feeCapMsat ?? MoveToSparkMath.feeCapMsat(feeSats: quote.feeSats),
-                beforeSubmission: beforeSubmission,
+                beforeSubmission: {
+                    if stopsOnExit, SparkManager.exitStateGeneration != exitState { throw MoveToSparkError.sparkUnavailable }
+                    try beforeSubmission()
+                },
                 onTimeout: onTimeout,
                 onLateFailure: onLateFailure,
                 onLateSuccess: onLateSuccess
@@ -1142,8 +1158,12 @@ final class MoveToSparkManager {
     /// move, with a toast wherever the user is.
     private func lateFailure(movedSats: UInt64, feeSats: UInt64, moveGeneration: Int, wallet: WalletViewModel) async {
         Logger.warn("A Move to Spark part failed after the wait, '\(movedSats)' sats moved before it", context: "MoveToSpark")
-        if generation == moveGeneration {
-            isMoveInFlight = false
+        // Kept in flight until the refresh hands the move to its result or the quote for the rest, as after a late
+        // success, so closing the modal meanwhile keeps what moved.
+        defer {
+            if generation == moveGeneration {
+                isMoveInFlight = false
+            }
         }
         if Self.showsInFlightMove(state, generation: generation, moveGeneration: moveGeneration) {
             if movedSats > 0 {
