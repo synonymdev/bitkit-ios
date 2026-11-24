@@ -95,6 +95,8 @@ class PubkyProfileManager: ObservableObject {
     @Published var initializationErrorMessage: String?
     @Published var sessionRestorationFailed = false
     @Published var sessionRestorationNeedsUpdate = false
+    /// Retrying cannot read state saved by a newer Paykit, so the retry loop stops once a restore finds it.
+    private var restorationNeedsUpdate = false
     @Published var adoptedSourceLost = false
     @Published private(set) var cachedName: String?
     @Published private(set) var cachedImageUri: String?
@@ -295,7 +297,7 @@ class PubkyProfileManager: ObservableObject {
         while !Task.isCancelled, revision == Self.sessionRevision {
             await restoreSessionIfNeeded(hasStoredIdentity: hasStoredIdentity, initializeSession: initializeSession)
             guard !Task.isCancelled, revision == Self.sessionRevision,
-                  !isAuthenticated, (try? hasStoredIdentity()) != false
+                  !isAuthenticated, !restorationNeedsUpdate, (try? hasStoredIdentity()) != false
             else { return }
             let nextDelay: Duration
             if sessionRestorationDeferred, deferredRetries < 8 {
@@ -377,12 +379,11 @@ class PubkyProfileManager: ObservableObject {
         case .restorationFailed, .restorationNeedsUpdate:
             sessionRestorationDeferred = false
             clearAuthenticatedState(clearCachedProfile: false)
-            if case .userVisible = mode {
-                if result == .restorationNeedsUpdate {
-                    sessionRestorationNeedsUpdate = true
-                } else {
-                    sessionRestorationFailed = true
-                }
+            restorationNeedsUpdate = result == .restorationNeedsUpdate
+            if restorationNeedsUpdate {
+                sessionRestorationNeedsUpdate = true
+            } else if case .userVisible = mode {
+                sessionRestorationFailed = true
             }
         case .restorationDeferred:
             clearAuthenticatedState(clearCachedProfile: false, clearReadOnlyProfile: false)
