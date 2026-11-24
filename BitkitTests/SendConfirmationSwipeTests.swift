@@ -4,56 +4,53 @@ import SwiftUI
 import XCTest
 
 final class SendConfirmationSwipeTests: XCTestCase {
+    @MainActor
     func testARunningSwipeHoldsConfirmUntilItMovesOnOrReturns() {
-        var lock = ConfirmSwipeLock()
-        lock.isVisible = true
-        XCTAssertFalse(lock.isLocked(isSubmittingPayment: false))
+        let holdsBefore = SwipeBackState.confirmSwipeHolds
+        let lock = ConfirmSwipeLock()
+        var reported: [Bool] = []
+        lock.onLockChange = { reported.append($0) }
+        lock.setVisible(true)
+        XCTAssertFalse(lock.isLocked)
 
         lock.begin()
-        XCTAssertTrue(lock.isLocked(isSubmittingPayment: false), "A running swipe holds Back, the sheet's drag and the inputs")
-        lock.isVisible = false
-        XCTAssertFalse(lock.isLocked(isSubmittingPayment: false), "The screen the swipe moves on to, such as the PIN, is free")
-        lock.isVisible = true
-        XCTAssertTrue(lock.isLocked(isSubmittingPayment: false), "Returning to Confirm while the swipe still runs holds it again")
+        XCTAssertTrue(lock.isLocked, "A running swipe holds Back, the sheet's drag and the inputs")
+        XCTAssertEqual(SwipeBackState.confirmSwipeHolds, holdsBefore + 1)
+        lock.setVisible(false)
+        XCTAssertFalse(lock.isLocked, "The screen the swipe moves on to, such as the PIN, is free")
+        lock.end()
+        lock.setVisible(true)
+        XCTAssertFalse(lock.isLocked, "A swipe that stopped while the PIN covered Confirm leaves it free on return")
 
-        lock.end()
-        XCTAssertFalse(lock.isLocked(isSubmittingPayment: false), "A finished swipe frees Confirm")
-        lock.end()
         lock.begin()
-        XCTAssertTrue(lock.isLocked(isSubmittingPayment: false), "An extra end never frees a later swipe early")
-
+        lock.setVisible(false)
+        lock.setVisible(true)
+        XCTAssertTrue(lock.isLocked, "Returning to Confirm while the swipe still runs holds it again")
         lock.end()
-        XCTAssertTrue(lock.isLocked(isSubmittingPayment: true), "A payment still running holds a Confirm rebuilt without the swipe")
-        lock.isVisible = false
-        XCTAssertFalse(lock.isLocked(isSubmittingPayment: true), "The screen the payment moves on to is free")
+        lock.setSubmittingPayment(true)
+        XCTAssertTrue(lock.isLocked, "A payment still running holds a Confirm rebuilt without the swipe")
+        lock.setSubmittingPayment(false)
+
+        XCTAssertEqual(reported, [true, false, true, false, true, false, true, false])
+        XCTAssertEqual(SwipeBackState.confirmSwipeHolds, holdsBefore, "Every hold is let go")
     }
 
     @MainActor
-    func testConfirmTakesItsHoldBackWhenARunningSwipeReturnsToIt() async throws {
-        var lock = ConfirmSwipeLock()
-        lock.begin()
-        var reported: [Bool] = []
-        let confirm = SwipeLockHost(lock: lock) { reported.append($0) }
-        let controller = UIHostingController(rootView: AnyView(confirm))
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
-        window.windowScene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
-        window.rootViewController = controller
-        window.makeKeyAndVisible()
-        defer { window.isHidden = true; window.rootViewController = nil; SwipeBackState.isHeldByConfirmSwipe = false }
+    func testALeavingConfirmKeepsTheNextConfirmsHold() {
+        let holdsBefore = SwipeBackState.confirmSwipeHolds
+        let leaving = ConfirmSwipeLock()
+        let next = ConfirmSwipeLock()
+        leaving.setVisible(true)
+        leaving.begin()
+        next.setVisible(true)
+        next.setSubmittingPayment(true)
 
-        try await Task.sleep(for: .milliseconds(300))
-        XCTAssertEqual(reported.last, true, "Showing Confirm while its swipe runs holds the sheet")
-        XCTAssertTrue(SwipeBackState.isHeldByConfirmSwipe)
+        leaving.setVisible(false)
+        XCTAssertEqual(SwipeBackState.confirmSwipeHolds, holdsBefore + 1, "The next confirm's payment still holds swipe back")
 
-        controller.rootView = AnyView(Color.black)
-        try await Task.sleep(for: .milliseconds(300))
-        XCTAssertEqual(reported.last, false, "The screen the swipe moves on to, such as the PIN, is free")
-        XCTAssertFalse(SwipeBackState.isHeldByConfirmSwipe)
-
-        controller.rootView = AnyView(confirm)
-        try await Task.sleep(for: .milliseconds(300))
-        XCTAssertEqual(reported.last, true, "Returning to Confirm while the swipe still runs holds it again")
-        XCTAssertTrue(SwipeBackState.isHeldByConfirmSwipe)
+        leaving.end()
+        next.setVisible(false)
+        XCTAssertEqual(SwipeBackState.confirmSwipeHolds, holdsBefore)
     }
 
     @MainActor
@@ -432,14 +429,5 @@ final class SendConfirmationSwipeTests: XCTestCase {
                 }
             }
         }
-    }
-}
-
-private struct SwipeLockHost: View {
-    @State var lock: ConfirmSwipeLock
-    let onLockChange: (Bool) -> Void
-
-    var body: some View {
-        Color.black.confirmSwipeLock($lock, isSubmittingPayment: false, onLockChange: onLockChange)
     }
 }

@@ -410,7 +410,7 @@ struct SendConfirmationView: View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(
                 title: reviewTitle,
-                showBackButton: !navigationPath.isEmpty && !isSwipeLocked,
+                showBackButton: !navigationPath.isEmpty && !swipeLock.isLocked,
                 action: AnyView(SendContactHeaderAvatar(publicKey: preparingRequest?.counterparty))
             )
 
@@ -533,7 +533,7 @@ struct SendConfirmationView: View {
             }
         }
         // The payment's inputs stay as swiped while the swipe runs
-        .allowsHitTesting(!isSwipeLocked)
+        .allowsHitTesting(!swipeLock.isLocked)
     }
 
     private var confirmationPresentation: some View {
@@ -628,7 +628,7 @@ struct SendConfirmationView: View {
                     screenVisit = ConfirmScreenVisit()
                 }
             }
-            .confirmSwipeLock($swipeLock, isSubmittingPayment: isSubmittingPayment, onLockChange: onLockChange)
+            .confirmSwipeLock(swipeLock, isSubmittingPayment: isSubmittingPayment, onLockChange: onLockChange)
             .onDisappear {
                 screenVisit.leave()
                 startWalletSwitch(context: nil)
@@ -689,6 +689,8 @@ struct SendConfirmationView: View {
         ) else { return }
         hasStartedAutomaticPayment = true
         do {
+            swipeLock.begin()
+            defer { swipeLock.end() }
             try await submitPayment(isAutomatic: true)
         } catch is CancellationError {
             navigationPath.append(.failure(SendFailureContext(
@@ -1109,10 +1111,6 @@ struct SendConfirmationView: View {
             )
             app.selectedWalletToPayFrom = .onchain
         }
-    }
-
-    private var isSwipeLocked: Bool {
-        swipeLock.isLocked(isSubmittingPayment: isSubmittingPayment)
     }
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
@@ -3177,66 +3175,63 @@ final class ConfirmScreenVisit {
 }
 
 /// Holds a confirm screen while a swipe of it, or the payment it started, runs, until it moves on to the next screen or
-/// returns to Confirm: Back, swipe back, the sheet's drag and the payment's inputs wait meanwhile.
-struct ConfirmSwipeLock: Equatable {
+/// returns to Confirm: Back, swipe back, the sheet's drag and the payment's inputs wait meanwhile. Each change reports at
+/// once, not on the next redraw, since a screen covered by the PIN may not redraw.
+@MainActor
+@Observable
+final class ConfirmSwipeLock {
     private(set) var runs = 0
-    var isVisible = false
+    private(set) var isVisible = false
+    private(set) var isSubmittingPayment = false
+    @ObservationIgnored var onLockChange: (Bool) -> Void = { _ in }
+    @ObservationIgnored private var isHolding = false
 
-    /// The sheet's `isSubmittingPayment` outlives this screen's state, so a payment still holds a rebuilt Confirm.
-    func isLocked(isSubmittingPayment: Bool) -> Bool {
+    var isLocked: Bool {
         (runs > 0 || isSubmittingPayment) && isVisible
     }
 
-    mutating func begin() {
+    func begin() {
         runs += 1
+        report()
     }
 
-    mutating func end() {
+    func end() {
         runs = max(0, runs - 1)
+        report()
+    }
+
+    func setVisible(_ isVisible: Bool) {
+        self.isVisible = isVisible
+        report()
+    }
+
+    func setSubmittingPayment(_ isSubmittingPayment: Bool) {
+        self.isSubmittingPayment = isSubmittingPayment
+        report()
+    }
+
+    private func report() {
+        guard isLocked != isHolding else { return }
+        isHolding = isLocked
+        SwipeBackState.confirmSwipeHolds += isLocked ? 1 : -1
+        onLockChange(isLocked)
     }
 }
 
 extension View {
-    /// Tracks the screen's stay for `lock`, holds swipe back while it locks, and reports each change to the sheet.
+    /// Tracks the screen's stay and payment for `lock`, which tells the sheet of each change.
     func confirmSwipeLock(
-        _ lock: Binding<ConfirmSwipeLock>,
+        _ lock: ConfirmSwipeLock,
         isSubmittingPayment: Bool,
         onLockChange: @escaping (Bool) -> Void
     ) -> some View {
-        modifier(ConfirmSwipeLockModifier(lock: lock, isSubmittingPayment: isSubmittingPayment, onLockChange: onLockChange))
-    }
-}
-
-private struct ConfirmSwipeLockModifier: ViewModifier {
-    @Binding var lock: ConfirmSwipeLock
-    let isSubmittingPayment: Bool
-    let onLockChange: (Bool) -> Void
-    @State private var isHolding = false
-
-    private var isLocked: Bool {
-        lock.isLocked(isSubmittingPayment: isSubmittingPayment)
-    }
-
-    func body(content: Content) -> some View {
-        content
-            // Applied directly on appear and disappear: a screen covered by the PIN may see no change in between.
-            .onAppear {
-                lock.isVisible = true
-                hold(lock.runs > 0 || isSubmittingPayment)
-            }
-            .onDisappear {
-                lock.isVisible = false
-                hold(false)
-            }
-            .onChange(of: isLocked) { _, isLocked in hold(isLocked) }
-    }
-
-    private func hold(_ isLocked: Bool) {
-        // Only the screen holding the sheet frees it: the next confirm may already hold it.
-        guard isLocked || isHolding else { return }
-        isHolding = isLocked
-        SwipeBackState.isHeldByConfirmSwipe = isLocked
-        onLockChange(isLocked)
+        onAppear {
+            lock.onLockChange = onLockChange
+            lock.setSubmittingPayment(isSubmittingPayment)
+            lock.setVisible(true)
+        }
+        .onDisappear { lock.setVisible(false) }
+        .onChange(of: isSubmittingPayment) { _, isSubmitting in lock.setSubmittingPayment(isSubmitting) }
     }
 }
 

@@ -111,7 +111,7 @@ struct LnurlPayConfirm: View {
                 screenVisit = ConfirmScreenVisit()
             }
         }
-        .confirmSwipeLock($swipeLock, isSubmittingPayment: isSubmittingPayment, onLockChange: onLockChange)
+        .confirmSwipeLock(swipeLock, isSubmittingPayment: isSubmittingPayment, onLockChange: onLockChange)
         .onDisappear {
             screenVisit.leave()
         }
@@ -121,7 +121,7 @@ struct LnurlPayConfirm: View {
         VStack {
             SheetHeader(
                 title: reviewTitle,
-                showBackButton: !isSwipeLocked,
+                showBackButton: !swipeLock.isLocked,
                 action: AnyView(SendContactHeaderAvatar())
             )
 
@@ -188,7 +188,7 @@ struct LnurlPayConfirm: View {
                             .dismissKeyboardOnReturn(text: $comment, isFocused: $isCommentFocused)
                             .lineLimit(3 ... 3)
                             // The comment stays as swiped while the swipe runs
-                            .disabled(isSwipeLocked)
+                            .disabled(swipeLock.isLocked)
                             .onChange(of: comment) { _, newValue in
                                 let maxLength = Int(commentAllowed)
                                 if newValue.count > maxLength {
@@ -223,10 +223,6 @@ struct LnurlPayConfirm: View {
         .sheetBackground()
     }
 
-    private var isSwipeLocked: Bool {
-        swipeLock.isLocked(isSubmittingPayment: isSubmittingPayment)
-    }
-
     private var reviewTitle: String {
         paykitPaymentReviewTitle(context: app.contactPaymentContext, fallback: t("wallet__lnurl_p_title"))
     }
@@ -244,6 +240,8 @@ struct LnurlPayConfirm: View {
         }
         hasStartedAutomaticPayment = true
         do {
+            swipeLock.begin()
+            defer { swipeLock.end() }
             try await submitPayment(isAutomatic: true)
         } catch is CancellationError {
             navigationPath.append(.failure(SendFailureContext(

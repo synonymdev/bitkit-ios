@@ -96,8 +96,12 @@ final class SendPresentationState {
     var hasValidatedAfterSync = false
     var incomingPaymentRequest: PaykitPaymentRequest?
     var isSubmittingPayment = false
-    /// True while a running swipe holds Confirm; the sheet's drag waits for it too.
-    var isConfirmLocked = false
+    /// Confirm screens a running swipe holds; the sheet's drag waits for them too.
+    var confirmSwipeHolds = 0
+    var isConfirmLocked: Bool {
+        confirmSwipeHolds > 0
+    }
+
     var isAmountReviewRequired = false
     var paymentReview: UUID?
     var isReviewingUsdtPayment = false
@@ -1131,7 +1135,7 @@ struct SendSheet: View {
                 isAmountReviewRequired: $flow.isAmountReviewRequired,
                 amountIsRoot: currentRoot == .amount,
                 isSetupPending: flow.isSetupPending || flow.isFallbackFundingPending,
-                onLockChange: { flow.isConfirmLocked = $0 }
+                onLockChange: { flow.confirmSwipeHolds += $0 ? 1 : -1 }
             )
         case .hardwareSign:
             let contactContext = app.contactPaymentContext
@@ -1266,7 +1270,7 @@ struct SendSheet: View {
                 requestPinCheck: requestPinCheck,
                 prepareIncomingPaymentRequest: prepareIncomingPaymentRequest,
                 routingCacheResetAttempted: flow.routingCacheResetAttempted,
-                onLockChange: { flow.isConfirmLocked = $0 }
+                onLockChange: { flow.confirmSwipeHolds += $0 ? 1 : -1 }
             )
         case .lnurlWithdrawAmount:
             LnurlWithdrawAmount {
