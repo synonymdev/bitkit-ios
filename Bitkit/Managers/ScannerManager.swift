@@ -540,32 +540,33 @@ class ScannerManager: ObservableObject {
     func handleImageSelection(
         _ item: PhotosPickerItem?,
         context: ScannerContext,
+        isCurrent: @escaping () -> Bool = { true },
         scope: ScanHandlingScope = .unrestricted,
         completion: @escaping (SendRoute?) -> Void = { _ in }
     ) async {
         guard let item else { return }
-        await handleImageScan(context: context, scope: scope, decode: {
+        await handleImageScan(context: context, isCurrent: isCurrent, scope: scope, decode: {
             try await QRCodeImageDecoder.decode(item)
         }, completion: completion)
     }
 
     func handleImageScan(
         context: ScannerContext,
+        isCurrent: @escaping () -> Bool = { true },
         scope: ScanHandlingScope = .unrestricted,
         decode: () async throws -> QRCodePayload,
         completion: @escaping (SendRoute?) -> Void = { _ in }
     ) async {
         guard let app else { return }
-        let presentationID = sheets?.activeSheetConfiguration?.presentationID
-        let navigationPath = navigation?.path
         let inputGeneration = app.sendStateGeneration
-        func isCurrentOrigin() -> Bool {
-            !Task.isCancelled && sheets?.activeSheetConfiguration?.presentationID == presentationID &&
-                navigation?.path == navigationPath
-        }
+        // One check for the scanner visit the photo was picked in, used both to hold off nearby requests and to route
+        // the photo: the sheet, the navigation path generation (leaving and reopening a route is a new visit) and the
+        // caller's own visit, such as Send Options' inside its sheet.
+        let isOriginShown = originCheck()
+        let isCurrentOrigin = { isCurrent() && isOriginShown() }
 
         do {
-            let payload = try await decodeBeforeNearbyRequests(decode)
+            let payload = try await decodeBeforeNearbyRequests(decode, isCurrent: isCurrentOrigin)
             guard isCurrentOrigin(), context != .send || app.sendStateGeneration == inputGeneration else { return }
             if context == .send {
                 await handleSendScan(payload, scope: scope, isCurrent: isCurrentOrigin, completion: completion)
@@ -601,14 +602,17 @@ class ScannerManager: ObservableObject {
 
     /// Loads and decodes a picked photo. Like the user's other scans, the photo takes over a nearby request still
     /// decoding, and it holds off new ones, since either would open Send and discard the photo.
-    private func decodeBeforeNearbyRequests(_ decode: () async throws -> QRCodePayload) async throws -> QRCodePayload {
+    private func decodeBeforeNearbyRequests(
+        _ decode: () async throws -> QRCodePayload,
+        isCurrent: @escaping () -> Bool
+    ) async throws -> QRCodePayload {
         if let nearbyScanID {
             app?.releaseQuickPaySuppression(nearbyScanID)
             self.nearbyScanID = nil
             isHandlingScan = false
         }
         let id = UUID()
-        pendingImageScan = (id, originCheck())
+        pendingImageScan = (id, isCurrent)
         defer {
             if pendingImageScan?.id == id {
                 pendingImageScan = nil

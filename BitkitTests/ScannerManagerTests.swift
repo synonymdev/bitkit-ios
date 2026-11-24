@@ -993,6 +993,73 @@ extension ScannerManagerTests {
         await photo.value
     }
 
+    func testPhotoFromAnEarlierSendOptionsVisitNeitherHoldsNorRoutes() async throws {
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets)
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        var isOnFirstVisit = true
+        let started = expectation(description: "Photo loading suspended")
+        var continuation: CheckedContinuation<QRCodePayload, Error>?
+        func loadPhoto() async throws -> QRCodePayload {
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        }
+        var photoRoutes: [SendRoute?] = []
+        func isOnVisit() -> Bool {
+            isOnFirstVisit
+        }
+        func record(_ route: SendRoute?) {
+            photoRoutes.append(route)
+        }
+        let photo = Task { await scanner.handleImageScan(context: .send, isCurrent: isOnVisit, decode: loadPhoto, completion: record) }
+        await fulfillment(of: [started], timeout: 2)
+
+        // Enter Manually and Back: the sheet stays open, but Send Options starts a new scanner visit.
+        isOnFirstVisit = false
+        let wasTaken = await scanner.handleSendNearbyRequest(paymentURI) { _ in }
+        XCTAssertTrue(wasTaken, "A photo from an earlier Send Options visit must not hold Bluetooth")
+
+        try XCTUnwrap(continuation).resume(returning: QRCodePayload(string: paymentURI, data: nil))
+        await photo.value
+        XCTAssertTrue(photoRoutes.allSatisfy { $0 == nil }, "The earlier visit's photo must not route")
+    }
+
+    func testPhotoFromAnEarlierFullScreenScannerVisitDoesNotRoute() async throws {
+        let navigation = NavigationViewModel()
+        navigation.path = [.scanner]
+        let scanner = ScannerManager {}
+        let app = configure(scanner)
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, navigation: navigation, sheets: SheetViewModel()
+        )
+        let started = expectation(description: "Photo loading suspended")
+        var continuation: CheckedContinuation<QRCodePayload, Error>?
+        func loadPhoto() async throws -> QRCodePayload {
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        }
+        let photo = Task { await scanner.handleImageScan(context: .main, decode: loadPhoto) }
+        await fulfillment(of: [started], timeout: 2)
+
+        // The user leaves the scanner and opens it again: the same path, but a new visit.
+        navigation.path = []
+        navigation.path = [.scanner]
+
+        try XCTUnwrap(continuation).resume(returning: QRCodePayload(string: paymentURI, data: nil))
+        await photo.value
+        XCTAssertNil(app.scannedOnchainInvoice, "The earlier visit's photo must not open its payment")
+    }
+
     func testPhotoWithoutAQrCodeReleasesNearbyRequests() async {
         let sheets = SheetViewModel()
         sheets.showSheet(.scanner)

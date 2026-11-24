@@ -46,9 +46,11 @@ struct SendOptionsView: View {
                             }
                         },
                         onImageSelection: { item in
+                            // Moving on (e.g. to Enter Manually) keeps the sheet open, so check its own path too.
                             await scanner.handleImageSelection(
                                 item,
                                 context: .send,
+                                isCurrent: isOnThisScannerVisit(),
                                 scope: scanScope
                             ) { route in
                                 if let route {
