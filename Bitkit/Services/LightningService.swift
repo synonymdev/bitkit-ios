@@ -128,13 +128,19 @@ class LightningService: NodeLifecycleService {
     }
 
     /// Releases `node` only while it is still the configured one, so a stop that finishes late cannot clear its replacement.
-    private func release(_ node: Node) {
+    /// Returns false when another node replaced it.
+    @discardableResult
+    private func release(_ node: Node) -> Bool {
         setupLock.withLock {
-            if configuredNode?.node === node {
-                configuredNode = nil
-            }
+            guard let configured = configuredNode?.node else { return true }
+            guard configured === node else { return false }
+            configuredNode = nil
+            return true
         }
     }
+
+    private let restartLock = NSLock()
+    private var lastRestart: Task<Void, Error>?
 
     private let eventLoopLock = NSLock()
     private var eventLoopTask: Task<Void, Never>?
@@ -349,7 +355,21 @@ class LightningService: NodeLifecycleService {
         passphrase = nil
     }
 
+    /// Runs after any restart already in progress, so overlapping restarts cannot stop or replace each other's node midway.
     func restart(electrumServerUrl: String? = nil, rgsServerUrl: String? = nil) async throws {
+        let restart: Task<Void, Error> = restartLock.withLock {
+            let previous = lastRestart
+            let restart = Task {
+                _ = await previous?.result
+                try await self.restartNode(electrumServerUrl: electrumServerUrl, rgsServerUrl: rgsServerUrl)
+            }
+            lastRestart = restart
+            return restart
+        }
+        try await restart.value
+    }
+
+    private func restartNode(electrumServerUrl: String?, rgsServerUrl: String?) async throws {
         Logger.info("Restarting node with current configuration")
 
         // Stop the current node if it exists, ignore errors if already stopped
@@ -469,9 +489,12 @@ class LightningService: NodeLifecycleService {
     }
 
     func stop(clearEventCallback: Bool = false) async throws {
+        var wasReplaced = false
         defer {
-            // Always try to unlock, even if stopping fails
-            try? StateLocker.unlock(.lightning)
+            // Always try to unlock, even if stopping fails, unless a replacement node holds the lock by now
+            if !wasReplaced {
+                try? StateLocker.unlock(.lightning)
+            }
         }
 
         guard let node else {
@@ -490,7 +513,7 @@ class LightningService: NodeLifecycleService {
             Logger.warn("Event loop of the stopped node did not end in time", context: "LightningService")
         }
         clearStoppedEventLoop()
-        release(node)
+        wasReplaced = !release(node)
 
         if clearEventCallback {
             self.clearEventCallback()
