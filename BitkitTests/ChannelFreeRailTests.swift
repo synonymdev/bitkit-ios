@@ -478,6 +478,19 @@ extension ChannelFreeRailTests {
         await assertRefusedAsDuplicate()
     }
 
+    func testANodeSendEndingLeavesARepeatNodeSendOfTheInvoiceInFlight() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        // Two node sends of the invoice are under way; one returns while the other is still queued.
+        service.beginLdkSend(paymentHash: hash)
+        service.beginLdkSend(paymentHash: hash)
+        service.endLdkSend(paymentHash: hash)
+        defer { service.endLdkSend(paymentHash: hash) }
+        rail.balanceSats = 100_000
+
+        await assertRefusedAsDuplicate()
+    }
+
     func testASparkAttemptRefusedAtAdmissionKeepsTheNodeAttemptAsTheLatest() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         let service = Bitkit.LightningService.shared
