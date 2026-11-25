@@ -34,6 +34,7 @@ final class JadeTransport: JadeTransportCallback, JadeTransportControlling, @unc
     private let driver: JadeBLEDriving
     private let emulator: JadeEmulatorLink
     private let isTrezorBridgeEnabled: () -> Bool
+    private let emulatorDisconnects = PassthroughSubject<String, Never>()
 
     init(
         driver: JadeBLEDriving,
@@ -46,7 +47,7 @@ final class JadeTransport: JadeTransportCallback, JadeTransportControlling, @unc
     }
 
     var externalDisconnects: AnyPublisher<String, Never> {
-        driver.externalDisconnects
+        driver.externalDisconnects.merge(with: emulatorDisconnects).eraseToAnyPublisher()
     }
 
     var bluetoothPoweredOn: AnyPublisher<Void, Never> {
@@ -83,6 +84,13 @@ final class JadeTransport: JadeTransportCallback, JadeTransportControlling, @unc
 
     func setPairedPaths(_ paths: Set<String>) {
         driver.setPairedPaths(paths)
+    }
+
+    /// A closed emulator socket counts as the Jade going away, as a dropped Bluetooth link does.
+    private func onEmulatorResult(path: String, errorCode: JadeTransportErrorCode?) {
+        guard errorCode == .disconnected else { return }
+        emulator.closeDevice(path: path)
+        emulatorDisconnects.send(path)
     }
 
     // MARK: - JadeTransportCallback
@@ -126,7 +134,9 @@ final class JadeTransport: JadeTransportCallback, JadeTransportControlling, @unc
 
     func writeChunk(path: String, data: Data) -> JadeTransportResult {
         if emulator.isEmulatorPath(path) {
-            return emulator.write(path: path, data: data)
+            let result = emulator.write(path: path, data: data)
+            onEmulatorResult(path: path, errorCode: result.errorCode)
+            return result
         }
         do {
             try driver.write(path: path, data: data)
@@ -139,7 +149,9 @@ final class JadeTransport: JadeTransportCallback, JadeTransportControlling, @unc
 
     func readChunk(path: String, timeoutMs: UInt32) -> JadeTransportReadResult {
         if emulator.isEmulatorPath(path) {
-            return emulator.read(path: path, timeoutMs: timeoutMs)
+            let result = emulator.read(path: path, timeoutMs: timeoutMs)
+            onEmulatorResult(path: path, errorCode: result.errorCode)
+            return result
         }
         do {
             let data = try driver.read(path: path, timeout: Double(timeoutMs) / 1000)

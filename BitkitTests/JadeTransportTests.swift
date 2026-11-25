@@ -130,6 +130,45 @@ final class JadeTransportTests: XCTestCase {
         XCTAssertEqual(result.error, "Your Jade disconnected.")
     }
 
+    func testClosedEmulatorSocketReportsAnExternalDisconnect() throws {
+        let port = try acceptOnceAndClose()
+        let emulatorPath = "tcp:127.0.0.1:\(port)"
+        let emulator = JadeEmulatorLink(address: "127.0.0.1:\(port)", isEnabled: { true })
+        let transport = JadeTransport(driver: driver, emulator: emulator, isTrezorBridgeEnabled: { false })
+        var reported: [String] = []
+        transport.externalDisconnects.sink { reported.append($0) }.store(in: &cancellables)
+        XCTAssertTrue(transport.openDevice(path: emulatorPath).success)
+
+        let result = transport.readChunk(path: emulatorPath, timeoutMs: 1000)
+
+        XCTAssertEqual(result.errorCode, .disconnected)
+        XCTAssertEqual(reported, [emulatorPath])
+        XCTAssertEqual(transport.readChunk(path: emulatorPath, timeoutMs: 10).errorCode, .notConnected)
+    }
+
+    /// A one-shot TCP server on 127.0.0.1 that closes its first connection at once.
+    private func acceptOnceAndClose() throws -> UInt16 {
+        let server = socket(AF_INET, SOCK_STREAM, 0)
+        var address = sockaddr_in()
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let bound = withUnsafeMutablePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                bind(server, $0, length) == 0 && listen(server, 1) == 0 && getsockname(server, $0, &length) == 0
+            }
+        }
+        guard bound else {
+            close(server)
+            throw XCTSkip("Could not listen on 127.0.0.1")
+        }
+        DispatchQueue.global().async {
+            close(accept(server, nil, nil))
+            close(server)
+        }
+        return UInt16(bigEndian: address.sin_port)
+    }
+
     // MARK: - Writes
 
     func testWriteSendsTheChunkToTheDriver() {
