@@ -1630,16 +1630,32 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private func signOut(cleanPrivatePaykitEndpoints: Bool, allowDuringProfileDeletion: Bool = false) async throws {
-        let isRestored = publicKey != nil
-        try await signOut(allowDuringProfileDeletion: allowDuringProfileDeletion) {
-            try await Self.signOutCleanup(isRestored: isRestored) {
-                if cleanPrivatePaykitEndpoints {
-                    try await Self.removePrivatePaykitEndpoints(context: "PubkyProfileManager.signOut")
-                }
-                await Self.removePublicPaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
-                try await PubkyService.signOut()
+        try await signOutOrForget(allowDuringProfileDeletion: allowDuringProfileDeletion) {
+            if cleanPrivatePaykitEndpoints {
+                try await Self.removePrivatePaykitEndpoints(context: "PubkyProfileManager.signOut")
             }
+            await Self.removePublicPaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
+            try await PubkyService.signOut()
         }
+    }
+
+    /// Waits for a restore already running, so an identity it restores is signed out rather than only forgotten.
+    func signOutOrForget(
+        allowDuringProfileDeletion: Bool,
+        forgetSessionAccess: @escaping @Sendable () async throws -> Void = { try await PubkyService.forgetSessionAccess() },
+        signOutRestored: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        while let initializationTask {
+            await initializationTask.value
+        }
+        let isRestored = publicKey != nil
+        try await signOut(allowDuringProfileDeletion: allowDuringProfileDeletion, performSessionCleanup: {
+            try await Self.signOutCleanup(
+                isRestored: isRestored,
+                forgetSessionAccess: forgetSessionAccess,
+                signOutRestored: signOutRestored
+            )
+        })
     }
 
     /// An identity that never restored, such as one whose shared Paykit state a newer Bitkit saved, cannot read that state
