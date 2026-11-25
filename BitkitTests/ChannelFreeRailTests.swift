@@ -783,6 +783,41 @@ extension ChannelFreeRailTests {
         XCTAssertNotNil(Bitkit.LightningService.shared.railSendHolds[hash])
     }
 
+    func testASparkRetryOfASendInDoubtOverItsFeeLimitStaysPending() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        try await sendInDoubtAfterALeafFailure()
+        rail.keyedSends.insert(hash.lowercased())
+        rail.routingFeeSats = 5
+        let limit = RouteParametersConfig(
+            maxTotalRoutingFeeMsat: 1000, maxTotalCltvExpiryDelta: 1008, maxPathCount: 10, maxChannelSaturationPowerOfHalf: 2
+        )
+
+        do {
+            _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice, params: limit)
+            XCTFail("Expected the retry to fail")
+        } catch {
+            XCTAssertFalse(error is Bitkit.ChannelFreeRailSendRefused, "a refusal releases the held send's proof: \(error)")
+        }
+        XCTAssertNotNil(Bitkit.LightningService.shared.railSendHolds[hash])
+    }
+
+    func testASparkRetryOfASendInDoubtStoppedBeforeSubmissionStaysPending() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        try await sendInDoubtAfterALeafFailure()
+        rail.keyedSends.insert(hash.lowercased())
+
+        do {
+            _ = try await Bitkit.LightningService.shared.send(
+                bolt11: Self.invoice,
+                beforeSubmission: { throw NSError(domain: "request", code: 1) }
+            )
+            XCTFail("Expected the retry to fail")
+        } catch {
+            XCTAssertNotEqual((error as NSError).domain, "request", "a request error releases the held send's proof: \(error)")
+        }
+        XCTAssertNotNil(Bitkit.LightningService.shared.railSendHolds[hash])
+    }
+
     func testAMoveToSparkForASendInDoubtUnderItsKeyIsRefusedAsPending() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         try await sendInDoubtAfterALeafFailure()

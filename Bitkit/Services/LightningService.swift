@@ -1199,6 +1199,7 @@ class LightningService: NodeLifecycleService {
                     feeSats = try await rail.estimateRoutingFees(bolt11: bolt11, amountSats: sats)
                 } catch {
                     Logger.warn("Spark fee estimate failed: \(error)", context: "LightningService")
+                    try throwPendingIfInDoubt(paymentHash: paymentHash)
                     throw error as? ChannelFreeRailSendRefused ?? ChannelFreeRailSendRefused(
                         reason: t("wallet__payment_failed_description"),
                         underlying: error
@@ -1206,6 +1207,7 @@ class LightningService: NodeLifecycleService {
                 }
                 guard feeSats * 1000 <= maxFeeMsat else {
                     Logger.info("Spark routing fee of \(feeSats) sats exceeds the limit of \(maxFeeMsat / 1000) sats", context: "LightningService")
+                    try throwPendingIfInDoubt(paymentHash: paymentHash)
                     throw ChannelFreeRailSendRefused(reason: t("wallet__max_possible_fee_rate"))
                 }
             }
@@ -1245,10 +1247,7 @@ class LightningService: NodeLifecycleService {
                     endRailSendUncertainty(paymentHash: paymentHash)
                     releaseRailAttempt(paymentHash: paymentHash, unlessInFlight: false)
                 }
-                // A retry of a send still in doubt that never went out leaves that send pending, not refused.
-                if let paymentHash, eventCallbackLock.withLock({ uncertainRailSendFailedAt()[paymentHash.lowercased()] != nil }) {
-                    throw Self.pendingDuplicate(paymentHash: paymentHash)
-                }
+                try throwPendingIfInDoubt(paymentHash: paymentHash)
                 throw refusal
             } catch where isRefusedAtAdmission {
                 // Nothing of this send left. Refused for a Spark send recorded since the checks, its caller gets that
@@ -1265,6 +1264,8 @@ class LightningService: NodeLifecycleService {
                 // failed before it recorded its attempt never reached Spark.
                 if let paymentHash, didRecordAttempt {
                     markRailSendUncertain(paymentHash: paymentHash, since: mark)
+                } else {
+                    try throwPendingIfInDoubt(paymentHash: paymentHash)
                 }
                 throw error
             }
@@ -1656,7 +1657,8 @@ class LightningService: NodeLifecycleService {
                 let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: paymentHash)
                 // A send in doubt under its derived key goes out again under that key over Spark, which can't pay twice:
                 // the operators return the transfer it committed, if any.
-                let isKeyedRetry = payment?.status != .succeeded && isKeyedRailSendInDoubt(paymentHash: paymentHash, sendsOverRail: sendsOverRail && retriesKeyedSend)
+                let isKeyedRetry = payment?.status != .succeeded
+                    && isKeyedRailSendInDoubt(paymentHash: paymentHash, sendsOverRail: sendsOverRail && retriesKeyedSend)
                 if let payment, !isKeyedRetry {
                     statuses.append(payment.status)
                 }
@@ -1993,6 +1995,13 @@ class LightningService: NodeLifecycleService {
             sendsOverRail: true,
             retriesKeyedSend: false
         ) != nil
+    }
+
+    /// A retry of a send still in doubt that never went out leaves that send pending, not failed, as it may have paid:
+    /// a failure would release its Paykit proof, allowance and QuickPay charge.
+    private func throwPendingIfInDoubt(paymentHash: String?) throws {
+        guard let paymentHash, eventCallbackLock.withLock({ uncertainRailSendFailedAt()[paymentHash.lowercased()] != nil }) else { return }
+        throw Self.pendingDuplicate(paymentHash: paymentHash)
     }
 
     private static func pendingDuplicate(paymentHash: String?) -> NodeError {
