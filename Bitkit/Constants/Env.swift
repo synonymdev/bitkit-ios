@@ -284,6 +284,16 @@ enum Env {
         configValue("TREZOR_BRIDGE_URL") ?? "http://127.0.0.1:21325"
     }
 
+    /// Whether the Jade QEMU emulator from bitkit-docker (`jade-emulator`) replaces Bluetooth Jades.
+    static var jadeEmulatorEnabled: Bool {
+        (isDebug || isE2E) && boolConfigValue("JADE_EMULATOR")
+    }
+
+    /// The emulator's serial over TCP port, as `host:port`.
+    static var jadeEmulatorUrl: String {
+        configValue("JADE_EMULATOR_URL") ?? "127.0.0.1:30121"
+    }
+
     /// Basic auth (`user:password`) for Blocktank's regtest routes, read only in Debug and E2E builds.
     static var blocktankRegtestAuth: String? {
         guard isDebug || isE2E else { return nil }

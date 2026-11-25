@@ -154,12 +154,26 @@ Broadcast faults on an ordinary send are not a journey capability; the manual re
 
 ## Blockstream Jade
 
-There is no Jade emulator in `bitkit-docker`, and iOS reaches a Jade over Bluetooth only, which the
-simulator does not have. The Jade flows (Connect Hardware, receive-address verification and on-device
-signing) are therefore covered by unit tests (`JadeManagerTests.swift`, `JadeTransportTests.swift`,
-`JadeBLELinkStateTests.swift`, `HwWalletManagerVendorTests.swift`, `HwConnectViewModelTests.swift`,
-`HwFundingSignerTests.swift`, `HwEngagedSessionTests.swift`) and by manual runs against a physical Jade
-paired with a physical iPhone. The journeys in this folder stay Trezor-only.
+`jade-connect-sign.xml` drives the Jade flows (Found with the PIN hint, Paired, receive-address
+verification, Sign With Jade) against the Jade emulator from `bitkit-docker`: official 1.0.41
+firmware under QEMU, seeded with `all all ... all`, locked behind a PIN, serial over TCP on port
+30121. The firmware enters its PIN and confirms every prompt itself, so nothing is pressed on the
+device. A simulator has no Bluetooth LE, so this is the only way to run the Jade flows there.
+
+```bash
+../bitkit-docker/scripts/jade-emulator start
+```
+
+Launch the debug app with `-JADE_EMULATOR true` (and `-JADE_EMULATOR_URL host:port` when the
+simulator does not reach it at `127.0.0.1:30121`). The scan then lists only the emulator, and the
+home tile reads "Connected via Bluetooth", the only transport badge iOS has.
+
+The seed is the Trezor emulator's, so the Jade sees the same regtest history and funds. Each
+`start` wipes the device back to that seed and PIN. Bluetooth, typing the PIN on the device, a
+wrong PIN and the device's own screens still need a physical Jade; unit tests
+(`JadeManagerTests.swift`, `JadeTransportTests.swift`, `JadeBLELinkStateTests.swift`,
+`HwWalletManagerVendorTests.swift`, `HwConnectViewModelTests.swift`, `HwFundingSignerTests.swift`,
+`HwEngagedSessionTests.swift`) cover the rest.
 
 While a Jade waits for its PIN, the Found step shows `HwFoundUnlockHint`. The receive tab of a hardware
 wallet is labelled with its vendor: a Trezor wallet keeps `Tab-trezor` and a Jade reads `Tab-jade`.
