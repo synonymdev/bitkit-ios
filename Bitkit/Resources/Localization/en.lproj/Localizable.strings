@@ -689,6 +689,15 @@
 "other__lnurl_auth_success_title" = "Signed In";
 "other__lnurl_auth_success_msg_domain" = "You successfully signed in to {domain}.";
 "other__lnurl_auth_success_msg_no_domain" = "You successfully signed in.";
+"other__lnurl_auth_auth_prompt" = "Authenticate at {domain}?";
+"other__lnurl_auth_auth_title" = "Authenticate";
+"other__lnurl_auth_link_prompt" = "Link account to {domain}?";
+"other__lnurl_auth_link_title" = "Link";
+"other__lnurl_auth_login_prompt" = "Log in to {domain}?";
+"other__lnurl_auth_login_title" = "Log In";
+"other__lnurl_auth_register_prompt" = "Register at {domain}?";
+"other__lnurl_auth_register_title" = "Register";
+"other__lnurl_auth_unknown_domain" = "Unknown Domain";
 "other__lnurl_withdr_error" = "Withdraw Failed (LNURL)";
 "other__lnurl_withdr_error_generic" = "Sorry, an error occurred.";
 "other__lnurl_withdr_error_no_capacity" = "Not enough receiving capacity to complete withdraw request.";

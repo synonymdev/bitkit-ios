@@ -700,6 +700,15 @@
 "other__lnurl_auth_success_title" = "Signé en";
 "other__lnurl_auth_success_msg_domain" = "Vous vous êtes connecté avec succès à {domain}.";
 "other__lnurl_auth_success_msg_no_domain" = "Vous vous êtes connecté avec succès.";
+"other__lnurl_auth_auth_prompt" = "S'authentifier sur {domain} ?";
+"other__lnurl_auth_auth_title" = "S'authentifier";
+"other__lnurl_auth_link_prompt" = "Associer le compte à {domain} ?";
+"other__lnurl_auth_link_title" = "Associer";
+"other__lnurl_auth_login_prompt" = "Se connecter à {domain} ?";
+"other__lnurl_auth_login_title" = "Connexion";
+"other__lnurl_auth_register_prompt" = "S'inscrire sur {domain} ?";
+"other__lnurl_auth_register_title" = "S'inscrire";
+"other__lnurl_auth_unknown_domain" = "Domaine inconnu";
 "other__lnurl_withdr_error" = "Échec du retrait (LNURL)";
 "other__lnurl_withdr_error_generic" = "Désolé, une erreur s\'est produite.";
 "other__lnurl_withdr_error_no_capacity" = "La capacité de réception n\'est pas suffisante pour répondre à la demande de retrait.";

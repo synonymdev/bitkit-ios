@@ -24,29 +24,27 @@ struct LnurlAuthSheet: View {
     @EnvironmentObject private var sheets: SheetViewModel
     let config: LnurlAuthSheetItem
 
-    var actionText: String {
-        switch config.authData.tag {
-        case "login":
-            return "Log In"
-        case "register":
-            return "Register"
-        case "link":
-            return "Link"
-        default:
-            return "Authenticate"
+    /// LUD-04 `action` of the request; bitkit-core reports every LNURL-auth with tag `login`.
+    private var action: String? {
+        URLComponents(string: config.authData.uri)?.queryItems?.first { $0.name == "action" }?.value?.lowercased()
+    }
+
+    private var actionText: String {
+        switch action {
+        case "login": t("other__lnurl_auth_login_title")
+        case "register": t("other__lnurl_auth_register_title")
+        case "link": t("other__lnurl_auth_link_title")
+        default: t("other__lnurl_auth_auth_title")
         }
     }
 
-    var text: String {
-        switch config.authData.tag {
-        case "login":
-            return "Log in to \(extractedDomain)?"
-        case "register":
-            return "Register at \(extractedDomain)?"
-        case "link":
-            return "Link account to \(extractedDomain)?"
-        default:
-            return "Authenticate at \(extractedDomain)?"
+    private var text: String {
+        let variables = ["domain": extractedDomain]
+        return switch action {
+        case "login": t("other__lnurl_auth_login_prompt", variables: variables)
+        case "register": t("other__lnurl_auth_register_prompt", variables: variables)
+        case "link": t("other__lnurl_auth_link_prompt", variables: variables)
+        default: t("other__lnurl_auth_auth_prompt", variables: variables)
         }
     }
 
@@ -101,7 +99,7 @@ struct LnurlAuthSheet: View {
         guard let url = URL(string: config.authData.uri),
               let host = url.host
         else {
-            return "Unknown Domain"
+            return t("other__lnurl_auth_unknown_domain")
         }
 
         var domain = host.trimmingCharacters(in: .whitespacesAndNewlines)
