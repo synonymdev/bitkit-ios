@@ -16,6 +16,8 @@ struct LnurlPayConfirm: View {
     let requestPinCheck: () async -> Bool
     let prepareIncomingPaymentRequest: () async throws -> Void
     let routingCacheResetAttempted: Bool
+    /// Tells the sheet when a running swipe holds this screen, so its drag waits too.
+    var onLockChange: (Bool) -> Void = { _ in }
 
     @State private var showWarningAlert = false
     @State private var alertContinuation: CheckedContinuation<Bool, Error>?
@@ -27,6 +29,7 @@ struct LnurlPayConfirm: View {
     @State private var sparkUpdateQuote: MoveToSparkQuote?
     @State private var isSparkUpdateQuoting = false
     @State private var screenVisit = ConfirmScreenVisit()
+    @State private var swipeLock = ConfirmSwipeLock()
     /// A first subscription payment that needs the update waits for a swipe on its update fee instead of paying by itself.
     @State private var needsUpdateConfirmation = false
     @FocusState private var isCommentFocused: Bool
@@ -108,6 +111,7 @@ struct LnurlPayConfirm: View {
                 screenVisit = ConfirmScreenVisit()
             }
         }
+        .confirmSwipeLock(swipeLock, isSubmittingPayment: isSubmittingPayment, onLockChange: onLockChange)
         .onDisappear {
             screenVisit.leave()
         }
@@ -117,7 +121,7 @@ struct LnurlPayConfirm: View {
         VStack {
             SheetHeader(
                 title: reviewTitle,
-                showBackButton: true,
+                showBackButton: !swipeLock.isLocked,
                 action: AnyView(SendContactHeaderAvatar())
             )
 
@@ -183,6 +187,8 @@ struct LnurlPayConfirm: View {
                             .focused($isCommentFocused)
                             .dismissKeyboardOnReturn(text: $comment, isFocused: $isCommentFocused)
                             .lineLimit(3 ... 3)
+                            // The comment stays as swiped while the swipe runs
+                            .disabled(swipeLock.isLocked)
                             .onChange(of: comment) { _, newValue in
                                 let maxLength = Int(commentAllowed)
                                 if newValue.count > maxLength {
@@ -207,6 +213,8 @@ struct LnurlPayConfirm: View {
                 isLoading: hasStartedAutomaticPayment || isSubmittingPayment,
                 isSubmitted: hasStartedAutomaticPayment
             ) {
+                swipeLock.begin()
+                defer { swipeLock.end() }
                 try await submitPayment(isAutomatic: false)
             }
         }
@@ -232,6 +240,8 @@ struct LnurlPayConfirm: View {
         }
         hasStartedAutomaticPayment = true
         do {
+            swipeLock.begin()
+            defer { swipeLock.end() }
             try await submitPayment(isAutomatic: true)
         } catch is CancellationError {
             navigationPath.append(.failure(SendFailureContext(

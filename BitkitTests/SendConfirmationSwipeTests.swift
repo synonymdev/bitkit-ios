@@ -5,6 +5,55 @@ import XCTest
 
 final class SendConfirmationSwipeTests: XCTestCase {
     @MainActor
+    func testARunningSwipeHoldsConfirmUntilItMovesOnOrReturns() {
+        let holdsBefore = SwipeBackState.confirmSwipeHolds
+        let lock = ConfirmSwipeLock()
+        var reported: [Bool] = []
+        lock.onLockChange = { reported.append($0) }
+        lock.setVisible(true)
+        XCTAssertFalse(lock.isLocked)
+
+        lock.begin()
+        XCTAssertTrue(lock.isLocked, "A running swipe holds Back, the sheet's drag and the inputs")
+        XCTAssertEqual(SwipeBackState.confirmSwipeHolds, holdsBefore + 1)
+        lock.setVisible(false)
+        XCTAssertFalse(lock.isLocked, "The screen the swipe moves on to, such as the PIN, is free")
+        lock.end()
+        lock.setVisible(true)
+        XCTAssertFalse(lock.isLocked, "A swipe that stopped while the PIN covered Confirm leaves it free on return")
+
+        lock.begin()
+        lock.setVisible(false)
+        lock.setVisible(true)
+        XCTAssertTrue(lock.isLocked, "Returning to Confirm while the swipe still runs holds it again")
+        lock.end()
+        lock.setSubmittingPayment(true)
+        XCTAssertTrue(lock.isLocked, "A payment still running holds a Confirm rebuilt without the swipe")
+        lock.setSubmittingPayment(false)
+
+        XCTAssertEqual(reported, [true, false, true, false, true, false, true, false])
+        XCTAssertEqual(SwipeBackState.confirmSwipeHolds, holdsBefore, "Every hold is let go")
+    }
+
+    @MainActor
+    func testALeavingConfirmKeepsTheNextConfirmsHold() {
+        let holdsBefore = SwipeBackState.confirmSwipeHolds
+        let leaving = ConfirmSwipeLock()
+        let next = ConfirmSwipeLock()
+        leaving.setVisible(true)
+        leaving.begin()
+        next.setVisible(true)
+        next.setSubmittingPayment(true)
+
+        leaving.setVisible(false)
+        XCTAssertEqual(SwipeBackState.confirmSwipeHolds, holdsBefore + 1, "The next confirm's payment still holds swipe back")
+
+        leaving.end()
+        next.setVisible(false)
+        XCTAssertEqual(SwipeBackState.confirmSwipeHolds, holdsBefore)
+    }
+
+    @MainActor
     func testRestoredLoadingSwipeKeepsItsSpinnerInTheKnob() async throws {
         let confirmation = NavigationStack(path: .constant([true])) {
             Color.black
