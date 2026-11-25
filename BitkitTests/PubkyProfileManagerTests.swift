@@ -1153,6 +1153,10 @@ final class PubkyProfileManagerTests: XCTestCase {
         let attemptCount = await attempts.next() - 1
         XCTAssertEqual(attemptCount, 1)
         XCTAssertFalse(manager.sessionRestorationNeedsUpdate)
+        XCTAssertTrue(manager.restorationNeedsUpdate)
+
+        manager.clearAuthenticatedStateForTesting()
+        XCTAssertFalse(manager.restorationNeedsUpdate)
     }
 
     @MainActor

@@ -95,8 +95,8 @@ class PubkyProfileManager: ObservableObject {
     @Published var initializationErrorMessage: String?
     @Published var sessionRestorationFailed = false
     @Published var sessionRestorationNeedsUpdate = false
-    /// Retrying cannot read state saved by a newer Paykit, so the retry loop stops once a restore finds it.
-    private var restorationNeedsUpdate = false
+    /// Retrying cannot read state saved by a newer Paykit, so the retry loop stops once a restore finds it and Profile shows why.
+    @Published private(set) var restorationNeedsUpdate = false
     /// Foreground polling restores the saved session every minute, so each saved identity asks for the update once.
     private var updatePromptRevision: UUID?
     @Published var adoptedSourceLost = false
@@ -1817,6 +1817,7 @@ class PubkyProfileManager: ObservableObject {
         }
         if clearCachedProfile {
             clearCachedProfileMetadata()
+            restorationNeedsUpdate = false
         }
         if wasAuthenticated {
             clearRingIdentityProfiles()
