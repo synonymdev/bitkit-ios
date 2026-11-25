@@ -169,11 +169,19 @@ simulator does not reach it at `127.0.0.1:30121`). The scan then lists only the 
 home tile reads "Connected via Bluetooth", the only transport badge iOS has.
 
 The seed is the Trezor emulator's, so the Jade sees the same regtest history and funds. Each
-`start` wipes the device back to that seed and PIN. Bluetooth, typing the PIN on the device, a
-wrong PIN and the device's own screens still need a physical Jade; unit tests
+`start` wipes the device back to that seed and PIN. Bluetooth still needs a physical Jade; unit tests
 (`JadeManagerTests.swift`, `JadeTransportTests.swift`, `JadeBLELinkStateTests.swift`,
 `HwWalletManagerVendorTests.swift`, `HwConnectViewModelTests.swift`, `HwFundingSignerTests.swift`,
 `HwEngagedSessionTests.swift`) cover the rest.
+
+The error journeys start the emulator in another state first: `jade-uninitialized.xml`
+(`JADE_MNEMONIC=`), `jade-wrong-pin.xml` (`JADE_MODE=interactive`, where the device shows its
+own PIN pad and `./scripts/jade-emulator pin` types on it) and `jade-network-mismatch.xml`
+(`JADE_NETWORK=mainnet`), and `jade-device-locked.xml` logs the interactive device out after
+pairing (Android reports the locked Jade as busy; iOS asks for the PIN on the device again and retries,
+so its copy of the journey checks that); `jade-psbt-too-large.xml` needs the app on the bitkit-docker Electrum and about 200 small
+inputs on the Jade. `jade-sign-on-device.xml` declines and then approves a payment on the interactive
+device's own screens. `jade-wallet-mismatch.xml` restarts the emulator with another seed after pairing. `jade-passphrase.xml` starts it with `JADE_PASSPHRASE=always` and pairs the wallet a passphrase typed on the device opens (`./scripts/jade-emulator passphrase`). The bitkit-docker `docs/jade-emulator.md` lists the modes and recipes.
 
 While a Jade waits for its PIN, the Found step shows `HwFoundUnlockHint`. The receive tab of a hardware
 wallet is labelled with its vendor: a Trezor wallet keeps `Tab-trezor` and a Jade reads `Tab-jade`.

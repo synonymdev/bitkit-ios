@@ -39,7 +39,7 @@
       Enter an amount below the Jade's available balance, tap Continue (testTag "ContinueAmount"), verify the FROM field (testTag "SendConfirmAssetButton") shows the Jade, and swipe to confirm
     </action>
     <action>
-      Verify the hardware sign screen shows the amount (testTag "HardwareSendAmount"), the destination address (testTag "HardwareSendAddress") and a "Sign With Jade" button (testTag "HardwareSendOpenTrezorConnect"), then tap it
+      Verify the hardware sign screen shows the amount (testTag "HardwareSendSignAmount"), the destination address under "To address (confirm on device)" and a "Sign With Jade" button (testTag "HardwareSendOpenTrezorConnect"), then tap it
     </action>
     <action>
       Verify the payment broadcasts and the success screen (testTag "SendSuccess") appears within 30 seconds, then close it and verify the payment appears once in recent activity with the blue hardware-wallet icon
