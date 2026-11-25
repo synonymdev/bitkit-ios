@@ -26,6 +26,8 @@ protocol ChannelFreeLightningRail: AnyObject {
     func lightningSendStatus(bolt11: String) async throws -> PaymentStatus?
     /// Whether this app would have paid `bolt11` by a direct Spark transfer, which `lightningSendStatus` can't see.
     func mayPayBySparkTransfer(bolt11: String, sats: UInt64?) async throws -> Bool
+    /// Whether this build sent the invoice with `paymentHash` under a derived key, so a retry under that key can't pay twice.
+    func hasKeyedSend(paymentHash: String) -> Bool
 }
 
 @MainActor
@@ -1647,10 +1649,15 @@ class LightningService: NodeLifecycleService {
             if let payments = await readableRailPayments() {
                 let live = keepRailAttempts(from: payments, since: mark)
                 let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: paymentHash)
-                if let payment {
+                // A send in doubt under its derived key goes out again under that key over Spark, which can't pay twice:
+                // the operators return the transfer it committed, if any.
+                let isKeyedRetry = payment?.status != .succeeded && isKeyedRailSendInDoubt(paymentHash: paymentHash, sendsOverRail: sendsOverRail)
+                if let payment, !isKeyedRetry {
                     statuses.append(payment.status)
                 }
-                if payment == nil || payment?.status == .failed {
+                if isKeyedRetry {
+                    Logger.info("Retrying '\(paymentHash)' over Spark under its earlier key", context: "LightningService")
+                } else if payment == nil || payment?.status == .failed {
                     if live.contains(paymentHash.lowercased()) || isRailSendInFlight(paymentHash: paymentHash) {
                         statuses.append(.pending)
                     } else if await !railSyncedSinceUncertainSend(paymentHash: paymentHash) {
@@ -1761,6 +1768,16 @@ class LightningService: NodeLifecycleService {
     }
 
     /// Nil while the rail's payments can't be read: listing them failed, or the rail runs here but isn't connected.
+    /// Whether a send of `paymentHash` this build made under a derived key is in doubt and none is in flight, so a send
+    /// over Spark may go out again under that key.
+    private func isKeyedRailSendInDoubt(paymentHash: String, sendsOverRail: Bool) -> Bool {
+        guard sendsOverRail, !isRailSendInFlight(paymentHash: paymentHash),
+              channelFreeRail?.hasKeyedSend(paymentHash: paymentHash) == true
+        else { return false }
+        let hash = paymentHash.lowercased()
+        return eventCallbackLock.withLock { uncertainRailSendFailedAt()[hash] != nil }
+    }
+
     private func readableRailPayments() async -> [ChannelFreeRailPayment]? {
         try? await channelFreeRailPayments()
     }
@@ -1934,6 +1951,10 @@ class LightningService: NodeLifecycleService {
             return false
         }
         endRailSendUncertainty(paymentHash: hash, startedAt: uncertain.startedAt)
+        // Reported as failed, so a send screen left on Pending resolves; a retry in flight reports its own outcome.
+        if !isRailSendInFlight(paymentHash: hash) {
+            deliverChannelFreeRailEvent(.paymentFailed(paymentId: hash, paymentHash: hash, reason: nil))
+        }
         return true
     }
 
@@ -2609,6 +2630,17 @@ extension LightningService {
             Logger.info("Ignored a Spark failure for a payment retried over a channel: \(event)", context: "LightningService")
             return
         }
+        let callback = eventCallbackLock.withLock {
+            if storedEventCallback == nil {
+                pendingChannelFreeRailEvents.append(event)
+            }
+            return storedEventCallback
+        }
+        callback?(event)
+    }
+
+    /// Passes `event` to the app without settling any hold, as for a send whose hold already ended.
+    private func deliverChannelFreeRailEvent(_ event: Event) {
         let callback = eventCallbackLock.withLock {
             if storedEventCallback == nil {
                 pendingChannelFreeRailEvents.append(event)

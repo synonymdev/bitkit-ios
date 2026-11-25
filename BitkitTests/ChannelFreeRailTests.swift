@@ -693,6 +693,67 @@ extension ChannelFreeRailTests {
         await assertReachesTheNode()
     }
 
+    /// A Spark send whose leaves Spark still can't select after its retries, which may follow a committed transfer.
+    private func sendInDoubtAfterALeafFailure() async throws {
+        let expiresAt = try Self.invoiceExpiresAt()
+        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: expiresAt - 600) }
+        rail.balanceSats = 100_000
+        rail.errorAfterSubmission = Bitkit.SparkManager.bolt11SendFailure(
+            SdkError.SparkError("Tree service error: generic error: Failed to select leaves after all retries"),
+            isReusedKey: false
+        )
+        do {
+            _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+            XCTFail("Expected the send to stay in doubt")
+        } catch {
+            XCTAssertFalse(error is Bitkit.ChannelFreeRailSendRefused, "\(error)")
+        }
+        rail.errorAfterSubmission = nil
+    }
+
+    func testASparkSendInDoubtAfterALeafFailureEndsAtItsInvoicesExpiry() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        let previousRecord = service.railSendExpired
+        defer { service.railSendExpired = previousRecord }
+        final class Calls: @unchecked Sendable { var count = 0 }
+        let calls = Calls()
+        service.railSendExpired = { _ in
+            calls.count += 1
+            return true
+        }
+        final class Failures: @unchecked Sendable { var hashes: [String] = [] }
+        let failures = Failures()
+        service.setEventCallback { event in
+            if case let .paymentFailed(_, paymentHash?, _) = event {
+                failures.hashes.append(paymentHash)
+            }
+        }
+        try await sendInDoubtAfterALeafFailure()
+        rail.syncedAfter = { _ in true }
+
+        await service.endExpiredRailSendUncertainties()
+        XCTAssertEqual(calls.count, 0, "a transfer the send committed can still go out")
+        XCTAssertNotNil(service.railSendHolds[hash])
+
+        let expiresAt = try Self.invoiceExpiresAt()
+        service.now = { Date(timeIntervalSince1970: expiresAt) }
+        await service.endExpiredRailSendUncertainties()
+
+        XCTAssertEqual(calls.count, 1)
+        XCTAssertNil(service.railSendHolds[hash])
+        XCTAssertEqual(failures.hashes, [hash], "a send screen left on Pending never resolves")
+    }
+
+    func testASparkRetryOfASendInDoubtAfterALeafFailureGoesOutUnderItsKey() async throws {
+        try await sendInDoubtAfterALeafFailure()
+        try rail.keyedSends.insert(String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash()).lowercased())
+
+        _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+
+        XCTAssertEqual(rail.sends, 1)
+    }
+
     func testAnUnknownSparkSendMissingAfterAFreshSyncIsHeldUntilItsInvoiceExpires() async throws {
         let expiresAt = try Self.invoiceExpiresAt()
         Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: expiresAt - 600) }
@@ -2330,6 +2391,12 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     /// Whether the invoice carries a Spark address a Spark-preferring send pays directly.
     var paysBySparkTransfer: Result<Bool, Error> = .success(false)
     var sparkTransferChecks = 0
+    /// The payment hashes sent under a derived key.
+    var keyedSends: Set<String> = []
+
+    func hasKeyedSend(paymentHash: String) -> Bool {
+        keyedSends.contains(paymentHash.lowercased())
+    }
 
     func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String {
         "lnbcrt1fake"

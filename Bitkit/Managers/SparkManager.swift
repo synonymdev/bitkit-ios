@@ -652,6 +652,10 @@ final class SparkManager: ChannelFreeLightningRail {
 
     // MARK: ChannelFreeLightningRail
 
+    nonisolated func hasKeyedSend(paymentHash: String) -> Bool {
+        SparkSendAttempts.latest(paymentHash: paymentHash) != nil
+    }
+
     nonisolated func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String {
         let method = ReceivePaymentMethod.bolt11Invoice(
             description: description,
@@ -773,6 +777,13 @@ final class SparkManager: ChannelFreeLightningRail {
     /// can hide the transfer that attempt committed, so the send stays in doubt until Spark settles it. Leaves Spark
     /// still can't select after its retries keep the send in doubt under any key, as the SDK selects them again after an
     /// operator error, so the failure can follow a transfer this send committed.
+    nonisolated static func isShortBalance(_ error: Error) -> Bool {
+        if case SdkError.InsufficientFunds = error {
+            return true
+        }
+        return false
+    }
+
     nonisolated static func bolt11SendFailure(_ error: Error, isReusedKey: Bool) -> Error {
         if isReusedKey, case SdkError.InsufficientFunds = error {
             return error
@@ -785,8 +796,9 @@ final class SparkManager: ChannelFreeLightningRail {
 
     /// Sends again under the same key while Spark can't select the leaves to spend, as right after a move to Spark lands.
     /// Spark selects them before anything reaches the operators, so a retry under the key can't pay twice. `canRetry`
-    /// is checked before each retry, which otherwise ends with the last failure. An invoice that expires meanwhile ends it
-    /// with the leaf failure, which may follow a committed transfer, so its expiry never reads as a send that never left.
+    /// is checked before each retry, which otherwise ends with the last failure. An invoice that expires or a short balance
+    /// on a retry ends it with the leaf failure, which may follow a committed transfer, so neither reads as a send that
+    /// never left.
     nonisolated static func sendRetryingLeafSelection<T>(
         retryDelay: Duration = .seconds(2),
         canRetry: () -> Bool,
@@ -797,7 +809,9 @@ final class SparkManager: ChannelFreeLightningRail {
             do {
                 return try await send()
             } catch {
-                if retries > 0, expiredInvoiceRefusal(error) != nil {
+                // A failed try can have committed a transfer before Spark selected leaves again, so an expiry or a
+                // short balance on a retry, which would read as nothing sent, ends with the leaf failure instead.
+                if retries > 0, expiredInvoiceRefusal(error) != nil || Self.isShortBalance(error) {
                     throw SdkError.SparkError("Failed to select leaves after all retries")
                 }
                 guard isLeafSelectionFailure(error), retries < leafSelectionRetries else { throw error }

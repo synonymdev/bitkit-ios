@@ -119,6 +119,23 @@ final class SparkSendKeyTests: XCTestCase {
         }
     }
 
+    func testAShortBalanceOnALeafRetryEndsWithTheLeafFailure() async {
+        var sends = 0
+
+        do {
+            _ = try await Bitkit.SparkManager.sendRetryingLeafSelection(retryDelay: .zero, canRetry: { true }) {
+                sends += 1
+                if sends == 1 {
+                    throw leafSelectionFailure
+                }
+                throw SdkError.InsufficientFunds(tokenIdentifier: nil)
+            }
+            XCTFail("Expected the send to fail")
+        } catch {
+            XCTAssertTrue(Bitkit.SparkManager.isLeafSelectionFailure(error), "\(error)")
+        }
+    }
+
     func testASendRetriesWhileSparkCantSelectItsLeaves() async throws {
         var sends = 0
 
