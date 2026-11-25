@@ -343,6 +343,53 @@ final class ScannerManagerTests: XCTestCase {
         XCTAssertNil(sheets.activeSheetConfiguration)
     }
 
+    func testSetupSheetQueuedBeforeALockDoesNotOpenAfterIt() async throws {
+        let defaults = UserDefaults.standard
+        let previousEnabled = defaults.object(forKey: PaykitFeatureFlags.uiEnabledKey)
+        defer { defaults.set(previousEnabled, forKey: PaykitFeatureFlags.uiEnabledKey) }
+        defaults.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        let previousAdopted = AdoptedPubkyReference.current
+        defer { AdoptedPubkyReference.current = previousAdopted }
+        AdoptedPubkyReference.current = nil
+        XCTAssertFalse(try PubkyProfileManager.hasStoredIdentity())
+        let routes: [(uri: String, sheet: SheetID)] = [
+            ("https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123", .btcpayConnection),
+            (
+                "pubkyring://signup?hs=5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo" +
+                    "&relay=https%3A%2F%2Frelay.example%2Finbox%2F" +
+                    "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&caps=%2Fpub%2Fexample%2F%3Arw",
+                .pubkyAuthApproval
+            ),
+        ]
+
+        func scanFromTheScanner(_ uri: String, lockingBeforeTheSheetOpens: Bool) async throws -> SheetConfiguration? {
+            let sheets = SheetViewModel()
+            sheets.showSheet(.scanner)
+            let scanner = ScannerManager {}
+            let app = configure(scanner, sheets: sheets)
+            scanner.configure(
+                app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+                settings: SettingsViewModel.shared, sheets: sheets
+            )
+            await scanner.handleScan(uri, context: .main)
+            // The scanner sheet is closing; the setup sheet opens after the replacement delay.
+            XCTAssertNil(sheets.activeSheetConfiguration, uri)
+            if lockingBeforeTheSheetOpens {
+                scanner.invalidateScansForAppLock()
+                app.noteAppLocked()
+            }
+            try await Task.sleep(nanoseconds: UInt64((SheetViewModel.replacementDelaySeconds + 0.3) * 1_000_000_000))
+            return sheets.activeSheetConfiguration
+        }
+
+        for route in routes {
+            let unlocked = try await scanFromTheScanner(route.uri, lockingBeforeTheSheetOpens: false)
+            XCTAssertEqual(unlocked?.id, route.sheet, "Without a lock the scan opens its sheet")
+            let locked = try await scanFromTheScanner(route.uri, lockingBeforeTheSheetOpens: true)
+            XCTAssertNil(locked, "A \(route.sheet) sheet queued before the lock must not open after it")
+        }
+    }
+
     private func imageTestLnurl(amount: UInt64) -> LnurlPayData {
         LnurlPayData(uri: "https://example.com/pay", callback: "https://example.com/callback",
                      minSendable: amount, maxSendable: amount,
