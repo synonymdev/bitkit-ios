@@ -35,6 +35,7 @@ private struct OfflineSheetOverlayModifier: ViewModifier {
     func body(content: Content) -> some View {
         ZStack(alignment: .top) {
             content
+                .environment(\.isCoveredByOfflineSheet, isShowing)
 
             if isShowing {
                 OfflineSheetScreen(title: title)
@@ -51,10 +52,23 @@ private struct OfflineSheetOverlayModifier: ViewModifier {
     }
 }
 
+private struct IsCoveredByOfflineSheetKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// True while `offlineSheetOverlay` covers the view, which stays mounted underneath.
+    var isCoveredByOfflineSheet: Bool {
+        get { self[IsCoveredByOfflineSheetKey.self] }
+        set { self[IsCoveredByOfflineSheetKey.self] = newValue }
+    }
+}
+
 extension View {
     /// Overlays a `OfflineSheetScreen` when the device is offline, or whenever `forceShow` is true
     /// (e.g. connection issues beyond device connectivity, like an unreachable Lightning peer).
-    /// The underlying content remains mounted so navigation state and inputs are preserved.
+    /// The underlying content remains mounted so navigation state and inputs are preserved; it can read
+    /// `isCoveredByOfflineSheet` to pause what should not run while hidden.
     func offlineSheetOverlay(title: String, forceShow: Bool = false, isEnabled: Bool = true) -> some View {
         modifier(OfflineSheetOverlayModifier(title: title, forceShow: forceShow, isEnabled: isEnabled))
     }

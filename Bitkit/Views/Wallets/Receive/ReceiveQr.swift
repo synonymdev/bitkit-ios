@@ -30,6 +30,13 @@ struct ReceiveQr: View {
     @State private var verifyTask: Task<Void, Never>?
     @State private var passphraseTask: Task<Void, Never>?
     @State private var engagedSession = HwEngagedSession()
+    @State private var nearbyAdvertiser = NearbyPaymentAdvertiser()
+    /// Whether the QR page is on screen. The view stays mounted as the navigation root while Edit or another route is
+    /// pushed, and still sees app and request changes then.
+    @State private var isShown = false
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(TrezorManager.self) private var trezorManager
+    @Environment(\.isCoveredByOfflineSheet) private var isCoveredByOfflineSheet
 
     init(
         navigationPath: Binding<[ReceiveRoute]>,
@@ -270,6 +277,17 @@ struct ReceiveQr: View {
         .sheetBackground()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("ReceiveScreen")
+        .onAppear {
+            isShown = true
+            updateNearbyAdvertising()
+        }
+        .onChange(of: nearbyRequest) { updateNearbyAdvertising() }
+        .onChange(of: scenePhase) { updateNearbyAdvertising() }
+        .onChange(of: isQrCovered) { updateNearbyAdvertising() }
+        .onDisappear {
+            isShown = false
+            nearbyAdvertiser.stop()
+        }
         .sheet(isPresented: passphrasePromptBinding) {
             HwPassphrasePromptSheet(
                 isVerifying: isVerifyingPassphrase,
@@ -412,6 +430,7 @@ struct ReceiveQr: View {
                     imageAsset: "btc-circle-blue",
                     accentColor: .blueAccent,
                     copyValue: uri.contains("?") ? uri : hardwareAddress.address,
+                    showsTapToPay: nearbyAdvertiser.isAdvertising,
                     onEdit: { navigationPath.append(.edit(tab: .hardware, onchainOnly: true)) }
                 )
             } else if hardwareAddressLoadFailed {
@@ -435,6 +454,7 @@ struct ReceiveQr: View {
                     uri: config.uri,
                     imageAsset: config.imageAsset,
                     accentColor: config.accentColor,
+                    showsTapToPay: nearbyAdvertiser.isAdvertising,
                     onEdit: editRoute(for: tab).map { route in
                         { navigationPath.append(route) }
                     }
@@ -443,6 +463,60 @@ struct ReceiveQr: View {
             } else {
                 ProgressView()
             }
+        }
+    }
+
+    /// The request offered to nearby phones over Bluetooth, or nil when nothing should be advertised. Only a request
+    /// the payer can check on screen is offered: none while the connection-issues screen covers Receive or the page
+    /// shows a spinner, Retry or an error in its place, and none for a tab that is hidden but not yet left.
+    private var nearbyRequest: String? {
+        guard settings.enableNearbyPayments,
+              Self.tab(selectedTab, canShowUnifiedReceive: canShowUnifiedReceive) == selectedTab,
+              !isCoveredByOfflineSheet else { return nil }
+        switch selectedTab {
+        case .usdt:
+            return nil
+        case .hardware:
+            guard let address = displayedHardwareAddress?.address else { return nil }
+            return NearbyPaymentUri.from(Bip21Utils.hardwareInvoice(
+                address: address,
+                amountSats: wallet.invoiceAmountSats,
+                message: wallet.invoiceNote
+            ))
+        default:
+            guard Self.showsRequest(
+                needsInvoiceRefresh: needsInvoiceRefresh,
+                isReceiveUnavailable: receiveUnavailable(for: selectedTab)
+            ) else { return nil }
+            return NearbyPaymentUri.from(qrConfig(for: selectedTab).uri)
+        }
+    }
+
+    /// Whether a Savings, Spending or Unified page shows its request, as `tabContent` decides: a page waiting for
+    /// its first refresh shows a spinner or Retry, and an updating or failed invoice shows its status instead.
+    static func showsRequest(needsInvoiceRefresh: Bool, isReceiveUnavailable: Bool) -> Bool {
+        !needsInvoiceRefresh && !isReceiveUnavailable
+    }
+
+    /// The request to advertise: only while the QR page is on screen, with nothing pushed or presented over it, and
+    /// the app active.
+    static func advertisedRequest(_ request: String?, isShown: Bool, isCovered: Bool, isActive: Bool) -> String? {
+        isShown && !isCovered && isActive ? request : nil
+    }
+
+    /// Whether a pushed route (Edit), the passphrase prompt or the hardware pairing sheet covers the QR page. A
+    /// presented sheet or a pop by swipe does not trigger `onAppear` or `onDisappear` when it changes.
+    private var isQrCovered: Bool {
+        !navigationPath.isEmpty || isPassphraseRequired || trezorManager.showPairingCode
+    }
+
+    private func updateNearbyAdvertising() {
+        if let request = Self.advertisedRequest(
+            nearbyRequest, isShown: isShown, isCovered: isQrCovered, isActive: scenePhase == .active
+        ) {
+            nearbyAdvertiser.start(request: request)
+        } else {
+            nearbyAdvertiser.stop()
         }
     }
 

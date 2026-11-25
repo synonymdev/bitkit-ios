@@ -350,6 +350,22 @@ final class AddressTypeSettingsTests: XCTestCase {
         XCTAssertEqual(backupDict["quickPayDailyLimitMultiplier"] as? Int, 10)
     }
 
+    func testNearbyPaymentsFollowARestoredBackup() {
+        settings.enableNearbyPayments = false
+        var backupDict = settings.getSettingsDictionary()
+        XCTAssertEqual(backupDict["isNearbyPaymentsEnabled"] as? Bool, false)
+
+        settings.resetToDefaults()
+        XCTAssertTrue(settings.enableNearbyPayments)
+
+        settings.restoreSettingsDictionary(backupDict)
+        XCTAssertFalse(settings.enableNearbyPayments, "A restored off must apply without a relaunch")
+
+        backupDict.removeValue(forKey: "isNearbyPaymentsEnabled")
+        settings.restoreSettingsDictionary(backupDict)
+        XCTAssertTrue(settings.enableNearbyPayments, "A backup without the key restores the default on")
+    }
+
     func testRestoresQuickpayAmountFromAndroidKey() {
         settings.restoreSettingsDictionary(["quickPayAmount": 1])
 

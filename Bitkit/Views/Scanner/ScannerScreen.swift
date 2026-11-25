@@ -26,6 +26,23 @@ struct ScannerScreen: View {
         return .main
     }
 
+    /// Whether the scanner reads payment requests over NFC and Bluetooth: only when it scans for a payment, not for
+    /// a node to connect to during manual channel setup.
+    static func readsNearby(context: ScannerContext, path: [Route]) -> Bool {
+        context == .main && !path.contains(where: isNodeSetup)
+    }
+
+    private static func isNodeSetup(_ route: Route) -> Bool {
+        if case .fundManual = route {
+            return true
+        }
+        return false
+    }
+
+    private var readsNearby: Bool {
+        Self.readsNearby(context: scannerContext, path: navigation.path)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("other__qr_scan"))
@@ -36,7 +53,14 @@ struct ScannerScreen: View {
                 },
                 onImageSelection: { item in
                     await scanner.handleImageSelection(item, context: scannerContext)
-                }
+                },
+                onNfcRead: readsNearby && scanner.isNfcReadingAvailable
+                    ? { await scanner.handleNfcRead(context: scannerContext) }
+                    : nil,
+                onNearbyRequest: readsNearby
+                    ? { await scanner.handleNearbyRequest($0, context: scannerContext, isCurrent: $1) }
+                    : nil,
+                isNearbyPaused: sheets.activeSheetConfiguration != nil
             )
             .padding(.bottom, 16)
 

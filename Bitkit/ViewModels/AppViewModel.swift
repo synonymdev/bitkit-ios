@@ -1,6 +1,7 @@
 import BitkitCore
 import Combine
 import LDKNode
+import os
 import enum Paykit.PaykitError
 import SwiftUI
 
@@ -211,6 +212,70 @@ class AppViewModel: ObservableObject {
         lockedDeepLinkRoutesInFlight > 0
     }
 
+    private var quickPaySuppressions: Set<UUID> = []
+    /// Raised each time the app locks behind the PIN.
+    private var appLockGeneration = 0
+    /// The lock generation when QuickPay was last chosen for a request.
+    private var quickPayChosenAtLockGeneration: Int?
+
+    /// Counts app locks for checks that run off the main actor, such as the one right before a payment is submitted.
+    private let appLocks = OSAllocatedUnfairLock(initialState: 0)
+
+    /// True until the app locks behind the PIN after this call, so work that outlasts a lock can drop its result.
+    func lockCheck() -> () -> Bool {
+        let lockGeneration = appLockGeneration
+        return { [weak self] in
+            self?.appLockGeneration == lockGeneration
+        }
+    }
+
+    /// Called when the app locks behind the PIN.
+    func noteAppLocked() {
+        appLockGeneration += 1
+        appLocks.withLock { $0 += 1 }
+    }
+
+    /// A check for the moment a QuickPay payment is submitted, which can come after waits that outlast a lock and runs
+    /// off the main actor: it throws once the app has locked since this call.
+    func quickPaySubmissionCheck() -> @Sendable () throws -> Void {
+        let appLocks = appLocks
+        let seen = Self.count(appLocks)
+        return {
+            if Self.count(appLocks) != seen {
+                throw SendStoppedBeforeSubmission()
+            }
+        }
+    }
+
+    private nonisolated static func count(_ locks: OSAllocatedUnfairLock<Int>) -> Int {
+        locks.withLock { $0 }
+    }
+
+    /// Called when a request is routed to QuickPay.
+    func noteQuickPayChosen() {
+        quickPayChosenAtLockGeneration = appLockGeneration
+    }
+
+    /// Whether the app locked after QuickPay was chosen. The QuickPay screen can appear only later (for example once
+    /// the node is ready), and a payment chosen before a lock must not start on its own after the unlock.
+    var didLockSinceQuickPayWasChosen: Bool {
+        quickPayChosenAtLockGeneration.map { $0 != appLockGeneration } ?? false
+    }
+
+    /// True while a payment request that must always be reviewed (for example one read over Bluetooth) routes.
+    var isQuickPaySuppressed: Bool {
+        !quickPaySuppressions.isEmpty
+    }
+
+    func suppressQuickPay(_ id: UUID) {
+        quickPaySuppressions.insert(id)
+    }
+
+    /// Releasing an id that is no longer held does nothing.
+    func releaseQuickPaySuppression(_ id: UUID) {
+        quickPaySuppressions.remove(id)
+    }
+
     /// The last routed deep link. On a cold start the same link reaches the app twice (`onOpenURL` and the scene
     /// delegate replay), and the startup gates can route the first delivery before the second arrives.
     private var lastRoutedDeepLink: (url: URL, date: Date)?
@@ -223,6 +288,7 @@ class AppViewModel: ObservableObject {
     @AppStorage("hasSeenProfileIntro") var hasSeenProfileIntro: Bool = false
     @AppStorage("hasSeenNotificationsIntro") var hasSeenNotificationsIntro: Bool = false
     @AppStorage("hasSeenQuickpayIntro") var hasSeenQuickpayIntro: Bool = false
+    @AppStorage("hasSeenNfcIntro") var hasSeenNfcIntro: Bool = false
     @AppStorage("hasSeenMoveToSparkIntro") var hasSeenMoveToSparkIntro: Bool = false
     @AppStorage("hasSeenShopIntro") var hasSeenShopIntro: Bool = false
     @AppStorage("hasSeenTransferIntro") var hasSeenTransferIntro: Bool = false
@@ -579,6 +645,7 @@ class AppViewModel: ObservableObject {
         hasSeenProfileIntro = false
         hasSeenNotificationsIntro = false
         hasSeenQuickpayIntro = false
+        hasSeenNfcIntro = false
         hasSeenMoveToSparkIntro = false
         hasSeenShopIntro = false
         hasSeenTransferIntro = false
