@@ -1287,6 +1287,161 @@ extension ScannerManagerTests {
         XCTAssertTrue(wasTaken)
     }
 
+    // MARK: Scan ownership per scanner visit
+
+    func testSendCameraScanCannotRouteAfterEnterManually() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        let held = HeldDecoder()
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { try await held.decode($0, else: decoded) })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        var navigationPath: [SendRoute] = []
+        var routes: [SendRoute?] = []
+        let task = Task {
+            await scanner.handleSendScan("bitcoin:bcrt1qheldscan", isCurrent: { navigationPath.isEmpty }) { routes.append($0) }
+        }
+        await fulfillment(of: [held.started("bitcoin:bcrt1qheldscan")], timeout: 2)
+
+        // The payer taps Enter Manually while the scan decodes.
+        navigationPath.append(.manual)
+        held.resume("bitcoin:bcrt1qheldscan", with: decoded)
+        await task.value
+
+        XCTAssertTrue(routes.isEmpty, "A scan from before Enter Manually must not route")
+        XCTAssertNil(app.scannedOnchainInvoice)
+        XCTAssertEqual(navigationPath, [.manual])
+    }
+
+    func testMainCameraScanCannotRouteAfterLeavingAndReturningToTheScanner() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        let navigation = NavigationViewModel()
+        let held = HeldDecoder()
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { try await held.decode($0, else: decoded) })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, navigation: navigation, sheets: sheets
+        )
+        let task = Task { await scanner.handleScan("bitcoin:bcrt1qheldscan", context: .main) }
+        await fulfillment(of: [held.started("bitcoin:bcrt1qheldscan")], timeout: 2)
+
+        navigation.path.append(.savingsWallet)
+        navigation.path.removeLast()
+        held.resume("bitcoin:bcrt1qheldscan", with: decoded)
+        await task.value
+
+        XCTAssertNil(app.scannedOnchainInvoice, "A camera scan from an earlier visit must not route")
+    }
+
+    func testScanAfterReopeningTheScannerIsHandledWhileTheOldLookupRuns() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        let held = HeldDecoder()
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { try await held.decode($0, else: decoded) })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        sheets.showSheet(.scanner)
+        let oldScan = Task { await scanner.handleScan("bitcoin:bcrt1qheldscan", context: .main) }
+        await fulfillment(of: [held.started("bitcoin:bcrt1qheldscan")], timeout: 2)
+
+        // The user closes the scanner and opens it again while the first lookup runs, then scans again.
+        sheets.hideSheet(reason: "Close the scanner")
+        sheets.showSheet(.scanner)
+        await scanner.handleScan(paymentURI, context: .main)
+
+        XCTAssertEqual(held.decodedInputs, ["bitcoin:bcrt1qheldscan", paymentURI], "The new scan must not wait for the old lookup")
+        XCTAssertNotNil(app.scannedOnchainInvoice)
+
+        held.resume("bitcoin:bcrt1qheldscan", with: decoded)
+        await oldScan.value
+    }
+
+    func testSendScanAfterReturningFromEnterManuallyIsHandledWhileTheOldLookupRuns() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        let held = HeldDecoder()
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { try await held.decode($0, else: decoded) })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        var navigationPath: [SendRoute] = []
+        var scannerVisit = 0
+        func visitCheck() -> () -> Bool {
+            let visit = scannerVisit
+            return { navigationPath.isEmpty && scannerVisit == visit }
+        }
+        var oldRoutes: [SendRoute?] = []
+        let oldScan = Task {
+            await scanner.handleSendScan("bitcoin:bcrt1qheldscan", isCurrent: visitCheck()) { oldRoutes.append($0) }
+        }
+        await fulfillment(of: [held.started("bitcoin:bcrt1qheldscan")], timeout: 2)
+
+        // Enter Manually, then Back.
+        navigationPath.append(.manual)
+        scannerVisit += 1
+        navigationPath.removeLast()
+        var routes: [SendRoute?] = []
+        await scanner.handleSendScan(paymentURI, isCurrent: visitCheck()) { routes.append($0) }
+
+        XCTAssertEqual(routes, [.amount], "The new scan must not wait for the old lookup")
+
+        held.resume("bitcoin:bcrt1qheldscan", with: decoded)
+        await oldScan.value
+        XCTAssertTrue(oldRoutes.isEmpty, "The old scan must not route")
+    }
+
+    func testStaleScanCompletionNeitherBlocksNorReleasesANewerScan() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let firstURI = "bitcoin:bcrt1qheldfirst"
+        let secondURI = "bitcoin:bcrt1qheldsecond"
+        let sheets = SheetViewModel()
+        let held = HeldDecoder()
+        let scanner = ScannerManager {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { try await held.decode($0, else: decoded) })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        sheets.showSheet(.scanner)
+        let firstScan = Task { await scanner.handleScan(firstURI, context: .main) }
+        await fulfillment(of: [held.started(firstURI)], timeout: 2)
+
+        sheets.hideSheet(reason: "Close the scanner")
+        sheets.showSheet(.scanner)
+        let secondScan = Task { await scanner.handleScan(secondURI, context: .main) }
+        await fulfillment(of: [held.started(secondURI)], timeout: 2)
+
+        // The first scan finishes while the second still decodes: the second keeps the lock.
+        held.resume(firstURI, with: decoded)
+        await firstScan.value
+        await scanner.handleScan(paymentURI, context: .main)
+        let nearbyWasTaken = await scanner.handleNearbyRequest(paymentURI, context: .main)
+        XCTAssertEqual(held.decodedInputs, [firstURI, secondURI], "A scan on the same visit must wait for the second scan")
+        XCTAssertFalse(nearbyWasTaken)
+
+        held.resume(secondURI, with: decoded)
+        await secondScan.value
+        XCTAssertNotNil(app.scannedOnchainInvoice, "The second scan routes")
+
+        // Once the second scan ends, the lock is free.
+        sheets.hideSheet(reason: "Close the payment sheet")
+        sheets.showSheet(.scanner)
+        await scanner.handleScan(paymentURI, context: .main)
+        XCTAssertEqual(held.decodedInputs, [firstURI, secondURI, paymentURI])
+    }
+
     func testNfcErrorMessages() {
         XCTAssertEqual(NfcReadError.noPaymentRequest.message, t("other__nfc_error_text"))
         XCTAssertEqual(NfcReadError.multiplePaymentRequests.message, t("other__nfc_error_multiple"))
@@ -1315,6 +1470,37 @@ private final class FakeNfcReader: NfcPaymentReading {
     func readPaymentRequest(alertMessage: String) async throws -> String {
         alertMessages.append(alertMessage)
         return try result.get()
+    }
+}
+
+/// Holds the decode of each input containing "held" until the test resumes it, like a slow LNURL lookup. Other inputs
+/// decode at once.
+@MainActor
+private final class HeldDecoder {
+    private(set) var decodedInputs: [String] = []
+    private var expectations: [String: XCTestExpectation] = [:]
+    private var continuations: [String: CheckedContinuation<BitkitCore.Scanner, Error>] = [:]
+
+    func started(_ input: String) -> XCTestExpectation {
+        if let expectation = expectations[input] {
+            return expectation
+        }
+        let expectation = XCTestExpectation(description: "Decoding \(input) suspended")
+        expectations[input] = expectation
+        return expectation
+    }
+
+    func decode(_ input: String, else decoded: BitkitCore.Scanner) async throws -> BitkitCore.Scanner {
+        decodedInputs.append(input)
+        guard input.contains("held") else { return decoded }
+        return try await withCheckedThrowingContinuation {
+            continuations[input] = $0
+            started(input).fulfill()
+        }
+    }
+
+    func resume(_ input: String, with decoded: BitkitCore.Scanner) {
+        continuations.removeValue(forKey: input)?.resume(returning: decoded)
     }
 }
 
