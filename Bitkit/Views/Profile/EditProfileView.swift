@@ -228,7 +228,7 @@ struct EditProfileView: View {
             try await pubkyProfile.signOut()
             navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
         } catch {
-            app.toast(type: .error, title: t("profile__sign_out_title"), description: error.localizedDescription)
+            app.toast(type: .error, title: t("profile__sign_out_title"), description: error.profileErrorDescription)
         }
     }
 

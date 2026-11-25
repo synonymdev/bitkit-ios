@@ -1630,13 +1630,49 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private func signOut(cleanPrivatePaykitEndpoints: Bool, allowDuringProfileDeletion: Bool = false) async throws {
-        try await signOut(allowDuringProfileDeletion: allowDuringProfileDeletion) {
+        try await signOutOrForget(allowDuringProfileDeletion: allowDuringProfileDeletion) {
             if cleanPrivatePaykitEndpoints {
                 try await Self.removePrivatePaykitEndpoints(context: "PubkyProfileManager.signOut")
             }
             await Self.removePublicPaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
             try await PubkyService.signOut()
         }
+    }
+
+    /// Waits for a restore already running, so an identity it restores is signed out rather than only forgotten.
+    func signOutOrForget(
+        allowDuringProfileDeletion: Bool,
+        forgetSessionAccess: @escaping @Sendable () async throws -> Void = { try await PubkyService.forgetSessionAccess() },
+        signOutRestored: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        while let initializationTask {
+            await initializationTask.value
+        }
+        let isRestored = publicKey != nil
+        try await signOut(allowDuringProfileDeletion: allowDuringProfileDeletion, performSessionCleanup: {
+            try await Self.signOutCleanup(
+                isRestored: isRestored,
+                forgetSessionAccess: forgetSessionAccess,
+                signOutRestored: signOutRestored
+            )
+        })
+    }
+
+    /// An identity that never restored, such as one whose shared Paykit state a newer Bitkit saved, cannot read that state
+    /// to remove its endpoints or end its session, so Disconnect only forgets it on this device. A pending endpoint cleanup
+    /// is dropped with it, so it cannot run against the next identity.
+    nonisolated static func signOutCleanup(
+        isRestored: Bool,
+        forgetSessionAccess: @Sendable () async throws -> Void = { try await PubkyService.forgetSessionAccess() },
+        dropPendingEndpointCleanup: @Sendable () -> Void = { PublicPaykitService.setCleanupPending(false) },
+        signOutRestored: @Sendable () async throws -> Void
+    ) async throws {
+        guard isRestored else {
+            try await forgetSessionAccess()
+            dropPendingEndpointCleanup()
+            return
+        }
+        try await signOutRestored()
     }
 
     func signOut(performSessionCleanup: @escaping @Sendable () async throws -> Void) async throws {
