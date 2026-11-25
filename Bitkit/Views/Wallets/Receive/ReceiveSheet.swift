@@ -6,7 +6,6 @@ enum ReceiveRoute: Hashable {
     case qr(tab: ReceiveQr.ReceiveTab?)
     case edit(tab: ReceiveQr.ReceiveTab, onchainOnly: Bool)
     case tag
-    case transferUnavailable
     case requestOrPay(publicKey: String)
     case paymentRequestRecipient(PaykitPaymentRequestDraft)
     case paymentRequestAmount(PaykitPaymentRequestDraft, PaykitPaymentRequestTarget)
@@ -15,7 +14,7 @@ enum ReceiveRoute: Hashable {
 
     var requiresInvoiceRefresh: Bool {
         switch self {
-        case .qr, .edit, .tag, .transferUnavailable:
+        case .qr, .edit, .tag:
             return true
         case .usdt, .requestOrPay, .paymentRequestRecipient, .paymentRequestAmount, .paymentRequestDetails, .paymentRequestSent:
             return false
@@ -122,8 +121,6 @@ struct ReceiveSheet: View {
             }
         case .tag:
             ReceiveTag(navigationPath: $navigationPath)
-        case .transferUnavailable:
-            ReceiveTransferUnavailable()
         case let .requestOrPay(publicKey):
             RequestOrPayView(publicKey: publicKey) { target in
                 navigationPath.append(.paymentRequestAmount(Self.defaultPaymentRequestDraft, target))

@@ -28,6 +28,10 @@ struct PaymentNavigationHelper {
             app.noteQuickPayChosen()
             return true
         }
+        // QuickPay has no confirm screen to show the update fee, so a payment that needs the update is reviewed.
+        if MoveToSparkMath.needsUpdateToSend(amountSats: amountSats) {
+            return false
+        }
 
         let canApply = spendStore.canApply(
             amountSats: amountSats,

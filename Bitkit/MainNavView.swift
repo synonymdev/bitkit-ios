@@ -238,7 +238,9 @@ struct MainNavView: View {
                 config in SecuritySheet(config: config)
             }
             .sheet(item: $sheets.moveToSparkSheetItem, onDismiss: {
-                sheets.hideSheetIfActive(.moveToSpark, reason: "Move to Spark intro dismissed")
+                sheets.hideSheetIfActive(.moveToSpark, reason: "Update spending balance dismissed")
+                // Forgets a settled move once the modal hides, so the next opening quotes anew.
+                MoveToSparkManager.shared.reset()
             }) { config in
                 MoveToSparkSheet(config: config)
             }
@@ -726,7 +728,6 @@ struct MainNavView: View {
                 case .connections: LightningConnectionsView()
                 case let .connectionDetail(channelId): LightningConnectionDetailView(channelId: channelId)
                 case .sparkConnectionDetail: SparkConnectionDetailView()
-                case .moveToSpark: MoveToSparkView()
                 case .sparkExitIntro: SparkExitIntroView()
                 case .sparkExitQuote: SparkExitQuoteView()
                 case .sparkExitFunding: SparkExitFundingView()

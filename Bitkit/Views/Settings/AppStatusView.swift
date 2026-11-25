@@ -173,8 +173,8 @@ struct AppStatusView: View {
                 title: t("settings__status__spark__title"),
                 description: t("settings__status__spark__\(status.rawValue)"),
                 status: status,
-                // Spark's detail shows a zero balance until Spark has read its state.
-                onTap: status == .ready ? { navigation.navigate(.sparkConnectionDetail) } : nil
+                onTap: AppStatusHelper.opensSparkDetail(status: status, isReady: SparkManager.shared.isReady)
+                    ? { navigation.navigate(.sparkConnectionDetail) } : nil
             )
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("Status-spark")

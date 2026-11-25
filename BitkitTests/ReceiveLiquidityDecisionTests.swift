@@ -47,34 +47,4 @@ final class ReceiveLiquidityDecisionTests: XCTestCase {
             )
         )
     }
-
-    func testZeroInboundKeepsTheQr() {
-        XCTAssertEqual(
-            ReceiveLiquidityDecision.additionalLiquidityAction(source: .spending, invoiceAmountSats: 10000, inboundCapacitySats: 0),
-            .none
-        )
-    }
-
-    func testAmountWithinInboundKeepsTheQr() {
-        XCTAssertEqual(
-            ReceiveLiquidityDecision.additionalLiquidityAction(source: .spending, invoiceAmountSats: 5000, inboundCapacitySats: 5000),
-            .none
-        )
-    }
-
-    func testOnlySpendingNeedsMoreCapacity() {
-        for source in [ReceiveLiquiditySource.savings, .auto] {
-            XCTAssertEqual(
-                ReceiveLiquidityDecision.additionalLiquidityAction(source: source, invoiceAmountSats: 10000, inboundCapacitySats: 5000),
-                .none
-            )
-        }
-    }
-
-    func testSpendingAmountOverInboundShowsTransferUnavailable() {
-        XCTAssertEqual(
-            ReceiveLiquidityDecision.additionalLiquidityAction(source: .spending, invoiceAmountSats: 10000, inboundCapacitySats: 5000),
-            .transferUnavailable
-        )
-    }
 }

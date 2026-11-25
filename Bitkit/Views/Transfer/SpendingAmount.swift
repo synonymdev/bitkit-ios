@@ -47,8 +47,6 @@ struct SpendingAmount: View {
             }
             .padding(.top, 32)
 
-            Spacer()
-
             HStack(alignment: .bottom) {
                 availableAmount
 
@@ -56,9 +54,12 @@ struct SpendingAmount: View {
 
                 actionButtons
             }
-            .padding(.bottom, 12)
+            .padding(.top, 32)
+            .padding(.bottom, 16)
 
             Divider()
+
+            Spacer()
 
             NumberPad(
                 type: amountViewModel.getNumberPadType(currency: currency),
@@ -91,6 +92,8 @@ struct SpendingAmount: View {
                 isCalculatingMax = false
             }
         }
+        // The confirm screen's fees switch the display unit, so the kept amount follows it on the way back.
+        .onAppear { amountViewModel.refreshDisplay(currency: currency) }
         .onChange(of: maxTransferAmount) { updateInputCap() }
         .onChange(of: amountViewModel.maxExceededCount) { onMaxExceeded() }
     }

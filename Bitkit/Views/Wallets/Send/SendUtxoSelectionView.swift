@@ -113,11 +113,7 @@ struct SendUtxoSelectionView: View {
     }
 
     private func formatSats(_ sats: UInt64) -> String {
-        if let converted = currency.convert(sats: sats) {
-            let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
-            return btcComponents.value
-        }
-        return String(sats)
+        ConvertedAmount.bitcoinDisplay(sats: sats, unit: currency.displayUnit).value
     }
 }
 
@@ -169,11 +165,7 @@ struct UtxoRowView: View {
     }
 
     private func formatBtcAmount(_ sats: UInt64) -> String {
-        if let converted = currency.convert(sats: sats) {
-            let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
-            return btcComponents.value
-        }
-        return String(sats)
+        ConvertedAmount.bitcoinDisplay(sats: sats, unit: currency.displayUnit).value
     }
 
     private func formatUsdAmount(_ sats: UInt64) -> String {

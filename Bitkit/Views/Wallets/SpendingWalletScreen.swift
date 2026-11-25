@@ -9,7 +9,8 @@ struct SpendingWalletScreen: View {
     @EnvironmentObject var wallet: WalletViewModel
 
     private var canMoveToSpark: Bool {
-        MoveToSparkMath.canMove(channels: wallet.channels, isSparkUsable: MoveToSparkMath.isSparkUsable(SparkManager.shared))
+        MoveToSparkManager.shared.keepsMoveForItsResult
+            || MoveToSparkMath.canMove(channels: wallet.channels, isSparkUsable: MoveToSparkMath.isSparkUsable(SparkManager.shared))
     }
 
     private var shouldShowOnboarding: Bool {
@@ -48,7 +49,7 @@ struct SpendingWalletScreen: View {
                     if !shouldShowOnboarding {
                         if canMoveToSpark {
                             CustomButton(title: t("lightning__move_to_spark__nav_title")) {
-                                navigation.navigate(.moveToSpark)
+                                sheets.showSheet(.moveToSpark)
                             }
                             .accessibilityIdentifier("MoveToSpark")
                             .padding(.top, 28)
@@ -115,7 +116,7 @@ struct SpendingWalletScreen: View {
 
     var transferFromSavingsButton: some View {
         CustomButton(
-            title: t("lightning__funding__button1"),
+            title: t("lightning__transfer_from_savings_button"),
             variant: .secondary,
             icon: Image("arrow-up-down")
                 .resizable()

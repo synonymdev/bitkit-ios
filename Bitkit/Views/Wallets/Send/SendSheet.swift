@@ -803,7 +803,7 @@ struct SendSheet: View {
                 flow.hasValidatedAfterSync = true
                 return .failed
             }
-            guard LightningService.shared.canSend(amountSats: requestedAmount) else {
+            guard MoveToSparkMath.canSendLightning(amountSats: requestedAmount) else {
                 let spendingBalance = (LightningService.shared.balances?.totalLightningBalanceSats ?? 0)
                     + (LightningService.shared.channelFreeRail?.balanceSats ?? 0)
                 showInsufficientSpendingToast(invoiceAmount: requestedAmount, spendingBalance: spendingBalance)
@@ -829,7 +829,7 @@ struct SendSheet: View {
 
             // Check if we can afford the lightning payment
             let paymentAmount = requestedAmount ?? lightningInvoice.amountSatoshis
-            let canSend = LightningService.shared.canSend(amountSats: paymentAmount)
+            let canSend = MoveToSparkMath.canSendLightning(amountSats: paymentAmount)
 
             if !canSend {
                 // For unified invoices, fall back to onchain

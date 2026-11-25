@@ -24,6 +24,7 @@ struct SpendingIntroView: View {
             },
             accentColor: .purpleAccent,
             imagePosition: .center,
+            contentHorizontalPadding: 0,
             testID: "SpendingIntro"
         )
         .navigationBarHidden(true)

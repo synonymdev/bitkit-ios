@@ -50,6 +50,7 @@ final class QuickPayPaymentCoordinator {
     /// Submits a BOLT11 payment, running the check it is given right before the payment leaves.
     private let submit: (String, @escaping () throws -> Void) async throws -> String
     private let listRows: () async throws -> [QuickPayReconcileRow]?
+    private let needsUpdateToSend: (UInt64) -> Bool
 
     private var operations: [String: InFlightOp] = [:]
     private var generation = UUID()
@@ -67,9 +68,11 @@ final class QuickPayPaymentCoordinator {
         store: QuickPaySpendStore = .shared,
         sendBolt11: ((String) async throws -> String)? = nil,
         submit: ((String, @escaping () throws -> Void) async throws -> String)? = nil,
-        listRows: (() async throws -> [QuickPayReconcileRow]?)? = nil
+        listRows: (() async throws -> [QuickPayReconcileRow]?)? = nil,
+        needsUpdateToSend: ((UInt64) -> Bool)? = nil
     ) {
         self.store = store
+        self.needsUpdateToSend = needsUpdateToSend ?? { MoveToSparkMath.needsUpdateToSend(amountSats: $0) }
         if let submit {
             self.submit = submit
         } else if let sendBolt11 {
@@ -346,6 +349,12 @@ final class QuickPayPaymentCoordinator {
         guard generation == self.generation else { return }
 
         let amountSats = wallet.sendAmountSats ?? 0
+        // Checked again here, as QuickPay may have been picked before the node synced: QuickPay has no confirm screen to
+        // show the update fee, so a payment that needs the update is reviewed.
+        if needsUpdateToSend(amountSats) {
+            presentation.replaceQuickPay(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
+            return
+        }
         let op = InFlightOp(invoiceHash: invoiceHash, bolt11: bolt11, presentation: presentation)
         op.ownerSendStateGeneration = sendStateGeneration
         op.runActive = true
