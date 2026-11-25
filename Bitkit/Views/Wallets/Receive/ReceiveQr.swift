@@ -35,6 +35,7 @@ struct ReceiveQr: View {
     /// pushed, and still sees app and request changes then.
     @State private var isShown = false
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(TrezorManager.self) private var trezorManager
     @Environment(\.isCoveredByOfflineSheet) private var isCoveredByOfflineSheet
 
     init(
@@ -282,6 +283,7 @@ struct ReceiveQr: View {
         }
         .onChange(of: nearbyRequest) { updateNearbyAdvertising() }
         .onChange(of: scenePhase) { updateNearbyAdvertising() }
+        .onChange(of: isQrCovered) { updateNearbyAdvertising() }
         .onDisappear {
             isShown = false
             nearbyAdvertiser.stop()
@@ -496,14 +498,21 @@ struct ReceiveQr: View {
         !needsInvoiceRefresh && !isReceiveUnavailable
     }
 
-    /// The request to advertise: only while the QR page is on screen, with nothing pushed over it, and the app active.
-    static func advertisedRequest(_ request: String?, isShown: Bool, isPushedOver: Bool, isActive: Bool) -> String? {
-        isShown && !isPushedOver && isActive ? request : nil
+    /// The request to advertise: only while the QR page is on screen, with nothing pushed or presented over it, and
+    /// the app active.
+    static func advertisedRequest(_ request: String?, isShown: Bool, isCovered: Bool, isActive: Bool) -> String? {
+        isShown && !isCovered && isActive ? request : nil
+    }
+
+    /// Whether a pushed route (Edit), the passphrase prompt or the hardware pairing sheet covers the QR page. A
+    /// presented sheet or a pop by swipe does not trigger `onAppear` or `onDisappear` when it changes.
+    private var isQrCovered: Bool {
+        !navigationPath.isEmpty || isPassphraseRequired || trezorManager.showPairingCode
     }
 
     private func updateNearbyAdvertising() {
         if let request = Self.advertisedRequest(
-            nearbyRequest, isShown: isShown, isPushedOver: !navigationPath.isEmpty, isActive: scenePhase == .active
+            nearbyRequest, isShown: isShown, isCovered: isQrCovered, isActive: scenePhase == .active
         ) {
             nearbyAdvertiser.start(request: request)
         } else {

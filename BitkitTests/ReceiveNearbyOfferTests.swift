@@ -20,11 +20,12 @@ final class ReceiveNearbyOfferTests: XCTestCase {
 
     func testRequestIsNotOfferedWhileEditCoversTheQr() {
         let uri = "bitcoin:bcrt1qexample"
-        XCTAssertEqual(ReceiveQr.advertisedRequest(uri, isShown: true, isPushedOver: false, isActive: true), uri)
-        // Edit pushed over the QR: the root view stays mounted and still sees the app become active again.
-        XCTAssertNil(ReceiveQr.advertisedRequest(uri, isShown: false, isPushedOver: true, isActive: true))
-        XCTAssertNil(ReceiveQr.advertisedRequest(uri, isShown: true, isPushedOver: true, isActive: true))
-        XCTAssertNil(ReceiveQr.advertisedRequest(uri, isShown: false, isPushedOver: false, isActive: true))
-        XCTAssertNil(ReceiveQr.advertisedRequest(uri, isShown: true, isPushedOver: false, isActive: false))
+        XCTAssertEqual(ReceiveQr.advertisedRequest(uri, isShown: true, isCovered: false, isActive: true), uri)
+        // Edit pushed, or a passphrase or pairing sheet presented, over the QR: the view stays mounted and still sees
+        // the app become active again.
+        XCTAssertNil(ReceiveQr.advertisedRequest(uri, isShown: false, isCovered: true, isActive: true))
+        XCTAssertNil(ReceiveQr.advertisedRequest(uri, isShown: true, isCovered: true, isActive: true))
+        XCTAssertNil(ReceiveQr.advertisedRequest(uri, isShown: false, isCovered: false, isActive: true))
+        XCTAssertNil(ReceiveQr.advertisedRequest(uri, isShown: true, isCovered: false, isActive: false))
     }
 }
