@@ -1895,6 +1895,38 @@ extension ChannelFreeRailTests {
         await assertReachesTheNode()
     }
 
+    func testASparkSendRefusedAfterALeafFailureThatSparkListsPendingKeepsTheNodeOffWhileSparkCantList() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        try await refuseASparkSendAfterALeafFailure()
+        rail.balanceSats = 0
+        rail.syncedAfter = { _ in true }
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .pending, preimage: nil)]
+        await assertRefusedAsDuplicate()
+
+        // The transfer the refused send committed keeps its refusal, so a list Spark can't read still holds the node.
+        rail.payments = []
+        rail.listError = NSError(domain: "spark list", code: 1)
+        await assertRefusedAsDuplicate()
+    }
+
+    func testANodeSendAdmittedAfterASparkSendWasRefusedAfterALeafFailureIsRefusedUntilTheInvoiceExpires() async throws {
+        let invoice = try Bolt11Invoice.fromStr(invoiceStr: Self.invoice)
+        let hash = String(invoice.paymentHash())
+        let service = Bitkit.LightningService.shared
+        // The node send passed its checks before the Spark send was refused.
+        let mark = service.attemptMark
+        try await refuseASparkSendAfterALeafFailure()
+
+        XCTAssertThrowsError(try service.admitSend(paymentHash: hash, on: .ldk, since: mark)) {
+            XCTAssertTrue(PrivatePaykitService.isDuplicatePaymentError($0), "\($0)")
+        }
+
+        // Once the invoice expired, no node send can pay it.
+        service.now = { Date(timeIntervalSince1970: TimeInterval(invoice.secondsSinceEpoch() + invoice.expiryTimeSeconds())) }
+        XCTAssertNoThrow(try service.admitSend(paymentHash: hash, on: .ldk, since: service.attemptMark))
+        service.endLdkSend(paymentHash: hash)
+    }
+
     func testASparkRetryOfASendRefusedAfterALeafFailureGoesOutBeforeSparkSyncs() async throws {
         try await refuseASparkSendAfterALeafFailure()
         // Synced once, so Spark lists its payments, but not since the refusal.
