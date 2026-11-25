@@ -21,8 +21,9 @@ class ScannerManager: ObservableObject {
     private var wallet: WalletViewModel?
     private weak var hwWalletManager: HwWalletManager?
     private let nfcReader: NfcPaymentReading
-    /// The scan holding the scan lock. It holds the lock only while its scanner visit lasts, so a scan still waiting on
-    /// a lookup (e.g. an LNURL fetch) after the user left the scanner does not block a scan on the next visit.
+    /// The scan holding the scan lock. A main or Send scan holds it only while its scanner visit lasts, so a scan still
+    /// waiting on a lookup (e.g. an LNURL fetch) after the user left the scanner does not block a scan on the next
+    /// visit. An Electrum or Add Contact scan holds it until it finishes.
     private var scanOwner: ScanOwner?
 
     private struct ScanOwner {
@@ -467,9 +468,10 @@ class ScannerManager: ObservableObject {
         return routed
     }
 
-    /// Takes the scan lock for a QR code or NFC read the user started, held while `isOnVisit` holds. A Bluetooth
-    /// request still decoding gives it up, and so does a scan whose scanner visit has ended.
-    /// - Returns: the id that owns the lock, or nil while another user scan of a visit still shown holds it.
+    /// Takes the scan lock for a QR code or NFC read the user started, held while `isOnVisit` holds: the scanner visit
+    /// for main and Send scans, always (until the scan ends) for Electrum and Add Contact scans. A Bluetooth request
+    /// still decoding gives the lock up, and so does a scan whose `isOnVisit` no longer holds.
+    /// - Returns: the id that owns the lock, or nil while another user scan whose `isOnVisit` still holds has it.
     private func beginUserScan(isOnVisit: @escaping () -> Bool) -> UUID? {
         if let owner = scanOwner, owner.id != nearbyScanID, owner.isOnVisit() {
             return nil
