@@ -93,6 +93,14 @@ final class SparkSendKeyTests: XCTestCase {
         XCTAssertTrue((fresh as? Bitkit.ChannelFreeRailSendRefused)?.mayHaveReachedSpark == true, "\(fresh)")
     }
 
+    func testAFailedPaymentSparkReturnsIsRefused() {
+        XCTAssertThrowsError(try Bitkit.SparkManager.checkSentPayment(.failed)) {
+            XCTAssertTrue($0 is Bitkit.ChannelFreeRailSendRefused, "\($0)")
+        }
+        XCTAssertNoThrow(try Bitkit.SparkManager.checkSentPayment(.pending))
+        XCTAssertNoThrow(try Bitkit.SparkManager.checkSentPayment(.completed))
+    }
+
     func testASendRetriesWhileSparkCantSelectItsLeaves() async throws {
         var sends = 0
 

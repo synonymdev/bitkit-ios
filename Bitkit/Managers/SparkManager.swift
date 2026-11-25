@@ -744,7 +744,15 @@ final class SparkManager: ChannelFreeLightningRail {
             throw refusal
         }
         Logger.info("Sent Spark payment '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
+        try Self.checkSentPayment(response.payment.status)
         return invoiceDetails.paymentHash
+    }
+
+    /// A failed payment, as Spark returns under a key it already failed when its failed list couldn't be read to move
+    /// past it, paid nothing, so the send is refused instead of read as submitted.
+    nonisolated static func checkSentPayment(_ status: BreezSdkSpark.PaymentStatus) throws {
+        guard status == .failed else { return }
+        throw ChannelFreeRailSendRefused(reason: t("wallet__payment_failed_description"))
     }
 
     nonisolated static func checkSendFee(_ feeSats: UInt64, maxFeeSats: UInt64?) throws {
