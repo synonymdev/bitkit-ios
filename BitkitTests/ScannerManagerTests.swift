@@ -1402,6 +1402,42 @@ extension ScannerManagerTests {
         XCTAssertTrue(oldRoutes.isEmpty, "The old scan must not route")
     }
 
+    func testElectrumScanKeepsTheLockUntilItFinishes() async throws {
+        let started = expectation(description: "Electrum connection suspended")
+        var continuation: CheckedContinuation<ScannerManager.ElectrumScanResult?, Never>?
+        var connections: [String] = []
+        let scanner = ScannerManager {}
+        scanner.electrumScan = { _, uri in
+            connections.append(uri)
+            guard connections.count == 1 else { return nil }
+            return await withCheckedContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        }
+        let navigation = NavigationViewModel()
+        let app = configure(scanner)
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, navigation: navigation
+        )
+        navigation.path = [.electrumSettings, .scanner]
+        let firstScan = Task { await scanner.handleScan("first.example:50001", context: .electrum) }
+        await fulfillment(of: [started], timeout: 2)
+
+        // Back to Electrum Settings and into the scanner again while the first server connects.
+        navigation.path.removeLast()
+        navigation.path.append(.scanner)
+        await scanner.handleScan("second.example:50001", context: .electrum)
+        XCTAssertEqual(connections, ["first.example:50001"], "A second server must wait for the first connection")
+
+        try XCTUnwrap(continuation).resume(returning: nil)
+        await firstScan.value
+        navigation.path = [.electrumSettings, .scanner]
+        await scanner.handleScan("second.example:50001", context: .electrum)
+        XCTAssertEqual(connections, ["first.example:50001", "second.example:50001"])
+    }
+
     func testStaleScanCompletionNeitherBlocksNorReleasesANewerScan() async throws {
         let decoded = try await decode(invoice: paymentURI)
         let firstURI = "bitcoin:bcrt1qheldfirst"

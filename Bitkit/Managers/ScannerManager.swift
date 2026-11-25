@@ -52,6 +52,10 @@ class ScannerManager: ObservableObject {
     /// A sheet replacement a scan started that has not run yet, so a lock can cancel the route it would open.
     private var pendingRouteReplacement: Int?
 
+    typealias ElectrumScanResult = (success: Bool, host: String, port: String, errorMessage: String?)
+    /// Connects to the Electrum server a scan names. Replaceable in tests.
+    var electrumScan: (SettingsViewModel, String) async -> ElectrumScanResult? = { await $0.onElectrumScan($1) }
+
     init(
         nfcReader: NfcPaymentReading? = nil,
         playScanSuccess: @escaping () -> Void = { Haptics.play(.scanSuccess) }
@@ -92,7 +96,10 @@ class ScannerManager: ObservableObject {
         // the user left the scanner or unlocked. The origin check covers both.
         let isCurrentOrigin = originCheck()
         let isOnVisit = { isCurrent() && isCurrentOrigin() }
-        guard isOnVisit(), let scanID = beginUserScan(isOnVisit: isOnVisit) else { return }
+        // Electrum and contact scans act on the screen under the scanner (they update settings and pop the scanner)
+        // whatever visit is shown when they finish, so they keep the lock until they finish.
+        let holdsUntilDone = context != .main && context != .send
+        guard isOnVisit(), let scanID = beginUserScan(isOnVisit: holdsUntilDone ? { true } : isOnVisit) else { return }
         defer { endUserScan(scanID) }
 
         await processScan(uri, context: context, isCurrent: { [weak self] in isOnVisit() && self?.owns(scanID) == true })
@@ -543,7 +550,7 @@ class ScannerManager: ObservableObject {
         guard let settings else { return }
         let generation = settings.serverConnectionGeneration
         guard settings.isCurrentServerConnection(generation) else { return }
-        let result = await settings.onElectrumScan(uri)
+        let result = await electrumScan(settings, uri)
         guard settings.isCurrentServerConnection(generation) else { return }
 
         if let result {
