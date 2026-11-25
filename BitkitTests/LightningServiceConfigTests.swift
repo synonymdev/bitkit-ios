@@ -3,6 +3,65 @@ import LDKNode
 import XCTest
 
 final class LightningServiceConfigTests: XCTestCase {
+    private struct BuildAttemptEnded: Error {}
+
+    func testReconcileBeforeSyncContinuesAfterAnAccountFailure() async throws {
+        try await LightningService.reconcileBeforeSync { throw BuildAttemptEnded() }
+    }
+
+    func testReconcileBeforeSyncStopsWhenCancelled() async {
+        do {
+            try await LightningService.reconcileBeforeSync { throw CancellationError() }
+            XCTFail("Expected cancellation to propagate")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+    }
+
+    func testBuildRetriesWithoutPaykitServerAccountsWhenTheNodeRejectsOne() {
+        var config = LightningService.nodeConfig(walletIndex: 0)
+        config.onchainWalletAccounts = [OnchainWalletAccountConfig(addressType: .nativeSegwit, accountIndex: 1, xpub: "xpub-1")]
+        var attempts: [[OnchainWalletAccountConfig]] = []
+
+        XCTAssertThrowsError(try LightningService.buildAcceptingPaykitServerAccounts(config: config) { config in
+            attempts.append(config.onchainWalletAccounts)
+            if !config.onchainWalletAccounts.isEmpty {
+                throw BuildError.InvalidSeedBytes(message: "xpub mismatch")
+            }
+            throw BuildAttemptEnded()
+        }) {
+            XCTAssertTrue($0 is BuildAttemptEnded)
+        }
+
+        XCTAssertEqual(attempts.map(\.count), [1, 0])
+    }
+
+    func testBuildDoesNotRetryWithoutPaykitServerAccounts() {
+        var config = LightningService.nodeConfig(walletIndex: 0)
+        config.onchainWalletAccounts = []
+        var attempts = 0
+
+        XCTAssertThrowsError(try LightningService.buildAcceptingPaykitServerAccounts(config: config) { _ in
+            attempts += 1
+            throw BuildError.InvalidSeedBytes(message: "bad seed")
+        })
+
+        XCTAssertEqual(attempts, 1)
+    }
+
+    func testBuildDoesNotRetryOnOtherBuildErrors() {
+        var config = LightningService.nodeConfig(walletIndex: 0)
+        config.onchainWalletAccounts = [OnchainWalletAccountConfig(addressType: .nativeSegwit, accountIndex: 1, xpub: "xpub-1")]
+        var attempts = 0
+
+        XCTAssertThrowsError(try LightningService.buildAcceptingPaykitServerAccounts(config: config) { _ in
+            attempts += 1
+            throw BuildError.WalletSetupFailed(message: "wallet")
+        })
+
+        XCTAssertEqual(attempts, 1)
+    }
+
     func testNodeConfigTrustsNoPeer() {
         let config = LightningService.nodeConfig(walletIndex: 0)
 

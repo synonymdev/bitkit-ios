@@ -313,34 +313,7 @@ class LightningService: NodeLifecycleService {
             config.onchainWalletAccounts = try Self.watchOnlyAccountConfigs(walletIndex: walletIndex)
         #endif
 
-        let builder = Builder.fromConfig(config: config)
-        builder.setCustomLogger(logWriter: LdkLogWriter())
-
         let resolvedElectrumServerUrl = electrumServerUrl ?? Env.electrumServerUrl
-
-        let electrumConfig = ElectrumSyncConfig(
-            backgroundSyncConfig: .init(
-                onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
-                lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
-                feeRateCacheUpdateIntervalSecs: Env.walletSyncIntervalSecs
-            ),
-            connectionTimeoutSecs: 10,
-            additionalWalletFullScanBatchSize: 100,
-            additionalWalletFullScanStopGap: 1000
-        )
-        Logger.info("Using Electrum server: \(resolvedElectrumServerUrl)")
-        builder.setChainSourceElectrum(serverUrl: resolvedElectrumServerUrl, config: electrumConfig)
-
-        // Set pathfinding scores source from external scorer
-        if let scorerUrl = Env.ldkScorerUrl {
-            Logger.info("Setting pathfinding scores source from scorer url: \(scorerUrl)")
-            builder.setPathfindingScoresSource(url: scorerUrl)
-        }
-
-        builder.setScoringFeeParams(params: Self.scoringFeeParameters(config: config))
-
-        // Configure gossip source from current settings
-        configureGossipSource(builder: builder, rgsServerUrl: rgsServerUrl)
 
         Logger.debug("Building node...")
         let storeId = try await VssStoreIdProvider.shared.getVssStoreId(walletIndex: walletIndex)
@@ -350,24 +323,57 @@ class LightningService: NodeLifecycleService {
         Logger.debug("Building ldk-node with vssUrl: '\(vssUrl)'")
         Logger.debug("Building ldk-node with lnurlAuthServerUrl: '\(lnurlAuthServerUrl)'")
 
-        if let channelMigration {
-            builder.setChannelDataMigration(migration: channelMigration)
-            Logger.info("Applied channel migration: \(channelMigration.channelMonitors.count) monitors", context: "Migration")
-        }
-
-        builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
-
         guard !lnurlAuthServerUrl.isEmpty else {
             throw CustomServiceError.vssAuthRequired
         }
 
-        try await ServiceQueue.background(.ldk) {
-            let node = try builder.buildWithVssStore(
+        let entropyMnemonic = mnemonic
+        let entropyPassphrase = passphrase
+        let buildNode = { (config: Config) throws -> Node in
+            let builder = Builder.fromConfig(config: config)
+            builder.setCustomLogger(logWriter: LdkLogWriter())
+
+            let electrumConfig = ElectrumSyncConfig(
+                backgroundSyncConfig: .init(
+                    onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
+                    lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
+                    feeRateCacheUpdateIntervalSecs: Env.walletSyncIntervalSecs
+                ),
+                connectionTimeoutSecs: 10,
+                additionalWalletFullScanBatchSize: 100,
+                additionalWalletFullScanStopGap: 1000
+            )
+            Logger.info("Using Electrum server: \(resolvedElectrumServerUrl)")
+            builder.setChainSourceElectrum(serverUrl: resolvedElectrumServerUrl, config: electrumConfig)
+
+            // Set pathfinding scores source from external scorer
+            if let scorerUrl = Env.ldkScorerUrl {
+                Logger.info("Setting pathfinding scores source from scorer url: \(scorerUrl)")
+                builder.setPathfindingScoresSource(url: scorerUrl)
+            }
+
+            builder.setScoringFeeParams(params: Self.scoringFeeParameters(config: config))
+
+            // Configure gossip source from current settings
+            self.configureGossipSource(builder: builder, rgsServerUrl: rgsServerUrl)
+
+            if let channelMigration {
+                builder.setChannelDataMigration(migration: channelMigration)
+                Logger.info("Applied channel migration: \(channelMigration.channelMonitors.count) monitors", context: "Migration")
+            }
+
+            builder.setEntropyBip39Mnemonic(mnemonic: entropyMnemonic, passphrase: entropyPassphrase)
+
+            return try builder.buildWithVssStore(
                 vssUrl: vssUrl,
                 storeId: storeId,
                 lnurlAuthServerUrl: lnurlAuthServerUrl,
                 fixedHeaders: [:]
             )
+        }
+
+        try await ServiceQueue.background(.ldk) {
+            let node = try Self.buildAcceptingPaykitServerAccounts(config: config, build: buildNode)
             self.setupLock.withLock { self.configuredNode = (node, resolvedElectrumServerUrl) }
         }
         shouldReleaseLightningLock = false
@@ -377,6 +383,32 @@ class LightningService: NodeLifecycleService {
         // Clear memory
         mnemonic = ""
         passphrase = nil
+    }
+
+    /// Runs `reconcile` before a wallet sync. A Paykit Server account that fails to load must not stop the wallet from
+    /// syncing, so its error is logged and the next sync retries it; a cancelled caller still stops here.
+    static func reconcileBeforeSync(_ reconcile: () async throws -> Void) async throws {
+        do {
+            try await reconcile()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            Logger.error(error, context: "Failed to reconcile Paykit Server accounts before sync")
+        }
+    }
+
+    /// Builds with `config`, and when ldk-node rejects a configured Paykit Server account (its xpub does not match the
+    /// seed, which fails the whole build) builds again without those accounts, so the wallet still starts. The
+    /// reconcile on start then adds each account the node accepts.
+    static func buildAcceptingPaykitServerAccounts(config: Config, build: (Config) throws -> Node) throws -> Node {
+        do {
+            return try build(config)
+        } catch let BuildError.InvalidSeedBytes(message) where !config.onchainWalletAccounts.isEmpty {
+            Logger.error("Node rejected Paykit Server accounts at build, building without them: \(message)", context: "LightningService")
+            var fallback = config
+            fallback.onchainWalletAccounts = []
+            return try build(fallback)
+        }
     }
 
     /// Runs after any restart already in progress, so overlapping restarts cannot stop or replace each other's node midway.
@@ -721,7 +753,7 @@ class LightningService: NodeLifecycleService {
         }
 
         #if !BITKIT_NOTIFICATION_EXTENSION
-            try await reconcileWatchOnlyAccounts()
+            try await Self.reconcileBeforeSync { try await self.reconcileWatchOnlyAccounts() }
         #endif
 
         Logger.debug("Syncing LDK...")
@@ -745,14 +777,30 @@ class LightningService: NodeLifecycleService {
         }
     }
 
+    /// Derives the account xpub from the wallet mnemonic instead of asking the node, so a Pubky auth approval does not
+    /// depend on the node being built and started. The result must equal `Node.exportOnchainWalletAccountXpub`, which
+    /// `Node.addOnchainWalletAccount` compares as a string; see `WatchOnlyAccountClaimCodec.accountXpub(fromDescriptor:network:)`.
     func exportWatchOnlyAccountXpub(accountIndex: UInt32, addressType: LDKNode.AddressType) async throws -> String {
-        guard let node else {
-            throw AppError(serviceError: .nodeNotSetup)
+        guard addressType == .nativeSegwit else {
+            throw WatchOnlyAccountError.invalidExtendedPublicKey
         }
+        let walletIndex = currentWalletIndex
+        guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
+            throw CustomServiceError.mnemonicNotFound
+        }
+        let passphraseRaw = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
+        let passphrase = passphraseRaw?.isEmpty == true ? nil : passphraseRaw
 
-        return try await ServiceQueue.background(.ldk) {
-            try node.exportOnchainWalletAccountXpub(addressType: addressType, accountIndex: accountIndex)
+        let descriptor = try await ServiceQueue.background(.core) {
+            try BitkitCore.deriveOnchainDescriptor(
+                mnemonicPhrase: mnemonic,
+                network: Env.bitkitCoreNetwork,
+                bip39Passphrase: passphrase,
+                accountType: .nativeSegwit,
+                accountIndex: accountIndex
+            )
         }
+        return try WatchOnlyAccountClaimCodec.accountXpub(fromDescriptor: descriptor, network: Env.network)
     }
 
     func setWatchOnlyAccountTracking(
@@ -761,8 +809,12 @@ class LightningService: NodeLifecycleService {
         xpub: String,
         enabled: Bool
     ) async throws {
+        // Without a node (not built yet, or stopped) only the caller's store changes: the next build loads tracked
+        // accounts from the store, and `reconcileWatchOnlyAccounts` on start adds or removes any it missed.
         guard let node else {
-            throw AppError(serviceError: .nodeNotSetup)
+            // Journeys read this line to prove an approval finished before the node was built.
+            Logger.info("Paykit Server account \(accountIndex) tracking stored without a node; it loads when the node starts")
+            return
         }
 
         try await ServiceQueue.background(.ldk) {
@@ -832,22 +884,33 @@ class LightningService: NodeLifecycleService {
                     }
                 }
 
+                // One account the node rejects must not keep the others from loading; the first failure is
+                // rethrown so the reconciliation is retried.
+                var firstFailure: Error?
                 for config in desiredConfigs {
-                    let isTracked = trackedAccounts.contains {
-                        $0.addressType == config.addressType && $0.accountIndex == config.accountIndex
-                    }
-                    if !isTracked {
-                        try node.addOnchainWalletAccount(
+                    do {
+                        let isTracked = trackedAccounts.contains {
+                            $0.addressType == config.addressType && $0.accountIndex == config.accountIndex
+                        }
+                        if !isTracked {
+                            try node.addOnchainWalletAccount(
+                                addressType: config.addressType,
+                                accountIndex: config.accountIndex,
+                                xpub: config.xpub
+                            )
+                        }
+                        try node.onchainPayment().revealReceiveAddressesToAccount(
                             addressType: config.addressType,
                             accountIndex: config.accountIndex,
-                            xpub: config.xpub
+                            index: Self.watchOnlyAccountHighestPreRevealedAddressIndex
                         )
+                    } catch {
+                        Logger.error(error, context: "Failed to load Paykit Server account \(config.accountIndex)")
+                        firstFailure = firstFailure ?? error
                     }
-                    try node.onchainPayment().revealReceiveAddressesToAccount(
-                        addressType: config.addressType,
-                        accountIndex: config.accountIndex,
-                        index: Self.watchOnlyAccountHighestPreRevealedAddressIndex
-                    )
+                }
+                if let firstFailure {
+                    throw firstFailure
                 }
             }
         }
