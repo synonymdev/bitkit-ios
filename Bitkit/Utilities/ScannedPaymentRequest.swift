@@ -30,14 +30,15 @@ enum ScannedPaymentRequest {
     /// Anything else is returned trimmed and unchanged.
     static func normalized(_ text: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.lowercased().hasPrefix(bitcoinWithoutAddress) else { return trimmed }
+        guard hasLiteralPrefix(trimmed.lowercased(), bitcoinWithoutAddress) else { return trimmed }
         var params: [String: String] = [:]
         var keys: Set<String> = []
-        for pair in trimmed.dropFirst(bitcoinWithoutAddress.count).split(separator: "&") {
-            let parts = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+        for pair in queryFields(trimmed) {
+            let parts = pair.unicodeScalars.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+                .map { String(String.UnicodeScalarView($0)) }
             let key = parts[0].lowercased()
             // Checked before empty pairs are skipped, since BIP 321 allows a required key with an empty or no value.
-            if key.hasPrefix(requiredParamPrefix) {
+            if hasLiteralPrefix(key, requiredParamPrefix) {
                 return trimmed
             }
             guard !key.isEmpty else { continue }
@@ -50,7 +51,7 @@ enum ScannedPaymentRequest {
                 return trimmed
             }
             guard parts.count == 2, !parts[1].isEmpty else { continue }
-            params[key] = String(parts[1])
+            params[key] = parts[1]
         }
         guard let request = lightningParams.lazy.compactMap({ params[$0] }).first else { return trimmed }
         if let amount = params["amount"] {
@@ -92,6 +93,25 @@ enum ScannedPaymentRequest {
     private static let bech32Charset = Array("qpzry9x8gf2tvdw0s3jn54khce6mua7l")
     private static let bech32Generator: [UInt32] = [0x3B6A_57B2, 0x2650_8E6D, 0x1EA1_19FA, 0x3D42_33DD, 0x2A14_62B3]
 
+    /// The `&`-separated fields of a URI's query, split on the literal `?` and `&` as bitkit-core splits them. A
+    /// `String` splits on `Character`s, and a combining mark right after a delimiter joins it into a larger character
+    /// that no longer matches it.
+    nonisolated static func queryFields(_ uri: String) -> [String] {
+        let scalars = uri.unicodeScalars
+        guard let mark = scalars.firstIndex(of: "?") else { return [] }
+        return scalars[scalars.index(after: mark)...].split(separator: "&").map { String(String.UnicodeScalarView($0)) }
+    }
+
+    /// Whether `text` starts with `prefix`, compared by Unicode scalar as bitkit-core compares bytes.
+    nonisolated static func hasLiteralPrefix(_ text: some StringProtocol, _ prefix: String) -> Bool {
+        text.unicodeScalars.starts(with: prefix.unicodeScalars)
+    }
+
+    /// `text` without its first `prefix.unicodeScalars.count` scalars.
+    nonisolated static func droppingLiteralPrefix(_ text: some StringProtocol, _ prefix: String) -> String {
+        String(String.UnicodeScalarView(text.unicodeScalars.dropFirst(prefix.unicodeScalars.count)))
+    }
+
     /// Whether a `bitcoin:` request carries a required (`req-`) parameter. The app does not support any, and
     /// bitkit-core rc15 ignores them on a URI with an address, so a request from a nearby source that has one is
     /// refused rather than paid without the parameter. The app and the decoder strip wrappers (`bitkit://` and the
@@ -104,8 +124,8 @@ enum ScannedPaymentRequest {
         var text = uri.trimmingCharacters(in: .whitespacesAndNewlines)
         while true {
             let lowercaseText = text.lowercased()
-            if let wrapper = decoderWrappers.first(where: { lowercaseText.hasPrefix($0) }) {
-                text = String(text.dropFirst(wrapper.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            if let wrapper = decoderWrappers.first(where: { hasLiteralPrefix(lowercaseText, $0) }) {
+                text = droppingLiteralPrefix(text, wrapper).trimmingCharacters(in: .whitespacesAndNewlines)
             } else if text.hasPrefix("bitkit://") {
                 text = text.replacingOccurrences(of: "bitkit://", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
             } else {
@@ -113,10 +133,8 @@ enum ScannedPaymentRequest {
             }
         }
         let lowercase = text.lowercased()
-        guard lowercase.hasPrefix("bitcoin:"), let query = lowercase.split(separator: "?", maxSplits: 1).dropFirst().first else {
-            return false
-        }
-        return query.split(separator: "&").contains { $0.hasPrefix(requiredParamPrefix) }
+        guard hasLiteralPrefix(lowercase, "bitcoin:") else { return false }
+        return queryFields(lowercase).contains { hasLiteralPrefix($0, requiredParamPrefix) }
     }
 
     /// Whether `value` is a BOLT11 invoice for a network the decoder reads as one (`lnbc`, `lnbcrt`, `lntb`,

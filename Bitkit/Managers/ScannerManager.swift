@@ -355,20 +355,18 @@ class ScannerManager: ObservableObject {
     /// (`ScannedPaymentRequest.isBolt11Invoice`), since a Lightning address can begin like one. A `bitcoin:` request
     /// with a required (`req-`) parameter is refused, since none is supported.
     nonisolated static func isNearbyPaymentRequest(_ uri: String) -> Bool {
+        typealias Request = ScannedPaymentRequest
         let lowercase = uri.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        func isBolt11(_ value: Substring) -> Bool {
-            ScannedPaymentRequest.isBolt11Invoice(value)
-        }
-        if lowercase.hasPrefix("ethereum:") {
+        if Request.hasLiteralPrefix(lowercase, "ethereum:") {
             return true
         }
-        if lowercase.hasPrefix("lightning:") {
-            return isBolt11(lowercase.dropFirst("lightning:".count))
+        if Request.hasLiteralPrefix(lowercase, "lightning:") {
+            return Request.isBolt11Invoice(Request.droppingLiteralPrefix(lowercase, "lightning:"))
         }
-        guard lowercase.hasPrefix("bitcoin:"), !ScannedPaymentRequest.hasRequiredParameter(lowercase) else { return false }
-        let query = lowercase.split(separator: "?", maxSplits: 1).dropFirst().first ?? ""
-        return query.split(separator: "&").allSatisfy { pair in
-            !pair.hasPrefix("lightning=") || isBolt11(pair.dropFirst("lightning=".count))
+        guard Request.hasLiteralPrefix(lowercase, "bitcoin:"), !Request.hasRequiredParameter(lowercase) else { return false }
+        // Split as the decoder splits, so a delimiter followed by a combining mark still separates the fields.
+        return Request.queryFields(lowercase).allSatisfy { field in
+            !Request.hasLiteralPrefix(field, "lightning=") || Request.isBolt11Invoice(Request.droppingLiteralPrefix(field, "lightning="))
         }
     }
 

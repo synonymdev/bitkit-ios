@@ -150,4 +150,12 @@ final class ScannedPaymentRequestTests: XCTestCase {
         XCTAssertFalse(ScannedPaymentRequest.hasRequiredParameter(payable))
         XCTAssertFalse(ScannedPaymentRequest.hasRequiredParameter("bitkit://\(payable)"))
     }
+
+    /// A combining mark right after `?` or `&` joins the delimiter into a larger `Character`; bitkit-core still splits
+    /// on it.
+    func testDelimiterFollowedByACombiningMarkStillSplitsTheQuery() {
+        XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("bitcoin:bcrt1qtest?\u{301}&req-pop=x"))
+        XCTAssertTrue(ScannedPaymentRequest.hasRequiredParameter("bitcoin:bcrt1qtest?amount=0.001&\u{301}&req-pop=x"))
+        XCTAssertEqual(ScannedPaymentRequest.normalized("bitcoin:?lightning=\(invoice)&\u{301}"), "lightning:\(invoice)")
+    }
 }

@@ -530,6 +530,7 @@ extension ScannerManagerTests {
     func testNearbyRequestWithARequiredParameterIsRefused() async {
         let required = "\(paymentURI)?amount=0.001&REQ-POP=callback%3a"
         XCTAssertFalse(ScannerManager.isNearbyPaymentRequest(required))
+        XCTAssertFalse(ScannerManager.isNearbyPaymentRequest("\(paymentURI)?\u{301}&req-pop=callback%3a"))
         XCTAssertTrue(ScannerManager.isNearbyPaymentRequest("\(paymentURI)?amount=0.001&pop=callback%3a"))
 
         let scanner = ScannerManager(nfcReader: FakeNfcReader(.success(required))) {
@@ -593,6 +594,8 @@ extension ScannerManagerTests {
             "bitcoin:bcrt1q?amount=0.1&lightning=LNURL1DP68GURN8GHJ7", "bitcoin:?lightning=lnurl1dp68gurn8ghj7",
             "lightning:lnsb@example.com", "bitcoin:?lightning=lnsb@example.com", "bitcoin:bcrt1q?lightning=lnsb@example.com",
             "lightning:lnbc@example.com", "bitcoin:bcrt1q?lightning=lntb1@example.com",
+            // A combining mark after `?` or `&` hides the delimiter from a `Character` split, not from the decoder.
+            "bitcoin:?\u{301}&lightning=alice@example.com", "bitcoin:bcrt1q?amount=0.1&\u{301}&lightning=LNURL1DP68GURN8GHJ7",
             // Each repeated Lightning value is checked, since the decoder takes the last one.
             "bitcoin:bcrt1q?lightning=\(PosNfcFixtures.squareInvoice)&lightning=LNURL1DP68GURN8GHJ7",
         ]
