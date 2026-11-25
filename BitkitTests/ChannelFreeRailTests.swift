@@ -1927,6 +1927,20 @@ extension ChannelFreeRailTests {
         service.endLdkSend(paymentHash: hash)
     }
 
+    func testASparkSendRefusedAfterALeafFailureReadsPendingOverAnEarlierFailureUntilSparkSyncs() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        try await refuseASparkSendAfterALeafFailure()
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: hash, direction: .outbound, status: .failed, preimage: nil)]
+        rail.syncedAfter = { $0 == nil }
+
+        let held = try await Bitkit.LightningService.shared.channelFreeRailPayments()
+        XCTAssertEqual(Bitkit.ChannelFreeRailPayment.latestOutboundAttempt(held, paymentHash: hash)?.status, .pending)
+
+        rail.syncedAfter = { _ in true }
+        let synced = try await Bitkit.LightningService.shared.channelFreeRailPayments()
+        XCTAssertEqual(Bitkit.ChannelFreeRailPayment.latestOutboundAttempt(synced, paymentHash: hash)?.status, .failed)
+    }
+
     func testASparkRetryOfASendRefusedAfterALeafFailureGoesOutBeforeSparkSyncs() async throws {
         try await refuseASparkSendAfterALeafFailure()
         // Synced once, so Spark lists its payments, but not since the refusal.
