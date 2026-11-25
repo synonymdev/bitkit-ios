@@ -8,6 +8,11 @@ import XCTest
 
 @MainActor
 final class SendConfirmationLifecycleTests: XCTestCase {
+    override func setUp() async throws {
+        try await super.setUp()
+        try Keychain.deleteAllRetainedHwSends()
+    }
+
     func testFixedLightningReviewUsesInvoiceAmountAfterEditingAnotherFundingSource() async throws {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
@@ -271,7 +276,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             let hwSend = HwSendCoordinator(signerFactory: { _, address, rate in
                 HwFundingSigner(funding: funding, connecting: connecting, feeRateProvider: { rate },
                                 addressProvider: { address }, timeouts: (5, 5, 5))
-            })
+            }, retainedSends: .inMemory())
             let setup = SendConfirmationTestSetup()
             let navigation = SendConfirmationTestNavigation()
             navigation.path = []
@@ -1110,7 +1115,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         isSubmittingPayment: Binding<Bool> = .constant(false),
         hwSend: HwSendCoordinator? = nil
     ) -> UIWindow {
-        let hwSend = hwSend ?? HwSendCoordinator()
+        let hwSend = hwSend ?? HwSendCoordinator(retainedSends: .inMemory())
         if confirmationIsRoot {
             navigation?.flow.rootRoute = .confirm
         }

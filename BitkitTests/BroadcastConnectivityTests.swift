@@ -36,4 +36,29 @@ final class BroadcastConnectivityTests: XCTestCase {
     func testUnrelatedErrorIsNotConnectivityFailure() {
         XCTAssertFalse(Bitkit.AppError(message: "nope", debugMessage: nil).isBroadcastConnectivityFailure())
     }
+
+    func testElectrumConnectPrefixIsDefiniteConnectFailureInAnyCase() {
+        for details in ["Failed to connect to Electrum: offline", "FAILED TO CONNECT TO ELECTRUM: timed out"] {
+            let error = BroadcastError.ElectrumError(errorDetails: details)
+            XCTAssertTrue(error.isDefiniteElectrumConnectFailure(), details)
+            XCTAssertTrue(Bitkit.AppError(error: error).isDefiniteElectrumConnectFailure(), details)
+        }
+    }
+
+    func testOtherFailuresAreNotDefiniteConnectFailures() {
+        let errors: [Error] = [
+            BroadcastError.ElectrumError(errorDetails: "offline"),
+            BroadcastError.ElectrumError(errorDetails: "timeout"),
+            BroadcastError.ElectrumError(errorDetails: "Broadcast failed: Failed to connect to Electrum: offline"),
+            BroadcastError.ElectrumError(errorDetails: "Broadcast failed: min relay fee not met"),
+            BroadcastError.TaskError(errorDetails: "Failed to connect to Electrum: offline"),
+            BroadcastError.InvalidHex(errorDetails: "Failed to connect to Electrum: offline"),
+            BroadcastError.InvalidTransaction(errorDetails: "Failed to connect to Electrum: offline"),
+            Bitkit.AppError(error: BroadcastError.ElectrumError(errorDetails: "response lost")),
+            Bitkit.AppError(message: "Failed to connect to Electrum: offline", debugMessage: nil),
+        ]
+        for error in errors {
+            XCTAssertFalse(error.isDefiniteElectrumConnectFailure(), "\(error)")
+        }
+    }
 }

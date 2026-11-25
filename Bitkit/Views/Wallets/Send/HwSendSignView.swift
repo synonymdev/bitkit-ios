@@ -20,6 +20,7 @@ struct HwSendSignView: View {
     @State private var passphraseTask: Task<Void, Never>?
     @State private var observedResolution: PaykitOnchainPaymentResolution?
     @State private var appliedResolution = false
+    @State private var hasRetainedRetry = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -58,7 +59,7 @@ struct HwSendSignView: View {
                 Spacer(minLength: 0)
 
                 CustomButton(
-                    title: hwSend.hasPendingBroadcast ? t("common__retry") : vendor.sendSignButtonTitle,
+                    title: hwSend.hasPendingBroadcast || hasRetainedRetry ? t("common__retry") : vendor.sendSignButtonTitle,
                     isDisabled: hwSend.isSigning,
                     isLoading: hwSend.isSigning
                 ) {
@@ -99,6 +100,14 @@ struct HwSendSignView: View {
             if !isSigning {
                 applyObservedResolution()
             }
+        }
+        .task(id: hwSend.isSigning) {
+            guard !hwSend.isSigning, let invoice = app.scannedOnchainInvoice, let amount = wallet.sendAmountSats else { return }
+            let retained = await hwSend.retainedRebroadcastTx(
+                address: invoice.address, sats: amount, hasIncomingRequest: contactPaymentRequestId != nil
+            )
+            guard !Task.isCancelled else { return }
+            hasRetainedRetry = retained != nil
         }
         .onDisappear {
             guard !hwSend.isBroadcastUnresolved else { return }
@@ -166,8 +175,14 @@ struct HwSendSignView: View {
                 }
                 let quoteId = retained.map(\.conversionQuoteId) ?? app.paykitPaymentTerms?.quoteId
                 let deadline = try app.contactPaymentContext?.incomingPaymentRequest?.submissionDeadline(quoteId: quoteId)
+                var retainedSignedTx = retained?.retainedHardwareRetry?.signedTx
+                if retainedSignedTx == nil {
+                    retainedSignedTx = await hwSend.retainedRebroadcastTx(
+                        address: invoice.address, sats: amount, hasIncomingRequest: requestId != nil
+                    )
+                }
                 guard let feeRate = SendConfirmationView.confirmationFeeRate(
-                    retained: retained?.retainedHardwareRetry?.signedTx, selected: wallet.selectedFeeRateSatsPerVByte
+                    retained: retainedSignedTx, selected: wallet.selectedFeeRateSatsPerVByte
                 ) else { throw PaykitPaymentRequestError.requestUnavailable }
                 var proofVerified = requestId == nil
                 let result = try await PaykitPaymentProofService.shared.withHardwarePaymentOwnership(walletId: walletId) {
