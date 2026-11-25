@@ -167,6 +167,12 @@ enum PaykitRouteService {
         return sparkBalanceSats >= amountSats ? true : nil
     }
 
+    /// What the router may spend over Lightning from `source`: Spending's whole max, so a payment that needs the spending
+    /// balance update reaches it on Confirm.
+    static func lightningSpendableSats(source: Source, maxSendLightningSats: Int) -> UInt64 {
+        source == .spending ? UInt64(max(0, maxSendLightningSats)) : 0
+    }
+
     /// Whether a None route is a short balance rather than a contact Bitkit can't pay.
     static func isBalanceShort(amountSats: UInt64, lightningSpendableSats: UInt64, onchainSpendableSats: UInt64) -> Bool {
         amountSats > lightningSpendableSats.saturatingAdd(onchainSpendableSats)

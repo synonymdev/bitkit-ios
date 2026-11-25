@@ -494,7 +494,7 @@ extension ActivityListViewModel {
             return activities.filter { activity in
                 switch activity {
                 case let .lightning(ln):
-                    return ln.txType == .sent
+                    return ln.txType == .sent && !ln.isMoveToSpark
                 case let .onchain(on):
                     return on.txType == .sent && !on.isTransfer
                 }
@@ -511,8 +511,8 @@ extension ActivityListViewModel {
         case .other:
             return activities.filter { activity in
                 switch activity {
-                case .lightning:
-                    return false // Lightning activities are never transfers
+                case let .lightning(ln):
+                    return ln.isMoveToSpark
                 case let .onchain(on):
                     return on.isTransfer
                 }

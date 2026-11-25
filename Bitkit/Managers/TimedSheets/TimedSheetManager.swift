@@ -152,23 +152,28 @@ class TimedSheetManager: ObservableObject {
             currentSheet.onDismissed()
             currentlyShowingSheet = nil
         }
+        // A sheet shown at cold start, before channels and Spark load, kept the Move to Spark intro from being checked.
+        // A check already pending covers it.
+        if isOnPrimaryScreen, settleTimer?.isValid != true, queuedSheets.contains(where: { $0.id == .moveToSpark }) {
+            scheduleSettleCheck(only: .moveToSpark)
+        }
     }
 
-    /// (Re)start the settle timer that runs the queue check after a short delay.
-    private func scheduleSettleCheck() {
+    /// (Re)start the settle timer that runs the queue check after a short delay, for every queued sheet or only `id`.
+    private func scheduleSettleCheck(only id: SheetID? = nil) {
         // Cancel any existing timer
         settleTimer?.invalidate()
 
         // Start timer to check for sheets after delay
         settleTimer = Timer.scheduledTimer(withTimeInterval: checkDelay, repeats: false) { [weak self] _ in
             Task { @MainActor in
-                await self?.checkAndShowNextSheet()
+                await self?.checkAndShowNextSheet(only: id)
             }
         }
     }
 
     /// Check the queue and show the highest priority sheet that should be shown
-    private func checkAndShowNextSheet() async {
+    private func checkAndShowNextSheet(only id: SheetID? = nil) async {
         guard let sheetViewModel else {
             Logger.error("SheetViewModel not configured for TimedSheetManager")
             return
@@ -187,7 +192,7 @@ class TimedSheetManager: ObservableObject {
         }
 
         // Find the highest priority sheet that should be shown
-        for sheet in queuedSheets {
+        for sheet in queuedSheets where id == nil || sheet.id == id {
             if await sheet.shouldShow() {
                 Logger.debug("Showing timed sheet: \(sheet.id.rawValue) with priority: \(sheet.priority.rawValue)")
 

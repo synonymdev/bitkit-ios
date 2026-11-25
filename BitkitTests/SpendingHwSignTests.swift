@@ -186,10 +186,11 @@ final class SpendingHwSignTests: XCTestCase {
                     kind: .choice(earlyFeeSats: 1500, earlyConfirmations: 0, standardFeeSats: 198, standardConfirmations: 3)
                 )
             },
-            claimEarly: { _ in
+            claimEarly: { _, _ in
                 XCTFail("Claimed early above the signed claim fee")
                 return .claimed
             },
+            isUnclaimed: { _ in true },
             refresh: {},
             sleep: { _ in }
         )

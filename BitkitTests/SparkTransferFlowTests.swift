@@ -74,7 +74,8 @@ final class SparkTransferFlowTests: XCTestCase {
             offer: { txid in SparkClaimOffer(txid: txid, vout: 0, kind: .choice(
                 earlyFeeSats: 900, earlyConfirmations: 0, standardFeeSats: 198, standardConfirmations: 3
             )) },
-            claimEarly: { _ in .repriced(requiredFeeSats: 1500) },
+            claimEarly: { _, _ in .repriced(requiredFeeSats: 1500) },
+            isUnclaimed: { _ in true },
             refresh: {},
             sleep: { _ in },
             releaseEarlyClaim: { released.append($0.txid)
@@ -102,7 +103,8 @@ final class SparkTransferFlowTests: XCTestCase {
             offer: { txid in SparkClaimOffer(txid: txid, vout: 0, kind: .choice(
                 earlyFeeSats: 900, earlyConfirmations: 0, standardFeeSats: 198, standardConfirmations: 3
             )) },
-            claimEarly: { _ in .repriced(requiredFeeSats: 1500) },
+            claimEarly: { _, _ in .repriced(requiredFeeSats: 1500) },
+            isUnclaimed: { _ in true },
             refresh: {},
             sleep: { _ in },
             releaseEarlyClaim: { _ in
@@ -131,7 +133,8 @@ final class SparkTransferFlowTests: XCTestCase {
             offer: { txid in SparkClaimOffer(txid: txid, vout: 0, kind: .choice(
                 earlyFeeSats: 1500, earlyConfirmations: 0, standardFeeSats: 198, standardConfirmations: 3
             )) },
-            claimEarly: { _ in .claimed },
+            claimEarly: { _, _ in .claimed },
+            isUnclaimed: { _ in true },
             refresh: {},
             sleep: { _ in },
             releaseEarlyClaim: { released.append($0.txid)
@@ -159,30 +162,56 @@ final class SparkTransferFlowTests: XCTestCase {
 
     @MainActor
     func testListedDepositWhoseEarlyClaimKeepsWaitingIsNotUnseen() async {
-        let flow = pollingFlow(
-            offers: [choice(earlyFee: 900), choice(earlyFee: 900), choice(earlyFee: 900)],
-            claims: [.waiting, .waiting, .waiting],
-            pollAttempts: 3
-        )
+        let calls = PollCalls()
+        let flow = pollingFlow(offers: [choice(earlyFee: 900)], claims: [.waiting], pollAttempts: 3, calls: calls)
         flow.onBroadcast(txid: "txid")
         await flow.waitForClaim()
         XCTAssertEqual(flow.claimState, .unavailable)
+        XCTAssertEqual(calls.offers, 1, "A waiting claim asked the provider for a quote again")
+        XCTAssertEqual(calls.claims, 1)
+        XCTAssertEqual(calls.unclaimedChecks, 2)
+    }
+
+    @MainActor
+    func testAWaitingEarlyClaimThePollGivesUpOnClearsItsFeeCap() async throws {
+        let calls = PollCalls()
+        let flow = pollingFlow(offers: [choice(earlyFee: 900)], claims: [.waiting], pollAttempts: 3, calls: calls)
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+        for _ in 0 ..< 100 where calls.released.isEmpty {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(flow.claimState, .unavailable)
+        XCTAssertEqual(calls.released, ["txid"], "Spark may still claim early while the transfer shows the normal speed")
+    }
+
+    @MainActor
+    func testAWaitingEarlyClaimIsCappedAtTheApprovedFeeNotTheFirstQuote() async {
+        let calls = PollCalls()
+        let flow = pollingFlow(offers: [choice(earlyFee: 300)], claims: [.waiting], pollAttempts: 2, calls: calls)
+        flow.onBroadcast(txid: "txid", ceilingSats: 500)
+        await flow.waitForClaim()
+        XCTAssertEqual(calls.ceilings, [500], "Spark would leave a later offer under the approved fee unclaimed")
     }
 
     @MainActor
     func testDepositListedThenGoneWasAdded() async {
-        let flow = pollingFlow(offers: [choice(earlyFee: 900), nil], claims: [.waiting])
+        let flow = pollingFlow(offers: [choice(earlyFee: 900)], claims: [.waiting], unclaimed: [false])
         flow.onBroadcast(txid: "txid")
         await flow.waitForClaim()
         XCTAssertEqual(flow.claimState, .added)
     }
 
     @MainActor
-    func testWaitingKeepsPollingUntilClaimed() async {
-        let flow = pollingFlow(offers: [choice(earlyFee: 900), choice(earlyFee: 900)], claims: [.waiting, .claimed])
+    func testWaitingWatchesTheDepositUntilSparkClaimsIt() async {
+        let calls = PollCalls()
+        let flow = pollingFlow(offers: [choice(earlyFee: 900)], claims: [.waiting], unclaimed: [true, false], pollAttempts: 5, calls: calls)
         flow.onBroadcast(txid: "txid")
         await flow.waitForClaim()
         XCTAssertEqual(flow.claimState, .added)
+        XCTAssertEqual(calls.offers, 1)
+        XCTAssertEqual(calls.claims, 1)
+        XCTAssertEqual(calls.unclaimedChecks, 2)
     }
 
     @MainActor
@@ -215,11 +244,12 @@ final class SparkTransferFlowTests: XCTestCase {
             offer: { txid in SparkClaimOffer(txid: txid, vout: 0, kind: .choice(
                 earlyFeeSats: 900, earlyConfirmations: 0, standardFeeSats: 198, standardConfirmations: 3
             )) },
-            claimEarly: { offer in
+            claimEarly: { offer, _ in
                 await withCheckedContinuation { release = $0 }
                 claimed.append(offer.txid)
                 return .claimed
             },
+            isUnclaimed: { _ in true },
             refresh: {},
             sleep: { _ in }
         )
@@ -363,6 +393,20 @@ final class SparkTransferFlowTests: XCTestCase {
     }
 
     @MainActor
+    func testASwipeApprovesNoHigherCeilingThanTheQuoteItShowed() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
+        // The requote before sending raised the ceiling over the one the swiped quote showed.
+        flow.quote = quote(instantMax: 3010)
+        let ceilingSats = flow.approveSwipe(shownCeilingSats: 337)
+        XCTAssertEqual(ceilingSats, 337)
+
+        flow.onBroadcast(txid: "txid", ceilingSats: ceilingSats)
+        await flow.waitForClaim()
+
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 800), "Claimed early at a ceiling the swipe never showed")
+    }
+
+    @MainActor
     func testARecoveredFundingKeepsItsOwnApprovalWhenALaterSwipeIsRejected() async {
         let flow = pollingFlow(offers: [choice(earlyFee: 800)], claims: [.claimed])
         let first = UUID()
@@ -475,19 +519,48 @@ final class SparkTransferFlowTests: XCTestCase {
         )
     }
 
-    /// A flow whose poll answers with `offers` in turn (nil once they run out) and whose claims answer with `claims`.
+    private final class PollCalls {
+        var offers = 0
+        var claims = 0
+        var unclaimedChecks = 0
+        var ceilings: [UInt64] = []
+        var released: [String] = []
+    }
+
+    /// A flow whose poll answers with `offers` in turn (nil once they run out), whose claims answer with `claims`, and
+    /// whose unclaimed checks answer with `unclaimed` (still unclaimed once they run out).
     @MainActor
-    private func pollingFlow(offers: [SparkClaimOffer.Kind?], claims: [SparkEarlyClaim] = [], pollAttempts: Int? = nil) -> SparkTransferFlow {
+    private func pollingFlow(
+        offers: [SparkClaimOffer.Kind?],
+        claims: [SparkEarlyClaim] = [],
+        unclaimed: [Bool] = [],
+        pollAttempts: Int? = nil,
+        calls: PollCalls = PollCalls()
+    ) -> SparkTransferFlow {
         var offers = offers
         var claims = claims
+        var unclaimed = unclaimed
         let operations = SparkClaimOperations(
             offer: { txid in
+                calls.offers += 1
                 guard !offers.isEmpty, let kind = offers.removeFirst() else { return nil }
                 return SparkClaimOffer(txid: txid, vout: 0, kind: kind)
             },
-            claimEarly: { _ in claims.isEmpty ? .waiting : claims.removeFirst() },
+            claimEarly: { _, ceilingSats in
+                calls.claims += 1
+                calls.ceilings.append(ceilingSats)
+                return claims.isEmpty ? .waiting : claims.removeFirst()
+            },
+            isUnclaimed: { _ in
+                calls.unclaimedChecks += 1
+                return unclaimed.isEmpty ? true : unclaimed.removeFirst()
+            },
             refresh: {},
-            sleep: { _ in }
+            sleep: { _ in },
+            releaseEarlyClaim: { offer in
+                calls.released.append(offer.txid)
+                return true
+            }
         )
         return SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: pollAttempts ?? offers.count + 1)
     }
@@ -526,5 +599,29 @@ final class SparkTransferFlowTests: XCTestCase {
             depositSats: 100_000,
             claimFees: SparkClaimFees(instantMaxSats: 1093, laterSats: 198)
         )
+    }
+
+    func testFeeGridTapStaysInBitcoinWithoutARate() {
+        XCTAssertFalse(SpendingConfirmFees.togglesDisplay(from: .bitcoin, hasRate: false))
+        XCTAssertTrue(SpendingConfirmFees.togglesDisplay(from: .bitcoin, hasRate: true))
+        XCTAssertTrue(SpendingConfirmFees.togglesDisplay(from: .fiat, hasRate: false))
+    }
+
+    func testFiatConversionRejectsUnusableRates() {
+        XCTAssertNil(CurrencyViewModel.sats(fiatAmount: 10, rate: 0))
+        XCTAssertNil(CurrencyViewModel.sats(fiatAmount: 10, rate: -1))
+        XCTAssertNil(CurrencyViewModel.sats(fiatAmount: -10, rate: 100_000))
+        XCTAssertNil(CurrencyViewModel.sats(fiatAmount: .greatestFiniteMagnitude, rate: 1))
+        XCTAssertEqual(CurrencyViewModel.sats(fiatAmount: 50, rate: 100_000), 50000)
+    }
+
+    func testPrimaryAmountsStayInBitcoinWithoutAUsableRate() {
+        XCTAssertEqual(MoneyText.primaryUnit(.fiat, hasUsableRate: false), .bitcoin)
+        XCTAssertEqual(MoneyText.primaryUnit(.fiat, hasUsableRate: true), .fiat)
+        XCTAssertEqual(MoneyText.primaryUnit(.bitcoin, hasUsableRate: false), .bitcoin)
+        // The paired line shows the other unit, never bitcoin twice.
+        XCTAssertEqual(MoneyText.secondaryUnit(.fiat, hasUsableRate: false), .fiat)
+        XCTAssertEqual(MoneyText.secondaryUnit(.fiat, hasUsableRate: true), .bitcoin)
+        XCTAssertEqual(MoneyText.secondaryUnit(.bitcoin, hasUsableRate: false), .fiat)
     }
 }

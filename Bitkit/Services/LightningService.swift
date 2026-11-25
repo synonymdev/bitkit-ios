@@ -2,6 +2,7 @@ import BitkitCore
 import Combine
 import Foundation
 import LDKNode
+import os
 
 // TODO: catch all errors and pass a readable error message to the UI
 
@@ -45,6 +46,11 @@ enum ChannelFreeRailFees {
         let sendable = (1_000_000 + serviceFeePpm).dividingFullWidth((scaled.high, scaled.low)).quotient
         let fee = sendable / 1_000_000 * serviceFeePpm + (sendable % 1_000_000 * serviceFeePpm + 999_999) / 1_000_000
         return sendable + fee <= balanceSats || sendable == 0 ? sendable : sendable - 1
+    }
+
+    /// Spark's service fee on a Lightning send of `amountSats`, rounded up.
+    static func serviceFeeSats(amountSats: UInt64) -> UInt64 {
+        amountSats / 1_000_000 * serviceFeePpm + (amountSats % 1_000_000 * serviceFeePpm + 999_999) / 1_000_000
     }
 }
 
@@ -106,7 +112,57 @@ protocol NodeLifecycleService: AnyObject {
 class LightningService: NodeLifecycleService {
     private static let watchOnlyAccountHighestPreRevealedAddressIndex: UInt32 = 999
 
-    private var node: Node?
+    private var configuredNode: (node: Node, electrumServerUrl: String)? {
+        didSet {
+            if configuredNode?.node !== oldValue?.node {
+                cancelEventLoop(unlessServing: configuredNode?.node)
+            }
+        }
+    }
+
+    private var node: Node? {
+        setupLock.withLock { configuredNode?.node }
+    }
+
+    var activeElectrumServerUrl: String? {
+        setupLock.withLock { configuredNode?.electrumServerUrl }
+    }
+
+    private func isConfigured(_ node: Node) -> Bool {
+        setupLock.withLock { configuredNode?.node === node }
+    }
+
+    /// Releases `node` and its lightning lock only while it is still the configured node, so a stop that finishes late
+    /// cannot clear its replacement. Unlocks under `setupLock`, before a next `setup()` can see no node and take the lock.
+    /// Returns false when `node` was already released or replaced.
+    @discardableResult
+    private func releaseAndUnlock(_ node: Node) -> Bool {
+        setupLock.withLock {
+            guard configuredNode?.node === node else { return false }
+            configuredNode = nil
+            try? StateLocker.unlock(.lightning)
+            return true
+        }
+    }
+
+    /// Releases `node` after its native stop failed, once its event loop ended.
+    private func releaseAfterFailedStop(of node: Node) async {
+        await endEventLoop(of: node)
+        releaseAndUnlock(node)
+    }
+
+    private let restartLock = NSLock()
+    private var lastRestart: Task<Void, Error>?
+
+    private let eventLoopLock = NSLock()
+    /// The current event loop and the node it serves, so only that node's lifecycle can cancel it.
+    private var eventLoop: (node: Node, task: Task<Void, Never>)?
+    /// The loop a stop cancelled, so a concurrent stop of the same node waits for it too.
+    private var stoppedEventLoop: (node: Node, task: Task<Void, Never>)?
+    private static let eventPollInterval: Duration = .milliseconds(100)
+    /// Bounds the wait for the loop's last iteration, as `eventHandled()` can block on a stuck VSS write.
+    private static let eventLoopStopTimeout: Duration = .seconds(5)
+
     private let beforeNodeStopLock = NSLock()
     private var beforeNodeStopAction: (() async -> Void)?
     /// Runs before the node stops, while its wallet can still release what was prepared on it.
@@ -152,17 +208,24 @@ class LightningService: NodeLifecycleService {
     private var attemptRails: [String: LightningPaymentRail] = [:]
     /// Payment hashes inside a rail send, which Spark lists only once it returns.
     private var railSendsInFlight: Set<String> = []
+    /// Per payment hash, the latest time Spark dated a failed attempt of it, from its list or its events, so a send's
+    /// start is saved after it and that failure never reads as the send's own.
+    private var railFailureCreatedAt: [String: UInt64] = [:]
     /// Counts attempts recorded in this run, so a listing drops a hash just when the hash was recorded before the
     /// listing was read, never a retry recorded while it was read.
     private var attemptRecords = 0
     /// Per store key, the `attemptRecords` count at each hash's latest record.
     private var attemptRecordedAt: [String: [String: Int]] = [:]
-    /// Node sends under way, so a listing that shows only an earlier failed attempt doesn't drop their hash.
-    private var ldkSendsInFlight: Set<String> = []
+    /// Node sends under way, counted per hash, so a listing that shows only an earlier failed attempt doesn't drop their
+    /// hash, and one send ending leaves a repeat send of the invoice in flight.
+    private var ldkSendsInFlight: [String: Int] = [:]
     weak var channelFreeRail: ChannelFreeLightningRail?
     /// The rail whose payments the duplicate-payment check reads, kept while an emergency exit takes Spark off
     /// Lightning: an invoice Spark paid or is paying is never paid again over a channel.
     weak var channelFreePaymentHistory: ChannelFreeLightningRail?
+    /// Writes the Activity row of a rail send Spark never settled once its invoice expired: from Spark's own attempt of it
+    /// when listed, otherwise by failing the stored pending row. Returns whether the row was saved.
+    var railSendExpired: ((String) async -> Bool)?
     var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
     var onchainTransactionReceived: (@Sendable (String) async -> Void)?
     typealias OnchainActivityCompletion = @MainActor () async -> Void
@@ -207,7 +270,7 @@ class LightningService: NodeLifecycleService {
     ) async throws {
         // Guard against concurrent setup calls
         let shouldProceed: Bool = setupLock.withLock {
-            guard !isSettingUp && node == nil else {
+            guard !isSettingUp && configuredNode == nil else {
                 Logger.debug("Node already setting up or already set up, skipping")
                 return false
             }
@@ -262,6 +325,7 @@ class LightningService: NodeLifecycleService {
             additionalWalletFullScanBatchSize: 100,
             additionalWalletFullScanStopGap: 1000
         )
+        Logger.info("Using Electrum server: \(resolvedElectrumServerUrl)")
         builder.setChainSourceElectrum(serverUrl: resolvedElectrumServerUrl, config: electrumConfig)
 
         // Set pathfinding scores source from external scorer
@@ -295,12 +359,13 @@ class LightningService: NodeLifecycleService {
         }
 
         try await ServiceQueue.background(.ldk) {
-            self.node = try builder.buildWithVssStore(
+            let node = try builder.buildWithVssStore(
                 vssUrl: vssUrl,
                 storeId: storeId,
                 lnurlAuthServerUrl: lnurlAuthServerUrl,
                 fixedHeaders: [:]
             )
+            self.setupLock.withLock { self.configuredNode = (node, resolvedElectrumServerUrl) }
         }
         shouldReleaseLightningLock = false
 
@@ -311,18 +376,31 @@ class LightningService: NodeLifecycleService {
         passphrase = nil
     }
 
+    /// Runs after any restart already in progress, so overlapping restarts cannot stop or replace each other's node midway.
     func restart(electrumServerUrl: String? = nil, rgsServerUrl: String? = nil) async throws {
+        let restart: Task<Void, Error> = restartLock.withLock {
+            let previous = lastRestart
+            let restart = Task {
+                _ = await previous?.result
+                try await self.restartNode(electrumServerUrl: electrumServerUrl, rgsServerUrl: rgsServerUrl)
+            }
+            lastRestart = restart
+            return restart
+        }
+        try await restart.value
+    }
+
+    private func restartNode(electrumServerUrl: String?, rgsServerUrl: String?) async throws {
         Logger.info("Restarting node with current configuration")
 
         // Stop the current node if it exists, ignore errors if already stopped
-        if node != nil {
+        if let node {
             do {
                 try await stop()
             } catch {
                 Logger.debug("Node was already stopped or failed to stop: \(error)")
                 // Clear the node reference anyway
-                node = nil
-                try? StateLocker.unlock(.lightning)
+                await releaseAfterFailedStop(of: node)
             }
         }
 
@@ -351,13 +429,12 @@ class LightningService: NodeLifecycleService {
         Logger.debug("Stopping node for recovery attempt")
 
         // Stop the current node if it exists
-        if node != nil {
+        if let node {
             do {
                 try await stop()
             } catch {
                 Logger.error("Failed to stop node during recovery: \(error)")
-                node = nil
-                try? StateLocker.unlock(.lightning)
+                await releaseAfterFailedStop(of: node)
             }
         }
 
@@ -385,11 +462,22 @@ class LightningService: NodeLifecycleService {
             setEventCallback(onEvent)
         }
 
-        listenForEvents(onEvent: eventCallbackLock.withLock { storedEventCallback })
+        guard let startedLoop = listenForEvents(for: node, onEvent: eventCallbackLock.withLock { storedEventCallback }) else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
 
         Logger.debug("Starting node...")
-        try await ServiceQueue.background(.ldk) {
-            try node.start()
+        do {
+            try await ServiceQueue.background(.ldk) {
+                try node.start()
+            }
+        } catch {
+            // A node that is already running keeps the loop started above. Otherwise this start ends only its own loop, and waits
+            // for it, so a retry or wipe that follows does not overlap an event it took.
+            if !Self.isAlreadyRunning(error) {
+                await endEventLoop(of: node, onlyIf: startedLoop)
+            }
+            throw error
         }
 
         #if !BITKIT_NOTIFICATION_EXTENSION
@@ -423,11 +511,6 @@ class LightningService: NodeLifecycleService {
     }
 
     func stop(clearEventCallback: Bool = false) async throws {
-        defer {
-            // Always try to unlock, even if stopping fails
-            try? StateLocker.unlock(.lightning)
-        }
-
         guard let node else {
             Logger.warn("Node not started, nothing to stop")
             return
@@ -435,18 +518,31 @@ class LightningService: NodeLifecycleService {
 
         Logger.debug("Stopping node...")
         await beforeNodeStop?()
+        // A node whose native stop fails stays configured and keeps the lightning lock; a restart releases it after its loop ends.
         try await ServiceQueue.background(.ldk) {
             try Self.stopReleasingFinishedNode(node.stop)
         }
-        self.node = nil
+        // An event the loop took is handled, and its removal from the queue persisted, before the node is cleared and a next node
+        // can load that queue.
+        await endEventLoop(of: node)
+        // A stop that finishes after its node was released or replaced leaves the lock, callback and channels to their owner.
+        guard isConfigured(node) else {
+            Logger.info("Node stopped after it was released")
+            return
+        }
 
+        // Each step runs only while the node is still configured, so a concurrent stop that released it and started a next
+        // node keeps that node's callback and channels.
         if clearEventCallback {
             self.clearEventCallback()
         }
 
         await MainActor.run {
-            channelCache.removeAll()
+            if isConfigured(node) {
+                channelCache.removeAll()
+            }
         }
+        releaseAndUnlock(node)
 
         Logger.info("Node stopped")
     }
@@ -969,7 +1065,7 @@ class LightningService: NodeLifecycleService {
     }
 
     /// LDK's routing fee limit when a caller sets none, 1% + 50 sats, so a send over the rail is capped the same way.
-    private static func defaultMaxFeeSats(amountSats: UInt64) -> UInt64 {
+    static func defaultMaxFeeSats(amountSats: UInt64) -> UInt64 {
         amountSats / 100 + 50
     }
 
@@ -1082,7 +1178,8 @@ class LightningService: NodeLifecycleService {
                 bolt11: bolt11,
                 sats: sats,
                 invoiceCreatedAt: invoice?.secondsSinceEpoch(),
-                invoiceExpiresAt: expiresAt
+                invoiceExpiresAt: expiresAt,
+                sendsOverRail: true
             ) {
                 return paid
             }
@@ -1111,8 +1208,9 @@ class LightningService: NodeLifecycleService {
                 }
             }
             var isRefusedAtAdmission = false
+            var didRecordAttempt = false
             do {
-                let sent = try await rail.send(
+                return try await rail.send(
                     bolt11: bolt11,
                     sats: sats,
                     maxFeeSats: params?.maxTotalRoutingFeeMsat.map { $0 / 1000 }
@@ -1128,19 +1226,18 @@ class LightningService: NodeLifecycleService {
                         // Noted once admitted, so a refused attempt never takes the place of the one that went out.
                         self?.noteAttempt(on: .channelFree, bolt11: bolt11)
                         self?.recordRailAttempt(paymentHash: paymentHash, expiresAt: expiresAt)
-                        // Kept until the call returns, so a send cut off by process death stays held after a relaunch.
+                        didRecordAttempt = true
+                        // Kept until Spark settles the attempt, so no retry of the invoice starts meanwhile, also after a
+                        // relaunch.
                         if let paymentHash {
                             self?.markRailSendUncertain(paymentHash: paymentHash, since: mark)
                         }
                     }
                 )
-                if let paymentHash {
-                    endRailSendUncertainty(paymentHash: paymentHash)
-                }
-                return sent
             } catch let refusal as ChannelFreeRailSendRefused {
-                // Nothing left the wallet, and the checks above leave no earlier live attempt under this hash.
-                if let paymentHash {
+                // Nothing left the wallet. Refused before submission, this send recorded nothing, so another send's
+                // attempt and hold of the invoice stay.
+                if let paymentHash, didRecordAttempt {
                     endRailSendUncertainty(paymentHash: paymentHash)
                     releaseRailAttempt(paymentHash: paymentHash, unlessInFlight: false)
                 }
@@ -1156,8 +1253,9 @@ class LightningService: NodeLifecycleService {
                 guard let paid = try await settledRecordedRailSend(paymentHash: paymentHash, since: mark) else { throw error }
                 return paid
             } catch {
-                // A send that failed once submitted may still go out, so its outcome waits for a later sync.
-                if let paymentHash {
+                // A send that failed once submitted may still go out, so its outcome waits for a later sync. One that
+                // failed before it recorded its attempt never reached Spark.
+                if let paymentHash, didRecordAttempt {
                     markRailSendUncertain(paymentHash: paymentHash, since: mark)
                 }
                 throw error
@@ -1180,12 +1278,19 @@ class LightningService: NodeLifecycleService {
         Logger.info("Paying bolt11: \(bolt11)")
 
         let sendKey = paymentHash?.lowercased()
-        defer { endLdkSend(paymentHash: sendKey) }
+        // Only an admitted send is counted in flight, so a refused one must not end another's.
+        var isAdmitted = false
+        defer {
+            if isAdmitted {
+                endLdkSend(paymentHash: sendKey)
+            }
+        }
         do {
             return try await Self.submitPayment(beforeSubmission: { [weak self] in
                 try beforeSubmission()
                 guard let self else { return }
                 try admitSend(paymentHash: sendKey, on: .ldk, since: mark)
+                isAdmitted = true
                 noteAttempt(on: .ldk, bolt11: bolt11)
                 recordLdkAttempt(paymentHash: paymentHash, expiresAt: expiresAt)
             }) {
@@ -1217,9 +1322,9 @@ class LightningService: NodeLifecycleService {
     /// The clock a trim checks invoice expiries against; tests set it.
     var now: () -> Date = Date.init
     private static let railAttemptsKey = "channelFreeRailAttemptedPaymentHashes"
-    /// Rail sends submitted but not returned, or that failed after they were submitted, by hash, with the time they
-    /// were submitted or failed in seconds since 1970. Kept across launches, as Spark may still resume one after a
-    /// relaunch while its list shows an earlier failed attempt.
+    /// Rail sends Spark hasn't settled yet, from submission until Spark reports or lists their attempt succeeded or failed,
+    /// or their invoice expired, by hash, with the time they were submitted in seconds since 1970. No other
+    /// send of the invoice starts meanwhile. Kept across launches, as Spark may still resume one after a relaunch.
     private static let uncertainRailSendsKey = "channelFreeRailUncertainSendFailedAt"
     /// A listing drops the hashes it shows failed only, or paid once the invoice has expired, so the other rail can't
     /// pay it again, and ones it doesn't show once the invoice expired `unlistedAttemptSettleSeconds` ago. Paid or
@@ -1365,11 +1470,16 @@ class LightningService: NodeLifecycleService {
     /// The attempts recorded so far and the sends in flight, read before a listing so a trim or release from it skips
     /// the retries recorded since, and the ones in flight then that ended while it was read.
     var attemptMark: AttemptMark {
-        eventCallbackLock.withLock { AttemptMark(records: attemptRecords, railInFlight: railSendsInFlight, ldkInFlight: ldkSendsInFlight) }
+        eventCallbackLock.withLock { AttemptMark(records: attemptRecords, railInFlight: railSendsInFlight, ldkInFlight: Set(ldkSendsInFlight.keys)) }
     }
 
-    private func releaseLdkAttempt(paymentHash: String) {
-        eventCallbackLock.withLock { removeAttempt(paymentHash: paymentHash.lowercased(), key: Self.ldkAttemptsKey) }
+    /// Skipped when a node send of the invoice is in flight, or was recorded since `mark`, as that send holds it again.
+    private func releaseLdkAttempt(paymentHash: String, since mark: AttemptMark) {
+        let hash = paymentHash.lowercased()
+        eventCallbackLock.withLock {
+            guard !attemptsLive(since: mark, key: Self.ldkAttemptsKey).contains(hash) else { return }
+            removeAttempt(paymentHash: hash, key: Self.ldkAttemptsKey)
+        }
     }
 
     /// Callers hold `eventCallbackLock`.
@@ -1394,7 +1504,7 @@ class LightningService: NodeLifecycleService {
     /// The hashes under `key` that may still be pending since `mark`: in flight now or then, or recorded after it.
     /// Callers hold `eventCallbackLock`.
     private func attemptsLive(since mark: AttemptMark, key: String) -> Set<String> {
-        let inFlight = key == Self.railAttemptsKey ? railSendsInFlight.union(mark.railInFlight) : ldkSendsInFlight.union(mark.ldkInFlight)
+        let inFlight = key == Self.railAttemptsKey ? railSendsInFlight.union(mark.railInFlight) : mark.ldkInFlight.union(ldkSendsInFlight.keys)
         return inFlight.union(attemptsRecorded(since: mark.records, key: key))
     }
 
@@ -1415,6 +1525,7 @@ class LightningService: NodeLifecycleService {
             railAttemptsStore.removeObject(forKey: Self.railAttemptsKey)
             railAttemptsStore.removeObject(forKey: Self.expiriesKey(Self.railAttemptsKey))
             attemptRecordedAt[Self.railAttemptsKey] = nil
+            railFailureCreatedAt = [:]
         }
     }
 
@@ -1431,11 +1542,11 @@ class LightningService: NodeLifecycleService {
     /// The node's payments, after keeping its attempts from them, with the hashes still holding Spark (`live`); nil
     /// while the node can't list them.
     @discardableResult
-    private func listNodePaymentsKeepingAttempts() async -> (payments: [PaymentDetails], live: Set<String>)? {
+    private func listNodePaymentsKeepingAttempts() async -> (payments: [PaymentDetails], live: Set<String>, mark: AttemptMark)? {
         let mark = attemptMark
         guard let payments = await nodePayments() else { return nil }
         let live = keepLdkAttempts(from: payments, since: mark)
-        return (payments, live)
+        return (payments, live, mark)
     }
 
     /// Keeps the hashes of the node's pending and paid outbound payments, once, so those made before hashes were kept
@@ -1470,7 +1581,9 @@ class LightningService: NodeLifecycleService {
         let outbound = payments.filter { $0.direction == .outbound }
         let hashes = { (status: PaymentStatus) in Set(outbound.filter { $0.status == status }.map { $0.paymentHash.lowercased() }) }
         return eventCallbackLock.withLock {
+            // A send Spark hasn't settled keeps its record and expiry, whatever its earlier attempts show.
             let live = hashes(.pending).union(attemptsLive(since: mark, key: Self.railAttemptsKey))
+                .union(uncertainRailSendFailedAt().keys)
             let paid = hashes(.succeeded).subtracting(live)
             let listed = Set(outbound.map { $0.paymentHash.lowercased() })
             trimSettledAttempts(
@@ -1496,12 +1609,13 @@ class LightningService: NodeLifecycleService {
         bolt11: String,
         sats: UInt64?,
         invoiceCreatedAt: UInt64?,
-        invoiceExpiresAt: Int?
+        invoiceExpiresAt: Int?,
+        sendsOverRail: Bool = false
     ) async throws -> PaymentHash? {
         guard let paymentHash else { return nil }
         var statuses: [PaymentStatus] = rails.contains(.channelFree) && isRailSendInFlight(paymentHash: paymentHash) ? [.pending] : []
         if rails.contains(.ldk) {
-            if let (payments, live) = await listNodePaymentsKeepingAttempts() {
+            if let (payments, live, mark) = await listNodePaymentsKeepingAttempts() {
                 let payment = payments.first {
                     $0.direction == .outbound && $0.id.caseInsensitiveCompare(paymentHash) == .orderedSame
                 }
@@ -1513,7 +1627,7 @@ class LightningService: NodeLifecycleService {
                     if live.contains(paymentHash.lowercased()) {
                         statuses.append(.pending)
                     } else {
-                        releaseLdkAttempt(paymentHash: paymentHash)
+                        releaseLdkAttempt(paymentHash: paymentHash, since: mark)
                     }
                 }
             } else if hasAttempt(paymentHash: paymentHash, key: Self.ldkAttemptsKey) {
@@ -1541,7 +1655,8 @@ class LightningService: NodeLifecycleService {
                         Logger.info("Held '\(paymentHash)' until Spark syncs after its unknown send", context: "LightningService")
                         statuses.append(.pending)
                     } else {
-                        releaseRailAttempt(paymentHash: paymentHash)
+                        // A retry recorded while Spark synced keeps its attempt.
+                        releaseRailAttempt(paymentHash: paymentHash, since: mark)
                         if !isPaidOverTheNode {
                             try await refuseUnverifiedRestoredInvoice(
                                 paymentHash: paymentHash, bolt11: bolt11, sats: sats,
@@ -1559,10 +1674,18 @@ class LightningService: NodeLifecycleService {
             } else if isPaidOverTheNode {
                 Logger.info("Skipped Spark's restore checks of '\(paymentHash)', the node already paid it", context: "LightningService")
             } else {
-                try await refuseUnverifiedRestoredInvoice(
+                let restoredSends = try await refuseUnverifiedRestoredInvoice(
                     paymentHash: paymentHash, bolt11: bolt11, sats: sats,
                     invoiceCreatedAt: invoiceCreatedAt, invoiceExpiresAt: invoiceExpiresAt
                 )
+                // A Spark send's start must come after every failure Spark dated for the invoice, which only its list
+                // shows after a relaunch, so it doesn't go out unlisted, unless Spark's operators show no send of it.
+                if sendsOverRail, restoredSends != .noSend {
+                    Logger.warn("Refused paying '\(paymentHash)' over Spark, Spark can't list its payments now", context: "LightningService")
+                    throw restoredSends == .allFailed
+                        ? ChannelFreeRailSendRefused.restoredInvoiceUnverified()
+                        : ChannelFreeRailSendRefused(reason: t("wallet__payment_failed_description"))
+                }
             }
         }
         if statuses.contains(.succeeded) {
@@ -1579,26 +1702,29 @@ class LightningService: NodeLifecycleService {
     /// After a restore, refuses a still-valid invoice created before it, as Spark's list can lack a send it made then,
     /// unless Spark's operators show no live or paid Lightning send of it and it can't have been paid by a direct Spark
     /// transfer, which they can't see. A send they show sent or pending, or no answer, refuses it until it expires. A
-    /// failed one counts as unsent, as they show it failed only once every attempt at the hash was returned.
+    /// failed one counts as unsent, as they show it failed only once every attempt at the hash was returned. Returns
+    /// what they show of a pre-restore invoice's sends, nil for any other invoice.
+    @discardableResult
     private func refuseUnverifiedRestoredInvoice(
         paymentHash: String,
         bolt11: String,
         sats: UInt64?,
         invoiceCreatedAt: UInt64?,
         invoiceExpiresAt: Int?
-    ) async throws {
+    ) async throws -> RestoredInvoiceSends? {
         guard let restoredAt = sparkRestoredAt, Self.holdsRestoredInvoice(
             restoredAt: restoredAt,
             invoiceCreatedAt: invoiceCreatedAt,
             invoiceExpiresAt: invoiceExpiresAt,
             now: Int(now().timeIntervalSince1970)
-        ) else { return }
+        ) else { return nil }
         let rail = channelFreeRail ?? channelFreePaymentHistory
         let sparkRuns = rail != nil ? true : await channelFreeRailSupported()
-        guard sparkRuns else { return }
+        guard sparkRuns else { return nil }
         do {
             guard let rail else { throw ChannelFreeRailUnavailable() }
-            if let status = try await rail.lightningSendStatus(bolt11: bolt11), status != .failed {
+            let status = try await rail.lightningSendStatus(bolt11: bolt11)
+            if let status, status != .failed {
                 Logger.warn("Refused paying '\(paymentHash)', a pre-restore invoice Spark shows as '\(status)'", context: "LightningService")
                 throw ChannelFreeRailSendRefused.restoredInvoiceUnverified()
             }
@@ -1607,6 +1733,7 @@ class LightningService: NodeLifecycleService {
                 throw ChannelFreeRailSendRefused.restoredInvoiceUnverified()
             }
             Logger.info("Found no live or paid Spark operator send of pre-restore invoice '\(paymentHash)'", context: "LightningService")
+            return status == nil ? .noSend : .allFailed
         } catch let refusal as ChannelFreeRailSendRefused {
             throw refusal
         } catch {
@@ -1616,6 +1743,14 @@ class LightningService: NodeLifecycleService {
             )
             throw ChannelFreeRailSendRefused.restoredInvoiceUnverified()
         }
+    }
+
+    /// What Spark's operators show of a pre-restore invoice's sends that leaves it payable.
+    enum RestoredInvoiceSends {
+        /// No send of it.
+        case noSend
+        /// Sends that all failed.
+        case allFailed
     }
 
     /// An unknown time counts as before the restore and never expiring.
@@ -1633,16 +1768,76 @@ class LightningService: NodeLifecycleService {
         railAttemptsStore.dictionary(forKey: Self.uncertainRailSendsKey) as? [String: Int] ?? [:]
     }
 
-    /// A rail send about to be submitted, or that failed after it was, until a sync after it and its invoice's expiry
-    /// settle it. The expiry is the one kept beside the hash.
+    /// A rail send about to be submitted, or that failed after it was, until Spark settles its attempt or a sync after its
+    /// invoice's expiry settles it. The expiry is the one kept beside the hash, and the time the one it was submitted at,
+    /// which a later failure of its call leaves as it is. That time is past the clock margin after any failed attempt
+    /// Spark dated for the hash so far, so that failure reads as an earlier attempt's, also after a relaunch.
     private func markRailSendUncertain(paymentHash: String, since mark: AttemptMark) {
         let hash = paymentHash.lowercased()
-        let failedAt = Int(max(0, now().timeIntervalSince1970))
+        let now = Int64(max(0, now().timeIntervalSince1970))
         eventCallbackLock.withLock {
             guard attemptsRecorded(since: mark.records, key: Self.railAttemptsKey).contains(hash) else { return }
             var uncertain = uncertainRailSendFailedAt()
-            uncertain[hash] = failedAt
+            guard uncertain[hash] == nil else { return }
+            let afterKnownFailure = railFailureCreatedAt[hash].map { Int64(clamping: $0) + Self.railClockSkewSeconds + 1 } ?? 0
+            uncertain[hash] = Int(clamping: max(now, afterKnownFailure))
             railAttemptsStore.set(uncertain, forKey: Self.uncertainRailSendsKey)
+        }
+    }
+
+    /// How far before a send's start, by this device's clock, Spark may date the send's own attempt.
+    static let railClockSkewSeconds: Int64 = 10
+
+    /// Whether a Spark attempt of `paymentHash` created at `createdAt`, in seconds since 1970, came before the send of it
+    /// Spark hasn't settled yet: Spark dates an attempt at its start, and a retry starts only once the attempts before it
+    /// failed. Its failure settles nothing of that send, so it is ignored.
+    func isEarlierRailAttempt(paymentHash: String, createdAt: UInt64?) -> Bool {
+        guard let createdAt else { return false }
+        return eventCallbackLock.withLock {
+            uncertainRailSendFailedAt()[paymentHash.lowercased()].map { !Self.isOwnRailAttempt(createdAt: createdAt, startedAt: $0) } ?? false
+        }
+    }
+
+    /// Whether Spark dated an attempt at or after a send's start, less the clock margin: that send's own.
+    private static func isOwnRailAttempt(createdAt: UInt64, startedAt: Int) -> Bool {
+        Int64(clamping: createdAt) >= Int64(startedAt) - railClockSkewSeconds
+    }
+
+    private static func listsResult(_ payments: [ChannelFreeRailPayment], paymentHash: String, startedAt: Int?) -> Bool {
+        payments.contains { payment in
+            guard payment.direction == .outbound, payment.paymentHash.lowercased() == paymentHash.lowercased() else { return false }
+            if payment.status == .succeeded {
+                return true
+            }
+            guard payment.status == .failed, let startedAt else { return false }
+            return isOwnRailAttempt(createdAt: payment.timestamp, startedAt: startedAt)
+        }
+    }
+
+    /// The held rail sends and when each started, read before a listing so it settles only those.
+    var railSendHolds: [String: Int] {
+        eventCallbackLock.withLock { uncertainRailSendFailedAt() }
+    }
+
+    /// Ends the sends Spark lists a settled attempt of: a success, or a failure of the send's own attempt. Only the holds
+    /// in `heldBefore`, read before the listing, as one taken since started after Spark's list was read.
+    func settleListedRailSends(_ payments: [ChannelFreeRailPayment], heldBefore: [String: Int]) {
+        let settled = eventCallbackLock.withLock {
+            for payment in payments where payment.direction == .outbound && payment.status == .failed {
+                noteRailFailure(paymentHash: payment.paymentHash, createdAt: payment.timestamp)
+            }
+            let uncertain = uncertainRailSendFailedAt()
+            return payments.reduce(into: [String: Int]()) { settled, payment in
+                let hash = payment.paymentHash.lowercased()
+                guard payment.direction == .outbound, payment.status != .pending, let startedAt = uncertain[hash],
+                      heldBefore[hash] == startedAt,
+                      payment.status == .succeeded || Self.isOwnRailAttempt(createdAt: payment.timestamp, startedAt: startedAt)
+                else { return }
+                settled[hash] = startedAt
+            }
+        }
+        for (hash, startedAt) in settled {
+            endRailSendUncertainty(paymentHash: hash, startedAt: startedAt)
         }
     }
 
@@ -1671,27 +1866,97 @@ class LightningService: NodeLifecycleService {
     }
 
     private func endRailSendUncertainty(paymentHash: String) {
+        endRailSendUncertainty(paymentHash: paymentHash) { _ in true }
+    }
+
+    /// Ends the send held since `startedAt` only: once it ended, a retry may hold the invoice again, and that retry stays
+    /// held.
+    private func endRailSendUncertainty(paymentHash: String, startedAt: Int) {
+        endRailSendUncertainty(paymentHash: paymentHash) { $0 == startedAt }
+    }
+
+    private func endRailSendUncertainty(paymentHash: String, where isEnded: (Int) -> Bool) {
+        let hash = paymentHash.lowercased()
         eventCallbackLock.withLock {
             var uncertain = uncertainRailSendFailedAt()
-            guard uncertain.removeValue(forKey: paymentHash.lowercased()) != nil else { return }
+            guard let startedAt = uncertain[hash], isEnded(startedAt) else { return }
+            uncertain.removeValue(forKey: hash)
             railAttemptsStore.set(uncertain, forKey: Self.uncertainRailSendsKey)
         }
     }
 
-    /// True unless the hash's last rail send failed after it was submitted and may still go out: no sync has reached the
-    /// rail since, or its invoice hasn't expired.
+    /// Callers hold `eventCallbackLock`.
+    private func noteRailFailure(paymentHash: String, createdAt: UInt64) {
+        let hash = paymentHash.lowercased()
+        railFailureCreatedAt[hash] = max(railFailureCreatedAt[hash] ?? 0, createdAt)
+    }
+
+    /// Whether a Spark failure, of an attempt created at `createdAt`, is the failure of the invoice's send, ending its hold
+    /// if it has one, in one step, so a retry that holds the invoice meanwhile is judged by its own hold. Not when Spark
+    /// dated it before the send Spark hasn't settled yet, or while a send in Spark's send call wasn't submitted yet, as
+    /// nothing of it reached Spark: an earlier attempt's, while that send may still pay.
+    private func endRailSendByFailure(paymentHash: String, createdAt: UInt64?) -> Bool {
+        let hash = paymentHash.lowercased()
+        return eventCallbackLock.withLock {
+            if let createdAt {
+                noteRailFailure(paymentHash: hash, createdAt: createdAt)
+            }
+            var uncertain = uncertainRailSendFailedAt()
+            guard let startedAt = uncertain[hash] else { return !railSendsInFlight.contains(hash) }
+            if let createdAt, !Self.isOwnRailAttempt(createdAt: createdAt, startedAt: startedAt) {
+                return false
+            }
+            uncertain.removeValue(forKey: hash)
+            railAttemptsStore.set(uncertain, forKey: Self.uncertainRailSendsKey)
+            return true
+        }
+    }
+
+    /// True unless the hash's last rail send failed after it was submitted and may still go out: its invoice hasn't
+    /// expired, or no sync has reached the rail since it did.
     private func railSyncedSinceUncertainSend(paymentHash: String) async -> Bool {
         let hash = paymentHash.lowercased()
         let uncertain = eventCallbackLock.withLock {
-            uncertainRailSendFailedAt()[hash].map { (failedAt: UInt64($0), expiresAt: attemptExpiries(key: Self.railAttemptsKey)[hash]) }
+            uncertainRailSendFailedAt()[hash].map { (startedAt: $0, expiresAt: attemptExpiries(key: Self.railAttemptsKey)[hash]) }
         }
         guard let uncertain else { return true }
-        guard let rail = channelFreeRail, await rail.hasSynced(after: uncertain.failedAt) else { return false }
         // Spark keeps a send it committed but didn't finish in a cache no call exposes, and a sync that reached Spark
         // can still fail to resume it, so only an expired invoice shows a missing send will never go out.
         guard let expiresAt = uncertain.expiresAt, Int(now().timeIntervalSince1970) >= expiresAt else { return false }
-        endRailSendUncertainty(paymentHash: hash)
+        // During an exit Spark no longer sends but still syncs its history, which settles the send the same way.
+        guard let rail = channelFreeRail ?? channelFreePaymentHistory, await rail.hasSynced(after: UInt64(max(uncertain.startedAt, expiresAt))) else {
+            return false
+        }
+        // Its Activity row is written first, so a stop in between finds the send held and writes it again.
+        if let record = railSendExpired, await !record(hash) {
+            return false
+        }
+        endRailSendUncertainty(paymentHash: hash, startedAt: uncertain.startedAt)
         return true
+    }
+
+    /// Ends the sends Spark never settled whose invoice expired since, once a sync after the grace reached Spark.
+    func endExpiredRailSendUncertainties() async {
+        let hashes = eventCallbackLock.withLock { Array(uncertainRailSendFailedAt().keys) }
+        for hash in hashes {
+            _ = await railSyncedSinceUncertainSend(paymentHash: hash)
+        }
+    }
+
+    /// The check `send` makes against earlier attempts of `bolt11` on both rails, for a step that must not run for a
+    /// repeat: throws while one is still pending, and returns `true` once one settled, whose outcome `send` returns.
+    func hasSettledEarlierAttempt(bolt11: String, sats: UInt64?) async throws -> Bool {
+        let invoice = try? Bolt11Invoice.fromStr(invoiceStr: bolt11)
+        let expiresAt = invoice.map { Int(clamping: min($0.secondsSinceEpoch(), .max - $0.expiryTimeSeconds()) + $0.expiryTimeSeconds()) }
+        return try await settledEarlierAttempt(
+            paymentHash: invoice.map { String($0.paymentHash()) },
+            on: [.ldk, .channelFree],
+            bolt11: bolt11,
+            sats: sats,
+            invoiceCreatedAt: invoice?.secondsSinceEpoch(),
+            invoiceExpiresAt: expiresAt,
+            sendsOverRail: true
+        ) != nil
     }
 
     private static func pendingDuplicate(paymentHash: String?) -> NodeError {
@@ -1710,7 +1975,7 @@ class LightningService: NodeLifecycleService {
     func admitSend(paymentHash: String?, on rail: LightningPaymentRail, since mark: AttemptMark) throws {
         guard let hash = paymentHash?.lowercased() else { return }
         try eventCallbackLock.withLock {
-            let otherInFlight = rail == .ldk ? railSendsInFlight : ldkSendsInFlight
+            let otherInFlight = rail == .ldk ? railSendsInFlight : Set(ldkSendsInFlight.keys)
             let otherKey = rail == .ldk ? Self.railAttemptsKey : Self.ldkAttemptsKey
             if otherInFlight.contains(hash) || attemptsRecorded(since: mark.records, key: otherKey).contains(hash) {
                 Logger.warn("Refused paying '\(hash)', the other rail sent it meanwhile", context: "LightningService")
@@ -1721,7 +1986,7 @@ class LightningService: NodeLifecycleService {
                 throw Self.pendingDuplicate(paymentHash: hash)
             }
             if rail == .ldk {
-                ldkSendsInFlight.insert(hash)
+                ldkSendsInFlight[hash, default: 0] += 1
             }
         }
     }
@@ -1755,19 +2020,23 @@ class LightningService: NodeLifecycleService {
     /// Whether a send of `hash` is in flight on either rail, or the node recorded one since `mark`.
     private func isSendLive(paymentHash hash: String, since mark: AttemptMark) -> Bool {
         eventCallbackLock.withLock {
-            railSendsInFlight.contains(hash) || ldkSendsInFlight.contains(hash)
+            railSendsInFlight.contains(hash) || ldkSendsInFlight[hash] != nil
                 || attemptsRecorded(since: mark.records, key: Self.ldkAttemptsKey).contains(hash)
         }
     }
 
     func beginLdkSend(paymentHash: String?) {
         guard let paymentHash else { return }
-        _ = eventCallbackLock.withLock { ldkSendsInFlight.insert(paymentHash.lowercased()) }
+        eventCallbackLock.withLock { ldkSendsInFlight[paymentHash.lowercased(), default: 0] += 1 }
     }
 
     func endLdkSend(paymentHash: String?) {
         guard let paymentHash else { return }
-        _ = eventCallbackLock.withLock { ldkSendsInFlight.remove(paymentHash.lowercased()) }
+        let hash = paymentHash.lowercased()
+        eventCallbackLock.withLock {
+            guard let count = ldkSendsInFlight[hash] else { return }
+            ldkSendsInFlight[hash] = count > 1 ? count - 1 : nil
+        }
     }
 
     func endRailSend(paymentHash: String?) {
@@ -2081,6 +2350,27 @@ extension LightningService {
         cachedChannels
     }
 
+    /// The wallet's balances with its spendable outputs, read until the outputs before and after the balances agree, so
+    /// the outputs match what the balances include. Both come from the wallet's current view, which drops a transaction
+    /// evicted from the mempool, unlike the payment store. After three tries the last outputs read are used.
+    func balancesAndOutputs() async -> (balances: BalanceDetails, outputs: [SpendableUtxo])? {
+        try? await ServiceQueue.background(.ldk) { [self] in
+            guard let node else { return nil }
+            let outpoints: ([SpendableUtxo]) -> Set<String> = { Set($0.map { "\($0.outpoint.txid):\($0.outpoint.vout)" }) }
+            var outputs = try node.onchainPayment().listSpendableOutputs()
+            var balances = node.listBalances()
+            for _ in 0 ..< 3 {
+                let outputsAfter = try node.onchainPayment().listSpendableOutputs()
+                if outpoints(outputsAfter) == outpoints(outputs) {
+                    break
+                }
+                outputs = outputsAfter
+                balances = node.listBalances()
+            }
+            return (balances, outputs)
+        }
+    }
+
     func listPayments() async -> [PaymentDetails]? {
         try? await ServiceQueue.background(.ldk) { [self] in
             node?.listPayments()
@@ -2296,11 +2586,16 @@ extension LightningService {
     }
 
     /// Spark runs before the node starts, so its events wait until the node's event callback is set rather than being lost.
-    func emitChannelFreeRailEvent(_ event: Event) {
+    /// `paymentCreatedAt` is when Spark created the payment the event is about, in seconds since 1970.
+    func emitChannelFreeRailEvent(_ event: Event, paymentCreatedAt: UInt64? = nil) {
         switch event {
         case let .paymentFailed(_, paymentHash?, _):
-            // The event settles a send whose outcome was unknown, so retries of its invoice are no longer held.
-            endRailSendUncertainty(paymentHash: paymentHash)
+            // An attempt before the send Spark hasn't settled yet ended: that send may still pay, so nothing changes.
+            // Otherwise the event settles a send whose outcome was unknown, so retries of its invoice are no longer held.
+            guard endRailSendByFailure(paymentHash: paymentHash, createdAt: paymentCreatedAt) else {
+                Logger.info("Ignored a Spark failure of an attempt before an unsettled send: \(event)", context: "LightningService")
+                return
+            }
             // The failure of the send itself, which may arrive while its send call is still returning.
             releaseRailAttempt(paymentHash: paymentHash, unlessInFlight: false)
         case let .paymentSuccessful(_, paymentHash, _, _):
@@ -2356,10 +2651,32 @@ extension LightningService {
             // A restored wallet fills its list on its first sync, so before a sync reaches Spark a missing send proves
             // nothing.
             guard await rail.hasSynced(after: nil) else { throw ChannelFreeRailUnavailable() }
-            // Read before the listing, so a sync that ends while it is read can't settle a send the listing predates.
-            let unsettled = await unsettledUncertainRailSends()
+            // Read before the listing, so a sync that ends while it is read can't settle a send the listing predates,
+            // and a hold taken meanwhile reads as taken during the read.
+            let mark = attemptMark
+            let heldBefore = railSendHolds
+            let unsettledBefore = await unsettledUncertainRailSends()
             let kept = unexpiredRailAttempts()
             let payments = try await rail.lightningPayments()
+            // A send Spark lists a settled attempt of is no longer held; the others read pending until then.
+            settleListedRailSends(payments, heldBefore: heldBefore)
+            let holdsAfter = eventCallbackLock.withLock { uncertainRailSendFailedAt() }
+            let stillUnsettled = Set(holdsAfter.keys)
+            // A hold that ended during the read without its result in the list (a success Spark lists later) stays
+            // pending, so it never reads as an earlier attempt's failure.
+            let unsettled = unsettledBefore.filter {
+                stillUnsettled.contains($0.paymentHash)
+                    || !Self.listsResult(payments, paymentHash: $0.paymentHash, startedAt: heldBefore[$0.paymentHash])
+            }
+            // A retry in flight during the read, or that took a hold or recorded its attempt meanwhile, is one this list
+            // predates, so it reads pending until a later list shows its result, also when it already ended.
+            let unsettledHashes = Set(unsettled.map { $0.paymentHash.lowercased() })
+            let recordedDuringRead = eventCallbackLock.withLock { attemptsLive(since: mark, key: Self.railAttemptsKey) }
+            let paidHashes = Set(payments.filter { $0.direction == .outbound && $0.status == .succeeded }.map { $0.paymentHash.lowercased() })
+            let heldDuringRead = Set(holdsAfter.filter { heldBefore[$0.key] != $0.value }.keys)
+                .union(recordedDuringRead.subtracting(paidHashes))
+                .subtracting(unsettledHashes).sorted()
+                .map { ChannelFreeRailPayment(paymentHash: $0, direction: .outbound, status: .pending, preimage: nil) }
             if let since = sparkHistoryUnseededSince, await rail.hasSynced(after: UInt64(clamping: since)) {
                 // Kept, so after a relaunch the sends Spark listed hold the node until Spark syncs again.
                 let seeded = payments.filter { $0.direction == .outbound && $0.status != .failed }.map { $0.paymentHash.lowercased() }
@@ -2370,10 +2687,10 @@ extension LightningService {
                 }
                 clearSparkHistoryUnseeded()
             }
-            let listed = Set((payments + unsettled).filter { $0.direction == .outbound }.map { $0.paymentHash.lowercased() })
+            let listed = Set((payments + unsettled + heldDuringRead).filter { $0.direction == .outbound }.map { $0.paymentHash.lowercased() })
             let unlisted = kept.subtracting(listed).sorted()
                 .map { ChannelFreeRailPayment(paymentHash: $0, direction: .outbound, status: .pending, preimage: nil) }
-            return payments + unsettled + unlisted
+            return payments + unsettled + heldDuringRead + unlisted
         }
         if await channelFreeRailSupported() {
             throw ChannelFreeRailUnavailable()
@@ -2399,15 +2716,34 @@ extension LightningService {
         await completion?()
     }
 
-    func listenForEvents(onEvent: ((Event) -> Void)? = nil) {
-        Task {
-            while true {
-                guard let node = self.node else {
-                    Logger.error("LDK node not started")
-                    return
+    /// Polls instead of awaiting `nextEventAsync()`: that call cannot be cancelled and never returns once its node stops, so it would keep
+    /// the stopped node, its runtime and this loop alive. The loop ends once `node` is no longer the current node.
+    /// Returns the loop it started, or nil when `node` is no longer the configured node.
+    @discardableResult
+    private func listenForEvents(for node: Node, onEvent: ((Event) -> Void)? = nil) -> Task<Void, Never>? {
+        // Taken in the order `configuredNode` takes them on a node change, so a start that lost its node to a newer one cannot
+        // replace that node's loop.
+        setupLock.lock()
+        defer { setupLock.unlock() }
+        guard configuredNode?.node === node else {
+            Logger.info("Skipped the event loop of a replaced node", context: "LightningService")
+            return nil
+        }
+        eventLoopLock.lock()
+        defer { eventLoopLock.unlock() }
+        let previousLoop = eventLoop?.task
+        previousLoop?.cancel()
+        // A loop of this node that a stop is still waiting for ends first too.
+        let stoppingLoop = stoppedEventLoop?.node === node ? stoppedEventLoop?.task : nil
+        let task = Task {
+            // The previous loop finishes the event it took first, so both never handle the same event.
+            await previousLoop?.value
+            await stoppingLoop?.value
+            while !Task.isCancelled, self.node === node {
+                guard let event = node.nextEvent() else {
+                    try? await Task.sleep(for: Self.eventPollInterval)
+                    continue
                 }
-
-                let event = await node.nextEventAsync()
 
                 do {
                     try node.eventHandled()
@@ -2608,6 +2944,80 @@ extension LightningService {
                 }
             }
         }
+        eventLoop = (node, task)
+        return task
+    }
+
+    /// Cancels the current loop unless it serves `node`, the newly configured node.
+    private func cancelEventLoop(unlessServing node: Node?) {
+        eventLoopLock.withLock {
+            guard let current = eventLoop, current.node !== node else { return }
+            current.task.cancel()
+            eventLoop = nil
+        }
+    }
+
+    /// Ends `node`'s event loop and waits for it, sharing the wait with a concurrent stop of the same node. A loop serving
+    /// another node is left running.
+    /// With `loop`, ends the current loop only while it is that loop, so a failed start never ends another start's loop.
+    private func endEventLoop(of node: Node, onlyIf loop: Task<Void, Never>? = nil) async {
+        let task: Task<Void, Never>? = eventLoopLock.withLock {
+            if let current = eventLoop, current.node === node, loop == nil || current.task == loop {
+                current.task.cancel()
+                eventLoop = nil
+                stoppedEventLoop = current
+            }
+            guard let stopped = stoppedEventLoop, stopped.node === node else { return nil }
+            return stopped.task
+        }
+        guard let task else { return }
+        if await !Self.waitForEnd(of: task, timeout: Self.eventLoopStopTimeout) {
+            Logger.warn("Event loop of the stopped node did not end in time", context: "LightningService")
+        }
+        eventLoopLock.withLock {
+            if stoppedEventLoop?.task == task {
+                stoppedEventLoop = nil
+            }
+        }
+    }
+
+    /// Returns whether `task` ended within `timeout`.
+    static func waitForEnd(of task: Task<Void, Never>, timeout: Duration) async -> Bool {
+        let resumed = OSAllocatedUnfairLock(initialState: false)
+        return await withCheckedContinuation { continuation in
+            let resume = { (ended: Bool) in
+                let first = resumed.withLock { resumed in
+                    defer { resumed = true }
+                    return !resumed
+                }
+                if first {
+                    continuation.resume(returning: ended)
+                }
+            }
+            let timer = Task {
+                // A sleep cancelled because the task ended reports nothing, so it cannot win the race as a timeout.
+                do {
+                    try await Task.sleep(for: timeout)
+                    resume(false)
+                } catch {}
+            }
+            Task {
+                await task.value
+                resume(true)
+                timer.cancel()
+            }
+        }
+    }
+
+    /// Whether `error` from `node.start()`, possibly wrapped by `ServiceQueue`, says the node is already running.
+    static func isAlreadyRunning(_ error: Error) -> Bool {
+        guard let nodeError = ((error as? AppError)?.underlyingError ?? error) as? NodeError else {
+            return false
+        }
+        if case .AlreadyRunning = nodeError {
+            return true
+        }
+        return false
     }
 
     private func registerClosedChannel(

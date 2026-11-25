@@ -74,22 +74,29 @@ struct ReceiveQr: View {
     }
 
     private var availableTabItems: [TabItem<ReceiveTab>] {
-        var items: [TabItem<ReceiveTab>] = [
-            TabItem(.savings),
-            TabItem(.spending),
-        ]
+        Self.visibleTabs(
+            hasHardwareWallet: selectedHardwareWalletId != nil,
+            canReceiveLightning: canShowUnifiedReceive,
+            isUsdtEnabled: settings.isUsdtEnabled
+        ).map { $0 == .hardware ? TabItem(.hardware, label: selectedHardwareWallet?.vendor.modelName) : TabItem($0) }
+    }
 
-        if canShowUnifiedReceive {
-            items.insert(TabItem(.unified), at: 1)
-        }
+    /// Auto and Spending hide when Lightning stops receiving with no invoice change, as when Spark disconnects, so their
+    /// selection goes to Savings.
+    static func tab(_ selected: ReceiveTab, canShowUnifiedReceive: Bool) -> ReceiveTab {
+        !canShowUnifiedReceive && (selected == .unified || selected == .spending) ? .savings : selected
+    }
 
-        if selectedHardwareWalletId != nil {
-            items.insert(TabItem(.hardware, label: selectedHardwareWallet?.vendor.modelName), at: 0)
+    /// The receive tabs in order. Without a Lightning invoice, from a usable Spark wallet or channel, Auto and Spending hide.
+    static func visibleTabs(hasHardwareWallet: Bool, canReceiveLightning: Bool, isUsdtEnabled: Bool) -> [ReceiveTab] {
+        var tabs: [ReceiveTab] = hasHardwareWallet ? [.hardware, .savings] : [.savings]
+        if canReceiveLightning {
+            tabs += [.unified, .spending]
         }
-        if settings.isUsdtEnabled {
-            items.append(TabItem(.usdt))
+        if isUsdtEnabled {
+            tabs.append(.usdt)
         }
-        return items
+        return tabs
     }
 
     private var selectedHardwareWallet: HwWallet? {
@@ -156,10 +163,6 @@ struct ReceiveQr: View {
         )
     }
 
-    var showingSpendingOnboarding: Bool {
-        return !wallet.canCreateReceiveLightningInvoice && selectedTab == .spending
-    }
-
     var body: some View {
         if selectedTab == .usdt, !settings.isUsdtEnabled {
             UsdtIntroContent(isEnablePrompt: true, onDecline: { selectedTabBinding.wrappedValue = .savings },
@@ -195,9 +198,8 @@ struct ReceiveQr: View {
 
                     if canShowUnifiedReceive {
                         tabContent(for: .unified)
+                        tabContent(for: .spending)
                     }
-
-                    tabContent(for: .spending)
                     if settings.isUsdtEnabled {
                         Color.clear.tag(ReceivePage.tab(.usdt))
                     }
@@ -212,18 +214,7 @@ struct ReceiveQr: View {
                 Spacer()
 
                 Group {
-                    if showingSpendingOnboarding {
-                        CustomButton(
-                            title: t("wallet__receive_spending"),
-                            icon: Image("bolt")
-                                .resizable()
-                                .frame(width: 16, height: 16)
-                                .foregroundColor(.purpleAccent),
-                            isDisabled: wallet.nodeLifecycleState != .running
-                        ) {
-                            navigationPath.append(.transferUnavailable)
-                        }
-                    } else if showDetails {
+                    if showDetails {
                         VStack(spacing: 16) {
                             if selectedTab == .hardware {
                                 CustomButton(
@@ -318,11 +309,15 @@ struct ReceiveQr: View {
             }
         }
         .onChange(of: wallet.bolt11) { _, bolt11 in
-            if bolt11.isEmpty && !wallet.canCreateReceiveLightningInvoice && selectedTab == .unified {
+            // Without a Lightning invoice the Auto and Spending tabs hide, so their selection goes to Savings.
+            if bolt11.isEmpty && !wallet.canCreateReceiveLightningInvoice && (selectedTab == .unified || selectedTab == .spending) {
                 selectedTab = .savings
             }
 
             applyDefaultTabIfNeeded()
+        }
+        .onChange(of: canShowUnifiedReceive, initial: true) { _, canShow in
+            selectedTab = Self.tab(selectedTab, canShowUnifiedReceive: canShow)
         }
         .onDisappear {
             verifyTask?.cancel()
@@ -389,8 +384,6 @@ struct ReceiveQr: View {
                 } else {
                     ProgressView()
                 }
-            } else if tab == .spending && !wallet.canCreateReceiveLightningInvoice {
-                cjitOnboarding
             } else if receiveUnavailable(for: tab) {
                 receiveRefreshStatus(for: tab)
             } else if showDetails {
@@ -456,7 +449,9 @@ struct ReceiveQr: View {
     private func receiveUnavailable(for tab: ReceiveTab) -> Bool {
         guard tab == .unified || tab == .spending else { return false }
         return wallet.isReceiveInvoiceUpdating || wallet.receiveInvoiceError != nil ||
-            (tab == .unified && !wallet.hasCoherentReceiveInvoice)
+            (tab == .unified && !wallet.hasCoherentReceiveInvoice) ||
+            // A cached invoice keeps Spending shown until the refresh, but with no way to receive it may have expired.
+            (tab == .spending && !wallet.canCreateReceiveLightningInvoice)
     }
 
     private func receiveRefreshStatus(for tab: ReceiveTab) -> some View {
@@ -504,43 +499,6 @@ struct ReceiveQr: View {
         case .hardware:
             return (uri: "", imageAsset: "btc-circle-blue", accentColor: .blueAccent)
         }
-    }
-
-    var cjitOnboarding: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            DisplayText(t("wallet__receive_spending_title"), accentColor: .purpleAccent)
-                .padding(.bottom, 8)
-
-            BodyMText(t("wallet__receive_spending_text"))
-
-            Spacer()
-
-            HStack {
-                Spacer()
-                Image("bolt")
-                    .resizable()
-                    .frame(width: 64, height: 64)
-                    .foregroundColor(.purpleAccent)
-                Spacer()
-            }
-        }
-        .padding(32)
-        .frame(maxHeight: .infinity)
-        .background(Color.black)
-        .cornerRadius(8)
-        .overlay(alignment: .bottomLeading) {
-            if !UIScreen.main.isSmall {
-                Image("arrow-cjit")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(height: 210)
-                    .offset(x: 70, y: 110)
-            }
-        }
-        // Figma leaves 122 pt between the card and the button; the spacer above the button adds the last 8.
-        .padding(.bottom, UIScreen.main.isSmall ? 0 : 114)
-        // Ahead of the tab's bottom spacer, so the card takes the rest of the page.
-        .layoutPriority(1)
     }
 
     func detailsContent(for tab: ReceiveTab) -> some View {

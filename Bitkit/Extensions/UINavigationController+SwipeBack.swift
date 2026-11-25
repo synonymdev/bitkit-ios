@@ -5,6 +5,8 @@ import UIKit
 enum SwipeBackState {
     /// When false, the interactive pop gesture is disabled. Set by views that hide the back button.
     static var allowSwipeBack: Bool = true
+    /// Send confirm screens a running swipe holds; kept apart so other screens' own setting stays theirs.
+    static var confirmSwipeHolds = 0
 }
 
 /// Re-enables the interactive swipe-back gesture when the navigation bar is hidden
@@ -20,6 +22,6 @@ extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
     public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         // Only allow swipe-back when not at root — avoids iOS 17+ freeze when re-pushing after swiping to root
         guard viewControllers.count > 1 else { return false }
-        return SwipeBackState.allowSwipeBack
+        return SwipeBackState.allowSwipeBack && SwipeBackState.confirmSwipeHolds == 0
     }
 }

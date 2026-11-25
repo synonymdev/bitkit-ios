@@ -138,8 +138,10 @@ struct MoneyStack: View {
             }
             Haptics.play(.medium)
 
-            // Show toast on first switch
-            if !settings.ignoresSwitchUnitToast {
+            // Show toast on first switch, only when the shown unit changed (without a rate it stays bitcoin)
+            let shownBefore = MoneyText.primaryUnit(previousDisplay, hasUsableRate: currency.hasUsableRate)
+            let shownAfter = MoneyText.primaryUnit(currency.primaryDisplay, hasUsableRate: currency.hasUsableRate)
+            if !settings.ignoresSwitchUnitToast, shownBefore != shownAfter {
                 let newDisplay = currency.primaryDisplay
                 let toUnitText = getUnitText(for: newDisplay)
                 let fromUnitText = getUnitText(for: previousDisplay)

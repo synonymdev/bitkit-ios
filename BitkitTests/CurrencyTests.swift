@@ -139,6 +139,9 @@ final class CurrencyTests: XCTestCase {
 
     func testPrimaryAmountText_FallsBackToBitcoinWithoutARate() {
         let text = CurrencyViewModel.primaryAmountText(sats: 204, converted: nil, primaryDisplay: .fiat, displayUnit: .classic)
-        XCTAssertEqual(text, "₿ 204")
+        XCTAssertEqual(text, "₿ 0.00000204", "A classic amount without a rate read as a sat count")
+        let modern = CurrencyViewModel.primaryAmountText(sats: 5000, converted: nil, primaryDisplay: .bitcoin, displayUnit: .modern)
+        XCTAssertEqual(modern, "₿ 5 000")
+        XCTAssertEqual(ConvertedAmount.bitcoinDisplay(sats: 5000, unit: .classic).value, "0.00005000")
     }
 }

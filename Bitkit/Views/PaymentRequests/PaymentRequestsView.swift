@@ -11,6 +11,18 @@ enum PaymentRequestDisplay {
         return t(statusKey(for: request, isActionable: isActionable))
     }
 
+    /// History rows: requests not listed as active, without the pending requests the allowance hides, so none lists as
+    /// unavailable.
+    static func historyRequests(
+        _ history: [PaykitPaymentRequest],
+        activeIds: Set<PaykitPaymentRequest.ID>,
+        pending: [PaykitPaymentRequest],
+        isKeptOffPending: (PaykitPaymentRequest) -> Bool
+    ) -> [PaykitPaymentRequest] {
+        let hiddenIds = Set(pending.filter(isKeptOffPending).map(\.id))
+        return history.filter { !activeIds.contains($0.id) && !hiddenIds.contains($0.id) }
+    }
+
     static func paymentDirection(for request: PaykitPaymentRequest) -> PaykitPaymentRequest.Direction? {
         request.lifecycleState == .proofSubmitted ? request.direction : nil
     }
@@ -285,7 +297,7 @@ struct PaymentRequestsSheet: View {
 
                 ScrollView(showsIndicators: false) {
                     LazyVStack(spacing: 16) {
-                        ForEach(paymentRequests.pendingRequests.sorted(by: Self.newestFirst).prefix(3)) { request in
+                        ForEach(allowances.payable(paymentRequests.pendingRequests).sorted(by: Self.newestFirst).prefix(3)) { request in
                             requestCard(request)
                         }
                     }
@@ -309,7 +321,7 @@ struct PaymentRequestsSheet: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("PaymentRequestsSheet")
-        .onChange(of: paymentRequests.pendingRequests) { _, requests in
+        .onChange(of: allowances.payable(paymentRequests.pendingRequests)) { _, requests in
             if requests.isEmpty {
                 sheets.hideSheetIfActive(.paymentRequests, reason: "No pending payment requests")
             }
@@ -402,7 +414,7 @@ struct PaymentRequestsView: View {
 
     var body: some View {
         Group {
-            if activeRequests.isEmpty, paymentRequests.historyRequests.isEmpty {
+            if activeRequests.isEmpty, historicalRequests.isEmpty {
                 emptyState
             } else {
                 LazyVStack(alignment: .leading, spacing: 16) {
@@ -458,9 +470,10 @@ struct PaymentRequestsView: View {
     }
 
     private var activeRequests: [PaykitPaymentRequest] {
-        let pending = paymentRequests.pendingRequests
+        let pending = allowances.payable(paymentRequests.pendingRequests)
+        // A stale proposal stays active unless the allowance hides it, as the pending request it came from.
         let historical = paymentRequests.historyRequests.filter {
-            ($0.lifecycleState == .proposed && !$0.isExpired(at: Date()))
+            ($0.lifecycleState == .proposed && !$0.isExpired(at: Date()) && !allowances.isKeptOffPending($0))
                 || ($0.direction == .outgoing && $0.lifecycleState == .accepted)
         }
         var requestIds = Set<PaykitPaymentRequest.ID>()
@@ -470,8 +483,12 @@ struct PaymentRequestsView: View {
     }
 
     private var historicalRequests: [PaykitPaymentRequest] {
-        let activeIds = Set(activeRequests.map(\.id))
-        return paymentRequests.historyRequests.filter { !activeIds.contains($0.id) }
+        PaymentRequestDisplay.historyRequests(
+            paymentRequests.historyRequests,
+            activeIds: Set(activeRequests.map(\.id)),
+            pending: paymentRequests.pendingRequests,
+            isKeptOffPending: allowances.isKeptOffPending
+        )
     }
 
     private var historySections: [HistorySection] {
@@ -488,7 +505,7 @@ struct PaymentRequestsView: View {
     }
 
     private func isActionable(_ request: PaykitPaymentRequest) -> Bool {
-        paymentRequests.pendingRequests.contains { $0.id == request.id }
+        allowances.payable(paymentRequests.pendingRequests).contains { $0.id == request.id }
     }
 
     private func status(for request: PaykitPaymentRequest) -> String {
@@ -551,6 +568,7 @@ struct PaymentRequestDetailView: View {
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var tagManager: TagManager
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
+    @Environment(PaykitAllowanceManager.self) private var allowances
 
     let id: PaykitPaymentRequest.ID
     @State private var showAddTagSheet = false
@@ -648,7 +666,7 @@ struct PaymentRequestDetailView: View {
                 }
             }
             BodyMText(
-                PaymentRequestDisplay.status(for: request, isActionable: isActionable(request),
+                PaymentRequestDisplay.status(for: request, isActionable: isPending(request),
                                              receipt: PaykitUsdtPaymentService.shared.receipt(for: request)),
                 textColor: .white64
             )
@@ -743,6 +761,11 @@ struct PaymentRequestDetailView: View {
     }
 
     private func isActionable(_ request: PaykitPaymentRequest) -> Bool {
+        allowances.payable(paymentRequests.pendingRequests).contains { $0.id == request.id }
+    }
+
+    /// A request an allowance is handling is still pending, though it offers no Pay or Dismiss.
+    private func isPending(_ request: PaykitPaymentRequest) -> Bool {
         paymentRequests.pendingRequests.contains { $0.id == request.id }
     }
 
