@@ -11,13 +11,17 @@ final class SparkSendKeyTests: XCTestCase {
     /// Bytes 0 to 31.
     private let paymentHash = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
 
+    /// The host app's saved attempts, put back after each test.
+    private var savedAttempts: Data?
+
     override func setUp() {
         super.setUp()
+        savedAttempts = UserDefaults.standard.data(forKey: "sparkSendAttempts")
         SparkSendAttempts.clear()
     }
 
     override func tearDown() {
-        SparkSendAttempts.clear()
+        UserDefaults.standard.set(savedAttempts, forKey: "sparkSendAttempts")
         super.tearDown()
     }
 
