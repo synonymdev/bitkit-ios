@@ -15,6 +15,8 @@ struct Toast: Equatable {
     let autoHide: Bool
     let visibilityTime: Double
     let accessibilityIdentifier: String?
+    /// False for a one-time warning that a later toast waits behind instead of replacing.
+    let interruptible: Bool
 
     init(
         id: UUID = UUID(),
@@ -23,7 +25,8 @@ struct Toast: Equatable {
         description: String? = nil,
         autoHide: Bool = true,
         visibilityTime: Double = 4.0,
-        accessibilityIdentifier: String? = nil
+        accessibilityIdentifier: String? = nil,
+        interruptible: Bool = true
     ) {
         self.id = id
         self.type = type
@@ -32,5 +35,6 @@ struct Toast: Equatable {
         self.autoHide = autoHide
         self.visibilityTime = visibilityTime
         self.accessibilityIdentifier = accessibilityIdentifier
+        self.interruptible = interruptible
     }
 }

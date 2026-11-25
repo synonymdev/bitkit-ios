@@ -674,6 +674,7 @@ struct AppScene: View {
             .onChange(of: isPinVerified) { _, verified in
                 if verified {
                     showPendingExpiryToast()
+                    showPendingPaykitUpdateToast()
                     Task { await hwWalletManager.reconnectOnForeground() }
                     Task { await presentNextIncomingPaykitItem() }
                 }
@@ -859,7 +860,10 @@ struct AppScene: View {
             .onChange(of: paykitPaymentRequestManager.silentExpirationTrigger) {
                 queueSilentExpiryToast()
             }
-            .onChange(of: scenePhase) { showPendingExpiryToast() }
+            .onChange(of: scenePhase) {
+                showPendingExpiryToast()
+                showPendingPaykitUpdateToast()
+            }
             .onChange(of: navigation.currentRoute) { oldRoute, newRoute in
                 guard shouldDiscardPendingImport(currentRoute: oldRoute, destination: newRoute) else {
                     return
@@ -873,6 +877,7 @@ struct AppScene: View {
                     app.toast(type: .error, title: t("profile__session_expired_title"), description: t("profile__session_expired_description"))
                 }
             }
+            .onChange(of: pubkyProfile.sessionRestorationNeedsUpdate) { showPendingPaykitUpdateToast() }
             .onChange(of: pubkyProfile.adoptedSourceLost) { _, lost in
                 if lost {
                     pubkyProfile.adoptedSourceLost = false
@@ -2192,6 +2197,15 @@ struct AppScene: View {
         guard paykitPaymentRequestManager.silentlyExpiredRequests.contains(where: { $0.id != payingRequestId }) else { return }
         hasPendingExpiryToast = true
         showPendingExpiryToast()
+    }
+
+    /// Waits until the app is in front and unlocked, as the expiry toast does, since the profile asks for the update once.
+    private func showPendingPaykitUpdateToast() {
+        guard pubkyProfile.sessionRestorationNeedsUpdate,
+              scenePhase == .active, isPinVerified || !settings.pinEnabled
+        else { return }
+        pubkyProfile.sessionRestorationNeedsUpdate = false
+        app.toast(type: .error, title: t("common__error"), description: t("profile__update_required"), interruptible: false)
     }
 
     /// Waits until the app is in front and unlocked, so the toast isn't shown, and lost, behind the PIN screen.

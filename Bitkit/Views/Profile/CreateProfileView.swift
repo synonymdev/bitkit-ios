@@ -184,7 +184,7 @@ struct CreateProfileView: View {
             return
         } catch {
             Logger.error("Failed to derive pubky keys: \(error)", context: "CreateProfileView")
-            app.toast(type: .error, title: t("profile__create_error_title"), description: error.localizedDescription)
+            app.toast(type: .error, title: t("profile__create_error_title"), description: error.profileErrorDescription)
             navigation.navigateBack()
         }
     }
@@ -209,7 +209,7 @@ struct CreateProfileView: View {
         } catch {
             Logger.warn("Failed to look up the existing profile: \(error)", context: "CreateProfileView")
             remoteLookupFailed = true
-            app.toast(type: .error, title: t("profile__create_error_title"), description: error.localizedDescription)
+            app.toast(type: .error, title: t("profile__create_error_title"), description: error.profileErrorDescription)
             return nil
         }
     }
@@ -252,7 +252,7 @@ struct CreateProfileView: View {
             await loadInitialData()
         } catch {
             Logger.error("Failed to save profile: \(error)", context: "CreateProfileView")
-            app.toast(type: .error, title: t("profile__create_error_title"), description: error.localizedDescription)
+            app.toast(type: .error, title: t("profile__create_error_title"), description: error.profileErrorDescription)
         }
     }
 }

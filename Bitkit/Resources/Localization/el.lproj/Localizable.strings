@@ -1177,6 +1177,7 @@
 "profile__unlink_error_title" = "Αδυναμία αποσύνδεσης pubky";
 "profile__unlink_error_description" = "Δεν μπορέσαμε να διαγράψουμε τα δεδομένα Paykit σου. Δοκίμασε ξανά ή αποσύνδεσε αυτό το pubky από το Bitkit.";
 "profile__unlink_label" = "Αποσύνδεση pubky";
+"profile__update_required" = "Αυτό το προφίλ χρειάζεται νεότερη έκδοση του Bitkit. Ενημέρωσε την εφαρμογή για να το χρησιμοποιήσεις.";
 "profile__edit" = "Επεξεργασία";
 "profile__pay_contacts_nav_title" = "Πληρωμή Επαφών";
 "profile__pay_contacts_title" = "Αφήστε τις επαφές σας\n<accent>να σας πληρώνουν</accent>";
