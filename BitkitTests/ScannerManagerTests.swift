@@ -390,6 +390,32 @@ final class ScannerManagerTests: XCTestCase {
         }
     }
 
+    func testDeepLinkLookupFromBeforeALockIsDropped() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        let started = expectation(description: "Deep link lookup suspended")
+        var continuation: CheckedContinuation<BitkitCore.Scanner, Error>?
+        let app = configure(ScannerManager {}, sheets: sheets, decodeInvoice: { _ in
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        })
+        let link = Task { try await app.handleDeepLinkData(paymentURI) }
+        await fulfillment(of: [started], timeout: 2)
+
+        // The app locks while the lookup runs, and the user unlocks before it returns.
+        app.noteAppLocked()
+        try XCTUnwrap(continuation).resume(returning: decoded)
+        do {
+            try await link.value
+            XCTFail("A deep link lookup from before the lock must be dropped")
+        } catch is CancellationError {}
+
+        XCTAssertNil(app.scannedOnchainInvoice)
+        XCTAssertNil(sheets.activeSheetConfiguration)
+    }
+
     private func imageTestLnurl(amount: UInt64) -> LnurlPayData {
         LnurlPayData(uri: "https://example.com/pay", callback: "https://example.com/callback",
                      minSendable: amount, maxSendable: amount,

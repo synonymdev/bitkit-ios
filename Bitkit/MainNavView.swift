@@ -971,7 +971,7 @@ struct MainNavView: View {
                 await scannerManager.handleScan(publicKey, context: .main)
                 return
             }
-            try await app.handleScannedData(
+            try await app.handleDeepLinkData(
                 url.absoluteString,
                 alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
             )
