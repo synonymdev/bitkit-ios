@@ -603,7 +603,8 @@ extension AppViewModel {
         description: String? = nil,
         autoHide: Bool = true,
         visibilityTime: Double = 4.0,
-        accessibilityIdentifier: String? = nil
+        accessibilityIdentifier: String? = nil,
+        interruptible: Bool = true
     ) {
         guard !ToastWindowManager.areToastsDisabled() else { return }
 
@@ -626,7 +627,8 @@ extension AppViewModel {
             description: description,
             autoHide: autoHide,
             visibilityTime: visibilityTime,
-            accessibilityIdentifier: accessibilityIdentifier
+            accessibilityIdentifier: accessibilityIdentifier,
+            interruptible: interruptible
         )
         ToastWindowManager.shared.showToast(toast)
     }

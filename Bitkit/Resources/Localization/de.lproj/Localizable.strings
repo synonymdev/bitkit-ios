@@ -1378,6 +1378,7 @@
 "profile__unlink_error_title" = "pubky-Verknüpfung kann nicht aufgehoben werden";
 "profile__unlink_error_description" = "Wir konnten deine Paykit-Daten nicht löschen. Versuche es erneut oder trenne diesen pubky von Bitkit.";
 "profile__unlink_label" = "pubky-Verknüpfung aufheben";
+"profile__update_required" = "Dieses Profil benötigt eine neuere Version von Bitkit. Aktualisiere die App, um es zu verwenden.";
 "profile__edit" = "Bearbeiten";
 "profile__pay_contacts_nav_title" = "Kontakte bezahlen";
 "profile__pay_contacts_title" = "Lass deine Kontakte\n<accent>dich bezahlen</accent>";

@@ -1136,6 +1136,32 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testRecoveryAsksForAnUpdateOnceAndStopsRetryingWhenPaykitStateIsNewer() async {
+        let manager = RecoveryProfileManager()
+        manager.isInitialized = true
+
+        await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { .restorationNeedsUpdate }
+        XCTAssertTrue(manager.sessionRestorationNeedsUpdate)
+        XCTAssertFalse(manager.sessionRestorationFailed)
+
+        manager.sessionRestorationNeedsUpdate = false
+        let attempts = SessionRecoveryAttempts()
+        await manager.retrySessionRestoration(sleep: { _ in XCTFail("Retried after newer Paykit state") }, hasStoredIdentity: { true }) {
+            _ = await attempts.next()
+            return .restorationNeedsUpdate
+        }
+        let attemptCount = await attempts.next() - 1
+        XCTAssertEqual(attemptCount, 1)
+        XCTAssertFalse(manager.sessionRestorationNeedsUpdate)
+        XCTAssertTrue(manager.restorationNeedsUpdate)
+
+        manager.sessionRestorationNeedsUpdate = true
+        manager.clearAuthenticatedStateForTesting()
+        XCTAssertFalse(manager.restorationNeedsUpdate)
+        XCTAssertFalse(manager.sessionRestorationNeedsUpdate)
+    }
+
+    @MainActor
     func testAutomaticRecoveryDoesNotRepeatFailureNotificationAndClearsStaleErrorOnSuccess() async {
         let manager = RecoveryProfileManager()
         manager.isInitialized = true
