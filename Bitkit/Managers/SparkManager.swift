@@ -712,24 +712,35 @@ final class SparkManager: ChannelFreeLightningRail {
             failedIds: Set(failed?.payments.map(\.id) ?? [])
         )
         let idempotencyKey = SparkSendKey.key(secret: secret, paymentHash: paymentHash, attempt: attempt)
-        let isReusedKey = SparkSendAttempts.latest(paymentHash: paymentHash) == attempt
-        let (expiresAt, overflows) = invoiceDetails.timestamp.addingReportingOverflow(invoiceDetails.expiry)
-        SparkSendAttempts.set(paymentHash: paymentHash, attempt: attempt, expiresAt: overflows ? .max : expiresAt, now: Self.nowSecs())
+        let previousAttempt = SparkSendAttempts.latest(paymentHash: paymentHash)
+        let isReusedKey = previousAttempt == attempt
+        let (sum, overflows) = invoiceDetails.timestamp.addingReportingOverflow(invoiceDetails.expiry)
+        let expiresAt = overflows ? UInt64.max : sum
+        SparkSendAttempts.set(paymentHash: paymentHash, attempt: attempt, expiresAt: expiresAt, now: Self.nowSecs())
         // An exit that started while the quote was prepared refuses it here, before its hash is recorded.
-        let response: SendPaymentResponse = try await spends.run {
-            // A deadline that passed while the quote was prepared stops the payment here, before anything leaves.
-            try beforeSubmission()
-            do {
-                return try await Self.sendRetryingLeafSelection(canRetry: { (try? beforeSubmission()) != nil }) {
-                    try await sdk.sendPayment(request: SendPaymentRequest(
-                        prepareResponse: prepared,
-                        options: Self.bolt11SendOptions,
-                        idempotencyKey: idempotencyKey
-                    ))
+        let response: SendPaymentResponse
+        do {
+            response = try await spends.run {
+                // A deadline that passed while the quote was prepared stops the payment here, before anything leaves.
+                try beforeSubmission()
+                do {
+                    return try await Self.sendRetryingLeafSelection(canRetry: { (try? beforeSubmission()) != nil }) {
+                        try await sdk.sendPayment(request: SendPaymentRequest(
+                            prepareResponse: prepared,
+                            options: Self.bolt11SendOptions,
+                            idempotencyKey: idempotencyKey
+                        ))
+                    }
+                } catch {
+                    throw Self.bolt11SendFailure(error, isReusedKey: isReusedKey)
                 }
-            } catch {
-                throw Self.bolt11SendFailure(error, isReusedKey: isReusedKey)
             }
+        } catch let refusal as ChannelFreeRailSendRefused {
+            // A refused attempt never reached Spark's operators, so its key stays unused and a retry refuses the same way.
+            if !isReusedKey {
+                SparkSendAttempts.restore(paymentHash: paymentHash, attempt: previousAttempt, expiresAt: expiresAt)
+            }
+            throw refusal
         }
         Logger.info("Sent Spark payment '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
         return invoiceDetails.paymentHash

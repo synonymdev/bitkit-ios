@@ -1217,6 +1217,8 @@ class LightningService: NodeLifecycleService {
                         ?? Self.paymentAmountSats(bolt11: bolt11, sats: sats).map(Self.defaultMaxFeeSats),
                     beforeSubmission: { [weak self] in
                         try beforeSubmission()
+                        // Spark checks again before it retries the same attempt, which is already admitted.
+                        guard !didRecordAttempt else { return }
                         do {
                             try self?.admitSend(paymentHash: paymentHash, on: .channelFree, since: mark)
                         } catch {

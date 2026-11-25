@@ -35,6 +35,7 @@ enum SparkSendKey {
 /// The latest attempt at each invoice Spark sent, by payment hash, whose number picks the attempt's `SparkSendKey`.
 enum SparkSendAttempts {
     private static let storageKey = "sparkSendAttempts"
+    private static let lock = NSLock()
 
     private struct Attempt: Codable {
         let attempt: UInt32
@@ -60,13 +61,25 @@ enum SparkSendAttempts {
     /// Keeps `attempt` as the latest at the invoice with `paymentHash`, which expires at `expiresAt`, and drops the
     /// attempts of invoices expired before `now`, both in epoch seconds.
     static func set(paymentHash: String, attempt: UInt32, expiresAt: UInt64, now: UInt64) {
-        var attempts = stored.filter { $0.value.expiresAt >= now }
-        attempts[paymentHash.lowercased()] = Attempt(attempt: attempt, expiresAt: expiresAt)
-        stored = attempts
+        lock.withLock {
+            var attempts = stored.filter { $0.value.expiresAt >= now }
+            attempts[paymentHash.lowercased()] = Attempt(attempt: attempt, expiresAt: expiresAt)
+            stored = attempts
+        }
+    }
+
+    /// Puts back `attempt`, the latest kept before a send whose key never reached Spark, or drops the invoice's entry
+    /// when it had none.
+    static func restore(paymentHash: String, attempt: UInt32?, expiresAt: UInt64) {
+        lock.withLock {
+            var attempts = stored
+            attempts[paymentHash.lowercased()] = attempt.map { Attempt(attempt: $0, expiresAt: expiresAt) }
+            stored = attempts
+        }
     }
 
     static func clear() {
-        UserDefaults.standard.removeObject(forKey: storageKey)
+        lock.withLock { UserDefaults.standard.removeObject(forKey: storageKey) }
     }
 
     private static var stored: [String: Attempt] {

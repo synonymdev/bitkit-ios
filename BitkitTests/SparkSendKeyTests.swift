@@ -119,5 +119,44 @@ final class SparkSendKeyTests: XCTestCase {
         XCTAssertEqual(sends, 1)
     }
 
+    func testASendStopsRetryingAfterItsLastRetry() async {
+        var sends = 0
+
+        do {
+            _ = try await Bitkit.SparkManager.sendRetryingLeafSelection(retryDelay: .zero, canRetry: { true }) {
+                sends += 1
+                throw leafSelectionFailure
+            }
+            XCTFail("the send went out")
+        } catch {
+            XCTAssertTrue(Bitkit.SparkManager.isLeafSelectionFailure(error), "\(error)")
+        }
+        XCTAssertEqual(sends, 1 + Bitkit.SparkManager.leafSelectionRetries)
+    }
+
+    func testASendIsNotRetriedForOtherFailures() async {
+        var sends = 0
+
+        do {
+            _ = try await Bitkit.SparkManager.sendRetryingLeafSelection(retryDelay: .zero, canRetry: { true }) {
+                sends += 1
+                throw SdkError.InsufficientFunds(tokenIdentifier: nil)
+            }
+            XCTFail("the send went out")
+        } catch {}
+        XCTAssertEqual(sends, 1)
+    }
+
+    func testARefusedAttemptGivesBackTheEarlierOne() {
+        SparkSendAttempts.set(paymentHash: paymentHash, attempt: 1, expiresAt: 2000, now: 1000)
+        SparkSendAttempts.set(paymentHash: paymentHash, attempt: 2, expiresAt: 2000, now: 1000)
+
+        SparkSendAttempts.restore(paymentHash: paymentHash, attempt: 1, expiresAt: 2000)
+        XCTAssertEqual(SparkSendAttempts.latest(paymentHash: paymentHash), 1)
+
+        SparkSendAttempts.restore(paymentHash: paymentHash, attempt: nil, expiresAt: 2000)
+        XCTAssertNil(SparkSendAttempts.latest(paymentHash: paymentHash))
+    }
+
     private let leafSelectionFailure = SdkError.SparkError("Tree service error: generic error: Failed to select leaves after all retries")
 }
