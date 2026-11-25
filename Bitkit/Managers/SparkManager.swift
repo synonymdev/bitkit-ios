@@ -716,13 +716,14 @@ final class SparkManager: ChannelFreeLightningRail {
         let isReusedKey = previousAttempt == attempt
         let (sum, overflows) = invoiceDetails.timestamp.addingReportingOverflow(invoiceDetails.expiry)
         let expiresAt = overflows ? UInt64.max : sum
-        SparkSendAttempts.set(paymentHash: paymentHash, attempt: attempt, expiresAt: expiresAt, now: Self.nowSecs())
         // An exit that started while the quote was prepared refuses it here, before its hash is recorded.
         let response: SendPaymentResponse
         do {
             response = try await spends.run {
                 // A deadline that passed while the quote was prepared stops the payment here, before anything leaves.
                 try beforeSubmission()
+                // Kept once the send is admitted, so a send refused before it leaves keeps the earlier attempt.
+                SparkSendAttempts.set(paymentHash: paymentHash, attempt: attempt, expiresAt: expiresAt, now: Self.nowSecs())
                 do {
                     return try await Self.sendRetryingLeafSelection(canRetry: { (try? beforeSubmission()) != nil }) {
                         try await sdk.sendPayment(request: SendPaymentRequest(

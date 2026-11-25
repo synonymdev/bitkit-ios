@@ -1878,6 +1878,15 @@ extension ChannelFreeRailTests {
         XCTAssertTrue(payments.contains { $0.status == .pending }, "the retry read as A's failure")
     }
 
+    func testASparkSendCheckedAgainBeforeARetryGoesOut() async throws {
+        rail.balanceSats = 100_000
+        rail.submissionChecks = 2
+
+        _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+
+        XCTAssertEqual(rail.sends, 1)
+    }
+
     func testASparkSendFailingBeforeItRecordsItsAttemptTakesNoHold() async throws {
         let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
         let service = Bitkit.LightningService.shared
@@ -2307,6 +2316,8 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
     var onSend: (() -> Void)?
     /// Runs as a send is about to be submitted, before `beforeSubmission`.
     var beforeSubmit: (() -> Void)?
+    /// How often the send checks `beforeSubmission`, as Spark does again before each retry of the same attempt.
+    var submissionChecks = 1
     /// Thrown after the send was submitted, as when the connection drops inside Spark's send.
     var errorAfterSubmission: Error?
     /// Whether the rail's last sync reached it, after the given seconds when there are any.
@@ -2330,7 +2341,9 @@ private final class FakeRail: Bitkit.ChannelFreeLightningRail {
             throw refusal
         }
         beforeSubmit?()
-        try beforeSubmission()
+        for _ in 0 ..< submissionChecks {
+            try beforeSubmission()
+        }
         if let refusalAfterSubmission {
             throw refusalAfterSubmission
         }

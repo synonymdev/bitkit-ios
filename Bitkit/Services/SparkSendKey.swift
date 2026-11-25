@@ -46,7 +46,7 @@ enum SparkSendAttempts {
     /// `failedIds`, the ids of the payments Spark lists as failed, as a failed key can't send again. An attempt Spark
     /// may still commit keeps its key, so a retry gets back its payment instead of paying again.
     static func next(paymentHash: String, secret: Data, failedIds: Set<String>) -> UInt32 {
-        var attempt = stored[paymentHash.lowercased()]?.attempt ?? 0
+        var attempt = lock.withLock { stored[paymentHash.lowercased()]?.attempt } ?? 0
         while failedIds.contains(SparkSendKey.key(secret: secret, paymentHash: paymentHash, attempt: attempt)) {
             attempt += 1
         }
@@ -55,7 +55,7 @@ enum SparkSendAttempts {
 
     /// The latest attempt kept for the invoice with `paymentHash`, nil before its first.
     static func latest(paymentHash: String) -> UInt32? {
-        stored[paymentHash.lowercased()]?.attempt
+        lock.withLock { stored[paymentHash.lowercased()]?.attempt }
     }
 
     /// Keeps `attempt` as the latest at the invoice with `paymentHash`, which expires at `expiresAt`, and drops the
