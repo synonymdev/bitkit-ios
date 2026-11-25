@@ -106,10 +106,9 @@ final class SparkSendKeyTests: XCTestCase {
     }
 
     func testANewKeyWaitsWhileTheEarlierAttemptIsInDoubt() {
-        XCTAssertTrue(Bitkit.SparkManager.waitsForHold(isReusedKey: false, previousAttempt: 0, isInDoubt: true))
-        XCTAssertFalse(Bitkit.SparkManager.waitsForHold(isReusedKey: true, previousAttempt: 0, isInDoubt: true))
-        XCTAssertFalse(Bitkit.SparkManager.waitsForHold(isReusedKey: false, previousAttempt: 0, isInDoubt: false))
-        XCTAssertFalse(Bitkit.SparkManager.waitsForHold(isReusedKey: false, previousAttempt: nil, isInDoubt: true))
+        XCTAssertTrue(Bitkit.SparkManager.waitsForHold(isReusedKey: false, isInDoubt: true))
+        XCTAssertFalse(Bitkit.SparkManager.waitsForHold(isReusedKey: true, isInDoubt: true))
+        XCTAssertFalse(Bitkit.SparkManager.waitsForHold(isReusedKey: false, isInDoubt: false))
     }
 
     func testAFailedPaymentSparkReturnsIsRefused() {

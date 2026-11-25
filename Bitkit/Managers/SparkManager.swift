@@ -721,7 +721,7 @@ final class SparkManager: ChannelFreeLightningRail {
         // A send in doubt whose attempt Spark lists failed is settled by that failure first, so its hold can't be taken
         // for this new attempt's.
         let isInDoubt = LightningService.shared.railSendHolds[paymentHash.lowercased()] != nil
-        if Self.waitsForHold(isReusedKey: isReusedKey, previousAttempt: previousAttempt, isInDoubt: isInDoubt) {
+        if Self.waitsForHold(isReusedKey: isReusedKey, isInDoubt: isInDoubt) {
             throw ChannelFreeRailSendRefused(reason: t("wallet__payment_failed_description"))
         }
         let (sum, overflows) = invoiceDetails.timestamp.addingReportingOverflow(invoiceDetails.expiry)
@@ -759,8 +759,8 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// Whether a send must wait for the hold of the invoice's earlier attempt to settle before it takes a new key.
-    nonisolated static func waitsForHold(isReusedKey: Bool, previousAttempt: UInt32?, isInDoubt: Bool) -> Bool {
-        !isReusedKey && previousAttempt != nil && isInDoubt
+    nonisolated static func waitsForHold(isReusedKey: Bool, isInDoubt: Bool) -> Bool {
+        !isReusedKey && isInDoubt
     }
 
     /// A failed payment, as Spark returns under a key it already failed when its failed list couldn't be read to move
@@ -1991,7 +1991,9 @@ final class SparkManager: ChannelFreeLightningRail {
     private func recordExpiredSend(paymentHash: String) async -> LDKNode.PaymentStatus? {
         guard let payments = try? await requireSdk().listPayments(request: ListPaymentsRequest()).payments else { return nil }
         let isEarlierAttempt = { LightningService.shared.isEarlierRailAttempt(paymentHash: $0, createdAt: $1) }
-        if let own = Self.expiredSendAttempt(payments, paymentHash: paymentHash, isEarlierAttempt: isEarlierAttempt) {
+        // A paid attempt settles the invoice whenever Spark dated it.
+        let paid = Self.expiredSendAttempt(payments.filter { $0.status == .completed }, paymentHash: paymentHash) { _, _ in false }
+        if let own = paid ?? Self.expiredSendAttempt(payments, paymentHash: paymentHash, isEarlierAttempt: isEarlierAttempt) {
             guard await recordActivity(own) else { return nil }
             switch own.status {
             case .completed: return .succeeded
