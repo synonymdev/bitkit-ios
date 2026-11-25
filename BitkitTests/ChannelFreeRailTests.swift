@@ -1925,7 +1925,7 @@ extension ChannelFreeRailTests {
         service.endLdkSend(paymentHash: hash)
     }
 
-    func testASparkSendRefusedAfterALeafFailureReadsPendingOverAnEarlierFailureUntilItExpires() async throws {
+    func testASparkSendRefusedAfterALeafFailureReadsPendingOverAnEarlierFailureUntilASyncAfterItExpires() async throws {
         let invoice = try Bolt11Invoice.fromStr(invoiceStr: Self.invoice)
         let hash = String(invoice.paymentHash())
         try await refuseASparkSendAfterALeafFailure()
@@ -1935,9 +1935,14 @@ extension ChannelFreeRailTests {
         let held = try await Bitkit.LightningService.shared.channelFreeRailPayments()
         XCTAssertEqual(Bitkit.ChannelFreeRailPayment.latestOutboundAttempt(held, paymentHash: hash)?.status, .pending)
 
-        Bitkit.LightningService.shared.now = {
-            Date(timeIntervalSince1970: TimeInterval(invoice.secondsSinceEpoch() + invoice.expiryTimeSeconds()))
-        }
+        let expiresAt = invoice.secondsSinceEpoch() + invoice.expiryTimeSeconds()
+        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: TimeInterval(expiresAt)) }
+        // A transfer committed before the expiry can settle after it, until a sync after the expiry shows it didn't.
+        rail.syncedAfter = { ($0 ?? 0) < expiresAt }
+        let expired = try await Bitkit.LightningService.shared.channelFreeRailPayments()
+        XCTAssertEqual(Bitkit.ChannelFreeRailPayment.latestOutboundAttempt(expired, paymentHash: hash)?.status, .pending)
+
+        rail.syncedAfter = { _ in true }
         let synced = try await Bitkit.LightningService.shared.channelFreeRailPayments()
         XCTAssertEqual(Bitkit.ChannelFreeRailPayment.latestOutboundAttempt(synced, paymentHash: hash)?.status, .failed)
     }
