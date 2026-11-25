@@ -82,7 +82,7 @@ final class SparkSendKeyTests: XCTestCase {
         let fresh = Bitkit.SparkManager.bolt11SendFailure(shortBalance, isReusedKey: false)
 
         XCTAssertFalse(reused is Bitkit.ChannelFreeRailSendRefused, "\(reused)")
-        XCTAssertTrue(fresh is Bitkit.ChannelFreeRailSendRefused, "\(fresh)")
+        XCTAssertTrue((fresh as? Bitkit.ChannelFreeRailSendRefused)?.mayHaveReachedSpark == true, "\(fresh)")
     }
 
     func testLeavesSparkCantSelectAreRefusedUnderANewKeyOnly() {
@@ -90,7 +90,7 @@ final class SparkSendKeyTests: XCTestCase {
         let fresh = Bitkit.SparkManager.bolt11SendFailure(leafSelectionFailure, isReusedKey: false)
 
         XCTAssertFalse(reused is Bitkit.ChannelFreeRailSendRefused, "\(reused)")
-        XCTAssertTrue(fresh is Bitkit.ChannelFreeRailSendRefused, "\(fresh)")
+        XCTAssertTrue((fresh as? Bitkit.ChannelFreeRailSendRefused)?.mayHaveReachedSpark == true, "\(fresh)")
     }
 
     func testASendRetriesWhileSparkCantSelectItsLeaves() async throws {

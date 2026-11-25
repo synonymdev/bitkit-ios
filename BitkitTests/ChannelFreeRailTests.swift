@@ -1878,6 +1878,50 @@ extension ChannelFreeRailTests {
         XCTAssertTrue(payments.contains { $0.status == .pending }, "the retry read as A's failure")
     }
 
+    func testASparkSendRefusedAfterALeafFailureKeepsTheNodeOffUntilSparkSyncs() async throws {
+        try await refuseASparkSendAfterALeafFailure()
+        rail.balanceSats = 0
+
+        // The SDK may have selected leaves again after a committed transfer, which Spark lists only once it syncs.
+        rail.syncedAfter = { $0 == nil }
+        await assertRefusedAsDuplicate()
+
+        // Synced, but a list Spark can't read shows nothing of the transfer.
+        rail.syncedAfter = { _ in true }
+        rail.listError = NSError(domain: "spark list", code: 1)
+        await assertRefusedAsDuplicate()
+
+        rail.listError = nil
+        await assertReachesTheNode()
+    }
+
+    func testASparkRetryOfASendRefusedAfterALeafFailureGoesOutBeforeSparkSyncs() async throws {
+        try await refuseASparkSendAfterALeafFailure()
+        // Synced once, so Spark lists its payments, but not since the refusal.
+        rail.syncedAfter = { $0 == nil }
+
+        _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+
+        XCTAssertEqual(rail.sends, 1)
+    }
+
+    /// Refuses a Spark send of `invoice`, before its expiry, after it may have reached Spark's operators.
+    private func refuseASparkSendAfterALeafFailure() async throws {
+        let invoice = try Bolt11Invoice.fromStr(invoiceStr: Self.invoice)
+        Bitkit.LightningService.shared.now = { Date(timeIntervalSince1970: TimeInterval(invoice.secondsSinceEpoch())) }
+        rail.balanceSats = 100_000
+        var refusal = Bitkit.ChannelFreeRailSendRefused(reason: "leaves")
+        refusal.mayHaveReachedSpark = true
+        rail.refusalAfterSubmission = refusal
+        do {
+            _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+            XCTFail("Expected the Spark send to be refused")
+        } catch {
+            XCTAssertTrue(error is Bitkit.ChannelFreeRailSendRefused, "\(error)")
+        }
+        rail.refusalAfterSubmission = nil
+    }
+
     func testASparkSendCheckedAgainBeforeARetryGoesOut() async throws {
         rail.balanceSats = 100_000
         rail.submissionChecks = 2

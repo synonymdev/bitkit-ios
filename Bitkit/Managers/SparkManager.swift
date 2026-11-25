@@ -761,17 +761,26 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// What a failure inside the BOLT11 `sendPayment` means for the caller. Spark picks the leaves to spend before the
-    /// operators see the key, so a short balance or leaves Spark can't select left nothing under a new key. Under a key an
-    /// earlier attempt used, either can hide the transfer that attempt committed: the send stays in doubt until Spark
-    /// syncs, rather than refused.
+    /// operators see the key on its first try, so a short balance or leaves Spark can't select are refused under a new
+    /// key; its retry of a failed submission selects them again, so the node stays off the invoice until Spark syncs.
+    /// Under a key an earlier attempt used, either can hide the transfer that attempt committed: the send stays in doubt
+    /// until Spark syncs, rather than refused.
     nonisolated static func bolt11SendFailure(_ error: Error, isReusedKey: Bool) -> Error {
-        if isReusedKey, case SdkError.InsufficientFunds = error {
+        let isShortBalance = if case SdkError.InsufficientFunds = error {
+            true
+        } else {
+            false
+        }
+        guard isShortBalance || isLeafSelectionFailure(error) else { return sendPaymentFailure(error) }
+        if isReusedKey {
             return error
         }
-        if isLeafSelectionFailure(error) {
-            return isReusedKey ? error : ChannelFreeRailSendRefused(reason: t("wallet__payment_failed_description"), underlying: error)
-        }
-        return sendPaymentFailure(error)
+        var refusal = ChannelFreeRailSendRefused(
+            reason: isShortBalance ? t("other__pay_insufficient_spending_description") : t("wallet__payment_failed_description"),
+            underlying: error
+        )
+        refusal.mayHaveReachedSpark = true
+        return refusal
     }
 
     /// Sends again under the same key while Spark can't select the leaves to spend, as right after a move to Spark lands.
