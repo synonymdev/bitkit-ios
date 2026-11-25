@@ -533,7 +533,8 @@ struct SendConfirmationView: View {
                     isSubmittingPayment: isSubmittingPayment
                 ),
                 isSubmitted: hasStartedAutomaticPayment,
-                swipeProgress: $swipeProgress
+                swipeProgress: $swipeProgress,
+                resetCount: swipeLock.idleReturns
             ) {
                 swipeLock.begin()
                 defer { swipeLock.end() }
@@ -3254,6 +3255,9 @@ final class ConfirmSwipeLock {
     private(set) var runs = 0
     private(set) var isVisible = false
     private(set) var isSubmittingPayment = false
+    /// Counts the returns to Confirm with nothing running, such as Back or Try again after a failed payment, which leave
+    /// the swipe as it ended.
+    private(set) var idleReturns = 0
     @ObservationIgnored var onLockChange: (Bool) -> Void = { _ in }
     @ObservationIgnored private var isHolding = false
 
@@ -3273,6 +3277,9 @@ final class ConfirmSwipeLock {
 
     func setVisible(_ isVisible: Bool) {
         self.isVisible = isVisible
+        if isVisible, runs == 0, !isSubmittingPayment {
+            idleReturns += 1
+        }
         report()
     }
 

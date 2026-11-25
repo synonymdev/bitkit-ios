@@ -36,6 +36,29 @@ final class SendConfirmationSwipeTests: XCTestCase {
     }
 
     @MainActor
+    func testReturningToConfirmWithNothingRunningResetsTheSwipe() {
+        let lock = ConfirmSwipeLock()
+        lock.setVisible(true)
+        let shown = lock.idleReturns
+
+        lock.begin()
+        lock.setVisible(false)
+        lock.setVisible(true)
+        XCTAssertEqual(lock.idleReturns, shown, "A swipe still running keeps its knob")
+        lock.setVisible(false)
+        lock.end()
+        lock.setSubmittingPayment(true)
+        lock.setVisible(true)
+        XCTAssertEqual(lock.idleReturns, shown, "A payment still running keeps its knob")
+        lock.setVisible(false)
+        lock.setSubmittingPayment(false)
+
+        lock.setVisible(true)
+        XCTAssertEqual(lock.idleReturns, shown + 1, "Try again or Back after a failed payment takes a new swipe")
+        lock.setVisible(false)
+    }
+
+    @MainActor
     func testALeavingConfirmKeepsTheNextConfirmsHold() {
         let holdsBefore = SwipeBackState.confirmSwipeHolds
         let leaving = ConfirmSwipeLock()
