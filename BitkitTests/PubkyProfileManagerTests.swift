@@ -1135,6 +1135,25 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertFalse(manager.sessionRestorationFailed)
     }
 
+    func testDisconnectOnlyForgetsAnIdentityThatNeverRestored() async throws {
+        let calls = LockedCalls()
+
+        try await PubkyProfileManager.signOutCleanup(
+            isRestored: false,
+            forgetSessionAccess: { calls.append("forget") },
+            dropPendingEndpointCleanup: { calls.append("dropCleanup") },
+            signOutRestored: { calls.append("signOut") }
+        )
+        try await PubkyProfileManager.signOutCleanup(
+            isRestored: true,
+            forgetSessionAccess: { calls.append("forget") },
+            dropPendingEndpointCleanup: { calls.append("dropCleanup") },
+            signOutRestored: { calls.append("signOut") }
+        )
+
+        XCTAssertEqual(calls.values, ["forget", "dropCleanup", "signOut"])
+    }
+
     @MainActor
     func testRecoveryAsksForAnUpdateOnceAndStopsRetryingWhenPaykitStateIsNewer() async {
         let manager = RecoveryProfileManager()
@@ -4426,5 +4445,18 @@ private actor SessionRecoveryAttempts {
     func next() -> Int {
         count += 1
         return count
+    }
+}
+
+private final class LockedCalls: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls: [String] = []
+
+    var values: [String] {
+        lock.withLock { calls }
+    }
+
+    func append(_ call: String) {
+        lock.withLock { calls.append(call) }
     }
 }
