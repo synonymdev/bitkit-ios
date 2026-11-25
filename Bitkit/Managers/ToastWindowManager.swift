@@ -68,6 +68,7 @@ class ToastWindowManager: ObservableObject {
             queuedToast = toast
             return
         }
+        queuedToast = nil
 
         // Dismiss any existing toast first
         cancelAutoHide()
