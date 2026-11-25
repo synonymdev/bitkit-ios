@@ -793,7 +793,8 @@ final class SparkManager: ChannelFreeLightningRail {
 
     /// Sends again under the same key while Spark can't select the leaves to spend, as right after a move to Spark lands.
     /// Spark selects them before anything reaches the operators, so a retry under the key can't pay twice. `canRetry`
-    /// is checked before each retry, which otherwise ends with the last failure.
+    /// is checked before each retry, which otherwise ends with the last failure. An invoice that expires meanwhile ends it
+    /// with the leaf failure, which may follow a committed transfer, so its expiry never reads as a send that never left.
     nonisolated static func sendRetryingLeafSelection<T>(
         retryDelay: Duration = .seconds(2),
         canRetry: () -> Bool,
@@ -804,6 +805,9 @@ final class SparkManager: ChannelFreeLightningRail {
             do {
                 return try await send()
             } catch {
+                if retries > 0, expiredInvoiceRefusal(error) != nil {
+                    throw SdkError.SparkError("Failed to select leaves after all retries")
+                }
                 guard isLeafSelectionFailure(error), retries < leafSelectionRetries else { throw error }
                 retries += 1
                 Logger.info("Retrying a Spark send as Spark could not select its leaves", context: "SparkManager")

@@ -1621,7 +1621,8 @@ class LightningService: NodeLifecycleService {
         sats: UInt64?,
         invoiceCreatedAt: UInt64?,
         invoiceExpiresAt: Int?,
-        sendsOverRail: Bool = false
+        sendsOverRail: Bool = false,
+        skipsRefusedSends: Bool? = nil
     ) async throws -> PaymentHash? {
         guard let paymentHash else { return nil }
         var statuses: [PaymentStatus] = rails.contains(.channelFree) && isRailSendInFlight(paymentHash: paymentHash) ? [.pending] : []
@@ -1652,11 +1653,13 @@ class LightningService: NodeLifecycleService {
         // The node's paid row is final, so no uncertainty about Spark's pre-restore sends refuses it.
         let isPaidOverTheNode = statuses.contains(.succeeded)
         if rails.contains(.channelFree) {
-            // Read before the list, so a list read after the sync shows any transfer the refused send committed. A retry
-            // over Spark sends under that send's key, so only the node waits.
-            let refusal = sendsOverRail ? nil : await railSendRefusal(paymentHash: paymentHash)
-            if refusal?.isSynced == false {
-                Logger.info("Held '\(paymentHash)' until Spark syncs after its refused send", context: "LightningService")
+            // A transfer the refused send committed can stay unlisted after a sync and still go out, so it holds the
+            // invoice until it expires. A retry over Spark sends under that send's key, so only the node waits.
+            let isRefused = !(skipsRefusedSends ?? sendsOverRail) && eventCallbackLock.withLock {
+                hasRailSendRefusal(paymentHash: paymentHash.lowercased())
+            }
+            if isRefused {
+                Logger.info("Held '\(paymentHash)' until it expires after its refused Spark send", context: "LightningService")
                 statuses.append(.pending)
             }
             let mark = attemptMark
@@ -1664,10 +1667,6 @@ class LightningService: NodeLifecycleService {
             if let payments = await readableRailPayments(includingRefusedSends: false) {
                 let live = keepRailAttempts(from: payments, since: mark)
                 let payment = ChannelFreeRailPayment.latestOutboundAttempt(payments, paymentHash: paymentHash)
-                // A transfer the refused send committed keeps the marker, which holds the invoice when Spark can't list.
-                if let refusal, refusal.isSynced, payment == nil || payment?.status == .failed {
-                    endRailSendRefusal(paymentHash: paymentHash, refusedAt: refusal.refusedAt)
-                }
                 if let payment {
                     statuses.append(payment.status)
                 }
@@ -1691,7 +1690,7 @@ class LightningService: NodeLifecycleService {
                     // Only a settled row ends the unknown send: a pending one may be the synthetic row it is listed as.
                     endRailSendUncertainty(paymentHash: paymentHash)
                 }
-            } else if refusal != nil || hasRailAttempt(paymentHash: paymentHash) {
+            } else if isRefused || hasRailAttempt(paymentHash: paymentHash) {
                 Logger.warn("Refused paying '\(paymentHash)', Spark can't list the earlier attempt now", context: "LightningService")
                 throw Self.pendingDuplicate(paymentHash: paymentHash)
             } else if isPaidOverTheNode {
@@ -1942,8 +1941,8 @@ class LightningService: NodeLifecycleService {
     }
 
     /// Keeps the node off the invoice of a Spark send refused after it may have reached Spark's operators, which may
-    /// still have committed a transfer, until Spark syncs. Drops the refusals whose invoice expired, which the node can no
-    /// longer pay.
+    /// still have committed a transfer, until the invoice expires. Drops the refusals whose invoice expired, which the node
+    /// can no longer pay.
     private func noteRailSendRefused(paymentHash: String, expiresAt: Int?) {
         let now = Int(max(0, now().timeIntervalSince1970))
         eventCallbackLock.withLock {
@@ -1953,43 +1952,15 @@ class LightningService: NodeLifecycleService {
         }
     }
 
-    /// When the Spark send of an unexpired invoice was refused after it may have reached Spark's operators, and whether
-    /// Spark synced since, so its list shows any transfer the send committed.
-    private func railSendRefusal(paymentHash: String) async -> (refusedAt: Int, isSynced: Bool)? {
-        let nowSeconds = Int(now().timeIntervalSince1970)
-        let refusal = eventCallbackLock.withLock { refusedRailSends()[paymentHash.lowercased()] }
-        guard let refusal, refusal.count == 2, refusal[1] > nowSeconds else { return nil }
-        let rail = channelFreeRail ?? channelFreePaymentHistory
-        let isSynced = await rail?.hasSynced(after: UInt64(max(0, refusal[0]))) ?? false
-        return (refusal[0], isSynced)
-    }
-
-    /// Callers hold `eventCallbackLock`. A refused Spark send of an unexpired invoice that no check ended yet.
+    /// Callers hold `eventCallbackLock`. A Spark send of an unexpired invoice refused after it may have reached Spark's
+    /// operators.
     private func hasRailSendRefusal(paymentHash hash: String) -> Bool {
         refusedRailSends()[hash].map { $0.count == 2 && $0[1] > Int(now().timeIntervalSince1970) } ?? false
     }
 
-    /// The refused Spark sends of unexpired invoices that no sync reached Spark since.
-    private func unsyncedRailSendRefusals() async -> Set<String> {
-        let hashes = eventCallbackLock.withLock { Array(refusedRailSends().keys) }
-        var unsynced = Set<String>()
-        for hash in hashes {
-            if let refusal = await railSendRefusal(paymentHash: hash), !refusal.isSynced {
-                unsynced.insert(hash)
-            }
-        }
-        return unsynced
-    }
-
-    /// Ends the refusal made at `refusedAt` only, as a later one waits for its own sync.
-    private func endRailSendRefusal(paymentHash: String, refusedAt: Int) {
-        let hash = paymentHash.lowercased()
-        eventCallbackLock.withLock {
-            var refused = refusedRailSends()
-            guard refused[hash]?.first == refusedAt else { return }
-            refused.removeValue(forKey: hash)
-            railAttemptsStore.set(refused, forKey: Self.refusedRailSendsKey)
-        }
+    /// The Spark sends of unexpired invoices refused after they may have reached Spark's operators.
+    private func unexpiredRailSendRefusals() -> Set<String> {
+        eventCallbackLock.withLock { Set(refusedRailSends().keys.filter { hasRailSendRefusal(paymentHash: $0) }) }
     }
 
     /// True unless the hash's last rail send failed after it was submitted and may still go out: its invoice hasn't
@@ -2035,7 +2006,9 @@ class LightningService: NodeLifecycleService {
             sats: sats,
             invoiceCreatedAt: invoice?.secondsSinceEpoch(),
             invoiceExpiresAt: expiresAt,
-            sendsOverRail: true
+            sendsOverRail: true,
+            // A move to Spark ahead of a send must not run while a refused send may still have paid the invoice.
+            skipsRefusedSends: false
         ) != nil
     }
 
@@ -2728,8 +2701,8 @@ extension LightningService {
 
     /// The rail's Lightning payments, none where the rail doesn't run; throws when the rail could not list them, runs
     /// here but isn't connected, or no sync has reached it yet, so a payment it may hold is never read as one it never
-    /// made. A refused send that may have reached Spark's operators reads pending until a sync reached Spark since,
-    /// unless `includingRefusedSends` is false.
+    /// made. A refused send that may have reached Spark's operators reads pending until its invoice expires, unless
+    /// `includingRefusedSends` is false.
     func channelFreeRailPayments(includingRefusedSends: Bool = true) async throws -> [ChannelFreeRailPayment] {
         // During an emergency exit Spark is off the rail but still lists the payments it made.
         if let rail = channelFreeRail ?? channelFreePaymentHistory {
@@ -2742,7 +2715,7 @@ extension LightningService {
             let heldBefore = railSendHolds
             let unsettledBefore = await unsettledUncertainRailSends()
             let kept = unexpiredRailAttempts()
-            let refusedBefore = includingRefusedSends ? await unsyncedRailSendRefusals() : []
+            let refusedBefore = includingRefusedSends ? unexpiredRailSendRefusals() : []
             let payments = try await rail.lightningPayments()
             // A send Spark lists a settled attempt of is no longer held; the others read pending until then.
             settleListedRailSends(payments, heldBefore: heldBefore)
@@ -2779,7 +2752,9 @@ extension LightningService {
             // Not over an earlier attempt's failure, which a transfer the refused send committed may still follow.
             let pendingOrPaid = Set((payments.filter { $0.status != .failed } + unsettled + heldDuringRead + unlisted)
                 .filter { $0.direction == .outbound }.map { $0.paymentHash.lowercased() })
-            let refused = refusedBefore.subtracting(pendingOrPaid).sorted()
+            // Also a send refused while the list was read, whose holds ended meanwhile.
+            let refusedDuringRead = includingRefusedSends ? unexpiredRailSendRefusals() : []
+            let refused = refusedBefore.union(refusedDuringRead).subtracting(pendingOrPaid).sorted()
                 .map { ChannelFreeRailPayment(paymentHash: $0, direction: .outbound, status: .pending, preimage: nil) }
             return payments + unsettled + heldDuringRead + unlisted + refused
         }

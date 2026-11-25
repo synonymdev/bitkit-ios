@@ -101,6 +101,23 @@ final class SparkSendKeyTests: XCTestCase {
         XCTAssertNoThrow(try Bitkit.SparkManager.checkSentPayment(.completed))
     }
 
+    func testAnInvoiceExpiringDuringALeafRetryEndsWithTheLeafFailure() async {
+        var sends = 0
+
+        do {
+            _ = try await Bitkit.SparkManager.sendRetryingLeafSelection(retryDelay: .zero, canRetry: { true }) {
+                sends += 1
+                if sends == 1 {
+                    throw leafSelectionFailure
+                }
+                throw SdkError.InvalidInput("invoice has expired")
+            }
+            XCTFail("Expected the send to fail")
+        } catch {
+            XCTAssertTrue(Bitkit.SparkManager.isLeafSelectionFailure(error), "\(error)")
+        }
+    }
+
     func testASendRetriesWhileSparkCantSelectItsLeaves() async throws {
         var sends = 0
 
