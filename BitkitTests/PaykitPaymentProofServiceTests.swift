@@ -1727,7 +1727,6 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             Bitkit.AppError(error: NodeError.PersistenceFailed(message: "io")),
             NodeError.DuplicatePayment(message: "pending"),
             NSError(domain: "payment", code: 1),
-            Bitkit.AppError(error: Self.refusalAfterReachingSpark),
         ]
         for error in errors {
             let record = try paymentRequestRecord()
@@ -1767,13 +1766,6 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             XCTAssertTrue(remainingProofs.isEmpty)
             XCTAssertEqual(submissionCount, 1)
         }
-    }
-
-    /// A Spark refusal after the send may have reached Spark's operators, which may still have sent it.
-    private static var refusalAfterReachingSpark: Bitkit.ChannelFreeRailSendRefused {
-        var refusal = Bitkit.ChannelFreeRailSendRefused(reason: "Spark could not select leaves")
-        refusal.mayHaveReachedSpark = true
-        return refusal
     }
 
     func testDefiniteLightningSubmissionFailureClearsProof() async throws {

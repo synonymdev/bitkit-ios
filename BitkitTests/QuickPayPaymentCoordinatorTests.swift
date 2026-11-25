@@ -53,15 +53,6 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         XCTAssertFalse(QuickPayPaymentCoordinator.isHardReject(NodeError.DuplicatePayment(message: "dup")))
     }
 
-    func testASparkRefusalAfterTheSendMayHaveReachedSparkIsNotHardReject() {
-        var refusal = Bitkit.ChannelFreeRailSendRefused(reason: "leaves")
-        XCTAssertTrue(QuickPayPaymentCoordinator.isHardReject(refusal))
-
-        refusal.mayHaveReachedSpark = true
-        XCTAssertFalse(QuickPayPaymentCoordinator.isHardReject(refusal))
-        XCTAssertFalse(QuickPayPaymentCoordinator.isHardReject(Bitkit.AppError(error: refusal)))
-    }
-
     func testInvalidInvoiceIsHardReject() {
         XCTAssertTrue(QuickPayPaymentCoordinator.isHardReject(NodeError.InvalidInvoice(message: "bad")))
     }

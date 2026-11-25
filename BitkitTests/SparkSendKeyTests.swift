@@ -82,15 +82,16 @@ final class SparkSendKeyTests: XCTestCase {
         let fresh = Bitkit.SparkManager.bolt11SendFailure(shortBalance, isReusedKey: false)
 
         XCTAssertFalse(reused is Bitkit.ChannelFreeRailSendRefused, "\(reused)")
-        XCTAssertTrue((fresh as? Bitkit.ChannelFreeRailSendRefused)?.mayHaveReachedSpark == true, "\(fresh)")
+        XCTAssertTrue(fresh is Bitkit.ChannelFreeRailSendRefused, "\(fresh)")
     }
 
-    func testLeavesSparkCantSelectAreRefusedUnderANewKeyOnly() {
+    func testLeavesSparkCantSelectKeepTheSendInDoubtUnderAnyKey() {
+        // The SDK selects leaves again after an operator error, so the failure can follow a committed transfer.
         let reused = Bitkit.SparkManager.bolt11SendFailure(leafSelectionFailure, isReusedKey: true)
         let fresh = Bitkit.SparkManager.bolt11SendFailure(leafSelectionFailure, isReusedKey: false)
 
         XCTAssertFalse(reused is Bitkit.ChannelFreeRailSendRefused, "\(reused)")
-        XCTAssertTrue((fresh as? Bitkit.ChannelFreeRailSendRefused)?.mayHaveReachedSpark == true, "\(fresh)")
+        XCTAssertFalse(fresh is Bitkit.ChannelFreeRailSendRefused, "\(fresh)")
     }
 
     func testAFailedPaymentSparkReturnsIsRefused() {
