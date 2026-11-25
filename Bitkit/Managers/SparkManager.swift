@@ -26,6 +26,14 @@ final class SparkManager: ChannelFreeLightningRail {
         exitStateLock.withLock { exitStateGenerationValue }
     }
 
+    private nonisolated(unsafe) static var exitStartsValue = 0
+
+    /// Bumped only when an exit becomes active, read off the main actor, so a channel payment LDK is about to submit for a
+    /// move sees the exit at once; connects and exit data changes leave it alone.
+    nonisolated static var exitStarts: Int {
+        exitStateLock.withLock { exitStartsValue }
+    }
+
     nonisolated static func notifyExitStateChanged() {
         exitStateLock.withLock { exitStateGenerationValue += 1 }
         exitStateChanged.send()
@@ -178,6 +186,7 @@ final class SparkManager: ChannelFreeLightningRail {
         if LightningService.shared.channelFreeRail === self {
             LightningService.shared.channelFreeRail = nil
         }
+        Self.exitStateLock.withLock { Self.exitStartsValue += 1 }
     }
 
     /// Saves the kept balance as an exit starts, before a refresh reads Spark as exiting and drops it: a cancelled

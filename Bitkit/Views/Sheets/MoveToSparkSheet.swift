@@ -5,8 +5,8 @@ struct MoveToSparkSheetItem: SheetItem {
     let size: SheetSize = .large
 }
 
-/// The Update Spending Balance modal: quotes moving the channels' balance to Spark when it opens, moves it on Update and
-/// reports the outcome in place, from Spending Balance Updated to the states that need another step.
+/// The Update Spending Balance modal: quotes moving the channels' balance to Spark when it opens, moves all of it on
+/// Update, in as many parts as it takes behind the scenes, and reports the outcome in place.
 struct MoveToSparkSheet: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var currency: CurrencyViewModel
@@ -35,8 +35,19 @@ struct MoveToSparkSheet: View {
             update(feeSats: nil, isLoading: true)
         case let .confirm(quote, isMoving):
             update(feeSats: quote.feeSats, isLoading: isMoving)
-        case let .done(_, _, hasRest):
-            done(hasRest: hasRest)
+        case .done:
+            modal(
+                navTitle: t("lightning__move_to_spark__updated_nav_title"),
+                image: "check",
+                title: t("lightning__move_to_spark__updated_title"),
+                text: t("lightning__move_to_spark__updated_text"),
+                id: "SpendingBalanceUpdated"
+            ) {
+                CustomButton(title: t("common__ok"), shouldExpand: true) {
+                    sheets.hideSheet()
+                }
+                .accessibilityIdentifier("SpendingBalanceUpdatedOk")
+            }
         case .inFlight:
             modal(
                 navTitle: t("lightning__move_to_spark__update_nav_title"),
@@ -47,8 +58,6 @@ struct MoveToSparkSheet: View {
             ) {
                 dismissButton(t("common__ok"))
             }
-        case let .tooLarge(amountSats, smallerSats):
-            tooLarge(amountSats: amountSats, smallerSats: smallerSats)
         case let .failed(failure):
             failed(failure)
         }
@@ -79,63 +88,6 @@ struct MoveToSparkSheet: View {
                 await manager.move(wallet: wallet, transfer: transfer)
             }
             .accessibilityIdentifier("UpdateSpendingBalanceUpdate")
-        }
-    }
-
-    @ViewBuilder
-    private func done(hasRest: Bool) -> some View {
-        if hasRest {
-            modal(
-                navTitle: t("lightning__move_to_spark__update_nav_title"),
-                image: "check",
-                title: t("lightning__move_to_spark__done_title"),
-                text: t("lightning__move_to_spark__updated_rest_text"),
-                id: "MoveToSparkPartlyMoved"
-            ) {
-                dismissButton(t("common__later"), variant: .secondary)
-                CustomButton(title: t("lightning__move_to_spark__move_rest"), shouldExpand: true) {
-                    await manager.quote(wallet: wallet)
-                }
-                .accessibilityIdentifier("MoveToSparkMoveRest")
-            }
-        } else {
-            modal(
-                navTitle: t("lightning__move_to_spark__updated_nav_title"),
-                image: "check",
-                title: t("lightning__move_to_spark__updated_title"),
-                text: t("lightning__move_to_spark__updated_text"),
-                id: "SpendingBalanceUpdated"
-            ) {
-                CustomButton(title: t("common__ok"), shouldExpand: true) {
-                    sheets.hideSheet()
-                }
-                .accessibilityIdentifier("SpendingBalanceUpdatedOk")
-            }
-        }
-    }
-
-    private func tooLarge(amountSats: UInt64, smallerSats: UInt64?) -> some View {
-        let next = smallerSats == nil ? t("lightning__move_to_spark__too_large_none") : t("lightning__move_to_spark__too_large_smaller")
-        let amount = t(
-            "lightning__move_to_spark__too_large_text",
-            variables: ["amount": "<accent>\(currency.primaryAmountText(sats: amountSats))</accent>"]
-        )
-        return modal(
-            navTitle: t("lightning__move_to_spark__update_nav_title"),
-            image: "exclamation-mark",
-            title: t("lightning__move_to_spark__too_large_title"),
-            text: "\(amount) \(next)",
-            id: "MoveToSparkTooLarge"
-        ) {
-            if let smallerSats {
-                dismissButton(t("common__cancel"), variant: .secondary)
-                CustomButton(title: t("lightning__move_to_spark__move_half"), shouldExpand: true) {
-                    await manager.quote(wallet: wallet, targetSats: smallerSats)
-                }
-                .accessibilityIdentifier("MoveToSparkTrySmaller")
-            } else {
-                dismissButton(t("common__ok"))
-            }
         }
     }
 
@@ -215,7 +167,6 @@ struct MoveToSparkSheet: View {
         switch name {
         case "check": 1.25
         case "cross": 1.4
-        case "exclamation-mark": 1.1
         default: 1
         }
     }
