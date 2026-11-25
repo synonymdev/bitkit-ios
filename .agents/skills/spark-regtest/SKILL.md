@@ -35,7 +35,7 @@ headers for details. The steps below are what is not obvious from them.
    - Web faucet: https://app.lightspark.com/regtest-faucet, up to 50,000 sats per deposit. The user submits it in a
      browser.
    - Script: `SPARK_REGTEST_MNEMONIC=… uv run ../bitkit-android/scripts/spark-regtest-fund.py <bcrt1… address> [sats]`.
-     The mnemonic is a GitHub secret; ask the user, never print it.
+     The mnemonic is a GitHub secret. Ask the developer to set it locally, or use the web faucet. Keep it out of chat.
 4. Lightspark mines about once a minute. Spark claims a deposit after 3 confirmations unless an Instant transfer claims
    it early.
 5. Two-device payment: fund the payer's Spark balance, copy the invoice from Receive › Spending on the other dev build,
