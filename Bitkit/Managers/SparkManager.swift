@@ -718,6 +718,12 @@ final class SparkManager: ChannelFreeLightningRail {
         let idempotencyKey = SparkSendKey.key(secret: secret, paymentHash: paymentHash, attempt: attempt)
         let previousAttempt = SparkSendAttempts.latest(paymentHash: paymentHash)
         let isReusedKey = previousAttempt == attempt
+        // A send in doubt whose attempt Spark lists failed is settled by that failure first, so its hold can't be taken
+        // for this new attempt's.
+        let isInDoubt = LightningService.shared.railSendHolds[paymentHash.lowercased()] != nil
+        if Self.waitsForHold(isReusedKey: isReusedKey, previousAttempt: previousAttempt, isInDoubt: isInDoubt) {
+            throw ChannelFreeRailSendRefused(reason: t("wallet__payment_failed_description"))
+        }
         let (sum, overflows) = invoiceDetails.timestamp.addingReportingOverflow(invoiceDetails.expiry)
         let expiresAt = overflows ? UInt64.max : sum
         // An exit that started while the quote was prepared refuses it here, before its hash is recorded.
@@ -750,6 +756,11 @@ final class SparkManager: ChannelFreeLightningRail {
         Logger.info("Sent Spark payment '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
         try Self.checkSentPayment(response.payment.status)
         return invoiceDetails.paymentHash
+    }
+
+    /// Whether a send must wait for the hold of the invoice's earlier attempt to settle before it takes a new key.
+    nonisolated static func waitsForHold(isReusedKey: Bool, previousAttempt: UInt32?, isInDoubt: Bool) -> Bool {
+        !isReusedKey && previousAttempt != nil && isInDoubt
     }
 
     /// A failed payment, as Spark returns under a key it already failed when its failed list couldn't be read to move

@@ -105,6 +105,13 @@ final class SparkSendKeyTests: XCTestCase {
         XCTAssertTrue(fresh is Bitkit.ChannelFreeRailSendRefused, "\(fresh)")
     }
 
+    func testANewKeyWaitsWhileTheEarlierAttemptIsInDoubt() {
+        XCTAssertTrue(Bitkit.SparkManager.waitsForHold(isReusedKey: false, previousAttempt: 0, isInDoubt: true))
+        XCTAssertFalse(Bitkit.SparkManager.waitsForHold(isReusedKey: true, previousAttempt: 0, isInDoubt: true))
+        XCTAssertFalse(Bitkit.SparkManager.waitsForHold(isReusedKey: false, previousAttempt: 0, isInDoubt: false))
+        XCTAssertFalse(Bitkit.SparkManager.waitsForHold(isReusedKey: false, previousAttempt: nil, isInDoubt: true))
+    }
+
     func testAFailedPaymentSparkReturnsIsRefused() {
         XCTAssertThrowsError(try Bitkit.SparkManager.checkSentPayment(.failed)) {
             XCTAssertTrue($0 is Bitkit.ChannelFreeRailSendRefused, "\($0)")
