@@ -42,6 +42,7 @@ class ToastWindowManager: ObservableObject {
     }
 
     @Published var currentToast: Toast?
+    private var queuedToast: Toast?
     private var autoHideTask: Task<Void, Never>?
     private var autoHideStartTime: Date?
     private var autoHideDuration: Double = 0
@@ -60,6 +61,11 @@ class ToastWindowManager: ObservableObject {
         // If window still doesn't exist after trying to set it up, log and return
         guard let window = toastWindow else {
             Logger.error("ToastWindowManager: Cannot show toast - window not available")
+            return
+        }
+
+        if let currentToast, !currentToast.interruptible {
+            queuedToast = toast
             return
         }
 
@@ -92,6 +98,7 @@ class ToastWindowManager: ObservableObject {
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(ToastMotion.exitSettleTime * 1_000_000_000))
             self?.toastWindow?.toastFrame = .zero
+            self?.showQueuedToast()
         }
     }
 
@@ -113,6 +120,12 @@ class ToastWindowManager: ObservableObject {
         // Use remaining time if available, otherwise use full duration
         let delay = autoHideDuration > 0 ? autoHideDuration : toast.visibilityTime
         scheduleAutoHide(after: delay)
+    }
+
+    private func showQueuedToast() {
+        guard currentToast == nil, let toast = queuedToast else { return }
+        queuedToast = nil
+        showToast(toast)
     }
 
     private func scheduleAutoHide(after delay: Double) {
@@ -142,6 +155,7 @@ class ToastWindowManager: ObservableObject {
 
             autoHideStartTime = nil
             autoHideDuration = 0
+            showQueuedToast()
         }
     }
 

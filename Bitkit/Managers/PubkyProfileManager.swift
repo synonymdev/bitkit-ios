@@ -1818,6 +1818,7 @@ class PubkyProfileManager: ObservableObject {
         if clearCachedProfile {
             clearCachedProfileMetadata()
             restorationNeedsUpdate = false
+            sessionRestorationNeedsUpdate = false
         }
         if wasAuthenticated {
             clearRingIdentityProfiles()

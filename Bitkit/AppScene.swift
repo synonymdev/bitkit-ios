@@ -2205,7 +2205,7 @@ struct AppScene: View {
               scenePhase == .active, isPinVerified || !settings.pinEnabled
         else { return }
         pubkyProfile.sessionRestorationNeedsUpdate = false
-        app.toast(type: .error, title: t("common__error"), description: t("profile__update_required"))
+        app.toast(type: .error, title: t("common__error"), description: t("profile__update_required"), interruptible: false)
     }
 
     /// Waits until the app is in front and unlocked, so the toast isn't shown, and lost, behind the PIN screen.

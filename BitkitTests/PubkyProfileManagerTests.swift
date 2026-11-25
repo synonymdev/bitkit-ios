@@ -1155,8 +1155,10 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertFalse(manager.sessionRestorationNeedsUpdate)
         XCTAssertTrue(manager.restorationNeedsUpdate)
 
+        manager.sessionRestorationNeedsUpdate = true
         manager.clearAuthenticatedStateForTesting()
         XCTAssertFalse(manager.restorationNeedsUpdate)
+        XCTAssertFalse(manager.sessionRestorationNeedsUpdate)
     }
 
     @MainActor
