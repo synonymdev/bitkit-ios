@@ -432,7 +432,7 @@ final class SparkManager: ChannelFreeLightningRail {
             // Registered before the first refresh marks Spark ready, so Lightning calls never see it ready while they
             // still go to LDK, even when that refresh or the activity sync fails. An emergency exit keeps it out.
             LightningService.shared.channelFreePaymentHistory = self
-            LightningService.shared.railSendExpired = { [weak self] hash in await self?.recordExpiredSend(paymentHash: hash) ?? false }
+            LightningService.shared.railSendExpired = { [weak self] hash in await self?.recordExpiredSend(paymentHash: hash) }
             if !isExiting {
                 LightningService.shared.channelFreeRail = self
             }
@@ -772,11 +772,6 @@ final class SparkManager: ChannelFreeLightningRail {
         return !overflow && total <= balanceSats
     }
 
-    /// What a failure inside the BOLT11 `sendPayment` means for the caller. Spark picks the leaves to spend before the
-    /// operators see the key, so a short balance left nothing under a new key; under a key an earlier attempt used, it
-    /// can hide the transfer that attempt committed, so the send stays in doubt until Spark settles it. Leaves Spark
-    /// still can't select after its retries keep the send in doubt under any key, as the SDK selects them again after an
-    /// operator error, so the failure can follow a transfer this send committed.
     nonisolated static func isShortBalance(_ error: Error) -> Bool {
         if case SdkError.InsufficientFunds = error {
             return true
@@ -784,8 +779,13 @@ final class SparkManager: ChannelFreeLightningRail {
         return false
     }
 
+    /// What a failure inside the BOLT11 `sendPayment` means for the caller. Spark picks the leaves to spend before the
+    /// operators see the key, so a short balance left nothing under a new key; under a key an earlier attempt used, it
+    /// can hide the transfer that attempt committed, so the send stays in doubt until Spark settles it. Leaves Spark
+    /// still can't select after its retries keep the send in doubt under any key, as the SDK selects them again after an
+    /// operator error, so the failure can follow a transfer this send committed.
     nonisolated static func bolt11SendFailure(_ error: Error, isReusedKey: Bool) -> Error {
-        if isReusedKey, case SdkError.InsufficientFunds = error {
+        if isReusedKey, isShortBalance(error) || expiredInvoiceRefusal(error) != nil {
             return error
         }
         if isLeafSelectionFailure(error) {
@@ -1975,14 +1975,20 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// Writes the Activity row of a send Spark never settled once its invoice expired: Spark's own attempt of it, not one
-    /// listed before it went out, or a failure of the stored pending send when Spark lists none. Returns whether it was saved.
-    private func recordExpiredSend(paymentHash: String) async -> Bool {
-        guard let payments = try? await requireSdk().listPayments(request: ListPaymentsRequest()).payments else { return false }
+    /// listed before it went out, or a failure of the stored pending send when Spark lists none. Returns the status saved,
+    /// nil when it wasn't.
+    private func recordExpiredSend(paymentHash: String) async -> LDKNode.PaymentStatus? {
+        guard let payments = try? await requireSdk().listPayments(request: ListPaymentsRequest()).payments else { return nil }
         let isEarlierAttempt = { LightningService.shared.isEarlierRailAttempt(paymentHash: $0, createdAt: $1) }
         if let own = Self.expiredSendAttempt(payments, paymentHash: paymentHash, isEarlierAttempt: isEarlierAttempt) {
-            return await recordActivity(own)
+            guard await recordActivity(own) else { return nil }
+            switch own.status {
+            case .completed: return .succeeded
+            case .pending: return .pending
+            case .failed: return .failed
+            }
         }
-        return await (try? CoreService.shared.activity.failPendingLightningSend(id: paymentHash)) != nil
+        return await (try? CoreService.shared.activity.failPendingLightningSend(id: paymentHash)) != nil ? .failed : nil
     }
 
     /// The latest of Spark's attempts of a send whose invoice expired, none when Spark lists only attempts before it.

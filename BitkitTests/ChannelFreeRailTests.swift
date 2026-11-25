@@ -720,7 +720,7 @@ extension ChannelFreeRailTests {
         let calls = Calls()
         service.railSendExpired = { _ in
             calls.count += 1
-            return true
+            return .failed
         }
         final class Failures: @unchecked Sendable { var hashes: [String] = [] }
         let failures = Failures()
@@ -743,6 +743,55 @@ extension ChannelFreeRailTests {
         XCTAssertEqual(calls.count, 1)
         XCTAssertNil(service.railSendHolds[hash])
         XCTAssertEqual(failures.hashes, [hash], "a send screen left on Pending never resolves")
+    }
+
+    func testASparkSendInDoubtSparkListsPaidAtItsInvoicesExpiryReportsNoFailure() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        let service = Bitkit.LightningService.shared
+        let previousRecord = service.railSendExpired
+        defer { service.railSendExpired = previousRecord }
+        service.railSendExpired = { _ in .succeeded }
+        final class Failures: @unchecked Sendable { var hashes: [String] = [] }
+        let failures = Failures()
+        service.setEventCallback { event in
+            if case let .paymentFailed(_, paymentHash?, _) = event {
+                failures.hashes.append(paymentHash)
+            }
+        }
+        try await sendInDoubtAfterALeafFailure()
+        rail.syncedAfter = { _ in true }
+        service.now = { try! Date(timeIntervalSince1970: Self.invoiceExpiresAt()) }
+
+        await service.endExpiredRailSendUncertainties()
+
+        XCTAssertNil(service.railSendHolds[hash])
+        XCTAssertEqual(failures.hashes, [], "a paid send was reported failed")
+    }
+
+    func testASparkRetryOfASendInDoubtRefusedBeforeItGoesOutStaysPending() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        try await sendInDoubtAfterALeafFailure()
+        rail.keyedSends.insert(hash.lowercased())
+        rail.refusal = Bitkit.ChannelFreeRailSendRefused(reason: "short")
+
+        do {
+            _ = try await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+            XCTFail("Expected the retry to fail")
+        } catch {
+            XCTAssertFalse(error is Bitkit.ChannelFreeRailSendRefused, "a refusal releases the held send's proof: \(error)")
+        }
+        XCTAssertNotNil(Bitkit.LightningService.shared.railSendHolds[hash])
+    }
+
+    func testAMoveToSparkForASendInDoubtUnderItsKeyIsRefusedAsPending() async throws {
+        let hash = try String(Bolt11Invoice.fromStr(invoiceStr: Self.invoice).paymentHash())
+        try await sendInDoubtAfterALeafFailure()
+        rail.keyedSends.insert(hash.lowercased())
+
+        do {
+            _ = try await Bitkit.LightningService.shared.hasSettledEarlierAttempt(bolt11: Self.invoice, sats: nil)
+            XCTFail("Expected the move to be refused while the send is in doubt")
+        } catch {}
     }
 
     func testASparkRetryOfASendInDoubtAfterALeafFailureGoesOutUnderItsKey() async throws {
@@ -1799,7 +1848,7 @@ extension ChannelFreeRailTests {
             service.emitChannelFreeRailEvent(.paymentFailed(paymentId: hash, paymentHash: hash, reason: nil), paymentCreatedAt: Self.sparkNow())
             service.now = { Date(timeIntervalSince1970: expiresAt + 5) }
             try? await sendOverSpark()
-            return true
+            return .failed
         }
 
         await service.endExpiredRailSendUncertainties()
@@ -1980,7 +2029,7 @@ extension ChannelFreeRailTests {
         let calls = Calls()
         service.railSendExpired = { _ in
             calls.count += 1
-            return true
+            return .failed
         }
         let expiresAt = try Self.invoiceExpiresAt()
         service.now = { Date(timeIntervalSince1970: expiresAt) }
@@ -2029,7 +2078,7 @@ extension ChannelFreeRailTests {
             written.attempt = SparkManager.expiredSendAttempt(
                 [Self.sparkPayment(hash: hash, status: .failed, timestamp: startedAt - 5)], paymentHash: hash
             ) { service.isEarlierRailAttempt(paymentHash: $0, createdAt: $1) }
-            return true
+            return .failed
         }
         let expiresAt = try Self.invoiceExpiresAt()
         service.now = { Date(timeIntervalSince1970: expiresAt) }

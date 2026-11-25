@@ -94,6 +94,17 @@ final class SparkSendKeyTests: XCTestCase {
         XCTAssertFalse(fresh is Bitkit.ChannelFreeRailSendRefused, "\(fresh)")
     }
 
+    func testAnExpiryUnderAReusedKeyKeepsTheSendInDoubt() {
+        // The attempt that used the key may have committed a transfer before the invoice expired.
+        let expired = SdkError.InvalidInput("invoice has expired")
+
+        let reused = Bitkit.SparkManager.bolt11SendFailure(expired, isReusedKey: true)
+        let fresh = Bitkit.SparkManager.bolt11SendFailure(expired, isReusedKey: false)
+
+        XCTAssertFalse(reused is Bitkit.ChannelFreeRailSendRefused, "\(reused)")
+        XCTAssertTrue(fresh is Bitkit.ChannelFreeRailSendRefused, "\(fresh)")
+    }
+
     func testAFailedPaymentSparkReturnsIsRefused() {
         XCTAssertThrowsError(try Bitkit.SparkManager.checkSentPayment(.failed)) {
             XCTAssertTrue($0 is Bitkit.ChannelFreeRailSendRefused, "\($0)")
