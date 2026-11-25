@@ -41,9 +41,15 @@ struct SendQuickpay: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             guard isCurrentPresentation(), !app.isHandlingScannedData else { return }
+            guard Self.startsAutomatically(app: app, sessionID: sessionID) else {
+                // Chosen before the app locked: the payer reviews it instead.
+                replaceQuickPay(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
+                return
+            }
             if displayedSats == nil {
                 displayedSats = app.lnurlPayData?.minSendableSat ?? app.scannedLightningInvoice?.amountSatoshis
             }
+            let recoveryOnly = Self.isRecoveryOnly(app: app, sessionID: sessionID)
             QuickPayPaymentCoordinator.shared.pay(
                 app: app,
                 wallet: wallet,
@@ -55,8 +61,35 @@ struct SendQuickpay: View {
                     addPendingPaymentHash: { app.addPendingPaymentHash($0) },
                     routingCacheResetAttempted: routingCacheResetAttempted
                 ),
-                sessionID: sessionID
+                sessionID: sessionID,
+                recoveryOnly: recoveryOnly
             )
         }
+    }
+
+    /// Whether the payment starts as the screen appears. A payment already started reattaches, and an invoice the
+    /// coordinator already tracks (a rescan of a payment in progress) replays its status. Only a new submission chosen
+    /// before the app locked waits for review.
+    @MainActor
+    static func startsAutomatically(
+        app: AppViewModel,
+        sessionID: QuickPayPaymentCoordinator.SessionID,
+        coordinator: QuickPayPaymentCoordinator? = nil
+    ) -> Bool {
+        let coordinator = coordinator ?? .shared
+        let paymentHash = app.scannedLightningInvoice?.paymentHash.hex ?? ""
+        return coordinator.isAttached(to: sessionID) || coordinator.hasOpen(paymentHash) || !app.didLockSinceQuickPayWasChosen
+    }
+
+    /// Whether a start may only replay a tracked payment: after a lock, a new submission needs review, so a payment
+    /// that is no longer tracked by the time the coordinator runs falls back to it instead of being sent.
+    @MainActor
+    static func isRecoveryOnly(
+        app: AppViewModel,
+        sessionID: QuickPayPaymentCoordinator.SessionID,
+        coordinator: QuickPayPaymentCoordinator? = nil
+    ) -> Bool {
+        let coordinator = coordinator ?? .shared
+        return !coordinator.isAttached(to: sessionID) && app.didLockSinceQuickPayWasChosen
     }
 }

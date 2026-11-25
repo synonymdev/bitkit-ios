@@ -22,6 +22,9 @@ final class QuickPayPaymentCoordinator {
         let invoiceHash: String
         let bolt11: String
         var presentation: Presentation?
+        /// The send state that owns the screen in `presentation`: the run that started the payment, or a rescan that
+        /// attached to it since.
+        var ownerSendStateGeneration: UUID?
         var paymentId: String?
         var dispatched = false
         var emitted = false
@@ -44,7 +47,8 @@ final class QuickPayPaymentCoordinator {
     }
 
     private let store: QuickPaySpendStore
-    private let sendBolt11: (String) async throws -> String
+    /// Submits a BOLT11 payment, running the check it is given right before the payment leaves.
+    private let submit: (String, @escaping () throws -> Void) async throws -> String
     private let listRows: () async throws -> [QuickPayReconcileRow]?
     private let needsUpdateToSend: (UInt64) -> Bool
 
@@ -63,13 +67,24 @@ final class QuickPayPaymentCoordinator {
     init(
         store: QuickPaySpendStore = .shared,
         sendBolt11: ((String) async throws -> String)? = nil,
+        submit: ((String, @escaping () throws -> Void) async throws -> String)? = nil,
         listRows: (() async throws -> [QuickPayReconcileRow]?)? = nil,
         needsUpdateToSend: ((UInt64) -> Bool)? = nil
     ) {
         self.store = store
         self.needsUpdateToSend = needsUpdateToSend ?? { MoveToSparkMath.needsUpdateToSend(amountSats: $0) }
-        self.sendBolt11 = sendBolt11 ?? { bolt11 in
-            try await String(LightningService.shared.send(bolt11: bolt11))
+        if let submit {
+            self.submit = submit
+        } else if let sendBolt11 {
+            // A test that fakes only the send runs the check right before it.
+            self.submit = { bolt11, beforeSubmission in
+                try beforeSubmission()
+                return try await sendBolt11(bolt11)
+            }
+        } else {
+            self.submit = { bolt11, beforeSubmission in
+                try await String(LightningService.shared.send(bolt11: bolt11, beforeSubmission: beforeSubmission))
+            }
         }
         self.listRows = listRows ?? {
             try await Self.reconcileRows(
@@ -77,6 +92,12 @@ final class QuickPayPaymentCoordinator {
                 nodePayments: { await LightningService.shared.listPayments() }
             )
         }
+    }
+
+    /// Whether a send stopped at its submission check. The LDK send runs that check on `ServiceQueue`, which wraps
+    /// what it throws in `AppError`.
+    nonisolated static func isStoppedBeforeSubmission(_ error: Error) -> Bool {
+        ((error as? AppError)?.underlyingError ?? error) is SendStoppedBeforeSubmission
     }
 
     /// Both rails' payments, nil while the node can't list its own, so reconciling waits rather than reading them as none.
@@ -88,6 +109,11 @@ final class QuickPayPaymentCoordinator {
         let railRows = try await railPayments().map(QuickPayReconcileRow.init(railPayment:))
         guard let ldkRows = await nodePayments()?.map(QuickPayReconcileRow.init) else { return nil }
         return ldkRows + railRows
+    }
+
+    /// Whether `sessionID` is the session whose payment this coordinator already started.
+    func isAttached(to sessionID: SessionID) -> Bool {
+        payRequested && self.sessionID == sessionID
     }
 
     func hasOpen(_ paymentHash: String) -> Bool {
@@ -113,7 +139,8 @@ final class QuickPayPaymentCoordinator {
         settings: SettingsViewModel,
         currency: CurrencyViewModel,
         presentation: Presentation,
-        sessionID: SessionID? = nil
+        sessionID: SessionID? = nil,
+        recoveryOnly: Bool = false
     ) {
         if let sessionID {
             if self.sessionID == sessionID {
@@ -136,7 +163,8 @@ final class QuickPayPaymentCoordinator {
                 app: app,
                 wallet: wallet,
                 settings: settings,
-                currency: currency
+                currency: currency,
+                recoveryOnly: recoveryOnly
             )
         }
     }
@@ -241,7 +269,8 @@ final class QuickPayPaymentCoordinator {
         app: AppViewModel,
         wallet: WalletViewModel,
         settings: SettingsViewModel,
-        currency: CurrencyViewModel
+        currency: CurrencyViewModel,
+        recoveryOnly: Bool
     ) async {
         guard generation == self.generation, app.sendStateGeneration == sendStateGeneration else { return }
 
@@ -290,6 +319,7 @@ final class QuickPayPaymentCoordinator {
         if let existing = operations[invoiceHash] {
             currentOperation = existing
             existing.presentation = presentation
+            existing.ownerSendStateGeneration = sendStateGeneration
             if existing.emitted {
                 replayPending(existing)
             } else if !existing.runActive {
@@ -308,6 +338,14 @@ final class QuickPayPaymentCoordinator {
             return
         }
 
+        // Allowed only to replay a payment already tracked: if it is gone by now, the payer reviews it instead. The same
+        // holds when the app locked while the invoice was prepared (for example an LNURL fetch) after the screen started.
+        if recoveryOnly || app.didLockSinceQuickPayWasChosen {
+            app.resetQuickPay()
+            presentation.replaceQuickPay(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
+            return
+        }
+
         guard generation == self.generation else { return }
 
         let amountSats = wallet.sendAmountSats ?? 0
@@ -318,6 +356,7 @@ final class QuickPayPaymentCoordinator {
             return
         }
         let op = InFlightOp(invoiceHash: invoiceHash, bolt11: bolt11, presentation: presentation)
+        op.ownerSendStateGeneration = sendStateGeneration
         op.runActive = true
         register(op)
         defer { op.runActive = false }
@@ -352,14 +391,25 @@ final class QuickPayPaymentCoordinator {
             return
         }
 
+        let beforeSubmission = app.quickPaySubmissionCheck()
         op.dispatched = true
         do {
-            let paymentId = try await sendBolt11(bolt11)
+            let paymentId = try await submit(bolt11, beforeSubmission)
             store.markSubmitted(invoicePaymentHash: invoiceHash, paymentId: paymentId)
             op.paymentId = paymentId
             if !paymentId.isEmpty, paymentId != invoiceHash {
                 operations[paymentId] = op
             }
+        } catch where Self.isStoppedBeforeSubmission(error) {
+            // The app locked while the payment waited to be submitted. Nothing left, so the payer reviews it on the
+            // QuickPay screen attached now, and only while the send that attached it still owns the send state.
+            let attached = op.presentation
+            store.releaseBound(paymentHash: invoiceHash)
+            removeOp(op)
+            guard let attached, app.sendStateGeneration == op.ownerSendStateGeneration else { return }
+            app.resetQuickPay()
+            attached.replaceQuickPay(PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: app))
+            return
         } catch {
             await handleDispatchError(error, op: op)
             return

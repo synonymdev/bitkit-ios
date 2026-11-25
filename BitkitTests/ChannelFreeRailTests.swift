@@ -1095,6 +1095,30 @@ extension ChannelFreeRailTests {
         await assertReachesTheNode()
     }
 
+    private nonisolated static func stopBeforeSubmission() throws {
+        throw Bitkit.SendStoppedBeforeSubmission()
+    }
+
+    func testASendStoppedBeforeSubmissionIsNotHeldWhileSparkCannotList() async {
+        rail.balanceSats = 100_000
+        _ = try? await Bitkit.LightningService.shared.send(bolt11: Self.invoice, beforeSubmission: Self.stopBeforeSubmission)
+        XCTAssertEqual(rail.sends, 0)
+        rail.listError = NSError(domain: "spark", code: 1)
+        rail.balanceSats = 0
+
+        await assertReachesTheNode()
+    }
+
+    func testASendStoppedBeforeSubmissionLeavesNoHold() async {
+        rail.balanceSats = 100_000
+        _ = try? await Bitkit.LightningService.shared.send(bolt11: Self.invoice, beforeSubmission: Self.stopBeforeSubmission)
+        XCTAssertEqual(rail.sends, 0)
+
+        // The payer reviews it and swipes: the same invoice goes out over Spark, with no unknown send held from the stop.
+        _ = try? await Bitkit.LightningService.shared.send(bolt11: Self.invoice)
+        XCTAssertEqual(rail.sends, 1, "A send stopped before submission must not hold the invoice")
+    }
+
     func testSparkHistoryReadsAsUnavailableWhileSparkIsDisconnected() async {
         Bitkit.LightningService.shared.channelFreeRail = nil
 

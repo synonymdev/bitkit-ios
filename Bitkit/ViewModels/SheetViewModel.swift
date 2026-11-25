@@ -16,6 +16,7 @@ enum SheetID: String, CaseIterable {
     case paymentRequests
     case subscription
     case quickpay
+    case nfcIntro
     case usdtIntro
     case moveToSpark
     case receive
@@ -69,6 +70,11 @@ class SheetViewModel: ObservableObject {
     @Published var hardwareConnectHandlesPairing = false
     @Published private(set) var isReplacingSheet = false
     @Published private(set) var replacingSheetID: SheetID?
+    /// Deferred replacements that have not run yet, by id. An owner can cancel its own with `cancelReplacement`.
+    private var pendingReplacements: Set<Int> = []
+    private var nextReplacementID = 0
+    /// The id of the most recent deferred replacement.
+    private(set) var latestReplacementID: Int?
 
     var isPubkyAuthApprovalShownOrPending: Bool {
         activeSheetConfiguration?.id == .pubkyAuthApproval || replacingSheetID == .pubkyAuthApproval
@@ -85,6 +91,7 @@ class SheetViewModel: ObservableObject {
             isReplacingSheet = true
             replacingSheetID = id
             hideSheet()
+            let replacement = beginReplacement()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.replacementDelaySeconds) { [weak self] in
                 guard let self else { return }
@@ -92,6 +99,7 @@ class SheetViewModel: ObservableObject {
                 if replacingSheetID == id {
                     replacingSheetID = nil
                 }
+                guard pendingReplacements.remove(replacement) != nil else { return }
                 Logger.debug("Showing sheet \(id.rawValue) after delay", context: "SheetViewModel")
                 activeSheetConfiguration = SheetConfiguration(id: id, data: data)
                 playHaptics(for: id)
@@ -144,12 +152,25 @@ class SheetViewModel: ObservableObject {
 
         isReplacingSheet = true
         hideSheet(reason: reason)
+        let replacement = beginReplacement()
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.replacementDelaySeconds) { [weak self] in
             guard let self else { return }
             isReplacingSheet = false
-            guard activeSheetConfiguration == nil else { return }
+            guard pendingReplacements.remove(replacement) != nil, activeSheetConfiguration == nil else { return }
             action()
         }
+    }
+
+    private func beginReplacement() -> Int {
+        nextReplacementID += 1
+        pendingReplacements.insert(nextReplacementID)
+        latestReplacementID = nextReplacementID
+        return nextReplacementID
+    }
+
+    /// Stops a deferred replacement that has not run yet: its sheet is not shown and its action does not run.
+    func cancelReplacement(_ id: Int) {
+        pendingReplacements.remove(id)
     }
 
     func hideSheetIfActive(_ id: SheetID, reason: String? = nil, file: String = #file, function: String = #function, line: Int = #line) {
@@ -412,6 +433,18 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .quickpay else { return nil }
             return QuickpaySheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var nfcIntroSheetItem: NfcIntroSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .nfcIntro else { return nil }
+            return NfcIntroSheetItem()
         }
         set {
             if newValue == nil {

@@ -59,6 +59,9 @@ enum ChannelFreeRailFees {
 /// The rail runs here but isn't connected, so its payments are unknown rather than none.
 struct ChannelFreeRailUnavailable: Error {}
 
+/// A caller's `beforeSubmission` check stopped a send before it was submitted, so nothing left the wallet.
+struct SendStoppedBeforeSubmission: Error {}
+
 struct ChannelFreeRailSendRefused: LocalizedError {
     let reason: String
     var underlying: Error?

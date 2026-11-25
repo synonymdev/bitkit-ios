@@ -1476,6 +1476,8 @@ struct SendSheet: View {
         let route = retryRoute.sendRoute
         if retryRoute == .quickpay {
             app.resetQuickPay()
+            // Retrying is the payer's own choice, made after any lock.
+            app.noteQuickPayChosen()
             flow.quickPaySession += 1
         }
         if route == config.initialRoute || currentRoot == route {

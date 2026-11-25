@@ -96,6 +96,9 @@ struct SendEnterManuallyView: View {
             return
         }
 
+        // A lookup (LNURL, Lightning address) can outlast a PIN lock; its result must not route, or choose QuickPay,
+        // after the unlock.
+        let isBeforeLock = app.lockCheck()
         do {
             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
 
@@ -105,14 +108,16 @@ struct SendEnterManuallyView: View {
                 Logger.error("Failed to set default fee rate: \(error)")
             }
 
-            guard sheets.activeSheetConfiguration?.presentationID == presentationID else { return }
+            guard sheets.activeSheetConfiguration?.presentationID == presentationID, isBeforeLock() else { return }
             try await app.handleScannedData(
                 uri,
                 scope: hwSend.isActive ? .onchainPayments : .unrestricted,
                 alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats,
-                sendPresentationID: presentationID
+                sendPresentationID: presentationID,
+                isCurrentScan: isBeforeLock
             )
 
+            guard isBeforeLock() else { return }
             if let route = PaymentNavigationHelper.appropriateSendRoute(
                 app: app,
                 currency: currency,
@@ -122,6 +127,8 @@ struct SendEnterManuallyView: View {
             }
         } catch {
             Logger.error(error, context: "Failed to read data from clipboard")
+            // A lookup from before a lock that fails after the unlock is dropped without a toast.
+            guard isBeforeLock() else { return }
             app.toast(error)
         }
     }
