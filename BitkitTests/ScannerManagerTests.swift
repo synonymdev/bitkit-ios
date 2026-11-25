@@ -351,6 +351,19 @@ final class ScannerManagerTests: XCTestCase {
         let previousAdopted = AdoptedPubkyReference.current
         defer { AdoptedPubkyReference.current = previousAdopted }
         AdoptedPubkyReference.current = nil
+        // Pubky sign-up opens its approval sheet only without a stored identity.
+        let previousSession = try Keychain.loadString(key: .paykitSession)
+        let previousSecretKey = try Keychain.loadString(key: .pubkySecretKey)
+        try Keychain.delete(key: .paykitSession)
+        try Keychain.delete(key: .pubkySecretKey)
+        defer {
+            if let previousSession {
+                try? Keychain.saveString(key: .paykitSession, str: previousSession)
+            }
+            if let previousSecretKey {
+                try? Keychain.saveString(key: .pubkySecretKey, str: previousSecretKey)
+            }
+        }
         XCTAssertFalse(try PubkyProfileManager.hasStoredIdentity())
         let routes: [(uri: String, sheet: SheetID)] = [
             ("https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123", .btcpayConnection),
@@ -414,6 +427,43 @@ final class ScannerManagerTests: XCTestCase {
 
         XCTAssertNil(app.scannedOnchainInvoice)
         XCTAssertNil(sheets.activeSheetConfiguration)
+    }
+
+    func testDeepLinkLookupFailingAfterALockIsDroppedWithoutItsError() async throws {
+        let sheets = SheetViewModel()
+        let started = expectation(description: "Deep link lookup suspended")
+        var continuation: CheckedContinuation<BitkitCore.Scanner, Error>?
+        let app = configure(ScannerManager {}, sheets: sheets, decodeInvoice: { _ in
+            try await withCheckedThrowingContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+        })
+        let link = Task { try await app.handleDeepLinkData(paymentURI) }
+        await fulfillment(of: [started], timeout: 2)
+
+        // The app locks while the lookup runs, and the lookup then fails.
+        app.noteAppLocked()
+        try XCTUnwrap(continuation).resume(throwing: URLError(.timedOut))
+        do {
+            try await link.value
+            XCTFail("A deep link lookup from before the lock must be dropped")
+        } catch is CancellationError {
+        } catch {
+            XCTFail("A lookup failing after the lock must not surface its error: \(error)")
+        }
+        XCTAssertNil(sheets.activeSheetConfiguration)
+    }
+
+    func testDeepLinkLookupFailingBeforeALockKeepsItsError() async {
+        let app = configure(ScannerManager {}, decodeInvoice: { _ in throw URLError(.timedOut) })
+
+        do {
+            try await app.handleDeepLinkData(paymentURI)
+            XCTFail("The lookup must fail")
+        } catch {
+            XCTAssertFalse(error is CancellationError, "Without a lock the error reaches the caller")
+        }
     }
 
     private func imageTestLnurl(amount: UInt64) -> LnurlPayData {

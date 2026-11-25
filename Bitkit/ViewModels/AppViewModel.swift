@@ -1306,10 +1306,15 @@ extension AppViewModel {
     }
 
     /// Handles the payment or sign-in data of a deep link. A lookup (e.g. an LNURL) that outlasts a PIN lock is
-    /// dropped, so its sheet does not open after the unlock.
+    /// dropped, so neither its sheet nor its error shows after the unlock.
     func handleDeepLinkData(_ uri: String, alternativeOnchainBalanceSats: UInt64 = 0) async throws {
         let isBeforeLock = lockCheck()
-        try await handleScannedData(uri, alternativeOnchainBalanceSats: alternativeOnchainBalanceSats, isCurrentScan: isBeforeLock)
+        do {
+            try await handleScannedData(uri, alternativeOnchainBalanceSats: alternativeOnchainBalanceSats, isCurrentScan: isBeforeLock)
+        } catch {
+            guard isBeforeLock() else { throw CancellationError() }
+            throw error
+        }
     }
 
     private func ensureScannedDataHandlingOwnership(
