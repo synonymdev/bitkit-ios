@@ -31,6 +31,9 @@ struct ReceiveQr: View {
     @State private var passphraseTask: Task<Void, Never>?
     @State private var engagedSession = HwEngagedSession()
     @State private var nearbyAdvertiser = NearbyPaymentAdvertiser()
+    /// Whether the QR page is on screen. The view stays mounted as the navigation root while Edit or another route is
+    /// pushed, and still sees app and request changes then.
+    @State private var isShown = false
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.isCoveredByOfflineSheet) private var isCoveredByOfflineSheet
 
@@ -273,10 +276,16 @@ struct ReceiveQr: View {
         .sheetBackground()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("ReceiveScreen")
-        .onAppear { updateNearbyAdvertising() }
+        .onAppear {
+            isShown = true
+            updateNearbyAdvertising()
+        }
         .onChange(of: nearbyRequest) { updateNearbyAdvertising() }
         .onChange(of: scenePhase) { updateNearbyAdvertising() }
-        .onDisappear { nearbyAdvertiser.stop() }
+        .onDisappear {
+            isShown = false
+            nearbyAdvertiser.stop()
+        }
         .sheet(isPresented: passphrasePromptBinding) {
             HwPassphrasePromptSheet(
                 isVerifying: isVerifyingPassphrase,
@@ -487,9 +496,16 @@ struct ReceiveQr: View {
         !needsInvoiceRefresh && !isReceiveUnavailable
     }
 
+    /// The request to advertise: only while the QR page is on screen, with nothing pushed over it, and the app active.
+    static func advertisedRequest(_ request: String?, isShown: Bool, isPushedOver: Bool, isActive: Bool) -> String? {
+        isShown && !isPushedOver && isActive ? request : nil
+    }
+
     private func updateNearbyAdvertising() {
-        if scenePhase == .active, let nearbyRequest {
-            nearbyAdvertiser.start(request: nearbyRequest)
+        if let request = Self.advertisedRequest(
+            nearbyRequest, isShown: isShown, isPushedOver: !navigationPath.isEmpty, isActive: scenePhase == .active
+        ) {
+            nearbyAdvertiser.start(request: request)
         } else {
             nearbyAdvertiser.stop()
         }
