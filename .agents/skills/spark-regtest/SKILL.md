@@ -49,16 +49,16 @@ Run `./spark up` from a bitkit-docker checkout on `main`. The app reads `SPARK_L
 build script sets all of that:
 
 ```bash
-../bitkit-docker/spark up
-IOS_ROOT="$PWD"; cd ../bitkit-e2e-tests
+../bitkit-docker/spark up && \
+IOS_ROOT="$PWD" && cd ../bitkit-e2e-tests && \
 CFG="$(../bitkit-docker/spark config --base64)" && \
 IOS_ROOT="$IOS_ROOT" SPARK_LOCAL_CONFIG_B64="$CFG" \
 SPARK_LOCAL_CHAIN_URL=http://127.0.0.1:23090/api BACKEND=local ./scripts/build-ios-sim.sh && \
 xcrun simctl install booted aut/Bitkit.app
 ```
 
-- `CFG=… &&` stops the build when `spark config` fails (stack not up, or the wrong `bitkit-docker` path). Inline, the
-  build would still run with an empty config.
+- The `&&` chain stops at the first failure. `spark up` can fail while a config from an earlier run survives, and
+  `spark config` fails when the stack is not up or the `bitkit-docker` path is wrong; inline, the build would still run.
 - The two settings are `Info.plist` build settings, baked in at build time. `SIMCTL_CHILD_` launch variables don't set
   them, despite what `docs/spark-regtest.md` says.
 - The simulator shares the Mac's loopback, so the `127.0.0.1` URLs work as they are. Savings uses bitkit-docker's
