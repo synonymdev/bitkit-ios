@@ -29,6 +29,7 @@ final class WebLinkTests: XCTestCase {
             "ftp://example.com", "example.com:8080", "example", "two words.com", "",
             "https:example.com", "https:/example.com", "https:\\\\example.com", "https://\\example.com",
             "https:///example.com", "https:////example.com", "/example.com", "https://.", "https://..",
+            "example.com/a\u{00A0}b", "example\u{2007}.com", "https://example.com/a\u{202F}b",
         ]
         for link in links {
             XCTAssertFalse(link.isWebLink, link)

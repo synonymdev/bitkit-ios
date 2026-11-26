@@ -547,9 +547,24 @@ actor PubkyAppProfileStore {
         return data
     }
 
-    /// Social v1's own link rule: a lowercase `http://` or `https://` prefix; it drops other links on migration too.
-    private static func isSocialV1WebUrl(_ url: String) -> Bool {
-        url.hasPrefix("http://") || url.hasPrefix("https://")
+    /// Paykit's social v1 link rule (`is_social_v1_web_uri`): a lowercase `http://` or `https://` prefix, no control or
+    /// whitespace character, and a non-empty host, read up to the first `/`, `?` or `#`, after the last `@`, and up to `:`
+    /// unless it starts with `[`. Social v1 drops other links on migration too.
+    static func isSocialV1WebUrl(_ url: String) -> Bool {
+        let rest: Substring
+        if url.hasPrefix("http://") {
+            rest = url.dropFirst("http://".count)
+        } else if url.hasPrefix("https://") {
+            rest = url.dropFirst("https://".count)
+        } else {
+            return false
+        }
+        guard !url.unicodeScalars.contains(where: { ($0.isASCII && $0.properties.generalCategory == .control) || $0.properties.isWhitespace })
+        else { return false }
+        let authority = rest.prefix { !"/?#".contains($0) }
+        let hostAndPort = authority.split(separator: "@", omittingEmptySubsequences: false).last ?? ""
+        let host = hostAndPort.hasPrefix("[") ? hostAndPort : hostAndPort.prefix { $0 != ":" }
+        return !host.isEmpty
     }
 
     static func singleLine(_ text: String) -> String {
@@ -614,7 +629,10 @@ actor PubkyAppProfileStore {
     /// passed. Any other refusal names no link.
     static func rejectedLinkIndex(for error: Error, links: [PubkyProfileData.Link]) -> Int? {
         guard case let .Protocol(_, context)? = error as? PaykitError, context == paykitNonWebLinkContext else { return nil }
-        return links.firstIndex { !$0.url.isWebLink }
+        return links.firstIndex { link in
+            let url = linkUrl(link.url) ?? link.url
+            return !isSocialV1WebUrl(url)
+        }
     }
 
     /// Bitkit accepted links without a scheme (a site, an email address, a phone number); pubky.app needs full URLs.

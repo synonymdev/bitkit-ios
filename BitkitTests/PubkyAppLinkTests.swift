@@ -52,6 +52,27 @@ final class PubkyAppLinkTests: XCTestCase {
         }
     }
 
+    func testSocialV1WebUrlsFollowPaykitsRule() {
+        for url in ["https://example.com", "http://localhost", "https://[::1]", "https://user@host:8080/a"] {
+            XCTAssertTrue(PubkyAppProfileStore.isSocialV1WebUrl(url), url)
+        }
+        for url in [
+            "https:///example.com", "https://", "https://@", "HTTPS://example.com", "mailto:a@example.com",
+            "https://exa mple.com", "https://example.com/\u{01}", "https://:80",
+        ] {
+            XCTAssertFalse(PubkyAppProfileStore.isSocialV1WebUrl(url), url)
+        }
+    }
+
+    func testLinkRejectionSkipsStoredLocalhostForTheNonWebLink() {
+        let links = [
+            PubkyProfileData.Link(label: "Local", url: "https://localhost"),
+            PubkyProfileData.Link(label: "Email", url: "mailto:me@example.com"),
+        ]
+        let rejection: PaykitError = .Protocol(code: "protocol_error", context: PubkyAppProfileStore.paykitNonWebLinkContext)
+        XCTAssertEqual(PubkyAppProfileStore.rejectedLinkIndex(for: rejection, links: links), 1)
+    }
+
     func testBlankUrlIsLeftToTheCaller() {
         XCTAssertNil(error("Site", "  "))
     }
