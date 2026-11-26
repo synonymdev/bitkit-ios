@@ -396,9 +396,13 @@ final class SparkExitManager {
         }
         guard let current = record, let refused = refusedSavingsPayment else { return }
         let attempts = OnchainSendAttemptService.shared
+        let exit = SparkExitFundingRelease.Exit(record: current, earlier: earlierAddresses)
+        let chain = chain
         let txid = try await Self.payRefusedAgain(refused, record: current) { context in
             try await attempts.retrySamePayment(using: LightningService.shared, context: context) { attempt, _ in
                 guard attempt.id == refused.id, attempt.address == refused.address else { throw OnchainSendAttemptError.unresolved }
+                // Funding from another wallet may have reached the address while the payment was prepared.
+                try await SparkExitFundingRelease.authorizePayAgain(attempt, exit: exit, chain: chain)
             }
         }
         await refreshRefusedSavingsPayment()

@@ -917,6 +917,7 @@
 "pubky_auth__identity_unavailable_desc" = "Sprawdź połączenie i spróbuj ponownie.";
 "profile__auth_error_signup_code_rejected" = "Serwer domowy nie zaakceptował tego kodu rejestracyjnego. Spróbuj ponownie lub użyj innego linku rejestracyjnego.";
 "wallet__onchain_abandon_transfer_note" = "Przelewy na saldo wydatków nie są już dostępne. Bitkit najpierw sprawdza sieć, a potem odsyła monety z tego przelewu do Twojego portfela, aby pierwotny przelew nigdy nie został potwierdzony. Wiąże się to z opłatą sieciową.";
+"wallet__onchain_abandon_exit_note" = "Ten wymuszony transfer nie potrzebuje już tej płatności. Bitkit najpierw sprawdza sieć, a potem odsyła jej monety do Twojego portfela, aby nigdy nie została potwierdzona. Wiąże się to z opłatą sieciową.";
 "watch_only_accounts__active_section" = "Aktywne konta";
 "watch_only_accounts__copy_xpub" = "Kopiuj xpub";
 "watch_only_accounts__description" = "Każdy zatwierdzony serwer Paykit otrzymuje osobne konto Bitcoin. Wyłącz śledzenie, aby przestać wczytywać konto bez usuwania historii jego portfela.";

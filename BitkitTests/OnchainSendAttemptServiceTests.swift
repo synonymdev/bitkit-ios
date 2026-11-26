@@ -1875,20 +1875,20 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertTrue(store.snapshot().isEmpty)
     }
 
-    func testOrdinaryPaymentIsNeverAbandoned() async throws {
+    func testOnlyASavingsSendThatMayFundASparkExitCanBeReleased() async throws {
         let store = MemoryAttemptStore()
         let service = OnchainSendAttemptService(store: store)
         let sender = PreparedAttemptNodeMock()
         sender.result = .unknown(txid: sender.txid)
         _ = try await service.send(using: sender, address: "bcrt1qordinary", amountSats: sender.amount,
                                    satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false)
-        let attempt = try XCTUnwrap(store.snapshot().first)
+        var attempt = try XCTUnwrap(store.snapshot().first)
+        // An ordinary send is released only once a Spark exit no longer needs it (`SparkExitFundingRelease`).
+        XCTAssertTrue(attempt.mayFundSparkExit)
+        XCTAssertTrue(attempt.canBeAbandoned)
+        attempt.sparkFunding = true
+        XCTAssertFalse(attempt.mayFundSparkExit, "A Spark deposit funding is never a Spark exit's")
         XCTAssertFalse(attempt.canBeAbandoned)
-        do {
-            try await service.abandonUnbroadcast(attempt)
-            XCTFail("Released an ordinary payment")
-        } catch {}
-        XCTAssertEqual(store.snapshot(), [attempt])
     }
 }
 
