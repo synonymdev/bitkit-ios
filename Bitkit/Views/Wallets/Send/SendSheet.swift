@@ -119,6 +119,7 @@ final class SendPresentationState {
     var contactSelectionContextID: UUID?
     /// Changes each time the contact picker stops being the top screen, so a contact still resolving from an earlier visit opens nothing.
     var contactPickerVisit = 0
+    @ObservationIgnored var feeRateReloadTask: Task<Void, Never>?
     var didStartSetup = false
     var didFinish = false
     var onDismiss: (() -> Void)?
@@ -162,6 +163,44 @@ final class SendPresentationState {
 
     init(initialRoute: SendRoute) {
         rootRoute = initialRoute
+    }
+
+    /// The picker visit a contact pick belongs to, or nil when the picker is not the top screen.
+    var currentContactPickerVisit: Int? {
+        SendSheet.contactPickerVisit(root: rootOverride ?? rootRoute, path: navigationPath, visit: contactPickerVisit)
+    }
+
+    /// Ends the picker visit when the picker stops being the top screen. Returns whether the path popped back to the picker.
+    func noteContactPickerNavigation(oldPath: [SendRoute], newPath: [SendRoute]) -> Bool {
+        let root = rootOverride ?? rootRoute
+        if SendSheet.didLeaveContactPicker(root: root, oldPath: oldPath, newPath: newPath) {
+            contactPickerVisit &+= 1
+        }
+        return SendSheet.didReturnToContactPicker(root: root, oldPath: oldPath, newPath: newPath)
+    }
+
+    /// Releases the context the last picked contact claimed and resets this send's per-payment flags.
+    /// Returns whether the selection's leftover state was dropped, so the caller clears the amount, tags and fee state too.
+    /// The recorded context is forgotten only after a release or once it no longer is the active context.
+    @MainActor
+    func releaseContactSelection(app: AppViewModel, presentationID: UUID?, canRelease: Bool) -> Bool {
+        guard let contextID = contactSelectionContextID else { return false }
+        if app.contactPaymentContext?.id == contextID {
+            guard canRelease, app.releaseAbandonedContactSelection(contextID: contextID, ownerID: presentationID) else { return false }
+            contactSelectionContextID = nil
+        } else {
+            contactSelectionContextID = nil
+            // The context is already gone; this send's own leftovers are still cleared, another send's are not.
+            guard canRelease, app.contactPaymentContext == nil, let presentationID, app.sendStateOwnerID == presentationID
+            else { return false }
+        }
+        feeRateReloadTask?.cancel()
+        feeRateReloadTask = nil
+        ownedSendStateGeneration = app.sendStateGeneration
+        isAmountReviewRequired = false
+        hasValidatedAfterSync = false
+        syncTimedOut = false
+        return true
     }
 }
 
@@ -329,25 +368,28 @@ struct SendSheet: View {
         feeRate != nil && !feeRateLoadFailed && selectedSpeed == defaultSpeed
     }
 
+    /// A reloaded default rate is written only while this send still waits for it: a speed the user picked since, a rate
+    /// that arrived another way and a payment being submitted are left alone.
+    static func canApplyReloadedFeeRate(
+        ownsSend: Bool,
+        selectedSpeed: TransactionSpeed,
+        defaultSpeed: TransactionSpeed,
+        feeRate: UInt32?,
+        isSubmittingPayment: Bool
+    ) -> Bool {
+        ownsSend && selectedSpeed == defaultSpeed && feeRate == nil && !isSubmittingPayment
+    }
+
     /// Drops what the last picked contact left behind once the picker is shown again, so the next pick can claim its own context.
     /// Runs when the path pops back to the picker and again before each pick, which covers a release that was refused earlier.
     private func releaseAbandonedContactSelection() {
-        guard let contextID = flow.contactSelectionContextID else { return }
-        guard app.contactPaymentContext?.id == contextID else {
-            flow.contactSelectionContextID = nil
-            return
-        }
-        guard Self.canReleaseContactSelection(
+        let canRelease = Self.canReleaseContactSelection(
             isCurrentPresentation: isCurrentPresentation,
             didFinish: flow.didFinish,
             isSubmittingPayment: flow.isSubmittingPayment,
             isPaymentActive: PaykitPaymentActivity.shared.isActive
-        ), app.releaseAbandonedContactSelection(contextID: contextID, ownerID: config.presentationID) else { return }
-        flow.contactSelectionContextID = nil
-        flow.ownedSendStateGeneration = app.sendStateGeneration
-        flow.isAmountReviewRequired = false
-        flow.hasValidatedAfterSync = false
-        flow.syncTimedOut = false
+        )
+        guard flow.releaseContactSelection(app: app, presentationID: config.presentationID, canRelease: canRelease) else { return }
         tagManager.clearSelectedTags()
 
         let defaultSpeed = settings.defaultTransactionSpeed
@@ -365,13 +407,19 @@ struct SendSheet: View {
         }
         // The reset cleared the rate and setup does not run again, so Confirm would wait for it forever.
         let presentationID = config.presentationID
-        func isCurrentSend() -> Bool {
-            isCurrentPresentation && !flow.didFinish && app.sendStateOwnerID == presentationID
+        func canApply() -> Bool {
+            Self.canApplyReloadedFeeRate(
+                ownsSend: isCurrentPresentation && !flow.didFinish && app.sendStateOwnerID == presentationID,
+                selectedSpeed: wallet.selectedSpeed,
+                defaultSpeed: defaultSpeed,
+                feeRate: wallet.selectedFeeRateSatsPerVByte,
+                isSubmittingPayment: flow.isSubmittingPayment || PaykitPaymentActivity.shared.isActive
+            )
         }
-        Task {
+        flow.feeRateReloadTask = Task {
             do {
                 try await wallet.loadFeeRateWithRetry(speed: defaultSpeed) {
-                    try await wallet.setFeeRate(speed: $0, isCurrentSend: isCurrentSend)
+                    try await wallet.setFeeRate(speed: $0, isCurrentSend: canApply)
                 }
             } catch is CancellationError {
                 return
@@ -504,10 +552,7 @@ struct SendSheet: View {
             Logger.debug("shouldShowSyncOverlay: \(isShowing) (node: \(wallet.nodeLifecycleState))", context: "SendSheet")
         }
         .onChange(of: flow.navigationPath) { oldPath, newPath in
-            if Self.didLeaveContactPicker(root: currentRoot, oldPath: oldPath, newPath: newPath) {
-                flow.contactPickerVisit &+= 1
-            }
-            if Self.didReturnToContactPicker(root: currentRoot, oldPath: oldPath, newPath: newPath) {
+            if flow.noteContactPickerNavigation(oldPath: oldPath, newPath: newPath) {
                 releaseAbandonedContactSelection()
             }
         }
@@ -600,6 +645,8 @@ struct SendSheet: View {
         // Content recreation keeps the presentation, its setup and its payment operation alive.
         guard isEmbedded || !isCurrentPresentation || config.preparation?.isSuspendedForAppLock == true,
               !flow.didFinish else { return }
+        flow.feeRateReloadTask?.cancel()
+        flow.feeRateReloadTask = nil
         updatePaymentReview(false)
         let retainsReview = config.preparation?.retainReviewOnAppLock(
             root: currentRoot,
@@ -1182,9 +1229,7 @@ struct SendSheet: View {
             SendContactSelectView(
                 navigationPath: $flow.navigationPath,
                 hwSend: hwSend,
-                currentVisit: {
-                    Self.contactPickerVisit(root: currentRoot, path: flow.navigationPath, visit: flow.contactPickerVisit)
-                },
+                currentVisit: { flow.currentContactPickerVisit },
                 onBeforeClaim: { releaseAbandonedContactSelection() },
                 onContextClaimed: { flow.contactSelectionContextID = $0 }
             )
