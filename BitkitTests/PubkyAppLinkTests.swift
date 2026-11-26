@@ -70,7 +70,7 @@ final class PubkyAppLinkTests: XCTestCase {
             PubkyProfileData.Link(label: "Email", url: "mailto:me@example.com"),
         ]
         let rejection: PaykitError = .Protocol(code: "protocol_error", context: PubkyAppProfileStore.paykitNonWebLinkContext)
-        XCTAssertEqual(PubkyAppProfileStore.rejectedLinkIndex(for: rejection, links: links), 1)
+        XCTAssertEqual(PubkyAppProfileStore.rejectedLink(for: rejection, links: links), links[1])
     }
 
     func testBlankUrlIsLeftToTheCaller() {
@@ -137,7 +137,7 @@ final class PubkyAppLinkTests: XCTestCase {
         )
         let links = [PubkyProfileData.Link(label: "Email", url: "mailto:me@example.com")]
         let invalidUri: PaykitError = .Protocol(code: "protocol_error", context: "Pubky profile link URL must be a valid URI")
-        XCTAssertNil(PubkyAppProfileStore.rejectedLinkIndex(for: invalidUri, links: links))
+        XCTAssertNil(PubkyAppProfileStore.rejectedLink(for: invalidUri, links: links))
     }
 
     func testStoredLinksAreNotCheckedWhileUnchanged() {
@@ -150,6 +150,23 @@ final class PubkyAppLinkTests: XCTestCase {
         let stored = [PubkyProfileData.Link(label: label, url: "https://example.com")]
         let links = [PubkyProfileData.Link(label: label, url: "example.com")]
         XCTAssertTrue(PubkyAppProfileStore.linkErrors(links: links, storedLinks: stored).isEmpty)
+    }
+
+    func testRefusalStaysOnItsLinkUntilThatLinkChanges() {
+        let site = PubkyProfileData.Link(label: "Site", url: "https://example.com")
+        let email = PubkyProfileData.Link(label: "Email", url: "mailto:a@example.com")
+        let blog = PubkyProfileData.Link(label: "Blog", url: "https://blog.example.org")
+        let stored = [site, email]
+        XCTAssertEqual(
+            PubkyAppProfileStore.linkErrors(links: [site, email, blog], storedLinks: stored, rejectedLink: email),
+            [1: .urlInvalid]
+        )
+        XCTAssertEqual(
+            PubkyAppProfileStore.linkErrors(links: [email, blog], storedLinks: stored, rejectedLink: email),
+            [0: .urlInvalid]
+        )
+        let edited = PubkyProfileData.Link(label: "Email", url: "https://example.org")
+        XCTAssertTrue(PubkyAppProfileStore.linkErrors(links: [edited, blog], storedLinks: stored, rejectedLink: email).isEmpty)
     }
 
     func testStoredLinkIsCheckedOnceLinksChange() {
@@ -179,11 +196,11 @@ final class PubkyAppLinkTests: XCTestCase {
             code: "protocol_error",
             context: "Pubky profile link URL must be a canonical http or https URL"
         )
-        XCTAssertEqual(PubkyAppProfileStore.rejectedLinkIndex(for: rejection, links: links), 1)
+        XCTAssertEqual(PubkyAppProfileStore.rejectedLink(for: rejection, links: links), links[1])
         let other: PaykitError = .Protocol(code: "protocol_error", context: "Pubky profile name must be 3 to 50 characters")
-        XCTAssertNil(PubkyAppProfileStore.rejectedLinkIndex(for: other, links: links))
+        XCTAssertNil(PubkyAppProfileStore.rejectedLink(for: other, links: links))
         XCTAssertEqual(
-            PubkyAppProfileStore.linkErrors(links: links + [], storedLinks: [], rejectedIndex: 1)[1],
+            PubkyAppProfileStore.linkErrors(links: links + [], storedLinks: [], rejectedLink: links[1])[1],
             .urlInvalid
         )
     }

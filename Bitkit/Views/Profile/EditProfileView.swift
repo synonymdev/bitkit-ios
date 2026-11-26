@@ -11,7 +11,7 @@ struct EditProfileView: View {
     @State private var bio: String = ""
     @State private var links: [ProfileLinkInput] = []
     @State private var storedLinks: [PubkyProfileData.Link] = []
-    @State private var rejectedLinkIndex: Int?
+    @State private var rejectedLink: PubkyProfileData.Link?
     @State private var tags: [String] = []
     @State private var baseRevision: String?
     @State private var baseTagsUnread = false
@@ -69,9 +69,6 @@ struct EditProfileView: View {
         .task {
             loadProfileData()
         }
-        .onChange(of: linkData) {
-            rejectedLinkIndex = nil
-        }
         .onChange(of: username) { _, value in
             if let capped = PubkyAppProfileLimits.capped(value, to: PubkyAppProfileLimits.nameLength.upperBound) {
                 username = capped
@@ -108,7 +105,7 @@ struct EditProfileView: View {
     }
 
     private var linkErrors: [Int: PubkyAppLinkError] {
-        PubkyAppProfileStore.linkErrors(links: linkData, storedLinks: storedLinks, rejectedIndex: rejectedLinkIndex)
+        PubkyAppProfileStore.linkErrors(links: linkData, storedLinks: storedLinks, rejectedLink: rejectedLink)
     }
 
     // MARK: - Avatar Picker
@@ -174,7 +171,7 @@ struct EditProfileView: View {
         bio = profile.bio
         links = profile.links.map { ProfileLinkInput(label: $0.label, url: $0.url) }
         storedLinks = profile.links.map { PubkyProfileData.Link(label: $0.label, url: $0.url) }
-        rejectedLinkIndex = nil
+        rejectedLink = nil
         tags = profile.tags
         baseRevision = profile.revision
         baseTagsUnread = profile.tagsUnread
@@ -272,11 +269,11 @@ struct EditProfileView: View {
             navigation.navigateBack()
         } catch {
             Logger.error("Failed to save profile: \(error)", context: "EditProfileView")
-            let rejected = PubkyAppProfileStore.rejectedLinkIndex(for: error, links: savedLinks)
-            let description = rejected.map { t("profile__edit_link_error", variables: ["label": savedLinks[$0].label]) }
+            let rejected = PubkyAppProfileStore.rejectedLink(for: error, links: savedLinks)
+            let description = rejected.map { t("profile__edit_link_error", variables: ["label": $0.label]) }
             app.toast(type: .error, title: t("profile__edit_error_title"), description: description ?? error.localizedDescription)
             if linkData == savedLinks {
-                rejectedLinkIndex = rejected
+                rejectedLink = rejected
             }
             if case PubkyAppProfileError.changedElsewhere = error {
                 await pubkyProfile.loadProfile()

@@ -602,19 +602,19 @@ actor PubkyAppProfileStore {
 
     /// The links pubky.app would refuse, by index. A save sends the links only once they differ from the stored ones after
     /// its normalization, and then pubky.app checks every one, so a stored link is held to its rules too. Links added or
-    /// edited here must also be web links, which social v1 requires; stored ones keep their scheme. `rejectedIndex` is a
-    /// link pubky.app already refused.
+    /// edited here must also be web links, which social v1 requires; stored ones keep their scheme. `rejectedLink` is a
+    /// link pubky.app already refused; it stays marked until it is edited or removed.
     static func linkErrors(
         links: [PubkyProfileData.Link],
         storedLinks: [PubkyProfileData.Link],
-        rejectedIndex: Int? = nil
+        rejectedLink: PubkyProfileData.Link? = nil
     ) -> [Int: PubkyAppLinkError] {
         let sentLinks = links.map { PubkyProfileData.Link(label: singleLine($0.label), url: linkUrl($0.url) ?? $0.url) }
         guard sentLinks != storedLinks else { return [:] }
         let storedUrls = Set(storedLinks.map(\.url))
         var errors: [Int: PubkyAppLinkError] = [:]
         for (index, link) in links.enumerated() {
-            if index == rejectedIndex || link.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if link == rejectedLink || link.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 errors[index] = .urlInvalid
             } else if let error = linkError(label: link.label, url: link.url, webOnly: !storedUrls.contains(link.url)) {
                 errors[index] = error
@@ -629,9 +629,9 @@ actor PubkyAppProfileStore {
 
     /// The link pubky.app refused a social v1 profile for because it is not a web link: the first such link, as the others
     /// passed. Any other refusal names no link.
-    static func rejectedLinkIndex(for error: Error, links: [PubkyProfileData.Link]) -> Int? {
+    static func rejectedLink(for error: Error, links: [PubkyProfileData.Link]) -> PubkyProfileData.Link? {
         guard case let .Protocol(_, context)? = error as? PaykitError, context == paykitNonWebLinkContext else { return nil }
-        return links.firstIndex { link in
+        return links.first { link in
             let url = linkUrl(link.url) ?? link.url
             return !isSocialV1WebUrl(url)
         }
