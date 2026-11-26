@@ -1359,6 +1359,15 @@ class ActivityService {
         }
     }
 
+    /// Removes the failed rows of `paymentHashes`, move parts that did not route and were retried smaller, which an
+    /// activity backup older than the metadata backup naming them restored.
+    func removeFailedMoveParts(_ paymentHashes: [String]) async throws {
+        for paymentHash in paymentHashes {
+            guard case let .lightning(row)? = try await getActivity(id: paymentHash.lowercased()), row.status == .failed else { continue }
+            _ = try await delete(id: row.id)
+        }
+    }
+
     func getOnchainActivityByTxId(txid: String, walletId: String = WalletScope.default) async throws -> OnchainActivity? {
         try await ServiceQueue.background(.core) {
             try BitkitCore.getActivityByTxId(walletId: walletId, txId: txid)

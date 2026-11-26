@@ -124,6 +124,24 @@ final class MoveToSparkActivityTests: XCTestCase {
         }
     }
 
+    func testRestoredDroppedMovePartsLeaveTheFailedRowsAnActivityBackupRestored() async throws {
+        let activity = Bitkit.CoreService.shared.activity
+        let droppedHash = String(repeating: "ef", count: 32)
+        try await activity.syncLdkNodePayments([
+            ldkSend(timestamp: 900, status: .failed, hash: droppedHash),
+            ldkSend(timestamp: 1000),
+        ])
+
+        try await activity.removeFailedMoveParts([droppedHash, paymentHash])
+
+        let rows = try await activity.get(filter: .lightning, walletId: WalletScope.default)
+        let ids = rows.compactMap { row -> String? in
+            guard case let .lightning(ln) = row else { return nil }
+            return ln.id
+        }
+        XCTAssertEqual(ids, [paymentHash], "A restored dropped part kept its Failed row, or a settled part left")
+    }
+
     private func withRelaunchStores(_ body: (UserDefaults) async throws -> Void) async throws {
         let suiteName = "MoveToSparkActivityTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

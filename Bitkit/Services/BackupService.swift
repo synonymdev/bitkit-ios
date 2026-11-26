@@ -845,6 +845,11 @@ class BackupService {
                 }
                 await MoveToSparkPayments.restore(payload.moveToSparkPaymentHashes)
                 await MoveToSparkPayments.restoreDropped(payload.moveToSparkDroppedPaymentHashes)
+                do {
+                    try await CoreService.shared.activity.removeFailedMoveParts(payload.moveToSparkDroppedPaymentHashes ?? [])
+                } catch {
+                    Logger.warn("Failed to remove the restored failed move parts from Activity: \(error)", context: "BackupService")
+                }
 
                 // Force address rotation by clearing onchain address
                 UserDefaults.standard.set("", forKey: "onchainAddress")

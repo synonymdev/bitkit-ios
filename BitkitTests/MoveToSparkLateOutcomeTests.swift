@@ -3,6 +3,26 @@ import LDKNode
 import XCTest
 
 final class MoveToSparkLateOutcomeTests: XCTestCase {
+    private let suiteName = "MoveToSparkLateOutcomeTests-\(UUID().uuidString)"
+    private var appDefaults: UserDefaults?
+
+    /// A wipe clears the moves' stored hashes, so the suite keeps them out of the app's own defaults.
+    @MainActor
+    override func setUp() async throws {
+        try await super.setUp()
+        appDefaults = MoveToSparkPayments.defaults
+        MoveToSparkPayments.defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    }
+
+    @MainActor
+    override func tearDown() async throws {
+        if let appDefaults {
+            MoveToSparkPayments.defaults = appDefaults
+        }
+        UserDefaults().removePersistentDomain(forName: suiteName)
+        try await super.tearDown()
+    }
+
     @MainActor
     func testAMoveKeptForItsResultKeepsItsScreenReachableUntilTheWalletIsWiped() {
         let manager = MoveToSparkManager()
