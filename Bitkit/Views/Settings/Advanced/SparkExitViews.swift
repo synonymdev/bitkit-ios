@@ -765,18 +765,21 @@ struct SparkExitProgressView: View {
     /// Prices the refused payment, again every 15 seconds after a failed price, such as before the node runs, while
     /// progress can still offer it.
     private func priceSavingsRetry() async {
-        while !Task.isCancelled {
-            await priceSavingsRetryOnce()
-            guard savingsRetry == nil, savingsRefusal != nil else { return }
+        while !Task.isCancelled, savingsRefusal != nil {
+            if await priceSavingsRetryOnce() {
+                return
+            }
             try? await Task.sleep(nanoseconds: 15_000_000_000)
         }
     }
 
-    /// A failed price keeps the last one, which is never offered below a fee refused since.
-    private func priceSavingsRetryOnce() async {
+    /// A failed price keeps the last one, which is never offered below a fee refused since. Whether it priced the
+    /// refusal progress offers now.
+    @discardableResult
+    private func priceSavingsRetryOnce() async -> Bool {
         guard let savingsRefusal, let address = record?.funding.first?.address else {
             savingsRetry = nil
-            return
+            return false
         }
         let wallet = wallet
         let feeEstimatesManager = feeEstimatesManager
@@ -788,10 +791,11 @@ struct SparkExitProgressView: View {
             calculate: { try await wallet.calculateTotalFee(address: $0, amountSats: $1, satsPerVByte: $2) }
         )
         // A cancelled price, or one for a refusal since replaced, changes nothing.
-        guard !Task.isCancelled, self.savingsRefusal == savingsRefusal else { return }
-        if case let .priced(rate, feeSats) = priced {
-            savingsRetry = (rate, feeSats)
+        guard !Task.isCancelled, self.savingsRefusal == savingsRefusal, case let .priced(rate, feeSats) = priced else {
+            return false
         }
+        savingsRetry = (rate, feeSats)
+        return true
     }
 
     private var fundingState: SparkExitFundingState? {
