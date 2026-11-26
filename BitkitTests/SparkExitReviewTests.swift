@@ -1132,6 +1132,23 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(contexts.count, 1)
     }
 
+    /// Another wallet covered the funding since the refusal: savings is no longer offered, and paying again sends nothing.
+    func testPayingAgainSendsNothingOnceAnotherWalletCoveredTheFunding() async throws {
+        let record = SparkExitFixtures.record()
+        XCTAssertFalse(SparkExitManager.isSavingsPaymentRefused(record, attempt: refusedPayment(), fundingState: .seen(txid: "other")))
+        XCTAssertTrue(SparkExitManager.isSavingsPaymentRefused(record, attempt: refusedPayment(), fundingState: .ask(sats: 5000, receivedSats: 4000)))
+
+        var retries = 0
+        do {
+            _ = try await SparkExitManager.payRefusedAgain(refusedPayment(), record: record, fundingState: .seen(txid: "other")) { _ in
+                retries += 1
+                return .accepted(txid: "again")
+            }
+            XCTFail("funding another wallet covered is never paid again")
+        } catch {}
+        XCTAssertEqual(retries, 0)
+    }
+
     /// A wipe closes Spark's connects first, then lets exit work (a tick that may reconnect) finish, and only then
     /// disconnects and deletes: nothing can reconnect the wiped wallet after its SDK is cleared.
     @MainActor
