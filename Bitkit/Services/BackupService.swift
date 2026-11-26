@@ -541,6 +541,8 @@ class BackupService {
                 case .nothingStaged, .imported:
                     break
                 }
+                // An active exit defers the upload and keeps this category required; it never counts as backed up.
+                guard await !isSparkExitActive() else { throw CancellationError() }
                 // Nothing to back up until Spark connects, which marks this category required again.
                 if let data = try await sparkExitBackupData() {
                     guard await !isSparkExitActive() else { throw CancellationError() }

@@ -55,10 +55,12 @@ final class SparkExitBackupTests: XCTestCase {
             uploadBackup: { key, _ in uploads.append(key) }
         )
 
-        await service.triggerBackup(category: .sparkExit)
+        let outcome = await service.triggerBackup(category: .sparkExit)
 
         XCTAssertTrue(uploads.isEmpty)
         XCTAssertEqual(exports, 0)
+        XCTAssertEqual(outcome, .failed)
+        XCTAssertTrue(service.getBackupStatus(category: .sparkExit).isRequired, "an active exit counted as backed up")
     }
 
     func testAFailedExitRestoreBlocksReplacingTheRemoteBackupUntilItRecovers() async throws {
