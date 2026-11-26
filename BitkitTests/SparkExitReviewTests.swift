@@ -143,7 +143,9 @@ final class SparkExitReviewTests: XCTestCase {
         do {
             try await exit.paySavingsRefusal(satsPerVbyte: 4, feeSats: 650)
             XCTFail("savings paid after funding reached the address")
-        } catch {}
+        } catch {
+            XCTAssertTrue("\(error)".contains("No refused Spark exit savings payment"), "refused only at dispatch: \(error)")
+        }
 
         XCTAssertEqual(exit.fundingSeenSats, 8000, "progress kept the funding seen before the read")
         if case let .ask(_, receivedSats) = exit.fundingState {
@@ -152,6 +154,34 @@ final class SparkExitReviewTests: XCTestCase {
             XCTFail("progress shows \(String(describing: exit.fundingState)), not the funding received")
         }
         XCTAssertNil(exit.record?.fundingPaymentTxid)
+    }
+
+    /// An exit that needs no funding keeps its funding as a tick leaves it, whatever the address holds.
+    @MainActor func testPayingARefusedStartAgainLeavesFundingAloneOnceTheExitNeedsNone() async throws {
+        let walletIndex = 9994
+        let store = SparkExitStore(walletIndex: walletIndex)
+        defer {
+            try? store.delete()
+            try? SparkExitEarlierAddressStore(walletIndex: walletIndex).delete()
+            try? SparkExitLostLeafStore(walletIndex: walletIndex).delete()
+        }
+        var record = SparkExitFixtures.record(phase: .running)
+        record.savingsRefusal = SparkExitRecord.SavingsRefusal(sats: 20000, feeSats: 650)
+        try store.save(record)
+        let address = try XCTUnwrap(record.funding.first?.address)
+        chain.utxosByAddress[address] = [SparkExitFixtures.utxo(String(repeating: "e", count: 64), value: 8000)]
+        let exit = SparkExitManager(walletIndex: walletIndex, chain: chain)
+        exit.load(walletIndex: walletIndex)
+
+        do {
+            try await exit.paySavingsRefusal(satsPerVbyte: 4, feeSats: 650)
+            XCTFail("savings paid for an exit that needs no funding")
+        } catch {
+            XCTAssertTrue("\(error)".contains("No refused Spark exit savings payment"), "refused only at dispatch: \(error)")
+        }
+
+        XCTAssertEqual(exit.fundingSeenSats, 0, "a running exit counted funding still to come")
+        XCTAssertNil(exit.fundingState)
     }
 
     // MARK: H1 cancel
