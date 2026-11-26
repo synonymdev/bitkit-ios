@@ -143,7 +143,13 @@ final class SparkManager: ChannelFreeLightningRail {
     /// Set once a full activity sync succeeded in this process; `wipe` clears it.
     @ObservationIgnored private var activitiesSynced = false
 
-    private init() {}
+    private init() {
+        // A deposit the transfer flow sent before a relaunch shows at once, so the transfer banner opens its claim.
+        for (txid, sent) in SparkSentDeposits().load() where sent.amountSats > 0 {
+            broadcastDeposits[txid] = sent.amountSats
+        }
+        applyBroadcastDeposits()
+    }
 
     var isSupported: Bool {
         Self.sparkNetwork != nil
@@ -622,6 +628,7 @@ final class SparkManager: ChannelFreeLightningRail {
         deposits = []
         withdrawals = []
         broadcastDeposits = [:]
+        SparkSentDeposits().clear()
         sendsRecordedWithoutFee = []
         unsavedPayments = []
         sentWithdrawalTxIds = []
@@ -1570,6 +1577,7 @@ final class SparkManager: ChannelFreeLightningRail {
     /// minute-long background sync; Spark's own deposit state replaces it once listed.
     func onDepositBroadcast(txid: String, amountSats: UInt64) {
         broadcastDeposits[txid] = amountSats
+        SparkSentDeposits().record(txid: txid, amountSats: amountSats)
         applyBroadcastDeposits()
         onStateChanged?()
         Task {
@@ -1658,6 +1666,7 @@ final class SparkManager: ChannelFreeLightningRail {
         for deposit in deposits {
             broadcastDeposits[deposit.txid] = nil
         }
+        SparkSentDeposits().remove(txids: deposits.filter(\.isClaimed).map(\.txid))
         applyBroadcastDeposits()
         if changed {
             onStateChanged?()
@@ -2115,8 +2124,8 @@ extension [SparkDeposit] {
 
 /// How a deposit into Spark can be claimed. The provider decides per deposit whether to credit it early, at 0
 /// confirmations or 1-2, for a fee above the standard claim's at 3 confirmations.
-struct SparkClaimOffer: Equatable {
-    enum Kind: Equatable {
+struct SparkClaimOffer: Codable, Equatable {
+    enum Kind: Codable, Equatable {
         /// No early claim is offered, so Spark claims it at `confirmations` for `feeSats`.
         case standard(feeSats: UInt64, confirmations: UInt32)
         /// The early claim fits this wallet's fee cap, so Spark claims it at `confirmations` by itself.

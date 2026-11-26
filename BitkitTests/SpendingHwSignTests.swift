@@ -3,6 +3,16 @@ import XCTest
 
 @MainActor
 final class SpendingHwSignTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        SparkSentDeposits().clear()
+    }
+
+    override func tearDown() {
+        SparkSentDeposits().clear()
+        super.tearDown()
+    }
+
     private let walletId = "jade:wallet"
     private let depositAddress = "bcrt1qdeposit"
     private let signedTx = HwFundingSignedTx(serializedTx: "aabb", miningFeeSats: 141, feeRate: 2.5, totalSpent: 42141)

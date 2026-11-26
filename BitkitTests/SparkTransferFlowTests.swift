@@ -5,6 +5,16 @@ import XCTest
 final class SparkTransferFlowTests: XCTestCase {
     private let ceiling: UInt64 = 1000
 
+    override func setUp() {
+        super.setUp()
+        SparkSentDeposits().clear()
+    }
+
+    override func tearDown() {
+        SparkSentDeposits().clear()
+        super.tearDown()
+    }
+
     private func choice(earlyFee: UInt64) -> SparkClaimOffer.Kind {
         .choice(earlyFeeSats: earlyFee, earlyConfirmations: 0, standardFeeSats: 198, standardConfirmations: 3)
     }
@@ -150,6 +160,101 @@ final class SparkTransferFlowTests: XCTestCase {
         try await Task.sleep(nanoseconds: 100_000_000)
 
         XCTAssertEqual(released, [])
+    }
+
+    @MainActor
+    func testARelaunchShowsTheChangedFeeAgain() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 1500)])
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+        XCTAssertEqual(flow.claimState, .repriced(feeSats: 1500))
+
+        let relaunched = SparkTransferFlow()
+        relaunched.showDeposit(txid: "txid")
+
+        XCTAssertEqual(relaunched.claimState, .repriced(feeSats: 1500), "A relaunch dropped Wait and Approve")
+    }
+
+    @MainActor
+    func testARelaunchKeepsTheChoiceMadeOverAChangedFee() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 1500)])
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+        flow.waitForConfirmations()
+
+        let relaunched = SparkTransferFlow()
+        relaunched.showDeposit(txid: "txid")
+
+        XCTAssertEqual(relaunched.claimState, .later)
+        XCTAssertTrue(relaunched.hasWaited)
+    }
+
+    @MainActor
+    func testARelaunchResumesTheInstantClaimAtTheApprovedCeiling() async {
+        SparkSentDeposits().update(txid: "txid") {
+            $0.amountSats = 100_000
+            $0.ceilingSats = 1093
+        }
+        let calls = PollCalls()
+        let relaunched = pollingFlow(offers: [choice(earlyFee: 900)], claims: [.submitted], calls: calls)
+
+        relaunched.resumeSentDeposits()
+        relaunched.showDeposit(txid: "txid")
+        await relaunched.waitForClaim()
+
+        XCTAssertEqual(calls.ceilings, [1093], "The relaunch dropped the early claim")
+        XCTAssertEqual(relaunched.claimState, .adding)
+    }
+
+    @MainActor
+    func testWaitOnAChangedFeeAfterARelaunchClearsTheEarlyClaimCap() async throws {
+        let flow = pollingFlow(offers: [choice(earlyFee: 900)], claims: [.repriced(requiredFeeSats: 1500)])
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+        let calls = PollCalls()
+        let relaunched = pollingFlow(offers: [], calls: calls)
+
+        relaunched.showDeposit(txid: "txid")
+        XCTAssertEqual(relaunched.claimState, .repriced(feeSats: 1500))
+        relaunched.waitForConfirmations()
+        for _ in 0 ..< 100 where calls.released.isEmpty {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        XCTAssertEqual(calls.released, ["txid"], "Spark may still claim early at the cap Wait declined")
+        XCTAssertNil(SparkSentDeposits().load()["txid"]?.claimedOffer)
+    }
+
+    @MainActor
+    func testARelaunchLeavesADepositSparkClaimedMeanwhile() async {
+        SparkSentDeposits().update(txid: "txid") { $0.ceilingSats = 1093 }
+        let calls = PollCalls()
+        let relaunched = pollingFlow(offers: [choice(earlyFee: 900)], calls: calls)
+
+        SparkSentDeposits().remove(txids: ["TXID"])
+        relaunched.resumeSentDeposits()
+        relaunched.showDeposit(txid: "txid")
+        await relaunched.waitForClaim()
+
+        XCTAssertEqual(calls.offers, 0, "A claimed deposit was followed again")
+        XCTAssertTrue(SparkSentDeposits().load().isEmpty)
+    }
+
+    func testADepositSparkNeverListedIsDroppedAfterTwoWeeks() {
+        let store = SparkSentDeposits()
+        store.update(txid: "txid") { $0.sentAt = Date(timeIntervalSinceNow: -15 * 24 * 60 * 60) }
+
+        XCTAssertTrue(store.load().isEmpty)
+    }
+
+    @MainActor
+    func testAClaimedDepositIsNoLongerKeptForARelaunch() async {
+        let flow = pollingFlow(offers: [choice(earlyFee: 900)], claims: [.claimed])
+        flow.onBroadcast(txid: "txid")
+        await flow.waitForClaim()
+
+        XCTAssertEqual(flow.claimState, .added)
+        XCTAssertTrue(SparkSentDeposits().load().isEmpty)
     }
 
     @MainActor
