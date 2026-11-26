@@ -52,7 +52,17 @@ final class SparkExitManager {
     private(set) var isFeeBumpLeavingLeaves = false
     /// What the running exit shows about its fee funding while it lacks some.
     var fundingState: SparkExitFundingState? {
-        Self.isFundingOfExit(fundingExitCreatedAt, record: record) ? storedFundingState : nil
+        guard Self.isFundingOfExit(fundingExitCreatedAt, record: record) else { return nil }
+        return Self.currentFundingState(storedFundingState, record: record)
+    }
+
+    /// A payment the exit forgot since the funding was read, as a background run or a tick may, no longer holds the
+    /// ask: Progress reads the record's own state until the next read.
+    nonisolated static func currentFundingState(_ stored: SparkExitFundingState?, record: SparkExitRecord?) -> SparkExitFundingState? {
+        if case let .paid(txid) = stored, record?.fundingPaymentTxid != txid {
+            return nil
+        }
+        return stored
     }
 
     /// The full funding the Progress top-up asks for, every extra payment's input fee included.
@@ -276,6 +286,8 @@ final class SparkExitManager {
         }
         let record = record
         Task {
+            // Progress says at once whether a savings payment may still land, before the first tick's network reads.
+            unresolvedSendAddress = await OnchainSendAttemptService.shared.unresolvedSendAddress()
             if let record {
                 await settleIfFinished(record)
             }

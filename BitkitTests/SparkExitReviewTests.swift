@@ -646,8 +646,11 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(SparkExitMath.fundingState(record, utxos: nil), .paid(txid: "unk"))
         XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: nil), "accepted")
         XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: "bcrt1qelsewhere"))
+        XCTAssertEqual(SparkExitManager.currentFundingState(.paid(txid: "unk"), record: record), .paid(txid: "unk"))
         record.fundingPaymentTxid = nil
         XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: "bcrt1qfunding"))
+        // A paid state read before the payment was forgotten, as by a background run, no longer holds the ask.
+        XCTAssertNil(SparkExitManager.currentFundingState(.paid(txid: "unk"), record: record))
         guard case .ask = SparkExitMath.fundingState(record, utxos: nil) else { return XCTFail("the ask comes back") }
     }
 
