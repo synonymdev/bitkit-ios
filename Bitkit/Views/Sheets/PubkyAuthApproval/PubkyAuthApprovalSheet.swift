@@ -431,22 +431,29 @@ struct PubkyAuthApprovalSheet: View {
                             .padding(.bottom, 32)
                     }
 
-                    if let relayUrl = config.request.relayDisplayUrl {
-                        relaySection(relayUrl)
-                            .padding(.bottom, 32)
-                    }
+                    let relayUrl = config.request.relayDisplayUrl
+                    let showsPaykitAccess = config.request.bitkitClaim?.includesPaykitAccess == true
 
                     if !config.request.permissions.isEmpty {
                         permissionsSection
+                        if relayUrl != nil || showsPaykitAccess {
+                            sectionDivider
+                        }
                     }
 
-                    if config.request.bitkitClaim?.includesPaykitAccess == true {
+                    if let relayUrl {
+                        relaySection(relayUrl)
+                        if showsPaykitAccess {
+                            sectionDivider
+                        }
+                    }
+
+                    if showsPaykitAccess {
                         VStack(alignment: .leading, spacing: 8) {
                             CaptionMText(t("pubky_auth__details"), textColor: .white64).frame(minHeight: 18)
                             BodySText(t("pubky_auth__paykit_access_description"), textColor: .textPrimary, kerning: 0, lineHeight: 20)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        .padding(.top, 32)
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("PubkyAuthPaykitAccess")
                     }
@@ -551,8 +558,12 @@ struct PubkyAuthApprovalSheet: View {
 
                 Spacer(minLength: 0)
             }
-            CustomDivider(color: .white10)
         }
+    }
+
+    private var sectionDivider: some View {
+        CustomDivider(color: .white10)
+            .padding(.vertical, 12)
     }
 
     private var successDescriptionText: some View {

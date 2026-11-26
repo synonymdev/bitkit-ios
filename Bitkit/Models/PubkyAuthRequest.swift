@@ -187,20 +187,41 @@ struct PubkyAuthRequest {
     }
 
     /// The relay URL that receives the authorization, without user info or fragment so the host cannot be disguised.
-    /// This is a delivery destination, not a service identity.
+    /// This is a delivery destination, not a service identity. Nil only when the request has no relay.
     var relayDisplayUrl: String? {
-        guard let components = URLComponents(string: relay),
-              let scheme = components.scheme?.lowercased(),
-              ["http", "https"].contains(scheme),
-              let host = components.host?.lowercased(),
-              !host.isEmpty
-        else {
-            return nil
-        }
+        Self.displayRelay(relay)
+    }
 
-        let port = components.port.map { ":\($0)" } ?? ""
-        let query = components.percentEncodedQuery.map { "?\($0)" } ?? ""
-        return "\(scheme)://\(host)\(port)\(components.percentEncodedPath)\(query)"
+    /// The relay as shown on the approval sheet: scheme, host, port, path and query. Nil when the destination the Pubky
+    /// SDK would send to cannot be read from `relay` with certainty: a backslash, a space, control or non-ASCII
+    /// characters, a missing or percent-encoded host, or a numeric host that is not a plain IPv4 address.
+    static func displayRelay(_ relay: String) -> String? {
+        guard relay.unicodeScalars.allSatisfy({ $0.value > 0x20 && $0.value < 0x7F && $0 != "\\" }),
+              let schemeEnd = relay.range(of: "://"), schemeEnd.lowerBound > relay.startIndex
+        else { return nil }
+        let scheme = relay[..<schemeEnd.lowerBound].lowercased()
+        guard ["http", "https"].contains(scheme) else { return nil }
+        let rest = relay[schemeEnd.upperBound...]
+        let authorityEnd = rest.firstIndex { "/?#".contains($0) } ?? rest.endIndex
+        let authority = rest[..<authorityEnd]
+        let hostPort = authority[(authority.lastIndex(of: "@").map { authority.index(after: $0) } ?? authority.startIndex)...]
+            .lowercased()
+        let matches = { (pattern: String, value: String) in
+            value.range(of: "^(?:\(pattern))$", options: .regularExpression) != nil && !value.contains("\n")
+        }
+        guard matches(#"(\[[0-9a-f:.]+\]|[a-z0-9._~-]+)(:[0-9]{1,5})?"#, hostPort) else { return nil }
+        if !hostPort.hasPrefix("[") {
+            // A last label that reads as a number makes the SDK's URL parser treat the whole host as an IPv4 address.
+            let host = String(hostPort.split(separator: ":", omittingEmptySubsequences: false)[0])
+            let trimmedHost = host.hasSuffix(".") ? String(host.dropLast()) : host
+            let lastLabel = String(trimmedHost.split(separator: ".", omittingEmptySubsequences: false).last ?? "")
+            let octet = "(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])"
+            if matches("[0-9]+|0x[0-9a-f]*", lastLabel), !matches("(\(octet)\\.){3}\(octet)", host) {
+                return nil
+            }
+        }
+        let pathAndQuery = rest[authorityEnd...].prefix { $0 != "#" }
+        return "\(scheme)://\(hostPort)\(pathAndQuery)"
     }
 
     static func isProtocolURL(_ value: String) -> Bool {
@@ -343,6 +364,9 @@ struct PubkyAuthRequest {
             .compactMap { extractServiceName($0.path) }
             .filter { seenServiceNames.insert($0).inserted }
         let bitkitClaim = try parseBitkitClaim(url: url, capabilities: capabilities, requiresBitkitClaim: requiresBitkitClaim)
+        guard relay.isEmpty || displayRelay(relay) != nil else {
+            throw PubkyAuthRequestError.invalidUrl
+        }
         return PubkyAuthRequest(
             rawUrl: url,
             kind: kind,
