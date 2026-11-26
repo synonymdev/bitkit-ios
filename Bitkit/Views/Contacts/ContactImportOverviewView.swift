@@ -83,7 +83,7 @@ struct ContactImportOverviewView: View {
 
     private var contactsSummary: some View {
         HStack(spacing: 16) {
-            BodyMSBText(t("contacts__import_friends_count", variables: ["count": "\(contacts.count)"]))
+            BodyMSBText(tPlural("contacts__import_friends_count", arguments: ["count": contacts.count]))
 
             Spacer()
 

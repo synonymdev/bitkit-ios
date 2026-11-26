@@ -1305,7 +1305,7 @@
 "contacts__import_select_description" = "Please select which friends you want to import.";
 "contacts__import_select_all" = "Select all";
 "contacts__import_select_none" = "Select none";
-"contacts__import_friends_count" = "{count} friends";
+"contacts__import_friends_count" = "{count, plural, one {# friend} other {# friends}}";
 "contacts__import_selected_count" = "{count} selected";
 "contacts__delete_active_subscription" = "End active subscriptions before deleting this contact.";
 "contacts__delete_title" = "Delete {name}?";

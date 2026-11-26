@@ -1306,7 +1306,7 @@
 "contacts__import_select_description" = "Wybierz znajomych, których chcesz zaimportować.";
 "contacts__import_select_all" = "Zaznacz wszystkie";
 "contacts__import_select_none" = "Odznacz wszystkie";
-"contacts__import_friends_count" = "Znajomi: {count}";
+"contacts__import_friends_count" = "{count, plural, one {# znajomy} few {# znajomych} many {# znajomych} other {# znajomego}}";
 "contacts__import_selected_count" = "Wybrano: {count}";
 "contacts__delete_active_subscription" = "Zakończ aktywne subskrypcje przed usunięciem tego kontaktu.";
 "contacts__delete_title" = "Usunąć {name}?";

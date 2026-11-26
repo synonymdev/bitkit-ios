@@ -198,3 +198,5 @@ deleted contact must not replace the newer navigation destination.
 Make a Contact Pay lookup fail with SDK contention, on both Contact Detail and the Send contact
 picker. Verify the error uses localized retry guidance rather than SDK codes or context. A canceled
 lookup must not display an error. Restore access and retry; payment validation must run again.
+
+`import-friend-count.xml` checks that the import preview count uses plural forms: "1 friend" for one follow, "N friends" otherwise, and the locale's own forms in Russian. It is mirrored on the other platform and needs disposable identities that follow one and several profiles.
