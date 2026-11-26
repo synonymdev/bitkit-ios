@@ -423,12 +423,22 @@ final class SparkExitManager {
         if let stored = try? Self.loadRecord(store: store, lostLeafStore: lostLeafStore) {
             record = stored
         }
+        // Read again under the lock: a retry from Send Pending may have sent it since the last tick.
+        await refreshRefusedSavingsPayment()
         guard let current = record, let refused = refusedSavingsPayment else { return }
         let attempts = OnchainSendAttemptService.shared
-        let paidAgain = try await Self.payRefusedAgain(refused, record: current) { context in
-            try await attempts.retrySamePayment(using: LightningService.shared, context: context) { attempt, _ in
-                guard attempt.id == refused.id, attempt.address == refused.address else { throw OnchainSendAttemptError.unresolved }
+        let paidAgain: (txid: String, isAccepted: Bool)?
+        do {
+            paidAgain = try await Self.payRefusedAgain(refused, record: current) { context in
+                try await attempts.retrySamePayment(using: LightningService.shared, context: context) { attempt, _ in
+                    guard attempt.id == refused.id, attempt.address == refused.address, attempt.status == .rejected
+                    else { throw OnchainSendAttemptError.unresolved }
+                }
             }
+        } catch {
+            await refreshSends()
+            await refreshRefusedSavingsPayment()
+            throw error
         }
         await refreshRefusedSavingsPayment()
         guard let (txid, isAccepted) = paidAgain else {
