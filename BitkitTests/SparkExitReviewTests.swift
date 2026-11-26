@@ -146,7 +146,11 @@ final class SparkExitReviewTests: XCTestCase {
         var kept = record
         kept.fundingPaymentTxid = "kept"
         XCTAssertNil(SparkExitManager.keepingAcceptedSend(kept, address: address, txid: "accepted"))
-        XCTAssertFalse(try SparkExitManager.canCancel(XCTUnwrap(paid), fundingSeenSats: 0))
+        // Kept once: a payment the exit forgot since (dropped, or short) has no refusal left and is never kept again.
+        var forgotten = try XCTUnwrap(paid)
+        forgotten.fundingPaymentTxid = nil
+        XCTAssertNil(SparkExitManager.keepingAcceptedSend(forgotten, address: address, txid: "accepted"))
+        XCTAssertTrue(SparkExitManager.canCancel(forgotten, fundingSeenSats: 0), "a forgotten payment kept the exit from cancelling")
     }
 
     /// Paying a refused start again reads the address first: funding that reached it shows on progress, as a tick
