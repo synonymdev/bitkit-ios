@@ -419,11 +419,6 @@ final class SparkExitManager {
         return isSavingsPaymentRefused || record.funding.contains { $0.address == unresolvedSendAddress }
     }
 
-    /// The start's refused savings payment progress offers at its new fee, now.
-    var savingsRefusal: SparkExitRecord.SavingsRefusal? {
-        record.flatMap { Self.savingsRefusal($0, fundingState: fundingState, hasSavingsSend: hasSavingsSend) }
-    }
-
     /// The start's savings payment of `record`'s fee funding that was refused before it went out, for a fee above the
     /// one confirmed, while progress can offer to pay it at the new fee: before the exit holds any funding, while
     /// nothing reached the funding address, and while no savings send to it went out (`hasSavingsSend`).
@@ -507,6 +502,10 @@ final class SparkExitManager {
             try? await chain?.utxos(address: address)
         } else {
             nil
+        }
+        // Progress shows what the read found, so it stops offering savings once funding arrived.
+        if let current = record, let utxos {
+            setFunding(SparkExitMath.fundingState(current, utxos: utxos), for: current)
         }
         guard let current = record, let address,
               let refusal = Self.savingsRefusalToPay(current, utxos: utxos, hasSavingsSend: hasSavingsSend, feeSats: feeSats)

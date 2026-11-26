@@ -772,6 +772,7 @@ struct SparkExitProgressView: View {
         }
     }
 
+    /// A failed price keeps the last one, which is never offered below a fee refused since.
     private func priceSavingsRetryOnce() async {
         guard let savingsRefusal, let address = record?.funding.first?.address else {
             savingsRetry = nil
@@ -786,10 +787,10 @@ struct SparkExitProgressView: View {
             estimates: { await feeEstimatesManager.getEstimates(refresh: true) },
             calculate: { try await wallet.calculateTotalFee(address: $0, amountSats: $1, satsPerVByte: $2) }
         )
+        // A cancelled price, or one for a refusal since replaced, changes nothing.
+        guard !Task.isCancelled, self.savingsRefusal == savingsRefusal else { return }
         if case let .priced(rate, feeSats) = priced {
             savingsRetry = (rate, feeSats)
-        } else {
-            savingsRetry = nil
         }
     }
 
@@ -1022,7 +1023,7 @@ struct SparkExitProgressView: View {
             .refreshable {
                 await SparkManager.shared.refreshState()
                 await exit.tick()
-                await priceSavingsRetry()
+                await priceSavingsRetryOnce()
             }
             // Over the bottom inset: content cut at the edge fades out above the buttons, and scrolled to the end the
             // last line clears it.
