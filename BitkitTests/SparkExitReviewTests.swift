@@ -642,13 +642,12 @@ final class SparkExitReviewTests: XCTestCase {
     func testASavingsPaymentMayStillLandOnlyWhileTheExitWaitsForIt() {
         var record = SparkExitFixtures.record()
         record.fundingPaymentTxid = "unk"
-        XCTAssertTrue(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: "bcrt1qfunding", isRefused: false))
+        XCTAssertTrue(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: "bcrt1qfunding"))
         XCTAssertEqual(SparkExitMath.fundingState(record, utxos: nil), .paid(txid: "unk"))
-        XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: nil, isRefused: false), "accepted")
-        XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: "bcrt1qfunding", isRefused: true))
-        XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: "bcrt1qelsewhere", isRefused: false))
+        XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: nil), "accepted")
+        XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: "bcrt1qelsewhere"))
         record.fundingPaymentTxid = nil
-        XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: "bcrt1qfunding", isRefused: false))
+        XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: "bcrt1qfunding"))
         guard case .ask = SparkExitMath.fundingState(record, utxos: nil) else { return XCTFail("the ask comes back") }
     }
 

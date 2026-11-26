@@ -357,14 +357,13 @@ final class SparkExitManager {
     /// The exit waits for its own savings payment, which the send journal has not seen accepted yet: it may still land,
     /// so Progress says to wait for it before paying from another wallet.
     var isSavingsSendLanding: Bool {
-        record.map {
-            Self.isSavingsSendLanding($0, unresolvedSendAddress: unresolvedSendAddress, isRefused: refusedSavingsPayment != nil)
-        } ?? false
+        record.map { Self.isSavingsSendLanding($0, unresolvedSendAddress: unresolvedSendAddress) } ?? false
     }
 
     /// Only while `record` still waits for that payment: once the own-payment wait forgets it, the ask comes back.
-    nonisolated static func isSavingsSendLanding(_ record: SparkExitRecord, unresolvedSendAddress: String?, isRefused: Bool) -> Bool {
-        guard record.isAwaitingOwnPayment, !isRefused, let unresolvedSendAddress else { return false }
+    /// A refused payment is never awaited (its txid is not kept), so a refusal needs no check of its own.
+    nonisolated static func isSavingsSendLanding(_ record: SparkExitRecord, unresolvedSendAddress: String?) -> Bool {
+        guard record.isAwaitingOwnPayment, let unresolvedSendAddress else { return false }
         return record.funding.contains { $0.address == unresolvedSendAddress }
     }
 
@@ -620,8 +619,9 @@ final class SparkExitManager {
             await refreshNetworkFees(chain: chain)
             await refreshFundingSeen(chain: chain, record: current)
             var updated = try await driver.tick(current)
-            // A tick that adopted the funding and came up short would otherwise keep showing that payment as seen.
-            if updated.phase != current.phase {
+            // A tick that adopted the funding and came up short would otherwise keep showing that payment as seen, and
+            // one that forgot the exit's own payment would keep hiding the ask.
+            if updated.phase != current.phase || updated.fundingPaymentTxid != current.fundingPaymentTxid {
                 await refreshFundingSeen(chain: chain, record: updated)
             }
             // The result may have been opened while this tick ran; a reset the driver made, such as for change kept
@@ -1344,6 +1344,8 @@ final class SparkExitManager {
         } else {
             Logger.warn("Spark exit funding \(txid) has an unknown outcome; kept as pending", context: "SparkExitManager")
         }
+        // Progress says at once whether the payment may still land.
+        unresolvedSendAddress = await attempts.unresolvedSendAddress()
         return txid
     }
 
