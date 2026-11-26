@@ -305,6 +305,8 @@ struct SparkSendState: Equatable {
 struct MoveToSparkPart: Equatable {
     let amountSats: UInt64
     let feeSats: UInt64
+    /// The amount a route that did not carry the wanted one halved it to, when one did.
+    var routeHalvedToSats: UInt64?
 }
 
 /// A move of the channels' whole balance: its first part, of `amountSats` to `invoice` under `firstFeeSats`, and
@@ -420,6 +422,10 @@ enum MoveToSparkPayments {
         DroppedMovePayments(defaults: defaults)
     }
 
+    static var retried: RetriedMoveParts {
+        RetriedMoveParts(defaults: defaults)
+    }
+
     private static func save(_ hashes: [String: Double]) {
         defaults.set(hashes, forKey: storageKey)
         cached = hashes
@@ -428,6 +434,7 @@ enum MoveToSparkPayments {
     static func removeAll() {
         defaults.removeObject(forKey: storageKey)
         dropped.removeAll()
+        retried.removeAll()
         cached = nil
     }
 
@@ -545,8 +552,6 @@ final class MoveToSparkManager {
     }
 
     private let services: any MoveToSparkServices
-    /// The retried parts before each part still in flight, by its payment hash: dropped when it settles late.
-    private var retriedBeforeInFlightPart: [String: [String]] = [:]
     /// One move at a time: the modal's and a payment's update would otherwise pay from the same channel balance.
     private var moveTail: Task<Void, Never>?
 
@@ -715,27 +720,27 @@ final class MoveToSparkManager {
                         isWanted: isWanted,
                         onTimeout: { onTimeout(movedSats + amountSats) },
                         onLateFailure: {
-                            self.retriedBeforeInFlightPart.removeValue(forKey: partHash)
+                            _ = MoveToSparkPayments.retried.take(before: partHash)
                             onLateFailure(movedSats, feeMsat / 1000)
                         },
                         // Summed in msat before rounding, as when the parts settle within the wait.
                         onLateSuccess: {
-                            self.dropRetriedParts(self.retriedBeforeInFlightPart.removeValue(forKey: partHash) ?? [])
+                            self.dropRetriedParts(MoveToSparkPayments.retried.take(before: partHash) ?? [])
                             onLateSuccess(movedSats + amountSats, (feeMsat + $0.feePaidMsat) / 1000)
                         }
                     )
                 } catch {
-                    self.retriedBeforeInFlightPart.removeValue(forKey: partHash)
+                    _ = MoveToSparkPayments.retried.take(before: partHash)
                     throw error
                 }
                 // Only a part still in flight keeps its retried parts for its late outcome.
                 if settled != nil {
-                    self.retriedBeforeInFlightPart.removeValue(forKey: partHash)
+                    _ = MoveToSparkPayments.retried.take(before: partHash)
                 }
                 return settled?.feePaidMsat
             },
             onSendingAfterRetries: { bolt11, retriedBolt11s in
-                self.retriedBeforeInFlightPart[Self.paymentHash(bolt11)] = retriedBolt11s.map(Self.paymentHash)
+                MoveToSparkPayments.retried.set(retriedBolt11s.map(Self.paymentHash), before: Self.paymentHash(bolt11))
             },
             onRetriedPartsSettled: { self.dropRetriedParts($0.map(Self.paymentHash)) }
         )
@@ -863,6 +868,10 @@ final class MoveToSparkManager {
                     bolt11 = try await newInvoice()
                     guard let quoted = try await quotePart(bolt11, limitSats, min(partSats, limitSats)) else { break }
                     part = quoted
+                    // A route that no longer carries the target lowers it for the later parts too.
+                    if let routeHalvedToSats = quoted.routeHalvedToSats {
+                        partSats = routeHalvedToSats
+                    }
                 } catch {
                     lastError = error
                     break
@@ -926,7 +935,7 @@ final class MoveToSparkManager {
         feeCapMsat: UInt64? = nil,
         wallet: WalletViewModel,
         isWanted: (@MainActor () -> Bool)? = nil,
-        channelsCarryQuote: (@MainActor () -> Bool)? = nil,
+        channelsCarryQuote: (@MainActor () async -> Bool)? = nil,
         beforeSubmission: @escaping () throws -> Void = {},
         onTimeout: @escaping @MainActor () -> Void = {},
         onLateFailure: @escaping @MainActor () -> Void = {},
@@ -939,7 +948,7 @@ final class MoveToSparkManager {
             if let isWanted, !isWanted() {
                 throw MoveToSparkError.sparkUnavailable
             }
-            if let channelsCarryQuote, !channelsCarryQuote() {
+            if let channelsCarryQuote, await !channelsCarryQuote() {
                 throw ChannelsNoLongerCarryTheQuote()
             }
             // LDK submits on its own queue, off the main actor: an exit starting after the check above stops the part
@@ -1053,8 +1062,10 @@ final class MoveToSparkManager {
                 wallet: wallet,
                 // Another move may have taken the channels while this payment waited for it, and moved them to Spark.
                 channelsCarryQuote: { [weak wallet] in
-                    let (needSats, overflow) = quote.amountSats.addingReportingOverflow(quote.feeSats)
-                    return !overflow && needSats <= MoveToSparkMath.movableSats(channels: wallet?.channels)
+                    // The earlier move's parts can leave the cached channels stale, so they are read from the node first. The
+                    // fee cap is left out, so a limit that moved a little still pays as before.
+                    await wallet?.syncStateAsync()
+                    return quote.amountSats <= MoveToSparkMath.movableSats(channels: wallet?.channels)
                 },
                 // Checked again at submission, after the payment-list read and any earlier move's wait.
                 beforeSubmission: { try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline) },
@@ -1065,7 +1076,7 @@ final class MoveToSparkManager {
             )
         } catch is ChannelsNoLongerCarryTheQuote {
             Logger.info("Paid no update: the channels no longer carry its quote, waiting for Spark", context: "MoveToSpark")
-            try await waitForSpark(toCover: amountSats, bolt11: bolt11)
+            try await waitForSpark(toCover: amountSats, bolt11: bolt11, paymentDeadline: paymentDeadline)
             return
         }
         // Still in flight: the funds reach Spark or return to the channels on their own.
@@ -1084,11 +1095,13 @@ final class MoveToSparkManager {
     }
 
     /// Waits until Spark alone covers a payment of `amountSats` to `bolt11` and Spark's fee for it, by the rule
-    /// `checkCoverage` uses; throws `updateFallsShort` when it does not within the wait.
-    private func waitForSpark(toCover amountSats: UInt64, bolt11: String) async throws {
+    /// `checkCoverage` uses; throws `updateFallsShort` when it does not within the wait, and stops once the request's
+    /// `paymentDeadline` passes.
+    private func waitForSpark(toCover amountSats: UInt64, bolt11: String, paymentDeadline: PaykitPreciseInstant?) async throws {
         let deadline = ContinuousClock.now + sparkBalanceWait
         let nothingMoved = MoveToSparkQuote(invoice: bolt11, amountSats: 0, feeSats: 0)
         while true {
+            try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)
             await services.refreshSpark()
             if let feeSats = try? await services.estimateSparkFee(bolt11: bolt11, amountSats: amountSats),
                MoveToSparkMath.coversPayment(quote: nothingMoved, spark: services.spark, amountSats: amountSats, feeSats: feeSats)
@@ -1211,18 +1224,21 @@ final class MoveToSparkManager {
         return (invoice, limitSats)
     }
 
-    /// The largest part up to `wantedSats` that routes with its fee under `limitSats`, halving an amount that does not;
-    /// `nil` once the amount falls below the minimum.
+    /// The largest part up to `wantedSats` that routes with its fee under `limitSats`, halving an amount that does not,
+    /// which the part then carries in `routeHalvedToSats`; `nil` once the amount falls below the minimum.
     func quotePart(invoice: String, limitSats: UInt64, wantedSats: UInt64) async throws -> MoveToSparkPart? {
         var wantedSats = wantedSats
+        var routeHalvedToSats: UInt64?
         while true {
             let candidateSats = MoveToSparkMath.firstCandidate(wantedSats: wantedSats, limitSats: limitSats)
             guard candidateSats >= MoveToSparkMath.minMoveSats else { return nil }
-            if let part = try await fittingPart(invoice: invoice, limitSats: limitSats, wantedSats: wantedSats) {
+            if var part = try await fittingPart(invoice: invoice, limitSats: limitSats, wantedSats: wantedSats) {
+                part.routeHalvedToSats = routeHalvedToSats
                 return part
             }
             guard let smallerSats = MoveToSparkMath.smallerAmount(candidateSats) else { return nil }
             wantedSats = smallerSats
+            routeHalvedToSats = smallerSats
         }
     }
 

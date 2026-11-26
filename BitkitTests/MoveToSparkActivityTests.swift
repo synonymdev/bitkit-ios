@@ -100,6 +100,70 @@ final class MoveToSparkActivityTests: XCTestCase {
         try await assertOneOutgoingRowWithTheRoutingFee()
     }
 
+    func testAPartSettlingAfterARelaunchDropsTheFailedPartItReplacedSyncedBefore() async throws {
+        try await assertARelaunchedPartDropsItsRetriedPart(failedFirst: true)
+    }
+
+    func testAPartSettlingAfterARelaunchDropsTheFailedPartItReplacedSyncedAfter() async throws {
+        try await assertARelaunchedPartDropsItsRetriedPart(failedFirst: false)
+    }
+
+    func testAPartFailingAfterARelaunchKeepsTheFailedPartItWouldHaveReplaced() async throws {
+        try await withRelaunchStores { defaults in
+            let retriedHash = String(repeating: "ef", count: 32)
+            Bitkit.ActivityService.retriedMoveParts.set([retriedHash], before: paymentHash)
+
+            try await Bitkit.CoreService.shared.activity.syncLdkNodePayments([
+                ldkSend(timestamp: 900, status: .failed, hash: retriedHash),
+                ldkSend(timestamp: 1000, status: .failed),
+            ])
+
+            let rows = try await Bitkit.CoreService.shared.activity.get(filter: .lightning, walletId: WalletScope.default)
+            XCTAssertEqual(rows.count, 2, "A failed part left Activity though nothing replaced it")
+            XCTAssertNil(Bitkit.RetriedMoveParts(defaults: defaults).take(before: paymentHash))
+        }
+    }
+
+    private func withRelaunchStores(_ body: (UserDefaults) async throws -> Void) async throws {
+        let suiteName = "MoveToSparkActivityTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let savedDropped = Bitkit.ActivityService.droppedMovePayments
+        let savedRetried = Bitkit.ActivityService.retriedMoveParts
+        Bitkit.ActivityService.droppedMovePayments = Bitkit.DroppedMovePayments(defaults: defaults)
+        Bitkit.ActivityService.retriedMoveParts = Bitkit.RetriedMoveParts(defaults: defaults)
+        defer {
+            Bitkit.ActivityService.droppedMovePayments = savedDropped
+            Bitkit.ActivityService.retriedMoveParts = savedRetried
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        try await body(defaults)
+    }
+
+    private func assertARelaunchedPartDropsItsRetriedPart(failedFirst: Bool) async throws {
+        try await withRelaunchStores { _ in try await assertARelaunchedPartDropsItsRetriedPartInStores(failedFirst: failedFirst) }
+    }
+
+    private func assertARelaunchedPartDropsItsRetriedPartInStores(failedFirst: Bool) async throws {
+        let activity = Bitkit.CoreService.shared.activity
+        let retriedHash = String(repeating: "ef", count: 32)
+        // Kept before the relaunch, while the smaller part was in flight.
+        Bitkit.ActivityService.retriedMoveParts.set([retriedHash], before: paymentHash)
+        let failed = ldkSend(timestamp: 900, status: .failed, hash: retriedHash)
+        let settled = ldkSend(timestamp: 1000)
+
+        if failedFirst {
+            try await activity.syncLdkNodePayments([failed])
+        }
+        try await activity.syncLdkNodePayments(failedFirst ? [failed, settled] : [settled, failed])
+
+        let rows = try await activity.get(filter: .lightning, walletId: WalletScope.default)
+        let ids = rows.compactMap { row -> String? in
+            guard case let .lightning(ln) = row else { return nil }
+            return ln.id
+        }
+        XCTAssertEqual(ids, [paymentHash], "The failed part a settled smaller part replaced stayed in Activity")
+    }
+
     func testAFailedRetriedPartLeavesActivityOnceMarked() async throws {
         let activity = Bitkit.CoreService.shared.activity
         let suiteName = "MoveToSparkActivityTests-\(UUID().uuidString)"
@@ -133,8 +197,8 @@ final class MoveToSparkActivityTests: XCTestCase {
         XCTAssertEqual(row.fee, routingFeeSats, file: file, line: line)
     }
 
-    private func ldkSend(timestamp: UInt64, status: LDKNode.PaymentStatus = .succeeded) -> LDKNode.PaymentDetails {
-        payment(direction: .outbound, feeSats: routingFeeSats, timestamp: timestamp, status: status)
+    private func ldkSend(timestamp: UInt64, status: LDKNode.PaymentStatus = .succeeded, hash: String? = nil) -> LDKNode.PaymentDetails {
+        payment(direction: .outbound, feeSats: routingFeeSats, timestamp: timestamp, status: status, hash: hash)
     }
 
     private func sparkReceive(timestamp: UInt64) -> LDKNode.PaymentDetails {
@@ -145,12 +209,13 @@ final class MoveToSparkActivityTests: XCTestCase {
         direction: LDKNode.PaymentDirection,
         feeSats: UInt64?,
         timestamp: UInt64,
-        status: LDKNode.PaymentStatus = .succeeded
+        status: LDKNode.PaymentStatus = .succeeded,
+        hash: String? = nil
     ) -> LDKNode.PaymentDetails {
         LDKNode.PaymentDetails(
-            id: paymentHash,
+            id: hash ?? paymentHash,
             kind: .bolt11(
-                hash: paymentHash,
+                hash: hash ?? paymentHash,
                 preimage: String(repeating: "cd", count: 32),
                 secret: nil,
                 description: "Move to Spark",

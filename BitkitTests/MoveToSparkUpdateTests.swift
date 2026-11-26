@@ -216,6 +216,26 @@ final class MoveToSparkUpdateTests: XCTestCase {
         }
     }
 
+    func testAnUpdateWaitingForSparkStopsOnceTheRequestExpires() async {
+        let services = FakeServices()
+        let manager = MoveToSparkManager(services: services, sparkBalanceWait: .seconds(10))
+        let wallet = WalletViewModel()
+        wallet.channels = []
+        do {
+            try await manager.updateToSend(
+                quote: MoveToSparkQuote(invoice: "lnbcrt1move", amountSats: 20000, feeSats: 32),
+                bolt11: "lnbcrt1pay",
+                amountSats: 40000,
+                paymentDeadline: PaykitPreciseInstant(date: Date().addingTimeInterval(1)),
+                wallet: wallet,
+                transfer: TransferViewModel()
+            )
+            XCTFail("An expired request still waited for Spark")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestExpired, "Unexpected error \(error)")
+        }
+    }
+
     private func assertFallsShort(_ operation: () async throws -> Void, line: UInt = #line) async {
         do {
             try await operation()

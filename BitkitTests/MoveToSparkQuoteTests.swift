@@ -317,7 +317,7 @@ final class MoveToSparkQuoteTests: XCTestCase {
         XCTAssertEqual(outcome, .settled(movedSats: 39878, feeSats: 120))
     }
 
-    func testAPartAQuoteHalvedLeavesTheLaterPartsTheirTarget() async throws {
+    func testARouteThatShrinksDuringTheMoveLowersTheLaterParts() async throws {
         let channels = FakeChannels(movableSats: 100_000)
         var wanted: [UInt64] = []
         _ = try await MoveToSparkManager.payParts(
@@ -327,12 +327,34 @@ final class MoveToSparkQuoteTests: XCTestCase {
             newInvoice: { "lnbcrt1next" },
             quotePart: { _, limitSats, wantedSats in
                 wanted.append(wantedSats)
-                // The second quote halves to what routes then.
-                return channels.quotePart(limitSats: limitSats, wantedSats: wanted.count == 1 ? min(wantedSats, 15000) : wantedSats)
+                guard wanted.count == 1, var part = channels.quotePart(limitSats: limitSats, wantedSats: 15000) else {
+                    return channels.quotePart(limitSats: limitSats, wantedSats: wantedSats)
+                }
+                // The route now carries only half the target.
+                part.routeHalvedToSats = 15000
+                return part
             },
             pay: { bolt11, amount, cap, _, _ in try channels.pay(bolt11, amount, cap) }
         )
-        XCTAssertEqual(Array(wanted.prefix(2)), [30000, 30000], "Only a part that does not route lowers the target")
+        XCTAssertEqual(Array(wanted.prefix(2)), [30000, 15000], "A later part quoted a size that no longer routed")
+    }
+
+    func testAQuoteHalvedByItsRouteCarriesTheSizeThatRouted() async throws {
+        let services = FakeServices()
+        services.estimate = { amountSats in
+            guard amountSats <= 20000 else { throw NodeError.RouteNotFound(message: "no route") }
+            return 30
+        }
+        let manager = MoveToSparkManager(services: services)
+
+        let halvedPart = try await manager.quotePart(invoice: "lnbcrt1move", limitSats: 100_000, wantedSats: 40000)
+        let routedPart = try await manager.quotePart(invoice: "lnbcrt1move", limitSats: 100_000, wantedSats: 15000)
+        let halved = try XCTUnwrap(halvedPart)
+        let routed = try XCTUnwrap(routedPart)
+
+        XCTAssertNotNil(halved.routeHalvedToSats)
+        XCTAssertLessThanOrEqual(halved.amountSats, halved.routeHalvedToSats ?? 0)
+        XCTAssertNil(routed.routeHalvedToSats, "A part that routed at its size lowered the target")
     }
 
     func testAPartALowSendLimitCappedSmallLeavesTheNextPartItsSize() async throws {
@@ -671,9 +693,19 @@ final class MoveToSparkPaymentsTests: XCTestCase {
     func testWipeForgetsEveryHash() {
         MoveToSparkPayments.insert("abcd")
         MoveToSparkPayments.dropFailed(["abcd"])
+        MoveToSparkPayments.retried.set(["abcd"], before: "ef01")
         MoveToSparkPayments.removeAll()
         XCTAssertFalse(MoveToSparkPayments.contains("abcd"))
         XCTAssertTrue(MoveToSparkPayments.droppedBackupSnapshot().isEmpty)
+        XCTAssertNil(MoveToSparkPayments.retried.take(before: "ef01"))
+    }
+
+    func testRetriedPartsSurviveARelaunchUntilTakenOnce() throws {
+        MoveToSparkPayments.retried.set(["ABCD"], before: "EF01")
+        // A relaunch reads the same store anew.
+        MoveToSparkPayments.defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        XCTAssertEqual(MoveToSparkPayments.retried.take(before: "ef01"), ["abcd"])
+        XCTAssertNil(MoveToSparkPayments.retried.take(before: "ef01"), "Two callers dropped the same retried parts")
     }
 
     func testARetriedMovePartsFailureIsDroppedAndBackedUp() throws {

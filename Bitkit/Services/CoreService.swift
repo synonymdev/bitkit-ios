@@ -963,6 +963,8 @@ class ActivityService {
 
     /// The failed sends of retried move parts, which Activity leaves out.
     nonisolated(unsafe) static var droppedMovePayments = DroppedMovePayments(defaults: .standard)
+    /// The retried move parts before each smaller part still in flight, which its success drops.
+    nonisolated(unsafe) static var retriedMoveParts = RetriedMoveParts(defaults: .standard)
 
     /// Whether a Lightning activity keeps its status against an update: a settled payment stays settled, and a failure
     /// from the rail that didn't carry the latest attempt is stale.
@@ -980,16 +982,37 @@ class ActivityService {
         guard !(payment.status == .pending && payment.direction == .inbound) else { return }
 
         let paymentTimestamp = UInt64(payment.latestUpdateTimestamp)
-        let existingActivity = try getActivityById(walletId: WalletScope.default, activityId: payment.id)
+        // A smaller move part that settled after a relaunch still drops the failed sends of the larger parts it replaced;
+        // one that failed keeps them.
+        if payment.direction == .outbound, payment.status == .failed {
+            _ = Self.retriedMoveParts.take(before: payment.id)
+        } else if payment.direction == .outbound, payment.status == .succeeded, let retried = Self.retriedMoveParts.take(before: payment.id) {
+            // On the core queue, so a sync of a retried part's failure either sees it dropped or writes before this deletes.
+            try await ServiceQueue.background(.core) {
+                Self.droppedMovePayments.insert(retried)
+                for hash in retried {
+                    if try getActivityById(walletId: WalletScope.default, activityId: hash) != nil {
+                        _ = try deleteActivityById(walletId: WalletScope.default, activityId: hash)
+                    }
+                }
+            }
+            activitiesChangedSubject.send()
+            metadataChangedSubject.send()
+        }
 
         // A move part that did not route was retried smaller and a later part settled: its failed send is no payment.
         if payment.direction == .outbound, payment.status == .failed, Self.droppedMovePayments.contains(payment.id) {
-            if existingActivity != nil {
-                _ = try deleteActivityById(walletId: WalletScope.default, activityId: payment.id)
+            let deleted = try await ServiceQueue.background(.core) {
+                guard try getActivityById(walletId: WalletScope.default, activityId: payment.id) != nil else { return false }
+                return try deleteActivityById(walletId: WalletScope.default, activityId: payment.id)
+            }
+            if deleted {
                 activitiesChangedSubject.send()
             }
             return
         }
+
+        let existingActivity = try getActivityById(walletId: WalletScope.default, activityId: payment.id)
         let existingLightning: LightningActivity? = if let existingActivity, case let .lightning(ln) = existingActivity {
             ln
         } else {
@@ -1069,6 +1092,10 @@ class ActivityService {
         )
 
         try await ServiceQueue.background(.core) {
+            // A retried move part can be dropped while this sync ran; the sync that dropped it deletes its row.
+            if payment.direction == .outbound, payment.status == .failed, Self.droppedMovePayments.contains(payment.id) {
+                return
+            }
             let latestActivity = try getActivityById(walletId: ln.walletId, activityId: payment.id)
             // The move's LDK send can be stored while this receive waited on its contact lookup; it still wins.
             if isChannelFreeReceive, case let .lightning(latest)? = latestActivity, latest.txType == .sent {
@@ -2882,6 +2909,45 @@ struct DroppedMovePayments: @unchecked Sendable {
     }
 
     func removeAll() {
-        defaults.removeObject(forKey: Self.key)
+        Self.lock.withLock {
+            defaults.removeObject(forKey: Self.key)
+        }
+    }
+}
+
+/// The payment hashes of Move to Spark parts that did not route and were retried smaller, by the hash of the smaller part
+/// still in flight: kept on disk so that part's success after a relaunch still drops their failed sends from Activity.
+struct RetriedMoveParts: @unchecked Sendable {
+    static let key = "moveToSparkRetriedBeforeInFlight"
+    /// Set on the main actor and taken on the core queue, so each read-modify-write holds this.
+    private static let lock = NSLock()
+    let defaults: UserDefaults
+
+    func set(_ retriedHashes: [String], before paymentHash: String) {
+        Self.lock.withLock {
+            var all = stored()
+            all[paymentHash.lowercased()] = retriedHashes.map { $0.lowercased() }
+            defaults.set(all, forKey: Self.key)
+        }
+    }
+
+    /// Removes and returns the parts kept for `paymentHash`, so only one of those that see it settle drops them.
+    func take(before paymentHash: String) -> [String]? {
+        Self.lock.withLock {
+            var all = stored()
+            guard let retried = all.removeValue(forKey: paymentHash.lowercased()) else { return nil }
+            defaults.set(all, forKey: Self.key)
+            return retried
+        }
+    }
+
+    func removeAll() {
+        Self.lock.withLock {
+            defaults.removeObject(forKey: Self.key)
+        }
+    }
+
+    private func stored() -> [String: [String]] {
+        defaults.dictionary(forKey: Self.key) as? [String: [String]] ?? [:]
     }
 }
