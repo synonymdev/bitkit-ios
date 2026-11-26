@@ -431,8 +431,8 @@ struct PubkyAuthApprovalSheet: View {
                             .padding(.bottom, 32)
                     }
 
-                    if let relayOrigin = config.request.relayOrigin {
-                        relayOriginSection(relayOrigin)
+                    if let relayUrl = config.request.relayDisplayUrl {
+                        relaySection(relayUrl)
                             .padding(.bottom, 32)
                     }
 
@@ -532,11 +532,25 @@ struct PubkyAuthApprovalSheet: View {
         }
     }
 
-    private func relayOriginSection(_ relayOrigin: String) -> some View {
+    private func relaySection(_ relayUrl: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("pubky_auth__authorization_relay"), textColor: .white64)
-            BodySSBText(relayOrigin)
-                .accessibilityIdentifier("PubkyAuthRelayOrigin")
+            CaptionMText(t("pubky_auth__authorization_relay"), textColor: .white64).frame(minHeight: 18)
+            HStack(alignment: .top, spacing: 4) {
+                Image("globe")
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundColor(.white)
+                    .frame(width: 16, height: 16)
+                    .padding(.top, 2)
+                    .accessibilityHidden(true)
+
+                BodySSBText(pubkyAuthLiteralText(relayUrl))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("PubkyAuthRelayOrigin")
+
+                Spacer(minLength: 0)
+            }
             CustomDivider(color: .white10)
         }
     }

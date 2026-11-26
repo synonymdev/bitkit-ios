@@ -897,7 +897,7 @@
 "pubky_auth__watch_only_intro_title" = "<accent>GANHE BITCOIN</accent>\nCOM O SEU\nCONTEÚDO";
 "pubky_auth__watch_only_account_xpub_error" = "A Bitkit não conseguiu criar um xpub de conta válido.";
 "pubky_auth__trust_warning" = "Certifique-se de que confia no serviço, no navegador e no dispositivo antes de autorizar com sua pubky.";
-"pubky_auth__authorization_relay" = "RELAY DE AUTORIZAÇÃO";
+"pubky_auth__authorization_relay" = "RELAY";
 "pubky_auth__authorizing" = "Autorizando...";
 "pubky_auth__success_title" = "Autorização Concluída";
 "pubky_auth__success_prefix" = "Você autorizou com a pubky ";

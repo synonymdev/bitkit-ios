@@ -893,7 +893,7 @@
 "pubky_auth__watch_only_intro_title" = "<accent>ЗАРАБАТЫВАЙТЕ БИТКОИН</accent>\nНА СВОЁМ\nКОНТЕНТЕ";
 "pubky_auth__watch_only_account_xpub_error" = "Bitkit не смог создать действительный xpub аккаунта.";
 "pubky_auth__trust_warning" = "Убедитесь, что вы доверяете сервису, браузеру и устройству, прежде чем авторизоваться с вашим pubky.";
-"pubky_auth__authorization_relay" = "РЕТРАНСЛЯТОР АВТОРИЗАЦИИ";
+"pubky_auth__authorization_relay" = "РЕТРАНСЛЯТОР";
 "pubky_auth__authorizing" = "Авторизация...";
 "pubky_auth__success_title" = "Авторизация Выполнена";
 "pubky_auth__success_prefix" = "Вы авторизовались с pubky ";

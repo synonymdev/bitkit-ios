@@ -6,7 +6,7 @@
     <action>If the simulator asks to open the link in Bitkit, tap Open</action>
     <action>Verify the authorize button (id "PubkyAuthAuthorize") is visible</action>
     <action>Wait 5 seconds, then verify the authorize button (id "PubkyAuthAuthorize") is still visible</action>
-    <action>Verify the relay origin (id "PubkyAuthRelayOrigin") shows "https://httprelay.pubky.app"</action>
+    <action>Verify the relay (id "PubkyAuthRelayOrigin") shows "https://httprelay.pubky.app/inbox/" next to a globe icon under the RELAY label</action>
     <action>Verify the Paykit access row (id "PubkyAuthPaykitAccess") is not visible</action>
     <action>Tap Cancel (id "PubkyAuthCancel")</action>
     <action>Verify the authorize button (id "PubkyAuthAuthorize") is no longer visible</action>

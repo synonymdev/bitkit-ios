@@ -1,4 +1,5 @@
 @testable import Bitkit
+import Paykit
 import XCTest
 
 /// Tests for PubkyAuthRequest capability parsing and permission display.
@@ -76,14 +77,34 @@ final class PubkyAuthRequestTests: XCTestCase {
         }
     }
 
-    func testRelayOriginShowsOnlyTheAuthorizationDestination() throws {
+    func testRelayDisplayUrlKeepsThePathAndDropsUserInfoAndFragment() throws {
         let url = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.requiredCapabilities)" +
             "&relay=https%3A%2F%2FRelay.Example%3A8443%2Finbox%2F&secret=\(secret)" +
             "&cid=paykit.test&cpk=\(publicKey)&x-bitkit-claim=watch-only-account-v1"
 
         let request = try PubkyAuthRequest.parse(url: url)
 
-        XCTAssertEqual(request.relayOrigin, "https://relay.example:8443")
+        XCTAssertEqual(request.relayDisplayUrl, "https://relay.example:8443/inbox/")
+
+        let displayUrls: [(relay: String, expected: String?)] = [
+            ("https://httprelay.pubky.app/link", "https://httprelay.pubky.app/link"),
+            ("https://httprelay.pubky.app", "https://httprelay.pubky.app"),
+            ("http://user@10.0.2.2:15412/link?x=1#y", "http://10.0.2.2:15412/link?x=1"),
+            ("https://trusted.example@relay.example/in%20box/", "https://relay.example/in%20box/"),
+            ("ftp://relay.example/inbox/", nil),
+            ("relay.example/inbox/", nil),
+            ("https:///inbox/", nil),
+            ("", nil),
+        ]
+        for (relay, expected) in displayUrls {
+            let request = PubkyAuthRequest(
+                rawUrl: url, kind: .signIn, clientID: "paykit.test", relay: relay, capabilities: "/pub/example/:rw",
+                permissions: [], serviceNames: [], bitkitClaim: nil, homeserverPublicKey: nil, signupToken: nil,
+                authorizationUrl: url
+            )
+
+            XCTAssertEqual(request.relayDisplayUrl, expected, relay)
+        }
     }
 
     func testProtocolUrlRejectsBitkitSpecificSetupHandoffWithoutClaimMarker() {

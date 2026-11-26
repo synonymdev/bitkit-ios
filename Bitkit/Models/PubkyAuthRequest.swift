@@ -186,8 +186,9 @@ struct PubkyAuthRequest {
         isSignup && (!isGrantSignup || !hasIdentity)
     }
 
-    /// The network origin that receives the authorization. This is a delivery destination, not a service identity.
-    var relayOrigin: String? {
+    /// The relay URL that receives the authorization, without user info or fragment so the host cannot be disguised.
+    /// This is a delivery destination, not a service identity.
+    var relayDisplayUrl: String? {
         guard let components = URLComponents(string: relay),
               let scheme = components.scheme?.lowercased(),
               ["http", "https"].contains(scheme),
@@ -198,7 +199,8 @@ struct PubkyAuthRequest {
         }
 
         let port = components.port.map { ":\($0)" } ?? ""
-        return "\(scheme)://\(host)\(port)"
+        let query = components.percentEncodedQuery.map { "?\($0)" } ?? ""
+        return "\(scheme)://\(host)\(port)\(components.percentEncodedPath)\(query)"
     }
 
     static func isProtocolURL(_ value: String) -> Bool {
