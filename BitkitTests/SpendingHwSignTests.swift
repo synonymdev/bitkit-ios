@@ -3,14 +3,11 @@ import XCTest
 
 @MainActor
 final class SpendingHwSignTests: XCTestCase {
-    override func setUp() {
-        super.setUp()
-        SparkSentDeposits().clear()
-    }
+    private var store = SparkSentDeposits()
 
-    override func tearDown() {
-        SparkSentDeposits().clear()
-        super.tearDown()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        store = try SparkSentDeposits(defaults: makeIsolatedDefaults())
     }
 
     private let walletId = "jade:wallet"
@@ -136,7 +133,12 @@ final class SpendingHwSignTests: XCTestCase {
     private func hwFlow(retaining record: HwRetainedSend, operations: SparkClaimOperations = .live) async throws -> SparkTransferFlow {
         let service = HwRetainedSendService.inMemory()
         try await service.retain(record)
-        let flow = SparkTransferFlow(operations: operations, pollAttempts: 2, hwSend: HwSendCoordinator(walletId: walletId, retainedSends: service))
+        let flow = SparkTransferFlow(
+            operations: operations,
+            pollAttempts: 2,
+            hwSend: HwSendCoordinator(walletId: walletId, retainedSends: service),
+            sentDeposits: store
+        )
         flow.start(amountSats: record.sats, isMaxAmount: false, walletId: walletId)
         return flow
     }

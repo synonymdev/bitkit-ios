@@ -117,8 +117,11 @@ enum SparkClaimState: Codable, Equatable {
 struct SparkSentDeposit: Codable, Equatable {
     var amountSats: UInt64
     var sentAt: Date
+    /// The wallet that sent it, whose activity says when a fee bump replaced it; nil for the app's own wallet.
+    var walletId: String?
     var ceilingSats: UInt64 = 0
-    var state: SparkClaimState = .looking
+    /// Nil until the transfer flow saves its claim: such a deposit shows in the banner but its claim is not resumed.
+    var state: SparkClaimState?
     var isFeeApproved = false
     var hasWaited = false
     /// The offer an early claim was attempted for, whose fee cap Wait clears.
@@ -141,8 +144,11 @@ struct SparkSentDeposits {
     }
 
     /// Keeps the deposit Spark was handed in `txid` with its amount.
-    func record(txid: String, amountSats: UInt64) {
-        update(txid: txid) { $0.amountSats = amountSats }
+    func record(txid: String, amountSats: UInt64, walletId: String? = nil) {
+        update(txid: txid) {
+            $0.amountSats = amountSats
+            $0.walletId = walletId
+        }
     }
 
     /// Changes the kept deposit in `txid`. One not kept, as once Spark claimed it, is kept from now only when `isNew`.
@@ -306,7 +312,8 @@ final class SparkTransferFlow {
         self.claimState = claimState
         guard !Self.isRunningInPreview else { return }
         for (txid, sent) in sentDeposits.load() {
-            keptClaims[txid.lowercased()] = KeptClaim(state: sent.state, isFeeApproved: sent.isFeeApproved, hasWaited: sent.hasWaited)
+            guard let state = sent.state else { continue }
+            keptClaims[txid.lowercased()] = KeptClaim(state: state, isFeeApproved: sent.isFeeApproved, hasWaited: sent.hasWaited)
             ceilings[txid] = sent.ceilingSats
             claimedOffers[txid] = sent.claimedOffer
             restoredTxids.append(txid)

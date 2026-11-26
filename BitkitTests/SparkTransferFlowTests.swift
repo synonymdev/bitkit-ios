@@ -5,14 +5,11 @@ import XCTest
 final class SparkTransferFlowTests: XCTestCase {
     private let ceiling: UInt64 = 1000
 
-    override func setUp() {
-        super.setUp()
-        SparkSentDeposits().clear()
-    }
+    private var store = SparkSentDeposits()
 
-    override func tearDown() {
-        SparkSentDeposits().clear()
-        super.tearDown()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        store = try SparkSentDeposits(defaults: makeIsolatedDefaults())
     }
 
     private func choice(earlyFee: UInt64) -> SparkClaimOffer.Kind {
@@ -64,14 +61,14 @@ final class SparkTransferFlowTests: XCTestCase {
 
     @MainActor
     func testLaterBroadcastSkipsTheClaim() {
-        let flow = SparkTransferFlow(amountSats: 100_000, speed: .later, quote: quote)
+        let flow = SparkTransferFlow(amountSats: 100_000, speed: .later, quote: quote, sentDeposits: store)
         flow.onBroadcast(txid: "txid")
         XCTAssertEqual(flow.claimState, .later)
     }
 
     @MainActor
     func testWaitFallsBackToLater() {
-        let flow = SparkTransferFlow(amountSats: 100_000, claimState: .repriced(feeSats: 1500))
+        let flow = SparkTransferFlow(amountSats: 100_000, claimState: .repriced(feeSats: 1500), sentDeposits: store)
         flow.waitForConfirmations()
         XCTAssertEqual(flow.claimState, .later)
         XCTAssertTrue(flow.hasWaited)
@@ -92,7 +89,7 @@ final class SparkTransferFlowTests: XCTestCase {
                 return true
             }
         )
-        let flow = SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: 2)
+        let flow = SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: 2, sentDeposits: store)
         flow.onBroadcast(txid: "txid")
         await flow.waitForClaim()
         XCTAssertEqual(flow.claimState, .repriced(feeSats: 1500))
@@ -123,7 +120,7 @@ final class SparkTransferFlowTests: XCTestCase {
                 return releaseCalls > 1
             }
         )
-        let flow = SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: 2)
+        let flow = SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: 2, sentDeposits: store)
         flow.onBroadcast(txid: "txid")
         await flow.waitForClaim()
 
@@ -151,7 +148,7 @@ final class SparkTransferFlowTests: XCTestCase {
                 return true
             }
         )
-        let flow = SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: 2)
+        let flow = SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: 2, sentDeposits: store)
         flow.onBroadcast(txid: "txid")
         await flow.waitForClaim()
         XCTAssertEqual(flow.claimState, .repriced(feeSats: 1500))
@@ -169,7 +166,7 @@ final class SparkTransferFlowTests: XCTestCase {
         await flow.waitForClaim()
         XCTAssertEqual(flow.claimState, .repriced(feeSats: 1500))
 
-        let relaunched = SparkTransferFlow()
+        let relaunched = SparkTransferFlow(sentDeposits: store)
         relaunched.showDeposit(txid: "txid")
 
         XCTAssertEqual(relaunched.claimState, .repriced(feeSats: 1500), "A relaunch dropped Wait and Approve")
@@ -182,7 +179,7 @@ final class SparkTransferFlowTests: XCTestCase {
         await flow.waitForClaim()
         flow.waitForConfirmations()
 
-        let relaunched = SparkTransferFlow()
+        let relaunched = SparkTransferFlow(sentDeposits: store)
         relaunched.showDeposit(txid: "txid")
 
         XCTAssertEqual(relaunched.claimState, .later)
@@ -191,9 +188,10 @@ final class SparkTransferFlowTests: XCTestCase {
 
     @MainActor
     func testARelaunchResumesTheInstantClaimAtTheApprovedCeiling() async {
-        SparkSentDeposits().update(txid: "txid") {
+        store.update(txid: "txid") {
             $0.amountSats = 100_000
             $0.ceilingSats = 1093
+            $0.state = .looking
         }
         let calls = PollCalls()
         let relaunched = pollingFlow(offers: [choice(earlyFee: 900)], claims: [.submitted], calls: calls)
@@ -222,26 +220,57 @@ final class SparkTransferFlowTests: XCTestCase {
         }
 
         XCTAssertEqual(calls.released, ["txid"], "Spark may still claim early at the cap Wait declined")
-        XCTAssertNil(SparkSentDeposits().load()["txid"]?.claimedOffer)
+        XCTAssertNil(store.load()["txid"]?.claimedOffer)
     }
 
     @MainActor
     func testARelaunchLeavesADepositSparkClaimedMeanwhile() async {
-        SparkSentDeposits().update(txid: "txid") { $0.ceilingSats = 1093 }
+        store.update(txid: "txid") {
+            $0.ceilingSats = 1093
+            $0.state = .looking
+        }
         let calls = PollCalls()
         let relaunched = pollingFlow(offers: [choice(earlyFee: 900)], calls: calls)
 
-        SparkSentDeposits().remove(txids: ["TXID"])
+        store.remove(txids: ["TXID"])
         relaunched.resumeSentDeposits()
         relaunched.showDeposit(txid: "txid")
         await relaunched.waitForClaim()
 
         XCTAssertEqual(calls.offers, 0, "A claimed deposit was followed again")
-        XCTAssertTrue(SparkSentDeposits().load().isEmpty)
+        XCTAssertTrue(store.load().isEmpty)
+    }
+
+    @MainActor
+    func testARelaunchBeforeTheClaimWasSavedDoesNotStartAnInstantClaim() async {
+        store.record(txid: "txid", amountSats: 100_000)
+        let calls = PollCalls()
+        let relaunched = pollingFlow(offers: [choice(earlyFee: 900)], claims: [.submitted], calls: calls)
+
+        relaunched.resumeSentDeposits()
+        relaunched.showDeposit(txid: "txid")
+        await relaunched.waitForClaim()
+
+        XCTAssertEqual(calls.offers, 0, "A transfer whose speed was never saved was claimed early at no approved ceiling")
+    }
+
+    @MainActor
+    func testADepositWhoseFundingAFeeBumpReplacedLeavesTheBanner() async {
+        store.record(txid: "replaced", amountSats: 100_000)
+        store.record(txid: "pending", amountSats: 50000, walletId: "jade:wallet")
+        store.record(txid: "listed", amountSats: 70000)
+        var walletIds: [String: String] = [:]
+
+        let replaced = await SparkManager.replacedSentDeposits(store.load(), listed: ["listed"]) { txid, walletId in
+            walletIds[txid] = walletId
+            return txid == "pending"
+        }
+
+        XCTAssertEqual(replaced, ["replaced"])
+        XCTAssertEqual(walletIds, ["replaced": WalletScope.default, "pending": "jade:wallet"])
     }
 
     func testADepositSparkNeverListedIsDroppedAfterTwoWeeks() {
-        let store = SparkSentDeposits()
         store.update(txid: "txid") { $0.sentAt = Date(timeIntervalSinceNow: -15 * 24 * 60 * 60) }
 
         XCTAssertTrue(store.load().isEmpty)
@@ -254,7 +283,7 @@ final class SparkTransferFlowTests: XCTestCase {
         await flow.waitForClaim()
 
         XCTAssertEqual(flow.claimState, .added)
-        XCTAssertTrue(SparkSentDeposits().load().isEmpty)
+        XCTAssertTrue(store.load().isEmpty)
     }
 
     @MainActor
@@ -358,7 +387,7 @@ final class SparkTransferFlowTests: XCTestCase {
             refresh: {},
             sleep: { _ in }
         )
-        let flow = SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: 2)
+        let flow = SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: 2, sentDeposits: store)
         flow.onBroadcast(txid: "first")
         for _ in 0 ..< 100 where release == nil {
             try await Task.sleep(nanoseconds: 10_000_000)
@@ -394,7 +423,7 @@ final class SparkTransferFlowTests: XCTestCase {
 
     @MainActor
     func testTheDepositStaysSeenWhileSparkDropsItFromItsListToClaimIt() {
-        let flow = SparkTransferFlow(amountSats: 100_000, speed: .later, quote: quote)
+        let flow = SparkTransferFlow(amountSats: 100_000, speed: .later, quote: quote, sentDeposits: store)
         flow.onBroadcast(txid: "TXID")
         let broadcast = [SparkDeposit(txid: "TXID", amountSats: 100_000, isClaimed: false, isListed: false)]
         XCTAssertFalse(flow.isDepositSeen(in: broadcast))
@@ -407,7 +436,7 @@ final class SparkTransferFlowTests: XCTestCase {
 
     @MainActor
     func testALaterTransferEndsOnceSparkClaimsItsDeposit() {
-        let flow = SparkTransferFlow(amountSats: 100_000, speed: .later, quote: quote)
+        let flow = SparkTransferFlow(amountSats: 100_000, speed: .later, quote: quote, sentDeposits: store)
         flow.onBroadcast(txid: "txid")
 
         flow.noteSettled([SparkDeposit(txid: "txid", amountSats: 100_000, isClaimed: false)])
@@ -447,7 +476,7 @@ final class SparkTransferFlowTests: XCTestCase {
 
     @MainActor
     func testTheTransferBannerReopensAWaitedDepositAtTheNormalSpeedOnTheLastStep() {
-        let flow = SparkTransferFlow(amountSats: 100_000, speed: .later, quote: quote)
+        let flow = SparkTransferFlow(amountSats: 100_000, speed: .later, quote: quote, sentDeposits: store)
         flow.onBroadcast(txid: "txid")
         flow.claimState = .repriced(feeSats: 1500)
         flow.waitForConfirmations()
@@ -462,7 +491,7 @@ final class SparkTransferFlowTests: XCTestCase {
 
     @MainActor
     func testTheTransferBannerOpensADepositNoClaimFollowsAsAddedAtMaturity() {
-        let flow = SparkTransferFlow()
+        let flow = SparkTransferFlow(sentDeposits: store)
 
         flow.showDeposit(txid: "txid")
         XCTAssertEqual(flow.claimState, .later)
@@ -667,12 +696,18 @@ final class SparkTransferFlowTests: XCTestCase {
                 return true
             }
         )
-        return SparkTransferFlow(amountSats: 100_000, quote: quote, operations: operations, pollAttempts: pollAttempts ?? offers.count + 1)
+        return SparkTransferFlow(
+            amountSats: 100_000,
+            quote: quote,
+            operations: operations,
+            pollAttempts: pollAttempts ?? offers.count + 1,
+            sentDeposits: store
+        )
     }
 
     @MainActor
     func testARefusedFixedFundingKeepsItsFeeUntilTheTransferChanges() {
-        let flow = SparkTransferFlow()
+        let flow = SparkTransferFlow(sentDeposits: store)
         flow.start(amountSats: 50000, isMaxAmount: false)
         flow.onFundingChanged(preparedFeeSats: 700)
         XCTAssertEqual(flow.fixedFeeFloorSats, 700, "The next swipe would approve less than the refused fee")

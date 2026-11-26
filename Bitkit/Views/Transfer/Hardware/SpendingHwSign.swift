@@ -286,7 +286,7 @@ struct SpendingHwSign: View {
                 walletId: walletId
             )
             hwSend.completeBroadcast()
-            SparkManager.shared.onDepositBroadcast(txid: result.txId, amountSats: quote.depositSats)
+            SparkManager.shared.onDepositBroadcast(txid: result.txId, amountSats: quote.depositSats, walletId: walletId)
             Self.startClaim(flow: flow, txid: result.txId, signed: quote)
             Logger.info("Funded Spark wallet with \(quote.depositSats) sats from hardware wallet in \(result.txId)", context: "SpendingHwSign")
             navigation.navigate(.spendingHwSigned)

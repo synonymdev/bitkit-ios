@@ -1575,9 +1575,9 @@ final class SparkManager: ChannelFreeLightningRail {
     /// Reads the Spark balance and deposits again, for pull to refresh.
     /// Lists a deposit the app just broadcast as pending right away, then syncs so Spark sees it sooner than its
     /// minute-long background sync; Spark's own deposit state replaces it once listed.
-    func onDepositBroadcast(txid: String, amountSats: UInt64) {
+    func onDepositBroadcast(txid: String, amountSats: UInt64, walletId: String? = nil) {
         broadcastDeposits[txid] = amountSats
-        SparkSentDeposits().record(txid: txid, amountSats: amountSats)
+        SparkSentDeposits().record(txid: txid, amountSats: amountSats, walletId: walletId)
         applyBroadcastDeposits()
         onStateChanged?()
         Task {
@@ -1589,6 +1589,24 @@ final class SparkManager: ChannelFreeLightningRail {
             }
             await refreshState()
         }
+    }
+
+    /// The sent deposits Spark does not list whose funding a fee bump replaced or the mempool dropped: their wallet's
+    /// activity no longer exists, so they leave the banner and the pending amount.
+    static func replacedSentDeposits(
+        _ sent: [String: SparkSentDeposit],
+        listed: Set<String>,
+        doesExist: (String, String) async -> Bool? = { txid, walletId in
+            try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: txid, walletId: walletId)?.doesExist
+        }
+    ) async -> [String] {
+        var replaced: [String] = []
+        for (txid, deposit) in sent where !listed.contains(txid) {
+            if await doesExist(txid, deposit.walletId ?? WalletScope.default) == false {
+                replaced.append(txid)
+            }
+        }
+        return replaced
     }
 
     private func applyBroadcastDeposits() {
@@ -1638,6 +1656,7 @@ final class SparkManager: ChannelFreeLightningRail {
         let claimed = payments.filter { $0.method == .deposit && $0.status == .completed }
         let unclaimed = Self.unclaimedDeposits(listedUnclaimed, claimed: claimed)
         let listedDeposits = await Self.deposits(unclaimed: unclaimed, claimed: claimed)
+        let replaced = await Self.replacedSentDeposits(SparkSentDeposits().load(), listed: Set(listedDeposits.map(\.txid)))
         // A wipe while this read was in flight leaves the state it cleared.
         guard self.sdk === sdk else { return }
         let pending = unclaimed.reduce(0) { $0 + $1.amountSats }
@@ -1663,10 +1682,10 @@ final class SparkManager: ChannelFreeLightningRail {
         recoverableFundsSats = info.recoverableFundsSats
         deposits = listedDeposits
         withdrawals = Self.withdrawals(payments)
-        for deposit in deposits {
-            broadcastDeposits[deposit.txid] = nil
+        for txid in deposits.map(\.txid) + replaced {
+            broadcastDeposits[txid] = nil
         }
-        SparkSentDeposits().remove(txids: deposits.filter(\.isClaimed).map(\.txid))
+        SparkSentDeposits().remove(txids: deposits.filter(\.isClaimed).map(\.txid) + replaced)
         applyBroadcastDeposits()
         if changed {
             onStateChanged?()
