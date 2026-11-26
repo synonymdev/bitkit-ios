@@ -497,6 +497,10 @@ class ScannerManager: ObservableObject {
 
     private func beginNearbyScan(isOnVisit: @escaping () -> Bool) -> UUID? {
         guard !isHandlingScan, !isImageScanPending else { return nil }
+        // A request from an ended visit may still be decoding; its suppression must not outlive the lock it lost.
+        if let nearbyScanID {
+            app?.releaseQuickPaySuppression(nearbyScanID)
+        }
         let scanID = UUID()
         scanOwner = ScanOwner(id: scanID, isOnVisit: isOnVisit)
         nearbyScanID = scanID

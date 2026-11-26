@@ -983,6 +983,47 @@ extension ScannerManagerTests {
         XCTAssertEqual(nextRoutes, [.amount])
     }
 
+    func testUserScanGetsQuickPayAfterNearbyRequestsFromTwoVisits() async throws {
+        let decoded = try await decode(invoice: paymentURI)
+        let sheets = SheetViewModel()
+        let held = HeldDecoder()
+        let scanner = ScannerManager(nfcReader: FakeNfcReader(.success(paymentURI))) {}
+        let app = configure(scanner, sheets: sheets, decodeInvoice: { try await held.decode($0, else: decoded) })
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        var scannerVisit = 0
+        func visitCheck() -> () -> Bool {
+            let visit = scannerVisit
+            return { scannerVisit == visit }
+        }
+        let oldNearby = Task {
+            await scanner.handleSendNearbyRequest("bitcoin:bcrt1qheldnearbyone", isCurrent: visitCheck()) { _ in }
+        }
+        await fulfillment(of: [held.started("bitcoin:bcrt1qheldnearbyone")], timeout: 2)
+
+        // The payer leaves the scanner and comes back while the first request decodes, and a second one arrives.
+        scannerVisit += 1
+        let newNearby = Task {
+            await scanner.handleSendNearbyRequest("bitcoin:bcrt1qheldnearbytwo", isCurrent: visitCheck()) { _ in }
+        }
+        await fulfillment(of: [held.started("bitcoin:bcrt1qheldnearbytwo")], timeout: 2)
+
+        var suppressedAtUserRoute: [Bool] = []
+        await scanner.handleSendNfcRead(isCurrent: visitCheck()) { _ in
+            suppressedAtUserRoute.append(app.isQuickPaySuppressed)
+        }
+
+        XCTAssertEqual(suppressedAtUserRoute, [false], "The earlier visit's request must not suppress QuickPay for the user's read")
+
+        held.resume("bitcoin:bcrt1qheldnearbyone", with: decoded)
+        held.resume("bitcoin:bcrt1qheldnearbytwo", with: decoded)
+        _ = await (oldNearby.value, newNearby.value)
+        XCTAssertFalse(app.isQuickPaySuppressed)
+    }
+
     func testNearbyRequestWaitsForASelectedPhoto() async throws {
         let sheets = SheetViewModel()
         sheets.showSheet(.scanner)
