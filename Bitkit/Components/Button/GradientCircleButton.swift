@@ -35,7 +35,7 @@ struct GradientCircleButton: View {
                             endPoint: .bottom
                         )
                     )
-                    .shadow(color: .white10, radius: 0, x: 0, y: -1)
+                    .overlay(topInnerHighlight)
 
                 if isLoading {
                     ActivityIndicator(size: 24)
@@ -55,5 +55,13 @@ struct GradientCircleButton: View {
         }
         .disabled(isLoading)
         .accessibilityLabel(accessibilityLabel)
+    }
+
+    /// Figma's 1px top-only inside stroke: the crescent between the circle and the same circle
+    /// shifted down by 1pt, so the edge is 1pt at the top and fades out towards the sides.
+    private var topInnerHighlight: some View {
+        Circle()
+            .subtracting(Circle().offset(x: 0, y: 1))
+            .fill(Color.white10)
     }
 }
