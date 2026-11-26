@@ -1544,6 +1544,16 @@ extension AppViewModel {
         contactPaymentContext = nil
     }
 
+    /// Drops the context and decoded payment a contact selection left behind once the user is back on the contact picker.
+    /// A scan in flight, a payment request, another send's state and a replacement context are kept.
+    @discardableResult
+    func releaseAbandonedContactSelection(contextID: UUID, ownerID: UUID?) -> Bool {
+        guard let context = contactPaymentContext, context.id == contextID, context.incomingPaymentRequest == nil,
+              scannedDataHandlingId == nil, let ownerID, sendStateOwnerID == ownerID else { return false }
+        resetSendState(ownerID: ownerID)
+        return true
+    }
+
     var hasSendPaymentTarget: Bool {
         paykitUsesUsdt || scannedLightningInvoice != nil || scannedOnchainInvoice != nil || lnurlPayData != nil
     }

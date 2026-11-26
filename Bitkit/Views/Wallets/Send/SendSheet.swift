@@ -115,6 +115,8 @@ final class SendPresentationState {
     var isSetupPending = true
     var isFallbackFundingPending = false
     var ownedSendStateGeneration: UUID?
+    /// The context claimed by the last contact picked in this send, until the picker is shown again.
+    var contactSelectionContextID: UUID?
     var didStartSetup = false
     var didFinish = false
     var onDismiss: (() -> Void)?
@@ -293,6 +295,22 @@ struct SendSheet: View {
         )
     }
 
+    static func didReturnToContactPicker(root: SendRoute, oldPath: [SendRoute], newPath: [SendRoute]) -> Bool {
+        (newPath.last ?? root) == .contact && newPath.count < oldPath.count && oldPath.starts(with: newPath)
+    }
+
+    /// Going back to the contact picker abandons the picked contact, so the next pick can claim its own context.
+    private func releaseAbandonedContactSelection(oldPath: [SendRoute], newPath: [SendRoute]) {
+        guard Self.didReturnToContactPicker(root: currentRoot, oldPath: oldPath, newPath: newPath),
+              isCurrentPresentation, !flow.didFinish, !flow.isSubmittingPayment, !PaykitPaymentActivity.shared.isActive,
+              let contextID = flow.contactSelectionContextID else { return }
+        flow.contactSelectionContextID = nil
+        guard app.releaseAbandonedContactSelection(contextID: contextID, ownerID: config.presentationID) else { return }
+        flow.ownedSendStateGeneration = app.sendStateGeneration
+        flow.isAmountReviewRequired = false
+        wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+    }
+
     static func shouldDismissUnavailableRequest(root: SendRoute, path: [SendRoute], isSubmittingPayment: Bool, isAvailable: Bool) -> Bool {
         guard !isAvailable, !isSubmittingPayment else { return false }
         switch path.last ?? root {
@@ -414,6 +432,9 @@ struct SendSheet: View {
         }
         .onChange(of: shouldShowSyncOverlay, initial: true) { _, isShowing in
             Logger.debug("shouldShowSyncOverlay: \(isShowing) (node: \(wallet.nodeLifecycleState))", context: "SendSheet")
+        }
+        .onChange(of: flow.navigationPath) { oldPath, newPath in
+            releaseAbandonedContactSelection(oldPath: oldPath, newPath: newPath)
         }
         .onChange(of: app.sendStateGeneration) {
             // External links can decode while this sheet is still open; only adopt our own scans.
@@ -1083,7 +1104,12 @@ struct SendSheet: View {
         case .options:
             SendOptionsView(navigationPath: $flow.navigationPath, hwSend: hwSend)
         case .contact:
-            SendContactSelectView(navigationPath: $flow.navigationPath, hwSend: hwSend)
+            SendContactSelectView(
+                navigationPath: $flow.navigationPath,
+                hwSend: hwSend,
+                isShown: { (flow.navigationPath.last ?? currentRoot) == .contact },
+                onContextClaimed: { flow.contactSelectionContextID = $0 }
+            )
         case .comingSoon:
             SendComingSoonView()
         case .manual:

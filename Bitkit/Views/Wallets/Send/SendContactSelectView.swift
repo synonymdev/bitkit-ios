@@ -11,6 +11,10 @@ struct SendContactSelectView: View {
 
     @Binding var navigationPath: [SendRoute]
     let hwSend: HwSendCoordinator
+    /// Whether the picker is the screen on top of this send; a contact resolved after leaving it opens no payment.
+    var isShown: () -> Bool = { true }
+    /// Reports the context this picker claimed, so the sheet can release it when the user comes back.
+    var onContextClaimed: (UUID) -> Void = { _ in }
     @State private var selectedContactKey: String?
 
     private var contacts: [PubkyContact] {
@@ -98,13 +102,14 @@ struct SendContactSelectView: View {
         endpoints: [PublicPaykitService.Endpoint],
         presentationID: UUID?
     ) async -> Bool {
-        guard let presentationID, sheets.activeSheetConfiguration?.presentationID == presentationID else { return false }
+        guard let presentationID, sheets.activeSheetConfiguration?.presentationID == presentationID, isShown() else { return false }
         let contactPaymentContext = ContactPaymentContext(
             publicKey: publicKey,
             privatePaymentContext: privatePaymentContext,
             endpoints: endpoints
         )
         guard app.claimContactPaymentContext(contactPaymentContext) else { return false }
+        onContextClaimed(contactPaymentContext.id)
 
         do {
             try await app.handleScannedData(
@@ -133,7 +138,9 @@ struct SendContactSelectView: View {
 
         guard sheets.activeSheetConfiguration?.presentationID == presentationID,
               app.ownsContactPaymentContext(contactPaymentContext) else { return false }
-        guard let route = PaymentNavigationHelper.contactPaymentRoute(app: app, currency: currency, settings: settings) else {
+        guard isShown(),
+              let route = PaymentNavigationHelper.contactPaymentRoute(app: app, currency: currency, settings: settings)
+        else {
             app.resetSendState(ownerID: presentationID)
             return false
         }
