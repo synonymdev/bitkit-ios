@@ -40,6 +40,12 @@ final class PubkyAppLinkTests: XCTestCase {
         }
     }
 
+    func testWebOnlyLinksAcceptIdnUnderscoreAndQueryCharacters() {
+        for url in ["bücher.de", "my_site.example.com", "https://example.com/?q=a|b", "https://user:pass@example.com"] {
+            XCTAssertNil(error("Site", url), url)
+        }
+    }
+
     func testWebOnlyLinksRefuseEmailAndPhone() {
         for url in ["me@example.com", "+1 234 567 890", "mailto:me@example.com", "ftp://example.com"] {
             XCTAssertEqual(error("Contact", url), .urlInvalid, url)
@@ -77,6 +83,10 @@ final class PubkyAppLinkTests: XCTestCase {
             XCTAssertEqual(error("Site", url, webOnly: false), .urlInvalid, url)
         }
         XCTAssertNil(error("Site", "https://example.com:65535", webOnly: false))
+        XCTAssertNil(error("Site", "https://example.com."))
+        XCTAssertNil(error("Site", "https://1.2.3.4.", webOnly: false))
+        XCTAssertNil(error("Site", "https:example.com", webOnly: false))
+        XCTAssertEqual(error("Site", "https:example.com"), .urlInvalid)
         XCTAssertNil(error("Site", "https://[::1]:8080", webOnly: false))
     }
 

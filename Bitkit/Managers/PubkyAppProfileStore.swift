@@ -679,10 +679,11 @@ actor PubkyAppProfileStore {
     }
 
     private static func isValidIpv4Ending(_ host: String) -> Bool {
-        guard !host.hasPrefix("["), let last = host.split(separator: ".", omittingEmptySubsequences: false).last,
+        let name = host.hasSuffix(".") ? String(host.dropLast()) : host
+        guard !name.hasPrefix("["), let last = name.split(separator: ".", omittingEmptySubsequences: false).last,
               last.allSatisfy(\.isNumber)
         else { return true }
-        let parts = host.split(separator: ".", omittingEmptySubsequences: false).map { UInt64($0) }
+        let parts = name.split(separator: ".", omittingEmptySubsequences: false).map { UInt64($0) }
         guard (1 ... 4).contains(parts.count), parts.allSatisfy({ $0 != nil }) else { return false }
         let numbers = parts.compactMap { $0 }
         let lastLimit = (UInt64(1) << (8 * UInt64(5 - numbers.count))) - 1
