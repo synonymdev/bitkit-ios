@@ -384,12 +384,16 @@ final class SparkExitManager {
         _ refused: OnchainSendAttempt,
         record: SparkExitRecord,
         retrySamePayment: (OnchainSendPendingContext) async throws -> OnchainSendResult
-    ) async throws -> String? {
+    ) async throws -> (txid: String, isAccepted: Bool)? {
         guard isSavingsPaymentRefused(record, attempt: refused), refused.canRetrySamePayment else {
             throw OnchainSendAttemptError.unresolved
         }
         let result = try await retrySamePayment(OnchainSendPendingContext(attemptId: refused.id, walletId: refused.walletId, txid: refused.txid))
-        return fundingTxid(result)
+        guard let txid = fundingTxid(result) else { return nil }
+        if case .accepted = result {
+            return (txid, true)
+        }
+        return (txid, false)
     }
 
     func retrySavingsPayment() async throws {
@@ -405,19 +409,20 @@ final class SparkExitManager {
         }
         guard let current = record, let refused = refusedSavingsPayment else { return }
         let attempts = OnchainSendAttemptService.shared
-        let txid = try await Self.payRefusedAgain(refused, record: current) { context in
+        let paidAgain = try await Self.payRefusedAgain(refused, record: current) { context in
             try await attempts.retrySamePayment(using: LightningService.shared, context: context) { attempt, _ in
                 guard attempt.id == refused.id, attempt.address == refused.address else { throw OnchainSendAttemptError.unresolved }
             }
         }
         await refreshRefusedSavingsPayment()
-        guard let txid else {
+        guard let (txid, isAccepted) = paidAgain else {
             throw AppError(message: t("wallet__send_error_tx_failed"), debugMessage: "Spark exit savings payment refused again")
         }
         // Only an accepted payment ends its send: one of unknown outcome may still land, and Progress says so.
-        if await (try? attempts.blockingAttempt())?.status == .accepted {
+        if isAccepted {
             _ = try? await attempts.resumeAcceptedOrdinarySend(walletId: refused.walletId, observedTxid: txid)
         }
+        unresolvedSendAddress = await attempts.unresolvedSendAddress()
         guard var paid = record, paid.createdAt == current.createdAt, paid.isActive else { return }
         paid.fundingPaymentTxid = txid
         try saveRecord(paid)

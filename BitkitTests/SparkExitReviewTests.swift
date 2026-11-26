@@ -1134,8 +1134,15 @@ final class SparkExitReviewTests: XCTestCase {
             contexts.append(context)
             return .accepted(txid: "again")
         }
-        XCTAssertEqual(txid, "again")
+        XCTAssertEqual(txid?.txid, "again")
+        XCTAssertEqual(txid?.isAccepted, true, "an accepted payment ends its send")
         XCTAssertEqual(contexts, [OnchainSendPendingContext(attemptId: refused.id, walletId: "wallet", txid: "refused")])
+
+        let unknown = try await SparkExitManager.payRefusedAgain(refused, record: SparkExitFixtures.record()) { _ in
+            .unknown(txid: "maybe")
+        }
+        XCTAssertEqual(unknown?.txid, "maybe", "a payment that may still land is kept")
+        XCTAssertEqual(unknown?.isAccepted, false, "and its send stays open, so Progress says it may still land")
 
         do {
             _ = try await SparkExitManager.payRefusedAgain(refusedPayment(status: .unknown), record: SparkExitFixtures.record()) { context in

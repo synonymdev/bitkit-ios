@@ -852,7 +852,7 @@ struct SparkExitProgressView: View {
                                 .accessibilityIdentifier("SparkExitSavingsRefused")
                         }
 
-                        if exit.isSavingsSendLanding {
+                        if exit.isSavingsSendLanding, case .paid = fundingState {
                             BodySText(t("lightning__spark_exit__savings_unresolved"))
                                 .fixedSize(horizontal: false, vertical: true)
                                 .padding(.top, 24)
