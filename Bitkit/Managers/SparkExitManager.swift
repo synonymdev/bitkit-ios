@@ -403,11 +403,110 @@ final class SparkExitManager {
         _ = try? await attempts.resumeAcceptedOrdinarySend(walletId: refused.walletId, observedTxid: txid)
         guard var paid = record, paid.createdAt == current.createdAt, paid.isActive else { return }
         paid.fundingPaymentTxid = txid
+        paid.savingsRefusal = nil
         try saveRecord(paid)
         record = paid
         setFunding(SparkExitMath.fundingState(paid, utxos: nil), for: paid)
         refusedSavingsPayment = nil
         Logger.info("Paid the Spark exit funding from savings again in \(txid)", context: "SparkExitManager")
+        Task { await tick() }
+    }
+
+    /// A savings send to the exit's funding address went out and is unresolved or refused by a node, which its own
+    /// retry pays again.
+    var hasSavingsSend: Bool {
+        guard let record else { return false }
+        return isSavingsPaymentRefused || record.funding.contains { $0.address == unresolvedSendAddress }
+    }
+
+    /// The start's refused savings payment progress offers at its new fee, now.
+    var savingsRefusal: SparkExitRecord.SavingsRefusal? {
+        record.flatMap { Self.savingsRefusal($0, fundingState: fundingState, hasSavingsSend: hasSavingsSend) }
+    }
+
+    /// The start's savings payment of `record`'s fee funding that was refused before it went out, for a fee above the
+    /// one confirmed, while progress can offer to pay it at the new fee: before the exit holds any funding, while
+    /// nothing reached the funding address, and while no savings send to it went out (`hasSavingsSend`).
+    nonisolated static func savingsRefusal(
+        _ record: SparkExitRecord,
+        fundingState: SparkExitFundingState?,
+        hasSavingsSend: Bool
+    ) -> SparkExitRecord.SavingsRefusal? {
+        guard record.isActive, case .awaitingFunding = record.phase, record.fundingPaymentTxid == nil, !hasSavingsSend,
+              record.fundingShortfallSats != nil, record.fundedSats == 0
+        else { return nil }
+        switch fundingState {
+        case nil, .ask(_, 0): return record.savingsRefusal
+        default: return nil
+        }
+    }
+
+    /// `record` after its savings payment of `sats` failed with `error`: noted as refused when it was refused before it
+    /// went out for a higher fee, so progress offers it at that fee; forgotten when it may have gone out, as its own
+    /// retry or the exit's wait takes over; nil when nothing changes.
+    nonisolated static func refusing(_ record: SparkExitRecord, sats: UInt64, after error: Error) -> SparkExitRecord? {
+        var refusing = record
+        switch error {
+        case let OnchainSendAttemptError.preDispatch(refused):
+            guard let feeSats = (refused as? SparkFundingChanged)?.preparedFeeSats else { return nil }
+            refusing.savingsRefusal = .init(sats: sats, feeSats: feeSats)
+        case OnchainSendAttemptError.blocked, OnchainSendAttemptError.duplicate:
+            // Nothing of this payment went out.
+            return nil
+        default:
+            refusing.savingsRefusal = nil
+        }
+        return refusing.savingsRefusal == record.savingsRefusal ? nil : refusing
+    }
+
+    /// Notes what `error` means for the start's refused savings payment (`refusing`).
+    private func noteSavingsRefusal(_ record: SparkExitRecord, sats: UInt64, after error: Error) {
+        guard let refusing = Self.refusing(record, sats: sats, after: error) else { return }
+        do {
+            try saveRecord(refusing)
+            self.record = refusing
+        } catch {
+            Logger.error("Failed to save the refused Spark exit savings payment: \(error)", context: "SparkExitManager")
+        }
+    }
+
+    /// Pays the start's refused savings payment at `feeSats`, the fee progress showed, which it never exceeds: a higher
+    /// one is refused again and noted for the next price.
+    func paySavingsRefusal(satsPerVbyte: UInt32, feeSats: UInt64) async throws {
+        // Under the ticks' lock from the check to the saved txid, as the start's payment: a cancel either ends the exit
+        // before savings pays or finds the payment and refuses.
+        while isTicking {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        isTicking = true
+        defer { isTicking = false }
+        if let stored = try? Self.loadRecord(store: store, lostLeafStore: lostLeafStore) {
+            record = stored
+        }
+        // The send attempt itself, as a tick reads it: not read yet after a relaunch.
+        unresolvedSendAddress = await OnchainSendAttemptService.shared.unresolvedSendAddress()
+        await refreshRefusedSavingsPayment()
+        // Checked under the lock: a tick may have seen or adopted funding meanwhile.
+        guard let current = record, let refusal = savingsRefusal, refusal.feeSats <= feeSats,
+              let address = current.funding.first?.address
+        else {
+            throw AppError(message: t("wallet__send_error_tx_failed"), debugMessage: "No refused Spark exit savings payment")
+        }
+        let txid: String
+        do {
+            txid = try await payFunding(address: address, sats: refusal.sats, satsPerVbyte: satsPerVbyte, feeSats: feeSats)
+        } catch {
+            noteSavingsRefusal(current, sats: refusal.sats, after: error)
+            // A payment that went out and failed shows as such, with its own retry.
+            await refreshRefusedSavingsPayment()
+            throw error
+        }
+        var paid = current
+        paid.fundingPaymentTxid = txid
+        paid.savingsRefusal = nil
+        try saveRecord(paid)
+        record = paid
+        setFunding(SparkExitMath.fundingState(paid, utxos: nil), for: paid)
         Task { await tick() }
     }
 
@@ -1052,6 +1151,7 @@ final class SparkExitManager {
                 txid = try await payFunding(address: key.address, sats: savingsSats, satsPerVbyte: savingsFeeRate, feeSats: savingsFeeSats)
             } catch {
                 // A refused payment shows on progress at once, with the offer to pay again.
+                noteSavingsRefusal(started, sats: savingsSats, after: error)
                 await refreshRefusedSavingsPayment()
                 throw error
             }

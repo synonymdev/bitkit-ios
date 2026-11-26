@@ -85,6 +85,36 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path), [])
     }
 
+    /// A start whose savings payment was refused before it went out for a higher fee keeps that payment with the exit,
+    /// so progress offers it at the new fee, also after a relaunch, until something reached the address.
+    func testAStartWhoseSavingsFeeRoseIsOfferedAgainOnProgress() throws {
+        let record = SparkExitFixtures.record()
+        let changed = OnchainSendAttemptError.preDispatch(SparkFundingChanged(preparedFeeSats: 650))
+        let refused = try XCTUnwrap(SparkExitManager.refusing(record, sats: 20000, after: changed))
+        let refusal = SparkExitRecord.SavingsRefusal(sats: 20000, feeSats: 650)
+
+        XCTAssertEqual(try SparkExitRecordCoder.decode(SparkExitRecordCoder.encode(refused)).savingsRefusal, refusal)
+        XCTAssertEqual(SparkExitManager.savingsRefusal(refused, fundingState: nil, hasSavingsSend: false), refusal)
+        XCTAssertEqual(SparkExitManager.savingsRefusal(refused, fundingState: .ask(sats: 20000), hasSavingsSend: false), refusal)
+        XCTAssertNil(SparkExitManager.savingsRefusal(refused, fundingState: .ask(sats: 12000, receivedSats: 8000), hasSavingsSend: false))
+        XCTAssertNil(SparkExitManager.savingsRefusal(refused, fundingState: .seen(txid: "other"), hasSavingsSend: false))
+        var paid = refused
+        paid.fundingPaymentTxid = "paid"
+        XCTAssertNil(SparkExitManager.savingsRefusal(paid, fundingState: nil, hasSavingsSend: false))
+        XCTAssertNil(SparkExitManager.savingsRefusal(refused, fundingState: nil, hasSavingsSend: true), "a savings send went out")
+        var funded = refused
+        funded.funding[0].txid = "ext"
+        funded.funding[0].vout = 0
+        funded.funding[0].valueSats = 20000
+        XCTAssertNil(SparkExitManager.savingsRefusal(funded, fundingState: nil, hasSavingsSend: false), "the exit holds funding")
+        let higher = OnchainSendAttemptError.preDispatch(SparkFundingChanged(preparedFeeSats: 800))
+        XCTAssertEqual(SparkExitManager.refusing(refused, sats: 20000, after: higher)?.savingsRefusal?.feeSats, 800)
+        XCTAssertNil(SparkExitManager.refusing(refused, sats: 20000, after: OnchainSendAttemptError.blocked(nil)), "nothing went out")
+        let wentOut = AppError(message: "refused", debugMessage: nil)
+        XCTAssertNotNil(SparkExitManager.refusing(refused, sats: 20000, after: wentOut), "a payment that went out is never offered again")
+        XCTAssertNil(SparkExitManager.refusing(refused, sats: 20000, after: wentOut)?.savingsRefusal)
+    }
+
     // MARK: H1 cancel
 
     func testCancelIsOffAfterAPaymentFromSavings() {
