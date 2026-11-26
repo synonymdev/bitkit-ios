@@ -121,6 +121,8 @@ final class SparkExitReviewTests: XCTestCase {
         let higher = OnchainSendAttemptError.preDispatch(SparkFundingChanged(preparedFeeSats: 800))
         XCTAssertEqual(SparkExitManager.refusing(refused, sats: 20000, after: higher)?.savingsRefusal?.feeSats, 800)
         XCTAssertNil(SparkExitManager.refusing(refused, sats: 20000, after: OnchainSendAttemptError.blocked(nil)), "nothing went out")
+        let journalFailed = OnchainSendAttemptError.preDispatch(CocoaError(.fileWriteUnknown))
+        XCTAssertNil(SparkExitManager.refusing(refused, sats: 20000, after: journalFailed), "nothing went out: the offer stays")
         let wentOut = AppError(message: "refused", debugMessage: nil)
         XCTAssertNotNil(SparkExitManager.refusing(refused, sats: 20000, after: wentOut), "a payment that went out is never offered again")
         XCTAssertNil(SparkExitManager.refusing(refused, sats: 20000, after: wentOut)?.savingsRefusal)
@@ -1264,6 +1266,27 @@ final class SparkExitReviewTests: XCTestCase {
             XCTFail("a payment that may still go out is never paid again")
         } catch {}
         XCTAssertEqual(contexts.count, 1)
+    }
+
+    /// Funding from another wallet reached the address since the refusal: savings is no longer offered, and paying
+    /// again sends nothing, since the same payment would fund it twice.
+    func testPayingAgainSendsNothingOnceAnotherWalletFundedTheAddress() async throws {
+        let record = SparkExitFixtures.record()
+        XCTAssertTrue(SparkExitManager.isSavingsPaymentRefused(record, attempt: refusedPayment(), fundingSeenSats: 0))
+        XCTAssertFalse(SparkExitManager.isSavingsPaymentRefused(record, attempt: refusedPayment(), fundingSeenSats: 4000))
+        var adopted = record
+        adopted.funding[0].valueSats = 8000
+        XCTAssertFalse(SparkExitManager.isSavingsPaymentRefused(adopted, attempt: refusedPayment()), "adopted funding is never paid again")
+
+        var retries = 0
+        do {
+            _ = try await SparkExitManager.payRefusedAgain(refusedPayment(), record: record, fundingSeenSats: 4000) { _ in
+                retries += 1
+                return .accepted(txid: "again")
+            }
+            XCTFail("an address another wallet funded is never paid again")
+        } catch {}
+        XCTAssertEqual(retries, 0)
     }
 
     /// A wipe closes Spark's connects first, then lets exit work (a tick that may reconnect) finish, and only then
