@@ -699,6 +699,16 @@
 "other__lnurl_auth_success_title" = "Přihlášeno";
 "other__lnurl_auth_success_msg_domain" = "Úspěšně jste se přihlásili do {domain}.";
 "other__lnurl_auth_success_msg_no_domain" = "Úspěšně jste se přihlásili.";
+"other__lnurl_auth_auth_prompt" = "Ověřit se u {domain}?";
+"other__lnurl_auth_auth_title" = "Ověřit";
+"other__lnurl_auth_link_prompt" = "Propojit účet s {domain}?";
+"other__lnurl_auth_link_title" = "Propojit";
+"other__lnurl_auth_login_button" = "Přihlásit se";
+"other__lnurl_auth_login_prompt" = "Přihlásit se do {domain}?";
+"other__lnurl_auth_login_title" = "Přihlásit se";
+"other__lnurl_auth_register_prompt" = "Registrovat se na {domain}?";
+"other__lnurl_auth_register_title" = "Registrovat";
+"other__lnurl_auth_unknown_domain" = "Neznámá doména";
 "other__lnurl_withdr_error" = "Výběr se nezdařil (LNURL)";
 "other__lnurl_withdr_error_generic" = "Omlouváme se, došlo k chybě.";
 "other__lnurl_withdr_error_no_capacity" = "Nedostatek kapacity pro příjem pro dokončení žádosti o výběr.";

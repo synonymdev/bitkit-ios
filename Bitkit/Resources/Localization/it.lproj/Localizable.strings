@@ -694,6 +694,16 @@
 "other__lnurl_auth_success_title" = "Accesso effettuato";
 "other__lnurl_auth_success_msg_domain" = "Hai effettuato l\'accesso a {domain}.";
 "other__lnurl_auth_success_msg_no_domain" = "Hai effettuato l'accesso con successo.";
+"other__lnurl_auth_auth_prompt" = "Autenticarsi su {domain}?";
+"other__lnurl_auth_auth_title" = "Autentica";
+"other__lnurl_auth_link_prompt" = "Collegare l'account a {domain}?";
+"other__lnurl_auth_link_title" = "Collega";
+"other__lnurl_auth_login_button" = "Accedi";
+"other__lnurl_auth_login_prompt" = "Accedi a {domain}?";
+"other__lnurl_auth_login_title" = "Accedi";
+"other__lnurl_auth_register_prompt" = "Registrarsi su {domain}?";
+"other__lnurl_auth_register_title" = "Registrati";
+"other__lnurl_auth_unknown_domain" = "Dominio sconosciuto";
 "other__lnurl_withdr_error" = "Prelievo non riuscito (LNURL)";
 "other__lnurl_withdr_error_generic" = "Ci scusiamo, si é verificato un errore.";
 "other__lnurl_withdr_error_no_capacity" = "Capacità di ricezione insufficiente per completare la richiesta di prelievo.";

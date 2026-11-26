@@ -700,6 +700,16 @@
 "other__lnurl_auth_success_title" = "Autenticado";
 "other__lnurl_auth_success_msg_domain" = "Ha iniciado sesión con éxito en {domain}.";
 "other__lnurl_auth_success_msg_no_domain" = "Ha iniciado sesión correctamente.";
+"other__lnurl_auth_auth_prompt" = "¿Autenticarse en {domain}?";
+"other__lnurl_auth_auth_title" = "Autenticar";
+"other__lnurl_auth_link_prompt" = "¿Vincular la cuenta a {domain}?";
+"other__lnurl_auth_link_title" = "Vincular";
+"other__lnurl_auth_login_button" = "Iniciar sesión";
+"other__lnurl_auth_login_prompt" = "¿Iniciar sesión en {domain}?";
+"other__lnurl_auth_login_title" = "Iniciar sesión";
+"other__lnurl_auth_register_prompt" = "¿Registrarse en {domain}?";
+"other__lnurl_auth_register_title" = "Registrarse";
+"other__lnurl_auth_unknown_domain" = "Dominio desconocido";
 "other__lnurl_withdr_error" = "Fallo en el retiro (LNURL)";
 "other__lnurl_withdr_error_generic" = "Lo sentimos, se ha producido un error.";
 "other__lnurl_withdr_error_no_capacity" = "No hay suficiente capacidad de recepción para completar la solicitud de retiro.";

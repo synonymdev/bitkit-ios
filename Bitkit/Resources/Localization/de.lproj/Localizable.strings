@@ -697,6 +697,16 @@
 "other__lnurl_auth_success_title" = "Angemeldet";
 "other__lnurl_auth_success_msg_domain" = "Du hast dich erfolgreich bei {domain} angemeldet.";
 "other__lnurl_auth_success_msg_no_domain" = "Du hast dich erfolgreich angemeldet.";
+"other__lnurl_auth_auth_prompt" = "Bei {domain} authentifizieren?";
+"other__lnurl_auth_auth_title" = "Authentifizieren";
+"other__lnurl_auth_link_prompt" = "Konto mit {domain} verknüpfen?";
+"other__lnurl_auth_link_title" = "Verknüpfen";
+"other__lnurl_auth_login_button" = "Anmelden";
+"other__lnurl_auth_login_prompt" = "Bei {domain} anmelden?";
+"other__lnurl_auth_login_title" = "Anmelden";
+"other__lnurl_auth_register_prompt" = "Bei {domain} registrieren?";
+"other__lnurl_auth_register_title" = "Registrieren";
+"other__lnurl_auth_unknown_domain" = "Unbekannte Domain";
 "other__lnurl_withdr_error" = "Abhebung fehlgeschlagen (LNURL)";
 "other__lnurl_withdr_error_generic" = "Entschuldigung, ein Fehler ist aufgetreten.";
 "other__lnurl_withdr_error_no_capacity" = "Nicht genügend Empfangskapazität, um die Abhebungsanforderung abzuschließen.";

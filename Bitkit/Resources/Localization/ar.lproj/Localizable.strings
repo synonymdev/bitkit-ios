@@ -598,6 +598,16 @@
 "other__lnurl_auth_error_msg" = "حدث خطأ عند محاولة تسجيل الدخول. {raw}";
 "other__lnurl_auth_success_title" = "تم تسجيل الدخول";
 "other__lnurl_auth_success_msg_no_domain" = "لقد سجلت الدخول بنجاح.";
+"other__lnurl_auth_auth_prompt" = "المصادقة لدى {domain}؟";
+"other__lnurl_auth_auth_title" = "مصادقة";
+"other__lnurl_auth_link_prompt" = "ربط الحساب بـ {domain}؟";
+"other__lnurl_auth_link_title" = "ربط";
+"other__lnurl_auth_login_button" = "تسجيل الدخول";
+"other__lnurl_auth_login_prompt" = "تسجيل الدخول إلى {domain}؟";
+"other__lnurl_auth_login_title" = "تسجيل الدخول";
+"other__lnurl_auth_register_prompt" = "التسجيل في {domain}؟";
+"other__lnurl_auth_register_title" = "تسجيل";
+"other__lnurl_auth_unknown_domain" = "نطاق غير معروف";
 "other__lnurl_withdr_error" = "فشل السحب (LNURL)";
 "other__lnurl_withdr_error_no_capacity" = "لا توجد سعة استلام كافية لإكمال طلب السحب.";
 "other__lnurl_withdr_error_minmax" = "معلمات سحب LNURL غير صحيحة، الحد الأدنى/الأقصى غير محدد بشكل صحيح.";
