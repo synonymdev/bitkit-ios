@@ -2200,12 +2200,17 @@ struct SendConfirmationView: View {
                         guard let incomingPaymentRequest else { return }
                         // A refusal after the manual allowance is marked sending ends it as failed before the proof
                         // rolls back, so a kill in between can't leave it sending with nothing sent.
+                        // A failed outcome that isn't recorded keeps the proof, so the allowance settles from it later.
                         if onchainPaymentStarted, let manualAllowanceAttemptId {
-                            await PaykitAllowanceExecutor.shared.finishManualPayment(attemptId: manualAllowanceAttemptId, outcome: .failed)
+                            guard await PaykitAllowanceExecutor.shared.finishManualPayment(attemptId: manualAllowanceAttemptId, outcome: .failed)
+                            else { throw OnchainSendAttemptError.preDispatchCleanupFailed }
                         }
                         guard await PaykitPaymentProofService.shared.failOnchainPayment(
                             incomingPaymentRequest, paymentIdentity: originalPaymentIdentity
                         ) else { throw OnchainSendAttemptError.preDispatchCleanupFailed }
+                        // Rolled back, so the send ends as one that never started rather than as uncertain.
+                        onchainPaymentStarted = false
+                        privatePaymentListOutcome = .definitePreBroadcastFailure
                     },
                     onAuthorized: { _ in
                         onchainPaymentStarted = true
