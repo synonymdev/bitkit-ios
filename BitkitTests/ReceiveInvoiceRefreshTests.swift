@@ -65,7 +65,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
             let publication = Task { try await route.refresh(wallet) }
             await fulfillment(of: [preparation.started], timeout: 5)
             let deletion = Task {
-                try await profile.performProfileDeletion {
+                try await profile.withAutomaticWorkPausedForTesting {
                     try await PublicPaykitService.syncPublishedEndpoints(
                         publish: false, buildEndpoints: { [] }, syncApp: {},
                         applyEndpoints: { endpoints = $0.map(\.value) }
@@ -90,7 +90,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         wallet.replaceEmptyPublicInvoice = true
         var published: [String] = []
         do {
-            try await profile.performProfileDeletion {
+            try await profile.withAutomaticWorkPausedForTesting {
                 await wallet.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "test", forceRefreshLightning: true)
                 XCTAssertTrue(wallet.publicPaykitBolt11.isEmpty)
                 XCTAssertTrue(PublicPaykitService.isCleanupPending)
@@ -121,7 +121,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         for restoration in [PubkyProfileManager.SessionInitializationResult.restored(publicKey: owner), .restorationDeferred, .restorationFailed] {
             for firstPublication in FirstPublication.allCases {
                 AdoptedPubkyReference.current = ("startup-test", owner)
-                let profile = StartupPublicationProfile()
+                let profile = StartupPublicationProfile(sourceIsMissing: { _, _ in false })
                 let (_, wallet) = publicationWallet(route: .channelUsable, profile: profile)
                 profile.clearAuthenticatedStateForTesting()
                 wallet.replaceEmptyPublicInvoice = true
@@ -151,7 +151,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                 switch firstPublication {
                 case .skipped:
                     do {
-                        try await profile.performProfileDeletion {
+                        try await profile.withAutomaticWorkPausedForTesting {
                             do {
                                 try await PublicPaykitService.syncCurrentPublishedEndpoints(
                                     wallet: wallet, isSessionCurrent: isCurrent, syncApp: {}, applyEndpoints: { published = $0.map(\.value) }
@@ -188,7 +188,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         let owner = "pubky" + String(repeating: "y", count: 52)
         for state in State.allCases {
             AdoptedPubkyReference.current = state == .noStoredIdentity ? nil : ("startup-test", owner)
-            let profile = StartupPublicationProfile()
+            let profile = StartupPublicationProfile(sourceIsMissing: { _, _ in false })
             let (_, wallet) = publicationWallet(route: .channelUsable, profile: profile)
             profile.clearAuthenticatedStateForTesting()
             wallet.replaceEmptyPublicInvoice = true
@@ -239,7 +239,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         }
         await fulfillment(of: [creation.started], timeout: 5)
         do {
-            try await profile.performProfileDeletion {
+            try await profile.withAutomaticWorkPausedForTesting {
                 await wallet.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "test", forceRefreshLightning: true)
                 creation.release()
                 do {
@@ -469,7 +469,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                 )
             }
             await fulfillment(of: [creation.started], timeout: 5)
-            try await profile.performProfileDeletion {
+            try await profile.withAutomaticWorkPausedForTesting {
                 XCTAssertEqual(profile.currentSession, session)
                 creation.release()
                 do {
@@ -506,7 +506,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                 }
                 await fulfillment(of: [write.started], timeout: 5)
                 do {
-                    try await profile.performProfileDeletion {
+                    try await profile.withAutomaticWorkPausedForTesting {
                         await wallet.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "test", forceRefreshLightning: true)
                         throw PublicPaykitError.publicationFailed
                     }
@@ -531,7 +531,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
             case .cancelled: break
             }
             do {
-                try await profile.performProfileDeletion {
+                try await profile.withAutomaticWorkPausedForTesting {
                     await Task {
                         if state == .cancelled {
                             withUnsafeCurrentTask { $0?.cancel() }
@@ -575,7 +575,11 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
             do {
                 _ = try await preparation.value
                 XCTFail("Expected superseded preparation")
-            } catch PubkyServiceError.sessionNotActive {}
+            } catch PubkyServiceError.sessionNotActive {
+                XCTAssertNotEqual(state, .cancelled)
+            } catch is CancellationError {
+                XCTAssertEqual(state, .cancelled)
+            }
             XCTAssertEqual(wallet.publicPaykitBolt11, "ln-retained", "\(state)")
         }
     }
@@ -742,7 +746,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
             let publication = Task { try await route.refresh(wallet) }
             await fulfillment(of: [write.started], timeout: 5)
             let deletion = Task {
-                try await profile.performProfileDeletion {
+                try await profile.withAutomaticWorkPausedForTesting {
                     cleanup.fulfill()
                     try await PublicPaykitService.syncPublishedEndpoints(
                         publish: false, buildEndpoints: { [] }, syncApp: {},
@@ -810,17 +814,17 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         wallet.invoiceAmountSats = 1000
         let refresh = Task { try await wallet.refreshBip21(forceRefreshBolt11: true) }
         await fulfillment(of: [wallet.olderStarted], timeout: 5)
-        await PrivatePaykitService.shared.beginProfileDeletion()
+        let pause = await PrivatePaykitService.shared.beginProfileDeletion()
         wallet.releaseOlderInvoice()
         do {
             try await refresh.value
             XCTAssertTrue(wallet.hasCoherentReceiveInvoice)
             XCTAssertEqual(wallet.endpointSyncCount, 0)
         } catch {
-            await PrivatePaykitService.shared.endProfileDeletion()
+            await PrivatePaykitService.shared.endProfileDeletion(id: pause)
             throw error
         }
-        await PrivatePaykitService.shared.endProfileDeletion()
+        await PrivatePaykitService.shared.endProfileDeletion(id: pause)
         wallet.failPublicEndpointRefresh = true
         for _ in 0 ..< 2 {
             await wallet.refreshPublicPaykitEndpointsOnForeground { true }
@@ -873,14 +877,14 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         let wallet = GatedReceiveWallet()
         wallet.publicPaykitBolt11 = "ln-paid"
         wallet.publicPaykitBolt11PaymentHash = "paid-hash"
-        await PrivatePaykitService.shared.beginProfileDeletion()
+        let pause = await PrivatePaykitService.shared.beginProfileDeletion()
         wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: "unrelated")
         XCTAssertEqual(wallet.publicPaykitBolt11, "ln-paid")
         XCTAssertFalse(PublicPaykitService.isCleanupPending)
         wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: "paid-hash")
         XCTAssertTrue(wallet.publicPaykitBolt11.isEmpty)
         XCTAssertTrue(PublicPaykitService.isCleanupPending)
-        await PrivatePaykitService.shared.endProfileDeletion()
+        await PrivatePaykitService.shared.endProfileDeletion(id: pause)
     }
 
     func testPaidPublicInvoiceIsReplacedWithoutWaitingForMaintenanceRound() async {
@@ -1401,9 +1405,11 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                 preparation.release()
                 do {
                     try await older?.value
-                    XCTAssertTrue(cancelAfterWrite)
+                    XCTFail("A failed or cancelled publication cannot report success")
                 } catch PublicPaykitError.publicationFailed {
                     XCTAssertFalse(cancelAfterWrite)
+                } catch is CancellationError {
+                    XCTAssertTrue(cancelAfterWrite)
                 }
                 XCTAssertEqual(published, ["bcrt1qnewer", "bcrt1qolder"])
                 XCTAssertTrue(PublicPaykitService.isCleanupPending)

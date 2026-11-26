@@ -175,6 +175,7 @@ class ContactsManager: ObservableObject {
     private let removeContactRecord: @Sendable (_ publicKey: String) async throws -> Void
     private let removeContactRecords: @Sendable (_ publicKeys: [String]) async throws -> [ContactRecord]
     private let forgetRemovedContacts: @Sendable (_ publicKeys: [String]) async -> Void
+    private let profileAdmission: ProfileOperationAdmission
     private let currentDate: @Sendable () -> Date
 
     init(
@@ -199,8 +200,10 @@ class ContactsManager: ObservableObject {
             await PrivatePaykitService.shared.removeSavedContacts(publicKeys: $0)
         },
         currentDate: @escaping @Sendable () -> Date = { Date() },
-        shopContactImporter: ShopContactImporter? = nil
+        shopContactImporter: ShopContactImporter? = nil,
+        profileAdmission: ProfileOperationAdmission = .shared
     ) {
+        self.profileAdmission = profileAdmission
         self.contactRecords = contactRecords
         self.observedContactRecords = observedContactRecords
         self.fetchFollows = fetchFollows
@@ -281,7 +284,10 @@ class ContactsManager: ObservableObject {
         clearPendingImport()
     }
 
+    private(set) var importGeneration = UUID()
+
     func clearPendingImport() {
+        importGeneration = UUID()
         pendingImportProfile = nil
         pendingImportContacts = []
     }
@@ -289,8 +295,8 @@ class ContactsManager: ObservableObject {
     /// Clears the pending import once an import of it finishes and returns whether it was still pending. An import
     /// outlives its screens and leaving the import flow discards the pending import, so false means the user left and
     /// must not be taken to Pay Contacts.
-    func completePendingImport() -> Bool {
-        guard hasPendingImport else { return false }
+    func completePendingImport(expectedGeneration: UUID) -> Bool {
+        guard hasPendingImport, importGeneration == expectedGeneration else { return false }
         clearPendingImport()
         return true
     }
@@ -694,62 +700,67 @@ class ContactsManager: ObservableObject {
     // MARK: - Add Contact
 
     func addContact(publicKey: String, existingProfile: PubkyProfile? = nil, ownPublicKey: String? = nil) async throws {
-        guard let prefixedKey = PubkyPublicKeyFormat.normalized(publicKey) else {
-            throw ContactsManagerError.invalidPublicKey
-        }
+        try await profileAdmission.withOperation {
+            guard let prefixedKey = PubkyPublicKeyFormat.normalized(publicKey) else {
+                throw ContactsManagerError.invalidPublicKey
+            }
 
-        if PubkyPublicKeyFormat.matches(prefixedKey, ownPublicKey) {
-            throw ContactsManagerError.cannotAddYourself
-        }
+            if PubkyPublicKeyFormat.matches(prefixedKey, ownPublicKey) {
+                throw ContactsManagerError.cannotAddYourself
+            }
 
-        guard !contacts.contains(where: { PubkyPublicKeyFormat.matches($0.publicKey, prefixedKey) }) else {
-            throw ContactsManagerError.alreadyExists
-        }
+            guard !contacts.contains(where: { PubkyPublicKeyFormat.matches($0.publicKey, prefixedKey) }) else {
+                throw ContactsManagerError.alreadyExists
+            }
 
-        let profile: PubkyProfile = if let existingProfile {
-            PubkyProfile(
+            let profile: PubkyProfile = if let existingProfile {
+                PubkyProfile(
+                    publicKey: prefixedKey,
+                    name: existingProfile.name,
+                    bio: existingProfile.bio,
+                    imageUrl: existingProfile.imageUrl,
+                    links: existingProfile.links,
+                    tags: existingProfile.tags,
+                    status: existingProfile.status
+                )
+            } else {
+                try await resolveContactProfile(publicKey: prefixedKey, includePlaceholder: true, retryTransient: true)
+            }
+
+            _ = try await PubkyService.saveContact(
                 publicKey: prefixedKey,
-                name: existingProfile.name,
-                bio: existingProfile.bio,
-                imageUrl: existingProfile.imageUrl,
-                links: existingProfile.links,
-                tags: existingProfile.tags,
-                status: existingProfile.status
+                label: profile.name,
+                restorePrivateConnection: true
             )
-        } else {
-            try await resolveContactProfile(publicKey: prefixedKey, includePlaceholder: true, retryTransient: true)
+
+            try profileAdmission.checkCurrent()
+            Logger.info("Added contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
+
+            rememberResolvedProfile(profile, for: prefixedKey)
+            let contact = PubkyContact(publicKey: prefixedKey, profile: profile)
+            contacts.append(contact)
+            contacts.sort(by: Self.isOrderedByName)
         }
-
-        _ = try await PubkyService.saveContact(
-            publicKey: prefixedKey,
-            label: profile.name,
-            restorePrivateConnection: true
-        )
-
-        Logger.info("Added contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
-
-        rememberResolvedProfile(profile, for: prefixedKey)
-        let contact = PubkyContact(publicKey: prefixedKey, profile: profile)
-        contacts.append(contact)
-        contacts.sort(by: Self.isOrderedByName)
     }
 
     func refreshContactLink(publicKey: String, wallet: WalletViewModel) async {
-        guard let prefixedKey = PubkyPublicKeyFormat.normalized(publicKey),
-              let contact = contacts.first(where: { PubkyPublicKeyFormat.matches($0.publicKey, prefixedKey) })
-        else { return }
-
         do {
-            let identity = await PubkyService.currentPublicKey()
-            _ = try await PubkyService.saveContact(publicKey: prefixedKey, label: contact.profile.name, expectedIdentity: identity)
-            await PrivatePaykitService.shared.startExplicitContactLink(publicKey: prefixedKey, expectedIdentity: identity, wallet: wallet)
+            try await profileAdmission.withOperation {
+                guard let prefixedKey = PubkyPublicKeyFormat.normalized(publicKey),
+                      let contact = contacts.first(where: { PubkyPublicKeyFormat.matches($0.publicKey, prefixedKey) })
+                else { return }
+                guard let identity = try await PaykitSdkService.shared.currentPublicKey() else {
+                    throw PubkyServiceError.sessionNotActive
+                }
+                try profileAdmission.checkCurrent()
+                _ = try await PubkyService.saveContact(publicKey: prefixedKey, label: contact.profile.name, expectedIdentity: identity)
+                try profileAdmission.checkCurrent()
+                await PrivatePaykitService.shared.startExplicitContactLink(publicKey: prefixedKey, expectedIdentity: identity, wallet: wallet)
+            }
         } catch is CancellationError {
             return
         } catch {
-            Logger.warn(
-                "Failed to refresh contact link for \(PubkyPublicKeyFormat.redacted(prefixedKey)): \(error)",
-                context: "ContactsManager"
-            )
+            Logger.warn("Failed to refresh contact link: \(error)", context: "ContactsManager")
         }
     }
 
@@ -765,34 +776,37 @@ class ContactsManager: ObservableObject {
             _ = try await PubkyService.saveContacts(updates: updates, expectedIdentity: expectedIdentity)
         }
     ) async throws {
-        let profilesGeneration = resolvedProfilesGeneration
-        let expectedIdentity = resolvedProfilesOwner
-        var existingKeys = Set(contacts.map(\.publicKey))
-        let imported = selected.filter { existingKeys.insert($0.publicKey).inserted }
-        try Task.checkCancellation()
-        guard !imported.isEmpty else { return }
-
-        do {
-            try await saveContacts(imported.map { ContactUpdate(publicKey: $0.publicKey, label: $0.displayName) }, expectedIdentity)
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
+        try await profileAdmission.withOperation {
+            let profilesGeneration = resolvedProfilesGeneration
+            let expectedIdentity = resolvedProfilesOwner
+            var existingKeys = Set(contacts.map(\.publicKey))
+            let imported = selected.filter { existingKeys.insert($0.publicKey).inserted }
             try Task.checkCancellation()
-            guard profilesGeneration == resolvedProfilesGeneration else { return }
-            throw error
-        }
+            guard !imported.isEmpty else { return }
 
-        try Task.checkCancellation()
-        guard profilesGeneration == resolvedProfilesGeneration else {
-            Logger.info("Discarded a contact import that a reset overtook", context: "ContactsManager")
-            return
+            do {
+                try await saveContacts(imported.map { ContactUpdate(publicKey: $0.publicKey, label: $0.displayName) }, expectedIdentity)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                try Task.checkCancellation()
+                guard profilesGeneration == resolvedProfilesGeneration else { return }
+                throw error
+            }
+
+            try Task.checkCancellation()
+            guard profilesGeneration == resolvedProfilesGeneration else {
+                Logger.info("Discarded a contact import that a reset overtook", context: "ContactsManager")
+                return
+            }
+            try profileAdmission.checkCurrent()
+            for contact in imported {
+                rememberResolvedProfile(contact.profile, for: contact.publicKey)
+            }
+            let currentKeys = Set(contacts.map(\.publicKey))
+            contacts = (contacts + imported.filter { !currentKeys.contains($0.publicKey) }).sorted(by: Self.isOrderedByName)
+            Logger.info("Imported \(imported.count) new contacts", context: "ContactsManager")
         }
-        for contact in imported {
-            rememberResolvedProfile(contact.profile, for: contact.publicKey)
-        }
-        let currentKeys = Set(contacts.map(\.publicKey))
-        contacts = (contacts + imported.filter { !currentKeys.contains($0.publicKey) }).sorted(by: Self.isOrderedByName)
-        Logger.info("Imported \(imported.count) new contacts", context: "ContactsManager")
     }
 
     // MARK: - Update Contact
@@ -802,7 +816,8 @@ class ContactsManager: ObservableObject {
     private func sessionCheck(_ isSessionCurrent: @escaping @MainActor () -> Bool) -> @MainActor () -> Bool {
         let generation = resolvedProfilesGeneration
         return { [weak self] in
-            self?.resolvedProfilesGeneration == generation && isSessionCurrent()
+            self?.resolvedProfilesGeneration == generation && isSessionCurrent() &&
+                self.map { (try? $0.profileAdmission.checkCurrent()) != nil } == true
         }
     }
 
@@ -823,29 +838,36 @@ class ContactsManager: ObservableObject {
         isSessionCurrent: @escaping @MainActor () -> Bool,
         makeEdit: @MainActor () async throws -> ContactEdit
     ) async throws -> PubkyProfile? {
-        let isCurrent = sessionCheck(isSessionCurrent)
-        await resolvePendingContactProfile(publicKey: publicKey)
-        guard isCurrent() else { return nil }
-        let edit: ContactEdit
-        do {
-            edit = try await makeEdit()
-        } catch PubkyServiceError.identityChanged {
-            Logger.info("Dropped a contact edit whose avatar upload was for an identity that is no longer signed in", context: "ContactsManager")
-            return nil
-        } catch {
+        let scope = try profileAdmission.capture()
+        defer { profileAdmission.release(scope) }
+        do { return try await profileAdmission.withScope(scope) {
+            let isCurrent = sessionCheck(isSessionCurrent)
+            await resolvePendingContactProfile(publicKey: publicKey)
             guard isCurrent() else { return nil }
+            let edit: ContactEdit
+            do {
+                edit = try await makeEdit()
+            } catch PubkyServiceError.identityChanged {
+                Logger.info("Dropped a contact edit whose avatar upload was for an identity that is no longer signed in", context: "ContactsManager")
+                return nil
+            } catch {
+                guard isCurrent() else { return nil }
+                throw error
+            }
+            return try await updateContact(
+                publicKey: publicKey,
+                name: edit.name,
+                bio: edit.bio,
+                imageUrl: edit.imageUrl,
+                links: edit.links,
+                tags: edit.tags,
+                expectedIdentity: expectedIdentity,
+                isCurrent: isCurrent
+            )
+        } } catch {
+            guard (try? profileAdmission.validate(scope)) != nil else { return nil }
             throw error
         }
-        return try await updateContact(
-            publicKey: publicKey,
-            name: edit.name,
-            bio: edit.bio,
-            imageUrl: edit.imageUrl,
-            links: edit.links,
-            tags: edit.tags,
-            expectedIdentity: expectedIdentity,
-            isCurrent: isCurrent
-        )
     }
 
     /// `isCurrent` is checked right before the save and again once it returns, with nothing suspending between that check
@@ -880,9 +902,9 @@ class ContactsManager: ObservableObject {
         guard isCurrent() else { return nil }
         let saveContactLabel = saveContactLabel
         do {
-            try await Task.detached {
+            try await profileAdmission.withDetached {
                 try await saveContactLabel(prefixedKey, name, expectedIdentity)
-            }.value
+            }
         } catch PubkyServiceError.identityChanged {
             Logger.info("Dropped a contact update for an identity that is no longer signed in", context: "ContactsManager")
             return nil
@@ -923,25 +945,34 @@ class ContactsManager: ObservableObject {
         isSessionCurrent: @escaping @MainActor () -> Bool,
         transform: @escaping ([String]) -> [String]
     ) -> Task<Void, Error> {
+        let scope: ProfileOperationAdmission.Scope
+        do { scope = try profileAdmission.capture() }
+        catch { return Task { throw error } }
         let key = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
         let isCurrent = sessionCheck(isSessionCurrent)
         let previousChange = tagChanges[key]
         let change = Task {
-            _ = await previousChange?.result
-            guard isCurrent() else { return }
-            await resolvePendingContactProfile(publicKey: publicKey)
-            guard isCurrent() else { return }
-            let latest = contacts.first(where: { $0.publicKey == publicKey })?.profile ?? shownProfile
-            try await updateContact(
-                publicKey: publicKey,
-                name: latest.name,
-                bio: latest.bio,
-                imageUrl: latest.imageUrl,
-                links: latest.links,
-                tags: transform(latest.tags),
-                expectedIdentity: expectedIdentity,
-                isCurrent: isCurrent
-            )
+            defer { profileAdmission.release(scope) }
+            do { try await profileAdmission.withScope(scope) {
+                _ = await previousChange?.result
+                guard isCurrent() else { return }
+                await resolvePendingContactProfile(publicKey: publicKey)
+                guard isCurrent() else { return }
+                let latest = contacts.first(where: { $0.publicKey == publicKey })?.profile ?? shownProfile
+                try await updateContact(
+                    publicKey: publicKey,
+                    name: latest.name,
+                    bio: latest.bio,
+                    imageUrl: latest.imageUrl,
+                    links: latest.links,
+                    tags: transform(latest.tags),
+                    expectedIdentity: expectedIdentity,
+                    isCurrent: isCurrent
+                )
+            } } catch {
+                guard (try? profileAdmission.validate(scope)) != nil else { return }
+                throw error
+            }
         }
         tagChanges[key] = change
         return change
@@ -951,44 +982,102 @@ class ContactsManager: ObservableObject {
 
     /// Also stops the profile lookups of the contact, the running refresh's and any a screen started.
     func removeContact(publicKey: String) async throws {
-        let prefixedKey = ensurePubkyPrefix(publicKey)
-        let removeContactRecord = removeContactRecord
+        try await profileAdmission.withOperation {
+            let prefixedKey = ensurePubkyPrefix(publicKey)
+            let removeContactRecord = removeContactRecord
 
-        try await Task.detached {
-            try await removeContactRecord(prefixedKey)
-        }.value
-        contacts.removeAll { $0.publicKey == prefixedKey }
-        stopProfileLookups(for: [prefixedKey])
-        Self.removeContactProfileOverride(publicKey: prefixedKey)
-        await forgetRemovedContacts([prefixedKey])
+            try await profileAdmission.withDetached {
+                try await removeContactRecord(prefixedKey)
+            }
+            try profileAdmission.checkCurrent()
+            contacts.removeAll { $0.publicKey == prefixedKey }
+            stopProfileLookups(for: [prefixedKey])
+            Self.removeContactProfileOverride(publicKey: prefixedKey)
+            await forgetRemovedContacts([prefixedKey])
 
-        Logger.info("Removed contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
+            Logger.info("Removed contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
+        }
+    }
+
+    struct RemovalSnapshot {
+        fileprivate let revision: Int
+        fileprivate let records: [Paykit.ContactRecord]
+        var publicKeys: [String] {
+            records.map(\.publicKey)
+        }
+    }
+
+    func prepareRemovalSnapshot() async throws -> RemovalSnapshot {
+        let revision = contactsRevision
+        let read = contactRecords
+        let records = try await profileAdmission.withDetached { try await read() }
+        guard revision == contactsRevision else { throw PubkyServiceError.identityChanged }
+        return RemovalSnapshot(revision: revision, records: records)
+    }
+
+    func requireCurrentRemovalSnapshot(_ snapshot: RemovalSnapshot) throws {
+        guard snapshot.revision == contactsRevision else { throw PubkyServiceError.identityChanged }
+    }
+
+    func validateRemovalSnapshot(_ snapshot: RemovalSnapshot) async throws {
+        try requireCurrentRemovalSnapshot(snapshot)
+        let read = contactRecords
+        let records = try await profileAdmission.withDetached { try await read() }
+        try requireCurrentRemovalSnapshot(snapshot)
+        guard records.sorted(by: { $0.publicKey < $1.publicKey }) == snapshot.records.sorted(by: { $0.publicKey < $1.publicKey }) else {
+            throw PubkyServiceError.identityChanged
+        }
+    }
+
+    func removeConfirmedContacts(_ snapshot: RemovalSnapshot) async throws {
+        try requireCurrentRemovalSnapshot(snapshot)
+        stopProfileRefresh()
+        stopPendingProfileLookups()
+        let keys = snapshot.records.compactMap { PubkyPublicKeyFormat.normalized($0.publicKey) }
+        guard keys.count == snapshot.records.count else { throw ContactsManagerError.invalidPublicKey }
+        let remove = removeContactRecords
+        let removed = try await profileAdmission.withDetached { try await remove(keys) }
+        try profileAdmission.checkCurrent()
+        let acknowledged = Set(removed.compactMap { PubkyPublicKeyFormat.normalized($0.publicKey) })
+        guard acknowledged == Set(keys) else { throw PrivatePaykitError.privateUnavailable }
+        // Whole-profile cleanup retains consumed-payment watermarks until credentials are durably forgotten.
+    }
+
+    func finishProfileRemoval() {
+        stopProfileRefresh()
+        stopPendingProfileLookups()
+        contacts.removeAll()
     }
 
     /// Stops the running profile refresh and every lookup a screen started first: every contact is going, their reads would
     /// only compete with the ones removing them, and a contact can be added back with a newer profile before one returns.
     func deleteAllContacts() async throws {
-        stopProfileRefresh()
-        stopPendingProfileLookups()
-        let contactRecords = contactRecords
-        let removeContactRecords = removeContactRecords
-        let records = try await Task.detached { try await contactRecords() }.value
+        try await profileAdmission.withOperation {
+            stopProfileRefresh()
+            stopPendingProfileLookups()
+            let contactRecords = contactRecords
+            let removeContactRecords = removeContactRecords
+            let records = try await profileAdmission.withDetached { try await contactRecords() }
 
-        let keys = records.compactMap { PubkyPublicKeyFormat.normalized($0.publicKey) }
-        let removed = try await Task.detached { try await removeContactRecords(keys) }.value
-        let deletedKeys = Set(removed.compactMap { PubkyPublicKeyFormat.normalized($0.publicKey) })
-        await forgetRemovedContacts(Array(deletedKeys))
-        Self.removeContactProfileOverrides(publicKeys: deletedKeys)
-        contacts.removeAll { deletedKeys.contains($0.publicKey) }
-        guard deletedKeys.isSuperset(of: keys) else {
-            throw PrivatePaykitError.privateUnavailable
+            let keys = records.compactMap { PubkyPublicKeyFormat.normalized($0.publicKey) }
+            let removed = try await profileAdmission.withDetached { try await removeContactRecords(keys) }
+            try profileAdmission.checkCurrent()
+            let deletedKeys = Set(removed.compactMap { PubkyPublicKeyFormat.normalized($0.publicKey) })
+            await forgetRemovedContacts(Array(deletedKeys))
+            try profileAdmission.checkCurrent()
+            Self.removeContactProfileOverrides(publicKeys: deletedKeys)
+            contacts.removeAll { deletedKeys.contains($0.publicKey) }
+            guard deletedKeys.isSuperset(of: keys) else {
+                throw PrivatePaykitError.privateUnavailable
+            }
+
+            // All remote deletes succeeded, so clear any local-only contacts too.
+            Self.clearContactProfileOverrides()
+            await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
+            try profileAdmission.checkCurrent()
+            contacts.removeAll()
+            Logger.info("Deleted all contacts", context: "ContactsManager")
         }
-
-        // All remote deletes succeeded, so clear any local-only contacts too.
-        Self.clearContactProfileOverrides()
-        await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
-        contacts.removeAll()
-        Logger.info("Deleted all contacts", context: "ContactsManager")
     }
 
     // MARK: - Remote Contact Discovery
@@ -997,16 +1086,21 @@ class ContactsManager: ObservableObject {
     /// overview opens, and the bulk lane would use only four of the six read slots for those lookups.
     @discardableResult
     func prepareImport(profile: PubkyProfile?, publicKey: String) async -> Bool {
+        guard let scope = try? profileAdmission.capture() else { return false }
+        defer { profileAdmission.release(scope) }
         clearPendingImport()
-        useResolvedProfiles(of: publicKey)
-        await discoverRemoteContacts(publicKey: publicKey)
+        let generation = importGeneration
+        do { return try await profileAdmission.withScope(scope) {
+            useResolvedProfiles(of: publicKey)
+            await discoverRemoteContacts(publicKey: publicKey)
+            try profileAdmission.checkCurrent()
+            guard generation == importGeneration, !pendingImportContacts.isEmpty else {
+                return false
+            }
 
-        guard !pendingImportContacts.isEmpty else {
-            return false
-        }
-
-        pendingImportProfile = profile ?? PubkyProfile.placeholder(publicKey: ensurePubkyPrefix(publicKey))
-        return true
+            pendingImportProfile = profile ?? PubkyProfile.placeholder(publicKey: ensurePubkyPrefix(publicKey))
+            return true
+        } } catch { return false }
     }
 
     func destinationAfterAuthentication(profile: PubkyProfile?, publicKey: String) async -> Route {
@@ -1029,11 +1123,15 @@ class ContactsManager: ObservableObject {
         resolveProfile: @escaping @Sendable (String) async throws -> PubkyProfile
     ) async {
         let prefixedKey = ensurePubkyPrefix(publicKey)
-
-        do {
-            let contactKeys = try await Task.detached {
+        guard let scope = try? profileAdmission.capture() else { return }
+        defer { profileAdmission.release(scope) }
+        let generation = importGeneration
+        do { try await profileAdmission.withScope(scope) {
+            let contactKeys = try await profileAdmission.withDetached {
                 try await fetchContactKeys(prefixedKey)
-            }.value
+            }
+            try profileAdmission.checkCurrent()
+            guard generation == importGeneration else { return }
 
             Logger.info("Discovered \(contactKeys.count) contacts from pubky.app", context: "ContactsManager")
 
@@ -1070,8 +1168,12 @@ class ContactsManager: ObservableObject {
                 Logger.warn("Skipped \(discoveryResult.failures) remote contacts during discovery", context: "ContactsManager")
             }
 
+            try profileAdmission.checkCurrent()
+            guard generation == importGeneration else { return }
             pendingImportContacts = discoveryResult.contacts.sorted(by: Self.isOrderedByName)
-        } catch {
+        } } catch {
+            guard !Task.isCancelled, generation == importGeneration,
+                  (try? profileAdmission.validate(scope)) != nil else { return }
             Logger.warn("Failed to discover remote contacts: \(error)", context: "ContactsManager")
             pendingImportContacts = []
         }
@@ -1220,7 +1322,7 @@ class ContactsManager: ObservableObject {
         return true
     }
 
-    private nonisolated static let contactProfileOverridesKey = "pubkyContactProfileOverrides"
+    nonisolated static let contactProfileOverridesKey = "pubkyContactProfileOverrides"
 
     private nonisolated static func isOrderedByName(_ lhs: PubkyContact, _ rhs: PubkyContact) -> Bool {
         lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending

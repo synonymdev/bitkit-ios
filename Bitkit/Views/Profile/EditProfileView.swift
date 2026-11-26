@@ -7,21 +7,39 @@ struct EditProfileView: View {
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var contactsManager: ContactsManager
 
+    @State private var screenOwner: PubkyProfileManager.RemovalPresentationOwner?
     @State private var username: String = ""
     @State private var bio: String = ""
     @State private var links: [ProfileLinkInput] = []
     @State private var tags: [String] = []
     @State private var isSaving = false
     @State private var isDeleting = false
-    @State private var showDeleteConfirmation = false
-    @State private var showDeleteFailureOptions = false
+    @State private var showRemovalConfirmation = false
+    @State private var removalConfirmation: PubkyProfileManager.RemovalConfirmation?
+    @State private var confirmationOwner: PubkyProfileManager.RemovalPresentationOwner?
+    @State private var localDisconnectOwner: PubkyProfileManager.RemovalPresentationOwner?
+    @State private var preparationTask: Task<Void, Never>?
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var avatarImage: UIImage?
 
     var body: some View {
-        let copy = pubkyProfile.isRingAdoptedIdentity ? RemovalCopy.unlink : RemovalCopy.delete
+        let action = removalConfirmation?.action
+        let isUnlink = action == .unlink || (action != .deleteProfile && pubkyProfile.isRingAdoptedIdentity)
+        let copy = isUnlink ? RemovalCopy.unlink : RemovalCopy.delete
 
-        ZStack {
+        Group {
+            if pubkyProfile.removalRecovery != .ready, !isDeleting {
+                ProfileRemovalRecoveryView()
+            } else {
+                editContent(copy: copy)
+            }
+        }
+    }
+
+    private func editContent(copy: RemovalCopy) -> some View {
+        let isLocalDisconnect = removalConfirmation?.action == .disconnectLocally
+
+        return ZStack {
             ProfileEditFormView(
                 navigationTitle: t("profile__edit_nav_title"),
                 name: $username,
@@ -38,9 +56,27 @@ struct EditProfileView: View {
                 deleteActionStyle: .buttonWithIcon(icon: copy.icon, isSystemIcon: copy.isSystemIcon),
                 onSave: { await saveProfile() },
                 onCancel: { navigation.navigateBack() },
-                onDelete: { showDeleteConfirmation = true }
+                onDelete: {
+                    guard let owner = screenOwner, pubkyProfile.ownsRemovalPresentation(owner) else { return }
+                    preparationTask = Task {
+                        await prepareRemoval(action: pubkyProfile.isRingAdoptedIdentity ? .unlink : .deleteProfile, owner: owner)
+                    }
+                }
             ) {
                 avatarPicker
+            }
+            .safeAreaInset(edge: .bottom, spacing: 16) {
+                if let owner = localDisconnectOwner, pubkyProfile.ownsRemovalPresentation(owner) {
+                    VStack(spacing: 12) {
+                        CaptionMText(t("profile__disconnect_local_description"), textColor: .white64)
+                        CustomButton(title: t("profile__sign_out"), variant: .secondary) {
+                            preparationTask = Task { await prepareRemoval(action: .disconnectLocally, owner: owner) }
+                        }
+                        .accessibilityIdentifier("ProfileLocalDisconnect")
+                    }
+                    .padding(.horizontal, 16)
+                    .background(Color.customBlack)
+                }
             }
 
             if isDeleting {
@@ -58,26 +94,23 @@ struct EditProfileView: View {
         .navigationBarHidden(true)
         .disabled(isDeleting)
         .task {
+            if screenOwner == nil {
+                screenOwner = pubkyProfile.removalPresentationOwner
+            }
             loadProfileData()
         }
-        .alert(copy.title, isPresented: $showDeleteConfirmation) {
-            Button(copy.confirm, role: .destructive) {
-                Task { await deleteProfile() }
-            }
-            Button(t("common__dialog_cancel"), role: .cancel) {}
-        } message: {
-            Text(copy.description)
+        .onDisappear {
+            preparationTask?.cancel()
+            pubkyProfile.cancelRemovalConfirmation(removalConfirmation)
         }
-        .alert(copy.errorTitle, isPresented: $showDeleteFailureOptions) {
-            Button(t("common__retry")) {
-                Task { await deleteProfile() }
+        .alert(isLocalDisconnect ? t("profile__sign_out_title") : copy.title, isPresented: $showRemovalConfirmation) {
+            Button(isLocalDisconnect ? t("profile__sign_out") : copy.confirm, role: .destructive) {
+                Task { await confirmRemoval() }
             }
-            Button(t("profile__sign_out"), role: .destructive) {
-                Task { await disconnectAfterFailedDelete() }
-            }
-            Button(t("common__dialog_cancel"), role: .cancel) {}
+            .accessibilityIdentifier(isLocalDisconnect ? "ProfileLocalDisconnectConfirm" : "ProfileRemovalConfirm")
+            Button(t("common__dialog_cancel"), role: .cancel) { pubkyProfile.cancelRemovalConfirmation(removalConfirmation) }
         } message: {
-            Text(copy.errorDescription)
+            Text(isLocalDisconnect ? t("profile__disconnect_local_description") : copy.description)
         }
     }
 
@@ -147,68 +180,58 @@ struct EditProfileView: View {
 
     // MARK: - Delete Profile
 
-    private func deleteProfile() async {
-        guard !isDeleting else { return }
-        guard let session = pubkyProfile.currentSession else {
-            showDeleteFailureOptions = true
-            return
-        }
-
+    private func prepareRemoval(action: PubkyProfileManager.RemovalAction,
+                                owner presentationOwner: PubkyProfileManager.RemovalPresentationOwner) async
+    {
+        guard !isDeleting, pubkyProfile.ownsRemovalPresentation(presentationOwner) else { return }
         isDeleting = true
         defer { isDeleting = false }
         do {
-            try await pubkyProfile.performProfileDeletion {
-                do {
-                    try await performDeleteProfile(session: session)
-                } catch let PubkyServiceError.activeSubscription(endsAt) {
-                    guard !Task.isCancelled, pubkyProfile.currentSession == session else { return }
-                    let description = endsAt.map {
-                        t("subscriptions__expires_date", variables: ["date": $0.formatted(date: .long, time: .omitted)])
-                    }
-                    app.toast(type: .error, title: t("profile__delete_active_subscription"), description: description)
-                } catch {
-                    guard !Task.isCancelled, pubkyProfile.publicKey == session.publicKey else { return }
-                    Logger.error("Failed to delete profile: \(error)", context: "EditProfileView")
-                    showDeleteFailureOptions = true
-                }
+            removalConfirmation = try await pubkyProfile.prepareRemoval(
+                action: action, contacts: contactsManager, expectedOwner: presentationOwner
+            )
+            confirmationOwner = presentationOwner
+            showRemovalConfirmation = true
+        } catch {
+            guard !Task.isCancelled, pubkyProfile.ownsRemovalPresentation(presentationOwner) else { return }
+            showRemovalError(error, action: action, owner: presentationOwner)
+        }
+    }
+
+    private func confirmRemoval() async {
+        guard !isDeleting, let confirmation = removalConfirmation, let presentationOwner = confirmationOwner else { return }
+        isDeleting = true
+        defer { isDeleting = false }
+        do {
+            let result = try await pubkyProfile.confirmRemoval(confirmation)
+            if pubkyProfile.ownsRemovalCompletion(result) {
+                navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
             }
         } catch {
-            guard !Task.isCancelled, pubkyProfile.currentSession == session else { return }
-            Logger.error("Failed to delete profile: \(error)", context: "EditProfileView")
-            showDeleteFailureOptions = true
+            pubkyProfile.refreshRemovalRecovery()
+            guard !Task.isCancelled, pubkyProfile.ownsRemovalFailure(confirmation, owner: presentationOwner) else { return }
+            if pubkyProfile.pendingProfileRemovalID != confirmation.id {
+                showRemovalError(error, action: confirmation.action, owner: presentationOwner)
+            }
         }
     }
 
-    private func performDeleteProfile(session: PubkyProfileManager.SignedInSession) async throws {
-        try await Self.performDeleteProfile(session: session, pubkyProfile: pubkyProfile, contactsManager: contactsManager) {
-            try await PubkyProfileManager.removePrivatePaykitEndpoints(
-                context: "EditProfileView.deleteProfile", deferAppSync: true,
-                isSessionCurrent: { pubkyProfile.currentSession == session }
-            )
-        }
-        navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
-    }
-
-    static func performDeleteProfile(
-        session: PubkyProfileManager.SignedInSession,
-        pubkyProfile: PubkyProfileManager,
-        contactsManager: ContactsManager,
-        removePrivateEndpoints: () async throws -> Void
-    ) async throws {
-        try await pubkyProfile.validateProfileDeletion(for: session)
-        try await removePrivateEndpoints()
-        try pubkyProfile.requireCurrentSession(session)
-        try await contactsManager.deleteAllContacts()
-        try pubkyProfile.requireCurrentSession(session)
-        try await pubkyProfile.deleteProfile(cleanPrivatePaykitEndpoints: false, expectedSession: session)
-    }
-
-    private func disconnectAfterFailedDelete() async {
-        do {
-            try await pubkyProfile.signOut()
-            navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
-        } catch {
-            app.toast(type: .error, title: t("profile__sign_out_title"), description: error.localizedDescription)
+    private func showRemovalError(_ error: Error, action: PubkyProfileManager.RemovalAction,
+                                  owner: PubkyProfileManager.RemovalPresentationOwner)
+    {
+        if case let PubkyServiceError.activeSubscription(endsAt) = error {
+            localDisconnectOwner = owner
+            let description = endsAt.map {
+                t("subscriptions__expires_date", variables: ["date": $0.formatted(date: .long, time: .omitted)])
+            }
+            app.toast(type: .error, title: t("profile__delete_active_subscription"), description: description)
+        } else {
+            let title: String = switch action {
+            case .deleteProfile: RemovalCopy.delete.title
+            case .unlink: RemovalCopy.unlink.title
+            case .disconnect, .disconnectLocally: t("profile__sign_out_title")
+            }
+            app.toast(type: .error, title: title, description: error.localizedDescription)
         }
     }
 
@@ -218,23 +241,31 @@ struct EditProfileView: View {
     /// or the profile publishes, it stops quietly, with no toast and no navigation.
     private func saveProfile() async {
         let trimmedName = username.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty else { return }
+        guard !trimmedName.isEmpty, let screenOwner, pubkyProfile.ownsRemovalPresentation(screenOwner) else { return }
 
+        let admission = ProfileOperationAdmission.shared
+        guard let scope = try? admission.capture() else { return }
+        defer { admission.release(scope) }
         isSaving = true
         defer { isSaving = false }
 
         do {
-            let isSaved = try await pubkyProfile.saveProfile(
-                name: trimmedName,
-                bio: bio.trimmingCharacters(in: .whitespacesAndNewlines),
-                links: links.map { PubkyProfileLink(label: $0.label, url: $0.url) },
-                tags: tags,
-                avatarImage: avatarImage
-            )
-            guard isSaved else { return }
-            app.toast(type: .success, title: t("profile__edit_saved"), accessibilityIdentifier: "ProfileUpdatedToast")
-            navigation.navigateBack()
+            try await admission.withScope(scope) {
+                let isSaved = try await pubkyProfile.saveProfile(
+                    name: trimmedName,
+                    bio: bio.trimmingCharacters(in: .whitespacesAndNewlines),
+                    links: links.map { PubkyProfileLink(label: $0.label, url: $0.url) },
+                    tags: tags,
+                    avatarImage: avatarImage
+                )
+                try admission.checkCurrent()
+                guard isSaved, pubkyProfile.ownsRemovalPresentation(screenOwner) else { return }
+                app.toast(type: .success, title: t("profile__edit_saved"), accessibilityIdentifier: "ProfileUpdatedToast")
+                navigation.navigateBack()
+            }
         } catch {
+            guard !Task.isCancelled, (try? admission.validate(scope)) != nil,
+                  pubkyProfile.ownsRemovalPresentation(screenOwner) else { return }
             Logger.error("Failed to save profile: \(error)", context: "EditProfileView")
             app.toast(type: .error, title: t("profile__edit_error_title"), description: error.localizedDescription)
         }
@@ -249,8 +280,6 @@ private struct RemovalCopy {
     let title: String
     let confirm: String
     let description: String
-    let errorTitle: String
-    let errorDescription: String
 
     static var delete: RemovalCopy {
         RemovalCopy(
@@ -260,9 +289,7 @@ private struct RemovalCopy {
             isSystemIcon: false,
             title: t("profile__delete_title"),
             confirm: t("profile__delete_confirm"),
-            description: t("profile__delete_description"),
-            errorTitle: t("profile__delete_error_title"),
-            errorDescription: t("profile__delete_error_description")
+            description: t("profile__delete_description")
         )
     }
 
@@ -274,9 +301,7 @@ private struct RemovalCopy {
             isSystemIcon: true,
             title: t("profile__unlink_title"),
             confirm: t("profile__unlink_confirm"),
-            description: t("profile__unlink_description"),
-            errorTitle: t("profile__unlink_error_title"),
-            errorDescription: t("profile__unlink_error_description")
+            description: t("profile__unlink_description")
         )
     }
 }

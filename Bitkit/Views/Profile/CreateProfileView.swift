@@ -6,6 +6,9 @@ struct CreateProfileView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
 
+    @State private var screenOwner: PubkyProfileManager.RemovalPresentationOwner?
+    @State private var screenGeneration: ProfileOperationAdmission.Generation?
+    @State private var loadGeneration = 0
     @State private var derivedPublicKey: String = ""
     @State private var username: String = ""
     @State private var isLoading = false
@@ -34,8 +37,18 @@ struct CreateProfileView: View {
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .background(Color.customBlack)
         .navigationBarHidden(true)
-        .task {
-            await loadInitialData()
+        .task(id: loadGeneration) { await loadInitialData() }
+        .onChange(of: pubkyProfile.isAdoptingRingIdentity || pubkyProfile.isRestoringSession) { _, busy in
+            if !busy, screenGeneration == nil {
+                loadGeneration += 1
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: ProfileOperationAdmission.didReleaseOperation,
+                                                        object: ProfileOperationAdmission.shared).receive(on: RunLoop.main))
+        { _ in
+            if screenGeneration == nil {
+                loadGeneration += 1
+            }
         }
     }
 
@@ -157,51 +170,51 @@ struct CreateProfileView: View {
     // MARK: - Data Loading
 
     private func loadInitialData() async {
+        let admission = ProfileOperationAdmission.shared
+        if screenOwner == nil {
+            screenOwner = pubkyProfile.removalPresentationOwner
+        }
+        guard let screenOwner, pubkyProfile.ownsRemovalPresentation(screenOwner) else { return }
+        if screenGeneration == nil {
+            guard let generation = try? admission.snapshot() else { return }
+            screenGeneration = generation
+        }
+        guard let screenGeneration,
+              (try? admission.validate(screenGeneration)) != nil else { return }
         isLoading = true
         defer { isLoading = false }
-
         do {
-            let publicKey = try await pubkyProfile.activePublicKey()
-            derivedPublicKey = publicKey
-
-            // Restore existing profile if one is found on the network
-            if let remote = await remoteProfile(publicKey: publicKey) {
-                username = remote.name
+            try await admission.withOperation {
+                let publicKey = try await pubkyProfile.activePublicKey()
+                try admission.checkCurrent()
+                guard pubkyProfile.ownsRemovalPresentation(screenOwner) else { throw PubkyServiceError.identityChanged }
+                let remote = try await remoteProfile(publicKey: publicKey)
+                try admission.checkCurrent()
+                guard pubkyProfile.ownsRemovalPresentation(screenOwner) else { throw PubkyServiceError.identityChanged }
+                derivedPublicKey = publicKey
+                remoteLookupFailed = false
                 existingProfile = remote
-                isRestoring = true
+                isRestoring = remote != nil
+                if let remote {
+                    username = remote.name
+                }
             }
-        } catch is CancellationError {
-            return
         } catch {
-            Logger.error("Failed to derive pubky keys: \(error)", context: "CreateProfileView")
+            guard !Task.isCancelled, pubkyProfile.ownsRemovalPresentation(screenOwner),
+                  (try? admission.validate(screenGeneration)) != nil else { return }
+            remoteLookupFailed = true
+            Logger.error("Failed to load the profile: \(error)", context: "CreateProfileView")
             app.toast(type: .error, title: t("profile__create_error_title"), description: error.localizedDescription)
-            navigation.navigateBack()
         }
     }
 
-    /// With a session or a stored key the pubky has signed up before, so a failed lookup is not treated as
-    /// "no profile": saving then could replace an existing profile with an empty one.
-    private func remoteProfile(publicKey: String) async -> PubkyProfile? {
+    /// A failed existing-profile lookup must not become permission to overwrite it with empty fields.
+    private func remoteProfile(publicKey: String) async throws -> PubkyProfile? {
         guard pubkyProfile.publicKey != nil || PubkyProfileManager.hasLocalSecretKey(for: publicKey) else {
             return await pubkyProfile.fetchRemoteProfile(publicKey: publicKey)
         }
-
-        do {
-            let profile = try await PubkyProfileManager.resolveRemoteProfile(publicKey: publicKey)
-            remoteLookupFailed = false
-            return profile
-        } catch PubkyServiceError.profileNotFound {
-            remoteLookupFailed = false
-            return nil
-        } catch is CancellationError {
-            remoteLookupFailed = true
-            return nil
-        } catch {
-            Logger.warn("Failed to look up the existing profile: \(error)", context: "CreateProfileView")
-            remoteLookupFailed = true
-            app.toast(type: .error, title: t("profile__create_error_title"), description: error.localizedDescription)
-            return nil
-        }
+        do { return try await PubkyProfileManager.resolveRemoteProfile(publicKey: publicKey) }
+        catch PubkyServiceError.profileNotFound { return nil }
     }
 
     // MARK: - Save Profile
@@ -213,26 +226,39 @@ struct CreateProfileView: View {
         }
 
         let trimmedName = username.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty else { return }
+        guard !trimmedName.isEmpty, let screenOwner, let screenGeneration,
+              pubkyProfile.ownsRemovalPresentation(screenOwner) else { return }
+        let admission = ProfileOperationAdmission.shared
 
         isSaving = true
         defer { isSaving = false }
 
         do {
-            try await pubkyProfile.createIdentity(
-                name: trimmedName,
-                bio: existingProfile?.bio ?? "",
-                links: existingProfile?.links ?? [],
-                tags: existingProfile?.tags ?? [],
-                existingImageUrl: existingProfile?.imageUrl,
-                avatarImage: avatarImage
-            )
-            navigation.navigate(.payContacts)
-        } catch is CancellationError {
-            return
+            try await admission.withSessionTransition(expected: screenGeneration) {
+                guard pubkyProfile.ownsRemovalPresentation(screenOwner) else { throw PubkyServiceError.identityChanged }
+                do {
+                    try await pubkyProfile.createIdentity(
+                        name: trimmedName,
+                        bio: existingProfile?.bio ?? "",
+                        links: existingProfile?.links ?? [],
+                        tags: existingProfile?.tags ?? [],
+                        existingImageUrl: existingProfile?.imageUrl,
+                        avatarImage: avatarImage
+                    )
+                    try admission.checkCurrent()
+                    navigation.navigate(.payContacts)
+                } catch {
+                    guard !Task.isCancelled, (try? admission.checkCurrent()) != nil else { throw error }
+                    try pubkyProfile.schedulePresentationContext { owner, generation in
+                        self.screenOwner = owner
+                        self.screenGeneration = generation
+                    }
+                    Logger.error("Failed to save profile: \(error)", context: "CreateProfileView")
+                    app.toast(type: .error, title: t("profile__create_error_title"), description: error.localizedDescription)
+                }
+            }
         } catch {
-            Logger.error("Failed to save profile: \(error)", context: "CreateProfileView")
-            app.toast(type: .error, title: t("profile__create_error_title"), description: error.localizedDescription)
+            // A retired screen cannot present results for its replacement identity.
         }
     }
 }

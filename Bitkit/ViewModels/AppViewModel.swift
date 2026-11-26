@@ -408,6 +408,14 @@ class AppViewModel: ObservableObject {
         self.scanPaymentOperations = scanPaymentOperations ?? .live(lightningService: lightningService)
         self.usdtBalance = usdtBalance
 
+        sheetViewModel.onSendRequested = { [weak self] state, presentationID in
+            guard let self else { return }
+            if state.rootRoute == .options {
+                resetSendState(ownerID: presentationID)
+            }
+            // A later external scan can start before SwiftUI mounts this presentation.
+            state.ownedSendStateGeneration = sendStateGeneration
+        }
         setupManualEntryValidationDebounce()
 
         Task {

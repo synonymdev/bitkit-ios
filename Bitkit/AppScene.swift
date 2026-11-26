@@ -371,6 +371,7 @@ struct PaykitPaymentRequestPollingSchedule {
 enum AppRootContent: Equatable {
     case wipeGate
     case trezorEmulatorTest
+    case profileRecovery
     case migrationLoading
     case recovery
     case criticalUpdate
@@ -381,13 +382,17 @@ enum AppRootContent: Equatable {
         isTrezorEmulatorTesting: Bool,
         isShowingMigrationLoading: Bool,
         isRecoveryShown: Bool,
-        hasCriticalUpdate: Bool
+        hasCriticalUpdate: Bool,
+        isProfileRecoveryBlocking: Bool = false
     ) -> AppRootContent {
         if isWipeGateUp {
             return .wipeGate
         }
         if isTrezorEmulatorTesting {
             return .trezorEmulatorTest
+        }
+        if isProfileRecoveryBlocking, !hasCriticalUpdate {
+            return .profileRecovery
         }
         if isShowingMigrationLoading {
             return .migrationLoading
@@ -541,21 +546,24 @@ struct AppScene: View {
     private func configurePrivatePaykitContactResolvers() {
         CoreService.shared.activity.setPrivatePaykitContactResolvers(
             invoice: { paymentHash in
-                await PrivatePaykitService.shared.contactPublicKey(forPrivateInvoicePaymentHash: paymentHash)
+                await PrivatePaykitService.shared.contactPublicKeyForReceipt(paymentHash: paymentHash)
             },
             onchainAddresses: { @MainActor address, outputAddresses in
-                let identity = pubkyProfile.publicKey
-                let contacts = paykitPaymentRequestManager.receivedPaymentContacts
+                guard (try? ProfileOperationAdmission.shared.checkReceiptAttribution()) != nil else { return nil }
                 let reservations = PrivatePaykitAddressReservationStore.shared
-                let reservationRevision = await reservations.attributionRevision
-                guard let combined = try? await contacts.includingReservations(for: outputAddresses, lookup: {
-                    try await reservations.contactPublicKeyForAttribution(forReservedAddress: $0)
-                }), pubkyProfile.authState == .authenticated,
-                      PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey),
-                      contacts == paykitPaymentRequestManager.receivedPaymentContacts,
-                      await reservations.attributionRevision == reservationRevision
+                let revision = await reservations.attributionRevision
+                let contacts = pubkyProfile.authState == .authenticated
+                    ? paykitPaymentRequestManager.receivedPaymentContacts : PaykitReceivedPaymentContacts()
+                guard let combined = try? await reservations.contactsForReceipt(
+                    contacts,
+                    outputAddresses: outputAddresses,
+                    expectedRevision: revision
+                )
                 else { return nil }
                 return combined.contact(receivingAddress: address, outputAddresses: outputAddresses)
+            },
+            receiptOperation: { operation in
+                try await ProfileOperationAdmission.shared.withReceiptAttribution(operation)
             }
         )
     }
@@ -585,7 +593,7 @@ struct AppScene: View {
             ) {
                 config in AppUpdateSheet(config: config)
             }
-            .task(priority: .userInitiated, setupTask)
+            .task(id: pubkyProfile.removalRecovery.blocksWalletStartup, priority: .userInitiated, setupTask)
             .task(id: [
                 scenePhase == .active,
                 wallet.walletExists == true,
@@ -712,7 +720,14 @@ struct AppScene: View {
                     return
                 }
                 guard let pk = activatedAutomaticPaykitIdentity else { return }
-                Task { await paykitAllowanceManager.activate(identity: pk) }
+                do {
+                    try pubkyProfile.scheduleAutomaticPaykitSession { session in
+                        guard areAllowancesEnabled, PubkyPublicKeyFormat.matches(pk, session.publicKey) else { return }
+                        await paykitAllowanceManager.activate(identity: pk)
+                    }
+                } catch {
+                    Logger.debug("Allowance activation was not admitted: \(error)", context: "AppScene")
+                }
             }
             .onChange(of: pubkyProfile.isDeletingProfile) { _, isDeleting in
                 if !isDeleting {
@@ -884,7 +899,7 @@ struct AppScene: View {
     }
 
     private var isLockedForDeepLinks: Bool {
-        settings.pinEnabled && !isPinVerified
+        pubkyProfile.removalRecovery.blocksWalletStartup || (settings.pinEnabled && !isPinVerified)
     }
 
     private var mainContent: some View {
@@ -894,12 +909,15 @@ struct AppScene: View {
                 isTrezorEmulatorTesting: Env.isTrezorEmulatorTesting,
                 isShowingMigrationLoading: migrations.isShowingMigrationLoading,
                 isRecoveryShown: showRecoveryScreen,
-                hasCriticalUpdate: hasCriticalUpdate
+                hasCriticalUpdate: hasCriticalUpdate,
+                isProfileRecoveryBlocking: pubkyProfile.removalRecovery.blocksWalletStartup
             ) {
             case .wipeGate:
                 WipeGateView(coordinator: wipeCoordinator)
             case .trezorEmulatorTest:
                 trezorEmulatorTestContent
+            case .profileRecovery:
+                NavigationStack { ProfileRemovalRecoveryView() }
             case .migrationLoading:
                 migrationLoadingContent
             case .recovery:
@@ -912,7 +930,9 @@ struct AppScene: View {
             }
 
             // The launch that would remove the splash does not run behind the wipe gate.
-            if !Env.isTrezorEmulatorTesting, !wipeCoordinator.isGateUp, !removeSplash, !session.skipSplashOnce {
+            if !Env.isTrezorEmulatorTesting, !wipeCoordinator.isGateUp, !pubkyProfile.removalRecovery.blocksWalletStartup, !removeSplash,
+               !session.skipSplashOnce
+            {
                 SplashView()
                     .opacity(hideSplash ? 0 : 1)
             }
@@ -1074,7 +1094,7 @@ struct AppScene: View {
             }
         }
 
-        guard wallet.walletExists == true, !wipeCoordinator.isGateUp else { return }
+        guard wallet.walletExists == true, !wipeCoordinator.isGateUp, !pubkyProfile.removalRecovery.blocksWalletStartup else { return }
 
         // Don't start wallet if we're in recovery mode
         guard !showRecoveryScreen else { return }
@@ -1104,6 +1124,7 @@ struct AppScene: View {
     }
 
     private func startWallet(completingBackupRestore: Bool = false, playsErrorHaptic: Bool = true) async {
+        guard !pubkyProfile.removalRecovery.blocksWalletStartup else { return }
         let hasPendingRestore = BackupService.shared.hasPendingWalletRestore()
         guard !WalletBackupRestoreGate.blocksWalletStart(
             isRestoreRunning: isWalletBackupRestoreRunning,
@@ -1159,7 +1180,9 @@ struct AppScene: View {
 
         // Ahead of the orphaned keychain check, migration and wallet state: a pending wipe resumes here, even after a
         // reinstall, and a lockout state that cannot be read holds the launch.
-        guard await wipeCoordinator.prepareForLaunch(), checkOrphanedKeychain() else { return }
+        guard await wipeCoordinator.prepareForLaunch() else { return }
+        pubkyProfile.refreshRemovalRecovery()
+        guard !pubkyProfile.removalRecovery.blocksWalletStartup, checkOrphanedKeychain() else { return }
         await continueLaunch()
     }
 
@@ -1245,26 +1268,32 @@ struct AppScene: View {
     }
 
     private func restoreWalletBackupAndStart() async {
-        guard !isWalletBackupRestoreRunning, !wipeCoordinator.isGateUp else { return }
+        guard !isWalletBackupRestoreRunning, !wipeCoordinator.isGateUp, !pubkyProfile.removalRecovery.blocksWalletStartup else { return }
         isWalletBackupRestoreRunning = true
         walletIsInitializing = true
         didWalletBackupRestoreFail = false
         defer { isWalletBackupRestoreRunning = false }
 
-        let didRestore: Bool = if BackupService.shared.hasPendingWalletRestore() {
-            await restoreVssBackup()
-        } else {
-            await restoreFromMostRecentBackup()
-        }
-        guard didRestore else {
-            didWalletBackupRestoreFail = true
-            return
-        }
+        do {
+            let didRestore = try await ProfileOperationAdmission.shared.withWalletRestore {
+                let restored: Bool = if BackupService.shared.hasPendingWalletRestore() {
+                    await restoreVssBackup()
+                } else {
+                    await restoreFromMostRecentBackup()
+                }
+                guard restored else { return false }
 
-        widgets.loadSavedWidgets()
-        widgets.objectWillChange.send()
-        pubkyProfile.scheduleInitializationAfterRestore()
-        await startWallet(completingBackupRestore: true)
+                widgets.loadSavedWidgets()
+                widgets.objectWillChange.send()
+                pubkyProfile.scheduleInitializationAfterRestore()
+                await startWallet(completingBackupRestore: true)
+                return true
+            }
+            didWalletBackupRestoreFail = !didRestore
+        } catch {
+            Logger.warn("Wallet backup restore could not complete: \(error)", context: "AppScene")
+            didWalletBackupRestoreFail = true
+        }
     }
 
     private func retryWalletStart() async {
@@ -1279,7 +1308,7 @@ struct AppScene: View {
     }
 
     private func retryPendingWalletRestoreIfNeeded() -> Bool {
-        if isWalletBackupRestoreRunning {
+        if pubkyProfile.removalRecovery.blocksWalletStartup || ProfileOperationAdmission.shared.isWalletWiping || isWalletBackupRestoreRunning {
             return true
         }
         guard BackupService.shared.hasPendingWalletRestore() else { return false }
@@ -1318,7 +1347,9 @@ struct AppScene: View {
 
         if shouldRestoreRN {
             do {
-                try await MigrationsService.shared.restoreFromRNRemoteBackup(mnemonic: mnemonic, passphrase: passphrase)
+                try await MigrationsService.shared.restoreFromRNRemoteBackup(mnemonic: mnemonic, passphrase: passphrase) {
+                    try await ProfileOperationAdmission.shared.withWalletRestore($0)
+                }
             } catch {
                 Logger.error("RN remote backup restore failed: \(error)", context: "AppScene")
                 // Fall back to VSS
@@ -2139,39 +2170,41 @@ struct AppScene: View {
     }
 
     private func startAutomaticPaykitSession() {
-        guard let session = pubkyProfile.automaticPaykitSession,
-              !PubkyPublicKeyFormat.matches(session.publicKey, activatedAutomaticPaykitIdentity)
-        else { return }
-        let pk = session.publicKey
-        activatedAutomaticPaykitIdentity = pk
-        Task {
-            if areAllowancesEnabled {
-                await paykitAllowanceManager.activate(identity: pk)
-            } else {
-                paykitAllowanceManager.pause(identity: pk)
-            }
-            await handlePendingPaykitSubscriptionNotification()
-            guard pubkyProfile.automaticPaykitSession == session else {
-                // A deletion or session change cut this start short; let the session's next appearance run it again.
-                if activatedAutomaticPaykitIdentity == pk {
-                    activatedAutomaticPaykitIdentity = nil
+        do {
+            try pubkyProfile.scheduleAutomaticPaykitSession { session in
+                let pk = session.publicKey
+                guard !PubkyPublicKeyFormat.matches(pk, activatedAutomaticPaykitIdentity) else { return }
+                activatedAutomaticPaykitIdentity = pk
+                if areAllowancesEnabled {
+                    await paykitAllowanceManager.activate(identity: pk)
+                } else {
+                    paykitAllowanceManager.pause(identity: pk)
                 }
-                // A new session for the same key may already have appeared while this one waited.
-                startAutomaticPaykitSession()
-                return
+                await handlePendingPaykitSubscriptionNotification()
+                guard pubkyProfile.automaticPaykitSession == session else {
+                    // A deletion or session change cut this start short; let the session's next appearance run it again.
+                    if activatedAutomaticPaykitIdentity == pk {
+                        activatedAutomaticPaykitIdentity = nil
+                    }
+                    // A new session for the same key may already have appeared while this one waited.
+                    startAutomaticPaykitSession()
+                    return
+                }
+                try? await contactsManager.loadContacts(for: pk)
+                if !PaykitFeatureFlags.isUIEnabled, wallet.walletExists == true {
+                    await retryPendingPaykitEndpointRemoval()
+                }
+                guard isPaykitSceneActive, pubkyProfile.authState == .authenticated,
+                      PubkyPublicKeyFormat.matches(pk, pubkyProfile.publicKey)
+                else { return }
+                await refreshPrivateOnlyPaykitApp()
+                await refreshIncomingPaykitPaymentRequests(presentItems: false, onlyWhileActive: true)
+                if PaykitSubscriptionNotificationTargetStore.load() == nil {
+                    await presentNextIncomingPaykitItem()
+                }
             }
-            try? await contactsManager.loadContacts(for: pk)
-            if !PaykitFeatureFlags.isUIEnabled, wallet.walletExists == true {
-                await retryPendingPaykitEndpointRemoval()
-            }
-            guard isPaykitSceneActive, pubkyProfile.authState == .authenticated,
-                  PubkyPublicKeyFormat.matches(pk, pubkyProfile.publicKey)
-            else { return }
-            await refreshPrivateOnlyPaykitApp()
-            await refreshIncomingPaykitPaymentRequests(presentItems: false, onlyWhileActive: true)
-            if PaykitSubscriptionNotificationTargetStore.load() == nil {
-                await presentNextIncomingPaykitItem()
-            }
+        } catch {
+            Logger.debug("Automatic Paykit startup was not admitted: \(error)", context: "AppScene")
         }
     }
 

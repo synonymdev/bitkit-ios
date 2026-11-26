@@ -65,12 +65,14 @@ class SheetViewModel: ObservableObject {
         }
     }
 
+    var onSendRequested: ((SendPresentationState, UUID) -> Void)?
+
     @Published var hardwareConnectHandlesPairing = false
     @Published private(set) var isReplacingSheet = false
-    @Published private(set) var replacingSheetID: SheetID?
+    @Published private var pendingSheet: SheetConfiguration?
 
     var isPubkyAuthApprovalShownOrPending: Bool {
-        activeSheetConfiguration?.id == .pubkyAuthApproval || replacingSheetID == .pubkyAuthApproval
+        activeSheetConfiguration?.id == .pubkyAuthApproval || pendingSheet?.id == .pubkyAuthApproval
     }
 
     func showSheet(_ id: SheetID, data: Any? = nil) {
@@ -78,21 +80,34 @@ class SheetViewModel: ObservableObject {
             Logger.debug("Skipping received-transaction sheet while send is active", context: "SheetViewModel")
             return
         }
-        if isAnySheetOpen {
+        let configuration = SheetConfiguration(id: id, data: data)
+        let replacesSheet = isAnySheetOpen
+        if replacesSheet {
             // If any other sheet is open, close it and delay before showing the new sheet
             // to prevent the new sheet from closing immediately (bug)
             isReplacingSheet = true
-            replacingSheetID = id
+            pendingSheet = configuration
             hideSheet()
+        }
 
+        let ordinarySend = id == .send && (data as? SendConfig)?.preparation == nil
+        if ordinarySend, let state = configuration.sendState {
+            onSendRequested?(state, configuration.presentationID)
+        }
+
+        if replacesSheet {
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.replacementDelaySeconds) { [weak self] in
                 guard let self else { return }
-                isReplacingSheet = false
-                if replacingSheetID == id {
-                    replacingSheetID = nil
+                // An earlier Send must not replace a newer payment after the dismiss animation.
+                if ordinarySend, pendingSheet?.presentationID != configuration.presentationID {
+                    return
                 }
+                if pendingSheet?.presentationID == configuration.presentationID {
+                    pendingSheet = nil
+                }
+                isReplacingSheet = false
                 Logger.debug("Showing sheet \(id.rawValue) after delay", context: "SheetViewModel")
-                activeSheetConfiguration = SheetConfiguration(id: id, data: data)
+                activeSheetConfiguration = configuration
                 playHaptics(for: id)
 
                 // Notify timed sheet manager
@@ -101,10 +116,13 @@ class SheetViewModel: ObservableObject {
                 }
             }
         } else {
+            if id == .send, pendingSheet?.id == .send {
+                pendingSheet = nil
+            }
             isReplacingSheet = false
             // If no sheet is open, show the new sheet immediately
             Logger.debug("Showing sheet \(id.rawValue)", context: "SheetViewModel")
-            activeSheetConfiguration = SheetConfiguration(id: id, data: data)
+            activeSheetConfiguration = configuration
             playHaptics(for: id)
 
             // Notify timed sheet manager

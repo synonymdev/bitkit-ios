@@ -27,18 +27,27 @@
                 .accessibilityIdentifier("ContactImportFixtureLeave")
 
                 NavigationStack(path: $navigation.path) {
-                    ContactImportOverviewView(profile: manager.fixtureProfile, contacts: manager.fixtureContacts)
-                        .navigationDestination(for: Route.self) { route in
-                            switch route {
-                            case .contactImportSelect:
-                                ContactImportSelectView(contacts: manager.fixtureContacts)
-                            case .payContacts:
-                                CaptionText(manager.savedKeys.joined(separator: ","))
-                                    .accessibilityIdentifier("ContactImportFixtureCompleted")
-                            default:
-                                EmptyView()
-                            }
+                    ContactImportOverviewView(
+                        profile: manager.fixtureProfile,
+                        contacts: manager.fixtureContacts,
+                        importGeneration: manager.importGeneration,
+                        owner: profile.removalPresentationOwner
+                    )
+                    .navigationDestination(for: Route.self) { route in
+                        switch route {
+                        case .contactImportSelect:
+                            ContactImportSelectView(
+                                contacts: manager.fixtureContacts,
+                                importGeneration: manager.importGeneration,
+                                owner: profile.removalPresentationOwner
+                            )
+                        case .payContacts:
+                            CaptionText(manager.savedKeys.joined(separator: ","))
+                                .accessibilityIdentifier("ContactImportFixtureCompleted")
+                        default:
+                            EmptyView()
                         }
+                    }
                 }
             }
             .environmentObject(manager as ContactsManager)

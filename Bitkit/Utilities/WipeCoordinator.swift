@@ -37,10 +37,10 @@ enum WipeStep: String, CaseIterable {
     case stopNode
     case removeRemoteEndpoints
     case resetLocalServices
+    case wipeKeychain
     case wipeLightningStorage
     case wipeDatabases
     case clearPubkyState
-    case wipeKeychain
     case resetSettings
     case deletePin
     case deleteInstallationMarker
@@ -50,7 +50,7 @@ enum WipeStep: String, CaseIterable {
 @MainActor
 protocol WipeStepExecutor {
     /// Runs `steps` with uploads, node starts and Paykit work shut out.
-    func withWipeScope(_ steps: () async throws -> Void) async throws
+    func withWipeScope(permitsRemoteCleanup: Bool, _ steps: () async throws -> Void) async throws
     func withLocalStateWipeScope(_ steps: () async throws -> Void) async throws
     /// Every step is idempotent: a resumed wipe runs all of them again.
     func run(_ step: WipeStep) async throws
@@ -97,6 +97,7 @@ final class WipeCoordinator: ObservableObject {
     private let retryDelays: [Duration]
     private var reason: WipeReason?
     private var isIntentDurable = false
+    private var permitsRemoteCleanup = false
     private var attempt: Task<Void, Never>?
     private var scheduledRetry: Task<Void, Never>?
     private var scheduledRetryCount = 0
@@ -153,6 +154,7 @@ final class WipeCoordinator: ObservableObject {
 
         try writeIntent(reason)
         enterWipe(reason: reason)
+        permitsRemoteCleanup = true
         isIntentDurable = true
         startAttempt()
     }
@@ -162,6 +164,7 @@ final class WipeCoordinator: ObservableObject {
     func lockOutAfterExhaustedPinAttempts() {
         guard gate != .wiping else { return }
         enterWipe(reason: .pinAttemptsExceeded)
+        permitsRemoteCleanup = true
         writeIntentAndStart()
     }
 
@@ -178,6 +181,7 @@ final class WipeCoordinator: ObservableObject {
         guard gate == .blocked else { return }
         try writeIntent(.forgotPin)
         enterWipe(reason: .forgotPin)
+        permitsRemoteCleanup = true
         isIntentDurable = true
         startAttempt()
     }
@@ -318,6 +322,7 @@ final class WipeCoordinator: ObservableObject {
     private func enterWipe(reason: WipeReason?) {
         self.reason = reason
         isIntentDurable = false
+        permitsRemoteCleanup = false
         scheduledRetryCount = 0
         gate = .wiping
     }
@@ -352,8 +357,10 @@ final class WipeCoordinator: ObservableObject {
             }
         }
 
+        let mayRemoveEndpoints = permitsRemoteCleanup
+        permitsRemoteCleanup = false
         do {
-            try await executor.withWipeScope {
+            try await executor.withWipeScope(permitsRemoteCleanup: mayRemoveEndpoints) {
                 let prefix = WipeStep.allCases.prefix { $0 != .resetLocalServices }
                 try await runSteps(prefix)
                 currentStep = .resetLocalServices

@@ -68,6 +68,7 @@ final class PaykitAllowanceManager {
 
     @ObservationIgnored private let sdk: any PaykitAllowanceSdkHandling
     @ObservationIgnored private let executor: PaykitAllowanceExecutor
+    @ObservationIgnored private let profileAdmission: ProfileOperationAdmission
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let canPayNow: @MainActor () -> Bool
     @ObservationIgnored private var identity: String?
@@ -89,11 +90,13 @@ final class PaykitAllowanceManager {
     init(
         sdk: any PaykitAllowanceSdkHandling = PaykitSdkService.shared,
         executor: PaykitAllowanceExecutor = .shared,
+        profileAdmission: ProfileOperationAdmission = .shared,
         now: @escaping () -> Date = { Date() },
         canPayNow: @escaping @MainActor () -> Bool = PaykitAllowanceManager.lightningReady
     ) {
         self.sdk = sdk
         self.executor = executor
+        self.profileAdmission = profileAdmission
         self.now = now
         self.canPayNow = canPayNow
     }
@@ -147,8 +150,14 @@ final class PaykitAllowanceManager {
 
     /// Settles open attempts again, for the ones the node could not answer for before it was running.
     func recoverOpenAttempts() async {
-        guard let identity = await executor.activeIdentity else { return }
-        await executor.recover(identity: identity)
+        do {
+            try await profileAdmission.withOperation {
+                guard let identity = await executor.activeIdentity else { return }
+                await executor.recover(identity: identity)
+            }
+        } catch {
+            Logger.debug("Allowance recovery stopped: \(error)", context: "PaykitAllowance")
+        }
     }
 
     func deactivate() {
@@ -161,8 +170,26 @@ final class PaykitAllowanceManager {
     /// executor settle attempts left open before allowances were turned off; nil keeps its current one.
     func pause(identity: String?) {
         executor.stopAdmitting()
-        Task { await executor.pause(identity: identity) }
         clear()
+
+        // Recovery can suspend outside SDK calls, so removal must drain the whole task.
+        let admission = profileAdmission
+        let scope: ProfileOperationAdmission.Scope
+        do { scope = try admission.capture() }
+        catch {
+            Logger.debug("Allowance recovery was not admitted: \(error)", context: "PaykitAllowance")
+            return
+        }
+        Task {
+            defer { admission.release(scope) }
+            do {
+                try await admission.withScope(scope, revokeOnCancellation: false) {
+                    await executor.pause(identity: identity)
+                }
+            } catch {
+                Logger.debug("Allowance recovery stopped: \(error)", context: "PaykitAllowance")
+            }
+        }
     }
 
     private func clear() {

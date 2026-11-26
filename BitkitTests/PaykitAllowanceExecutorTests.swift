@@ -178,6 +178,16 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     @MainActor
+    func testManagerPauseRetainsRecoveryUntilNodeLookupReturns() async throws {
+        try await assertPausedRecoveryRetainsAdmission(afterNodeStarts: false)
+    }
+
+    @MainActor
+    func testManagerNodeStartupRecoveryRetainsAdmissionUntilLookupReturns() async throws {
+        try await assertPausedRecoveryRetainsAdmission(afterNodeStarts: true)
+    }
+
+    @MainActor
     func testManagerKeepsCoveredRequestsOffTheSendSheetUntilLightningIsReady() async throws {
         let harness = AllowanceHarness()
         try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
@@ -2174,6 +2184,60 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(manager.coversRequest(request))
     }
 
+    @MainActor
+    private func assertPausedRecoveryRetainsAdmission(afterNodeStarts: Bool) async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let admission = ProfileOperationAdmission(store: ProfileRemovalStore(url: directory.appendingPathComponent("pending.json")))
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        let paidHash = String(repeating: "1", count: 64)
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: [
+            Fixtures.occurrence(requestId: "req-restored", attempts: [Fixtures.attemptRecord(id: "restored", status: .submitted)]),
+        ]))
+        harness.store.seed(PaykitAllowanceLocalState(journal: [
+            Self.journalEntry(attemptId: "restored", request: request, stage: .submitted, paymentHash: paidHash),
+        ]), identity: Fixtures.identityKey)
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, profileAdmission: admission)
+        if afterNodeStarts {
+            await harness.executor.activate(identity: Fixtures.identityKey)
+            harness.executor.stopAdmitting()
+        }
+        let gate = await harness.lookup.holdNextLookup()
+        defer { gate.open() }
+        let startup = try admission.capture()
+        let recovery = try await admission.withScope(startup) {
+            let recovery: Task<Void, Never>?
+            if afterNodeStarts {
+                recovery = Task { await manager.recoverOpenAttempts() }
+            } else {
+                manager.pause(identity: Fixtures.identityKey)
+                recovery = nil
+            }
+            await Self.waitUntil { harness.log.entries.contains("lightningStatus") }
+            return recovery
+        }
+        admission.release(startup)
+        XCTAssertTrue(harness.log.entries.contains("lightningStatus"))
+
+        let wipe = try admission.reserve(kind: .walletWipe, id: UUID())
+        defer { admission.release(wipe) }
+        let prematureDrain = expectation(description: "Wipe cannot clear state while paused recovery awaits the node")
+        prematureDrain.isInverted = true
+        let draining = Task {
+            try await admission.drain(before: wipe)
+            if !gate.hasOpened {
+                prematureDrain.fulfill()
+            }
+            harness.store.seed(PaykitAllowanceLocalState(), identity: Fixtures.identityKey)
+        }
+        await fulfillment(of: [prematureDrain], timeout: 0.05)
+        gate.open()
+        try await draining.value
+        await recovery?.value
+        XCTAssertNil(try harness.store.load(identity: Fixtures.identityKey).lastTrustedTime)
+    }
+
     private static func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) async {
         let deadline = Date().addingTimeInterval(timeout)
         while !condition(), Date() < deadline {
@@ -2392,6 +2456,12 @@ private final class AllowanceGate: @unchecked Sendable {
     private let lock = NSLock()
     private var isOpen = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    var hasOpened: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return isOpen
+    }
 
     func wait() async {
         await withCheckedContinuation { continuation in

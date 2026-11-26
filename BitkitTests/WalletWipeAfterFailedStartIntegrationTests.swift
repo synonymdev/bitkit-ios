@@ -14,7 +14,7 @@ private final class NodeWipeExecutor: WipeStepExecutor {
         self.store = store
     }
 
-    func withWipeScope(_ steps: () async throws -> Void) async throws {
+    func withWipeScope(permitsRemoteCleanup: Bool, _ steps: () async throws -> Void) async throws {
         wallet.closeStartAdmissionForWipe()
         try await steps()
     }

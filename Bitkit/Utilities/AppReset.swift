@@ -43,7 +43,72 @@ final class AppReset: WipeStepExecutor {
         }
     }
 
-    func withWipeScope(_ steps: () async throws -> Void) async throws {
+    static func resumeWipe(
+        id: UUID,
+        store: ProfileRemovalStore = .shared,
+        coordinator: WipeCoordinator? = nil
+    ) throws {
+        guard let pending = try store.pending(), pending.id == id, pending.scope == .walletWipe else {
+            throw ProfileRemovalStore.StoreError.changed
+        }
+        try (coordinator ?? .shared).begin(.recoveryReset)
+    }
+
+    @MainActor
+    static func withWipeAdmission(
+        admission: ProfileOperationAdmission = .shared,
+        sdkService: PaykitSdkService = .shared,
+        expectedPendingID: UUID? = nil,
+        permitsRemoteCleanup: Bool = true,
+        acquireTimeout: Duration? = nil,
+        commit: () throws -> Void = {},
+        pause: ((UUID) async -> Void)? = nil,
+        resume: ((UUID) async -> Void)? = nil,
+        cleanup: (Bool) async throws -> Void
+    ) async throws {
+        let id = UUID()
+        let scope = try admission.reserve(kind: .walletWipe, id: id, requiredPendingID: expectedPendingID)
+        defer { admission.release(scope) }
+        if let pause {
+            await pause(id)
+        } else {
+            await PrivatePaykitService.shared.beginProfileDeletion(id: id)
+        }
+        @MainActor func resumeWork() async {
+            if let resume {
+                await resume(id)
+            } else {
+                await PrivatePaykitService.shared.endProfileDeletion(id: id)
+            }
+        }
+        var completed = false
+        do {
+            try await admission.withScope(scope, access: .control) {
+                try await admission.drain(before: scope, timeout: acquireTimeout)
+                try admission.persist(scope)
+                if !permitsRemoteCleanup {
+                    try admission.requireLocalOnly(scope)
+                }
+                let mayRemoveEndpoints = try admission.permitsRemoteCleanup(scope)
+                try await sdkService.withWalletWipe(acquireTimeout: acquireTimeout) {
+                    try await cleanup(mayRemoveEndpoints)
+                    try admission.complete(scope)
+                    try commit()
+                    completed = true
+                }
+            }
+        } catch {
+            await resumeWork()
+            // Cancellation immediately after acknowledged completion cannot turn it into pending work.
+            if completed {
+                return
+            }
+            throw error
+        }
+        await resumeWork()
+    }
+
+    func withWipeScope(permitsRemoteCleanup: Bool, _ steps: () async throws -> Void) async throws {
         // Before waiting for Paykit work to drain, so nothing uploads or starts the node meanwhile.
         BackupService.shared.setWiping(true)
         wallet.closeStartAdmissionForWipe()
@@ -54,7 +119,11 @@ final class AppReset: WipeStepExecutor {
             TrezorUiHandler.shared.allowPinRequests()
             TrezorTransport.shared.allowPairingCodeRequests()
         }
-        try await PaykitSdkService.shared.withWalletWipe(acquireTimeout: Self.waitTimeout) {
+        try await Self.withWipeAdmission(
+            permitsRemoteCleanup: permitsRemoteCleanup,
+            acquireTimeout: Self.waitTimeout,
+            commit: { try Keychain.delete(key: .wipePending) }
+        ) { _ in
             // A server switch restarts the node, so one under way finishes first, and no new one starts until the wipe ends.
             defer { SettingsViewModel.shared.endServerSettingsWipe() }
             try await Self.bounded("server settings") { await SettingsViewModel.shared.beginServerSettingsWipe() }
@@ -63,6 +132,8 @@ final class AppReset: WipeStepExecutor {
     }
 
     func withLocalStateWipeScope(_ steps: () async throws -> Void) async throws {
+        guard let scope = ProfileOperationAdmission.current else { throw ProfileRemovalStore.StoreError.changed }
+        try ProfileOperationAdmission.shared.requireLocalOnly(scope)
         try await VssBackupClient.shared.withSuspendedClients(steps)
     }
 
@@ -74,6 +145,8 @@ final class AppReset: WipeStepExecutor {
         case .stopNode:
             try await wallet.stopForWipe()
         case .removeRemoteEndpoints:
+            guard let scope = ProfileOperationAdmission.current else { throw ProfileRemovalStore.StoreError.changed }
+            guard try ProfileOperationAdmission.shared.permitsRemoteCleanup(scope) else { return }
             await Self.runRemoteCleanup {
                 await PubkyProfileManager.removePublicPaykitEndpointsForWipe(context: "AppReset.wipe")
             }
@@ -100,10 +173,10 @@ final class AppReset: WipeStepExecutor {
             Logger.info("Core DB wipe: \(coreWipeResult)")
         case .clearPubkyState:
             // Clear any live Pubky runtime state and cached profile images.
-            await PubkyProfileManager.clearLocalState()
-            await PrivatePaykitAddressReservationStore.shared.clear()
+            try await PubkyProfileManager.clearLocalState(scope: .walletWipe)
         case .wipeKeychain:
             try Self.wipeKeychain()
+            try SharedPubkyKeychain.removeAllOwnOrThrow()
             PaykitUsdtPaymentService.shared.resetForWipe()
         case .resetSettings:
             if let bundleID = Bundle.main.bundleIdentifier {
@@ -117,14 +190,23 @@ final class AppReset: WipeStepExecutor {
             if Env.network == .regtest {
                 try Self.wipeLogs()
             }
+            guard let domain = Bundle.main.bundleIdentifier,
+                  let expected = UserDefaults.standard.persistentDomain(forName: domain),
+                  UserDefaults.standard.synchronize(),
+                  let persisted = UserDefaults.standard.persistentDomain(forName: domain),
+                  NSDictionary(dictionary: expected).isEqual(to: persisted)
+            else { throw ProfileRemovalStore.StoreError.unavailable }
+            try await PrivatePaykitService.shared.validateWipedState()
+            try await PrivatePaykitAddressReservationStore.shared.validateWipedState()
         case .deletePin:
             try Keychain.delete(key: .securityPin)
             try Keychain.delete(key: .pinFailedAttempts)
         case .deleteInstallationMarker:
             // So the next install can detect an orphaned keychain
-            try? InstallationMarker.delete()
+            try InstallationMarker.delete()
         case .commit:
-            try Keychain.delete(key: .wipePending)
+            // The enclosing admission completes the profile obligation before deleting the wipe intent.
+            break
         }
     }
 

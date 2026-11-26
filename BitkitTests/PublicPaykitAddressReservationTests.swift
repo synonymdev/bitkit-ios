@@ -6,6 +6,126 @@ final class PublicPaykitAddressReservationTests: XCTestCase {
     private let alice = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
     private let bob = "pubky7don8zi885feihpjsyx7t53srod6z1n4xjiyaaxucpqarm6sh85o"
 
+    @MainActor
+    func testRemovalAndWipeDrainPublicDerivationBeforeClearingReservations() async throws {
+        for kind in [ProfileOperationAdmission.Kind.removal, .walletWipe] {
+            let defaults = try makeIsolatedDefaults()
+            let wallet = AddressWallet()
+            let held = expectation(description: "Public address derivation entered")
+            var finish: CheckedContinuation<Void, Never>?
+            var operations = wallet.operations
+            operations.next = { type in
+                let info = await wallet.next(addressType: type)
+                await withCheckedContinuation {
+                    finish = $0
+                    held.fulfill()
+                }
+                return info
+            }
+            let store = PrivatePaykitAddressReservationStore(defaults: defaults, operations: operations)
+            let allocation = Task { try await store.currentOrRotatedPublicAddress(for: alice) }
+            await fulfillment(of: [held], timeout: 2)
+            let admission = ProfileOperationAdmission.shared
+            let removal = try admission.reserve(kind: kind, id: UUID(), expected: admission.snapshot())
+            defer { admission.release(removal) }
+            let drainStarted = expectation(description: "Removal drain entered")
+            var drained = false
+            let drain = Task {
+                drainStarted.fulfill()
+                try await admission.drain(before: removal)
+                drained = true
+            }
+            await fulfillment(of: [drainStarted], timeout: 2)
+            XCTAssertFalse(drained, "Cleanup cannot pass an outstanding LDK address continuation")
+            finish?.resume()
+            do {
+                _ = try await allocation.value
+                XCTFail("Revoked public allocation returned an assignment")
+            } catch ProfileRemovalStore.StoreError.changed {
+            } catch is CancellationError {}
+            try await drain.value
+            let snapshot = await store.backupSnapshot()
+            XCTAssertEqual(snapshot, ["nativeSegwit": 0], "The revealed address must remain excluded before cleanup")
+            let data = try XCTUnwrap(defaults.data(forKey: PrivatePaykitAddressReservationStore.defaultsKey))
+            let ledger = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            XCTAssertTrue((ledger["publicAssignments"] as? [String: Any] ?? [:]).isEmpty)
+            if kind == .walletWipe {
+                await store.clear()
+                XCTAssertNil(defaults.data(forKey: PrivatePaykitAddressReservationStore.defaultsKey))
+            } else {
+                try await store.clearContactAssignmentsForRemoval()
+                let retained = await store.backupSnapshot()
+                XCTAssertEqual(retained, snapshot)
+            }
+        }
+    }
+
+    @MainActor
+    func testRemovalAndWipeDrainPublicPreparationAndPublicationCallbacks() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.lightningPaymentOptionEnabledKey)
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.usdtPaymentOptionEnabledKey)
+        for kind in [ProfileOperationAdmission.Kind.removal, .walletWipe] {
+            for stage in ["reservation", "snapshot", "publication"] {
+                PublicPaykitService.setCleanupPending(false)
+                let store = try PrivatePaykitAddressReservationStore(defaults: makeIsolatedDefaults(), operations: AddressWallet().operations)
+                let profile = PubkyProfileManager()
+                profile.publicKey = alice
+                profile.authState = .authenticated
+                let session = try XCTUnwrap(profile.currentSession)
+                let wallet = PublicActivityWallet(pubkyProfile: profile)
+                wallet.reservations = store
+                wallet.channels = []
+                let held = expectation(description: "Public \(stage) callback entered")
+                var finish: CheckedContinuation<Void, Never>?
+                let hold = {
+                    await withCheckedContinuation {
+                        finish = $0
+                        held.fulfill()
+                    }
+                }
+                switch stage {
+                case "reservation": wallet.afterAddressReservation = hold
+                case "snapshot": wallet.afterEndpointSnapshot = hold
+                default: wallet.afterEndpointWrite = hold
+                }
+                let publication = Task {
+                    try await wallet.syncReceivePublicPaykitEndpoints(isSessionCurrent: { profile.currentSession == session })
+                }
+                await fulfillment(of: [held], timeout: 2)
+                let admission = ProfileOperationAdmission.shared
+                let removal = try admission.reserve(kind: kind, id: UUID(), expected: admission.snapshot())
+                defer { admission.release(removal) }
+                let drainStarted = expectation(description: "Removal drain entered")
+                var drained = false
+                let drain = Task {
+                    drainStarted.fulfill()
+                    try await admission.drain(before: removal)
+                    drained = true
+                }
+                await fulfillment(of: [drainStarted], timeout: 2)
+                XCTAssertFalse(drained, "Cleanup cannot pass the \(stage) callback")
+                let pendingBeforeRelease = PublicPaykitService.isCleanupPending
+                finish?.resume()
+                do {
+                    try await publication.value
+                    XCTFail("Revoked public \(stage) returned success")
+                } catch ProfileRemovalStore.StoreError.changed {
+                } catch is CancellationError {}
+                try await drain.value
+                XCTAssertEqual(PublicPaykitService.isCleanupPending, pendingBeforeRelease,
+                               "A revoked callback cannot change the successor's reconciliation state")
+                XCTAssertEqual(wallet.publishedAddresses.count, stage == "publication" ? 1 : 0)
+                await store.clear()
+                let cleared = await store.backupSnapshot()
+                XCTAssertNil(cleared)
+            }
+        }
+    }
+
     func testPublicPrivateAndOrdinaryReceiveAddressesRemainSeparate() async throws {
         let defaults = try makeIsolatedDefaults()
         let wallet = AddressWallet()
