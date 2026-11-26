@@ -107,6 +107,13 @@ final class SparkExitReviewTests: XCTestCase {
         funded.funding[0].vout = 0
         funded.funding[0].valueSats = 20000
         XCTAssertNil(SparkExitManager.savingsRefusal(funded, fundingState: nil, hasSavingsSend: false), "the exit holds funding")
+
+        // Paid only over a fresh read of the address, at no less than the refused fee.
+        XCTAssertEqual(SparkExitManager.savingsRefusalToPay(refused, utxos: [], hasSavingsSend: false, feeSats: 650), refusal)
+        XCTAssertNil(SparkExitManager.savingsRefusalToPay(refused, utxos: nil, hasSavingsSend: false, feeSats: 650), "unread")
+        XCTAssertNil(SparkExitManager.savingsRefusalToPay(refused, utxos: [], hasSavingsSend: false, feeSats: 600), "older fee")
+        let arrived = [EsploraUtxo(txid: "ext", vout: 0, value: 8000, status: .init(confirmed: false, blockHeight: nil))]
+        XCTAssertNil(SparkExitManager.savingsRefusalToPay(refused, utxos: arrived, hasSavingsSend: false, feeSats: 650), "funding arrived")
         let higher = OnchainSendAttemptError.preDispatch(SparkFundingChanged(preparedFeeSats: 800))
         XCTAssertEqual(SparkExitManager.refusing(refused, sats: 20000, after: higher)?.savingsRefusal?.feeSats, 800)
         XCTAssertNil(SparkExitManager.refusing(refused, sats: 20000, after: OnchainSendAttemptError.blocked(nil)), "nothing went out")

@@ -441,6 +441,21 @@ final class SparkExitManager {
         }
     }
 
+    /// The refused payment to pay at `feeSats` now, read under the ticks' lock over what the funding address holds
+    /// (`utxos`, nil when it could not be read): none once funding reached it or the fee is below the refused one.
+    nonisolated static func savingsRefusalToPay(
+        _ record: SparkExitRecord,
+        utxos: [EsploraUtxo]?,
+        hasSavingsSend: Bool,
+        feeSats: UInt64
+    ) -> SparkExitRecord.SavingsRefusal? {
+        guard let utxos,
+              let refusal = savingsRefusal(record, fundingState: SparkExitMath.fundingState(record, utxos: utxos), hasSavingsSend: hasSavingsSend),
+              refusal.feeSats <= feeSats
+        else { return nil }
+        return refusal
+    }
+
     /// `record` after its savings payment of `sats` failed with `error`: noted as refused when it was refused before it
     /// went out for a higher fee, so progress offers it at that fee; forgotten when it may have gone out, as its own
     /// retry or the exit's wait takes over; nil when nothing changes.
@@ -486,9 +501,15 @@ final class SparkExitManager {
         // The send attempt itself, as a tick reads it: not read yet after a relaunch.
         unresolvedSendAddress = await OnchainSendAttemptService.shared.unresolvedSendAddress()
         await refreshRefusedSavingsPayment()
-        // Checked under the lock: a tick may have seen or adopted funding meanwhile.
-        guard let current = record, let refusal = savingsRefusal, refusal.feeSats <= feeSats,
-              let address = current.funding.first?.address
+        // Checked under the lock, over the address read now: funding may have reached it since the last tick.
+        let address = record?.funding.first?.address
+        let utxos: [EsploraUtxo]? = if let address {
+            try? await chain?.utxos(address: address)
+        } else {
+            nil
+        }
+        guard let current = record, let address,
+              let refusal = Self.savingsRefusalToPay(current, utxos: utxos, hasSavingsSend: hasSavingsSend, feeSats: feeSats)
         else {
             throw AppError(message: t("wallet__send_error_tx_failed"), debugMessage: "No refused Spark exit savings payment")
         }
@@ -498,14 +519,21 @@ final class SparkExitManager {
         } catch {
             noteSavingsRefusal(current, sats: refusal.sats, after: error)
             // A payment that went out and failed shows as such, with its own retry.
+            unresolvedSendAddress = await OnchainSendAttemptService.shared.unresolvedSendAddress()
             await refreshRefusedSavingsPayment()
             throw error
         }
         var paid = current
         paid.fundingPaymentTxid = txid
         paid.savingsRefusal = nil
-        try saveRecord(paid)
+        // Kept as paid even when the save fails, so progress never offers to pay it again.
+        do {
+            try saveRecord(paid)
+        } catch {
+            Logger.error("Failed to save the Spark exit funding payment: \(error)", context: "SparkExitManager")
+        }
         record = paid
+        savingsFundingRefusedFeeSats = nil
         setFunding(SparkExitMath.fundingState(paid, utxos: nil), for: paid)
         Task { await tick() }
     }

@@ -732,6 +732,7 @@ struct SparkExitProgressView: View {
     @State private var isConfirmingCancel = false
     /// The start's savings payment, refused before it went out for a higher fee, priced again at the new fee.
     @State private var savingsRetry: (rate: UInt32, feeSats: UInt64)?
+    @State private var isPayingSavings = false
 
     private var record: SparkExitRecord? {
         exit.record
@@ -749,7 +750,8 @@ struct SparkExitProgressView: View {
                   spendableSats: UInt64(max(0, wallet.spendableOnchainBalanceSats)),
                   fundingSats: savingsRefusal.sats,
                   paymentFeeSats: savingsRetry.feeSats,
-                  readsBitkitChain: SparkManager.shared.canFundFromChain
+                  // Paid by the node alone, to an address the exit already holds: Spark need not be connected.
+                  readsBitkitChain: SparkManager.shared.readsSavingsChain
               )
         else { return nil }
         return savingsRefusal.sats + savingsRetry.feeSats
@@ -760,7 +762,17 @@ struct SparkExitProgressView: View {
         exit.isSavingsPaymentRefused || savingsRetryTotalSats != nil
     }
 
+    /// Prices the refused payment, again every 15 seconds after a failed price, such as before the node runs, while
+    /// progress can still offer it.
     private func priceSavingsRetry() async {
+        while !Task.isCancelled {
+            await priceSavingsRetryOnce()
+            guard savingsRetry == nil, savingsRefusal != nil else { return }
+            try? await Task.sleep(nanoseconds: 15_000_000_000)
+        }
+    }
+
+    private func priceSavingsRetryOnce() async {
         guard let savingsRefusal, let address = record?.funding.first?.address else {
             savingsRetry = nil
             return
@@ -1031,7 +1043,10 @@ struct SparkExitProgressView: View {
             }
 
             if offersSavingsRetry {
-                CustomButton(title: t("lightning__spark_exit__fund_savings"), variant: .secondary) {
+                CustomButton(title: t("lightning__spark_exit__fund_savings"), variant: .secondary, isLoading: isPayingSavings) {
+                    guard !isPayingSavings else { return }
+                    isPayingSavings = true
+                    defer { isPayingSavings = false }
                     if exit.isSavingsPaymentRefused {
                         do {
                             try await exit.retrySavingsPayment()
@@ -1047,7 +1062,7 @@ struct SparkExitProgressView: View {
                         } catch {
                             app.toast(error)
                         }
-                        await priceSavingsRetry()
+                        await priceSavingsRetryOnce()
                     }
                 }
                 .padding(.bottom, 16)
