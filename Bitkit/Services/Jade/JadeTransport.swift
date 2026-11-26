@@ -89,7 +89,6 @@ final class JadeTransport: JadeTransportCallback, JadeTransportControlling, @unc
     /// A closed emulator socket counts as the Jade going away, as a dropped Bluetooth link does.
     private func onEmulatorResult(path: String, errorCode: JadeTransportErrorCode?) {
         guard errorCode == .disconnected else { return }
-        emulator.closeDevice(path: path)
         emulatorDisconnects.send(path)
     }
 

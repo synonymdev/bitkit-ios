@@ -155,8 +155,32 @@ final class JadeTransportTests: XCTestCase {
         XCTAssertEqual(emulator.scanDevices().map(\.path), ["tcp:localhost:\(port)"])
     }
 
-    /// A one-shot TCP server on 127.0.0.1 that closes its first connection at once.
-    private func acceptOnceAndClose() throws -> UInt16 {
+    func testClosingTheEmulatorDuringAReadReportsNoDisconnect() throws {
+        let port = try acceptOnceAndClose(holding: true)
+        let emulatorPath = "tcp:127.0.0.1:\(port)"
+        let emulator = JadeEmulatorLink(address: "127.0.0.1:\(port)", isEnabled: { true })
+        let transport = JadeTransport(driver: driver, emulator: emulator, isTrezorBridgeEnabled: { false })
+        var reported: [String] = []
+        transport.externalDisconnects.sink { reported.append($0) }.store(in: &cancellables)
+        XCTAssertTrue(transport.openDevice(path: emulatorPath).success)
+        let readDone = expectation(description: "read returns")
+        var result: JadeTransportReadResult?
+
+        DispatchQueue.global().async {
+            result = transport.readChunk(path: emulatorPath, timeoutMs: 1000)
+            readDone.fulfill()
+        }
+        Thread.sleep(forTimeInterval: 0.2)
+        emulator.closeDevice(path: emulatorPath)
+        wait(for: [readDone], timeout: 2)
+
+        XCTAssertEqual(result?.errorCode, .notConnected)
+        XCTAssertTrue(reported.isEmpty)
+    }
+
+    /// A one-shot TCP server on 127.0.0.1 that closes its first connection at once, or holds it
+    /// open until the test ends.
+    private func acceptOnceAndClose(holding: Bool = false) throws -> UInt16 {
         let server = socket(AF_INET, SOCK_STREAM, 0)
         var address = sockaddr_in()
         address.sin_family = sa_family_t(AF_INET)
@@ -172,8 +196,12 @@ final class JadeTransportTests: XCTestCase {
             throw XCTSkip("Could not listen on 127.0.0.1")
         }
         DispatchQueue.global().async {
-            close(accept(server, nil, nil))
+            let connection = accept(server, nil, nil)
             close(server)
+            if holding {
+                Thread.sleep(forTimeInterval: 3)
+            }
+            close(connection)
         }
         return UInt16(bigEndian: address.sin_port)
     }

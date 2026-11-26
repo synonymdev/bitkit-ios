@@ -18,7 +18,7 @@ final class JadeEmulatorLink: @unchecked Sendable {
     private let address: String
     private let isEnabled: () -> Bool
     private let lock = NSLock()
-    private var sockets: [String: Int32] = [:]
+    private var sockets: [String: EmulatorSocket] = [:]
 
     init(address: String, isEnabled: @escaping () -> Bool) {
         self.address = address
@@ -40,7 +40,7 @@ final class JadeEmulatorLink: @unchecked Sendable {
     /// Lists the emulator only while its port answers, so a stopped container is not offered.
     func scanDevices() -> [JadeNativeDevice] {
         guard isEnabled() else { return [] }
-        if socket(for: path) == nil {
+        if lock.withLock({ sockets[path] }) == nil {
             do {
                 try close(connect())
             } catch {
@@ -57,7 +57,7 @@ final class JadeEmulatorLink: @unchecked Sendable {
         closeDevice(path: path)
         do {
             let fd = try connect()
-            lock.withLock { sockets[path] = fd }
+            lock.withLock { sockets[path] = EmulatorSocket(fd: fd) }
             Logger.info("Opened Jade emulator '\(path)'", context: Self.logContext)
             return Self.success
         } catch {
@@ -68,8 +68,8 @@ final class JadeEmulatorLink: @unchecked Sendable {
 
     @discardableResult
     func closeDevice(path: String) -> JadeTransportResult {
-        if let fd = lock.withLock({ sockets.removeValue(forKey: path) }) {
-            close(fd)
+        if let socket = lock.withLock({ sockets.removeValue(forKey: path) }) {
+            retire(socket)
             Logger.info("Closed Jade emulator '\(path)'", context: Self.logContext)
         }
         return Self.success
@@ -81,44 +81,90 @@ final class JadeEmulatorLink: @unchecked Sendable {
     }
 
     func write(path: String, data: Data) -> JadeTransportResult {
-        guard let fd = socket(for: path) else {
-            return JadeTransportResult(success: false, error: "Device not open: '\(path)'", errorCode: .notConnected)
-        }
-        var offset = 0
-        while offset < data.count {
-            let written = data.withUnsafeBytes { buffer in
-                send(fd, buffer.baseAddress!.advanced(by: offset), data.count - offset, 0)
+        let notOpen = JadeTransportResult(success: false, error: "Device not open: '\(path)'", errorCode: .notConnected)
+        return withSocket(path, notOpen: notOpen) { socket in
+            var offset = 0
+            while offset < data.count {
+                let written = data.withUnsafeBytes { buffer in
+                    send(socket.fd, buffer.baseAddress!.advanced(by: offset), data.count - offset, 0)
+                }
+                if written <= 0 {
+                    let error = errno
+                    guard dropAfterRemoteClose(socket, path: path) else { return notOpen }
+                    return JadeTransportResult(success: false, error: "Jade emulator write failed: errno \(error)", errorCode: .disconnected)
+                }
+                offset += written
             }
-            if written <= 0 {
-                return JadeTransportResult(success: false, error: "Jade emulator write failed: errno \(errno)", errorCode: .disconnected)
-            }
-            offset += written
+            return Self.success
         }
-        return Self.success
     }
 
     func read(path: String, timeoutMs: UInt32) -> JadeTransportReadResult {
-        guard let fd = socket(for: path) else {
-            return JadeTransportReadResult(success: false, data: Data(), error: "Device not open: '\(path)'", errorCode: .notConnected)
+        let notOpen = JadeTransportReadResult(success: false, data: Data(), error: "Device not open: '\(path)'", errorCode: .notConnected)
+        return withSocket(path, notOpen: notOpen) { socket in
+            var poller = pollfd(fd: socket.fd, events: Int16(POLLIN), revents: 0)
+            let ready = poll(&poller, 1, Int32(min(max(timeoutMs, 1), Self.readTimeoutMaxMs)))
+            // Nothing received yet is the normal state while the device works or waits.
+            guard ready > 0 else { return JadeTransportReadResult(success: true, data: Data(), error: "", errorCode: nil) }
+            var buffer = [UInt8](repeating: 0, count: Self.readBufferBytes)
+            let count = recv(socket.fd, &buffer, buffer.count, 0)
+            guard count > 0 else {
+                guard dropAfterRemoteClose(socket, path: path) else { return notOpen }
+                return JadeTransportReadResult(success: false, data: Data(), error: "Jade emulator closed the connection", errorCode: .disconnected)
+            }
+            return JadeTransportReadResult(success: true, data: Data(buffer[0 ..< count]), error: "", errorCode: nil)
         }
-        var poller = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
-        let ready = poll(&poller, 1, Int32(min(max(timeoutMs, 1), Self.readTimeoutMaxMs)))
-        // Nothing received yet is the normal state while the device works or waits.
-        guard ready > 0 else { return JadeTransportReadResult(success: true, data: Data(), error: "", errorCode: nil) }
-        var buffer = [UInt8](repeating: 0, count: Self.readBufferBytes)
-        let count = recv(fd, &buffer, buffer.count, 0)
-        guard count > 0 else {
-            return JadeTransportReadResult(success: false, data: Data(), error: "Jade emulator closed the connection", errorCode: .disconnected)
-        }
-        return JadeTransportReadResult(success: true, data: Data(buffer[0 ..< count]), error: "", errorCode: nil)
     }
 
     // MARK: - Helpers
 
     private static let success = JadeTransportResult(success: true, error: "", errorCode: nil)
 
-    private func socket(for path: String) -> Int32? {
-        lock.withLock { sockets[path] }
+    /// Runs one call on the path's socket and keeps its descriptor open until the call returns,
+    /// so a close from another thread cannot hand the number to a new connection mid-call.
+    private func withSocket<T>(_ path: String, notOpen: T, _ body: (EmulatorSocket) -> T) -> T {
+        let socket: EmulatorSocket? = lock.withLock {
+            guard let socket = sockets[path] else { return nil }
+            socket.inFlight += 1
+            return socket
+        }
+        guard let socket else { return notOpen }
+        defer {
+            let closeNow = lock.withLock {
+                socket.inFlight -= 1
+                return socket.isClosed && socket.inFlight == 0
+            }
+            if closeNow {
+                Darwin.close(socket.fd)
+            }
+        }
+        return body(socket)
+    }
+
+    /// Wakes pending calls at once; the descriptor is released when the last of them returns.
+    private func retire(_ socket: EmulatorSocket) {
+        let closeNow = lock.withLock {
+            socket.isClosed = true
+            Darwin.shutdown(socket.fd, SHUT_RDWR)
+            return socket.inFlight == 0
+        }
+        if closeNow {
+            Darwin.close(socket.fd)
+        }
+    }
+
+    /// Drops a socket the emulator closed. False when it was closed here first, so a local close
+    /// is not reported as the Jade disconnecting and a newer socket on the path stays open.
+    private func dropAfterRemoteClose(_ socket: EmulatorSocket, path: String) -> Bool {
+        let wasCurrent = lock.withLock {
+            guard sockets[path] === socket else { return false }
+            sockets[path] = nil
+            return true
+        }
+        if wasCurrent {
+            retire(socket)
+        }
+        return wasCurrent
     }
 
     private func connect() throws -> Int32 {
@@ -187,5 +233,15 @@ enum JadeEmulatorError: Error, CustomStringConvertible {
         case let .connectFailed(code):
             "Jade emulator connect failed: \(String(cString: strerror(code)))"
         }
+    }
+}
+
+private final class EmulatorSocket {
+    let fd: Int32
+    var inFlight = 0
+    var isClosed = false
+
+    init(fd: Int32) {
+        self.fd = fd
     }
 }
