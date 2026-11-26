@@ -1772,6 +1772,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let errors: [Error] = [
             PaykitPaymentRequestError.requestExpired,
             Bitkit.AppError(error: PaykitPaymentRequestError.requestExpired),
+            PaykitPaymentRequestError.requestUnavailable,
             Bitkit.CustomServiceError.nodeNotSetup,
             Bitkit.AppError(serviceError: .nodeNotStarted),
             NodeError.NotRunning(message: "stopped"),

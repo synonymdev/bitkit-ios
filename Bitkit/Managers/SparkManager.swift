@@ -664,13 +664,14 @@ final class SparkManager: ChannelFreeLightningRail {
         return try await requireSdk().receivePayment(request: ReceivePaymentRequest(paymentMethod: method)).paymentRequest
     }
 
-    /// Errors before `sendPayment` are `ChannelFreeRailSendRefused`, since nothing left the wallet; a failure inside it
-    /// stays uncertain, as the payment may have been dispatched, unless it is one raised before dispatch
-    /// (`sendPaymentFailure`).
+    /// Errors before `sendPayment` are `ChannelFreeRailSendRefused`, since nothing left the wallet, apart from a
+    /// `recheckBeforeSubmission` refusal, which is rethrown as it is; a failure inside it stays uncertain, as the payment
+    /// may have been dispatched, unless it is one raised before dispatch (`sendPaymentFailure`).
     nonisolated func send(
         bolt11: String,
         sats: UInt64?,
         maxFeeSats: UInt64?,
+        recheckBeforeSubmission: @escaping () async throws -> Void,
         beforeSubmission: @escaping () throws -> Void
     ) async throws -> PaymentHash {
         let prepared: PrepareSendPaymentResponse
@@ -698,6 +699,8 @@ final class SparkManager: ChannelFreeLightningRail {
         }
         // The fee limit is checked on the quote that is sent, not only on the earlier estimate.
         try Self.checkSendFee(feeSats, maxFeeSats: maxFeeSats)
+        // After the quote and balance awaits, so a payment refused meanwhile never reaches `spends.run`.
+        try await recheckBeforeSubmission()
         // An exit that started while the quote was prepared refuses it here, before its hash is recorded.
         let response: SendPaymentResponse = try await spends.run {
             // A deadline that passed while the quote was prepared stops the payment here, before anything leaves.

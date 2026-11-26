@@ -1356,9 +1356,9 @@ struct SendConfirmationView: View {
         invoiceAmountSats: UInt64,
         reviewedAmountSats: UInt64,
         request: PaykitPaymentRequest?,
-        authorize: (PaykitPaymentRequest) async throws -> Void,
-        onAuthorizationFailure: (Error) async -> Void,
-        send: () async throws -> Result
+        authorize: @escaping (PaykitPaymentRequest) async throws -> Void,
+        onAuthorizationFailure: @escaping (Error) async -> Void,
+        send: (_ recheckBeforeSubmission: @escaping () async throws -> Void) async throws -> Result
     ) async throws -> Result {
         do {
             guard invoiceAmountSats == 0 || invoiceAmountSats == reviewedAmountSats else {
@@ -1371,7 +1371,16 @@ struct SendConfirmationView: View {
             await onAuthorizationFailure(error)
             throw error
         }
-        return try await send()
+        // The send runs this again after its last await before submission, so a contact blocked meanwhile isn't paid.
+        return try await send {
+            guard let request else { return }
+            do {
+                try await authorize(request)
+            } catch {
+                await onAuthorizationFailure(error)
+                throw error
+            }
+        }
     }
 
     static func sendOnchainPayment<Result>(
@@ -1997,6 +2006,7 @@ struct SendConfirmationView: View {
         var preparedPaymentProof: (endpointIdentifier: String, kind: PaykitPaymentProofKind, appId: String)?
         var onchainPaymentStarted = false
         var lightningPaymentSubmitted = false
+        var lightningAuthorizationRefused = false
         var originalPaymentIdentity: String?
         var privatePaymentListOutcome = PrivatePaymentListSendOutcome.definitePreBroadcastFailure
         var manualAllowanceAttemptId: String?
@@ -2079,9 +2089,12 @@ struct SendConfirmationView: View {
                     request: incomingPaymentRequest,
                     authorize: { try await paykitPaymentRequestManager.ensurePaymentAllowed($0) },
                     onAuthorizationFailure: { _ in
+                        // A refusal at the recheck before submission sent nothing, so it ends as a refusal up front does.
+                        lightningAuthorizationRefused = true
+                        privatePaymentListOutcome = .definitePreBroadcastFailure
                         await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
                     }
-                ) {
+                ) { recheckBeforeSubmission in
                     do {
                         // After the allowance check above, so a refused request moves nothing.
                         try await MoveToSparkManager.shared.updateSpendingBalanceIfNeeded(
@@ -2098,6 +2111,7 @@ struct SendConfirmationView: View {
                             bolt11: invoice.bolt11,
                             sats: paymentSats,
                             paymentDeadline: incomingPaymentRequest?.submissionDeadline(quoteId: app.paykitPaymentTerms?.quoteId),
+                            recheckBeforeSubmission: recheckBeforeSubmission,
                             afterListening: { _ in lightningPaymentSubmitted = true },
                             onTimeout: { timedOutHash in
                                 app.addPendingPaymentHash(timedOutHash, contactPaymentContext: contactPaymentContext)
@@ -2118,6 +2132,9 @@ struct SendConfirmationView: View {
                     } catch is CancellationError {
                         throw CancellationError()
                     } catch {
+                        if lightningAuthorizationRefused {
+                            throw error
+                        }
                         if incomingPaymentRequest != nil, !lightningPaymentSubmitted {
                             let proofFailureWasDefinite = await PaykitPaymentProofService.shared.failLightningPayment(
                                 paymentHash: paymentHash,

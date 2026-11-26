@@ -78,7 +78,7 @@ final class SendConfirmationViewTests: XCTestCase {
                     request: nil,
                     authorize: { _ in },
                     onAuthorizationFailure: { _ in }
-                ) { sent = true }
+                ) { _ in sent = true }
                 XCTAssertTrue(expectedSend)
             } catch {
                 XCTAssertFalse(expectedSend)

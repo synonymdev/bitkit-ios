@@ -418,6 +418,8 @@ struct PaykitAllowanceLivePayer: PaykitAllowancePaying {
             bolt11: bolt11,
             sats: sats,
             params: Self.routeParameters(amountSats: request.allowanceAmountSats),
+            // Checked again after the send's last await, so a contact blocked since the executor's check isn't paid.
+            recheckBeforeSubmission: { try await ensurePaymentAllowed(request) },
             beforeSubmission: { try PaykitPaymentRequest.checkPaymentDeadline(request.paymentDeadline) }
         )
     }
