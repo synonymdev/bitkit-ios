@@ -1,4 +1,5 @@
 @testable import Bitkit
+import Paykit
 import XCTest
 
 /// Tests for PubkyAuthRequest capability parsing and permission display.
@@ -397,6 +398,30 @@ final class PubkyAuthRequestTests: XCTestCase {
         }
         let split = "\(signer.prefix(26))\t\(signer.suffix(26))"
         XCTAssertThrowsError(try PubkyAuthRequest.parseExpectedSigner(url: grantSigninUrl("&spk=\(split)"))) {
+            XCTAssertEqual($0 as? PubkyAuthRequestError, .invalidUrl)
+        }
+    }
+
+    func testControlCharactersCannotHideTheExpectedSigner() {
+        for hidden in ["&s\tpk=\(signer)", "&sp\nk=\(signer)", "&spk\r=\(signer)", "&spk=\(signer)\u{7F}", "\t&spk=\(signer)"] {
+            XCTAssertThrowsError(try PubkyAuthRequest.parseExpectedSigner(url: grantSigninUrl(hidden)), hidden) {
+                XCTAssertEqual($0 as? PubkyAuthRequestError, .invalidUrl, hidden)
+            }
+            XCTAssertThrowsError(try PubkyAuthRequest.parse(url: grantSigninUrl(hidden)), hidden) {
+                XCTAssertEqual($0 as? PubkyAuthRequestError, .invalidUrl, hidden)
+            }
+        }
+    }
+
+    func testExpectedSignerThatIsNotAPublicKeyIsInvalid() throws {
+        let alphabet = "ybndrfg8ejkmcpqxot1uwisza345h769"
+        let notAKey = try XCTUnwrap(
+            alphabet.lazy.map { "\($0)\(self.signer.dropFirst())" }
+                .first { (try? Paykit.normalizePubkyPublicKey(value: $0)) == nil },
+            "expected a canonical z-base-32 value that is not an Ed25519 point"
+        )
+
+        XCTAssertThrowsError(try PubkyAuthRequest.parseExpectedSigner(url: grantSigninUrl("&spk=\(notAKey)"))) {
             XCTAssertEqual($0 as? PubkyAuthRequestError, .invalidUrl)
         }
     }

@@ -124,6 +124,61 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testRequestNamingAnotherPubkyShowsTheRefusalInsteadOfTheSheet() throws {
+        let other = approvalTestClientPublicKey
+        let request = try PubkyAuthRequest.parse(url: "\(ordinaryApprovalTestAuthUrl())&spk=\(other)")
+        // The refusal comes first even when the key is out of reach, as on Android.
+        for hasSecretKey in [true, false] {
+            let sheets = SheetViewModel()
+            let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
+            ToastWindowManager.shared.hideToast()
+            var shownToasts: [Bitkit.Toast] = []
+            let subscription = ToastWindowManager.shared.$currentToast.compactMap { $0 }.sink { shownToasts.append($0) }
+            defer { subscription.cancel() }
+
+            app.presentPubkyAuthApproval(request, signerPublicKey: "pubky\(approvalTestSignerPublicKey)", hasSecretKey: hasSecretKey)
+
+            XCTAssertNil(sheets.pubkyAuthApprovalSheetItem)
+            XCTAssertEqual(shownToasts.map(\.accessibilityIdentifier), ["PubkyAuthOtherPubkyToast"])
+            XCTAssertEqual(shownToasts.first?.description, pubkyAuthOtherPubkyDescription(other))
+        }
+        ToastWindowManager.shared.hideToast()
+    }
+
+    @MainActor
+    func testRequestNamingThisPubkyOpensTheSheet() throws {
+        let request = try PubkyAuthRequest.parse(url: "\(ordinaryApprovalTestAuthUrl())&spk=\(approvalTestSignerPublicKey)")
+        let sheets = SheetViewModel()
+        let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
+
+        app.presentPubkyAuthApproval(request, signerPublicKey: approvalTestSignerPublicKey, hasSecretKey: true)
+
+        XCTAssertEqual(sheets.pubkyAuthApprovalSheetItem?.request.rawUrl, request.rawUrl)
+    }
+
+    @MainActor
+    func testGrantSignupWithAnExistingIdentityIgnoresTheExpectedSigner() async throws {
+        for spk in [approvalTestClientPublicKey, "not-a-public-key", "a&spk=b"] {
+            let url = ordinaryApprovalTestAuthUrl().replacingOccurrences(of: "signin_grant", with: "signup_grant") +
+                "&hs=\(approvalTestClientPublicKey)&st=invite&spk=\(spk)"
+            let request = try PubkyAuthRequest.parse(url: url)
+            XCTAssertNil(request.expectedSigner)
+            var approved = false
+
+            try await PubkyService.approveAuthRequest(
+                request: request, authUrl: url, accountName: "", secretKeyHex: "secret",
+                signerPublicKey: { _ in approvalTestSignerPublicKey },
+                ordinaryApproval: { authUrl, _, _, _ in
+                    XCTAssertEqual(authUrl, url)
+                    approved = true
+                }
+            )
+
+            XCTAssertTrue(approved, spk)
+        }
+    }
+
     func testRefusalNamesThePubkyTheRequestIsFor() {
         let description = pubkyAuthApprovalFailureDescription(
             PubkyAuthRequestError.signerMismatch(expectedSigner: approvalTestClientPublicKey)

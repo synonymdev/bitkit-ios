@@ -365,7 +365,11 @@ struct PubkyAuthRequest {
     /// a bare canonical z-base-32 key makes the request invalid, as in the Pubky SDK parser for `signin_grant`. Only
     /// signup requests ignore the parameter, so a sign-in this parser reads differently from the SDK is still held to it.
     static func parseExpectedSigner(url: String) throws -> String? {
-        guard let components = URLComponents(string: url) else {
+        // The SDK's URL parser drops tabs and line breaks, while `URLComponents` percent-encodes them, so a control
+        // character could hide `spk` from this parser only.
+        guard !url.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }),
+              let components = URLComponents(string: url)
+        else {
             throw PubkyAuthRequestError.invalidUrl
         }
         guard !isSignupURL(components) else { return nil }
@@ -374,7 +378,8 @@ struct PubkyAuthRequest {
         // 52 z-base-32 symbols encode 260 bits, so the last symbol of a 32-byte key carries a single bit.
         guard values.count == 1,
               value.range(of: "^[ybndrfg8ejkmcpqxot1uwisza345h769]{51}[yo]$", options: .regularExpression) != nil,
-              value.utf8.count == 52
+              value.utf8.count == 52,
+              (try? Paykit.normalizePubkyPublicKey(value: value)) != nil
         else {
             throw PubkyAuthRequestError.invalidUrl
         }
