@@ -1013,6 +1013,7 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* Bitkit QuickPay поддерживает только платежи с вашего Баланса Расходов.";
 "wallet__send_quickpay__currency_conversion" = "Не удалось конвертировать валюту";
+"wallet__send_quickpay__already_paid" = "Этот счёт уже оплачен.";
 "settings__security__title" = "Безопасность и Конфиденциальность";
 "settings__security__swipe_balance_to_hide" = "Смахнуть Баланс, чтобы Скрыть";
 "settings__security__hide_balance_on_open" = "Скрывать Баланс при Открытии";

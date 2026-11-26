@@ -999,6 +999,7 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* Bitkit QuickPay supporta esclusivamente i pagamenti dal tuo Saldo di Spesa.";
 "wallet__send_quickpay__currency_conversion" = "Conversione di valuta non riuscita";
+"wallet__send_quickpay__already_paid" = "Questa fattura è già stata pagata.";
 "settings__security__title" = "Sicurezza e privacy";
 "settings__security__swipe_balance_to_hide" = "Scorri per nascondere il saldo";
 "settings__security__hide_balance_on_open" = "Nascondi il saldo all'apertura";

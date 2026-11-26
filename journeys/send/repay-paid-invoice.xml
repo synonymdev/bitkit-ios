@@ -1,0 +1,20 @@
+<journey name="repay paid invoice">
+  <description>
+    Paying again a Lightning invoice this wallet already paid sends nothing: the second swipe opens Success with the
+    amount the earlier payment sent, also when the repeat typed another amount for an amountless invoice.
+    An invoice that shares the payment hash of another paid invoice is refused as already paid; that case needs a
+    payee that reuses a payment hash and is covered by SendConfirmationViewTests.
+
+    Preconditions: two Debug builds on two simulators, each with Spark connected on its regtest (no key needed), no
+    Lightning channel and QuickPay disabled. The payer has a Spark balance of at least 5,000 sats from Lightspark's
+    regtest faucet, sent to the deposit address its Spark connection screen shows (id "SparkDepositAddress"). Bitkit's
+    own invoices carry no Spark address, so the payer pays them over Lightning through Spark's provider.
+  </description>
+  <actions>
+    <action>On the payee, tap Receive (id "Receive"), create a Lightning invoice with no amount and copy it as invoice A</action>
+    <action>On the payer, record the Spending balance, open invoice A with xcrun simctl openurl and a lightning: link, enter 1,000 sats and swipe to pay</action>
+    <action>Verify the payer's Success screen shows 1,000 sats and the payee received 1,000 sats; close Success</action>
+    <action>On the payer, open invoice A again with a lightning: link, enter 2,000 sats and swipe to pay</action>
+    <action>Verify the payer's Success screen shows 1,000 sats, not 2,000; close it and verify the payer's Spending balance did not drop a second time and the payee received nothing new</action>
+  </actions>
+</journey>

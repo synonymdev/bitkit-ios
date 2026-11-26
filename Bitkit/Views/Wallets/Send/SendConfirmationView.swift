@@ -1178,6 +1178,10 @@ struct SendConfirmationView: View {
             }
         }
 
+        if try await showEarlierSendIfRepeat() {
+            return
+        }
+
         let swipe = sparkUpdateSwipe
         guard await confirmSparkUpdateQuote() else { throw CancellationError() }
         // The quote this swipe approved: the PIN screen reruns `.task`, which can replace `sparkUpdateQuote` meanwhile.
@@ -1350,6 +1354,50 @@ struct SendConfirmationView: View {
             return .definitePreBroadcastFailure
         }
         return .uncertain
+    }
+
+    /// An invoice this wallet already paid sends nothing again, so its earlier send decides what Confirm shows: the
+    /// same invoice reopens its receipt with the amount that send paid, also when the amount was typed, and another
+    /// invoice that shares its payment hash is refused as paid. Returns whether either was shown.
+    private func showEarlierSendIfRepeat() async throws -> Bool {
+        // A contact's payment keeps its request, proof and route steps, so only a plain invoice is decided here.
+        guard app.selectedWalletToPayFrom == .lightning, app.contactPaymentContext == nil, app.paykitSwapRoute == nil,
+              app.paykitRoute?.serviceLeg == nil, let invoice = app.scannedLightningInvoice else { return false }
+        let paymentHash = invoice.paymentHash.hex
+        let swipe = sparkUpdateSwipe
+        let visit = screenVisit
+        let earlierSend: Activity?
+        do {
+            earlierSend = try await CoreService.shared.activity.getActivity(id: paymentHash)
+        } catch {
+            Logger.warn("Failed to read an earlier send of '\(paymentHash)': \(error)", context: "SendConfirmationView")
+            earlierSend = nil
+        }
+        // Leaving Confirm or a changed payment while reading stops this swipe.
+        guard !visit.isLeft, sparkUpdateSwipe == swipe else { throw CancellationError() }
+        do {
+            guard let earlierSentSats = try Self.earlierLightningSendSats(earlierSend, bolt11: invoice.bolt11) else { return false }
+            Logger.info("Showed the earlier send of '\(paymentHash)' for paying it again", context: "SendConfirmationView")
+            wallet.sendAmountSats = earlierSentSats
+            navigationPath.append(.success(paymentId: paymentHash))
+        } catch {
+            navigationPath.append(.failure(SendFailureContext(
+                error: error,
+                retryRoute: .confirm,
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                paymentRequest: invoice.bolt11
+            )))
+        }
+        return true
+    }
+
+    static func earlierLightningSendSats(_ activity: Activity?, bolt11: String) throws -> UInt64? {
+        guard case let .lightning(earlier) = activity, earlier.txType == .sent, earlier.status == .succeeded else { return nil }
+        guard earlier.invoice.caseInsensitiveCompare(bolt11) == .orderedSame else {
+            Logger.warn("Refused paying '\(earlier.id)', another invoice with its hash was paid", context: "SendConfirmationView")
+            throw InvoiceAlreadyPaidError()
+        }
+        return earlier.value
     }
 
     static func sendLightningPayment<Result>(

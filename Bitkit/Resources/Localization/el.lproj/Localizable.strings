@@ -905,6 +905,7 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* Το Bitkit QuickPay υποστηρίζει αποκλειστικά πληρωμές από το Υπόλοιπο Δαπανών σας.";
 "wallet__send_quickpay__currency_conversion" = "Η μετατροπή νομίσματος απέτυχε";
+"wallet__send_quickpay__already_paid" = "Αυτό το τιμολόγιο έχει ήδη πληρωθεί.";
 "settings__security__title" = "Ασφάλεια Και Απόρρητο";
 "settings__security__swipe_balance_to_hide" = "Σύρετε υπόλοιπο για απόκρυψη";
 "settings__security__hide_balance_on_open" = "Απόκρυψη υπολοίπου στο άνοιγμα";

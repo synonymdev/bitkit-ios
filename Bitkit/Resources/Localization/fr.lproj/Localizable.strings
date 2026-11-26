@@ -1018,6 +1018,7 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* Bitkit QuickPay prend exclusivement en charge les paiements à partir de votre solde du compte courant.";
 "wallet__send_quickpay__currency_conversion" = "Échec de la conversion de devise";
+"wallet__send_quickpay__already_paid" = "Cette facture a déjà été payée.";
 "settings__security__title" = "Sécurité et vie privée";
 "settings__security__swipe_balance_to_hide" = "Balayer pour masquer la balance";
 "settings__security__hide_balance_on_open" = "Masquer le solde à l\'ouverture";
