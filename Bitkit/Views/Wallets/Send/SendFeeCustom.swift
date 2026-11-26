@@ -15,6 +15,7 @@ struct SendFeeCustom: View {
     @State private var maxFee: UInt32 = 999
     @State private var minFee: UInt32 = 1
     @State private var transactionFee: UInt64 = 0
+    @State private var isPresetSelected = true
 
     private var isValid: Bool {
         return feeRate != 0
@@ -43,7 +44,8 @@ struct SendFeeCustom: View {
                 CaptionMText(t("common__sat_vbyte"))
                     .padding(.bottom, 16)
 
-                MoneyText(sats: Int(feeRate), symbol: true, color: feeRate == 0 ? .textSecondary : .textPrimary)
+                MoneyText(sats: Int(feeRate), symbol: true, color: feeRate == 0 ? .textSecondary : .textPrimary, fillsWidth: false)
+                    .presetSelection(isPresetSelected)
                     .padding(.bottom, 16)
 
                 if isValid {
@@ -89,6 +91,7 @@ struct SendFeeCustom: View {
         } else {
             feeRate = 1
         }
+        isPresetSelected = feeRate > 0
 
         // Calculate the initial fee
         await calculateTransactionFee()
@@ -135,28 +138,8 @@ struct SendFeeCustom: View {
     }
 
     private func handleNumberPadInput(_ key: String) {
-        let current = String(feeRate)
-
-        if key == "delete" {
-            if current.count > 1 {
-                let newString = String(current.dropLast())
-                feeRate = UInt32(newString) ?? 0
-            } else {
-                feeRate = 0
-            }
-        } else {
-            // Handle leading zero
-            let newString: String = if current == "0" {
-                key
-            } else {
-                current + key
-            }
-
-            // Limit to 3 digits (max 999 sat/vB)
-            if newString.count <= 3, let newRate = UInt32(newString) {
-                feeRate = newRate
-            }
-        }
+        feeRate = customFeeRate(after: key, from: feeRate, replacing: isPresetSelected)
+        isPresetSelected = false
 
         // Recalculate the transaction fee when fee rate changes
         Task {
@@ -226,5 +209,23 @@ struct SendFeeCustom: View {
         if wallet.isMaxAmountSend {
             wallet.sendAmountSats = hwSend.availableSats
         }
+    }
+}
+
+/// Next custom fee rate after a number pad key; while the preset is selected, a digit replaces it and delete clears it.
+func customFeeRate(after key: String, from rate: UInt32, replacing: Bool) -> UInt32 {
+    let current = replacing || rate == 0 ? "" : String(rate)
+    if key == "delete" {
+        return UInt32(current.dropLast()) ?? 0
+    }
+    // Limit to 3 digits (max 999 sat/vB)
+    let next = current + key
+    return next.count <= 3 ? UInt32(next) ?? rate : rate
+}
+
+extension View {
+    /// Highlights a preset fee as selected text, so the user sees the next key replaces it.
+    func presetSelection(_ selected: Bool) -> some View {
+        background(selected ? Color.brand32 : .clear, in: RoundedRectangle(cornerRadius: 4))
     }
 }
