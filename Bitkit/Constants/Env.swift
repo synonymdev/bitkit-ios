@@ -235,7 +235,7 @@ enum Env {
         configuredURL: String? = configValue("SPARK_CHAIN_SERVICE_URL")
     ) -> String? {
         switch network {
-        case .bitcoin: "https://bitkit.to/electrs"
+        case .bitcoin: "https://api.bitkit.to/electrs"
         case .regtest: localRegtestURL ?? configuredURL
         default: configuredURL
         }
@@ -483,7 +483,7 @@ enum Env {
             }
         #endif
         switch network {
-        case .bitcoin: return "https://bitkit.to/vss_rs_auth"
+        case .bitcoin: return "https://api.bitkit.to/vss_rs_auth"
         default: return "https://bitkit.stag0.blocktank.to/vss_rs_auth"
         }
     }

@@ -3717,7 +3717,7 @@ final class SparkExitBroadcasterTests: XCTestCase {
 
     func testMainnetReadsOnlyBitkitElectrsAndBroadcastsThereFirst() throws {
         let chain = EsploraSparkExitChain.network(.mainnet)
-        let electrs = try XCTUnwrap(URL(string: "https://bitkit.to/electrs"))
+        let electrs = try XCTUnwrap(URL(string: "https://api.bitkit.to/electrs"))
         let mempool = try XCTUnwrap(URL(string: "https://mempool.space/api"))
         let blockstream = try XCTUnwrap(URL(string: "https://blockstream.info/api"))
 
@@ -3749,7 +3749,7 @@ final class SparkExitBroadcasterTests: XCTestCase {
         let outcome = await chain.broadcast(SparkExitFixtures.tx("n1", cpfp: "03c"))
 
         XCTAssertEqual(outcome, .accepted)
-        XCTAssertEqual(http.requests.map { $0.url?.absoluteString }, ["https://bitkit.to/electrs/txs/package"])
+        XCTAssertEqual(http.requests.map { $0.url?.absoluteString }, ["https://api.bitkit.to/electrs/txs/package"])
     }
 
     func testBroadcastFallsBackFromBitkitElectrsButReadsNeverDo() async {
@@ -3767,7 +3767,7 @@ final class SparkExitBroadcasterTests: XCTestCase {
 
         XCTAssertEqual(outcome, .accepted)
         XCTAssertNil(tip)
-        XCTAssertEqual(http.requests.compactMap { $0.url?.host }, ["bitkit.to", "mempool.space", "bitkit.to"])
+        XCTAssertEqual(http.requests.compactMap { $0.url?.host }, ["api.bitkit.to", "mempool.space", "api.bitkit.to"])
     }
 
     func testOneReadHostOnlyCallsATransactionGoneOnA404() async throws {
