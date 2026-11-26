@@ -81,7 +81,7 @@ final class AppReset: WipeStepExecutor {
     func run(_ step: WipeStep) async throws {
         switch step {
         case .quiesce:
-            await BackupService.shared.stopObservingBackups()
+            try await Self.bounded("backup uploads") { await BackupService.shared.stopObservingBackups() }
             try await Self.bounded("migration sync") { [app] in await app.cancelMigrationSyncForWipe() }
         case .stopNode:
             try await wallet.stopForWipe()

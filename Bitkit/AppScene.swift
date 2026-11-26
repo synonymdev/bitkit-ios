@@ -1245,6 +1245,7 @@ struct AppScene: View {
                                             isRunning: wallet.nodeLifecycleState == .running)
             {
                 didWalletBackupRestoreFail = false
+                connectionEditor = nil
             }
             try await activity.syncLdkNodePayments()
 

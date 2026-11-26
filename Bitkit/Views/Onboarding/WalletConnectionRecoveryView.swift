@@ -72,7 +72,12 @@ struct WalletConnectionRecoveryView: View {
                     CustomButton(title: t("common__try_again"), isDisabled: !canEdit, isLoading: recovery.isBusy) {
                         work = Task {
                             guard canEdit else { return }
+                            let editor = editor
+                            saved = false
+                            error = nil
                             await onRetry()
+                            guard !Task.isCancelled, recovery.isCurrent(editor) else { return }
+                            error = t("other__lnurl_ln_error_msg")
                         }
                     }.accessibilityIdentifier("RecoveryRetry")
                 }

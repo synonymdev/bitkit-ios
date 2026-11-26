@@ -4,7 +4,6 @@ import UIKit
 /// Handles app services each on it's own dedicated queue
 class ServiceQueue {
     private static let ldkQueue = DispatchQueue(label: "ldk-queue", qos: .userInteractive)
-    private static let ldkEventsQueue = DispatchQueue(label: "ldk-events-queue", qos: .userInitiated)
     private static let coreQueue = DispatchQueue(label: "core-queue", qos: .userInteractive)
     private static let migrationQueue = DispatchQueue(label: "migration-queue", qos: .userInteractive)
     private static let forexQueue = DispatchQueue(label: "forex-queue", qos: .userInteractive)
@@ -14,7 +13,6 @@ class ServiceQueue {
 
     enum ServiceTypes {
         case ldk
-        case ldkEvents
         case core
         case migration
         case forex
@@ -24,8 +22,6 @@ class ServiceQueue {
             switch self {
             case .ldk:
                 return ServiceQueue.ldkQueue
-            case .ldkEvents:
-                return ServiceQueue.ldkEventsQueue
             case .core:
                 return ServiceQueue.coreQueue
             case .migration:

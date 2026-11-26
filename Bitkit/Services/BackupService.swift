@@ -1128,7 +1128,7 @@ class BackupService {
         MoveToSparkPayments.savedPublisher
             .sink { @Sendable [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .metadata)
+                markObservedBackupRequired(category: .metadata)
             }
             .store(in: &listeners)
 
