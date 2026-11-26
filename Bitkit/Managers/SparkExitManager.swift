@@ -508,12 +508,12 @@ final class SparkExitManager {
             record = stored
         }
         // The send attempt itself, as a tick reads it: not read yet after a relaunch.
-        unresolvedSendAddress = await OnchainSendAttemptService.shared.unresolvedSendAddress()
-        await refreshAcceptedSend()
+        await refreshSends()
         await refreshRefusedSavingsPayment()
-        // A lost accepted payment is kept, and then nothing is due.
-        if let current = record {
-            _ = keepAcceptedSend(current)
+        // A lost accepted payment is kept: it was paid, so nothing is due.
+        if let current = record, keepAcceptedSend(current) != nil {
+            Task { await tick() }
+            return
         }
         // Checked under the lock, over the address read now: funding may have reached it since the last tick.
         let address = record?.funding.first?.address
@@ -537,8 +537,7 @@ final class SparkExitManager {
         } catch {
             noteSavingsRefusal(current, sats: refusal.sats, after: error)
             // A payment that went out and failed shows as such, with its own retry.
-            unresolvedSendAddress = await OnchainSendAttemptService.shared.unresolvedSendAddress()
-            await refreshAcceptedSend()
+            await refreshSends()
             await refreshRefusedSavingsPayment()
             throw error
         }
@@ -572,10 +571,12 @@ final class SparkExitManager {
         return paid
     }
 
-    private func refreshAcceptedSend() async {
-        let accepted = await OnchainSendAttemptService.shared.acceptedSend()
-        acceptedSendAddress = accepted?.address
-        acceptedSendTxid = accepted?.txid
+    /// The savings sends in the journal, from one read of it.
+    private func refreshSends() async {
+        let sends = await OnchainSendAttemptService.shared.sendAddresses()
+        unresolvedSendAddress = sends.unresolved
+        acceptedSendAddress = sends.accepted?.address
+        acceptedSendTxid = sends.accepted?.txid
     }
 
     /// `record` keeping a refused start's savings payment the node accepted to its funding address as its payment, when a
@@ -683,8 +684,7 @@ final class SparkExitManager {
         if let stored = try? Self.loadRecord(store: store, lostLeafStore: lostLeafStore) {
             record = stored
         }
-        unresolvedSendAddress = await OnchainSendAttemptService.shared.unresolvedSendAddress()
-        await refreshAcceptedSend()
+        await refreshSends()
         // A refused start's accepted savings payment the record lost is kept first, so it stops the cancel.
         if let current = record {
             _ = keepAcceptedSend(current)
@@ -779,8 +779,7 @@ final class SparkExitManager {
         )
         do {
             tipHeight = await (try? chain.tipHeight()) ?? tipHeight
-            unresolvedSendAddress = await OnchainSendAttemptService.shared.unresolvedSendAddress()
-            await refreshAcceptedSend()
+            await refreshSends()
             // Kept before a later send can take its place in the journal.
             if let paid = keepAcceptedSend(current) {
                 current = paid
