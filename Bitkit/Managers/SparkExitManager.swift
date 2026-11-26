@@ -442,7 +442,12 @@ final class SparkExitManager {
         guard var paid = record, paid.createdAt == current.createdAt, paid.isActive else { return }
         paid.fundingPaymentTxid = txid
         paid.savingsRefusal = nil
-        try saveRecord(paid)
+        // Kept as paid even when the save fails, so progress never offers to pay it again.
+        do {
+            try saveRecord(paid)
+        } catch {
+            Logger.error("Failed to save the Spark exit funding payment: \(error)", context: "SparkExitManager")
+        }
         record = paid
         setFunding(SparkExitMath.fundingState(paid, utxos: nil), for: paid)
         refusedSavingsPayment = nil
@@ -1295,6 +1300,7 @@ final class SparkExitManager {
             } catch {
                 // A refused payment shows on progress at once, with the offer to pay again.
                 noteSavingsRefusal(started, sats: savingsSats, after: error)
+                await refreshSends()
                 await refreshRefusedSavingsPayment()
                 throw error
             }
