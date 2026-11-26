@@ -151,21 +151,22 @@ struct PaymentRequestRecipientView: View {
 }
 
 /// What the recipient picker shows instead of recipients; nil when it has some to list.
+/// A failed check with a search that filtered out known recipients is a plain no-match.
 enum PaykitRecipientEmptyState: Equatable {
     case loading
     case failed
     case unavailable
     case noMatch
 
-    init?(hasRecipients: Bool, query: String, status: PaykitPaymentRequestTargetsStatus) {
+    init?(hasRecipients: Bool, hasEligibleTargets: Bool, query: String, status: PaykitPaymentRequestTargetsStatus) {
         if hasRecipients {
             return nil
         }
+        let isSearching = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         switch status {
         case .loading: self = .loading
-        case .failed: self = .failed
-        case .loaded:
-            self = query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .unavailable : .noMatch
+        case .failed: self = isSearching && hasEligibleTargets ? .noMatch : .failed
+        case .loaded: self = isSearching ? .noMatch : .unavailable
         }
     }
 }
@@ -210,6 +211,7 @@ struct PaykitRecipientPicker<Header: View, Footer: View>: View {
                     CustomDivider()
                     switch PaykitRecipientEmptyState(
                         hasRecipients: !recipientTargets.isEmpty,
+                        hasEligibleTargets: !paymentRequests.eligibleTargets.isEmpty,
                         query: recipientQuery,
                         status: paymentRequests.eligibleTargetsStatus
                     ) {
@@ -243,6 +245,9 @@ struct PaykitRecipientPicker<Header: View, Footer: View>: View {
         .navigationBarHidden(true)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(accessibilityIdentifier)
+        .task {
+            await paymentRequests.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
+        }
     }
 
     private func emptyMessage(_ key: String) -> some View {

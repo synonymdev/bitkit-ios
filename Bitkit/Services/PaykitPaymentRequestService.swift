@@ -1427,6 +1427,7 @@ final class PaykitPaymentRequestManager {
     private(set) var eligibleTargets: [PaykitPaymentRequestTarget] = []
     /// Loading until a discovery for the current identity finishes; failed when it could not check every contact.
     private(set) var eligibleTargetsStatus: PaykitPaymentRequestTargetsStatus = .loading
+    private var eligibilityRefreshCount = 0
     private(set) var requestedPresentationId: PaykitPaymentRequest.ID?
     private(set) var requestedSubscriptionProposalId: PaykitSubscription.ID?
     private(set) var isCreatingRequest = false
@@ -1615,11 +1616,22 @@ final class PaykitPaymentRequestManager {
     func refreshEligibleTargets(savedPublicKeys: [String]) async {
         updateSavedPublicKeys(savedPublicKeys)
         eligibilityGeneration += 1
+        eligibilityRefreshCount += 1
         let generation = eligibilityGeneration
+        let refreshNumber = eligibilityRefreshCount
         let currentStateGeneration = stateGeneration
         guard isAvailable(), let activeIdentity else {
             eligibleTargets = []
             return
+        }
+        // A saved-contacts change drops this result without starting a refresh of its own.
+        let retryIfSuperseded = { [self] in
+            guard refreshNumber == eligibilityRefreshCount,
+                  currentStateGeneration == stateGeneration,
+                  eligibleTargetsStatus != .loaded,
+                  !Task.isCancelled
+            else { return }
+            await refreshEligibleTargets(savedPublicKeys: self.savedPublicKeys)
         }
         let statusBeforeRefresh = eligibleTargetsStatus
         if eligibleTargetsStatus != .loaded {
@@ -1638,7 +1650,10 @@ final class PaykitPaymentRequestManager {
                   Set(savedPublicKeys.map(Self.eligibilityKey)) == Set(self.savedPublicKeys.map(Self.eligibilityKey)),
                   isAvailable(),
                   PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity)
-            else { return }
+            else {
+                await retryIfSuperseded()
+                return
+            }
             let newerSingleRefreshKeys = Set(singleEligibilityWriteGenerations.filter { $0.value >= generation }.keys)
             let isNewerSingleRefresh: (PaykitPaymentRequestTarget) -> Bool = {
                 newerSingleRefreshKeys.contains(Self.eligibilityKey($0.publicKey))
@@ -1661,9 +1676,12 @@ final class PaykitPaymentRequestManager {
         } catch {
             guard generation == eligibilityGeneration,
                   currentStateGeneration == stateGeneration
-            else { return }
+            else {
+                await retryIfSuperseded()
+                return
+            }
             if case PaykitPaymentRequestError.operationInProgress = error {
-                eligibleTargetsStatus = statusBeforeRefresh
+                eligibleTargetsStatus = statusBeforeRefresh == .loading ? .failed : statusBeforeRefresh
                 return
             }
             eligibleTargetsStatus = .failed
