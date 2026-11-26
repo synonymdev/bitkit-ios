@@ -538,6 +538,8 @@ final class MoveToSparkManager {
     private(set) var state: MoveToSparkState = .quoting
     /// A move was started and its outcome is still the modal's, so showing the modal again keeps it.
     private var keepsOutcome = false
+    /// What a move moved before its rest failed to quote, so Try Again still ends on that move's outcome.
+    private var movedBeforeRest: (movedSats: UInt64, feeSats: UInt64)?
     /// Counts quotes, moves and resets; a quote writes its result only while it is still the latest.
     private(set) var generation = 0
     /// Counts wipes only, so work that outlives a quote or a closed modal still stops at a wipe.
@@ -564,6 +566,8 @@ final class MoveToSparkManager {
     /// or showing its outcome.
     func start(wallet: WalletViewModel) async {
         guard !keepsOutcome, !isQuoting else { return }
+        // A new opening quotes afresh, not as the Try Again of a move shown before.
+        movedBeforeRest = nil
         await quote(wallet: wallet)
     }
 
@@ -573,6 +577,7 @@ final class MoveToSparkManager {
         generation += 1
         isQuoting = false
         keepsOutcome = false
+        movedBeforeRest = nil
         state = .quoting
     }
 
@@ -584,6 +589,7 @@ final class MoveToSparkManager {
         isQuoting = false
         keepsOutcome = false
         isMoveInFlight = false
+        movedBeforeRest = nil
         state = .quoting
         MoveToSparkPayments.removeAll()
     }
@@ -591,15 +597,27 @@ final class MoveToSparkManager {
     /// Quotes moving everything the channels can send. After a move that moved `afterMove`, a quote for the rest that
     /// fails because the rest no longer routes or nothing is left shows the balance updated, the outcome of that move.
     func quote(wallet: WalletViewModel, afterMove: (movedSats: UInt64, feeSats: UInt64)? = nil) async {
+        await quote(afterMove: afterMove) {
+            await wallet.syncStateAsync()
+            return try await self.makeQuote(channels: wallet.channels)
+        }
+    }
+
+    /// Shows the quote `makeQuote` returns. Without `movedNow`, Try Again after a move whose rest failed to quote still
+    /// ends on that move's outcome.
+    func quote(
+        afterMove movedNow: (movedSats: UInt64, feeSats: UInt64)?,
+        makeQuote: @MainActor () async throws -> MoveToSparkQuote
+    ) async {
+        let afterMove = movedNow ?? movedBeforeRest
         generation += 1
         let quoteGeneration = generation
         isQuoting = true
         keepsOutcome = false
         state = .quoting
-        await wallet.syncStateAsync()
         let result: MoveToSparkState
         do {
-            result = try await .confirm(makeQuote(channels: wallet.channels), isMoving: false)
+            result = try await .confirm(makeQuote(), isMoving: false)
         } catch {
             Logger.warn("Failed to quote move to Spark: \(error)", context: "MoveToSpark")
             result = Self.state(forQuoteError: error, afterMove: afterMove)
@@ -609,6 +627,11 @@ final class MoveToSparkManager {
         // Shown in place of a quote after a move, the balance updated is that move's outcome, kept as a settled one is.
         if case .done = result {
             keepsOutcome = true
+        }
+        if case .failed = result {
+            movedBeforeRest = afterMove
+        } else {
+            movedBeforeRest = nil
         }
         state = result
     }

@@ -46,6 +46,42 @@ final class MoveToSparkLateOutcomeTests: XCTestCase {
         XCTAssertEqual(MoveToSparkManager.state(forQuoteError: MoveToSparkError.noRoute, afterMove: nil), .failed(.unknown))
     }
 
+    @MainActor
+    func testTryAgainAfterAPartialMoveShowsItMovedOnceTheRestNoLongerRoutes() async {
+        struct NetworkDown: Error {}
+        let manager = MoveToSparkManager()
+        await manager.quote(afterMove: (60000, 60)) { throw NetworkDown() }
+        XCTAssertEqual(manager.state, .failed(.unknown))
+
+        await manager.quote(afterMove: nil) { throw MoveToSparkError.noRoute }
+
+        XCTAssertEqual(manager.state, .done(amountSats: 60000, feeSats: 60), "Try Again forgot what the move moved")
+    }
+
+    @MainActor
+    func testClosingTheModalForgetsThePartialMoveForTryAgain() async {
+        struct NetworkDown: Error {}
+        let manager = MoveToSparkManager()
+        await manager.quote(afterMove: (60000, 60)) { throw NetworkDown() }
+        manager.reset()
+
+        await manager.quote(afterMove: nil) { throw MoveToSparkError.noRoute }
+
+        XCTAssertEqual(manager.state, .failed(.unknown))
+    }
+
+    @MainActor
+    func testANewOpeningQuotesAfreshAfterAFailedRestQuote() async {
+        struct NetworkDown: Error {}
+        let manager = MoveToSparkManager()
+        await manager.quote(afterMove: (60000, 60)) { throw NetworkDown() }
+
+        // A node that is not set up leaves nothing to move.
+        await manager.start(wallet: WalletViewModel())
+
+        XCTAssertEqual(manager.state, .failed(.nothingToMove), "A new opening ended on an earlier move's outcome")
+    }
+
     func testTheInFlightMoveIsTheOneOnScreen() {
         XCTAssertTrue(MoveToSparkManager.showsInFlightMove(.inFlight(amountSats: 40000), generation: 3, moveGeneration: 3))
     }
