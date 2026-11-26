@@ -122,6 +122,38 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertNil(SparkExitManager.refusing(refused, sats: 20000, after: wentOut)?.savingsRefusal)
     }
 
+    /// Paying a refused start again reads the address first: funding that reached it shows on progress, as a tick
+    /// shows it, and savings pays nothing.
+    @MainActor func testPayingARefusedStartAgainShowsFundingThatReachedTheAddress() async throws {
+        let walletIndex = 9995
+        let store = SparkExitStore(walletIndex: walletIndex)
+        defer {
+            try? store.delete()
+            try? SparkExitEarlierAddressStore(walletIndex: walletIndex).delete()
+            try? SparkExitLostLeafStore(walletIndex: walletIndex).delete()
+        }
+        var record = SparkExitFixtures.record(phase: .awaitingFunding(requiredSats: 20000))
+        record.savingsRefusal = SparkExitRecord.SavingsRefusal(sats: 20000, feeSats: 650)
+        try store.save(record)
+        let address = try XCTUnwrap(record.funding.first?.address)
+        chain.utxosByAddress[address] = [SparkExitFixtures.utxo(String(repeating: "e", count: 64), value: 8000)]
+        let exit = SparkExitManager(walletIndex: walletIndex, chain: chain)
+        exit.load(walletIndex: walletIndex)
+
+        do {
+            try await exit.paySavingsRefusal(satsPerVbyte: 4, feeSats: 650)
+            XCTFail("savings paid after funding reached the address")
+        } catch {}
+
+        XCTAssertEqual(exit.fundingSeenSats, 8000, "progress kept the funding seen before the read")
+        if case let .ask(_, receivedSats) = exit.fundingState {
+            XCTAssertEqual(receivedSats, 8000)
+        } else {
+            XCTFail("progress shows \(String(describing: exit.fundingState)), not the funding received")
+        }
+        XCTAssertNil(exit.record?.fundingPaymentTxid)
+    }
+
     // MARK: H1 cancel
 
     func testCancelIsOffAfterAPaymentFromSavings() {

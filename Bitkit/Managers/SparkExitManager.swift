@@ -504,7 +504,7 @@ final class SparkExitManager {
             nil
         }
         // Progress shows what the read found, so it stops offering savings once funding arrived.
-        if let current = record, let utxos {
+        if let current = record, current.fundingShortfallSats != nil, let utxos {
             noteFundingSeen(current, utxos: utxos)
         }
         guard let current = record, let address,

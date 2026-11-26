@@ -765,6 +765,11 @@ struct SparkExitProgressView: View {
     /// Prices the refused payment, again every 15 seconds after a failed price, such as before the node runs, while
     /// progress can still offer it.
     private func priceSavingsRetry() async {
+        // No refusal to offer: an older price is never offered for a later one.
+        guard savingsRefusal != nil else {
+            savingsRetry = nil
+            return
+        }
         while !Task.isCancelled, savingsRefusal != nil {
             if await priceSavingsRetryOnce() {
                 return
