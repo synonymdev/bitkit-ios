@@ -1616,8 +1616,20 @@ final class PaykitPaymentRequestManager {
     }
 
     /// Checks the saved contacts once they have loaded, so an empty list read before the load is not taken as final.
+    /// A contacts load that ends in an error stops the wait at once instead of after `timeout`.
     func refreshEligibleTargets(contactsManager: ContactsManager, waitingAtMost timeout: Duration = .seconds(30)) async {
-        await contactsManager.waitUntilLoaded(timeout: timeout)
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await contactsManager.waitUntilLoaded(timeout: timeout) }
+            group.addTask { @MainActor in
+                for await message in contactsManager.$loadErrorMessage.values
+                    where message != nil && !contactsManager.isLoading
+                {
+                    return
+                }
+            }
+            await group.next()
+            group.cancelAll()
+        }
         guard !Task.isCancelled else { return }
         guard contactsManager.hasLoaded else {
             markEligibleTargetsUnknown()

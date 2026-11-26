@@ -9553,6 +9553,22 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(peerReads, 0)
     }
 
+    func testPickerRefreshFailsAsSoonAsSavedContactsLoadFails() async throws {
+        let sdk = PaymentRequestSdkMock(records: [])
+        let manager = paymentRequestManager(sdk: sdk)
+        let contactsManager = ContactsManager()
+        let pickerRefresh = Task { await manager.refreshEligibleTargets(contactsManager: contactsManager, waitingAtMost: .seconds(60)) }
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(manager.eligibleTargetsStatus, .loading)
+
+        contactsManager.loadErrorMessage = "offline"
+        let start = ContinuousClock.now
+        await pickerRefresh.value
+
+        XCTAssertLessThan(ContinuousClock.now - start, .seconds(5))
+        XCTAssertEqual(manager.eligibleTargetsStatus, .failed)
+    }
+
     func testRecipientEmptyStateWaitsForFinishedDiscovery() {
         func state(_ query: String, _ status: PaykitPaymentRequestTargetsStatus, hasTargets: Bool = false) -> PaykitRecipientEmptyState? {
             PaykitRecipientEmptyState(hasRecipients: false, hasEligibleTargets: hasTargets, query: query, status: status)
