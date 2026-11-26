@@ -1090,11 +1090,15 @@ actor OnchainSendAttemptService {
         catch { throw OnchainSendAttemptError.unresolved }
     }
 
-    /// The address of the send still unresolved (pending, unknown or refused, so retryable or blocking a new send), if any.
-    /// A retry always pays this same address with the same inputs.
-    func unresolvedSendAddress() -> String? {
-        guard let attempt = try? currentAttempt(), attempt.status.blocksNewSend else { return nil }
-        return attempt.address
+    /// One read of the journal: the address of the send still unresolved (pending, unknown or refused, so retryable or
+    /// blocking a new send; a retry always pays this same address with the same inputs), and the send a node accepted,
+    /// kept after its local follow-up.
+    func sendAddresses() -> (unresolved: String?, accepted: (address: String, txid: String?)?) {
+        guard let attempt = try? currentAttempt() else { return (nil, nil) }
+        if attempt.status.blocksNewSend {
+            return (attempt.address, nil)
+        }
+        return (nil, attempt.status == .accepted ? (attempt.address, attempt.txid) : nil)
     }
 
     private func currentAttempt() throws -> OnchainSendAttempt? {
