@@ -1688,6 +1688,11 @@ final class SparkExitManager {
         )
         if let updated = outcome.record {
             record = updated
+            // As after a tick: a run that forgot the exit's own payment (it confirmed short) or changed the phase reads
+            // the address, so Progress asks only for the rest.
+            if updated.phase != previous?.phase || updated.fundingPaymentTxid != previous?.fundingPaymentTxid {
+                await refreshFundingSeen(chain: chain, record: updated)
+            }
             if let previous, Self.isFundingAskWithdrawn(updated, previous: previous) {
                 Self.dismissDeliveredFundingNotifications(record: updated)
             }
