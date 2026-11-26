@@ -145,6 +145,13 @@ final class PubkyAppLinkTests: XCTestCase {
         XCTAssertTrue(PubkyAppProfileStore.linkErrors(links: stored, storedLinks: stored).isEmpty)
     }
 
+    func testUrlEditThatNormalizesToTheStoredLinkLeavesStoredLinksUnchecked() {
+        let label = String(repeating: "x", count: 101)
+        let stored = [PubkyProfileData.Link(label: label, url: "https://example.com")]
+        let links = [PubkyProfileData.Link(label: label, url: "example.com")]
+        XCTAssertTrue(PubkyAppProfileStore.linkErrors(links: links, storedLinks: stored).isEmpty)
+    }
+
     func testStoredLinkIsCheckedOnceLinksChange() {
         let stored = [
             PubkyProfileData.Link(label: String(repeating: "x", count: 101), url: "https://example.com"),

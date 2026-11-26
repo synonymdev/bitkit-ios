@@ -600,15 +600,17 @@ actor PubkyAppProfileStore {
         return nil
     }
 
-    /// The links pubky.app would refuse, by index. A save sends the links only once they change, and then pubky.app checks
-    /// every one, so a stored link is held to its rules too. Links added or edited here must also be web links, which
-    /// social v1 requires; stored ones keep their scheme. `rejectedIndex` is a link pubky.app already refused.
+    /// The links pubky.app would refuse, by index. A save sends the links only once they differ from the stored ones after
+    /// its normalization, and then pubky.app checks every one, so a stored link is held to its rules too. Links added or
+    /// edited here must also be web links, which social v1 requires; stored ones keep their scheme. `rejectedIndex` is a
+    /// link pubky.app already refused.
     static func linkErrors(
         links: [PubkyProfileData.Link],
         storedLinks: [PubkyProfileData.Link],
         rejectedIndex: Int? = nil
     ) -> [Int: PubkyAppLinkError] {
-        guard links != storedLinks else { return [:] }
+        let sentLinks = links.map { PubkyProfileData.Link(label: singleLine($0.label), url: linkUrl($0.url) ?? $0.url) }
+        guard sentLinks != storedLinks else { return [:] }
         let storedUrls = Set(storedLinks.map(\.url))
         var errors: [Int: PubkyAppLinkError] = [:]
         for (index, link) in links.enumerated() {
