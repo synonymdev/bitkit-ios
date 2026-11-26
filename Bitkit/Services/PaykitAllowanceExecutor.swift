@@ -419,7 +419,16 @@ struct PaykitAllowanceLivePayer: PaykitAllowancePaying {
             sats: sats,
             params: Self.routeParameters(amountSats: request.allowanceAmountSats),
             // Checked again after the send's last await, so a contact blocked since the executor's check isn't paid.
-            recheckBeforeSubmission: { try await ensurePaymentAllowed(request) },
+            // Any failure here sent nothing, so it ends as a refusal the proof service treats as unsent.
+            recheckBeforeSubmission: {
+                do {
+                    try await ensurePaymentAllowed(request)
+                } catch PaykitPaymentRequestError.requestExpired {
+                    throw PaykitPaymentRequestError.requestExpired
+                } catch {
+                    throw PaykitPaymentRequestError.requestUnavailable
+                }
+            },
             beforeSubmission: { try PaykitPaymentRequest.checkPaymentDeadline(request.paymentDeadline) }
         )
     }
