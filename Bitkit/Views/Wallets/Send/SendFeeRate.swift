@@ -48,7 +48,7 @@ struct SendFeeRate: View {
     }
 
     private func selectFee(_ speed: TransactionSpeed) {
-        wallet.selectedSpeed = speed
+        let choice = wallet.beginFeeRateChoice(speed)
 
         Task { @MainActor in
             do {
@@ -56,10 +56,12 @@ struct SendFeeRate: View {
                     app.selectedWalletToPayFrom = .lightning
                     navigationPath.removeLast()
                 } else {
-                    // A rate that lands after another speed was picked is dropped, and so is its navigation.
-                    try await wallet.setFeeRate(speed: speed) { wallet.selectedSpeed == speed }
+                    // A rate that lands after a later choice or for an earlier payment is dropped, and so is its navigation.
+                    try await wallet.setFeeRate(speed: speed) { wallet.isCurrentFeeRateChoice(choice) }
                     app.selectedWalletToPayFrom = .onchain
-                    navigationPath.removeLast()
+                    if navigationPath.last == .feeRate {
+                        navigationPath.removeLast()
+                    }
                     await refreshHardwareMaxIfNeeded()
                 }
             } catch is CancellationError {

@@ -175,15 +175,17 @@ struct SendFeeCustom: View {
         }
 
         let speed = TransactionSpeed.custom(satsPerVByte: feeRate)
-        wallet.selectedSpeed = speed
+        let choice = wallet.beginFeeRateChoice(speed)
 
         // Set the custom fee rate
         Task {
             do {
-                // A rate that lands after another speed was picked is dropped, and so is its navigation.
-                try await wallet.setFeeRate(speed: speed) { wallet.selectedSpeed == speed }
+                // A rate that lands after a later choice or for an earlier payment is dropped, and so is its navigation.
+                try await wallet.setFeeRate(speed: speed) { wallet.isCurrentFeeRateChoice(choice) }
                 app.selectedWalletToPayFrom = .onchain
-                navigationPath.removeLast()
+                if navigationPath.last == .feeCustom {
+                    navigationPath.removeLast()
+                }
                 await refreshHardwareMaxIfNeeded()
             } catch is CancellationError {
                 return
