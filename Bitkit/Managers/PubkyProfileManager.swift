@@ -122,6 +122,7 @@ class PubkyProfileManager: ObservableObject {
     private let remoteProfileResolver: RemoteProfileResolver
     private let profilePublisher: ProfilePublisher
     private let avatarUploader: AvatarUploader
+    private let profileDeletionValidator: ProfileDeleter
     private let profileDeleter: ProfileDeleter
     /// Bumped whenever a profile save starts, `profile` is written or the identity changes, so a remote read that started
     /// earlier is dropped.
@@ -169,6 +170,9 @@ class PubkyProfileManager: ObservableObject {
         avatarUploader: @escaping AvatarUploader = {
             try await PubkyAppProfileStore.shared.uploadAvatar($0, expectedIdentity: $1)
         },
+        profileDeletionValidator: @escaping ProfileDeleter = {
+            try await PubkyService.requireNoActiveSubscriptions(expectedIdentity: $0)
+        },
         profileDeleter: @escaping ProfileDeleter = {
             // A Ring identity's profile belongs to Ring, so unlinking it leaves its pubky.app profile in place.
             try await PubkyAppProfileStore.shared.deleteProfile(
@@ -180,6 +184,7 @@ class PubkyProfileManager: ObservableObject {
         self.remoteProfileResolver = remoteProfileResolver
         self.profilePublisher = profilePublisher
         self.avatarUploader = avatarUploader
+        self.profileDeletionValidator = profileDeletionValidator
         self.profileDeleter = profileDeleter
         cachedName = UserDefaults.standard.string(forKey: Self.cachedNameKey)
         cachedImageUri = UserDefaults.standard.string(forKey: Self.cachedImageUriKey)
@@ -1136,6 +1141,12 @@ class PubkyProfileManager: ObservableObject {
         await PrivatePaykitService.shared.endProfileDeletion()
     }
 
+    func validateProfileDeletion(for session: SignedInSession) async throws {
+        try requireCurrentSession(session)
+        try await profileDeletionValidator(session.publicKey)
+        try requireCurrentSession(session)
+    }
+
     func deleteProfile(cleanPrivatePaykitEndpoints: Bool = true, expectedSession: SignedInSession? = nil) async throws {
         guard let session = expectedSession ?? currentSession else { throw PubkyServiceError.sessionNotActive }
         try requireCurrentSession(session)
@@ -1151,26 +1162,18 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private func deleteProfile(for session: SignedInSession, cleanPrivatePaykitEndpoints: Bool) async throws {
-        try requireCurrentSession(session)
+        try await validateProfileDeletion(for: session)
         if cleanPrivatePaykitEndpoints {
-            await Self.removePrivatePaykitEndpointsBestEffort(
+            try await Self.removePrivatePaykitEndpoints(
                 context: "PubkyProfileManager.deleteProfile", deferAppSync: true,
                 isSessionCurrent: { self.currentSession == session }
             )
         }
         try requireCurrentSession(session)
         let delete = profileDeleter
-        do {
-            try await Task.detached {
-                try await delete(session.publicKey)
-            }.value
-        } catch {
-            guard Self.isMissingBitkitProfileStorageError(error) else {
-                throw error
-            }
-
-            Logger.info("Bitkit profile storage already missing, continuing sign out", context: "PubkyProfileManager")
-        }
+        try await Task.detached {
+            try await delete(session.publicKey)
+        }.value
 
         try requireCurrentSession(session)
         invalidateProfileLoads()
@@ -2088,31 +2091,6 @@ class PubkyProfileManager: ObservableObject {
             throw PubkyServiceError.authFailed("Invalid Pubky public key")
         }
         return normalized
-    }
-
-    nonisolated static func isMissingBitkitProfileStorageError(_ error: Error) -> Bool {
-        if case .profileNotFound = error as? PubkyServiceError {
-            return true
-        }
-
-        let errorText = [
-            (error as? AppError)?.debugMessage,
-            error.localizedDescription,
-            String(describing: error),
-        ]
-        .compactMap { $0?.lowercased() }
-
-        if errorText.contains(where: { $0.contains("404 not found") || $0.contains("directory not found") }) {
-            return true
-        }
-
-        let nsError = error as NSError
-        if nsError.domain == NSCocoaErrorDomain {
-            let cocoaCode = CocoaError.Code(rawValue: nsError.code)
-            return cocoaCode == .fileNoSuchFile || cocoaCode == .fileReadNoSuchFile
-        }
-
-        return false
     }
 
     nonisolated static func resolveSessionInitialization(
