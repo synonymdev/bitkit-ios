@@ -435,14 +435,16 @@ final class SparkExitManager {
 
     /// The start's savings payment of `record`'s fee funding that was refused before it went out, for a fee above the
     /// one confirmed, while progress can offer to pay it at the new fee: before the exit holds any funding, while
-    /// nothing reached the funding address, and while no savings send to it went out (`hasSavingsSend`).
+    /// nothing reached the funding address, and while no savings send to it went out (`hasSavingsSend`). Funding seen
+    /// before (`fundingSeenSats`) stays seen when a later address read fails: never offered over it.
     nonisolated static func savingsRefusal(
         _ record: SparkExitRecord,
         fundingState: SparkExitFundingState?,
-        hasSavingsSend: Bool
+        hasSavingsSend: Bool,
+        fundingSeenSats: UInt64 = 0
     ) -> SparkExitRecord.SavingsRefusal? {
         guard record.isActive, case .awaitingFunding = record.phase, record.fundingPaymentTxid == nil, !hasSavingsSend,
-              record.fundingShortfallSats != nil, record.fundedSats == 0
+              record.fundingShortfallSats != nil, record.fundedSats == 0, fundingSeenSats == 0
         else { return nil }
         switch fundingState {
         case nil, .ask(_, 0): return record.savingsRefusal

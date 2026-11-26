@@ -739,9 +739,14 @@ struct SparkExitProgressView: View {
     }
 
     private var savingsRefusal: SparkExitRecord.SavingsRefusal? {
-        // Funding seen before stays seen when a later address read fails: never offered over it.
-        guard exit.fundingSeenSats == 0 else { return nil }
-        return record.flatMap { SparkExitManager.savingsRefusal($0, fundingState: fundingState, hasSavingsSend: exit.hasSavingsSend) }
+        record.flatMap {
+            SparkExitManager.savingsRefusal(
+                $0,
+                fundingState: fundingState,
+                hasSavingsSend: exit.hasSavingsSend,
+                fundingSeenSats: exit.fundingSeenSats
+            )
+        }
     }
 
     /// What leaves savings for the refused payment at its new fee, while savings can cover it: the fee to confirm.

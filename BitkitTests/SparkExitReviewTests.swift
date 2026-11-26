@@ -96,6 +96,10 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertEqual(try SparkExitRecordCoder.decode(SparkExitRecordCoder.encode(refused)).savingsRefusal, refusal)
         XCTAssertEqual(SparkExitManager.savingsRefusal(refused, fundingState: nil, hasSavingsSend: false), refusal)
         XCTAssertEqual(SparkExitManager.savingsRefusal(refused, fundingState: .ask(sats: 20000), hasSavingsSend: false), refusal)
+        XCTAssertNil(
+            SparkExitManager.savingsRefusal(refused, fundingState: .ask(sats: 20000), hasSavingsSend: false, fundingSeenSats: 8000),
+            "funding seen before, with the address unread since"
+        )
         XCTAssertNil(SparkExitManager.savingsRefusal(refused, fundingState: .ask(sats: 12000, receivedSats: 8000), hasSavingsSend: false))
         XCTAssertNil(SparkExitManager.savingsRefusal(refused, fundingState: .seen(txid: "other"), hasSavingsSend: false))
         var paid = refused
