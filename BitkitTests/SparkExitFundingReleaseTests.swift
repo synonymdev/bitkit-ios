@@ -64,4 +64,13 @@ final class SparkExitFundingReleaseTests: XCTestCase {
         XCTAssertTrue(SparkExitFundingRelease.mayPayAgain(attempt(to: "bcrt1qordinary"), exit: funded, utxos: nil),
                       "A send to no exit's address is not refused")
     }
+
+    func testPayingAgainIsRefusedWhenTheFundingAddressCannotBeRead() async throws {
+        let asking = SparkExitFundingRelease.Exit(record: record(.awaitingFunding(requiredSats: 5000)), earlier: [])
+        do {
+            try await SparkExitFundingRelease.authorizePayAgain(attempt(), exit: asking, chain: nil)
+            XCTFail("Paid again without reading the funding address")
+        } catch {}
+        try await SparkExitFundingRelease.authorizePayAgain(attempt(to: "bcrt1qordinary"), exit: asking, chain: nil)
+    }
 }

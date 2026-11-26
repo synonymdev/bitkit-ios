@@ -44,7 +44,7 @@ enum SparkExitFundingRelease {
         guard let record = exit.record, record.isActive, record.funding.first?.address == attempt.address, let utxos else { return false }
         switch SparkExitMath.fundingState(record, utxos: utxos) {
         case .ask(_, 0): return true
-        case let .paid(txid): return attempt.containsCandidate(txid) && utxos.allSatisfy { attempt.containsCandidate($0.txid) }
+        case let .paid(txid): return attempt.containsCandidate(txid) && SparkExitMath.newFunding(utxos, record: record).allSatisfy { attempt.containsCandidate($0.txid) }
         default: return false
         }
     }

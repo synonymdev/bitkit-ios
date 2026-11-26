@@ -4339,6 +4339,10 @@ final class SparkExitFundingReleaseServiceTests: XCTestCase {
         awaited.fundingPaymentTxid = sent
         var topUp = exitRecord(.needsFunding(requiredSats: 9000), fundingTxid: String(repeating: "f1", count: 32))
         topUp.generation = 1
+        var endedPending = exitRecord(.failed(reason: "cancelled"))
+        endedPending.fundingPaymentTxid = sent
+        var sweptBack = exitRecord(.failed(reason: "cancelled"))
+        sweptBack.leftover = [.init(txid: sent, vout: 0, valueSats: 5000)]
         let exits: [SparkExitFundingRelease.Exit?] = [
             // Adopted: the payment landed.
             .init(record: exitRecord(.running, fundingTxid: sent), earlier: []),
@@ -4347,6 +4351,9 @@ final class SparkExitFundingReleaseServiceTests: XCTestCase {
             // Still asked for, before any funding and for a top-up.
             .init(record: exitRecord(.awaitingFunding(requiredSats: 5000)), earlier: []),
             .init(record: topUp, earlier: []),
+            // Ended while it was still waited for, and swept back as leftover.
+            .init(record: endedPending, earlier: []),
+            .init(record: sweptBack, earlier: []),
             // Unreadable.
             nil,
         ]
@@ -4381,6 +4388,17 @@ final class SparkExitFundingReleaseServiceTests: XCTestCase {
         let approvedLeftover = try await OnchainSendAttemptService(store: leftoverAttempts).approveRelease(leftoverAttempt)
         let leftoverHasEnded = try await leftoverService.onchainRequestHasEnded(approvedLeftover)
         XCTAssertFalse(leftoverHasEnded, "It landed as leftover")
+    }
+
+    func testApprovedReleaseOfExitFundingStaysOwnedAfterTheExitIsGone() async throws {
+        let (service, attempts, attempt) = try await unresolvedSavingsSend(
+            to: fundingAddress, exit: .init(record: nil, earlier: [])
+        )
+        let approved = try await OnchainSendAttemptService(store: attempts).approveRelease(attempt)
+        let isExitFunding = await service.isSparkExitFunding(approved)
+        XCTAssertTrue(isExitFunding, "Send Pending must finish the release, never retry it")
+        let hasEnded = try await service.onchainRequestHasEnded(approved)
+        XCTAssertTrue(hasEnded)
     }
 
     func testSendPendingNeverRetriesTheFundingOfARunningExit() async throws {

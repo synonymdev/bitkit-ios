@@ -741,6 +741,8 @@ actor PaykitPaymentProofService {
     /// owns that payment, so Send Pending never pays it again.
     func isSparkExitFunding(_ attempt: OnchainSendAttempt) async -> Bool {
         guard attempt.mayFundSparkExit else { return false }
+        // An approved release is finished from here, even once the exit's record is gone.
+        if attempt.releaseApproved == true { return true }
         guard let exit = await sparkExit(attempt) else { return true }
         return SparkExitFundingRelease.isExitFunding(attempt, exit: exit)
     }
