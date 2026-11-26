@@ -1356,9 +1356,6 @@ struct SendConfirmationView: View {
         return .uncertain
     }
 
-    /// An invoice this wallet already paid sends nothing again, so its earlier send decides what Confirm shows: the
-    /// same invoice reopens its receipt with the amount that send paid, also when the amount was typed, and another
-    /// invoice that shares its payment hash is refused as paid. Returns whether either was shown.
     private func showEarlierSendIfRepeat() async throws -> Bool {
         // A contact's payment keeps its request, proof and route steps, so only a plain invoice is decided here.
         guard app.selectedWalletToPayFrom == .lightning, app.contactPaymentContext == nil, app.paykitSwapRoute == nil,
@@ -1393,6 +1390,8 @@ struct SendConfirmationView: View {
 
     static func earlierLightningSendSats(_ activity: Activity?, bolt11: String) throws -> UInt64? {
         guard case let .lightning(earlier) = activity, earlier.txType == .sent, earlier.status == .succeeded else { return nil }
+        // A send recorded without its invoice ("No invoice", "migrated:<id>") cannot tell which invoice it paid.
+        guard earlier.invoice.lowercased().hasPrefix("ln") else { return nil }
         guard earlier.invoice.caseInsensitiveCompare(bolt11) == .orderedSame else {
             Logger.warn("Refused paying '\(earlier.id)', another invoice with its hash was paid", context: "SendConfirmationView")
             throw InvoiceAlreadyPaidError()

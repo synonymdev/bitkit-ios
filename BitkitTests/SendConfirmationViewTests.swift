@@ -413,6 +413,13 @@ final class SendConfirmationViewTests: XCTestCase {
         XCTAssertNil(try SendConfirmationView.earlierLightningSendSats(earlier, bolt11: "lnbcrt1failed"))
     }
 
+    func testAnEarlierSendRecordedWithoutItsInvoicePaysNormally() throws {
+        for placeholder in ["No invoice", "migrated:42"] {
+            let earlier = Self.sentLightning(invoice: placeholder, value: 1000, status: .succeeded)
+            XCTAssertNil(try SendConfirmationView.earlierLightningSendSats(earlier, bolt11: "lnbcrt1original"))
+        }
+    }
+
     func testAnInvoiceSharingThePaymentHashOfAnotherPaidInvoiceIsRefusedAsPaid() {
         let earlier = Self.sentLightning(invoice: "lnbcrt1otherpayee", value: 1000, status: .succeeded)
         XCTAssertThrowsError(try SendConfirmationView.earlierLightningSendSats(earlier, bolt11: "lnbcrt1samehash")) {
