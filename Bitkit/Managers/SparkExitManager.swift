@@ -351,20 +351,19 @@ final class SparkExitManager {
     private(set) var refusedSavingsPayment: OnchainSendAttempt?
 
     var isSavingsPaymentRefused: Bool {
-        record.map { Self.isSavingsPaymentRefused($0, attempt: refusedSavingsPayment, fundingState: fundingState) } ?? false
+        record.map { Self.isSavingsPaymentRefused($0, attempt: refusedSavingsPayment, fundingSeenSats: fundingSeenSats) } ?? false
     }
 
     /// A node refused the savings payment of `record`'s fee funding, and none was adopted since: only before the exit
-    /// is funded, for the payment the start made. Never once a payment from another wallet covered the funding.
+    /// is funded, for the payment the start made. Never once funding from another wallet reached the address, as the
+    /// last read of it saw: the same payment again would fund it twice.
     nonisolated static func isSavingsPaymentRefused(
         _ record: SparkExitRecord,
         attempt: OnchainSendAttempt?,
-        fundingState: SparkExitFundingState? = nil
+        fundingSeenSats: UInt64 = 0
     ) -> Bool {
-        if case .seen = fundingState {
-            return false
-        }
-        guard record.isActive, case .awaitingFunding = record.phase, record.fundingPaymentTxid == nil,
+        guard fundingSeenSats == 0,
+              record.isActive, case .awaitingFunding = record.phase, record.fundingPaymentTxid == nil,
               let address = record.funding.first?.address, let attempt
         else { return false }
         return attempt.address == address && attempt.status == .rejected
@@ -376,10 +375,10 @@ final class SparkExitManager {
     nonisolated static func payRefusedAgain(
         _ refused: OnchainSendAttempt,
         record: SparkExitRecord,
-        fundingState: SparkExitFundingState? = nil,
+        fundingSeenSats: UInt64 = 0,
         retrySamePayment: (OnchainSendPendingContext) async throws -> OnchainSendResult
     ) async throws -> String? {
-        guard isSavingsPaymentRefused(record, attempt: refused, fundingState: fundingState), refused.canRetrySamePayment else {
+        guard isSavingsPaymentRefused(record, attempt: refused, fundingSeenSats: fundingSeenSats), refused.canRetrySamePayment else {
             throw OnchainSendAttemptError.unresolved
         }
         let result = try await retrySamePayment(OnchainSendPendingContext(attemptId: refused.id, walletId: refused.walletId, txid: refused.txid))
@@ -398,16 +397,16 @@ final class SparkExitManager {
             record = stored
         }
         guard let current = record, let refused = refusedSavingsPayment else { return }
-        // Read under the lock, as the funding is paid: another wallet may have covered it since the last tick. Progress
-        // then shows that payment and stops offering savings, and nothing is sent.
-        if let chain {
-            await refreshFundingSeen(chain: chain, record: current)
-            if case .seen = fundingState {
-                return
-            }
+        // Funded or forgotten while this waited for the lock: nothing left to pay.
+        guard Self.isSavingsPaymentRefused(current, attempt: refused) else { return }
+        // Read under the lock, as the funding is paid: another wallet may have funded the address since the last tick.
+        // Nothing is sent without that read, and once funding is there Progress shows it and stops offering savings.
+        guard let chain, await refreshFundingSeen(chain: chain, record: current) != nil else {
+            throw AppError(message: t("wallet__send_error_tx_failed"), debugMessage: "Spark exit funding address could not be read")
         }
+        guard Self.isSavingsPaymentRefused(current, attempt: refused, fundingSeenSats: fundingSeenSats) else { return }
         let attempts = OnchainSendAttemptService.shared
-        let txid = try await Self.payRefusedAgain(refused, record: current, fundingState: fundingState) { context in
+        let txid = try await Self.payRefusedAgain(refused, record: current, fundingSeenSats: fundingSeenSats) { context in
             try await attempts.retrySamePayment(using: LightningService.shared, context: context) { attempt, _ in
                 guard attempt.id == refused.id, attempt.address == refused.address else { throw OnchainSendAttemptError.unresolved }
             }
@@ -697,21 +696,24 @@ final class SparkExitManager {
     }
 
     /// Only new funding counts: the adopted inputs and the CPFP change at the address are already part of the exit.
-    private func refreshFundingSeen(chain: SparkExitChain, record: SparkExitRecord) async {
-        guard let address = record.funding.first?.address else { return }
+    /// The address read, or nil when it could not be read or the exit has nothing to fund.
+    @discardableResult
+    private func refreshFundingSeen(chain: SparkExitChain, record: SparkExitRecord) async -> [EsploraUtxo]? {
+        guard let address = record.funding.first?.address else { return nil }
         fundingAddress = address
         guard record.fundingShortfallSats != nil else {
             // Adopted, or nothing to fund: what was seen is part of the exit now, never funding still to count.
             fundingSeenSats = 0
             fundingSeenCount = 0
             setFunding(nil, for: record)
-            return
+            return nil
         }
         let utxos = try? await chain.utxos(address: address)
         if let utxos {
             fundingSeenSats = SparkExitMath.newFunding(utxos, record: record).reduce(0) { $0 + $1.value }
         }
         setFunding(SparkExitMath.fundingState(record, utxos: utxos), askTotal: SparkExitMath.fundingAskTotal(record, utxos: utxos), for: record)
+        return utxos
     }
 
     private func setFunding(_ state: SparkExitFundingState?, askTotal: UInt64? = nil, for record: SparkExitRecord) {
