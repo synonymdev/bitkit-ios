@@ -11,8 +11,11 @@ struct SendContactSelectView: View {
 
     @Binding var navigationPath: [SendRoute]
     let hwSend: HwSendCoordinator
-    /// Whether the picker is the screen on top of this send; a contact resolved after leaving it opens no payment.
-    var isShown: () -> Bool = { true }
+    /// The picker visit on top of this send, or nil when the picker is not the top screen.
+    /// A contact that resolves after its visit ended opens no payment.
+    var currentVisit: () -> Int? = { 0 }
+    /// Lets the sheet release the previous pick's context before this pick claims its own.
+    var onBeforeClaim: () -> Void = {}
     /// Reports the context this picker claimed, so the sheet can release it when the user comes back.
     var onContextClaimed: (UUID) -> Void = { _ in }
     @State private var selectedContactKey: String?
@@ -62,6 +65,7 @@ struct SendContactSelectView: View {
     private func pay(_ contact: PubkyContact) async {
         guard selectedContactKey == nil else { return }
         let presentationID = sheets.activeSheetConfiguration?.presentationID
+        let visit = currentVisit()
         selectedContactKey = contact.publicKey
         defer { selectedContactKey = nil }
 
@@ -75,7 +79,8 @@ struct SendContactSelectView: View {
                     publicKey: contact.publicKey,
                     privatePaymentContext: privatePaymentContext,
                     endpoints: endpoints,
-                    presentationID: presentationID
+                    presentationID: presentationID,
+                    visit: visit
                 )
             case .noEndpoint, .notOpened, .privateLinkPending, .waitingForUpdatedPaymentList:
                 if let messageKey = result.contactPaymentFailureMessageKey {
@@ -100,14 +105,17 @@ struct SendContactSelectView: View {
         publicKey: String,
         privatePaymentContext: PrivatePaykitPaymentContext?,
         endpoints: [PublicPaykitService.Endpoint],
-        presentationID: UUID?
+        presentationID: UUID?,
+        visit: Int?
     ) async -> Bool {
-        guard let presentationID, sheets.activeSheetConfiguration?.presentationID == presentationID, isShown() else { return false }
+        guard let presentationID, sheets.activeSheetConfiguration?.presentationID == presentationID,
+              let visit, currentVisit() == visit else { return false }
         let contactPaymentContext = ContactPaymentContext(
             publicKey: publicKey,
             privatePaymentContext: privatePaymentContext,
             endpoints: endpoints
         )
+        onBeforeClaim()
         guard app.claimContactPaymentContext(contactPaymentContext) else { return false }
         onContextClaimed(contactPaymentContext.id)
 
@@ -138,7 +146,7 @@ struct SendContactSelectView: View {
 
         guard sheets.activeSheetConfiguration?.presentationID == presentationID,
               app.ownsContactPaymentContext(contactPaymentContext) else { return false }
-        guard isShown(),
+        guard currentVisit() == visit,
               let route = PaymentNavigationHelper.contactPaymentRoute(app: app, currency: currency, settings: settings)
         else {
             app.resetSendState(ownerID: presentationID)

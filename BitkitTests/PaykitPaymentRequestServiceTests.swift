@@ -2020,7 +2020,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
     }
 
-    func testReturningToContactPickerKeepsScanInFlightAndPaymentRequest() async throws {
+    func testReturningToContactPickerKeepsScanInFlight() async throws {
         let address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"
         let (decodeStarted, decodeStartedContinuation) = AsyncStream.makeStream(of: Void.self)
         let (decodeResult, decodeResultContinuation) = AsyncStream.makeStream(of: Void.self)
@@ -2052,6 +2052,12 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(app.ownsContactPaymentContext(context))
         XCTAssertNotNil(app.scannedOnchainInvoice)
         XCTAssertTrue(app.releaseAbandonedContactSelection(contextID: context.id, ownerID: presentationID))
+    }
+
+    func testReturningToContactPickerKeepsPaymentRequest() async throws {
+        let app = contactSelectionApp { _ in throw CancellationError() }
+        let presentationID = UUID()
+        app.resetSendState(ownerID: presentationID)
 
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)
@@ -2061,6 +2067,115 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(app.claimContactPaymentContext(requestContext))
         XCTAssertFalse(app.releaseAbandonedContactSelection(contextID: requestContext.id, ownerID: presentationID))
         XCTAssertTrue(app.ownsContactPaymentContext(requestContext))
+    }
+
+    func testFailedContactResolutionLetsTheNextPickClaim() async throws {
+        struct DecodeFailure: Error {}
+        let app = contactSelectionApp { _ in throw DecodeFailure() }
+        let presentationID = UUID()
+        app.resetSendState(ownerID: presentationID)
+
+        let failed = ContactPaymentContext(publicKey: "pubkycontact")
+        XCTAssertTrue(app.claimContactPaymentContext(failed))
+        do {
+            try await app.handleScannedData("bitcoin:invalid", claimedContactPaymentContext: failed, sendPresentationID: presentationID)
+            XCTFail("Expected the decode to fail")
+        } catch {}
+        XCTAssertFalse(app.isHandlingScannedData)
+        XCTAssertFalse(app.hasSendPaymentTarget)
+
+        // The picker resets a failed pick; a pick that was left claimed is released before the next claim.
+        if app.ownsContactPaymentContext(failed) {
+            XCTAssertTrue(app.releaseAbandonedContactSelection(contextID: failed.id, ownerID: presentationID))
+        }
+        XCTAssertTrue(app.claimContactPaymentContext(ContactPaymentContext(publicKey: "pubkyother")))
+    }
+
+    func testCancelledContactResolutionLetsTheNextPickClaim() async throws {
+        let (decodeStarted, decodeStartedContinuation) = AsyncStream.makeStream(of: Void.self)
+        let app = contactSelectionApp { _ in
+            decodeStartedContinuation.yield()
+            try await Task.sleep(for: .seconds(60))
+            throw CancellationError()
+        }
+        let presentationID = UUID()
+        app.resetSendState(ownerID: presentationID)
+
+        let cancelled = ContactPaymentContext(publicKey: "pubkycontact")
+        XCTAssertTrue(app.claimContactPaymentContext(cancelled))
+        let scan = Task { @MainActor in
+            try await app.handleScannedData("bitcoin:any", claimedContactPaymentContext: cancelled, sendPresentationID: presentationID)
+        }
+        for await _ in decodeStarted {
+            break
+        }
+        XCTAssertFalse(app.releaseAbandonedContactSelection(contextID: cancelled.id, ownerID: presentationID))
+        scan.cancel()
+        do {
+            try await scan.value
+            XCTFail("Expected the scan to be cancelled")
+        } catch {}
+        XCTAssertFalse(app.isHandlingScannedData)
+        XCTAssertFalse(app.hasSendPaymentTarget)
+
+        if app.ownsContactPaymentContext(cancelled) {
+            XCTAssertTrue(app.releaseAbandonedContactSelection(contextID: cancelled.id, ownerID: presentationID))
+        }
+        XCTAssertTrue(app.claimContactPaymentContext(ContactPaymentContext(publicKey: "pubkyother")))
+    }
+
+    func testContactPickerVisitEndsWhenThePickerLeavesTheTop() {
+        XCTAssertTrue(SendSheet.didLeaveContactPicker(root: .options, oldPath: [.contact], newPath: []))
+        XCTAssertTrue(SendSheet.didLeaveContactPicker(root: .options, oldPath: [.contact], newPath: [.contact, .amount]))
+        XCTAssertTrue(SendSheet.didLeaveContactPicker(root: .options, oldPath: [.contact], newPath: [.amount]))
+        XCTAssertFalse(SendSheet.didLeaveContactPicker(root: .options, oldPath: [], newPath: [.contact]))
+        XCTAssertFalse(SendSheet.didLeaveContactPicker(root: .options, oldPath: [.contact, .amount], newPath: [.contact]))
+        XCTAssertFalse(SendSheet.didLeaveContactPicker(root: .options, oldPath: [.contact, .amount], newPath: []))
+
+        // A pick captures its visit; it may open a payment only while the same visit is still on top.
+        var visit = 0
+        var path: [SendRoute] = [.contact]
+        let picked = SendSheet.contactPickerVisit(root: .options, path: path, visit: visit)
+        XCTAssertEqual(picked, 0)
+        for next: [SendRoute] in [[], [.contact]] {
+            if SendSheet.didLeaveContactPicker(root: .options, oldPath: path, newPath: next) {
+                visit += 1
+            }
+            path = next
+        }
+        // Back to options and Contact again: the picker is on top, but the earlier pick no longer matches.
+        XCTAssertEqual(SendSheet.contactPickerVisit(root: .options, path: path, visit: visit), 1)
+        XCTAssertNotEqual(SendSheet.contactPickerVisit(root: .options, path: path, visit: visit), picked)
+        XCTAssertNil(SendSheet.contactPickerVisit(root: .options, path: [], visit: visit))
+        XCTAssertNil(SendSheet.contactPickerVisit(root: .options, path: [.contact, .amount], visit: visit))
+        XCTAssertEqual(SendSheet.contactPickerVisit(root: .contact, path: [], visit: visit), 1)
+    }
+
+    func testContactSelectionIsNotReleasedDuringOrAfterAPayment() {
+        func canRelease(current: Bool = true, finished: Bool = false, submitting: Bool = false, active: Bool = false) -> Bool {
+            SendSheet.canReleaseContactSelection(
+                isCurrentPresentation: current, didFinish: finished, isSubmittingPayment: submitting, isPaymentActive: active
+            )
+        }
+        XCTAssertTrue(canRelease())
+        XCTAssertFalse(canRelease(current: false))
+        XCTAssertFalse(canRelease(finished: true))
+        XCTAssertFalse(canRelease(submitting: true))
+        XCTAssertFalse(canRelease(active: true))
+    }
+
+    func testFeeRateSurvivesContactReleaseOnlyForTheDefaultSpeed() {
+        func keeps(_ selected: TransactionSpeed, rate: UInt32? = 2, failed: Bool = false) -> Bool {
+            SendSheet.keepsFeeRateAfterContactRelease(
+                selectedSpeed: selected, defaultSpeed: .normal, feeRate: rate, feeRateLoadFailed: failed
+            )
+        }
+        XCTAssertTrue(keeps(.normal))
+        // Without a kept rate the sheet reloads it, so Confirm is not left waiting.
+        XCTAssertFalse(keeps(.normal, rate: nil))
+        XCTAssertFalse(keeps(.normal, failed: true))
+        XCTAssertFalse(keeps(.fast))
+        XCTAssertFalse(keeps(.custom(satsPerVByte: 9)))
     }
 
     func testContactPickerReturnIsDetectedOnlyWhenPoppingBackToIt() {
