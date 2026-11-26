@@ -56,11 +56,14 @@ struct SendFeeRate: View {
                     app.selectedWalletToPayFrom = .lightning
                     navigationPath.removeLast()
                 } else {
-                    try await wallet.setFeeRate(speed: speed)
+                    // A rate that lands after another speed was picked is dropped, and so is its navigation.
+                    try await wallet.setFeeRate(speed: speed) { wallet.selectedSpeed == speed }
                     app.selectedWalletToPayFrom = .onchain
                     navigationPath.removeLast()
                     await refreshHardwareMaxIfNeeded()
                 }
+            } catch is CancellationError {
+                return
             } catch {
                 Logger.error("Error setting fee rate: \(error)", context: "SendFeeRate")
             }

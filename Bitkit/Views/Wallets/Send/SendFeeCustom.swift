@@ -174,15 +174,19 @@ struct SendFeeCustom: View {
             return
         }
 
-        wallet.selectedSpeed = .custom(satsPerVByte: feeRate)
+        let speed = TransactionSpeed.custom(satsPerVByte: feeRate)
+        wallet.selectedSpeed = speed
 
         // Set the custom fee rate
         Task {
             do {
-                try await wallet.setFeeRate(speed: .custom(satsPerVByte: feeRate))
+                // A rate that lands after another speed was picked is dropped, and so is its navigation.
+                try await wallet.setFeeRate(speed: speed) { wallet.selectedSpeed == speed }
                 app.selectedWalletToPayFrom = .onchain
                 navigationPath.removeLast()
                 await refreshHardwareMaxIfNeeded()
+            } catch is CancellationError {
+                return
             } catch {
                 Logger.error("Failed to set custom fee rate: \(error)")
                 app.toast(

@@ -190,8 +190,9 @@ final class SendPresentationState {
             contactSelectionContextID = nil
         } else {
             contactSelectionContextID = nil
-            // The context is already gone; this send's own leftovers are still cleared, another send's are not.
-            guard canRelease, app.contactPaymentContext == nil, let presentationID, app.sendStateOwnerID == presentationID
+            // The context is already gone; this send's own leftovers are still cleared, another send's and a scan in flight are not.
+            guard canRelease, app.contactPaymentContext == nil, !app.isHandlingScannedData,
+                  let presentationID, app.sendStateOwnerID == presentationID
             else { return false }
         }
         feeRateReloadTask?.cancel()
