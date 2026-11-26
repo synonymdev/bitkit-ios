@@ -3,8 +3,8 @@
     Logs the paired Jade out on the device itself and checks the message the app shows when it
     next needs the Jade. Requires `JADE_MODE=interactive ./scripts/jade-emulator start` in
     `bitkit-docker`, a regtest debug build with the Jade emulator enabled (see the README) and no
-    Jade paired. The device answers the next request with HW_LOCKED. iOS then asks for the PIN on the
-    device again and retries, where Android reports the Jade as busy (see the README).
+    Jade paired. The device answers the next request with HW_LOCKED, and the app asks for the PIN on
+    the device again and retries.
   </description>
   <actions>
     <action>
