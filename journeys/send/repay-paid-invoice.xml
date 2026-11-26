@@ -6,7 +6,7 @@
     payee that reuses a payment hash and is covered by SendConfirmationViewTests.
 
     Preconditions: two Debug builds on two simulators, each with Spark connected on its regtest (no key needed), no
-    Lightning channel and QuickPay disabled. The payer has a Spark balance of at least 5,000 sats from Lightspark's
+    Lightning channel and QuickPay disabled. The payer has a Spark balance of at least 10,000 sats from Lightspark's
     regtest faucet, sent to the deposit address its Spark connection screen shows (id "SparkDepositAddress"). Bitkit's
     own invoices carry no Spark address, so the payer pays them over Lightning through Spark's provider.
   </description>
