@@ -362,7 +362,7 @@ final class SparkExitManager {
         attempt: OnchainSendAttempt?,
         fundingSeenSats: UInt64 = 0
     ) -> Bool {
-        guard fundingSeenSats == 0,
+        guard fundingSeenSats == 0, record.fundedSats == 0,
               record.isActive, case .awaitingFunding = record.phase, record.fundingPaymentTxid == nil,
               let address = record.funding.first?.address, let attempt
         else { return false }

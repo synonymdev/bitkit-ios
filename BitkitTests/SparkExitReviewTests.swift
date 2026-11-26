@@ -1138,6 +1138,9 @@ final class SparkExitReviewTests: XCTestCase {
         let record = SparkExitFixtures.record()
         XCTAssertTrue(SparkExitManager.isSavingsPaymentRefused(record, attempt: refusedPayment(), fundingSeenSats: 0))
         XCTAssertFalse(SparkExitManager.isSavingsPaymentRefused(record, attempt: refusedPayment(), fundingSeenSats: 4000))
+        var adopted = record
+        adopted.funding[0].valueSats = 8000
+        XCTAssertFalse(SparkExitManager.isSavingsPaymentRefused(adopted, attempt: refusedPayment()), "adopted funding is never paid again")
 
         var retries = 0
         do {
