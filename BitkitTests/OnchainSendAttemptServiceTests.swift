@@ -1776,6 +1776,24 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         }
     }
 
+    /// A journal that can't be read or written before admission sends nothing, and says so as a pre-dispatch failure.
+    func testAJournalFailureBeforeAdmissionIsAPreDispatchFailure() async throws {
+        for failLoad in [false, true] {
+            let store = MemoryAttemptStore()
+            store.failLoad = failLoad
+            store.failSave = !failLoad
+            let service = OnchainSendAttemptService(store: store)
+            let node = AttemptNodeMock(result: .accepted(txid: txid))
+            do {
+                _ = try await send(service, node: node)
+                XCTFail("a send the journal never admitted succeeded")
+            } catch let OnchainSendAttemptError.preDispatch(error) {
+                XCTAssertTrue(error is MemoryAttemptStoreError)
+            }
+            XCTAssertEqual(node.calls, 0)
+        }
+    }
+
     func testGenericNodeWorkflowErrorsRetainGuard() async throws {
         for error in [MemoryAttemptStoreError.failed as Error, CancellationError()] {
             let store = MemoryAttemptStore()

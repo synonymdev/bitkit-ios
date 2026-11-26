@@ -697,7 +697,7 @@ actor OnchainSendAttemptService {
         // Every send either sends the kept transaction or drops it, so it never outlives a later spend of its coins.
         let held = heldCandidate
         heldCandidate = nil
-        if let prior = try currentAdmissionAttempt(), prior.status == .accepted, let txid = prior.txid,
+        if let prior = try beforeAdmission({ try currentAdmissionAttempt() }), prior.status == .accepted, let txid = prior.txid,
            prior.walletId == Self.walletId(index: walletIndex),
            prior.recoveryContext?.paymentIdentity == nil || prior.recoveryContext?.paymentIdentity == paymentIdentity,
            (requestId != nil && prior.requestId == requestId) || (orderId != nil && prior.orderId == orderId)
@@ -722,17 +722,19 @@ actor OnchainSendAttemptService {
         if reviewedMiningFeeSats != nil {
             lightningService.beforeOnchainNodeStops { [weak self, weak dispatchNode] in await self?.nodeStopping(dispatchNode) }
         }
-        let attemptId = try admit(
-            walletId: Self.walletId(index: walletIndex),
-            requestId: requestId,
-            orderId: orderId,
-            address: address,
-            amountSats: amountSats,
-            isMaxAmount: isMaxAmount,
-            followupContext: followupContext,
-            transferContext: transferContext,
-            isSparkFunding: isSparkFunding
-        )
+        let attemptId = try beforeAdmission {
+            try admit(
+                walletId: Self.walletId(index: walletIndex),
+                requestId: requestId,
+                orderId: orderId,
+                address: address,
+                amountSats: amountSats,
+                isMaxAmount: isMaxAmount,
+                followupContext: followupContext,
+                transferContext: transferContext,
+                isSparkFunding: isSparkFunding
+            )
+        }
         nativeDispatchInProgress = attemptId
         defer { nativeDispatchInProgress = nil }
         let prepared: PreparedOnchainSendDispatch
@@ -1007,6 +1009,18 @@ actor OnchainSendAttemptService {
         guard let attempt = try currentAttempt(), attempt.id == attemptId, attempt.status == .accepted, let txid = attempt.txid
         else { return nil }
         return .accepted(txid: txid)
+    }
+
+    /// A send journal read or write that failed before the attempt was admitted: nothing went out, so it is a
+    /// pre-dispatch failure, which callers may offer again. The journal's own refusals keep their meaning.
+    private func beforeAdmission<T>(_ body: () throws -> T) throws -> T {
+        do {
+            return try body()
+        } catch let error as OnchainSendAttemptError {
+            throw error
+        } catch {
+            throw OnchainSendAttemptError.preDispatch(error)
+        }
     }
 
     func admit(
