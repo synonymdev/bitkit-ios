@@ -6,6 +6,12 @@ final class PubkyAuthRequestTests: XCTestCase {
     private let relay = "https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F"
     private let secret = "e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s"
     private let publicKey = "5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo"
+    private let signer = "8um71us3fyw6h8wbcxb5ar3rwusy1a6u49956ikzojg3gcwd1dty"
+
+    private func grantSigninUrl(_ extraQuery: String = "") -> String {
+        "pubkyauth://signin_grant?caps=/pub/example/:rw&relay=\(relay)&secret=\(secret)" +
+            "&cid=paykit.test&cpk=\(publicKey)\(extraQuery)"
+    }
 
     func testProtocolUrlRecognizesPubkyAuthSchemeCaseInsensitively() {
         XCTAssertTrue(PubkyAuthRequest.isProtocolURL("pubkyauth://signin?caps=/pub/bitkit.to/:rw"))
@@ -338,6 +344,82 @@ final class PubkyAuthRequestTests: XCTestCase {
         let url = authUrl(capabilities: PubkyAuthClaim.requiredCapabilities)
 
         XCTAssertNil(try PubkyAuthRequest.parse(url: url).bitkitClaim)
+    }
+
+    func testGrantSigninReadsThePubkyItMustBeApprovedWith() throws {
+        XCTAssertEqual(signer.count, 52)
+        XCTAssertNil(try PubkyAuthRequest.parse(url: grantSigninUrl()).expectedSigner)
+        XCTAssertEqual(try PubkyAuthRequest.parse(url: grantSigninUrl("&spk=\(signer)")).expectedSigner, signer)
+        XCTAssertEqual(try PubkyAuthRequest.parseExpectedSigner(url: grantSigninUrl("&%73pk=\(signer)#spk=x")), signer)
+
+        let handoff = grantSigninUrl("&spk=\(signer)")
+            .replacingOccurrences(of: "pubkyauth://signin_grant", with: "bitkit://pubky-auth/signin")
+        XCTAssertEqual(try PubkyAuthRequest.parse(url: handoff).expectedSigner, signer)
+    }
+
+    func testGrantSigninWithRepeatedOrMalformedExpectedSignerIsInvalid() {
+        let invalidQueries = [
+            "&spk",
+            "&spk=",
+            "&spk=not-a-public-key",
+            "&spk=pubky\(signer)",
+            "&spk=pk:\(signer)",
+            "&spk=https://\(signer)/",
+            "&spk=\(signer.uppercased())",
+            "&spk=%20\(signer)",
+            "&spk=\(signer)%20",
+            "&spk=\(signer)%0A",
+            "&spk=\(signer)/",
+            "&spk=\(signer.dropLast())",
+            "&spk=\(signer.dropLast())b",
+            "&spk=\(signer)&spk=\(signer)",
+            "&spk=\(signer)&spk=\(publicKey)",
+            "&spk=\(signer)&%73pk=\(signer)",
+            "&spk=\(signer)&spk=",
+        ]
+
+        for query in invalidQueries {
+            XCTAssertThrowsError(try PubkyAuthRequest.parseExpectedSigner(url: grantSigninUrl(query)), query) {
+                XCTAssertEqual($0 as? PubkyAuthRequestError, .invalidUrl, query)
+            }
+            XCTAssertThrowsError(try PubkyAuthRequest.parse(url: grantSigninUrl(query)), query) {
+                XCTAssertEqual($0 as? PubkyAuthRequestError, .invalidUrl, query)
+            }
+        }
+    }
+
+    func testSigninReadDifferentlyFromTheSdkIsStillHeldToItsExpectedSigner() throws {
+        for prefix in ["pubkyauth://user@signin_grant:80", "pubkyauth://signin_grant/", "pubkyauth://signin"] {
+            XCTAssertEqual(try PubkyAuthRequest.parseExpectedSigner(url: "\(prefix)?spk=\(signer)"), signer, prefix)
+            XCTAssertThrowsError(try PubkyAuthRequest.parseExpectedSigner(url: "\(prefix)?spk=\(signer)&spk=\(signer)"), prefix) {
+                XCTAssertEqual($0 as? PubkyAuthRequestError, .invalidUrl, prefix)
+            }
+        }
+        let split = "\(signer.prefix(26))\t\(signer.suffix(26))"
+        XCTAssertThrowsError(try PubkyAuthRequest.parseExpectedSigner(url: grantSigninUrl("&spk=\(split)"))) {
+            XCTAssertEqual($0 as? PubkyAuthRequestError, .invalidUrl)
+        }
+    }
+
+    func testSignupRequestsIgnoreTheExpectedSigner() throws {
+        for prefix in ["pubkyauth://signup_grant", "pubkyauth://signup", "pubkyauth://direct_signup", "pubkyring://signup"] {
+            let url = "\(prefix)?caps=/pub/example/:rw&hs=homeserver&spk=not-a-public-key&spk=other"
+
+            XCTAssertNil(try PubkyAuthRequest.parseExpectedSigner(url: url), prefix)
+        }
+    }
+
+    func testExpectedSignerMatchesOnlyThisPubkyWithOrWithoutItsPrefix() {
+        let bareKeyStartingWithPrefix = "pubky" + signer.dropFirst(5)
+
+        XCTAssertTrue(PubkyAuthRequest.isExpectedSigner(nil, publicKey: signer))
+        XCTAssertTrue(PubkyAuthRequest.isExpectedSigner(signer, publicKey: signer))
+        XCTAssertTrue(PubkyAuthRequest.isExpectedSigner(signer, publicKey: "pubky\(signer)"))
+        XCTAssertTrue(PubkyAuthRequest.isExpectedSigner(bareKeyStartingWithPrefix, publicKey: bareKeyStartingWithPrefix))
+        XCTAssertFalse(PubkyAuthRequest.isExpectedSigner(publicKey, publicKey: signer))
+        XCTAssertFalse(PubkyAuthRequest.isExpectedSigner(publicKey, publicKey: "pubky\(signer)"))
+        XCTAssertFalse(PubkyAuthRequest.isExpectedSigner(String(signer.dropFirst(5)), publicKey: bareKeyStartingWithPrefix))
+        XCTAssertFalse(PubkyAuthRequest.isExpectedSigner(signer, publicKey: ""))
     }
 
     func testParseUrlRejectsDuplicateBitkitClaim() {

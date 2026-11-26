@@ -893,6 +893,7 @@
 "pubky_auth__use_ring" = "Usa Pubky Ring";
 "pubky_auth__use_ring_desc" = "Bitkit non può leggere la chiave di questo pubky da Pubky Ring. Apri Pubky Ring per approvare questa richiesta.";
 "pubky_auth__invalid_request" = "Richiesta di autorizzazione non valida";
+"pubky_auth__other_pubky" = "Questa richiesta è per {pubky}, non per il pubky di questo portafoglio.";
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Crea una nuova identità Pubky su questo homeserver. Continua solo se ti fidi.";
 "pubky_auth__approval_failed" = "Autorizzazione Non Riuscita";

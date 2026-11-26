@@ -129,6 +129,7 @@ enum PubkyAuthRequestError: Error, Equatable {
     case duplicateSecret
     case unsupportedBitkitClaim(String)
     case invalidBitkitClaimCapabilities
+    case signerMismatch(expectedSigner: String)
 }
 
 // MARK: - PubkyAuth Permission
@@ -172,6 +173,8 @@ struct PubkyAuthRequest {
     let homeserverPublicKey: String?
     let signupToken: String?
     let authorizationUrl: String?
+    /// The only pubky that may approve this request (`spk`), as bare z-base-32. Nil when the request names none.
+    let expectedSigner: String?
 
     var isSignup: Bool {
         Self.isSignupURL(rawUrl)
@@ -341,6 +344,7 @@ struct PubkyAuthRequest {
             .compactMap { extractServiceName($0.path) }
             .filter { seenServiceNames.insert($0).inserted }
         let bitkitClaim = try parseBitkitClaim(url: url, capabilities: capabilities, requiresBitkitClaim: requiresBitkitClaim)
+        let expectedSigner = try parseExpectedSigner(url: url)
         return PubkyAuthRequest(
             rawUrl: url,
             kind: kind,
@@ -352,8 +356,44 @@ struct PubkyAuthRequest {
             bitkitClaim: bitkitClaim,
             homeserverPublicKey: homeserverPublicKey,
             signupToken: signupToken,
-            authorizationUrl: authorizationUrl
+            authorizationUrl: authorizationUrl,
+            expectedSigner: expectedSigner
         )
+    }
+
+    /// Reads the pubky a sign-in request must be approved with. Absent is fine; a repeated value or anything other than
+    /// a bare canonical z-base-32 key makes the request invalid, as in the Pubky SDK parser for `signin_grant`. Only
+    /// signup requests ignore the parameter, so a sign-in this parser reads differently from the SDK is still held to it.
+    static func parseExpectedSigner(url: String) throws -> String? {
+        guard let components = URLComponents(string: url) else {
+            throw PubkyAuthRequestError.invalidUrl
+        }
+        guard !isSignupURL(components) else { return nil }
+        let values = components.queryItems?.filter { $0.name == "spk" }.map { $0.value ?? "" } ?? []
+        guard let value = values.first else { return nil }
+        // 52 z-base-32 symbols encode 260 bits, so the last symbol of a 32-byte key carries a single bit.
+        guard values.count == 1,
+              value.range(of: "^[ybndrfg8ejkmcpqxot1uwisza345h769]{51}[yo]$", options: .regularExpression) != nil,
+              value.utf8.count == 52
+        else {
+            throw PubkyAuthRequestError.invalidUrl
+        }
+        return value
+    }
+
+    /// Whether `publicKey`, bare or with the `pubky` prefix, may approve a request naming `expectedSigner`.
+    static func isExpectedSigner(_ expectedSigner: String?, publicKey: String) -> Bool {
+        guard let expectedSigner else { return true }
+        let isPrefixed = publicKey.count == 57 && publicKey.hasPrefix("pubky")
+        return expectedSigner == (isPrefixed ? String(publicKey.dropFirst(5)) : publicKey)
+    }
+
+    /// Throws before anything is signed when `authUrl` names a pubky other than the one `secretKeyHex` signs with.
+    static func requireExpectedSigner(authUrl: String, signerPublicKey: () throws -> String) throws {
+        guard let expectedSigner = try parseExpectedSigner(url: authUrl) else { return }
+        guard try isExpectedSigner(expectedSigner, publicKey: signerPublicKey()) else {
+            throw PubkyAuthRequestError.signerMismatch(expectedSigner: expectedSigner)
+        }
     }
 
     private static func ringAuthorizationUrl(relay: String, secret: String, capabilities: String) -> String {

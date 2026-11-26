@@ -7,6 +7,7 @@ private let approvalTestXpub =
     "tpubDDWohsp5dx2iMJ9N7iHbgAEDhH4BJB9NWW1fEW3yA3AFNDREmpzteCXNqppMLUmKFY5q5e3" +
     "PXtS5CuqWCQbYcGhpPqYAgQSYdwknW9J6sQv"
 private let approvalTestClientPublicKey = "5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo"
+private let approvalTestSignerPublicKey = "8um71us3fyw6h8wbcxb5ar3rwusy1a6u49956ikzojg3gcwd1dty"
 
 private func approvalTestAuthUrl(secret: String = "e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s") -> String {
     "pubkyauth://signin_grant?caps=\(PubkyAuthClaim.requiredCapabilities)" +
@@ -44,6 +45,92 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
 
         XCTAssertTrue(approved)
         XCTAssertEqual(PubkyAuthApprovalSheet.initialState(for: request), .authorize)
+    }
+
+    @MainActor
+    func testRequestNamingAnotherPubkyIsNeverSigned() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "ExpectedSigner.\(UUID().uuidString)"))
+        let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: ApprovalFakeWatchOnlyAccountNode())
+        let other = approvalTestClientPublicKey
+        for url in [ordinaryApprovalTestAuthUrl(), approvalTestAuthUrl()].map({ "\($0)&spk=\(other)" }) {
+            let request = try PubkyAuthRequest.parse(url: url)
+            XCTAssertEqual(request.expectedSigner, other)
+            do {
+                try await PubkyService.approveAuthRequest(
+                    request: request, authUrl: url, accountName: "Earn", secretKeyHex: "secret", accountManager: manager,
+                    signerPublicKey: { _ in approvalTestSignerPublicKey },
+                    ordinaryApproval: { _, _, _, _ in XCTFail("A request for another pubky must not be signed") },
+                    companionApproval: { _, _, _, _, _ in XCTFail("A request for another pubky must not be signed") }
+                )
+                XCTFail("Expected the request to be refused")
+            } catch {
+                XCTAssertEqual(error as? PubkyAuthRequestError, .signerMismatch(expectedSigner: other))
+            }
+        }
+        XCTAssertTrue(manager.accounts.isEmpty)
+    }
+
+    @MainActor
+    func testRequestNamingThisPubkyIsApproved() async throws {
+        let url = "\(ordinaryApprovalTestAuthUrl())&spk=\(approvalTestSignerPublicKey)"
+        var approved = false
+
+        try await PubkyService.approveAuthRequest(
+            request: PubkyAuthRequest.parse(url: url), authUrl: url, accountName: "", secretKeyHex: "secret",
+            signerPublicKey: { _ in "pubky\(approvalTestSignerPublicKey)" },
+            ordinaryApproval: { authUrl, _, _, _ in
+                XCTAssertEqual(authUrl, url)
+                approved = true
+            }
+        )
+
+        XCTAssertTrue(approved)
+    }
+
+    func testSigningEntryPointsRefuseAnotherPubkyBeforeAnythingElse() async throws {
+        let secretKeyHex = String(repeating: "11", count: 32)
+        let own = try PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
+        let other = approvalTestClientPublicKey
+        XCTAssertFalse(PubkyAuthRequest.isExpectedSigner(other, publicKey: own))
+        let ordinaryUrl = "\(ordinaryApprovalTestAuthUrl())&spk=\(other)"
+        let companionUrl = "\(approvalTestAuthUrl())&spk=\(other)"
+
+        do {
+            try await PubkyService.approveAuth(
+                authUrl: ordinaryUrl, expectedCapabilities: "/pub/example/:rw", approvedClientID: "paykit.test",
+                secretKeyHex: secretKeyHex
+            )
+            XCTFail("Expected the request to be refused")
+        } catch {
+            XCTAssertEqual(error as? PubkyAuthRequestError, .signerMismatch(expectedSigner: other))
+        }
+        do {
+            try await PubkyService.approveAuthWithCompanionClaim(
+                authUrl: companionUrl, approvedClientID: "paykit.test", claim: .watchOnlyAccountV1, accountPayload: nil,
+                secretKeyHex: secretKeyHex
+            )
+            XCTFail("Expected the request to be refused")
+        } catch {
+            XCTAssertEqual(error as? PubkyAuthRequestError, .signerMismatch(expectedSigner: other))
+        }
+        do {
+            try await PubkyService.approveAuth(
+                authUrl: "\(ordinaryUrl)&spk=\(other)", expectedCapabilities: "/pub/example/:rw",
+                approvedClientID: "paykit.test", secretKeyHex: secretKeyHex
+            )
+            XCTFail("Expected the request to be invalid")
+        } catch {
+            XCTAssertEqual(error as? PubkyAuthRequestError, .invalidUrl)
+        }
+    }
+
+    func testRefusalNamesThePubkyTheRequestIsFor() {
+        let description = pubkyAuthApprovalFailureDescription(
+            PubkyAuthRequestError.signerMismatch(expectedSigner: approvalTestClientPublicKey)
+        )
+
+        XCTAssertTrue(description.contains("5jsj...tryo"), description)
+        XCTAssertFalse(description.contains("{pubky}"), description)
     }
 
     @MainActor

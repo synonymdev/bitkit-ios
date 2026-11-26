@@ -911,6 +911,7 @@
 "pubky_auth__use_ring" = "Użyj Pubky Ring";
 "pubky_auth__use_ring_desc" = "Bitkit nie może odczytać klucza tego pubky z Pubky Ring. Otwórz Pubky Ring, aby zatwierdzić to żądanie.";
 "pubky_auth__invalid_request" = "Nieprawidłowe żądanie autoryzacji";
+"pubky_auth__other_pubky" = "To żądanie jest przeznaczone dla {pubky}, a nie dla pubky tego portfela.";
 "pubky_auth__homeserver" = "Serwer domowy";
 "pubky_auth__signup_description" = "Utwórz nową tożsamość Pubky na tym serwerze domowym. Kontynuuj tylko, jeśli mu ufasz.";
 "pubky_auth__approval_failed" = "Autoryzacja nie powiodła się";
