@@ -38,7 +38,7 @@ final class ShopPaymentRequestTests: XCTestCase {
         let app = AppViewModel()
         let requests = [
             "https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123",
-            pubkySignupUrl,
+            legacyRingSignupUrl,
             directPubkySignupUrl,
             "lnurl:lightning:\(directPubkySignupUrl)",
             "bitkit://\(directPubkySignupUrl)",
@@ -63,7 +63,7 @@ final class ShopPaymentRequestTests: XCTestCase {
         app.scannedLightningInvoice = lightningInvoice
 
         do {
-            try await app.handleScannedData(pubkySignupUrl, claimedContactPaymentContext: context)
+            try await app.handleScannedData(legacyRingSignupUrl, claimedContactPaymentContext: context)
             XCTFail("Expected contact payment to reject Pubky signup")
         } catch {
             XCTAssertTrue(error is ScanHandlingError)
@@ -77,7 +77,7 @@ final class ShopPaymentRequestTests: XCTestCase {
         let sheets = SheetViewModel()
         let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
         let requests = [
-            pubkySignupUrl,
+            legacyRingSignupUrl,
             directPubkySignupUrl,
             directPubkySignupUrl.replacingOccurrences(of: "direct_signup", with: "signup"),
             "pubkyauth://signin_grant?caps=/pub/example/:rw&relay=https://relay.example/inbox/" +
@@ -165,7 +165,7 @@ final class ShopPaymentRequestTests: XCTestCase {
         AdoptedPubkyReference.current = nil
         XCTAssertFalse(try PubkyProfileManager.hasStoredIdentity())
 
-        for url in [pubkySignupUrl, directPubkySignupUrl, directPubkySignupUrl.replacingOccurrences(of: "direct_signup", with: "signup")] {
+        for url in [directPubkySignupUrl, directPubkySignupUrl.replacingOccurrences(of: "direct_signup", with: "signup")] {
             let sheets = SheetViewModel()
             let app = AppViewModel(
                 sheetViewModel: sheets,
@@ -277,7 +277,7 @@ final class ShopPaymentRequestTests: XCTestCase {
         )
     }
 
-    private var pubkySignupUrl: String {
+    private var legacyRingSignupUrl: String {
         "pubkyring://signup?hs=5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo" +
             "&relay=https%3A%2F%2Frelay.example%2Finbox%2F" +
             "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s" +

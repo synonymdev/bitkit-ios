@@ -70,11 +70,9 @@ enum ClipboardPromptValidator {
         if SamRockSetupRequest.parse(uri) != nil {
             return true
         }
-        if PaykitFeatureFlags.isUIEnabled,
-           PubkyAuthRequest.isProtocolURL(uri),
-           (try? PubkyAuthRequest.parse(url: uri)) != nil
-        {
-            return true
+        // Core's scanner classifies any `pubkyauth:` string, so a recognised link the Pubky parser rejects must not reach it.
+        if PaykitFeatureFlags.isUIEnabled, PubkyAuthRequest.isProtocolURL(uri) {
+            return (try? PubkyAuthRequest.parse(url: uri)) != nil
         }
 
         let normalized = uri.removingLightningSchemes()

@@ -343,6 +343,28 @@ final class ScannerManagerTests: XCTestCase {
         XCTAssertNil(sheets.activeSheetConfiguration)
     }
 
+    func testLegacyRingSignupScanShowsTheInvalidRequestToastAndNoSheet() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.set(false, forKey: ToastWindowManager.disableAllToastsKey)
+        UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        let previousToast = ToastWindowManager.shared.currentToast
+        defer { ToastWindowManager.shared.currentToast = previousToast }
+        let sheets = SheetViewModel()
+        let app = configure(ScannerManager {}, sheets: sheets)
+        let publicKey = "5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo"
+
+        for scheme in ["pubkyring", "pubkyauth"] {
+            ToastWindowManager.shared.currentToast = nil
+            let url = "\(scheme)://signup?hs=\(publicKey)&relay=https%3A%2F%2Frelay.example%2Finbox%2F" +
+                "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&caps=%2Fpub%2Fexample%2F%3Arw"
+
+            try await app.handleScannedData(url)
+
+            XCTAssertEqual(ToastWindowManager.shared.currentToast?.accessibilityIdentifier, "PubkyAuthInvalidRequestToast", scheme)
+            XCTAssertNil(sheets.activeSheetConfiguration, scheme)
+        }
+    }
+
     private func imageTestLnurl(amount: UInt64) -> LnurlPayData {
         LnurlPayData(uri: "https://example.com/pay", callback: "https://example.com/callback",
                      minSendable: amount, maxSendable: amount,

@@ -11,7 +11,7 @@ final class PubkyAuthRequestTests: XCTestCase {
         XCTAssertTrue(PubkyAuthRequest.isProtocolURL("pubkyauth://signin?caps=/pub/bitkit.to/:rw"))
         XCTAssertTrue(PubkyAuthRequest.isProtocolURL("PUBKYAUTH://signin?caps=/pub/bitkit.to/:rw"))
         XCTAssertTrue(PubkyAuthRequest.isProtocolURL("  pubkyauth://signin?caps=/pub/bitkit.to/:rw\n"))
-        XCTAssertTrue(PubkyAuthRequest.isProtocolURL(ringSignupUrl()))
+        XCTAssertTrue(PubkyAuthRequest.isProtocolURL(legacyRingSignupUrl()))
         XCTAssertTrue(PubkyAuthRequest.isProtocolURL(directSignupUrl(action: "direct_signup")))
         XCTAssertFalse(PubkyAuthRequest.isProtocolURL("lightning:lnbc1example"))
     }
@@ -171,21 +171,38 @@ final class PubkyAuthRequestTests: XCTestCase {
         XCTAssertThrowsError(try PubkyAuthRequest.parse(url: url))
     }
 
-    func testParseAuthorizedSignup() throws {
+    func testParseRejectsLegacyAuthorizingSignup() {
+        var urls: [String] = []
         for scheme in ["pubkyring", "pubkyauth"] {
-            let request = try PubkyAuthRequest.parse(url: ringSignupUrl(signupToken: "invite code", scheme: scheme))
+            urls.append(legacyRingSignupUrl(scheme: scheme))
+            urls.append(legacyRingSignupUrl(signupToken: "invite code", scheme: scheme))
+        }
+        urls.append("pubkyring://signup?hs=\(publicKey)")
+        for parameter in strayAuthorizationParameters {
+            urls.append(directSignupUrl(action: "signup") + "&\(parameter)")
+        }
 
-            XCTAssertTrue(request.isSignup)
-            XCTAssertEqual(request.kind, .signUp)
-            XCTAssertEqual(request.homeserverPublicKey, publicKey)
-            XCTAssertEqual(request.signupToken, "invite code")
-            XCTAssertEqual(request.relay, "https://relay.example/inbox/")
-            XCTAssertEqual(request.capabilities, "/pub/example.app/:rw")
-            XCTAssertEqual(
-                request.authorizationUrl,
-                "pubkyauth:///?relay=https%3A%2F%2Frelay.example%2Finbox%2F" +
-                    "&secret=\(secret)&caps=%2Fpub%2Fexample.app%2F%3Arw"
-            )
+        for url in urls {
+            XCTAssertTrue(PubkyAuthRequest.isProtocolURL(url), url)
+            XCTAssertThrowsError(try PubkyAuthRequest.parse(url: url), url) { error in
+                XCTAssertEqual(error as? PubkyAuthRequestError, .invalidUrl, url)
+            }
+        }
+    }
+
+    func testParseDirectSignupIgnoresStrayAuthorizationValues() throws {
+        let suffixes = strayAuthorizationParameters + [strayAuthorizationParameters.joined(separator: "&")]
+        for suffix in suffixes {
+            let url = directSignupUrl(action: "direct_signup", signupToken: "invite code") + "&\(suffix)"
+            let request = try PubkyAuthRequest.parse(url: url)
+
+            XCTAssertTrue(request.isSignup, suffix)
+            XCTAssertEqual(request.kind, .signUp, suffix)
+            XCTAssertEqual(request.homeserverPublicKey, publicKey, suffix)
+            XCTAssertEqual(request.signupToken, "invite code", suffix)
+            XCTAssertEqual(request.relay, "", suffix)
+            XCTAssertEqual(request.capabilities, "", suffix)
+            XCTAssertNil(request.authorizationUrl, suffix)
         }
     }
 
@@ -229,11 +246,13 @@ final class PubkyAuthRequestTests: XCTestCase {
         }
     }
 
-    func testParseRingSignupRejectsMissingOrDuplicateRequiredValues() {
+    func testParseSignupRejectsMissingOrDuplicateRequiredValues() {
         let invalidUrls = [
-            ringSignupUrl().replacingOccurrences(of: "&secret=\(secret)", with: ""),
-            "\(ringSignupUrl())&hs=other",
-            directSignupUrl(action: "signup") + "&relay=https%3A%2F%2Frelay.example",
+            "pubkyauth://signup",
+            "pubkyauth://direct_signup?st=invite",
+            "pubkyauth://direct_signup?hs=invalid",
+            directSignupUrl(action: "signup") + "&hs=\(publicKey)",
+            directSignupUrl(action: "direct_signup", signupToken: "one") + "&st=two",
         ]
 
         for url in invalidUrls {
@@ -536,7 +555,11 @@ final class PubkyAuthRequestTests: XCTestCase {
             "&cid=paykit.test&cpk=\(publicKey)\(claims)"
     }
 
-    private func ringSignupUrl(signupToken: String? = nil, scheme: String = "pubkyring") -> String {
+    private var strayAuthorizationParameters: [String] {
+        ["relay=\(relay)", "secret=\(secret)", "caps=%2Fpub%2Fexample.app%2F%3Arw"]
+    }
+
+    private func legacyRingSignupUrl(signupToken: String? = nil, scheme: String = "pubkyring") -> String {
         let token = signupToken.map {
             "&st=\($0.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0)"
         } ?? ""
