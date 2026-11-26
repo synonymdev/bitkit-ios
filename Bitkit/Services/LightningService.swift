@@ -1957,6 +1957,8 @@ class LightningService: NodeLifecycleService {
         guard let rail = channelFreeRail ?? channelFreePaymentHistory, await rail.hasSynced(after: UInt64(max(uncertain.startedAt, expiresAt))) else {
             return false
         }
+        // A retry in flight under the send's key settles it by its own outcome, or leaves the hold to a later sync.
+        guard !isRailSendInFlight(paymentHash: hash) else { return false }
         // Its Activity row is written first, so a stop in between finds the send held and writes it again.
         var status = PaymentStatus.failed
         if let record = railSendExpired {
