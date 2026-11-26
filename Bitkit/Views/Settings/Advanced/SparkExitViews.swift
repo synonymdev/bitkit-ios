@@ -760,13 +760,9 @@ struct SparkExitProgressView: View {
         ].compactMap { $0 }.joined(separator: " ")
     }
 
-    /// A top-up already paid, such as a higher fee's from savings, or seen at the address, or a savings payment that
-    /// may still land: nothing to ask for.
+    /// A top-up already paid, such as a higher fee's from savings, or seen at the address: nothing to ask for.
     private var isFundingOnItsWay: Bool {
-        if exit.isSavingsSendLanding {
-            return true
-        }
-        return switch fundingState {
+        switch fundingState {
         case .paid, .seen: true
         default: false
         }
@@ -865,7 +861,7 @@ struct SparkExitProgressView: View {
 
                         if let address = record.funding.first?.address {
                             switch fundingState {
-                            case let .ask(sats, receivedSats) where !exit.isSavingsSendLanding:
+                            case let .ask(sats, receivedSats):
                                 // The ask counts the input fee of each payment, so it is what is missing; the hint
                                 // names the full total, not the dust-floored ask added to what arrived.
                                 SparkExitFeesRow(label: t("lightning__spark_exit__pay_amount"), sats: sats)
@@ -878,7 +874,7 @@ struct SparkExitProgressView: View {
                                     targetSats: exit.fundingAskTotal ?? sats + receivedSats
                                 )
                                 .padding(.top, 32)
-                            case .ask, .paid, .seen, nil:
+                            case .paid, .seen, nil:
                                 EmptyView()
                             }
                         }

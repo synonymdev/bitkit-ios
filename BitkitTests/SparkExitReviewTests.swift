@@ -637,32 +637,19 @@ final class SparkExitReviewTests: XCTestCase {
         XCTAssertTrue(record.isAwaitingOwnPayment)
     }
 
-    /// While that send may still land, Progress holds the funding ask; none to the address, or a funded exit, does not.
-    func testAnUnresolvedSavingsSendHoldsTheFundingAsk() {
+    /// Progress says that payment may still land only while the exit waits for it: once the own-payment wait forgets
+    /// it, the ask comes back, even with the send journal still unresolved.
+    func testASavingsPaymentMayStillLandOnlyWhileTheExitWaitsForIt() {
         var record = SparkExitFixtures.record()
-        XCTAssertNotNil(record.fundingShortfallSats)
-        XCTAssertTrue(SparkExitManager.isSavingsSendLanding(record, landingSendAddress: "bcrt1qfunding"))
-        XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, landingSendAddress: "bcrt1qelsewhere"))
-        XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, landingSendAddress: nil))
-        record.phase = .running
-        XCTAssertNil(record.fundingShortfallSats)
-        XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, landingSendAddress: "bcrt1qfunding"))
-    }
-
-    /// Only a send that is pending or of unknown outcome may still land: an accepted one has, and a refused one keeps its
-    /// own retry, also once the exit needs more funding.
-    func testOnlyAPendingOrUnknownSendMayStillLand() {
-        XCTAssertEqual(SparkExitManager.landingSendAddress(refusedPayment(status: .pending)), "bcrt1qfunding")
-        XCTAssertEqual(SparkExitManager.landingSendAddress(refusedPayment(status: .unknown)), "bcrt1qfunding")
-        XCTAssertNil(SparkExitManager.landingSendAddress(refusedPayment(status: .rejected)))
-        XCTAssertNil(SparkExitManager.landingSendAddress(refusedPayment(status: .accepted)))
-        XCTAssertNil(SparkExitManager.landingSendAddress(nil))
-        let needsFunding = SparkExitFixtures.record(phase: .needsFunding(requiredSats: 20000))
-        XCTAssertNotNil(needsFunding.fundingShortfallSats)
-        XCTAssertFalse(SparkExitManager.isSavingsSendLanding(
-            needsFunding,
-            landingSendAddress: SparkExitManager.landingSendAddress(refusedPayment())
-        ))
+        record.fundingPaymentTxid = "unk"
+        XCTAssertTrue(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: "bcrt1qfunding", isRefused: false))
+        XCTAssertEqual(SparkExitMath.fundingState(record, utxos: nil), .paid(txid: "unk"))
+        XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: nil, isRefused: false), "accepted")
+        XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: "bcrt1qfunding", isRefused: true))
+        XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: "bcrt1qelsewhere", isRefused: false))
+        record.fundingPaymentTxid = nil
+        XCTAssertFalse(SparkExitManager.isSavingsSendLanding(record, unresolvedSendAddress: "bcrt1qfunding", isRefused: false))
+        guard case .ask = SparkExitMath.fundingState(record, utxos: nil) else { return XCTFail("the ask comes back") }
     }
 
     /// The unknown payment confirming late is adopted like any funding, and the exit builds.

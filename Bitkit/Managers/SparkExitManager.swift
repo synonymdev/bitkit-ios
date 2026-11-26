@@ -276,8 +276,6 @@ final class SparkExitManager {
         }
         let record = record
         Task {
-            // Progress holds the funding ask for a savings send that may still land, before any tick reads the network.
-            await refreshRefusedSavingsPayment()
             if let record {
                 await settleIfFinished(record)
             }
@@ -336,7 +334,6 @@ final class SparkExitManager {
         savingsFundingRefusedFeeSats = nil
         fundingSeenSats = 0
         fundingSeenCount = 0
-        landingSendAddress = nil
         Self.clearReminders()
     }
 
@@ -357,20 +354,18 @@ final class SparkExitManager {
         record.map { Self.isSavingsPaymentRefused($0, attempt: refusedSavingsPayment) } ?? false
     }
 
-    /// The address of a savings send that is pending or of unknown outcome, read with the refused payment: it may
-    /// still land. A refused send will not, and keeps its own retry.
-    private(set) var landingSendAddress: String?
-
-    /// A savings send to the funding address went out and is not known accepted or refused yet: it may still land.
+    /// The exit waits for its own savings payment, which the send journal has not seen accepted yet: it may still land,
+    /// so Progress says to wait for it before paying from another wallet.
     var isSavingsSendLanding: Bool {
-        record.map { Self.isSavingsSendLanding($0, landingSendAddress: landingSendAddress) } ?? false
+        record.map {
+            Self.isSavingsSendLanding($0, unresolvedSendAddress: unresolvedSendAddress, isRefused: isSavingsPaymentRefused)
+        } ?? false
     }
 
-    /// While a savings send to `record`'s funding address may still land, Progress holds the funding ask, as retries
-    /// and cancel do: paying the same fees from another wallet as well would pay them twice.
-    nonisolated static func isSavingsSendLanding(_ record: SparkExitRecord, landingSendAddress: String?) -> Bool {
-        guard record.fundingShortfallSats != nil, let landingSendAddress else { return false }
-        return record.funding.contains { $0.address == landingSendAddress }
+    /// Only while `record` still waits for that payment: once the own-payment wait forgets it, the ask comes back.
+    nonisolated static func isSavingsSendLanding(_ record: SparkExitRecord, unresolvedSendAddress: String?, isRefused: Bool) -> Bool {
+        guard record.isAwaitingOwnPayment, !isRefused, let unresolvedSendAddress else { return false }
+        return record.funding.contains { $0.address == unresolvedSendAddress }
     }
 
     /// A node refused the savings payment of `record`'s fee funding, and none was adopted since: only before the exit
@@ -410,27 +405,16 @@ final class SparkExitManager {
         }
         guard let current = record, let refused = refusedSavingsPayment else { return }
         let attempts = OnchainSendAttemptService.shared
-        let txid: String?
-        do {
-            txid = try await Self.payRefusedAgain(refused, record: current) { context in
-                try await attempts.retrySamePayment(using: LightningService.shared, context: context) { attempt, _ in
-                    guard attempt.id == refused.id, attempt.address == refused.address else { throw OnchainSendAttemptError.unresolved }
-                }
+        let txid = try await Self.payRefusedAgain(refused, record: current) { context in
+            try await attempts.retrySamePayment(using: LightningService.shared, context: context) { attempt, _ in
+                guard attempt.id == refused.id, attempt.address == refused.address else { throw OnchainSendAttemptError.unresolved }
             }
-        } catch {
-            // A retry left pending shows as one that may still land at once.
-            await refreshRefusedSavingsPayment()
-            throw error
         }
         await refreshRefusedSavingsPayment()
         guard let txid else {
             throw AppError(message: t("wallet__send_error_tx_failed"), debugMessage: "Spark exit savings payment refused again")
         }
-        // Only an accepted payment ends its send, as the start's payment: one of unknown outcome may still land, and
-        // its send keeps holding the funding ask.
-        if landingSendAddress == nil {
-            _ = try? await attempts.resumeAcceptedOrdinarySend(walletId: refused.walletId, observedTxid: txid)
-        }
+        _ = try? await attempts.resumeAcceptedOrdinarySend(walletId: refused.walletId, observedTxid: txid)
         guard var paid = record, paid.createdAt == current.createdAt, paid.isActive else { return }
         paid.fundingPaymentTxid = txid
         try saveRecord(paid)
@@ -444,13 +428,6 @@ final class SparkExitManager {
     private func refreshRefusedSavingsPayment() async {
         let attempt = try? await OnchainSendAttemptService.shared.blockingAttempt()
         refusedSavingsPayment = attempt?.status == .rejected ? attempt : nil
-        landingSendAddress = Self.landingSendAddress(attempt)
-    }
-
-    /// The address of a send that is pending or of unknown outcome. An accepted send has landed, a refused one will not.
-    nonisolated static func landingSendAddress(_ attempt: OnchainSendAttempt?) -> String? {
-        guard let attempt, attempt.status == .pending || attempt.status == .unknown else { return nil }
-        return attempt.address
     }
 
     /// What the exit still brings to savings, for its own transfer's in-transfer amount; nil without one.
@@ -615,8 +592,6 @@ final class SparkExitManager {
         guard !isTicking, let current = record, Self.canDrive(current, startingCreatedAt: startingCreatedAt), let chain else { return }
         isTicking = true
         defer { isTicking = false }
-        // Read before the network, which may be slow or unreachable: the send journal is local.
-        await refreshRefusedSavingsPayment()
         let store = store
         let walletIndex = walletIndex
         // A reconnect for the exit that failed leaves Spark ready but disconnected: the tick connects it again.
@@ -633,6 +608,7 @@ final class SparkExitManager {
         do {
             tipHeight = await (try? chain.tipHeight()) ?? tipHeight
             unresolvedSendAddress = await OnchainSendAttemptService.shared.unresolvedSendAddress()
+            await refreshRefusedSavingsPayment()
             await refreshNetworkFees(chain: chain)
             await refreshFundingSeen(chain: chain, record: current)
             var updated = try await driver.tick(current)
@@ -1093,8 +1069,6 @@ final class SparkExitManager {
                 await refreshRefusedSavingsPayment()
                 throw error
             }
-            // One of unknown outcome holds the funding ask at once.
-            await refreshRefusedSavingsPayment()
             // Saved before the lock is released, so a cancel after the payment finds it and refuses.
             started.fundingPaymentTxid = txid
             do {
