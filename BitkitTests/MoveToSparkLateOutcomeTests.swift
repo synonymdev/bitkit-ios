@@ -29,6 +29,23 @@ final class MoveToSparkLateOutcomeTests: XCTestCase {
         XCTAssertEqual(manager.wipes, wipe + 1, "Closing the modal or a new move stopped the closes of an earlier move")
     }
 
+    func testARestThatNoLongerRoutesOrIsGoneShowsTheBalanceUpdated() {
+        let done = MoveToSparkState.done(amountSats: 60000, feeSats: 60)
+        XCTAssertEqual(MoveToSparkManager.state(forQuoteError: MoveToSparkError.noRoute, afterMove: (60000, 60)), done)
+        XCTAssertEqual(MoveToSparkManager.state(forQuoteError: MoveToSparkError.nothingToMove, afterMove: (60000, 60)), done)
+    }
+
+    func testARestQuoteThatFailsOtherwiseOffersTryAgain() {
+        struct NetworkDown: Error {}
+        XCTAssertEqual(
+            MoveToSparkManager.state(forQuoteError: NetworkDown(), afterMove: (60000, 60)),
+            .failed(.unknown),
+            "A move with balance left reported the balance updated"
+        )
+        XCTAssertEqual(MoveToSparkManager.state(forQuoteError: MoveToSparkError.sparkUnavailable, afterMove: (60000, 60)), .failed(.sparkUnavailable))
+        XCTAssertEqual(MoveToSparkManager.state(forQuoteError: MoveToSparkError.noRoute, afterMove: nil), .failed(.unknown))
+    }
+
     func testTheInFlightMoveIsTheOneOnScreen() {
         XCTAssertTrue(MoveToSparkManager.showsInFlightMove(.inFlight(amountSats: 40000), generation: 3, moveGeneration: 3))
     }

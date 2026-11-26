@@ -961,6 +961,9 @@ class ActivityService {
     /// so a send recorded after the app was killed mid-payment still names its contact.
     nonisolated(unsafe) static var sentPaymentContacts = SentPaymentContacts(defaults: .standard)
 
+    /// The failed sends of retried move parts, which Activity leaves out.
+    nonisolated(unsafe) static var droppedMovePayments = DroppedMovePayments(defaults: .standard)
+
     /// Whether a Lightning activity keeps its status against an update: a settled payment stays settled, and a failure
     /// from the rail that didn't carry the latest attempt is stale.
     static func keepsLightningStatus(existing: BitkitCore.PaymentState, update: BitkitCore.PaymentState, isStaleRailFailure: Bool) -> Bool {
@@ -978,6 +981,15 @@ class ActivityService {
 
         let paymentTimestamp = UInt64(payment.latestUpdateTimestamp)
         let existingActivity = try getActivityById(walletId: WalletScope.default, activityId: payment.id)
+
+        // A move part that did not route was retried smaller and a later part settled: its failed send is no payment.
+        if payment.direction == .outbound, payment.status == .failed, Self.droppedMovePayments.contains(payment.id) {
+            if existingActivity != nil {
+                _ = try deleteActivityById(walletId: WalletScope.default, activityId: payment.id)
+                activitiesChangedSubject.send()
+            }
+            return
+        }
         let existingLightning: LightningActivity? = if let existingActivity, case let .lightning(ln) = existingActivity {
             ln
         } else {
@@ -2841,5 +2853,35 @@ struct SentPaymentContacts: @unchecked Sendable {
             else { return }
             defaults.set(contacts, forKey: Self.key)
         }
+    }
+}
+
+/// The payment hashes of Move to Spark parts that did not route and were retried smaller before a later part settled:
+/// their failed sends are no payment, so Activity leaves them out. Kept beside the move hashes, which `MoveToSparkPayments`
+/// backs up and wipes together with these.
+struct DroppedMovePayments: @unchecked Sendable {
+    static let key = "moveToSparkDroppedPaymentHashes"
+    /// Marked on the main actor and read on the core queue, so each read-modify-write holds this.
+    private static let lock = NSLock()
+    let defaults: UserDefaults
+
+    func insert(_ paymentHashes: [String]) {
+        guard !paymentHashes.isEmpty else { return }
+        Self.lock.withLock {
+            defaults.set(Set(all() + paymentHashes.map { $0.lowercased() }).sorted(), forKey: Self.key)
+        }
+    }
+
+    func contains(_ paymentHash: String) -> Bool {
+        all().contains(paymentHash.lowercased())
+    }
+
+    /// Sorted, so an unchanged store backs up byte for byte the same.
+    func all() -> [String] {
+        defaults.stringArray(forKey: Self.key) ?? []
+    }
+
+    func removeAll() {
+        defaults.removeObject(forKey: Self.key)
     }
 }

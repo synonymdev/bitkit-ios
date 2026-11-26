@@ -102,6 +102,41 @@ final class MoveToSparkQuoteTests: XCTestCase {
         XCTAssertEqual(quote.feeSats, 32, "A rest under the peer's HTLC minimum cannot be sent, so it is no part")
     }
 
+    func testALoneRestTooSmallForTheFeeGuessIsNotPriced() {
+        let capacityMsat: Int64 = 100_000_000
+        let limitMsat = MoveToSparkMath.clearedLimitMsat(capacityMsat: capacityMsat, feerate: 2904, isLegacy: true)
+        let restSats = MoveToSparkMath.clearedLimitMsat(capacityMsat: capacityMsat - limitMsat, feerate: 2904, isLegacy: true) / 1000
+        XCTAssertEqual(restSats, 1000)
+        let funded = [ChannelDetails.mock(
+            outboundCapacityMsat: UInt64(capacityMsat),
+            nextOutboundHtlcLimitMsat: UInt64(limitMsat),
+            feerateSatPer1000Weight: 2904
+        )]
+        XCTAssertEqual(
+            MoveToSparkMath.outboundSats(channels: funded),
+            UInt64(limitMsat / 1000),
+            "A 1,000-sat rest leaves no part once the fee guess is reserved, yet was priced"
+        )
+    }
+
+    func testRestsTooSmallAloneArePricedTogether() {
+        let capacityMsat: Int64 = 100_000_000
+        let limitMsat = MoveToSparkMath.clearedLimitMsat(capacityMsat: capacityMsat, feerate: 2500, isLegacy: true)
+        let restSats = UInt64(MoveToSparkMath.clearedLimitMsat(capacityMsat: capacityMsat - limitMsat, feerate: 2500, isLegacy: true) / 1000)
+        XCTAssertFalse(MoveToSparkMath.hasMovableBalance(limitSats: restSats))
+        XCTAssertTrue(MoveToSparkMath.hasMovableBalance(limitSats: 2 * restSats))
+        let funded = (0 ..< 2).map { index in
+            var channel = ChannelDetails.mock(outboundCapacityMsat: UInt64(capacityMsat), nextOutboundHtlcLimitMsat: UInt64(limitMsat))
+            channel.channelId = "channel\(index)"
+            return channel
+        }
+        XCTAssertEqual(
+            MoveToSparkMath.outboundSats(channels: funded),
+            2 * (UInt64(limitMsat / 1000) + restSats),
+            "Two rests that together make a part were left out"
+        )
+    }
+
     func testAnAnchorChannelsBelowDustRestUnderTheMinimumIsNotPriced() {
         let capacityMsat: UInt64 = 100_000_000
         let limitMsat = UInt64(MoveToSparkMath.clearedLimitMsat(capacityMsat: Int64(capacityMsat), feerate: 10000, isLegacy: false))
@@ -282,7 +317,7 @@ final class MoveToSparkQuoteTests: XCTestCase {
         XCTAssertEqual(outcome, .settled(movedSats: 39878, feeSats: 120))
     }
 
-    func testANextPartIsNoLargerThanTheLastPaid() async throws {
+    func testAPartAQuoteHalvedLeavesTheLaterPartsTheirTarget() async throws {
         let channels = FakeChannels(movableSats: 100_000)
         var wanted: [UInt64] = []
         _ = try await MoveToSparkManager.payParts(
@@ -297,7 +332,94 @@ final class MoveToSparkQuoteTests: XCTestCase {
             },
             pay: { bolt11, amount, cap, _, _ in try channels.pay(bolt11, amount, cap) }
         )
-        XCTAssertEqual(Array(wanted.prefix(2)), [30000, 15000])
+        XCTAssertEqual(Array(wanted.prefix(2)), [30000, 30000], "Only a part that does not route lowers the target")
+    }
+
+    func testAPartALowSendLimitCappedSmallLeavesTheNextPartItsSize() async throws {
+        let channels = FakeChannels(movableSats: 100_000)
+        var wanted: [UInt64] = []
+        var reads = 0
+        _ = try await MoveToSparkManager.payParts(
+            MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 30000, feeSats: 1000, firstFeeSats: 32),
+            movableSats: {
+                reads += 1
+                // The read after the first part sees a send limit held down below the target.
+                return reads == 2 ? 25000 : channels.movableSats
+            },
+            outboundSats: { channels.outboundSats },
+            newInvoice: { "lnbcrt1next" },
+            quotePart: { _, limitSats, wantedSats in
+                wanted.append(wantedSats)
+                // Under the held-down limit only a small part fits its fee.
+                return channels.quotePart(limitSats: limitSats, wantedSats: wanted.count == 1 ? 12000 : wantedSats)
+            },
+            pay: { bolt11, amount, cap, _, _ in try channels.pay(bolt11, amount, cap) }
+        )
+        XCTAssertEqual(Array(wanted.prefix(2)), [25000, 30000], "A part capped small kept the parts after it small")
+        XCTAssertEqual(Array(channels.paid.map(\.amountSats).prefix(3)), [30000, 12000, 30000])
+    }
+
+    func testRetriedPartsAreDroppedOnceALaterPartSettles() async throws {
+        let channels = FakeChannels(movableSats: 40000)
+        var invoices = 0
+        var dropped: [[String]] = []
+        _ = try await MoveToSparkManager.payParts(
+            MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 39968, feeSats: 200, firstFeeSats: 32),
+            movableSats: { channels.movableSats },
+            outboundSats: { channels.outboundSats },
+            newInvoice: {
+                invoices += 1
+                return "lnbcrt1next\(invoices)"
+            },
+            quotePart: { channels.quotePart(limitSats: $1, wantedSats: $2) },
+            pay: { bolt11, amount, cap, _, _ in
+                guard amount <= 10000 else { throw NodeError.RouteNotFound(message: "no route") }
+                return try channels.pay(bolt11, amount, cap)
+            },
+            onRetriedPartsSettled: { dropped.append($0) }
+        )
+        XCTAssertEqual(dropped, [["lnbcrt1first", "lnbcrt1next1"]], "The failed sends of retried parts stayed in Activity")
+    }
+
+    func testAPartInFlightAfterRetriedPartsGetsThemForItsLateOutcome() async throws {
+        let channels = FakeChannels(movableSats: 40000)
+        var invoices = 0
+        var sending: [String: [String]] = [:]
+        var dropped: [[String]] = []
+        let outcome = try await MoveToSparkManager.payParts(
+            MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 39968, feeSats: 200, firstFeeSats: 32),
+            movableSats: { channels.movableSats },
+            outboundSats: { channels.outboundSats },
+            newInvoice: {
+                invoices += 1
+                return "lnbcrt1next\(invoices)"
+            },
+            quotePart: { channels.quotePart(limitSats: $1, wantedSats: $2) },
+            pay: { _, amount, _, _, _ in
+                guard amount <= 10000 else { throw NodeError.RouteNotFound(message: "no route") }
+                return nil
+            },
+            onSendingAfterRetries: { sending[$0] = $1 },
+            onRetriedPartsSettled: { dropped.append($0) }
+        )
+        XCTAssertEqual(outcome, .inFlight(movedSats: 0, feeSats: 0, partSats: 9992))
+        XCTAssertEqual(sending["lnbcrt1next2"], ["lnbcrt1first", "lnbcrt1next1"], "A part settling late could not drop the retried parts")
+        XCTAssertTrue(dropped.isEmpty, "Retried parts were dropped before the part after them settled")
+    }
+
+    func testRetriedPartsKeepTheirFailedRowsWhenNoLaterPartSettles() async {
+        let channels = FakeChannels(movableSats: 40000)
+        var dropped: [[String]] = []
+        _ = try? await MoveToSparkManager.payParts(
+            MoveToSparkQuote(invoice: "lnbcrt1first", amountSats: 39968, feeSats: 200, firstFeeSats: 32),
+            movableSats: { channels.movableSats },
+            outboundSats: { channels.outboundSats },
+            newInvoice: { "lnbcrt1next" },
+            quotePart: { channels.quotePart(limitSats: $1, wantedSats: $2) },
+            pay: { _, _, _, _, _ in throw NodeError.RouteNotFound(message: "no route") },
+            onRetriedPartsSettled: { dropped.append($0) }
+        )
+        XCTAssertTrue(dropped.isEmpty, "A failed part was dropped though nothing settled after it")
     }
 
     func testALimitAnHtlcHeldDownDoesNotShrinkTheLaterParts() async throws {
@@ -548,7 +670,19 @@ final class MoveToSparkPaymentsTests: XCTestCase {
 
     func testWipeForgetsEveryHash() {
         MoveToSparkPayments.insert("abcd")
+        MoveToSparkPayments.dropFailed(["abcd"])
         MoveToSparkPayments.removeAll()
         XCTAssertFalse(MoveToSparkPayments.contains("abcd"))
+        XCTAssertTrue(MoveToSparkPayments.droppedBackupSnapshot().isEmpty)
+    }
+
+    func testARetriedMovePartsFailureIsDroppedAndBackedUp() throws {
+        MoveToSparkPayments.dropFailed(["ABCD"])
+        XCTAssertTrue(MoveToSparkPayments.dropped.contains("abcd"))
+        XCTAssertFalse(MoveToSparkPayments.dropped.contains("ef01"))
+        MoveToSparkPayments.restoreDropped(["ef01", "abcd"])
+        XCTAssertEqual(MoveToSparkPayments.droppedBackupSnapshot(), ["abcd", "ef01"])
+        let json = #"{"version":1,"createdAt":1,"tagMetadata":[],"cache":{"hasSeenContactsIntro":true},"moveToSparkDroppedPaymentHashes":["abcd"]}"#
+        XCTAssertEqual(try JSONDecoder().decode(MetadataBackupV1.self, from: Data(json.utf8)).moveToSparkDroppedPaymentHashes, ["abcd"])
     }
 }

@@ -844,6 +844,7 @@ class BackupService {
                     SparkExitEarlierAddressStore(walletIndex: $0)
                 }
                 await MoveToSparkPayments.restore(payload.moveToSparkPaymentHashes)
+                await MoveToSparkPayments.restoreDropped(payload.moveToSparkDroppedPaymentHashes)
 
                 // Force address rotation by clearing onchain address
                 UserDefaults.standard.set("", forKey: "onchainAddress")
@@ -1456,6 +1457,7 @@ class BackupService {
             // envelope this app writes stays byte-comparable with one bitkit-android writes.
             let hwWalletNames = HwKnownDeviceStorage.backupSnapshot()
             let moveToSparkPaymentHashes = await MoveToSparkPayments.backupSnapshot()
+            let moveToSparkDroppedPaymentHashes = await MoveToSparkPayments.droppedBackupSnapshot()
 
             let payload = MetadataBackupV1(
                 version: 1,
@@ -1469,7 +1471,8 @@ class BackupService {
                     SparkExitEarlierAddressStore(walletIndex: LightningService.shared.currentWalletIndex),
                     walletKey: SparkExitFundingIndexes.walletKey(network: "\(Env.network)", walletIndex: LightningService.shared.currentWalletIndex)
                 ),
-                moveToSparkPaymentHashes: moveToSparkPaymentHashes.isEmpty ? nil : moveToSparkPaymentHashes
+                moveToSparkPaymentHashes: moveToSparkPaymentHashes.isEmpty ? nil : moveToSparkPaymentHashes,
+                moveToSparkDroppedPaymentHashes: moveToSparkDroppedPaymentHashes.isEmpty ? nil : moveToSparkDroppedPaymentHashes
             )
             return try JSONEncoder().encode(payload)
 

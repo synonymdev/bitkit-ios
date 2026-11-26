@@ -23,7 +23,11 @@ final class MoveToSparkUpdateTests: XCTestCase {
             try sparkFee()
         }
 
-        func refreshSpark() async {}
+        var onRefresh: () -> Void = {}
+
+        func refreshSpark() async {
+            onRefresh()
+        }
     }
 
     private struct SparkCannotPrice: Error {}
@@ -178,6 +182,38 @@ final class MoveToSparkUpdateTests: XCTestCase {
         XCTAssertNil(sats(.lightning, swap: true))
         XCTAssertNil(sats(.lightning, leg: true))
         XCTAssertNil(sats(.onchain))
+    }
+
+    func testAnUpdateWhoseChannelsAnotherMoveTookPaysNothingOnceSparkCovers() async throws {
+        let services = FakeServices()
+        let manager = MoveToSparkManager(services: services, sparkBalanceWait: .zero)
+        // Another move took the channels and moved them to Spark, which shows once Spark is read again.
+        let wallet = WalletViewModel()
+        wallet.channels = []
+        services.onRefresh = { services.spark.balanceSats = 50000 }
+        try await manager.updateToSend(
+            quote: MoveToSparkQuote(invoice: "lnbcrt1move", amountSats: 20000, feeSats: 32),
+            bolt11: "lnbcrt1pay",
+            amountSats: 40000,
+            wallet: wallet,
+            transfer: TransferViewModel()
+        )
+    }
+
+    func testAnUpdateWhoseChannelsAnotherMoveTookFallsShortWhileSparkDoesNotCover() async {
+        let services = FakeServices()
+        let manager = MoveToSparkManager(services: services, sparkBalanceWait: .zero)
+        let wallet = WalletViewModel()
+        wallet.channels = []
+        await assertFallsShort {
+            try await manager.updateToSend(
+                quote: MoveToSparkQuote(invoice: "lnbcrt1move", amountSats: 20000, feeSats: 32),
+                bolt11: "lnbcrt1pay",
+                amountSats: 40000,
+                wallet: wallet,
+                transfer: TransferViewModel()
+            )
+        }
     }
 
     private func assertFallsShort(_ operation: () async throws -> Void, line: UInt = #line) async {

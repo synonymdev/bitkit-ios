@@ -100,6 +100,26 @@ final class MoveToSparkActivityTests: XCTestCase {
         try await assertOneOutgoingRowWithTheRoutingFee()
     }
 
+    func testAFailedRetriedPartLeavesActivityOnceMarked() async throws {
+        let activity = Bitkit.CoreService.shared.activity
+        let suiteName = "MoveToSparkActivityTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let saved = Bitkit.ActivityService.droppedMovePayments
+        Bitkit.ActivityService.droppedMovePayments = Bitkit.DroppedMovePayments(defaults: defaults)
+        defer {
+            Bitkit.ActivityService.droppedMovePayments = saved
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        try await activity.syncLdkNodePayments([ldkSend(timestamp: 1000, status: .failed)])
+        let failedRows = try await activity.get(filter: .lightning, walletId: WalletScope.default)
+        XCTAssertEqual(failedRows.count, 1, "A failed part nothing retried lost its row")
+
+        Bitkit.ActivityService.droppedMovePayments.insert([paymentHash.uppercased()])
+        try await activity.syncLdkNodePayments([ldkSend(timestamp: 1000, status: .failed)])
+        let rows = try await activity.get(filter: .lightning, walletId: WalletScope.default)
+        XCTAssertTrue(rows.isEmpty, "The failed send of a retried part stayed in Activity")
+    }
+
     private func assertOneOutgoingRowWithTheRoutingFee(file: StaticString = #filePath, line: UInt = #line) async throws {
         let rows = try await Bitkit.CoreService.shared.activity.get(filter: .lightning, walletId: WalletScope.default)
         XCTAssertEqual(rows.count, 1, file: file, line: line)
