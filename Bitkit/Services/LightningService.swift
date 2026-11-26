@@ -1977,7 +1977,8 @@ class LightningService: NodeLifecycleService {
         if didEnd, status == .failed, !isRailSendInFlight(paymentHash: hash) {
             deliverChannelFreeRailEvent(.paymentFailed(paymentId: hash, paymentHash: hash, reason: nil))
         }
-        return true
+        // A hold kept for a retry, or a retry's own, still holds the invoice.
+        return didEnd || eventCallbackLock.withLock { uncertainRailSendFailedAt()[hash] == nil }
     }
 
     /// Ends the sends Spark never settled whose invoice expired since, once a sync after the grace reached Spark.

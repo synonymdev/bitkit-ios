@@ -816,6 +816,8 @@ extension ChannelFreeRailTests {
 
         XCTAssertNotNil(service.railSendHolds[hash], "the hold ended under the retry")
         XCTAssertEqual(failures.hashes, [], "the retry was reported failed")
+        let payments = try await service.channelFreeRailPayments().filter { $0.paymentHash == hash }
+        XCTAssertTrue(payments.contains { $0.status == .pending }, "the held send read as settled")
     }
 
     func testASparkRetryOfASendInDoubtRefusedBeforeItGoesOutStaysPending() async throws {
