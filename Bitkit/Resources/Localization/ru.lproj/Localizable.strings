@@ -696,6 +696,16 @@
 "other__lnurl_auth_success_title" = "Вход Выполнен";
 "other__lnurl_auth_success_msg_domain" = "Вы успешно вошли на {domain}.";
 "other__lnurl_auth_success_msg_no_domain" = "Вы успешно вошли.";
+"other__lnurl_auth_auth_prompt" = "Пройти аутентификацию на {domain}?";
+"other__lnurl_auth_auth_title" = "Подтвердить";
+"other__lnurl_auth_link_prompt" = "Привязать аккаунт к {domain}?";
+"other__lnurl_auth_link_title" = "Привязать";
+"other__lnurl_auth_login_button" = "Войти";
+"other__lnurl_auth_login_prompt" = "Войти на {domain}?";
+"other__lnurl_auth_login_title" = "Вход";
+"other__lnurl_auth_register_prompt" = "Зарегистрироваться на {domain}?";
+"other__lnurl_auth_register_title" = "Регистрация";
+"other__lnurl_auth_unknown_domain" = "Неизвестный домен";
 "other__lnurl_withdr_error" = "Ошибка Вывода (LNURL)";
 "other__lnurl_withdr_error_generic" = "Извините, произошла ошибка.";
 "other__lnurl_withdr_error_no_capacity" = "Недостаточно принимающей ёмкости для выполнения запроса на вывод.";
@@ -1014,6 +1024,7 @@
 "settings__quickpay__settings__multiplier_format" = "{multiplier}×";
 "settings__quickpay__settings__note" = "* Bitkit QuickPay поддерживает только платежи с вашего Баланса Расходов.";
 "wallet__send_quickpay__currency_conversion" = "Не удалось конвертировать валюту";
+"wallet__send_quickpay__already_paid" = "Этот счёт уже оплачен.";
 "settings__security__title" = "Безопасность и Конфиденциальность";
 "settings__security__swipe_balance_to_hide" = "Смахнуть Баланс, чтобы Скрыть";
 "settings__security__hide_balance_on_open" = "Скрывать Баланс при Открытии";

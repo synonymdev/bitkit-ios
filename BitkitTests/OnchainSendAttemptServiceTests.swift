@@ -1776,6 +1776,45 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         }
     }
 
+    /// A journal that can't save the attempt before admission sends nothing, and says so as a pre-dispatch failure.
+    /// One that can't be read stays unresolved: it may hold an earlier send.
+    func testAJournalWriteFailureBeforeAdmissionIsAPreDispatchFailure() async throws {
+        let store = MemoryAttemptStore()
+        store.failSave = true
+        let service = OnchainSendAttemptService(store: store)
+        let node = AttemptNodeMock(result: .accepted(txid: txid))
+        do {
+            _ = try await send(service, node: node)
+            XCTFail("a send the journal never admitted succeeded")
+        } catch let OnchainSendAttemptError.preDispatch(error) {
+            XCTAssertTrue(error is MemoryAttemptStoreError)
+        }
+        XCTAssertEqual(node.calls, 0)
+
+        // Clearing an unsigned attempt left from before a restart is such a write too.
+        let stale = OnchainSendAttempt(
+            id: UUID(), walletId: OnchainSendAttemptService.walletId(index: 0), requestId: nil, orderId: nil,
+            address: "bcrt1qstale", amountSats: 1000, isMaxAmount: false, status: .pending, txid: nil
+        )
+        let leftover = MemoryAttemptStore()
+        try leftover.save([stale])
+        leftover.failSave = true
+        do {
+            _ = try await send(OnchainSendAttemptService(store: leftover), node: node)
+            XCTFail("a send the journal never admitted succeeded")
+        } catch let OnchainSendAttemptError.preDispatch(error) {
+            XCTAssertTrue(error is MemoryAttemptStoreError)
+        }
+
+        let unreadable = MemoryAttemptStore()
+        unreadable.failLoad = true
+        do {
+            _ = try await send(OnchainSendAttemptService(store: unreadable), node: node)
+            XCTFail("a send with an unreadable journal succeeded")
+        } catch OnchainSendAttemptError.unresolved {}
+        XCTAssertEqual(node.calls, 0)
+    }
+
     func testGenericNodeWorkflowErrorsRetainGuard() async throws {
         for error in [MemoryAttemptStoreError.failed as Error, CancellationError()] {
             let store = MemoryAttemptStore()
