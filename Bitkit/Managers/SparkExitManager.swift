@@ -358,7 +358,7 @@ final class SparkExitManager {
     /// so Progress says to wait for it before paying from another wallet.
     var isSavingsSendLanding: Bool {
         record.map {
-            Self.isSavingsSendLanding($0, unresolvedSendAddress: unresolvedSendAddress, isRefused: isSavingsPaymentRefused)
+            Self.isSavingsSendLanding($0, unresolvedSendAddress: unresolvedSendAddress, isRefused: refusedSavingsPayment != nil)
         } ?? false
     }
 
@@ -414,7 +414,10 @@ final class SparkExitManager {
         guard let txid else {
             throw AppError(message: t("wallet__send_error_tx_failed"), debugMessage: "Spark exit savings payment refused again")
         }
-        _ = try? await attempts.resumeAcceptedOrdinarySend(walletId: refused.walletId, observedTxid: txid)
+        // Only an accepted payment ends its send: one of unknown outcome may still land, and Progress says so.
+        if await (try? attempts.blockingAttempt())?.status == .accepted {
+            _ = try? await attempts.resumeAcceptedOrdinarySend(walletId: refused.walletId, observedTxid: txid)
+        }
         guard var paid = record, paid.createdAt == current.createdAt, paid.isActive else { return }
         paid.fundingPaymentTxid = txid
         try saveRecord(paid)
