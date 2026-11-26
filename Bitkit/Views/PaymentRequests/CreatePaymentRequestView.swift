@@ -246,7 +246,7 @@ struct PaykitRecipientPicker<Header: View, Footer: View>: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(accessibilityIdentifier)
         .task {
-            await paymentRequests.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
+            await paymentRequests.refreshEligibleTargetsIfNeeded(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
         }
     }
 
