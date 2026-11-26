@@ -511,6 +511,10 @@ final class SparkExitManager {
         unresolvedSendAddress = await OnchainSendAttemptService.shared.unresolvedSendAddress()
         await refreshAcceptedSend()
         await refreshRefusedSavingsPayment()
+        // A lost accepted payment is kept, and then nothing is due.
+        if let current = record {
+            _ = keepAcceptedSend(current)
+        }
         // Checked under the lock, over the address read now: funding may have reached it since the last tick.
         let address = record?.funding.first?.address
         let utxos: [EsploraUtxo]? = if let address {
@@ -564,6 +568,7 @@ final class SparkExitManager {
             Logger.error("Failed to save the Spark exit funding payment: \(error)", context: "SparkExitManager")
         }
         record = paid
+        setFunding(SparkExitMath.fundingState(paid, utxos: nil), for: paid)
         return paid
     }
 
