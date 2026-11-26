@@ -10,7 +10,8 @@ struct EditProfileView: View {
     @State private var username: String = ""
     @State private var bio: String = ""
     @State private var links: [ProfileLinkInput] = []
-    @State private var storedLinkUrls: Set<String> = []
+    @State private var storedLinks: [PubkyProfileData.Link] = []
+    @State private var rejectedLinkIndex: Int?
     @State private var tags: [String] = []
     @State private var baseRevision: String?
     @State private var baseTagsUnread = false
@@ -38,7 +39,7 @@ struct EditProfileView: View {
                 isSaving: isSaving,
                 maxLinks: PubkyAppProfileLimits.maxLinks,
                 webLinksOnly: true,
-                storedLinkUrls: storedLinkUrls,
+                linkErrors: linkErrors,
                 isNameValid: PubkyAppProfileLimits.isValidName,
                 footerNote: t("profile__edit_public_note"),
                 deleteLabel: copy.label,
@@ -67,6 +68,9 @@ struct EditProfileView: View {
         .disabled(isDeleting)
         .task {
             loadProfileData()
+        }
+        .onChange(of: linkData) {
+            rejectedLinkIndex = nil
         }
         .onChange(of: username) { _, value in
             if let capped = PubkyAppProfileLimits.capped(value, to: PubkyAppProfileLimits.nameLength.upperBound) {
@@ -97,6 +101,14 @@ struct EditProfileView: View {
         } message: {
             Text(copy.errorDescription)
         }
+    }
+
+    private var linkData: [PubkyProfileData.Link] {
+        links.map { PubkyProfileData.Link(label: $0.label, url: $0.url) }
+    }
+
+    private var linkErrors: [Int: PubkyAppLinkError] {
+        PubkyAppProfileStore.linkErrors(links: linkData, storedLinks: storedLinks, rejectedIndex: rejectedLinkIndex)
     }
 
     // MARK: - Avatar Picker
@@ -161,7 +173,8 @@ struct EditProfileView: View {
         loadedBio = profile.bio
         bio = profile.bio
         links = profile.links.map { ProfileLinkInput(label: $0.label, url: $0.url) }
-        storedLinkUrls = Set(profile.links.map(\.url))
+        storedLinks = profile.links.map { PubkyProfileData.Link(label: $0.label, url: $0.url) }
+        rejectedLinkIndex = nil
         tags = profile.tags
         baseRevision = profile.revision
         baseTagsUnread = profile.tagsUnread
@@ -238,9 +251,8 @@ struct EditProfileView: View {
     /// or the profile publishes, it stops quietly, with no toast and no navigation.
     private func saveProfile() async {
         let trimmedName = username.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard PubkyAppProfileLimits.isValidName(trimmedName),
-              links.allSatisfy({ storedLinkUrls.contains($0.url) || $0.url.isWebLink })
-        else { return }
+        guard PubkyAppProfileLimits.isValidName(trimmedName), linkErrors.isEmpty else { return }
+        let savedLinks = linkData
 
         isSaving = true
         defer { isSaving = false }
@@ -260,7 +272,12 @@ struct EditProfileView: View {
             navigation.navigateBack()
         } catch {
             Logger.error("Failed to save profile: \(error)", context: "EditProfileView")
-            app.toast(type: .error, title: t("profile__edit_error_title"), description: error.localizedDescription)
+            let rejected = PubkyAppProfileStore.rejectedLinkIndex(for: error, links: savedLinks)
+            let description = rejected.map { t("profile__edit_link_error", variables: ["label": savedLinks[$0].label]) }
+            app.toast(type: .error, title: t("profile__edit_error_title"), description: description ?? error.localizedDescription)
+            if linkData == savedLinks {
+                rejectedLinkIndex = rejected
+            }
             if case PubkyAppProfileError.changedElsewhere = error {
                 await pubkyProfile.loadProfile()
                 avatarImage = nil

@@ -3,6 +3,7 @@ import SwiftUI
 struct AddLinkSheet: View {
     @Environment(\.dismiss) private var dismiss
 
+    /// Marks a profile link, which pubky.app publishes: it must be a web link that meets its rules.
     var webLinksOnly = false
     let onSave: (String, String) -> Void
 
@@ -10,10 +11,22 @@ struct AddLinkSheet: View {
     @State private var url: String = ""
     @State private var showSuggestionsSheet = false
 
+    private var linkError: PubkyAppLinkError? {
+        webLinksOnly ? PubkyAppProfileStore.linkError(label: label, url: url, webOnly: true) : nil
+    }
+
+    private var labelError: String? {
+        linkError == .labelTooLong ? linkError?.message : nil
+    }
+
+    private var urlError: String? {
+        linkError != .labelTooLong ? linkError?.message : nil
+    }
+
     private var canSave: Bool {
         !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && (!webLinksOnly || url.isWebLink)
+            && linkError == nil
     }
 
     var body: some View {
@@ -25,6 +38,12 @@ struct AddLinkSheet: View {
                     CaptionMText(t("profile__add_link_label"), textColor: .white64)
 
                     labelFieldWithSuggestions
+
+                    if let labelError {
+                        BodySText(labelError, textColor: .redAccent)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("AddLinkLabelError")
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -39,6 +58,12 @@ struct AddLinkSheet: View {
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+
+                    if let urlError {
+                        BodySText(urlError, textColor: .redAccent)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("AddLinkUrlError")
+                    }
                 }
 
                 CaptionText(t("profile__add_link_note"), textColor: .white50)

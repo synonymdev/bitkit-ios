@@ -127,8 +127,8 @@ actor PubkyAppProfileStore {
     private static let nameMaxLength = 50
     private static let bioMaxLength = 160
     private static let linksMaxCount = 5
-    private static let linkTitleMaxLength = 100
-    private static let linkUrlMaxLength = 300
+    private static let linkTitleMaxLength = PubkyAppProfileLimits.linkTitleMaxLength
+    private static let linkUrlMaxLength = PubkyAppProfileLimits.linkUrlMaxLength
     private static let avatarMaxBytes: UInt64 = 5 * 1024 * 1024
 
     private static let pubkyAppProfileOwnersKey = "pubky_app_profile_owners"
@@ -562,9 +562,67 @@ actor PubkyAppProfileStore {
         String(String.UnicodeScalarView(text.unicodeScalars.prefix(maxScalars)))
     }
 
+    /// The first rule pubky.app's publisher would refuse `label` and `url` for, after the normalization a profile save
+    /// applies, or nil when it accepts them. A blank label or URL is left to the caller. `webOnly` also requires an
+    /// http(s) link, as a social v1 profile does.
+    static func linkError(label: String, url: String, webOnly: Bool) -> PubkyAppLinkError? {
+        if singleLine(label).unicodeScalars.count > linkTitleMaxLength {
+            return .labelTooLong
+        }
+        if url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return nil
+        }
+        guard let normalized = normalizedLinkUrl(url), isParsableLinkUrl(normalized) else { return .urlInvalid }
+        if webOnly, !url.isWebLink {
+            return .urlInvalid
+        }
+        if normalized.unicodeScalars.count > linkUrlMaxLength {
+            return .urlTooLong
+        }
+        return nil
+    }
+
+    /// The links pubky.app would refuse, by index. A save sends the links only once they change, and then pubky.app checks
+    /// every one, so a stored link is held to its rules too. Links added or edited here must also be web links, which
+    /// social v1 requires; stored ones keep their scheme. `rejectedIndex` is a link pubky.app already refused.
+    static func linkErrors(
+        links: [PubkyProfileData.Link],
+        storedLinks: [PubkyProfileData.Link],
+        rejectedIndex: Int? = nil
+    ) -> [Int: PubkyAppLinkError] {
+        guard links != storedLinks else { return [:] }
+        let storedUrls = Set(storedLinks.map(\.url))
+        var errors: [Int: PubkyAppLinkError] = [:]
+        for (index, link) in links.enumerated() {
+            if index == rejectedIndex || link.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                errors[index] = .urlInvalid
+            } else if let error = linkError(label: link.label, url: link.url, webOnly: !storedUrls.contains(link.url)) {
+                errors[index] = error
+            }
+        }
+        return errors
+    }
+
+    /// The link pubky.app refused a social v1 profile for: the first that is not a web link, as the others passed.
+    static func rejectedLinkIndex(for error: Error, links: [PubkyProfileData.Link]) -> Int? {
+        guard case let .Protocol(_, context)? = error as? PaykitError, context.contains("Pubky profile link") else { return nil }
+        return links.firstIndex { !$0.url.isWebLink }
+    }
+
     /// Bitkit accepted links without a scheme (a site, an email address, a phone number); pubky.app needs full URLs.
     /// Free text that is none of these is not a link pubky.app can hold.
     static func linkUrl(_ value: String) -> String? {
+        guard let url = normalizedLinkUrl(value), url.unicodeScalars.count <= linkUrlMaxLength, isParsableLinkUrl(url)
+        else { return nil }
+        return url
+    }
+
+    private static func isParsableLinkUrl(_ url: String) -> Bool {
+        guard let parsed = URL(string: url) else { return false }
+        return hasValidHost(parsed)
+    }
+
+    private static func normalizedLinkUrl(_ value: String) -> String? {
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, !value.contains(where: \.isWhitespace) || isPhoneNumber(value) else { return nil }
         let url: String
@@ -579,7 +637,6 @@ actor PubkyAppProfileStore {
         } else {
             return nil
         }
-        guard url.unicodeScalars.count <= linkUrlMaxLength, let parsed = URL(string: url), hasValidHost(parsed) else { return nil }
         return url
     }
 

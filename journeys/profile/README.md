@@ -59,3 +59,5 @@ On iOS, open a saved contact's link while a stored identity's session restoratio
 `edit-pubky-app-profile.xml` checks that Edit Profile presents the profile as the public pubky.app profile and that a name edit is saved and survives a relaunch. Use an identity whose pubky.app profile you can open on pubky.app; checking the edit there, and an edit made in pubky.app while Bitkit is open, are manual checks beyond journey-runner capabilities.
 
 On iOS, the restart check waits for the full profile (`ProfileViewName`). A matching `ProfileCachedName` during loading does not complete that check. Record an unfinished load separately from a loaded profile with a missing or incorrect name.
+
+`profile-link-validation.xml` checks that Add Link in Edit Profile shows an inline error and keeps Save disabled for a link pubky.app would refuse, and accepts a bare domain. The 100-code-point label and 300-code-point URL limits, and an already-stored invalid link blocking the profile save, are manual checks: long values cannot be typed reliably on a device, and an invalid stored link needs a profile written outside the current app.

@@ -1388,6 +1388,10 @@
 "profile__edit_changed_error" = "Dein Profil wurde in pubky.app geändert. Bitkit hat die neueste Version geladen, nimm deine Änderung bitte erneut vor.";
 "profile__edit_public_note" = "Das ist dein pubky.app-Profil. Es ist öffentlich, und Änderungen, die du hier vornimmst, erscheinen auch auf pubky.app.";
 "profile__edit_tags_error" = "Bitkit konnte deine Tags nicht speichern. Deine anderen Änderungen wurden gespeichert, versuche es mit den Tags erneut.";
+"profile__edit_link_error" = "Korrigiere den Link {label}, um dein Profil zu speichern.";
+"profile__link_error_label_length" = "Die Bezeichnung darf höchstens 100 Zeichen lang sein.";
+"profile__link_error_url_invalid" = "Gib einen gültigen Weblink ein, z. B. example.com.";
+"profile__link_error_url_length" = "Der Link darf höchstens 300 Zeichen lang sein.";
 "profile__delete_title" = "Profil löschen?";
 "profile__delete_description" = "Durch das Löschen deines Profils wird es von Pubky entfernt. Kontakte können zuvor mit ihnen geteilte Profil- und Zahlungsinformationen weiterhin behalten.";
 "profile__delete_confirm" = "Ja, löschen";

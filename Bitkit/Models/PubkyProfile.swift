@@ -245,6 +245,8 @@ enum PubkyAppProfileLimits {
     static let nameLength = 3 ... 50
     static let bioMaxLength = 160
     static let maxLinks = 5
+    static let linkTitleMaxLength = 100
+    static let linkUrlMaxLength = 300
 
     /// pubky.app counts Unicode scalars, not characters.
     static func isValidName(_ name: String) -> Bool {
@@ -255,5 +257,23 @@ enum PubkyAppProfileLimits {
     static func capped(_ text: String, to maxLength: Int) -> String? {
         guard text.unicodeScalars.count > maxLength else { return nil }
         return String(String.UnicodeScalarView(text.unicodeScalars.prefix(maxLength)))
+    }
+}
+
+/// Why pubky.app would refuse a profile link, checked on the label and URL a profile save sends.
+enum PubkyAppLinkError: Equatable {
+    case labelTooLong
+    case urlTooLong
+    case urlInvalid
+
+    var message: String {
+        switch self {
+        case .labelTooLong:
+            t("profile__link_error_label_length")
+        case .urlTooLong:
+            t("profile__link_error_url_length")
+        case .urlInvalid:
+            t("profile__link_error_url_invalid")
+        }
     }
 }
