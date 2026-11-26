@@ -287,7 +287,7 @@ final class SparkExitManager {
         let record = record
         Task {
             // Progress says at once whether a savings payment may still land, before the first tick's network reads.
-            unresolvedSendAddress = await OnchainSendAttemptService.shared.unresolvedSendAddress()
+            await refreshSends()
             if let record {
                 await settleIfFinished(record)
             }
@@ -438,7 +438,7 @@ final class SparkExitManager {
         if isAccepted {
             _ = try? await attempts.resumeAcceptedOrdinarySend(walletId: refused.walletId, observedTxid: txid)
         }
-        unresolvedSendAddress = await attempts.unresolvedSendAddress()
+        await refreshSends()
         guard var paid = record, paid.createdAt == current.createdAt, paid.isActive else { return }
         paid.fundingPaymentTxid = txid
         paid.savingsRefusal = nil
@@ -1554,7 +1554,7 @@ final class SparkExitManager {
             Logger.warn("Spark exit funding \(txid) has an unknown outcome; kept as pending", context: "SparkExitManager")
         }
         // Progress says at once whether the payment may still land.
-        unresolvedSendAddress = await attempts.unresolvedSendAddress()
+        await refreshSends()
         return txid
     }
 
